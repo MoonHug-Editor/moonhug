@@ -36,6 +36,8 @@ tick_Tween :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContext) -> TweenS
 _tween_tick_child :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus {
     tid := reflect.union_variant_typeid(task^)
     if tid == nil do return .Done
+    base := tween_base(task)
+    if base.skip do return .Done
     key    := typeid_to_type_key_map[tid]
     tick := tween_tick_procs[key]
     if tick == nil do return .Done
@@ -99,6 +101,11 @@ tween_run_tween :: proc(tween: ^TweenUnion, ctx: TweenContext) -> bool {
 }
 
 tween_run_internal :: proc(node: ^TweenRunning, ctx: TweenContext) -> bool {
+    if tween_base(&node.data).skip {
+        tween_free(&node.data)
+        free(node)
+        return false
+    }
     node.ctx = ctx
     node.next = tween_running_head
     if tween_running_head != nil do tween_running_head.prev = node
