@@ -28,6 +28,9 @@ For more details see [Contribution](features/Contribution.md)
 ## Contribution
 - [Contribution](features/Contribution.md)
 
+## Community
+- [Discord](https://discord.gg/HTpBmhESwW)
+
 ## Build/run/workflow stages
 - PrebuildStage - generates code for other stages
 - DevStage - modifying app and editor code
@@ -59,7 +62,9 @@ For more details see [Contribution](features/Contribution.md)
 - [Asset Pipeline](features/AssetPipeline.md) - asset importer/loader
 - [Scenes](features/Scenes.md)
 - [Tweens](features/Tweens.md)
+- [Reference Handles](features/ReferenceHandles.md)
 - [SpriteRenderer](features/SpriteRenderer.md)
+- [Unity Conveniences](features/UnityConveniences.md)
 
 ### Views
   - inspector view - edit selected object in scene
@@ -90,11 +95,8 @@ For more details see [Contribution](features/Contribution.md)
   - scene view toolbar (move, rotate, scale)
 
 - png - Texture2D with N Sprites
-- add skip toggle to tween to skip animations without removing them
 
 - improve default types inspector UX
-
-- console filter log lines by substring
 
 - Asset search / filter in Project View A single text input that filters the visible files by name substring
 
@@ -121,10 +123,10 @@ For more details see [Contribution](features/Contribution.md)
 - decide shaders and rendering pipeline
 
 - ping reference object similar to Unity
+
 - nested prefabs
 - prefab overrides
 
-- git workflow to up version
 - doc generation
 
 - multiple views of same type support, with lock toggle
