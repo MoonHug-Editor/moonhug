@@ -221,7 +221,10 @@ draw_inspector :: proc(a: any, label: cstring = "") {
             } else if is_enum_type(field_type.id) {
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
-                if im.TreeNode(c_field_name) {
+                _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
+                if is_inline {
+                    draw_inspector(field_val)
+                } else if im.TreeNode(c_field_name) {
                     draw_inspector(field_val)
                     im.TreePop()
                 }

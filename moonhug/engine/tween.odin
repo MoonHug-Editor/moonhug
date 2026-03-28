@@ -16,8 +16,8 @@ tween_tick_procs: [TypeKey]TweenTickProc
 @(typ_guid={guid="aecaf150-0418-4fed-81a3-708f68ccaa8b"})
 Tween :: struct {
     skip:bool,
-    delay:f32,
     is_await:bool,
+    delay:f32,
     // todo add subject : Transform_Handle here, it will override ctx.subject
 
     // runtime only fields:

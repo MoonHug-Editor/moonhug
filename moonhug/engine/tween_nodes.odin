@@ -4,7 +4,7 @@ import "core:math/linalg"
 
 @(typ_guid={guid="916005b6-1c68-49e7-88be-0add6164d3a8"})
 Parallel :: struct {
-    using base : Tween,
+    using base : Tween `inline:""`,
     children: [dynamic]TweenUnion,
 }
 
@@ -32,7 +32,7 @@ tween_free_Parallel :: proc(tween : ^TweenUnion) {
 
 @(typ_guid={guid="24d46399-b3a0-44e7-abd1-6da5d759e935"})
 Sequence :: struct {
-    using base : Tween,
+    using base : Tween `inline:""`,
     children: [dynamic]TweenUnion,
 }
 
@@ -59,7 +59,7 @@ tween_free_Sequence :: proc(tween : ^TweenUnion) {
 
 @(typ_guid={guid="aa1970c6-51d2-4d27-9dc8-718ad1e51160"})
 TweenScaleToLocal :: struct {
-    using base : Tween,
+    using base : Tween `inline:""`,
     scale    : [3]f32,
     duration : f32,
 
@@ -89,7 +89,7 @@ tick_TweenScaleToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContex
 
 @(typ_guid={guid="b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94"})
 TweenRotateToLocal :: struct {
-    using base : Tween,
+    using base : Tween `inline:""`,
     rotation : [4]f32 `inspect:"" decor:euler()`,
     duration : f32,
 
@@ -119,7 +119,7 @@ tick_TweenRotateToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenConte
 
 @(typ_guid={guid="da9d301a-66a3-450c-8c0b-8c696ad60b0b"})
 TweenMoveToLocal :: struct {
-    using base : Tween,
+    using base : Tween `inline:""`,
     position : [3]f32,
     duration : f32,
 
