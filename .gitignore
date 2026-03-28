@@ -1,0 +1,11 @@
+bin/**
+.idea/**
+
+*.bin
+
+*.o
+*.a
+imgui.ini
+editor_window.json
+/editor
+moonhug/library/

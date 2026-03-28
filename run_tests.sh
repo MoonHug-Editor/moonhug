@@ -1,0 +1,4 @@
+#!/usr/bin/env sh
+set -e
+
+odin test moonhug/tests -ignore-unknown-attributes

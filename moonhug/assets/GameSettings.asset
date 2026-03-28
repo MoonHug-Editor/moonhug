@@ -1,0 +1,57 @@
+{
+  "__type_guid": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "maxHealth": 5,
+  "isDebugMode": false,
+  "test": false,
+  "a": {
+    "b": 0,
+    "c": ""
+  },
+  "a2": {
+    "b": 0,
+    "c": ""
+  },
+  "gameNames": [
+
+  ],
+  "dynamicInt": [
+
+  ],
+  "dynamicA": [
+
+  ],
+  "a3": [
+    {
+      "b": 0,
+      "c": ""
+    },
+    {
+      "b": 0,
+      "c": ""
+    },
+    {
+      "b": 0,
+      "c": ""
+    }
+  ],
+  "int3": [
+    0,
+    0,
+    0
+  ],
+  "comp": {"__type_guid":"f51ac13b-63cc-4374-a567-0e02b2c3d479",
+    "c_int": 2234
+  },
+  "comps3": [
+    {"__type_guid":"f51ac13b-63cc-4374-a567-0e02b2c3d479",
+      "c_int": 5
+    },
+    {"__type_guid":"f49ac13b-63cc-4374-a567-0e02b2c3d479",
+      "b": 2,
+      "c": "fdaf"
+    },
+    {"__type_guid":"f50ac13b-63cc-4374-a567-0e02b2c3d479",
+      "b_string": "fff"
+    }
+  ]
+}

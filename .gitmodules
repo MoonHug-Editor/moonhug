@@ -1,0 +1,3 @@
+[submodule "moonhug/deps/odin-imgui"]
+	path = moonhug/deps/odin-imgui
+	url = git@gitlab.com:L-4/odin-imgui.git

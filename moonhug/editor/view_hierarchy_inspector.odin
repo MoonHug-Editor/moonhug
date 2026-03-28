@@ -1,0 +1,195 @@
+package editor
+
+import "core:strings"
+import "core:mem"
+import "core:c"
+import "core:fmt"
+import im "../../external/odin-imgui"
+import engine "../engine"
+import "inspector"
+import "menu"
+
+@(private)
+_inspector_name_buf: [256]byte
+
+@(private)
+_inspector_transform_open: bool = true
+
+@(private)
+_inspector_comp_open: map[engine.TypeKey]bool
+
+draw_hierarchy_inspector :: proc() {
+	if !im.Begin("Inspector", nil, {.NoCollapse}) {
+		im.End()
+		return
+	}
+	defer im.End()
+
+	tH := hierarchy_get_selected()
+	if tH == _HANDLE_NONE {
+		im.TextDisabled("No object selected")
+		return
+	}
+
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil {
+		im.TextDisabled("Invalid selection")
+		return
+	}
+
+	_draw_header(t)
+	im.Separator()
+	_draw_transform_section(t)
+	_draw_components_section(t, tH)
+	_draw_add_component_button(t, tH)
+}
+
+@(private)
+_draw_header :: proc(t: ^engine.Transform) {
+	active := t.is_active
+	if im.Checkbox("##active", &active) {
+		t.is_active = active
+	}
+
+	im.SameLine()
+
+	name_bytes := transmute([]u8)t.name
+	mem.zero(&_inspector_name_buf, len(_inspector_name_buf))
+	copy_len := min(len(name_bytes), len(_inspector_name_buf) - 1)
+	mem.copy(&_inspector_name_buf[0], raw_data(name_bytes), copy_len)
+
+	im.SetNextItemWidth(-1)
+	buf_cstr := cstring(raw_data(_inspector_name_buf[:]))
+	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
+		new_name := string(buf_cstr)
+		if len(new_name) > 0 {
+			delete(t.name)
+			t.name = strings.clone(new_name)
+		}
+	}
+}
+
+@(private)
+_inspector_euler_cache: [3]f32
+
+@(private)
+_inspector_euler_quat_src: [4]f32
+
+@(private)
+_draw_transform_section :: proc(t: ^engine.Transform) {
+	im.SetNextItemOpen(_inspector_transform_open, .Once)
+	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
+		_inspector_transform_open = true
+		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
+		drawer(&t.position, typeid_of(^[3]f32), "Position")
+
+		if _inspector_euler_quat_src != t.rotation {
+			_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
+			_inspector_euler_quat_src = t.rotation
+		}
+		prev_euler := _inspector_euler_cache
+		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
+		if _inspector_euler_cache != prev_euler {
+			t.rotation = engine.quat_from_euler_xyz(_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
+			_inspector_euler_quat_src = t.rotation
+		}
+
+		drawer(&t.scale, typeid_of(^[3]f32), "Scale")
+	} else {
+		_inspector_transform_open = false
+	}
+}
+
+@(private)
+_comp_pending_remove: engine.Handle
+
+@(private)
+_draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+	w := engine.ctx_world()
+	if len(t.components) == 0 do return
+
+	_comp_pending_remove = {}
+
+	for &comp in t.components {
+		if comp.handle.type_key == engine.INVALID_TYPE_KEY do continue
+
+		comp_ptr := engine.world_pool_get(w, comp.handle)
+		if comp_ptr == nil do continue
+
+		comp_tid := engine.get_typeid_by_type_key(comp.handle.type_key)
+		type_name := fmt.tprintf("%v", comp_tid)
+		c_type_name := strings.clone_to_cstring(type_name, context.temp_allocator)
+
+		checkbox_size := im.GetFrameHeight()
+		checkbox_pos := im.GetCursorScreenPos()
+		im.Indent(checkbox_size + im.GetStyle().ItemSpacing.x)
+
+		is_open := _inspector_comp_open[comp.handle.type_key] or_else true
+		im.SetNextItemOpen(is_open, .Once)
+
+		header_open := im.CollapsingHeader(c_type_name, {.DefaultOpen, .AllowOverlap})
+		_inspector_comp_open[comp.handle.type_key] = header_open
+
+		im.Unindent(checkbox_size + im.GetStyle().ItemSpacing.x)
+
+		im.SetCursorScreenPos(checkbox_pos)
+		comp_base := cast(^engine.CompData)comp_ptr
+		enabled := comp_base.enabled
+		enabled_id := strings.clone_to_cstring(fmt.tprintf("##enabled_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
+		if im.Checkbox(enabled_id, &enabled) {
+			comp_base.enabled = enabled
+		}
+
+		popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
+		im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
+		btn_label := strings.clone_to_cstring(fmt.tprintf("\u22ee##btn_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
+		if im.SmallButton(btn_label) {
+			im.OpenPopup(popup_id)
+		}
+		if im.BeginPopup(popup_id) {
+			if im.MenuItem("Remove Component") {
+				_comp_pending_remove = comp.handle
+			}
+			ctx_entries := _get_context_menu_entries(comp.handle.type_key)
+			if len(ctx_entries) > 0 {
+				im.Separator()
+			}
+			for entry in ctx_entries {
+				c_label := strings.clone_to_cstring(entry.label, context.temp_allocator)
+				if im.MenuItem(c_label) {
+					entry.action(comp_ptr)
+				}
+			}
+			im.EndPopup()
+		}
+
+		if header_open {
+			drawer := inspector.resolve_property_drawer(comp_tid)
+			drawer(comp_ptr, comp_tid, c_type_name)
+		}
+	}
+
+	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
+		engine.transform_remove_comp(tH, _comp_pending_remove)
+	}
+}
+
+@(private)
+_draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+	im.Spacing()
+	im.Separator()
+	im.Spacing()
+
+	avail := im.GetContentRegionAvail().x
+	btn_w: f32 = 220
+	im.SetCursorPosX((avail - btn_w) * 0.5 + im.GetCursorPosX())
+	if im.Button("Add Component", im.Vec2{btn_w, 0}) {
+		im.OpenPopup("##AddComponentPopup")
+	}
+
+	if im.BeginPopup("##AddComponentPopup") {
+		menu.draw_menu_subtree("Component")
+		im.EndPopup()
+	}
+}

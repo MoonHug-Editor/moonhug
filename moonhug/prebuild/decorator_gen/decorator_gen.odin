@@ -1,0 +1,231 @@
+package decorator_gen
+
+import "core:fmt"
+import "core:odin/ast"
+import "core:slice"
+import "core:strings"
+import "../gen_core"
+
+DecoratorCall :: struct {
+	call_with_ctx: string, // e.g. `header(ctx, text="Hello")`
+}
+
+FieldDecorators :: struct {
+	field_name: string,
+	calls:      [dynamic]DecoratorCall,
+}
+
+TypeDecorators :: struct {
+	pkg_name:  string,
+	type_name: string,
+	fields:    [dynamic]FieldDecorators,
+}
+
+DecoratorCollectData :: struct {
+	entries: [dynamic]TypeDecorators,
+}
+
+// Writes call line to builder; unescapes \" to " so generated Odin source is valid.
+_write_call_line :: proc(b: ^strings.Builder, call_with_ctx: string) {
+	strings.write_string(b, "\t\t")
+	for i := 0; i < len(call_with_ctx); i += 1 {
+		if call_with_ctx[i] == '\\' && i+1 < len(call_with_ctx) && call_with_ctx[i+1] == '"' {
+			strings.write_byte(b, '"')
+			i += 1
+		} else {
+			strings.write_byte(b, call_with_ctx[i])
+		}
+	}
+	strings.write_string(b, "\n")
+}
+
+_parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
+	calls: [dynamic]DecoratorCall
+	defer if len(calls) > 0 do delete(calls)
+
+	key := "decor:"
+	pos := 0
+	for {
+		i := strings.index(tag[pos:], key)
+		if i < 0 do break
+		start := pos + i + len(key)
+		pos = start
+		// Find end of this decor value: next "decor:" or end of string
+		end := strings.index(tag[pos:], key)
+		if end >= 0 {
+			end += pos
+		} else {
+			end = len(tag)
+		}
+		val := tag[start:end]
+		// Trim whitespace
+		for len(val) > 0 && (val[0] == ' ' || val[0] == '\t' || val[0] == '\n' || val[0] == '\r') {
+			val = val[1:]
+		}
+		for len(val) > 0 {
+			c := val[len(val)-1]
+			if c == ' ' || c == '\t' || c == '\n' || c == '\r' {
+				val = val[:len(val)-1]
+			} else do break
+		}
+		if len(val) == 0 do continue
+		// val is e.g. "header(text=\"Hello\")" or "separator()"
+		// Prepend "decorator_" to proc name; insert "ctx, " after "(" (or just "ctx" if no args)
+		paren := strings.index_rune(val, '(')
+		if paren >= 0 {
+			proc_name := fmt.tprintf("decorator_%s", val[:paren])
+			rest := val[paren+1:]
+			call_with_ctx: string
+			if len(rest) > 0 && rest[0] == ')' {
+				call_with_ctx = fmt.tprintf("%s(ctx)", proc_name)
+			} else {
+				if strings.contains(rest, "=") {
+					call_with_ctx = fmt.tprintf("%s(ctx=ctx, %s", proc_name, rest)
+				} else {
+					call_with_ctx = fmt.tprintf("%s(ctx, %s", proc_name, rest)
+				}
+			}
+			append(&calls, DecoratorCall{call_with_ctx = call_with_ctx})
+		} else {
+			append(&calls, DecoratorCall{call_with_ctx = fmt.tprintf("decorator_%s(ctx)", val)})
+		}
+		pos = end
+	}
+
+	result: [dynamic]DecoratorCall
+	for c in calls do append(&result, c)
+	return result
+}
+
+collect :: proc(pkg: ^ast.Package, data: ^DecoratorCollectData) -> bool {
+	if pkg == nil do return false
+
+	for _, file in pkg.files {
+		for decl in file.decls {
+			v_decl, is_value := decl.derived.(^ast.Value_Decl)
+			if !is_value do continue
+			if len(v_decl.names) == 0 || len(v_decl.values) == 0 do continue
+
+			type_name := ""
+			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
+				type_name = id.name
+			}
+			if type_name == "" do continue
+
+			st, is_struct := v_decl.values[0].derived.(^ast.Struct_Type)
+			if !is_struct || st == nil || st.fields == nil do continue
+
+			td: TypeDecorators = {pkg_name = pkg.name, type_name = type_name}
+			has_any := false
+			for field_expr in st.fields.list {
+				f, ok := field_expr.derived.(^ast.Field)
+				if !ok || len(f.names) == 0 do continue
+				field_name := ""
+				if id, ok_id := f.names[0].derived.(^ast.Ident); ok_id do field_name = id.name
+				if field_name == "" do continue
+
+				tag_str := gen_core.StructFieldTag(f)
+				calls := _parse_decor_calls_from_tag(tag_str)
+				defer delete(calls)
+				if len(calls) == 0 {
+					append(&td.fields, FieldDecorators{field_name = field_name})
+					continue
+				}
+				has_any = true
+				fd: FieldDecorators = {field_name = field_name}
+				for c in calls do append(&fd.calls, c)
+				append(&td.fields, fd)
+			}
+			if has_any do append(&data.entries, td)
+		}
+	}
+	return true
+}
+
+collect_finalize :: proc(data: ^DecoratorCollectData) {
+	slice.sort_by(data.entries[:], proc(a, b: TypeDecorators) -> bool {
+		if a.pkg_name != b.pkg_name do return a.pkg_name < b.pkg_name
+		return a.type_name < b.type_name
+	})
+}
+
+generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+
+	strings.write_string(&b, "package inspector\n\n")
+	packages_used: map[string]bool
+	defer delete(packages_used)
+	for e in data.entries {
+		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = true
+	}
+	import_pkgs: [dynamic]string
+	defer delete(import_pkgs)
+	for pkg in packages_used {
+		append(&import_pkgs, pkg)
+	}
+	slice.sort(import_pkgs[:])
+	for pkg in import_pkgs {
+		fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+	}
+	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")
+	strings.write_string(&b, "// Code generated by decorator_gen. Do not edit.\n\n")
+
+	for e in data.entries {
+		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
+		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
+		pkg_prefix := e.pkg_name
+		if pkg_prefix != "" do pkg_prefix = fmt.tprintf("%s.", pkg_prefix)
+		else do pkg_prefix = ""
+
+		for fd in e.fields {
+			if len(fd.calls) == 0 do continue
+			proc_name := fmt.tprintf("%s%s", type_prefix, fd.field_name)
+			strings.write_string(&b, proc_name)
+			strings.write_string(&b, " :: proc(ctx: ^DrawContext) {\n")
+			strings.write_string(&b, "\tif ctx.is_pre {\n")
+			for c in fd.calls do _write_call_line(&b, c.call_with_ctx)
+			strings.write_string(&b, "\t} else {\n")
+			for i := len(fd.calls) - 1; i >= 0; i -= 1 do _write_call_line(&b, fd.calls[i].call_with_ctx)
+			strings.write_string(&b, "\t}\n")
+			strings.write_string(&b, "}\n\n")
+		}
+
+		strings.write_string(&b, type_slice_name)
+		strings.write_string(&b, ": []DecoratorProc\n\n")
+	}
+
+	strings.write_string(&b, "init_decorators :: proc() {\n")
+	for e in data.entries {
+		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
+		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
+		qual := e.type_name
+		if e.pkg_name != "" do qual = fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
+		n := len(e.fields)
+		fmt.sbprintf(&b, "\t%s = make([]DecoratorProc, %d)\n", type_slice_name, n)
+		for fd, idx in e.fields {
+			if len(fd.calls) == 0 {
+				fmt.sbprintf(&b, "\t%s[%d] = nil\n", type_slice_name, idx)
+			} else {
+				fmt.sbprintf(&b, "\t%s[%d] = %s%s\n", type_slice_name, idx, type_prefix, fd.field_name)
+			}
+		}
+		strings.write_string(&b, "\tdecorator_registry[typeid_of(")
+		strings.write_string(&b, qual)
+		strings.write_string(&b, ")] = ")
+		strings.write_string(&b, type_slice_name)
+		strings.write_string(&b, "\n")
+	}
+	strings.write_string(&b, "}\n")
+
+	gen_path := strings.concatenate({out_dir, "/decorators_generated.odin"})
+	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+}
+
+cleanup :: proc(data: ^DecoratorCollectData) {
+	for e in data.entries {
+		for fd in e.fields do delete(fd.calls)
+		delete(e.fields)
+	}
+	delete(data.entries)
+}
