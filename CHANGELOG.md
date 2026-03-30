@@ -1,3 +1,9 @@
+## [0.2.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.2.0...v0.2.1) (2026-03-30)
+
+### Bug Fixes
+
+* package name collision ([5f26c3c](https://github.com/MoonHug-Editor/moonhug/commit/5f26c3c69b4c9c05b886c68151a1375dbbfd1a79))
+
 ## [0.2.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.1.1...v0.2.0) (2026-03-28)
 
 ### Features
