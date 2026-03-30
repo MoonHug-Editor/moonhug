@@ -30,7 +30,7 @@ make_transform_ref :: proc(tH: Transform_Handle) -> Ref {
 
 transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform_Handle {
     w := ctx_world()
-    s := scene_get_active()
+    s := sm_scene_get_active()
 
     tHandle, t := pool_create(&w.transforms)
     tH := Transform_Handle(tHandle)
@@ -65,7 +65,7 @@ transform_destroy :: proc(tH: Transform_Handle) {
     if pool_valid(&w.transforms, t.parent.handle) {
         transform_unlink_from_parent(tH)
     } else {
-        s := scene_get_active()
+        s := sm_scene_get_active()
         if s != nil && s.root.handle == Handle(tH) do scene_clear_root(s)
     }
 
@@ -129,7 +129,7 @@ transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle,
     if pool_valid(&w.transforms, t.parent.handle) {
         transform_unlink_from_parent(tH)
     } else {
-        s := scene_get_active()
+        s := sm_scene_get_active()
         if s != nil && s.root.handle == Handle(tH) do scene_clear_root(s)
     }
 
@@ -138,7 +138,7 @@ transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle,
         np := pool_get(&w.transforms, Handle(new_parent))
         new_scene = np.scene
     } else {
-        new_scene = scene_get_active()
+        new_scene = sm_scene_get_active()
     }
 
     if new_scene != t.scene {
@@ -218,7 +218,7 @@ transform_get_sibling_index :: proc(tH: Transform_Handle) -> int {
             if p.children[i].handle == Handle(tH) do return i
         }
     } else {
-        s := scene_get_active()
+        s := sm_scene_get_active()
         if s != nil && s.root.handle == Handle(tH) do return 0
     }
     return -1

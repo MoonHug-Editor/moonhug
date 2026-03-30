@@ -16,14 +16,14 @@ SceneManager :: struct {
     active_scene: Scene_ID,
 }
 
-sm_get_active_scene :: proc() -> ^Scene {
+sm_scene_get_active :: proc() -> ^Scene {
     scene_manager := ctx_scene_manager()
     idx := scene_manager.active_scene
     if idx < 0 || int(idx) >= scene_manager.count do return nil
     return scene_manager.loaded[idx]
 }
 
-sm_set_active_scene :: proc(s: ^Scene) {
+sm_scene_set_active :: proc(s: ^Scene) {
     scene_manager := ctx_scene_manager()
     if s == nil {
         scene_manager.active_scene = -1
@@ -52,9 +52,9 @@ sm_find_free_slot :: proc() -> Scene_ID {
     return -1
 }
 
-scene_unload :: proc(scene: ^Scene) {
+sm_scene_unload :: proc(scene: ^Scene) {
     if scene == nil do return
-    if !scene_is_valid(scene) do return
+    if !sm_scene_is_valid(scene) do return
     scene_manager := ctx_scene_manager()
 
     for i in 0..<scene_manager.count {
@@ -69,11 +69,11 @@ scene_unload :: proc(scene: ^Scene) {
     }
 }
 
-scene_is_valid :: proc(scene: ^Scene) -> bool {
+sm_scene_is_valid :: proc(scene: ^Scene) -> bool {
     return scene != nil && scene.generation > 0
 }
 
-scene_invalidate :: proc(scene: ^Scene) {
+sm_scene_invalidate :: proc(scene: ^Scene) {
     if scene == nil do return
     scene.generation = 0
 }
@@ -82,7 +82,7 @@ _scene_load_single :: proc(scene_file: ^SceneFile) -> ^Scene {
     scene_manager := ctx_scene_manager()
     for i in 0..<scene_manager.count {
         if scene_manager.loaded[i] != nil {
-            scene_unload(scene_manager.loaded[i])
+            sm_scene_unload(scene_manager.loaded[i])
         }
     }
     scene_manager.count = 0

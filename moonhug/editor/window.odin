@@ -65,7 +65,7 @@ save_editor_settings :: proc() {
     sm := engine.ctx_scene_manager()
     for i in 0..<sm.count {
         scene := sm.loaded[i]
-        if scene == nil || !engine.scene_is_valid(scene) || len(scene.path) == 0 do continue
+        if scene == nil || !engine.sm_scene_is_valid(scene) || len(scene.path) == 0 do continue
         if guid, ok := engine.asset_db_get_guid(scene.path); ok {
             guid_str := uuid.to_string(guid, context.temp_allocator)
             append(&editor_settings.open_scene_guids, guid_str)

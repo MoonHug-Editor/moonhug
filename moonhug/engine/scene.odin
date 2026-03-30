@@ -23,14 +23,6 @@ scene_destroy :: proc(s: ^Scene) {
 	free(s)
 }
 
-scene_get_active :: proc() -> ^Scene {
-	return sm_get_active_scene()
-}
-
-scene_set_active :: proc(s: ^Scene) {
-	sm_set_active_scene(s)
-}
-
 scene_next_id :: proc(s: ^Scene) -> Local_ID {
 	s.next_local_id += 1
 	id := s.next_local_id

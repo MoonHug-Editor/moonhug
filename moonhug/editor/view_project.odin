@@ -171,7 +171,7 @@ draw_file_list :: proc(path: string) {
             }
             if strings.has_suffix(entry.name, ".scene") && im.IsMouseDoubleClicked(.Left) {
                 scene := engine.scene_load_single_path(full_path)
-                engine.scene_set_active(scene)
+                engine.sm_scene_set_active(scene)
             }
         }
         if im.BeginDragDropSource({}) {

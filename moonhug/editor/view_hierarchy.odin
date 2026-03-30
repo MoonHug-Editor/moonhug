@@ -64,13 +64,13 @@ draw_hierarchy_view :: proc() {
 	has_any := false
 	last_valid_idx := -1
 	for i in 0..<sm.count {
-		if sm.loaded[i] != nil && engine.scene_is_valid(sm.loaded[i]) {
+		if sm.loaded[i] != nil && engine.sm_scene_is_valid(sm.loaded[i]) {
 			last_valid_idx = i
 		}
 	}
 	for i in 0..<sm.count {
 		scene := sm.loaded[i]
-		if scene == nil || !engine.scene_is_valid(scene) do continue
+		if scene == nil || !engine.sm_scene_is_valid(scene) do continue
 		has_any = true
 		_draw_scene_section(scene, is_last = i == last_valid_idx)
 	}
@@ -113,7 +113,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 		}
 		im.Separator()
 		if im.MenuItem("Unload") {
-			engine.scene_unload(scene)
+			engine.sm_scene_unload(scene)
 			im.EndPopup()
 			return
 		}
