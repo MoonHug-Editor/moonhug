@@ -7,7 +7,6 @@ import "core:c"
 import "core:path/filepath"
 import im "../../external/odin-imgui"
 import engine "../engine"
-import "inspector"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -100,13 +99,19 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	}
 	if im.BeginPopup("##SceneHeaderMenu") {
 		if im.MenuItem("Save") {
-			engine.scene_save(scene, inspector.get_file_path())
+			if len(scene.path) > 0 {
+				engine.scene_save(scene, scene.path)
+			} else {
+				_save_as_open = true
+				_save_as_pending = true
+				mem.zero(&_save_as_buf, len(_save_as_buf))
+			}
 		}
 		if im.MenuItem("Save As") {
 			_save_as_open = true
 			_save_as_pending = true
 			mem.zero(&_save_as_buf, len(_save_as_buf))
-			current_path := inspector.get_file_path()
+			current_path := scene.path
 			path_bytes := transmute([]u8)current_path
 			copy_len := min(len(path_bytes), len(_save_as_buf) - 1)
 			mem.copy(&_save_as_buf[0], raw_data(path_bytes), copy_len)
