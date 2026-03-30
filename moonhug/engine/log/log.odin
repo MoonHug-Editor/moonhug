@@ -1,4 +1,4 @@
-package log
+package mh_log
 
 import "core:fmt"
 import "core:strings"
