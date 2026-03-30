@@ -44,7 +44,7 @@ test_save_load_empty_scene :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_path(tc_mem.path)
+	loaded := engine.scene_load_single_path(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 
@@ -72,7 +72,7 @@ test_save_load_scene_with_transform :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_path(tc_mem.path)
+	loaded := engine.scene_load_single_path(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 
@@ -108,7 +108,7 @@ test_save_load_scene_with_sprite_renderer :: proc(t: ^testing.T) {
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
 
-	loaded := engine.scene_load_path(tc_mem.path)
+	loaded := engine.scene_load_single_path(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 	defer engine.scene_destroy(loaded)

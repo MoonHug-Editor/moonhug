@@ -28,7 +28,7 @@ main :: proc() {
     phase_run(Phase.Init)
 
     if os.exists(SCENE_PATH) {
-        engine.scene_load_path(SCENE_PATH)
+        engine.scene_load_single_path(SCENE_PATH)
     }
 
     setup_player_animations()

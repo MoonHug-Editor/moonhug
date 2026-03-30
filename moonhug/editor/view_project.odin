@@ -170,7 +170,7 @@ draw_file_list :: proc(path: string) {
                 inspector.load_import_settings(full_path)
             }
             if strings.has_suffix(entry.name, ".scene") && im.IsMouseDoubleClicked(.Left) {
-                scene := engine.scene_load_path(full_path)
+                scene := engine.scene_load_single_path(full_path)
                 engine.scene_set_active(scene)
             }
         }

@@ -1,9 +1,14 @@
 package engine
 
 import "core:fmt"
+import "core:os"
+import "core:encoding/json"
+import "core:encoding/uuid"
 
 MAX_SCENES :: 100
 Scene_ID :: i16
+
+scene_lib: map[Asset_GUID][]byte
 
 SceneManager :: struct {
     loaded: [MAX_SCENES]^Scene,
@@ -73,7 +78,7 @@ scene_invalidate :: proc(scene: ^Scene) {
     scene.generation = 0
 }
 
-scene_load_single :: proc(scene_file: ^SceneFile) -> ^Scene {
+_scene_load_single :: proc(scene_file: ^SceneFile) -> ^Scene {
     scene_manager := ctx_scene_manager()
     for i in 0..<scene_manager.count {
         if scene_manager.loaded[i] != nil {
@@ -82,15 +87,15 @@ scene_load_single :: proc(scene_file: ^SceneFile) -> ^Scene {
     }
     scene_manager.count = 0
     scene_manager.active_scene = -1
-    return scene_load_additive(scene_file)
+    return _scene_load_additive(scene_file)
 }
 
-scene_load_additive :: proc(scene_file: ^SceneFile) -> ^Scene {
+_scene_load_additive :: proc(scene_file: ^SceneFile) -> ^Scene {
     scene_manager := ctx_scene_manager()
     s := scene_new()
     s.next_local_id = scene_file.next_local_id
 
-    root_tH := scene_load_as_child(scene_file, {}, s)
+    root_tH := _scene_load_as_child(scene_file, {}, s)
     if root_tH != {} {
         scene_set_root(s, root_tH)
     } else {
@@ -115,10 +120,24 @@ scene_load_additive :: proc(scene_file: ^SceneFile) -> ^Scene {
     return s
 }
 
-scene_instantiate :: proc(scene_file: ^SceneFile, parent: Transform_Handle) -> Transform_Handle {
+scene_lib_register :: proc(guid: Asset_GUID) -> bool {
+    path, ok := asset_db_get_path(uuid.Identifier(guid))
+    if !ok do return false
+    data, err := os.read_entire_file(path, context.allocator)
+    if err != nil do return false
+    scene_lib[guid] = data
+    return true
+}
+
+scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Transform_Handle {
+    raw, ok := scene_lib[guid]
+    if !ok do return {}
+    sf: SceneFile
+    if err := json.unmarshal(raw, &sf); err != nil do return {}
+    defer scene_file_destroy(&sf)
     w := ctx_world()
-    t := pool_get(&w.transforms, Handle(parent))
-    s: ^Scene
-    if t != nil do s = t.scene
-    return scene_load_as_child(scene_file, parent, s)
+    tr := pool_get(&w.transforms, Handle(parent))
+    sc: ^Scene
+    if tr != nil do sc = tr.scene
+    return _scene_load_as_child(&sf, parent, sc)
 }

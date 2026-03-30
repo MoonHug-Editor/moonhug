@@ -11,7 +11,7 @@ SceneFile :: struct {
 	sprite_renderers: [dynamic]SpriteRenderer,
 }
 
-scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil) -> Transform_Handle {
+_scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil) -> Transform_Handle {
 	w := ctx_world()
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)

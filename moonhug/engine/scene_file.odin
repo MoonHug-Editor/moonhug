@@ -5,8 +5,6 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 
-scene_files : map[Asset_GUID]SceneFile
-
 
 _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
 	t := pool_get(&w.transforms, Handle(tH))
@@ -98,12 +96,12 @@ resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Hand
 	return {}, false
 }
 
-scene_load_path :: proc(path: string) -> ^Scene {
+scene_load_single_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
 	defer scene_file_destroy(&sf)
 
-	s := scene_load_single(&sf)
+	s := _scene_load_single(&sf)
 	if s != nil {
 		s.path = strings.clone(path)
 	}
@@ -115,7 +113,7 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	if !ok do return nil
 	defer scene_file_destroy(&sf)
 
-	s := scene_load_additive(&sf)
+	s := _scene_load_additive(&sf)
 	if s != nil {
 		s.path = strings.clone(path)
 	}

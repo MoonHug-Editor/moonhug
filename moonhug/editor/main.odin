@@ -215,8 +215,7 @@ editor_shutdown :: proc() {
 
 @(menu_item={path="Assets/Create/Scene", order=0, shortcut=""})
 scene_create_menu :: proc() {
-	s := engine.make_pScene()
-	scene := cast(^engine.Scene)(s.data)
+	scene := engine.scene_new()
 	save_path, _ := filepath.join({projectViewData.currentPath, "Scene.scene"}, context.temp_allocator)
 	engine.scene_save(scene, save_path)
 }

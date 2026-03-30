@@ -286,7 +286,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	}
 	strings.write_string(&b, "}\n\n")
 
-	strings.write_string(&b, "scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil) -> Transform_Handle {\n")
+	strings.write_string(&b, "_scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil) -> Transform_Handle {\n")
 	strings.write_string(&b, "\tw := ctx_world()\n\n")
 	strings.write_string(&b, "\tid_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)\n")
 	for e in data.entries {

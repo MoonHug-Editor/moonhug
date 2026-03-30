@@ -7,11 +7,6 @@ Scene :: struct {
 	path:          string,
 }
 
-make_pScene :: proc() -> any {
-	s := scene_new()
-	return s^
-}
-
 scene_new :: proc() -> ^Scene {
 	s := new(Scene)
 	s.generation = 1 // FIX
