@@ -7,6 +7,7 @@ import rl "vendor:raylib"
 import "core:os"
 import "core:fmt"
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "../engine/log"
 
 SCENE_PATH :: "assets/s.scene"
@@ -50,6 +51,8 @@ Phase_Extra :: enum {
     Test,
 }
 
+BULLET_SCENE_GUID :: "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+
 @(Phase={key=Phase.Init})
 app_init :: proc() {
     log.info("App Init")
@@ -59,6 +62,9 @@ app_init :: proc() {
     engine.asset_db_init("assets")
     engine.texture_cache_init()
     engine.tween_init()
+
+    bullet_guid, _ := uuid.read(BULLET_SCENE_GUID)
+    engine.scene_lib_register(engine.Asset_GUID(bullet_guid))
 
     log.info("App Init done")
 }

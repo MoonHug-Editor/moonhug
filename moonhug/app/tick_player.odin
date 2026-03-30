@@ -2,6 +2,8 @@ package app
 
 import "../engine"
 import rl "vendor:raylib"
+import "core:encoding/uuid"
+import "core:math/rand"
 
 @(update={order=0})
 tick_player :: proc(dt: f32) {
@@ -39,6 +41,19 @@ tick_player :: proc(dt: f32) {
             if sr != nil {
                 idx := rl.GetRandomValue(0, i32(len(p.colors)) - 1)
                 sr.color = p.colors[idx]
+            }
+        }
+
+        if rl.IsKeyPressed(.SPACE) {
+            bullet_guid, guid_ok := uuid.read(BULLET_SCENE_GUID)
+            if guid_ok == nil {
+                bullet_tH := engine.scene_instantiate_guid(engine.Asset_GUID(bullet_guid), p.owner)
+                bt := engine.pool_get(&w.transforms, engine.Handle(bullet_tH))
+                if bt != nil {
+                    spread :: f32(5)
+                    bt.position[0] = rand.float32_range(-spread, spread)
+                    bt.position[1] = rand.float32_range(-spread, spread)
+                }
             }
         }
     }

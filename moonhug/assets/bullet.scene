@@ -1,0 +1,66 @@
+{
+  "root": 15,
+  "next_local_id": 0,
+  "transforms": [
+    {
+      "local_id": 15,
+      "name": "Root",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        0.10000000,
+        0.10000000,
+        0.10000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 16
+        }
+      ]
+    }
+  ],
+  "cameras": [
+
+  ],
+  "players": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+    {
+      "base": {
+        "local_id": 16,
+        "enabled": true
+      },
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f",
+      "color": [
+        1.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ]
+    }
+  ]
+}
