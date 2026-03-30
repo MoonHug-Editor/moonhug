@@ -25,6 +25,9 @@ Vertical Slice Experimental.
 
 For more details see [Contribution](features/Contribution.md)
 
+## Introduction video
+[![](http://img.youtube.com/vi/TQLF-db3Jqs/0.jpg)](https://www.youtube.com/watch?v=TQLF-db3Jqs)
+
 ## Contribution
 - [Contribution](features/Contribution.md)
 
