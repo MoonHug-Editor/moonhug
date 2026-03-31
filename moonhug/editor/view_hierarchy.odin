@@ -26,6 +26,9 @@ _hierarchy_rename_focus: bool
 _hierarchy_dimmed_color: im.Vec4
 
 @(private)
+_hierarchy_force_open: engine.Transform_Handle
+
+@(private)
 _save_as_buf: [512]byte
 @(private)
 _save_as_open: bool
@@ -137,7 +140,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 		_draw_drop_target_empty_space(scene)
 	}
 
-	if im.BeginPopupContextWindow("##HierarchyContextBg", 1) {
+	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
 		if im.MenuItem("Create Empty", nil, false, true) {
 			engine.transform_new("Transform", root_tH)
 		}
@@ -212,6 +215,10 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		label = strings.clone_to_cstring(t.name, context.temp_allocator)
 	}
 
+	if _hierarchy_force_open == tH {
+		im.SetNextItemOpen(true)
+		_hierarchy_force_open = _HANDLE_NONE
+	}
 	node_open := im.TreeNodeEx(label, flags)
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
@@ -244,17 +251,21 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		_begin_rename(tH)
 	}
 
+	im.OpenPopupOnItemClick("##NodeContext", im.PopupFlags_MouseButtonRight)
 	if !is_root {
 		_draw_drag_source(tH)
-		_draw_drop_target_on_node(tH, scene, node_rect_min, node_rect_max)
 	}
 
-	if im.BeginPopupContextItem("##NodeContext", 1) {
+	if im.BeginPopup("##NodeContext") {
 		_hierarchy_selected = tH
 		if im.MenuItem("Create Empty Child", nil, false, true) {
-			engine.transform_new("Transform", tH)
+			_hierarchy_selected = engine.transform_new("Transform", tH)
+			_hierarchy_force_open = tH
 		}
 		if !is_root {
+			if im.MenuItem("Create Empty Parent", nil, false, true) {
+				_create_empty_parent(tH, scene)
+			}
 			if im.MenuItem("Rename", nil, false, true) {
 				_begin_rename(tH)
 			}
@@ -266,6 +277,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 				if _hierarchy_rename_target == tH {
 					_hierarchy_rename_target = _HANDLE_NONE
 				}
+				im.EndPopup()
 				engine.transform_destroy(tH)
 				if node_open && has_children {
 					im.TreePop()
@@ -278,6 +290,10 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			}
 		}
 		im.EndPopup()
+	}
+
+	if !is_root {
+		_draw_drop_target_on_node(tH, scene, node_rect_min, node_rect_max)
 	}
 
 	if node_open && has_children {
@@ -319,6 +335,22 @@ _apply_rename :: proc(t: ^engine.Transform) {
 		t.name = strings.clone(new_name)
 	}
 	_hierarchy_rename_target = _HANDLE_NONE
+}
+
+@(private)
+_create_empty_parent :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene) {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return
+
+	sibling_idx := engine.transform_get_sibling_index(tH)
+	old_parent := engine.Transform_Handle(t.parent.handle)
+
+	new_parent := engine.transform_new("Transform", old_parent)
+	engine.transform_set_parent(new_parent, old_parent, sibling_idx)
+	engine.transform_set_parent(tH, new_parent)
+	_hierarchy_selected = new_parent
+	_hierarchy_force_open = new_parent
 }
 
 @(private)
