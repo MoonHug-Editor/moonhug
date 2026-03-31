@@ -1,3 +1,10 @@
+## [0.3.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.2.1...v0.3.0) (2026-03-31)
+
+### Features
+
+* add Lifetime component and Transform.destroy field ([47e9af2](https://github.com/MoonHug-Editor/moonhug/commit/47e9af2ca973794c5a0d60b9824328cce068411a))
+* add max to poolable and component to limit count in pools ([fd7cf31](https://github.com/MoonHug-Editor/moonhug/commit/fd7cf311e2105ab3081ea07c49d9937a6958c69a))
+
 ## [0.2.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.2.0...v0.2.1) (2026-03-30)
 
 ### Bug Fixes
