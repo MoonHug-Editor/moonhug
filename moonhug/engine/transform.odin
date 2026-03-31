@@ -5,7 +5,6 @@ import "core:strings"
 
 Transform_Handle :: distinct Handle
 
-@(node)
 Transform :: struct {
     local_id: Local_ID `inspect:"-"`,
     name: string,

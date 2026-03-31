@@ -22,14 +22,14 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 	tc.path = path
 	context.user_ptr = &tc.uc
 	tc.scene = engine.scene_new()
-	engine.scene_set_active(tc.scene)
+	engine.sm_scene_set_active(tc.scene)
 	engine.scene_ensure_root(tc.scene)
 }
 
 @(private)
 teardown :: proc(tc: ^TestCtx) {
 	engine.scene_destroy(tc.scene)
-	engine.scene_set_active(nil)
+	engine.sm_scene_set_active(nil)
 	if tc.path != "" do os.remove(tc.path)
 }
 
