@@ -68,10 +68,11 @@ app_init :: proc() {
 
     log.info("App Init done")
 }
+
 setup_player_animations :: proc()
 {
     w := engine.ctx_world()
-    for i in 0..<engine.MAX {
+    for i in 0..<len(w.players.slots) {
         slot := &w.players.slots[i]
         if !slot.alive do continue
         p :^engine.Player= &slot.data;

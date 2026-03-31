@@ -1,9 +1,9 @@
 package engine
 
 World :: struct {
-	cameras: Pool(Camera),
+	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
-	players: Pool(Player),
+	players: Pool(Player, 10),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
 	tween_unions: Pool(TweenUnion),

@@ -8,27 +8,27 @@ Handle :: struct {
     type_key:   TypeKey,
 }
 
-Pool :: struct($T: typeid) {
-    slots:     [MAX]struct {
+Pool :: struct($T: typeid, $N: int = MAX) {
+    slots:     [N]struct {
         generation: u16,
         alive:      bool,
         data:       T,
     },
-    freelist:  [MAX]u32,
+    freelist:  [N]u32,
     free_head: int,
     count:     int,
 }
 
-pool_init :: proc(p: ^Pool($T)) {
-    for i in 0..<MAX {
+pool_init :: proc(p: ^Pool($T, $N)) {
+    for i in 0..<N {
         p.freelist[i] = u32(i)
         p.slots[i].generation = 1
     }
-    p.free_head = MAX - 1
+    p.free_head = N - 1
 }
 
-pool_create :: proc(p: ^Pool($T)) -> (Handle, ^T) {
-    assert(p.count < MAX, "pool is full")
+pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
+    assert(p.count < N, "pool is full")
     idx := p.freelist[p.free_head]
     p.free_head -= 1
     p.count += 1
@@ -38,7 +38,7 @@ pool_create :: proc(p: ^Pool($T)) -> (Handle, ^T) {
     return handle, &slot.data
 }
 
-pool_destroy :: proc(p: ^Pool($T), h: Handle) {
+pool_destroy :: proc(p: ^Pool($T, $N), h: Handle) {
     assert(pool_valid(p, h), "invalid handle")
     slot := &p.slots[h.index]
     slot.alive      = false
@@ -48,23 +48,23 @@ pool_destroy :: proc(p: ^Pool($T), h: Handle) {
     p.count -= 1
 }
 
-pool_get :: proc(pool: ^Pool($T), handle: Handle) -> ^T {
+pool_get :: proc(pool: ^Pool($T, $N), handle: Handle) -> ^T {
     if !pool_valid(pool, handle) do return nil
     return &pool.slots[handle.index].data
 }
-pool_get_assert :: proc(pool: ^Pool($T), handle: Handle) -> ^T {
+pool_get_assert :: proc(pool: ^Pool($T, $N), handle: Handle) -> ^T {
     assert(pool_valid(pool, handle))
     return &pool.slots[handle.index].data
 }
 
-pool_valid :: proc(p: ^Pool($T), h: Handle) -> bool {
-    if h.index >= MAX do return false
+pool_valid :: proc(p: ^Pool($T, $N), h: Handle) -> bool {
+    if h.index >= u32(N) do return false
     slot := &p.slots[h.index]
     return slot.alive && slot.generation == h.generation
 }
 
-pool_iter :: proc(p: ^Pool($T), body: proc(h: Handle, data: ^T)) {
-    for i in 0..<MAX {
+pool_iter :: proc(p: ^Pool($T, $N), body: proc(h: Handle, data: ^T)) {
+    for i in 0..<N {
         slot := &p.slots[i]
         if slot.alive {
             body(Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }, &slot.data)
@@ -81,23 +81,23 @@ Pool_Entry :: struct {
     collect_fn:     proc(comp: rawptr, sf: rawptr),
 }
 
-pool_make_entry :: proc(p: ^Pool($T)) -> Pool_Entry {
+pool_make_entry :: proc(p: ^Pool($T, $N)) -> Pool_Entry {
     return Pool_Entry{
         pool = p,
         get_fn = proc(pool: rawptr, handle: Handle) -> rawptr {
-            p := cast(^Pool(T))pool
+            p := cast(^Pool(T, N))pool
             return pool_get(p, handle)
         },
         valid_fn = proc(pool: rawptr, handle: Handle) -> bool {
-            p := cast(^Pool(T))pool
+            p := cast(^Pool(T, N))pool
             return pool_valid(p, handle)
         },
         create_fn = proc(pool: rawptr) -> (Handle, rawptr) {
-            p := cast(^Pool(T))pool
+            p := cast(^Pool(T, N))pool
             return pool_create(p)
         },
         destroy_fn = proc(pool: rawptr, handle: Handle) {
-            p := cast(^Pool(T))pool
+            p := cast(^Pool(T, N))pool
             pool_destroy(p, handle)
         },
     }

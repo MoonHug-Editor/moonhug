@@ -8,7 +8,7 @@ import "core:math/rand"
 @(update={order=0})
 tick_player :: proc(dt: f32) {
     w := engine.ctx_world()
-    for i in 0..<engine.MAX {
+    for i in 0..<len(w.players.slots) {
         slot := &w.players.slots[i]
         if !slot.alive do continue
         p := &slot.data

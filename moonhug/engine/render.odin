@@ -8,7 +8,7 @@ render_world_cameras :: proc() {
 
 	best_idx := -1
 	best_order: i32 = min(i32)
-	for i in 0 ..< MAX {
+	for i in 0 ..< len(world.cameras.slots) {
 		slot := &world.cameras.slots[i]
 		if !slot.alive do continue
 		cam := &slot.data
@@ -49,7 +49,7 @@ render_world_cameras :: proc() {
 
 render_sprite_renderers :: proc(layer_mask: u32) {
 	world := ctx_world()
-	for i in 0 ..< MAX {
+	for i in 0 ..< len(world.sprite_renderers.slots) {
 		slot := &world.sprite_renderers.slots[i]
 		if !slot.alive do continue
 		sr := &slot.data

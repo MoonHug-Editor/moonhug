@@ -1,6 +1,6 @@
 package engine
 
-@(component)
+@(component={max=32})
 @(typ_guid={guid = "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d"})
 Camera :: struct {
     using base: CompData `inspect:"-"`,

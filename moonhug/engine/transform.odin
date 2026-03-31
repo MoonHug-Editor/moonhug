@@ -228,7 +228,7 @@ transform_tick_destroy :: proc() {
     w := ctx_world()
     to_destroy: [dynamic]Transform_Handle
     defer delete(to_destroy)
-    for i in 0..<MAX {
+    for i in 0..<len(w.transforms.slots) {
         slot := &w.transforms.slots[i]
         if !slot.alive do continue
         if slot.data.destroy {

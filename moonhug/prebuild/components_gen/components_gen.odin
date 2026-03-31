@@ -11,12 +11,14 @@ ComponentEntry :: struct {
 	snake_name: string,
 	plural:     string,
 	menu_path:  string,
+	max:        int,
 }
 
 PoolableEntry :: struct {
 	type_name:  string,
 	snake_name: string,
 	plural:     string,
+	max:        int,
 }
 
 ComponentCollectData :: struct {
@@ -44,37 +46,49 @@ _pluralize :: proc(s: string) -> string {
 	return strings.concatenate({s, "s"})
 }
 
-_has_poolable_attr :: proc(v_decl: ^ast.Value_Decl) -> bool {
+_has_poolable_attr :: proc(v_decl: ^ast.Value_Decl) -> (max: int, found: bool) {
 	for attr in v_decl.attributes {
 		if attr.elems == nil do continue
 		for elem in attr.elems {
 			if id, ok := elem.derived.(^ast.Ident); ok && id.name == "poolable" {
-				return true
+				return 0, true
+			}
+			key, val, kv_ok := gen_core.AttrElemKeyValue(elem)
+			if kv_ok && key == "poolable" {
+				if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
+					if max_ex, m_ok := gen_core.CompLitGetField(comp, "max"); m_ok {
+						return gen_core.ExtractInt(max_ex), true
+					}
+				}
+				return 0, true
 			}
 		}
 	}
-	return false
+	return 0, false
 }
 
-_has_component_attr :: proc(v_decl: ^ast.Value_Decl) -> (menu_path: string, found: bool) {
+_has_component_attr :: proc(v_decl: ^ast.Value_Decl) -> (menu_path: string, max: int, found: bool) {
 	for attr in v_decl.attributes {
 		if attr.elems == nil do continue
 		for elem in attr.elems {
 			if id, ok := elem.derived.(^ast.Ident); ok && id.name == "component" {
-				return "", true
+				return "", 0, true
 			}
 			key, val, kv_ok := gen_core.AttrElemKeyValue(elem)
 			if kv_ok && key == "component" {
 				if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-					if menu_ex, m_ok := gen_core.CompLitGetField(comp, "menu"); m_ok {
-						return gen_core.ExtractString(menu_ex), true
-					}
-					return "", true
+					menu_ex, m_ok := gen_core.CompLitGetField(comp, "menu")
+					max_ex, mx_ok := gen_core.CompLitGetField(comp, "max")
+					path := ""
+					mx := 0
+					if m_ok do path = gen_core.ExtractString(menu_ex)
+					if mx_ok do mx = gen_core.ExtractInt(max_ex)
+					return path, mx, true
 				}
 			}
 		}
 	}
-	return "", false
+	return "", 0, false
 }
 
 collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
@@ -99,7 +113,7 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 			snake := _to_snake_case(type_name)
 			plural := _pluralize(snake)
 
-			menu_path, has_comp := _has_component_attr(v_decl)
+			menu_path, comp_max, has_comp := _has_component_attr(v_decl)
 			if has_comp && is_struct {
 				if menu_path == "" do menu_path = type_name
 				append(&data.entries, ComponentEntry{
@@ -107,15 +121,17 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 					snake_name = snake,
 					plural     = plural,
 					menu_path  = menu_path,
+					max        = comp_max,
 				})
 				continue
 			}
 
-			if _has_poolable_attr(v_decl) {
+			if poolable_max, has_poolable := _has_poolable_attr(v_decl); has_poolable {
 				append(&data.poolable_entries, PoolableEntry{
 					type_name  = type_name,
 					snake_name = snake,
 					plural     = plural,
+					max        = poolable_max,
 				})
 			}
 		}
@@ -163,6 +179,14 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
 }
 
+_pool_type :: proc(b: ^strings.Builder, type_name: string, max: int) {
+	if max > 0 {
+		fmt.sbprintf(b, "Pool(%s, %d)", type_name, max)
+	} else {
+		fmt.sbprintf(b, "Pool(%s)", type_name)
+	}
+}
+
 generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
@@ -171,10 +195,14 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 
 	strings.write_string(&b, "World :: struct {\n")
 	for e in data.entries {
-		fmt.sbprintf(&b, "\t%s: Pool(%s),\n", e.plural, e.type_name)
+		fmt.sbprintf(&b, "\t%s: ", e.plural)
+		_pool_type(&b, e.type_name, e.max)
+		strings.write_string(&b, ",\n")
 	}
 	for e in data.poolable_entries {
-		fmt.sbprintf(&b, "\t%s: Pool(%s),\n", e.plural, e.type_name)
+		fmt.sbprintf(&b, "\t%s: ", e.plural)
+		_pool_type(&b, e.type_name, e.max)
+		strings.write_string(&b, ",\n")
 	}
 	strings.write_string(&b, "\ttransforms: Pool(Transform),\n")
 	strings.write_string(&b, "\tpool_table: [TypeKey]Pool_Entry,\n")
