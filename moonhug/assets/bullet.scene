@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 0,
+  "next_local_id": 1,
   "transforms": [
     {
       "local_id": 15,
@@ -35,12 +35,25 @@
       "components": [
         {
           "local_id": 16
+        },
+        {
+          "local_id": 1
         }
       ]
     }
   ],
   "cameras": [
 
+  ],
+  "lifetimes": [
+    {
+      "base": {
+        "local_id": 1,
+        "enabled": true
+      },
+      "duration": 1.00000000,
+      "time_spent": 0.00000000
+    }
   ],
   "players": [
 

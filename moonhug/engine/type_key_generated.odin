@@ -11,19 +11,20 @@ TypeKey :: enum u16 {
 	C = 3,
 	Camera = 4,
 	GameSettings = 5,
-	Parallel = 6,
-	Player = 7,
-	PlayerSettings = 8,
-	SceneFile = 9,
-	Script = 10,
-	Sequence = 11,
-	SpriteRenderer = 12,
-	TextureSettings = 13,
-	Tween = 14,
-	TweenMoveToLocal = 15,
-	TweenRotateToLocal = 16,
-	TweenScaleToLocal = 17,
-	TweenUnion = 18,
+	Lifetime = 6,
+	Parallel = 7,
+	Player = 8,
+	PlayerSettings = 9,
+	SceneFile = 10,
+	Script = 11,
+	Sequence = 12,
+	SpriteRenderer = 13,
+	TextureSettings = 14,
+	Tween = 15,
+	TweenMoveToLocal = 16,
+	TweenRotateToLocal = 17,
+	TweenScaleToLocal = 18,
+	TweenUnion = 19,
 }
 
 INVALID_TYPE_KEY :: TypeKey(max(u16))
@@ -35,6 +36,7 @@ B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 C__Guid := uuid.read("f51ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_NIL
 GameSettings__Guid := uuid.read("f47ac10b-58cc-4372-a567-0e02b2c3d479") or_else UUID_NIL
+Lifetime__Guid := uuid.read("c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c") or_else UUID_NIL
 Parallel__Guid := uuid.read("916005b6-1c68-49e7-88be-0add6164d3a8") or_else UUID_NIL
 Player__Guid := uuid.read("d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c") or_else UUID_NIL
 PlayerSettings__Guid := uuid.read("c8b1e4a2-9d3f-4c5e-a6b7-8f1d2e3c4b5a") or_else UUID_NIL

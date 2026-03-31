@@ -6,6 +6,7 @@ SceneFile :: struct {
 	next_local_id: Local_ID,
 	transforms:    [dynamic]Transform,
 	cameras: [dynamic]Camera,
+	lifetimes: [dynamic]Lifetime,
 	players: [dynamic]Player,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
@@ -16,6 +17,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -25,6 +27,13 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Camera
 		camera^ = camera_data
 		id_to_camera_handle[camera_data.local_id] = handle
+	}
+
+	for &lifetime_data in sf.lifetimes {
+		handle, lifetime := pool_create(&w.lifetimes)
+		handle.type_key = .Lifetime
+		lifetime^ = lifetime_data
+		id_to_lifetime_handle[lifetime_data.local_id] = handle
 	}
 
 	for &player_data in sf.players {
@@ -77,6 +86,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				camera := pool_get(&w.cameras, h)
 				if camera != nil do camera.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_lifetime_handle); ok {
+				c.handle = h
+				lifetime := pool_get(&w.lifetimes, h)
+				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
 				c.handle = h
 				player := pool_get(&w.players, h)
@@ -121,6 +134,7 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	}
 	delete(sf.transforms)
 	delete(sf.cameras)
+	delete(sf.lifetimes)
 	delete(sf.players)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)

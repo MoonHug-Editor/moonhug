@@ -2,6 +2,7 @@ package engine
 
 World :: struct {
 	cameras: Pool(Camera),
+	lifetimes: Pool(Lifetime),
 	players: Pool(Player),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
@@ -13,6 +14,7 @@ World :: struct {
 w_init :: proc(w:^World)
 {
 	pool_init(&w.cameras)
+	pool_init(&w.lifetimes)
 	pool_init(&w.players)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
@@ -25,6 +27,14 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.cameras, c_copy)
+	}
+	w.pool_table[TypeKey.Lifetime] = pool_make_entry(&w.lifetimes)
+	w.pool_table[TypeKey.Lifetime].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^Lifetime)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.lifetimes, c_copy)
 	}
 	w.pool_table[TypeKey.Player] = pool_make_entry(&w.players)
 	w.pool_table[TypeKey.Player].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -69,6 +79,11 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.cameras, owned.handle)
 	}
+	else when T == Lifetime {
+		owned, _ := transform_find_comp(t, .Lifetime)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.lifetimes, owned.handle)
+	}
 	else when T == Player {
 		owned, _ := transform_find_comp(t, .Player)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
@@ -107,6 +122,12 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .Camera)
 		if idx < 0 do return
 		pool_destroy(&w.cameras, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == Lifetime {
+		owned, idx := transform_find_comp(t, .Lifetime)
+		if idx < 0 do return
+		pool_destroy(&w.lifetimes, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 	else when T == Player {

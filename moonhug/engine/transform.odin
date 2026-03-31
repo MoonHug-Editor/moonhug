@@ -10,6 +10,7 @@ Transform :: struct {
     local_id: Local_ID `inspect:"-"`,
     name: string,
     is_active: bool,
+    destroy: bool `json:"-"`,
     position: [3]f32,
     rotation: [4]f32,
     scale:    [3]f32,
@@ -222,4 +223,21 @@ transform_get_sibling_index :: proc(tH: Transform_Handle) -> int {
         if s != nil && s.root.handle == Handle(tH) do return 0
     }
     return -1
+}
+
+transform_tick_destroy :: proc() {
+    w := ctx_world()
+    to_destroy: [dynamic]Transform_Handle
+    defer delete(to_destroy)
+    for i in 0..<MAX {
+        slot := &w.transforms.slots[i]
+        if !slot.alive do continue
+        if slot.data.destroy {
+            handle := Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }
+            append(&to_destroy, Transform_Handle(handle))
+        }
+    }
+    for tH in to_destroy {
+        transform_destroy(tH)
+    }
 }
