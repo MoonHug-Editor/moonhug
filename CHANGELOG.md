@@ -1,3 +1,9 @@
+## [0.4.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.3.0...v0.4.0) (2026-03-31)
+
+### Features
+
+* add hierarchy context menu actions ([4f8db88](https://github.com/MoonHug-Editor/moonhug/commit/4f8db8886c481e5d3b6d19033b26c9076ec003b0))
+
 ## [0.3.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.2.1...v0.3.0) (2026-03-31)
 
 ### Features
