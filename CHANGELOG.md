@@ -1,3 +1,10 @@
+## [0.6.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.5.0...v0.6.0) (2026-04-01)
+
+### Features
+
+* add buggy copy/paste/duplicate subtree procs ([55bcbec](https://github.com/MoonHug-Editor/moonhug/commit/55bcbec18cef1932dbe6b849be155596dcf3cc32))
+* add more component context menu items ([032f603](https://github.com/MoonHug-Editor/moonhug/commit/032f603ec2a28d589a39d2af337dadf6982c3681))
+
 ## [0.5.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.4.0...v0.5.0) (2026-04-01)
 
 ### Features
