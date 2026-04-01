@@ -104,15 +104,15 @@ For more details see [Contribution](features/Contribution.md)
 - Asset search / filter in Project View A single text input that filters the visible files by name substring
 
 - improve transform context menu in hierarchy
-  - copy — serialize transform tree (no clipboard, use editor state)
-  - paste — decide what to do with copied info in current context
-  - duplicate — same as copy paste but without copying into system buffer
+  - fix copy/paste/duplicate bugs
 
 - copy/ paste - right-click a field in the Inspector → "Copy" / "Paste" into another of the same type (no cipboard, use editor state)
 
 - Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
 
 - come up with more TODO and Considered features
+
+- copy/paste manager to keep only 1 thing at once
 
 - Editor Undo system
 
@@ -140,6 +140,8 @@ For more details see [Contribution](features/Contribution.md)
 
 - App buttons Bar
   - ?Frame Step, Pause buttons
+
+- ability to switch Value/Ref field in inspector where valid
 
 - Run configurations - dropdown to select config that runs game (release/debug, etc.) when press Play
 - Ability to observe and edit app during its runtime

@@ -207,6 +207,15 @@ transform_world_position :: proc(tH: Transform_Handle) -> [3]f32 { return transf
 transform_world_rotation :: proc(tH: Transform_Handle) -> [4]f32 { return transform_world(tH).rotation }
 transform_world_scale    :: proc(tH: Transform_Handle) -> [3]f32 { return transform_world(tH).scale }
 
+_transform_append_name_suffix :: proc(tH: Transform_Handle, suffix: string) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+    old := t.name
+    t.name = strings.concatenate({old, suffix})
+    delete(old)
+}
+
 transform_get_sibling_index :: proc(tH: Transform_Handle) -> int {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))

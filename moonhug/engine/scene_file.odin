@@ -120,3 +120,59 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	return s
 }
 
+scene_copy_subtree :: proc(tH: Transform_Handle) -> []byte {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return nil
+
+	sf := SceneFile{}
+	sf.root = t.local_id
+	_collect_transform_tree(w, tH, &sf)
+	defer scene_file_destroy(&sf)
+
+	opts := json.Marshal_Options{spec = .JSON, pretty = false}
+	data, err := json.marshal(sf, opts)
+	if err != nil {
+		fmt.printf("[Scene] Failed to marshal subtree: %v\n", err)
+		delete(data)
+		return nil
+	}
+	return data
+}
+
+scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform_Handle {
+	if parent == {} || len(data) == 0 do return {}
+	w := ctx_world()
+	if !pool_valid(&w.transforms, Handle(parent)) do return {}
+
+	sf: SceneFile
+	if err := json.unmarshal(data, &sf); err != nil {
+		fmt.printf("[Scene] Failed to unmarshal subtree: %v\n", err)
+		return {}
+	}
+	defer scene_file_destroy(&sf)
+
+	pt := pool_get(&w.transforms, Handle(parent))
+	s := pt.scene
+
+	result := _scene_load_as_child(&sf, parent, s)
+	if result != {} {
+		_transform_remap_scene(result, s)
+	}
+	return result
+}
+
+scene_duplicate_subtree :: proc(tH: Transform_Handle) -> Transform_Handle {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return {}
+
+	parent := Transform_Handle(t.parent.handle)
+	if !pool_valid(&w.transforms, Handle(parent)) do return {}
+
+	data := scene_copy_subtree(tH)
+	defer delete(data)
+
+	return scene_paste_subtree(data, parent)
+}
+
