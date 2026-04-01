@@ -1,3 +1,9 @@
+## [0.5.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.4.0...v0.5.0) (2026-04-01)
+
+### Features
+
+* add reset_* proc feature for components ([38dac20](https://github.com/MoonHug-Editor/moonhug/commit/38dac203241ffff9fdf596850c9cc5324fdca9a8))
+
 ## [0.4.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.3.0...v0.4.0) (2026-03-31)
 
 ### Features
