@@ -32,22 +32,6 @@ _struct_has_tween_base :: proc(st: ^ast.Struct_Type) -> bool {
 	return false
 }
 
-_file_has_proc :: proc(file: ^ast.File, name: string) -> bool {
-	for decl in file.decls {
-		v_decl, is_value := decl.derived.(^ast.Value_Decl)
-		if !is_value do continue
-		if len(v_decl.names) == 0 do continue
-		id, ok := v_decl.names[0].derived.(^ast.Ident)
-		if !ok || id.name != name do continue
-		if len(v_decl.values) > 0 {
-			if _, ok2 := v_decl.values[0].derived.(^ast.Proc_Lit); ok2 {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 collect :: proc(pkg: ^ast.Package, data: ^TweenCollectData) -> bool {
 	if pkg == nil do return false
 
@@ -76,8 +60,8 @@ collect :: proc(pkg: ^ast.Package, data: ^TweenCollectData) -> bool {
 			append(&data.entries, TweenEntry{
 				type_name = type_name,
 				file_path = file_path,
-				has_tick  = _file_has_proc(file, tick_name),
-				has_free  = _file_has_proc(file, free_name),
+				has_tick  = gen_core.FileHasProc(file, tick_name),
+				has_free  = gen_core.FileHasProc(file, free_name),
 			})
 		}
 	}

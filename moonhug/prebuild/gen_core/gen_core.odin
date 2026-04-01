@@ -179,6 +179,23 @@ StructFieldTag :: proc(field: ^ast.Field) -> string {
 	return s
 }
 
+// FileHasProc returns true if the file contains a proc declaration with the given name.
+FileHasProc :: proc(file: ^ast.File, name: string) -> bool {
+	for decl in file.decls {
+		v_decl, is_value := decl.derived.(^ast.Value_Decl)
+		if !is_value do continue
+		if len(v_decl.names) == 0 do continue
+		id, ok := v_decl.names[0].derived.(^ast.Ident)
+		if !ok || id.name != name do continue
+		if len(v_decl.values) > 0 {
+			if _, ok2 := v_decl.values[0].derived.(^ast.Proc_Lit); ok2 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // WriteGeneratedFile writes content to path and reports errors. Returns false on failure.
 WriteGeneratedFile :: proc(path: string, content: string) -> bool {
 	if err := os.write_entire_file(path, transmute([]u8)(content)); err != nil {

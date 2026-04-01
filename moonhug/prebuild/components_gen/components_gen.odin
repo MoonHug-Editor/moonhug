@@ -12,6 +12,7 @@ ComponentEntry :: struct {
 	plural:     string,
 	menu_path:  string,
 	max:        int,
+	has_reset:  bool,
 }
 
 PoolableEntry :: struct {
@@ -45,6 +46,7 @@ _pluralize :: proc(s: string) -> string {
 	}
 	return strings.concatenate({s, "s"})
 }
+
 
 _has_poolable_attr :: proc(v_decl: ^ast.Value_Decl) -> (max: int, found: bool) {
 	for attr in v_decl.attributes {
@@ -116,12 +118,15 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 			menu_path, comp_max, has_comp := _has_component_attr(v_decl)
 			if has_comp && is_struct {
 				if menu_path == "" do menu_path = type_name
+				reset_name := strings.concatenate({"reset_", type_name})
+				defer delete(reset_name)
 				append(&data.entries, ComponentEntry{
 					type_name  = type_name,
 					snake_name = snake,
 					plural     = plural,
 					menu_path  = menu_path,
 					max        = comp_max,
+					has_reset  = gen_core.FileHasProc(file, reset_name),
 				})
 				continue
 			}
@@ -217,6 +222,7 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
 	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
+	strings.write_string(&b, "\t__component_resets_init()\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s].collect_fn = proc(comp: rawptr, sf: rawptr) {{\n", e.type_name)
@@ -229,6 +235,14 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	}
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
+	}
+	strings.write_string(&b, "}\n\n")
+
+	strings.write_string(&b, "__component_resets_init :: proc() {\n")
+	for e in data.entries {
+		if e.has_reset {
+			fmt.sbprintf(&b, "\tcomponent_reset_procs[.%s] = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
+		}
 	}
 	strings.write_string(&b, "}\n\n")
 

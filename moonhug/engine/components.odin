@@ -26,6 +26,7 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
     if pComp == nil do return {}, nil
 
     comp_init_base(pComp, tH)
+    component_reset(key, pComp)
 
     base := cast(^CompData)pComp
     owned := Owned{handle = handle, local_id = base.local_id}
@@ -57,27 +58,14 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
 }
 
 @(component)
-@(typ_guid={guid = "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"})
-SpriteRenderer :: struct {
-    using base: CompData `inspect:"-"`,
-    texture: Asset_GUID,
-    color:   [4]f32 `decor:color()`,
-}
-
-sprite_renderer_default :: proc(sr: ^SpriteRenderer) {
-    sr.color = {1, 1, 1, 1}
-}
-
-@(component)
 @(typ_guid={guid = "adaf3551-4704-4255-ad91-fde59441dc53"})
 Script :: struct {
     using base: CompData `inspect:"-"`,
 }
 
-@(component)
-@(typ_guid={guid = "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c"})
-Lifetime :: struct {
-    using base: CompData `inspect:"-"`,
-    duration: f32,
-    time_spent: f32 `inspect:"-"`,
+// Reset feature
+component_reset_procs: [TypeKey]proc(rawptr)
+
+component_reset :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := component_reset_procs[key]; fn != nil do fn(ptr)
 }

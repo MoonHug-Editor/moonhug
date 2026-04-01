@@ -451,13 +451,16 @@
       "near_clip": 0.30000001,
       "far_clip": 1000.00000000,
       "clear_color": [
-        0.17560552,
-        0.29956234,
-        0.42647058,
+        0.19000000,
+        0.30000001,
+        0.47000000,
         1.00000000
       ],
       "render_layer_mask": 4294967295
     }
+  ],
+  "lifetimes": [
+
   ],
   "players": [
     {
@@ -507,14 +510,16 @@
       "animations": [
         {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
           "base": {
-            "delay": 0.00000000,
-            "is_await": false
+            "skip": false,
+            "is_await": false,
+            "delay": 0.00000000
           },
           "children": [
             {"__type_guid":"da9d301a-66a3-450c-8c0b-8c696ad60b0b",
               "base": {
-                "delay": 0.00000000,
-                "is_await": true
+                "skip": false,
+                "is_await": true,
+                "delay": 0.00000000
               },
               "position": [
                 2.00000000,
@@ -525,8 +530,9 @@
             },
             {"__type_guid":"da9d301a-66a3-450c-8c0b-8c696ad60b0b",
               "base": {
-                "delay": 0.00000000,
-                "is_await": false
+                "skip": false,
+                "is_await": false,
+                "delay": 0.00000000
               },
               "position": [
                 -2.00000000,
@@ -539,14 +545,16 @@
         },
         {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
           "base": {
-            "delay": 0.00000000,
-            "is_await": false
+            "skip": false,
+            "is_await": false,
+            "delay": 0.00000000
           },
           "children": [
             {"__type_guid":"aa1970c6-51d2-4d27-9dc8-718ad1e51160",
               "base": {
-                "delay": 0.00000000,
-                "is_await": false
+                "skip": false,
+                "is_await": false,
+                "delay": 0.00000000
               },
               "scale": [
                 2.00000000,
@@ -557,8 +565,9 @@
             },
             {"__type_guid":"aa1970c6-51d2-4d27-9dc8-718ad1e51160",
               "base": {
-                "delay": 0.00000000,
-                "is_await": false
+                "skip": false,
+                "is_await": false,
+                "delay": 0.00000000
               },
               "scale": [
                 1.00000000,
@@ -571,14 +580,16 @@
         },
         {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
           "base": {
-            "delay": 0.00000000,
-            "is_await": false
+            "skip": false,
+            "is_await": false,
+            "delay": 0.00000000
           },
           "children": [
             {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
               "base": {
-                "delay": 0.00000000,
-                "is_await": true
+                "skip": false,
+                "is_await": true,
+                "delay": 0.00000000
               },
               "rotation": [
                 0.00000000,
@@ -590,8 +601,9 @@
             },
             {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
               "base": {
-                "delay": 0.00000000,
-                "is_await": true
+                "skip": false,
+                "is_await": true,
+                "delay": 0.00000000
               },
               "rotation": [
                 0.00000000,
@@ -603,8 +615,9 @@
             },
             {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
               "base": {
-                "delay": 0.00000000,
-                "is_await": true
+                "skip": false,
+                "is_await": true,
+                "delay": 0.00000000
               },
               "rotation": [
                 0.00000000,
@@ -618,6 +631,9 @@
         }
       ]
     }
+  ],
+  "scripts": [
+
   ],
   "sprite_renderers": [
     {
@@ -633,8 +649,5 @@
         1.00000000
       ]
     }
-  ],
-  "scripts": [
-
   ]
 }

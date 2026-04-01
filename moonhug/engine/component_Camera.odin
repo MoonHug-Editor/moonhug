@@ -12,12 +12,12 @@ Camera :: struct {
     render_layer_mask: u32, // TODO: use bit_set[RenderLayer]
 }
 
-camera_default :: proc(cam: ^Camera) {
+reset_Camera :: proc(cam: ^Camera) {
     cam.order = 0
     cam.fov = 60
     cam.near_clip = 0.3
     cam.far_clip = 1000
-    cam.clear_color = {0.1, 0.1, 0.1, 1}
+    cam.clear_color = {0.19, 0.30, 0.47, 1.0}
     cam.render_layer_mask = 0xFFFFFFFF
 }
 
