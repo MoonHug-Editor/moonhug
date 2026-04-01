@@ -68,14 +68,6 @@ output_view_clear :: proc() {
 	_output_last_count = 0
 }
 
-ordered_remove :: proc(s: ^[dynamic]string, index: int) {
-	if index < 0 || index >= len(s) do return
-	for i in index ..< len(s) - 1 {
-		s[i] = s[i + 1]
-	}
-	pop(s)
-}
-
 draw_output_view :: proc() {
 	if !im.Begin("Output", nil, {.NoCollapse}) {
 		im.End()

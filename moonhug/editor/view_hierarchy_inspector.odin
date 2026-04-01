@@ -4,6 +4,7 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:fmt"
+import "core:reflect"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import "inspector"
@@ -17,6 +18,12 @@ _inspector_transform_open: bool = true
 
 @(private)
 _inspector_comp_open: map[engine.TypeKey]bool
+
+@(private)
+_comp_clipboard_type_key: engine.TypeKey = engine.INVALID_TYPE_KEY
+
+@(private)
+_comp_clipboard_data: [dynamic]byte
 
 draw_hierarchy_inspector :: proc() {
 	if !im.Begin("Inspector", nil, {.NoCollapse}) {
@@ -105,13 +112,23 @@ _draw_transform_section :: proc(t: ^engine.Transform) {
 _comp_pending_remove: engine.Handle
 
 @(private)
+_comp_pending_move_from: int = -1
+
+@(private)
+_comp_pending_move_to: int = -1
+
+@(private)
 _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	w := engine.ctx_world()
 	if len(t.components) == 0 do return
 
 	_comp_pending_remove = {}
+	_comp_pending_move_from = -1
+	_comp_pending_move_to = -1
 
-	for &comp in t.components {
+	comp_count := len(t.components)
+
+	for &comp, comp_idx in t.components {
 		if comp.handle.type_key == engine.INVALID_TYPE_KEY do continue
 
 		comp_ptr := engine.world_pool_get(w, comp.handle)
@@ -154,6 +171,58 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 				}
 				im.Separator()
 			}
+
+			if im.MenuItem("Copy Component") {
+				comp_size := reflect.size_of_typeid(comp_tid)
+				resize(&_comp_clipboard_data, comp_size)
+				mem.copy(raw_data(_comp_clipboard_data), comp_ptr, comp_size)
+				_comp_clipboard_type_key = comp.handle.type_key
+			}
+
+			can_paste_as_new := _comp_clipboard_type_key != engine.INVALID_TYPE_KEY && len(_comp_clipboard_data) > 0
+			if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
+				_, new_ptr := engine.transform_add_comp(tH, _comp_clipboard_type_key)
+				if new_ptr != nil {
+					saved_base := (cast(^engine.CompData)new_ptr)^
+					mem.copy(new_ptr, raw_data(_comp_clipboard_data), len(_comp_clipboard_data))
+					base := cast(^engine.CompData)new_ptr
+					base.owner = saved_base.owner
+					base.local_id = saved_base.local_id
+					base.enabled = saved_base.enabled
+				}
+			}
+
+			can_paste_values := _comp_clipboard_type_key == comp.handle.type_key && len(_comp_clipboard_data) > 0
+			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
+				saved_base := (cast(^engine.CompData)comp_ptr)^
+				mem.copy(comp_ptr, raw_data(_comp_clipboard_data), len(_comp_clipboard_data))
+				base := cast(^engine.CompData)comp_ptr
+				base.owner = saved_base.owner
+				base.local_id = saved_base.local_id
+				base.enabled = saved_base.enabled
+			}
+
+			im.Separator()
+
+			shift_held := im.IsKeyDown(im.Key.LeftShift) || im.IsKeyDown(im.Key.RightShift)
+
+			if comp_idx > 0 {
+				move_up_label := shift_held ? "Move to Top" : "Move Up"
+				if im.MenuItem(strings.clone_to_cstring(move_up_label, context.temp_allocator)) {
+					_comp_pending_move_from = comp_idx
+					_comp_pending_move_to = shift_held ? 0 : comp_idx - 1
+				}
+			}
+			if comp_idx < comp_count - 1 {
+				move_down_label := shift_held ? "Move to Bottom" : "Move Down"
+				if im.MenuItem(strings.clone_to_cstring(move_down_label, context.temp_allocator)) {
+					_comp_pending_move_from = comp_idx
+					_comp_pending_move_to = shift_held ? comp_count - 1 : comp_idx + 1
+				}
+			}
+
+			im.Separator()
+
 			if im.MenuItem("Remove Component") {
 				_comp_pending_remove = comp.handle
 			}
@@ -178,6 +247,12 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
 		engine.transform_remove_comp(tH, _comp_pending_remove)
+	}
+
+	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {
+		entry := t.components[_comp_pending_move_from]
+		ordered_remove(&t.components, _comp_pending_move_from)
+		inject_at(&t.components, _comp_pending_move_to, entry)
 	}
 }
 

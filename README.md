@@ -106,13 +106,9 @@ For more details see [Contribution](features/Contribution.md)
 - improve transform context menu in hierarchy
   - copy — serialize transform tree (no clipboard, use editor state)
   - paste — decide what to do with copied info in current context
-  - rename — rename transform
   - duplicate — same as copy paste but without copying into system buffer
-  - delete
-  - create empty
-  - create empty parent (non-root only)
 
-- Copy component values / paste - right-click a component in the Inspector → "Copy Values" / "Paste Values" into another of the same type (no cipboard, use editor state)
+- copy/ paste - right-click a field in the Inspector → "Copy" / "Paste" into another of the same type (no cipboard, use editor state)
 
 - Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
 
@@ -158,3 +154,5 @@ For more details see [Contribution](features/Contribution.md)
 - Convert resource into usable format at buildStage or runtimeStage
 
 - consider SceneFile to hold serialize blobs instead of real types
+
+- Node graph editor for different use-cases
