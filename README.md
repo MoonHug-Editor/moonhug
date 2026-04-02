@@ -147,7 +147,6 @@ For more details see [Contribution](features/Contribution.md)
 - Ability to observe and edit app during its runtime
   - maybe create app_world:^World in user context, load main scene into it and switch views into working with app_world, not editor world
 
-- code style guide for better quality and reading
 - memory management guide
 
 - Dirty flags for modified data
