@@ -21,3 +21,12 @@ Provides extra info about file asset.
 
 ## GUID Resolution
 GUIDs are used for types and assets.
+
+# Not Supported
+## asmdef and special multi place folders
+Unity:
+- adds all scripts in Assets folder to Assembly-CSharp assembly
+- scripts in Editor folders are added to Assembly-CSharp-Editor assembly
+- some other tricks for plugins, etc.
+
+Odin has different package management structure and support for asmdefs isn't planned

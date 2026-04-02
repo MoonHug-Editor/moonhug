@@ -10,6 +10,7 @@
 Notes:
 - at current `vertical slice experimental` stage solid foundation and vertical slice features are more welcome than horizontal slice features, because if a vertical slice feature gets changed whole horizontal slice layer needs to be updated or removed
 - when planning or developing feature please keep in mind **Goals** and **Key Ideas** from [Readme](../README.md)
+- see [Style Guide](StyleGuide.md)
 
 ### Dos and Don'ts:
 Do:
