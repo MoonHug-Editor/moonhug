@@ -19,12 +19,6 @@ _inspector_transform_open: bool = true
 @(private)
 _inspector_comp_open: map[engine.TypeKey]bool
 
-@(private)
-_comp_clipboard_type_key: engine.TypeKey = engine.INVALID_TYPE_KEY
-
-@(private)
-_comp_clipboard_data: [dynamic]byte
-
 draw_hierarchy_inspector :: proc() {
 	if !im.Begin("Inspector", nil, {.NoCollapse}) {
 		im.End()
@@ -174,17 +168,17 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 
 			if im.MenuItem("Copy Component") {
 				comp_size := reflect.size_of_typeid(comp_tid)
-				resize(&_comp_clipboard_data, comp_size)
-				mem.copy(raw_data(_comp_clipboard_data), comp_ptr, comp_size)
-				_comp_clipboard_type_key = comp.handle.type_key
+				resize(&_clipboard.comp_data, comp_size)
+				mem.copy(raw_data(_clipboard.comp_data), comp_ptr, comp_size)
+				_clipboard.comp_type_key = comp.handle.type_key
 			}
 
-			can_paste_as_new := _comp_clipboard_type_key != engine.INVALID_TYPE_KEY && len(_comp_clipboard_data) > 0
+			can_paste_as_new := _clipboard.comp_type_key != engine.INVALID_TYPE_KEY && len(_clipboard.comp_data) > 0
 			if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
-				_, new_ptr := engine.transform_add_comp(tH, _comp_clipboard_type_key)
+				_, new_ptr := engine.transform_add_comp(tH, _clipboard.comp_type_key)
 				if new_ptr != nil {
 					saved_base := (cast(^engine.CompData)new_ptr)^
-					mem.copy(new_ptr, raw_data(_comp_clipboard_data), len(_comp_clipboard_data))
+					mem.copy(new_ptr, raw_data(_clipboard.comp_data), len(_clipboard.comp_data))
 					base := cast(^engine.CompData)new_ptr
 					base.owner = saved_base.owner
 					base.local_id = saved_base.local_id
@@ -192,10 +186,10 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 				}
 			}
 
-			can_paste_values := _comp_clipboard_type_key == comp.handle.type_key && len(_comp_clipboard_data) > 0
+			can_paste_values := _clipboard.comp_type_key == comp.handle.type_key && len(_clipboard.comp_data) > 0
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
 				saved_base := (cast(^engine.CompData)comp_ptr)^
-				mem.copy(comp_ptr, raw_data(_comp_clipboard_data), len(_comp_clipboard_data))
+				mem.copy(comp_ptr, raw_data(_clipboard.comp_data), len(_clipboard.comp_data))
 				base := cast(^engine.CompData)comp_ptr
 				base.owner = saved_base.owner
 				base.local_id = saved_base.local_id

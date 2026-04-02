@@ -29,9 +29,6 @@ _hierarchy_dimmed_color: im.Vec4
 _hierarchy_force_open: engine.Transform_Handle
 
 @(private)
-_hierarchy_clipboard: []byte
-
-@(private)
 _save_as_buf: [512]byte
 @(private)
 _save_as_open: bool
@@ -275,11 +272,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 		im.Separator()
 		if im.MenuItem("Copy", nil, false, true) {
-			delete(_hierarchy_clipboard)
-			_hierarchy_clipboard = engine.scene_copy_subtree(tH)
+			delete(_clipboard.hierarchy_data)
+			_clipboard.hierarchy_data = engine.scene_copy_subtree(tH)
 		}
-		if im.MenuItem("Paste", nil, false, len(_hierarchy_clipboard) > 0) {
-			result := engine.scene_paste_subtree(_hierarchy_clipboard, tH)
+		if im.MenuItem("Paste", nil, false, len(_clipboard.hierarchy_data) > 0) {
+			result := engine.scene_paste_subtree(_clipboard.hierarchy_data, tH)
 			engine._transform_append_name_suffix(result, "_copy")
 			_hierarchy_force_open = tH
 		}
