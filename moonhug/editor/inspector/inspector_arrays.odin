@@ -14,9 +14,9 @@ draw_inspector_array :: proc(field_ptr: rawptr, field_tid: typeid, label: cstrin
 
 	if info, ok := ti.variant.(runtime.Type_Info_Dynamic_Array); ok {
 		da := (^runtime.Raw_Dynamic_Array)(field_ptr)
-		draw_dynamic_array(da, info.elem, label)
+		draw_dynamic_array(da, info.elem, field_ptr, field_tid, label)
 	} else if info, ok := ti.variant.(runtime.Type_Info_Array); ok {
-		draw_fixed_array(field_ptr, info.count, info.elem, label)
+		draw_fixed_array(field_ptr, info.count, info.elem, field_tid, label)
 	} else {
 		im.TextColored(im.Vec4{1, 0, 0, 1}, "Not an array type")
 	}
@@ -30,8 +30,10 @@ is_array_type :: proc(tid: typeid) -> bool {
 	return is_dyn || is_fixed
 }
 
-draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, label: cstring) {
-	if !im.TreeNode(label) do return
+draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring) {
+	tree_open := im.TreeNode(label)
+	draw_clipboard_row_popup(ptr, field_tid)
+	if !tree_open do return
 	defer im.TreePop()
 	im.TextDisabled("Fixed size: %d", count)
 	for i in 0 ..< count {
@@ -43,8 +45,10 @@ draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, l
 	}
 }
 
-draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, label: cstring) {
-	if !im.TreeNode(label) do return
+draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring) {
+	tree_open := im.TreeNode(label)
+	draw_clipboard_row_popup(field_ptr, field_tid)
+	if !tree_open do return
 	defer im.TreePop()
 	im.TextDisabled("Size: %d", da.len)
 
@@ -77,6 +81,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	if drawer, ok := mapPropertyDrawer[elem_tid]; ok {
 		drawer(ptr, elem_tid, label)
+		draw_clipboard_row_popup(ptr, elem_tid)
 		return
 	}
 	elem_ti := type_info_of(elem_tid)
@@ -86,11 +91,12 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	}
 	if reflect.is_struct(elem_ti) {
 		elem_any := any{ptr, elem_tid}
-		if im.TreeNode(label) {
+		tree_open := im.TreeNode(label)
+		draw_clipboard_row_popup(ptr, elem_tid)
+		if tree_open {
 			draw_inspector(elem_any)
 			im.TreePop()
 		}
-		draw_clipboard_row_popup(ptr, elem_tid)
 		return
 	}
 	elem_any := any{ptr, elem_tid}

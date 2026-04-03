@@ -95,7 +95,15 @@ register_type :: proc($T: typeid, guid: uuid.Identifier, factory: Factory = nil)
 }
 
 register_pointer_type :: proc($T: typeid) {
-	typeid_to_pointerType[T] = ^T
+	typeid_to_pointerType[T]                = ^T
+	typeid_to_pointerType[[2]T]             = ^[2]T
+	typeid_to_pointerType[[3]T]             = ^[3]T
+	typeid_to_pointerType[[4]T]             = ^[4]T
+
+	typeid_to_pointerType[[dynamic]T]       = ^[dynamic]T
+	typeid_to_pointerType[[dynamic][2]T]    = ^[dynamic][2]T
+	typeid_to_pointerType[[dynamic][3]T]    = ^[dynamic][3]T
+	typeid_to_pointerType[[dynamic][4]T]    = ^[dynamic][4]T
 }
 
 register_type_key :: proc($T: typeid, key: TypeKey) {
