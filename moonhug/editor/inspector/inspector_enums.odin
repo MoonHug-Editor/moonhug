@@ -44,6 +44,7 @@ draw_inspector_enum :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring
 	if im.ComboChar(strings.clone_to_cstring(uid, context.temp_allocator), &current_index, ([^]cstring)(raw_data(names[:])), c.int(len(names))) {
 		_write_enum_value(field_ptr, info.base, info.values[current_index])
 	}
+	draw_clipboard_row_popup(field_ptr, field_tid)
 }
 
 @(private)

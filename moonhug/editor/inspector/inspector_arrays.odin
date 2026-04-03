@@ -90,11 +90,13 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 			draw_inspector(elem_any)
 			im.TreePop()
 		}
+		draw_clipboard_row_popup(ptr, elem_tid)
 		return
 	}
 	elem_any := any{ptr, elem_tid}
 	c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, elem_any), context.temp_allocator)
 	im.Text(c_str)
+	draw_clipboard_row_popup(ptr, elem_tid)
 }
 
 append_dynamic_array_element :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info) -> bool {

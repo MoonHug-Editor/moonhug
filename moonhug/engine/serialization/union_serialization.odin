@@ -88,8 +88,8 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     if alloc_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
     mem.zero(variant_ptr, ti.size)
 
-    ptr_tid := engine.get_pointer_typeid_by_typeid(tid)
-    if ptr_tid == nil do return json.Unmarshal_Data_Error.Invalid_Data
+    ptr_tid, ptr_tid_ok := engine.get_pointer_typeid_by_typeid(tid)
+    if !ptr_tid_ok do return json.Unmarshal_Data_Error.Invalid_Data
 
     if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}); uerr != nil do return uerr
 

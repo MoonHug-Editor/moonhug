@@ -6,6 +6,7 @@ import strings "core:strings"
 import im "../../../external/odin-imgui"
 import ser "../../engine/serialization"
 import engine "../../engine"
+import clip "../clipboard"
 
 InspectorMode :: enum {
     Asset,
@@ -156,6 +157,20 @@ draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     draw_inspector(a, label)
 }
 
+draw_clipboard_row_popup :: proc(field_ptr: rawptr, field_tid: typeid) {
+    popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
+    im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
+    if im.BeginPopup(popup_id) {
+        if im.MenuItem("Copy") {
+            clip.copy(any{field_ptr, field_tid})
+        }
+        can := clip.can_paste(field_tid)
+        if im.MenuItem("Paste", nil, false, can) {
+            clip.paste(any{field_ptr, field_tid})
+        }
+        im.EndPopup()
+    }
+}
 
 draw_inspector :: proc(a: any, label: cstring = "") {
     xAny := a
@@ -210,32 +225,46 @@ draw_inspector :: proc(a: any, label: cstring = "") {
 		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name}
         run_field_decorators(tid, i, &ctx)
 
-        if ctx.is_visible
-        {
+        if ctx.is_visible {
+            im.PushIDPtr(field_ptr)
+            row_popup_done := false
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
                 drawer(field_ptr, field_type.id, c_field_name)
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)
+                row_popup_done = true
             } else if is_union_type(field_type.id) {
                 draw_inspector_union(field_ptr, field_type.id, c_field_name)
+                row_popup_done = true
             } else if is_enum_type(field_type.id) {
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
+                row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
                 if is_inline {
                     draw_inspector(field_val)
-                } else if im.TreeNode(c_field_name) {
-                    draw_inspector(field_val)
-                    im.TreePop()
+                    row_popup_done = true
+                } else {
+                    tree_open := im.TreeNode(c_field_name)
+                    draw_clipboard_row_popup(field_ptr, field_type.id)
+                    row_popup_done = true
+                    if tree_open {
+                        draw_inspector(field_val)
+                        im.TreePop()
+                    }
                 }
-            } else if reflect.is_pointer(type_info_of(field_type.id)){
+            } else if reflect.is_pointer(type_info_of(field_type.id)) {
                 draw_inspector(field_val)
+                row_popup_done = true
             } else {
-                // Draw non-editable value as text
                 c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", field_name, field_val))
                 defer delete(c_str)
                 im.Text(c_str)
             }
+            if !row_popup_done {
+                draw_clipboard_row_popup(field_ptr, field_type.id)
+            }
+            im.PopID()
         }
 
         ctx.is_pre = false

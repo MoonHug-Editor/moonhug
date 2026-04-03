@@ -7,6 +7,7 @@ import im "../../external/odin-imgui"
 import im_gl "../../external/odin-imgui/imgui_impl_opengl3"
 import "inspector"
 import "menu"
+import clip "clipboard"
 import "../engine/serialization"
 import "../app"
 import "../app_editor"
@@ -160,6 +161,15 @@ editor_init :: proc() {
     app.register_component_serializers()
     inspector.init()
     serialization.init()
+    clip.init()
+    engine.register_pointer_type(bool)
+    engine.register_pointer_type(int)
+    engine.register_pointer_type(f32)
+    engine.register_pointer_type(f64)
+    engine.register_pointer_type(string)
+    engine.register_pointer_type([2]f32)
+    engine.register_pointer_type([3]f32)
+    engine.register_pointer_type([4]f32)
     app.register_type_guids()
     _init_context_menu_registry()
     init_project_view()

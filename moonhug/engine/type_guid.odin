@@ -94,6 +94,10 @@ register_type :: proc($T: typeid, guid: uuid.Identifier, factory: Factory = nil)
     typeid_to_pointerType[T] = ^T
 }
 
+register_pointer_type :: proc($T: typeid) {
+	typeid_to_pointerType[T] = ^T
+}
+
 register_type_key :: proc($T: typeid, key: TypeKey) {
     type_key_to_typeid_arr[key]      = T
     type_key_to_guid_arr[key]        = typeid_to_guid[T]
@@ -196,13 +200,13 @@ get_typeid_by_guid :: proc(guid: uuid.Identifier) -> typeid {
     panic(fmt.tprintf("Unknown GUID: %s", guid))
 }
 
-get_pointer_typeid_by_typeid :: proc(T: typeid) -> typeid {
-    if key, ok := typeid_to_type_key_map[T]; ok {
-        return type_key_to_pointerType_arr[key]
+get_pointer_typeid_by_typeid :: proc(T: typeid) -> (result: typeid, ok: bool) {
+    if key, key_ok := typeid_to_type_key_map[T]; key_ok {
+        return type_key_to_pointerType_arr[key], true
     }
-    if result, ok := typeid_to_pointerType[T]; ok {
-        return result
+    if ptr_tid, map_ok := typeid_to_pointerType[T]; map_ok {
+        return ptr_tid, true
     }
-    panic(fmt.tprintf("Unknown pointer type for T: %v", T))
+    return nil, false
 }
 

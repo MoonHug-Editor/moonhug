@@ -23,6 +23,18 @@ init :: proc() {
 	init_serialization_callbacks()
 }
 
+Run_Before_Serialize :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool) {
+	if cb, ok := mapBeforeSerialize[tid]; ok {
+		cb(ptr, tid, is_cleanup)
+	}
+}
+
+Run_After_Deserialize :: proc(ptr: rawptr, tid: typeid) {
+	if cb, ok := mapAfterDeserialize[tid]; ok {
+		cb(ptr, tid)
+	}
+}
+
 load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
     // Validate filepath
     if filepath == "" || len(filepath) < 5 {
@@ -73,7 +85,7 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
     }
 
     instance := engine.create_instance_by_guid(guid)
-    pointer_typeid := engine.get_pointer_typeid_by_typeid(instance.id)
+    pointer_typeid, _ := engine.get_pointer_typeid_by_typeid(instance.id)
     temp_ptr := instance.data
     target := any{ &temp_ptr, pointer_typeid }
     unmarshal_err:=json.unmarshal_any(data, target, json.DEFAULT_SPECIFICATION, context.allocator)

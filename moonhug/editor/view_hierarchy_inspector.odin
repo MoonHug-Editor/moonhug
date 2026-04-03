@@ -4,11 +4,11 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:fmt"
-import "core:reflect"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import "inspector"
 import "menu"
+import clip "clipboard"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -167,33 +167,34 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			}
 
 			if im.MenuItem("Copy Component") {
-				comp_size := reflect.size_of_typeid(comp_tid)
-				resize(&_clipboard.comp_data, comp_size)
-				mem.copy(raw_data(_clipboard.comp_data), comp_ptr, comp_size)
-				_clipboard.comp_type_key = comp.handle.type_key
+				clip.copy(any{comp_ptr, comp_tid})
 			}
 
-			can_paste_as_new := _clipboard.comp_type_key != engine.INVALID_TYPE_KEY && len(_clipboard.comp_data) > 0
+			clip_tid := clip.target_typeid()
+			clip_key, clip_key_ok := engine.get_type_key_by_typeid(clip_tid)
+			can_paste_as_new := clip.has() && clip_key_ok
 			if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
-				_, new_ptr := engine.transform_add_comp(tH, _clipboard.comp_type_key)
+				_, new_ptr := engine.transform_add_comp(tH, clip_key)
 				if new_ptr != nil {
 					saved_base := (cast(^engine.CompData)new_ptr)^
-					mem.copy(new_ptr, raw_data(_clipboard.comp_data), len(_clipboard.comp_data))
-					base := cast(^engine.CompData)new_ptr
+					if clip.paste(any{new_ptr, clip_tid}) {
+						base := cast(^engine.CompData)new_ptr
+						base.owner = saved_base.owner
+						base.local_id = saved_base.local_id
+						base.enabled = saved_base.enabled
+					}
+				}
+			}
+
+			can_paste_values := clip.can_paste(comp_tid)
+			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
+				saved_base := (cast(^engine.CompData)comp_ptr)^
+				if clip.paste(any{comp_ptr, comp_tid}) {
+					base := cast(^engine.CompData)comp_ptr
 					base.owner = saved_base.owner
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
-			}
-
-			can_paste_values := _clipboard.comp_type_key == comp.handle.type_key && len(_clipboard.comp_data) > 0
-			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
-				saved_base := (cast(^engine.CompData)comp_ptr)^
-				mem.copy(comp_ptr, raw_data(_clipboard.comp_data), len(_clipboard.comp_data))
-				base := cast(^engine.CompData)comp_ptr
-				base.owner = saved_base.owner
-				base.local_id = saved_base.local_id
-				base.enabled = saved_base.enabled
 			}
 
 			im.Separator()

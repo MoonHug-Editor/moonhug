@@ -7,6 +7,7 @@ import "core:c"
 import "core:path/filepath"
 import im "../../external/odin-imgui"
 import engine "../engine"
+import clip "clipboard"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -272,11 +273,10 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 		im.Separator()
 		if im.MenuItem("Copy", nil, false, true) {
-			delete(_clipboard.hierarchy_data)
-			_clipboard.hierarchy_data = engine.scene_copy_subtree(tH)
+			clip.copy_hierarchy(engine.scene_copy_subtree(tH))
 		}
-		if im.MenuItem("Paste", nil, false, len(_clipboard.hierarchy_data) > 0) {
-			result := engine.scene_paste_subtree(_clipboard.hierarchy_data, tH)
+		if im.MenuItem("Paste", nil, false, clip.has_hierarchy()) {
+			result := engine.scene_paste_subtree(clip.paste_hierarchy(), tH)
 			engine._transform_append_name_suffix(result, "_copy")
 			_hierarchy_force_open = tH
 		}

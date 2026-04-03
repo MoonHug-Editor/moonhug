@@ -82,4 +82,5 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 		draw_inspector(variant_any)
 		im.TreePop()
 	}
+	draw_clipboard_row_popup(ptr, field_tid)
 }
