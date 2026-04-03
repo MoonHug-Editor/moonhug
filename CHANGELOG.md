@@ -1,3 +1,13 @@
+## [0.7.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.6.0...v0.7.0) (2026-04-03)
+
+### Features
+
+* copy/paste fields ([893bfe9](https://github.com/MoonHug-Editor/moonhug/commit/893bfe96fbfa8d4210c9e8a7cae5e3fe728841d5))
+
+### Bug Fixes
+
+* component fields copy/paste ([f617ccc](https://github.com/MoonHug-Editor/moonhug/commit/f617ccce1d28261e978e8db8b3558911e5f70ad8))
+
 ## [0.6.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.5.0...v0.6.0) (2026-04-01)
 
 ### Features
