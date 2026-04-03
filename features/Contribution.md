@@ -1,5 +1,13 @@
 # Contribution
 
+## Ways to contribute
+- bug fixes
+- implement feature
+- improve documentation (see details below)
+  - come up with new TODO/Considered features
+- join community (github/discord/youtube)
+
+## Pull Requests
 - Determine scope of change High(feature level) or Low(bug fix, etc.)
 - Make change to functionality and documentation (documenting depends on scope, see description below)
 - Make a pull request with description
