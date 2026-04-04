@@ -103,20 +103,23 @@ For more details see [Contribution](features/Contribution.md)
 
 - Asset search / filter in Project View A single text input that filters the visible files by name substring
 
+- run app with currently open scene state
+
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs
-
-- copy/ paste - right-click a field in the Inspector → "Copy" / "Paste" into another of the same type (no cipboard, use editor state)
 
 - Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
 
 - come up with more TODO and Considered features
 
-- copy/paste manager to keep only 1 thing at once
+- clear clipboard completely on each copy call
 
 - Editor Undo system
 
 ### Considered Features
+- memory management guide
+  - must be explained simply as if for someone new to memory handling
+
 - Task tracking with backlog, todo, etc.
 
 - decide shaders and rendering pipeline
@@ -146,8 +149,6 @@ For more details see [Contribution](features/Contribution.md)
 - Run configurations - dropdown to select config that runs game (release/debug, etc.) when press Play
 - Ability to observe and edit app during its runtime
   - maybe create app_world:^World in user context, load main scene into it and switch views into working with app_world, not editor world
-
-- memory management guide
 
 - Dirty flags for modified data
 - file watcher for rebuilding and asset updates

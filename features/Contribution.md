@@ -2,14 +2,17 @@
 
 ## Ways to contribute
 - bug fixes
-- implement feature
+- add behavior or unit tests
 - improve documentation (see details below)
   - come up with new TODO/Considered features
 - join community (github/discord/youtube)
+- implement feature
 
 ## Pull Requests
 - Determine scope of change High(feature level) or Low(bug fix, etc.)
-- Make change to functionality and documentation (documenting depends on scope, see description below)
+- Confirm expected functionality with docs
+- (TODO: task tracking for no race coding by multiple people) Inform in chat that you work on some feature
+- Implement functionality and update documentation (documenting depends on scope, see description below)
 - Make a pull request with description
     - Keep pull requests focused to one use-case, don't combine multiple use-cases into one pull request
 
