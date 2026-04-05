@@ -23,13 +23,13 @@ Vertical Slice Experimental.
 
 - On top level UX features are represented by window views
 
-For more details see [Contribution](features/Contribution.md)
+For more details see [Contribution](docs/Contribution.md)
 
 ## Introduction video
 [![](http://img.youtube.com/vi/TQLF-db3Jqs/0.jpg)](https://www.youtube.com/watch?v=TQLF-db3Jqs)
 
 ## Contribution
-- [Contribution](features/Contribution.md)
+- [Contribution](docs/Contribution.md)
 
 ## Community
 - [Discord](https://discord.gg/HTpBmhESwW)
@@ -62,12 +62,12 @@ For more details see [Contribution](features/Contribution.md)
 
 - union serialization (#no_nil unions only)
 
-- [Asset Pipeline](features/AssetPipeline.md) - asset importer/loader
-- [Scenes](features/Scenes.md)
-- [Tweens](features/Tweens.md)
-- [Reference Handles](features/ReferenceHandles.md)
-- [SpriteRenderer](features/SpriteRenderer.md)
-- [Unity Conveniences](features/UnityConveniences.md)
+- [Asset Pipeline](docs/AssetPipeline.md) - asset importer/loader
+- [Scenes](docs/Scenes.md)
+- [Tweens](docs/Tweens.md)
+- [Reference Handles](docs/ReferenceHandles.md)
+- [SpriteRenderer](docs/SpriteRenderer.md)
+- [Unity Conveniences](docs/UnityConveniences.md)
 
 ### Views
   - inspector view - edit selected object in scene
@@ -115,6 +115,7 @@ For more details see [Contribution](features/Contribution.md)
 - clear clipboard completely on each copy call
 
 - Editor Undo system
+- on_validate callback for better WYSIWYG experience
 
 ### Considered Features
 - memory management guide
