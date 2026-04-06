@@ -46,6 +46,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
             path_data := string((cast([^]u8)payload.Data)[:payload.DataSize])
             if new_guid, ok := engine.asset_db_get_guid(path_data); ok {
                 guid_ptr^ = engine.Asset_GUID(new_guid)
+                mark_inspector_changed()
             }
         }
         im.EndDragDropTarget()
@@ -58,6 +59,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         )
         if im.Button(clear_label, {clear_w, 0}) {
             guid_ptr^ = {}
+            mark_inspector_changed()
         }
     }
 }

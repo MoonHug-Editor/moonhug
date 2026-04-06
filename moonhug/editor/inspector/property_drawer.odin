@@ -10,6 +10,7 @@ draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     value := cast(i32)(int_ptr^)
     if im.DragInt(label, &value) {
         int_ptr^ = int(value)
+        mark_inspector_changed()
     }
 }
 
@@ -25,6 +26,7 @@ draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
             str_len += 1
         }
         str_ptr^ = strings.clone(string(buf[:str_len]))
+        mark_inspector_changed()
     }
 }
 
@@ -34,6 +36,7 @@ draw_bool_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     value := bool_ptr^
     if im.Checkbox(label, &value) {
         bool_ptr^ = value
+        mark_inspector_changed()
     }
 }
 
@@ -44,12 +47,14 @@ draw_float_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         value := float_ptr^
         if im.DragFloat(label, &value, 0.01, format="%g") {
             float_ptr^ = value
+            mark_inspector_changed()
         }
     } else if tid == typeid_of(f64) {
         float_ptr := cast(^f64)(ptr)
         value := float_ptr^
         if im.InputDouble(label, &value, 0.01, 0.1, "%g") {
             float_ptr^ = value
+            mark_inspector_changed()
         }
     }
 }
@@ -75,17 +80,23 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     im.SameLine(label_w)
     im.SetNextItemWidth(field_w)
     id := fmt.tprintf("##%s", label)
-    im.DragFloat3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1)
+    if im.DragFloat3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1) {
+        mark_inspector_changed()
+    }
 }
 
 @(property_drawer={type=[3]f32, priority = 0})
 draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[3]f32)(ptr)
-    im.DragFloat3(label, v, 0.1)
+    if im.DragFloat3(label, v, 0.1) {
+        mark_inspector_changed()
+    }
 }
 
 @(property_drawer={type=[4]f32, priority = 0})
 draw_vec4_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[4]f32)(ptr)
-    im.DragFloat4(label, v, 0.1)
+    if im.DragFloat4(label, v, 0.1) {
+        mark_inspector_changed()
+    }
 }

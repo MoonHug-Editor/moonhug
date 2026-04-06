@@ -7,12 +7,13 @@ import "core:slice"
 import "../gen_core"
 
 ComponentEntry :: struct {
-	type_name:  string,
-	snake_name: string,
-	plural:     string,
-	menu_path:  string,
-	max:        int,
-	has_reset:  bool,
+	type_name:       string,
+	snake_name:      string,
+	plural:          string,
+	menu_path:       string,
+	max:             int,
+	has_reset:       bool,
+	has_on_validate: bool,
 }
 
 PoolableEntry :: struct {
@@ -118,16 +119,19 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 			menu_path, comp_max, has_comp := _has_component_attr(v_decl)
 			if has_comp && is_struct {
 				if menu_path == "" do menu_path = type_name
-				reset_name := strings.concatenate({"reset_", type_name})
-				defer delete(reset_name)
-				append(&data.entries, ComponentEntry{
-					type_name  = type_name,
-					snake_name = snake,
-					plural     = plural,
-					menu_path  = menu_path,
-					max        = comp_max,
-					has_reset  = gen_core.FileHasProc(file, reset_name),
-				})
+			reset_name := strings.concatenate({"reset_", type_name})
+			defer delete(reset_name)
+			on_validate_name := strings.concatenate({"on_validate_", type_name})
+			defer delete(on_validate_name)
+			append(&data.entries, ComponentEntry{
+				type_name       = type_name,
+				snake_name      = snake,
+				plural          = plural,
+				menu_path       = menu_path,
+				max             = comp_max,
+				has_reset       = gen_core.FileHasProc(file, reset_name),
+				has_on_validate = gen_core.FileHasProc(file, on_validate_name),
+			})
 				continue
 			}
 
@@ -223,6 +227,7 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	}
 	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
 	strings.write_string(&b, "\t__component_resets_init()\n")
+	strings.write_string(&b, "\t__component_on_validates_init()\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s].collect_fn = proc(comp: rawptr, sf: rawptr) {{\n", e.type_name)
@@ -242,6 +247,14 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	for e in data.entries {
 		if e.has_reset {
 			fmt.sbprintf(&b, "\tcomponent_reset_procs[.%s] = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
+		}
+	}
+	strings.write_string(&b, "}\n\n")
+
+	strings.write_string(&b, "__component_on_validates_init :: proc() {\n")
+	for e in data.entries {
+		if e.has_on_validate {
+			fmt.sbprintf(&b, "\tcomponent_on_validate_procs[.%s] = proc(ptr: rawptr) {{ on_validate_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "}\n\n")

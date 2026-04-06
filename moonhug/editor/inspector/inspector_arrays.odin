@@ -62,7 +62,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		im.SetNextItemWidth(im.GetContentRegionAvail().x - 30)
 		draw_array_element(elem_ptr, elem_ti.id, "##val")
 		im.SameLine()
-		if im.Button("x") {
+        if im.Button("x") {
 			to_remove = i
 		}
 		im.PopID()
@@ -70,10 +70,12 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 
 	if im.Button("+ Add") {
 		append_dynamic_array_element(da, elem_ti)
+		mark_inspector_changed()
 	}
 
 	if to_remove >= 0 {
 		remove_dynamic_array_element(da, elem_ti, to_remove)
+		mark_inspector_changed()
 	}
 }
 

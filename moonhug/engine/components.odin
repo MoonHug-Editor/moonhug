@@ -63,9 +63,14 @@ Script :: struct {
     using base: CompData `inspect:"-"`,
 }
 
-// Reset feature
 component_reset_procs: [TypeKey]proc(rawptr)
 
 component_reset :: proc(key: TypeKey, ptr: rawptr) {
 	if fn := component_reset_procs[key]; fn != nil do fn(ptr)
+}
+
+component_on_validate_procs: [TypeKey]proc(rawptr)
+
+component_on_validate :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := component_on_validate_procs[key]; fn != nil do fn(ptr)
 }

@@ -21,6 +21,7 @@ w_init :: proc(w:^World)
 	pool_init(&w.tween_unions)
 	pool_init(&w.transforms)
 	__component_resets_init()
+	__component_on_validates_init()
 	w.pool_table[TypeKey.Camera] = pool_make_entry(&w.cameras)
 	w.pool_table[TypeKey.Camera].collect_fn = proc(comp: rawptr, sf: rawptr) {
 		c := cast(^Camera)comp
@@ -68,6 +69,10 @@ __component_resets_init :: proc() {
 	component_reset_procs[.Camera] = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) }
 	component_reset_procs[.Lifetime] = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) }
 	component_reset_procs[.SpriteRenderer] = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) }
+}
+
+__component_on_validates_init :: proc() {
+	component_on_validate_procs[.Lifetime] = proc(ptr: rawptr) { on_validate_Lifetime(cast(^Lifetime)ptr) }
 }
 
 transform_find_comp :: proc(t: ^Transform, key: TypeKey) -> (Owned, int) {

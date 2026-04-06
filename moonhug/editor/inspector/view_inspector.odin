@@ -15,6 +15,7 @@ InspectorMode :: enum {
 
 mapPropertyDrawer: MapPropertyDrawer
 inspectorData: InspectorData
+inspector_changed: bool
 
 InspectorData :: struct {
     mode: InspectorMode,
@@ -143,6 +144,16 @@ _draw_import_settings_inspector :: proc() {
         drawer := resolve_property_drawer(settings_any)
         drawer(rawptr(ptr), settings_any, "Import Settings")
     }
+}
+
+mark_inspector_changed :: proc() {
+    inspector_changed = true
+}
+
+consume_inspector_changed :: proc() -> bool {
+    changed := inspector_changed
+    inspector_changed = false
+    return changed
 }
 
 resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, label: cstring) {

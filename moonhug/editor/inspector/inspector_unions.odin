@@ -75,6 +75,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 			(^i64)(tag_ptr)^ = -1
 			mem.zero(ptr, int(info.tag_offset))
 		}
+		mark_inspector_changed()
 	}
 
 	if has_content && tree_open {

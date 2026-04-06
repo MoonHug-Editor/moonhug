@@ -235,6 +235,10 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		}
 
 		if header_open {
+			inspector.consume_inspector_changed()
+			defer if inspector.consume_inspector_changed() {
+				engine.component_on_validate(comp.handle.type_key, comp_ptr)
+			}
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}
