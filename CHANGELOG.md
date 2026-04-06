@@ -1,3 +1,9 @@
+## [0.8.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.7.0...v0.8.0) (2026-04-06)
+
+### Features
+
+* support on_validate_* proc in same file as component struct ([7bb17a7](https://github.com/MoonHug-Editor/moonhug/commit/7bb17a793178f0585cb6980d1142f6b6f84e72a2))
+
 ## [0.7.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.6.0...v0.7.0) (2026-04-03)
 
 ### Features
