@@ -102,19 +102,8 @@ draw_hierarchy_view :: proc() {
 		has_selected := _hierarchy_selected != _HANDLE_NONE
 		if is_not_renaming && im.IsWindowFocused({}) {
 			if has_selected {
-				is_root_selected := false
-				for i in 0..<sm.count {
-					scene := sm.loaded[i]
-					if scene == nil || !engine.sm_scene_is_valid(scene) do continue
-					if engine.Transform_Handle(scene.root.handle) == _hierarchy_selected {
-						is_root_selected = true
-						break
-					}
-				}
-				if !is_root_selected {
-					if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
-						_begin_rename(_hierarchy_selected)
-					}
+				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
+					_begin_rename(_hierarchy_selected)
 				}
 			}
 			_handle_hierarchy_keyboard_nav(sm)
@@ -226,12 +215,12 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	has_children := len(t.children) > 0
 	is_selected := _hierarchy_selected == tH
-	is_renaming := !is_root && _hierarchy_rename_target == tH
+	is_renaming := _hierarchy_rename_target == tH
 
 	pushed_dim := !t.is_active && !parent_inactive
 	inactive := parent_inactive || !t.is_active
 
-	flags := im.TreeNodeFlags{.OpenOnArrow, .OpenOnDoubleClick, .SpanAvailWidth}
+	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAvailWidth}
 	if is_selected {
 		flags += {.Selected}
 	}
@@ -304,7 +293,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		_hierarchy_selected = tH
 	}
 
-	if !is_root && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) && !is_renaming {
+	if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) && !is_renaming {
 		_begin_rename(tH)
 	}
 
@@ -323,9 +312,9 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			if im.MenuItem("Create Empty Parent", nil, false, true) {
 				_create_empty_parent(tH, scene)
 			}
-			if im.MenuItem("Rename", nil, false, true) {
-				_begin_rename(tH)
-			}
+		}
+		if im.MenuItem("Rename", nil, false, true) {
+			_begin_rename(tH)
 		}
 		im.Separator()
 		if im.MenuItem("Copy", nil, false, true) {
