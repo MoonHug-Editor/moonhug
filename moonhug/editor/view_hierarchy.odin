@@ -248,13 +248,6 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
 	}
 
-	label: cstring
-	if is_renaming {
-		label = "##renaming_node"
-	} else {
-		label = strings.clone_to_cstring(t.name, context.temp_allocator)
-	}
-
 	if _hierarchy_force_open == tH {
 		im.SetNextItemOpen(true)
 		_hierarchy_force_open = _HANDLE_NONE
@@ -262,7 +255,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.SetNextItemOpen(v)
 		delete_key(&_hierarchy_alt_open_pending, tH)
 	}
-	node_open := im.TreeNodeEx(label, flags)
+	node_open := im.TreeNodeEx("##n", flags)
 
 	append(&_hierarchy_nav_list, tH)
 
@@ -274,8 +267,8 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
 
+	text_x := node_rect_min.x + im.GetTreeNodeToLabelSpacing()
 	if is_renaming {
-		text_x := im.GetItemRectMin().x + im.GetTreeNodeToLabelSpacing()
 		input_width := node_rect_max.x - text_x
 		im.SetCursorScreenPos(im.Vec2{text_x, node_rect_min.y})
 		if _hierarchy_rename_focus {
@@ -297,6 +290,14 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 				_hierarchy_rename_target = _HANDLE_NONE
 			}
 		}
+	} else {
+		draw_list := im.GetWindowDrawList()
+		text_color := im.GetColorU32ImVec4(im.GetStyleColorVec4(im.Col.Text)^)
+		if pushed_dim {
+			text_color = im.GetColorU32ImVec4(_hierarchy_dimmed_color)
+		}
+		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
+		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(t.name, context.temp_allocator))
 	}
 
 	if im.IsItemClicked(.Left) && !is_renaming {
