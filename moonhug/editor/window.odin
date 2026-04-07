@@ -9,7 +9,7 @@ import "menu"
 import "../engine"
 
 WINDOW_TITLE :: "MoonHug Editor"
-VERSION :: "0.1.0"
+VERSION :: #load("../version", string)
 PROJECT_SETTINGS_DIR :: "ProjectSettings"
 EDITOR_SETTINGS_FILE :: "ProjectSettings/editor_settings.json"
 
