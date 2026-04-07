@@ -1,3 +1,14 @@
+## [0.9.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.8.0...v0.9.0) (2026-04-07)
+
+### Features
+
+* arrow keys to walk hierarchy scene tree ([5bf03dc](https://github.com/MoonHug-Editor/moonhug/commit/5bf03dc166655e04f8d2bd935a22afc93a35b579))
+* hierarchy hold alt to expand/collapse subtree ([67b6631](https://github.com/MoonHug-Editor/moonhug/commit/67b663108dcef6bb29fc2102e804ecf5b48cf93c))
+
+### Bug Fixes
+
+* hierarchy rename context menu item ([3e68f1c](https://github.com/MoonHug-Editor/moonhug/commit/3e68f1c3931aeb10dbba9bd48a1353291a772138))
+
 ## [0.8.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.7.0...v0.8.0) (2026-04-06)
 
 ### Features
