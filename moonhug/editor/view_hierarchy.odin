@@ -37,6 +37,9 @@ _hierarchy_force_open: engine.Transform_Handle
 _hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
 
 @(private)
+_hierarchy_nav_list: [dynamic]engine.Transform_Handle
+
+@(private)
 _save_as_buf: [512]byte
 @(private)
 _save_as_open: bool
@@ -78,6 +81,9 @@ draw_hierarchy_view :: proc() {
 			last_valid_idx = i
 		}
 	}
+
+	clear(&_hierarchy_nav_list)
+
 	for i in 0..<sm.count {
 		scene := sm.loaded[i]
 		if scene == nil || !engine.sm_scene_is_valid(scene) do continue
@@ -94,21 +100,24 @@ draw_hierarchy_view :: proc() {
 	} else {
 		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
 		has_selected := _hierarchy_selected != _HANDLE_NONE
-		if is_not_renaming && has_selected && im.IsWindowHovered({}) {
-			is_root_selected := false
-			for i in 0..<sm.count {
-				scene := sm.loaded[i]
-				if scene == nil || !engine.sm_scene_is_valid(scene) do continue
-				if engine.Transform_Handle(scene.root.handle) == _hierarchy_selected {
-					is_root_selected = true
-					break
+		if is_not_renaming && im.IsWindowFocused({}) {
+			if has_selected {
+				is_root_selected := false
+				for i in 0..<sm.count {
+					scene := sm.loaded[i]
+					if scene == nil || !engine.sm_scene_is_valid(scene) do continue
+					if engine.Transform_Handle(scene.root.handle) == _hierarchy_selected {
+						is_root_selected = true
+						break
+					}
+				}
+				if !is_root_selected {
+					if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
+						_begin_rename(_hierarchy_selected)
+					}
 				}
 			}
-			if !is_root_selected {
-				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
-					_begin_rename(_hierarchy_selected)
-				}
-			}
+			_handle_hierarchy_keyboard_nav(sm)
 		}
 	}
 }
@@ -255,8 +264,12 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 	node_open := im.TreeNodeEx(label, flags)
 
-	if has_children && im.IsItemToggledOpen() && im.GetIO().KeyAlt {
-		_populate_alt_open_pending(t, node_open)
+	append(&_hierarchy_nav_list, tH)
+
+	if has_children && im.IsItemToggledOpen() {
+		if im.GetIO().KeyAlt {
+			_populate_alt_open_pending(t, node_open)
+		}
 	}
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
@@ -559,6 +572,103 @@ _is_ancestor :: proc(potential_ancestor: engine.Transform_Handle, node: engine.T
 		current = ct.parent
 	}
 	return false
+}
+
+@(private)
+_hierarchy_node_expand :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, deep: bool) {
+	_hierarchy_force_open = tH
+	if deep {
+		_populate_alt_open_pending(t, true)
+	}
+}
+
+@(private)
+_hierarchy_node_collapse :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, deep: bool) {
+	_hierarchy_alt_open_pending[tH] = false
+	if deep {
+		_populate_alt_open_pending(t, false)
+	}
+}
+
+@(private)
+_handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
+	w := engine.ctx_world()
+
+	nav_count := len(_hierarchy_nav_list)
+	if nav_count == 0 do return
+
+	cur_idx := -1
+	if _hierarchy_selected != _HANDLE_NONE {
+		for i in 0..<nav_count {
+			if _hierarchy_nav_list[i] == _hierarchy_selected {
+				cur_idx = i
+				break
+			}
+		}
+	}
+
+	_nav_select_first :: proc(nav_count: int) {
+		if nav_count > 0 {
+			_hierarchy_selected = _hierarchy_nav_list[0]
+		}
+	}
+
+	if im.IsKeyPressed(im.Key.DownArrow) {
+		if cur_idx == -1 {
+			_nav_select_first(nav_count)
+		} else if cur_idx + 1 < nav_count {
+			_hierarchy_selected = _hierarchy_nav_list[cur_idx + 1]
+		}
+		return
+	}
+
+	if im.IsKeyPressed(im.Key.UpArrow) {
+		if cur_idx == -1 {
+			_nav_select_first(nav_count)
+		} else if cur_idx - 1 >= 0 {
+			_hierarchy_selected = _hierarchy_nav_list[cur_idx - 1]
+		}
+		return
+	}
+
+	if cur_idx == -1 do return
+
+	selected_tH := _hierarchy_nav_list[cur_idx]
+	t := engine.pool_get(&w.transforms, engine.Handle(selected_tH))
+	if t == nil do return
+
+	alt := im.GetIO().KeyAlt
+
+	if im.IsKeyPressed(im.Key.RightArrow) {
+		has_children := len(t.children) > 0
+		if has_children {
+			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hierarchy_nav_list[cur_idx + 1])
+			if !is_expanded {
+				_hierarchy_node_expand(selected_tH, t, deep = alt)
+				return
+			}
+		}
+		if cur_idx + 1 < nav_count {
+			_hierarchy_selected = _hierarchy_nav_list[cur_idx + 1]
+		}
+		return
+	}
+
+	if im.IsKeyPressed(im.Key.LeftArrow) {
+		has_children := len(t.children) > 0
+		if has_children {
+			is_expanded := cur_idx + 1 < nav_count && _is_ancestor(selected_tH, _hierarchy_nav_list[cur_idx + 1])
+			if is_expanded {
+				_hierarchy_node_collapse(selected_tH, t, deep = alt)
+				return
+			}
+		}
+		parent_tH := engine.Transform_Handle(t.parent.handle)
+		if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) {
+			_hierarchy_selected = parent_tH
+		}
+		return
+	}
 }
 
 hierarchy_get_selected :: proc() -> engine.Transform_Handle {
