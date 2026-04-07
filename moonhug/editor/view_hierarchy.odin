@@ -22,6 +22,10 @@ _hierarchy_rename_target: engine.Transform_Handle
 _hierarchy_rename_buf: [256]byte
 @(private)
 _hierarchy_rename_focus: bool
+@(private)
+_hierarchy_rename_just_opened: bool
+@(private)
+_hierarchy_rename_just_finished: bool
 
 @(private)
 _hierarchy_dimmed_color: im.Vec4
@@ -83,6 +87,29 @@ draw_hierarchy_view :: proc() {
 
 	if !has_any {
 		im.TextDisabled("No loaded scenes")
+	}
+
+	if _hierarchy_rename_just_finished {
+		_hierarchy_rename_just_finished = false
+	} else {
+		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
+		has_selected := _hierarchy_selected != _HANDLE_NONE
+		if is_not_renaming && has_selected && im.IsWindowHovered({}) {
+			is_root_selected := false
+			for i in 0..<sm.count {
+				scene := sm.loaded[i]
+				if scene == nil || !engine.sm_scene_is_valid(scene) do continue
+				if engine.Transform_Handle(scene.root.handle) == _hierarchy_selected {
+					is_root_selected = true
+					break
+				}
+			}
+			if !is_root_selected {
+				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
+					_begin_rename(_hierarchy_selected)
+				}
+			}
+		}
 	}
 }
 
@@ -214,7 +241,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	label: cstring
 	if is_renaming {
-		label = "##rename_placeholder"
+		label = "##renaming_node"
 	} else {
 		label = strings.clone_to_cstring(t.name, context.temp_allocator)
 	}
@@ -235,17 +262,22 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	node_rect_max := im.GetItemRectMax()
 
 	if is_renaming {
-		im.SameLine()
+		text_x := im.GetItemRectMin().x + im.GetTreeNodeToLabelSpacing()
+		input_width := node_rect_max.x - text_x
+		im.SetCursorScreenPos(im.Vec2{text_x, node_rect_min.y})
 		if _hierarchy_rename_focus {
 			im.SetKeyboardFocusHere(0)
 			_hierarchy_rename_focus = false
+			_hierarchy_rename_just_opened = true
 		}
-		im.SetNextItemWidth(-1)
+		im.SetNextItemWidth(input_width)
 		buf_cstr := cstring(raw_data(_hierarchy_rename_buf[:]))
 		if im.InputText("##rename", buf_cstr, c.size_t(len(_hierarchy_rename_buf)), {.EnterReturnsTrue, .AutoSelectAll}) {
 			_apply_rename(t)
 		}
-		if !im.IsItemActive() && !_hierarchy_rename_focus {
+		if _hierarchy_rename_just_opened {
+			_hierarchy_rename_just_opened = false
+		} else if !im.IsItemActive() {
 			if im.IsItemDeactivatedAfterEdit() {
 				_apply_rename(t)
 			} else {
@@ -362,6 +394,7 @@ _apply_rename :: proc(t: ^engine.Transform) {
 		t.name = strings.clone(new_name)
 	}
 	_hierarchy_rename_target = _HANDLE_NONE
+	_hierarchy_rename_just_finished = true
 }
 
 @(private)
