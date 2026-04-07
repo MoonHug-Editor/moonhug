@@ -115,7 +115,6 @@ For more details see [Contribution](docs/Contribution.md)
 - clear clipboard completely on each copy call
 
 - Editor Undo system
-- on_validate callback for better WYSIWYG experience
 
 ### Considered Features
 - memory management guide

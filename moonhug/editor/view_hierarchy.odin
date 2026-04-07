@@ -30,6 +30,9 @@ _hierarchy_dimmed_color: im.Vec4
 _hierarchy_force_open: engine.Transform_Handle
 
 @(private)
+_hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
+
+@(private)
 _save_as_buf: [512]byte
 @(private)
 _save_as_open: bool
@@ -219,8 +222,15 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	if _hierarchy_force_open == tH {
 		im.SetNextItemOpen(true)
 		_hierarchy_force_open = _HANDLE_NONE
+	} else if v, ok := _hierarchy_alt_open_pending[tH]; ok {
+		im.SetNextItemOpen(v)
+		delete_key(&_hierarchy_alt_open_pending, tH)
 	}
 	node_open := im.TreeNodeEx(label, flags)
+
+	if has_children && im.IsItemToggledOpen() && im.GetIO().KeyAlt {
+		_populate_alt_open_pending(t, node_open)
+	}
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
 
@@ -486,6 +496,20 @@ _draw_drop_target_empty_space :: proc(scene: ^engine.Scene) {
 				}
 			}
 			im.EndDragDropTarget()
+		}
+	}
+}
+
+@(private)
+_populate_alt_open_pending :: proc(t: ^engine.Transform, open: bool) {
+	w := engine.ctx_world()
+	for child_ref in t.children {
+		ct := engine.pool_get(&w.transforms, child_ref.handle)
+		if ct == nil do continue
+		child_tH := engine.Transform_Handle(child_ref.handle)
+		_hierarchy_alt_open_pending[child_tH] = open
+		if len(ct.children) > 0 {
+			_populate_alt_open_pending(ct, open)
 		}
 	}
 }
