@@ -18,7 +18,7 @@ Tween :: struct {
     skip:bool,
     is_await:bool,
     delay:f32,
-    // todo add subject : Transform_Handle here, it will override ctx.subject
+    subject: Ref,
 
     // runtime only fields:
     delay_elapsed:f32 `json:"-"`,

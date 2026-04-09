@@ -290,3 +290,68 @@ test_scene_file_remap_produces_unique_ids :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, unique, "all remapped ids should be unique")
 }
+
+@(test)
+test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	parentH := engine.transform_new("Parent")
+	targetH := engine.transform_new("Target", parentH)
+
+	target_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(targetH))
+	testing.expect(t, target_t != nil, "target should exist")
+	if target_t == nil do return
+	target_local_id := target_t.local_id
+
+	_, player := engine.transform_get_or_add_comp(parentH, engine.Player)
+	testing.expect(t, player != nil, "Player should be added")
+	if player == nil do return
+
+	tween := engine.TweenMoveToLocal{
+		position = {10, 20, 30},
+		duration = 1.0,
+	}
+	tween.subject = engine.Ref{
+		pptr = engine.PPtr{local_id = target_local_id},
+		handle = engine.Handle(targetH),
+	}
+	append(&player.animations, engine.TweenUnion(tween))
+
+	data := engine.scene_copy_subtree(parentH)
+	defer delete(data)
+	testing.expect(t, len(data) > 0, "copy should succeed")
+	if len(data) == 0 do return
+
+	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
+	inst := engine.scene_paste_subtree(data, rootH)
+	testing.expect(t, inst != {}, "paste should succeed")
+	if inst == {} do return
+
+	inst_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(inst))
+	testing.expect(t, inst_t != nil, "instantiated root should exist")
+	if inst_t == nil do return
+	testing.expect_value(t, len(inst_t.children), 1)
+	if len(inst_t.children) < 1 do return
+
+	inst_target_h := inst_t.children[0].handle
+	inst_target := engine.pool_get(&tc_mem.world.transforms, inst_target_h)
+	testing.expect(t, inst_target != nil, "instantiated target should exist")
+	if inst_target == nil do return
+	inst_target_local_id := inst_target.local_id
+
+	_, inst_player := engine.transform_get_comp(inst, engine.Player)
+	testing.expect(t, inst_player != nil, "instantiated Player should exist")
+	if inst_player == nil do return
+	testing.expect(t, len(inst_player.animations) == 1, "should have 1 animation")
+	if len(inst_player.animations) < 1 do return
+
+	inst_tween := engine.tween_base(&inst_player.animations[0])
+	testing.expect(t, inst_tween.subject.pptr.local_id == inst_target_local_id,
+		"tween subject local_id should be remapped to instantiated target's local_id")
+	testing.expect(t, inst_tween.subject.pptr.local_id != target_local_id,
+		"tween subject local_id should differ from original")
+}
