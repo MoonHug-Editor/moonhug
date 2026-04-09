@@ -155,11 +155,8 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 	pt := pool_get(&w.transforms, Handle(parent))
 	s := pt.scene
 
-	result := _scene_load_as_child(&sf, parent, s)
-	if result != {} {
-		_transform_remap_scene(result, s)
-	}
-	return result
+	_scene_file_remap_local_ids(&sf, s)
+	return _scene_load_as_child(&sf, parent, s)
 }
 
 scene_duplicate_subtree :: proc(tH: Transform_Handle) -> Transform_Handle {

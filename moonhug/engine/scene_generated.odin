@@ -127,6 +127,46 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	return Transform_Handle(root_handle)
 }
 
+_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
+	if s == nil do return
+	remap := make(map[Local_ID]Local_ID)
+	defer delete(remap)
+
+	for &t in sf.transforms {
+		new_id := scene_next_id(s)
+		remap[t.local_id] = new_id
+		t.local_id = new_id
+	}
+
+	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+
+	for &t in sf.transforms {
+		if t.parent.pptr.local_id != 0 {
+			if new_id, ok := remap[t.parent.pptr.local_id]; ok {
+				t.parent.pptr.local_id = new_id
+			}
+		}
+		for &child in t.children {
+			if new_id, ok := remap[child.pptr.local_id]; ok {
+				child.pptr.local_id = new_id
+			}
+		}
+		for &c in t.components {
+			if new_id, ok := remap[c.local_id]; ok {
+				c.local_id = new_id
+			}
+		}
+	}
+
+	if new_root, ok := remap[sf.root]; ok {
+		sf.root = new_root
+	}
+}
+
 scene_file_destroy :: proc(sf: ^SceneFile) {
 	for &t in sf.transforms {
 		delete(t.children)

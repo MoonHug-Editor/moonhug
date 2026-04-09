@@ -139,5 +139,6 @@ scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Tr
     tr := pool_get(&w.transforms, Handle(parent))
     sc: ^Scene
     if tr != nil do sc = tr.scene
+    _scene_file_remap_local_ids(&sf, sc)
     return _scene_load_as_child(&sf, parent, sc)
 }
