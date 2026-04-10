@@ -99,6 +99,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 - png - Texture2D with N Sprites
 
+- hierarchy - alt+shift+A to toggle transform.active.
 - improve default types inspector UX
 
 - Asset search / filter in Project View A single text input that filters the visible files by name substring

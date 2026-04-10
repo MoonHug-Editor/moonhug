@@ -5,6 +5,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:io"
 import "core:mem"
+import "base:runtime"
 import engine ".."
 
 asset_guid_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
@@ -17,6 +18,7 @@ asset_guid_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> 
 asset_guid_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
 	val, parse_err := json.parse_value(p)
 	if parse_err != nil do return parse_err
+	defer json.destroy_value(val)
 	s, ok := val.(json.String)
 	if !ok do return json.Unmarshal_Data_Error.Invalid_Data
 	id, read_err := uuid.read(s)
@@ -64,6 +66,7 @@ union_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.
 union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     obj_val, parse_err := json.parse_value(p)
     if parse_err != nil do return parse_err
+    defer json.destroy_value(obj_val)
 
     root, ok := obj_val.(json.Object)
     if !ok do return json.Unmarshal_Data_Error.Invalid_Data
@@ -80,21 +83,27 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     tid := engine.get_typeid_by_guid(guid)
     if tid == nil do return json.Unmarshal_Data_Error.Invalid_Data
 
+    heap := runtime.default_allocator()
+
     data_bytes, marshal_err := json.marshal(root, allocator = context.temp_allocator)
     if marshal_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
 
     ti := type_info_of(tid)
-    variant_ptr, alloc_err := mem.alloc(ti.size, ti.align, context.temp_allocator)
+    variant_ptr, alloc_err := mem.alloc(ti.size, ti.align, heap)
     if alloc_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
     mem.zero(variant_ptr, ti.size)
 
     ptr_tid, ptr_tid_ok := engine.get_pointer_typeid_by_typeid(tid)
     if !ptr_tid_ok do return json.Unmarshal_Data_Error.Invalid_Data
 
-    if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}); uerr != nil do return uerr
+    if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}, allocator = heap); uerr != nil {
+        mem.free(variant_ptr, heap)
+        return uerr
+    }
 
     mem.copy(v.data, variant_ptr, ti.size)
     reflect.set_union_variant_typeid(v, tid)
+    mem.free(variant_ptr, heap)
 
     return nil
 }

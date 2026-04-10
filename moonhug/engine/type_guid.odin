@@ -30,6 +30,20 @@ type_key_to_typeMeta_arr:    [TypeKey]TypeMeta
 type_key_to_pointerType_arr: [TypeKey]typeid
 typeid_to_type_key_map: map[typeid]TypeKey
 
+@(init)
+_type_guid_maps_init :: proc "contextless" () {
+	context = runtime.default_context()
+	alloc := runtime.default_allocator()
+	guid_to_type           = make(Guid_Type_Map,        alloc)
+	typeid_to_guid         = make(Type_Guid_Map,        alloc)
+	guid_to_factory        = make(Guid_Factory_Map,     alloc)
+	typeid_to_factory      = make(Typeid_Factory_Map,   alloc)
+	guid_to_typeMeta       = make(Guid_TypeMeta_Map,    alloc)
+	typeid_to_typeMeta     = make(Typeid_TypeMeta_Map,  alloc)
+	typeid_to_pointerType  = make(Type_PointerType_Map, alloc)
+	typeid_to_type_key_map = make(map[typeid]TypeKey,   alloc)
+}
+
 _typeid_counter : u16
 
 FieldInfo :: struct
@@ -59,12 +73,13 @@ typeid_to_u16 :: proc($T: typeid) -> u16 {
 }
 
 generate_type_info :: proc($T: typeid) -> TypeMeta {
+    alloc := runtime.default_allocator()
     info := TypeMeta{
         typeId = T,
         typeU16 = typeid_to_u16(T),
         pointer_typeId = ^T,
         size = size_of(T),
-        fields = [dynamic]FieldInfo{},
+        fields = make([dynamic]FieldInfo, alloc),
         }
     for field in reflect.struct_fields_zipped(T) {
         append(&info.fields, FieldInfo{

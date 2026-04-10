@@ -69,6 +69,7 @@ __component_resets_init :: proc() {
 	component_reset_procs[.Camera] = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) }
 	component_reset_procs[.Lifetime] = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) }
 	component_reset_procs[.SpriteRenderer] = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) }
+	component_destroy_procs[.Player] = proc(ptr: rawptr) { destroy_Player(cast(^Player)ptr) }
 }
 
 __component_on_validates_init :: proc() {
@@ -120,10 +121,15 @@ transform_destroy_components :: proc(tH: Transform_Handle) {
 	if t == nil do return
 	for &c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
-		if world_pool_valid(w, c.handle) do world_pool_destroy(w, c.handle)
+		if world_pool_valid(w, c.handle) {
+			ptr := world_pool_get(w, c.handle)
+			if ptr != nil do component_destroy(c.handle.type_key, ptr)
+			world_pool_destroy(w, c.handle)
+		}
 		c.handle.type_key = INVALID_TYPE_KEY
 	}
-	clear(&t.components)
+	delete(t.components)
+	t.components = {}
 }
 
 transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
@@ -167,4 +173,20 @@ world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
 		return pool_get(&w.tween_unions, handle)
 	}
 	return nil
+}
+
+world_destroy_all :: proc(w: ^World) {
+	for i in 0..<len(w.players.slots) {
+		slot := &w.players.slots[i]
+		if !slot.alive do continue
+		destroy_Player(&slot.data)
+	}
+	for i in 0..<len(w.transforms.slots) {
+		slot := &w.transforms.slots[i]
+		if !slot.alive do continue
+		t := &slot.data
+		delete(t.name)
+		delete(t.children)
+		delete(t.components)
+	}
 }

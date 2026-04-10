@@ -3,9 +3,18 @@ package app
 import "core:encoding/json"
 import "../engine"
 import ser "../engine/serialization"
+import "base:runtime"
 
 component_marshalers:   map[typeid]json.User_Marshaler
 component_unmarshalers: map[typeid]json.User_Unmarshaler
+
+@(init)
+_component_serializers_maps_init :: proc "contextless" () {
+	context = runtime.default_context()
+	alloc := runtime.default_allocator()
+	component_marshalers   = make(map[typeid]json.User_Marshaler,   alloc)
+	component_unmarshalers = make(map[typeid]json.User_Unmarshaler, alloc)
+}
 
 register_component_serializers :: proc() {
     json.set_user_marshalers(&component_marshalers)

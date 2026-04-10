@@ -62,6 +62,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		t^ = t_data
 		t.scene = s
 		if t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY
+		t_data.name = ""
 		t_data.children = {}
 		t_data.components = {}
 		id_to_transform_handle[t_data.local_id] = handle
@@ -165,10 +166,17 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 	if new_root, ok := remap[sf.root]; ok {
 		sf.root = new_root
 	}
+
+	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
+	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
+	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
+	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
+	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
 }
 
 scene_file_destroy :: proc(sf: ^SceneFile) {
 	for &t in sf.transforms {
+		delete(t.name)
 		delete(t.children)
 		delete(t.components)
 	}

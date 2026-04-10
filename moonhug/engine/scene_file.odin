@@ -4,13 +4,88 @@ import "core:encoding/json"
 import "core:os"
 import "core:fmt"
 import "core:strings"
+import "base:runtime"
 
+_remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
+	if ptr == nil || ti == nil do return
+	base := runtime.type_info_base(ti)
+	if base == nil do return
+
+	#partial switch info in base.variant {
+	case runtime.Type_Info_Struct:
+		tid := ti.id
+		if tid == typeid_of(PPtr) {
+			pptr := cast(^PPtr)ptr
+			if pptr.local_id != 0 {
+				if new_id, ok := remap[pptr.local_id]; ok {
+					pptr.local_id = new_id
+				}
+			}
+			return
+		}
+		if tid == typeid_of(Ref) {
+			ref := cast(^Ref)ptr
+			if ref.pptr.local_id != 0 {
+				if new_id, ok := remap[ref.pptr.local_id]; ok {
+					ref.pptr.local_id = new_id
+				}
+			}
+			return
+		}
+		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+			rl := cast(^Ref_Local)ptr
+			if rl.local_id != 0 {
+				if new_id, ok := remap[rl.local_id]; ok {
+					rl.local_id = new_id
+				}
+			}
+			return
+		}
+
+		count := int(info.field_count)
+		for i in 0..<count {
+			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
+			_remap_refs_in_value(field_ptr, info.types[i], remap)
+		}
+
+	case runtime.Type_Info_Union:
+		tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+		tag: i64
+		switch info.tag_type.size {
+		case 1: tag = i64((cast(^u8)tag_ptr)^)
+		case 2: tag = i64((cast(^u16)tag_ptr)^)
+		case 4: tag = i64((cast(^u32)tag_ptr)^)
+		case 8: tag = i64((cast(^u64)tag_ptr)^)
+		}
+		idx := tag if info.no_nil else tag - 1
+		if idx < 0 || int(idx) >= len(info.variants) do return
+		variant_ti := info.variants[idx]
+		_remap_refs_in_value(ptr, variant_ti, remap)
+
+	case runtime.Type_Info_Dynamic_Array:
+		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+		if dyn.data == nil || dyn.len == 0 do return
+		elem_size := info.elem_size
+		for i in 0..<dyn.len {
+			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
+			_remap_refs_in_value(elem_ptr, info.elem, remap)
+		}
+
+	case runtime.Type_Info_Array:
+		elem_size := info.elem_size
+		for i in 0..<info.count {
+			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
+			_remap_refs_in_value(elem_ptr, info.elem, remap)
+		}
+	}
+}
 
 _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
 
 	t_copy := t^
+	t_copy.name = strings.clone(t.name)
 	t_copy.children = make([dynamic]Ref, len(t.children))
 	copy(t_copy.children[:], t.children[:])
 	t_copy.components = make([dynamic]Owned, len(t.components))

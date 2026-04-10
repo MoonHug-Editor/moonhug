@@ -8,3 +8,11 @@ Player :: struct {
     colors: [dynamic][4]f32,
     animations: [dynamic]TweenUnion,
 }
+
+destroy_Player :: proc(p: ^Player) {
+    for &anim in p.animations {
+        tween_free(&anim)
+    }
+    delete(p.animations)
+    delete(p.colors)
+}

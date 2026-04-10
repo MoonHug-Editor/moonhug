@@ -442,7 +442,10 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\tif new_root, ok := remap[sf.root]; ok {\n")
 	strings.write_string(&b, "\t\tsf.root = new_root\n")
-	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "\t}\n\n")
+	for e in data.entries {
+		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ _remap_refs_in_value(&c, type_info_of(%s), &remap) }}\n", e.plural, e.type_name)
+	}
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "scene_file_destroy :: proc(sf: ^SceneFile) {\n")

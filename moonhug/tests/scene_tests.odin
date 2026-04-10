@@ -16,8 +16,15 @@ TestCtx :: struct {
 }
 
 @(private)
+_serializers_registered: bool
+
+@(private)
 setup :: proc(tc: ^TestCtx, path: string = "") {
 	app.register_type_guids()
+	if !_serializers_registered {
+		app.register_component_serializers()
+		_serializers_registered = true
+	}
 	engine.w_init(&tc.world)
 	tc.uc.world = &tc.world
 	tc.path = path
@@ -29,8 +36,11 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 
 @(private)
 teardown :: proc(tc: ^TestCtx) {
-	engine.scene_destroy(tc.scene)
+	if engine.sm_scene_is_valid(tc.scene) {
+		engine.scene_destroy(tc.scene)
+	}
 	engine.sm_scene_set_active(nil)
+	engine.world_destroy_all(&tc.world)
 	if tc.path != "" do os.remove(tc.path)
 }
 
@@ -300,30 +310,32 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	parentH := engine.transform_new("Parent")
-	targetH := engine.transform_new("Target", parentH)
+	target1H := engine.transform_new("Target1", parentH)
+	target2H := engine.transform_new("Target2", parentH)
 
-	target_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(targetH))
-	testing.expect(t, target_t != nil, "target should exist")
-	if target_t == nil do return
-	target_local_id := target_t.local_id
+	t1 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(target1H))
+	t2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(target2H))
+	if t1 == nil || t2 == nil do return
+	t1_lid := t1.local_id
+	t2_lid := t2.local_id
 
 	_, player := engine.transform_get_or_add_comp(parentH, engine.Player)
-	testing.expect(t, player != nil, "Player should be added")
 	if player == nil do return
 
-	tween := engine.TweenMoveToLocal{
-		position = {10, 20, 30},
-		duration = 1.0,
-	}
-	tween.subject = engine.Ref{
-		pptr = engine.PPtr{local_id = target_local_id},
-		handle = engine.Handle(targetH),
-	}
-	append(&player.animations, engine.TweenUnion(tween))
+	move := engine.TweenMoveToLocal{ position = {10, 20, 30}, duration = 1.0 }
+	move.subject = engine.Ref{ pptr = engine.PPtr{local_id = t1_lid}, handle = engine.Handle(target1H) }
+
+	scale := engine.TweenScaleToLocal{ scale = {2, 2, 2}, duration = 0.5 }
+	scale.subject = engine.Ref{ pptr = engine.PPtr{local_id = t2_lid}, handle = engine.Handle(target2H) }
+
+	seq := engine.Sequence{}
+	append(&seq.children, engine.TweenUnion(move))
+	append(&seq.children, engine.TweenUnion(scale))
+	append(&player.animations, engine.TweenUnion(seq))
+	seq.children = {}
 
 	data := engine.scene_copy_subtree(parentH)
 	defer delete(data)
-	testing.expect(t, len(data) > 0, "copy should succeed")
 	if len(data) == 0 do return
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
@@ -332,26 +344,35 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	if inst == {} do return
 
 	inst_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(inst))
-	testing.expect(t, inst_t != nil, "instantiated root should exist")
 	if inst_t == nil do return
-	testing.expect_value(t, len(inst_t.children), 1)
-	if len(inst_t.children) < 1 do return
+	testing.expect_value(t, len(inst_t.children), 2)
+	if len(inst_t.children) < 2 do return
 
-	inst_target_h := inst_t.children[0].handle
-	inst_target := engine.pool_get(&tc_mem.world.transforms, inst_target_h)
-	testing.expect(t, inst_target != nil, "instantiated target should exist")
-	if inst_target == nil do return
-	inst_target_local_id := inst_target.local_id
+	inst_t1 := engine.pool_get(&tc_mem.world.transforms, inst_t.children[0].handle)
+	inst_t2 := engine.pool_get(&tc_mem.world.transforms, inst_t.children[1].handle)
+	if inst_t1 == nil || inst_t2 == nil do return
+	inst_t1_lid := inst_t1.local_id
+	inst_t2_lid := inst_t2.local_id
 
 	_, inst_player := engine.transform_get_comp(inst, engine.Player)
-	testing.expect(t, inst_player != nil, "instantiated Player should exist")
 	if inst_player == nil do return
-	testing.expect(t, len(inst_player.animations) == 1, "should have 1 animation")
+	testing.expect_value(t, len(inst_player.animations), 1)
 	if len(inst_player.animations) < 1 do return
 
-	inst_tween := engine.tween_base(&inst_player.animations[0])
-	testing.expect(t, inst_tween.subject.pptr.local_id == inst_target_local_id,
-		"tween subject local_id should be remapped to instantiated target's local_id")
-	testing.expect(t, inst_tween.subject.pptr.local_id != target_local_id,
-		"tween subject local_id should differ from original")
+	inst_seq := &inst_player.animations[0].(engine.Sequence)
+	testing.expect_value(t, len(inst_seq.children), 2)
+	if len(inst_seq.children) < 2 do return
+
+	child0 := engine.tween_base(&inst_seq.children[0])
+	child1 := engine.tween_base(&inst_seq.children[1])
+
+	testing.expect(t, child0.subject.pptr.local_id != t1_lid,
+		"child0 subject should differ from original")
+	testing.expect(t, child0.subject.pptr.local_id == inst_t1_lid,
+		"child0 subject should be remapped to instantiated Target1")
+
+	testing.expect(t, child1.subject.pptr.local_id != t2_lid,
+		"child1 subject should differ from original")
+	testing.expect(t, child1.subject.pptr.local_id == inst_t2_lid,
+		"child1 subject should be remapped to instantiated Target2")
 }
