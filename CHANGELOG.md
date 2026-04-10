@@ -1,3 +1,9 @@
+## [0.9.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.9.0...v0.9.1) (2026-04-10)
+
+### Bug Fixes
+
+* memory fixes, add memory guide wip ([9818bd2](https://github.com/MoonHug-Editor/moonhug/commit/9818bd2568efda6bc98e2e8628ace6f0913541ae))
+
 ## [0.9.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.8.0...v0.9.0) (2026-04-07)
 
 ### Features
