@@ -139,6 +139,53 @@ main :: proc() {
 
 ---
 
+## Shallow Copy
+
+- A struct assignment copies fields by value.  
+- Dynamic arrays, slices, maps, and strings contain a header (pointer + length + capacity).  
+Assigning them copies the header, not the underlying data. Both the source and destination now point at the same backing memory — called a shallow copy.
+
+### Dangling pointer and double free example
+```odin
+a := make([dynamic]int)
+append(&a, 1, 2, 3)
+
+b := a          // shallow copy: b.data == a.data
+append(&b, 4)   // if b reallocates: a.data becomes a dangling pointer
+                // if b does NOT reallocate: delete(a) + delete(b) = double-free
+
+delete(a)  // <-- can be dangling
+delete(b)  // <-- double free
+```
+
+### Transfer ownership
+
+Transfer responsibility for freeing to a new owner by zeroing the source so only one variable is responsible for freeing it:
+```odin
+a := make([dynamic]int)
+append(&a, 1, 2, 3)
+
+b: [dynamic]int
+b = a       // b now points at the same backing memory as a
+a = {}      // zero the source — b is now the sole owner
+            // delete(a) is a no-op, calling or not calling it does nothing
+delete(b)   // only one delete, no double-free
+```
+
+## Deep copy
+When you need two independent owners:
+
+```odin
+a := make([dynamic]int) // allocate memory a
+append(&a, 1, 2, 3)
+
+b := make([dynamic]int, len(a)) // allocate same len memory at different address
+copy(b[:], a[:])        // copy from a to b, operates on slices
+
+delete(a)               // delete memory at a
+delete(b)               // delete memory at b, no double-free
+```
+
 ---
 
 ## Quick Reference
