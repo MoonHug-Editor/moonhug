@@ -62,7 +62,6 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		t^ = t_data
 		t.scene = s
 		if t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY
-		t_data.name = ""
 		t_data.children = {}
 		t_data.components = {}
 		id_to_transform_handle[t_data.local_id] = handle
@@ -176,7 +175,6 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 
 scene_file_destroy :: proc(sf: ^SceneFile) {
 	for &t in sf.transforms {
-		delete(t.name)
 		delete(t.children)
 		delete(t.components)
 	}

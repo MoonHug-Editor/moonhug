@@ -14,6 +14,7 @@ ComponentEntry :: struct {
 	max:             int,
 	has_reset:       bool,
 	has_on_validate: bool,
+	has_on_destroy:  bool,
 }
 
 PoolableEntry :: struct {
@@ -123,6 +124,8 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 			defer delete(reset_name)
 			on_validate_name := strings.concatenate({"on_validate_", type_name})
 			defer delete(on_validate_name)
+			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
+			defer delete(on_destroy_name)
 			append(&data.entries, ComponentEntry{
 				type_name       = type_name,
 				snake_name      = snake,
@@ -131,6 +134,7 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 				max             = comp_max,
 				has_reset       = gen_core.FileHasProc(file, reset_name),
 				has_on_validate = gen_core.FileHasProc(file, on_validate_name),
+				has_on_destroy  = gen_core.FileHasProc(file, on_destroy_name),
 			})
 				continue
 			}
@@ -228,6 +232,7 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
 	strings.write_string(&b, "\t__component_resets_init()\n")
 	strings.write_string(&b, "\t__component_on_validates_init()\n")
+	strings.write_string(&b, "\t__component_on_destroys_init()\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s].collect_fn = proc(comp: rawptr, sf: rawptr) {{\n", e.type_name)
@@ -255,6 +260,14 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	for e in data.entries {
 		if e.has_on_validate {
 			fmt.sbprintf(&b, "\tcomponent_on_validate_procs[.%s] = proc(ptr: rawptr) {{ on_validate_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
+		}
+	}
+	strings.write_string(&b, "}\n\n")
+
+	strings.write_string(&b, "__component_on_destroys_init :: proc() {\n")
+	for e in data.entries {
+		if e.has_on_destroy {
+			fmt.sbprintf(&b, "\tcomponent_on_destroy_procs[.%s] = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "}\n\n")
@@ -287,7 +300,11 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "\tif t == nil do return\n")
 	strings.write_string(&b, "\tfor &c in t.components {\n")
 	strings.write_string(&b, "\t\tif c.handle.type_key == INVALID_TYPE_KEY do continue\n")
-	strings.write_string(&b, "\t\tif world_pool_valid(w, c.handle) do world_pool_destroy(w, c.handle)\n")
+	strings.write_string(&b, "\t\tif world_pool_valid(w, c.handle) {\n")
+	strings.write_string(&b, "\t\t\tptr := world_pool_get(w, c.handle)\n")
+	strings.write_string(&b, "\t\t\tif ptr != nil do component_on_destroy(c.handle.type_key, ptr)\n")
+	strings.write_string(&b, "\t\t\tworld_pool_destroy(w, c.handle)\n")
+	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t\tc.handle.type_key = INVALID_TYPE_KEY\n")
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tclear(&t.components)\n")
@@ -318,8 +335,28 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 			fmt.sbprintf(&b, "{{\n\t\treturn pool_get(&w.%s, handle)\n\t}}\n", e.plural)
 		}
 		strings.write_string(&b, "\treturn nil\n")
-		strings.write_string(&b, "}\n")
+		strings.write_string(&b, "}\n\n")
 	}
+
+	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
+	for e in data.entries {
+		if e.has_on_destroy {
+			fmt.sbprintf(&b, "\tfor i in 0..<len(w.%s.slots) {{\n", e.plural)
+			fmt.sbprintf(&b, "\t\tslot := &w.%s.slots[i]\n", e.plural)
+			strings.write_string(&b, "\t\tif !slot.alive do continue\n")
+			fmt.sbprintf(&b, "\t\ton_destroy_%s(&slot.data)\n", e.type_name)
+			strings.write_string(&b, "\t}\n")
+		}
+	}
+	strings.write_string(&b, "\tfor i in 0..<len(w.transforms.slots) {\n")
+	strings.write_string(&b, "\t\tslot := &w.transforms.slots[i]\n")
+	strings.write_string(&b, "\t\tif !slot.alive do continue\n")
+	strings.write_string(&b, "\t\tt := &slot.data\n")
+	strings.write_string(&b, "\t\tdelete(t.name)\n")
+	strings.write_string(&b, "\t\tdelete(t.children)\n")
+	strings.write_string(&b, "\t\tdelete(t.components)\n")
+	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "}\n")
 
 	gen_path := strings.concatenate({out_dir, "/components_generated.odin"})
 	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))

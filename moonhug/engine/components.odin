@@ -75,8 +75,8 @@ component_on_validate :: proc(key: TypeKey, ptr: rawptr) {
 	if fn := component_on_validate_procs[key]; fn != nil do fn(ptr)
 }
 
-component_destroy_procs: [TypeKey]proc(rawptr)
+component_on_destroy_procs: [TypeKey]proc(rawptr)
 
-component_destroy :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := component_destroy_procs[key]; fn != nil do fn(ptr)
+component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := component_on_destroy_procs[key]; fn != nil do fn(ptr)
 }

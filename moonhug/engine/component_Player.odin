@@ -9,7 +9,7 @@ Player :: struct {
     animations: [dynamic]TweenUnion,
 }
 
-destroy_Player :: proc(p: ^Player) {
+on_destroy_Player :: proc(p: ^Player) {
     for &anim in p.animations {
         tween_free(&anim)
     }
