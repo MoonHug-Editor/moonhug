@@ -25,7 +25,7 @@ Stack doesn't require manual freeing so prefer it over heap when possible.
 
 ```odin
 x: [dynamic]int // created on heap
-y: [dynamic;64] // created on stack
+y: [dynamic;64]int // created on stack
 ```
 > Use the **stack** Luke
 
@@ -89,7 +89,7 @@ defer delete(s)                // frees the backing memory
 
 ### proc returns allocated data and error
 ```odin
-data, err := os.read_entire_file(path) // allocates data on success
+data, err := os.read_entire_file(path, context.allocator) // allocates data on success
 if err != nil do return // assumes data wasn't allocated due to error
 defer delete(data)      // freed no matter how we exit from here
 ```
@@ -124,8 +124,8 @@ cleanup_S :: proc(s: ^S) {
  free(s)
 }
 
-s = new(T)
-cleanup_S(&s)
+s := new(S)
+cleanup_S(s)
 ```
 
 > Rule: If a type owns heap data, it needs destroy proc
