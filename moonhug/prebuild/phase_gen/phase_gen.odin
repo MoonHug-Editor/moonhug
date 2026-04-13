@@ -8,11 +8,19 @@ import "../gen_core"
 
 DEFAULT_PHASE_NAMES :: []string{"EditorInit", "EditorShutdown", "Init", "Shutdown"}
 
+PhaseMode :: enum {
+	All,
+	Editor,
+	App,
+}
+
 PhaseEntry :: struct {
 	key_name:  string,
 	key_index: int,
 	order:     int,
 	name:      string,
+	mode:      PhaseMode,
+	pkg_name:  string,
 }
 
 PhaseCollectData :: struct {
@@ -21,13 +29,22 @@ PhaseCollectData :: struct {
 	pkg_name:    string,
 }
 
-_has_phase_attr :: proc(attr: ^ast.Attribute) -> (key_name: string, order: int, found: bool) {
-	if attr == nil do return "", 0, false
-	if val, ok := gen_core.AttrFindFieldValue(attr, "Phase"); ok {
+_parse_phase_mode :: proc(s: string) -> PhaseMode {
+	switch s {
+	case "Editor": return .Editor
+	case "App":    return .App
+	}
+	return .All
+}
+
+_has_phase_attr :: proc(attr: ^ast.Attribute) -> (key_name: string, order: int, mode: PhaseMode, found: bool) {
+	if attr == nil do return "", 0, .All, false
+	if val, ok := gen_core.AttrFindFieldValue(attr, "phase"); ok {
 		if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
 			if key_ex, ok := gen_core.CompLitGetField(comp, "key"); ok do key_name = gen_core.ExtractKeyName(key_ex)
 			if order_ex, ok := gen_core.CompLitGetField(comp, "order"); ok do order = gen_core.ExtractInt(order_ex)
-			return key_name, order, key_name != ""
+			if mode_ex, ok := gen_core.CompLitGetField(comp, "mode"); ok do mode = _parse_phase_mode(gen_core.ExtractKeyName(mode_ex))
+			return key_name, order, mode, key_name != ""
 		}
 	}
 	for elem in attr.elems {
@@ -38,9 +55,11 @@ _has_phase_attr :: proc(attr: ^ast.Attribute) -> (key_name: string, order: int, 
 			key_name = gen_core.ExtractKeyName(val)
 		case "order":
 			order = gen_core.ExtractInt(val)
+		case "mode":
+			mode = _parse_phase_mode(gen_core.ExtractKeyName(val))
 		}
 	}
-	return key_name, order, key_name != ""
+	return key_name, order, mode, key_name != ""
 }
 
 _collect_phase_extra :: proc(pkg: ^ast.Package) -> [dynamic]string {
@@ -125,10 +144,10 @@ collect :: proc(pkg: ^ast.Package, data: ^PhaseCollectData) -> bool {
 			if !is_no_arg_proc do continue
 
 			for attr in v_decl.attributes {
-				key_name, order, found := _has_phase_attr(attr)
+				key_name, order, mode, found := _has_phase_attr(attr)
 				if found {
 					idx := _index_of_phase(data.phase_names[:], key_name)
-					append(&data.entries, PhaseEntry{key_name = key_name, key_index = idx, order = order, name = ident_name})
+					append(&data.entries, PhaseEntry{key_name = key_name, key_index = idx, order = order, name = ident_name, mode = mode, pkg_name = pkg.name})
 					break
 				}
 			}
@@ -175,9 +194,13 @@ _write_dispatch_proc :: proc(b: ^strings.Builder, proc_name: string, entries: []
 
 _split_entries :: proc(data: ^PhaseCollectData) -> (editor: [dynamic]PhaseEntry, app: [dynamic]PhaseEntry) {
 	for e in data.entries {
-		if strings.has_prefix(e.key_name, "Editor") {
+		switch e.mode {
+		case .Editor:
 			append(&editor, e)
-		} else {
+		case .App:
+			append(&app, e)
+		case .All:
+			append(&editor, e)
 			append(&app, e)
 		}
 	}
@@ -207,6 +230,10 @@ generate_editor :: proc(data: ^PhaseCollectData, out_dir: string) -> bool {
 			fmt.sbprintf(&b, "\tcase .%s:\n", current_key)
 		}
 		strings.write_string(&b, "\t\t")
+		if e.pkg_name != data.pkg_name {
+			strings.write_string(&b, e.pkg_name)
+			strings.write_string(&b, ".")
+		}
 		strings.write_string(&b, e.name)
 		strings.write_string(&b, "()\n")
 	}

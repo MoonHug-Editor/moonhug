@@ -152,7 +152,7 @@ main :: proc() {
     save_editor_settings()
 }
 
-@(Phase={key=app.Phase.EditorInit, order=0})
+@(phase={key=app.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
 
 	log.info("Editor Init")
@@ -213,7 +213,7 @@ open_scenes_from_settings :: proc() {
     }
 }
 
-@(Phase={key=app.Phase.EditorShutdown, order=0})
+@(phase={key=app.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_view()

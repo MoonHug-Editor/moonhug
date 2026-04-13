@@ -53,7 +53,7 @@ Phase_Extra :: enum {
 
 BULLET_SCENE_GUID :: "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
 
-@(Phase={key=Phase.Init})
+@(phase={key=Phase.Init})
 app_init :: proc() {
     log.info("App Init")
     register_type_guids()
@@ -84,7 +84,7 @@ setup_player_animations :: proc()
     }
 }
 
-@(Phase={key=Phase.Shutdown})
+@(phase={key=Phase.Shutdown})
 app_shutdown :: proc() {
     log.info("App Shutdown")
 }

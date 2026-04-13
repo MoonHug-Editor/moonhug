@@ -10,5 +10,9 @@ phase_editor_run :: proc(key: app.Phase) {
 		editor_init()
 	case .EditorShutdown:
 		editor_shutdown()
+	case .Init:
+		app.app_init()
+	case .Shutdown:
+		app.app_shutdown()
 	}
 }
