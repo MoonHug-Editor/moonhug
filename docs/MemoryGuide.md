@@ -6,7 +6,17 @@ You allocate and free manually via provided API.
 This guide covers some concepts for better leak-free, crash-free code.  
 Ordered from simple to more complex.
 
-## Allocation/Deallocation tools
+## Allocation/Deallocation tools and concepts
+
+---
+### Owner, reference
+When memory is allocated its address is stored in some Owner (variable, struct).  
+
+> Rule: There can be only one owner for same backing memory
+
+> Rule: When removing owner its owned memory also should be cleaned up
+
+> Rule: Ref becomes dangling pointer after backing memory gets freed
 
 ---
 ### stack vs heap
@@ -20,6 +30,23 @@ y: [dynamic;64] // created on stack
 > Use the **stack** Luke
 
 ---
+### slice
+slice is a stack variable, look into heap memory
+```odin
+a:[dynamic]int
+defer delete(a)
+
+append(&a, 11)
+append(&a, 22)
+append(&a, 33)
+
+a_slice := a[0:2] // {11, 22} created on stack, no need to deallocate
+
+append(&a, 44)      // may reallocate `a`— a_slice.data now potentially dangling
+_ = a_slice[0]      // unsafe
+```
+
+---
 ### defer
 
 - `defer` operations are guaranteed to execute at the end of scope in opposite order of declaration (FILO/LIFO)
@@ -29,8 +56,8 @@ y: [dynamic;64] // created on stack
 ### [new](http://pkg.odin-lang.org/base/builtin/#new) / [free](http://pkg.odin-lang.org/base/builtin/#free) - one element
 
 ```odin
-node :^T= new(T)        // allocates 1 T
-defer(free(node))       // frees 1 T
+a :^T= new(T)        // allocates 1 T
+defer free(a)        // frees 1 T
 ```
 > Mirror `new` with `free`.  
 > ＼(*´▽｀*)／ Everyone likes **new and free**
@@ -40,24 +67,24 @@ defer(free(node))       // frees 1 T
 
 ```odin
 buf  := make([]byte, 256)         // slice — fixed-length backing array
-defer(delete(buf))
+defer delete(buf)
 
 arr  := make([dynamic]int)        // dynamic array — growable
-defer(delete(arr))
+defer delete(arr)
 
 m    := make(map[string]int)      // map
-defer(delete(m))
+defer delete(m)
 ```
 
 > Mirror `make` with `delete`.  
-> To make multiple delete multiple
+> Make multiple, delete multiple
 
 ## Special case examples
 ### proc returns allocated data
 
 ```odin
 s := strings.clone("hello")    // allocates string
-defer delete(s)                // frees the backing bytes
+defer delete(s)                // frees the backing memory
 ```
 
 ### proc returns allocated data and error
@@ -67,6 +94,54 @@ if err != nil do return // assumes data wasn't allocated due to error
 defer delete(data)      // freed no matter how we exit from here
 ```
 
+---
+
+### dynamic array of values on heap
+```odin
+s: [dynamic]string
+
+defer(delete(s)) // leaks string values
+
+defer{ // correct — free each owned string first
+  for str in s do delete(str)
+  delete(s)
+}
+
+append(&s, strings.clone("hello"))
+append(&s, strings.clone("world"))
+```
+
+---
+### struct owns heap value
+```odin
+S :: struct {
+ a:int,
+ n:string,
+}
+
+cleanup_S :: proc(s: ^S) {
+ delete(s.n)
+ free(s)
+}
+
+s = new(T)
+cleanup_S(&s)
+```
+
+> Rule: If a type owns heap data, it needs destroy proc
+
+---
+
+### JSON cleanup
+
+`json.parse_value` allocates a `json.Value` tree. Destroy it with `json.destroy_value`:
+
+```odin
+val, err := json.parse_value(p)
+if err != nil do return err
+defer json.destroy_value(val)   // frees the parsed JSON tree
+```
+---
 # [Allocators](https://odin-lang.org/docs/overview/#allocators)
 
 ## Context Allocators
@@ -99,6 +174,18 @@ ptr_on_temp := new(int, context.temp_allocator)  // uses override
 temp_str := strings.clone(s) // uses context.allocator
 temp_str_on_temp := strings.clone(s, context.temp_allocator) // uses override
 ```
+
+### Temp allocator data escaping the frame
+
+```odin
+// WRONG: clones into temp_allocator, then stores the pointer long-term
+t.name = strings.clone(name, context.temp_allocator)
+// temp is cleared at end of frame; t.name is now a dangling pointer
+
+// CORRECT:
+t.name = strings.clone(name)  // uses context.allocator; persists until delete(t.name)
+```
+
 
 ---
 
@@ -135,8 +222,25 @@ main :: proc() {
 }
 ```
 
-> **Rule:** free with the same allocator that allocated. Freeing a `temp_allocator` allocation with `context.allocator` (or vice versa) is a bad free.
 
+## Allocator Consistency — Avoiding Bad Frees
+
+A **bad free** happens when you call `free` (or `delete`) on a pointer using a different allocator than the one that allocated it.
+
+### Allocator new/free mismatch
+```odin
+// WRONG: json unmarshal allocates with runtime.default_allocator(), but transform_destroy
+// will free the name with context.allocator (the tracking allocator in tests)
+json.unmarshal(data, &s, allocator = runtime.default_allocator())
+defer free(s)
+
+// CORRECT: use context.allocator throughout so alloc and free match
+json.unmarshal(data, &s)
+defer free(s)
+
+```
+
+> **Rule:** free with the same allocator that allocated. Freeing a `temp_allocator` allocation with `context.allocator` (or vice versa) is a bad free.
 ---
 
 ## Shallow Copy
@@ -180,7 +284,7 @@ a := make([dynamic]int) // allocate memory a
 append(&a, 1, 2, 3)
 
 b := make([dynamic]int, len(a)) // allocate same len memory at different address
-copy(b[:], a[:])        // copy from a to b, operates on slices
+copy(b[:], a[:])        // copy from a slice to b slice
 
 delete(a)               // delete memory at a
 delete(b)               // delete memory at b, no double-free
