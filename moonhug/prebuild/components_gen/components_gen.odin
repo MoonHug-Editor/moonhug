@@ -307,7 +307,8 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t\tc.handle.type_key = INVALID_TYPE_KEY\n")
 	strings.write_string(&b, "\t}\n")
-	strings.write_string(&b, "\tclear(&t.components)\n")
+	strings.write_string(&b, "\tdelete(t.components)\n")
+	strings.write_string(&b, "\tt.components = {}\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {\n")
@@ -398,6 +399,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\tt^ = t_data\n")
 	strings.write_string(&b, "\t\tt.scene = s\n")
 	strings.write_string(&b, "\t\tif t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY\n")
+	strings.write_string(&b, "\t\tt_data.name = \"\"\n")
 	strings.write_string(&b, "\t\tt_data.children = {}\n")
 	strings.write_string(&b, "\t\tt_data.components = {}\n")
 	strings.write_string(&b, "\t\tid_to_transform_handle[t_data.local_id] = handle\n")
@@ -487,6 +489,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 
 	strings.write_string(&b, "scene_file_destroy :: proc(sf: ^SceneFile) {\n")
 	strings.write_string(&b, "\tfor &t in sf.transforms {\n")
+	strings.write_string(&b, "\t\tdelete(t.name)\n")
 	strings.write_string(&b, "\t\tdelete(t.children)\n")
 	strings.write_string(&b, "\t\tdelete(t.components)\n")
 	strings.write_string(&b, "\t}\n")

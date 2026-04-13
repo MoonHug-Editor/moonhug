@@ -132,7 +132,8 @@ transform_destroy_components :: proc(tH: Transform_Handle) {
 		}
 		c.handle.type_key = INVALID_TYPE_KEY
 	}
-	clear(&t.components)
+	delete(t.components)
+	t.components = {}
 }
 
 transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {

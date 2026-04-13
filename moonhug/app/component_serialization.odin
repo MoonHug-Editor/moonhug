@@ -17,6 +17,10 @@ _component_serializers_maps_init :: proc "contextless" () {
 }
 
 register_component_serializers :: proc() {
+    @(static) has_inited:= false
+    if has_inited do return
+    has_inited = true
+
     json.set_user_marshalers(&component_marshalers)
     json.set_user_unmarshalers(&component_unmarshalers)
 
