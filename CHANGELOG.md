@@ -1,3 +1,9 @@
+## [0.10.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.9.1...v0.10.0) (2026-04-13)
+
+### Features
+
+* phase add mode (All,Editor, App) ([9eb1726](https://github.com/MoonHug-Editor/moonhug/commit/9eb17268080d832814de3e6ad6faf3095c03426b))
+
 ## [0.9.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.9.0...v0.9.1) (2026-04-10)
 
 ### Bug Fixes
