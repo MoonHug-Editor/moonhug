@@ -3,7 +3,7 @@ package serialization
 import "core:fmt"
 import "core:reflect"
 import "core:os"
-import "core:encoding/json"
+import "../../engine/json"
 import "core:encoding/uuid"
 import strings "core:strings"
 import engine ".."

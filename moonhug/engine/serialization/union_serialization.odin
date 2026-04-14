@@ -1,7 +1,7 @@
 package serialization
 
 import "core:reflect"
-import "core:encoding/json"
+import "../../engine/json"
 import "core:encoding/uuid"
 import "core:io"
 import "core:mem"

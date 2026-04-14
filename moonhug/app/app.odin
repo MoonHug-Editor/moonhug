@@ -6,7 +6,7 @@ import "../engine/serialization"
 import rl "vendor:raylib"
 import "core:os"
 import "core:fmt"
-import "core:encoding/json"
+import "../engine/json"
 import "core:encoding/uuid"
 import "../engine/log"
 

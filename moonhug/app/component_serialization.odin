@@ -1,6 +1,6 @@
 package app
 
-import "core:encoding/json"
+import "../engine/json"
 import "../engine"
 import ser "../engine/serialization"
 import "base:runtime"

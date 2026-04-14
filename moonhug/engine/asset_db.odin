@@ -4,7 +4,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:path/filepath"
-import "core:encoding/json"
+import "../engine/json"
 import "core:encoding/uuid"
 
 AssetDB :: struct {

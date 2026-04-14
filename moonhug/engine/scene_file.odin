@@ -1,6 +1,6 @@
 package engine
 
-import "core:encoding/json"
+import "../engine/json"
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -247,4 +247,3 @@ scene_duplicate_subtree :: proc(tH: Transform_Handle) -> Transform_Handle {
 
 	return scene_paste_subtree(data, parent)
 }
-

@@ -1,7 +1,7 @@
 package engine
 
 import "core:reflect"
-import "core:encoding/json"
+import "../engine/json"
 
 TweenStatus :: enum { Pending, Running, Done }
 TweenContext :: struct {
@@ -137,4 +137,3 @@ tween_tick_running :: proc(delta_time: f32, ctx: TweenContext) {
         node = next
     }
 }
-

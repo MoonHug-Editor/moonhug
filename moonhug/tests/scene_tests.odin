@@ -5,7 +5,7 @@ import "../app"
 
 import "core:testing"
 import "core:os"
-import "core:encoding/json"
+import "../engine/json"
 
 @(private)
 TestCtx :: struct {

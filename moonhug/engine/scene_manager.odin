@@ -2,7 +2,7 @@ package engine
 
 import "core:fmt"
 import "core:os"
-import "core:encoding/json"
+import "../engine/json"
 import "core:encoding/uuid"
 
 MAX_SCENES :: 100
