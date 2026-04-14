@@ -12,7 +12,6 @@ ComponentEntry :: struct {
 	plural:          string,
 	menu_path:       string,
 	max:             int,
-	has_reset:       bool,
 	has_on_validate: bool,
 	has_on_destroy:  bool,
 }
@@ -120,8 +119,6 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 			menu_path, comp_max, has_comp := _has_component_attr(v_decl)
 			if has_comp && is_struct {
 				if menu_path == "" do menu_path = type_name
-			reset_name := strings.concatenate({"reset_", type_name})
-			defer delete(reset_name)
 			on_validate_name := strings.concatenate({"on_validate_", type_name})
 			defer delete(on_validate_name)
 			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
@@ -132,7 +129,6 @@ collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
 				plural          = plural,
 				menu_path       = menu_path,
 				max             = comp_max,
-				has_reset       = gen_core.FileHasProc(file, reset_name),
 				has_on_validate = gen_core.FileHasProc(file, on_validate_name),
 				has_on_destroy  = gen_core.FileHasProc(file, on_destroy_name),
 			})
@@ -230,7 +226,8 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
 	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
-	strings.write_string(&b, "\t__component_resets_init()\n")
+	strings.write_string(&b, "\t__type_resets_init()\n")
+	strings.write_string(&b, "\t__type_cleanups_init()\n")
 	strings.write_string(&b, "\t__component_on_validates_init()\n")
 	strings.write_string(&b, "\t__component_on_destroys_init()\n")
 	for e in data.entries {
@@ -245,14 +242,6 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	}
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
-	}
-	strings.write_string(&b, "}\n\n")
-
-	strings.write_string(&b, "__component_resets_init :: proc() {\n")
-	for e in data.entries {
-		if e.has_reset {
-			fmt.sbprintf(&b, "\tcomponent_reset_procs[.%s] = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
-		}
 	}
 	strings.write_string(&b, "}\n\n")
 

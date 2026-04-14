@@ -26,7 +26,7 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
     if pComp == nil do return {}, nil
 
     comp_init_base(pComp, tH)
-    component_reset(key, pComp)
+	type_reset(key, pComp)
 
     base := cast(^CompData)pComp
     owned := Owned{handle = handle, local_id = base.local_id}
@@ -63,10 +63,16 @@ Script :: struct {
     using base: CompData `inspect:"-"`,
 }
 
-component_reset_procs: [TypeKey]proc(rawptr)
+type_reset_procs: [TypeKey]proc(rawptr)
 
-component_reset :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := component_reset_procs[key]; fn != nil do fn(ptr)
+type_reset :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := type_reset_procs[key]; fn != nil do fn(ptr)
+}
+
+type_cleanup_procs: [TypeKey]proc(rawptr)
+
+type_cleanup :: proc(key: TypeKey, ptr: rawptr) {
+	if fn := type_cleanup_procs[key]; fn != nil do fn(ptr)
 }
 
 component_on_validate_procs: [TypeKey]proc(rawptr)

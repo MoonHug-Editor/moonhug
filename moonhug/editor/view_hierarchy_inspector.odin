@@ -159,9 +159,9 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			im.OpenPopup(popup_id)
 		}
 		if im.BeginPopup(popup_id) {
-			if engine.component_reset_procs[comp.handle.type_key] != nil {
+			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
-					engine.component_reset(comp.handle.type_key, comp_ptr)
+					engine.type_reset(comp.handle.type_key, comp_ptr)
 				}
 				im.Separator()
 			}

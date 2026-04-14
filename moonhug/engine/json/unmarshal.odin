@@ -1,4 +1,4 @@
-package encoding_json
+package engine_json
 
 import "core:mem"
 import "core:math"

@@ -31,7 +31,7 @@ Using one of these `Specification`s.
 		* Quotes around object keys are optional if the keys are valid identifiers.
 		* : can be replaced with =
 */
-package encoding_json
+package engine_json
 
 import "core:strings"
 

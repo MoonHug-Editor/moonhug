@@ -20,7 +20,8 @@ w_init :: proc(w:^World)
 	pool_init(&w.sprite_renderers)
 	pool_init(&w.tween_unions)
 	pool_init(&w.transforms)
-	__component_resets_init()
+	__type_resets_init()
+	__type_cleanups_init()
 	__component_on_validates_init()
 	__component_on_destroys_init()
 	w.pool_table[TypeKey.Camera] = pool_make_entry(&w.cameras)
@@ -64,12 +65,6 @@ w_init :: proc(w:^World)
 		append(&s.sprite_renderers, c_copy)
 	}
 	w.pool_table[TypeKey.TweenUnion] = pool_make_entry(&w.tween_unions)
-}
-
-__component_resets_init :: proc() {
-	component_reset_procs[.Camera] = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) }
-	component_reset_procs[.Lifetime] = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) }
-	component_reset_procs[.SpriteRenderer] = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) }
 }
 
 __component_on_validates_init :: proc() {

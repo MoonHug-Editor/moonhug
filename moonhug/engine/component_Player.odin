@@ -9,10 +9,33 @@ Player :: struct {
     animations: [dynamic]TweenUnion,
 }
 
+reset_Player :: proc(p: ^Player) {
+	cleanup_Player(p)
+    p.speed = 55
+
+    p.colors = make([dynamic][4]f32)
+    append(&p.colors, [4]f32{1, 0, 0, 1})
+    append(&p.colors, [4]f32{0, 1, 0, 1})
+    append(&p.colors, [4]f32{0, 0, 1, 1})
+}
+
 on_destroy_Player :: proc(p: ^Player) {
-    for &anim in p.animations {
-        tween_free(&anim)
-    }
-    delete(p.animations)
-    delete(p.colors)
+	cleanup_Player(p)
+}
+
+cleanup_Player :: proc(p: ^Player) {
+	if p.colors != nil do defer {
+			delete(p.colors)
+			p.colors = {}
+		}
+
+	if p.animations != nil {
+		defer {
+			delete(p.animations)
+			p.animations = {}
+		}
+		for &anim, i in p.animations {
+			tween_free(&anim)
+		}
+	}
 }

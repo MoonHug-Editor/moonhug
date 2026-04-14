@@ -94,12 +94,16 @@ For more details see [Contribution](docs/Contribution.md)
 
 - scene or scene_manager should have map of local_id to avoid collisions
 
+- json — before deserialize, call cleanup on fields where serialized value exists (struct only)
+
 - scene view gizmos
   - scene view toolbar (move, rotate, scale)
 
 - png - Texture2D with N Sprites
 
 - hierarchy - alt+shift+A to toggle transform.active.
+- transform - use bit set + procs, instead of direct bool change
+
 - improve default types inspector UX
 
 - Asset search / filter in Project View A single text input that filters the visible files by name substring
