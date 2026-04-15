@@ -1,3 +1,10 @@
+## [0.11.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.10.0...v0.11.0) (2026-04-15)
+
+### Features
+
+* copy core/json package for customization ([0407546](https://github.com/MoonHug-Editor/moonhug/commit/0407546f922b2ff42826395eba1b20df930dad74))
+* improve type_reset, add type_cleanup feature ([b74cd6b](https://github.com/MoonHug-Editor/moonhug/commit/b74cd6b04f9c2fc2b687b07ee91373fc17f0259f))
+
 ## [0.10.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.9.1...v0.10.0) (2026-04-13)
 
 ### Features
