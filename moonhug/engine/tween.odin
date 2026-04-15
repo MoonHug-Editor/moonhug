@@ -1,7 +1,7 @@
 package engine
 
 import "core:reflect"
-import "../engine/json"
+import "core:encoding/json"
 
 TweenStatus :: enum { Pending, Running, Done }
 TweenContext :: struct {

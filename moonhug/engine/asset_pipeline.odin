@@ -4,7 +4,7 @@ import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:path/filepath"
-import "../engine/json"
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:time"
 

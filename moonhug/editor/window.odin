@@ -1,7 +1,7 @@
 package editor
 
 import rl "vendor:raylib"
-import "../engine/json"
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:strings"

@@ -25,3 +25,10 @@ Rules:
 - When component is attached to transform it gets valid local_id
 - When transform is created in scene it gets valid local_id
 - When transform is added to a different scene: itself, its components and children get local_id remap
+
+-----
+Default values for components:
+
+- Prefabs(or serialized data, etc.) are source of defaults(to not fight with deserialization)
+  - deserialization should happen on zeroed object.
+  - reset_T should cleanup_T then set values(later might use deserialization after cleanup)

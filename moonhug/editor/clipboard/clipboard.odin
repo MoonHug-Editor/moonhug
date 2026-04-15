@@ -1,6 +1,6 @@
 package clipboard
 
-import "../../engine/json"
+import "core:encoding/json"
 import "core:fmt"
 import "core:reflect"
 import engine "../../engine"
