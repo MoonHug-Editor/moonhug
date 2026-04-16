@@ -1,3 +1,13 @@
+## [0.13.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.12.0...v0.13.0) (2026-04-16)
+
+### Features
+
+* opaque nested scene wip ([a0c94b3](https://github.com/MoonHug-Editor/moonhug/commit/a0c94b3946bc31660a0df479052a715208f13255))
+
+### Bug Fixes
+
+* minor, remove TypeKey value for better git diff ([feb0609](https://github.com/MoonHug-Editor/moonhug/commit/feb0609f88b0127cf84789900480aa6d00c0f8b5))
+
 ## [0.12.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.11.0...v0.12.0) (2026-04-16)
 
 ### Features
