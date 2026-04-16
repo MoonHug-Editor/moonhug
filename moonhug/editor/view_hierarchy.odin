@@ -286,7 +286,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			text_color = im.GetColorU32ImVec4(_hierarchy_dimmed_color)
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
-		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(t.name, context.temp_allocator))
+		label := t.name
+		if _, ns := engine.transform_get_comp(tH, engine.NestedScene); ns != nil {
+			label = strings.concatenate({t.name, "  [nested scene]"}, context.temp_allocator)
+		}
+		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(label, context.temp_allocator))
 	}
 
 	if im.IsItemClicked(.Left) && !is_renaming {
@@ -485,6 +489,11 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 				engine.transform_set_parent(dragged, tH)
 			}
 		}
+		asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
+		if asset_payload != nil && asset_payload.Data != nil {
+			path := string(([^]byte)(asset_payload.Data)[:asset_payload.DataSize])
+			_hierarchy_drop_asset_as_child(path, tH)
+		}
 		im.EndDragDropTarget()
 	}
 
@@ -531,9 +540,31 @@ _draw_drop_target_empty_space :: proc(scene: ^engine.Scene) {
 					engine.transform_set_parent(dragged, root_tH)
 				}
 			}
+			asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
+			if asset_payload != nil && asset_payload.Data != nil {
+				path := string(([^]byte)(asset_payload.Data)[:asset_payload.DataSize])
+				root_tH := engine.Transform_Handle(scene.root.handle)
+				_hierarchy_drop_asset_as_child(path, root_tH)
+			}
 			im.EndDragDropTarget()
 		}
 	}
+}
+
+@(private)
+_hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform_Handle) {
+	if !strings.has_suffix(path, ".scene") do return
+	guid, ok := engine.asset_db_get_guid(path)
+	if !ok do return
+
+	name := filepath.stem(path)
+	new_tH := engine.transform_new(name, parent_tH)
+	_, ns := engine.transform_get_or_add_comp(new_tH, engine.NestedScene)
+	if ns != nil {
+		ns.scene_guid = engine.Asset_GUID(guid)
+	}
+	_hierarchy_selected = new_tH
+	_hierarchy_force_open = parent_tH
 }
 
 @(private)

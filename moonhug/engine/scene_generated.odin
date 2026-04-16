@@ -7,6 +7,7 @@ SceneFile :: struct {
 	transforms:    [dynamic]Transform,
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
+	nested_scenes: [dynamic]NestedScene,
 	players: [dynamic]Player,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
@@ -18,6 +19,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_nested_scene_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -34,6 +36,13 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Lifetime
 		lifetime^ = lifetime_data
 		id_to_lifetime_handle[lifetime_data.local_id] = handle
+	}
+
+	for &nested_scene_data in sf.nested_scenes {
+		handle, nested_scene := pool_create(&w.nested_scenes)
+		handle.type_key = .NestedScene
+		nested_scene^ = nested_scene_data
+		id_to_nested_scene_handle[nested_scene_data.local_id] = handle
 	}
 
 	for &player_data in sf.players {
@@ -91,6 +100,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				lifetime := pool_get(&w.lifetimes, h)
 				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_nested_scene_handle); ok {
+				c.handle = h
+				nested_scene := pool_get(&w.nested_scenes, h)
+				if nested_scene != nil do nested_scene.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
 				c.handle = h
 				player := pool_get(&w.players, h)
@@ -141,6 +154,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 
 	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.nested_scenes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
@@ -169,6 +183,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
+	for &c in sf.nested_scenes { _remap_refs_in_value(&c, type_info_of(NestedScene), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
 	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
 	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
@@ -183,6 +198,7 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.transforms)
 	delete(sf.cameras)
 	delete(sf.lifetimes)
+	delete(sf.nested_scenes)
 	delete(sf.players)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)

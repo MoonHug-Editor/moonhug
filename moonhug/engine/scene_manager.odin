@@ -117,6 +117,10 @@ _scene_load_additive :: proc(scene_file: ^SceneFile) -> ^Scene {
     if scene_manager.active_scene < 0 {
         scene_manager.active_scene = slot
     }
+
+    if ctx_get().is_playmode && root_tH != {} {
+        _scene_expand_nested_in_subtree(root_tH)
+    }
     return s
 }
 

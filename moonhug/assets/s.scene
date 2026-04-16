@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 14,
+  "next_local_id": 16,
   "transforms": [
     {
       "local_id": 1,
@@ -165,6 +165,12 @@
         },
         {
           "pptr": {
+            "local_id": 15,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
             "local_id": 10,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
@@ -322,6 +328,42 @@
       ]
     },
     {
+      "local_id": 15,
+      "name": "bullet",
+      "is_active": true,
+      "position": [
+        -4.80000019,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 5,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 16
+        }
+      ]
+    },
+    {
       "local_id": 10,
       "name": "Player",
       "is_active": true,
@@ -462,6 +504,15 @@
   "lifetimes": [
 
   ],
+  "nested_scenes": [
+    {
+      "base": {
+        "local_id": 16,
+        "enabled": true
+      },
+      "scene_guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+    }
+  ],
   "players": [
     {
       "base": {
@@ -512,14 +563,26 @@
           "base": {
             "skip": false,
             "is_await": false,
-            "delay": 0.00000000
+            "delay": 0.00000000,
+            "subject": {
+              "pptr": {
+                "local_id": 0,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              }
+            }
           },
           "children": [
             {"__type_guid":"da9d301a-66a3-450c-8c0b-8c696ad60b0b",
               "base": {
                 "skip": false,
                 "is_await": true,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "position": [
                 2.00000000,
@@ -532,7 +595,13 @@
               "base": {
                 "skip": false,
                 "is_await": false,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "position": [
                 -2.00000000,
@@ -547,14 +616,26 @@
           "base": {
             "skip": false,
             "is_await": false,
-            "delay": 0.00000000
+            "delay": 0.00000000,
+            "subject": {
+              "pptr": {
+                "local_id": 0,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              }
+            }
           },
           "children": [
             {"__type_guid":"aa1970c6-51d2-4d27-9dc8-718ad1e51160",
               "base": {
                 "skip": false,
                 "is_await": false,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "scale": [
                 2.00000000,
@@ -567,7 +648,13 @@
               "base": {
                 "skip": false,
                 "is_await": false,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "scale": [
                 1.00000000,
@@ -582,14 +669,26 @@
           "base": {
             "skip": false,
             "is_await": false,
-            "delay": 0.00000000
+            "delay": 0.00000000,
+            "subject": {
+              "pptr": {
+                "local_id": 0,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              }
+            }
           },
           "children": [
             {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
               "base": {
                 "skip": false,
                 "is_await": true,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "rotation": [
                 0.00000000,
@@ -603,7 +702,13 @@
               "base": {
                 "skip": false,
                 "is_await": true,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "rotation": [
                 0.00000000,
@@ -617,7 +722,13 @@
               "base": {
                 "skip": false,
                 "is_await": true,
-                "delay": 0.00000000
+                "delay": 0.00000000,
+                "subject": {
+                  "pptr": {
+                    "local_id": 0,
+                    "guid": "00000000-0000-0000-0000-000000000000"
+                  }
+                }
               },
               "rotation": [
                 0.00000000,

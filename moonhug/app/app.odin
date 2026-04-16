@@ -20,6 +20,7 @@ main :: proc() {
     rl.SetTargetFPS(60)
 
     uc := new(engine.UserContext)
+    uc.is_playmode = true
     context.user_ptr = uc
 
     w := new(engine.World)

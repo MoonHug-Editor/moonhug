@@ -3,6 +3,7 @@ package engine
 UserContext :: struct {
     world         : ^World,
     scene_manager : SceneManager,
+    is_playmode : bool,
 }
 
 ctx_get :: proc() -> ^UserContext {
