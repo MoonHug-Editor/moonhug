@@ -93,12 +93,25 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 		if ct != nil && ct.nested_owned do continue
 		append(&t_copy.children, child)
 	}
-	t_copy.components = make([dynamic]Owned, len(t.components))
-	copy(t_copy.components[:], t.components[:])
+	t_copy.components = make([dynamic]Owned, 0, len(t.components))
+	for c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw != nil {
+			base := cast(^CompData)raw
+			if base.nested_owned do continue
+		}
+		append(&t_copy.components, c)
+	}
 	append(&sf.transforms, t_copy)
 
 	for &c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw != nil {
+			base := cast(^CompData)raw
+			if base.nested_owned do continue
+		}
 		world_pool_collect(w, c.handle, sf)
 	}
 

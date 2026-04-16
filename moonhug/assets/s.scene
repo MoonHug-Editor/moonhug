@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 16,
+  "next_local_id": 18,
   "transforms": [
     {
       "local_id": 1,
@@ -159,6 +159,12 @@
         },
         {
           "pptr": {
+            "local_id": 17,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
             "local_id": 7,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
@@ -212,6 +218,42 @@
       ],
       "components": [
 
+      ]
+    },
+    {
+      "local_id": 17,
+      "name": "bullet",
+      "is_active": true,
+      "position": [
+        3.09999990,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 5,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 18
+        }
       ]
     },
     {
@@ -505,6 +547,13 @@
 
   ],
   "nested_scenes": [
+    {
+      "base": {
+        "local_id": 18,
+        "enabled": true
+      },
+      "scene_guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+    },
     {
       "base": {
         "local_id": 16,

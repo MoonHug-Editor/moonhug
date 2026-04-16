@@ -89,8 +89,49 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     nested_root_tH := _scene_load_as_child(&sf, host_tH, host_scene)
     if nested_root_tH == {} do return
 
-    _mark_subtree_nested_owned(nested_root_tH)
-    _scene_resolve_nested_in_subtree(nested_root_tH)
+    nested_root := pool_get(&w.transforms, Handle(nested_root_tH))
+    if nested_root == nil do return
+
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+
+    for i in 0..<len(host_t.children) {
+        if host_t.children[i].handle == Handle(nested_root_tH) {
+            ordered_remove(&host_t.children, i)
+            break
+        }
+    }
+
+    for &c in nested_root.components {
+        if world_pool_valid(w, c.handle) {
+            raw_c := world_pool_get(w, c.handle)
+            if raw_c != nil {
+                base := cast(^CompData)raw_c
+                base.owner = host_tH
+                base.nested_owned = true
+            }
+        }
+        append(&host_t.components, c)
+    }
+    clear(&nested_root.components)
+
+    for child in nested_root.children {
+        ct := pool_get(&w.transforms, child.handle)
+        if ct == nil do continue
+        ct.parent = make_transform_ref(host_tH)
+        append(&host_t.children, child)
+        _mark_subtree_nested_owned(Transform_Handle(child.handle))
+    }
+    clear(&nested_root.children)
+
+    transform_destroy(nested_root_tH)
+
+    for child in host_t.children {
+        ct := pool_get(&w.transforms, child.handle)
+        if ct == nil do continue
+        if ct.nested_owned {
+            _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+        }
+    }
 }
 
 _mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
@@ -114,16 +155,33 @@ _nested_scene_unresolve :: proc(host_tH: Transform_Handle) {
     host_t := pool_get(&w.transforms, Handle(host_tH))
     if host_t == nil do return
 
-    to_destroy := make([dynamic]Transform_Handle, 0, len(host_t.children), context.temp_allocator)
+    to_destroy_children := make([dynamic]Transform_Handle, 0, len(host_t.children), context.temp_allocator)
     for child in host_t.children {
         ct := pool_get(&w.transforms, child.handle)
         if ct == nil do continue
         if ct.nested_owned {
-            append(&to_destroy, Transform_Handle(child.handle))
+            append(&to_destroy_children, Transform_Handle(child.handle))
         }
     }
-    for tH in to_destroy {
+    for tH in to_destroy_children {
         transform_destroy(tH)
+    }
+
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+    if host_t == nil do return
+
+    to_remove_comps := make([dynamic]Handle, 0, len(host_t.components), context.temp_allocator)
+    for c in host_t.components {
+        if !world_pool_valid(w, c.handle) do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        base := cast(^CompData)raw
+        if base.nested_owned {
+            append(&to_remove_comps, c.handle)
+        }
+    }
+    for h in to_remove_comps {
+        transform_remove_comp(host_tH, h)
     }
 }
 
