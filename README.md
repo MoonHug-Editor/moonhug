@@ -94,8 +94,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - scene or scene_manager should have map of local_id to avoid collisions
 
-- json — before deserialize, call cleanup on fields where serialized value exists (struct only)
-
 - scene view gizmos
   - scene view toolbar (move, rotate, scale)
 

@@ -48,7 +48,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 		im.AlignTextToFramePadding()
 		im.Text(label)
 	}
-	draw_clipboard_row_popup(ptr, field_tid)
+	draw_field_context_menu(ptr, field_tid)
 
 	im.SameLine(im.GetContentRegionAvail().x - 150)
 	im.SetNextItemWidth(150)

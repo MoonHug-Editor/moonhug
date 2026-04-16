@@ -32,7 +32,7 @@ is_array_type :: proc(tid: typeid) -> bool {
 
 draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, field_tid: typeid, label: cstring) {
 	tree_open := im.TreeNode(label)
-	draw_clipboard_row_popup(ptr, field_tid)
+	draw_field_context_menu(ptr, field_tid)
 	if !tree_open do return
 	defer im.TreePop()
 	im.TextDisabled("Fixed size: %d", count)
@@ -47,7 +47,7 @@ draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, f
 
 draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring) {
 	tree_open := im.TreeNode(label)
-	draw_clipboard_row_popup(field_ptr, field_tid)
+	draw_field_context_menu(field_ptr, field_tid)
 	if !tree_open do return
 	defer im.TreePop()
 	im.TextDisabled("Size: %d", da.len)
@@ -83,7 +83,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	if drawer, ok := mapPropertyDrawer[elem_tid]; ok {
 		drawer(ptr, elem_tid, label)
-		draw_clipboard_row_popup(ptr, elem_tid)
+		draw_field_context_menu(ptr, elem_tid)
 		return
 	}
 	elem_ti := type_info_of(elem_tid)
@@ -94,7 +94,7 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	if reflect.is_struct(elem_ti) {
 		elem_any := any{ptr, elem_tid}
 		tree_open := im.TreeNode(label)
-		draw_clipboard_row_popup(ptr, elem_tid)
+		draw_field_context_menu(ptr, elem_tid)
 		if tree_open {
 			draw_inspector(elem_any)
 			im.TreePop()
@@ -104,7 +104,7 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	elem_any := any{ptr, elem_tid}
 	c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", label, elem_any), context.temp_allocator)
 	im.Text(c_str)
-	draw_clipboard_row_popup(ptr, elem_tid)
+	draw_field_context_menu(ptr, elem_tid)
 }
 
 append_dynamic_array_element :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info) -> bool {

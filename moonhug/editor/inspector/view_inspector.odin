@@ -1,6 +1,7 @@
 package inspector
 
 import "core:fmt"
+import "core:mem"
 import "core:reflect"
 import strings "core:strings"
 import im "../../../external/odin-imgui"
@@ -168,10 +169,29 @@ draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     draw_inspector(a, label)
 }
 
-draw_clipboard_row_popup :: proc(field_ptr: rawptr, field_tid: typeid) {
+draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
+        show_reset := false
+        if key, ok := engine.get_type_key_by_typeid(field_tid); ok && engine.type_reset_procs[key] != nil {
+            if im.MenuItem("Reset") {
+                engine.type_reset(key, field_ptr)
+                mark_inspector_changed()
+            }
+            show_reset = true
+        } else {
+            ti := type_info_of(field_tid)
+            if reflect.is_integer(ti) || reflect.is_float(ti) || reflect.is_boolean(ti) ||
+               reflect.is_enum(ti) {
+                if im.MenuItem("Reset") {
+                    mem.zero(field_ptr, ti.size)
+                    mark_inspector_changed()
+                }
+                show_reset = true
+            }
+        }
+        if show_reset do im.Separator()
         if im.MenuItem("Copy") {
             clip.copy(any{field_ptr, field_tid})
         }
@@ -257,7 +277,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                     row_popup_done = true
                 } else {
                     tree_open := im.TreeNode(c_field_name)
-                    draw_clipboard_row_popup(field_ptr, field_type.id)
+                    draw_field_context_menu(field_ptr, field_type.id)
                     row_popup_done = true
                     if tree_open {
                         draw_inspector(field_val)
@@ -273,7 +293,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                 im.Text(c_str)
             }
             if !row_popup_done {
-                draw_clipboard_row_popup(field_ptr, field_type.id)
+                draw_field_context_menu(field_ptr, field_type.id)
             }
             im.PopID()
         }
