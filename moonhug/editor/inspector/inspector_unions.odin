@@ -7,6 +7,7 @@ import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "../../../external/odin-imgui"
+import engine "../../engine"
 
 draw_inspector_union :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring) {
 	ti := runtime.type_info_base(type_info_of(field_tid))
@@ -60,7 +61,11 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 		selected = c.int(current_tag) + 1
 	}
 
-	if im.ComboChar("##type", &selected, ([^]cstring)(raw_data(variant_names[:])), c.int(len(variant_names))) {
+	readonly := engine.inspector_is_readonly()
+	if readonly {
+		im.BeginDisabled(true)
+	}
+	if im.ComboChar("##type", &selected, ([^]cstring)(raw_data(variant_names[:])), c.int(len(variant_names))) && !readonly {
 		new_tag: i64
 		if is_no_nil {
 			new_tag = i64(selected)
@@ -76,6 +81,9 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 			mem.zero(ptr, int(info.tag_offset))
 		}
 		mark_inspector_changed()
+	}
+	if readonly {
+		im.EndDisabled()
 	}
 
 	if has_content && tree_open {

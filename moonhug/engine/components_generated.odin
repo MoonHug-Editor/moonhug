@@ -79,6 +79,7 @@ w_init :: proc(w:^World)
 
 __component_on_validates_init :: proc() {
 	component_on_validate_procs[.Lifetime] = proc(ptr: rawptr) { on_validate_Lifetime(cast(^Lifetime)ptr) }
+	component_on_validate_procs[.NestedScene] = proc(ptr: rawptr) { on_validate_NestedScene(cast(^NestedScene)ptr) }
 }
 
 __component_on_destroys_init :: proc() {

@@ -4,6 +4,7 @@ CompData :: struct {
     owner: Transform_Handle `json:"-"`,
     local_id: Local_ID `inspect:"-"`,
     enabled: bool,
+    nested_owned: bool `json:"-" inspect:"-"`,
 }
 
 comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {

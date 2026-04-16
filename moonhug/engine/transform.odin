@@ -10,6 +10,7 @@ Transform :: struct {
     name: string,
     is_active: bool,
     destroy: bool `json:"-"`,
+    nested_owned: bool `json:"-"`,
     position: [3]f32,
     rotation: [4]f32,
     scale:    [3]f32,
@@ -106,7 +107,7 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return
     t.scene = s
-    if s != nil {
+    if s != nil && !t.nested_owned {
         t.local_id = scene_next_id(s)
         for &c in t.components {
             raw := world_pool_get(w, c.handle)

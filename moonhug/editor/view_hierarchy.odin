@@ -208,7 +208,7 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 }
 
 @(private)
-_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, is_root := false, parent_inactive := false) {
+_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, is_root := false, parent_inactive := false, parent_nested := false) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -217,7 +217,9 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	is_selected := _hierarchy_selected == tH
 	is_renaming := _hierarchy_rename_target == tH
 
-	pushed_dim := !t.is_active && !parent_inactive
+	is_nested := t.nested_owned || parent_nested
+
+	pushed_dim := (!t.is_active && !parent_inactive) || is_nested
 	inactive := parent_inactive || !t.is_active
 
 	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAvailWidth}
@@ -297,44 +299,44 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		_hierarchy_selected = tH
 	}
 
-	if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) && !is_renaming {
+	if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) && !is_renaming && !is_nested {
 		_begin_rename(tH)
 	}
 
 	im.OpenPopupOnItemClick("##NodeContext", im.PopupFlags_MouseButtonRight)
-	if !is_root {
+	if !is_root && !is_nested {
 		_draw_drag_source(tH)
 	}
 
 	if im.BeginPopup("##NodeContext") {
 		_hierarchy_selected = tH
-		if im.MenuItem("Create Empty Child", nil, false, true) {
+		if im.MenuItem("Create Empty Child", nil, false, !is_nested) {
 			_hierarchy_selected = engine.transform_new("Transform", tH)
 			_hierarchy_force_open = tH
 		}
-		if !is_root {
+		if !is_root && !is_nested {
 			if im.MenuItem("Create Empty Parent", nil, false, true) {
 				_create_empty_parent(tH, scene)
 			}
 		}
-		if im.MenuItem("Rename", nil, false, true) {
+		if im.MenuItem("Rename", nil, false, !is_nested) {
 			_begin_rename(tH)
 		}
 		im.Separator()
 		if im.MenuItem("Copy", nil, false, true) {
 			clip.copy_hierarchy(engine.scene_copy_subtree(tH))
 		}
-		if im.MenuItem("Paste", nil, false, clip.has_hierarchy()) {
+		if im.MenuItem("Paste", nil, false, clip.has_hierarchy() && !is_nested) {
 			result := engine.scene_paste_subtree(clip.paste_hierarchy(), tH)
 			engine._transform_append_name_suffix(result, "_copy")
 			_hierarchy_force_open = tH
 		}
-		if im.MenuItem("Duplicate", nil, false, !is_root) {
+		if im.MenuItem("Duplicate", nil, false, !is_root && !is_nested) {
 			result := engine.scene_duplicate_subtree(tH)
 			engine._transform_append_name_suffix(result, "_copy")
 			_hierarchy_selected = result
 		}
-		if !is_root {
+		if !is_root && !is_nested {
 			im.Separator()
 			if im.MenuItem("Delete", nil, false, true) {
 				if _hierarchy_selected == tH {
@@ -358,15 +360,16 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.EndPopup()
 	}
 
-	if !is_root {
+	if !is_root && !is_nested {
 		_draw_drop_target_on_node(tH, scene, node_rect_min, node_rect_max)
 	}
 
 	if node_open && has_children {
 		children_copy := make([]engine.Ref, len(t.children), context.temp_allocator)
 		copy(children_copy, t.children[:])
+		child_parent_nested := is_nested || t.nested_owned
 		for child in children_copy {
-			_draw_hierarchy_node(engine.Transform_Handle(child.handle), scene, parent_inactive = inactive)
+			_draw_hierarchy_node(engine.Transform_Handle(child.handle), scene, parent_inactive = inactive, parent_nested = child_parent_nested)
 		}
 		im.TreePop()
 	}
@@ -562,6 +565,7 @@ _hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform
 	_, ns := engine.transform_get_or_add_comp(new_tH, engine.NestedScene)
 	if ns != nil {
 		ns.scene_guid = engine.Asset_GUID(guid)
+		engine.nested_scene_resolve(new_tH)
 	}
 	_hierarchy_selected = new_tH
 	_hierarchy_force_open = parent_tH

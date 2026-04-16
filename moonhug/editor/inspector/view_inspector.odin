@@ -173,9 +173,10 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
+        readonly := engine.inspector_is_readonly()
         show_reset := false
         if key, ok := engine.get_type_key_by_typeid(field_tid); ok && engine.type_reset_procs[key] != nil {
-            if im.MenuItem("Reset") {
+            if im.MenuItem("Reset", nil, false, !readonly) {
                 engine.type_reset(key, field_ptr)
                 mark_inspector_changed()
             }
@@ -184,7 +185,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
             ti := type_info_of(field_tid)
             if reflect.is_integer(ti) || reflect.is_float(ti) || reflect.is_boolean(ti) ||
                reflect.is_enum(ti) {
-                if im.MenuItem("Reset") {
+                if im.MenuItem("Reset", nil, false, !readonly) {
                     mem.zero(field_ptr, ti.size)
                     mark_inspector_changed()
                 }
@@ -195,7 +196,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
         if im.MenuItem("Copy") {
             clip.copy(any{field_ptr, field_tid})
         }
-        can := clip.can_paste(field_tid)
+        can := clip.can_paste(field_tid) && !readonly
         if im.MenuItem("Paste", nil, false, can) {
             clip.paste(any{field_ptr, field_tid})
         }

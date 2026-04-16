@@ -4,6 +4,7 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:fmt"
+import "core:encoding/uuid"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import "inspector"
@@ -39,11 +40,57 @@ draw_hierarchy_inspector :: proc() {
 		return
 	}
 
+	is_nested := t.nested_owned
+	if is_nested {
+		host_tH := engine.transform_nested_enclosing_host(tH)
+		prev := engine.inspector_set_nested_host(host_tH)
+		defer engine.inspector_set_nested_host(prev)
+		engine.inspector_push_readonly()
+		defer engine.inspector_pop_readonly()
+
+		_draw_nested_banner(host_tH)
+		im.BeginDisabled(true)
+		defer im.EndDisabled()
+
+		_draw_header(t)
+		im.Separator()
+		_draw_transform_section(t)
+		_draw_components_section(t, tH)
+		return
+	}
+
 	_draw_header(t)
 	im.Separator()
 	_draw_transform_section(t)
 	_draw_components_section(t, tH)
 	_draw_add_component_button(t, tH)
+}
+
+@(private)
+_draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
+	w := engine.ctx_world()
+	source_path := ""
+	if _, ns := engine.transform_get_comp(host_tH, engine.NestedScene); ns != nil {
+		empty_guid := engine.Asset_GUID{}
+		if ns.scene_guid != empty_guid {
+			if path, ok := engine.asset_db_get_path(uuid.Identifier(ns.scene_guid)); ok {
+				source_path = path
+			}
+		}
+	}
+	host_name := "?"
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht != nil {
+		host_name = ht.name
+	}
+	label: string
+	if source_path != "" {
+		label = fmt.tprintf("Nested (read-only) from %s  -  host: %s", source_path, host_name)
+	} else {
+		label = fmt.tprintf("Nested (read-only)  -  host: %s", host_name)
+	}
+	im.TextColored(im.Vec4{1.0, 0.75, 0.3, 1.0}, strings.clone_to_cstring(label, context.temp_allocator))
+	im.Separator()
 }
 
 @(private)

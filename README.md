@@ -115,7 +115,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 - nested prefabs roadmap:
   - [v] opaque nested scene, instantiated at gameplay only
-  - transparent nested scene, read-only (view but no overrides)
+  - [wip] transparent nested scene, read-only (view but no overrides)
     - resolved in-memory tree
   - nested scene instance overrides
   - prefab variants
