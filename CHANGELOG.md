@@ -1,3 +1,13 @@
+## [0.12.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.11.0...v0.12.0) (2026-04-16)
+
+### Features
+
+* add reset context menu item to some scalar fields ([c5aca93](https://github.com/MoonHug-Editor/moonhug/commit/c5aca93ac126e829cf384defefc0d40bce8b30e3))
+
+### Bug Fixes
+
+* use core json package ([fb4e873](https://github.com/MoonHug-Editor/moonhug/commit/fb4e8737c6aa58dbeb9f83c44c4919c815de6594))
+
 ## [0.11.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.10.0...v0.11.0) (2026-04-15)
 
 ### Features
