@@ -8,6 +8,7 @@ import im "../../../external/odin-imgui"
 import ser "../../engine/serialization"
 import engine "../../engine"
 import clip "../clipboard"
+import undo_pkg "../undo"
 
 InspectorMode :: enum {
     Asset,
@@ -157,6 +158,34 @@ consume_inspector_changed :: proc() -> bool {
     return changed
 }
 
+is_changed_flag_set :: proc() -> bool {
+    return inspector_changed
+}
+
+@(private)
+_undo_finalize_field :: proc(field_ptr: rawptr, field_tid: typeid) {
+    activated := im.IsItemActivated()
+    deactivated_after_edit := im.IsItemDeactivatedAfterEdit()
+
+    if activated {
+        undo_pkg.promote_to_pending()
+    }
+
+    if deactivated_after_edit {
+        if undo_pkg.pending_matches(field_ptr) {
+            undo_pkg.pending_commit()
+            undo_pkg.end_field(false)
+            return
+        }
+    }
+
+    if inspector_changed && !im.IsItemActive() && !undo_pkg.pending_is_active() {
+        undo_pkg.end_field(true)
+    } else {
+        undo_pkg.end_field(false)
+    }
+}
+
 resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, label: cstring) {
     if drawer, ok := mapPropertyDrawer[tid]; ok {
         return drawer
@@ -260,16 +289,27 @@ draw_inspector :: proc(a: any, label: cstring = "") {
         if ctx.is_visible {
             im.PushIDPtr(field_ptr)
             row_popup_done := false
+            prev_changed_outside := inspector_changed
+            inspector_changed = false
+
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
+                undo_pkg.begin_field(field_ptr, field_type.id)
                 drawer(field_ptr, field_type.id, c_field_name)
+                _undo_finalize_field(field_ptr, field_type.id)
             } else if is_array_type(field_type.id) {
+                undo_pkg.begin_field(field_ptr, field_type.id)
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)
+                _undo_finalize_field(field_ptr, field_type.id)
                 row_popup_done = true
             } else if is_union_type(field_type.id) {
+                undo_pkg.begin_field(field_ptr, field_type.id)
                 draw_inspector_union(field_ptr, field_type.id, c_field_name)
+                undo_pkg.end_field(inspector_changed)
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
+                undo_pkg.begin_field(field_ptr, field_type.id)
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
+                undo_pkg.end_field(inspector_changed)
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
@@ -296,6 +336,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
             if !row_popup_done {
                 draw_field_context_menu(field_ptr, field_type.id)
             }
+            if prev_changed_outside || inspector_changed do inspector_changed = true
             im.PopID()
         }
 

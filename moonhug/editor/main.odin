@@ -8,6 +8,7 @@ import im_gl "../../external/odin-imgui/imgui_impl_opengl3"
 import "inspector"
 import "menu"
 import clip "clipboard"
+import undo_pkg "undo"
 import "../engine/serialization"
 import "../app"
 import "../app_editor"
@@ -65,6 +66,10 @@ main :: proc() {
     engine.w_init(w)
     engine.ctx_get().world = w
 
+    undo_stack := new(undo_pkg.Undo_Stack)
+    undo_pkg.init(undo_stack)
+    undo_pkg.install(undo_stack)
+
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
 
@@ -101,6 +106,8 @@ main :: proc() {
 
         menu.draw_menu_bar()
         draw_tool_bar()
+
+        _process_undo_shortcuts()
 
         // ImGui UI
         if menu.show_inspector {
@@ -164,6 +171,14 @@ editor_init :: proc() {
     clip.init()
     engine.register_pointer_type(bool)
     engine.register_pointer_type(int)
+    engine.register_pointer_type(i8)
+    engine.register_pointer_type(i16)
+    engine.register_pointer_type(i32)
+    engine.register_pointer_type(i64)
+    engine.register_pointer_type(u8)
+    engine.register_pointer_type(u16)
+    engine.register_pointer_type(u32)
+    engine.register_pointer_type(u64)
     engine.register_pointer_type(f32)
     engine.register_pointer_type(f64)
     engine.register_pointer_type(string)
@@ -228,4 +243,22 @@ scene_create_menu :: proc() {
 	scene := engine.scene_new()
 	save_path, _ := filepath.join({projectViewData.currentPath, "Scene.scene"}, context.temp_allocator)
 	engine.scene_save(scene, save_path)
+}
+
+_process_undo_shortcuts :: proc() {
+	if engine.ctx_get().is_playmode do return
+	s := undo_pkg.get()
+	if s == nil do return
+
+	undo_chord  := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Z)
+	redo_chord_y := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Y)
+	redo_chord_shift := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Z)
+
+	if im.Shortcut(redo_chord_shift, {.RouteGlobal}) {
+		undo_pkg.apply_redo(s)
+	} else if im.Shortcut(undo_chord, {.RouteGlobal}) {
+		undo_pkg.apply_undo(s)
+	} else if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
+		undo_pkg.apply_redo(s)
+	}
 }

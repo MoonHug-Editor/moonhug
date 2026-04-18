@@ -5,6 +5,7 @@ UserContext :: struct {
     scene_manager : SceneManager,
     is_playmode : bool,
     inspector     : InspectorState,
+    undo          : rawptr,
 }
 
 InspectorState :: struct {

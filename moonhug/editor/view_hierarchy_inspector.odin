@@ -10,6 +10,7 @@ import engine "../engine"
 import "inspector"
 import "menu"
 import clip "clipboard"
+import undo_pkg "undo"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -52,16 +53,19 @@ draw_hierarchy_inspector :: proc() {
 		im.BeginDisabled(true)
 		defer im.EndDisabled()
 
-		_draw_header(t)
+		_draw_header(t, tH)
 		im.Separator()
-		_draw_transform_section(t)
+		_draw_transform_section(t, tH)
 		_draw_components_section(t, tH)
 		return
 	}
 
-	_draw_header(t)
+	undo_pkg.push_transform_owner(tH)
+	defer undo_pkg.pop_owner()
+
+	_draw_header(t, tH)
 	im.Separator()
-	_draw_transform_section(t)
+	_draw_transform_section(t, tH)
 	_draw_components_section(t, tH)
 	_draw_add_component_button(t, tH)
 }
@@ -94,10 +98,16 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 }
 
 @(private)
-_draw_header :: proc(t: ^engine.Transform) {
+_draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	active := t.is_active
+	active_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, is_active), typeid_of(bool))
+	old_active_json := undo_pkg.capture_json(&t.is_active, typeid_of(bool))
 	if im.Checkbox("##active", &active) {
 		t.is_active = active
+		new_active_json := undo_pkg.capture_json(&t.is_active, typeid_of(bool))
+		undo_pkg.push_value(undo_pkg.get(), active_target, old_active_json, new_active_json)
+	} else if old_active_json != nil {
+		delete(old_active_json)
 	}
 
 	im.SameLine()
@@ -107,14 +117,25 @@ _draw_header :: proc(t: ^engine.Transform) {
 	copy_len := min(len(name_bytes), len(_inspector_name_buf) - 1)
 	mem.copy(&_inspector_name_buf[0], raw_data(name_bytes), copy_len)
 
+	name_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
+	old_name_json := undo_pkg.capture_json(&t.name, typeid_of(string))
+
 	im.SetNextItemWidth(-1)
 	buf_cstr := cstring(raw_data(_inspector_name_buf[:]))
+	committed := false
 	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
 		new_name := string(buf_cstr)
 		if len(new_name) > 0 {
 			delete(t.name)
 			t.name = strings.clone(new_name)
+			committed = true
 		}
+	}
+	if committed {
+		new_name_json := undo_pkg.capture_json(&t.name, typeid_of(string))
+		undo_pkg.push_value(undo_pkg.get(), name_target, old_name_json, new_name_json)
+	} else if old_name_json != nil {
+		delete(old_name_json)
 	}
 }
 
@@ -125,28 +146,71 @@ _inspector_euler_cache: [3]f32
 _inspector_euler_quat_src: [4]f32
 
 @(private)
-_draw_transform_section :: proc(t: ^engine.Transform) {
+_draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
 		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
-		drawer(&t.position, typeid_of(^[3]f32), "Position")
+
+		_wrap_transform_field(tH, &t.position, offset_of(engine.Transform, position), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
 
 		if _inspector_euler_quat_src != t.rotation {
 			_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
 			_inspector_euler_quat_src = t.rotation
 		}
 		prev_euler := _inspector_euler_cache
+
+		rot_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, rotation), typeid_of([4]f32))
+		old_rot_json := undo_pkg.capture_json(&t.rotation, typeid_of([4]f32))
+		prev_rot_changed := inspector.consume_inspector_changed()
+
 		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
 		if _inspector_euler_cache != prev_euler {
 			t.rotation = engine.quat_from_euler_xyz(_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
 			_inspector_euler_quat_src = t.rotation
+			inspector.mark_inspector_changed()
 		}
 
-		drawer(&t.scale, typeid_of(^[3]f32), "Scale")
+		commit_rot := false
+		if inspector.is_changed_flag_set() {
+			if im.IsItemDeactivatedAfterEdit() || !im.IsItemActive() {
+				commit_rot = true
+			}
+		}
+		if commit_rot {
+			new_rot_json := undo_pkg.capture_json(&t.rotation, typeid_of([4]f32))
+			undo_pkg.push_value(undo_pkg.get(), rot_target, old_rot_json, new_rot_json)
+		} else if old_rot_json != nil {
+			delete(old_rot_json)
+		}
+		if prev_rot_changed do inspector.mark_inspector_changed()
+
+		_wrap_transform_field(tH, &t.scale, offset_of(engine.Transform, scale), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
 	} else {
 		_inspector_transform_open = false
 	}
+}
+
+@(private)
+_wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) {
+	prev_changed := inspector.consume_inspector_changed()
+	undo_pkg.begin_field(field_ptr, field_tid)
+
+	drawer(field_ptr, drawer_tid, label)
+
+	if im.IsItemActivated() {
+		undo_pkg.promote_to_pending()
+	}
+	if im.IsItemDeactivatedAfterEdit() && undo_pkg.pending_matches(field_ptr) {
+		undo_pkg.pending_commit()
+		undo_pkg.end_field(false)
+	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo_pkg.pending_is_active() {
+		undo_pkg.end_field(true)
+	} else {
+		undo_pkg.end_field(false)
+	}
+
+	if prev_changed do inspector.mark_inspector_changed()
 }
 
 @(private)
@@ -208,7 +272,16 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		if im.BeginPopup(popup_id) {
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
+					old_json := undo_pkg.capture_json(comp_ptr, comp_tid)
+					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
+					base := cast(^engine.CompData)comp_ptr
+					base.owner = saved_base.owner
+					base.local_id = saved_base.local_id
+					base.enabled = saved_base.enabled
+					new_json := undo_pkg.capture_json(comp_ptr, comp_tid)
+					target := undo_pkg.make_component_target(comp.handle, 0, comp_tid)
+					undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
 				}
 				im.Separator()
 			}
@@ -221,7 +294,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			clip_key, clip_key_ok := engine.get_type_key_by_typeid(clip_tid)
 			can_paste_as_new := clip.has() && clip_key_ok
 			if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
-				_, new_ptr := engine.transform_add_comp(tH, clip_key)
+				new_owned, new_ptr := engine.transform_add_comp(tH, clip_key)
 				if new_ptr != nil {
 					saved_base := (cast(^engine.CompData)new_ptr)^
 					if clip.paste(any{new_ptr, clip_tid}) {
@@ -230,11 +303,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 						base.local_id = saved_base.local_id
 						base.enabled = saved_base.enabled
 					}
+					list_idx := len(t.components) - 1
+					undo_pkg.record_add_component(tH, new_owned.handle, list_idx)
 				}
 			}
 
 			can_paste_values := clip.can_paste(comp_tid)
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
+				old_json := undo_pkg.capture_json(comp_ptr, comp_tid)
 				saved_base := (cast(^engine.CompData)comp_ptr)^
 				if clip.paste(any{comp_ptr, comp_tid}) {
 					base := cast(^engine.CompData)comp_ptr
@@ -242,6 +318,9 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
+				new_json := undo_pkg.capture_json(comp_ptr, comp_tid)
+				target := undo_pkg.make_component_target(comp.handle, 0, comp_tid)
+				undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
 			}
 
 			im.Separator()
@@ -286,19 +365,33 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			defer if inspector.consume_inspector_changed() {
 				engine.component_on_validate(comp.handle.type_key, comp_ptr)
 			}
+			undo_pkg.push_component_owner(comp.handle)
+			defer undo_pkg.pop_owner()
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}
 	}
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
+		list_idx := -1
+		for i in 0 ..< len(t.components) {
+			if t.components[i].handle == _comp_pending_remove {
+				list_idx = i
+				break
+			}
+		}
+		pre, pre_ok := undo_pkg.record_remove_component_pre(tH, _comp_pending_remove, list_idx)
 		engine.transform_remove_comp(tH, _comp_pending_remove)
+		if pre_ok {
+			undo_pkg.record_remove_component_commit(pre)
+		}
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {
 		entry := t.components[_comp_pending_move_from]
 		ordered_remove(&t.components, _comp_pending_move_from)
 		inject_at(&t.components, _comp_pending_move_to, entry)
+		undo_pkg.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
 	}
 }
 
