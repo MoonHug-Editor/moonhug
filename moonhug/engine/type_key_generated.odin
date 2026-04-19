@@ -21,6 +21,7 @@ TypeKey :: enum u16 {
 	Sequence,
 	SpriteRenderer,
 	TextureSettings,
+	Transform,
 	Tween,
 	TweenMoveToLocal,
 	TweenRotateToLocal,
@@ -47,6 +48,7 @@ Script__Guid := uuid.read("adaf3551-4704-4255-ad91-fde59441dc53") or_else UUID_N
 Sequence__Guid := uuid.read("24d46399-b3a0-44e7-abd1-6da5d759e935") or_else UUID_NIL
 SpriteRenderer__Guid := uuid.read("b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f") or_else UUID_NIL
 TextureSettings__Guid := uuid.read("21d45bcf-2bd8-44db-b780-953c2f8b610f") or_else UUID_NIL
+Transform__Guid := uuid.read("312927b7-3c4a-4929-9807-8216baf26a68") or_else UUID_NIL
 Tween__Guid := uuid.read("aecaf150-0418-4fed-81a3-708f68ccaa8b") or_else UUID_NIL
 TweenMoveToLocal__Guid := uuid.read("da9d301a-66a3-450c-8c0b-8c696ad60b0b") or_else UUID_NIL
 TweenRotateToLocal__Guid := uuid.read("b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94") or_else UUID_NIL

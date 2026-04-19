@@ -5,6 +5,8 @@ import "core:strings"
 
 Transform_Handle :: distinct Handle
 
+@(poolable)
+@(typ_guid={guid = "312927b7-3c4a-4929-9807-8216baf26a68"})
 Transform :: struct {
     local_id: Local_ID `inspect:"-"`,
     name: string,

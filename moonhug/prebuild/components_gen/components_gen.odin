@@ -215,7 +215,6 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 		_pool_type(&b, e.type_name, e.max)
 		strings.write_string(&b, ",\n")
 	}
-	strings.write_string(&b, "\ttransforms: Pool(Transform),\n")
 	strings.write_string(&b, "\tpool_table: [TypeKey]Pool_Entry,\n")
 	strings.write_string(&b, "}\n\n")
 
@@ -227,7 +226,6 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
-	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
 	strings.write_string(&b, "\t__type_resets_init()\n")
 	strings.write_string(&b, "\t__type_cleanups_init()\n")
 	strings.write_string(&b, "\t__component_on_validates_init()\n")

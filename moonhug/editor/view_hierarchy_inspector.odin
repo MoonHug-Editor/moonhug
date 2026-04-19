@@ -100,14 +100,10 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 @(private)
 _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	active := t.is_active
-	active_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, is_active), typeid_of(bool))
-	old_active_json := undo_pkg.capture_json(&t.is_active, typeid_of(bool))
 	if im.Checkbox("##active", &active) {
+		e := undo_pkg.edit_begin(tH, &t.is_active, typeid_of(bool))
 		t.is_active = active
-		new_active_json := undo_pkg.capture_json(&t.is_active, typeid_of(bool))
-		undo_pkg.push_value(undo_pkg.get(), active_target, old_active_json, new_active_json)
-	} else if old_active_json != nil {
-		delete(old_active_json)
+		undo_pkg.edit_commit(&e)
 	}
 
 	im.SameLine()
@@ -117,25 +113,16 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	copy_len := min(len(name_bytes), len(_inspector_name_buf) - 1)
 	mem.copy(&_inspector_name_buf[0], raw_data(name_bytes), copy_len)
 
-	name_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
-	old_name_json := undo_pkg.capture_json(&t.name, typeid_of(string))
-
 	im.SetNextItemWidth(-1)
 	buf_cstr := cstring(raw_data(_inspector_name_buf[:]))
-	committed := false
 	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
 		new_name := string(buf_cstr)
 		if len(new_name) > 0 {
+			e := undo_pkg.edit_begin(tH, &t.name, typeid_of(string))
 			delete(t.name)
 			t.name = strings.clone(new_name)
-			committed = true
+			undo_pkg.edit_commit(&e)
 		}
-	}
-	if committed {
-		new_name_json := undo_pkg.capture_json(&t.name, typeid_of(string))
-		undo_pkg.push_value(undo_pkg.get(), name_target, old_name_json, new_name_json)
-	} else if old_name_json != nil {
-		delete(old_name_json)
 	}
 }
 
@@ -160,8 +147,7 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		}
 		prev_euler := _inspector_euler_cache
 
-		rot_target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, rotation), typeid_of([4]f32))
-		old_rot_json := undo_pkg.capture_json(&t.rotation, typeid_of([4]f32))
+		rot_edit := undo_pkg.edit_begin(tH, &t.rotation, typeid_of([4]f32))
 		prev_rot_changed := inspector.consume_inspector_changed()
 
 		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
@@ -178,10 +164,9 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 			}
 		}
 		if commit_rot {
-			new_rot_json := undo_pkg.capture_json(&t.rotation, typeid_of([4]f32))
-			undo_pkg.push_value(undo_pkg.get(), rot_target, old_rot_json, new_rot_json)
-		} else if old_rot_json != nil {
-			delete(old_rot_json)
+			undo_pkg.edit_commit(&rot_edit)
+		} else {
+			undo_pkg.edit_cancel(&rot_edit)
 		}
 		if prev_rot_changed do inspector.mark_inspector_changed()
 
@@ -272,16 +257,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		if im.BeginPopup(popup_id) {
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
-					old_json := undo_pkg.capture_json(comp_ptr, comp_tid)
+					e := undo_pkg.edit_component_base(comp.handle, comp_tid)
 					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
 					base := cast(^engine.CompData)comp_ptr
 					base.owner = saved_base.owner
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
-					new_json := undo_pkg.capture_json(comp_ptr, comp_tid)
-					target := undo_pkg.make_component_target(comp.handle, 0, comp_tid)
-					undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
+					undo_pkg.edit_commit(&e)
 				}
 				im.Separator()
 			}
@@ -310,7 +293,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 
 			can_paste_values := clip.can_paste(comp_tid)
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
-				old_json := undo_pkg.capture_json(comp_ptr, comp_tid)
+				e := undo_pkg.edit_component_base(comp.handle, comp_tid)
 				saved_base := (cast(^engine.CompData)comp_ptr)^
 				if clip.paste(any{comp_ptr, comp_tid}) {
 					base := cast(^engine.CompData)comp_ptr
@@ -318,9 +301,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
-				new_json := undo_pkg.capture_json(comp_ptr, comp_tid)
-				target := undo_pkg.make_component_target(comp.handle, 0, comp_tid)
-				undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
+				undo_pkg.edit_commit(&e)
 			}
 
 			im.Separator()
@@ -373,17 +354,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 	}
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
-		list_idx := -1
-		for i in 0 ..< len(t.components) {
-			if t.components[i].handle == _comp_pending_remove {
-				list_idx = i
-				break
-			}
-		}
-		pre, pre_ok := undo_pkg.record_remove_component_pre(tH, _comp_pending_remove, list_idx)
-		defer if pre_ok do undo_pkg.record_cleanup(&pre)
-		engine.transform_remove_comp(tH, _comp_pending_remove)
-		if pre_ok do undo_pkg.record_commit(&pre)
+		undo_pkg.record_remove_component(tH, _comp_pending_remove)
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {

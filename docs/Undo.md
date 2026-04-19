@@ -74,46 +74,93 @@ For instant widgets (checkbox, color-picker finish) activation and deactivation-
 
 Most editor code doesn't need to touch the undo API directly. The inspector field loop already wraps every registered property drawer, array, union, and enum with `begin_field` / `end_field` and finalizes with the pending protocol, so **drawers written to the standard contract get undo for free**.
 
-When you write editor UI outside the inspector field loop (hierarchy view, custom panels, header fields), use the recording helpers:
+When writing editor UI outside the inspector field loop (hierarchy view, custom panels, header fields, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
+
+### Value edits
 
 ```odin
 import undo_pkg "undo"
 
-// value edit on a transform field
-target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
-old_json := undo_pkg.capture_json(&t.name, typeid_of(string))
-// ... mutate t.name ...
-new_json := undo_pkg.capture_json(&t.name, typeid_of(string))
-undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
+// transform field: arbitrary mutation between begin and commit
+e := undo_pkg.edit_begin(tH, &t.name, typeid_of(string))
+delete(t.name)
+t.name = strings.clone(new_name)
+undo_pkg.edit_commit(&e)
 
-// value edit on a component field
-target := undo_pkg.make_component_target(comp.handle, offset_of(MyComp, field), typeid_of(T))
-undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
+// component field
+e := undo_pkg.edit_begin(comp.handle, &sr.color, typeid_of([4]f32))
+sr.color = new_color
+undo_pkg.edit_commit(&e)
 
-// structural commands
-undo_pkg.record_reparent(node, old_parent, new_parent, old_index, new_index)
-undo_pkg.record_create(new_root, parent)
-pre, ok := undo_pkg.record_delete_pre(root)   // capture subtree
-defer if ok do undo_pkg.record_cleanup(&pre)
-engine.transform_destroy(root)
-if ok do undo_pkg.record_commit(&pre)
+// whole component (for Reset / Paste Values)
+e := undo_pkg.edit_component_base(comp.handle, comp_tid)
+engine.type_reset(comp.handle.type_key, comp_ptr)
+undo_pkg.edit_commit(&e)
 
-undo_pkg.record_add_component(tH, comp.handle, list_index)
-pre, ok := undo_pkg.record_remove_component_pre(tH, comp.handle, list_index)
-defer if ok do undo_pkg.record_cleanup(&pre)
-engine.transform_remove_comp(tH, comp.handle)
-if ok do undo_pkg.record_commit(&pre)
-undo_pkg.record_reorder_components(tH, from, to)
+// abandon the edit without pushing (e.g. user cancelled mid-frame)
+undo_pkg.edit_cancel(&e)
 
-// group command
-s := undo_pkg.get()
-undo_pkg.begin_group_command(s, "Edit Position+Scale")
-committed := false
-defer if !committed do undo_pkg.abort_group_command(s)
-// ... push_value calls ...
-undo_pkg.end_group_command(s, "Edit Position+Scale")
-committed = true
+// non-scene data (import settings, asset inspectors)
+e := undo_pkg.edit_begin(base_ptr, &settings.quality, typeid_of(int))
+settings.quality = 3
+undo_pkg.edit_commit(&e)
 ```
+
+A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_commit` / `edit_cancel`; they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit.
+
+### Structural commands
+
+```odin
+// create: returns the new transform handle and records the create step
+newH := undo_pkg.record_create_child("Transform", parent_tH)
+
+// delete: capture + destroy + push, single call
+undo_pkg.record_delete(tH)
+
+// reparent to a new parent, optionally at an explicit index
+undo_pkg.record_reparent_to(node, new_parent)
+undo_pkg.record_reparent_to(node, new_parent, sibling_index)
+
+// add/remove component on a transform
+engine.transform_add_comp(tH, .MyComp)
+undo_pkg.record_add_component(tH, comp.handle, list_index)
+
+undo_pkg.record_remove_component(tH, comp.handle)     // fused remove
+
+undo_pkg.record_reorder_components(tH, from, to)
+```
+
+The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `record_remove_component_pre` still exist for the rare case where the destroy and the record must be split across non-adjacent code (e.g. the destroy happens inside a callback you don't control). Prefer the fused forms when possible.
+
+### Group commands
+
+```odin
+g := undo_pkg.group_begin("Create Empty Parent")
+defer undo_pkg.group_end(&g)
+
+new_parent := undo_pkg.record_create_child("Transform", old_parent)
+if new_parent == {} do return   // scope auto-aborts on early return
+undo_pkg.record_reparent_to(new_parent, old_parent, sibling_idx)
+undo_pkg.record_reparent_to(tH, new_parent)
+
+undo_pkg.group_commit(&g)       // opt-in: only finalize if we made it here
+```
+
+`group_end` aborts the in-progress group unless `group_commit` was called first. Any `record_*` or `edit_*` calls made while a group is active collect into that group.
+
+### Cross-frame drag outside the inspector
+
+The inspector field loop handles drag widgets automatically (see "Pending edit" above). For widgets outside the inspector (e.g. viewport gizmos spanning many frames), use the `Field_Drag` scope:
+
+```odin
+// on mouse-down
+d := undo_pkg.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
+// ... on each frame, mutate t.position freely ...
+// on mouse-up
+undo_pkg.field_drag_end(&d)    // single undo step covering the whole drag
+```
+
+### Custom inspector panels
 
 When drawing a component's fields in a custom inspector panel, push an `Inspector_Owner` so nested drawers can find it:
 
@@ -122,6 +169,11 @@ undo_pkg.push_component_owner(comp.handle)
 defer undo_pkg.pop_owner()
 drawer(comp_ptr, comp_tid, label)
 ```
+
+### Low-level API
+
+The underlying primitives (`make_transform_target`, `make_component_target`, `capture_json`, `push_value`, `begin_group_command` / `end_group_command` / `abort_group_command`, `record_reparent`, `record_create`, `record_delete_pre`, `record_add_component`, `record_remove_component_pre`, `record_cleanup`, `record_commit`) remain available and are what the ergonomic helpers call internally.  
+Reach for them only when the scope helpers can't express what you need.
 
 Clear the stack when context changes (handled automatically for scene load/unload/save-as and inspector target change):
 

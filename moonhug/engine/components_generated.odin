@@ -7,8 +7,8 @@ World :: struct {
 	players: Pool(Player, 10),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
-	tween_unions: Pool(TweenUnion),
 	transforms: Pool(Transform),
+	tween_unions: Pool(TweenUnion),
 	pool_table: [TypeKey]Pool_Entry,
 }
 
@@ -20,8 +20,8 @@ w_init :: proc(w:^World)
 	pool_init(&w.players)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
-	pool_init(&w.tween_unions)
 	pool_init(&w.transforms)
+	pool_init(&w.tween_unions)
 	__type_resets_init()
 	__type_cleanups_init()
 	__component_on_validates_init()
@@ -74,6 +74,7 @@ w_init :: proc(w:^World)
 		c_copy.owner = {}
 		append(&s.sprite_renderers, c_copy)
 	}
+	w.pool_table[TypeKey.Transform] = pool_make_entry(&w.transforms)
 	w.pool_table[TypeKey.TweenUnion] = pool_make_entry(&w.tween_unions)
 }
 
@@ -190,7 +191,10 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 }
 
 world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
-	when T == TweenUnion {
+	when T == Transform {
+		return pool_get(&w.transforms, handle)
+	}
+	else when T == TweenUnion {
 		return pool_get(&w.tween_unions, handle)
 	}
 	return nil

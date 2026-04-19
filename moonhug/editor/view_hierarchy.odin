@@ -15,35 +15,6 @@ HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 _HANDLE_NONE :: engine.Transform_Handle{}
 
 @(private)
-_reparent_with_undo :: proc(node: engine.Transform_Handle, new_parent: engine.Transform_Handle, index: int = -1) {
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(node))
-	if t == nil do return
-	old_parent := engine.Transform_Handle(t.parent.handle)
-	old_index := engine.transform_get_sibling_index(node)
-	engine.transform_set_parent(node, new_parent, index)
-	new_index := engine.transform_get_sibling_index(node)
-	undo_pkg.record_reparent(node, old_parent, new_parent, old_index, new_index)
-}
-
-@(private)
-_create_child_with_undo :: proc(name: string, parent: engine.Transform_Handle) -> engine.Transform_Handle {
-	tH := engine.transform_new(name, parent)
-	if tH != {} {
-		undo_pkg.record_create(tH, parent)
-	}
-	return tH
-}
-
-@(private)
-_destroy_with_undo :: proc(tH: engine.Transform_Handle) {
-	pre, ok := undo_pkg.record_delete_pre(tH)
-	defer if ok do undo_pkg.record_cleanup(&pre)
-	engine.transform_destroy(tH)
-	if ok do undo_pkg.record_commit(&pre)
-}
-
-@(private)
 _paste_subtree_with_undo :: proc(data: []byte, parent: engine.Transform_Handle) -> engine.Transform_Handle {
 	tH := engine.scene_paste_subtree(data, parent)
 	if tH != {} {
@@ -225,7 +196,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 
 	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
 		if im.MenuItem("Create Empty", nil, false, true) {
-			_create_child_with_undo("Transform", root_tH)
+			undo_pkg.record_create_child("Transform", root_tH)
 		}
 		im.EndPopup()
 	}
@@ -366,7 +337,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	if im.BeginPopup("##NodeContext") {
 		_hierarchy_selected = tH
 		if im.MenuItem("Create Empty Child", nil, false, !is_nested) {
-			_hierarchy_selected = _create_child_with_undo("Transform", tH)
+			_hierarchy_selected = undo_pkg.record_create_child("Transform", tH)
 			_hierarchy_force_open = tH
 		}
 		if !is_root && !is_nested {
@@ -401,7 +372,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 					_hierarchy_rename_target = _HANDLE_NONE
 				}
 				im.EndPopup()
-				_destroy_with_undo(tH)
+				undo_pkg.record_delete(tH)
 				if node_open && has_children {
 					im.TreePop()
 				}
@@ -465,18 +436,10 @@ _apply_rename :: proc(t: ^engine.Transform) {
 			}
 		}
 
-		old_json := undo_pkg.capture_json(&t.name, typeid_of(string))
+		e := undo_pkg.edit_begin(tH, &t.name, typeid_of(string))
+		defer undo_pkg.edit_commit(&e)
 		delete(t.name)
 		t.name = strings.clone(new_name)
-		new_json := undo_pkg.capture_json(&t.name, typeid_of(string))
-
-		if tH != {} {
-			target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
-			undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
-		} else {
-			if old_json != nil do delete(old_json)
-			if new_json != nil do delete(new_json)
-		}
 	}
 	_hierarchy_rename_target = _HANDLE_NONE
 	_hierarchy_rename_just_finished = true
@@ -491,17 +454,14 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene) 
 	sibling_idx := engine.transform_get_sibling_index(tH)
 	old_parent := engine.Transform_Handle(t.parent.handle)
 
-	s := undo_pkg.get()
-	undo_pkg.begin_group_command(s, "Create Empty Parent")
-	committed := false
-	defer if !committed do undo_pkg.abort_group_command(s)
+	g := undo_pkg.group_begin("Create Empty Parent")
+	defer undo_pkg.group_end(&g)
 
-	new_parent := _create_child_with_undo("Transform", old_parent)
+	new_parent := undo_pkg.record_create_child("Transform", old_parent)
 	if new_parent == {} do return
-	_reparent_with_undo(new_parent, old_parent, sibling_idx)
-	_reparent_with_undo(tH, new_parent)
-	undo_pkg.end_group_command(s, "Create Empty Parent")
-	committed = true
+	undo_pkg.record_reparent_to(new_parent, old_parent, sibling_idx)
+	undo_pkg.record_reparent_to(tH, new_parent)
+	undo_pkg.group_commit(&g)
 
 	_hierarchy_selected = new_parent
 	_hierarchy_force_open = new_parent
@@ -559,7 +519,7 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 						target_idx -= 1
 					}
 				}
-				_reparent_with_undo(dragged, target_parent, target_idx)
+				undo_pkg.record_reparent_to(dragged, target_parent, target_idx)
 			}
 		}
 		im.EndDragDropTarget()
@@ -573,7 +533,7 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 		if payload != nil && payload.Data != nil {
 			dragged := (^engine.Transform_Handle)(payload.Data)^
 			if dragged != tH && dragged != root_tH && !_is_ancestor(dragged, tH) {
-				_reparent_with_undo(dragged, tH)
+				undo_pkg.record_reparent_to(dragged, tH)
 			}
 		}
 		asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
@@ -606,7 +566,7 @@ _draw_drop_target_on_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Sc
 						target_idx -= 1
 					}
 				}
-				_reparent_with_undo(dragged, target_parent, target_idx)
+				undo_pkg.record_reparent_to(dragged, target_parent, target_idx)
 			}
 		}
 		im.EndDragDropTarget()
@@ -624,7 +584,7 @@ _draw_drop_target_empty_space :: proc(scene: ^engine.Scene) {
 				dragged := (^engine.Transform_Handle)(payload.Data)^
 				root_tH := engine.Transform_Handle(scene.root.handle)
 				if dragged != root_tH {
-					_reparent_with_undo(dragged, root_tH)
+					undo_pkg.record_reparent_to(dragged, root_tH)
 				}
 			}
 			asset_payload := im.AcceptDragDropPayload("ASSET_PATH", {})
