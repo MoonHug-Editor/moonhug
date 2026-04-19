@@ -539,6 +539,7 @@ scene_find_transform_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 		slot := &w.transforms.slots[i]
 		if !slot.alive do continue
 		if slot.data.scene != s do continue
+		if slot.data.nested_owned do continue
 		if slot.data.local_id == id {
 			return engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform}, true
 		}
@@ -554,8 +555,14 @@ scene_find_component_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 		slot := &w.transforms.slots[i]
 		if !slot.alive do continue
 		if slot.data.scene != s do continue
+		if slot.data.nested_owned do continue
 		for c in slot.data.components {
 			if c.local_id == id && c.handle.type_key != engine.INVALID_TYPE_KEY {
+				raw := engine.world_pool_get(w, c.handle)
+				if raw != nil {
+					base := cast(^engine.CompData)raw
+					if base.nested_owned do continue
+				}
 				return c.handle, true
 			}
 		}
