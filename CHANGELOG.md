@@ -1,3 +1,14 @@
+## [0.14.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.13.0...v0.14.0) (2026-04-19)
+
+### Features
+
+* add undo feature ([5b2835f](https://github.com/MoonHug-Editor/moonhug/commit/5b2835f4ed1d717ba613dcc48d358538f0916e85))
+* save views on/off ([9f99b3b](https://github.com/MoonHug-Editor/moonhug/commit/9f99b3bc08ce0b54f3a3a69600685a6c9560451a))
+
+### Bug Fixes
+
+* zero transform when destroying ([a161982](https://github.com/MoonHug-Editor/moonhug/commit/a161982b01e690fd1c7d5b2c34fc5eeac9fc69b9))
+
 ## [0.13.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.12.0...v0.13.0) (2026-04-16)
 
 ### Features
