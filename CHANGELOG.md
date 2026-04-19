@@ -1,3 +1,9 @@
+## [0.14.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.0...v0.14.1) (2026-04-19)
+
+### Bug Fixes
+
+* undo reparent when nested scene has same local_id transform ([e345e1a](https://github.com/MoonHug-Editor/moonhug/commit/e345e1a16139b05f5068e1d768eda820d06e2fb6))
+
 ## [0.14.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.13.0...v0.14.0) (2026-04-19)
 
 ### Features
