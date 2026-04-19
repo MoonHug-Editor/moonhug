@@ -22,13 +22,32 @@
 -----
 
 Rules:
+- Transform and components can be referenced across file via local_id
+  - file should manage set of local_ids
 - When component is attached to transform it gets valid local_id
 - When transform is created in scene it gets valid local_id
 - When transform is added to a different scene: itself, its components and children get local_id remap
 
 -----
+Odin zero initialization ensures allocated data is empty.
+This simplifies deserialization step as it allocates into empty fields.
+
 Default values for components:
 
 - Prefabs(or serialized data, etc.) are source of defaults(to not fight with deserialization)
   - deserialization should happen on zeroed object.
-  - reset_T should cleanup_T then set values(later might use deserialization after cleanup)
+
+TODO: Consider merge of type defaults + prefab defaults into 1 serialized structure so that deserialization happens once on zero initialized object
+
+-----
+- nested prefabs roadmap:
+  - [v] scene tree data model
+  - [v] serialization: scene tree file with guid in project
+  - [v] asset registry: AssetDB
+  - [v] instantiate scene tree as child
+  - prefab instance node type:
+    - [v] opaque nested scene, instantiated at gameplay only
+    - [wip] transparent nested scene, read-only (view but no overrides)
+      - resolved in-memory tree
+  - property overrides: nested scene instance overrides
+  - prefab variants
