@@ -8,7 +8,7 @@ import im_gl "../../external/odin-imgui/imgui_impl_opengl3"
 import "inspector"
 import "menu"
 import clip "clipboard"
-import undo_pkg "undo"
+import "undo"
 import "../engine/serialization"
 import "../app"
 import "../app_editor"
@@ -66,9 +66,9 @@ main :: proc() {
     engine.w_init(w)
     engine.ctx_get().world = w
 
-    undo_stack := new(undo_pkg.Undo_Stack)
-    undo_pkg.init(undo_stack)
-    undo_pkg.install(undo_stack)
+    undo_stack := new(undo.Undo_Stack)
+    undo.init(undo_stack)
+    undo.install(undo_stack)
 
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
@@ -252,7 +252,7 @@ scene_create_menu :: proc() {
 
 _process_undo_shortcuts :: proc() {
 	if engine.ctx_get().is_playmode do return
-	s := undo_pkg.get()
+	s := undo.get()
 	if s == nil do return
 
 	undo_chord  := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Z)
@@ -260,10 +260,10 @@ _process_undo_shortcuts :: proc() {
 	redo_chord_shift := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Z)
 
 	if im.Shortcut(redo_chord_shift, {.RouteGlobal}) {
-		undo_pkg.apply_redo(s)
+		undo.apply_redo(s)
 	} else if im.Shortcut(undo_chord, {.RouteGlobal}) {
-		undo_pkg.apply_undo(s)
+		undo.apply_undo(s)
 	} else if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
-		undo_pkg.apply_redo(s)
+		undo.apply_redo(s)
 	}
 }

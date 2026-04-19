@@ -10,7 +10,7 @@ import engine "../engine"
 import "inspector"
 import "menu"
 import clip "clipboard"
-import undo_pkg "undo"
+import "undo"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -60,8 +60,8 @@ draw_hierarchy_inspector :: proc() {
 		return
 	}
 
-	undo_pkg.push_transform_owner(tH)
-	defer undo_pkg.pop_owner()
+	undo.push_transform_owner(tH)
+	defer undo.pop_owner()
 
 	_draw_header(t, tH)
 	im.Separator()
@@ -101,9 +101,9 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	active := t.is_active
 	if im.Checkbox("##active", &active) {
-		e := undo_pkg.edit_begin(tH, &t.is_active, typeid_of(bool))
+		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool))
 		t.is_active = active
-		undo_pkg.edit_commit(&e)
+		undo.edit_commit(&e)
 	}
 
 	im.SameLine()
@@ -118,10 +118,10 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
 		new_name := string(buf_cstr)
 		if len(new_name) > 0 {
-			e := undo_pkg.edit_begin(tH, &t.name, typeid_of(string))
+			e := undo.edit_begin(tH, &t.name, typeid_of(string))
 			delete(t.name)
 			t.name = strings.clone(new_name)
-			undo_pkg.edit_commit(&e)
+			undo.edit_commit(&e)
 		}
 	}
 }
@@ -147,7 +147,7 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		}
 		prev_euler := _inspector_euler_cache
 
-		rot_edit := undo_pkg.edit_begin(tH, &t.rotation, typeid_of([4]f32))
+		rot_edit := undo.edit_begin(tH, &t.rotation, typeid_of([4]f32))
 		prev_rot_changed := inspector.consume_inspector_changed()
 
 		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
@@ -164,9 +164,9 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 			}
 		}
 		if commit_rot {
-			undo_pkg.edit_commit(&rot_edit)
+			undo.edit_commit(&rot_edit)
 		} else {
-			undo_pkg.edit_cancel(&rot_edit)
+			undo.edit_cancel(&rot_edit)
 		}
 		if prev_rot_changed do inspector.mark_inspector_changed()
 
@@ -179,20 +179,20 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 @(private)
 _wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) {
 	prev_changed := inspector.consume_inspector_changed()
-	undo_pkg.begin_field(field_ptr, field_tid)
+	undo.begin_field(field_ptr, field_tid)
 
 	drawer(field_ptr, drawer_tid, label)
 
 	if im.IsItemActivated() {
-		undo_pkg.promote_to_pending()
+		undo.promote_to_pending()
 	}
-	if im.IsItemDeactivatedAfterEdit() && undo_pkg.pending_matches(field_ptr) {
-		undo_pkg.pending_commit()
-		undo_pkg.end_field(false)
-	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo_pkg.pending_is_active() {
-		undo_pkg.end_field(true)
+	if im.IsItemDeactivatedAfterEdit() && undo.pending_matches(field_ptr) {
+		undo.pending_commit()
+		undo.end_field(false)
+	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo.pending_is_active() {
+		undo.end_field(true)
 	} else {
-		undo_pkg.end_field(false)
+		undo.end_field(false)
 	}
 
 	if prev_changed do inspector.mark_inspector_changed()
@@ -257,14 +257,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		if im.BeginPopup(popup_id) {
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
-					e := undo_pkg.edit_component_base(comp.handle, comp_tid)
+					e := undo.edit_component_base(comp.handle, comp_tid)
 					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
 					base := cast(^engine.CompData)comp_ptr
 					base.owner = saved_base.owner
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
-					undo_pkg.edit_commit(&e)
+					undo.edit_commit(&e)
 				}
 				im.Separator()
 			}
@@ -287,13 +287,13 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 						base.enabled = saved_base.enabled
 					}
 					list_idx := len(t.components) - 1
-					undo_pkg.record_add_component(tH, new_owned.handle, list_idx)
+					undo.record_add_component(tH, new_owned.handle, list_idx)
 				}
 			}
 
 			can_paste_values := clip.can_paste(comp_tid)
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
-				e := undo_pkg.edit_component_base(comp.handle, comp_tid)
+				e := undo.edit_component_base(comp.handle, comp_tid)
 				saved_base := (cast(^engine.CompData)comp_ptr)^
 				if clip.paste(any{comp_ptr, comp_tid}) {
 					base := cast(^engine.CompData)comp_ptr
@@ -301,7 +301,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
-				undo_pkg.edit_commit(&e)
+				undo.edit_commit(&e)
 			}
 
 			im.Separator()
@@ -346,22 +346,22 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			defer if inspector.consume_inspector_changed() {
 				engine.component_on_validate(comp.handle.type_key, comp_ptr)
 			}
-			undo_pkg.push_component_owner(comp.handle)
-			defer undo_pkg.pop_owner()
+			undo.push_component_owner(comp.handle)
+			defer undo.pop_owner()
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}
 	}
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
-		undo_pkg.record_remove_component(tH, _comp_pending_remove)
+		undo.record_remove_component(tH, _comp_pending_remove)
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {
 		entry := t.components[_comp_pending_move_from]
 		ordered_remove(&t.components, _comp_pending_move_from)
 		inject_at(&t.components, _comp_pending_move_to, entry)
-		undo_pkg.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
+		undo.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
 	}
 }
 

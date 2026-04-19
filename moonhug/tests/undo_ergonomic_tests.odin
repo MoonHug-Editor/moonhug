@@ -1,7 +1,7 @@
 package tests
 
 import "../engine"
-import undo_pkg "../editor/undo"
+import "../editor/undo"
 
 import "core:testing"
 
@@ -18,18 +18,18 @@ test_undo_edit_transform_begin_commit :: proc(t: ^testing.T) {
 	if tr == nil do return
 
 	{
-		e := undo_pkg.edit_begin(tH, &tr.position, typeid_of([3]f32))
+		e := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {10, 20, 30}
-		undo_pkg.edit_commit(&e)
+		undo.edit_commit(&e)
 	}
 
 	testing.expect_value(t, tr.position, [3]f32{10, 20, 30})
-	testing.expect(t, undo_pkg.can_undo(s), "undo recorded")
+	testing.expect(t, undo.can_undo(s), "undo recorded")
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, tr.position, [3]f32{10, 20, 30})
 }
 
@@ -46,18 +46,18 @@ test_undo_edit_transform_string_field :: proc(t: ^testing.T) {
 	if tr == nil do return
 
 	{
-		e := undo_pkg.edit_begin(tH, &tr.name, typeid_of(string))
+		e := undo.edit_begin(tH, &tr.name, typeid_of(string))
 		delete(tr.name)
 		tr.name = "After"
-		undo_pkg.edit_commit(&e)
+		undo.edit_commit(&e)
 	}
 
 	testing.expect_value(t, tr.name, "After")
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, tr.name, "Before")
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, tr.name, "After")
 }
 
@@ -74,17 +74,17 @@ test_undo_edit_component_begin_commit :: proc(t: ^testing.T) {
 	if sr == nil do return
 
 	{
-		e := undo_pkg.edit_begin(owned.handle, &sr.color, typeid_of([4]f32))
+		e := undo.edit_begin(owned.handle, &sr.color, typeid_of([4]f32))
 		sr.color = {1, 0.5, 0.25, 1}
-		undo_pkg.edit_commit(&e)
+		undo.edit_commit(&e)
 	}
 
 	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, sr.color, [4]f32{1, 1, 1, 1})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
 }
 
@@ -101,13 +101,13 @@ test_undo_edit_cancel_no_record :: proc(t: ^testing.T) {
 	if tr == nil do return
 
 	{
-		e := undo_pkg.edit_begin(tH, &tr.position, typeid_of([3]f32))
+		e := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {5, 5, 5}
-		undo_pkg.edit_cancel(&e)
+		undo.edit_cancel(&e)
 	}
 
 	testing.expect_value(t, tr.position, [3]f32{5, 5, 5})
-	testing.expect(t, !undo_pkg.can_undo(s), "cancel did not record")
+	testing.expect(t, !undo.can_undo(s), "cancel did not record")
 }
 
 @(test)
@@ -123,29 +123,29 @@ test_undo_group_scope_commit :: proc(t: ^testing.T) {
 	if tr == nil do return
 
 	{
-		g := undo_pkg.group_begin("Edit Pos+Scale")
-		defer undo_pkg.group_end(&g)
+		g := undo.group_begin("Edit Pos+Scale")
+		defer undo.group_end(&g)
 
-		e1 := undo_pkg.edit_begin(tH, &tr.position, typeid_of([3]f32))
+		e1 := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {1, 1, 1}
-		undo_pkg.edit_commit(&e1)
+		undo.edit_commit(&e1)
 
-		e2 := undo_pkg.edit_begin(tH, &tr.scale, typeid_of([3]f32))
+		e2 := undo.edit_begin(tH, &tr.scale, typeid_of([3]f32))
 		tr.scale = {2, 2, 2}
-		undo_pkg.edit_commit(&e2)
+		undo.edit_commit(&e2)
 
-		undo_pkg.group_commit(&g)
+		undo.group_commit(&g)
 	}
 
-	testing.expect_value(t, undo_pkg.top_index(s), 1)
+	testing.expect_value(t, undo.top_index(s), 1)
 	testing.expect_value(t, tr.position, [3]f32{1, 1, 1})
 	testing.expect_value(t, tr.scale, [3]f32{2, 2, 2})
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
 	testing.expect_value(t, tr.scale, [3]f32{1, 1, 1})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, tr.position, [3]f32{1, 1, 1})
 	testing.expect_value(t, tr.scale, [3]f32{2, 2, 2})
 }
@@ -163,15 +163,15 @@ test_undo_group_scope_auto_abort :: proc(t: ^testing.T) {
 	if tr == nil do return
 
 	{
-		g := undo_pkg.group_begin("Aborted")
-		defer undo_pkg.group_end(&g)
+		g := undo.group_begin("Aborted")
+		defer undo.group_end(&g)
 
-		e := undo_pkg.edit_begin(tH, &tr.position, typeid_of([3]f32))
+		e := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {7, 7, 7}
-		undo_pkg.edit_commit(&e)
+		undo.edit_commit(&e)
 	}
 
-	testing.expect(t, !undo_pkg.can_undo(s), "missing group_commit aborts group")
+	testing.expect(t, !undo.can_undo(s), "missing group_commit aborts group")
 }
 
 @(test)
@@ -189,22 +189,22 @@ test_undo_record_delete_fused :: proc(t: ^testing.T) {
 	child_lid := ch.local_id
 	ch.position = {7, 8, 9}
 
-	undo_pkg.record_delete(childH)
+	undo.record_delete(childH)
 
 	p := engine.pool_get(&tc_mem.world.transforms, engine.Handle(parentH))
 	if p == nil do return
 	testing.expect_value(t, len(p.children), 0)
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, len(p.children), 1)
 
-	restored_h, rok := undo_pkg.scene_find_transform_by_local_id(tc_mem.scene, child_lid)
+	restored_h, rok := undo.scene_find_transform_by_local_id(tc_mem.scene, child_lid)
 	testing.expect(t, rok, "restored child found")
 	restored := engine.pool_get(&tc_mem.world.transforms, restored_h)
 	if restored == nil do return
 	testing.expect_value(t, restored.position, [3]f32{7, 8, 9})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, len(p.children), 0)
 }
 
@@ -224,17 +224,17 @@ test_undo_record_remove_component_fused :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
 
-	undo_pkg.record_remove_component(tH, owned.handle)
+	undo.record_remove_component(tH, owned.handle)
 	testing.expect_value(t, len(tr.components), 0)
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, len(tr.components), 1)
 	_, restored := engine.transform_get_comp(tH, engine.SpriteRenderer)
 	testing.expect(t, restored != nil, "component restored")
 	if restored == nil do return
 	testing.expect_value(t, restored.color, [4]f32{0.1, 0.2, 0.3, 1})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, len(tr.components), 0)
 }
 
@@ -248,17 +248,17 @@ test_undo_record_create_child_and_reparent :: proc(t: ^testing.T) {
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 
-	aH := undo_pkg.record_create_child("A", rootH)
-	bH := undo_pkg.record_create_child("B", rootH)
+	aH := undo.record_create_child("A", rootH)
+	bH := undo.record_create_child("B", rootH)
 	testing.expect(t, aH != {}, "A created")
 	testing.expect(t, bH != {}, "B created")
 
-	undo_pkg.record_reparent_to(aH, bH)
+	undo.record_reparent_to(aH, bH)
 	ta := engine.pool_get(&tc_mem.world.transforms, engine.Handle(aH))
 	if ta == nil do return
 	testing.expect_value(t, ta.parent.handle, engine.Handle(bH))
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, ta.parent.handle, engine.Handle(rootH))
 }
 
@@ -274,18 +274,18 @@ test_undo_field_drag_external :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
 
-	d := undo_pkg.field_drag_begin(tH, &tr.position, typeid_of([3]f32), "Viewport Move")
+	d := undo.field_drag_begin(tH, &tr.position, typeid_of([3]f32), "Viewport Move")
 	tr.position = {1, 0, 0}
 	tr.position = {2, 0, 0}
 	tr.position = {3, 0, 0}
-	undo_pkg.field_drag_end(&d)
+	undo.field_drag_end(&d)
 
-	testing.expect_value(t, undo_pkg.top_index(s), 1)
+	testing.expect_value(t, undo.top_index(s), 1)
 	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
 
-	undo_pkg.apply_undo(s)
+	undo.apply_undo(s)
 	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
 
-	undo_pkg.apply_redo(s)
+	undo.apply_redo(s)
 	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
 }

@@ -9,7 +9,7 @@ import im "../../external/odin-imgui"
 import "inspector"
 import "menu"
 import "../engine"
-import undo_pkg "undo"
+import "undo"
 
 ProjectViewData :: struct {
     currentPath: string,
@@ -164,16 +164,16 @@ draw_file_list :: proc(path: string) {
             full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
 
             if strings.has_suffix(entry.name, ".asset") {
-                undo_pkg.clear(undo_pkg.get())
+                undo.clear(undo.get())
                 inspector.load_from_file(full_path)
             }
             ext := filepath.ext(entry.name)
             if engine.is_importable_extension(ext) {
-                undo_pkg.clear(undo_pkg.get())
+                undo.clear(undo.get())
                 inspector.load_import_settings(full_path)
             }
             if strings.has_suffix(entry.name, ".scene") && im.IsMouseDoubleClicked(.Left) {
-                undo_pkg.clear(undo_pkg.get())
+                undo.clear(undo.get())
                 scene := engine.scene_load_single_path(full_path)
                 engine.sm_scene_set_active(scene)
             }

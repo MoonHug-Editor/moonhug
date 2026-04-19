@@ -2,7 +2,7 @@ package editor
 
 import engine "../engine"
 import "menu"
-import undo_pkg "undo"
+import "undo"
 
 register_component_menus :: proc() {
 	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) }, 0)
@@ -22,5 +22,5 @@ _component_menu_add :: proc(key: engine.TypeKey) {
 	_, existing_idx := engine.transform_find_comp(t, key)
 	if existing_idx >= 0 do return
 	owned, _ := engine.transform_add_comp(tH, key)
-	undo_pkg.record_add_component(tH, owned.handle, len(t.components) - 1)
+	undo.record_add_component(tH, owned.handle, len(t.components) - 1)
 }

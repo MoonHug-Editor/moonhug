@@ -8,7 +8,7 @@ import im "../../../external/odin-imgui"
 import ser "../../engine/serialization"
 import engine "../../engine"
 import clip "../clipboard"
-import undo_pkg "../undo"
+import "../undo"
 
 InspectorMode :: enum {
     Asset,
@@ -168,26 +168,26 @@ _undo_finalize_field :: proc(field_ptr: rawptr, field_tid: typeid) {
     deactivated_after_edit := im.IsItemDeactivatedAfterEdit()
 
     if activated {
-        undo_pkg.promote_to_pending()
+        undo.promote_to_pending()
     }
 
     if deactivated_after_edit {
-        if undo_pkg.pending_matches(field_ptr) {
-            undo_pkg.pending_commit()
-            undo_pkg.end_field(false)
+        if undo.pending_matches(field_ptr) {
+            undo.pending_commit()
+            undo.end_field(false)
             return
         }
     }
 
     if inspector_changed && !im.IsItemActive() {
-        if undo_pkg.pending_matches(field_ptr) {
-            undo_pkg.pending_commit()
-            undo_pkg.end_field(false)
+        if undo.pending_matches(field_ptr) {
+            undo.pending_commit()
+            undo.end_field(false)
         } else {
-            undo_pkg.end_field(true)
+            undo.end_field(true)
         }
     } else {
-        undo_pkg.end_field(false)
+        undo.end_field(false)
     }
 }
 
@@ -294,7 +294,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
         prev_changed_outside := inspector_changed
         inspector_changed = false
 
-        undo_pkg.begin_field(field_ptr, field_type.id)
+        undo.begin_field(field_ptr, field_type.id)
         run_field_decorators(tid, i, &ctx)
 
         row_popup_done := false
@@ -309,14 +309,14 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                 row_popup_done = true
             } else if is_union_type(field_type.id) {
                 draw_inspector_union(field_ptr, field_type.id, c_field_name)
-                undo_pkg.end_field(inspector_changed)
+                undo.end_field(inspector_changed)
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
-                undo_pkg.end_field(inspector_changed)
+                undo.end_field(inspector_changed)
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
-                undo_pkg.end_field(false)
+                undo.end_field(false)
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
                 if is_inline {
                     draw_inspector(field_val)
@@ -331,11 +331,11 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                     }
                 }
             } else if reflect.is_pointer(type_info_of(field_type.id)) {
-                undo_pkg.end_field(false)
+                undo.end_field(false)
                 draw_inspector(field_val)
                 row_popup_done = true
             } else {
-                undo_pkg.end_field(false)
+                undo.end_field(false)
                 c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", field_name, field_val))
                 defer delete(c_str)
                 im.Text(c_str)
@@ -347,7 +347,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
             _undo_finalize_field(field_ptr, field_type.id)
             draw_field_context_menu(field_ptr, field_type.id)
         } else {
-            undo_pkg.end_field(false)
+            undo.end_field(false)
         }
 
         if prev_changed_outside || inspector_changed do inspector_changed = true

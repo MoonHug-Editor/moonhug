@@ -79,31 +79,31 @@ When writing editor UI outside the inspector field loop (hierarchy view, custom 
 ### Value edits
 
 ```odin
-import undo_pkg "undo"
+import "undo"
 
 // transform field: arbitrary mutation between begin and commit
-e := undo_pkg.edit_begin(tH, &t.name, typeid_of(string))
+e := undo.edit_begin(tH, &t.name, typeid_of(string))
 delete(t.name)
 t.name = strings.clone(new_name)
-undo_pkg.edit_commit(&e)
+undo.edit_commit(&e)
 
 // component field
-e := undo_pkg.edit_begin(comp.handle, &sr.color, typeid_of([4]f32))
+e := undo.edit_begin(comp.handle, &sr.color, typeid_of([4]f32))
 sr.color = new_color
-undo_pkg.edit_commit(&e)
+undo.edit_commit(&e)
 
 // whole component (for Reset / Paste Values)
-e := undo_pkg.edit_component_base(comp.handle, comp_tid)
+e := undo.edit_component_base(comp.handle, comp_tid)
 engine.type_reset(comp.handle.type_key, comp_ptr)
-undo_pkg.edit_commit(&e)
+undo.edit_commit(&e)
 
 // abandon the edit without pushing (e.g. user cancelled mid-frame)
-undo_pkg.edit_cancel(&e)
+undo.edit_cancel(&e)
 
 // non-scene data (import settings, asset inspectors)
-e := undo_pkg.edit_begin(base_ptr, &settings.quality, typeid_of(int))
+e := undo.edit_begin(base_ptr, &settings.quality, typeid_of(int))
 settings.quality = 3
-undo_pkg.edit_commit(&e)
+undo.edit_commit(&e)
 ```
 
 A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_commit` / `edit_cancel`; they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit.
@@ -112,22 +112,22 @@ A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass
 
 ```odin
 // create: returns the new transform handle and records the create step
-newH := undo_pkg.record_create_child("Transform", parent_tH)
+newH := undo.record_create_child("Transform", parent_tH)
 
 // delete: capture + destroy + push, single call
-undo_pkg.record_delete(tH)
+undo.record_delete(tH)
 
 // reparent to a new parent, optionally at an explicit index
-undo_pkg.record_reparent_to(node, new_parent)
-undo_pkg.record_reparent_to(node, new_parent, sibling_index)
+undo.record_reparent_to(node, new_parent)
+undo.record_reparent_to(node, new_parent, sibling_index)
 
 // add/remove component on a transform
 engine.transform_add_comp(tH, .MyComp)
-undo_pkg.record_add_component(tH, comp.handle, list_index)
+undo.record_add_component(tH, comp.handle, list_index)
 
-undo_pkg.record_remove_component(tH, comp.handle)     // fused remove
+undo.record_remove_component(tH, comp.handle)     // fused remove
 
-undo_pkg.record_reorder_components(tH, from, to)
+undo.record_reorder_components(tH, from, to)
 ```
 
 The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `record_remove_component_pre` still exist for the rare case where the destroy and the record must be split across non-adjacent code (e.g. the destroy happens inside a callback you don't control). Prefer the fused forms when possible.
@@ -135,15 +135,15 @@ The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `reco
 ### Group commands
 
 ```odin
-g := undo_pkg.group_begin("Create Empty Parent")
-defer undo_pkg.group_end(&g)
+g := undo.group_begin("Create Empty Parent")
+defer undo.group_end(&g)
 
-new_parent := undo_pkg.record_create_child("Transform", old_parent)
+new_parent := undo.record_create_child("Transform", old_parent)
 if new_parent == {} do return   // scope auto-aborts on early return
-undo_pkg.record_reparent_to(new_parent, old_parent, sibling_idx)
-undo_pkg.record_reparent_to(tH, new_parent)
+undo.record_reparent_to(new_parent, old_parent, sibling_idx)
+undo.record_reparent_to(tH, new_parent)
 
-undo_pkg.group_commit(&g)       // opt-in: only finalize if we made it here
+undo.group_commit(&g)       // opt-in: only finalize if we made it here
 ```
 
 `group_end` aborts the in-progress group unless `group_commit` was called first. Any `record_*` or `edit_*` calls made while a group is active collect into that group.
@@ -154,10 +154,10 @@ The inspector field loop handles drag widgets automatically (see "Pending edit" 
 
 ```odin
 // on mouse-down
-d := undo_pkg.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
+d := undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
 // ... on each frame, mutate t.position freely ...
 // on mouse-up
-undo_pkg.field_drag_end(&d)    // single undo step covering the whole drag
+undo.field_drag_end(&d)    // single undo step covering the whole drag
 ```
 
 ### Custom inspector panels
@@ -165,8 +165,8 @@ undo_pkg.field_drag_end(&d)    // single undo step covering the whole drag
 When drawing a component's fields in a custom inspector panel, push an `Inspector_Owner` so nested drawers can find it:
 
 ```odin
-undo_pkg.push_component_owner(comp.handle)
-defer undo_pkg.pop_owner()
+undo.push_component_owner(comp.handle)
+defer undo.pop_owner()
 drawer(comp_ptr, comp_tid, label)
 ```
 
@@ -178,7 +178,7 @@ Reach for them only when the scope helpers can't express what you need.
 Clear the stack when context changes (handled automatically for scene load/unload/save-as and inspector target change):
 
 ```odin
-undo_pkg.clear(undo_pkg.get())
+undo.clear(undo.get())
 ```
 
 ## App developer usage

@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:strings"
 import im "../../external/odin-imgui"
 import engine "../engine"
-import undo_pkg "undo"
+import "undo"
 
 @(private="file")
 _history_selected: int = -1
@@ -19,27 +19,27 @@ draw_history_view :: proc() {
 	}
 	defer im.End()
 
-	s := undo_pkg.get()
+	s := undo.get()
 	if s == nil {
 		im.TextDisabled("Undo stack unavailable")
 		return
 	}
 
 	if im.Button("Undo") {
-		undo_pkg.apply_undo(s)
+		undo.apply_undo(s)
 	}
 	im.SameLine()
 	if im.Button("Redo") {
-		undo_pkg.apply_redo(s)
+		undo.apply_redo(s)
 	}
 	im.SameLine()
 	if im.Button("Clear") {
-		undo_pkg.clear(s)
+		undo.clear(s)
 		_history_selected = -1
 	}
 
-	items := undo_pkg.entries(s)
-	top := undo_pkg.top_index(s)
+	items := undo.entries(s)
+	top := undo.top_index(s)
 
 	im.SameLine()
 	im.Text("top=%d  entries=%d", i32(top), i32(len(items)))
@@ -56,7 +56,7 @@ draw_history_view :: proc() {
 			_history_selected = 0
 		}
 		if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
-			undo_pkg.jump_to(s, 0)
+			undo.jump_to(s, 0)
 		}
 
 		for entry, i in items {
@@ -87,7 +87,7 @@ draw_history_view :: proc() {
 			im.PopStyleColor()
 
 			if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
-				undo_pkg.jump_to(s, step_index)
+				undo.jump_to(s, step_index)
 			}
 		}
 
@@ -121,20 +121,20 @@ draw_history_view :: proc() {
 }
 
 @(private="file")
-_draw_history_entry_details :: proc(entry: ^undo_pkg.Entry) {
+_draw_history_entry_details :: proc(entry: ^undo.Entry) {
 	im.Text("Label: %s", cstr(entry.label))
 	im.Separator()
 	_draw_command_details(&entry.cmd, 0)
 }
 
 @(private="file")
-_draw_command_details :: proc(cmd: ^undo_pkg.Command, depth: int) {
+_draw_command_details :: proc(cmd: ^undo.Command, depth: int) {
 	switch v in cmd {
-	case undo_pkg.Value_Command:
+	case undo.Value_Command:
 		_draw_value_details(v, depth)
-	case undo_pkg.Structural_Command:
+	case undo.Structural_Command:
 		_draw_structural_details(v, depth)
-	case undo_pkg.Group_Command:
+	case undo.Group_Command:
 		im.Text("%sGroup (%d sub-commands)", cstr(_indent(depth)), i32(len(v.subs)))
 		for i in 0 ..< len(v.subs) {
 			sub := v.subs[i]
@@ -144,7 +144,7 @@ _draw_command_details :: proc(cmd: ^undo_pkg.Command, depth: int) {
 }
 
 @(private="file")
-_draw_value_details :: proc(v: undo_pkg.Value_Command, depth: int) {
+_draw_value_details :: proc(v: undo.Value_Command, depth: int) {
 	indent := _indent(depth)
 	im.Text("%sValue edit", cstr(indent))
 	_draw_target(v.target, depth + 1)
@@ -160,7 +160,7 @@ _draw_value_details :: proc(v: undo_pkg.Value_Command, depth: int) {
 }
 
 @(private="file")
-_draw_target :: proc(t: undo_pkg.Property_Target, depth: int) {
+_draw_target :: proc(t: undo.Property_Target, depth: int) {
 	indent := _indent(depth)
 	kind_str: string
 	switch t.kind {
@@ -205,10 +205,10 @@ _draw_target :: proc(t: undo_pkg.Property_Target, depth: int) {
 }
 
 @(private="file")
-_draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
+_draw_structural_details :: proc(sc: undo.Structural_Command, depth: int) {
 	indent := _indent(depth)
 	switch v in sc {
-	case undo_pkg.Reparent_Command:
+	case undo.Reparent_Command:
 		im.Text("%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)",
 			cstr(indent),
 			i32(v.node_local_id),
@@ -216,21 +216,21 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			i32(v.new_parent_local_id),
 			i32(v.old_index),
 			i32(v.new_index))
-	case undo_pkg.Create_Subtree_Command:
+	case undo.Create_Subtree_Command:
 		im.Text("%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.parent_local_id),
 			i32(v.root_local_id),
 			i32(v.sibling_index),
 			i32(len(v.payload)))
-	case undo_pkg.Delete_Subtree_Command:
+	case undo.Delete_Subtree_Command:
 		im.Text("%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.parent_local_id),
 			i32(v.root_local_id),
 			i32(v.sibling_index),
 			i32(len(v.payload)))
-	case undo_pkg.Add_Component_Command:
+	case undo.Add_Component_Command:
 		im.Text("%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.owner_local_id),
@@ -238,7 +238,7 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			i32(v.comp_local_id),
 			i32(v.list_index),
 			i32(len(v.payload)))
-	case undo_pkg.Remove_Component_Command:
+	case undo.Remove_Component_Command:
 		im.Text("%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.owner_local_id),
@@ -246,7 +246,7 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			i32(v.comp_local_id),
 			i32(v.list_index),
 			i32(len(v.payload)))
-	case undo_pkg.Reorder_Components_Command:
+	case undo.Reorder_Components_Command:
 		im.Text("%sReorder Components: owner=%d  %d -> %d",
 			cstr(indent),
 			i32(v.owner_local_id),

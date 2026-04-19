@@ -164,7 +164,7 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 	strings.write_string(&b, "package editor\n\n")
 	strings.write_string(&b, "import engine \"../engine\"\n")
 	strings.write_string(&b, "import \"menu\"\n")
-	strings.write_string(&b, "import undo_pkg \"undo\"\n\n")
+	strings.write_string(&b, "import \"undo\"\n\n")
 
 	strings.write_string(&b, "register_component_menus :: proc() {\n")
 	for e in data.entries {
@@ -183,7 +183,7 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 	strings.write_string(&b, "\t_, existing_idx := engine.transform_find_comp(t, key)\n")
 	strings.write_string(&b, "\tif existing_idx >= 0 do return\n")
 	strings.write_string(&b, "\towned, _ := engine.transform_add_comp(tH, key)\n")
-	strings.write_string(&b, "\tundo_pkg.record_add_component(tH, owned.handle, len(t.components) - 1)\n")
+	strings.write_string(&b, "\tundo.record_add_component(tH, owned.handle, len(t.components) - 1)\n")
 	strings.write_string(&b, "}\n")
 
 	gen_path := strings.concatenate({out_dir, "/menu_component_generated.odin"})
