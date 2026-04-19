@@ -83,6 +83,7 @@ transform_destroy :: proc(tH: Transform_Handle) {
 
     transform_destroy_components(tH)
     delete(t.name)
+    t^ = {}
     pool_destroy(&w.transforms, Handle(tH))
 }
 

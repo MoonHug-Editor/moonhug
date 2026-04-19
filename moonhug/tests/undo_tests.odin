@@ -531,6 +531,57 @@ test_undo_default_label :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_undo_create_empty_parent_repro :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
+
+	child := engine.transform_new("Child", rootH)
+	testing.expect(t, child != {}, "child created")
+
+	create_empty_parent :: proc(s: ^undo_pkg.Undo_Stack, tH: engine.Transform_Handle, w: ^engine.World) -> engine.Transform_Handle {
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}
+		sibling_idx := engine.transform_get_sibling_index(tH)
+		old_parent := engine.Transform_Handle(t.parent.handle)
+
+		undo_pkg.begin_group_command(s, "Create Empty Parent")
+		committed := false
+		defer if !committed do undo_pkg.abort_group_command(s)
+
+		new_parent := engine.transform_new("Transform", old_parent)
+		if new_parent == {} do return {}
+		undo_pkg.record_create(new_parent, old_parent)
+
+		old_np_parent := old_parent
+		old_np_index := engine.transform_get_sibling_index(new_parent)
+		engine.transform_set_parent(new_parent, old_parent, sibling_idx)
+		new_np_index := engine.transform_get_sibling_index(new_parent)
+		undo_pkg.record_reparent(new_parent, old_np_parent, old_parent, old_np_index, new_np_index)
+
+		old_ch_parent := engine.Transform_Handle(t.parent.handle)
+		old_ch_index := engine.transform_get_sibling_index(tH)
+		engine.transform_set_parent(tH, new_parent)
+		new_ch_index := engine.transform_get_sibling_index(tH)
+		undo_pkg.record_reparent(tH, old_ch_parent, new_parent, old_ch_index, new_ch_index)
+
+		undo_pkg.end_group_command(s, "Create Empty Parent")
+		committed = true
+		return new_parent
+	}
+
+	_ = create_empty_parent(s, child, &tc_mem.world)
+	testing.expect(t, undo_pkg.apply_undo(s), "first undo ok")
+
+	_ = create_empty_parent(s, child, &tc_mem.world)
+	testing.expect(t, undo_pkg.apply_undo(s), "second undo ok")
+}
+
+@(test)
 test_undo_new_edit_truncates_redo :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
