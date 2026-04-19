@@ -20,6 +20,9 @@ _field_snapshot: Field_Snapshot
 @(private)
 _pending_edit: Pending_Edit
 
+@(private)
+_nested_depth: int
+
 Field_Snapshot :: struct {
 	active:   bool,
 	target:   Property_Target,
@@ -117,6 +120,8 @@ target_for_field :: proc(field_ptr: rawptr, field_tid: typeid) -> (Property_Targ
 }
 
 begin_field :: proc(field_ptr: rawptr, field_tid: typeid) {
+	_nested_depth += 1
+	if _nested_depth > 1 do return
 	_field_snapshot = {}
 	s := get()
 	if s == nil || !s.recording || s.applying do return
@@ -138,6 +143,10 @@ begin_field :: proc(field_ptr: rawptr, field_tid: typeid) {
 }
 
 end_field :: proc(changed: bool) {
+	if _nested_depth > 0 {
+		_nested_depth -= 1
+	}
+	if _nested_depth > 0 do return
 	if !_field_snapshot.active {
 		return
 	}

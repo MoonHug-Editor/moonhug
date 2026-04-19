@@ -186,6 +186,7 @@ editor_init :: proc() {
     engine.register_pointer_type(f32)
     engine.register_pointer_type(f64)
     engine.register_pointer_type(string)
+    engine.register_pointer_type(engine.Asset_GUID)
     engine.register_pointer_type(engine.A)
     engine.register_pointer_type(engine.TweenUnion)
     engine.register_pointer_type(engine.UnionTest)
