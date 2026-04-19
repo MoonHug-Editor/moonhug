@@ -126,6 +126,10 @@ main :: proc() {
             draw_console_view()
         }
 
+        if menu.show_history {
+            draw_history_view()
+        }
+
         if menu.show_hierarchy {
             draw_hierarchy_view()
         }

@@ -3,6 +3,7 @@ package undo
 import "core:encoding/json"
 import "core:fmt"
 import "core:slice"
+import "base:builtin"
 import engine "../../engine"
 import "../../engine/log"
 
@@ -124,14 +125,21 @@ clear :: proc(s: ^Undo_Stack) {
 	for &e in s.items {
 		_entry_destroy(&e)
 	}
-	delete(s.items)
-	s.items = make([dynamic]Entry)
+	builtin.clear(&s.items)
 	for &g in s.txn_stack {
 		_group_destroy(&g)
 	}
-	delete(s.txn_stack)
-	s.txn_stack = make([dynamic]Group_Command)
+	builtin.clear(&s.txn_stack)
 	s.top = 0
+}
+
+destroy :: proc(s: ^Undo_Stack) {
+	if s == nil do return
+	clear(s)
+	delete(s.items)
+	delete(s.txn_stack)
+	s.items = {}
+	s.txn_stack = {}
 }
 
 set_recording :: proc(s: ^Undo_Stack, on: bool) {
@@ -177,8 +185,50 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 		if s.top > 0 do s.top -= 1
 	}
 
-	append(&s.items, Entry{label = label, cmd = cmd})
+	effective_label := label
+	if effective_label == "" {
+		effective_label = default_label(cmd)
+	}
+	append(&s.items, Entry{label = effective_label, cmd = cmd})
 	s.top = len(s.items)
+}
+
+jump_to :: proc(s: ^Undo_Stack, target_top: int) -> bool {
+	if s == nil do return false
+	if target_top < 0 || target_top > len(s.items) do return false
+	for s.top > target_top {
+		if !apply_undo(s) do return false
+	}
+	for s.top < target_top {
+		if !apply_redo(s) do return false
+	}
+	return true
+}
+
+default_label :: proc(cmd: Command) -> string {
+	switch v in cmd {
+	case Value_Command:
+		switch v.target.kind {
+		case .None:      return "Edit Value"
+		case .Transform: return "Edit Transform"
+		case .Component: return "Edit Component"
+		case .Raw:       return "Edit"
+		}
+		return "Edit Value"
+	case Structural_Command:
+		switch sv in v {
+		case Reparent_Command:           return "Reparent"
+		case Create_Subtree_Command:     return "Create"
+		case Delete_Subtree_Command:     return "Delete"
+		case Add_Component_Command:      return "Add Component"
+		case Remove_Component_Command:   return "Remove Component"
+		case Reorder_Components_Command: return "Reorder Components"
+		}
+		return "Structural"
+	case Group_Command:
+		return "Group"
+	}
+	return ""
 }
 
 begin_transaction :: proc(s: ^Undo_Stack, label := "") {
@@ -221,6 +271,16 @@ end_transaction :: proc(s: ^Undo_Stack, label := "") {
 
 can_undo :: proc(s: ^Undo_Stack) -> bool {
 	return s != nil && s.top > 0
+}
+
+entries :: proc(s: ^Undo_Stack) -> []Entry {
+	if s == nil do return nil
+	return s.items[:]
+}
+
+top_index :: proc(s: ^Undo_Stack) -> int {
+	if s == nil do return 0
+	return s.top
 }
 
 can_redo :: proc(s: ^Undo_Stack) -> bool {

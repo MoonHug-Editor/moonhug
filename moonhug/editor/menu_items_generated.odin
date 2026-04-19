@@ -20,6 +20,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_toggle("View/Game", &menu.show_game, 4)
 	menu.add_menu_toggle("View/Output", &menu.show_output, 5)
 	menu.add_menu_toggle("View/Scale UI for DPI (sharing)", &menu.scale_ui_for_dpi, 5)
+	menu.add_menu_toggle("View/History", &menu.show_history, 6)
 	menu.add_menu_toggle("View/Inspector", &menu.show_inspector, 10)
 	menu.add_menu_toggle("View/Project Inspector", &menu.show_project_inspector, 11)
 	menu.add_menu_item("View/Theme/Dark", "", menu.menu_item_view_theme_dark, -12)

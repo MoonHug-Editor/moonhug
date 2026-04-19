@@ -30,7 +30,7 @@ setup_undo :: proc(tc: ^TestCtx) -> ^undo_pkg.Undo_Stack {
 
 @(private)
 teardown_undo :: proc(tc: ^TestCtx, s: ^undo_pkg.Undo_Stack) {
-	undo_pkg.clear(s)
+	undo_pkg.destroy(s)
 	free(s)
 	teardown(tc)
 }
@@ -374,6 +374,17 @@ test_undo_stack_clear :: proc(t: ^testing.T) {
 	undo_pkg.clear(s)
 	testing.expect(t, !undo_pkg.can_undo(s), "cannot undo after clear")
 	testing.expect(t, !undo_pkg.can_redo(s), "cannot redo after clear")
+
+	undo_pkg.clear(s)
+	testing.expect(t, !undo_pkg.can_undo(s), "double clear is safe")
+
+	target2 := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json2 := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {9, 9, 9}
+	new_json2 := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+	undo_pkg.push_value(s, target2, old_json2, new_json2)
+	testing.expect(t, undo_pkg.can_undo(s), "stack is reusable after clear")
+	testing.expect_value(t, undo_pkg.top_index(s), 1)
 }
 
 @(test)
@@ -451,6 +462,70 @@ test_undo_drag_sequence_commits_on_release :: proc(t: ^testing.T) {
 
 	undo_pkg.apply_redo(s)
 	testing.expect_value(t, p.speed, f32(99))
+}
+
+@(test)
+test_undo_jump_to :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	push :: proc(s: ^undo_pkg.Undo_Stack, tr: ^engine.Transform, target: undo_pkg.Property_Target, v: [3]f32) {
+		old_json := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+		tr.position = v
+		new_json := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+		undo_pkg.push_value(s, target, old_json, new_json)
+	}
+
+	push(s, tr, target, {1, 0, 0})
+	push(s, tr, target, {2, 0, 0})
+	push(s, tr, target, {3, 0, 0})
+	testing.expect_value(t, undo_pkg.top_index(s), 3)
+	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
+
+	ok := undo_pkg.jump_to(s, 1)
+	testing.expect(t, ok, "jump to step 1")
+	testing.expect_value(t, undo_pkg.top_index(s), 1)
+	testing.expect_value(t, tr.position, [3]f32{1, 0, 0})
+
+	ok = undo_pkg.jump_to(s, 3)
+	testing.expect(t, ok, "jump to step 3")
+	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
+
+	ok = undo_pkg.jump_to(s, 0)
+	testing.expect(t, ok, "jump to initial state")
+	testing.expect_value(t, undo_pkg.top_index(s), 0)
+	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
+}
+
+@(test)
+test_undo_default_label :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {9, 9, 9}
+	new_json := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
+	undo_pkg.push_value(s, target, old_json, new_json)
+
+	items := undo_pkg.entries(s)
+	testing.expect_value(t, len(items), 1)
+	testing.expect_value(t, items[0].label, "Edit Transform")
 }
 
 @(test)
