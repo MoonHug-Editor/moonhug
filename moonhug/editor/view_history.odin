@@ -218,19 +218,19 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			i32(v.old_index),
 			i32(v.new_index))
 	case undo_pkg.Create_Subtree_Command:
-		im.Text("%sCreate: parent=%d  root=%d  idx=%d  blob=%d bytes",
+		im.Text("%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.parent_local_id),
 			i32(v.root_local_id),
 			i32(v.sibling_index),
-			i32(len(v.blob)))
+			i32(len(v.payload)))
 	case undo_pkg.Delete_Subtree_Command:
-		im.Text("%sDelete: parent=%d  root=%d  idx=%d  blob=%d bytes",
+		im.Text("%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
 			i32(v.parent_local_id),
 			i32(v.root_local_id),
 			i32(v.sibling_index),
-			i32(len(v.blob)))
+			i32(len(v.payload)))
 	case undo_pkg.Add_Component_Command:
 		im.Text("%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
@@ -238,7 +238,7 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			v.type_key,
 			i32(v.comp_local_id),
 			i32(v.list_index),
-			i32(len(v.comp_json)))
+			i32(len(v.payload)))
 	case undo_pkg.Remove_Component_Command:
 		im.Text("%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
 			cstr(indent),
@@ -246,7 +246,7 @@ _draw_structural_details :: proc(sc: undo_pkg.Structural_Command, depth: int) {
 			v.type_key,
 			i32(v.comp_local_id),
 			i32(v.list_index),
-			i32(len(v.comp_json)))
+			i32(len(v.payload)))
 	case undo_pkg.Reorder_Components_Command:
 		im.Text("%sReorder Components: owner=%d  %d -> %d",
 			cstr(indent),

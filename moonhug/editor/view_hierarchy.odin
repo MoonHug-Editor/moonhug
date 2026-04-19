@@ -38,10 +38,9 @@ _create_child_with_undo :: proc(name: string, parent: engine.Transform_Handle) -
 @(private)
 _destroy_with_undo :: proc(tH: engine.Transform_Handle) {
 	pre, ok := undo_pkg.record_delete_pre(tH)
+	defer if ok do undo_pkg.record_cleanup(&pre)
 	engine.transform_destroy(tH)
-	if ok {
-		undo_pkg.record_delete_commit(pre)
-	}
+	if ok do undo_pkg.record_commit(&pre)
 }
 
 @(private)
@@ -492,11 +491,18 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene) 
 	sibling_idx := engine.transform_get_sibling_index(tH)
 	old_parent := engine.Transform_Handle(t.parent.handle)
 
-	undo_pkg.begin_transaction(undo_pkg.get(), "Create Empty Parent")
+	s := undo_pkg.get()
+	undo_pkg.begin_group_command(s, "Create Empty Parent")
+	committed := false
+	defer if !committed do undo_pkg.abort_group_command(s)
+
 	new_parent := _create_child_with_undo("Transform", old_parent)
+	if new_parent == {} do return
 	_reparent_with_undo(new_parent, old_parent, sibling_idx)
 	_reparent_with_undo(tH, new_parent)
-	undo_pkg.end_transaction(undo_pkg.get(), "Create Empty Parent")
+	undo_pkg.end_group_command(s, "Create Empty Parent")
+	committed = true
+
 	_hierarchy_selected = new_parent
 	_hierarchy_force_open = new_parent
 }

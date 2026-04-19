@@ -381,10 +381,9 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			}
 		}
 		pre, pre_ok := undo_pkg.record_remove_component_pre(tH, _comp_pending_remove, list_idx)
+		defer if pre_ok do undo_pkg.record_cleanup(&pre)
 		engine.transform_remove_comp(tH, _comp_pending_remove)
-		if pre_ok {
-			undo_pkg.record_remove_component_commit(pre)
-		}
+		if pre_ok do undo_pkg.record_commit(&pre)
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {

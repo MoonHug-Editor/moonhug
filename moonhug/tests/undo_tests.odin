@@ -192,8 +192,9 @@ test_undo_delete_subtree :: proc(t: ^testing.T) {
 
 	pre, ok := undo_pkg.record_delete_pre(childH)
 	testing.expect(t, ok, "delete_pre captured")
+	defer if ok do undo_pkg.record_cleanup(&pre)
 	engine.transform_destroy(childH)
-	undo_pkg.record_delete_commit(pre)
+	undo_pkg.record_commit(&pre)
 
 	p := engine.pool_get(&tc_mem.world.transforms, engine.Handle(parentH))
 	if p == nil do return
@@ -261,8 +262,9 @@ test_undo_remove_component :: proc(t: ^testing.T) {
 
 	pre, ok := undo_pkg.record_remove_component_pre(tH, owned.handle, list_idx)
 	testing.expect(t, ok, "pre captured")
+	defer if ok do undo_pkg.record_cleanup(&pre)
 	engine.transform_remove_comp(tH, owned.handle)
-	undo_pkg.record_remove_component_commit(pre)
+	undo_pkg.record_commit(&pre)
 
 	testing.expect_value(t, len(tr.components), 0)
 
@@ -313,7 +315,7 @@ test_undo_reorder_components :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_undo_transaction_group :: proc(t: ^testing.T) {
+test_undo_group_command :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
 	s := setup_undo(tc_mem)
@@ -324,7 +326,7 @@ test_undo_transaction_group :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
 
-	undo_pkg.begin_transaction(s, "Edit Pos+Scale")
+	undo_pkg.begin_group_command(s, "Edit Pos+Scale")
 	{
 		target := undo_pkg.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
 		old_json := undo_pkg.capture_json(&tr.position, typeid_of([3]f32))
@@ -338,7 +340,7 @@ test_undo_transaction_group :: proc(t: ^testing.T) {
 		new_json2 := undo_pkg.capture_json(&tr.scale, typeid_of([3]f32))
 		undo_pkg.push_value(s, target2, old_json2, new_json2)
 	}
-	undo_pkg.end_transaction(s, "Edit Pos+Scale")
+	undo_pkg.end_group_command(s, "Edit Pos+Scale")
 
 	testing.expect(t, undo_pkg.can_undo(s), "one undo entry available")
 

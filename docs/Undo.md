@@ -15,9 +15,8 @@ Editor-only undo/redo for value edits and hierarchy changes.
 
 ## Targets survive pool reallocation
 
-Raw pointers are unsafe as undo targets: pools recycle slots and structural undo/redo destroys and recreates objects, so any cached `^T` can be stale.
-
-`Property_Target` instead stores:
+`Property_Target` stores robust identifier that works even after destroy/recreate object.
+> Raw pointers are unsafe as undo targets: pools recycle slots and structural undo/redo destroys and recreates objects, so any cached `^T` can be stale.
 
 - `kind` — `Transform`, `Component`, or `Raw`.
 - `scene` + `local_id` — persistent, file-stable identity used when a `Handle` is stale.
@@ -44,12 +43,12 @@ clear       — wipes stack (used on scene load/unload, inspector target change)
 
 `applying` flag blocks re-entrant recording during undo/redo. `recording` flag is false in playmode.
 
-## Transactions
+## Group Command
 
 ```odin
-undo.begin_transaction(s, "Create Empty Parent")
+undo.begin_group_command(s, "Create Empty Parent")
 // ... several structural + value commands ...
-undo.end_transaction(s, "Create Empty Parent")
+undo.end_group_command(s, "Create Empty Parent")
 ```
 
 Sub-commands collect into a `Group_Command` and push as one undo step. Used for "Create Empty Parent" and for Euler rotation (three float edits → one quaternion change).
@@ -95,19 +94,25 @@ undo_pkg.push_value(undo_pkg.get(), target, old_json, new_json)
 undo_pkg.record_reparent(node, old_parent, new_parent, old_index, new_index)
 undo_pkg.record_create(new_root, parent)
 pre, ok := undo_pkg.record_delete_pre(root)   // capture subtree
+defer if ok do undo_pkg.record_cleanup(&pre)
 engine.transform_destroy(root)
-if ok do undo_pkg.record_delete_commit(pre)
+if ok do undo_pkg.record_commit(&pre)
 
 undo_pkg.record_add_component(tH, comp.handle, list_index)
 pre, ok := undo_pkg.record_remove_component_pre(tH, comp.handle, list_index)
+defer if ok do undo_pkg.record_cleanup(&pre)
 engine.transform_remove_comp(tH, comp.handle)
-if ok do undo_pkg.record_remove_component_commit(pre)
+if ok do undo_pkg.record_commit(&pre)
 undo_pkg.record_reorder_components(tH, from, to)
 
-// atomic multi-step
-undo_pkg.begin_transaction(undo_pkg.get(), "Edit Position+Scale")
+// group command
+s := undo_pkg.get()
+undo_pkg.begin_group_command(s, "Edit Position+Scale")
+committed := false
+defer if !committed do undo_pkg.abort_group_command(s)
 // ... push_value calls ...
-undo_pkg.end_transaction(undo_pkg.get(), "Edit Position+Scale")
+undo_pkg.end_group_command(s, "Edit Position+Scale")
+committed = true
 ```
 
 When drawing a component's fields in a custom inspector panel, push an `Inspector_Owner` so nested drawers can find it:
@@ -126,24 +131,14 @@ undo_pkg.clear(undo_pkg.get())
 
 ## App developer usage
 
-App code doesn't use the undo stack. It is editor-only and compiled into the editor binary, not the app. The engine only exposes one hook:
-
-```odin
-UserContext :: struct {
-    // ...
-    undo: rawptr,   // filled by the editor, nil in the app
-}
-```
-
-Any engine or app code that wants to be undo-aware can check `engine.ctx_get().undo != nil`, but practically this is never needed — recording happens at editor UI boundaries, not inside game logic.
+App code doesn't use the undo stack. It is editor-only and compiled into the editor binary, not the app.
 
 For components to work cleanly with undo of value edits, the existing rules are sufficient:
 
-- Register the component type (`@(component)` attribute handles this via the prebuild generator).
-- Implement `reset_T` / `cleanup_T` following the [Concepts](Concepts.md) rules so defaults survive delete + undo round-trip.
-- Implement `on_validate_T` when a value change needs to recompute derived state; `_value_apply` calls it after restoring a component field.
-
-No per-component undo code is required.
+- Implement `reset_T` / `cleanup_T` so defaults survive delete + undo round-trip.
+  - cleanup_T should deallocate type's data
+  - reset_T should cleanup_T then set values
+- Implement `on_validate_T` when a value change needs to recompute derived state, it is called after restoring a component field.
 
 ## History view
 
@@ -162,6 +157,5 @@ Ctrl+Shift+Z   — redo
 ## Limitations
 
 - Capacity is 32 entries; overflow drops the oldest.
-- Playmode does not record; the pre-play stack is preserved.
 - Non-scene inspector targets (import settings, asset inspectors) use `.Raw` targets and stop being valid when the inspector switches away — the stack is cleared on target change.
 - Structural commands capture full subtree JSON on delete/remove; large subtrees produce large entries.

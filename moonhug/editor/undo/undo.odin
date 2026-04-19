@@ -46,7 +46,7 @@ Create_Subtree_Command :: struct {
 	parent_local_id:     engine.Local_ID,
 	root_local_id:       engine.Local_ID,
 	sibling_index:       int,
-	blob:                []byte,
+	payload:             []byte,
 }
 
 Delete_Subtree_Command :: struct {
@@ -54,7 +54,7 @@ Delete_Subtree_Command :: struct {
 	parent_local_id:     engine.Local_ID,
 	root_local_id:       engine.Local_ID,
 	sibling_index:       int,
-	blob:                []byte,
+	payload:             []byte,
 }
 
 Add_Component_Command :: struct {
@@ -62,7 +62,7 @@ Add_Component_Command :: struct {
 	owner_local_id:      engine.Local_ID,
 	type_key:            engine.TypeKey,
 	comp_local_id:       engine.Local_ID,
-	comp_json:           []byte,
+	payload:             []byte,
 	list_index:          int,
 }
 
@@ -71,7 +71,7 @@ Remove_Component_Command :: struct {
 	owner_local_id:      engine.Local_ID,
 	type_key:            engine.TypeKey,
 	comp_local_id:       engine.Local_ID,
-	comp_json:           []byte,
+	payload:             []byte,
 	list_index:          int,
 }
 
@@ -231,13 +231,21 @@ default_label :: proc(cmd: Command) -> string {
 	return ""
 }
 
-begin_transaction :: proc(s: ^Undo_Stack, label := "") {
+begin_group_command :: proc(s: ^Undo_Stack, label := "") {
 	if s == nil do return
 	if !s.recording || s.applying do return
 	append(&s.txn_stack, Group_Command{subs = make([dynamic]Command)})
 }
 
-end_transaction :: proc(s: ^Undo_Stack, label := "") {
+abort_group_command :: proc(s: ^Undo_Stack) {
+	if s == nil do return
+	if len(s.txn_stack) == 0 do return
+	grp := s.txn_stack[len(s.txn_stack) - 1]
+	pop(&s.txn_stack)
+	_group_destroy(&grp)
+}
+
+end_group_command :: proc(s: ^Undo_Stack, label := "") {
 	if s == nil do return
 	if len(s.txn_stack) == 0 do return
 	grp := s.txn_stack[len(s.txn_stack) - 1]
@@ -369,13 +377,13 @@ _structural_destroy :: proc(sc: ^Structural_Command) {
 	switch v in sc {
 	case Reparent_Command:
 	case Create_Subtree_Command:
-		if v.blob != nil do delete(v.blob)
+		if v.payload != nil do delete(v.payload)
 	case Delete_Subtree_Command:
-		if v.blob != nil do delete(v.blob)
+		if v.payload != nil do delete(v.payload)
 	case Add_Component_Command:
-		if v.comp_json != nil do delete(v.comp_json)
+		if v.payload != nil do delete(v.payload)
 	case Remove_Component_Command:
-		if v.comp_json != nil do delete(v.comp_json)
+		if v.payload != nil do delete(v.payload)
 	case Reorder_Components_Command:
 	}
 }
@@ -637,7 +645,7 @@ _do_reparent :: proc(s: ^engine.Scene, node_id: engine.Local_ID, new_parent_id: 
 _do_create_subtree :: proc(v: Create_Subtree_Command) {
 	parent_h, ok := scene_find_transform_by_local_id(v.scene, v.parent_local_id)
 	if !ok do return
-	_paste_subtree_preserve_ids(v.blob, engine.Transform_Handle(parent_h), v.sibling_index)
+	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
 }
 
 @(private)
@@ -658,14 +666,14 @@ _do_delete_subtree :: proc(v: Delete_Subtree_Command) {
 _undo_delete_subtree :: proc(v: Delete_Subtree_Command) {
 	parent_h, ok := scene_find_transform_by_local_id(v.scene, v.parent_local_id)
 	if !ok do return
-	_paste_subtree_preserve_ids(v.blob, engine.Transform_Handle(parent_h), v.sibling_index)
+	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
 }
 
 @(private)
-_paste_subtree_preserve_ids :: proc(blob: []byte, parent: engine.Transform_Handle, sibling_index: int) -> engine.Transform_Handle {
-	if blob == nil || len(blob) == 0 do return {}
+_paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Handle, sibling_index: int) -> engine.Transform_Handle {
+	if payload == nil || len(payload) == 0 do return {}
 	sf: engine.SceneFile
-	if err := json.unmarshal(blob, &sf); err != nil {
+	if err := json.unmarshal(payload, &sf); err != nil {
 		log.error(fmt.tprintf("undo: unmarshal subtree failed: %v", err))
 		return {}
 	}
@@ -717,12 +725,12 @@ _do_add_component :: proc(v: Add_Component_Command) {
 	owned, ptr := engine.transform_add_comp(tH, v.type_key)
 	if ptr == nil do return
 
-	if v.comp_json != nil && len(v.comp_json) > 0 {
+	if v.payload != nil && len(v.payload) > 0 {
 		tid := engine.get_typeid_by_type_key(v.type_key)
 		ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
 		if ptr_ok {
 			target_ptr := ptr
-			if err := json.unmarshal_any(v.comp_json, any{&target_ptr, ptr_tid}, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
+			if err := json.unmarshal_any(v.payload, any{&target_ptr, ptr_tid}, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
 				log.error(fmt.tprintf("undo: unmarshal component failed: %v", err))
 			}
 			base := cast(^engine.CompData)ptr
@@ -780,7 +788,7 @@ _undo_remove_component :: proc(v: Remove_Component_Command) {
 		owner_local_id = v.owner_local_id,
 		type_key = v.type_key,
 		comp_local_id = v.comp_local_id,
-		comp_json = v.comp_json,
+		payload = v.payload,
 		list_index = v.list_index,
 	}
 	_do_add_component(add)

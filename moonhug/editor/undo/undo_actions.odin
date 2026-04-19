@@ -67,8 +67,8 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 		}
 	}
 
-	blob := engine.scene_copy_subtree(root)
-	if blob == nil do return
+	payload := engine.scene_copy_subtree(root)
+	if payload == nil do return
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	cmd := Create_Subtree_Command{
@@ -76,7 +76,7 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
-		blob = blob,
+		payload = payload,
 	}
 	push(s, Command(Structural_Command(cmd)))
 }
@@ -89,8 +89,8 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (Delete_Subtree_Comm
 	if !ok do return {}, false
 	parent_lid := parent_local_id(root)
 
-	blob := engine.scene_copy_subtree(root)
-	if blob == nil do return {}, false
+	payload := engine.scene_copy_subtree(root)
+	if payload == nil do return {}, false
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	return Delete_Subtree_Command{
@@ -98,14 +98,24 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (Delete_Subtree_Comm
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
-		blob = blob,
+		payload = payload,
 	}, true
 }
 
-record_delete_commit :: proc(cmd: Delete_Subtree_Command) {
+record_commit :: proc(cmd: ^$T) {
 	s := get()
 	if s == nil do return
-	push(s, Command(Structural_Command(cmd)))
+	if cmd.payload == nil do return
+	pushed := cmd^
+	cmd.payload = nil
+	push(s, Command(Structural_Command(pushed)))
+}
+
+record_cleanup :: proc(cmd: ^$T) {
+	if cmd.payload != nil {
+		delete(cmd.payload)
+		cmd.payload = nil
+	}
 }
 
 record_add_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: engine.Handle, list_index: int) {
@@ -120,13 +130,13 @@ record_add_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: eng
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return
 
-	json_bytes := capture_json(base, tid)
+	payload := capture_json(base, tid)
 	cmd := Add_Component_Command{
 		scene = scene,
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
-		comp_json = json_bytes,
+		payload = payload,
 		list_index = list_index,
 	}
 	push(s, Command(Structural_Command(cmd)))
@@ -144,21 +154,15 @@ record_remove_component_pre :: proc(owner_tH: engine.Transform_Handle, comp_hand
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return {}, false
 
-	json_bytes := capture_json(base, tid)
+	payload := capture_json(base, tid)
 	return Remove_Component_Command{
 		scene = scene,
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
-		comp_json = json_bytes,
+		payload = payload,
 		list_index = list_index,
 	}, true
-}
-
-record_remove_component_commit :: proc(cmd: Remove_Component_Command) {
-	s := get()
-	if s == nil do return
-	push(s, Command(Structural_Command(cmd)))
 }
 
 record_reorder_components :: proc(owner_tH: engine.Transform_Handle, from, to: int) {
