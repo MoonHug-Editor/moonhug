@@ -14,12 +14,22 @@ PROJECT_SETTINGS_DIR :: "ProjectSettings"
 EDITOR_SETTINGS_FILE :: "ProjectSettings/editor_settings.json"
 
 EditorSettings :: struct {
-    width:             i32,
-    height:            i32,
-    x:                 i32,
-    y:                 i32,
-    theme:             menu.Theme,
-    open_scene_guids:  [dynamic]string,
+    width:                    i32,
+    height:                   i32,
+    x:                        i32,
+    y:                        i32,
+    theme:                    menu.Theme,
+    open_scene_guids:         [dynamic]string,
+    show_inspector:           bool,
+    show_project_inspector:   bool,
+    show_project:             bool,
+    show_console:             bool,
+    show_scene:               bool,
+    show_game:                bool,
+    show_output:              bool,
+    show_hierarchy:           bool,
+    show_history:             bool,
+    has_view_state:           bool,
 }
 
 editor_settings: EditorSettings
@@ -28,8 +38,21 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
     data, read_err := os.read_entire_file(EDITOR_SETTINGS_FILE, context.temp_allocator)
     if read_err == nil {
         err := json.unmarshal(data, &editor_settings)
-        if err == nil && editor_settings.width > 0 && editor_settings.height > 0 {
-            return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
+        if err == nil {
+            if editor_settings.has_view_state {
+                menu.show_inspector         = editor_settings.show_inspector
+                menu.show_project_inspector = editor_settings.show_project_inspector
+                menu.show_project           = editor_settings.show_project
+                menu.show_console           = editor_settings.show_console
+                menu.show_scene             = editor_settings.show_scene
+                menu.show_game              = editor_settings.show_game
+                menu.show_output            = editor_settings.show_output
+                menu.show_hierarchy         = editor_settings.show_hierarchy
+                menu.show_history           = editor_settings.show_history
+            }
+            if editor_settings.width > 0 && editor_settings.height > 0 {
+                return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
+            }
         }
     }
     return 0, 0, -1, -1
@@ -58,6 +81,17 @@ save_editor_settings :: proc() {
     editor_settings.x      = i32(pos.x)
     editor_settings.y      = i32(pos.y)
     editor_settings.theme  = menu.active_theme
+
+    editor_settings.show_inspector         = menu.show_inspector
+    editor_settings.show_project_inspector = menu.show_project_inspector
+    editor_settings.show_project           = menu.show_project
+    editor_settings.show_console           = menu.show_console
+    editor_settings.show_scene             = menu.show_scene
+    editor_settings.show_game              = menu.show_game
+    editor_settings.show_output            = menu.show_output
+    editor_settings.show_hierarchy         = menu.show_hierarchy
+    editor_settings.show_history           = menu.show_history
+    editor_settings.has_view_state         = true
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
