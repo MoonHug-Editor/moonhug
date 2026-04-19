@@ -5,11 +5,14 @@ import "core:strings"
 
 Transform_Handle :: distinct Handle
 
+@(poolable)
+@(typ_guid={guid = "312927b7-3c4a-4929-9807-8216baf26a68"})
 Transform :: struct {
     local_id: Local_ID `inspect:"-"`,
     name: string,
     is_active: bool,
     destroy: bool `json:"-"`,
+    nested_owned: bool `json:"-"`,
     position: [3]f32,
     rotation: [4]f32,
     scale:    [3]f32,
@@ -33,6 +36,7 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     s := sm_scene_get_active()
 
     tHandle, t := pool_create(&w.transforms)
+    tHandle.type_key = .Transform
     tH := Transform_Handle(tHandle)
     t.name = strings.clone(name)
     t.is_active = true
@@ -82,6 +86,7 @@ transform_destroy :: proc(tH: Transform_Handle) {
 
     transform_destroy_components(tH)
     delete(t.name)
+    t^ = {}
     pool_destroy(&w.transforms, Handle(tH))
 }
 
@@ -106,7 +111,7 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return
     t.scene = s
-    if s != nil {
+    if s != nil && !t.nested_owned {
         t.local_id = scene_next_id(s)
         for &c in t.components {
             raw := world_pool_get(w, c.handle)
@@ -241,7 +246,7 @@ transform_tick_destroy :: proc() {
         slot := &w.transforms.slots[i]
         if !slot.alive do continue
         if slot.data.destroy {
-            handle := Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }
+            handle := Handle{ index = u32(i), generation = slot.generation, type_key = .Transform }
             append(&to_destroy, Transform_Handle(handle))
         }
     }

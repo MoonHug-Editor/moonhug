@@ -83,21 +83,41 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
+	if t.nested_owned do return
 
 	t_copy := t^
 	t_copy.name = strings.clone(t.name)
-	t_copy.children = make([dynamic]Ref, len(t.children))
-	copy(t_copy.children[:], t.children[:])
-	t_copy.components = make([dynamic]Owned, len(t.components))
-	copy(t_copy.components[:], t.components[:])
+	t_copy.children = make([dynamic]Ref, 0, len(t.children))
+	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct != nil && ct.nested_owned do continue
+		append(&t_copy.children, child)
+	}
+	t_copy.components = make([dynamic]Owned, 0, len(t.components))
+	for c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw != nil {
+			base := cast(^CompData)raw
+			if base.nested_owned do continue
+		}
+		append(&t_copy.components, c)
+	}
 	append(&sf.transforms, t_copy)
 
 	for &c in t.components {
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw != nil {
+			base := cast(^CompData)raw
+			if base.nested_owned do continue
+		}
 		world_pool_collect(w, c.handle, sf)
 	}
 
 	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct != nil && ct.nested_owned do continue
 		_collect_transform_tree(w, Transform_Handle(child.handle), sf)
 	}
 }
@@ -231,7 +251,11 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 	s := pt.scene
 
 	_scene_file_remap_local_ids(&sf, s)
-	return _scene_load_as_child(&sf, parent, s)
+	root_tH := _scene_load_as_child(&sf, parent, s)
+	if root_tH != {} && !ctx_get().is_playmode {
+		_scene_resolve_nested_in_subtree(root_tH)
+	}
+	return root_tH
 }
 
 scene_duplicate_subtree :: proc(tH: Transform_Handle) -> Transform_Handle {

@@ -163,7 +163,8 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 
 	strings.write_string(&b, "package editor\n\n")
 	strings.write_string(&b, "import engine \"../engine\"\n")
-	strings.write_string(&b, "import \"menu\"\n\n")
+	strings.write_string(&b, "import \"menu\"\n")
+	strings.write_string(&b, "import \"undo\"\n\n")
 
 	strings.write_string(&b, "register_component_menus :: proc() {\n")
 	for e in data.entries {
@@ -181,7 +182,8 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 	strings.write_string(&b, "\tif t == nil do return\n")
 	strings.write_string(&b, "\t_, existing_idx := engine.transform_find_comp(t, key)\n")
 	strings.write_string(&b, "\tif existing_idx >= 0 do return\n")
-	strings.write_string(&b, "\tengine.transform_add_comp(tH, key)\n")
+	strings.write_string(&b, "\towned, _ := engine.transform_add_comp(tH, key)\n")
+	strings.write_string(&b, "\tundo.record_add_component(tH, owned.handle, len(t.components) - 1)\n")
 	strings.write_string(&b, "}\n")
 
 	gen_path := strings.concatenate({out_dir, "/menu_component_generated.odin"})
@@ -213,7 +215,6 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 		_pool_type(&b, e.type_name, e.max)
 		strings.write_string(&b, ",\n")
 	}
-	strings.write_string(&b, "\ttransforms: Pool(Transform),\n")
 	strings.write_string(&b, "\tpool_table: [TypeKey]Pool_Entry,\n")
 	strings.write_string(&b, "}\n\n")
 
@@ -225,7 +226,6 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
-	strings.write_string(&b, "\tpool_init(&w.transforms)\n")
 	strings.write_string(&b, "\t__type_resets_init()\n")
 	strings.write_string(&b, "\t__type_cleanups_init()\n")
 	strings.write_string(&b, "\t__component_on_validates_init()\n")
@@ -385,6 +385,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	}
 	strings.write_string(&b, "\tfor &t_data in sf.transforms {\n")
 	strings.write_string(&b, "\t\thandle, t := pool_create(&w.transforms)\n")
+	strings.write_string(&b, "\t\thandle.type_key = .Transform\n")
 	strings.write_string(&b, "\t\tt^ = t_data\n")
 	strings.write_string(&b, "\t\tt.scene = s\n")
 	strings.write_string(&b, "\t\tif t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY\n")

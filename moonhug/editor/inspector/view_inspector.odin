@@ -8,6 +8,7 @@ import im "../../../external/odin-imgui"
 import ser "../../engine/serialization"
 import engine "../../engine"
 import clip "../clipboard"
+import "../undo"
 
 InspectorMode :: enum {
     Asset,
@@ -157,6 +158,39 @@ consume_inspector_changed :: proc() -> bool {
     return changed
 }
 
+is_changed_flag_set :: proc() -> bool {
+    return inspector_changed
+}
+
+@(private)
+_undo_finalize_field :: proc(field_ptr: rawptr, field_tid: typeid) {
+    activated := im.IsItemActivated()
+    deactivated_after_edit := im.IsItemDeactivatedAfterEdit()
+
+    if activated {
+        undo.promote_to_pending()
+    }
+
+    if deactivated_after_edit {
+        if undo.pending_matches(field_ptr) {
+            undo.pending_commit()
+            undo.end_field(false)
+            return
+        }
+    }
+
+    if inspector_changed && !im.IsItemActive() {
+        if undo.pending_matches(field_ptr) {
+            undo.pending_commit()
+            undo.end_field(false)
+        } else {
+            undo.end_field(true)
+        }
+    } else {
+        undo.end_field(false)
+    }
+}
+
 resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, label: cstring) {
     if drawer, ok := mapPropertyDrawer[tid]; ok {
         return drawer
@@ -173,9 +207,10 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
+        readonly := engine.inspector_is_readonly()
         show_reset := false
         if key, ok := engine.get_type_key_by_typeid(field_tid); ok && engine.type_reset_procs[key] != nil {
-            if im.MenuItem("Reset") {
+            if im.MenuItem("Reset", nil, false, !readonly) {
                 engine.type_reset(key, field_ptr)
                 mark_inspector_changed()
             }
@@ -184,7 +219,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
             ti := type_info_of(field_tid)
             if reflect.is_integer(ti) || reflect.is_float(ti) || reflect.is_boolean(ti) ||
                reflect.is_enum(ti) {
-                if im.MenuItem("Reset") {
+                if im.MenuItem("Reset", nil, false, !readonly) {
                     mem.zero(field_ptr, ti.size)
                     mark_inspector_changed()
                 }
@@ -195,7 +230,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
         if im.MenuItem("Copy") {
             clip.copy(any{field_ptr, field_tid})
         }
-        can := clip.can_paste(field_tid)
+        can := clip.can_paste(field_tid) && !readonly
         if im.MenuItem("Paste", nil, false, can) {
             clip.paste(any{field_ptr, field_tid})
         }
@@ -254,23 +289,34 @@ draw_inspector :: proc(a: any, label: cstring = "") {
         field_ptr := rawptr(uintptr(ptr) + field_info.offset)
 
 		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name}
+
+        im.PushIDPtr(field_ptr)
+        prev_changed_outside := inspector_changed
+        inspector_changed = false
+
+        undo.begin_field(field_ptr, field_type.id)
         run_field_decorators(tid, i, &ctx)
 
+        row_popup_done := false
+
         if ctx.is_visible {
-            im.PushIDPtr(field_ptr)
-            row_popup_done := false
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
                 drawer(field_ptr, field_type.id, c_field_name)
+                _undo_finalize_field(field_ptr, field_type.id)
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)
+                _undo_finalize_field(field_ptr, field_type.id)
                 row_popup_done = true
             } else if is_union_type(field_type.id) {
                 draw_inspector_union(field_ptr, field_type.id, c_field_name)
+                undo.end_field(inspector_changed)
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
+                undo.end_field(inspector_changed)
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
+                undo.end_field(false)
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
                 if is_inline {
                     draw_inspector(field_val)
@@ -285,9 +331,11 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                     }
                 }
             } else if reflect.is_pointer(type_info_of(field_type.id)) {
+                undo.end_field(false)
                 draw_inspector(field_val)
                 row_popup_done = true
             } else {
+                undo.end_field(false)
                 c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", field_name, field_val))
                 defer delete(c_str)
                 im.Text(c_str)
@@ -295,8 +343,15 @@ draw_inspector :: proc(a: any, label: cstring = "") {
             if !row_popup_done {
                 draw_field_context_menu(field_ptr, field_type.id)
             }
-            im.PopID()
+        } else if ctx.handled_draw {
+            _undo_finalize_field(field_ptr, field_type.id)
+            draw_field_context_menu(field_ptr, field_type.id)
+        } else {
+            undo.end_field(false)
         }
+
+        if prev_changed_outside || inspector_changed do inspector_changed = true
+        im.PopID()
 
         ctx.is_pre = false
         run_field_decorators(tid, i, &ctx)

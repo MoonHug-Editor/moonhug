@@ -7,6 +7,7 @@ import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "../../../external/odin-imgui"
+import engine "../../engine"
 
 // draw_inspector_array draws a dynamic or fixed array field. Called from the inspector when a field type is an array.
 draw_inspector_array :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring) {
@@ -52,6 +53,8 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 	defer im.TreePop()
 	im.TextDisabled("Size: %d", da.len)
 
+	readonly := engine.inspector_is_readonly()
+
 	to_remove := -1
 	for i in 0 ..< da.len {
 		im.PushIDInt(c.int(i))
@@ -62,18 +65,30 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		im.SetNextItemWidth(im.GetContentRegionAvail().x - 30)
 		draw_array_element(elem_ptr, elem_ti.id, "##val")
 		im.SameLine()
-        if im.Button("x") {
+		if readonly {
+			im.BeginDisabled(true)
+		}
+		if im.Button("x") {
 			to_remove = i
+		}
+		if readonly {
+			im.EndDisabled()
 		}
 		im.PopID()
 	}
 
-	if im.Button("+ Add") {
+	if readonly {
+		im.BeginDisabled(true)
+	}
+	if im.Button("+ Add") && !readonly {
 		append_dynamic_array_element(da, elem_ti)
 		mark_inspector_changed()
 	}
+	if readonly {
+		im.EndDisabled()
+	}
 
-	if to_remove >= 0 {
+	if to_remove >= 0 && !readonly {
 		remove_dynamic_array_element(da, elem_ti, to_remove)
 		mark_inspector_changed()
 	}

@@ -68,6 +68,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 
 	for &t_data in sf.transforms {
 		handle, t := pool_create(&w.transforms)
+		handle.type_key = .Transform
 		t^ = t_data
 		t.scene = s
 		if t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY

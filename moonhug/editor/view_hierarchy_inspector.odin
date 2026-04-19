@@ -4,11 +4,13 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:fmt"
+import "core:encoding/uuid"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import "inspector"
 import "menu"
 import clip "clipboard"
+import "undo"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -39,18 +41,69 @@ draw_hierarchy_inspector :: proc() {
 		return
 	}
 
-	_draw_header(t)
+	is_nested := t.nested_owned
+	if is_nested {
+		host_tH := engine.transform_nested_enclosing_host(tH)
+		prev := engine.inspector_set_nested_host(host_tH)
+		defer engine.inspector_set_nested_host(prev)
+		engine.inspector_push_readonly()
+		defer engine.inspector_pop_readonly()
+
+		_draw_nested_banner(host_tH)
+		im.BeginDisabled(true)
+		defer im.EndDisabled()
+
+		_draw_header(t, tH)
+		im.Separator()
+		_draw_transform_section(t, tH)
+		_draw_components_section(t, tH)
+		return
+	}
+
+	undo.push_transform_owner(tH)
+	defer undo.pop_owner()
+
+	_draw_header(t, tH)
 	im.Separator()
-	_draw_transform_section(t)
+	_draw_transform_section(t, tH)
 	_draw_components_section(t, tH)
 	_draw_add_component_button(t, tH)
 }
 
 @(private)
-_draw_header :: proc(t: ^engine.Transform) {
+_draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
+	w := engine.ctx_world()
+	source_path := ""
+	if _, ns := engine.transform_get_comp(host_tH, engine.NestedScene); ns != nil {
+		empty_guid := engine.Asset_GUID{}
+		if ns.scene_guid != empty_guid {
+			if path, ok := engine.asset_db_get_path(uuid.Identifier(ns.scene_guid)); ok {
+				source_path = path
+			}
+		}
+	}
+	host_name := "?"
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht != nil {
+		host_name = ht.name
+	}
+	label: string
+	if source_path != "" {
+		label = fmt.tprintf("Nested (read-only) from %s  -  host: %s", source_path, host_name)
+	} else {
+		label = fmt.tprintf("Nested (read-only)  -  host: %s", host_name)
+	}
+	im.TextColored(im.Vec4{1.0, 0.75, 0.3, 1.0}, strings.clone_to_cstring(label, context.temp_allocator))
+	im.Separator()
+}
+
+@(private)
+_draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	active := t.is_active
 	if im.Checkbox("##active", &active) {
+		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool))
 		t.is_active = active
+		undo.edit_commit(&e)
 	}
 
 	im.SameLine()
@@ -65,8 +118,10 @@ _draw_header :: proc(t: ^engine.Transform) {
 	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
 		new_name := string(buf_cstr)
 		if len(new_name) > 0 {
+			e := undo.edit_begin(tH, &t.name, typeid_of(string))
 			delete(t.name)
 			t.name = strings.clone(new_name)
+			undo.edit_commit(&e)
 		}
 	}
 }
@@ -78,28 +133,69 @@ _inspector_euler_cache: [3]f32
 _inspector_euler_quat_src: [4]f32
 
 @(private)
-_draw_transform_section :: proc(t: ^engine.Transform) {
+_draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
 		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
-		drawer(&t.position, typeid_of(^[3]f32), "Position")
+
+		_wrap_transform_field(tH, &t.position, offset_of(engine.Transform, position), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
 
 		if _inspector_euler_quat_src != t.rotation {
 			_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
 			_inspector_euler_quat_src = t.rotation
 		}
 		prev_euler := _inspector_euler_cache
+
+		rot_edit := undo.edit_begin(tH, &t.rotation, typeid_of([4]f32))
+		prev_rot_changed := inspector.consume_inspector_changed()
+
 		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
 		if _inspector_euler_cache != prev_euler {
 			t.rotation = engine.quat_from_euler_xyz(_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
 			_inspector_euler_quat_src = t.rotation
+			inspector.mark_inspector_changed()
 		}
 
-		drawer(&t.scale, typeid_of(^[3]f32), "Scale")
+		commit_rot := false
+		if inspector.is_changed_flag_set() {
+			if im.IsItemDeactivatedAfterEdit() || !im.IsItemActive() {
+				commit_rot = true
+			}
+		}
+		if commit_rot {
+			undo.edit_commit(&rot_edit)
+		} else {
+			undo.edit_cancel(&rot_edit)
+		}
+		if prev_rot_changed do inspector.mark_inspector_changed()
+
+		_wrap_transform_field(tH, &t.scale, offset_of(engine.Transform, scale), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
 	} else {
 		_inspector_transform_open = false
 	}
+}
+
+@(private)
+_wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) {
+	prev_changed := inspector.consume_inspector_changed()
+	undo.begin_field(field_ptr, field_tid)
+
+	drawer(field_ptr, drawer_tid, label)
+
+	if im.IsItemActivated() {
+		undo.promote_to_pending()
+	}
+	if im.IsItemDeactivatedAfterEdit() && undo.pending_matches(field_ptr) {
+		undo.pending_commit()
+		undo.end_field(false)
+	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo.pending_is_active() {
+		undo.end_field(true)
+	} else {
+		undo.end_field(false)
+	}
+
+	if prev_changed do inspector.mark_inspector_changed()
 }
 
 @(private)
@@ -161,7 +257,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		if im.BeginPopup(popup_id) {
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
+					e := undo.edit_component_base(comp.handle, comp_tid)
+					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
+					base := cast(^engine.CompData)comp_ptr
+					base.owner = saved_base.owner
+					base.local_id = saved_base.local_id
+					base.enabled = saved_base.enabled
+					undo.edit_commit(&e)
 				}
 				im.Separator()
 			}
@@ -174,7 +277,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			clip_key, clip_key_ok := engine.get_type_key_by_typeid(clip_tid)
 			can_paste_as_new := clip.has() && clip_key_ok
 			if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
-				_, new_ptr := engine.transform_add_comp(tH, clip_key)
+				new_owned, new_ptr := engine.transform_add_comp(tH, clip_key)
 				if new_ptr != nil {
 					saved_base := (cast(^engine.CompData)new_ptr)^
 					if clip.paste(any{new_ptr, clip_tid}) {
@@ -183,11 +286,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 						base.local_id = saved_base.local_id
 						base.enabled = saved_base.enabled
 					}
+					list_idx := len(t.components) - 1
+					undo.record_add_component(tH, new_owned.handle, list_idx)
 				}
 			}
 
 			can_paste_values := clip.can_paste(comp_tid)
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
+				e := undo.edit_component_base(comp.handle, comp_tid)
 				saved_base := (cast(^engine.CompData)comp_ptr)^
 				if clip.paste(any{comp_ptr, comp_tid}) {
 					base := cast(^engine.CompData)comp_ptr
@@ -195,6 +301,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
+				undo.edit_commit(&e)
 			}
 
 			im.Separator()
@@ -239,19 +346,22 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			defer if inspector.consume_inspector_changed() {
 				engine.component_on_validate(comp.handle.type_key, comp_ptr)
 			}
+			undo.push_component_owner(comp.handle)
+			defer undo.pop_owner()
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}
 	}
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
-		engine.transform_remove_comp(tH, _comp_pending_remove)
+		undo.record_remove_component(tH, _comp_pending_remove)
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {
 		entry := t.components[_comp_pending_move_from]
 		ordered_remove(&t.components, _comp_pending_move_from)
 		inject_at(&t.components, _comp_pending_move_to, entry)
+		undo.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
 	}
 }
 

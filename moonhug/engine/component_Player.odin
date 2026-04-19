@@ -11,7 +11,7 @@ Player :: struct {
 
 reset_Player :: proc(p: ^Player) {
 	cleanup_Player(p)
-    p.speed = 55
+    p.speed = 5
 
     p.colors = make([dynamic][4]f32)
     append(&p.colors, [4]f32{1, 0, 0, 1})
@@ -38,4 +38,5 @@ cleanup_Player :: proc(p: ^Player) {
 			tween_free(&anim)
 		}
 	}
+	p^ = {}
 }

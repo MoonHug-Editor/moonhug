@@ -52,6 +52,9 @@ show_output := true
 @(menu_toggle={path="View/Hierarchy", order=0})
 show_hierarchy := true
 
+@(menu_toggle={path="View/History", order=6})
+show_history := false
+
 @(menu_toggle={path="View/Scale UI for DPI (sharing)", order=5})
 scale_ui_for_dpi := true
 

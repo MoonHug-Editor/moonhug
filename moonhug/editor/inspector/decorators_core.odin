@@ -14,6 +14,7 @@ decorator_registry: DecoratorsMap
 DrawContext :: struct {
     is_visible: bool,
     is_pre:     bool,
+    handled_draw: bool,
     field_ptr:  rawptr,
     field_type: typeid,
     field_label: cstring,

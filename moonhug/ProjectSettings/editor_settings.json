@@ -6,5 +6,15 @@
   "theme": 1,
   "open_scene_guids": [
     "bc79d83f-83da-4f50-8b38-34bfd33d7c65"
-  ]
+  ],
+  "show_inspector": true,
+  "show_project_inspector": true,
+  "show_project": true,
+  "show_console": true,
+  "show_scene": true,
+  "show_game": true,
+  "show_output": true,
+  "show_hierarchy": true,
+  "show_history": true,
+  "has_view_state": true
 }
