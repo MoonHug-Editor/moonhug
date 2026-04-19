@@ -36,6 +36,7 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     s := sm_scene_get_active()
 
     tHandle, t := pool_create(&w.transforms)
+    tHandle.type_key = .Transform
     tH := Transform_Handle(tHandle)
     t.name = strings.clone(name)
     t.is_active = true
@@ -245,7 +246,7 @@ transform_tick_destroy :: proc() {
         slot := &w.transforms.slots[i]
         if !slot.alive do continue
         if slot.data.destroy {
-            handle := Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }
+            handle := Handle{ index = u32(i), generation = slot.generation, type_key = .Transform }
             append(&to_destroy, Transform_Handle(handle))
         }
     }

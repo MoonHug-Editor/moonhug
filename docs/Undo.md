@@ -18,7 +18,7 @@ Editor-only undo/redo for value edits and hierarchy changes.
 `Property_Target` stores robust identifier that works even after destroy/recreate object.
 > Raw pointers are unsafe as undo targets: pools recycle slots and structural undo/redo destroys and recreates objects, so any cached `^T` can be stale.
 
-- `kind` — `Transform`, `Component`, or `Raw`.
+- `kind` — `Pooled` (anything in the `World` pool table) or `Raw` (non-pooled memory).
 - `scene` + `local_id` — persistent, file-stable identity used when a `Handle` is stale.
 - `handle` — fast path; falls back to `local_id` scan when invalid.
 - `offset` + `type_id` — where and what inside the resolved struct.

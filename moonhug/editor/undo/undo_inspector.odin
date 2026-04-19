@@ -55,45 +55,45 @@ current_owner :: proc() -> (Inspector_Owner, bool) {
 	return _owner_stack[len(_owner_stack) - 1], true
 }
 
-push_transform_owner :: proc(tH: engine.Transform_Handle) {
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil {
-		push_owner(Inspector_Owner{kind = .None})
-		return
-	}
-	push_owner(Inspector_Owner{
-		kind = .Transform,
-		scene = t.scene,
-		local_id = t.local_id,
-		handle = engine.Handle(tH),
-		base_ptr = rawptr(t),
-	})
-}
-
-push_component_owner :: proc(comp_handle: engine.Handle) {
+push_pooled_owner :: proc(h: engine.Handle) {
 	w := engine.ctx_world()
 	if w == nil {
 		push_owner(Inspector_Owner{kind = .None})
 		return
 	}
-	base := engine.world_pool_get(w, comp_handle)
+	base := engine.world_pool_get(w, h)
 	if base == nil {
 		push_owner(Inspector_Owner{kind = .None})
 		return
 	}
-	cbase := cast(^engine.CompData)base
 	scene: ^engine.Scene
-	if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
+	lid: engine.Local_ID
+	if h.type_key == .Transform {
+		t := cast(^engine.Transform)base
 		scene = t.scene
+		lid = t.local_id
+	} else {
+		cbase := cast(^engine.CompData)base
+		lid = cbase.local_id
+		if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
+			scene = t.scene
+		}
 	}
 	push_owner(Inspector_Owner{
-		kind = .Component,
+		kind = .Pooled,
 		scene = scene,
-		local_id = cbase.local_id,
-		handle = comp_handle,
+		local_id = lid,
+		handle = h,
 		base_ptr = base,
 	})
+}
+
+push_transform_owner :: proc(tH: engine.Transform_Handle) {
+	push_pooled_owner(engine.Handle(tH))
+}
+
+push_component_owner :: proc(comp_handle: engine.Handle) {
+	push_pooled_owner(comp_handle)
 }
 
 push_raw_owner :: proc(base_ptr: rawptr) {

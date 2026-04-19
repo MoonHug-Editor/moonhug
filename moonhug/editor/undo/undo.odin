@@ -11,8 +11,7 @@ MAX_ENTRIES :: 32
 
 Owner_Kind :: enum {
 	None,
-	Transform,
-	Component,
+	Pooled,
 	Raw,
 }
 
@@ -209,10 +208,9 @@ default_label :: proc(cmd: Command) -> string {
 	switch v in cmd {
 	case Value_Command:
 		switch v.target.kind {
-		case .None:      return "Edit Value"
-		case .Transform: return "Edit Transform"
-		case .Component: return "Edit Component"
-		case .Raw:       return "Edit"
+		case .None:   return "Edit Value"
+		case .Pooled: return v.target.handle.type_key == .Transform ? "Edit Transform" : "Edit Component"
+		case .Raw:    return "Edit"
 		}
 		return "Edit Value"
 	case Structural_Command:
@@ -395,99 +393,75 @@ resolve_target_ptr :: proc(t: Property_Target) -> rawptr {
 	case .Raw:
 		if t.raw_ptr == nil do return nil
 		return rawptr(uintptr(t.raw_ptr) + uintptr(t.offset))
-	case .Transform:
-		w := engine.ctx_world()
-		if w == nil do return nil
-		h := t.handle
-		if !engine.pool_valid(&w.transforms, h) {
-			if t.scene != nil && t.local_id != 0 {
-				resolved, ok := scene_find_transform_by_local_id(t.scene, t.local_id)
-				if !ok do return nil
-				h = resolved
-			} else {
-				return nil
-			}
-		}
-		tr := engine.pool_get(&w.transforms, h)
-		if tr == nil do return nil
-		return rawptr(uintptr(rawptr(tr)) + uintptr(t.offset))
-	case .Component:
-		w := engine.ctx_world()
-		if w == nil do return nil
-		h := t.handle
-		if !engine.world_pool_valid(w, h) {
-			if t.scene != nil && t.local_id != 0 {
-				resolved, ok := scene_find_component_by_local_id(t.scene, t.local_id)
-				if !ok do return nil
-				h = resolved
-			} else {
-				return nil
-			}
-		}
-		base := engine.world_pool_get(w, h)
-		if base == nil do return nil
+	case .Pooled:
+		base, _, ok := resolve_pooled_base(t)
+		if !ok do return nil
 		return rawptr(uintptr(base) + uintptr(t.offset))
 	}
 	return nil
 }
 
-resolve_component_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool) {
-	if t.kind != .Component do return nil, {}, false
+resolve_pooled_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool) {
+	if t.kind != .Pooled do return nil, {}, false
 	w := engine.ctx_world()
 	if w == nil do return nil, {}, false
 	h := t.handle
 	if !engine.world_pool_valid(w, h) {
-		if t.scene != nil && t.local_id != 0 {
-			resolved, ok := scene_find_component_by_local_id(t.scene, t.local_id)
-			if !ok do return nil, {}, false
-			h = resolved
+		if t.scene == nil || t.local_id == 0 do return nil, {}, false
+		resolved: engine.Handle
+		ok: bool
+		if h.type_key == .Transform {
+			resolved, ok = scene_find_transform_by_local_id(t.scene, t.local_id)
 		} else {
-			return nil, {}, false
+			resolved, ok = scene_find_component_by_local_id(t.scene, t.local_id)
 		}
+		if !ok do return nil, {}, false
+		h = resolved
 	}
 	base := engine.world_pool_get(w, h)
 	if base == nil do return nil, h, false
 	return base, h, true
 }
 
-make_transform_target :: proc(tH: engine.Transform_Handle, offset: uintptr, tid: typeid) -> Property_Target {
+resolve_component_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool) {
+	if t.kind != .Pooled || t.handle.type_key == .Transform do return nil, {}, false
+	return resolve_pooled_base(t)
+}
+
+make_pooled_target :: proc(h: engine.Handle, offset: uintptr, tid: typeid) -> Property_Target {
 	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	scene: ^engine.Scene
 	lid: engine.Local_ID
-	if t != nil {
-		scene = t.scene
-		lid = t.local_id
+	if h.type_key == .Transform {
+		if t := engine.pool_get(&w.transforms, h); t != nil {
+			scene = t.scene
+			lid = t.local_id
+		}
+	} else {
+		if base := engine.world_pool_get(w, h); base != nil {
+			cbase := cast(^engine.CompData)base
+			lid = cbase.local_id
+			if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
+				scene = t.scene
+			}
+		}
 	}
 	return Property_Target{
-		kind = .Transform,
+		kind = .Pooled,
 		scene = scene,
 		local_id = lid,
-		handle = engine.Handle(tH),
+		handle = h,
 		offset = u32(offset),
 		type_id = tid,
 	}
 }
 
+make_transform_target :: proc(tH: engine.Transform_Handle, offset: uintptr, tid: typeid) -> Property_Target {
+	return make_pooled_target(engine.Handle(tH), offset, tid)
+}
+
 make_component_target :: proc(comp_handle: engine.Handle, offset: uintptr, tid: typeid) -> Property_Target {
-	w := engine.ctx_world()
-	scene: ^engine.Scene
-	lid: engine.Local_ID
-	if base := engine.world_pool_get(w, comp_handle); base != nil {
-		cbase := cast(^engine.CompData)base
-		lid = cbase.local_id
-		if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
-			scene = t.scene
-		}
-	}
-	return Property_Target{
-		kind = .Component,
-		scene = scene,
-		local_id = lid,
-		handle = comp_handle,
-		offset = u32(offset),
-		type_id = tid,
-	}
+	return make_pooled_target(comp_handle, offset, tid)
 }
 
 make_raw_target :: proc(ptr: rawptr, offset: uintptr, tid: typeid) -> Property_Target {
@@ -550,8 +524,8 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		return
 	}
 
-	if vc.target.kind == .Component {
-		if base, h, ok := resolve_component_base(vc.target); ok {
+	if vc.target.kind == .Pooled && vc.target.handle.type_key != .Transform {
+		if base, h, ok := resolve_pooled_base(vc.target); ok {
 			engine.component_on_validate(h.type_key, base)
 		}
 	}
@@ -566,7 +540,7 @@ scene_find_transform_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 		if !slot.alive do continue
 		if slot.data.scene != s do continue
 		if slot.data.local_id == id {
-			return engine.Handle{index = u32(i), generation = slot.generation, type_key = engine.INVALID_TYPE_KEY}, true
+			return engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform}, true
 		}
 	}
 	return {}, false

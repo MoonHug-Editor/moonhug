@@ -164,10 +164,9 @@ _draw_target :: proc(t: undo_pkg.Property_Target, depth: int) {
 	indent := _indent(depth)
 	kind_str: string
 	switch t.kind {
-	case .None:      kind_str = "None"
-	case .Transform: kind_str = "Transform"
-	case .Component: kind_str = "Component"
-	case .Raw:       kind_str = "Raw"
+	case .None:   kind_str = "None"
+	case .Pooled: kind_str = t.handle.type_key == .Transform ? "Transform" : "Component"
+	case .Raw:    kind_str = "Raw"
 	}
 	im.Text("%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v",
 		cstr(indent),
@@ -186,17 +185,17 @@ _draw_target :: proc(t: undo_pkg.Property_Target, depth: int) {
 		case .None:
 		case .Raw:
 			if t.raw_ptr != nil do resolved = "raw"
-		case .Transform:
-			if engine.pool_valid(&w.transforms, t.handle) {
-				tr := engine.pool_get(&w.transforms, t.handle)
-				if tr != nil do resolved = tr.name
-			}
-		case .Component:
+		case .Pooled:
 			if engine.world_pool_valid(w, t.handle) {
 				if base := engine.world_pool_get(w, t.handle); base != nil {
-					c := cast(^engine.CompData)base
-					if ot := engine.pool_get(&w.transforms, engine.Handle(c.owner)); ot != nil {
-						resolved = ot.name
+					if t.handle.type_key == .Transform {
+						tr := cast(^engine.Transform)base
+						resolved = tr.name
+					} else {
+						c := cast(^engine.CompData)base
+						if ot := engine.pool_get(&w.transforms, engine.Handle(c.owner)); ot != nil {
+							resolved = ot.name
+						}
 					}
 				}
 			}

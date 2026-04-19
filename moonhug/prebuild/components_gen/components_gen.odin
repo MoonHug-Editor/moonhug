@@ -385,6 +385,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	}
 	strings.write_string(&b, "\tfor &t_data in sf.transforms {\n")
 	strings.write_string(&b, "\t\thandle, t := pool_create(&w.transforms)\n")
+	strings.write_string(&b, "\t\thandle.type_key = .Transform\n")
 	strings.write_string(&b, "\t\tt^ = t_data\n")
 	strings.write_string(&b, "\t\tt.scene = s\n")
 	strings.write_string(&b, "\t\tif t.rotation == {0, 0, 0, 0} do t.rotation = QUAT_IDENTITY\n")

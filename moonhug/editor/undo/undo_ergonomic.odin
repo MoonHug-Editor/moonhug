@@ -21,16 +21,17 @@ field_drag_begin :: proc {
 	field_drag_begin_component,
 }
 
-edit_transform_begin :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
+edit_pooled_begin :: proc(h: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
 	s := get()
 	if s == nil || !s.recording || s.applying || field_ptr == nil {
 		return {}
 	}
 	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil do return {}
-	offset := uintptr(field_ptr) - uintptr(rawptr(t))
-	target := make_transform_target(tH, offset, field_tid)
+	if w == nil do return {}
+	base := engine.world_pool_get(w, h)
+	if base == nil do return {}
+	offset := uintptr(field_ptr) - uintptr(base)
+	target := make_pooled_target(h, offset, field_tid)
 	old_json := capture_json(field_ptr, field_tid)
 	if old_json == nil do return {}
 	return Edit_Scope{
@@ -40,49 +41,22 @@ edit_transform_begin :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, fie
 		old_json = old_json,
 		label = label,
 	}
+}
+
+edit_transform_begin :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
+	return edit_pooled_begin(engine.Handle(tH), field_ptr, field_tid, label)
 }
 
 edit_component_begin :: proc(comp_handle: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
-	s := get()
-	if s == nil || !s.recording || s.applying || field_ptr == nil {
-		return {}
-	}
-	w := engine.ctx_world()
-	if w == nil do return {}
-	base := engine.world_pool_get(w, comp_handle)
-	if base == nil do return {}
-	offset := uintptr(field_ptr) - uintptr(base)
-	target := make_component_target(comp_handle, offset, field_tid)
-	old_json := capture_json(field_ptr, field_tid)
-	if old_json == nil do return {}
-	return Edit_Scope{
-		active = true,
-		target = target,
-		field_ptr = field_ptr,
-		old_json = old_json,
-		label = label,
-	}
+	return edit_pooled_begin(comp_handle, field_ptr, field_tid, label)
 }
 
 edit_component_base :: proc(comp_handle: engine.Handle, comp_tid: typeid, label := "") -> Edit_Scope {
-	s := get()
-	if s == nil || !s.recording || s.applying {
-		return {}
-	}
 	w := engine.ctx_world()
 	if w == nil do return {}
 	base := engine.world_pool_get(w, comp_handle)
 	if base == nil do return {}
-	target := make_component_target(comp_handle, 0, comp_tid)
-	old_json := capture_json(base, comp_tid)
-	if old_json == nil do return {}
-	return Edit_Scope{
-		active = true,
-		target = target,
-		field_ptr = base,
-		old_json = old_json,
-		label = label,
-	}
+	return edit_pooled_begin(comp_handle, base, comp_tid, label)
 }
 
 edit_raw_begin :: proc(base_ptr: rawptr, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
@@ -219,14 +193,17 @@ Field_Drag :: struct {
 	label:     string,
 }
 
-field_drag_begin_transform :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
-	e := edit_transform_begin(tH, field_ptr, field_tid, label)
+field_drag_begin_pooled :: proc(h: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
+	e := edit_pooled_begin(h, field_ptr, field_tid, label)
 	return Field_Drag{active = e.active, target = e.target, field_ptr = e.field_ptr, old_json = e.old_json, label = e.label}
 }
 
+field_drag_begin_transform :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
+	return field_drag_begin_pooled(engine.Handle(tH), field_ptr, field_tid, label)
+}
+
 field_drag_begin_component :: proc(comp_handle: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
-	e := edit_component_begin(comp_handle, field_ptr, field_tid, label)
-	return Field_Drag{active = e.active, target = e.target, field_ptr = e.field_ptr, old_json = e.old_json, label = e.label}
+	return field_drag_begin_pooled(comp_handle, field_ptr, field_tid, label)
 }
 
 field_drag_end :: proc(d: ^Field_Drag) {

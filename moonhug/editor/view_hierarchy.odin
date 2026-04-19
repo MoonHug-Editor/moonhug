@@ -431,7 +431,7 @@ _apply_rename :: proc(t: ^engine.Transform) {
 		for i in 0 ..< len(w.transforms.slots) {
 			slot := &w.transforms.slots[i]
 			if slot.alive && &slot.data == t {
-				tH = engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = engine.INVALID_TYPE_KEY})
+				tH = engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
 				break
 			}
 		}
