@@ -1,3 +1,9 @@
+## [0.14.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.1...v0.14.2) (2026-04-21)
+
+### Bug Fixes
+
+* use comp_zero instead of p^={} for zeroing component ([b2ffaba](https://github.com/MoonHug-Editor/moonhug/commit/b2ffabafa84d4a0aa1bd11baf61cf0b93a5582f1))
+
 ## [0.14.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.0...v0.14.1) (2026-04-19)
 
 ### Bug Fixes
