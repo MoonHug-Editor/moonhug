@@ -140,40 +140,42 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
 
 		_wrap_transform_field(tH, &t.position, offset_of(engine.Transform, position), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
-
-		if _inspector_euler_quat_src != t.rotation {
-			_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
-			_inspector_euler_quat_src = t.rotation
-		}
-		prev_euler := _inspector_euler_cache
-
-		rot_edit := undo.edit_begin(tH, &t.rotation, typeid_of([4]f32))
-		prev_rot_changed := inspector.consume_inspector_changed()
-
-		drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
-		if _inspector_euler_cache != prev_euler {
-			t.rotation = engine.quat_from_euler_xyz(_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
-			_inspector_euler_quat_src = t.rotation
-			inspector.mark_inspector_changed()
-		}
-
-		commit_rot := false
-		if inspector.is_changed_flag_set() {
-			if im.IsItemDeactivatedAfterEdit() || !im.IsItemActive() {
-				commit_rot = true
-			}
-		}
-		if commit_rot {
-			undo.edit_end(&rot_edit)
-		} else {
-			undo.edit_cancel(&rot_edit)
-		}
-		if prev_rot_changed do inspector.mark_inspector_changed()
-
+		_wrap_transform_rotation(tH, t, drawer)
 		_wrap_transform_field(tH, &t.scale, offset_of(engine.Transform, scale), typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
 	} else {
 		_inspector_transform_open = false
 	}
+}
+
+@(private)
+_inspector_rot_drag: undo.Field_Drag
+
+@(private)
+_wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, drawer: proc(ptr: rawptr, tid: typeid, label: cstring)) {
+	if _inspector_euler_quat_src != t.rotation {
+		_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
+		_inspector_euler_quat_src = t.rotation
+	}
+	prev_euler := _inspector_euler_cache
+	prev_changed := inspector.consume_inspector_changed()
+
+	drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
+
+	if im.IsItemActivated() && !_inspector_rot_drag.active {
+		_inspector_rot_drag = undo.field_drag_begin(tH, &t.rotation, typeid_of([4]f32), "Rotation")
+	}
+
+	if _inspector_euler_cache != prev_euler {
+		t.rotation = engine.quat_from_euler_xyz(_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
+		_inspector_euler_quat_src = t.rotation
+		inspector.mark_inspector_changed()
+	}
+
+	if im.IsItemDeactivatedAfterEdit() && _inspector_rot_drag.active {
+		undo.field_drag_end(&_inspector_rot_drag)
+	}
+
+	if prev_changed do inspector.mark_inspector_changed()
 }
 
 @(private)

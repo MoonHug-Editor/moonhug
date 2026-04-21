@@ -8,6 +8,7 @@ import "base:runtime"
 import strings "core:strings"
 import im "../../../external/odin-imgui"
 import engine "../../engine"
+import "../undo"
 
 // draw_inspector_array draws a dynamic or fixed array field. Called from the inspector when a field type is an array.
 draw_inspector_array :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring) {
@@ -81,23 +82,31 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		im.BeginDisabled(true)
 	}
 	if im.Button("+ Add") && !readonly {
+		undo.comp_snapshot()
 		append_dynamic_array_element(da, elem_ti)
 		mark_inspector_changed()
+		undo.comp_commit()
 	}
 	if readonly {
 		im.EndDisabled()
 	}
 
 	if to_remove >= 0 && !readonly {
+		undo.comp_snapshot()
 		remove_dynamic_array_element(da, elem_ti, to_remove)
 		mark_inspector_changed()
+		undo.comp_commit()
 	}
 }
 
 // draw_array_element draws one element using the same rules as the inspector: property drawer, struct recursion, or text.
 draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 	if drawer, ok := mapPropertyDrawer[elem_tid]; ok {
+		prev_changed := inspector_changed
+		inspector_changed = false
 		drawer(ptr, elem_tid, label)
+		_undo_finalize_widget()
+		if prev_changed || inspector_changed do inspector_changed = true
 		draw_field_context_menu(ptr, elem_tid)
 		return
 	}

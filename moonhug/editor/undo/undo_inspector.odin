@@ -250,3 +250,29 @@ pending_is_active :: proc() -> bool {
 pending_matches :: proc(field_ptr: rawptr) -> bool {
 	return _pending_edit.active && _pending_edit.base_ptr == field_ptr
 }
+
+comp_snapshot :: proc() {
+	o, ok := current_owner()
+	if !ok || o.kind == .None || o.base_ptr == nil do return
+	owner_tid := engine.get_typeid_by_type_key(o.handle.type_key)
+	if owner_tid == nil do return
+	if _pending_edit.active && _pending_edit.base_ptr == o.base_ptr do return
+	s := get()
+	if s == nil || !s.recording || s.applying do return
+	target := make_pooled_target(o.handle, 0, owner_tid)
+	old_json := capture_json(o.base_ptr, owner_tid)
+	if old_json == nil do return
+	if _pending_edit.active {
+		delete(_pending_edit.old_json)
+	}
+	_pending_edit = Pending_Edit{
+		active   = true,
+		target   = target,
+		base_ptr = o.base_ptr,
+		old_json = old_json,
+	}
+}
+
+comp_commit :: proc() {
+	pending_commit()
+}
