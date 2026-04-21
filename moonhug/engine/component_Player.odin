@@ -24,19 +24,10 @@ on_destroy_Player :: proc(p: ^Player) {
 }
 
 cleanup_Player :: proc(p: ^Player) {
-	if p.colors != nil do defer {
-			delete(p.colors)
-			p.colors = {}
-		}
-
+	if p.colors != nil do delete(p.colors)
 	if p.animations != nil {
-		defer {
-			delete(p.animations)
-			p.animations = {}
-		}
-		for &anim, i in p.animations {
-			tween_free(&anim)
-		}
+		for &anim in p.animations do tween_free(&anim)
+		delete(p.animations)
 	}
-	p^ = {}
+	comp_zero(p)
 }

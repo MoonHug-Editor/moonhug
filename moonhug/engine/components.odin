@@ -1,10 +1,19 @@
 package engine
 
+import "core:mem"
+
 CompData :: struct {
     owner: Transform_Handle `json:"-"`,
     local_id: Local_ID `inspect:"-"`,
     enabled: bool,
     nested_owned: bool `json:"-" inspect:"-"`,
+}
+
+comp_zero :: proc(p: ^$T) where
+    offset_of(T, base) == 0,
+    type_of(T{}.base) == CompData
+{
+    mem.zero(rawptr(uintptr(p) + size_of(CompData)), size_of(T) - size_of(CompData))
 }
 
 comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {
@@ -27,7 +36,7 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
     if pComp == nil do return {}, nil
 
     comp_init_base(pComp, tH)
-	type_reset(key, pComp)
+    type_reset(key, pComp)
 
     base := cast(^CompData)pComp
     owned := Owned{handle = handle, local_id = base.local_id}

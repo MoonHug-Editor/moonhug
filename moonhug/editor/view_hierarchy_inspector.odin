@@ -262,12 +262,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
 					e := undo.edit_begin(comp.handle, comp_tid)
-					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
-					base := cast(^engine.CompData)comp_ptr
-					base.owner = saved_base.owner
-					base.local_id = saved_base.local_id
-					base.enabled = saved_base.enabled
 					undo.edit_end(&e)
 				}
 				im.Separator()
