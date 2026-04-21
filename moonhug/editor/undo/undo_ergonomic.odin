@@ -14,6 +14,7 @@ edit_begin :: proc {
 	edit_transform_begin,
 	edit_component_begin,
 	edit_raw_begin,
+	edit_component_base,
 }
 
 field_drag_begin :: proc {
@@ -77,7 +78,7 @@ edit_raw_begin :: proc(base_ptr: rawptr, field_ptr: rawptr, field_tid: typeid, l
 	}
 }
 
-edit_commit :: proc(e: ^Edit_Scope) {
+edit_end :: proc(e: ^Edit_Scope) {
 	if e == nil || !e.active do return
 	defer e^ = {}
 	s := get()

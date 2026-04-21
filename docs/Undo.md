@@ -85,17 +85,17 @@ import "undo"
 e := undo.edit_begin(tH, &t.name, typeid_of(string))
 delete(t.name)
 t.name = strings.clone(new_name)
-undo.edit_commit(&e)
+undo.edit_end(&e)
 
 // component field
 e := undo.edit_begin(comp.handle, &sr.color, typeid_of([4]f32))
 sr.color = new_color
-undo.edit_commit(&e)
+undo.edit_end(&e)
 
 // whole component (for Reset / Paste Values)
-e := undo.edit_component_base(comp.handle, comp_tid)
+e := undo.edit_begin(comp.handle, comp_tid)
 engine.type_reset(comp.handle.type_key, comp_ptr)
-undo.edit_commit(&e)
+undo.edit_end(&e)
 
 // abandon the edit without pushing (e.g. user cancelled mid-frame)
 undo.edit_cancel(&e)
@@ -103,10 +103,10 @@ undo.edit_cancel(&e)
 // non-scene data (import settings, asset inspectors)
 e := undo.edit_begin(base_ptr, &settings.quality, typeid_of(int))
 settings.quality = 3
-undo.edit_commit(&e)
+undo.edit_end(&e)
 ```
 
-A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_commit` / `edit_cancel`; they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit.
+A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_end` / `edit_cancel`; they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit.
 
 ### Structural commands
 

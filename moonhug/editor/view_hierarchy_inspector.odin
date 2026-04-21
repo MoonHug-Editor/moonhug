@@ -103,7 +103,7 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	if im.Checkbox("##active", &active) {
 		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool))
 		t.is_active = active
-		undo.edit_commit(&e)
+		undo.edit_end(&e)
 	}
 
 	im.SameLine()
@@ -121,7 +121,7 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 			e := undo.edit_begin(tH, &t.name, typeid_of(string))
 			delete(t.name)
 			t.name = strings.clone(new_name)
-			undo.edit_commit(&e)
+			undo.edit_end(&e)
 		}
 	}
 }
@@ -164,7 +164,7 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 			}
 		}
 		if commit_rot {
-			undo.edit_commit(&rot_edit)
+			undo.edit_end(&rot_edit)
 		} else {
 			undo.edit_cancel(&rot_edit)
 		}
@@ -245,7 +245,9 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		enabled := comp_base.enabled
 		enabled_id := strings.clone_to_cstring(fmt.tprintf("##enabled_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
 		if im.Checkbox(enabled_id, &enabled) {
+			e := undo.edit_begin(comp.handle, comp_tid)
 			comp_base.enabled = enabled
+			undo.edit_end(&e)
 		}
 
 		popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
@@ -257,14 +259,14 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		if im.BeginPopup(popup_id) {
 			if engine.type_reset_procs[comp.handle.type_key] != nil {
 				if im.MenuItem("Reset") {
-					e := undo.edit_component_base(comp.handle, comp_tid)
+					e := undo.edit_begin(comp.handle, comp_tid)
 					saved_base := (cast(^engine.CompData)comp_ptr)^
 					engine.type_reset(comp.handle.type_key, comp_ptr)
 					base := cast(^engine.CompData)comp_ptr
 					base.owner = saved_base.owner
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
-					undo.edit_commit(&e)
+					undo.edit_end(&e)
 				}
 				im.Separator()
 			}
@@ -293,7 +295,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 
 			can_paste_values := clip.can_paste(comp_tid)
 			if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
-				e := undo.edit_component_base(comp.handle, comp_tid)
+				e := undo.edit_begin(comp.handle, comp_tid)
 				saved_base := (cast(^engine.CompData)comp_ptr)^
 				if clip.paste(any{comp_ptr, comp_tid}) {
 					base := cast(^engine.CompData)comp_ptr
@@ -301,7 +303,7 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 					base.local_id = saved_base.local_id
 					base.enabled = saved_base.enabled
 				}
-				undo.edit_commit(&e)
+				undo.edit_end(&e)
 			}
 
 			im.Separator()

@@ -20,7 +20,7 @@ test_undo_edit_transform_begin_commit :: proc(t: ^testing.T) {
 	{
 		e := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {10, 20, 30}
-		undo.edit_commit(&e)
+		undo.edit_end(&e)
 	}
 
 	testing.expect_value(t, tr.position, [3]f32{10, 20, 30})
@@ -49,7 +49,7 @@ test_undo_edit_transform_string_field :: proc(t: ^testing.T) {
 		e := undo.edit_begin(tH, &tr.name, typeid_of(string))
 		delete(tr.name)
 		tr.name = "After"
-		undo.edit_commit(&e)
+		undo.edit_end(&e)
 	}
 
 	testing.expect_value(t, tr.name, "After")
@@ -76,7 +76,7 @@ test_undo_edit_component_begin_commit :: proc(t: ^testing.T) {
 	{
 		e := undo.edit_begin(owned.handle, &sr.color, typeid_of([4]f32))
 		sr.color = {1, 0.5, 0.25, 1}
-		undo.edit_commit(&e)
+		undo.edit_end(&e)
 	}
 
 	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
@@ -128,11 +128,11 @@ test_undo_group_scope_commit :: proc(t: ^testing.T) {
 
 		e1 := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {1, 1, 1}
-		undo.edit_commit(&e1)
+		undo.edit_end(&e1)
 
 		e2 := undo.edit_begin(tH, &tr.scale, typeid_of([3]f32))
 		tr.scale = {2, 2, 2}
-		undo.edit_commit(&e2)
+		undo.edit_end(&e2)
 
 		undo.group_commit(&g)
 	}
@@ -168,7 +168,7 @@ test_undo_group_scope_auto_abort :: proc(t: ^testing.T) {
 
 		e := undo.edit_begin(tH, &tr.position, typeid_of([3]f32))
 		tr.position = {7, 7, 7}
-		undo.edit_commit(&e)
+		undo.edit_end(&e)
 	}
 
 	testing.expect(t, !undo.can_undo(s), "missing group_commit aborts group")

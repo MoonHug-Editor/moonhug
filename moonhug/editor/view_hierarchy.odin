@@ -437,7 +437,7 @@ _apply_rename :: proc(t: ^engine.Transform) {
 		}
 
 		e := undo.edit_begin(tH, &t.name, typeid_of(string))
-		defer undo.edit_commit(&e)
+		defer undo.edit_end(&e)
 		delete(t.name)
 		t.name = strings.clone(new_name)
 	}
