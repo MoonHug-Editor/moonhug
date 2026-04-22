@@ -36,6 +36,17 @@ init :: proc() {
     init_decorators()
 }
 
+shutdown_registries :: proc() {
+    delete(mapPropertyDrawer)
+    for _, v in decorator_registry {
+        delete(v)
+    }
+    delete(decorator_registry)
+    if inspectorData.filePath != "" {
+        delete(inspectorData.filePath)
+    }
+}
+
 load_from_file :: proc(filepath: string){
     file_data, ok := ser.load_from_file(filepath)
     if ok {

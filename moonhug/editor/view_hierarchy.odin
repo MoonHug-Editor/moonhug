@@ -759,3 +759,9 @@ hierarchy_toggle_active_menu :: proc() {
 	defer undo.edit_end(&e)
 	t.is_active = !t.is_active
 }
+
+shutdown_hierarchy_views :: proc() {
+	delete(_hierarchy_nav_list)
+	delete(_hierarchy_alt_open_pending)
+	delete(_inspector_comp_open)
+}

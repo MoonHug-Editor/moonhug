@@ -74,7 +74,24 @@ sort_top_menu :: proc(top_order: map[string]int) {
 	_sort_children_by_order(_menu_root, "", top_order)
 }
 
-// draw_menu_subtree draws the children of the menu node at path (e.g. "Assets") into the current context (e.g. a popup).
+shutdown_menu :: proc() {
+	if _menu_root == nil do return
+	_destroy_node(_menu_root)
+	_menu_root = nil
+}
+
+_destroy_node :: proc(node: ^MenuNode) {
+	for child in node.children {
+		_destroy_node(child)
+	}
+	delete(node.children)
+	if node.name != "" do delete(node.name)
+	if node.name_cstr != nil do delete(node.name_cstr)
+	if node.shortcut != "" do delete(node.shortcut)
+	if node.shortcut_cstr != nil do delete(node.shortcut_cstr)
+	free(node)
+}
+
 draw_menu_subtree :: proc(path: string) {
 	node := _get_or_create_path(path)
 	_draw_menu_children(node)
@@ -158,7 +175,7 @@ _parse_shortcut :: proc(shortcut: string) -> (chord: im.KeyChord, ok: bool) {
     for p in parts {
         tok := strings.trim_space(p)
         if len(tok) == 0 do continue
-        lower := strings.to_lower(tok)
+        lower := strings.to_lower(tok, context.temp_allocator)
 
         switch lower {
         case "ctrl", "control": mods |= im.KeyChord(im.Key.ImGuiMod_Ctrl)

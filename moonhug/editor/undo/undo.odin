@@ -3,6 +3,7 @@ package undo
 import "core:encoding/json"
 import "core:fmt"
 import "core:slice"
+import "core:strings"
 import "base:builtin"
 import engine "../../engine"
 import "../../engine/log"
@@ -189,7 +190,7 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 	if effective_label == "" {
 		effective_label = default_label(cmd)
 	}
-	append(&s.items, Entry{label = effective_label, cmd = cmd})
+	append(&s.items, Entry{label = strings.clone(effective_label), cmd = cmd})
 	s.top = len(s.items)
 }
 
@@ -344,6 +345,7 @@ _revert_command :: proc(cmd: ^Command) {
 
 @(private)
 _entry_destroy :: proc(e: ^Entry) {
+	delete(e.label)
 	_command_destroy(&e.cmd)
 }
 

@@ -86,6 +86,10 @@ main :: proc() {
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
     undo.install(undo_stack)
+    defer { undo.destroy(undo_stack); free(undo_stack) }
+
+    defer { engine.world_destroy_all(w); free(w) }
+    defer free(uc)
 
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
@@ -258,7 +262,16 @@ editor_shutdown :: proc() {
     shutdown_scene_view()
     engine.texture_cache_shutdown()
     engine.asset_db_shutdown()
+    engine.sm_shutdown()
+    engine.scene_lib_shutdown()
+    _shutdown_context_menu_registry()
+    inspector.shutdown_registries()
+    shutdown_hierarchy_views()
+    shutdown_project_view()
+    delete(keys_down_prev)
+    menu.shutdown_menu()
     log.info("Editor Shutdown")
+    log.shutdown()
 }
 
 @(menu_item={path="Assets/Create/Scene", order=0, shortcut=""})

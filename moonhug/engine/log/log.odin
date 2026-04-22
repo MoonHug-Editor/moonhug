@@ -1,5 +1,6 @@
 package mh_log
 
+import "base:builtin"
 import "core:fmt"
 import "core:strings"
 
@@ -49,6 +50,11 @@ clear :: proc() {
 	for entry in entries {
 		delete(entry.message)
 	}
+	builtin.clear(&entries)
+}
+
+shutdown :: proc() {
+	clear()
 	delete(entries)
 }
 

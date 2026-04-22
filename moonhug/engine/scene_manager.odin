@@ -128,6 +128,25 @@ _scene_load_additive :: proc(scene_file: ^SceneFile) -> ^Scene {
     return s
 }
 
+sm_shutdown :: proc() {
+    scene_manager := ctx_scene_manager()
+    for i in 0..<scene_manager.count {
+        if scene_manager.loaded[i] != nil {
+            scene_destroy(scene_manager.loaded[i])
+            scene_manager.loaded[i] = nil
+        }
+    }
+    scene_manager.count = 0
+    scene_manager.active_scene = -1
+}
+
+scene_lib_shutdown :: proc() {
+    for _, data in scene_lib {
+        delete(data)
+    }
+    delete(scene_lib)
+}
+
 scene_lib_register :: proc(guid: Asset_GUID) -> bool {
     path, ok := asset_db_get_path(uuid.Identifier(guid))
     if !ok do return false

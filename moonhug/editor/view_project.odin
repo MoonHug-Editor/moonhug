@@ -24,6 +24,14 @@ init_project_view :: proc() {
     projectViewData.currentPath = strings.clone(".")
 }
 
+shutdown_project_view :: proc() {
+    delete(projectViewData.rootPath)
+    delete(projectViewData.currentPath)
+    if projectViewData.selectedFile != "" {
+        delete(projectViewData.selectedFile)
+    }
+}
+
 draw_directory_tree :: proc(path: string, level: int = 0) {
     handle, err := os.open(path)
     if err != nil {
