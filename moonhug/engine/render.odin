@@ -3,7 +3,7 @@ package engine
 import rl "vendor:raylib"
 import gl "vendor:raylib/rlgl"
 
-render_world_cameras :: proc() {
+render_world_cameras :: proc() -> bool {
 	world := ctx_world()
 
 	best_idx := -1
@@ -20,7 +20,7 @@ render_world_cameras :: proc() {
 		}
 	}
 
-	if best_idx < 0 do return
+	if best_idx < 0 do return false
 
 	cam := &world.cameras.slots[best_idx].data
 
@@ -44,6 +44,7 @@ render_world_cameras :: proc() {
 	rl.BeginMode3D(cam3d)
 	render_sprite_renderers(cam.render_layer_mask)
 	rl.EndMode3D()
+	return true
 }
 
 render_sprite_renderers :: proc(layer_mask: u32) {
