@@ -12,8 +12,7 @@ render_world_cameras :: proc() {
 		slot := &world.cameras.slots[i]
 		if !slot.alive do continue
 		cam := &slot.data
-		t := pool_get(&world.transforms, Handle(cam.owner))
-		if t == nil do continue
+		if !cam.enabled do continue
 		if !transform_active_in_hierarchy(cam.owner) do continue
 		if cam.order > best_order {
 			best_order = cam.order

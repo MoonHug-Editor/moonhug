@@ -135,7 +135,7 @@ _draw_command_details :: proc(cmd: ^undo.Command, depth: int) {
 	case undo.Structural_Command:
 		_draw_structural_details(v, depth)
 	case undo.Group_Command:
-		im.Text("%sGroup (%d sub-commands)", cstr(_indent(depth)), i32(len(v.subs)))
+		im.TextUnformatted(cstr(fmt.tprintf("%sGroup (%d sub-commands)", _indent(depth), len(v.subs))))
 		for i in 0 ..< len(v.subs) {
 			sub := v.subs[i]
 			_draw_command_details(&sub, depth + 1)
@@ -168,15 +168,15 @@ _draw_target :: proc(t: undo.Property_Target, depth: int) {
 	case .Pooled: kind_str = t.handle.type_key == .Transform ? "Transform" : "Component"
 	case .Raw:    kind_str = "Raw"
 	}
-	im.Text("%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v",
-		cstr(indent),
-		cstr(kind_str),
-		i32(t.local_id),
-		i32(t.handle.index),
-		i32(t.handle.generation),
-		i32(t.handle.type_key),
-		i32(t.offset),
-		t.type_id)
+	im.TextUnformatted(cstr(fmt.tprintf("%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v",
+		indent,
+		kind_str,
+		i64(t.local_id),
+		t.handle.index,
+		t.handle.generation,
+		t.handle.type_key,
+		t.offset,
+		t.type_id)))
 
 	w := engine.ctx_world()
 	resolved := "unresolved"
@@ -209,49 +209,49 @@ _draw_structural_details :: proc(sc: undo.Structural_Command, depth: int) {
 	indent := _indent(depth)
 	switch v in sc {
 	case undo.Reparent_Command:
-		im.Text("%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)",
-			cstr(indent),
-			i32(v.node_local_id),
-			i32(v.old_parent_local_id),
-			i32(v.new_parent_local_id),
-			i32(v.old_index),
-			i32(v.new_index))
+		im.TextUnformatted(cstr(fmt.tprintf("%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)",
+			indent,
+			i64(v.node_local_id),
+			i64(v.old_parent_local_id),
+			i64(v.new_parent_local_id),
+			v.old_index,
+			v.new_index)))
 	case undo.Create_Subtree_Command:
-		im.Text("%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes",
-			cstr(indent),
-			i32(v.parent_local_id),
-			i32(v.root_local_id),
-			i32(v.sibling_index),
-			i32(len(v.payload)))
+		im.TextUnformatted(cstr(fmt.tprintf("%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes",
+			indent,
+			i64(v.parent_local_id),
+			i64(v.root_local_id),
+			v.sibling_index,
+			len(v.payload))))
 	case undo.Delete_Subtree_Command:
-		im.Text("%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes",
-			cstr(indent),
-			i32(v.parent_local_id),
-			i32(v.root_local_id),
-			i32(v.sibling_index),
-			i32(len(v.payload)))
+		im.TextUnformatted(cstr(fmt.tprintf("%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes",
+			indent,
+			i64(v.parent_local_id),
+			i64(v.root_local_id),
+			v.sibling_index,
+			len(v.payload))))
 	case undo.Add_Component_Command:
-		im.Text("%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
-			cstr(indent),
-			i32(v.owner_local_id),
+		im.TextUnformatted(cstr(fmt.tprintf("%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
+			indent,
+			i64(v.owner_local_id),
 			v.type_key,
-			i32(v.comp_local_id),
-			i32(v.list_index),
-			i32(len(v.payload)))
+			i64(v.comp_local_id),
+			v.list_index,
+			len(v.payload))))
 	case undo.Remove_Component_Command:
-		im.Text("%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
-			cstr(indent),
-			i32(v.owner_local_id),
+		im.TextUnformatted(cstr(fmt.tprintf("%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
+			indent,
+			i64(v.owner_local_id),
 			v.type_key,
-			i32(v.comp_local_id),
-			i32(v.list_index),
-			i32(len(v.payload)))
+			i64(v.comp_local_id),
+			v.list_index,
+			len(v.payload))))
 	case undo.Reorder_Components_Command:
-		im.Text("%sReorder Components: owner=%d  %d -> %d",
-			cstr(indent),
-			i32(v.owner_local_id),
-			i32(v.old_index),
-			i32(v.new_index))
+		im.TextUnformatted(cstr(fmt.tprintf("%sReorder Components: owner=%d  %d -> %d",
+			indent,
+			i64(v.owner_local_id),
+			v.old_index,
+			v.new_index)))
 	}
 }
 
