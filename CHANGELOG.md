@@ -1,3 +1,9 @@
+## [0.15.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.2...v0.15.0) (2026-04-22)
+
+### Features
+
+* hierarchy alt+shift+A to toggle transform.active, render active only ([e6b7c73](https://github.com/MoonHug-Editor/moonhug/commit/e6b7c731f68ef80d3749b28406e8e1cd3e12b789))
+
 ## [0.14.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.1...v0.14.2) (2026-04-21)
 
 ### Bug Fixes
