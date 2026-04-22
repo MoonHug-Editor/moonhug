@@ -1,6 +1,7 @@
 package editor
 
 import "core:fmt"
+import "core:mem"
 import rl "vendor:raylib"
 import strings "core:strings"
 import im "../../external/odin-imgui"
@@ -19,6 +20,22 @@ import "../engine/log"
 import "core:encoding/uuid"
 
 main :: proc() {
+    when ODIN_DEBUG {
+        track: mem.Tracking_Allocator
+        mem.tracking_allocator_init(&track, context.allocator)
+        context.allocator = mem.tracking_allocator(&track)
+
+        defer {
+            for _, entry in track.allocation_map {
+                fmt.eprintf("leak %v bytes @ %v\n", entry.size, entry.location)
+            }
+            for entry in track.bad_free_array {
+                fmt.eprintf("bad free @ %v\n", entry.location)
+            }
+            mem.tracking_allocator_destroy(&track)
+        }
+    }
+
     cwd, _ := os.get_working_directory(context.temp_allocator)
     if !strings.has_suffix(cwd, "moonhug") {
         moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
