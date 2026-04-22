@@ -99,7 +99,9 @@ For more details see [Contribution](docs/Contribution.md)
 
 - png - Texture2D with N Sprites
 
-- transform - use bit set + procs, instead of direct bool change
+- transform:
+  - use bit set + procs, instead of direct bool change
+  - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
 
@@ -141,6 +143,8 @@ For more details see [Contribution](docs/Contribution.md)
 - popup manager
   - show serialized or in-memory asset inspector as popup with custom title
     - override property drawer for custom popup look
+
+- convert tween_free to cleanup_T
 
 - generalized serialization of Owned and Ref
 - generic Handle resolve and reset Handle when resolve fails
