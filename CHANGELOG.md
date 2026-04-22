@@ -1,3 +1,15 @@
+## [0.16.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.15.0...v0.16.0) (2026-04-22)
+
+### Features
+
+* add "No cameras rendering" message to view_game ([7589bf1](https://github.com/MoonHug-Editor/moonhug/commit/7589bf11b7a29cd4d011dae1f35d195b794dd3cd))
+* add run_debug.sh with tracking allocator in main ([cd7e024](https://github.com/MoonHug-Editor/moonhug/commit/cd7e024a59cd907d563882e1c59338145d7470da))
+* improve history view UX, up/down/enter keys, drag split ([453237b](https://github.com/MoonHug-Editor/moonhug/commit/453237b3ef18a2b62fdbd40d797e427c23856775))
+
+### Bug Fixes
+
+* fix some leaks ([dc5ad8a](https://github.com/MoonHug-Editor/moonhug/commit/dc5ad8a095995f266f70b3185663493d929a153e))
+
 ## [0.15.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.14.2...v0.15.0) (2026-04-22)
 
 ### Features
