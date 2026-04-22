@@ -12,6 +12,9 @@ _history_selected: int = -1
 @(private="file")
 _history_last_count: int
 
+@(private="file")
+_history_split_ratio: f32 = 0.6
+
 draw_history_view :: proc() {
 	if !im.Begin("History", nil, {.NoCollapse}) {
 		im.End()
@@ -47,11 +50,29 @@ draw_history_view :: proc() {
 	im.Separator()
 
 	avail := im.GetContentRegionAvail()
-	list_h := avail.y * 0.6
-	if list_h < 120 do list_h = 120
+	splitter_h: f32 = 4
+	list_h := (avail.y - splitter_h) * _history_split_ratio
+	if list_h < 60 do list_h = 60
+	if list_h > avail.y - splitter_h - 60 do list_h = avail.y - splitter_h - 60
 
 	im.BeginChild("HistoryList", im.Vec2{0, list_h}, {.Borders})
 	{
+		max_index := len(items)
+
+		if im.IsWindowFocused() {
+			if im.IsKeyPressed(.UpArrow) {
+				if _history_selected > 0 do _history_selected -= 1
+				im.SetScrollHereY(0)
+			}
+			if im.IsKeyPressed(.DownArrow) {
+				if _history_selected < max_index do _history_selected += 1
+				im.SetScrollHereY(1)
+			}
+			if im.IsKeyPressed(.Enter) {
+				undo.jump_to(s, _history_selected)
+			}
+		}
+
 		if im.Selectable("<initial>", _history_selected == 0, {.SpanAllColumns}) {
 			_history_selected = 0
 		}
@@ -98,7 +119,20 @@ draw_history_view :: proc() {
 	}
 	im.EndChild()
 
-	im.Separator()
+	splitter_pos := im.GetCursorScreenPos()
+	im.InvisibleButton("##hsplit", im.Vec2{-1, splitter_h})
+	if im.IsItemActive() {
+		delta := im.GetIO().MouseDelta.y
+		total := avail.y - splitter_h
+		_history_split_ratio = clamp((list_h + delta) / total, 60 / total, (total - 60) / total)
+	}
+	if im.IsItemHovered() || im.IsItemActive() {
+		im.SetMouseCursor(.ResizeNS)
+	}
+	dl := im.GetWindowDrawList()
+	col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
+	im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, col, 1)
+
 	im.BeginChild("HistoryDetails", im.Vec2{0, 0}, {.Borders})
 	defer im.EndChild()
 
