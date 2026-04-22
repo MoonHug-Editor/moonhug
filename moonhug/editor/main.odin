@@ -215,9 +215,10 @@ editor_init :: proc() {
 
         top_order["File"] = 0
         top_order["View"] = 1
+        top_order["Edit"] = 4
         top_order["View/Theme"] = -10
-        top_order["Assets"] = 2
-        top_order["Component"] = 6
+        top_order["Assets"] = 8
+        top_order["Component"] = 15
         top_order["Help"] = 30
         menu.sort_top_menu(top_order)
     }

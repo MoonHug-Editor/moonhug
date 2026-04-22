@@ -99,7 +99,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - png - Texture2D with N Sprites
 
-- hierarchy - alt+shift+A to toggle transform.active.
 - transform - use bit set + procs, instead of direct bool change
 
 - improve default types inspector UX
@@ -123,8 +122,6 @@ For more details see [Contribution](docs/Contribution.md)
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call
-
-- Editor Undo system
 
 ### Considered Features
 - memory management guide

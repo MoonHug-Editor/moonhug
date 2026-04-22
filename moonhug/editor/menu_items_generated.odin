@@ -8,6 +8,7 @@ _register_menu_items :: proc() {
 	menu.init_menu()
 	menu.add_menu_item("Assets/Refresh AssetDB", "", menu.refresh_asset_db_menu, 0)
 	menu.add_menu_item("Assets/Create/Scene", "", scene_create_menu, 0)
+	menu.add_menu_item("Edit/Toggle Transform Active", "Alt+Shift+A", hierarchy_toggle_active_menu, 0)
 	menu.add_menu_item("File/Save", "Ctrl+S", menu.file_save_menu, 0)
 	menu.add_menu_separator("File", 5)
 	menu.add_menu_item("File/Quit", "Alt+F4", menu.file_quit_menu, 10)

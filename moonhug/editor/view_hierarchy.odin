@@ -747,3 +747,15 @@ hierarchy_get_selected :: proc() -> engine.Transform_Handle {
 	if !engine.pool_valid(&w.transforms, engine.Handle(_hierarchy_selected)) do return {}
 	return _hierarchy_selected
 }
+
+@(menu_item={path="Edit/Toggle Transform Active", order=0, shortcut="Alt+Shift+A"})
+hierarchy_toggle_active_menu :: proc() {
+	tH := hierarchy_get_selected()
+	if tH == _HANDLE_NONE do return
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return
+	e := undo.edit_begin(tH, &t.is_active, typeid_of(bool), "Toggle Active")
+	defer undo.edit_end(&e)
+	t.is_active = !t.is_active
+}

@@ -14,7 +14,7 @@ render_world_cameras :: proc() {
 		cam := &slot.data
 		t := pool_get(&world.transforms, Handle(cam.owner))
 		if t == nil do continue
-		if !t.is_active do continue
+		if !transform_active_in_hierarchy(cam.owner) do continue
 		if cam.order > best_order {
 			best_order = cam.order
 			best_idx = i
@@ -57,7 +57,7 @@ render_sprite_renderers :: proc(layer_mask: u32) {
 		if sr.texture == {} do continue
 
 		t := pool_get(&world.transforms, Handle(sr.owner))
-		if t == nil do continue
+		if t == nil || !transform_active_in_hierarchy(sr.owner) do continue
 		if t.render_layer & layer_mask == 0 do continue
 
 		tex, ok := texture_load(sr.texture)
