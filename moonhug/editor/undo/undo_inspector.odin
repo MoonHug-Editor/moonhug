@@ -50,6 +50,22 @@ pop_owner :: proc() {
 	pop(&_owner_stack)
 }
 
+inspector_shutdown :: proc() {
+	if _owner_stack != nil {
+		delete(_owner_stack)
+		_owner_stack = nil
+	}
+	if _field_snapshot.active && _field_snapshot.old_json != nil {
+		delete(_field_snapshot.old_json)
+	}
+	_field_snapshot = {}
+	if _pending_edit.active && _pending_edit.old_json != nil {
+		delete(_pending_edit.old_json)
+	}
+	_pending_edit = {}
+	_nested_depth = 0
+}
+
 current_owner :: proc() -> (Inspector_Owner, bool) {
 	if len(_owner_stack) == 0 do return {}, false
 	return _owner_stack[len(_owner_stack) - 1], true

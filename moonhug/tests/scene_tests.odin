@@ -19,11 +19,18 @@ TestCtx :: struct {
 _serializers_registered: bool
 
 @(private)
+_tween_initialized: bool
+
+@(private)
 setup :: proc(tc: ^TestCtx, path: string = "") {
 	app.register_type_guids()
 	if !_serializers_registered {
 		app.register_component_serializers()
 		_serializers_registered = true
+	}
+	if !_tween_initialized {
+		engine.tween_init()
+		_tween_initialized = true
 	}
 	engine.w_init(&tc.world)
 	tc.uc.world = &tc.world

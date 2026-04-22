@@ -381,6 +381,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 		fmt.sbprintf(&b, "\t\thandle.type_key = .%s\n", e.type_name)
 		fmt.sbprintf(&b, "\t\t%s^ = %s_data\n", e.snake_name, e.snake_name)
 		fmt.sbprintf(&b, "\t\tid_to_%s_handle[%s_data.local_id] = handle\n", e.snake_name, e.snake_name)
+		fmt.sbprintf(&b, "\t\t%s_data = {{}}\n", e.snake_name)
 		strings.write_string(&b, "\t}\n\n")
 	}
 	strings.write_string(&b, "\tfor &t_data in sf.transforms {\n")
@@ -478,6 +479,20 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "scene_file_destroy :: proc(sf: ^SceneFile) {\n")
+	strings.write_string(&b, "\tfor &t in sf.transforms {\n")
+	strings.write_string(&b, "\t\tdelete(t.name)\n")
+	strings.write_string(&b, "\t\tdelete(t.children)\n")
+	strings.write_string(&b, "\t\tdelete(t.components)\n")
+	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "\tdelete(sf.transforms)\n")
+	for e in data.entries {
+		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ type_cleanup(.%s, &c) }}\n", e.plural, e.type_name)
+		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)
+	}
+	strings.write_string(&b, "}\n")
+
+	strings.write_string(&b, "\n")
+	strings.write_string(&b, "scene_file_destroy_shallow :: proc(sf: ^SceneFile) {\n")
 	strings.write_string(&b, "\tfor &t in sf.transforms {\n")
 	strings.write_string(&b, "\t\tdelete(t.name)\n")
 	strings.write_string(&b, "\t\tdelete(t.children)\n")

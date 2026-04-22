@@ -29,6 +29,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Camera
 		camera^ = camera_data
 		id_to_camera_handle[camera_data.local_id] = handle
+		camera_data = {}
 	}
 
 	for &lifetime_data in sf.lifetimes {
@@ -36,6 +37,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Lifetime
 		lifetime^ = lifetime_data
 		id_to_lifetime_handle[lifetime_data.local_id] = handle
+		lifetime_data = {}
 	}
 
 	for &nested_scene_data in sf.nested_scenes {
@@ -43,6 +45,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .NestedScene
 		nested_scene^ = nested_scene_data
 		id_to_nested_scene_handle[nested_scene_data.local_id] = handle
+		nested_scene_data = {}
 	}
 
 	for &player_data in sf.players {
@@ -50,6 +53,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Player
 		player^ = player_data
 		id_to_player_handle[player_data.local_id] = handle
+		player_data = {}
 	}
 
 	for &script_data in sf.scripts {
@@ -57,6 +61,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .Script
 		script^ = script_data
 		id_to_script_handle[script_data.local_id] = handle
+		script_data = {}
 	}
 
 	for &sprite_renderer_data in sf.sprite_renderers {
@@ -64,6 +69,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		handle.type_key = .SpriteRenderer
 		sprite_renderer^ = sprite_renderer_data
 		id_to_sprite_renderer_handle[sprite_renderer_data.local_id] = handle
+		sprite_renderer_data = {}
 	}
 
 	for &t_data in sf.transforms {
@@ -191,6 +197,27 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 }
 
 scene_file_destroy :: proc(sf: ^SceneFile) {
+	for &t in sf.transforms {
+		delete(t.name)
+		delete(t.children)
+		delete(t.components)
+	}
+	delete(sf.transforms)
+	for &c in sf.cameras { type_cleanup(.Camera, &c) }
+	delete(sf.cameras)
+	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
+	delete(sf.lifetimes)
+	for &c in sf.nested_scenes { type_cleanup(.NestedScene, &c) }
+	delete(sf.nested_scenes)
+	for &c in sf.players { type_cleanup(.Player, &c) }
+	delete(sf.players)
+	for &c in sf.scripts { type_cleanup(.Script, &c) }
+	delete(sf.scripts)
+	for &c in sf.sprite_renderers { type_cleanup(.SpriteRenderer, &c) }
+	delete(sf.sprite_renderers)
+}
+
+scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	for &t in sf.transforms {
 		delete(t.name)
 		delete(t.children)

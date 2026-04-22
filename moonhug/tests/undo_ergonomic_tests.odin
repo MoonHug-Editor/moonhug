@@ -3,6 +3,7 @@ package tests
 import "../engine"
 import "../editor/undo"
 
+import "core:strings"
 import "core:testing"
 
 @(test)
@@ -48,7 +49,7 @@ test_undo_edit_transform_string_field :: proc(t: ^testing.T) {
 	{
 		e := undo.edit_begin(tH, &tr.name, typeid_of(string))
 		delete(tr.name)
-		tr.name = "After"
+		tr.name = strings.clone("After")
 		undo.edit_end(&e)
 	}
 

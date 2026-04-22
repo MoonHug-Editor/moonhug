@@ -3,6 +3,7 @@ package tests
 import "../engine"
 import "../editor/undo"
 
+import "core:strings"
 import "core:testing"
 
 @(private)
@@ -110,7 +111,7 @@ test_undo_value_string_name :: proc(t: ^testing.T) {
 	target := undo.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
 	old_json := undo.capture_json(&tr.name, typeid_of(string))
 	delete(tr.name)
-	tr.name = "After"
+	tr.name = strings.clone("After")
 	new_json := undo.capture_json(&tr.name, typeid_of(string))
 	undo.push_value(s, target, old_json, new_json)
 

@@ -139,6 +139,7 @@ destroy :: proc(s: ^Undo_Stack) {
 	delete(s.txn_stack)
 	s.items = {}
 	s.txn_stack = {}
+	inspector_shutdown()
 }
 
 set_recording :: proc(s: ^Undo_Stack, on: bool) {
@@ -517,6 +518,9 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		log.error(fmt.tprintf("undo: no pointer typeid registered for %v — call engine.register_pointer_type during init", vc.target.type_id))
 		return
 	}
+
+	_cleanup_before_unmarshal(ptr, vc.target.type_id)
+
 	target_ptr := ptr
 	target_any := any{data = &target_ptr, id = ptr_tid}
 	if err := json.unmarshal_any(json_bytes, target_any, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
@@ -528,6 +532,20 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		if base, h, ok := resolve_pooled_base(vc.target); ok {
 			engine.component_on_validate(h.type_key, base)
 		}
+	}
+}
+
+@(private)
+_cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
+	if ptr == nil do return
+	if tid == typeid_of(string) {
+		s := cast(^string)ptr
+		if len(s^) > 0 do delete(s^)
+		s^ = ""
+		return
+	}
+	if key, ok := engine.get_type_key_by_typeid(tid); ok {
+		engine.type_cleanup(key, ptr)
 	}
 }
 

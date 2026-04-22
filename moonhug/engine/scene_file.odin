@@ -146,12 +146,12 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	data, err := json.marshal(sf, opts)
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal scene: %v\n", err)
-		scene_file_destroy(&sf)
+		scene_file_destroy_shallow(&sf)
 		return false
 	}
 	defer delete(data)
 
-	scene_file_destroy(&sf)
+	scene_file_destroy_shallow(&sf)
 
 	if write_err := os.write_entire_file(path, data); write_err != nil {
 		fmt.printf("[Scene] Failed to write file: %s\n", path)
@@ -223,7 +223,7 @@ scene_copy_subtree :: proc(tH: Transform_Handle) -> []byte {
 	sf := SceneFile{}
 	sf.root = t.local_id
 	_collect_transform_tree(w, tH, &sf)
-	defer scene_file_destroy(&sf)
+	defer scene_file_destroy_shallow(&sf)
 
 	opts := json.Marshal_Options{spec = .JSON, pretty = false}
 	data, err := json.marshal(sf, opts)
