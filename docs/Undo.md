@@ -1,30 +1,62 @@
 # Undo
 
-Editor-only undo/redo for value edits and hierarchy changes.
+Editor-only undo/redo for value edits and hierarchy changes.  
+
+> A stack of commands that restore before(undo) or after(redo) state when executed.
+
+# App code usage
+
+App code doesn't use the undo feature. It is editor-only package (`moonhug/editor/undo`) compiled into the editor binary, not the app.
+
+But for components to work cleanly with undo during authoring stage existing rules are sufficient:
+
+- Implement `cleanup_T` so defaults survive delete + undo round-trip.
+  - cleanup_T should deallocate type's data, and call comp_zero(self)
+- Implement `on_validate_T` when a value change needs to recompute derived state, it is called after restoring a component field.
+
+## History view
+
+`View → History` opens a panel that lists every entry in the stack with its label and a marker for the current `top`. Entries above `top` are "done", entries below are "redo". Double-click a row to jump to that step (walks `apply_undo`/`apply_redo` until the stack's `top` matches). The bottom subview shows details for the selected entry: `Property_Target` breakdown, old/new JSON for value commands, or the parameters of structural commands (similar to Unity's console detail panel).
+
+## Keyboard shortcuts
+
+Installed in `editor/main.odin` with `RouteGlobal` so they work regardless of focused panel.
+
+```
+Ctrl+Z         — undo
+Ctrl+Y         — redo
+Ctrl+Shift+Z   — redo
+
+view_history focused:
+ - up
+ - down
+ - enter - restore state up to selected step
+```
+
+# Implementation details
+
+WIP: API and implementation are subject to change
 
 ## Core concepts
 
-- Undo_Stack        — ordered history of commands with top for redo. The stack is scoped to the editor (`moonhug/editor/undo`)
+- Undo_Stack        — ordered history of commands with top for redo. The stack is scoped to the editor 
 - Command           — union of other undo commands
-  - Value_Command — change to a single field (old_json / new_json payloads)
+  - Value_Command   — change to a single field (old_json / new_json payloads)
   - Structural_Command — hierarchy mutation (reparent, create, delete, add/remove/reorder component)
-  - Group_Command — atomic bundle of sub-commands (multi-field edits)
+  - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene + Local_ID + Handle + offset + typeid)
-- Inspector_Owner   — current Transform/Component frame the inspector is drawing
-- Pending_Edit      — cross-frame snapshot for drag widgets (DragFloat etc.)
+- Inspector_Owner   — current Transform/Component frame the inspector is drawing; pushed by the inspector before drawing a component/transform so nested drawers can resolve it
 
-## Targets survive pool reallocation
+## `Property_Target` for targets to survive pool reallocation
+
+> Raw pointers are unsafe as undo targets. Pools recycle slots and structural undo/redo destroys and recreates objects.
 
 `Property_Target` stores robust identifier that works even after destroy/recreate object.
-> Raw pointers are unsafe as undo targets: pools recycle slots and structural undo/redo destroys and recreates objects, so any cached `^T` can be stale.
-
 - `kind` — `Pooled` (anything in the `World` pool table) or `Raw` (non-pooled memory).
 - `scene` + `local_id` — persistent, file-stable identity used when a `Handle` is stale.
-- `handle` — fast path; falls back to `local_id` scan when invalid.
+  - `handle` — fast path; falls back to `local_id` scan when invalid.
 - `offset` + `type_id` — where and what inside the resolved struct.
 - `raw_ptr` — used only for `.Raw` (non-scene data like import settings).
-
-On apply/revert, the target is re-resolved to a live `rawptr`; this is the reason add/remove/delete-subtree undo works even though objects are destroyed and re-created.
 
 ## Value payloads are JSON
 
@@ -55,12 +87,38 @@ Sub-commands collect into a `Group_Command` and push as one undo step. Used for 
 
 ## Inspector integration
 
-The inspector uses `imgui` widgets. For drag widgets (`DragFloat`, etc.) the value changes over many frames but the user expects one undo step per drag. The system tracks two snapshots:
+The inspector uses `imgui` widgets. For drag widgets (`DragFloat`, etc.) the value changes over many frames but the user expects one undo step per drag.  
+This relies on ImGui's `IsItemActivated` / `IsItemDeactivatedAfterEdit` / `IsItemActive` to decide when to snapshot and when to commit.
 
-- **Field snapshot** (`begin_field` / `end_field`) — per-frame, used for simple one-shot widgets.
-- **Pending edit** (`promote_to_pending` / `pending_commit`) — cross-frame, used when `IsItemActivated` fires.
+### Component inspector — whole-owner serialization
 
-Frame flow for a drag:
+The component field loop (`editor/inspector/view_inspector.odin`) does **not** track per-field targets. Every edit inside a component — top-level field, nested struct field, dynamic-array element, union variant — produces a `Value_Command` whose target is the entire component (offset `0`, component typeid). `old_json` and `new_json` hold the full component payload.
+
+This is driven by `comp_snapshot` / `comp_commit` (`undo_inspector.odin`):
+
+```
+frame 0 (click):       IsItemActivated            → comp_snapshot captures full component JSON
+frame 1..N-1 (drag):   value changes              → pending stays
+frame N (release):     IsItemDeactivatedAfterEdit → comp_commit pushes one Value_Command
+instant widgets:       activate + deactivate same frame → one command
+```
+
+Why whole-owner for the component inspector:
+
+- `Property_Target` identifies a field as `owner_base_ptr + offset + typeid`. That works for fixed-layout fields, but **not** for elements inside a `[dynamic]T` or through a union tag switch — those live on the heap at addresses that have no stable offset from the component base and can move on reallocation.
+- Components are already round-trippable through JSON (scene save/load, clipboard). Capturing `capture_json(comp_ptr, comp_tid)` and unmarshalling it back on undo is always safe for anything nested in the component, no matter how deep.
+- The component inspector is the only place that routinely recurses through arrays/unions/structs, so the extra bytes per entry (vs a leaf field) are a good trade for correctness.
+
+`_undo_finalize_widget` in `view_inspector.odin` is called immediately after each leaf drawer (property drawer, enum drawer, or inside `draw_array_element`) so `IsItemActivated` / `IsItemDeactivatedAfterEdit` / `IsItemActive` query the correct widget. Both the main field loop and `draw_array_element` save/restore `inspector_changed` around each element so a change in one element doesn't trigger a premature commit in the next.
+
+Structural array/union mutations (Add, Remove, variant tag switch) wrap their mutation in `comp_snapshot` + `comp_commit`, producing one command that captures the structural change along with any cleared fields.
+
+### Transform inspector — per-field targets
+
+Transform fields (`name`, `position`, `rotation`, `scale`) are fixed-layout primitives with stable offsets, so `_wrap_transform_field` (`editor/view_hierarchy_inspector.odin`) still uses the lighter per-field protocol:
+
+- **Field_Snapshot** (`begin_field` / `end_field`) — per-frame, simple one-shot widgets.
+- **Pending_Edit** (`promote_to_pending` / `pending_commit`) — cross-frame, drag widgets.
 
 ```
 frame 0 (click):    IsItemActivated       → promote_to_pending snapshots old value
@@ -68,13 +126,16 @@ frame 1..N-1:       (dragging)            → value changes, pending stays
 frame N (release):  IsItemDeactivatedAfterEdit → pending_commit pushes Value_Command
 ```
 
-For instant widgets (checkbox, color-picker finish) activation and deactivation-after-edit fire the same frame, and the same path produces one command.
+For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` scopes which wrap the same mechanism.
 
-## Editor developer usage
+## Editor code usage
 
-Most editor code doesn't need to touch the undo API directly. The inspector field loop already wraps every registered property drawer, array, union, and enum with `begin_field` / `end_field` and finalizes with the pending protocol, so **drawers written to the standard contract get undo for free**.
+Most editor code doesn't need to touch the undo API directly:
 
-When writing editor UI outside the inspector field loop (hierarchy view, custom panels, header fields, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
+- The **component field loop** wraps every registered property drawer, array element, union variant, and enum with `comp_snapshot` / `comp_commit` so **drawers written to the standard contract get undo for free** — one step per drag, one step per Add/Remove, one step per tag switch.
+- The **transform field loop** wraps its three rows (`position`, `rotation`, `scale`) and the `name` row with `begin_field` / `end_field` + pending-edit finalize.
+
+When writing editor UI outside these loops (hierarchy view, custom panels, component header checkbox/menus, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
 
 ### Value edits
 
@@ -97,6 +158,13 @@ e := undo.edit_begin(comp.handle, comp_tid)
 engine.type_reset(comp.handle.type_key, comp_ptr)
 undo.edit_end(&e)
 
+// enabled checkbox (same whole-component form)
+if im.Checkbox("##enabled", &enabled) {
+    e := undo.edit_begin(comp.handle, comp_tid)
+    comp_base.enabled = enabled
+    undo.edit_end(&e)
+}
+
 // abandon the edit without pushing (e.g. user cancelled mid-frame)
 undo.edit_cancel(&e)
 
@@ -117,20 +185,21 @@ newH := undo.record_create_child("Transform", parent_tH)
 // delete: capture + destroy + push, single call
 undo.record_delete(tH)
 
-// reparent to a new parent, optionally at an explicit index
+// reparent to a new parent
 undo.record_reparent_to(node, new_parent)
+// optionally at an explicit index
 undo.record_reparent_to(node, new_parent, sibling_index)
 
 // add/remove component on a transform
 engine.transform_add_comp(tH, .MyComp)
 undo.record_add_component(tH, comp.handle, list_index)
 
-undo.record_remove_component(tH, comp.handle)     // fused remove
+undo.record_remove_component(tH, comp.handle)
 
 undo.record_reorder_components(tH, from, to)
 ```
 
-The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `record_remove_component_pre` still exist for the rare case where the destroy and the record must be split across non-adjacent code (e.g. the destroy happens inside a callback you don't control). Prefer the fused forms when possible.
+The low-level `record_delete_pre` / `record_cleanup` / `record_commit` and `record_remove_component_pre` still exist for the rare case where the destroy and the record must be split across non-adjacent code (e.g. the destroy happens inside a callback you don't control). Prefer the "fused" forms when possible.
 
 ### Group commands
 
@@ -143,7 +212,7 @@ if new_parent == {} do return   // scope auto-aborts on early return
 undo.record_reparent_to(new_parent, old_parent, sibling_idx)
 undo.record_reparent_to(tH, new_parent)
 
-undo.group_commit(&g)       // opt-in: only finalize if we made it here
+undo.group_commit(&g)       // only finalize if we made it here
 ```
 
 `group_end` aborts the in-progress group unless `group_commit` was called first. Any `record_*` or `edit_*` calls made while a group is active collect into that group.
@@ -181,33 +250,9 @@ Clear the stack when context changes (handled automatically for scene load/unloa
 undo.clear(undo.get())
 ```
 
-## App developer usage
-
-App code doesn't use the undo stack. It is editor-only and compiled into the editor binary, not the app.
-
-For components to work cleanly with undo of value edits, the existing rules are sufficient:
-
-- Implement `reset_T` / `cleanup_T` so defaults survive delete + undo round-trip.
-  - cleanup_T should deallocate type's data
-  - reset_T should cleanup_T then set values
-- Implement `on_validate_T` when a value change needs to recompute derived state, it is called after restoring a component field.
-
-## History view
-
-`View → History` opens a panel that lists every entry in the stack with its label and a marker for the current `top`. Entries above `top` are "done", entries below are "redo". Double-click a row to jump to that step (walks `apply_undo`/`apply_redo` until the stack's `top` matches). The bottom subview shows details for the selected entry: `Property_Target` breakdown, old/new JSON for value commands, or the parameters of structural commands (similar to Unity's console detail panel).
-
-## Keyboard shortcuts
-
-Installed in `editor/main.odin` with `RouteGlobal` so they work regardless of focused panel.
-
-```
-Ctrl+Z         — undo
-Ctrl+Y         — redo
-Ctrl+Shift+Z   — redo
-```
-
 ## Limitations
 
 - Capacity is 32 entries; overflow drops the oldest.
 - Non-scene inspector targets (import settings, asset inspectors) use `.Raw` targets and stop being valid when the inspector switches away — the stack is cleared on target change.
 - Structural commands capture full subtree JSON on delete/remove; large subtrees produce large entries.
+- Component inspector edits serialize the whole component per step. Components with large dynamic arrays produce correspondingly large entries; in practice the inspector is not the hot path so this is acceptable.

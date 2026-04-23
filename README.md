@@ -114,13 +114,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
 
-- nested prefabs roadmap:
-  - [v] opaque nested scene, instantiated at gameplay only
-  - [wip] transparent nested scene, read-only (view but no overrides)
-    - resolved in-memory tree
-  - nested scene instance overrides
-  - prefab variants
-
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call

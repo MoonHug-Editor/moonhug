@@ -38,16 +38,3 @@ Default values for components:
   - deserialization should happen on zeroed object.
 
 TODO: Consider merge of type defaults + prefab defaults into 1 serialized structure so that deserialization happens once on zero initialized object
-
------
-- nested prefabs roadmap:
-  - [v] scene tree data model
-  - [v] serialization: scene tree file with guid in project
-  - [v] asset registry: AssetDB
-  - [v] instantiate scene tree as child
-  - prefab instance node type:
-    - [v] opaque nested scene, instantiated at gameplay only
-    - [wip] transparent nested scene, read-only (view but no overrides)
-      - resolved in-memory tree
-  - property overrides: nested scene instance overrides
-  - prefab variants
