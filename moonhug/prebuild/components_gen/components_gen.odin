@@ -357,12 +357,15 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	defer strings.builder_destroy(&b)
 
 	strings.write_string(&b, "package engine\n\n")
+	strings.write_string(&b, "import \"core:encoding/json\"\n")
+	strings.write_string(&b, "import \"core:strings\"\n\n")
 
 	strings.write_string(&b, "@(typ_guid={guid = \"0d489fce-9c04-4e4d-be12-f3f590d60cea\"})\n")
 	strings.write_string(&b, "SceneFile :: struct {\n")
 	strings.write_string(&b, "\troot:          Local_ID,\n")
 	strings.write_string(&b, "\tnext_local_id: Local_ID,\n")
 	strings.write_string(&b, "\ttransforms:    [dynamic]Transform,\n")
+	strings.write_string(&b, "\tnested_scenes: [dynamic]NestedScene,\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\t%s: [dynamic]%s,\n", e.plural, e.type_name)
 	}
@@ -375,6 +378,21 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 		fmt.sbprintf(&b, "\tid_to_%s_handle := make(map[Local_ID]Handle, context.temp_allocator)\n", e.snake_name)
 	}
 	strings.write_string(&b, "\n")
+	strings.write_string(&b, "\tif s != nil {\n")
+	strings.write_string(&b, "\t\tfor &ns_data in sf.nested_scenes {\n")
+	strings.write_string(&b, "\t\t\tns_copy := ns_data\n")
+	strings.write_string(&b, "\t\t\tns_copy.overrides = make([dynamic]Override, len(ns_data.overrides))\n")
+	strings.write_string(&b, "\t\t\tfor i in 0..<len(ns_data.overrides) {\n")
+	strings.write_string(&b, "\t\t\t\tsrc := &ns_data.overrides[i]\n")
+	strings.write_string(&b, "\t\t\t\tns_copy.overrides[i] = Override{\n")
+	strings.write_string(&b, "\t\t\t\t\ttarget        = src.target,\n")
+	strings.write_string(&b, "\t\t\t\t\tproperty_path = strings.clone(src.property_path),\n")
+	strings.write_string(&b, "\t\t\t\t\tvalue         = json.clone_value(src.value),\n")
+	strings.write_string(&b, "\t\t\t\t}\n")
+	strings.write_string(&b, "\t\t\t}\n")
+	strings.write_string(&b, "\t\t\tappend(&s.nested_scenes, ns_copy)\n")
+	strings.write_string(&b, "\t\t}\n")
+	strings.write_string(&b, "\t}\n\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tfor &%s_data in sf.%s {{\n", e.snake_name, e.plural)
 		fmt.sbprintf(&b, "\t\thandle, %s := pool_create(&w.%s)\n", e.snake_name, e.plural)
@@ -453,6 +471,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }}\n", e.plural)
 	}
+	strings.write_string(&b, "\tfor &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }\n")
 	strings.write_string(&b, "\n\tfor &t in sf.transforms {\n")
 	strings.write_string(&b, "\t\tif t.parent.pptr.local_id != 0 {\n")
 	strings.write_string(&b, "\t\t\tif new_id, ok := remap[t.parent.pptr.local_id]; ok {\n")
@@ -470,6 +489,11 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\t\t}\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
+	strings.write_string(&b, "\tfor &ns in sf.nested_scenes {\n")
+	strings.write_string(&b, "\t\tif new_id, ok := remap[ns.transform_parent]; ok {\n")
+	strings.write_string(&b, "\t\t\tns.transform_parent = new_id\n")
+	strings.write_string(&b, "\t\t}\n")
+	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\tif new_root, ok := remap[sf.root]; ok {\n")
 	strings.write_string(&b, "\t\tsf.root = new_root\n")
 	strings.write_string(&b, "\t}\n\n")
@@ -485,6 +509,14 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\tdelete(t.components)\n")
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.transforms)\n")
+	strings.write_string(&b, "\tfor &ns in sf.nested_scenes {\n")
+	strings.write_string(&b, "\t\tfor &ov in ns.overrides {\n")
+	strings.write_string(&b, "\t\t\tdelete(ov.property_path)\n")
+	strings.write_string(&b, "\t\t\tjson.destroy_value(ov.value)\n")
+	strings.write_string(&b, "\t\t}\n")
+	strings.write_string(&b, "\t\tdelete(ns.overrides)\n")
+	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ type_cleanup(.%s, &c) }}\n", e.plural, e.type_name)
 		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)
@@ -499,6 +531,7 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\tdelete(t.components)\n")
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.transforms)\n")
+	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)
 	}

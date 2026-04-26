@@ -1,13 +1,16 @@
 package engine
 
+import "core:encoding/json"
+import "core:strings"
+
 @(typ_guid={guid = "0d489fce-9c04-4e4d-be12-f3f590d60cea"})
 SceneFile :: struct {
 	root:          Local_ID,
 	next_local_id: Local_ID,
 	transforms:    [dynamic]Transform,
+	nested_scenes: [dynamic]NestedScene,
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
-	nested_scenes: [dynamic]NestedScene,
 	players: [dynamic]Player,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
@@ -19,10 +22,25 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_nested_scene_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
+
+	if s != nil {
+		for &ns_data in sf.nested_scenes {
+			ns_copy := ns_data
+			ns_copy.overrides = make([dynamic]Override, len(ns_data.overrides))
+			for i in 0..<len(ns_data.overrides) {
+				src := &ns_data.overrides[i]
+				ns_copy.overrides[i] = Override{
+					target        = src.target,
+					property_path = strings.clone(src.property_path),
+					value         = json.clone_value(src.value),
+				}
+			}
+			append(&s.nested_scenes, ns_copy)
+		}
+	}
 
 	for &camera_data in sf.cameras {
 		handle, camera := pool_create(&w.cameras)
@@ -38,14 +56,6 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		lifetime^ = lifetime_data
 		id_to_lifetime_handle[lifetime_data.local_id] = handle
 		lifetime_data = {}
-	}
-
-	for &nested_scene_data in sf.nested_scenes {
-		handle, nested_scene := pool_create(&w.nested_scenes)
-		handle.type_key = .NestedScene
-		nested_scene^ = nested_scene_data
-		id_to_nested_scene_handle[nested_scene_data.local_id] = handle
-		nested_scene_data = {}
 	}
 
 	for &player_data in sf.players {
@@ -107,10 +117,6 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				lifetime := pool_get(&w.lifetimes, h)
 				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_nested_scene_handle); ok {
-				c.handle = h
-				nested_scene := pool_get(&w.nested_scenes, h)
-				if nested_scene != nil do nested_scene.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
 				c.handle = h
 				player := pool_get(&w.players, h)
@@ -161,10 +167,10 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 
 	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.nested_scenes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }
 
 	for &t in sf.transforms {
 		if t.parent.pptr.local_id != 0 {
@@ -184,13 +190,18 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 		}
 	}
 
+	for &ns in sf.nested_scenes {
+		if new_id, ok := remap[ns.transform_parent]; ok {
+			ns.transform_parent = new_id
+		}
+	}
+
 	if new_root, ok := remap[sf.root]; ok {
 		sf.root = new_root
 	}
 
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
-	for &c in sf.nested_scenes { _remap_refs_in_value(&c, type_info_of(NestedScene), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
 	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
 	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
@@ -203,12 +214,18 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 		delete(t.components)
 	}
 	delete(sf.transforms)
+	for &ns in sf.nested_scenes {
+		for &ov in ns.overrides {
+			delete(ov.property_path)
+			json.destroy_value(ov.value)
+		}
+		delete(ns.overrides)
+	}
+	delete(sf.nested_scenes)
 	for &c in sf.cameras { type_cleanup(.Camera, &c) }
 	delete(sf.cameras)
 	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
 	delete(sf.lifetimes)
-	for &c in sf.nested_scenes { type_cleanup(.NestedScene, &c) }
-	delete(sf.nested_scenes)
 	for &c in sf.players { type_cleanup(.Player, &c) }
 	delete(sf.players)
 	for &c in sf.scripts { type_cleanup(.Script, &c) }
@@ -224,9 +241,9 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 		delete(t.components)
 	}
 	delete(sf.transforms)
+	delete(sf.nested_scenes)
 	delete(sf.cameras)
 	delete(sf.lifetimes)
-	delete(sf.nested_scenes)
 	delete(sf.players)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)

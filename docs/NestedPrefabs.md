@@ -8,7 +8,7 @@
 
   - prefab instance node type:
     - [v] opaque nested scene, instantiated at gameplay only
-    - [wip] transparent nested scene (metadata for ref and overrides)
+    - [wip] transparent nested scene (metadata for ref and overrides)(no read-only state)
 
   - property overrides: nested scene instance overrides
   - prefab variants
@@ -19,7 +19,7 @@
 
 ## Scene File Format
 
-Following Unity's approach, `Prefab_Instance` is **metadata** in the scene file — not a component on a transform. The transform tree only contains non-nested-owned nodes.
+Following Unity's approach, `NestedScene` is **metadata** in the scene file — not a component on a transform. The transform tree only contains non-nested-owned nodes.
 
 ```
 SceneFile {
@@ -56,7 +56,7 @@ A lightweight placeholder that appears in the outer file when something needs to
 Stripped_Ref {
   local_id:                   Local_ID   // file ID in this file
   corresponding_source_object: Local_ID  // file ID of the object inside the source prefab
-  source_prefab_instance:     Local_ID   // local_id of the Prefab_Instance record
+  source_nested_scene:     Local_ID   // local_id of the NestedScene record
 }
 ```
 
@@ -72,11 +72,14 @@ Override {
 }
 ```
 
+- Entire array as one atomic override. Never override individual elements. If anything inside the array changes, the whole array is the override value:
+
+
 ## Runtime usage
 
 - bake and diff operations work on Json Value trees for genericness and simplicity
 
-### Instantiating a Prefab_Instance at runtime
+### Instantiating a NestedScene at runtime
 - Load source prefab asset by `source_prefab` GUID
 - Bake `overrides` on top before deserialization
 - Instantiate it as a child of the transform identified by `transform_parent`
@@ -123,7 +126,10 @@ Saving a prefab walks all live `NestedScene` records whose `source_prefab` GUID 
 
 ## Extras
 - Apply override — writes override back up the chain to the source asset, removes it from the `NestedScene` record.  
-- Revert override — discards a specific override on the `NestedScene` record, restoring the field to the baked base value
+- todo
+
+Revert override — discards a specific override on the `NestedScene` record, restoring the field to the baked base value
+- defer removes override info, calls cleanup_T on target field then deserializes specific json branch into target field
 
 # Consider Later
 ## Scene edit stack

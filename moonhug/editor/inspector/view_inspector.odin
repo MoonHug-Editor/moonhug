@@ -1,5 +1,6 @@
 package inspector
 
+import "base:runtime"
 import "core:fmt"
 import "core:mem"
 import "core:reflect"
@@ -194,33 +195,149 @@ resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, l
 
 draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     a := any{ptr, tid}
-    draw_inspector(a, label)
+    draw_inspector(a, label, "")
 }
 
-draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
+@(private)
+_FieldMenuUndo :: struct {
+    comp:  bool,
+    field: bool,
+    scope: undo.Edit_Scope,
+}
+
+@(private)
+_field_menu_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) -> _FieldMenuUndo {
+    o, ok := undo.current_owner()
+    if ok && o.kind == .Pooled && o.handle.type_key != .Transform {
+        if undo.pending_is_active() {
+            undo.comp_commit()
+        }
+        undo.comp_snapshot()
+        if undo.pending_is_active() {
+            return _FieldMenuUndo{comp = true}
+        }
+    }
+    e := undo.edit_inspector_field_begin(field_ptr, field_tid, label)
+    return _FieldMenuUndo{field = e.active, scope = e}
+}
+
+@(private)
+_field_menu_undo_end :: proc(u: _FieldMenuUndo) {
+    if u.comp {
+        undo.comp_commit()
+        return
+    }
+    if u.field {
+        s := u.scope
+        undo.edit_end(&s)
+    }
+}
+
+@(private)
+_draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, readonly: bool, property_path: string) -> bool {
+    full_ti := type_info_of(field_tid)
+    check_ti := runtime.type_info_base(full_ti)
+    check_tid := field_tid
+    if ptr_info, ok := check_ti.variant.(runtime.Type_Info_Pointer); ok {
+        check_tid = ptr_info.elem.id
+        full_ti = type_info_of(check_tid)
+        check_ti = runtime.type_info_base(full_ti)
+    }
+    fixed_count := 0
+    elem_size := 0
+    is_fixed_array := false
+    is_dyn_array := false
+    if info, ok := check_ti.variant.(runtime.Type_Info_Array); ok {
+        check_ti = runtime.type_info_base(info.elem)
+        check_tid = info.elem.id
+        fixed_count = info.count
+        elem_size = int(info.elem.size)
+        is_fixed_array = true
+    } else if info, ok := check_ti.variant.(runtime.Type_Info_Dynamic_Array); ok {
+        check_ti = runtime.type_info_base(info.elem)
+        check_tid = info.elem.id
+        elem_size = int(info.elem.size)
+        is_dyn_array = true
+    }
+    if key, ok := engine.get_type_key_by_typeid(check_tid); ok && engine.type_reset_procs[key] != nil {
+        if im.MenuItem("Reset", nil, false, !readonly) {
+            u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
+            if is_fixed_array {
+                for i in 0 ..< fixed_count {
+                    p := rawptr(uintptr(field_ptr) + uintptr(i * elem_size))
+                    engine.type_reset(key, p)
+                }
+            } else if is_dyn_array {
+                da := (^runtime.Raw_Dynamic_Array)(field_ptr)
+                for i in 0 ..< da.len {
+                    p := rawptr(uintptr(da.data) + uintptr(i * elem_size))
+                    engine.type_reset(key, p)
+                }
+            } else {
+                engine.type_reset(key, field_ptr)
+            }
+            _field_menu_undo_end(u)
+            mark_inspector_changed()
+        }
+        return true
+    }
+    if reflect.is_integer(check_ti) || reflect.is_float(check_ti) || reflect.is_boolean(check_ti) ||
+       reflect.is_enum(check_ti) {
+        if im.MenuItem("Reset", nil, false, !readonly) {
+            u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
+            if is_fixed_array {
+                if property_path == "scale" && check_tid == typeid_of(f32) && fixed_count == 3 {
+                    (cast(^[3]f32)(field_ptr))^ = {1, 1, 1}
+                } else if property_path == "rotation" && check_tid == typeid_of(f32) && fixed_count == 4 {
+                    (cast(^[4]f32)(field_ptr))^ = engine.QUAT_IDENTITY
+                } else {
+                    mem.zero(field_ptr, full_ti.size)
+                }
+            } else if is_dyn_array {
+                da := (^runtime.Raw_Dynamic_Array)(field_ptr)
+                if da.data != nil && da.len > 0 {
+                    mem.zero(da.data, da.len * elem_size)
+                }
+            } else {
+                mem.zero(field_ptr, full_ti.size)
+            }
+            _field_menu_undo_end(u)
+            mark_inspector_changed()
+        }
+        return true
+    }
+    return false
+}
+
+draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_path: string = "") {
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
         readonly := engine.inspector_is_readonly()
-        show_reset := false
-        if key, ok := engine.get_type_key_by_typeid(field_tid); ok && engine.type_reset_procs[key] != nil {
-            if im.MenuItem("Reset", nil, false, !readonly) {
-                engine.type_reset(key, field_ptr)
-                mark_inspector_changed()
-            }
-            show_reset = true
-        } else {
-            ti := type_info_of(field_tid)
-            if reflect.is_integer(ti) || reflect.is_float(ti) || reflect.is_boolean(ti) ||
-               reflect.is_enum(ti) {
-                if im.MenuItem("Reset", nil, false, !readonly) {
-                    mem.zero(field_ptr, ti.size)
-                    mark_inspector_changed()
+        if _draw_field_context_menu_reset(field_ptr, field_tid, readonly, property_path) {
+            im.Separator()
+        }
+
+        host_tH := engine.inspector_get_nested_host()
+        nested_lid := engine.inspector_get_nested_local_id()
+        if host_tH != {} && nested_lid != 0 && property_path != "" {
+            w := engine.ctx_world()
+            ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+            if ht != nil {
+                ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
+                is_overridden := engine.nested_scene_has_override(ns, nested_lid, property_path)
+                if is_overridden {
+	                if im.MenuItem("Revert", nil, false, is_overridden) {
+	                    u := _field_menu_undo_begin(field_ptr, field_tid, "Revert")
+	                    engine.nested_scene_revert_override(ns, nested_lid, property_path)
+	                    _field_menu_undo_end(u)
+	                    mark_inspector_changed()
+	                }
+	                im.Separator()
                 }
-                show_reset = true
             }
         }
-        if show_reset do im.Separator()
+
         if im.MenuItem("Copy") {
             clip.copy(any{field_ptr, field_tid})
         }
@@ -232,7 +349,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid) {
     }
 }
 
-draw_inspector :: proc(a: any, label: cstring = "") {
+draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
     xAny := a
     ptr, tid := reflect.any_data(xAny)
     tInfo := type_info_of(tid)
@@ -240,7 +357,7 @@ draw_inspector :: proc(a: any, label: cstring = "") {
     isPointer := reflect.is_pointer(tInfo)
     if isPointer {
         im.Indent(20)
-        draw_inspector(reflect.deref(xAny))
+        draw_inspector(reflect.deref(xAny), "", path_prefix)
         im.Unindent(20)
         return
     }
@@ -249,14 +366,6 @@ draw_inspector :: proc(a: any, label: cstring = "") {
         drawer(ptr, tid, label)
         return
     }
-
-    // Draw type name
-    //type_name := fmt.tprintf("%v", tInfo)
-    //if label != "" {
-    //    im.Text(strings.clone_to_cstring(fmt.tprintf("%s: %s", label, type_name), context.temp_allocator))
-    //} else {
-    //    im.Text(strings.clone_to_cstring(type_name, context.temp_allocator))
-    //}
 
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
@@ -279,14 +388,31 @@ draw_inspector :: proc(a: any, label: cstring = "") {
         field_type := types[i]
         field_val := reflect.struct_field_value(xAny, field_info)
 
-        // Get pointer to the field for write-back
         field_ptr := rawptr(uintptr(ptr) + field_info.offset)
+
+        full_path := path_prefix == "" ? field_name : strings.concatenate({path_prefix, ".", field_name}, context.temp_allocator)
+
+        nested_lid := engine.inspector_get_nested_local_id()
+        host_tH := engine.inspector_get_nested_host()
+        is_field_overridden := false
+        if nested_lid != 0 && host_tH != {} {
+            w := engine.ctx_world()
+            ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+            if ht != nil {
+                ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
+                is_field_overridden = engine.nested_scene_has_override(ns, nested_lid, full_path)
+            }
+        }
 
 		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name}
 
         im.PushID(c_field_name)
         prev_changed_outside := inspector_changed
         inspector_changed = false
+
+        if is_field_overridden {
+            im.PushStyleColorImVec4(im.Col.Text, im.Vec4{0.4, 0.8, 1.0, 1.0})
+        }
 
         run_field_decorators(tid, i, &ctx)
 
@@ -309,19 +435,19 @@ draw_inspector :: proc(a: any, label: cstring = "") {
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
                 if is_inline {
-                    draw_inspector(field_val)
+                    draw_inspector(field_val, "", full_path)
                     row_popup_done = true
                 } else {
                     tree_open := im.TreeNode(c_field_name)
-                    draw_field_context_menu(field_ptr, field_type.id)
+                    draw_field_context_menu(field_ptr, field_type.id, full_path)
                     row_popup_done = true
                     if tree_open {
-                        draw_inspector(field_val)
+                        draw_inspector(field_val, "", full_path)
                         im.TreePop()
                     }
                 }
             } else if reflect.is_pointer(type_info_of(field_type.id)) {
-                draw_inspector(field_val)
+                draw_inspector(field_val, "", full_path)
                 row_popup_done = true
             } else {
                 c_str := strings.clone_to_cstring(fmt.tprintf("%s: %v", field_name, field_val))
@@ -329,11 +455,15 @@ draw_inspector :: proc(a: any, label: cstring = "") {
                 im.Text(c_str)
             }
             if !row_popup_done {
-                draw_field_context_menu(field_ptr, field_type.id)
+                draw_field_context_menu(field_ptr, field_type.id, full_path)
             }
         } else if ctx.handled_draw {
             _undo_finalize_widget()
-            draw_field_context_menu(field_ptr, field_type.id)
+            draw_field_context_menu(field_ptr, field_type.id, full_path)
+        }
+
+        if is_field_overridden {
+            im.PopStyleColor(1)
         }
 
         if prev_changed_outside || inspector_changed do inspector_changed = true

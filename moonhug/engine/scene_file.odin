@@ -122,12 +122,117 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 	}
 }
 
+_collect_nested_owned_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, root_local_id_override: Local_ID = 0) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+
+	t_copy := t^
+	if root_local_id_override != 0 do t_copy.local_id = root_local_id_override
+	t_copy.name = strings.clone(t.name)
+	t_copy.children = make([dynamic]Ref, 0, len(t.children))
+	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct != nil do append(&t_copy.children, child)
+	}
+	t_copy.components = make([dynamic]Owned, 0, len(t.components))
+	for c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw != nil {
+			base := cast(^CompData)raw
+			if base.nested_owned do append(&t_copy.components, c)
+		}
+	}
+	append(&sf.transforms, t_copy)
+
+	for &c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		raw := world_pool_get(w, c.handle)
+		if raw == nil do continue
+		base := cast(^CompData)raw
+		if base.nested_owned do world_pool_collect(w, c.handle, sf)
+	}
+
+	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct != nil && ct.nested_owned {
+			_collect_nested_owned_subtree(w, Transform_Handle(child.handle), sf)
+		}
+	}
+}
+
+_nested_scene_capture_overrides :: proc(s: ^Scene, ns: ^NestedScene) {
+	w := ctx_world()
+	empty_guid := Asset_GUID{}
+	if ns.source_prefab == empty_guid do return
+
+	host_tH: Transform_Handle
+	for i in 0..<len(w.transforms.slots) {
+		slot := &w.transforms.slots[i]
+		if !slot.alive do continue
+		t := &slot.data
+		if t.scene == s && t.local_id == ns.transform_parent {
+			host_tH = Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+			break
+		}
+	}
+	if host_tH == {} do return
+
+	host_t := pool_get(&w.transforms, Handle(host_tH))
+	if host_t == nil do return
+
+	base_raw, has_base := scene_lib[ns.source_prefab]
+	if !has_base {
+		if !scene_lib_register(ns.source_prefab) do return
+		base_raw, has_base = scene_lib[ns.source_prefab]
+		if !has_base do return
+	}
+
+	prefab_root_id: Local_ID
+	{
+		base_sf: SceneFile
+		if json.unmarshal(base_raw, &base_sf) == nil {
+			prefab_root_id = base_sf.root
+			scene_file_destroy(&base_sf)
+		}
+	}
+
+	work_sf := SceneFile{}
+	work_sf.root = prefab_root_id != 0 ? prefab_root_id : host_t.local_id
+	_collect_nested_owned_subtree(w, host_tH, &work_sf, prefab_root_id)
+	defer scene_file_destroy_shallow(&work_sf)
+
+	opts := json.Marshal_Options{spec = .JSON, pretty = false}
+	work_raw, werr := json.marshal(work_sf, opts)
+	if werr != nil {
+		fmt.printf("[Scene] Failed to marshal working copy for override capture: %v\n", werr)
+		return
+	}
+	defer delete(work_raw)
+
+	new_overrides := nested_scene_diff_overrides(base_raw, work_raw)
+	for &ov in ns.overrides {
+		delete(ov.property_path)
+		json.destroy_value(ov.value)
+	}
+	delete(ns.overrides)
+	ns.overrides = new_overrides
+}
+
 scene_save :: proc(s: ^Scene, path: string) -> bool {
 	if s == nil do return false
 	w := ctx_world()
 
+	for &ns in s.nested_scenes {
+		_nested_scene_capture_overrides(s, &ns)
+	}
+
 	sf := SceneFile{}
 	sf.next_local_id = s.next_local_id
+
+	for &ns in s.nested_scenes {
+		append(&sf.nested_scenes, ns)
+	}
 
 	if s.root.handle != {} {
 		t := pool_get(&w.transforms, s.root.handle)
@@ -154,12 +259,14 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	scene_file_destroy_shallow(&sf)
 
 	if write_err := os.write_entire_file(path, data); write_err != nil {
-		fmt.printf("[Scene] Failed to write file: %s\n", path)
+		fmt.printf("[Scene] Failed to write file: %s — %v\n", path, write_err)
 		return false
 	}
 
-	delete(s.path)
-	s.path = strings.clone(path)
+	if s.path != path {
+		delete(s.path)
+		s.path = strings.clone(path)
+	}
 
 	fmt.printf("[Scene] Saved scene to %s\n", path)
 	return true

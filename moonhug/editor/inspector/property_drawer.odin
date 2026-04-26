@@ -73,6 +73,7 @@ draw_f64_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[3]f32)(ptr)
     im.AlignTextToFramePadding()
+    im.BeginGroup()
     im.Text(label)
     avail := im.GetContentRegionAvail().x
     label_w: f32 = 70
@@ -83,6 +84,7 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     if im.DragFloat3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1) {
         mark_inspector_changed()
     }
+    im.EndGroup()
 }
 
 @(property_drawer={type=[3]f32, priority = 0})

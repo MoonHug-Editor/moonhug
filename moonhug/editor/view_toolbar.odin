@@ -1,7 +1,9 @@
 package editor
 
+import "base:runtime"
 import "core:strings"
 import "core:fmt"
+import "core:mem"
 import "core:os"
 import "core:thread"
 import im "../../external/odin-imgui"
@@ -47,17 +49,26 @@ draw_tool_bar :: proc() {
 }
 
 RunPlayData :: struct {
+    alloc:   mem.Allocator,
     run_dir: string,
     command: []string,
 }
 
+_destroy_run_play_data :: proc(data: ^RunPlayData) {
+    a := data.alloc
+    delete(data.run_dir, a)
+    delete(data.command, a)
+    free(data, a)
+}
+
 _run_play_thread_proc :: proc(user_data: rawptr) {
     data := (^RunPlayData)(user_data)
+    a := data.alloc
     run_dir := data.run_dir
     command := data.command
-    free(data)
-    defer delete(run_dir)
-    defer delete(command)
+    free(data, a)
+    defer delete(run_dir, a)
+    defer delete(command, a)
 
     stdout_r, stdout_w, stdout_err := os.pipe()
     if stdout_err != nil {
@@ -138,14 +149,36 @@ run_app_play :: proc() {
         _play_thread = nil
     }
     cwd, _ := os.get_working_directory(context.temp_allocator)
-    data := new(RunPlayData)
-    data.run_dir = strings.clone(cwd)
-    data.command = make([]string, 4)
+    pa := runtime.default_allocator()
+    data, derr := new(RunPlayData, pa)
+    if derr != nil {
+        return
+    }
+
+    data.alloc = pa
+    rd, cerr := strings.clone(cwd, pa)
+    if cerr != nil {
+        free(data, pa)
+        return
+    }
+
+    data.run_dir = rd
+    cmd, merr := make([]string, 4, pa)
+    if merr != nil {
+        delete(data.run_dir, pa)
+        free(data, pa)
+        return
+    }
+
+    data.command = cmd
     data.command[0] = "odin"
     data.command[1] = "run"
     data.command[2] = "app"
     data.command[3] = "-ignore-unknown-attributes"
     _play_thread = thread.create_and_start_with_data(data, _run_play_thread_proc)
+    if _play_thread == nil {
+        _destroy_run_play_data(data)
+    }
 }
 
 join_play_thread :: proc() {
@@ -155,4 +188,3 @@ join_play_thread :: proc() {
         _play_thread = nil
     }
 }
-

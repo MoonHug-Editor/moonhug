@@ -119,6 +119,34 @@ push_raw_owner :: proc(base_ptr: rawptr) {
 	})
 }
 
+edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
+	o, ok := current_owner()
+	if !ok || o.kind == .None do return {}
+	if field_ptr == nil || field_tid == nil do return {}
+
+	if o.kind == .Raw {
+		if o.base_ptr == nil do return {}
+		return edit_raw_begin(o.base_ptr, field_ptr, field_tid, label)
+	}
+
+	w := engine.ctx_world()
+	if w == nil do return {}
+	base_pool := engine.world_pool_get(w, o.handle)
+	if base_pool == nil do return {}
+	owner_tid := engine.get_typeid_by_type_key(o.handle.type_key)
+	if owner_tid == nil do return {}
+	owner_ti := type_info_of(owner_tid)
+	field_ti := type_info_of(field_tid)
+	fp := uintptr(field_ptr)
+	bp := uintptr(base_pool)
+	owner_lim := bp + uintptr(owner_ti.size)
+	field_lim := fp + uintptr(field_ti.size)
+	if fp >= bp && field_lim <= owner_lim && field_lim >= fp {
+		return edit_pooled_begin(o.handle, field_ptr, field_tid, label)
+	}
+	return edit_pooled_begin(o.handle, base_pool, owner_tid, label)
+}
+
 target_for_field :: proc(field_ptr: rawptr, field_tid: typeid) -> (Property_Target, bool) {
 	o, ok := current_owner()
 	if !ok || o.kind == .None do return {}, false

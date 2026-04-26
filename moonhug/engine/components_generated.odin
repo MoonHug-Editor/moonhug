@@ -3,7 +3,6 @@ package engine
 World :: struct {
 	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
-	nested_scenes: Pool(NestedScene),
 	players: Pool(Player, 10),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
@@ -16,7 +15,6 @@ w_init :: proc(w:^World)
 {
 	pool_init(&w.cameras)
 	pool_init(&w.lifetimes)
-	pool_init(&w.nested_scenes)
 	pool_init(&w.players)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
@@ -41,14 +39,6 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.lifetimes, c_copy)
-	}
-	w.pool_table[TypeKey.NestedScene] = pool_make_entry(&w.nested_scenes)
-	w.pool_table[TypeKey.NestedScene].collect_fn = proc(comp: rawptr, sf: rawptr) {
-		c := cast(^NestedScene)comp
-		s := cast(^SceneFile)sf
-		c_copy := c^
-		c_copy.owner = {}
-		append(&s.nested_scenes, c_copy)
 	}
 	w.pool_table[TypeKey.Player] = pool_make_entry(&w.players)
 	w.pool_table[TypeKey.Player].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -80,7 +70,6 @@ w_init :: proc(w:^World)
 
 __component_on_validates_init :: proc() {
 	component_on_validate_procs[.Lifetime] = proc(ptr: rawptr) { on_validate_Lifetime(cast(^Lifetime)ptr) }
-	component_on_validate_procs[.NestedScene] = proc(ptr: rawptr) { on_validate_NestedScene(cast(^NestedScene)ptr) }
 }
 
 __component_on_destroys_init :: proc() {
@@ -107,11 +96,6 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		owned, _ := transform_find_comp(t, .Lifetime)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.lifetimes, owned.handle)
-	}
-	else when T == NestedScene {
-		owned, _ := transform_find_comp(t, .NestedScene)
-		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
-		return owned, pool_get(&w.nested_scenes, owned.handle)
 	}
 	else when T == Player {
 		owned, _ := transform_find_comp(t, .Player)
@@ -162,12 +146,6 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .Lifetime)
 		if idx < 0 do return
 		pool_destroy(&w.lifetimes, owned.handle)
-		ordered_remove(&t.components, idx)
-	}
-	else when T == NestedScene {
-		owned, idx := transform_find_comp(t, .NestedScene)
-		if idx < 0 do return
-		pool_destroy(&w.nested_scenes, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 	else when T == Player {

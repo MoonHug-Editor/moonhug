@@ -7,7 +7,6 @@ import "undo"
 register_component_menus :: proc() {
 	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) }, 0)
 	menu.add_menu_item("Component/Lifetime", "", proc() { _component_menu_add(.Lifetime) }, 0)
-	menu.add_menu_item("Component/NestedScene", "", proc() { _component_menu_add(.NestedScene) }, 0)
 	menu.add_menu_item("Component/Player", "", proc() { _component_menu_add(.Player) }, 0)
 	menu.add_menu_item("Component/Script", "", proc() { _component_menu_add(.Script) }, 0)
 	menu.add_menu_item("Component/SpriteRenderer", "", proc() { _component_menu_add(.SpriteRenderer) }, 0)

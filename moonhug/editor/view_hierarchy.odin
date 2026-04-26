@@ -245,7 +245,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	is_nested := t.nested_owned || parent_nested
 
-	pushed_dim := (!t.is_active && !parent_inactive) || is_nested
+	pushed_dim := !t.is_active && !parent_inactive
 	inactive := parent_inactive || !t.is_active
 
 	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAvailWidth}
@@ -315,7 +315,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
 		label := t.name
-		if _, ns := engine.transform_get_comp(tH, engine.NestedScene); ns != nil {
+		if engine.scene_find_nested_scene_for_host(t.scene, tH) != nil {
 			label = strings.concatenate({t.name, "  [nested scene]"}, context.temp_allocator)
 		}
 		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(label, context.temp_allocator))
@@ -606,9 +606,11 @@ _hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform
 
 	name := filepath.stem(path)
 	new_tH := engine.transform_new(name, parent_tH)
-	_, ns := engine.transform_get_or_add_comp(new_tH, engine.NestedScene)
-	if ns != nil {
-		ns.scene_guid = engine.Asset_GUID(guid)
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(new_tH))
+	if t != nil {
+		sibling_idx := len(engine.pool_get(&w.transforms, engine.Handle(parent_tH)).children) - 1
+		engine.nested_scene_add(t.scene, engine.Asset_GUID(guid), new_tH, sibling_idx)
 		engine.nested_scene_resolve(new_tH)
 	}
 	undo.record_create(new_tH, parent_tH)

@@ -1,10 +1,13 @@
 package engine
 
+import "core:encoding/json"
+
 Scene :: struct {
 	generation:    int,
 	next_local_id: Local_ID,
 	root:          Ref,
 	path:          string,
+	nested_scenes: [dynamic]NestedScene,
 }
 
 scene_new :: proc() -> ^Scene {
@@ -19,6 +22,14 @@ scene_destroy :: proc(s: ^Scene) {
 		transform_destroy(Transform_Handle(s.root.handle))
 	}
 	delete(s.path)
+	for &ns in s.nested_scenes {
+		for &ov in ns.overrides {
+			delete(ov.property_path)
+			json.destroy_value(ov.value)
+		}
+		delete(ns.overrides)
+	}
+	delete(s.nested_scenes)
 	s.generation = 0
 	free(s)
 }

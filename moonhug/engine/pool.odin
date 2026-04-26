@@ -1,5 +1,7 @@
 package engine
 
+import "core:fmt"
+
 MAX :: 1024
 
 Handle :: struct {
@@ -28,7 +30,12 @@ pool_init :: proc(p: ^Pool($T, $N)) {
 }
 
 pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
-    assert(p.count < N, "pool is full")
+    if p.count >= N {
+        if key, key_ok := get_type_key_by_typeid(T); key_ok {
+            panic(fmt.tprintf("pool is full: type_key=%v count=%d max=%d", key, p.count, N))
+        }
+        panic(fmt.tprintf("pool is full: type=%v count=%d max=%d", typeid_of(T), p.count, N))
+    }
     idx := p.freelist[p.free_head]
     p.free_head -= 1
     p.count += 1
