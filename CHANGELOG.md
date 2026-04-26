@@ -1,3 +1,9 @@
+## [0.17.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.16.1...v0.17.0) (2026-04-26)
+
+### Features
+
+* nested scene overrides wip ([c291f5e](https://github.com/MoonHug-Editor/moonhug/commit/c291f5e3c6fb918148e0dfca8464d2157cb4e827))
+
 ## [0.16.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.16.0...v0.16.1) (2026-04-22)
 
 ### Bug Fixes
