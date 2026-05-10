@@ -1,3 +1,11 @@
+## [0.18.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.17.0...v0.18.0) (2026-05-10)
+
+### Features
+
+* add @(cleanup) attr for external types cleanup ([bc9d31d](https://github.com/MoonHug-Editor/moonhug/commit/bc9d31dcc785d347063f201ee20c140576a20c41))
+* deep nested prefabs ([1dac6f5](https://github.com/MoonHug-Editor/moonhug/commit/1dac6f5dab9a206e20f8c3af90f1070af133fc2d))
+* squash commit. nested_patch_live_field of target, relies on correct cleanup_T. many fixes ([c7ffab7](https://github.com/MoonHug-Editor/moonhug/commit/c7ffab77e4868eb08137123d05ae708d7cc66242))
+
 ## [0.17.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.16.1...v0.17.0) (2026-04-26)
 
 ### Features
