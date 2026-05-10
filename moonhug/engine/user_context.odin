@@ -12,6 +12,10 @@ InspectorState :: struct {
     readonly_depth:        int,
     nested_host_tH:        Transform_Handle,
     nested_local_id:       Local_ID,
+    // Cross-package selection request: subpackages (e.g. inspector) post a
+    // transform here; the editor's hierarchy view picks it up next frame and
+    // applies it to its own selection state. {} means "no pending request".
+    pending_select_tH:     Transform_Handle,
 }
 
 ctx_get :: proc() -> ^UserContext {
@@ -71,4 +75,24 @@ inspector_get_nested_local_id :: proc() -> Local_ID {
     uc := ctx_get()
     if uc == nil do return 0
     return uc.inspector.nested_local_id
+}
+
+// Posts a cross-package "select this transform" request. The editor's
+// hierarchy view consumes it via `inspector_take_pending_select` once per
+// frame. Calling repeatedly within the same frame keeps the latest request.
+inspector_request_select :: proc(tH: Transform_Handle) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.pending_select_tH = tH
+}
+
+// Returns and clears the pending selection request. Caller (editor) is
+// responsible for applying it to its own selection state.
+inspector_take_pending_select :: proc() -> (Transform_Handle, bool) {
+    uc := ctx_get()
+    if uc == nil do return {}, false
+    tH := uc.inspector.pending_select_tH
+    if tH == {} do return {}, false
+    uc.inspector.pending_select_tH = {}
+    return tH, true
 }

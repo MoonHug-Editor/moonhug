@@ -92,14 +92,15 @@ For more details see [Contribution](docs/Contribution.md)
   - transforms have render layer field for camera culling
   - then render commands buffer is applied
 
-- scene or scene_manager should have map of local_id to avoid collisions
-
+- Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
 - scene view gizmos
   - scene view toolbar (move, rotate, scale)
 
 - png - Texture2D with N Sprites
 
-- unity-like reference field. field + clickable button (shows popup with available choices)
+- ping reference object similar to Unity
+  - in scene
+  - in project
 
 - transform:
   - use bit set + procs, instead of direct bool change
@@ -114,8 +115,6 @@ For more details see [Contribution](docs/Contribution.md)
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs
 
-- Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
-
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call
@@ -123,13 +122,13 @@ For more details see [Contribution](docs/Contribution.md)
 - keep improving memory guide
   - must be explained simply as if for someone new to memory handling
 
+- Node graph editor for different use-cases
+
 ### Considered Features
 
 - Task tracking with backlog, todo, etc.
 
 - decide shaders and rendering pipeline
-
-- ping reference object similar to Unity
 
 - some kind of type defaults fill only what json serialized data doesn't cover
 
@@ -144,8 +143,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - generalized serialization of Owned and Ref
 - generic Handle resolve and reset Handle when resolve fails
-
-- scene view gizmos and GUI
 
 - App buttons Bar
   - ?Frame Step, Pause buttons
@@ -162,5 +159,3 @@ For more details see [Contribution](docs/Contribution.md)
 - Convert resource into usable format at buildStage or runtimeStage
 
 - consider SceneFile to hold serialize blobs instead of real types
-
-- Node graph editor for different use-cases

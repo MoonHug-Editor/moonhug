@@ -70,6 +70,21 @@ _save_as_open: bool
 _save_as_pending: bool
 
 draw_hierarchy_view :: proc() {
+	// Drain cross-package selection requests (e.g. inspector "ping" button).
+	// Force-open every ancestor so the target is visible after the selection.
+	if pending, ok := engine.inspector_take_pending_select(); ok {
+		_hierarchy_selected = pending
+		w := engine.ctx_world()
+		cur := pending
+		for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
+			t := engine.pool_get(&w.transforms, engine.Handle(cur))
+			if t == nil do break
+			if !engine.pool_valid(&w.transforms, t.parent.handle) do break
+			cur = engine.Transform_Handle(t.parent.handle)
+			_hierarchy_alt_open_pending[cur] = true
+		}
+	}
+
 	open := im.Begin("Hierarchy", nil, {.NoCollapse})
 
 	if im.BeginDragDropTarget() {
