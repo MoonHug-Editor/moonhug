@@ -333,7 +333,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
                 // level only. Walk up to the root native NS and look for the
                 // breadcrumb-keyed override that root holds for this field.
                 root_ns, root_target, ok := engine.nested_scene_locate_root_override(ht.scene, host_tH, nested_lid)
-                is_overridden := ok && root_target != 0 && engine.nested_scene_has_override(root_ns, root_target, property_path)
+                is_overridden := ok && engine.nested_scene_has_override(root_ns, root_target, property_path)
                 if is_overridden {
 	                if im.MenuItem("Revert", nil, false, is_overridden) {
 	                    u := _field_menu_undo_begin(field_ptr, field_tid, "Revert")

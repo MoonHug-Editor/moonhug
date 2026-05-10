@@ -1,6 +1,6 @@
 {
   "root": 10,
-  "next_local_id": 17,
+  "next_local_id": 23,
   "transforms": [
     {
       "local_id": 10,
@@ -159,22 +159,30 @@
   "nested_scenes": [
     {
       "local_id": 13,
+      "local_id_in_parent": 13,
       "source_prefab": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4",
       "transform_parent": 12,
       "host_breadcrumb_id": 14,
       "sibling_index": 0,
       "overrides": [
         {
-          "target": 10,
-          "property_path": "position",
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "rotation",
           "value": [
             0.0000000000000000,
             0.0000000000000000,
-            0.0000000000000000
+            0.0000000000000000,
+            1.0000000000000000
           ]
         },
         {
-          "target": 10,
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "scale",
           "value": [
             1.0000000000000000,
@@ -183,31 +191,68 @@
           ]
         },
         {
-          "target": 10,
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "name",
           "value": "TestB"
         },
         {
-          "target": 10,
-          "property_path": "rotation",
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "position",
           "value": [
             0.0000000000000000,
             0.0000000000000000,
+            0.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 8,
+            "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
+          },
+          "property_path": "name",
+          "value": "TestD"
+        },
+        {
+          "target": {
+            "local_id": 8,
+            "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
+          },
+          "property_path": "position",
+          "value": [
             0.0000000000000000,
-            1.0000000000000000
+            0.0000000000000000,
+            0.0000000000000000
           ]
         }
       ]
     },
     {
       "local_id": 16,
+      "local_id_in_parent": 16,
       "source_prefab": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4",
       "transform_parent": 15,
       "host_breadcrumb_id": 17,
       "sibling_index": 0,
       "overrides": [
         {
-          "target": 10,
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "name",
+          "value": "TestB2"
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "rotation",
           "value": [
             0.0000000000000000,
@@ -217,7 +262,10 @@
           ]
         },
         {
-          "target": 10,
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "scale",
           "value": [
             1.0000000000000000,
@@ -226,7 +274,10 @@
           ]
         },
         {
-          "target": 10,
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "position",
           "value": [
             0.0000000000000000,
@@ -235,22 +286,29 @@
           ]
         },
         {
-          "target": 10,
+          "target": {
+            "local_id": 8,
+            "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
+          },
           "property_path": "name",
-          "value": "TestB2"
+          "value": "TestD"
+        },
+        {
+          "target": {
+            "local_id": 8,
+            "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
+          },
+          "property_path": "position",
+          "value": [
+            0.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000
+          ]
         }
       ]
     }
   ],
   "breadcrumbs": [
-    {
-      "local_id": 14,
-      "scene_source": {
-        "local_id": 12,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
-      "scene_instance": 13
-    },
     {
       "local_id": 17,
       "scene_source": {
@@ -258,6 +316,14 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 16
+    },
+    {
+      "local_id": 14,
+      "scene_source": {
+        "local_id": 12,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 13
     }
   ],
   "cameras": [

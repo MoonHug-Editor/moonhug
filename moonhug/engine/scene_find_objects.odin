@@ -65,13 +65,99 @@ _collect_from_subtree :: proc(tH: Transform_Handle, key: TypeKey, out: ^[dynamic
 	}
 }
 
-// Returns the local_id for `h` in `s.local_ids`, minting a new entry if absent.
-// Save-time will turn freshly-minted entries into breadcrumbs for objects that
-// don't have a stable local_id in this root scene yet (e.g. nested-owned).
+// Returns the local_id for `h` in `s.local_ids`. For handles already in the
+// bimap, returns the existing lid. For nested-owned handles (transforms or
+// components inside a resolved prefab), creates a Breadcrumb anchored at the
+// outermost native NS — resolution at load walks the runtime NS tree by
+// (source_prefab guid) to find the leaf NS host, then locates the target by
+// prefab-namespaced lid. Otherwise mints a raw bimap entry.
 sm_local_id_get_or_mint :: proc(s: ^Scene, h: Handle) -> Local_ID {
 	if s == nil do return 0
 	if lid, ok := s.local_ids.backward[h]; ok do return lid
+
+	if bc_lid, ok := _try_create_breadcrumb_for_handle(s, h); ok {
+		return bc_lid
+	}
+
+	// Live, non-nested entity not yet registered in the bimap. Use its own
+	// local_id (assigned at creation time) and register it now so subsequent
+	// lookups dedupe and so save+reload round-trips correctly.
+	w := ctx_world()
+	existing_lid: Local_ID
+	if h.type_key == .Transform {
+		t := pool_get(&w.transforms, h)
+		if t != nil do existing_lid = t.local_id
+	} else {
+		raw := world_pool_get(w, h)
+		if raw != nil {
+			base := cast(^CompData)raw
+			existing_lid = base.local_id
+		}
+	}
+	if existing_lid != 0 {
+		bimap_insert(&s.local_ids, existing_lid, h)
+		return existing_lid
+	}
+
 	new_lid := scene_next_id(s)
 	bimap_insert(&s.local_ids, new_lid, h)
 	return new_lid
+}
+
+@(private)
+_try_create_breadcrumb_for_handle :: proc(s: ^Scene, h: Handle) -> (Local_ID, bool) {
+	if s == nil do return 0, false
+	w := ctx_world()
+
+	owner_tH: Transform_Handle
+	target_lid: Local_ID
+
+	if h.type_key == .Transform {
+		t := pool_get(&w.transforms, h)
+		if t == nil || !t.nested_owned do return 0, false
+		owner_tH = Transform_Handle(h)
+		target_lid = t.local_id
+	} else {
+		raw := world_pool_get(w, h)
+		if raw == nil do return 0, false
+		base := cast(^CompData)raw
+		if !base.nested_owned do return 0, false
+		owner_tH = base.owner
+		target_lid = base.local_id
+	}
+
+	// Find the immediate NS that wraps the target.
+	host_tH := transform_immediate_nested_host(owner_tH)
+	if host_tH == {} do return 0, false
+	host_t := pool_get(&w.transforms, Handle(host_tH))
+	if host_t == nil do return 0, false
+	leaf_ns := scene_find_nested_scene_for_host(host_t.scene, host_tH)
+	if leaf_ns == nil do return 0, false
+
+	// Anchor breadcrumb at the outermost native NS in the chain. Resolution
+	// walks the runtime NS tree from native down, un-projecting through each
+	// inner NS's local_id_in_parent.
+	native_ns: ^NestedScene = leaf_ns
+	projected := target_lid
+	if leaf_ns.expand_parent != {} {
+		lid_chain, nat_ns, chok := _inner_chain_lids_to_native_public(s, leaf_ns)
+		if !chok || nat_ns == nil do return 0, false
+		native_ns = nat_ns
+		// Forward-project through the chain top-down so resolve un-projects in
+		// the same order.
+		for i := len(lid_chain) - 1; i >= 0; i -= 1 {
+			projected = local_id_project(lid_chain[i], projected)
+		}
+	}
+
+	src := PPtr{guid = leaf_ns.source_prefab, local_id = projected}
+	bc_lid, ok := breadcrumb_create(s, native_ns.local_id, src)
+	if !ok do return 0, false
+
+	// Re-point bimap entry from synthetic placeholder to the real handle so
+	// in-session reverse lookups dedupe on the real handle. On reload the
+	// breadcrumb resolution pass repopulates with the freshly resolved handle.
+	bimap_remove_by_key(&s.local_ids, bc_lid)
+	bimap_insert(&s.local_ids, bc_lid, h)
+	return bc_lid, true
 }

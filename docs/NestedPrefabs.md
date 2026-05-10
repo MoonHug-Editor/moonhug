@@ -19,7 +19,7 @@
   - [v] prefab overrides: nested scene instance overrides
 
   - [v] deep nested prefabs
-  - [v] breadcrumbs — serialized nested-cross-scene references
+  - [v] breadcrumbs — stripped-placeholder anchors for `Ref_Local` and NS hosts
 
   - prefab variants
 
@@ -35,7 +35,9 @@ SceneFile {
   next_local_id:     Local_ID
   transforms:        []Transform         // only non-nested-owned nodes
   nested_scenes:     []NestedScene       // metadata, analogous to Unity PrefabInstance
-  breadcrumbs:       []Breadcrumb        // placeholder anchors for cross-scene refs
+  breadcrumbs:       []Breadcrumb        // stripped-placeholder anchors for intra-file
+                                         // refs into nested-owned content (NS hosts,
+                                         // Ref_Local picker into nested subtree)
   ...components...
 }
 ```
@@ -46,59 +48,64 @@ Analogous to Unity's `PrefabInstance` YAML object:
 
 ```
 NestedScene {
-  local_id:         Local_ID       // file ID of this record
-  source_prefab:    Asset_GUID     // GUID of the nested scene asset (m_SourcePrefab)
-  transform_parent: Local_ID       // local_id of the parent transform in this file (m_TransformParent)
-  sibling_index:    int            // order among siblings
-  overrides:        []Override     // property overrides
+  local_id:           Local_ID     // file ID of this record (in this scene's namespace)
+  local_id_in_parent: Local_ID     // file-stable lid in the parent prefab; equals
+                                   // `local_id` for native NSs. Used as the XOR
+                                   // projection key — same-prefab-instantiated-twice
+                                   // produces distinct keys per outer instance.
+  source_prefab:      Asset_GUID   // GUID of the nested scene asset (m_SourcePrefab)
+  transform_parent:   Local_ID     // local_id of the parent transform (m_TransformParent)
+  host_breadcrumb_id: Local_ID     // breadcrumb peg standing in for the host transform,
+                                   // so other rows in this file can Ref it by local_id
+  sibling_index:      int          // order among siblings
+  overrides:          []Override   // property overrides
 }
 ```
 
 `transform_parent == 0` means root — this is how Prefab Variants work in Unity (the base prefab is a `NestedScene` with no parent).
 
-### Breadcrumb record (Analogous to Unity's stripped Transform objects (marked with `stripped` tag))
-Breadcrumb  is the serialized form of a cross-scene Handle reference.
-  - created in scene file for cross-scene references - different referrer source_prefab vs reference source_prefab.
-  - resolved back into a Handle on load.
-  - enough data to load the real object **once**, after resolve breadcrumb is dropped and referrers hold a normal local id / handle.
-
-
-Rules:
-- Referencing in file should use local_id only
-- When local_id doesn't exist it should be created
-- During serialiation cross-scene references are converted into breadcrumbs
-
-```
-Breadcrumb {
-  local_id:              Local_ID   // local_id referrers will use to refer this element
-  scene_source:          PPtr       // asset guid + local_id in that asset of this element
-  scene_instance:        Local_ID   // scene instance local_id in this file
-}
-```
-
-Live scene (post-deserialize):
-- Persisted breadcrumbs live only in `SceneFile`
-- `Scene.local_ids` maps entity `local_id`s to real pool handles (transforms, components, etc.).
-- Resolving a cross-scene reference loads the target if needed, wires the real object, then removes the breadcrumb.
-
 ### Override record
-Override is a modification recorded at the root scene level only.
+
+Analogous to Unity's `m_Modifications[i]`. Each override is a modification recorded at the root scene level only.
   - The currently open scene file owns all overrides it applies to its nested instances.
   - Inner prefab files own their own overrides on their direct children. Those are *opaque* to the parent — the parent sees the inner instance with its own overrides already baked in.
   - At runtime each level applies its own overrides to its own direct child during bake. The root's overrides on something deep in the chain are then patched onto the live tree post-resolve (`cleanup_T` + `unmarshal_any` on the located field).
 
 ```
 Override {
-  target:        Local_ID   // either: local ID of an Transform/Component inside this same prefab,
-                            // OR a breadcrumb local_id (for deep overrides — the
-                            // breadcrumb's scene_path encodes the chain to the
-                            // real destination)
+  target:        PPtr       // (deepest_prefab_guid, projected_lid) — names the row
+                            // directly. The owning NestedScene supplies the implicit
+                            // scene_instance.
   property_path: string     // dot-separated path e.g. "position.x", "color"
   value:         json.Value // override value
 }
 ```
 
+`target` semantics — matches Unity's `target: {fileID, guid}`:
+- **Shallow** (the row lives directly in `ns.source_prefab`): `target.guid == ns.source_prefab` and `target.local_id` is the row's lid in that prefab. No projection.
+- **Deep** (the row lives N levels below `ns.source_prefab`): `target.guid` names the deepest prefab; `target.local_id` is the leaf-prefab-namespace lid XOR-projected through every inner NS's `local_id_in_parent` on the way up. Resolution at load is a DFS over runtime NSs descending from the owning native NS, un-projecting one key per level until a candidate NS with `source_prefab == target.guid` resolves the lid in its own subtree. Same-prefab-instantiated-twice along one chain disambiguates because each instance's `local_id_in_parent` differs.
+
+Rules:
 - Entire array is one atomic override. Never override individual elements. If anything inside the array changes, the whole array is the override value.
+
+### Breadcrumb record
+
+Analogous to Unity's stripped Transform objects (marked with `stripped` tag): a placeholder row in this file that stands in for an object living inside a nested prefab so other rows in the same file can reference it by `local_id`. **Not used for override targets** — those carry their own `(guid, projected_lid)` on `Override.target`.
+
+Used for:
+- `NestedScene.host_breadcrumb_id` — the host transform peg, so a `parent` field or a `children` ref can point at the NS host.
+- `Ref_Local` fields picking an object inside a nested subtree — the picker creates a breadcrumb so the field can store a single `local_id` that survives serialization.
+
+```
+Breadcrumb {
+  local_id:       Local_ID   // local_id referrers in this file use to refer to the target
+  scene_source:   PPtr       // (deepest prefab guid, XOR-projected lid) — same encoding
+                             // as Override.target
+  scene_instance: Local_ID   // anchor: native NS local_id in this file
+}
+```
+
+Resolution at load loads the target if needed, wires the real object handle into `Scene.local_ids[local_id]`, and the breadcrumb stays in the file (for the next save round-trip) but is invisible to the live scene.
 
 
 ## Runtime usage
@@ -121,7 +128,7 @@ Override {
 ### Overrides
 
 - A scene file's `NestedScene` record holds overrides on its **direct** child prefab only — items in that child's prefab namespace.
-- Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`, but the `target` is a breadcrumb whose `scene_path` traverses the chain. Inner `NestedScene` records never store the root's overrides.
+- Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`. `target.guid` names the deepest prefab the field lives in, and `target.local_id` is the leaf-prefab lid XOR-projected through every inner NS's `local_id_in_parent` on the way up. Inner `NestedScene` records never store the root's overrides.
 - Inner `NestedScene` records loaded into memory at runtime carry their own prefab file's overrides (e.g. A.scene's overrides on B). Those exist as runtime state to drive each level's own-overrides bake during resolve, and are never persisted by the open scene's save.
 
 Serialization triggers baking base and working copy, diffs them to produce overrides written onto the **root** scene's `NestedScene` record.
@@ -166,7 +173,7 @@ Revert override — discards a specific override on the `NestedScene` record, re
 
 ### Stale-reference cleanup divergence from Unity
 
-Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target` no longer exists in the current prefab raw, and prunes orphan deep-override anchors that no override or NS host references. Trade-off: cleaner files, no recovery on accidental field removal.
+Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target.local_id` no longer exists in the prefab named by `target.guid`, and prunes orphan stripped-placeholder breadcrumbs that no NS host or live `Ref_Local` references. Trade-off: cleaner files, no recovery on accidental field removal.
 
 # Consider Later
 ## Scene edit stack

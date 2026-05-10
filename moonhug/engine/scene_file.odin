@@ -431,7 +431,7 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	if !ok do return
 	defer delete(base_raw)
 
-	diff := nested_scene_diff_overrides(base_raw, work_raw)
+	diff := nested_scene_diff_overrides(base_raw, work_raw, ns.source_prefab)
 	defer {
 		// `diff` ownership is transferred into native_ns.overrides (or freed if
 		// any entries are skipped); destroy the dynamic-array shell at end.
@@ -440,14 +440,13 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 
 	_drop_overrides_with_missing_targets(&diff, prefab_raw)
 
-	// Locate the native NS that owns this chain, plus the chain itself for
-	// breadcrumb keying.
+	// Locate the native NS that owns the override list. Inner NSs aren't
+	// persisted — overrides on them flow up to the enclosing native NS as
+	// breadcrumb-keyed deep overrides.
 	native_ns: ^NestedScene = ns
-	chain: [dynamic]PPtr = nil
 	if ns.expand_parent != {} {
-		ch, nat_ns, chok := _inner_chain_to_native(s, ns)
+		_, nat_ns, chok := _inner_chain_to_native(s, ns)
 		if !chok || nat_ns == nil {
-			// Couldn't resolve chain — drop diff entries to avoid leaking.
 			for &ov in diff {
 				delete(ov.property_path)
 				json.destroy_value(ov.value)
@@ -455,28 +454,44 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 			return
 		}
 		native_ns = nat_ns
-		chain = ch
+	}
+
+	// Pre-compute the inner-NS chain for projection. Top-down: chain[0] is the
+	// outermost inner NS's local_id_in_parent (immediately under native_ns),
+	// chain[last] is `ns`'s. Empty when ns IS native (shallow case).
+	chain_lids: [dynamic]Local_ID
+	if ns.expand_parent != {} {
+		ch, _, chok := _inner_chain_lids_to_native(s, ns)
+		if !chok {
+			for &ov in diff {
+				delete(ov.property_path)
+				json.destroy_value(ov.value)
+			}
+			return
+		}
+		chain_lids = ch
 	}
 
 	for &ov in diff {
-		target_lid := ov.target
+		// Diff stamped target = (ns.source_prefab, lid_in_inner_prefab).
+		// For native NSs (no chain) this is the final shape. For inner NSs we
+		// project lid_in_inner_prefab up through each enclosing inner NS's
+		// local_id_in_parent so same-prefab-instantiated-twice produces
+		// distinct projections; target.guid stays as `ns.source_prefab` (the
+		// deepest prefab the field lives in, regardless of chain depth).
+		final_target := ov.target
 		if ns.expand_parent != {} {
-			// Deep override: materialize a breadcrumb on the native NS keyed
-			// by the chain + final destination in ns.source_prefab namespace.
-			final_src := PPtr{guid = ns.source_prefab, local_id = ov.target}
-			peg, pok := breadcrumb_create(s, native_ns.local_id, final_src, chain[:])
-			if !pok {
-				delete(ov.property_path)
-				json.destroy_value(ov.value)
-				continue
+			projected := ov.target.local_id
+			for i := len(chain_lids) - 1; i >= 0; i -= 1 {
+				projected = local_id_project(chain_lids[i], projected)
 			}
-			target_lid = peg
+			final_target.local_id = projected
 		}
 
 		// Append on native NS, deduping (target, property_path).
 		dup := false
 		for &existing in native_ns.overrides {
-			if existing.target == target_lid && existing.property_path == ov.property_path {
+			if pptr_equals(existing.target, final_target) && existing.property_path == ov.property_path {
 				dup = true
 				break
 			}
@@ -487,7 +502,7 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 			continue
 		}
 		append(&native_ns.overrides, Override{
-			target        = target_lid,
+			target        = final_target,
 			property_path = ov.property_path,
 			value         = ov.value,
 		})
@@ -546,7 +561,7 @@ _drop_overrides_with_missing_targets :: proc(overrides: ^[dynamic]Override, base
 	write := 0
 	for i in 0 ..< len(overrides) {
 		ov := overrides[i]
-		if ids[ov.target] {
+		if ids[ov.target.local_id] {
 			overrides[write] = ov
 			write += 1
 		} else {
@@ -569,6 +584,65 @@ _find_ns_by_local_id :: proc(s: ^Scene, ns_local_id: Local_ID) -> (^NestedScene,
 // hop, plus the native NS itself. The chain is top-down: chain[0] is the
 // hop from the native NS into the next inner level. Each entry is a PPtr
 // (prefab guid, host transform local_id in PARENT prefab namespace).
+// Public wrapper around the file-private chain walker. Used by Ref_Local
+// picker assignment to build the (native_ns, scene_path) tuple needed for
+// breadcrumb_create when the chosen target is nested-owned.
+_inner_chain_to_native_public :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]PPtr, ^NestedScene, bool) {
+	return _inner_chain_to_native(s, inner_m)
+}
+
+// Public wrapper around the lid-collecting chain walker. Returns the chain of
+// inner NS local_id_in_parent values from inner_m up to (but not including)
+// native, top-down. Used by the Ref_Local picker to project the chosen
+// target's lid the same way override capture does.
+_inner_chain_lids_to_native_public :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]Local_ID, ^NestedScene, bool) {
+	return _inner_chain_lids_to_native(s, inner_m)
+}
+
+// Returns the chain of inner NS `local_id_in_parent` values from `inner_m`
+// up to (but not including) the native NS, top-down: chain[0] is the
+// outermost inner NS's local_id_in_parent, chain[last] is `inner_m`'s. Used
+// as the projection key sequence for Unity-style XOR-encoded deep targets.
+_inner_chain_lids_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]Local_ID, ^NestedScene, bool) {
+	chain := make([dynamic]Local_ID, 0, 4, context.temp_allocator)
+	if inner_m == nil || inner_m.expand_parent == {} do return chain, nil, false
+	w := ctx_world()
+
+	append(&chain, inner_m.local_id_in_parent)
+
+	cur := inner_m
+	for _ in 0 ..< 32 {
+		ep := cur.expand_parent
+		if ep == {} do return chain, nil, false
+		et := pool_get(&w.transforms, Handle(ep))
+		if et == nil do return chain, nil, false
+		if !et.nested_owned {
+			for &n2 in s.nested_scenes {
+				if n2.expand_parent != {} do continue
+				if !nested_scene_hosts_transform(s, &n2, ep) do continue
+				n := len(chain)
+				for i in 0 ..< n / 2 {
+					chain[i], chain[n - 1 - i] = chain[n - 1 - i], chain[i]
+				}
+				return chain, &n2, true
+			}
+			return chain, nil, false
+		}
+		next: ^NestedScene = nil
+		for &n2 in s.nested_scenes {
+			if n2.expand_parent == {} do continue
+			if nested_scene_hosts_transform(s, &n2, ep) {
+				next = &n2
+				break
+			}
+		}
+		if next == nil do return chain, nil, false
+		append(&chain, next.local_id_in_parent)
+		cur = next
+	}
+	return chain, nil, false
+}
+
 @(private = "file")
 _inner_chain_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]PPtr, ^NestedScene, bool) {
 	chain := make([dynamic]PPtr, 0, 4, context.temp_allocator)
@@ -638,20 +712,22 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	}
 
 	// Prune orphan breadcrumbs whose owning NS no longer references them as a
-	// host peg or override target. Cross-scene Handle pegs (no NS owner) are
-	// left alone — they're referenced via Handle/PPtr fields elsewhere, not
-	// through NS overrides. Without this, repeatedly editing-reverting a deep
-	// field accumulates dead breadcrumb entries that bloat the file.
+	// host peg. Cross-scene Handle pegs (no NS owner) are left alone — they're
+	// referenced via Handle/PPtr fields elsewhere. Breadcrumbs whose bimap
+	// entry has been bound to a real runtime handle (type_key != INVALID_TYPE_KEY)
+	// are also kept: those were created by the Ref_Local picker for a
+	// nested-owned target and the reference is live.
 	{
 		ns_referenced := make(map[Local_ID]bool, 0, context.temp_allocator)
 		for &ns in s.nested_scenes {
 			if ns.host_breadcrumb_id != 0 do ns_referenced[ns.host_breadcrumb_id] = true
-			for &ov in ns.overrides do ns_referenced[ov.target] = true
 		}
 		to_drop := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
 		for lid, bc in s.breadcrumb_data {
 			if _, has_owner := _find_ns_by_local_id(s, bc.scene_instance); !has_owner do continue
-			if !ns_referenced[lid] do append(&to_drop, lid)
+			if ns_referenced[lid] do continue
+			if h, ok := bimap_get(&s.local_ids, lid); ok && h.type_key != INVALID_TYPE_KEY do continue
+			append(&to_drop, lid)
 		}
 		for lid in to_drop do breadcrumb_remove(s, lid)
 	}

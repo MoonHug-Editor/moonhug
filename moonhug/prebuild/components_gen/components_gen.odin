@@ -462,9 +462,8 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 		strings.write_string(&b, "\t\t\t}\n")
 	}
 	strings.write_string(&b, "\t\t}\n")
-	strings.write_string(&b, "\t\tfor &bc in sf.breadcrumbs {\n")
+	strings.write_string(&b, "\t\tfor bc in sf.breadcrumbs {\n")
 	strings.write_string(&b, "\t\t\tscene_breadcrumb_put(s, bc)\n")
-	strings.write_string(&b, "\t\t\tbc.scene_path = nil\n")
 	strings.write_string(&b, "\t\t}\n")
 	// Resolve PPtr/Ref/Ref_Local handles by looking up local_id in s.local_ids
 	// for each live pooled object. Runs only if we have a Scene (need bimap).
@@ -557,13 +556,10 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\t\t}\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
-	strings.write_string(&b, "\tfor &ns in sf.nested_scenes {\n")
-	strings.write_string(&b, "\t\tfor &ov in ns.overrides {\n")
-	strings.write_string(&b, "\t\t\tif new_id, ok := remap[ov.target]; ok {\n")
-	strings.write_string(&b, "\t\t\t\tov.target = new_id\n")
-	strings.write_string(&b, "\t\t\t}\n")
-	strings.write_string(&b, "\t\t}\n")
-	strings.write_string(&b, "\t}\n\n")
+	// Override.target is a PPtr in a foreign-prefab namespace (target.guid
+	// names the prefab), so it intentionally does NOT get remapped through
+	// this host scene's local_id remap.
+
 	strings.write_string(&b, "\tif new_root, ok := remap[sf.root]; ok {\n")
 	strings.write_string(&b, "\t\tsf.root = new_root\n")
 	strings.write_string(&b, "\t}\n\n")
@@ -587,9 +583,6 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\tdelete(ns.overrides)\n")
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
-	strings.write_string(&b, "\tfor &bc in sf.breadcrumbs {\n")
-	strings.write_string(&b, "\t\tif bc.scene_path != nil do delete(bc.scene_path)\n")
-	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ type_cleanup(.%s, &c) }}\n", e.plural, e.type_name)
@@ -606,8 +599,6 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.transforms)\n")
 	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
-	// Shallow destroy: do NOT free bc.scene_path — callers may share those
-	// pointers with the live Scene; only scene_destroy may free them.
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
 	for e in data.entries {
 		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)

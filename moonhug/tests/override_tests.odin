@@ -9,9 +9,9 @@ import "core:encoding/json"
 // Helpers ---------------------------------------------------------------------
 
 @(private = "file")
-find_override :: proc(ovs: []engine.Override, target: engine.Local_ID, path: string) -> (engine.Override, bool) {
+find_override :: proc(ovs: []engine.Override, target_lid: engine.Local_ID, path: string) -> (engine.Override, bool) {
 	for ov in ovs {
-		if ov.target == target && strings.compare(ov.property_path, path) == 0 {
+		if ov.target.local_id == target_lid && strings.compare(ov.property_path, path) == 0 {
 			return ov, true
 		}
 	}
@@ -19,9 +19,9 @@ find_override :: proc(ovs: []engine.Override, target: engine.Local_ID, path: str
 }
 
 @(private = "file")
-override_matches_path :: proc(ovs: []engine.Override, target: engine.Local_ID, path_prefix: string) -> bool {
+override_matches_path :: proc(ovs: []engine.Override, target_lid: engine.Local_ID, path_prefix: string) -> bool {
 	for ov in ovs {
-		if ov.target != target do continue
+		if ov.target.local_id != target_lid do continue
 		if strings.has_prefix(ov.property_path, path_prefix) do return true
 	}
 	return false
@@ -54,7 +54,7 @@ test_diff_overrides_array_atomic :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(out), 1)
 	if len(out) != 1 do return
 	ov := out[0]
-	testing.expect_value(t, ov.target, engine.Local_ID(1))
+	testing.expect_value(t, ov.target.local_id, engine.Local_ID(1))
 	testing.expect_value(t, ov.property_path, "tags")
 
 	arr, is_arr := ov.value.(json.Array)
@@ -133,7 +133,7 @@ test_diff_overrides_skips_unmatched_target :: proc(t: ^testing.T) {
 	defer free_overrides(&out)
 
 	for ov in out {
-		testing.expect(t, ov.target != 99, "row with no base counterpart must produce no override")
+		testing.expect(t, ov.target.local_id != 99, "row with no base counterpart must produce no override")
 	}
 }
 
@@ -183,7 +183,7 @@ test_diff_overrides_skips_rows_only_in_base :: proc(t: ^testing.T) {
 	defer free_overrides(&out)
 
 	for ov in out {
-		testing.expect(t, ov.target != 7,
+		testing.expect(t, ov.target.local_id != 7,
 			"row removed in work must not produce overrides against the absent target")
 	}
 }
@@ -197,7 +197,7 @@ test_diff_overrides_skips_rows_only_in_base :: proc(t: ^testing.T) {
 test_apply_overrides_missing_target_is_noop :: proc(t: ^testing.T) {
 	base := `{"transforms":[{"local_id":1,"position":[0,0,0]}]}`
 	overrides := []engine.Override{
-		{ target = 999, property_path = "position", value = json.Array{} },
+		{ target = engine.PPtr{local_id = 999}, property_path = "position", value = json.Array{} },
 	}
 	out := engine.nested_scene_apply_overrides(transmute([]byte)base, overrides)
 	defer if &out[0] != &(transmute([]byte)base)[0] do delete(out)
@@ -230,10 +230,12 @@ test_apply_overrides_missing_target_is_noop :: proc(t: ^testing.T) {
 test_nested_scene_has_override_membership :: proc(t: ^testing.T) {
 	ns := engine.NestedScene{}
 	defer delete(ns.overrides)
-	append(&ns.overrides, engine.Override{target = 5, property_path = "position"})
+	tgt5 := engine.PPtr{local_id = 5}
+	tgt6 := engine.PPtr{local_id = 6}
+	append(&ns.overrides, engine.Override{target = tgt5, property_path = "position"})
 
-	testing.expect(t, engine.nested_scene_has_override(&ns, 5, "position"))
-	testing.expect(t, !engine.nested_scene_has_override(&ns, 5, "rotation"))
-	testing.expect(t, !engine.nested_scene_has_override(&ns, 6, "position"))
-	testing.expect(t, !engine.nested_scene_has_override(nil, 5, "position"))
+	testing.expect(t, engine.nested_scene_has_override(&ns, tgt5, "position"))
+	testing.expect(t, !engine.nested_scene_has_override(&ns, tgt5, "rotation"))
+	testing.expect(t, !engine.nested_scene_has_override(&ns, tgt6, "position"))
+	testing.expect(t, !engine.nested_scene_has_override(nil, tgt5, "position"))
 }

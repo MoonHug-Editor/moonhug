@@ -165,9 +165,8 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				bimap_insert(&s.local_ids, lid, h)
 			}
 		}
-		for &bc in sf.breadcrumbs {
+		for bc in sf.breadcrumbs {
 			scene_breadcrumb_put(s, bc)
-			bc.scene_path = nil
 		}
 		for _, h in id_to_camera_handle {
 			p := pool_get(&w.cameras, h)
@@ -285,14 +284,6 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 		}
 	}
 
-	for &ns in sf.nested_scenes {
-		for &ov in ns.overrides {
-			if new_id, ok := remap[ov.target]; ok {
-				ov.target = new_id
-			}
-		}
-	}
-
 	if new_root, ok := remap[sf.root]; ok {
 		sf.root = new_root
 	}
@@ -319,9 +310,6 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 		delete(ns.overrides)
 	}
 	delete(sf.nested_scenes)
-	for &bc in sf.breadcrumbs {
-		if bc.scene_path != nil do delete(bc.scene_path)
-	}
 	delete(sf.breadcrumbs)
 	for &c in sf.cameras { type_cleanup(.Camera, &c) }
 	delete(sf.cameras)
