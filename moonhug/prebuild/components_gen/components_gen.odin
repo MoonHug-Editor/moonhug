@@ -466,6 +466,14 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "\t\t\tscene_breadcrumb_put(s, bc)\n")
 	strings.write_string(&b, "\t\t\tbc.scene_path = nil\n")
 	strings.write_string(&b, "\t\t}\n")
+	// Resolve PPtr/Ref/Ref_Local handles by looking up local_id in s.local_ids
+	// for each live pooled object. Runs only if we have a Scene (need bimap).
+	for e in data.entries {
+		fmt.sbprintf(&b, "\t\tfor _, h in id_to_%s_handle {{\n", e.snake_name)
+		fmt.sbprintf(&b, "\t\t\tp := pool_get(&w.%s, h)\n", e.plural)
+		fmt.sbprintf(&b, "\t\t\tif p != nil do _resolve_refs_in_value(p, type_info_of(%s), s)\n", e.type_name)
+		strings.write_string(&b, "\t\t}\n")
+	}
 	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\troot_handle: Handle\n")
 	strings.write_string(&b, "\tif sf.root != 0 {\n")

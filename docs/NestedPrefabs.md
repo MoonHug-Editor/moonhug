@@ -82,19 +82,23 @@ Live scene (post-deserialize):
 - Resolving a cross-scene reference loads the target if needed, wires the real object, then removes the breadcrumb.
 
 ### Override record
-Override is modification of nested scene target value saved at root scene level
-  - root scene can have overrides for its nested scene references.
-  - when nested — overrides are opaque to parent scene(don't exist any more), nested scene has them already applied when created.
+Override is a modification recorded at the root scene level only.
+  - The currently open scene file owns all overrides it applies to its nested instances.
+  - Inner prefab files own their own overrides on their direct children. Those are *opaque* to the parent — the parent sees the inner instance with its own overrides already baked in.
+  - At runtime each level applies its own overrides to its own direct child during bake. The root's overrides on something deep in the chain are then patched onto the live tree post-resolve (`cleanup_T` + `unmarshal_any` on the located field).
 
 ```
 Override {
-  target:        Local_ID   // file ID of the component/transform inside the source prefab
+  target:        Local_ID   // either: local ID of an Transform/Component inside this same prefab,
+                            // OR a breadcrumb local_id (for deep overrides — the
+                            // breadcrumb's scene_path encodes the chain to the
+                            // real destination)
   property_path: string     // dot-separated path e.g. "position.x", "color"
   value:         json.Value // override value
 }
 ```
 
-- Entire array is one atomic override. Never override individual elements. If anything inside the array changes, the whole array is the override value:
+- Entire array is one atomic override. Never override individual elements. If anything inside the array changes, the whole array is the override value.
 
 
 ## Runtime usage
@@ -116,15 +120,17 @@ Override {
 
 ### Overrides
 
-- `NestedScene` holds `overrides` list for self and inner items, except for child `NestedScene`s
-  - child `NestedScene`s behave the same way
+- A scene file's `NestedScene` record holds overrides on its **direct** child prefab only — items in that child's prefab namespace.
+- Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`, but the `target` is a breadcrumb whose `scene_path` traverses the chain. Inner `NestedScene` records never store the root's overrides.
+- Inner `NestedScene` records loaded into memory at runtime carry their own prefab file's overrides (e.g. A.scene's overrides on B). Those exist as runtime state to drive each level's own-overrides bake during resolve, and are never persisted by the open scene's save.
 
-Serialization triggers baking base and working copy, diffs them to produce overrides written back to the `NestedScene` record.
+Serialization triggers baking base and working copy, diffs them to produce overrides written onto the **root** scene's `NestedScene` record.
 - UX: overrides grow only — if same value but override exists, keep it
 - Removing an override requires explicit UI action (revert)
 - diff produces overrides between baked_base and working_copy
+- baked_base for a chain depth N walks all N prefab files in order, applying each file's NS-for-next-child overrides to the next prefab's raw — this is the "what this nested instance looks like before any root-scene overrides" baseline
 
-### Enter prefab
+### Enter prefab (planned UX, not yet implemented)
 
 Enter prefab N:
 - baked_base    = bake(chain[0..N-1])
@@ -140,18 +146,27 @@ Enter prefab 1(root+variant):
 - working_copy  = bake(chain[0..1]) <- bakes root + variant
 
 
-### Exit prefab
+### Exit prefab (planned UX, not yet implemented)
 - Save/Discard/Cancel
 
 ### Changes propagation
-Saving a prefab walks all live `NestedScene` records whose `source_prefab` GUID matches the saved asset and reloads them.
+On save, for the saved prefab's GUID:
+- Refresh `scene_lib`'s cached bytes for that GUID with the freshly-written file.
+- Invalidate the runtime unpacked-snapshot cache (so subsequent runtime instantiations re-bake from the new content).
+- Walk every loaded scene; for any chain that transitively contains the saved GUID (the saved prefab itself OR any inner NS whose `source_prefab` matches), find the native NS at the top of that chain and re-resolve it. The re-resolve rebuilds the subtree fresh with the new prefab content while preserving the open scene's overrides.
 
 ## Extras
-- Apply override — writes override back up the chain to the source asset, removes it from the `NestedScene` record.  
-- todo
+- Apply override — writes override back up the chain to the source asset, removes it from the `NestedScene` record.
+- todo (not yet implemented)
 
-Revert override — discards a specific override on the `NestedScene` record, restoring the field to the baked base value
-- defer removes override info, calls cleanup_T on target field then deserializes specific json branch into target field
+Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
+- Removes the matching `(target, property_path)` entry from the root NS's overrides.
+- Recomputes the baseline by re-baking the prefab chain WITHOUT the entry being reverted (peer overrides on the same NS still apply). For depth ≥ 2 this composes every level's prefab file overrides correctly, not just the immediate outer.
+- Locates the live field via reflection over the materialized subtree, calls `cleanup_T` on it, then `json.unmarshal_any` writes the recomputed baseline value into the slot.
+
+### Stale-reference cleanup divergence from Unity
+
+Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target` no longer exists in the current prefab raw, and prunes orphan deep-override anchors that no override or NS host references. Trade-off: cleaner files, no recovery on accidental field removal.
 
 # Consider Later
 ## Scene edit stack

@@ -99,6 +99,8 @@ For more details see [Contribution](docs/Contribution.md)
 
 - png - Texture2D with N Sprites
 
+- unity-like reference field. field + clickable button (shows popup with available choices)
+
 - transform:
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
@@ -118,9 +120,10 @@ For more details see [Contribution](docs/Contribution.md)
 
 - clear clipboard completely on each copy call
 
-### Considered Features
-- memory management guide
+- keep improving memory guide
   - must be explained simply as if for someone new to memory handling
+
+### Considered Features
 
 - Task tracking with backlog, todo, etc.
 

@@ -20,6 +20,11 @@ mapPropertyDrawer: MapPropertyDrawer
 inspectorData: InspectorData
 inspector_changed: bool
 
+// Set by the inspector loop before invoking a property drawer, so drawers can
+// read field-level tags that aren't part of the (ptr, tid, label) signature.
+// Currently used by the Ref_Local / Ref pickers to read `ref:"TypeName"`.
+current_field_ref_target: string
+
 InspectorData :: struct {
     mode: InspectorMode,
     filePath: string,
@@ -422,7 +427,10 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
 
         if ctx.is_visible {
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
+                ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
+                current_field_ref_target = ref_tag
                 drawer(field_ptr, field_type.id, c_field_name)
+                current_field_ref_target = ""
                 _undo_finalize_widget()
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)

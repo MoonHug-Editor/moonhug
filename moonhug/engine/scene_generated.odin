@@ -169,6 +169,26 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			scene_breadcrumb_put(s, bc)
 			bc.scene_path = nil
 		}
+		for _, h in id_to_camera_handle {
+			p := pool_get(&w.cameras, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s)
+		}
+		for _, h in id_to_lifetime_handle {
+			p := pool_get(&w.lifetimes, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s)
+		}
+		for _, h in id_to_player_handle {
+			p := pool_get(&w.players, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s)
+		}
+		for _, h in id_to_script_handle {
+			p := pool_get(&w.scripts, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Script), s)
+		}
+		for _, h in id_to_sprite_renderer_handle {
+			p := pool_get(&w.sprite_renderers, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s)
+		}
 	}
 
 	root_handle: Handle

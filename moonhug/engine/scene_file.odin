@@ -6,6 +6,81 @@ import "core:fmt"
 import "core:strings"
 import "base:runtime"
 
+// Walks `ptr` of type `ti` and, for every PPtr / Ref / Ref_Local / Owned found,
+// resolves its `handle` from `local_id` via the scene's local_ids bimap.
+// PPtr entries with a non-empty guid (cross-asset) are skipped — those are
+// resolved separately at asset-resolve time.
+_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
+	if ptr == nil || ti == nil || s == nil do return
+	base := runtime.type_info_base(ti)
+	if base == nil do return
+
+	#partial switch info in base.variant {
+	case runtime.Type_Info_Struct:
+		tid := ti.id
+		if tid == typeid_of(PPtr) {
+			pptr := cast(^PPtr)ptr
+			// PPtr has no handle field; nothing to resolve here.
+			_ = pptr
+			return
+		}
+		if tid == typeid_of(Ref) {
+			ref := cast(^Ref)ptr
+			if ref.pptr.local_id != 0 && pptr_guid_is_empty(ref.pptr.guid) {
+				if h, ok := bimap_get(&s.local_ids, ref.pptr.local_id); ok {
+					ref.handle = h
+				}
+			}
+			return
+		}
+		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+			rl := cast(^Ref_Local)ptr
+			if rl.local_id != 0 {
+				if h, ok := bimap_get(&s.local_ids, rl.local_id); ok {
+					rl.handle = h
+				}
+			}
+			return
+		}
+
+		count := int(info.field_count)
+		for i in 0..<count {
+			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
+			_resolve_refs_in_value(field_ptr, info.types[i], s)
+		}
+
+	case runtime.Type_Info_Union:
+		tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+		tag: i64
+		switch info.tag_type.size {
+		case 1: tag = i64((cast(^u8)tag_ptr)^)
+		case 2: tag = i64((cast(^u16)tag_ptr)^)
+		case 4: tag = i64((cast(^u32)tag_ptr)^)
+		case 8: tag = i64((cast(^u64)tag_ptr)^)
+		}
+		idx := tag if info.no_nil else tag - 1
+		if idx < 0 || int(idx) >= len(info.variants) do return
+		variant_ti := info.variants[idx]
+		_resolve_refs_in_value(ptr, variant_ti, s)
+
+	case runtime.Type_Info_Dynamic_Array:
+		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+		if dyn.data == nil || dyn.len == 0 do return
+		elem_size := info.elem_size
+		for i in 0..<dyn.len {
+			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
+			_resolve_refs_in_value(elem_ptr, info.elem, s)
+		}
+
+	case runtime.Type_Info_Array:
+		elem_size := info.elem_size
+		for i in 0..<info.count {
+			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
+			_resolve_refs_in_value(elem_ptr, info.elem, s)
+		}
+	}
+}
+
 _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
 	if ptr == nil || ti == nil do return
 	base := runtime.type_info_base(ti)

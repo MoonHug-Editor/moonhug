@@ -7,6 +7,7 @@ Player :: struct {
     speed:  f32,
     colors: [dynamic][4]f32,
     animations: [dynamic]TweenUnion,
+    sprite: Ref_Local `ref:"SpriteRenderer"`,
 }
 
 reset_Player :: proc(p: ^Player) {
