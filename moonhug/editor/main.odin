@@ -37,10 +37,11 @@ main :: proc() {
     }
 
     cwd, _ := os.get_working_directory(context.temp_allocator)
-    if !strings.has_suffix(cwd, "moonhug") {
-        moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
-        os.set_working_directory(moonhug_dir)
+    moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
+    if strings.count(moonhug_dir, "moonhug") > 2 {
+        strings.remove(moonhug_dir, "moonhug", 1)
     }
+    os.set_working_directory(moonhug_dir)
 
     win_w, win_h, win_x, win_y := load_editor_settings()
     has_saved_settings := win_w > 0 && win_h > 0
