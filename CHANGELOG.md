@@ -1,3 +1,10 @@
+## [0.19.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.18.0...v0.19.0) (2026-06-21)
+
+### Features
+
+* Ref_Local inspector UX, up readme ([7e03e1e](https://github.com/MoonHug-Editor/moonhug/commit/7e03e1ed71dbadfc02e960cfe04c98359c864e97))
+* rewrite prebuild generator ([ac3298b](https://github.com/MoonHug-Editor/moonhug/commit/ac3298bf94408cf26bfaa284e21179b250d38263))
+
 ## [0.18.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.17.0...v0.18.0) (2026-05-10)
 
 ### Features
