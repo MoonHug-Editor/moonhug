@@ -1,10 +1,19 @@
 package context_menu_gen
 
+// context_menu_gen: ECS prebuild module.
+//
+//   provide  - walk the decls, recognise proc decls with an @context_menu
+//              attribute, tag them with ContextMenu_GenComp (carrying the entry fields).
+//   generate - join {decls, ContextMenu_GenComp}, sort, build context_menu_generated.odin,
+//              emit it as a GeneratedFile (gen_db writes it to disk).
+//
+// String-building output is identical to the previous collect/generate version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:strings"
 import "core:slice"
-import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
 ContextMenuEntry :: struct {
 	type_name:   string,
@@ -15,96 +24,56 @@ ContextMenuEntry :: struct {
 	source_path: string,
 }
 
-ContextMenuCollectData :: struct {
-	entries:  [dynamic]ContextMenuEntry,
-	pkg_name: string,
+// ContextMenu_GenComp marks a DeclInfo entity as a context-menu proc and carries the
+// facts the generator needs.
+ContextMenu_GenComp :: struct {
+	type_name:   string,
+	menu_label:  string,
+	proc_name:   string,
+	order:       int,
+	source_pkg:  string,
+	source_path: string,
 }
 
-_type_expr_string :: proc(expr: ^ast.Expr) -> string {
-	if expr == nil do return ""
-	#partial switch ex in expr.derived {
-	case ^ast.Ident:
-		return ex.name
-	case ^ast.Selector_Expr:
-		base := _type_expr_string(ex.expr)
-		if ex.field != nil {
-			if id, ok := ex.field.derived.(^ast.Ident); ok {
-				if base != "" do return fmt.tprintf("%s.%s", base, id.name)
-				return id.name
-			}
-		}
-		return base
-	case ^ast.Pointer_Type:
-		elem := _type_expr_string(ex.elem)
-		if elem != "" do return fmt.tprintf("^%s", elem)
-		return ""
-	case:
-		return gen_core.ExtractStringExtended(expr)
-	}
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("context_menu/provide", provide)
+	db.generator("context_menu/generate", generate)
 }
 
-collect :: proc(pkg: ^ast.Package, pkg_path: string, data: ^ContextMenuCollectData) -> bool {
-	if pkg == nil do return false
-	if data.pkg_name == "" do data.pkg_name = pkg.name
 
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 do continue
+provide :: proc(w: ^db.World) -> bool {
+	_menus := db.get_or_create_comps(w, ContextMenu_GenComp)
+	decls := db.get_comps_DeclInfo()
+	procs := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
 
-			ident_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				ident_name = id.name
-			}
-			if ident_name == "" do continue
+	m := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		ident_name := decl.name
+		if ident_name == "" do continue
 
-			is_proc := false
-			if len(v_decl.values) > 0 {
-				if _, ok_lit := v_decl.values[0].derived.(^ast.Proc_Lit); ok_lit {
-					is_proc = true
-				}
-			}
-			if !is_proc do continue
+		attr_set := db.get(attrs, entity)
+		args, found := gen_facts.attr_find(attr_set, "context_menu")
+		if !found do continue
 
-			for attr in v_decl.attributes {
-				val, found := gen_core.AttrFindFieldValue(attr, "context_menu")
-				if !found do continue
-				comp, comp_ok := val.derived.(^ast.Comp_Lit)
-				if !comp_ok do continue
+		type_name := args.fields["type"]
+		if type_name == "" do continue
+		menu_label := args.fields["menu"]
+		if menu_label == "" do menu_label = ident_name
 
-				type_name := ""
-				menu_label := ""
-				order := 0
-				if type_ex, ok := gen_core.CompLitGetField(comp, "type"); ok do type_name = _type_expr_string(type_ex)
-				if menu_ex, ok := gen_core.CompLitGetField(comp, "menu"); ok do menu_label = gen_core.ExtractString(menu_ex)
-				if order_ex, ok := gen_core.CompLitGetField(comp, "order"); ok do order = gen_core.ExtractInt(order_ex)
-
-				if type_name == "" do continue
-				if menu_label == "" do menu_label = ident_name
-
-				append(&data.entries, ContextMenuEntry{
-					type_name   = type_name,
-					menu_label  = menu_label,
-					proc_name   = ident_name,
-					order       = order,
-					source_pkg  = pkg.name,
-					source_path = pkg_path,
-				})
-				break
-			}
-		}
+		db.set(_menus, entity, ContextMenu_GenComp{
+			type_name   = type_name,
+			menu_label  = menu_label,
+			proc_name   = ident_name,
+			order       = gen_facts.attr_int(args, "order"),
+			source_pkg  = decl.pkg.name,
+			source_path = decl.pkg_path,
+		})
 	}
-
 	return true
-}
-
-collect_finalize :: proc(data: ^ContextMenuCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: ContextMenuEntry) -> bool {
-		if a.type_name != b.type_name do return a.type_name < b.type_name
-		if a.order != b.order do return a.order < b.order
-		return a.proc_name < b.proc_name
-	})
 }
 
 _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
@@ -130,14 +99,42 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	return strings.to_string(b)
 }
 
-generate :: proc(data: ^ContextMenuCollectData, out_dir: string) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	entries: [dynamic]ContextMenuEntry
+	defer delete(entries)
+
+	decls := db.get_comps_DeclInfo()
+	_menus := db.get_comps(w, ContextMenu_GenComp)
+	m := db.all_of(db.r(decls), db.r(_menus)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		menu := db.get(_menus, entity)
+		append(&entries, ContextMenuEntry{
+			type_name   = menu.type_name,
+			menu_label  = menu.menu_label,
+			proc_name   = menu.proc_name,
+			order       = menu.order,
+			source_pkg  = menu.source_pkg,
+			source_path = menu.source_path,
+		})
+	}
+
+	// Preserve previous collect_finalize ordering.
+	slice.sort_by(entries[:], proc(a, b: ContextMenuEntry) -> bool {
+		if a.type_name != b.type_name do return a.type_name < b.type_name
+		if a.order != b.order do return a.order < b.order
+		return a.proc_name < b.proc_name
+	})
+
+	pkg_name := "editor"
+	out_dir := "moonhug/editor"
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
 	packages_used: map[string]string
 	defer delete(packages_used)
-	for e in data.entries {
-		if e.source_pkg != "" && e.source_pkg != data.pkg_name {
+	for e in entries {
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
 			if e.source_pkg not_in packages_used {
 				packages_used[e.source_pkg] = _relative_import_path(out_dir, e.source_path)
 			}
@@ -153,7 +150,7 @@ generate :: proc(data: ^ContextMenuCollectData, out_dir: string) -> bool {
 	slice.sort(import_pkgs[:])
 
 	strings.write_string(&b, "package ")
-	strings.write_string(&b, data.pkg_name)
+	strings.write_string(&b, pkg_name)
 	strings.write_string(&b, "\n\n")
 
 	strings.write_string(&b, "import engine \"../engine\"\n")
@@ -167,9 +164,9 @@ generate :: proc(data: ^ContextMenuCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "_init_context_menu_registry :: proc() {\n")
 	strings.write_string(&b, "\t_context_menu_registry = make(map[engine.TypeKey][dynamic]ContextMenuEntry)\n")
 
-	for e in data.entries {
+	for e in entries {
 		qualified := e.proc_name
-		if e.source_pkg != "" && e.source_pkg != data.pkg_name {
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
 			qualified = fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		}
 		fmt.sbprintf(&b, "\t{{\n")
@@ -190,10 +187,6 @@ generate :: proc(data: ^ContextMenuCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "\treturn {}\n")
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/context_menu_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^ContextMenuCollectData) {
-	delete(data.entries)
+	db.emit(w, "moonhug/editor/context_menu_generated.odin", strings.to_string(b))
+	return true
 }

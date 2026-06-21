@@ -166,7 +166,7 @@ _run_import :: proc(source_path: string, artifact_path: string, settings: Import
 }
 
 _ensure_artifact_dir :: proc(artifact_path: string) {
-    dir := filepath.dir(artifact_path, context.temp_allocator)
+    dir := filepath.dir(artifact_path)
     os.make_directory(dir)
 }
 

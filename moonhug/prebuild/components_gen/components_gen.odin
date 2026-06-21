@@ -1,10 +1,11 @@
 package components_gen
 
 import "core:fmt"
-import "core:odin/ast"
 import "core:strings"
 import "core:slice"
 import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
 ComponentEntry :: struct {
 	type_name:       string,
@@ -23,10 +24,34 @@ PoolableEntry :: struct {
 	max:        int,
 }
 
-ComponentCollectData :: struct {
-	entries:          [dynamic]ComponentEntry,
-	poolable_entries: [dynamic]PoolableEntry,
+// Component_GenComp marks a DeclInfo entity as either a @get_or_create_comps struct or a
+// @poolable struct/union. `kind` selects which entry list the generators put it
+// in; the remaining fields carry exactly what the old ComponentEntry /
+// PoolableEntry held. The type name lives on the entity's DeclInfo.
+ComponentKind :: enum {
+	Component,
+	Poolable,
 }
+
+Component_GenComp :: struct {
+	kind:            ComponentKind,
+	snake_name:      string,
+	plural:          string,
+	menu_path:       string,
+	max:             int,
+	has_on_validate: bool,
+	has_on_destroy:  bool,
+}
+
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("components/provide", provide)
+	db.generator("components/generate", generate)
+	db.generator("components/scene", generate_scene_file)
+	db.generator("components/menus", generate_component_menus)
+}
+
 
 _to_snake_case :: proc(name: string) -> string {
 	b := strings.builder_make()
@@ -49,115 +74,114 @@ _pluralize :: proc(s: string) -> string {
 }
 
 
-_has_poolable_attr :: proc(v_decl: ^ast.Value_Decl) -> (max: int, found: bool) {
-	for attr in v_decl.attributes {
-		if attr.elems == nil do continue
-		for elem in attr.elems {
-			if id, ok := elem.derived.(^ast.Ident); ok && id.name == "poolable" {
-				return 0, true
-			}
-			key, val, kv_ok := gen_core.AttrElemKeyValue(elem)
-			if kv_ok && key == "poolable" {
-				if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-					if max_ex, m_ok := gen_core.CompLitGetField(comp, "max"); m_ok {
-						return gen_core.ExtractInt(max_ex), true
-					}
-				}
-				return 0, true
-			}
-		}
-	}
-	return 0, false
-}
+provide :: proc(w: ^db.World) -> bool {
+	_components := db.get_or_create_comps(w, Component_GenComp)
+	decls   := db.get_comps_DeclInfo()
+	structs := db.get_comps(w, gen_facts.Struct_GenComp) // struct OR union
+	attrs   := db.get_comps(w, gen_facts.Attrs_GenComp)
 
-_has_component_attr :: proc(v_decl: ^ast.Value_Decl) -> (menu_path: string, max: int, found: bool) {
-	for attr in v_decl.attributes {
-		if attr.elems == nil do continue
-		for elem in attr.elems {
-			if id, ok := elem.derived.(^ast.Ident); ok && id.name == "component" {
-				return "", 0, true
-			}
-			key, val, kv_ok := gen_core.AttrElemKeyValue(elem)
-			if kv_ok && key == "component" {
-				if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-					menu_ex, m_ok := gen_core.CompLitGetField(comp, "menu")
-					max_ex, mx_ok := gen_core.CompLitGetField(comp, "max")
-					path := ""
-					mx := 0
-					if m_ok do path = gen_core.ExtractString(menu_ex)
-					if mx_ok do mx = gen_core.ExtractInt(max_ex)
-					return path, mx, true
-				}
-			}
-		}
-	}
-	return "", 0, false
-}
+	m := db.all_of(db.r(decls), db.r(structs), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		type_name := decl.name
+		if type_name == "" do continue
+		is_union := db.get(structs, entity).is_union
 
-collect :: proc(pkg: ^ast.Package, data: ^ComponentCollectData) -> bool {
-	if pkg == nil do return false
+		snake := _to_snake_case(type_name)
+		plural := _pluralize(snake)
 
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 || len(v_decl.values) == 0 do continue
+		attr_set := db.get(attrs, entity)
 
-			_, is_struct := v_decl.values[0].derived.(^ast.Struct_Type)
-			_, is_union := v_decl.values[0].derived.(^ast.Union_Type)
-			if !is_struct && !is_union do continue
-
-			type_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				type_name = id.name
-			}
-			if type_name == "" do continue
-
-			snake := _to_snake_case(type_name)
-			plural := _pluralize(snake)
-
-			menu_path, comp_max, has_comp := _has_component_attr(v_decl)
-			if has_comp && is_struct {
-				if menu_path == "" do menu_path = type_name
+		// @(component) — structs only.
+		if args, has_comp := gen_facts.attr_find(attr_set, "component"); has_comp && !is_union {
+			menu_path := args.fields["menu"]
+			if menu_path == "" do menu_path = type_name
 			on_validate_name := strings.concatenate({"on_validate_", type_name})
 			defer delete(on_validate_name)
 			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
 			defer delete(on_destroy_name)
-			append(&data.entries, ComponentEntry{
-				type_name       = type_name,
+			db.set(_components, entity, Component_GenComp{
+				kind            = .Component,
 				snake_name      = snake,
 				plural          = plural,
 				menu_path       = menu_path,
-				max             = comp_max,
-				has_on_validate = gen_core.FileHasProc(file, on_validate_name),
-				has_on_destroy  = gen_core.FileHasProc(file, on_destroy_name),
+				max             = gen_facts.attr_int(args, "max"),
+				has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
+				has_on_destroy  = gen_core.FileHasProc(decl.file, on_destroy_name),
 			})
-				continue
-			}
+			continue
+		}
 
-			if poolable_max, has_poolable := _has_poolable_attr(v_decl); has_poolable {
-				append(&data.poolable_entries, PoolableEntry{
-					type_name  = type_name,
-					snake_name = snake,
-					plural     = plural,
-					max        = poolable_max,
-				})
-			}
+		// @(poolable) — struct or union.
+		if args, has_poolable := gen_facts.attr_find(attr_set, "poolable"); has_poolable {
+			db.set(_components, entity, Component_GenComp{
+				kind       = .Poolable,
+				snake_name = snake,
+				plural     = plural,
+				max        = gen_facts.attr_int(args, "max"),
+			})
 		}
 	}
 	return true
 }
 
-collect_finalize :: proc(data: ^ComponentCollectData) {
+// _ComponentData rebuilds the two sorted entry lists the old collect/generate
+// produced, from the tagged entities. Callers must call _collect_data /
+// _free_data around it.
+_ComponentData :: struct {
+	entries:          [dynamic]ComponentEntry,
+	poolable_entries: [dynamic]PoolableEntry,
+}
+
+_collect_data :: proc(w: ^db.World) -> _ComponentData {
+	data: _ComponentData
+
+	decls := db.get_comps_DeclInfo()
+	_components := db.get_comps(w, Component_GenComp)
+	m := db.all_of(db.r(decls), db.r(_components)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		component := db.get(_components, entity)
+		switch component.kind {
+		case .Component:
+			append(&data.entries, ComponentEntry{
+				type_name       = decl.name,
+				snake_name      = component.snake_name,
+				plural          = component.plural,
+				menu_path       = component.menu_path,
+				max             = component.max,
+				has_on_validate = component.has_on_validate,
+				has_on_destroy  = component.has_on_destroy,
+			})
+		case .Poolable:
+			append(&data.poolable_entries, PoolableEntry{
+				type_name  = decl.name,
+				snake_name = component.snake_name,
+				plural     = component.plural,
+				max        = component.max,
+			})
+		}
+	}
+
+	// Preserve previous collect_finalize ordering.
 	slice.sort_by(data.entries[:], proc(a, b: ComponentEntry) -> bool {
 		return a.type_name < b.type_name
 	})
 	slice.sort_by(data.poolable_entries[:], proc(a, b: PoolableEntry) -> bool {
 		return a.type_name < b.type_name
 	})
+	return data
 }
 
-generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
+_free_data :: proc(data: ^_ComponentData) {
+	delete(data.entries)
+	delete(data.poolable_entries)
+}
+
+generate_component_menus :: proc(w: ^db.World) -> bool {
+	data := _collect_data(w)
+	defer _free_data(&data)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -186,8 +210,8 @@ generate_component_menus :: proc(data: ^ComponentCollectData, out_dir: string) -
 	strings.write_string(&b, "\tundo.record_add_component(tH, owned.handle, len(t.components) - 1)\n")
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/menu_component_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+	db.emit(w, "moonhug/editor/menu_component_generated.odin", strings.to_string(b))
+	return true
 }
 
 _pool_type :: proc(b: ^strings.Builder, type_name: string, max: int) {
@@ -198,7 +222,10 @@ _pool_type :: proc(b: ^strings.Builder, type_name: string, max: int) {
 	}
 }
 
-generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	data := _collect_data(w)
+	defer _free_data(&data)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -348,11 +375,14 @@ generate :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/components_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+	db.emit(w, "moonhug/engine/components_generated.odin", strings.to_string(b))
+	return true
 }
 
-generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> bool {
+generate_scene_file :: proc(w: ^db.World) -> bool {
+	data := _collect_data(w)
+	defer _free_data(&data)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -605,11 +635,6 @@ generate_scene_file :: proc(data: ^ComponentCollectData, out_dir: string) -> boo
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/scene_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^ComponentCollectData) {
-	delete(data.entries)
-	delete(data.poolable_entries)
+	db.emit(w, "moonhug/engine/scene_generated.odin", strings.to_string(b))
+	return true
 }

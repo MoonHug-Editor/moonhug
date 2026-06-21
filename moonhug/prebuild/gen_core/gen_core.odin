@@ -196,6 +196,208 @@ FileHasProc :: proc(file: ^ast.File, name: string) -> bool {
 	return false
 }
 
+// ── Typed facade: AST → plain data ───────────────────────────────────────────
+// gen_core is the ONLY place (besides type_guid_gen, which needs constant
+// resolution + nested literals) that speaks core:odin/ast. The procs below turn
+// raw declarations into plain Odin structs so the *_gen modules never unwrap
+// `^ast.*` themselves. A "value" is rendered to a canonical string by
+// RenderValue, which is a superset of ExtractString / ExtractStringExtended /
+// ExtractKeyName / _type_expr_string / ExtractInt-as-digits — so a single rule
+// reproduces every module's previous extraction byte-for-byte.
+
+// Struct_Field is one field of a struct/union declaration, names echoing
+// core:reflect.Struct_Field (name/type/tag) — but `type` is a written NAME,
+// not a resolved typeid: at prebuild there is only syntax.
+Struct_Field :: struct {
+	name: string,
+	type: string, // rendered type expression: "Transform", "engine.Tween", "^Foo", "[4]int"
+	tag:  string, // raw struct tag (see StructFieldTag)
+}
+
+// Attr_Args is one @(...) attribute element, flattened to plain data. `key` is
+// the attribute name ("component", "menu_item", …); `fields` holds its compound-
+// literal members rendered via RenderValue; `nested` holds members that are
+// themselves compound literals (e.g. typ_guid's menu_assets_create={...}), one
+// level deep. A bare attribute like @(poolable) yields {key="poolable"} — present,
+// empty. If a same-package string-constant map is supplied to DeclAttrs, a field
+// whose value is a bare identifier matching a constant is resolved to that
+// constant's value (reproducing the old ResolveString).
+Attr_Args :: struct {
+	key:    string,
+	fields: map[string]string,
+	nested: map[string]Attr_Args,
+}
+
+// RenderValue renders an expression to the canonical string the old extractors
+// produced: Basic_Lit string → unquoted; number → digits; Ident/Selector →
+// name; nameof(x) → x; unary minus → "-N"; pointer/array types → "^T"/"[N]T".
+RenderValue :: proc(expr: ^ast.Expr) -> string {
+	if expr == nil do return ""
+	#partial switch ex in expr.derived {
+	case ^ast.Basic_Lit:
+		s := ex.tok.text
+		if len(s) >= 2 && s[0] == '"' && s[len(s)-1] == '"' do return s[1 : len(s)-1]
+		return s
+	case ^ast.Ident:
+		return ex.name
+	case ^ast.Implicit_Selector_Expr:
+		if ex.field != nil {
+			if id, ok := ex.field.derived.(^ast.Ident); ok do return id.name
+		}
+		return ""
+	case ^ast.Selector_Expr:
+		base := RenderValue(ex.expr)
+		if ex.field != nil {
+			if id, ok := ex.field.derived.(^ast.Ident); ok {
+				if base != "" do return fmt.tprintf("%s.%s", base, id.name)
+				return id.name
+			}
+		}
+		return base
+	case ^ast.Pointer_Type:
+		elem := RenderValue(ex.elem)
+		if elem != "" do return fmt.tprintf("^%s", elem)
+		return ""
+	case ^ast.Multi_Pointer_Type:
+		elem := RenderValue(ex.elem)
+		if elem != "" do return fmt.tprintf("[^]%s", elem)
+		return ""
+	case ^ast.Array_Type:
+		elem := RenderValue(ex.elem)
+		len_str := RenderValue(ex.len)
+		return fmt.tprintf("[%s]%s", len_str, elem)
+	case ^ast.Dynamic_Array_Type:
+		return fmt.tprintf("[dynamic]%s", RenderValue(ex.elem))
+	case ^ast.Unary_Expr:
+		if ex.op.text == "-" do return fmt.tprintf("-%s", RenderValue(ex.expr))
+		return ""
+	case ^ast.Call_Expr:
+		if ex.expr != nil && len(ex.args) == 1 {
+			if id, ok := ex.expr.derived.(^ast.Ident); ok && id.name == "nameof" {
+				if arg_id, ok_arg := ex.args[0].derived.(^ast.Ident); ok_arg do return arg_id.name
+			}
+		}
+		return ""
+	case:
+		return ""
+	}
+}
+
+// _render_resolved renders a value, then resolves a bare-identifier result
+// against the same-package string-constant map (nil = no resolution), matching
+// the old ResolveString. Type names and dotted paths are unaffected.
+_render_resolved :: proc(expr: ^ast.Expr, constants: ^map[string]string) -> string {
+	s := RenderValue(expr)
+	if constants != nil {
+		if v, ok := constants[s]; ok do return v
+	}
+	return s
+}
+
+// DeclAttrs flattens every @(...) attribute element on a declaration into
+// Attr_Args (compound-literal members in `fields`, nested literals in `nested`,
+// one level deep). `constants` (optional) resolves identifier-valued fields to
+// same-package string constants. Returns a fresh slice; caller owns it.
+DeclAttrs :: proc(v_decl: ^ast.Value_Decl, constants: ^map[string]string = nil) -> []Attr_Args {
+	out: [dynamic]Attr_Args
+	if v_decl == nil do return out[:]
+	for attr in v_decl.attributes {
+		if attr.elems == nil do continue
+		for elem in attr.elems {
+			// bare ident: @(poolable), @(component), @(update)
+			if id, ok := elem.derived.(^ast.Ident); ok {
+				append(&out, Attr_Args{key = id.name})
+				continue
+			}
+			key, val, ok := AttrElemKeyValue(elem)
+			if !ok do continue
+			args := Attr_Args{key = key}
+			if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
+				for sub in comp.elems {
+					k, v, kv_ok := AttrElemKeyValue(sub)
+					if !kv_ok do continue
+					if subcomp, sub_ok := v.derived.(^ast.Comp_Lit); sub_ok {
+						// one-level-deep nested literal (e.g. menu_assets_create={...})
+						nested := Attr_Args{key = k}
+						for n in subcomp.elems {
+							nk, nv, nok := AttrElemKeyValue(n)
+							if nok do nested.fields[nk] = _render_resolved(nv, constants)
+						}
+						args.nested[k] = nested
+					} else {
+						args.fields[k] = _render_resolved(v, constants)
+					}
+				}
+			} else {
+				// scalar value form: @(key=value) — store under "".
+				args.fields[""] = _render_resolved(val, constants)
+			}
+			append(&out, args)
+		}
+	}
+	return out[:]
+}
+
+// AttrFind returns the first Attr_Args with the given key.
+AttrFind :: proc(attrs: []Attr_Args, key: string) -> (Attr_Args, bool) {
+	for a in attrs {
+		if a.key == key do return a, true
+	}
+	return {}, false
+}
+
+// AttrInt parses an int field the same way ExtractInt did (handles "-N").
+AttrInt :: proc(args: Attr_Args, field: string) -> int {
+	s, ok := args.fields[field]
+	if !ok do return 0
+	n, _ := strconv.parse_int(s)
+	return n
+}
+
+// EnumFieldNames returns the variant names of an enum declaration, in order.
+// Empty slice if the decl is not an enum. Caller owns the slice.
+EnumFieldNames :: proc(v_decl: ^ast.Value_Decl) -> []string {
+	out: [dynamic]string
+	if v_decl == nil || len(v_decl.values) == 0 do return out[:]
+	enum_type, is_enum := v_decl.values[0].derived.(^ast.Enum_Type)
+	if !is_enum || enum_type.fields == nil do return out[:]
+	for field in enum_type.fields {
+		if id, ok := field.derived.(^ast.Ident); ok {
+			append(&out, id.name)
+		} else if f, ok := field.derived.(^ast.Field); ok && len(f.names) > 0 {
+			if id, ok := f.names[0].derived.(^ast.Ident); ok do append(&out, id.name)
+		}
+	}
+	return out[:]
+}
+
+// StructFields extracts a struct/union declaration's fields as plain data.
+// Returns an empty slice if the decl is not a struct or union. Caller owns it.
+StructFields :: proc(v_decl: ^ast.Value_Decl) -> []Struct_Field {
+	out: [dynamic]Struct_Field
+	if v_decl == nil || len(v_decl.values) == 0 do return out[:]
+	st_fields: ^ast.Field_List
+	#partial switch t in v_decl.values[0].derived {
+	case ^ast.Struct_Type: st_fields = t.fields
+	case ^ast.Union_Type:  return out[:] // unions have variants, not named fields
+	case: return out[:]
+	}
+	if st_fields == nil do return out[:]
+	for field_expr in st_fields.list {
+		f, ok := field_expr.derived.(^ast.Field)
+		if !ok || len(f.names) == 0 do continue
+		name := ""
+		if id, ok_id := f.names[0].derived.(^ast.Ident); ok_id do name = id.name
+		if name == "" do continue
+		append(&out, Struct_Field{
+			name = name,
+			type = RenderValue(f.type),
+			tag  = StructFieldTag(f),
+		})
+	}
+	return out[:]
+}
+
 // WriteGeneratedFile writes content to path and reports errors. Returns false on failure.
 WriteGeneratedFile :: proc(path: string, content: string) -> bool {
 	if err := os.write_entire_file(path, transmute([]u8)(content)); err != nil {

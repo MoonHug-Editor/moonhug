@@ -1,10 +1,23 @@
 package menu_gen
 
+// menu_gen: ECS prebuild module for menu_items_generated.odin.
+//
+//   provide  - query {DeclInfo}, recognise decls carrying @(menu_item) /
+//              @(menu_separator) / @(menu_toggle) attributes, tag each with a
+//              Menu_GenComp carrying the per-entry MenuEntry data.
+//   generate - query {DeclInfo, Menu_GenComp}, rebuild rows, sort + dedupe, build
+//              menu_items_generated.odin, emit it (gen_db writes it).
+//
+// String-building output is identical to the previous collect/generate version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:strings"
 import "core:slice"
-import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
+
+// Fixed package name the old prebuild assigned (menu_data.pkg_name = "editor").
+_PKG_NAME :: "editor"
 
 MenuEntry :: struct {
 	kind:        enum { Item, Toggle, Separator },
@@ -16,19 +29,23 @@ MenuEntry :: struct {
 	source_path: string,
 }
 
-// MenuCollectData holds data gathered from the collect stage. Caller must delete(data.entries).
-MenuCollectData :: struct {
-	entries:  [dynamic]MenuEntry,
-	pkg_name: string,
+// Menu_GenComp marks a DeclInfo entity as a menu declaration. A single declaration's
+// attributes may yield multiple entries, so the tag carries them all.
+Menu_GenComp :: struct {
+	entries: [dynamic]MenuEntry,
 }
 
-// Extract path, order, shortcut from a compound literal using gen_core.
-_extract_menu_item_comp :: proc(comp: ^ast.Comp_Lit) -> (path: string, order: int, shortcut: string) {
-	if comp == nil do return "", 0, ""
-	if path_ex, ok := gen_core.CompLitGetField(comp, "path"); ok do path = gen_core.ExtractString(path_ex)
-	if order_ex, ok := gen_core.CompLitGetField(comp, "order"); ok do order = gen_core.ExtractInt(order_ex)
-	if shortcut_ex, ok := gen_core.CompLitGetField(comp, "shortcut"); ok do shortcut = gen_core.ExtractString(shortcut_ex)
-	return
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("menu/provide", provide)
+	db.generator("menu/generate", generate)
+}
+
+
+// Extract path, order, shortcut from a flattened attribute's fields.
+_extract_menu_item_comp :: proc(args: gen_facts.Attr_Args) -> (path: string, order: int, shortcut: string) {
+	return args.fields["path"], gen_facts.attr_int(args, "order"), args.fields["shortcut"]
 }
 
 _parent_path :: proc(path: string) -> string {
@@ -48,94 +65,66 @@ _sort_key_order :: proc(e: MenuEntry) -> (parent: string, order: int, kind_rank:
 	return
 }
 
-// Collect appends menu attribute data from one parsed package. Caller must call collect_finalize before generate and delete(data.entries).
-collect :: proc(pkg: ^ast.Package, pkg_path: string, data: ^MenuCollectData) -> bool {
-	if pkg == nil do return false
-	if data.pkg_name == "" do data.pkg_name = pkg.name
+provide :: proc(w: ^db.World) -> bool {
+	_menus := db.get_or_create_comps(w, Menu_GenComp)
+	decls  := db.get_comps_DeclInfo()
+	procs  := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs  := db.get_comps(w, gen_facts.Attrs_GenComp)
 
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 do continue
+	m := db.all_of(db.r(decls), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		ident_name := decl.name
+		if ident_name == "" do continue
 
-			ident_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				ident_name = id.name
-			}
-			if ident_name == "" do continue
+		is_proc := db.has(procs, entity)
+		attr_set := db.get(attrs, entity)
 
-			is_proc := false
-			if len(v_decl.values) > 0 {
-				if _, ok_lit := v_decl.values[0].derived.(^ast.Proc_Lit); ok_lit {
-					is_proc = true
+		entries: [dynamic]MenuEntry
+
+		if is_proc {
+			// Iterate attributes in source order: a proc may carry several
+			// menu_item / menu_separator entries and their order matters.
+			for args in attr_set.attrs {
+				path, shortcut, separator_path: string
+				menu_order: int = 0
+				separator_order: int = 0
+
+				if args.key == "menu_item" {
+					path, menu_order, shortcut = _extract_menu_item_comp(args)
+				}
+				if args.key == "menu_separator" {
+					separator_path, separator_order, _ = _extract_menu_item_comp(args)
+				}
+
+				if path != "" && separator_path == "" {
+					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, decl.pkg.name, decl.pkg_path})
+				} else if separator_path != "" {
+					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", ""})
 				}
 			}
-
-			if is_proc {
-				for attr in v_decl.attributes {
-					path, shortcut, separator_path: string
-					menu_order: int = 0
-					separator_order: int = 0
-
-					if val, found := gen_core.AttrFindFieldValue(attr, "menu_item"); found {
-						if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-							path, menu_order, shortcut = _extract_menu_item_comp(comp)
-						}
-					}
-					if val, found := gen_core.AttrFindFieldValue(attr, "menu_separator"); found {
-						if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-							separator_path, separator_order, _ = _extract_menu_item_comp(comp)
-						}
-					}
-
-					if path != "" && separator_path == "" {
-						append(&data.entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, pkg.name, pkg_path})
-					} else if separator_path != "" {
-						append(&data.entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", ""})
-					}
-				}
-			} else {
-				for attr in v_decl.attributes {
-					if val, found := gen_core.AttrFindFieldValue(attr, "menu_toggle"); found {
-						if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-							path, menu_order, _ := _extract_menu_item_comp(comp)
-							if path != "" {
-								append(&data.entries, MenuEntry{.Toggle, path, ident_name, "", menu_order, pkg.name, pkg_path})
-							}
-						}
+		} else {
+			for args in attr_set.attrs {
+				if args.key == "menu_toggle" {
+					path, menu_order, _ := _extract_menu_item_comp(args)
+					if path != "" {
+						append(&entries, MenuEntry{.Toggle, path, ident_name, "", menu_order, decl.pkg.name, decl.pkg_path})
 					}
 				}
 			}
 		}
-	}
 
+		if len(entries) > 0 {
+			db.set(_menus, entity, Menu_GenComp{entries = entries})
+		} else {
+			delete(entries)
+		}
+	}
 	return true
 }
 
-// Collect_finalize sorts collected entries. Call once after all collect calls before generate.
-collect_finalize :: proc(data: ^MenuCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: MenuEntry) -> bool {
-		pa, oa, ka := _sort_key_order(a)
-		pb, ob, kb := _sort_key_order(b)
-		if pa != pb do return pa < pb
-		if oa != ob do return oa < ob
-		return ka < kb
-	})
-
-	i := 0
-	for j in 0 ..< len(data.entries) {
-		if j > 0 && data.entries[j].path == data.entries[j - 1].path && data.entries[j].name == data.entries[j - 1].name && data.entries[j].kind != .Separator {
-			continue
-		}
-		data.entries[i] = data.entries[j]
-		i += 1
-	}
-	resize(&data.entries, i)
-}
-
-_qualified_name :: proc(data: ^MenuCollectData, e: MenuEntry) -> string {
-	if e.source_pkg != "" && e.source_pkg != data.pkg_name {
+_qualified_name :: proc(pkg_name: string, e: MenuEntry) -> string {
+	if e.source_pkg != "" && e.source_pkg != pkg_name {
 		return fmt.tprintf("%s.%s", e.source_pkg, e.name)
 	}
 	return e.name
@@ -164,14 +153,48 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	return strings.to_string(b)
 }
 
-generate :: proc(data: ^MenuCollectData, out_dir: string) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	out_dir :: "moonhug/editor"
+
+	entries: [dynamic]MenuEntry
+	defer delete(entries)
+
+	decls := db.get_comps_DeclInfo()
+	_menus := db.get_comps(w, Menu_GenComp)
+	m := db.all_of(db.r(decls), db.r(_menus)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		menu := db.get(_menus, entity)
+		for entry in menu.entries {
+			append(&entries, entry)
+		}
+	}
+
+	// Preserve previous collect_finalize ordering + dedupe.
+	slice.sort_by(entries[:], proc(a, b: MenuEntry) -> bool {
+		pa, oa, ka := _sort_key_order(a)
+		pb, ob, kb := _sort_key_order(b)
+		if pa != pb do return pa < pb
+		if oa != ob do return oa < ob
+		return ka < kb
+	})
+
+	i := 0
+	for j in 0 ..< len(entries) {
+		if j > 0 && entries[j].path == entries[j - 1].path && entries[j].name == entries[j - 1].name && entries[j].kind != .Separator {
+			continue
+		}
+		entries[i] = entries[j]
+		i += 1
+	}
+	resize(&entries, i)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
 	packages_used: map[string]string
 	defer delete(packages_used)
-	for e in data.entries {
-		if e.source_pkg != "" && e.source_pkg != data.pkg_name {
+	for e in entries {
+		if e.source_pkg != "" && e.source_pkg != _PKG_NAME {
 			if e.source_pkg not_in packages_used {
 				packages_used[e.source_pkg] = _relative_import_path(out_dir, e.source_path)
 			}
@@ -185,7 +208,7 @@ generate :: proc(data: ^MenuCollectData, out_dir: string) -> bool {
 	slice.sort(import_pkgs[:])
 
 	strings.write_string(&b, "package ")
-	strings.write_string(&b, data.pkg_name)
+	strings.write_string(&b, _PKG_NAME)
 	strings.write_string(&b, "\n\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import \"%s\"\n", packages_used[pkg])
@@ -195,7 +218,7 @@ generate :: proc(data: ^MenuCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "_register_menu_items :: proc() {\n")
 	strings.write_string(&b, "\tmenu.init_menu()\n")
 
-	for e in data.entries {
+	for e in entries {
 		switch e.kind {
 		case .Item:
 			strings.write_string(&b, "\tmenu.add_menu_item(\"")
@@ -203,13 +226,13 @@ generate :: proc(data: ^MenuCollectData, out_dir: string) -> bool {
 			strings.write_string(&b, "\", \"")
 			strings.write_string(&b, e.shortcut)
 			strings.write_string(&b, "\", ")
-			strings.write_string(&b, _qualified_name(data, e))
+			strings.write_string(&b, _qualified_name(_PKG_NAME, e))
 			fmt.sbprintf(&b, ", %d)\n", e.order)
 		case .Toggle:
 			strings.write_string(&b, "\tmenu.add_menu_toggle(\"")
 			strings.write_string(&b, e.path)
 			strings.write_string(&b, "\", &")
-			strings.write_string(&b, _qualified_name(data, e))
+			strings.write_string(&b, _qualified_name(_PKG_NAME, e))
 			fmt.sbprintf(&b, ", %d)\n", e.order)
 		case .Separator:
 			strings.write_string(&b, "\tmenu.add_menu_separator(\"")
@@ -219,11 +242,6 @@ generate :: proc(data: ^MenuCollectData, out_dir: string) -> bool {
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/menu_items_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-// Cleanup frees collected data. Safe to call multiple times.
-cleanup :: proc(data: ^MenuCollectData) {
-	delete(data.entries)
+	db.emit(w, "moonhug/editor/menu_items_generated.odin", strings.to_string(b))
+	return true
 }

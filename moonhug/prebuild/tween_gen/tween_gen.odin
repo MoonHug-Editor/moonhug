@@ -1,80 +1,108 @@
 package tween_gen
 
+// tween_gen: pattern template for the shared-get_or_create_comps prebuild pipeline.
+//
+//   provide  - join the shared Struct_GenComp facts (from gen_facts) with the decls,
+//              recognise structs with a `base: Tween` field, and PROVIDE a
+//              Tween_GenComp get_or_create_comps into the central registry. Tween_GenComp is public
+//              and registry-owned, so any other generator can query tweens too.
+//   generate - fetch the shared Tween_GenComp comps by type, sort, build
+//              tween_generated.odin, emit it as a GeneratedFile.
+//
+// There is no @(private) comps and no setup proc: the get_or_create_comps lives in the
+// gen_db registry (get_or_create_comps creates it, get_comps fetches it).
+// Output is identical to the previous version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:strings"
 import "core:slice"
 import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
+import "../type_guid_gen"
 
-TweenEntry :: struct {
-	type_name:  string,
-	file_path:  string,
-	has_tick:   bool,
-	has_free:   bool,
+// GUID baked into the generated TweenUnion type. tween_gen owns this fact.
+_TWEEN_UNION_GUID :: "a243efe5-6e34-4d1c-886c-83928685df48"
+
+// Tween_GenComp marks a decl as a tween struct and carries the facts the generator
+// needs. The type name lives on the entity's DeclInfo. Public + registry-owned
+// so any generator may query it (db.get_comps(w, Tween_GenComp)).
+Tween_GenComp :: struct {
+	has_tick: bool,
+	has_free: bool,
 }
 
-TweenCollectData :: struct {
-	entries: [dynamic]TweenEntry,
+@(init)
+_register :: proc "contextless" () {
+	db.provider("tween/provide", provide)
+	db.generator("tween/generate", generate)
 }
 
-_struct_has_tween_base :: proc(st: ^ast.Struct_Type) -> bool {
-	if st == nil || st.fields == nil do return false
-	for field in st.fields.list {
-		if field == nil do continue
-		if len(field.names) == 1 {
-			if id, ok := field.names[0].derived.(^ast.Ident); ok && id.name == "base" {
-				if id2, ok2 := field.type.derived.(^ast.Ident); ok2 && id2.name == "Tween" {
-					return true
-				}
-			}
-		}
+_struct_has_tween_base :: proc(fields: []gen_facts.Struct_Field) -> bool {
+	for field in fields {
+		if field.name == "base" && field.type == "Tween" do return true
 	}
 	return false
 }
 
-collect :: proc(pkg: ^ast.Package, data: ^TweenCollectData) -> bool {
-	if pkg == nil do return false
+provide :: proc(w: ^db.World) -> bool {
+	decls   := db.get_comps_DeclInfo()
+	structs := db.get_comps(w, gen_facts.Struct_GenComp) // shared base fact
+	field_comps := db.get_comps(w, gen_facts.Fields_GenComp)
+	tweens  := db.get_or_create_comps(w, Tween_GenComp)   // provide into registry
 
-	for file_path, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 || len(v_decl.values) == 0 do continue
+	// Join: entities that are structs (Struct_GenComp) carrying a `base: Tween` field.
+	m := db.all_of(db.r(decls), db.r(structs), db.r(field_comps)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		if decl.name == "" do continue
 
-			st, is_struct := v_decl.values[0].derived.(^ast.Struct_Type)
-			if !is_struct do continue
+		fields := db.get(field_comps, entity)
+		if !_struct_has_tween_base(fields.fields) do continue
 
-			if !_struct_has_tween_base(st) do continue
+		tick_name := strings.concatenate({"tick_", decl.name})
+		free_name := strings.concatenate({"tween_free_", decl.name})
+		defer delete(tick_name)
+		defer delete(free_name)
 
-			type_name := ""
-			if id, ok := v_decl.names[0].derived.(^ast.Ident); ok {
-				type_name = id.name
-			}
-			if type_name == "" do continue
-
-			tick_name := strings.concatenate({"tick_", type_name})
-			free_name  := strings.concatenate({"tween_free_", type_name})
-			defer delete(tick_name)
-			defer delete(free_name)
-
-			append(&data.entries, TweenEntry{
-				type_name = type_name,
-				file_path = file_path,
-				has_tick  = gen_core.FileHasProc(file, tick_name),
-				has_free  = gen_core.FileHasProc(file, free_name),
-			})
-		}
+		db.set(tweens, entity, Tween_GenComp{
+			has_tick = gen_core.FileHasProc(decl.file, tick_name),
+			has_free = gen_core.FileHasProc(decl.file, free_name),
+		})
 	}
+
+	// Cross-module: tween_gen emits the TweenUnion type, so it provides the
+	// TypeGuid_GenComp for it directly. type_guid_gen's generate discovers it via the
+	// shared type_guid comps - no parsing of the generated file from disk.
+	if !type_guid_gen.provide_synthetic(w, "TweenUnion", "engine", _TWEEN_UNION_GUID) do return false
 	return true
 }
 
-collect_finalize :: proc(data: ^TweenCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: TweenEntry) -> bool {
-		return a.type_name < b.type_name
-	})
+_TweenRow :: struct {
+	type_name: string,
+	has_tick:  bool,
+	has_free:  bool,
 }
 
-generate :: proc(data: ^TweenCollectData, out_dir: string) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	rows: [dynamic]_TweenRow
+	defer delete(rows)
+
+	decls  := db.get_comps_DeclInfo()
+	tweens := db.get_comps(w, Tween_GenComp) // fetch shared comps by type
+
+	m := db.all_of(db.r(decls), db.r(tweens)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		tween := db.get(tweens, entity)
+		append(&rows, _TweenRow{type_name = decl.name, has_tick = tween.has_tick, has_free = tween.has_free})
+	}
+
+	// Preserve previous ordering: sort by type_name.
+	slice.sort_by(rows[:], proc(a, b: _TweenRow) -> bool {
+		return a.type_name < b.type_name
+	})
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -82,33 +110,29 @@ generate :: proc(data: ^TweenCollectData, out_dir: string) -> bool {
 	strings.write_string(&b, "// Code generated by tween_gen. Do not edit.\n\n")
 
 	strings.write_string(&b, "@(poolable)\n")
-	strings.write_string(&b, "@(typ_guid={guid=\"a243efe5-6e34-4d1c-886c-83928685df48\"})\n")
+	fmt.sbprintf(&b, "@(typ_guid={{guid=\"%s\"}})\n", _TWEEN_UNION_GUID)
 	strings.write_string(&b, "TweenUnion :: union #no_nil{\n")
 	strings.write_string(&b, "\tTween,\n")
-	for e in data.entries {
+	for e in rows {
 		fmt.sbprintf(&b, "\t%s,\n", e.type_name)
 	}
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "__tween_ticks_init :: proc()\n")
 	strings.write_string(&b, "{\n")
-	for e in data.entries {
+	for e in rows {
 		if e.has_tick {
 			fmt.sbprintf(&b, "\ttween_tick_procs[.%s] = tick_%s\n", e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "\n")
-	for e in data.entries {
+	for e in rows {
 		if e.has_free {
 			fmt.sbprintf(&b, "\ttween_free_procs[.%s] = tween_free_%s\n", e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/tween_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^TweenCollectData) {
-	delete(data.entries)
+	db.emit(w, "moonhug/engine/tween_generated.odin", strings.to_string(b))
+	return true
 }

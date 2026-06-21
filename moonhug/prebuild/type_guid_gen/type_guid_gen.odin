@@ -1,10 +1,20 @@
 package type_guid_gen
 
+// type_guid_gen: ECS prebuild generator.
+//
+//   provide  - query {DeclInfo}, recognise @typ_guid structs/unions (tag with
+//              TypeGuid_GenComp) and @cleanup-annotated procs in package engine
+//              (tag with Cleanup_GenComp).
+//   generate - query the tags, sort, build the four generated files, emit them.
+//
+// String-building output is identical to the previous collect/generate version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:slice"
 import "core:strings"
 import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
 CreateAssetMenuData :: struct {
 	file_name: string,
@@ -12,7 +22,133 @@ CreateAssetMenuData :: struct {
 	order:     int,
 }
 
-TypeGuidEntry :: struct {
+// TypeGuid_GenComp marks a DeclInfo entity as a @typ_guid struct/union. The type
+// name lives on the entity's DeclInfo; pkg_name is derived from DeclInfo.pkg_path.
+TypeGuid_GenComp :: struct {
+	pkg_name:         string,
+	guid:             string,
+	make_proc:        string,
+	has_reset:        bool,
+	has_cleanup:      bool,
+	create_file_name: string,
+	create_menu_name: string,
+	create_order:     int,
+}
+
+// Cleanup_GenComp marks a DeclInfo entity as an @cleanup-annotated proc (engine pkg).
+Cleanup_GenComp :: struct {
+	target_type: string,
+	priority:    int,
+}
+
+// TypeGuid_GenComp and Cleanup_GenComp are provided into the central registry (see
+// provide); any generator can query them by type via get_comps.
+
+// Synthetic types provided by sibling modules (e.g. TweenUnion from tween_gen):
+// types the generator emits that have no source declaration. Kept as a plain
+// module-local list rather than entities, so they never appear in the {decls}
+// views that providers iterate.
+@(private) _synthetic: [dynamic]_TypeGuidRow
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("type_guid/provide", provide)
+	db.generator("type_guid/generate", generate)
+}
+
+// provide_synthetic lets a sibling module register a type it emits as a
+// typ_guid type. Called from that module's provider (Provide stage).
+provide_synthetic :: proc(w: ^db.World, name, pkg_name, guid: string) -> bool {
+	append(&_synthetic, _TypeGuidRow{pkg_name = pkg_name, type_name = name, guid = guid})
+	return true
+}
+
+_has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp) -> (guid: string, makeProcName: string, create: CreateAssetMenuData, has_create_menu: bool, found: bool) {
+	args, ok := gen_facts.attr_find(attr_set, "typ_guid")
+	if !ok do return "", "", {}, false, false
+
+	guid = args.fields["guid"]
+	makeProcName = args.fields["makeProcName"]
+
+	create = {}
+	if menu, menu_ok := gen_facts.attr_nested(args, "menu_assets_create"); menu_ok {
+		has_create_menu = true
+		create.file_name = menu.fields["file_name"]
+		create.menu_name = menu.fields["menu_name"]
+		create.order = gen_facts.attr_int(menu, "order")
+	}
+	return guid, makeProcName, create, has_create_menu, guid != ""
+}
+
+_parse_cleanup_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp) -> (target_type: string, priority: int, found: bool) {
+	args, ok := gen_facts.attr_find(attr_set, "cleanup")
+	if !ok do return "", 0, false
+	tt := gen_facts.attr_keyname(args, "type")
+	if tt == "" do return "", 0, false
+	return tt, gen_facts.attr_int(args, "priority"), true
+}
+
+_pkg_name_from_path :: proc(pkg_path: string) -> string {
+	if i := strings.last_index(pkg_path, "/"); i >= 0 && i + 1 < len(pkg_path) {
+		return pkg_path[i + 1:]
+	}
+	return pkg_path
+}
+
+provide :: proc(w: ^db.World) -> bool {
+	guids    := db.get_or_create_comps(w, TypeGuid_GenComp)
+	cleanups := db.get_or_create_comps(w, Cleanup_GenComp)
+
+	decls   := db.get_comps_DeclInfo()
+	structs := db.get_comps(w, gen_facts.Struct_GenComp) // struct OR union
+	procs   := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs   := db.get_comps(w, gen_facts.Attrs_GenComp)
+
+	m := db.all_of(db.r(decls), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		pkg_name := _pkg_name_from_path(decl.pkg_path)
+		attr_set := db.get(attrs, entity)
+
+		// @typ_guid structs/unions.
+		type_name := decl.name
+		if type_name != "" && db.has(structs, entity) {
+			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set)
+			if found {
+				reset_name   := strings.concatenate({"reset_",   type_name})
+				cleanup_name := strings.concatenate({"cleanup_", type_name})
+				tag := TypeGuid_GenComp{
+					pkg_name    = pkg_name,
+					guid        = guid,
+					make_proc   = make_proc,
+					has_reset   = gen_core.FileHasProc(decl.file, reset_name),
+					has_cleanup = gen_core.FileHasProc(decl.file, cleanup_name),
+				}
+				delete(reset_name)
+				delete(cleanup_name)
+				if has_create_menu {
+					tag.create_file_name = create.file_name
+					if tag.create_file_name == "" do tag.create_file_name = strings.concatenate({type_name, ".asset"})
+					tag.create_menu_name = create.menu_name
+					if tag.create_menu_name == "" do tag.create_menu_name = type_name
+					tag.create_order = create.order
+				}
+				db.set(guids, entity, tag)
+			}
+		}
+
+		// @cleanup procs, only in package engine.
+		if pkg_name == "engine" && db.has(procs, entity) {
+			if tt, pr, ok := _parse_cleanup_attr(attr_set); ok {
+				db.set(cleanups, entity, Cleanup_GenComp{target_type = tt, priority = pr})
+			}
+		}
+	}
+	return true
+}
+
+// _TypeGuidRow mirrors the old TypeGuidEntry the generate body consumed.
+_TypeGuidRow :: struct {
 	pkg_name:         string,
 	type_name:        string,
 	guid:             string,
@@ -25,153 +161,19 @@ TypeGuidEntry :: struct {
 	tid_expr:         string,
 }
 
-CleanupBinding :: struct {
+_CleanupRow :: struct {
 	target_type: string,
 	proc_name:   string,
 	priority:    int,
 }
 
-// TypeGuidCollectData holds data gathered from the collect stage. Caller must delete(data.entries).
-TypeGuidCollectData :: struct {
-	entries:           [dynamic]TypeGuidEntry,
-	cleanup_bindings: [dynamic]CleanupBinding,
-}
-
-_has_typ_guid_attr :: proc(attr: ^ast.Attribute, constants: ^map[string]string) -> (guid: string, makeProcName: string, create: CreateAssetMenuData, has_create_menu: bool, found: bool) {
-	if attr == nil do return "", "", {}, false, false
-	val, ok := gen_core.AttrFindFieldValue(attr, "typ_guid")
-	if !ok do return "", "", {}, false, false
-	comp, comp_ok := val.derived.(^ast.Comp_Lit)
-	if !comp_ok do return "", "", {}, false, false
-
-	if guid_ex, ok := gen_core.CompLitGetField(comp, "guid"); ok do guid = gen_core.ResolveString(guid_ex, constants)
-	if make_ex, ok := gen_core.CompLitGetField(comp, "makeProcName"); ok do makeProcName = gen_core.ResolveString(make_ex, constants)
-
-	create = {}
-	if menu_val, menu_ok := gen_core.CompLitGetField(comp, "menu_assets_create"); menu_ok {
-		if menu_comp, mc_ok := menu_val.derived.(^ast.Comp_Lit); mc_ok {
-			has_create_menu = true
-			if fn_ex, ok := gen_core.CompLitGetField(menu_comp, "file_name"); ok do create.file_name = gen_core.ResolveString(fn_ex, constants)
-			if mn_ex, ok := gen_core.CompLitGetField(menu_comp, "menu_name"); ok do create.menu_name = gen_core.ResolveString(mn_ex, constants)
-			if ord_ex, ok := gen_core.CompLitGetField(menu_comp, "order"); ok do create.order = gen_core.ExtractInt(ord_ex)
-		}
-	}
-	return guid, makeProcName, create, has_create_menu, guid != ""
-}
-
-_parse_cleanup_attr :: proc(attr: ^ast.Attribute) -> (target_type: string, priority: int, found: bool) {
-	val, ok := gen_core.AttrFindFieldValue(attr, "cleanup")
-	if !ok do return "", 0, false
-	comp, comp_ok := val.derived.(^ast.Comp_Lit)
-	if !comp_ok do return "", 0, false
-	type_ex, type_ok := gen_core.CompLitGetField(comp, "type")
-	if !type_ok do return "", 0, false
-	tt := gen_core.ExtractKeyName(type_ex)
-	if tt == "" do return "", 0, false
-	pr := 0
-	if pr_ex, pr_ok := gen_core.CompLitGetField(comp, "priority"); pr_ok {
-		pr = gen_core.ExtractInt(pr_ex)
-	}
-	return tt, pr, true
-}
-
-_pkg_name_from_path :: proc(pkg_path: string) -> string {
-	if i := strings.last_index(pkg_path, "/"); i >= 0 && i + 1 < len(pkg_path) {
-		return pkg_path[i + 1:]
-	}
-	return pkg_path
-}
-
-// Collect appends typ_guid attribute data from one parsed package. Caller must delete(data.entries).
-collect :: proc(pkg: ^ast.Package, pkg_path: string, data: ^TypeGuidCollectData) -> bool {
-	if pkg == nil do return false
-
-	constants := gen_core.BuildConstants(pkg)
-	defer delete(constants)
-
-	pkg_name := _pkg_name_from_path(pkg_path)
-
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 do continue
-
-			type_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				type_name = id.name
-			}
-			if type_name == "" do continue
-
-			is_struct_or_union := false
-			if len(v_decl.values) > 0 {
-				_, ok_st := v_decl.values[0].derived.(^ast.Struct_Type)
-				_, ok_un := v_decl.values[0].derived.(^ast.Union_Type)
-				is_struct_or_union = ok_st || ok_un
-			}
-			if !is_struct_or_union do continue
-
-			for attr in v_decl.attributes {
-				guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr, &constants)
-				if found {
-					reset_name   := strings.concatenate({"reset_",   type_name})
-					cleanup_name := strings.concatenate({"cleanup_", type_name})
-					entry := TypeGuidEntry{
-						pkg_name         = pkg_name,
-						type_name        = type_name,
-						guid             = guid,
-						make_proc        = make_proc,
-						has_reset        = gen_core.FileHasProc(file, reset_name),
-						has_cleanup      = gen_core.FileHasProc(file, cleanup_name),
-						create_file_name = "",
-						create_menu_name = "",
-						create_order     = 0,
-					}
-					delete(reset_name)
-					delete(cleanup_name)
-					if has_create_menu {
-						entry.create_file_name = create.file_name
-						if entry.create_file_name == "" do entry.create_file_name = strings.concatenate({type_name, ".asset"})
-						entry.create_menu_name = create.menu_name
-						if entry.create_menu_name == "" do entry.create_menu_name = type_name
-						entry.create_order = create.order
-					}
-					append(&data.entries, entry)
-					break
-				}
-			}
-		}
-
-		if pkg_name != "engine" do continue
-
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) != 1 || len(v_decl.values) != 1 do continue
-			if _, ok_lit := v_decl.values[0].derived.(^ast.Proc_Lit); !ok_lit do continue
-			proc_id, ok_id := v_decl.names[0].derived.(^ast.Ident)
-			if !ok_id do continue
-			for attr in v_decl.attributes {
-				tt, pr, ok_attr := _parse_cleanup_attr(attr)
-				if !ok_attr do continue
-				append(
-					&data.cleanup_bindings,
-					CleanupBinding{target_type = tt, proc_name = proc_id.name, priority = pr},
-				)
-				break
-			}
-		}
-	}
-	return true
-}
-
-_ensure_string_type_key :: proc(data: ^TypeGuidCollectData) {
-	for e in data.entries {
+_ensure_string_type_key :: proc(entries: ^[dynamic]_TypeGuidRow) {
+	for e in entries {
 		if e.type_name == "string" do return
 	}
 	append(
-		&data.entries,
-		TypeGuidEntry{
+		entries,
+		_TypeGuidRow{
 			pkg_name  = "engine",
 			type_name = "string",
 			guid      = "c4f0a1b2-3d5e-6f7a-8b9c-0d1e2f3a4b5c",
@@ -180,32 +182,87 @@ _ensure_string_type_key :: proc(data: ^TypeGuidCollectData) {
 	)
 }
 
-// Collect_finalize sorts collected entries by type_name. Call once after all collect calls before generate.
-collect_finalize :: proc(data: ^TypeGuidCollectData) {
-	_ensure_string_type_key(data)
-	slice.sort_by(data.entries[:], proc(a, b: TypeGuidEntry) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	entries: [dynamic]_TypeGuidRow
+	defer delete(entries)
+	cleanup_bindings: [dynamic]_CleanupRow
+	defer delete(cleanup_bindings)
+
+	decls := db.get_comps_DeclInfo()
+
+	// Real declarations: type name comes from the DeclInfo entity.
+	{
+		guids := db.get_comps(w, TypeGuid_GenComp)
+		m := db.all_of(db.r(decls), db.r(guids)); defer db.matcher_destroy(&m)
+		for entity in db.matched(w, &m) {
+			decl := db.get(decls, entity)
+			guid := db.get(guids, entity)
+			append(&entries, _TypeGuidRow{
+				pkg_name         = guid.pkg_name,
+				type_name        = decl.name,
+				guid             = guid.guid,
+				make_proc        = guid.make_proc,
+				has_reset        = guid.has_reset,
+				has_cleanup      = guid.has_cleanup,
+				create_file_name = guid.create_file_name,
+				create_menu_name = guid.create_menu_name,
+				create_order     = guid.create_order,
+			})
+		}
+	}
+
+	// Synthetic types provided by sibling modules (e.g. TweenUnion from tween_gen).
+	for r in _synthetic {
+		append(&entries, r)
+	}
+
+	{
+		cleanups := db.get_comps(w, Cleanup_GenComp)
+		m := db.all_of(db.r(decls), db.r(cleanups)); defer db.matcher_destroy(&m)
+		for entity in db.matched(w, &m) {
+			decl := db.get(decls, entity)
+			cleanup := db.get(cleanups, entity)
+			append(&cleanup_bindings, _CleanupRow{
+				target_type = cleanup.target_type,
+				proc_name   = decl.name,
+				priority    = cleanup.priority,
+			})
+		}
+	}
+
+	// Old collect_finalize: ensure string key, then sort.
+	_ensure_string_type_key(&entries)
+	slice.sort_by(entries[:], proc(a, b: _TypeGuidRow) -> bool {
 		return a.type_name < b.type_name
 	})
-	slice.sort_by(data.cleanup_bindings[:], proc(a, b: CleanupBinding) -> bool {
+
+	// A synthetic type (e.g. TweenUnion, emitted by tween_gen) can be present
+	// BOTH as a TypeGuid_GenComp a sibling module attached AND as a real decl parsed
+	// from the previously-generated file on disk. Drop adjacent duplicates by
+	// type_name (sorted above) so the in-memory provider path is authoritative
+	// and works on a clean tree without a second generator pass.
+	dedup: [dynamic]_TypeGuidRow
+	defer delete(dedup)
+	for e in entries {
+		if len(dedup) > 0 && dedup[len(dedup) - 1].type_name == e.type_name do continue
+		append(&dedup, e)
+	}
+	clear(&entries)
+	append(&entries, ..dedup[:])
+	slice.sort_by(cleanup_bindings[:], proc(a, b: _CleanupRow) -> bool {
 		if a.target_type != b.target_type do return a.target_type < b.target_type
 		if a.priority != b.priority do return a.priority < b.priority
 		return a.proc_name < b.proc_name
 	})
-}
 
-// generate writes three files:
-//   {engine_dir}/type_key_generated.odin           - package engine: TypeKey enum + GUID vars
-//   {app_dir}/type_registration_generated.odin     - package app: register_type_guids
-//   {editor_dir}/create_asset_menus_generated.odin - package editor: __create_asset__ procs + register_create_asset_menus
-generate :: proc(data: ^TypeGuidCollectData, engine_dir: string, app_dir: string, editor_dir: string) -> bool {
-	if !_generate_type_key(data, engine_dir) do return false
-	if !_generate_type_procs(data, engine_dir) do return false
-	if !_generate_type_registration(data, app_dir) do return false
-	if !_generate_create_asset_menus(data, editor_dir) do return false
+	if !_generate_type_key(entries[:], w) do return false
+	if !_generate_type_procs(entries[:], cleanup_bindings[:], w) do return false
+	if !_generate_type_registration(entries[:], w) do return false
+	if !_generate_create_asset_menus(entries[:], w) do return false
 	return true
 }
 
-_generate_type_key :: proc(data: ^TypeGuidCollectData, out_dir: string) -> bool {
+_generate_type_key :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -213,21 +270,21 @@ _generate_type_key :: proc(data: ^TypeGuidCollectData, out_dir: string) -> bool 
 	strings.write_string(&b, "import \"core:encoding/uuid\"\n\n")
 	strings.write_string(&b, "// Code generated by type_guid_gen. Do not edit.\n\n")
 	strings.write_string(&b, "TypeKey :: enum u16 {\n")
-	for e in data.entries {
+	for e in entries {
 		fmt.sbprintf(&b, "\t%s,\n", e.type_name)
 	}
 	strings.write_string(&b, "}\n\n")
 	strings.write_string(&b, "INVALID_TYPE_KEY :: TypeKey(max(u16))\n\n")
 	strings.write_string(&b, "UUID_NIL :: uuid.Identifier{};\n")
-	for e in data.entries {
+	for e in entries {
 		fmt.sbprintf(&b, "%s__Guid := uuid.read(%q) or_else UUID_NIL\n", e.type_name, e.guid)
 	}
 
-	gen_path := strings.concatenate({out_dir, "/type_key_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+	db.emit(w, "moonhug/engine/type_key_generated.odin", strings.to_string(b))
+	return true
 }
 
-_generate_type_registration :: proc(data: ^TypeGuidCollectData, out_dir: string) -> bool {
+_generate_type_registration :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -240,7 +297,7 @@ _generate_type_registration :: proc(data: ^TypeGuidCollectData, out_dir: string)
 	strings.write_string(&b, "_register_type_guids_once: sync.Once\n\n")
 	strings.write_string(&b, "register_type_guids :: proc() {\n")
 	strings.write_string(&b, "\tsync.once_do(&_register_type_guids_once, proc() {\n")
-	for e in data.entries {
+	for e in entries {
 		type_arg := fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
 		if e.tid_expr != "" {
 			type_arg = e.tid_expr
@@ -258,7 +315,7 @@ _generate_type_registration :: proc(data: ^TypeGuidCollectData, out_dir: string)
 			fmt.sbprintf(&b, "\t\tengine.register_type(%s, engine.%s__Guid)\n", type_arg, e.type_name)
 		}
 	}
-	for e in data.entries {
+	for e in entries {
 		type_arg := fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
 		if e.tid_expr != "" {
 			type_arg = e.tid_expr
@@ -268,11 +325,11 @@ _generate_type_registration :: proc(data: ^TypeGuidCollectData, out_dir: string)
 	strings.write_string(&b, "\t})\n")
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/type_registration_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+	db.emit(w, "moonhug/app/type_registration_generated.odin", strings.to_string(b))
+	return true
 }
 
-_generate_create_asset_menus :: proc(data: ^TypeGuidCollectData, out_dir: string) -> bool {
+_generate_create_asset_menus :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -283,7 +340,7 @@ _generate_create_asset_menus :: proc(data: ^TypeGuidCollectData, out_dir: string
 	strings.write_string(&b, "import \"menu\"\n\n")
 	strings.write_string(&b, "// Code generated by type_guid_gen. Do not edit.\n\n")
 
-	for e in data.entries {
+	for e in entries {
 		if e.create_menu_name == "" do continue
 		fmt.sbprintf(&b, "__create_asset__%s :: proc() ", e.type_name)
 		strings.write_string(&b, "{\n")
@@ -296,7 +353,7 @@ _generate_create_asset_menus :: proc(data: ^TypeGuidCollectData, out_dir: string
 	}
 
 	strings.write_string(&b, "register_create_asset_menus :: proc() {\n")
-	for e in data.entries {
+	for e in entries {
 		if e.create_menu_name == "" do continue
 		menu_path := strings.concatenate({"Assets/Create/", e.create_menu_name})
 		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", __create_asset__%s, %d)\n", menu_path, e.type_name, e.create_order)
@@ -304,38 +361,38 @@ _generate_create_asset_menus :: proc(data: ^TypeGuidCollectData, out_dir: string
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/create_asset_menus_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
+	db.emit(w, "moonhug/editor/create_asset_menus_generated.odin", strings.to_string(b))
+	return true
 }
 
-_entry_cast_type :: proc(e: TypeGuidEntry) -> string {
+_entry_cast_type :: proc(e: _TypeGuidRow) -> string {
 	if e.tid_expr != "" {
 		return e.tid_expr
 	}
 	return e.type_name
 }
 
-_cleanup_binding_matches_entry :: proc(b: CleanupBinding, e: TypeGuidEntry) -> bool {
+_cleanup_binding_matches_entry :: proc(b: _CleanupRow, e: _TypeGuidRow) -> bool {
 	return b.target_type == e.type_name
 }
 
-_bindings_for_type_entry :: proc(data: ^TypeGuidCollectData, e: TypeGuidEntry, out: ^[dynamic]CleanupBinding) {
+_bindings_for_type_entry :: proc(cleanup_bindings: []_CleanupRow, e: _TypeGuidRow, out: ^[dynamic]_CleanupRow) {
 	clear(out)
-	for b in data.cleanup_bindings {
+	for b in cleanup_bindings {
 		if _cleanup_binding_matches_entry(b, e) do append(out, b)
 	}
 }
 
-_cleanup_binding_target_valid :: proc(data: ^TypeGuidCollectData, target: string) -> bool {
-	for e in data.entries {
-		if _cleanup_binding_matches_entry(CleanupBinding{target_type = target}, e) do return true
+_cleanup_binding_target_valid :: proc(entries: []_TypeGuidRow, target: string) -> bool {
+	for e in entries {
+		if _cleanup_binding_matches_entry(_CleanupRow{target_type = target}, e) do return true
 	}
 	return false
 }
 
-_generate_type_procs :: proc(data: ^TypeGuidCollectData, out_dir: string) -> bool {
-	for b in data.cleanup_bindings {
-		if !_cleanup_binding_target_valid(data, b.target_type) {
+_generate_type_procs :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_CleanupRow, w: ^db.World) -> bool {
+	for b in cleanup_bindings {
+		if !_cleanup_binding_target_valid(entries, b.target_type) {
 			fmt.eprintf(
 				"type_guid_gen: @(cleanup) references unknown type %q (proc %q)\n",
 				b.target_type,
@@ -352,7 +409,7 @@ _generate_type_procs :: proc(data: ^TypeGuidCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "// Code generated by type_guid_gen. Do not edit.\n\n")
 
 	strings.write_string(&b, "__type_resets_init :: proc() {\n")
-	for e in data.entries {
+	for e in entries {
 		if e.has_reset {
 			ct := _entry_cast_type(e)
 			fmt.sbprintf(&b, "\ttype_reset_procs[.%s] = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, ct)
@@ -361,10 +418,10 @@ _generate_type_procs :: proc(data: ^TypeGuidCollectData, out_dir: string) -> boo
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "__type_cleanups_init :: proc() {\n")
-	scratch: [dynamic]CleanupBinding
+	scratch: [dynamic]_CleanupRow
 	defer delete(scratch)
-	for e in data.entries {
-		_bindings_for_type_entry(data, e, &scratch)
+	for e in entries {
+		_bindings_for_type_entry(cleanup_bindings, e, &scratch)
 		ct := _entry_cast_type(e)
 		if len(scratch) == 1 {
 			b0 := scratch[0]
@@ -387,11 +444,6 @@ _generate_type_procs :: proc(data: ^TypeGuidCollectData, out_dir: string) -> boo
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/type_procs_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^TypeGuidCollectData) {
-	delete(data.entries)
-	delete(data.cleanup_bindings)
+	db.emit(w, "moonhug/engine/type_procs_generated.odin", strings.to_string(b))
+	return true
 }
