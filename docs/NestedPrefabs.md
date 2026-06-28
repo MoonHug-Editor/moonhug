@@ -163,12 +163,23 @@ On save, for the saved prefab's GUID:
 - Walk every loaded scene; for any chain that transitively contains the saved GUID (the saved prefab itself OR any inner NS whose `source_prefab` matches), find the native NS at the top of that chain and re-resolve it. The re-resolve rebuilds the subtree fresh with the new prefab content while preserving the open scene's overrides.
 
 ## Extras
-Apply override — bakes a specific override into the **immediate-parent prefab** file (mirror of revert), then removes the override from the root NS so the applied value becomes the shared baseline for every instance.
-- SHALLOW (`target.guid == ns.source_prefab`): the parent prefab is `ns.source_prefab` itself — the field is patched directly onto that prefab's own transform/component row.
-- DEEP (root → A → B, override targets B): the parent prefab is A (one level up from the leaf). The value is written as an override record in A's NS-for-B, with the target lid un-projected through ALL inner hops to recover B's own-namespace lid (A's record natively stores B-namespace lids).
-- After writing the parent prefab file, runs the same change-propagation as a prefab save (`_prefab_bytes_committed`): refresh `scene_lib`, invalidate the unpacked cache, re-resolve every loaded chain containing the parent guid. Peers with their own explicit override keep it; peers without pick up the new baseline.
-- Atomic: if the parent prefab can't be resolved or the file write fails, the override is left untouched (no data loss).
-- Future (Unity parity): a submenu listing every ancestor prefab so the user can apply at any level — the engine proc already takes a `levels_up` param (currently only `1` = immediate parent).
+Apply override — pushes an override into an **ancestor prefab** (mirror of revert), then clears every shallower copy of it so the value becomes a shared baseline. `nested_scene_apply_override(s, ns, target, property_path, levels_up)`.
+
+**Level model** (`levels_up`, 1-based, deepest→shallowest; `nested_scene_apply_levels` = max):
+- **Level 1 = bake into the field's OWNER prefab** — for a deep override the owner is `target.guid` (the leaf prefab the field lives in); for a shallow override it's `ns.source_prefab`. The value is patched DIRECTLY onto the owner's transform/component row (`is_direct`), so it stops being an override. Editor label: **"Apply to Scene '<owner>'"**.
+- **Levels 2..N = override RECORD in each ancestor** between the owner and the open scene's direct prefab (`ns.source_prefab`). Editor label: **"Apply as Override in '<ancestor>'"**.
+- A shallow override has exactly 1 level. A deep override over `n` hops has `n + 1` levels (1 owner-bake + n ancestor-overrides). The editor inlines a flat menu item per level (Unity-style, no submenu), ordered shallowest→deepest.
+
+**Targeting math** — chain `hops` (len n) from `_collect_chain_to_prefab`, stack `[ns.source_prefab, hops[0]…hops[n-1]=leaf]`:
+- Level 1 (owner bake): file = `target.guid` (leaf); lid = root lid fully un-projected through ALL hops into the leaf's own namespace.
+- Level `k>1` (set `a = k-1`, 1..n): file = `stack[n-a]` (`ns.source_prefab` if `n-a==0`, else `hops[n-a-1]`); record's NS `source_prefab` = `hops[n-a]` (its direct child); override `target.guid` stays the leaf (a *deep* record); lid = root lid un-projected through `hops[0..n-a]`. A self-inverse round-trip assertion guards the XOR direction. Two guids matter — the NS-record child (for matching) vs the override target (the leaf).
+
+Clear-above-target — because precedence is **shallower-wins** (the root scene's deep override is applied last, on top of every inner-prefab bake; see `_nested_scene_apply_deep_overrides_live`), the same `(leaf-guid, property_path)` override is removed from every level strictly SHALLOWER than the chosen target (higher level number, closer to the root) and from the root scene NS — otherwise a surviving shallower override would shadow the freshly-applied value.
+
+Mechanics:
+- All file mutations refresh `scene_lib` bytes only (`_prefab_bytes_refresh`); a single propagation pass per touched prefab runs at the END (after the root override is removed), via `prefab_propagate`. This avoids re-resolving against a half-applied world or re-distributing the not-yet-removed root override. Peers with their own explicit override keep it; peers without pick up the new baseline.
+- Atomic: if the chain can't be resolved or the target file write fails, nothing is changed (no data loss).
+- Caller caution: `nested_scene_apply_override` triggers propagation that re-resolves and may reallocate `s.nested_scenes`, so the passed `ns` pointer must not be reused afterward.
 
 Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
 - Removes the matching `(target, property_path)` entry from the root NS's overrides.
@@ -178,6 +189,9 @@ Revert override — discards a specific override on the `NestedScene` record, re
 ### Stale-reference cleanup divergence from Unity
 
 Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target.local_id` no longer exists in the prefab named by `target.guid`, and prunes orphan stripped-placeholder breadcrumbs that no NS host or live `Ref_Local` references. Trade-off: cleaner files, no recovery on accidental field removal.
+
+# TODO
+- (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
 
 # Consider Later
 ## Scene edit stack

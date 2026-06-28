@@ -829,11 +829,25 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 // scene_save (saving a prefab) and nested_scene_apply_override (baking an
 // override into a parent prefab). `data` is copied — caller retains ownership.
 _prefab_bytes_committed :: proc(guid: Asset_GUID, data: []byte) {
+	_prefab_bytes_refresh(guid, data)
+	_propagate_prefab_save(guid)
+}
+
+// Cache-only half of `_prefab_bytes_committed`: refresh `scene_lib` bytes and
+// drop the unpacked snapshot WITHOUT re-propagating. Lets a caller mutate
+// several prefab files (and its own in-memory NS state) before triggering a
+// single propagation pass — avoids re-resolving against a half-updated world.
+_prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
 	if existing, has := scene_lib[guid]; has do delete(existing)
 	fresh := make([]byte, len(data))
 	copy(fresh, data)
 	scene_lib[guid] = fresh
 	scene_lib_unpacked_invalidate(guid)
+}
+
+// Re-resolve pass for a saved/edited prefab guid. Exposed for Apply's deferred
+// propagation. (`_propagate_prefab_save` is file-private to scene_file.odin.)
+prefab_propagate :: proc(guid: Asset_GUID) {
 	_propagate_prefab_save(guid)
 }
 
