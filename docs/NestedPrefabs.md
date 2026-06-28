@@ -163,8 +163,12 @@ On save, for the saved prefab's GUID:
 - Walk every loaded scene; for any chain that transitively contains the saved GUID (the saved prefab itself OR any inner NS whose `source_prefab` matches), find the native NS at the top of that chain and re-resolve it. The re-resolve rebuilds the subtree fresh with the new prefab content while preserving the open scene's overrides.
 
 ## Extras
-- Apply override — writes override back up the chain to the source asset, removes it from the `NestedScene` record.
-- todo (not yet implemented)
+Apply override — bakes a specific override into the **immediate-parent prefab** file (mirror of revert), then removes the override from the root NS so the applied value becomes the shared baseline for every instance.
+- SHALLOW (`target.guid == ns.source_prefab`): the parent prefab is `ns.source_prefab` itself — the field is patched directly onto that prefab's own transform/component row.
+- DEEP (root → A → B, override targets B): the parent prefab is A (one level up from the leaf). The value is written as an override record in A's NS-for-B, with the target lid un-projected through ALL inner hops to recover B's own-namespace lid (A's record natively stores B-namespace lids).
+- After writing the parent prefab file, runs the same change-propagation as a prefab save (`_prefab_bytes_committed`): refresh `scene_lib`, invalidate the unpacked cache, re-resolve every loaded chain containing the parent guid. Peers with their own explicit override keep it; peers without pick up the new baseline.
+- Atomic: if the parent prefab can't be resolved or the file write fails, the override is left untouched (no data loss).
+- Future (Unity parity): a submenu listing every ancestor prefab so the user can apply at any level — the engine proc already takes a `levels_up` param (currently only `1` = immediate parent).
 
 Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
 - Removes the matching `(target, property_path)` entry from the root NS's overrides.

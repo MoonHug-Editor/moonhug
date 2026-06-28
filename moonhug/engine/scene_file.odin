@@ -817,17 +817,24 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	// scene — including the scene we just saved (its own nested instances of
 	// itself, if any, plus any sibling NSs that depend on it via inner chain).
 	if guid, gok := asset_db_get_guid(path); gok {
-		asset_guid := Asset_GUID(guid)
-		if existing, has := scene_lib[asset_guid]; has do delete(existing)
-		fresh := make([]byte, len(data))
-		copy(fresh, data)
-		scene_lib[asset_guid] = fresh
-		scene_lib_unpacked_invalidate(asset_guid)
-		_propagate_prefab_save(asset_guid)
+		_prefab_bytes_committed(Asset_GUID(guid), data)
 	}
 
 	fmt.printf("[Scene] Saved scene to %s\n", path)
 	return true
+}
+
+// Refreshes the in-memory caches for a prefab GUID after its file bytes
+// changed on disk, then re-propagates to every loaded scene. Shared by
+// scene_save (saving a prefab) and nested_scene_apply_override (baking an
+// override into a parent prefab). `data` is copied — caller retains ownership.
+_prefab_bytes_committed :: proc(guid: Asset_GUID, data: []byte) {
+	if existing, has := scene_lib[guid]; has do delete(existing)
+	fresh := make([]byte, len(data))
+	copy(fresh, data)
+	scene_lib[guid] = fresh
+	scene_lib_unpacked_invalidate(guid)
+	_propagate_prefab_save(guid)
 }
 
 // Walks all loaded scenes and re-resolves every native NS whose chain

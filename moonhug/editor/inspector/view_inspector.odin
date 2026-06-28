@@ -341,6 +341,13 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
 	                    _field_menu_undo_end(u)
 	                    mark_inspector_changed()
 	                }
+	                // Apply bakes the override into the immediate-parent prefab
+	                // (mirror of Revert). Future: a submenu listing every ancestor
+	                // prefab so the user picks the level (see NestedPrefabs.md).
+	                if im.MenuItem("Apply", nil, false, is_overridden) {
+	                    engine.nested_scene_apply_override(ht.scene, root_ns, root_target, property_path)
+	                    mark_inspector_changed()
+	                }
 	                im.Separator()
                 }
             }

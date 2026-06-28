@@ -3,6 +3,8 @@ package engine
 import "core:encoding/json"
 import "core:strings"
 import "core:reflect"
+import "core:os"
+import "core:encoding/uuid"
 
 // Unity-style override target: a PPtr directly carrying (deepest_prefab_guid,
 // projected_lid). The owning NestedScene supplies the implicit `scene_instance`,
@@ -815,11 +817,17 @@ _nested_scene_unresolve :: proc(host_tH: Transform_Handle) {
                 write += 1
                 continue
             }
-            // Stale if the host transform it was anchored to no longer exists,
-            // OR if it was anchored under host_tH (we just destroyed those).
+            // Stale if the host transform it was anchored to no longer exists
+            // (its subtree was destroyed above), OR if it was anchored directly
+            // at `host_tH` — those inner records belong to THIS instance's
+            // expansion, which we just tore down. host_tH itself stays valid on
+            // a re-resolve (only its nested-owned children are destroyed), so
+            // the `!ep_valid` check alone misses them, leaving stale records
+            // that shadow the fresh clones in chain walks and corrupt sibling
+            // instances of the same prefab.
             ep := ns.expand_parent
             ep_valid := pool_valid(&w.transforms, Handle(ep))
-            if !ep_valid {
+            if !ep_valid || ep == host_tH {
                 breadcrumb_clear_for_nested_scene(s, ns.local_id)
                 for &ov in ns.overrides {
                     delete(ov.property_path)
@@ -1627,6 +1635,254 @@ nested_scene_revert_override :: proc(
         write += 1
     }
     resize(&ns.overrides, write)
+}
+
+// Apply override (mirror of revert). Instead of dropping the override and
+// resetting the live field, bake the override's value UP into the immediate-
+// parent prefab file so it becomes the new baseline for every instance, then
+// remove the override from the root NS.
+//
+//   - SHALLOW (target.guid == ns.source_prefab): the parent prefab is
+//     ns.source_prefab itself; the value is patched directly onto that prefab's
+//     own transform/component row.
+//   - DEEP (root -> A -> B, override targets B): the parent prefab is A (one
+//     level up from the leaf). The value is written as an override record in
+//     A's NS-for-B, with the target lid un-projected exactly ONE level (so A's
+//     record carries the leaf lid projected through only the last hop).
+//
+// `levels_up` is reserved for a future Unity-style ancestor picker; only the
+// immediate parent (levels_up == 1) is handled today.
+//
+// Returns false (leaving the override untouched) if the override doesn't exist,
+// the parent can't be resolved, or the file write fails — never drops user data
+// on failure. On success the live field is left as-is: propagation re-resolves
+// the subtree from the now-updated parent prefab, and the value is identical.
+nested_scene_apply_override :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    levels_up: int = 1,
+) -> bool {
+    if s == nil || ns == nil do return false
+    if levels_up != 1 do return false
+
+    // Capture the value (clone) before any mutation.
+    value: json.Value
+    has_match := false
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && ov.property_path == property_path {
+            value = json.clone_value(ov.value, context.temp_allocator)
+            has_match = true
+            break
+        }
+    }
+    if !has_match do return false
+
+    parent_guid, is_direct, parent_lid, child_guid, rec_tparent, ok := _apply_resolve_parent(s, ns, target)
+    if !ok do return false
+
+    if !_apply_write_parent_prefab(parent_guid, value, property_path, is_direct, parent_lid, child_guid, rec_tparent) {
+        return false
+    }
+
+    // Remove ALL matching entries from the root NS (same shape as revert).
+    write := 0
+    for i in 0..<len(ns.overrides) {
+        ov := ns.overrides[i]
+        if pptr_equals(ov.target, target) && ov.property_path == property_path {
+            delete(ov.property_path)
+            json.destroy_value(ov.value)
+            continue
+        }
+        ns.overrides[write] = ov
+        write += 1
+    }
+    resize(&ns.overrides, write)
+    return true
+}
+
+// Determines which prefab file an Apply writes into and in what shape.
+//   is_direct  true  => patch parent prefab's own row directly (shallow case)
+//              false => write/merge an override record in parent's NS-for-child
+//   parent_lid the row lid (is_direct) or the child-target lid un-projected one
+//              level (the lid the parent NS record's Override.target carries)
+//   child_guid the deeper prefab guid for the record's target (deep case only)
+//   rec_tparent transform_parent of parent's NS-for-child, disambiguating which
+//              NS record in the parent file to merge into
+@(private = "file")
+_apply_resolve_parent :: proc(
+    s: ^Scene, ns: ^NestedScene, target: PPtr,
+) -> (parent_guid: Asset_GUID, is_direct: bool, parent_lid: Local_ID,
+      child_guid: Asset_GUID, rec_tparent: Local_ID, ok: bool) {
+    is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
+    if !is_deep {
+        // Parent is ns.source_prefab; target lid is already in its namespace.
+        return ns.source_prefab, true, target.local_id, Asset_GUID{}, 0, true
+    }
+
+    native_host := nested_scene_resolve_host_handle(s, ns)
+    if native_host == {} do return {}, false, 0, {}, 0, false
+
+    hops := make([dynamic]ChainHop, 0, 4, context.temp_allocator)
+    if !_collect_chain_to_prefab(s, native_host, target.guid, &hops) do return {}, false, 0, {}, 0, false
+    if len(hops) == 0 do return {}, false, 0, {}, 0, false
+
+    // Parent prefab = source of the second-to-last hop, or ns.source_prefab
+    // when the leaf is only one hop below the native child.
+    parent := ns.source_prefab if len(hops) == 1 else hops[len(hops) - 2].guid
+
+    // The root override lid is projected through every inner NS from the native
+    // child down to the leaf (one XOR per hop — see nested_scene_locate_root_
+    // override). The parent's NS-for-leaf record natively stores leaf-namespace
+    // lids, so fully un-project through ALL hops to recover it.
+    plid := target.local_id
+    for hop in hops {
+        plid = local_id_unproject(hop.lid_in_parent, plid)
+    }
+
+    leaf_hop := hops[len(hops) - 1]
+    return parent, false, plid, target.guid, leaf_hop.transform_parent, true
+}
+
+// Loads parent_guid's prefab bytes, applies the JSON mutation, writes the file,
+// and re-commits the caches via _prefab_bytes_committed. Returns false on any
+// IO/parse failure or when the target NS record (deep case) is absent.
+@(private = "file")
+_apply_write_parent_prefab :: proc(
+    parent_guid: Asset_GUID, value: json.Value, property_path: string,
+    is_direct: bool, parent_lid: Local_ID, child_guid: Asset_GUID, rec_tparent: Local_ID,
+) -> bool {
+    raw, has := scene_lib[parent_guid]
+    if !has {
+        if !scene_lib_register(parent_guid) do return false
+        raw, has = scene_lib[parent_guid]
+        if !has do return false
+    }
+
+    raw_copy := make([]byte, len(raw))
+    defer delete(raw_copy)
+    copy(raw_copy, raw)
+    root_val: json.Value
+    if json.unmarshal_string(string(raw_copy), &root_val) != nil do return false
+    defer json.destroy_value(root_val)
+    root_obj, is_obj := root_val.(json.Object)
+    if !is_obj do return false
+
+    patched := false
+    if is_direct {
+        // Patch the row whose local_id == parent_lid in any section array.
+        for _, section_val in root_obj {
+            arr, is_arr := section_val.(json.Array)
+            if !is_arr do continue
+            for &item in arr {
+                obj, oo := item.(json.Object)
+                if !oo do continue
+                lid, lid_ok := _json_local_id_of(obj)
+                if !lid_ok || lid != parent_lid do continue
+                _json_set_path(&obj, property_path, value)
+                item = obj
+                patched = true
+                break
+            }
+            if patched do break
+        }
+    } else {
+        // Merge into parent's NS-for-child override list.
+        ns_section, has_ns := root_obj["nested_scenes"]
+        if has_ns {
+            ns_arr, is_arr := ns_section.(json.Array)
+            if is_arr {
+                for &ns_item in ns_arr {
+                    ns_obj, no := ns_item.(json.Object)
+                    if !no do continue
+                    if !_json_ns_matches(ns_obj, child_guid, rec_tparent) do continue
+                    _json_merge_override(&ns_obj, child_guid, parent_lid, property_path, value)
+                    ns_item = ns_obj
+                    patched = true
+                    break
+                }
+            }
+        }
+    }
+    if !patched do return false
+
+    opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2}
+    data, merr := json.marshal(root_obj, opts)
+    if merr != nil do return false
+    defer delete(data)
+
+    path, path_ok := asset_db_get_path(uuid.Identifier(parent_guid))
+    if !path_ok do return false
+    if os.write_entire_file(path, data) != nil do return false
+
+    _prefab_bytes_committed(parent_guid, data)
+    return true
+}
+
+// True if an NS-record JSON object has source_prefab == guid && transform_parent == tparent.
+@(private = "file")
+_json_ns_matches :: proc(ns_obj: json.Object, guid: Asset_GUID, tparent: Local_ID) -> bool {
+    sp, has_sp := ns_obj["source_prefab"]
+    if !has_sp do return false
+    sp_str, is_str := sp.(json.String)
+    if !is_str do return false
+    parsed, perr := uuid.read(sp_str)
+    if perr != nil do return false
+    if Asset_GUID(parsed) != guid do return false
+
+    tp, has_tp := ns_obj["transform_parent"]
+    if !has_tp do return false
+    #partial switch n in tp {
+    case json.Float:   return Local_ID(n) == tparent
+    case json.Integer: return Local_ID(n) == tparent
+    }
+    return false
+}
+
+// Replaces or appends an override entry {target:{guid,local_id}, property_path,
+// value} in an NS-record JSON object's `overrides` array.
+@(private = "file")
+_json_merge_override :: proc(
+    ns_obj: ^json.Object, child_guid: Asset_GUID, target_lid: Local_ID,
+    property_path: string, value: json.Value,
+) {
+    guid_str := uuid.to_string(uuid.Identifier(child_guid), context.temp_allocator)
+
+    ov_section, has_ov := ns_obj["overrides"]
+    ov_arr: json.Array
+    if has_ov {
+        if a, is_arr := ov_section.(json.Array); is_arr do ov_arr = a
+    }
+
+    // Replace existing matching entry.
+    for &item in ov_arr {
+        obj, oo := item.(json.Object)
+        if !oo do continue
+        pp, has_pp := obj["property_path"]
+        pp_str, pp_ok := pp.(json.String)
+        if !has_pp || !pp_ok || string(pp_str) != property_path do continue
+        tgt, has_tgt := obj["target"]
+        tgt_obj, to := tgt.(json.Object)
+        if !has_tgt || !to do continue
+        if tlid, tlid_ok := _json_local_id_of(tgt_obj); !tlid_ok || tlid != target_lid do continue
+        if existing, ex := obj["value"]; ex do json.destroy_value(existing)
+        obj["value"] = json.clone_value(value)
+        item = obj
+        ns_obj["overrides"] = ov_arr
+        return
+    }
+
+    // Append a new entry.
+    tgt_obj := make(json.Object)
+    tgt_obj["local_id"] = json.Integer(target_lid)
+    tgt_obj["guid"] = json.String(strings.clone(guid_str))
+    new_ov := make(json.Object)
+    new_ov["target"] = tgt_obj
+    new_ov["property_path"] = json.String(strings.clone(property_path))
+    new_ov["value"] = json.clone_value(value)
+    append(&ov_arr, new_ov)
+    ns_obj["overrides"] = ov_arr
 }
 
 nested_scene_add :: proc(s: ^Scene, source_prefab: Asset_GUID, host_tH: Transform_Handle, sibling_index: int) -> ^NestedScene {
