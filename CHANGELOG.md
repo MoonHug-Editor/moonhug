@@ -1,3 +1,9 @@
+## [0.20.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.19.0...v0.20.0) (2026-06-28)
+
+### Features
+
+* apply override to immediate-parent prefab ([ac9246e](https://github.com/MoonHug-Editor/moonhug/commit/ac9246e834220d899fc6d4f60559b86588e62a79))
+
 ## [0.19.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.18.0...v0.19.0) (2026-06-21)
 
 ### Features
