@@ -1,3 +1,9 @@
+## [0.21.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.20.0...v0.21.0) (2026-06-29)
+
+### Features
+
+* prefab variants ([44c621d](https://github.com/MoonHug-Editor/moonhug/commit/44c621da3dbb9c90441077bd3d94c6e99fff7ffe))
+
 ## [0.20.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.19.0...v0.20.0) (2026-06-28)
 
 ### Features
