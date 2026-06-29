@@ -1,0 +1,73 @@
+{
+  "root": 1,
+  "next_local_id": 20,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "CycleARoot",
+      "is_active": true,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 2,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 2,
+      "name": "CycleAHost",
+      "is_active": true,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": []
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 10,
+      "local_id_in_parent": 10,
+      "source_prefab": "a2000000-0000-4000-8000-0000000000c2",
+      "transform_parent": 2,
+      "host_breadcrumb_id": 11,
+      "sibling_index": 0,
+      "overrides": []
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 11,
+      "scene_source": {
+        "local_id": 2,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 10
+    }
+  ],
+  "cameras": [],
+  "lifetimes": [],
+  "players": [],
+  "scripts": [],
+  "sprite_renderers": []
+}

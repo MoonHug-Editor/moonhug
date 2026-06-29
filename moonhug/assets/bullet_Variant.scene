@@ -1,0 +1,146 @@
+{
+  "root": 15,
+  "next_local_id": 1021,
+  "transforms": [
+    {
+      "local_id": 1018,
+      "name": "c_Variant",
+      "is_active": true,
+      "position": [
+        7.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 15,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 1015,
+      "local_id_in_parent": 1015,
+      "source_prefab": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": [
+
+      ]
+    },
+    {
+      "local_id": 1019,
+      "local_id_in_parent": 0,
+      "source_prefab": "3062313e-26b3-4cfb-a408-cdea7fc0b27f",
+      "transform_parent": 1018,
+      "host_breadcrumb_id": 1020,
+      "sibling_index": 3,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "name",
+          "value": "c_Variant"
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "position",
+          "value": [
+            7.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.5019608100000000,
+            0.0000000000000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.0000000000000000,
+            0.4588235300000000,
+            1.0000000000000000,
+            1.0000000000000000
+          ]
+        }
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 1020,
+      "scene_source": {
+        "local_id": 1018,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 1019
+    }
+  ],
+  "cameras": [
+
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

@@ -6,7 +6,9 @@ import "menu"
 
 _register_menu_items :: proc() {
 	menu.init_menu()
+	menu.add_menu_separator("Assets/Create", -9)
 	menu.add_menu_item("Assets/Refresh AssetDB", "", menu.refresh_asset_db_menu, 0)
+	menu.add_menu_item("Assets/Create/Scene Variant", "", scene_create_variant_menu, -10)
 	menu.add_menu_item("Assets/Create/Scene", "", scene_create_menu, 0)
 	menu.add_menu_item("Edit/Toggle Transform Active", "Alt+Shift+A", hierarchy_toggle_active_menu, 0)
 	menu.add_menu_item("File/Save", "Ctrl+S", menu.file_save_menu, 0)

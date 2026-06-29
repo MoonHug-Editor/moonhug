@@ -1,0 +1,21 @@
+{
+  "root": 1,
+  "next_local_id": 1011,
+  "transforms": [],
+  "nested_scenes": [
+    {
+      "local_id": 1010,
+      "source_prefab": "a2000000-0000-4000-8000-0000000000c1",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": []
+    }
+  ],
+  "breadcrumbs": [],
+  "cameras": [],
+  "lifetimes": [],
+  "players": [],
+  "scripts": [],
+  "sprite_renderers": []
+}

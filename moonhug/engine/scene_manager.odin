@@ -2,6 +2,7 @@ package engine
 
 import "core:fmt"
 import "core:os"
+import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:path/filepath"
@@ -111,6 +112,106 @@ _scene_load_single :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUID 
     return _scene_load_additive(scene_file, scene_asset_guid)
 }
 
+// A variant's root NS: transform_parent == 0, not pulled in from an inner
+// prefab (expand_parent == {}). Returns the first such record in `s`, or nil.
+_scene_find_root_variant_ns :: proc(s: ^Scene) -> ^NestedScene {
+    if s == nil do return nil
+    for &ns in s.nested_scenes {
+        if ns.transform_parent == 0 && ns.expand_parent == {} {
+            return &ns
+        }
+    }
+    return nil
+}
+
+// Materializes a top-level variant: the base prefab becomes this scene's root.
+// Bakes the base with the variant's own overrides, loads it so the base root is
+// the (native) scene root with nested-owned descendants, rebinds the root NS to
+// be hosted by the base root (so its overrides are the editable set, exactly
+// like a normal nested scene), and grafts the variant's additions under it.
+// Returns the base root handle (the new scene root), or {} on failure.
+_variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_lid: Local_ID) -> Transform_Handle {
+    w := ctx_world()
+    guid := root_ns.source_prefab
+    if guid == (Asset_GUID{}) do return {}
+
+    // Resolve the base (recursively flattening if the base is itself a variant),
+    // then bake THIS variant's own overrides onto it. The base content becomes
+    // the baked baseline; the root NS's overrides stay live (editable).
+    base_bytes, base_owned := _prefab_resolved_bytes(guid)
+    if base_bytes == nil do return {}
+    defer if base_owned do delete(base_bytes)
+
+    baked := nested_scene_apply_overrides(base_bytes, root_ns.overrides[:], guid)
+    baked_owned := raw_data(baked) != raw_data(base_bytes)
+    defer if baked_owned do delete(baked)
+
+    base_sf: SceneFile
+    if json.unmarshal(baked, &base_sf) != nil do return {}
+    defer scene_file_destroy(&base_sf)
+
+    base_root_lid := base_sf.root
+    // Capture the NS by local_id: _scene_load_as_child appends to s.nested_scenes
+    // and may reallocate it, dangling the `root_ns` pointer. Re-fetch after and
+    // use `rns` for all post-append access (root_ns is a param, can't reassign).
+    root_ns_lid := root_ns.local_id
+    nested_before := len(s.nested_scenes)
+    base_root_tH := _scene_load_as_child(&base_sf, {}, s, guid, true)
+    if base_root_tH == {} do return {}
+    rns, rns_ok := _find_ns_by_local_id(s, root_ns_lid)
+    if !rns_ok do return {}
+    rns.source_root_id = base_root_lid
+
+    // Base content is the baked baseline: mark descendants nested-owned (NOT the
+    // base root transform itself — it is this scene's native root). The base
+    // root belongs to THIS scene now, so retag its scope guid to the variant's
+    // (otherwise the hierarchy/host checks reject it as foreign content). Its
+    // COMPONENTS, however, are inherited baseline — mark them nested-owned so
+    // overrides on the root's components are captured on save like child ones.
+    br := pool_get(&w.transforms, Handle(base_root_tH))
+    if br != nil {
+        br.scene_asset_guid = s.asset_guid
+        for &c in br.components {
+            raw := world_pool_get(w, c.handle)
+            if raw != nil do (cast(^CompData)raw).nested_owned = true
+        }
+        for child in br.children do _mark_subtree_nested_owned(Transform_Handle(child.handle))
+    }
+    // Inner NSs the base pulled in are anchored to the base subtree.
+    for i in nested_before..<len(s.nested_scenes) {
+        if s.nested_scenes[i].expand_parent == {} {
+            s.nested_scenes[i].expand_parent = base_root_tH
+        }
+    }
+
+    // The root NS is now hosted by the base root (ordinary hosted NS). Save
+    // writes transform_parent back to 0 (nested_scene_is_root_variant).
+    br = pool_get(&w.transforms, Handle(base_root_tH))
+    if br != nil {
+        rns.transform_parent = br.local_id
+        nested_scene_attach_host_breadcrumb(s, rns, br.local_id)
+    }
+
+    // Graft the variant's own additions (loaded rootless because their parent
+    // lid == the base root lid the variant file lacks) under the base root.
+    if br != nil {
+        for i in 0..<len(w.transforms.slots) {
+            slot := &w.transforms.slots[i]
+            if !slot.alive do continue
+            at := &slot.data
+            if at.scene != s || at.nested_owned do continue
+            atH := Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+            if atH == base_root_tH do continue
+            if pool_valid(&w.transforms, at.parent.handle) do continue
+            if at.parent.pptr.local_id != base_root_lid do continue
+            at.parent = make_transform_ref(base_root_tH)
+            br = pool_get(&w.transforms, Handle(base_root_tH))
+            if br != nil do append(&br.children, Ref{ pptr = PPtr{local_id = at.local_id}, handle = Handle(atH) })
+        }
+    }
+    return base_root_tH
+}
+
 _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUID = {}) -> ^Scene {
     scene_manager := ctx_scene_manager()
     s := scene_new()
@@ -118,6 +219,21 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
     s.asset_guid = scene_asset_guid
 
     root_tH := _scene_load_as_child(scene_file, {}, s)
+
+    // A variant's root is a NestedScene with transform_parent == 0 — the file
+    // names the base root lid as sf.root but contains no such transform, so
+    // _scene_load_as_child returns {}. Materialize the variant: the BASE root
+    // becomes this scene's (native) root, the base's descendants are nested-
+    // owned baked baseline, the variant's own overrides stay live on the root
+    // NS (the editable set), and the variant's additions graft under the base.
+    is_variant_root := false
+    if root_tH == {} {
+        if root_ns := _scene_find_root_variant_ns(s); root_ns != nil {
+            root_tH = _variant_materialize_root(s, root_ns, scene_file.root)
+            is_variant_root = root_tH != {}
+        }
+    }
+
     if root_tH != {} {
         scene_set_root(s, root_tH)
     } else {
@@ -141,7 +257,20 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
     }
 
     if root_tH != {} {
-        _scene_resolve_nested_in_subtree(root_tH)
+        if is_variant_root {
+            // The variant root NS is already materialized by
+            // _variant_materialize_root; resolving the root again would
+            // double-resolve. Resolve only its children (deeper nesting +
+            // additions that themselves nest).
+            rt := pool_get(&ctx_world().transforms, Handle(root_tH))
+            if rt != nil {
+                kids := make([]Ref, len(rt.children), context.temp_allocator)
+                copy(kids, rt.children[:])
+                for child in kids do _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+            }
+        } else {
+            _scene_resolve_nested_in_subtree(root_tH)
+        }
         _scene_resolve_breadcrumb_targets(s)
     }
     return s

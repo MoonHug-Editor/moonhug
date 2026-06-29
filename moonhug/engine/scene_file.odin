@@ -197,6 +197,42 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 	}
 }
 
+// Walks a variant's resolved root subtree and collects only the variant's OWN
+// added content — non-nested-owned transforms grafted under the (nested-owned)
+// base content. Each such transform's serialized parent lid is rewritten to its
+// nearest nested-owned ancestor's lid (the base namespace lid), so that on
+// reload the addition grafts back under the materialized base.
+// `root_subst` remaps the synthesized placeholder root's runtime lid to the
+// base root SOURCE lid that is written as sf.root, so additions parented at the
+// placeholder serialize with a parent lid that reload can graft against.
+_collect_variant_added_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, root_tH: Transform_Handle, root_subst: Local_ID) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	// The parent lid additions should serialize with: the base-namespace source
+	// lid for the placeholder root, else the ancestor's own (base-namespace) lid.
+	parent_lid := tH == root_tH ? root_subst : t.local_id
+	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct == nil do continue
+		if ct.nested_owned {
+			// Stay within the base subtree looking for added (non-owned) content.
+			_collect_variant_added_subtree(w, Transform_Handle(child.handle), sf, root_tH, root_subst)
+			continue
+		}
+		// Non-nested-owned child of a nested-owned ancestor → variant addition.
+		// Collect its (non-owned) subtree, then pin its parent lid to the base
+		// ancestor so the graft is reconstructable on load.
+		before := len(sf.transforms)
+		_collect_transform_tree(w, Transform_Handle(child.handle), sf)
+		for i in before..<len(sf.transforms) {
+			if sf.transforms[i].local_id == ct.local_id {
+				sf.transforms[i].parent = Ref{ pptr = PPtr{local_id = parent_lid} }
+				break
+			}
+		}
+	}
+}
+
 // Walks the nested-owned subtree for override capture. `outer_ns` is the
 // NestedScene we're capturing for; `outer_host` is the live transform it
 // resolves to. Items belonging to a *different* NS (inner prefabs nested under
@@ -275,12 +311,13 @@ _collect_nested_owned_subtree :: proc(
 _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) {
 	if s == nil || ns == nil do return nil, false
 
-	prefab_raw, ok := scene_lib[ns.source_prefab]
-	if !ok {
-		if !scene_lib_register(ns.source_prefab) do return nil, false
-		prefab_raw, ok = scene_lib[ns.source_prefab]
-		if !ok do return nil, false
-	}
+	// Baseline = the prefab RESOLVED (variant inheritance flattened: base +
+	// the variant's own overrides + additions). For a flat prefab this is its
+	// raw bytes. Using raw here would diff against an unresolved variant file
+	// and lose overrides on nested-variant content.
+	prefab_raw, owned := _prefab_resolved_bytes(ns.source_prefab)
+	if prefab_raw == nil do return nil, false
+	defer if owned do delete(prefab_raw)
 
 	clone_raw :: proc(src: []byte) -> []byte {
 		out := make([]byte, len(src))
@@ -397,12 +434,12 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	host_t := pool_get(&w.transforms, Handle(host_tH))
 	if host_t == nil do return
 
-	prefab_raw, has_prefab := scene_lib[ns.source_prefab]
-	if !has_prefab {
-		if !scene_lib_register(ns.source_prefab) do return
-		prefab_raw, has_prefab = scene_lib[ns.source_prefab]
-		if !has_prefab do return
-	}
+	// Resolved prefab bytes (variant inheritance flattened) — used for the base
+	// root id and the missing-target cleanup, both of which must see the
+	// variant's full resolved lid set, not the raw variant file.
+	prefab_raw, prefab_raw_owned := _prefab_resolved_bytes(ns.source_prefab)
+	if prefab_raw == nil do return
+	defer if prefab_raw_owned do delete(prefab_raw)
 
 	prefab_root_id: Local_ID
 	{
@@ -742,12 +779,25 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	// duplicate the inner prefab's metadata into this file and, on reload,
 	// turn the inner host transforms into ghost nested-scene hosts.
 	native_ns_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+	root_variant_ns_lid := Local_ID(0)
 	for &ns in s.nested_scenes {
 		if ns.expand_parent != {} do continue
-		append(&sf.nested_scenes, ns)
+		rec := ns
+		// A variant's root NS is hosted by a synthesized placeholder root that
+		// is NOT persisted. Write it back in its on-disk shape: transform_parent
+		// == 0 (the variant marker) and no host breadcrumb.
+		if nested_scene_is_root_variant(s, &ns) {
+			rec.transform_parent = 0
+			rec.host_breadcrumb_id = 0
+			root_variant_ns_lid = ns.local_id
+		}
+		append(&sf.nested_scenes, rec)
 		native_ns_lids[ns.local_id] = true
 	}
 	for _, bc in s.breadcrumb_data {
+		// The root-variant NS's host peg points at the synthesized placeholder,
+		// which isn't persisted — drop it (the on-disk record has no host).
+		if root_variant_ns_lid != 0 && bc.scene_instance == root_variant_ns_lid do continue
 		// Keep only breadcrumbs whose owning NestedScene is also native (or
 		// that aren't host pegs at all — cross-scene Handle pegs survive).
 		if native_ns_lids[bc.scene_instance] {
@@ -760,8 +810,26 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	if s.root.handle != {} {
 		t := pool_get(&w.transforms, s.root.handle)
 		if t != nil {
-			sf.root = t.local_id
-			_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
+			// Variant case: the scene root is a synthesized placeholder hosting
+			// the root-variant NS. Don't write the placeholder or the base's
+			// transforms (they live in the base file) — only the variant's own
+			// ADDED content (non-nested-owned transforms under the base subtree).
+			// sf.root names the base root source lid so reload re-materializes
+			// the base via the (transform_parent: 0) root NS.
+			root_ns: ^NestedScene
+			for &ns in s.nested_scenes {
+				if nested_scene_is_root_variant(s, &ns) {
+					root_ns = &ns
+					break
+				}
+			}
+			if root_ns != nil {
+				sf.root = root_ns.source_root_id != 0 ? root_ns.source_root_id : t.local_id
+				_collect_variant_added_subtree(w, Transform_Handle(s.root.handle), &sf, Transform_Handle(s.root.handle), sf.root)
+			} else {
+				sf.root = t.local_id
+				_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
+			}
 		}
 	}
 
@@ -821,6 +889,55 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	}
 
 	fmt.printf("[Scene] Saved scene to %s\n", path)
+	return true
+}
+
+// Authors a prefab-variant scene file at `out_path` whose root is a NestedScene
+// over the base scene at `base_path` (transform_parent == 0, no overrides, no
+// added content). Mirrors the on-disk shape produced by saving a variant. The
+// caller is responsible for refreshing AssetDB so the new file gets a .meta and
+// for loading it. Returns false if the base can't be read or has no GUID.
+scene_create_variant_file :: proc(base_path: string, out_path: string) -> bool {
+	base_guid, gok := asset_db_get_guid(base_path)
+	if !gok do return false
+
+	base_sf, lok := scene_file_load(base_path)
+	if !lok do return false
+	base_root_lid := base_sf.root
+	scene_file_destroy(&base_sf)
+	if base_root_lid == 0 do return false
+
+	// Build a minimal variant SceneFile: one root NS, no own transforms. `root`
+	// references the base root lid so reload re-materializes the base via the
+	// root-variant load path. Local ids for the NS sit above the base's
+	// namespace to avoid colliding with materialized base lids.
+	ns_lid := base_root_lid + 1000
+	vf := SceneFile{}
+	vf.root = base_root_lid
+	vf.next_local_id = ns_lid + 1
+	append(&vf.nested_scenes, NestedScene{
+		local_id           = ns_lid,
+		local_id_in_parent = ns_lid,
+		source_prefab      = Asset_GUID(base_guid),
+		transform_parent   = 0,
+		host_breadcrumb_id = 0,
+		sibling_index      = 0,
+		overrides          = make([dynamic]Override),
+	})
+	defer scene_file_destroy(&vf)
+
+	opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2}
+	data, err := json.marshal(vf, opts)
+	if err != nil {
+		fmt.printf("[Scene] Failed to marshal variant: %v\n", err)
+		return false
+	}
+	defer delete(data)
+
+	if write_err := os.write_entire_file(out_path, data); write_err != nil {
+		fmt.printf("[Scene] Failed to write variant file: %s — %v\n", out_path, write_err)
+		return false
+	}
 	return true
 }
 

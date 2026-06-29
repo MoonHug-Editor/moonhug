@@ -5,6 +5,7 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:path/filepath"
+import "core:encoding/uuid"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import clip "clipboard"
@@ -61,6 +62,88 @@ _hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
 
 @(private)
 _hierarchy_nav_list: [dynamic]engine.Transform_Handle
+
+// --- Scene edit stack (Unity prefab-mode style) ----------------------------
+// Entering a nested scene opens its SOURCE .scene asset (replacing the open
+// scene). Each frame records the scene that was open before entering, so `<`
+// can reload it. Editor-only state; the engine is unchanged.
+
+Scene_Edit_Frame :: struct {
+	path: string,             // owned; cloned on push, freed on pop/clear
+	guid: engine.Asset_GUID,
+}
+
+// Hierarchy table columns. Today: a stretchy name column and a fixed right-side
+// actions column (the ">" enter button). To add Unity-style left toggles later,
+// insert a left column at index 0, bump the indices and count, and add a
+// matching TableSetupColumn in _draw_scene_section.
+_HIER_COL_NAME :: 0
+_HIER_COL_ACTIONS_R :: 1
+_HIER_COL_COUNT :: 2
+
+@(private)
+_edit_stack: [dynamic]Scene_Edit_Frame
+
+// Reset the edit stack (fresh navigation, e.g. opening a scene from the project
+// panel). Frees owned paths.
+hierarchy_edit_stack_clear :: proc() {
+	for &f in _edit_stack do delete(f.path)
+	clear(&_edit_stack)
+}
+
+// Make a button paint no background (transparent in its resting state), keeping
+// only the hover/active tints. Caller must PopStyleColor(3).
+@(private)
+_push_transparent_button_bg :: proc() {
+	transparent := im.Vec4{0, 0, 0, 0}
+	hover := im.GetStyleColorVec4(im.Col.ButtonHovered)^
+	active := im.GetStyleColorVec4(im.Col.ButtonActive)^
+	im.PushStyleColorImVec4(im.Col.Button, transparent)
+	im.PushStyleColorImVec4(im.Col.ButtonHovered, hover)
+	im.PushStyleColorImVec4(im.Col.ButtonActive, active)
+}
+
+@(private)
+_edit_stack_guid_present :: proc(guid: engine.Asset_GUID) -> bool {
+	if guid == (engine.Asset_GUID{}) do return false
+	cur := engine.sm_scene_get_active()
+	if cur != nil && cur.asset_guid == guid do return true
+	for f in _edit_stack {
+		if f.guid == guid do return true
+	}
+	return false
+}
+
+// Enter a nested scene: open its source asset, pushing the current scene so `<`
+// can return. Cycle guard: if `source_guid` is already open or on the stack,
+// reload it WITHOUT pushing (a prefab can't contain itself; keep finite).
+@(private)
+_hierarchy_enter_scene :: proc(source_path: string, source_guid: engine.Asset_GUID) {
+	push := !_edit_stack_guid_present(source_guid)
+	if push {
+		cur := engine.sm_scene_get_active()
+		if cur != nil && len(cur.path) > 0 {
+			frame := Scene_Edit_Frame{ path = strings.clone(cur.path), guid = cur.asset_guid }
+			append(&_edit_stack, frame)
+		}
+	}
+	undo.clear(undo.get())
+	_hierarchy_selected = _HANDLE_NONE
+	scene := engine.scene_load_single_path(source_path)
+	engine.sm_scene_set_active(scene)
+}
+
+// Exit one level: reload the parent scene recorded on the stack top.
+@(private)
+_hierarchy_exit_scene :: proc() {
+	if len(_edit_stack) == 0 do return
+	frame := pop(&_edit_stack)
+	defer delete(frame.path)
+	undo.clear(undo.get())
+	_hierarchy_selected = _HANDLE_NONE
+	scene := engine.scene_load_single_path(frame.path)
+	engine.sm_scene_set_active(scene)
+}
 
 @(private)
 _save_as_buf: [512]byte
@@ -162,6 +245,16 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 
 	im.Separator()
 
+	// "<" up button: when inside an entered nested scene, go back to the parent.
+	if len(_edit_stack) > 0 {
+		_push_transparent_button_bg()
+		if im.Button("<", im.Vec2{20, 0}) {
+			_hierarchy_exit_scene()
+		}
+		im.PopStyleColor(3)
+		im.SameLine()
+	}
+
 	im.Text(strings.clone_to_cstring(scene_name, context.temp_allocator))
 	btn_size := im.Vec2{24, 0}
 	im.SameLine(im.GetContentRegionAvail().x + im.GetCursorPosX() - btn_size.x)
@@ -203,7 +296,19 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	_draw_save_as_popup(scene)
 
 	root_tH := engine.Transform_Handle(scene.root.handle)
-	_draw_hierarchy_node(root_tH, scene, is_root = true)
+
+	// Each scene's tree is laid out in a table so per-row action widgets (the ">"
+	// enter button today; visibility/lock toggles later) get their own columns
+	// instead of being manually positioned over the row. Column layout is the
+	// stretchy name column plus a fixed right-actions column. A left-actions
+	// column can be added later (see _HIER_COL_* and the row code in
+	// _draw_hierarchy_node) without touching the recursion.
+	if im.BeginTable("##HierTable", _HIER_COL_COUNT, im.TableFlags_NoBordersInBody) {
+		im.TableSetupColumn("##name", {.WidthStretch})
+		im.TableSetupColumn("##actions_r", {.WidthFixed}, 24)
+		_draw_hierarchy_node(root_tH, scene, is_root = true)
+		im.EndTable()
+	}
 
 	if is_last {
 		_draw_drop_target_empty_space(scene)
@@ -268,7 +373,18 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	pushed_dim := !t.is_active && !parent_inactive
 	inactive := parent_inactive || !t.is_active
 
-	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAvailWidth}
+	// SpanAllColumns makes the row's frame (hover highlight + hit box) cover the
+	// full table width including the indent and the actions column, so hover
+	// highlights the whole row and clicks register anywhere on it. The ">" button
+	// still takes its own clicks because it's a later widget in its own column.
+	is_ns_host := sc != nil && engine.scene_hierarchy_transform_is_nested_scene_host(sc, tH)
+	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAllColumns}
+	// The row frame spans all columns (incl. the actions column), so let the ">"
+	// button — a later, overlapping item — take its own clicks. AllowOverlap in
+	// this imgui version is non-swallowing hit-testing, safe to keep on host rows.
+	if is_ns_host {
+		flags += {.AllowOverlap}
+	}
 	if is_selected {
 		flags += {.Selected}
 	}
@@ -281,6 +397,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	im.PushIDInt(c.int(engine.Handle(tH).index))
 
+	// This node occupies one table row: the tree node lives in the name column,
+	// the ">" button in the right actions column.
+	im.TableNextRow()
+	im.TableSetColumnIndex(_HIER_COL_NAME)
+
 	if pushed_dim {
 		im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
 	}
@@ -292,11 +413,21 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.SetNextItemOpen(v)
 		delete_key(&_hierarchy_alt_open_pending, tH)
 	}
+	// Cursor x BEFORE the node is the indented content start within the name
+	// column. SpanAllColumns moves the node's ItemRect min to the table's left
+	// edge, so we can't derive the label/arrow x from it — capture it here.
+	content_x := im.GetCursorScreenPos().x
 	node_open := im.TreeNodeEx("##n", flags)
+
+	// Capture the ROW's click/hover state now, before drawing the ">" button —
+	// IsItemClicked() refers to the last item, which becomes the button below.
+	node_clicked := im.IsItemClicked(.Left)
+	node_hovered := im.IsItemHovered({})
 
 	append(&_hierarchy_nav_list, tH)
 
-	if has_children && im.IsItemToggledOpen() {
+	node_toggled := has_children && im.IsItemToggledOpen()
+	if node_toggled {
 		if im.GetIO().KeyAlt {
 			_populate_alt_open_pending(tH, t, node_open)
 		}
@@ -304,7 +435,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
 
-	text_x := node_rect_min.x + im.GetTreeNodeToLabelSpacing()
+	text_x := content_x + im.GetTreeNodeToLabelSpacing()
 	if is_renaming {
 		input_width := node_rect_max.x - text_x
 		im.SetCursorScreenPos(im.Vec2{text_x, node_rect_min.y})
@@ -335,17 +466,63 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
 		label := t.name
-		if sc != nil && engine.scene_hierarchy_transform_is_nested_scene_host(sc, tH) {
+		if is_ns_host {
 			label = strings.concatenate({t.name, "  [nested scene]"}, context.temp_allocator)
 		}
+		// The name column clips its own contents, so the label can't bleed into
+		// the actions column — no manual clip rect needed.
 		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(label, context.temp_allocator))
+
+		// ">" enter button on a nested-scene host: opens its source .scene asset.
+		// Lives in its own table column, so it never overlaps the name/row.
+		if is_ns_host {
+			if ns := engine.scene_find_nested_scene_for_host(sc, tH); ns != nil && ns.source_prefab != (engine.Asset_GUID{}) {
+				if src_path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
+					im.TableSetColumnIndex(_HIER_COL_ACTIONS_R)
+					// Right-align the button within its cell, against the edge.
+					btn_w := im.CalcTextSize(">").x + im.GetStyle().FramePadding.x * 2
+					avail := im.GetContentRegionAvail().x
+					if avail > btn_w {
+						im.SetCursorPosX(im.GetCursorPosX() + avail - btn_w)
+					}
+					_push_transparent_button_bg()
+					defer im.PopStyleColor(3)
+					if im.SmallButton(">") {
+						// Enter replaces the open scene; this row's tH is now
+						// invalid — bail out of the rest of the node draw, undoing
+						// the same stack state the normal exit path would.
+						_hierarchy_enter_scene(src_path, ns.source_prefab)
+						if node_open && has_children do im.TreePop()
+						if pushed_dim do im.PopStyleColor()
+						im.PopID()
+						return
+					}
+				}
+			}
+		}
 	}
 
-	if im.IsItemClicked(.Left) && !is_renaming {
-		_hierarchy_selected = tH
+	// Click handling: a click in the indent/arrow strip (left of the label) is a
+	// FOLD action and must never select; a click on the label/body selects.
+	// Widening the toggle to the whole strip avoids needing a pixel-perfect hit on
+	// the tiny arrow glyph.
+	if node_clicked {
+		in_arrow_zone := has_children && im.GetIO().MousePos.x < text_x
+		if in_arrow_zone {
+			// If imgui's own arrow hit-test didn't already toggle, do it ourselves.
+			if !node_toggled {
+				_hierarchy_alt_open_pending[tH] = !node_open
+			}
+			// Either way this was a fold, not a selection.
+		} else if !is_renaming {
+			_hierarchy_selected = tH
+		}
 	}
 
-	if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) && !is_renaming && !is_nested {
+	// Double-click renames — but NOT when this interaction toggled the fold,
+	// otherwise the rename z-fights with the open/close arrow. imgui's own
+	// hit-test (IsItemToggledOpen) tells us the arrow handled this click.
+	if node_hovered && im.IsMouseDoubleClicked(.Left) && !is_renaming && !is_nested && !node_toggled {
 		_begin_rename(tH)
 	}
 

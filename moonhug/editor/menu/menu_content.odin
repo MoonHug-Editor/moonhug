@@ -19,6 +19,9 @@ apply_theme :: proc() {
     case .Light:   im.StyleColorsLight()
     case .Classic: im.StyleColorsClassic()
     }
+    // StyleColors* resets the full style, so re-apply our overrides here.
+    // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
+    im.GetStyle().IndentSpacing = 14
 }
 
 set_theme :: proc(theme: Theme) {

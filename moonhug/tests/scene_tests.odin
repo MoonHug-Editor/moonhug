@@ -2092,3 +2092,750 @@ _vec3_less :: proc(a, b: [3]f32) -> bool {
 	return a[2] < b[2]
 }
 
+// ---------------------------------------------------------------------------
+// Prefab variants — a scene whose own root IS a NestedScene over a base prefab
+// (transform_parent == 0). The scene is "base + my overrides + my added
+// content". VariantC.scene is a variant of TestC with name/position overrides
+// on TransformC and one added child (VariantExtra) grafted under the base root.
+// ---------------------------------------------------------------------------
+
+// Regression: resolving a scene with multiple nested scenes + deep overrides
+// appends to s.nested_scenes mid-resolve, which can reallocate the dynamic
+// array and dangle the `ns` pointer captured at the top of nested_scene_resolve.
+// The deep-override pass (nested_scene.odin:_nested_scene_apply_deep_overrides_live)
+// iterated ns.overrides through that dangling pointer → EXC_BAD_ACCESS. Loading
+// several such scenes additively (as the editor does) must not crash and must
+// resolve the deep overrides. TestA nests TestB twice with deep TestC/TestD
+// overrides — exactly that shape.
+@(test)
+test_additive_load_deep_overrides_no_dangling :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// Load several deep-override scenes additively (they coexist, sharing the
+	// transform/NS pools) — the editor's open path.
+	a := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	testing.expect(t, a != nil, "TestA loaded")
+	b := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, b != nil, "HostVariant loaded")
+	c := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	testing.expect(t, c != nil, "second TestA loaded")
+	tc_mem.scene = c
+
+	// Deep overrides resolved (TestA sets TestC position {50,50,50}); reading the
+	// nested content proves the deep-override pass ran against a valid `ns`.
+	hb := find_transform_named(&tc_mem.world, a, "TestB", false)
+	tc := find_nested_named_under_host(&tc_mem.world, a, hb, "TransformC")
+	testing.expect(t, tc != {}, "TransformC resolves under TestA's TestB")
+	if tc != {} {
+		tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc))
+		testing.expect(t, tt != nil)
+		if tt != nil do testing.expect_value(t, tt.position, [3]f32{50, 50, 50})
+	}
+
+	// Unload the extra additive scenes (teardown only frees tc_mem.scene).
+	engine.sm_scene_destroy_or_unload(a)
+	engine.sm_scene_destroy_or_unload(b)
+}
+
+@(test)
+test_variant_loads_base_plus_overrides :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil, "VariantC.scene should load")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// The base prefab (TestC) is materialized as the scene root: a native host
+	// transform that adopts the base root's name ("RootC") and transform, with
+	// the base content (TransformC, TestD) nested-owned beneath it, and the
+	// variant's added child grafted under it.
+	root_c := find_transform_named(&tc_mem.world, loaded, "RootC", false)
+	testing.expect(t, root_c != {}, "RootC (base root) should be the resolved scene root")
+
+	// Overridden name: TransformC -> TransformC_Variant.
+	tc_variant := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tc_variant != {}, "TransformC should carry the variant's name override")
+	if tc_variant != {} {
+		tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_variant))
+		testing.expect(t, tt != nil)
+		if tt != nil {
+			testing.expect_value(t, tt.position, [3]f32{71, 81, 91})
+		}
+	}
+
+	// The variant's added child is present (it is NOT part of TestC).
+	extra := find_transform_named(&tc_mem.world, loaded, "VariantExtra", false)
+	if extra == {} {
+		extra = find_transform_named(&tc_mem.world, loaded, "VariantExtra", true)
+	}
+	testing.expect(t, extra != {}, "VariantExtra (added child) should be present in the resolved tree")
+}
+
+// The inspector decides override badge + Apply/Revert via these engine procs:
+// the scene root must be recognized as the variant root NS's host, and the
+// variant's own override on a base transform must be locatable from there.
+@(test)
+test_variant_inspector_host_and_override_lookup :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	root_c := find_transform_named(&tc_mem.world, loaded, "RootC", false)
+	testing.expect(t, root_c != {})
+	if root_c == {} do return
+
+	// (a) The scene root is recognized as a nested-scene host (drives the
+	// hierarchy badge + inspector nested banner).
+	testing.expect(t, engine.scene_find_nested_scene_for_host(loaded, root_c) != nil,
+		"scene root should host the variant root NS")
+	testing.expect(t, engine.scene_hierarchy_transform_is_nested_scene_host(loaded, root_c),
+		"hierarchy should show the variant root as a nested-scene host")
+
+	// (b) A base transform's immediate nested host resolves to the scene root
+	// (drives inspector_set_nested_host on selection).
+	tc_variant := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tc_variant != {})
+	if tc_variant == {} do return
+	imm_host := engine.transform_immediate_nested_host(tc_variant)
+	testing.expect(t, imm_host == root_c, "TransformC's immediate nested host should be the variant root")
+
+	// (c) The variant's own overrides on TransformC (lid 2) are locatable from
+	// the root host — this is what makes the override badge + Apply/Revert show.
+	tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_variant))
+	if tt == nil do return
+	testing.expect(t, engine.nested_scene_has_root_override(loaded, imm_host, tt.local_id, "name"),
+		"variant's own 'name' override should be locatable for the inspector")
+	testing.expect(t, engine.nested_scene_has_root_override(loaded, imm_host, tt.local_id, "position"),
+		"variant's own 'position' override should be locatable for the inspector")
+	// A non-overridden field must NOT report as overridden.
+	testing.expect(t, !engine.nested_scene_has_root_override(loaded, imm_host, tt.local_id, "scale"),
+		"non-overridden field should not report as overridden")
+}
+
+@(test)
+test_variant_save_round_trip :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_round_trip.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path), "variant should save")
+
+	// The saved file must keep a transform_parent:0 root NS pointing at TestC,
+	// and must NOT duplicate the base's transforms — only the added child.
+	sf, fok := engine.scene_file_load(tc_mem.path)
+	testing.expect(t, fok, "saved variant should reload as a SceneFile")
+	if fok {
+		guid_c, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
+		guid_c_a := engine.Asset_GUID(guid_c)
+
+		root_ns_found := false
+		for ns in sf.nested_scenes {
+			if ns.transform_parent == 0 && ns.source_prefab == guid_c_a {
+				root_ns_found = true
+			}
+		}
+		testing.expect(t, root_ns_found, "saved file should have a transform_parent:0 NS over TestC")
+
+		// No base transforms (RootC/TransformC/TestD) — only VariantExtra.
+		for tr in sf.transforms {
+			testing.expect(t, strings.compare(tr.name, "RootC") != 0, "base RootC must not be written to the variant file")
+			testing.expect(t, strings.compare(tr.name, "TransformC") != 0, "base TransformC must not be written")
+			testing.expect(t, strings.compare(tr.name, "TransformC_Variant") != 0, "overridden base name must not be written as a transform")
+		}
+		extra_found := false
+		for tr in sf.transforms {
+			if strings.compare(tr.name, "VariantExtra") == 0 do extra_found = true
+		}
+		testing.expect(t, extra_found, "the variant's added child should be written to the file")
+		engine.scene_file_destroy(&sf)
+	}
+
+	// Reload the saved variant and confirm the resolved tree is intact.
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	tc_variant := find_transform_named(&tc_mem.world, reloaded, "TransformC_Variant", true)
+	testing.expect(t, tc_variant != {}, "override should survive round-trip")
+	if tc_variant != {} {
+		tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_variant))
+		if tt != nil do testing.expect_value(t, tt.position, [3]f32{71, 81, 91})
+	}
+	extra := find_transform_named(&tc_mem.world, reloaded, "VariantExtra", false)
+	testing.expect(t, extra != {}, "added child should survive round-trip")
+	if extra != {} {
+		et := engine.pool_get(&tc_mem.world.transforms, engine.Handle(extra))
+		if et != nil do testing.expect_value(t, et.position, [3]f32{11, 22, 33})
+	}
+}
+
+@(test)
+test_variant_edit_captures_override :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_edit.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// Mutate a base child field that is NOT already overridden (TransformC's
+	// scale; only name/position are pre-overridden). This should be captured as
+	// a NEW override on the root NS, not as a native transform.
+	tc_v := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tc_v != {})
+	if tc_v == {} do return
+	ct := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v))
+	if ct == nil do return
+	tc_lid := ct.local_id
+	ct.scale = {2, 2, 2}
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	sf, fok := engine.scene_file_load(tc_mem.path)
+	testing.expect(t, fok)
+	if fok {
+		found_scale_ov := false
+		for ns in sf.nested_scenes {
+			if ns.transform_parent != 0 do continue
+			for ov in ns.overrides {
+				if ov.target.local_id == tc_lid && strings.compare(ov.property_path, "scale") == 0 {
+					if override_vec3_matches(ov.value, {2, 2, 2}) do found_scale_ov = true
+				}
+			}
+		}
+		testing.expect(t, found_scale_ov, "editing a base field should capture a new override on the root NS")
+		// And it must not have been written as a native transform.
+		for tr in sf.transforms {
+			testing.expect(t, strings.compare(tr.name, "TransformC_Variant") != 0, "base content must not leak into the variant file as a transform")
+		}
+		engine.scene_file_destroy(&sf)
+	}
+}
+
+@(test)
+test_create_scene_variant_file :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	// Write the variant OUTSIDE the scanned fixtures dir so a mid-test failure
+	// can't leave a meta-less .scene that breaks future asset_db_init scans.
+	out_path := "moonhug/tests/fixtures/_TestC_Variant.scene"
+	defer os.remove(out_path)
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	base_path := "moonhug/tests/fixtures/nested_scenes/TestC.scene"
+	ok := engine.scene_create_variant_file(base_path, out_path)
+	testing.expect(t, ok, "creating a variant file should succeed")
+	if !ok do return
+
+	// File on disk: a single root NS (transform_parent 0) over TestC, no transforms.
+	guid_c, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
+	guid_c_a := engine.Asset_GUID(guid_c)
+	{
+		sf, fok := engine.scene_file_load(out_path)
+		testing.expect(t, fok, "variant file should load")
+		if fok {
+			testing.expect_value(t, len(sf.nested_scenes), 1)
+			if len(sf.nested_scenes) == 1 {
+				ns := sf.nested_scenes[0]
+				testing.expect_value(t, ns.transform_parent, engine.Local_ID(0))
+				testing.expect(t, ns.source_prefab == guid_c_a, "variant NS should point at TestC")
+				testing.expect_value(t, len(ns.overrides), 0)
+			}
+			testing.expect_value(t, len(sf.transforms), 0)
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// Load it: resolves to TestC's content via the root NS. (The editor mints
+	// the .meta via asset_db_refresh; load only needs the BASE guid, already
+	// indexed, so we skip the refresh — its crypto-RNG GUID mint isn't wired in
+	// the test context.)
+	loaded := engine.scene_load_single_path(out_path)
+	testing.expect(t, loaded != nil, "created variant should load + resolve")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	root_c := find_transform_named(&tc_mem.world, loaded, "RootC", false)
+	testing.expect(t, root_c != {}, "variant should resolve the base root (RootC)")
+
+	// The resolved variant must look like the base scene — NO extra wrapper/Root
+	// transform. TestC.scene has exactly one transform named "RootC"; the variant
+	// must too (the placeholder adopts the base root, it is not a separate node).
+	rootc_count := 0
+	for i in 0 ..< len(tc_mem.world.transforms.slots) {
+		slot := &tc_mem.world.transforms.slots[i]
+		if !slot.alive do continue
+		if slot.data.scene == loaded && strings.compare(slot.data.name, "RootC") == 0 {
+			rootc_count += 1
+		}
+	}
+	testing.expect_value(t, rootc_count, 1)
+
+	// Re-saving an opened variant must NOT emit the placeholder root (or any base
+	// content) as a transform — the file stays transforms:[] + the root NS.
+	resave_path := "moonhug/tests/fixtures/_TestC_Variant_resave.scene"
+	defer os.remove(resave_path)
+	testing.expect(t, engine.scene_save(loaded, resave_path))
+	{
+		sf, fok := engine.scene_file_load(resave_path)
+		testing.expect(t, fok)
+		if fok {
+			testing.expect_value(t, len(sf.transforms), 0)
+			testing.expect_value(t, len(sf.nested_scenes), 1)
+			if len(sf.nested_scenes) == 1 {
+				testing.expect_value(t, sf.nested_scenes[0].transform_parent, engine.Local_ID(0))
+			}
+			engine.scene_file_destroy(&sf)
+		}
+	}
+}
+
+// Variant-as-nested: a normal scene nesting a variant as a child. The hosted
+// resolve path materializes the inner variant's base + variant-overrides +
+// variant-additions under the host.
+@(test)
+test_variant_nested_in_scene :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil, "HostVariant.scene should load")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host := find_transform_named(&tc_mem.world, loaded, "VariantHost", false)
+	testing.expect(t, host != {}, "VariantHost should be present as a native host")
+
+	// The variant's overridden TransformC and its added child resolve nested
+	// under the host.
+	tc_variant := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tc_variant != {}, "variant override should resolve through the nested variant")
+	if tc_variant != {} {
+		tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_variant))
+		if tt != nil do testing.expect_value(t, tt.position, [3]f32{71, 81, 91})
+	}
+
+	extra := find_transform_named(&tc_mem.world, loaded, "VariantExtra", true)
+	testing.expect(t, extra != {}, "variant's added child should resolve through the nested variant")
+
+	// Override ownership (Unity model): the NESTED variant's OWN overrides are
+	// baked into its baseline — they must NOT show as the host's editable/
+	// revertable overrides. Only the host scene's own overrides on the nested
+	// content are editable from here (there are none in this fixture).
+	if tc_variant != {} {
+		tt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_variant))
+		if tt != nil {
+			imm_host := engine.transform_immediate_nested_host(tc_variant)
+			testing.expect(t, imm_host != {}, "nested content should have a host")
+			// VariantC overrides TransformC's name + position; from the host
+			// scene those are baked, not active overrides.
+			testing.expect(t, !engine.nested_scene_has_root_override(loaded, imm_host, tt.local_id, "name"),
+				"inner variant's own 'name' override must be baked, not editable from the host")
+			testing.expect(t, !engine.nested_scene_has_root_override(loaded, imm_host, tt.local_id, "position"),
+				"inner variant's own 'position' override must be baked, not editable from the host")
+		}
+	}
+}
+
+// An override on the variant's OWN ROOT transform (not a child) must persist
+// across save+reload, same as a child override.
+@(test)
+test_variant_root_override_round_trip :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_root_ov.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// Change the variant's ROOT transform (RootC, the scene root) position.
+	root_c := find_transform_named(&tc_mem.world, loaded, "RootC", false)
+	testing.expect(t, root_c != {})
+	if root_c == {} do return
+	rt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(root_c))
+	if rt == nil do return
+	root_lid := rt.local_id
+	rt.position = {12, 34, 56}
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	// The saved root NS must carry a position override on the base root lid.
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			found := false
+			for ns in sf.nested_scenes {
+				if ns.transform_parent != 0 do continue
+				for ov in ns.overrides {
+					if ov.target.local_id == root_lid && strings.compare(ov.property_path, "position") == 0 &&
+						override_vec3_matches(ov.value, {12, 34, 56}) {
+						found = true
+					}
+				}
+			}
+			testing.expect(t, found, "root-transform override must be saved on the root NS")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// Reload: the override is applied to the live root.
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+	root_c2 := find_transform_named(&tc_mem.world, reloaded, "RootC", false)
+	testing.expect(t, root_c2 != {})
+	if root_c2 == {} do return
+	rt2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(root_c2))
+	if rt2 == nil do return
+	testing.expect_value(t, rt2.position, [3]f32{12, 34, 56})
+}
+
+// An override on a COMPONENT of the variant's root (e.g. SpriteRenderer.color)
+// must persist across save+reload — the root's inherited components are baked
+// baseline, so changes to them are overrides like any nested content.
+@(test)
+test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_root_comp.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/SpriteRootVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// The variant overrides the root SpriteRenderer color to blue at load.
+	root_tH := engine.Transform_Handle(loaded.root.handle)
+	_, sr := engine.transform_get_comp(root_tH, engine.SpriteRenderer)
+	testing.expect(t, sr != nil, "variant root should carry the inherited SpriteRenderer")
+	if sr == nil do return
+	testing.expect_value(t, sr.color, [4]f32{0, 0, 1, 1})
+
+	// Override it again (green) and round-trip.
+	sr.color = {0, 1, 0, 1}
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+	_, sr2 := engine.transform_get_comp(engine.Transform_Handle(reloaded.root.handle), engine.SpriteRenderer)
+	testing.expect(t, sr2 != nil)
+	if sr2 == nil do return
+	testing.expect_value(t, sr2.color, [4]f32{0, 1, 0, 1})
+}
+
+// Nesting a variant inside a scene, saving, and reloading must keep the nested
+// variant. Regression for inner placeholder NS records leaking into the file.
+@(test)
+test_variant_nested_in_scene_round_trip :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_hostvariant_rt.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+	tcv := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tcv != {}, "sanity: nested variant resolves before save")
+
+	// Edit nested-variant content in the HOST scene: this must be captured as an
+	// override on the host's NS-for-VariantC and reload.
+	if tcv != {} {
+		ct := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tcv))
+		if ct != nil do ct.position = {7, 7, 7}
+	}
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path), "save should succeed")
+
+	// The saved file must NOT contain leaked inner NS records: every persisted
+	// NS must have a host transform present in the file (transform_parent points
+	// at a transform that exists, or transform_parent == 0 for a root variant).
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			tr_lids := make(map[engine.Local_ID]bool, 0, context.temp_allocator)
+			for tr in sf.transforms do tr_lids[tr.local_id] = true
+			for ns in sf.nested_scenes {
+				if ns.transform_parent == 0 do continue
+				testing.expect(t, tr_lids[ns.transform_parent],
+					fmt.tprintf("persisted NS host transform_parent=%d must exist in file (no leaked inner records)", ns.transform_parent))
+			}
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	testing.expect(t, find_transform_named(&tc_mem.world, reloaded, "VariantHost", false) != {},
+		"host should survive round-trip")
+	tcv2 := find_transform_named(&tc_mem.world, reloaded, "TransformC_Variant", true)
+	testing.expect(t, tcv2 != {}, "nested variant must still be present after save + reload")
+	if tcv2 != {} {
+		ct2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tcv2))
+		testing.expect(t, ct2 != nil)
+		if ct2 != nil {
+			testing.expect_value(t, ct2.position, [3]f32{7, 7, 7})
+		}
+	}
+}
+
+// A prefab that nests its own variant (CycleA nests CycleAVariant, which is a
+// variant of CycleA) is a malformed nesting cycle. Resolve must detect it and
+// skip rather than recurse forever / overflow the stack.
+@(test)
+test_variant_nesting_cycle_does_not_crash :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// Load the cyclic variant directly, and the prefab that nests it. Neither
+	// should crash; both should return a finite scene.
+	v := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/CycleAVariant.scene")
+	testing.expect(t, v != nil, "cyclic variant should load without crashing")
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/CycleA.scene")
+	testing.expect(t, loaded != nil, "prefab nesting its own variant should load without crashing")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// The native root + host resolve; the cycle is broken (finite transform set).
+	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "CycleARoot", false) != {})
+	count := 0
+	for i in 0 ..< len(tc_mem.world.transforms.slots) {
+		if tc_mem.world.transforms.slots[i].alive && tc_mem.world.transforms.slots[i].data.scene == loaded {
+			count += 1
+		}
+	}
+	testing.expect(t, count < 100, fmt.tprintf("transform count should be finite/small, got %d", count))
+}
+
+// Reverting an override on nested-variant content must restore the value to the
+// variant's BAKED baseline (its own inherited value), not a value from the
+// variant's unresolved file.
+@(test)
+test_variant_nested_revert :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_nested_revert.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	tcv := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	testing.expect(t, tcv != {})
+	if tcv == {} do return
+	ct := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tcv))
+	if ct == nil do return
+	// VariantC's baked baseline for TransformC position is {71,81,91}.
+	testing.expect_value(t, ct.position, [3]f32{71, 81, 91})
+
+	// Override it in the host, save+reload so the override lands on the host NS.
+	ct.position = {7, 7, 7}
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	tcv2 := find_transform_named(&tc_mem.world, reloaded, "TransformC_Variant", true)
+	testing.expect(t, tcv2 != {})
+	if tcv2 == {} do return
+	ct2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tcv2))
+	if ct2 == nil do return
+	testing.expect_value(t, ct2.position, [3]f32{7, 7, 7})
+
+	// Find the host NS + target that owns the override.
+	owning_ns: ^engine.NestedScene
+	owning_target: engine.PPtr
+	for &nsr in reloaded.nested_scenes {
+		for ov in nsr.overrides {
+			if strings.compare(ov.property_path, "position") == 0 && override_vec3_matches(ov.value, {7, 7, 7}) {
+				owning_ns = &nsr
+				owning_target = ov.target
+				break
+			}
+		}
+		if owning_ns != nil do break
+	}
+	testing.expect(t, owning_ns != nil, "host should own the nested-content override")
+	if owning_ns == nil do return
+
+	engine.nested_scene_revert_override(reloaded, owning_ns, owning_target, "position", &ct2.position)
+
+	// Override removed, and the field restored to the variant's baked baseline.
+	for ov in owning_ns.overrides {
+		testing.expect(t, !(engine.pptr_equals(ov.target, owning_target) && strings.compare(ov.property_path, "position") == 0),
+			"override should be removed after revert")
+	}
+	testing.expect_value(t, ct2.position, [3]f32{71, 81, 91})
+}
+
+// Reproduces the editor workflow: open a variant, nest another variant inside
+// it, save, reload — the nested variant must persist. This is the variant-of-
+// variant nesting case where inner placeholder NS records leaked into the file.
+@(test)
+test_variant_nest_variant_round_trip :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_variant_nest_variant.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// Open VariantC (itself a variant of TestC).
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+	engine.sm_scene_set_active(loaded)
+
+	// Nest a second VariantC under the variant's root.
+	variant_guid, _ := uuid.read("ba583c80-c557-4eae-8a6e-fa440602cef2")
+	root_tH := engine.Transform_Handle(loaded.root.handle)
+	nested := engine.scene_instantiate_guid_nested(engine.Asset_GUID(variant_guid), root_tH)
+	testing.expect(t, nested != {}, "nesting a variant under a variant should succeed")
+	if nested == {} do return
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	// No leaked inner NS records in the file.
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			tr_lids := make(map[engine.Local_ID]bool, 0, context.temp_allocator)
+			for tr in sf.transforms do tr_lids[tr.local_id] = true
+			for ns in sf.nested_scenes {
+				if ns.transform_parent == 0 do continue
+				testing.expect(t, tr_lids[ns.transform_parent],
+					fmt.tprintf("persisted NS host transform_parent=%d must exist in file", ns.transform_parent))
+			}
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// Reload: both the variant's own content and the nested variant survive.
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	// Two TransformC_Variant instances (the host variant's own + the nested one).
+	count := 0
+	for i in 0 ..< len(tc_mem.world.transforms.slots) {
+		slot := &tc_mem.world.transforms.slots[i]
+		if !slot.alive do continue
+		if slot.data.scene == reloaded && strings.compare(slot.data.name, "TransformC_Variant") == 0 {
+			count += 1
+		}
+	}
+	testing.expect(t, count >= 2, fmt.tprintf("expected the host variant + nested variant content after reload, got %d", count))
+}
+

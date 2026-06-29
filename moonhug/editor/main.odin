@@ -264,6 +264,24 @@ scene_create_menu :: proc() {
 	engine.scene_save(scene, save_path)
 }
 
+// Creates a prefab variant of the currently-selected scene asset, written
+// alongside it as "<name>_Variant.scene". Registered into the same menu system
+// as "Create/Scene", so it appears in the project panel's right-click menu and
+// the top Assets menu. Acts on projectViewData.selectedFile (the asset the user
+// last clicked); no-op with a console note if no .scene is selected.
+@(menu_item={path="Assets/Create/Scene Variant", order=-10, shortcut=""})
+scene_create_variant_menu :: proc() {
+	if !strings.has_suffix(projectViewData.selectedFile, ".scene") {
+		fmt.println("[Editor] Create Scene Variant: select a .scene asset first")
+		return
+	}
+	base_path, _ := filepath.join({projectViewData.currentPath, projectViewData.selectedFile}, context.temp_allocator)
+	create_scene_variant(base_path)
+}
+
+@(menu_separator={path="Assets/Create", order=-9})
+scene_create_variant_separator :: proc() {}
+
 _process_undo_shortcuts :: proc() {
 	if engine.ctx_get().is_playmode do return
 	s := undo.get()

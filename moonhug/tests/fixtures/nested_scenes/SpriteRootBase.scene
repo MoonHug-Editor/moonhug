@@ -1,0 +1,43 @@
+{
+  "root": 1,
+  "next_local_id": 60,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "SpriteRoot",
+      "is_active": true,
+      "position": [0, 0, 0],
+      "rotation": [0, 0, 0, 1],
+      "scale": [1, 1, 1],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 50
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "cameras": [],
+  "lifetimes": [],
+  "players": [],
+  "scripts": [],
+  "sprite_renderers": [
+    {
+      "base": {
+        "local_id": 50,
+        "enabled": true
+      },
+      "texture": "00000000-0000-0000-0000-000000000000",
+      "color": [1, 0, 0, 1]
+    }
+  ]
+}

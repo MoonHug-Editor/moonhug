@@ -1,0 +1,117 @@
+{
+  "root": 10,
+  "next_local_id": 15,
+  "transforms": [
+    {
+      "local_id": 10,
+      "name": "HostRoot",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 12,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 12,
+      "name": "VariantHost",
+      "is_active": true,
+      "position": [
+        5.00000000,
+        5.00000000,
+        5.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 10,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 13,
+      "local_id_in_parent": 13,
+      "source_prefab": "ba583c80-c557-4eae-8a6e-fa440602cef2",
+      "transform_parent": 12,
+      "host_breadcrumb_id": 14,
+      "sibling_index": 0,
+      "overrides": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 14,
+      "scene_source": {
+        "local_id": 12,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 13
+    }
+  ],
+  "cameras": [
+
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

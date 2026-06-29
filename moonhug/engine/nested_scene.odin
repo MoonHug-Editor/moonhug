@@ -4,6 +4,7 @@ import "core:encoding/json"
 import "core:strings"
 import "core:reflect"
 import "core:os"
+import "core:fmt"
 import "core:encoding/uuid"
 
 // Unity-style override target: a PPtr directly carrying (deepest_prefab_guid,
@@ -595,6 +596,26 @@ nested_scene_hosts_transform :: proc(s: ^Scene, ns: ^NestedScene, host_tH: Trans
 	return n == 1 && want == host_tH
 }
 
+// On-disk / freshly-loaded marker for a variant's root NestedScene:
+// transform_parent == 0 (no host transform in the file) and native
+// (expand_parent == {}). At load this is rebound to a synthesized placeholder
+// host so resolution/inspector/save treat it as an ordinary hosted NS; save
+// writes transform_parent back to 0.
+nested_scene_is_root :: proc(ns: ^NestedScene) -> bool {
+	return ns != nil && ns.transform_parent == 0 && ns.expand_parent == {}
+}
+
+// Runtime marker for a loaded variant's root NS: a native NS (expand_parent
+// == {}) whose host transform IS the scene root (the synthesized placeholder).
+// Used by save to write transform_parent back to 0 and to avoid emitting the
+// placeholder as a transform.
+nested_scene_is_root_variant :: proc(s: ^Scene, ns: ^NestedScene) -> bool {
+	if s == nil || ns == nil || ns.expand_parent != {} do return false
+	if s.root.handle == {} do return false
+	host := nested_scene_resolve_host_handle(s, ns)
+	return host != {} && Handle(host) == s.root.handle
+}
+
 nested_scene_resolve_host_handle :: proc(s: ^Scene, ns: ^NestedScene) -> Transform_Handle {
 	if s == nil || ns == nil do return {}
 
@@ -658,6 +679,126 @@ scene_find_nested_scene_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -
 	return nil
 }
 
+// Returns the prefab's bytes with variant inheritance flattened: for a flat
+// prefab, its raw bytes (owned=false, an alias of scene_lib); for a variant
+// (a file whose nested_scenes hold a record with transform_parent == 0), the
+// base resolved + the variant's own overrides baked in + the variant's added
+// transforms merged — a normal flat scene file. Recurses for variant-of-variant.
+// `owned` is true when the returned slice is freshly allocated (caller frees).
+_prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, owned: bool) {
+    if depth > 32 do return nil, false
+    raw, has := scene_lib[guid]
+    if !has {
+        if !scene_lib_register(guid) do return nil, false
+        raw, has = scene_lib[guid]
+        if !has do return nil, false
+    }
+
+    vf: SceneFile
+    {
+        cpy := make([]byte, len(raw), context.temp_allocator)
+        copy(cpy, raw)
+        if json.unmarshal(cpy, &vf) != nil do return nil, false
+    }
+    root_ns_idx := -1
+    for ns, i in vf.nested_scenes {
+        if ns.transform_parent == 0 {
+            root_ns_idx = i
+            break
+        }
+    }
+    if root_ns_idx < 0 {
+        scene_file_destroy(&vf)
+        return raw, false   // flat prefab — raw bytes are already resolved
+    }
+
+    root_ns := vf.nested_scenes[root_ns_idx]
+
+    // Resolve the base (recursively flatten if it too is a variant), then bake
+    // this variant's overrides onto it.
+    base_bytes, base_owned := _prefab_resolved_bytes(root_ns.source_prefab, depth + 1)
+    if base_bytes == nil {
+        scene_file_destroy(&vf)
+        return nil, false
+    }
+    baked := nested_scene_apply_overrides(base_bytes, root_ns.overrides[:], root_ns.source_prefab)
+    baked_owned := raw_data(baked) != raw_data(base_bytes)
+    if base_owned && baked_owned do delete(base_bytes)
+
+    base_sf: SceneFile
+    {
+        cpy := make([]byte, len(baked), context.temp_allocator)
+        copy(cpy, baked)
+        ok := json.unmarshal(cpy, &base_sf) == nil
+        if baked_owned do delete(baked)
+        else if base_owned do delete(base_bytes)
+        if !ok {
+            scene_file_destroy(&vf)
+            return nil, false
+        }
+    }
+
+    // Merge the variant's own additions (transforms + components + inner NSs)
+    // into the base. Their parent lids already reference the base root lid
+    // (== base_sf.root), so no rewrite is needed; transfer ownership and clear
+    // vf's containers so scene_file_destroy(&vf) doesn't double-free. Also link
+    // each addition into its parent's `children` list (the base file's parent
+    // transform doesn't list the variant's additions), so the load materializes
+    // them under the base rather than orphaning them.
+    for t in vf.transforms {
+        append(&base_sf.transforms, t)
+        for &bt in base_sf.transforms {
+            if bt.local_id == t.parent.pptr.local_id {
+                append(&bt.children, Ref{ pptr = PPtr{local_id = t.local_id} })
+                break
+            }
+        }
+    }
+    for c in vf.cameras          do append(&base_sf.cameras, c)
+    for c in vf.lifetimes        do append(&base_sf.lifetimes, c)
+    for c in vf.players          do append(&base_sf.players, c)
+    for c in vf.scripts          do append(&base_sf.scripts, c)
+    for c in vf.sprite_renderers do append(&base_sf.sprite_renderers, c)
+    for ns, i in vf.nested_scenes {
+        if i == root_ns_idx do continue
+        append(&base_sf.nested_scenes, ns)
+    }
+    for bc in vf.breadcrumbs do append(&base_sf.breadcrumbs, bc)
+    if vf.next_local_id > base_sf.next_local_id do base_sf.next_local_id = vf.next_local_id
+    // base_sf.root stays the base root lid. Detach moved containers from vf so
+    // scene_file_destroy(&vf) below doesn't double-free their elements (the
+    // root NS's overrides were consumed into the bake and are freed with vf).
+    {
+        // Free only the root NS overrides; the other NS records were moved.
+        root_rec := &vf.nested_scenes[root_ns_idx]
+        for &ov in root_rec.overrides {
+            delete(ov.property_path)
+            json.destroy_value(ov.value)
+        }
+        delete(root_rec.overrides)
+    }
+    delete(vf.transforms); vf.transforms = nil
+    delete(vf.nested_scenes); vf.nested_scenes = nil
+    delete(vf.breadcrumbs); vf.breadcrumbs = nil
+    delete(vf.cameras); vf.cameras = nil
+    delete(vf.lifetimes); vf.lifetimes = nil
+    delete(vf.players); vf.players = nil
+    delete(vf.scripts); vf.scripts = nil
+    delete(vf.sprite_renderers); vf.sprite_renderers = nil
+
+    opts := json.Marshal_Options{spec = .JSON, pretty = false}
+    data, merr := json.marshal(base_sf, opts)
+    scene_file_destroy(&base_sf)
+    if merr != nil do return nil, false
+    return data, true
+}
+
+// Guids currently being resolved up the active resolve stack. A prefab that
+// (directly or via a variant chain) nests itself would otherwise recurse
+// forever; we detect the repeat and skip it instead of crashing.
+@(private = "file")
+_resolve_guid_stack: [dynamic]Asset_GUID
+
 nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     w := ctx_world()
     host_t := pool_get(&w.transforms, Handle(host_tH))
@@ -671,15 +812,36 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     empty_guid := Asset_GUID{}
     if guid == empty_guid do return
 
-    raw, ok := scene_lib[guid]
-    if !ok {
-        if !scene_lib_register(guid) do return
-        raw, ok = scene_lib[guid]
-        if !ok do return
+    // Cycle guard: if this prefab is already being resolved higher on the stack,
+    // a nesting cycle exists (e.g. a prefab that nests its own variant). Skip it
+    // — the host stays an unresolved nested-scene placeholder rather than
+    // overflowing the stack.
+    for g in _resolve_guid_stack {
+        if g == guid {
+            fmt.printf("[NestedScene] cycle detected resolving %v; skipping to avoid infinite nesting\n", guid)
+            return
+        }
+    }
+    append(&_resolve_guid_stack, guid)
+    defer {
+        pop(&_resolve_guid_stack)
+        if len(_resolve_guid_stack) == 0 {
+            delete(_resolve_guid_stack)
+            _resolve_guid_stack = nil
+        }
     }
 
-	baked := nested_scene_apply_overrides(raw, ns.overrides[:], ns.source_prefab)
-	baked_owned := len(ns.overrides) > 0 && raw_data(baked) != raw_data(raw)
+    // The prefab bytes, with any variant inheritance resolved to a flat scene
+    // file (base + the variant's own overrides + additions). For a flat prefab
+    // this is just its raw bytes. This makes a variant nest exactly like any
+    // other prefab — its own overrides are baked into this baked baseline, so
+    // only the HOST scene's overrides remain editable (Unity's model).
+    resolved, resolved_owned := _prefab_resolved_bytes(guid)
+    if resolved == nil do return
+    defer if resolved_owned do delete(resolved)
+
+	baked := nested_scene_apply_overrides(resolved, ns.overrides[:], ns.source_prefab)
+	baked_owned := len(ns.overrides) > 0 && raw_data(baked) != raw_data(resolved)
 	defer if baked_owned do delete(baked)
 
     sf: SceneFile
@@ -688,13 +850,17 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 
     host_scene := host_t.scene
     ns.source_root_id = sf.root
+
     nested_before := len(host_scene.nested_scenes)
     nested_root_tH := _scene_load_as_child(&sf, host_tH, host_scene, ns.source_prefab, true)
-    if nested_root_tH == {} do return
 
     for i in nested_before..<len(host_scene.nested_scenes) {
-        host_scene.nested_scenes[i].expand_parent = host_tH
+        if host_scene.nested_scenes[i].expand_parent == {} {
+            host_scene.nested_scenes[i].expand_parent = host_tH
+        }
     }
+
+    if nested_root_tH == {} do return
 
     nested_root := pool_get(&w.transforms, Handle(nested_root_tH))
     if nested_root == nil do return
@@ -732,11 +898,17 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 
     transform_destroy(nested_root_tH)
 
-    for child in host_t.children {
-        ct := pool_get(&w.transforms, child.handle)
-        if ct == nil do continue
-        if ct.nested_owned {
-            _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+    // Resolve nested scenes within the absorbed (now nested-owned) base content.
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+    if host_t != nil {
+        children_copy := make([]Ref, len(host_t.children), context.temp_allocator)
+        copy(children_copy, host_t.children[:])
+        for child in children_copy {
+            ct := pool_get(&w.transforms, child.handle)
+            if ct == nil do continue
+            if ct.nested_owned {
+                _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+            }
         }
     }
 
@@ -747,6 +919,12 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     // deep target via reflection over the materialized subtree, then run
     // type_cleanup_by_typeid on the live field to free what's there before
     // unmarshaling the new JSON value into the same slot.
+    //
+    // Re-fetch `ns`: the recursive resolve above appends to s.nested_scenes,
+    // which can reallocate the dynamic array and dangle the `ns` captured at the
+    // top of this proc (EXC_BAD_ACCESS when iterating ns.overrides otherwise).
+    ns = scene_find_nested_scene_for_host(host_scene, host_tH)
+    if ns == nil do return
     _nested_scene_apply_deep_overrides_live(host_tH, ns)
 }
 
@@ -1393,12 +1571,13 @@ _nested_revert_baseline_field_json :: proc(
 ) -> (json.Value, bool) {
     if s == nil || ns == nil do return nil, false
 
-    raw, has := scene_lib[ns.source_prefab]
-    if !has {
-        if !scene_lib_register(ns.source_prefab) do return nil, false
-        raw, has = scene_lib[ns.source_prefab]
-        if !has do return nil, false
-    }
+    // Baseline = the prefab RESOLVED (variant inheritance flattened). For a flat
+    // prefab this is its raw bytes; for a variant it is base + the variant's own
+    // overrides + additions — so reverting a nested-variant override restores
+    // the value the variant actually bakes, not a value from its unresolved file.
+    raw, raw_owned := _prefab_resolved_bytes(ns.source_prefab)
+    if raw == nil do return nil, false
+    defer if raw_owned do delete(raw)
 
     // Build "ns.overrides minus the one being reverted" so the rebuilt bake
     // reflects all peer overrides.

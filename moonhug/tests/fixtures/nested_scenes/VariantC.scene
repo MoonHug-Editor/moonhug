@@ -1,0 +1,89 @@
+{
+  "root": 1,
+  "next_local_id": 101,
+  "transforms": [
+    {
+      "local_id": 100,
+      "name": "VariantExtra",
+      "is_active": true,
+      "position": [
+        11.00000000,
+        22.00000000,
+        33.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 10,
+      "source_prefab": "ee7d67e6-2c06-41a5-a1f2-3b021b642202",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "ee7d67e6-2c06-41a5-a1f2-3b021b642202"
+          },
+          "property_path": "name",
+          "value": "TransformC_Variant"
+        },
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "ee7d67e6-2c06-41a5-a1f2-3b021b642202"
+          },
+          "property_path": "position",
+          "value": [
+            71.00000000,
+            81.00000000,
+            91.00000000
+          ]
+        }
+      ]
+    }
+  ],
+  "breadcrumbs": [
+
+  ],
+  "cameras": [
+
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

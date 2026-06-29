@@ -1,0 +1,63 @@
+{
+  "root": 15,
+  "next_local_id": 1018,
+  "transforms": [
+
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 1015,
+      "local_id_in_parent": 1015,
+      "source_prefab": "55926728-93e5-4684-bf40-2f8c986a6f1b",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "color",
+          "value": [
+            0.5019608100000000,
+            0.0000000000000000,
+            0.0000000000000000,
+            0.6862745300000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "color",
+          "value": [
+            0.0000000000000000,
+            0.4588235300000000,
+            1.0000000000000000,
+            0.4352941200000000
+          ]
+        }
+      ]
+    }
+  ],
+  "breadcrumbs": [
+
+  ],
+  "cameras": [
+
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

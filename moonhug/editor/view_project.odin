@@ -182,9 +182,18 @@ draw_file_list :: proc(path: string) {
             }
             if strings.has_suffix(entry.name, ".scene") && im.IsMouseDoubleClicked(.Left) {
                 undo.clear(undo.get())
+                // Fresh navigation — reset the nested-scene edit stack.
+                hierarchy_edit_stack_clear()
                 scene := engine.scene_load_single_path(full_path)
                 engine.sm_scene_set_active(scene)
             }
+        }
+        // Right-click also selects, so the context menu (which acts on the
+        // selected asset) targets the row under the cursor, not whatever was
+        // previously selected.
+        if im.IsItemHovered() && im.IsMouseClicked(.Right) {
+            delete(projectViewData.selectedFile)
+            projectViewData.selectedFile = strings.clone(entry.name)
         }
         if im.BeginDragDropSource({}) {
             full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
@@ -197,6 +206,29 @@ draw_file_list :: proc(path: string) {
             im.PopStyleColor()
         }
     }
+}
+
+// Create a prefab variant of the scene at `base_path`, written alongside it as
+// "<name>_Variant.scene", then open it. The variant's root is a NestedScene
+// over the base (empty overrides); editing it captures overrides against the base.
+create_scene_variant :: proc(base_path: string) {
+    dir := filepath.dir(base_path)
+    defer delete(dir)
+    stem := filepath.stem(base_path)
+    variant_name := strings.concatenate({stem, "_Variant.scene"}, context.temp_allocator)
+    variant_path, _ := filepath.join({dir, variant_name}, context.temp_allocator)
+
+    if !engine.scene_create_variant_file(base_path, variant_path) {
+        fmt.printf("[Editor] Failed to create scene variant from %s\n", base_path)
+        return
+    }
+    // Mint the variant's .meta and register it so it can be loaded by GUID.
+    engine.asset_db_refresh()
+
+    undo.clear(undo.get())
+    hierarchy_edit_stack_clear()
+    scene := engine.scene_load_single_path(variant_path)
+    engine.sm_scene_set_active(scene)
 }
 
 draw_project_view :: proc() {
