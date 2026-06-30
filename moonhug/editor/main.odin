@@ -37,7 +37,7 @@ main :: proc() {
     }
 
     cwd, _ := os.get_working_directory(context.temp_allocator)
-    if !strings.has_suffix(cwd, "moonhug") {
+    if os.exists("moonhug") {
         moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
         os.set_working_directory(moonhug_dir)
     }
