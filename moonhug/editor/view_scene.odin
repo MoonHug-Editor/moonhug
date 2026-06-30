@@ -104,7 +104,7 @@ draw_scene_view :: proc() {
 		if w > 0 && h > 0 {
 			render_scene_rt(w, h)
 			tex_id := im.TextureID(scene_rt.texture.id)
-			im.Image(tex_id, avail, {0, 1}, {1, 0})
+			im.Image(im.TextureRef{_TexID = tex_id}, avail, {0, 1}, {1, 0})
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})

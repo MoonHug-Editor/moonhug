@@ -49,7 +49,7 @@ draw_game_view :: proc() {
 		if w > 0 && h > 0 {
 			had_camera := render_game_rt(w, h)
 			tex_id := im.TextureID(game_rt.texture.id)
-			im.Image(tex_id, avail, {0, 1}, {1, 0})
+			im.Image(im.TextureRef{_TexID = tex_id}, avail, {0, 1}, {1, 0})
 
 			if !had_camera {
 				msg: cstring = "No cameras rendering"

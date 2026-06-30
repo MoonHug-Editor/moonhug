@@ -41,7 +41,7 @@ draw_about_popup :: proc() {
                 im.SetCursorPosX(im.GetCursorPosX() + (avail.x - img_size.x) * 0.5)
             }
             tex_id := im.TextureID(about_logo_tex.id)
-            im.Image(tex_id, img_size)
+            im.Image(im.TextureRef{_TexID = tex_id}, img_size)
             im.Spacing()
         }
 
