@@ -1,3 +1,9 @@
+## [0.22.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.21.1...v0.22.0) (2026-06-30)
+
+### Features
+
+* up odin-imgui ([69a0ec9](https://github.com/MoonHug-Editor/moonhug/commit/69a0ec96897af3788832e8dc0df425978ec3170e))
+
 ## [0.21.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.21.0...v0.21.1) (2026-06-30)
 
 ### Bug Fixes
