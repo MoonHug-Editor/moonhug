@@ -87,6 +87,8 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
+- icons in hierarchy (nested scene, variant scene)
+
 - each camera has int order and render_commands buffer
 - Cameras scan scene trees for renderers to add render commands to commands buffers
   - transforms have render layer field for camera culling

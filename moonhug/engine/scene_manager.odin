@@ -2,6 +2,7 @@ package engine
 
 import "core:fmt"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
@@ -194,7 +195,13 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
 
     // Graft the variant's own additions (loaded rootless because their parent
     // lid == the base root lid the variant file lacks) under the base root.
+    // Collect first, then graft in local_id order: the slot scan visits in
+    // arbitrary slot order, which is not stable across save+reload and made the
+    // additions' sibling order drift. local_id is persisted and stable, so
+    // ordering by it keeps siblings in a fixed order every reload.
     if br != nil {
+        added: [dynamic]Transform_Handle
+        defer delete(added)
         for i in 0..<len(w.transforms.slots) {
             slot := &w.transforms.slots[i]
             if !slot.alive do continue
@@ -204,6 +211,18 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
             if atH == base_root_tH do continue
             if pool_valid(&w.transforms, at.parent.handle) do continue
             if at.parent.pptr.local_id != base_root_lid do continue
+            append(&added, atH)
+        }
+        slice.sort_by(added[:], proc(a, b: Transform_Handle) -> bool {
+            w := ctx_world()
+            ta := pool_get(&w.transforms, Handle(a))
+            tb := pool_get(&w.transforms, Handle(b))
+            if ta == nil || tb == nil do return false
+            return ta.local_id < tb.local_id
+        })
+        for atH in added {
+            at := pool_get(&w.transforms, Handle(atH))
+            if at == nil do continue
             at.parent = make_transform_ref(base_root_tH)
             br = pool_get(&w.transforms, Handle(base_root_tH))
             if br != nil do append(&br.children, Ref{ pptr = PPtr{local_id = at.local_id}, handle = Handle(atH) })
@@ -267,6 +286,19 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
                 kids := make([]Ref, len(rt.children), context.temp_allocator)
                 copy(kids, rt.children[:])
                 for child in kids do _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+            }
+            // The root NS's SHALLOW overrides were baked at materialize time, but
+            // its DEEP overrides (targeting content inside the base's own nested
+            // prefabs) must be patched onto the now-resolved live tree — the same
+            // post-resolve pass nested_scene_resolve runs for ordinary hosts.
+            // Post-materialize the root NS has transform_parent == base root lid
+            // (not 0), so find it via nested_scene_is_root_variant, not the
+            // pre-materialize _scene_find_root_variant_ns.
+            for &ns in s.nested_scenes {
+                if nested_scene_is_root_variant(s, &ns) {
+                    nested_scene_apply_deep_overrides_live(root_tH, &ns)
+                    break
+                }
             }
         } else {
             _scene_resolve_nested_in_subtree(root_tH)
@@ -394,6 +426,21 @@ scene_instantiate_guid_nested :: proc(guid: Asset_GUID, parent: Transform_Handle
     sc := pt.scene
     if sc == nil do return {}
 
+    // Inheritance (variant base, transform_parent==0) and composition (nested
+    // instance, transform_parent!=0) are separate concepts (Unity: Prefab Variant
+    // vs Nested Prefab). This is the COMPOSITION entry point. Unity forbids the
+    // cross-concept loop where composition closes an inheritance chain — e.g.
+    // nesting bullet_Variant inside bullet when bullet_Variant's base IS bullet
+    // (bullet would re-expand a variant of itself forever). Reject when either
+    // side inherits from the other along the variant base chain. Plain instance
+    // nesting (a second `c` under bullet) is fine and allowed, as in Unity.
+    if sc.asset_guid != (Asset_GUID{}) && guid != sc.asset_guid {
+        if _prefab_inherits_from(guid, sc.asset_guid) || _prefab_inherits_from(sc.asset_guid, guid) {
+            fmt.printf("[NestedScene] refusing to nest %v into scene %v — would close an inheritance cycle (Unity forbids nesting a variant of an ancestor)\n", guid, sc.asset_guid)
+            return {}
+        }
+    }
+
     name := ""
     if path, ok := asset_db_get_path(uuid.Identifier(guid)); ok {
         name = filepath.stem(path)
@@ -423,6 +470,35 @@ scene_instantiate_guid_nested :: proc(guid: Asset_GUID, parent: Transform_Handle
     }
     nested_scene_resolve(host_tH)
     return host_tH
+}
+
+// True if prefab `guid` IS `needle` or, transitively, INHERITS from `needle`
+// (its variant base chain — the transform_parent==0 NS — leads back to needle).
+// Used to reject nesting cycles: nesting a variant of X inside X re-expands X
+// forever. Instance-nesting (nesting the same prefab as a sibling) is NOT a
+// cycle and is allowed — only inheritance is followed here, not every nested
+// instance. Bounded by a depth guard against already-corrupt data.
+@(private)
+_prefab_inherits_from :: proc(guid: Asset_GUID, needle: Asset_GUID, depth := 0) -> bool {
+    if guid == needle do return true
+    if depth > 32 do return false
+    if !scene_lib_register(guid) do return false
+    raw, has := scene_lib[guid]
+    if !has do return false
+
+    sf: SceneFile
+    cpy := make([]byte, len(raw), context.temp_allocator)
+    copy(cpy, raw)
+    if json.unmarshal(cpy, &sf) != nil do return false
+    defer scene_file_destroy(&sf)
+
+    // Follow ONLY the variant base (the root NS with transform_parent == 0).
+    for &ns in sf.nested_scenes {
+        if ns.transform_parent != 0 do continue
+        if ns.source_prefab == (Asset_GUID{}) do continue
+        return _prefab_inherits_from(ns.source_prefab, needle, depth + 1)
+    }
+    return false
 }
 
 @(private)

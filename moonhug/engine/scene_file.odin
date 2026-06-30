@@ -307,6 +307,12 @@ _collect_nested_owned_subtree :: proc(
 //
 // For native NS (expand_parent == {}) this is just the prefab raw — no chain.
 // For depth-N inner NS, walks N levels of outer prefab files.
+// Package-visible wrapper so nested_scene_revert_override can reuse this exact
+// baseline (capture and revert then agree on what "before overrides" means).
+chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) {
+	return _chain_baked_base_for_ns(s, ns)
+}
+
 @(private = "file")
 _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) {
 	if s == nil || ns == nil do return nil, false
@@ -379,18 +385,15 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 			break
 		}
 
-		child_raw, chas := scene_lib[hop.child_guid]
-		if !chas {
-			if !scene_lib_register(hop.child_guid) {
-				scene_file_destroy(&outer_sf)
-				return nil, false
-			}
-			child_raw, chas = scene_lib[hop.child_guid]
-			if !chas {
-				scene_file_destroy(&outer_sf)
-				return nil, false
-			}
+		// Resolve the child prefab (flattening variant inheritance) before applying
+		// the outer overrides — same reasoning as the top-level baseline above. A
+		// flat prefab resolves to its own raw, so non-variant chains are unaffected.
+		child_raw, child_owns := _prefab_resolved_bytes(hop.child_guid)
+		if child_raw == nil {
+			scene_file_destroy(&outer_sf)
+			return nil, false
 		}
+		defer if child_owns do delete(child_raw)
 
 		baked := nested_scene_apply_overrides(child_raw, matching)
 		baked_owns := raw_data(baked) != raw_data(child_raw)
@@ -645,7 +648,7 @@ _inner_chain_lids_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynam
 	if inner_m == nil || inner_m.expand_parent == {} do return chain, nil, false
 	w := ctx_world()
 
-	append(&chain, inner_m.local_id_in_parent)
+	append(&chain, _ns_projection_key(inner_m))
 
 	cur := inner_m
 	for _ in 0 ..< 32 {
@@ -674,7 +677,7 @@ _inner_chain_lids_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynam
 			}
 		}
 		if next == nil do return chain, nil, false
-		append(&chain, next.local_id_in_parent)
+		append(&chain, _ns_projection_key(next))
 		cur = next
 	}
 	return chain, nil, false
@@ -782,6 +785,17 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	root_variant_ns_lid := Local_ID(0)
 	for &ns in s.nested_scenes {
 		if ns.expand_parent != {} do continue
+		// Prune ORPHAN NS records: a native NS whose host transform no longer
+		// exists is leaked metadata (e.g. the host was deleted but the record
+		// wasn't). Persisting it produces a ghost host on reload — this is how
+		// bullet.scene accumulated a phantom bullet_Variant NS. Root variants
+		// (host == s.root) are always valid.
+		if !nested_scene_is_root_variant(s, &ns) {
+			if nested_scene_resolve_host_handle(s, &ns) == {} {
+				fmt.printf("[Scene] pruning orphan NS lid=%d src=%v (no host transform)\n", ns.local_id, ns.source_prefab)
+				continue
+			}
+		}
 		rec := ns
 		// A variant's root NS is hosted by a synthesized placeholder root that
 		// is NOT persisted. Write it back in its on-disk shape: transform_parent

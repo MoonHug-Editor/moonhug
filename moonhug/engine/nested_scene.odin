@@ -685,6 +685,15 @@ scene_find_nested_scene_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -
 // base resolved + the variant's own overrides baked in + the variant's added
 // transforms merged — a normal flat scene file. Recurses for variant-of-variant.
 // `owned` is true when the returned slice is freshly allocated (caller frees).
+// The XOR projection key for an NS. The invariant (docs/NestedPrefabs.md) is
+// local_id_in_parent == local_id for native NSs; some older files were authored
+// with local_id_in_parent == 0 (invalid — lids start at 1), which breaks
+// (un)projection. Fall back to local_id so deep-override lids round-trip.
+_ns_projection_key :: proc(ns: ^NestedScene) -> Local_ID {
+    if ns.local_id_in_parent != 0 do return ns.local_id_in_parent
+    return ns.local_id
+}
+
 _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, owned: bool) {
     if depth > 32 do return nil, false
     raw, has := scene_lib[guid]
@@ -763,6 +772,36 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
         if i == root_ns_idx do continue
         append(&base_sf.nested_scenes, ns)
     }
+
+    // DEEP overrides on the variant's root NS target content INSIDE the base's
+    // own nested prefabs (target.guid != root_ns.source_prefab), so they weren't
+    // baked by nested_scene_apply_overrides above (which only matches shallow
+    // targets in the base's namespace). Carry each forward onto the matching
+    // inner NS record, un-projecting the lid by that NS's local_id_in_parent, so
+    // it applies when this flattened prefab is loaded and its inner NSs resolve.
+    // (Matches the live-patch DFS, but persisted into the flattened bytes — this
+    // is what makes a variant's deep override render when it is NESTED, not just
+    // when opened top-level.)
+    for ov in root_ns.overrides {
+        if ov.target.guid == root_ns.source_prefab do continue   // shallow, already baked
+        if asset_guid_is_empty(ov.target.guid) do continue
+        // Push onto EVERY inner NS that could host the target (same guid),
+        // un-projecting by each one's own projection key. Only the NS whose
+        // subtree actually contains the un-projected lid applies it at resolve
+        // time; the rest are harmless no-ops (no matching lid). Picking a single
+        // candidate is unsafe — same-prefab-instantiated-twice means the first
+        // guid match may be the wrong instance.
+        for &inner in base_sf.nested_scenes {
+            if inner.source_prefab != ov.target.guid do continue
+            unprojected := local_id_unproject(_ns_projection_key(&inner), ov.target.local_id)
+            append(&inner.overrides, Override{
+                target        = PPtr{guid = ov.target.guid, local_id = unprojected},
+                property_path = strings.clone(ov.property_path),
+                value         = json.clone_value(ov.value),
+            })
+        }
+    }
+
     for bc in vf.breadcrumbs do append(&base_sf.breadcrumbs, bc)
     if vf.next_local_id > base_sf.next_local_id do base_sf.next_local_id = vf.next_local_id
     // base_sf.root stays the base root lid. Detach moved containers from vf so
@@ -1362,8 +1401,8 @@ _find_descendant_ns_by_projection :: proc(
         cand_host := nested_scene_resolve_host_handle(s, &cand)
         if cand_host == {} do continue
 
-        // Un-project one level using this candidate's local_id_in_parent.
-        next_projected := local_id_unproject(cand.local_id_in_parent, projected)
+        // Un-project one level using this candidate's projection key.
+        next_projected := local_id_unproject(_ns_projection_key(&cand), projected)
 
         if cand.source_prefab == target_guid {
             // Verify next_projected resolves in this candidate's subtree.
@@ -1526,6 +1565,13 @@ _nested_patch_live_field :: proc(
 // some prefab deeper than ns.source_prefab) by patching the live tree. Shallow
 // overrides (target.guid == ns.source_prefab) were already folded in by
 // `nested_scene_apply_overrides` during bake.
+// Package-visible entry for the variant-root load path (scene_manager): the
+// materialized variant root never goes through nested_scene_resolve, so its
+// deep overrides must be applied explicitly after its subtree resolves.
+nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^NestedScene) {
+    _nested_scene_apply_deep_overrides_live(host_tH, ns)
+}
+
 @(private = "file")
 _nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^NestedScene) {
     if ns == nil do return
@@ -1548,197 +1594,40 @@ _nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^
     }
 }
 
-// Computes a "revert baseline" for one override: the value the field would
-// take if `ns.overrides` did not contain `(target_id, property_path)`. Used by
-// `nested_scene_revert_override`. For shallow overrides this is the field
-// value in the prefab raw with all OTHER ns.overrides applied. For deep
-// overrides, the leaf prefab raw is the base — that prefab's own NS records
-// (loaded recursively) plus the parent prefab files' NS-for-this-child
-// overrides have already been baked into the live state, but those live in
-// other prefab files, not on `ns`. The revert value must include them. We
-// solve this generically by re-baking all the chain prefabs in JSON, applying
-// each level's own overrides (read from disk) plus root's other overrides
-// (everything in ns.overrides minus the one being reverted), then reading the
-// field at the bottom of the chain.
-//
-// Caller owns the returned bytes; delete after use.
+// The revert baseline: the value of `property_path` at row `leaf_lid` in
+// `leaf_ns`'s chain-baked base — the leaf prefab with EVERY ancestor prefab's
+// NS-for-child overrides applied and all variant inheritance flattened, but
+// WITHOUT the open scene's own overrides (those live on the scene, not the
+// prefab files). This is exactly the value the field reverts to, for shallow
+// AND deep. Reuses `chain_baked_base_for_ns` (the same baseline the override
+// CAPTURE diffs against), so capture and revert agree.
 @(private = "file")
-_nested_revert_baseline_field_json :: proc(
-    s: ^Scene,
-    ns: ^NestedScene,
-    target: PPtr,
-    property_path: string,
-) -> (json.Value, bool) {
-    if s == nil || ns == nil do return nil, false
+_nested_resolved_field_json :: proc(s: ^Scene, leaf_ns: ^NestedScene, leaf_lid: Local_ID, property_path: string) -> (json.Value, bool) {
+    raw, ok := chain_baked_base_for_ns(s, leaf_ns)
+    if !ok do return nil, false
+    defer delete(raw)
 
-    // Baseline = the prefab RESOLVED (variant inheritance flattened). For a flat
-    // prefab this is its raw bytes; for a variant it is base + the variant's own
-    // overrides + additions — so reverting a nested-variant override restores
-    // the value the variant actually bakes, not a value from its unresolved file.
-    raw, raw_owned := _prefab_resolved_bytes(ns.source_prefab)
-    if raw == nil do return nil, false
-    defer if raw_owned do delete(raw)
-
-    // Build "ns.overrides minus the one being reverted" so the rebuilt bake
-    // reflects all peer overrides.
-    others := make([dynamic]Override, 0, len(ns.overrides), context.temp_allocator)
-    for ov in ns.overrides {
-        if pptr_equals(ov.target, target) && ov.property_path == property_path do continue
-        append(&others, ov)
-    }
-
-    is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
-
-    if !is_deep {
-        // Shallow: bake ns.source_prefab with peer overrides, find target row,
-        // read property_path from it.
-        baked := nested_scene_apply_overrides(raw, others[:], ns.source_prefab)
-        defer if raw_data(baked) != raw_data(raw) do delete(baked)
-
-        baked_copy := make([]byte, len(baked), context.temp_allocator)
-        copy(baked_copy, baked)
-        root_val: json.Value
-        if json.unmarshal_string(string(baked_copy), &root_val) != nil do return nil, false
-        defer json.destroy_value(root_val)
-        root_obj, is_obj := root_val.(json.Object)
-        if !is_obj do return nil, false
-
-        for _, section_val in root_obj {
-            arr, is_arr := section_val.(json.Array)
-            if !is_arr do continue
-            for item in arr {
-                obj, ok := item.(json.Object)
-                if !ok do continue
-                lid, lid_ok := _json_local_id_of(obj)
-                if !lid_ok || lid != target.local_id do continue
-                field_val, fok := _json_get_path(obj, property_path)
-                if !fok do return nil, false
-                return json.clone_value(field_val), true
-            }
-        }
-        return nil, false
-    }
-
-    // Deep: walk the chain, accumulating the leaf prefab's bake. For each hop
-    // we load that prefab file, find the inner NS-for-next-hop record in its
-    // `nested_scenes`, and apply its overrides to the next prefab's raw. The
-    // result at the bottom is the leaf prefab's bake with every level's
-    // overrides already in. Then root's deep override (the one being reverted)
-    // is the only thing that *would* differ — and we're omitting it, so this
-    // bake is exactly the revert baseline.
-    leaf_guid := target.guid
-
-    // Reconstruct the chain at runtime by walking inner NS descendants of `ns`'s
-    // resolved host until reaching one whose source_prefab == leaf_guid.
-    // hops[0] is the hop INTO the first inner level from ns.source_prefab.
-    hops := make([dynamic]ChainHop, 0, 4, context.temp_allocator)
-    {
-        native_host := nested_scene_resolve_host_handle(s, ns)
-        if native_host == {} do return nil, false
-        if !_collect_chain_to_prefab(s, native_host, leaf_guid, &hops) do return nil, false
-    }
-
-    // Un-project target.local_id through the chain to recover the leaf
-    // prefab's actual lid for the target.
-    leaf_target := target.local_id
-    for hop in hops {
-        leaf_target = local_id_unproject(hop.lid_in_parent, leaf_target)
-    }
-
-    // Bake ns.source_prefab with peer overrides → find its NS-for-hop[0] → that
-    // NS's overrides go onto hop[0].guid raw. Repeat until leaf.
-    cur_raw := raw
-    cur_guid := ns.source_prefab
-    cur_owns := false
-    {
-        baked := nested_scene_apply_overrides(raw, others[:], ns.source_prefab)
-        if raw_data(baked) != raw_data(raw) {
-            cur_raw = baked
-            cur_owns = true
-        }
-    }
-    defer if cur_owns do delete(cur_raw)
-
-    // For each hop, find that hop's inner NS-records in cur_raw, get its
-    // overrides, then bake the next prefab's raw with those overrides. Move
-    // cur_raw forward.
-    for i in 0 ..< len(hops) {
-        cur_copy := make([]byte, len(cur_raw), context.temp_allocator)
-        copy(cur_copy, cur_raw)
-        cur_sf: SceneFile
-        if json.unmarshal(cur_copy, &cur_sf) != nil do return nil, false
-
-        hop := hops[i]
-        next_raw_disk, has_next := scene_lib[hop.guid]
-        if !has_next {
-            if !scene_lib_register(hop.guid) {
-                scene_file_destroy(&cur_sf)
-                return nil, false
-            }
-            next_raw_disk, has_next = scene_lib[hop.guid]
-            if !has_next {
-                scene_file_destroy(&cur_sf)
-                return nil, false
-            }
-        }
-
-        // Find inner NS in cur_sf that targets hop.
-        var_overrides: []Override = nil
-        for &m in cur_sf.nested_scenes {
-            if m.source_prefab != hop.guid do continue
-            if m.transform_parent != hop.transform_parent do continue
-            var_overrides = m.overrides[:]
-            break
-        }
-
-        next_baked := nested_scene_apply_overrides(next_raw_disk, var_overrides, hop.guid)
-        next_owns := raw_data(next_baked) != raw_data(next_raw_disk)
-
-        // Copy next_baked to a buffer that survives cur_sf destruction.
-        if next_owns {
-            // already an owned heap allocation; transfer ownership.
-            if cur_owns do delete(cur_raw)
-            cur_raw = next_baked
-            cur_owns = true
-        } else {
-            // next_baked aliases next_raw_disk (no overrides applied).
-            // Make a copy so it survives cur_sf destruction (which doesn't
-            // affect the scene_lib backing, but we want uniform ownership).
-            buf := make([]byte, len(next_baked))
-            copy(buf, next_baked)
-            if cur_owns do delete(cur_raw)
-            cur_raw = buf
-            cur_owns = true
-        }
-        cur_guid = hop.guid
-
-        scene_file_destroy(&cur_sf)
-    }
-    _ = cur_guid
-
-    // cur_raw is now the leaf prefab baked. Read leaf_target's property_path.
-    leaf_copy := make([]byte, len(cur_raw), context.temp_allocator)
-    copy(leaf_copy, cur_raw)
-    leaf_val: json.Value
-    if json.unmarshal_string(string(leaf_copy), &leaf_val) != nil do return nil, false
-    defer json.destroy_value(leaf_val)
-    leaf_root, is_obj := leaf_val.(json.Object)
+    cpy := make([]byte, len(raw), context.temp_allocator)
+    copy(cpy, raw)
+    root_val: json.Value
+    if json.unmarshal_string(string(cpy), &root_val) != nil do return nil, false
+    defer json.destroy_value(root_val)
+    root_obj, is_obj := root_val.(json.Object)
     if !is_obj do return nil, false
 
-    for _, section_val in leaf_root {
+    for _, section_val in root_obj {
         arr, is_arr := section_val.(json.Array)
         if !is_arr do continue
         for item in arr {
             obj, ok := item.(json.Object)
             if !ok do continue
             lid, lid_ok := _json_local_id_of(obj)
-            if !lid_ok || lid != leaf_target do continue
+            if !lid_ok || lid != leaf_lid do continue
             field_val, fok := _json_get_path(obj, property_path)
             if !fok do return nil, false
             return json.clone_value(field_val), true
         }
     }
-    _ = leaf_target
     return nil, false
 }
 
@@ -1760,22 +1649,27 @@ nested_scene_revert_override :: proc(
     }
     if !has_match do return
 
-    // Locate the live field. For deep overrides we descend the NS tree,
-    // un-projecting through each inner NS to recover the leaf-prefab lid.
+    // Locate the live field AND the leaf prefab the field lives in. The same
+    // walk used by deep-override APPLY recovers the leaf NS + leaf-prefab lid;
+    // reuse it so revert and apply agree on the target. For a shallow override
+    // the leaf prefab is ns.source_prefab and the lid is target.local_id.
     native_host_tH := nested_scene_resolve_host_handle(s, ns)
     leaf_host_tH := native_host_tH
     leaf_target := target.local_id
-    is_root_target := target.local_id == ns.source_root_id
+    leaf_ns := ns
+    leaf_root_id := ns.source_root_id
 
     is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
     if is_deep {
-        lh, leaf_ns, lid := _nested_walk_override_target(s, native_host_tH, target)
-        if lh != {} && leaf_ns != nil {
+        lh, lns, lid := _nested_walk_override_target(s, native_host_tH, target)
+        if lh != {} && lns != nil {
             leaf_host_tH = lh
             leaf_target = lid
-            is_root_target = lid == leaf_ns.source_root_id
+            leaf_ns = lns
+            leaf_root_id = lns.source_root_id
         }
     }
+    is_root_target := leaf_target == leaf_root_id
 
     live_ptr, live_tid, found := _nested_find_revert_target(
         leaf_host_tH,
@@ -1786,7 +1680,11 @@ nested_scene_revert_override :: proc(
     )
 
     if found && live_ptr != nil {
-        baseline, ok := _nested_revert_baseline_field_json(s, ns, target, property_path)
+        // Baseline = the field in leaf_ns's chain-baked base (every ancestor
+        // prefab's overrides applied, variants flattened, but NOT the open
+        // scene's own overrides). Same baseline the capture diffs against, for
+        // both shallow and deep.
+        baseline, ok := _nested_resolved_field_json(s, leaf_ns, leaf_target, property_path)
         if ok {
             defer json.destroy_value(baseline)
             field_bytes, merr := json.marshal(baseline, {spec = .JSON}, context.temp_allocator)
