@@ -1,3 +1,9 @@
+## [0.21.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.21.0...v0.21.1) (2026-06-30)
+
+### Bug Fixes
+
+* override/revert in variants ([aedaf2c](https://github.com/MoonHug-Editor/moonhug/commit/aedaf2c8423c2c5bf6e7e53a563083ce72199b15))
+
 ## [0.21.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.20.0...v0.21.0) (2026-06-29)
 
 ### Features
