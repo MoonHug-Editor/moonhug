@@ -10,15 +10,6 @@ _console_show_warning: bool = true
 _console_show_error:   bool = true
 _console_filter: [256]u8
 
-@(private="file")
-label_info :: "i"
-
-@(private="file")
-label_warning :: "w"
-
-@(private="file")
-label_error :: "e"
-
 draw_status_bar :: proc() {
 	style := im.GetStyle()
 	height := im.GetFrameHeight() + style.WindowPadding.y
@@ -32,7 +23,16 @@ draw_status_bar :: proc() {
 	if n == 0 do return
 
 	last := log.entries[n - 1]
-	cmsg := strings.clone_to_cstring(last.message, context.temp_allocator)
+	icon: string
+	switch last.level {
+	case .Info:    icon = ICON_MD_INFO
+	case .Warning: icon = ICON_MD_WARNING
+	case .Error:   icon = ICON_MD_ERROR
+	}
+	cmsg := strings.clone_to_cstring(
+		strings.concatenate({icon, "  ", last.message}, context.temp_allocator),
+		context.temp_allocator,
+	)
 
 	switch last.level {
 	case .Info:
@@ -52,7 +52,7 @@ draw_console_view :: proc() {
 		}
 
 		style := im.GetStyle()
-		btn_labels := [3]cstring{label_info, label_warning, label_error}
+		btn_labels := [3]cstring{ICON_MD_INFO, ICON_MD_WARNING, ICON_MD_ERROR}
 		btn_width: f32
 		for lbl in btn_labels {
 			btn_width += im.CalcTextSize(lbl).x + style.FramePadding.x * 2
@@ -71,17 +71,17 @@ draw_console_view :: proc() {
 		im.SetCursorPosX(cursor_x + avail_x - btn_width)
 
 		im.PushStyleColorImVec4(.Button, im.Vec4{0.4, 0.4, 0.4, 1} if _console_show_info else im.Vec4{0.2, 0.2, 0.2, 1})
-		if im.Button(label_info) do _console_show_info = !_console_show_info
+		if im.Button(ICON_MD_INFO) do _console_show_info = !_console_show_info
 		im.PopStyleColor()
 
 		im.SameLine()
 		im.PushStyleColorImVec4(.Button, im.Vec4{0.6, 0.6, 0.1, 1} if _console_show_warning else im.Vec4{0.2, 0.2, 0.2, 1})
-		if im.Button(label_warning) do _console_show_warning = !_console_show_warning
+		if im.Button(ICON_MD_WARNING) do _console_show_warning = !_console_show_warning
 		im.PopStyleColor()
 
 		im.SameLine()
 		im.PushStyleColorImVec4(.Button, im.Vec4{0.7, 0.2, 0.2, 1} if _console_show_error else im.Vec4{0.2, 0.2, 0.2, 1})
-		if im.Button(label_error) do _console_show_error = !_console_show_error
+		if im.Button(ICON_MD_ERROR) do _console_show_error = !_console_show_error
 		im.PopStyleColor()
 
 		im.Separator()
@@ -116,8 +116,16 @@ draw_console_view :: proc() {
 				if !matched do continue
 			}
 
-			cmsg := strings.clone_to_cstring(entry.message)
-			defer delete(cmsg)
+			icon: string
+			switch entry.level {
+			case .Info:    icon = ICON_MD_INFO
+			case .Warning: icon = ICON_MD_WARNING
+			case .Error:   icon = ICON_MD_ERROR
+			}
+			cmsg := strings.clone_to_cstring(
+				strings.concatenate({icon, "  ", entry.message}, context.temp_allocator),
+				context.temp_allocator,
+			)
 
 			switch entry.level {
 			case .Info:

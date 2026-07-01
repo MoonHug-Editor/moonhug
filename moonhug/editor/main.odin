@@ -69,6 +69,10 @@ main :: proc() {
     io := im.GetIO()
     io.ConfigFlags += {.DockingEnable}
 
+    // Load UI fonts (default text font + merged Material Symbols icons). Must run
+    // before the backend builds the font atlas texture.
+    editor_fonts_init()
+
     // Initialize OpenGL3 backend (Raylib uses OpenGL)
     im_gl.Init("#version 330")
     defer im_gl.Shutdown()
