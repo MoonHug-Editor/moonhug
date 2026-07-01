@@ -1,3 +1,9 @@
+## [0.23.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.22.0...v0.23.0) (2026-07-01)
+
+### Features
+
+* add Material font icons ([ea9a58f](https://github.com/MoonHug-Editor/moonhug/commit/ea9a58fe3858552c7b21f0f158de2df887967b7f))
+
 ## [0.22.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.21.1...v0.22.0) (2026-06-30)
 
 ### Features
