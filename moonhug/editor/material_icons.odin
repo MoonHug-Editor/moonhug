@@ -37,7 +37,7 @@ ICON_MD_EXPAND_MORE   :: "\ue5cf"   // expand_more
 ICON_MD_EXPAND_LESS   :: "\ue5ce"   // expand_less
 
 // Log levels (console)
-ICON_MD_INFO          :: "\ue88e"   // info
+ICON_MD_INFO          :: "\uf52b"   // info
 ICON_MD_WARNING       :: "\uf083"   // warning
 ICON_MD_ERROR         :: "\uf8b6"   // error
 
