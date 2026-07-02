@@ -7,6 +7,14 @@ import "core:math"
 // Using its native size keeps the crisp original look.
 FONT_SIZE :: 13
 
+// Large Material-icon font size for spots that show an icon spanning ~2 text
+// rows (e.g. the console's per-entry icon column, Unity-style).
+ICON_FONT_SIZE_LG :: 26
+
+// Standalone (non-merged) large Material icon font. Push it around a single
+// icon glyph, then pop back. Set by editor_fonts_init.
+editor_icon_font_lg: ^im.Font
+
 // Material Symbols Outlined, embedded at compile time so the editor is
 // independent of the runtime working directory (#load path is relative to this
 // source file). License: Apache-2.0 (see external/fonts/material).
@@ -18,7 +26,7 @@ MATERIAL_FONT_DATA := #load("../../external/fonts/material/MaterialSymbolsOutlin
 // size). An explicit SizePixels (vs the implicit-size default font) is what lets
 // the merged icon font use GlyphOffset for baseline alignment.
 @(private = "file")
-_font_config :: proc() -> im.FontConfig {
+_font_config :: proc(size_px: f32 = FONT_SIZE) -> im.FontConfig {
 	cfg: im.FontConfig
 	cfg.OversampleH = 0
 	cfg.OversampleV = 0
@@ -26,7 +34,7 @@ _font_config :: proc() -> im.FontConfig {
 	cfg.RasterizerDensity = 1.0
 	cfg.ExtraSizeScale = 1.0            // 0 => invisible glyphs
 	cfg.GlyphMaxAdvanceX = math.F32_MAX // ctor default (FLT_MAX)
-	cfg.SizePixels = FONT_SIZE          // explicit ref size
+	cfg.SizePixels = size_px            // explicit ref size
 	return cfg
 }
 
@@ -60,6 +68,22 @@ editor_fonts_init :: proc() {
 		i32(len(MATERIAL_FONT_DATA)),
 		FONT_SIZE,
 		&icon_cfg,
+		&icon_ranges[0],
+	)
+
+	// Standalone large icon font (NOT merged) for the console's 2-row icon
+	// column. Same range, no GlyphOffset — it's drawn on its own, centered by
+	// the caller. FontDataOwnedByAtlas=false: shares the static #load buffer.
+	lg_cfg := _font_config(ICON_FONT_SIZE_LG)
+	lg_cfg.PixelSnapH = true
+	lg_cfg.GlyphMinAdvanceX = ICON_FONT_SIZE_LG
+	lg_cfg.FontDataOwnedByAtlas = false
+	editor_icon_font_lg = im.FontAtlas_AddFontFromMemoryTTF(
+		fonts,
+		raw_data(MATERIAL_FONT_DATA),
+		i32(len(MATERIAL_FONT_DATA)),
+		ICON_FONT_SIZE_LG,
+		&lg_cfg,
 		&icon_ranges[0],
 	)
 }
