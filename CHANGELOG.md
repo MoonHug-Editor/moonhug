@@ -1,3 +1,9 @@
+## [0.24.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.23.0...v0.24.0) (2026-07-02)
+
+### Features
+
+* improve console messages - add time, code line, icon ([0a7fc62](https://github.com/MoonHug-Editor/moonhug/commit/0a7fc62074e84343fb35885b64acc3c4aa80b3d5))
+
 ## [0.23.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.22.0...v0.23.0) (2026-07-01)
 
 ### Features
