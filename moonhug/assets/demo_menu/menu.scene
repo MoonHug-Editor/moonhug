@@ -1,0 +1,138 @@
+{
+  "root": 1,
+  "next_local_id": 5,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "Root",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 3,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 2
+        }
+      ]
+    },
+    {
+      "local_id": 3,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        10.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "cameras": [
+    {
+      "base": {
+        "local_id": 4,
+        "enabled": true
+      },
+      "order": 0,
+      "fov": 60.00000000,
+      "near_clip": 0.30000001,
+      "far_clip": 1000.00000000,
+      "clear_color": [
+        0.10000000,
+        0.10000000,
+        0.14000000,
+        1.00000000
+      ],
+      "render_layer_mask": 4294967295
+    }
+  ],
+  "demo_menus": [
+    {
+      "base": {
+        "local_id": 2,
+        "enabled": true
+      },
+      "demos": [
+        "06255819-d115-41af-a626-0cfe0e48efbf",
+        "bc79d83f-83da-4f50-8b38-34bfd33d7c65"
+      ]
+    }
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "projectiles": [
+
+  ],
+  "scene_refses": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

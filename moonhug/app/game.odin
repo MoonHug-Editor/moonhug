@@ -75,7 +75,7 @@ turret_aim :: proc(refs: ^engine.SceneRefs) {
 }
 
 fire :: proc(refs: ^engine.SceneRefs) {
-    if !rl.IsMouseButtonPressed(.LEFT) do return
+    if !rl.IsMouseButtonPressed(.LEFT) && !rl.IsKeyPressed(.SPACE) do return
     if engine.asset_guid_is_empty(refs.projectile_prefab) do return
 
     // Parent to the scene root (SceneRefs' owner) so bullets don't inherit

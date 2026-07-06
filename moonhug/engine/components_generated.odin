@@ -2,6 +2,7 @@ package engine
 
 World :: struct {
 	cameras: Pool(Camera, 32),
+	demo_menus: Pool(DemoMenu, 1),
 	lifetimes: Pool(Lifetime),
 	players: Pool(Player, 10),
 	projectiles: Pool(Projectile),
@@ -16,6 +17,7 @@ World :: struct {
 w_init :: proc(w:^World)
 {
 	pool_init(&w.cameras)
+	pool_init(&w.demo_menus)
 	pool_init(&w.lifetimes)
 	pool_init(&w.players)
 	pool_init(&w.projectiles)
@@ -35,6 +37,14 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.cameras, c_copy)
+	}
+	w.pool_table[TypeKey.DemoMenu] = pool_make_entry(&w.demo_menus)
+	w.pool_table[TypeKey.DemoMenu].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^DemoMenu)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.demo_menus, c_copy)
 	}
 	w.pool_table[TypeKey.Lifetime] = pool_make_entry(&w.lifetimes)
 	w.pool_table[TypeKey.Lifetime].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -93,6 +103,7 @@ __component_on_validates_init :: proc() {
 }
 
 __component_on_destroys_init :: proc() {
+	component_on_destroy_procs[.DemoMenu] = proc(ptr: rawptr) { on_destroy_DemoMenu(cast(^DemoMenu)ptr) }
 	component_on_destroy_procs[.Player] = proc(ptr: rawptr) { on_destroy_Player(cast(^Player)ptr) }
 }
 
@@ -111,6 +122,11 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		owned, _ := transform_find_comp(t, .Camera)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.cameras, owned.handle)
+	}
+	else when T == DemoMenu {
+		owned, _ := transform_find_comp(t, .DemoMenu)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.demo_menus, owned.handle)
 	}
 	else when T == Lifetime {
 		owned, _ := transform_find_comp(t, .Lifetime)
@@ -172,6 +188,12 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		pool_destroy(&w.cameras, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
+	else when T == DemoMenu {
+		owned, idx := transform_find_comp(t, .DemoMenu)
+		if idx < 0 do return
+		pool_destroy(&w.demo_menus, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
 	else when T == Lifetime {
 		owned, idx := transform_find_comp(t, .Lifetime)
 		if idx < 0 do return
@@ -221,6 +243,11 @@ world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
 }
 
 world_destroy_all :: proc(w: ^World) {
+	for i in 0..<len(w.demo_menus.slots) {
+		slot := &w.demo_menus.slots[i]
+		if !slot.alive do continue
+		on_destroy_DemoMenu(&slot.data)
+	}
 	for i in 0..<len(w.players.slots) {
 		slot := &w.players.slots[i]
 		if !slot.alive do continue

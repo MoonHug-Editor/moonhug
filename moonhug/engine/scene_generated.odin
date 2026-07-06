@@ -11,6 +11,7 @@ SceneFile :: struct {
 	nested_scenes: [dynamic]NestedScene,
 	breadcrumbs:   [dynamic]Breadcrumb,
 	cameras: [dynamic]Camera,
+	demo_menus: [dynamic]DemoMenu,
 	lifetimes: [dynamic]Lifetime,
 	players: [dynamic]Player,
 	projectiles: [dynamic]Projectile,
@@ -24,6 +25,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_demo_menu_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_projectile_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -54,6 +56,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		camera^ = camera_data
 		id_to_camera_handle[camera_data.local_id] = handle
 		camera_data = {}
+	}
+
+	for &demo_menu_data in sf.demo_menus {
+		handle, demo_menu := pool_create(&w.demo_menus)
+		handle.type_key = .DemoMenu
+		demo_menu^ = demo_menu_data
+		id_to_demo_menu_handle[demo_menu_data.local_id] = handle
+		demo_menu_data = {}
 	}
 
 	for &lifetime_data in sf.lifetimes {
@@ -142,6 +152,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				camera := pool_get(&w.cameras, h)
 				if camera != nil do camera.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_demo_menu_handle); ok {
+				c.handle = h
+				demo_menu := pool_get(&w.demo_menus, h)
+				if demo_menu != nil do demo_menu.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_lifetime_handle); ok {
 				c.handle = h
 				lifetime := pool_get(&w.lifetimes, h)
@@ -180,6 +194,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			for lid, h in id_to_camera_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
+			for lid, h in id_to_demo_menu_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_lifetime_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -205,6 +222,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for _, h in id_to_camera_handle {
 			p := pool_get(&w.cameras, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s)
+		}
+		for _, h in id_to_demo_menu_handle {
+			p := pool_get(&w.demo_menus, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(DemoMenu), s)
 		}
 		for _, h in id_to_lifetime_handle {
 			p := pool_get(&w.lifetimes, h)
@@ -269,6 +290,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 	}
 
 	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.demo_menus { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.projectiles { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
@@ -333,6 +355,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 	}
 
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
+	for &c in sf.demo_menus { _remap_refs_in_value(&c, type_info_of(DemoMenu), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
 	for &c in sf.projectiles { _remap_refs_in_value(&c, type_info_of(Projectile), &remap) }
@@ -359,6 +382,8 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.breadcrumbs)
 	for &c in sf.cameras { type_cleanup(.Camera, &c) }
 	delete(sf.cameras)
+	for &c in sf.demo_menus { type_cleanup(.DemoMenu, &c) }
+	delete(sf.demo_menus)
 	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
 	delete(sf.lifetimes)
 	for &c in sf.players { type_cleanup(.Player, &c) }
@@ -383,6 +408,7 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
 	delete(sf.cameras)
+	delete(sf.demo_menus)
 	delete(sf.lifetimes)
 	delete(sf.players)
 	delete(sf.projectiles)

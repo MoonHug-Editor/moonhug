@@ -10,6 +10,7 @@ TypeKey :: enum u16 {
 	B,
 	C,
 	Camera,
+	DemoMenu,
 	GameSettings,
 	Lifetime,
 	Parallel,
@@ -39,6 +40,7 @@ AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 C__Guid := uuid.read("f51ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_NIL
+DemoMenu__Guid := uuid.read("7cbf2edf-0283-43b3-930e-ef9546d8eed9") or_else UUID_NIL
 GameSettings__Guid := uuid.read("f47ac10b-58cc-4372-a567-0e02b2c3d479") or_else UUID_NIL
 Lifetime__Guid := uuid.read("c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c") or_else UUID_NIL
 Parallel__Guid := uuid.read("916005b6-1c68-49e7-88be-0add6164d3a8") or_else UUID_NIL

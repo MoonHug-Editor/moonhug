@@ -87,6 +87,8 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
+- allow components to be outside engine package (in app package)
+
 - icons in hierarchy (nested scene, variant scene)
 
 - each camera has int order and render_commands buffer

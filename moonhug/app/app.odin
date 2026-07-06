@@ -7,15 +7,17 @@ import rl "vendor:raylib"
 import "core:os"
 import "core:fmt"
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "../engine/log"
 
-SCENE_PATH :: "assets/demo/tank_demo.scene"
+MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
 main :: proc() {
     rl.InitWindow(800, 600, "App")
     defer rl.CloseWindow()
 
     rl.SetWindowState({.WINDOW_RESIZABLE})
+    rl.SetExitKey(.KEY_NULL) // ESC is used by the demo menu, not for quitting
     rl.SetTargetFPS(60)
 
     uc := new(engine.UserContext)
@@ -29,10 +31,13 @@ main :: proc() {
     phase_run(Phase.Init)
 
     // Scene selection: explicit path via first program arg (the editor's Play
-    // button passes its active scene), falling back to the default scene.
-    scene_path := SCENE_PATH
+    // button passes its active scene), falling back to the menu scene resolved
+    // by GUID so the asset can move freely.
+    scene_path: string
     if len(os.args) > 1 && len(os.args[1]) > 0 {
         scene_path = os.args[1]
+    } else if guid, gerr := uuid.read(MENU_SCENE_GUID); gerr == nil {
+        scene_path, _ = engine.asset_db_get_path(guid)
     }
     if os.exists(scene_path) {
         engine.scene_load_single_path(scene_path)
@@ -48,6 +53,7 @@ main :: proc() {
         rl.BeginDrawing()
         rl.ClearBackground(rl.BLACK)
         engine.render_world_cameras()
+        demo_menu_draw()
         rl.EndDrawing()
     }
 
