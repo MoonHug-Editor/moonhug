@@ -1,3 +1,9 @@
+## [0.26.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.25.0...v0.26.0) (2026-07-06)
+
+### Features
+
+* add macOS editor icon ([0b0dc04](https://github.com/MoonHug-Editor/moonhug/commit/0b0dc04bafa7de16b1b6cd150e8e9da3903318f0))
+
 ## [0.25.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.24.0...v0.25.0) (2026-07-06)
 
 ### Features
