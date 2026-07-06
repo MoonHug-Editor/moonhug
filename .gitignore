@@ -11,3 +11,4 @@ editor_window.json
 moonhug/library/
 .zed
 *.dSYM
+builds/

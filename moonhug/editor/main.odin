@@ -59,6 +59,7 @@ main :: proc() {
     }
     rl.SetExitKey(.KEY_NULL)
     rl.SetTargetFPS(60)
+    set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ above
 
     // Setup ImGui
     im.CHECKVERSION()
