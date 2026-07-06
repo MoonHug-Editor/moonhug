@@ -1,3 +1,9 @@
+## [0.25.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.24.0...v0.25.0) (2026-07-06)
+
+### Features
+
+* add demo menu scene, move files ([8428a1f](https://github.com/MoonHug-Editor/moonhug/commit/8428a1f8835393dff52f13be03435c233abb409b))
+
 ## [0.24.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.23.0...v0.24.0) (2026-07-02)
 
 ### Features
