@@ -4,6 +4,7 @@ package app
 
 __update :: proc(dt: f32) {
 	tick_lifetime(dt)
+	game_tick(dt)
 	tick_player(dt)
 	tween_tick(dt)
 	tick_destroy(dt)

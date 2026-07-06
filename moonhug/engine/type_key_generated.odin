@@ -15,7 +15,9 @@ TypeKey :: enum u16 {
 	Parallel,
 	Player,
 	PlayerSettings,
+	Projectile,
 	SceneFile,
+	SceneRefs,
 	Script,
 	Sequence,
 	SpriteRenderer,
@@ -42,7 +44,9 @@ Lifetime__Guid := uuid.read("c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c") or_else UUID
 Parallel__Guid := uuid.read("916005b6-1c68-49e7-88be-0add6164d3a8") or_else UUID_NIL
 Player__Guid := uuid.read("d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c") or_else UUID_NIL
 PlayerSettings__Guid := uuid.read("c8b1e4a2-9d3f-4c5e-a6b7-8f1d2e3c4b5a") or_else UUID_NIL
+Projectile__Guid := uuid.read("7f5e6f68-938f-467f-993e-4d92adb25233") or_else UUID_NIL
 SceneFile__Guid := uuid.read("0d489fce-9c04-4e4d-be12-f3f590d60cea") or_else UUID_NIL
+SceneRefs__Guid := uuid.read("b1d7c74d-4e52-4088-a118-85059cf80149") or_else UUID_NIL
 Script__Guid := uuid.read("adaf3551-4704-4255-ad91-fde59441dc53") or_else UUID_NIL
 Sequence__Guid := uuid.read("24d46399-b3a0-44e7-abd1-6da5d759e935") or_else UUID_NIL
 SpriteRenderer__Guid := uuid.read("b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f") or_else UUID_NIL

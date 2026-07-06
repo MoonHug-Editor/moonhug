@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1021,
+  "next_local_id": 1032,
   "transforms": [
     {
       "local_id": 1018,
@@ -46,12 +46,24 @@
       "host_breadcrumb_id": 0,
       "sibling_index": 0,
       "overrides": [
-
+        {
+          "target": {
+            "local_id": 14,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000,
+            0.6862745300000000
+          ]
+        }
       ]
     },
     {
       "local_id": 1019,
-      "local_id_in_parent": 0,
+      "local_id_in_parent": 1019,
       "source_prefab": "3062313e-26b3-4cfb-a408-cdea7fc0b27f",
       "transform_parent": 1018,
       "host_breadcrumb_id": 1020,
@@ -74,14 +86,6 @@
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "name",
-          "value": "c_Variant"
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
           "property_path": "position",
           "value": [
             7.0000000000000000,
@@ -91,14 +95,22 @@
         },
         {
           "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "name",
+          "value": "c_Variant"
+        },
+        {
+          "target": {
             "local_id": 16,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
           "property_path": "color",
           "value": [
-            0.5019608100000000,
+            0.4745098100000000,
             0.0000000000000000,
-            0.0000000000000000,
+            1.0000000000000000,
             1.0000000000000000
           ]
         },

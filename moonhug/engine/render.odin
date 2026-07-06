@@ -3,10 +3,9 @@ package engine
 import rl "vendor:raylib"
 import gl "vendor:raylib/rlgl"
 
-render_world_cameras :: proc() -> bool {
+camera_active :: proc() -> ^Camera {
 	world := ctx_world()
-
-	best_idx := -1
+	best: ^Camera
 	best_order: i32 = min(i32)
 	for i in 0 ..< len(world.cameras.slots) {
 		slot := &world.cameras.slots[i]
@@ -16,30 +15,38 @@ render_world_cameras :: proc() -> bool {
 		if !transform_active_in_hierarchy(cam.owner) do continue
 		if cam.order > best_order {
 			best_order = cam.order
-			best_idx = i
+			best = cam
 		}
 	}
+	return best
+}
 
-	if best_idx < 0 do return false
-
-	cam := &world.cameras.slots[best_idx].data
-
-	cc := cam.clear_color
-	rl.ClearBackground({u8(cc[0] * 255), u8(cc[1] * 255), u8(cc[2] * 255), u8(cc[3] * 255)})
-
+// The rl.Camera3D used to render this Camera — also feeds
+// rl.GetScreenToWorldRay for mouse picking from game code.
+camera_to_3d :: proc(cam: ^Camera) -> rl.Camera3D {
 	tw := transform_world(Transform_Handle(cam.owner))
 	rot := quat_to_matrix3(tw.rotation)
 	forward := rl.Vector3{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
 	up := rl.Vector3{rot[0, 1], rot[1, 1], rot[2, 1]}
 	pos := rl.Vector3{tw.position.x, tw.position.y, tw.position.z}
 
-	cam3d := rl.Camera3D{
+	return rl.Camera3D{
 		position   = pos,
 		target     = pos + forward,
 		up         = up,
 		fovy       = cam.fov,
 		projection = .PERSPECTIVE,
 	}
+}
+
+render_world_cameras :: proc() -> bool {
+	cam := camera_active()
+	if cam == nil do return false
+
+	cc := cam.clear_color
+	rl.ClearBackground({u8(cc[0] * 255), u8(cc[1] * 255), u8(cc[2] * 255), u8(cc[3] * 255)})
+
+	cam3d := camera_to_3d(cam)
 
 	rl.BeginMode3D(cam3d)
 	render_sprite_renderers(cam.render_layer_mask)

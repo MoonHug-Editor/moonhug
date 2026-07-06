@@ -4,6 +4,8 @@ World :: struct {
 	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
 	players: Pool(Player, 10),
+	projectiles: Pool(Projectile),
+	scene_refses: Pool(SceneRefs, 1),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
 	transforms: Pool(Transform),
@@ -16,6 +18,8 @@ w_init :: proc(w:^World)
 	pool_init(&w.cameras)
 	pool_init(&w.lifetimes)
 	pool_init(&w.players)
+	pool_init(&w.projectiles)
+	pool_init(&w.scene_refses)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
 	pool_init(&w.transforms)
@@ -47,6 +51,22 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.players, c_copy)
+	}
+	w.pool_table[TypeKey.Projectile] = pool_make_entry(&w.projectiles)
+	w.pool_table[TypeKey.Projectile].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^Projectile)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.projectiles, c_copy)
+	}
+	w.pool_table[TypeKey.SceneRefs] = pool_make_entry(&w.scene_refses)
+	w.pool_table[TypeKey.SceneRefs].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^SceneRefs)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.scene_refses, c_copy)
 	}
 	w.pool_table[TypeKey.Script] = pool_make_entry(&w.scripts)
 	w.pool_table[TypeKey.Script].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -102,6 +122,16 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.players, owned.handle)
 	}
+	else when T == Projectile {
+		owned, _ := transform_find_comp(t, .Projectile)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.projectiles, owned.handle)
+	}
+	else when T == SceneRefs {
+		owned, _ := transform_find_comp(t, .SceneRefs)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.scene_refses, owned.handle)
+	}
 	else when T == Script {
 		owned, _ := transform_find_comp(t, .Script)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
@@ -152,6 +182,18 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .Player)
 		if idx < 0 do return
 		pool_destroy(&w.players, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == Projectile {
+		owned, idx := transform_find_comp(t, .Projectile)
+		if idx < 0 do return
+		pool_destroy(&w.projectiles, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == SceneRefs {
+		owned, idx := transform_find_comp(t, .SceneRefs)
+		if idx < 0 do return
+		pool_destroy(&w.scene_refses, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 	else when T == Script {

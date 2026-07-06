@@ -1,0 +1,142 @@
+{
+  "root": 1,
+  "next_local_id": 21,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "Root",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 15,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 18
+        },
+        {
+          "local_id": 20
+        }
+      ]
+    },
+    {
+      "local_id": 15,
+      "name": "Transform",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        0.05000000,
+        0.10000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 16
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "cameras": [
+
+  ],
+  "lifetimes": [
+    {
+      "base": {
+        "local_id": 20,
+        "enabled": true
+      },
+      "duration": 3.00000000,
+      "time_spent": 0.00000000
+    }
+  ],
+  "players": [
+
+  ],
+  "projectiles": [
+    {
+      "base": {
+        "local_id": 18,
+        "enabled": true
+      },
+      "speed": 5.00000000,
+      "dir": [
+        0.00000000,
+        0.00000000
+      ]
+    }
+  ],
+  "scene_refses": [
+
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+    {
+      "base": {
+        "local_id": 16,
+        "enabled": true
+      },
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f",
+      "color": [
+        1.00000000,
+        0.32549021,
+        0.00000000,
+        1.00000000
+      ]
+    }
+  ]
+}

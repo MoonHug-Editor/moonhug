@@ -7,6 +7,7 @@ import "core:mem"
 import "core:os"
 import "core:thread"
 import im "../../external/odin-imgui"
+import "../engine"
 
 TOOLBAR_HEIGHT :: 28
 
@@ -175,6 +176,19 @@ run_app_play :: proc() {
     data.command[1] = "run"
     data.command[2] = "app"
     data.command[3] = "-ignore-unknown-attributes"
+
+    // Pass the editor's active scene to the app (args after "--" reach the
+    // program); without one the app falls back to its default scene.
+    if scene := engine.sm_scene_get_active(); scene != nil && len(scene.path) > 0 {
+        with_scene, aerr := make([]string, 6, pa)
+        if aerr == nil {
+            copy(with_scene, data.command)
+            with_scene[4] = "--"
+            with_scene[5], _ = strings.clone(scene.path, pa)
+            delete(data.command, pa)
+            data.command = with_scene
+        }
+    }
     _play_thread = thread.create_and_start_with_data(data, _run_play_thread_proc)
     if _play_thread == nil {
         _destroy_run_play_data(data)

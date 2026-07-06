@@ -12,6 +12,7 @@ phase_editor_run :: proc(key: app.Phase) {
 		editor_shutdown()
 	case .Init:
 		app.app_init()
+		app.game_bootstrap()
 	case .Shutdown:
 		app.app_shutdown()
 	}

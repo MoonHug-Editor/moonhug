@@ -1,0 +1,261 @@
+{
+  "root": 1,
+  "next_local_id": 14,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "Root",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 12,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 3,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 5,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 12,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        13.89999962
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 13
+        }
+      ]
+    },
+    {
+      "local_id": 3,
+      "name": "SceneRefs",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4
+        }
+      ]
+    },
+    {
+      "local_id": 5,
+      "name": "tank",
+      "is_active": true,
+      "position": [
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 6,
+      "local_id_in_parent": 6,
+      "source_prefab": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9",
+      "transform_parent": 5,
+      "host_breadcrumb_id": 7,
+      "sibling_index": 1,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
+          },
+          "property_path": "name",
+          "value": "tank"
+        }
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 7,
+      "scene_source": {
+        "local_id": 5,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 6
+    },
+    {
+      "local_id": 9,
+      "scene_source": {
+        "local_id": 7,
+        "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
+      },
+      "scene_instance": 6
+    },
+    {
+      "local_id": 10,
+      "scene_source": {
+        "local_id": 16,
+        "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
+      },
+      "scene_instance": 6
+    }
+  ],
+  "cameras": [
+    {
+      "base": {
+        "local_id": 13,
+        "enabled": true
+      },
+      "order": 0,
+      "fov": 60.00000000,
+      "near_clip": 0.30000001,
+      "far_clip": 1000.00000000,
+      "clear_color": [
+        0.19000000,
+        0.30000001,
+        0.47000000,
+        1.00000000
+      ],
+      "render_layer_mask": 4294967295
+    }
+  ],
+  "lifetimes": [
+
+  ],
+  "players": [
+
+  ],
+  "projectiles": [
+
+  ],
+  "scene_refses": [
+    {
+      "base": {
+        "local_id": 4,
+        "enabled": true
+      },
+      "tank": {
+        "local_id": 5
+      },
+      "turret": {
+        "local_id": 9
+      },
+      "shoot_from": {
+        "local_id": 10
+      },
+      "projectile_prefab": "00cfea34-037f-4e40-bbc7-f33c5d1cc628"
+    }
+  ],
+  "scripts": [
+
+  ],
+  "sprite_renderers": [
+
+  ]
+}

@@ -7,10 +7,9 @@ import rl "vendor:raylib"
 import "core:os"
 import "core:fmt"
 import "core:encoding/json"
-import "core:encoding/uuid"
 import "../engine/log"
 
-SCENE_PATH :: "assets/s.scene"
+SCENE_PATH :: "assets/demo/tank_demo.scene"
 
 main :: proc() {
     rl.InitWindow(800, 600, "App")
@@ -29,11 +28,18 @@ main :: proc() {
 
     phase_run(Phase.Init)
 
-    if os.exists(SCENE_PATH) {
-        engine.scene_load_single_path(SCENE_PATH)
+    // Scene selection: explicit path via first program arg (the editor's Play
+    // button passes its active scene), falling back to the default scene.
+    scene_path := SCENE_PATH
+    if len(os.args) > 1 && len(os.args[1]) > 0 {
+        scene_path = os.args[1]
     }
-
-    setup_player_animations()
+    if os.exists(scene_path) {
+        engine.scene_load_single_path(scene_path)
+        scene_loaded()
+    } else {
+        log.errorf("scene not found: %s", scene_path)
+    }
 
     for !rl.WindowShouldClose() {
         dt := rl.GetFrameTime()
@@ -63,9 +69,6 @@ app_init :: proc() {
     engine.asset_db_init("assets")
     engine.texture_cache_init()
     engine.tween_init()
-
-    bullet_guid, _ := uuid.read(BULLET_SCENE_GUID)
-    engine.scene_lib_register(engine.Asset_GUID(bullet_guid))
 
     log.info("App Init done")
 }

@@ -14,6 +14,7 @@ phase_run :: proc(key: Phase) {
 	#partial switch key {
 	case .Init:
 		app_init()
+		game_bootstrap()
 	case .Shutdown:
 		app_shutdown()
 	}

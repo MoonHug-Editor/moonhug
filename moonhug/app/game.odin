@@ -1,0 +1,112 @@
+package app
+
+// Main: the game logic tick for the tank demo. Requires a scene with a
+// SceneRefs component on its root (tank / turret / shoot_from assigned in the
+// inspector); does nothing in scenes without one.
+
+import "core:math"
+import rl "vendor:raylib"
+import "../engine"
+
+TANK_SPEED :: f32(5)
+
+// Aim direction of the turret in the world XY plane, refreshed by turret_aim
+// each tick and consumed by fire at spawn time.
+@(private = "file")
+_aim_dir: [2]f32 = {0, 1}
+
+@(update={order=0})
+game_tick :: proc(dt: f32) {
+    refs := scene_refs_get()
+    if refs != nil && refs.enabled {
+        tank_move(refs, dt)
+        turret_aim(refs)
+        fire(refs)
+    }
+    projectiles_tick(dt)
+}
+
+scene_refs_get :: proc() -> ^engine.SceneRefs {
+    w := engine.ctx_world()
+    for i in 0..<len(w.scene_refses.slots) {
+        slot := &w.scene_refses.slots[i]
+        if slot.alive do return &slot.data
+    }
+    return nil
+}
+
+tank_move :: proc(refs: ^engine.SceneRefs, dt: f32) {
+    w := engine.ctx_world()
+    t := engine.pool_get(&w.transforms, refs.tank.handle)
+    if t == nil do return
+
+    if rl.IsKeyDown(.W) do t.position[1] += TANK_SPEED * dt
+    if rl.IsKeyDown(.S) do t.position[1] -= TANK_SPEED * dt
+    if rl.IsKeyDown(.A) do t.position[0] -= TANK_SPEED * dt
+    if rl.IsKeyDown(.D) do t.position[0] += TANK_SPEED * dt
+}
+
+turret_aim :: proc(refs: ^engine.SceneRefs) {
+    w := engine.ctx_world()
+    t := engine.pool_get(&w.transforms, refs.turret.handle)
+    if t == nil do return
+
+    cam := engine.camera_active()
+    if cam == nil do return
+
+    // Mouse ray intersected with the z=0 gameplay plane.
+    ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), engine.camera_to_3d(cam))
+    if math.abs(ray.direction.z) < 1e-6 do return
+    hit_t := -ray.position.z / ray.direction.z
+    if hit_t < 0 do return
+    mouse_x := ray.position.x + ray.direction.x * hit_t
+    mouse_y := ray.position.y + ray.direction.y * hit_t
+
+    tw := engine.transform_world(engine.Transform_Handle(refs.turret.handle))
+    dx := mouse_x - tw.position.x
+    dy := mouse_y - tw.position.y
+    if dx == 0 && dy == 0 do return
+    inv_len := 1.0 / math.sqrt(dx*dx + dy*dy)
+    _aim_dir = {dx * inv_len, dy * inv_len}
+
+    // Barrel art points +Y, hence the -90.
+    angle_deg := math.atan2(dy, dx) * math.DEG_PER_RAD
+    t.rotation = engine.quat_from_euler_xyz(0, 0, angle_deg - 90)
+}
+
+fire :: proc(refs: ^engine.SceneRefs) {
+    if !rl.IsMouseButtonPressed(.LEFT) do return
+    if engine.asset_guid_is_empty(refs.projectile_prefab) do return
+
+    // Parent to the scene root (SceneRefs' owner) so bullets don't inherit
+    // tank motion after spawn.
+    bH := engine.scene_instantiate_guid(refs.projectile_prefab, refs.owner)
+    if bH == {} do return
+
+    w := engine.ctx_world()
+    bt := engine.pool_get(&w.transforms, engine.Handle(bH))
+    if bt == nil do return
+
+    sw := engine.transform_world(engine.Transform_Handle(refs.shoot_from.handle))
+    bt.position[0] = sw.position.x
+    bt.position[1] = sw.position.y
+    bt.rotation = engine.quat_from_euler_xyz(0, 0, math.atan2(_aim_dir[1], _aim_dir[0]) * math.DEG_PER_RAD - 90)
+
+    _, proj := engine.transform_get_comp(bH, engine.Projectile)
+    if proj != nil do proj.dir = _aim_dir
+}
+
+projectiles_tick :: proc(dt: f32) {
+    w := engine.ctx_world()
+    for i in 0..<len(w.projectiles.slots) {
+        slot := &w.projectiles.slots[i]
+        if !slot.alive do continue
+        p := &slot.data
+        if !p.enabled do continue
+
+        t := engine.pool_get(&w.transforms, engine.Handle(p.owner))
+        if t == nil do continue
+        t.position[0] += p.dir[0] * p.speed * dt
+        t.position[1] += p.dir[1] * p.speed * dt
+    }
+}

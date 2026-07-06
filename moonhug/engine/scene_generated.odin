@@ -13,6 +13,8 @@ SceneFile :: struct {
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
 	players: [dynamic]Player,
+	projectiles: [dynamic]Projectile,
+	scene_refses: [dynamic]SceneRefs,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
 }
@@ -24,6 +26,8 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_projectile_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_scene_refs_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
 
@@ -66,6 +70,22 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		player^ = player_data
 		id_to_player_handle[player_data.local_id] = handle
 		player_data = {}
+	}
+
+	for &projectile_data in sf.projectiles {
+		handle, projectile := pool_create(&w.projectiles)
+		handle.type_key = .Projectile
+		projectile^ = projectile_data
+		id_to_projectile_handle[projectile_data.local_id] = handle
+		projectile_data = {}
+	}
+
+	for &scene_refs_data in sf.scene_refses {
+		handle, scene_refs := pool_create(&w.scene_refses)
+		handle.type_key = .SceneRefs
+		scene_refs^ = scene_refs_data
+		id_to_scene_refs_handle[scene_refs_data.local_id] = handle
+		scene_refs_data = {}
 	}
 
 	for &script_data in sf.scripts {
@@ -130,6 +150,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				player := pool_get(&w.players, h)
 				if player != nil do player.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_projectile_handle); ok {
+				c.handle = h
+				projectile := pool_get(&w.projectiles, h)
+				if projectile != nil do projectile.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_scene_refs_handle); ok {
+				c.handle = h
+				scene_refs := pool_get(&w.scene_refses, h)
+				if scene_refs != nil do scene_refs.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_script_handle); ok {
 				c.handle = h
 				script := pool_get(&w.scripts, h)
@@ -158,6 +186,12 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			for lid, h in id_to_player_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
+			for lid, h in id_to_projectile_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
+			for lid, h in id_to_scene_refs_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_script_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -179,6 +213,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for _, h in id_to_player_handle {
 			p := pool_get(&w.players, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s)
+		}
+		for _, h in id_to_projectile_handle {
+			p := pool_get(&w.projectiles, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Projectile), s)
+		}
+		for _, h in id_to_scene_refs_handle {
+			p := pool_get(&w.scene_refses, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(SceneRefs), s)
 		}
 		for _, h in id_to_script_handle {
 			p := pool_get(&w.scripts, h)
@@ -229,6 +271,8 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.projectiles { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.scene_refses { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }
@@ -291,6 +335,8 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
+	for &c in sf.projectiles { _remap_refs_in_value(&c, type_info_of(Projectile), &remap) }
+	for &c in sf.scene_refses { _remap_refs_in_value(&c, type_info_of(SceneRefs), &remap) }
 	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
 	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
 }
@@ -317,6 +363,10 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.lifetimes)
 	for &c in sf.players { type_cleanup(.Player, &c) }
 	delete(sf.players)
+	for &c in sf.projectiles { type_cleanup(.Projectile, &c) }
+	delete(sf.projectiles)
+	for &c in sf.scene_refses { type_cleanup(.SceneRefs, &c) }
+	delete(sf.scene_refses)
 	for &c in sf.scripts { type_cleanup(.Script, &c) }
 	delete(sf.scripts)
 	for &c in sf.sprite_renderers { type_cleanup(.SpriteRenderer, &c) }
@@ -335,6 +385,8 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.cameras)
 	delete(sf.lifetimes)
 	delete(sf.players)
+	delete(sf.projectiles)
+	delete(sf.scene_refses)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)
 }
