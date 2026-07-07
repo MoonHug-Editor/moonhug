@@ -25,6 +25,7 @@ ICON_MD_MUSIC_NOTE  :: "\ue405"   // music_note
 
 // Scene / hierarchy
 ICON_MD_LAYERS         :: "\ue53b"   // layers
+ICON_MD_STACKS         :: "\uf359"   // stacks (scene/prefab)
 ICON_MD_WIDGETS        :: "\ue1bd"   // widgets
 ICON_MD_DEPLOYED_CODE  :: "\uf720"   // deployed_code
 ICON_MD_VISIBILITY     :: "\ue8f4"   // visibility
