@@ -258,7 +258,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	im.Text(strings.clone_to_cstring(scene_name, context.temp_allocator))
 	btn_size := im.Vec2{24, 0}
 	im.SameLine(im.GetContentRegionAvail().x + im.GetCursorPosX() - btn_size.x)
-	if im.Button("...", btn_size) {
+	if im.Button(ICON_MD_MENU + "###SceneHeaderMenuBtn", btn_size) {
 		im.OpenPopup("##SceneHeaderMenu")
 	}
 	if im.BeginPopup("##SceneHeaderMenu") {

@@ -319,7 +319,7 @@ _draw_component_overflow_menu :: proc(
 ) {
 	popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
-	btn_label := strings.clone_to_cstring(fmt.tprintf("\u22ee##btn_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
+	btn_label := strings.clone_to_cstring(fmt.tprintf("%s##btn_%v_%v", ICON_MD_MENU, comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	if im.SmallButton(btn_label) {
 		im.OpenPopup(popup_id)
 	}
