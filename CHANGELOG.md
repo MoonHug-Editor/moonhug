@@ -1,3 +1,10 @@
+## [0.27.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.26.0...v0.27.0) (2026-07-07)
+
+### Features
+
+* allow components outside engine package ([e1445aa](https://github.com/MoonHug-Editor/moonhug/commit/e1445aad6c1aa193519a1dfa4e106aa76e9f0655))
+* project window improvements ([3dc1aeb](https://github.com/MoonHug-Editor/moonhug/commit/3dc1aeb1af5a24bb834fe0aa1c44f672177e7e3f))
+
 ## [0.26.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.25.0...v0.26.0) (2026-07-06)
 
 ### Features
