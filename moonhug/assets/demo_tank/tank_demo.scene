@@ -231,31 +231,29 @@
   "players": [
 
   ],
-  "projectiles": [
+  "scripts": [
 
   ],
-  "scene_refses": [
+  "sprite_renderers": [
+
+  ],
+  "ext_components": [
     {
+      "__type": "b1d7c74d-4e52-4088-a118-85059cf80149",
       "base": {
-        "local_id": 4,
-        "enabled": true
+        "enabled": true,
+        "local_id": 4
+      },
+      "projectile_prefab": "00cfea34-037f-4e40-bbc7-f33c5d1cc628",
+      "shoot_from": {
+        "local_id": 10
       },
       "tank": {
         "local_id": 5
       },
       "turret": {
         "local_id": 9
-      },
-      "shoot_from": {
-        "local_id": 10
-      },
-      "projectile_prefab": "00cfea34-037f-4e40-bbc7-f33c5d1cc628"
+      }
     }
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
   ]
 }

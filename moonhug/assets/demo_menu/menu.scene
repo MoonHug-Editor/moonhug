@@ -105,28 +105,10 @@
       "render_layer_mask": 4294967295
     }
   ],
-  "demo_menus": [
-    {
-      "base": {
-        "local_id": 2,
-        "enabled": true
-      },
-      "demos": [
-        "06255819-d115-41af-a626-0cfe0e48efbf",
-        "bc79d83f-83da-4f50-8b38-34bfd33d7c65"
-      ]
-    }
-  ],
   "lifetimes": [
 
   ],
   "players": [
-
-  ],
-  "projectiles": [
-
-  ],
-  "scene_refses": [
 
   ],
   "scripts": [
@@ -134,5 +116,18 @@
   ],
   "sprite_renderers": [
 
+  ],
+  "ext_components": [
+    {
+      "__type": "7cbf2edf-0283-43b3-930e-ef9546d8eed9",
+      "base": {
+        "enabled": true,
+        "local_id": 2
+      },
+      "demos": [
+        "06255819-d115-41af-a626-0cfe0e48efbf",
+        "bc79d83f-83da-4f50-8b38-34bfd33d7c65"
+      ]
+    }
   ]
 }

@@ -12,9 +12,12 @@ ComponentEntry :: struct {
 	snake_name:      string,
 	plural:          string,
 	menu_path:       string,
+	pkg:             string, // package name ("engine", "app", ...)
 	max:             int,
 	has_on_validate: bool,
 	has_on_destroy:  bool,
+	has_reset:       bool,
+	has_cleanup:     bool,
 }
 
 PoolableEntry :: struct {
@@ -38,9 +41,12 @@ Component_GenComp :: struct {
 	snake_name:      string,
 	plural:          string,
 	menu_path:       string,
+	pkg:             string,
 	max:             int,
 	has_on_validate: bool,
 	has_on_destroy:  bool,
+	has_reset:       bool,
+	has_cleanup:     bool,
 }
 
 
@@ -50,6 +56,7 @@ _register :: proc "contextless" () {
 	db.generator("components/generate", generate)
 	db.generator("components/scene", generate_scene_file)
 	db.generator("components/menus", generate_component_menus)
+	db.generator("components/ext", generate_ext_components)
 }
 
 
@@ -71,6 +78,20 @@ _pluralize :: proc(s: string) -> string {
 		return strings.concatenate({s, "es"})
 	}
 	return strings.concatenate({s, "s"})
+}
+
+_pkg_name :: proc(pkg_path: string) -> string {
+	if i := strings.last_index(pkg_path, "/"); i >= 0 && i + 1 < len(pkg_path) {
+		return pkg_path[i + 1:]
+	}
+	return pkg_path
+}
+
+// Components in package engine keep their typed World/SceneFile storage;
+// components anywhere else go through the runtime component registry (ext
+// pools + guid-tagged blob records in scene files).
+_is_engine :: proc(e: ComponentEntry) -> bool {
+	return e.pkg == "engine" || e.pkg == ""
 }
 
 
@@ -100,14 +121,21 @@ provide :: proc(w: ^db.World) -> bool {
 			defer delete(on_validate_name)
 			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
 			defer delete(on_destroy_name)
+			reset_name := strings.concatenate({"reset_", type_name})
+			defer delete(reset_name)
+			cleanup_name := strings.concatenate({"cleanup_", type_name})
+			defer delete(cleanup_name)
 			db.set(_components, entity, Component_GenComp{
 				kind            = .Component,
 				snake_name      = snake,
 				plural          = plural,
 				menu_path       = menu_path,
+				pkg             = _pkg_name(decl.pkg_path),
 				max             = gen_facts.attr_int(args, "max"),
 				has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
 				has_on_destroy  = gen_core.FileHasProc(decl.file, on_destroy_name),
+				has_reset       = gen_core.FileHasProc(decl.file, reset_name),
+				has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 			})
 			continue
 		}
@@ -149,9 +177,12 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				snake_name      = component.snake_name,
 				plural          = component.plural,
 				menu_path       = component.menu_path,
+				pkg             = component.pkg,
 				max             = component.max,
 				has_on_validate = component.has_on_validate,
 				has_on_destroy  = component.has_on_destroy,
+				has_reset       = component.has_reset,
+				has_cleanup     = component.has_cleanup,
 			})
 		case .Poolable:
 			append(&data.poolable_entries, PoolableEntry{
@@ -226,13 +257,19 @@ generate :: proc(w: ^db.World) -> bool {
 	data := _collect_data(w)
 	defer _free_data(&data)
 
+	// Engine components get typed World/SceneFile storage; external ones are
+	// runtime-registered (see generate_ext_components) and live in ext_pools.
+	eng: [dynamic]ComponentEntry
+	defer delete(eng)
+	for e in data.entries do if _is_engine(e) do append(&eng, e)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
 	strings.write_string(&b, "package engine\n\n")
 
 	strings.write_string(&b, "World :: struct {\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\t%s: ", e.plural)
 		_pool_type(&b, e.type_name, e.max)
 		strings.write_string(&b, ",\n")
@@ -242,12 +279,13 @@ generate :: proc(w: ^db.World) -> bool {
 		_pool_type(&b, e.type_name, e.max)
 		strings.write_string(&b, ",\n")
 	}
+	strings.write_string(&b, "\text_pools: [TypeKey]rawptr,\n")
 	strings.write_string(&b, "\tpool_table: [TypeKey]Pool_Entry,\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "w_init :: proc(w:^World)\n")
 	strings.write_string(&b, "{\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
 	for e in data.poolable_entries {
@@ -257,7 +295,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t__type_cleanups_init()\n")
 	strings.write_string(&b, "\t__component_on_validates_init()\n")
 	strings.write_string(&b, "\t__component_on_destroys_init()\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s].collect_fn = proc(comp: rawptr, sf: rawptr) {{\n", e.type_name)
 		fmt.sbprintf(&b, "\t\tc := cast(^%s)comp\n", e.type_name)
@@ -270,10 +308,11 @@ generate :: proc(w: ^db.World) -> bool {
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 	}
+	strings.write_string(&b, "\t_w_init_ext_pools(w)\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "__component_on_validates_init :: proc() {\n")
-	for e in data.entries {
+	for e in eng {
 		if e.has_on_validate {
 			fmt.sbprintf(&b, "\tcomponent_on_validate_procs[.%s] = proc(ptr: rawptr) {{ on_validate_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
 		}
@@ -281,7 +320,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "__component_on_destroys_init :: proc() {\n")
-	for e in data.entries {
+	for e in eng {
 		if e.has_on_destroy {
 			fmt.sbprintf(&b, "\tcomponent_on_destroy_procs[.%s] = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, e.type_name)
 		}
@@ -299,7 +338,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tw := ctx_world()\n")
 	strings.write_string(&b, "\tt := pool_get(&w.transforms, Handle(tH))\n")
 	strings.write_string(&b, "\tif t == nil do return {}, nil\n")
-	for e, i in data.entries {
+	for e, i in eng {
 		if i == 0 {
 			fmt.sbprintf(&b, "\twhen T == %s ", e.type_name)
 		} else {
@@ -331,7 +370,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tw := ctx_world()\n")
 	strings.write_string(&b, "\tt := pool_get(&w.transforms, Handle(tH))\n")
 	strings.write_string(&b, "\tif t == nil do return\n")
-	for e, i in data.entries {
+	for e, i in eng {
 		if i == 0 {
 			fmt.sbprintf(&b, "\twhen T == %s ", e.type_name)
 		} else {
@@ -356,7 +395,8 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 
 	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
-	for e in data.entries {
+	strings.write_string(&b, "\t_world_destroy_ext(w)\n")
+	for e in eng {
 		if e.has_on_destroy {
 			fmt.sbprintf(&b, "\tfor i in 0..<len(w.%s.slots) {{\n", e.plural)
 			fmt.sbprintf(&b, "\t\tslot := &w.%s.slots[i]\n", e.plural)
@@ -383,6 +423,10 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	data := _collect_data(w)
 	defer _free_data(&data)
 
+	eng: [dynamic]ComponentEntry
+	defer delete(eng)
+	for e in data.entries do if _is_engine(e) do append(&eng, e)
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -397,15 +441,16 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\ttransforms:    [dynamic]Transform,\n")
 	strings.write_string(&b, "\tnested_scenes: [dynamic]NestedScene,\n")
 	strings.write_string(&b, "\tbreadcrumbs:   [dynamic]Breadcrumb,\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\t%s: [dynamic]%s,\n", e.plural, e.type_name)
 	}
+	strings.write_string(&b, "\text_components: [dynamic]json.Value,\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "_scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil, transform_scope_guid: Asset_GUID = {}, skip_scene_local_id_registration := false) -> Transform_Handle {\n")
 	strings.write_string(&b, "\tw := ctx_world()\n\n")
 	strings.write_string(&b, "\tid_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tid_to_%s_handle := make(map[Local_ID]Handle, context.temp_allocator)\n", e.snake_name)
 	}
 	strings.write_string(&b, "\n")
@@ -425,7 +470,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\t\tappend(&s.nested_scenes, ns_copy)\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tfor &%s_data in sf.%s {{\n", e.snake_name, e.plural)
 		fmt.sbprintf(&b, "\t\thandle, %s := pool_create(&w.%s)\n", e.snake_name, e.plural)
 		fmt.sbprintf(&b, "\t\thandle.type_key = .%s\n", e.type_name)
@@ -434,6 +479,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 		fmt.sbprintf(&b, "\t\t%s_data = {{}}\n", e.snake_name)
 		strings.write_string(&b, "\t}\n\n")
 	}
+	strings.write_string(&b, "\tid_to_ext_handle := _scene_load_ext_components(sf)\n\n")
 	strings.write_string(&b, "\tfor &t_data in sf.transforms {\n")
 	strings.write_string(&b, "\t\thandle, t := pool_create(&w.transforms)\n")
 	strings.write_string(&b, "\t\thandle.type_key = .Transform\n")
@@ -464,7 +510,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\t\t}\n")
 	strings.write_string(&b, "\t\t}\n\n")
 	strings.write_string(&b, "\t\tfor &c in t.components {\n")
-	for e, i in data.entries {
+	for e, i in eng {
 		if i == 0 {
 			fmt.sbprintf(&b, "\t\t\tif h, ok := resolve_handle(c.local_id, id_to_%s_handle); ok {{\n", e.snake_name)
 		} else {
@@ -474,9 +520,14 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 		fmt.sbprintf(&b, "\t\t\t\t%s := pool_get(&w.%s, h)\n", e.snake_name, e.plural)
 		fmt.sbprintf(&b, "\t\t\t\tif %s != nil do %s.owner = Transform_Handle(handle)\n", e.snake_name, e.snake_name)
 	}
-	if len(data.entries) > 0 {
-		strings.write_string(&b, "\t\t\t}\n")
+	if len(eng) > 0 {
+		strings.write_string(&b, "\t\t\t} else if h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {\n")
+	} else {
+		strings.write_string(&b, "\t\t\tif h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {\n")
 	}
+	strings.write_string(&b, "\t\t\t\tc.handle = h\n")
+	strings.write_string(&b, "\t\t\t\t_ext_set_owner(w, h, Transform_Handle(handle))\n")
+	strings.write_string(&b, "\t\t\t}\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\tif s != nil {\n")
@@ -486,23 +537,29 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\t\t\t\tbimap_insert(&s.local_ids, lid, h)\n")
 	strings.write_string(&b, "\t\t\t\t}\n")
 	strings.write_string(&b, "\t\t\t}\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\t\t\tfor lid, h in id_to_%s_handle {{\n", e.snake_name)
 		strings.write_string(&b, "\t\t\t\tbimap_insert(&s.local_ids, lid, h)\n")
 		strings.write_string(&b, "\t\t\t}\n")
 	}
+	strings.write_string(&b, "\t\t\tfor lid, h in id_to_ext_handle {\n")
+	strings.write_string(&b, "\t\t\t\tbimap_insert(&s.local_ids, lid, h)\n")
+	strings.write_string(&b, "\t\t\t}\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t\tfor bc in sf.breadcrumbs {\n")
 	strings.write_string(&b, "\t\t\tscene_breadcrumb_put(s, bc)\n")
 	strings.write_string(&b, "\t\t}\n")
 	// Resolve PPtr/Ref/Ref_Local handles by looking up local_id in s.local_ids
 	// for each live pooled object. Runs only if we have a Scene (need bimap).
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\t\tfor _, h in id_to_%s_handle {{\n", e.snake_name)
 		fmt.sbprintf(&b, "\t\t\tp := pool_get(&w.%s, h)\n", e.plural)
 		fmt.sbprintf(&b, "\t\t\tif p != nil do _resolve_refs_in_value(p, type_info_of(%s), s)\n", e.type_name)
 		strings.write_string(&b, "\t\t}\n")
 	}
+	strings.write_string(&b, "\t\tfor _, h in id_to_ext_handle {\n")
+	strings.write_string(&b, "\t\t\t_ext_resolve_refs(w, h, s)\n")
+	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\troot_handle: Handle\n")
 	strings.write_string(&b, "\tif sf.root != 0 {\n")
@@ -535,9 +592,10 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\tremap[t.local_id] = new_id\n")
 	strings.write_string(&b, "\t\tt.local_id = new_id\n")
 	strings.write_string(&b, "\t}\n\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }}\n", e.plural)
 	}
+	strings.write_string(&b, "\text_temps := _scene_file_remap_ext_begin(sf, s, &remap)\n")
 	strings.write_string(&b, "\tfor &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }\n")
 	strings.write_string(&b, "\tfor &bc in sf.breadcrumbs {\n")
 	strings.write_string(&b, "\t\told := bc.local_id\n")
@@ -593,9 +651,10 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tif new_root, ok := remap[sf.root]; ok {\n")
 	strings.write_string(&b, "\t\tsf.root = new_root\n")
 	strings.write_string(&b, "\t}\n\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ _remap_refs_in_value(&c, type_info_of(%s), &remap) }}\n", e.plural, e.type_name)
 	}
+	strings.write_string(&b, "\t_scene_file_remap_ext_finish(ext_temps, &remap)\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "scene_file_destroy :: proc(sf: ^SceneFile) {\n")
@@ -614,10 +673,11 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ type_cleanup(.%s, &c) }}\n", e.plural, e.type_name)
 		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)
 	}
+	strings.write_string(&b, "\t_scene_file_destroy_ext(sf)\n")
 	strings.write_string(&b, "}\n")
 
 	strings.write_string(&b, "\n")
@@ -630,11 +690,113 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tdelete(sf.transforms)\n")
 	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
-	for e in data.entries {
+	for e in eng {
 		fmt.sbprintf(&b, "\tdelete(sf.%s)\n", e.plural)
 	}
+	// Ext values are parsed/created fresh and always owned by the SceneFile
+	// (never shared with live world memory), so even the shallow destroy
+	// releases them fully.
+	strings.write_string(&b, "\t_scene_file_destroy_ext(sf)\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/engine/scene_generated.odin", strings.to_string(b))
+	return true
+}
+
+// generate_ext_components: for every NON-engine package that declares
+// @(component) structs, emit a <pkg>/components_ext_generated.odin with
+// runtime Component_Desc registrations (pool/lifecycle thunks need the
+// concrete type, so they must be compiled in the component's own package)
+// plus typed pool accessors and a typed get_comp that falls back to engine's.
+generate_ext_components :: proc(w: ^db.World) -> bool {
+	data := _collect_data(w)
+	defer _free_data(&data)
+
+	// Collect distinct non-engine packages, keeping entry order.
+	pkgs: [dynamic]string
+	defer delete(pkgs)
+	for e in data.entries {
+		if _is_engine(e) do continue
+		found := false
+		for p in pkgs do if p == e.pkg { found = true; break }
+		if !found do append(&pkgs, e.pkg)
+	}
+
+	for pkg in pkgs {
+		b := strings.builder_make()
+		defer strings.builder_destroy(&b)
+
+		fmt.sbprintf(&b, "package %s\n\n", pkg)
+		strings.write_string(&b, "import \"core:sync\"\n")
+		strings.write_string(&b, "import \"../engine\"\n\n")
+		strings.write_string(&b, "// Code generated by components_gen. Do not edit.\n\n")
+
+		fmt.sbprintf(&b, "@(private)\n_register_%s_components_once: sync.Once\n\n", pkg)
+		fmt.sbprintf(&b, "register_%s_components :: proc() {{\n", pkg)
+		fmt.sbprintf(&b, "\tsync.once_do(&_register_%s_components_once, proc() {{\n", pkg)
+		for e in data.entries {
+			if _is_engine(e) || e.pkg != pkg do continue
+			pool_t := fmt.tprintf("engine.Pool(%s, %d)", e.type_name, e.max) if e.max > 0 else fmt.tprintf("engine.Pool(%s)", e.type_name)
+			strings.write_string(&b, "\t\tengine.component_register(engine.Component_Desc{\n")
+			fmt.sbprintf(&b, "\t\t\ttype_key  = .%s,\n", e.type_name)
+			fmt.sbprintf(&b, "\t\t\ttype_guid = engine.%s__Guid,\n", e.type_name)
+			fmt.sbprintf(&b, "\t\t\ttid       = typeid_of(%s),\n", e.type_name)
+			fmt.sbprintf(&b, "\t\t\tptr_tid   = typeid_of(^%s),\n", e.type_name)
+			fmt.sbprintf(&b, "\t\t\tpool_create = proc() -> rawptr {{ p := new(%s); engine.pool_init(p); return p }},\n", pool_t)
+			fmt.sbprintf(&b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
+			fmt.sbprintf(&b, "\t\t\tmake_entry = proc(pool: rawptr) -> engine.Pool_Entry {{ return engine.pool_make_entry(cast(^%s)pool) }},\n", pool_t)
+			fmt.sbprintf(&b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {{\n\t\t\t\tp := cast(^%s)pool\n\t\t\t\tfor i in 0..<len(p.slots) {{\n\t\t\t\t\tif p.slots[i].alive do fn(&p.slots[i].data)\n\t\t\t\t}}\n\t\t\t}},\n", pool_t)
+			if e.has_reset {
+				fmt.sbprintf(&b, "\t\t\treset = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+			}
+			if e.has_cleanup {
+				fmt.sbprintf(&b, "\t\t\tcleanup = proc(ptr: rawptr) {{ cleanup_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+			}
+			if e.has_on_validate {
+				fmt.sbprintf(&b, "\t\t\ton_validate = proc(ptr: rawptr) {{ on_validate_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+			}
+			if e.has_on_destroy {
+				fmt.sbprintf(&b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+			}
+			strings.write_string(&b, "\t\t})\n")
+		}
+		strings.write_string(&b, "\t})\n")
+		strings.write_string(&b, "}\n\n")
+
+		// Typed pool accessors: same names game code used against World fields.
+		for e in data.entries {
+			if _is_engine(e) || e.pkg != pkg do continue
+			pool_t := fmt.tprintf("engine.Pool(%s, %d)", e.type_name, e.max) if e.max > 0 else fmt.tprintf("engine.Pool(%s)", e.type_name)
+			fmt.sbprintf(&b, "%s :: proc(w: ^engine.World) -> ^%s {{\n", e.plural, pool_t)
+			fmt.sbprintf(&b, "\treturn cast(^%s) w.ext_pools[engine.TypeKey.%s]\n", pool_t, e.type_name)
+			strings.write_string(&b, "}\n\n")
+		}
+
+		// Typed get_comp over this package's components, engine fallback.
+		strings.write_string(&b, "get_comp :: proc(tH: engine.Transform_Handle, $T: typeid) -> (engine.Owned, ^T) {\n")
+		first := true
+		for e in data.entries {
+			if _is_engine(e) || e.pkg != pkg do continue
+			kw := "when" if first else "else when"
+			fmt.sbprintf(&b, "\t%s T == %s {{\n", kw, e.type_name)
+			strings.write_string(&b, "\t\tw := engine.ctx_world()\n")
+			strings.write_string(&b, "\t\tt := engine.pool_get(&w.transforms, engine.Handle(tH))\n")
+			strings.write_string(&b, "\t\tif t == nil do return {}, nil\n")
+			fmt.sbprintf(&b, "\t\towned, _ := engine.transform_find_comp(t, .%s)\n", e.type_name)
+			strings.write_string(&b, "\t\tif owned.handle.type_key == engine.INVALID_TYPE_KEY do return owned, nil\n")
+			fmt.sbprintf(&b, "\t\tpool := %s(w)\n", e.plural)
+			strings.write_string(&b, "\t\tif pool == nil do return owned, nil\n")
+			strings.write_string(&b, "\t\treturn owned, engine.pool_get(pool, owned.handle)\n")
+			strings.write_string(&b, "\t}\n")
+			first = false
+		}
+		strings.write_string(&b, "\telse {\n")
+		strings.write_string(&b, "\t\treturn engine.transform_get_comp(tH, T)\n")
+		strings.write_string(&b, "\t}\n")
+		strings.write_string(&b, "}\n")
+
+		path := fmt.tprintf("moonhug/%s/components_ext_generated.odin", pkg)
+		db.emit(w, path, strings.to_string(b))
+	}
 	return true
 }

@@ -410,6 +410,7 @@ _generate_type_procs :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Clean
 
 	strings.write_string(&b, "__type_resets_init :: proc() {\n")
 	for e in entries {
+		if e.pkg_name != "engine" do continue // registered at runtime via Component_Desc
 		if e.has_reset {
 			ct := _entry_cast_type(e)
 			fmt.sbprintf(&b, "\ttype_reset_procs[.%s] = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }}\n", e.type_name, e.type_name, ct)
@@ -421,6 +422,7 @@ _generate_type_procs :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Clean
 	scratch: [dynamic]_CleanupRow
 	defer delete(scratch)
 	for e in entries {
+		if e.pkg_name != "engine" do continue // registered at runtime via Component_Desc
 		_bindings_for_type_entry(cleanup_bindings, e, &scratch)
 		ct := _entry_cast_type(e)
 		if len(scratch) == 1 {

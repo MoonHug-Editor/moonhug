@@ -28,6 +28,7 @@ _tween_initialized: bool
 setup :: proc(tc: ^TestCtx, path: string = "") {
 	app.register_type_guids()
 	if !_serializers_registered {
+		app.register_app_components()
 		app.register_component_serializers()
 		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 		// typeids for primitive field types (position, color, scale, …) so it
@@ -2962,10 +2963,10 @@ test_variant_save_propagates_to_host_scene :: proc(t: ^testing.T) {
 	testing.expect(t, mkerr == nil || os.exists(dir), fmt.tprintf("temp dir: %v", mkerr))
 	copied: [dynamic]string
 	defer { for f in copied { os.remove(f); delete(f) }; delete(copied); os.remove(dir) }
-	for name in ([]string{"s.scene", "bullet_Variant.scene", "bullet.scene", "c.scene", "c_Variant.scene"}) {
+	for name in ([]string{"demo_prefabs.scene", "bullet_Variant.scene", "bullet.scene", "c.scene", "c_Variant.scene"}) {
 		for suffix in ([]string{"", ".meta"}) {
 			fn := strings.concatenate({name, suffix}, context.temp_allocator)
-			src := strings.concatenate({"moonhug/assets/", fn}, context.temp_allocator)
+			src := strings.concatenate({"moonhug/assets/demo_prefabs/", fn}, context.temp_allocator)
 			dst := strings.concatenate({dir, "/", fn}, context.allocator)
 			data, e := os.read_entire_file(src, context.temp_allocator)
 			if e != nil { delete(dst); continue }
@@ -2986,7 +2987,7 @@ test_variant_save_propagates_to_host_scene :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	bv_path := strings.concatenate({dir, "/bullet_Variant.scene"}, context.temp_allocator)
-	s_path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	s_path := strings.concatenate({dir, "/demo_prefabs.scene"}, context.temp_allocator)
 
 	new_color := [4]f32{0.111, 0.222, 0.333, 1}
 
@@ -3044,7 +3045,7 @@ test_bullet_variant_inherited_c_variant_edit :: proc(t: ^testing.T) {
 
 	// Save+reload to the SAME path the editor uses (overwrite the open file),
 	// so the chain bake reads the just-written bytes — matching the editor.
-	src := "moonhug/assets/bullet_Variant.scene"
+	src := "moonhug/assets/demo_prefabs/bullet_Variant.scene"
 	tmp := "moonhug/assets/_test_bullet_variant_rt.scene"
 	defer os.remove(tmp)
 	{
@@ -3156,7 +3157,7 @@ test_variant_deep_override_applies_when_nested :: proc(t: ^testing.T) {
 	// — the live asset's value changes as it is edited).
 	want: [4]f32
 	{
-		sf, ok := engine.scene_file_load("moonhug/assets/bullet_Variant.scene")
+		sf, ok := engine.scene_file_load("moonhug/assets/demo_prefabs/bullet_Variant.scene")
 		testing.expect(t, ok, "load bullet_Variant file")
 		if !ok do return
 		defer engine.scene_file_destroy(&sf)
@@ -3209,7 +3210,7 @@ test_variant_deep_override_revert :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	loaded := engine.scene_load_single_path("moonhug/assets/bullet_Variant.scene")
+	loaded := engine.scene_load_single_path("moonhug/assets/demo_prefabs/bullet_Variant.scene")
 	testing.expect(t, loaded != nil)
 	if loaded == nil do return
 	tc_mem.scene = loaded

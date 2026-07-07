@@ -138,8 +138,16 @@ world_pool_destroy :: proc(w: ^World, handle: Handle) {
 
 world_pool_collect :: proc(w: ^World, handle: Handle, sf: ^SceneFile) {
     entry := w.pool_table[handle.type_key]
-    if entry.collect_fn == nil do return
+    if entry.get_fn == nil do return
     ptr := entry.get_fn(entry.pool, handle)
     if ptr == nil do return
-    entry.collect_fn(ptr, sf)
+    if entry.collect_fn != nil {
+        entry.collect_fn(ptr, sf)
+        return
+    }
+    // Registered external components (no generated collect_fn) serialize as
+    // guid-tagged blob records.
+    if desc, ok := component_registry[handle.type_key]; ok {
+        _ext_collect_component(desc, ptr, sf)
+    }
 }

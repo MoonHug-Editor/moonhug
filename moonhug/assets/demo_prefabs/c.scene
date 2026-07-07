@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 4,
+  "next_local_id": 17,
   "transforms": [
     {
       "local_id": 15,
@@ -86,6 +86,9 @@
   "nested_scenes": [
 
   ],
+  "breadcrumbs": [
+
+  ],
   "cameras": [
 
   ],
@@ -132,5 +135,8 @@
         1.00000000
       ]
     }
+  ],
+  "ext_components": [
+
   ]
 }

@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1032,
+  "next_local_id": 1033,
   "transforms": [
     {
       "local_id": 1018,
@@ -74,18 +74,6 @@
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
           "property_path": "position",
           "value": [
             7.0000000000000000,
@@ -100,6 +88,18 @@
           },
           "property_path": "name",
           "value": "c_Variant"
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
+          ]
         },
         {
           "target": {
@@ -153,6 +153,9 @@
 
   ],
   "sprite_renderers": [
+
+  ],
+  "ext_components": [
 
   ]
 }

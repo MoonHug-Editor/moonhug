@@ -216,12 +216,6 @@
   "players": [
 
   ],
-  "projectiles": [
-
-  ],
-  "scene_refses": [
-
-  ],
   "scripts": [
 
   ],
@@ -265,5 +259,8 @@
         1.00000000
       ]
     }
+  ],
+  "ext_components": [
+
   ]
 }

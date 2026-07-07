@@ -870,6 +870,9 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 		pretty     = true,
 		use_spaces = true,
 		spaces     = 2,
+		// Deterministic key order for json.Object values (ext components):
+		// "__type" sorts before lowercase field names, so it leads each record.
+		sort_maps_by_key = true,
 	}
 	data, err := json.marshal(sf, opts)
 	if err != nil {

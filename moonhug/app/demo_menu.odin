@@ -56,17 +56,18 @@ demo_menu_draw :: proc() {
 @(private = "file")
 _DIGITS := [9]string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
-demo_menu_get :: proc() -> ^engine.DemoMenu {
-    w := engine.ctx_world()
-    for i in 0..<len(w.demo_menus.slots) {
-        slot := &w.demo_menus.slots[i]
+demo_menu_get :: proc() -> ^DemoMenu {
+    pool := demo_menus(engine.ctx_world())
+    if pool == nil do return nil
+    for i in 0..<len(pool.slots) {
+        slot := &pool.slots[i]
         if slot.alive && slot.data.enabled do return &slot.data
     }
     return nil
 }
 
 @(private = "file")
-_menu_root_set_active :: proc(menu: ^engine.DemoMenu, active: bool) {
+_menu_root_set_active :: proc(menu: ^DemoMenu, active: bool) {
     w := engine.ctx_world()
     t := engine.pool_get(&w.transforms, engine.Handle(menu.owner))
     if t != nil do t.is_active = active

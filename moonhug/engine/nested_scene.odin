@@ -357,8 +357,11 @@ nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_g
         return arr
     }
 
-    array_keys := []string{"transforms", "cameras", "lifetimes", "players", "scripts", "sprite_renderers"}
-    for section_key in array_keys {
+    // Diff every array section (components incl. ext_components + transforms).
+    // NS records and breadcrumbs have their own machinery — never diffed here.
+    for section_key, section_val in work_root {
+        if section_key == "nested_scenes" || section_key == "breadcrumbs" do continue
+        if _, is_arr := section_val.(json.Array); !is_arr do continue
         base_arr := get_array(base_root, section_key)
         work_arr := get_array(work_root, section_key)
         if len(work_arr) == 0 do continue
@@ -768,6 +771,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     for c in vf.players          do append(&base_sf.players, c)
     for c in vf.scripts          do append(&base_sf.scripts, c)
     for c in vf.sprite_renderers do append(&base_sf.sprite_renderers, c)
+    for v in vf.ext_components   do append(&base_sf.ext_components, v)
     for ns, i in vf.nested_scenes {
         if i == root_ns_idx do continue
         append(&base_sf.nested_scenes, ns)
@@ -824,6 +828,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     delete(vf.players); vf.players = nil
     delete(vf.scripts); vf.scripts = nil
     delete(vf.sprite_renderers); vf.sprite_renderers = nil
+    delete(vf.ext_components); vf.ext_components = nil
 
     opts := json.Marshal_Options{spec = .JSON, pretty = false}
     data, merr := json.marshal(base_sf, opts)

@@ -26,16 +26,17 @@ game_tick :: proc(dt: f32) {
     projectiles_tick(dt)
 }
 
-scene_refs_get :: proc() -> ^engine.SceneRefs {
-    w := engine.ctx_world()
-    for i in 0..<len(w.scene_refses.slots) {
-        slot := &w.scene_refses.slots[i]
+scene_refs_get :: proc() -> ^SceneRefs {
+    pool := scene_refses(engine.ctx_world())
+    if pool == nil do return nil
+    for i in 0..<len(pool.slots) {
+        slot := &pool.slots[i]
         if slot.alive do return &slot.data
     }
     return nil
 }
 
-tank_move :: proc(refs: ^engine.SceneRefs, dt: f32) {
+tank_move :: proc(refs: ^SceneRefs, dt: f32) {
     w := engine.ctx_world()
     t := engine.pool_get(&w.transforms, refs.tank.handle)
     if t == nil do return
@@ -46,7 +47,7 @@ tank_move :: proc(refs: ^engine.SceneRefs, dt: f32) {
     if rl.IsKeyDown(.D) do t.position[0] += TANK_SPEED * dt
 }
 
-turret_aim :: proc(refs: ^engine.SceneRefs) {
+turret_aim :: proc(refs: ^SceneRefs) {
     w := engine.ctx_world()
     t := engine.pool_get(&w.transforms, refs.turret.handle)
     if t == nil do return
@@ -74,7 +75,7 @@ turret_aim :: proc(refs: ^engine.SceneRefs) {
     t.rotation = engine.quat_from_euler_xyz(0, 0, angle_deg - 90)
 }
 
-fire :: proc(refs: ^engine.SceneRefs) {
+fire :: proc(refs: ^SceneRefs) {
     if !rl.IsMouseButtonPressed(.LEFT) && !rl.IsKeyPressed(.SPACE) do return
     if engine.asset_guid_is_empty(refs.projectile_prefab) do return
 
@@ -92,14 +93,16 @@ fire :: proc(refs: ^engine.SceneRefs) {
     bt.position[1] = sw.position.y
     bt.rotation = engine.quat_from_euler_xyz(0, 0, math.atan2(_aim_dir[1], _aim_dir[0]) * math.DEG_PER_RAD - 90)
 
-    _, proj := engine.transform_get_comp(bH, engine.Projectile)
+    _, proj := get_comp(bH, Projectile)
     if proj != nil do proj.dir = _aim_dir
 }
 
 projectiles_tick :: proc(dt: f32) {
     w := engine.ctx_world()
-    for i in 0..<len(w.projectiles.slots) {
-        slot := &w.projectiles.slots[i]
+    pool := projectiles(w)
+    if pool == nil do return
+    for i in 0..<len(pool.slots) {
+        slot := &pool.slots[i]
         if !slot.alive do continue
         p := &slot.data
         if !p.enabled do continue

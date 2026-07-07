@@ -195,6 +195,7 @@ editor_init :: proc() {
 	log.info("Editor Init")
 	log.error("test error")
 	log.warning("test warning")
+    app.register_app_components()
     app.register_component_serializers()
     inspector.init()
     serialization.init()

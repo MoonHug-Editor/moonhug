@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1018,
+  "next_local_id": 1019,
   "transforms": [
 
   ],
@@ -58,6 +58,9 @@
 
   ],
   "sprite_renderers": [
+
+  ],
+  "ext_components": [
 
   ]
 }

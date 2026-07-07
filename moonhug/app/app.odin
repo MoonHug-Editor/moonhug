@@ -69,6 +69,7 @@ BULLET_SCENE_GUID :: "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
 @(phase={key=Phase.Init})
 app_init :: proc() {
     log.info("App Init")
+    register_app_components()
     register_type_guids()
     register_component_serializers()
     serialization.init()

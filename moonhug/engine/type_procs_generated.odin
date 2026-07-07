@@ -4,16 +4,12 @@ package engine
 
 __type_resets_init :: proc() {
 	type_reset_procs[.Camera] = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) }
-	type_reset_procs[.DemoMenu] = proc(ptr: rawptr) { reset_DemoMenu(cast(^DemoMenu)ptr) }
 	type_reset_procs[.Lifetime] = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) }
 	type_reset_procs[.Player] = proc(ptr: rawptr) { reset_Player(cast(^Player)ptr) }
-	type_reset_procs[.Projectile] = proc(ptr: rawptr) { reset_Projectile(cast(^Projectile)ptr) }
-	type_reset_procs[.SceneRefs] = proc(ptr: rawptr) { reset_SceneRefs(cast(^SceneRefs)ptr) }
 	type_reset_procs[.SpriteRenderer] = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) }
 }
 
 __type_cleanups_init :: proc() {
-	type_cleanup_procs[.DemoMenu] = proc(ptr: rawptr) { cleanup_DemoMenu(cast(^DemoMenu)ptr) }
 	type_cleanup_procs[.Player] = proc(ptr: rawptr) { cleanup_Player(cast(^Player)ptr) }
 	type_cleanup_procs[.string] = proc(ptr: rawptr) { type_cleanup_string_field(cast(^string)ptr) }
 }
