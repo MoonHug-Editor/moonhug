@@ -1,3 +1,14 @@
+## [0.28.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.27.0...v0.28.0) (2026-07-08)
+
+### Features
+
+* project, hierarchy improvements ([5af7793](https://github.com/MoonHug-Editor/moonhug/commit/5af7793cbdfb57f2013345611226c9fb7325f52e))
+
+### Bug Fixes
+
+* more icons ([26b0bb3](https://github.com/MoonHug-Editor/moonhug/commit/26b0bb3bca0a1d166f81f705ed6c446c846b6161))
+* nested scene hash collision protection ([12e44d7](https://github.com/MoonHug-Editor/moonhug/commit/12e44d7ff9ec77a49ef1d0e60958a77fad958e46))
+
 ## [0.27.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.26.0...v0.27.0) (2026-07-07)
 
 ### Features
