@@ -414,3 +414,127 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
 			"revert should remove the covered override record")
 	}
 }
+
+// A HOST-scene component referencing content INSIDE a nested instance: the
+// picker mint must hand back the instance's composed lid (bit 52 set — no
+// breadcrumb), the composed lid must persist through save, and reload must
+// re-derive the identical lid (deterministic hash) and rebind the handle.
+// This is the save/load leg of the composed-instance-lid model.
+@(test)
+test_host_ref_into_nested_instance_round_trip :: proc(t: ^testing.T) {
+	PREFAB_GUID :: "ddddddd1-eee2-4ff3-8004-000000000008"
+
+	dir := "moonhug/tests/_tmp_host_ref_nested"
+	mkerr := os.make_directory(dir)
+	testing.expect(t, mkerr == nil || os.exists(dir), fmt.tprintf("temp dir: %v", mkerr))
+
+	prefab_path := strings.concatenate({dir, "/tank_prefab.scene"}, context.temp_allocator)
+	prefab_meta := strings.concatenate({dir, "/tank_prefab.scene.meta"}, context.temp_allocator)
+	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	host_meta := strings.concatenate({dir, "/host.scene.meta"}, context.temp_allocator)
+	defer {
+		os.remove(prefab_path)
+		os.remove(prefab_meta)
+		os.remove(host_path)
+		os.remove(host_meta)
+		os.remove(dir)
+	}
+
+	prefab_json := `{
+  "root": 1,
+  "next_local_id": 10,
+  "transforms": [
+    {
+      "local_id": 1, "name": "TankRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+        {"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}
+      ],
+      "components": []
+    },
+    {
+      "local_id": 2, "name": "Turret", "is_active": true,
+      "position": [0,1,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": []
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [], "ext_components": []
+}`
+	testing.expect(t, os.write_entire_file(prefab_path, transmute([]byte)prefab_json) == nil)
+	meta := fmt.tprintf(`{{"guid": "%s"}}`, PREFAB_GUID)
+	testing.expect(t, os.write_entire_file(prefab_meta, transmute([]byte)meta) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	prefab_guid, gerr := uuid.read(PREFAB_GUID)
+	testing.expect(t, gerr == nil)
+
+	root := engine.Transform_Handle(tc_mem.scene.root.handle)
+	hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(prefab_guid), root)
+	testing.expect(t, hostH != {}, "prefab should instantiate")
+	if hostH == {} do return
+
+	w := &tc_mem.world
+	find_transform :: proc(w: ^engine.World, name: string) -> engine.Handle {
+		for i in 0..<len(w.transforms.slots) {
+			sl := &w.transforms.slots[i]
+			if sl.alive && sl.data.name == name {
+				return engine.Handle{index = u32(i), generation = sl.generation, type_key = .Transform}
+			}
+		}
+		return {}
+	}
+	find_refs :: proc(w: ^engine.World) -> ^app.SceneRefs {
+		pool := app.scene_refses(w)
+		if pool == nil do return nil
+		for i in 0..<len(pool.slots) {
+			if pool.slots[i].alive do return &pool.slots[i].data
+		}
+		return nil
+	}
+
+	// SceneRefs lives on the HOST scene root — outside the instance.
+	_, raw := engine.transform_add_comp(root, .SceneRefs)
+	refs := cast(^app.SceneRefs)raw
+	testing.expect(t, refs != nil, "SceneRefs should attach to the scene root")
+	if refs == nil do return
+
+	turret := find_transform(w, "Turret")
+	testing.expect(t, turret != {}, "Turret should exist inside the instance")
+
+	// Point at nested content exactly as the inspector picker does.
+	refs.tank.handle = turret
+	refs.tank.local_id = engine.sm_local_id_get_or_mint(tc_mem.scene, turret)
+	testing.expect(t, refs.tank.local_id & engine.INSTANCE_LID_BIT != 0,
+		fmt.tprintf("mint for nested content should return the composed instance lid (got %v)", refs.tank.local_id))
+
+	minted_lid := refs.tank.local_id
+	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
+
+	// Reload: the composed lid must re-derive identically and rebind to Turret.
+	loaded := engine.scene_load_single_path(host_path)
+	testing.expect(t, loaded != nil, "host should reload")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	refs2 := find_refs(w)
+	testing.expect(t, refs2 != nil, "SceneRefs should exist after reload")
+	if refs2 == nil do return
+	testing.expect_value(t, refs2.tank.local_id, minted_lid)
+	testing.expect(t, engine.pool_valid(&w.transforms, refs2.tank.handle),
+		fmt.tprintf("host ref into instance should resolve after reload (got %v)", refs2.tank.handle))
+	tr := engine.pool_get(&w.transforms, refs2.tank.handle)
+	if tr != nil {
+		testing.expect_value(t, tr.name, "Turret")
+	}
+}

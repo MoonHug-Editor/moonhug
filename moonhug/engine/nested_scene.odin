@@ -983,17 +983,29 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
         root:     Local_ID,
         host_lid: Local_ID,
         ns:       ^NestedScene,
+        scene:    ^Scene,
     }
     _project_mapper :: proc(user: rawptr, old: Local_ID) -> Local_ID {
         c := cast(^_Project_Ctx)user
         new_id := old == c.root ? c.host_lid : nested_lid_compose(c.key, old)
+        // The 52-bit hash makes collisions astronomically unlikely, but a silent
+        // one would corrupt the bimap and be near-impossible to trace — so check
+        // both ways it could happen and log loudly. This instance's own lids were
+        // purged just before the remap, so any bimap hit is foreign content.
+        if prev, dup := c.ns.source_of_inst[new_id]; dup && prev != old {
+            fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v sources %v and %v both hash to %v — overrides/refs will mis-target", c.key, prev, old, new_id)
+        } else if old != c.root {
+            if _, taken := bimap_get(&c.scene.local_ids, new_id); taken {
+                fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v source %v hashes to %v, already registered to other scene content — overrides/refs will mis-target", c.key, old, new_id)
+            }
+        }
         c.ns.source_of_inst[new_id] = old
         return new_id
     }
     _ns_purge_instance_lids(host_scene, ns)
     delete(ns.source_of_inst)
     ns.source_of_inst = make(map[Local_ID]Local_ID)
-    pctx := _Project_Ctx{key = ns.local_id, root = sf.root, host_lid = host_t.local_id, ns = ns}
+    pctx := _Project_Ctx{key = ns.local_id, root = sf.root, host_lid = host_t.local_id, ns = ns, scene = host_scene}
     _scene_file_remap_local_ids(&sf, host_scene, _project_mapper, &pctx)
     // Inner NS records: local_id_in_parent is the XOR projection key for deep
     // override targets and must stay the FILE-stable lid. Older files carry 0
