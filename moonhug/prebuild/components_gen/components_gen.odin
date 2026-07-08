@@ -549,16 +549,24 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\t\tfor bc in sf.breadcrumbs {\n")
 	strings.write_string(&b, "\t\t\tscene_breadcrumb_put(s, bc)\n")
 	strings.write_string(&b, "\t\t}\n")
-	// Resolve PPtr/Ref/Ref_Local handles by looking up local_id in s.local_ids
-	// for each live pooled object. Runs only if we have a Scene (need bimap).
+	// Resolve PPtr/Ref/Ref_Local handles for each live pooled object. Intra-file
+	// references resolve against THIS file's id->handle table (a nested prefab
+	// keeps its own local_id namespace — its ids never enter the host bimap);
+	// the scene bimap is the fallback for ids outside the file.
+	strings.write_string(&b, "\t\t_file_lookup := make(map[Local_ID]Handle, context.temp_allocator)\n")
+	strings.write_string(&b, "\t\tfor lid, h in id_to_transform_handle do _file_lookup[lid] = h\n")
+	for e in eng {
+		fmt.sbprintf(&b, "\t\tfor lid, h in id_to_%s_handle do _file_lookup[lid] = h\n", e.snake_name)
+	}
+	strings.write_string(&b, "\t\tfor lid, h in id_to_ext_handle do _file_lookup[lid] = h\n")
 	for e in eng {
 		fmt.sbprintf(&b, "\t\tfor _, h in id_to_%s_handle {{\n", e.snake_name)
 		fmt.sbprintf(&b, "\t\t\tp := pool_get(&w.%s, h)\n", e.plural)
-		fmt.sbprintf(&b, "\t\t\tif p != nil do _resolve_refs_in_value(p, type_info_of(%s), s)\n", e.type_name)
+		fmt.sbprintf(&b, "\t\t\tif p != nil do _resolve_refs_in_value(p, type_info_of(%s), s, &_file_lookup)\n", e.type_name)
 		strings.write_string(&b, "\t\t}\n")
 	}
 	strings.write_string(&b, "\t\tfor _, h in id_to_ext_handle {\n")
-	strings.write_string(&b, "\t\t\t_ext_resolve_refs(w, h, s)\n")
+	strings.write_string(&b, "\t\t\t_ext_resolve_refs(w, h, s, &_file_lookup)\n")
 	strings.write_string(&b, "\t\t}\n")
 	strings.write_string(&b, "\t}\n\n")
 	strings.write_string(&b, "\troot_handle: Handle\n")

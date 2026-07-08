@@ -7,10 +7,32 @@ import "core:strings"
 import "base:runtime"
 
 // Walks `ptr` of type `ti` and, for every PPtr / Ref / Ref_Local / Owned found,
-// resolves its `handle` from `local_id` via the scene's local_ids bimap.
+// resolves its `handle` from `local_id`.
+//
+// `file_local` is the id->handle table of the SceneFile the value was loaded
+// from, when resolving happens at load time. Intra-file references MUST resolve
+// against it, not the scene bimap: a nested prefab keeps its own local_id
+// namespace (Unity resolves intra-prefab fileIDs the same way), and its ids are
+// never registered in the host scene's bimap — a bimap lookup would either miss
+// or, worse, silently bind to an unrelated host object with the same id. The
+// bimap is the fallback for ids not present in the file (breadcrumb pegs).
 // PPtr entries with a non-empty guid (cross-asset) are skipped — those are
 // resolved separately at asset-resolve time.
-_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
+_resolve_lid :: proc(s: ^Scene, file_local: ^map[Local_ID]Handle, lid: Local_ID) -> (Handle, bool) {
+	if file_local != nil {
+		if h, ok := file_local^[lid]; ok do return h, true
+	}
+	return bimap_get(&s.local_ids, lid)
+}
+
+// `only_unbound` restricts resolution to refs whose handle is not currently a
+// live pool handle (zero, dead, or a synthetic breadcrumb placeholder). This is
+// how the post-migration sweep stays namespace-safe: a ref that already holds a
+// real handle was bound in its own file's namespace and must not be rebound via
+// the host bimap (same-numbered lids across namespaces would mis-bind); a ref
+// holding a placeholder is by definition breadcrumb-mediated and needs the
+// migrated binding — regardless of which component owns it or how deep it sits.
+_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, file_local: ^map[Local_ID]Handle = nil, only_unbound := false) {
 	if ptr == nil || ti == nil || s == nil do return
 	base := runtime.type_info_base(ti)
 	if base == nil do return
@@ -27,7 +49,8 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		if tid == typeid_of(Ref) {
 			ref := cast(^Ref)ptr
 			if ref.pptr.local_id != 0 && pptr_guid_is_empty(ref.pptr.guid) {
-				if h, ok := bimap_get(&s.local_ids, ref.pptr.local_id); ok {
+				if only_unbound && world_pool_valid(ctx_world(), ref.handle) do return
+				if h, ok := _resolve_lid(s, file_local, ref.pptr.local_id); ok {
 					ref.handle = h
 				}
 			}
@@ -36,7 +59,8 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
 			rl := cast(^Ref_Local)ptr
 			if rl.local_id != 0 {
-				if h, ok := bimap_get(&s.local_ids, rl.local_id); ok {
+				if only_unbound && world_pool_valid(ctx_world(), rl.handle) do return
+				if h, ok := _resolve_lid(s, file_local, rl.local_id); ok {
 					rl.handle = h
 				}
 			}
@@ -46,7 +70,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		count := int(info.field_count)
 		for i in 0..<count {
 			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
-			_resolve_refs_in_value(field_ptr, info.types[i], s)
+			_resolve_refs_in_value(field_ptr, info.types[i], s, file_local, only_unbound)
 		}
 
 	case runtime.Type_Info_Union:
@@ -61,7 +85,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		idx := tag if info.no_nil else tag - 1
 		if idx < 0 || int(idx) >= len(info.variants) do return
 		variant_ti := info.variants[idx]
-		_resolve_refs_in_value(ptr, variant_ti, s)
+		_resolve_refs_in_value(ptr, variant_ti, s, file_local, only_unbound)
 
 	case runtime.Type_Info_Dynamic_Array:
 		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
@@ -69,14 +93,78 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		elem_size := info.elem_size
 		for i in 0..<dyn.len {
 			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound)
 		}
 
 	case runtime.Type_Info_Array:
 		elem_size := info.elem_size
 		for i in 0..<info.count {
 			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound)
+		}
+	}
+}
+
+// Walks `ptr` and rewrites every Ref/Ref_Local/Owned whose resolved handle is
+// `old_h` to `new_h`. Used when nested-scene absorption destroys the prefab's
+// root transform and the host transform takes its place — refs bound to the
+// prefab root must follow.
+_rewrite_handle_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, old_h: Handle, new_h: Handle) {
+	if ptr == nil || ti == nil do return
+	base := runtime.type_info_base(ti)
+	if base == nil do return
+
+	#partial switch info in base.variant {
+	case runtime.Type_Info_Struct:
+		tid := ti.id
+		if tid == typeid_of(PPtr) {
+			return
+		}
+		if tid == typeid_of(Ref) {
+			ref := cast(^Ref)ptr
+			if ref.handle == old_h do ref.handle = new_h
+			return
+		}
+		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+			rl := cast(^Ref_Local)ptr
+			if rl.handle == old_h do rl.handle = new_h
+			return
+		}
+
+		count := int(info.field_count)
+		for i in 0..<count {
+			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
+			_rewrite_handle_refs_in_value(field_ptr, info.types[i], old_h, new_h)
+		}
+
+	case runtime.Type_Info_Union:
+		tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+		tag: i64
+		switch info.tag_type.size {
+		case 1: tag = i64((cast(^u8)tag_ptr)^)
+		case 2: tag = i64((cast(^u16)tag_ptr)^)
+		case 4: tag = i64((cast(^u32)tag_ptr)^)
+		case 8: tag = i64((cast(^u64)tag_ptr)^)
+		}
+		idx := tag if info.no_nil else tag - 1
+		if idx < 0 || int(idx) >= len(info.variants) do return
+		variant_ti := info.variants[idx]
+		_rewrite_handle_refs_in_value(ptr, variant_ti, old_h, new_h)
+
+	case runtime.Type_Info_Dynamic_Array:
+		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+		if dyn.data == nil || dyn.len == 0 do return
+		elem_size := info.elem_size
+		for i in 0..<dyn.len {
+			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
+			_rewrite_handle_refs_in_value(elem_ptr, info.elem, old_h, new_h)
+		}
+
+	case runtime.Type_Info_Array:
+		elem_size := info.elem_size
+		for i in 0..<info.count {
+			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
+			_rewrite_handle_refs_in_value(elem_ptr, info.elem, old_h, new_h)
 		}
 	}
 }

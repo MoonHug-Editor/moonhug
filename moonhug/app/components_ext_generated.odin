@@ -60,6 +60,22 @@ register_app_components :: proc() {
 			},
 			reset = proc(ptr: rawptr) { reset_SceneRefs(cast(^SceneRefs)ptr) },
 		})
+		engine.component_register(engine.Component_Desc{
+			type_key  = .Tank,
+			type_guid = engine.Tank__Guid,
+			tid       = typeid_of(Tank),
+			ptr_tid   = typeid_of(^Tank),
+			pool_create = proc() -> rawptr { p := new(engine.Pool(Tank)); engine.pool_init(p); return p },
+			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Tank))pool) },
+			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Tank))pool) },
+			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
+				p := cast(^engine.Pool(Tank))pool
+				for i in 0..<len(p.slots) {
+					if p.slots[i].alive do fn(&p.slots[i].data)
+				}
+			},
+			reset = proc(ptr: rawptr) { reset_Tank(cast(^Tank)ptr) },
+		})
 	})
 }
 
@@ -73,6 +89,10 @@ projectiles :: proc(w: ^engine.World) -> ^engine.Pool(Projectile) {
 
 scene_refses :: proc(w: ^engine.World) -> ^engine.Pool(SceneRefs, 1) {
 	return cast(^engine.Pool(SceneRefs, 1)) w.ext_pools[engine.TypeKey.SceneRefs]
+}
+
+tanks :: proc(w: ^engine.World) -> ^engine.Pool(Tank) {
+	return cast(^engine.Pool(Tank)) w.ext_pools[engine.TypeKey.Tank]
 }
 
 get_comp :: proc(tH: engine.Transform_Handle, $T: typeid) -> (engine.Owned, ^T) {
@@ -103,6 +123,16 @@ get_comp :: proc(tH: engine.Transform_Handle, $T: typeid) -> (engine.Owned, ^T) 
 		owned, _ := engine.transform_find_comp(t, .SceneRefs)
 		if owned.handle.type_key == engine.INVALID_TYPE_KEY do return owned, nil
 		pool := scene_refses(w)
+		if pool == nil do return owned, nil
+		return owned, engine.pool_get(pool, owned.handle)
+	}
+	else when T == Tank {
+		w := engine.ctx_world()
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}, nil
+		owned, _ := engine.transform_find_comp(t, .Tank)
+		if owned.handle.type_key == engine.INVALID_TYPE_KEY do return owned, nil
+		pool := tanks(w)
 		if pool == nil do return owned, nil
 		return owned, engine.pool_get(pool, owned.handle)
 	}

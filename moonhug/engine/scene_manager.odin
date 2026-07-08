@@ -311,23 +311,24 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
 // After nested resolve materializes inner subtrees, walk every Breadcrumb that
 // represents a cross-scene reference (scene_source.guid is non-empty — host
 // pegs have empty guid) and migrate its bimap entry from the synthetic
-// placeholder to the real runtime Handle of its target. Then re-run
-// _resolve_refs_in_value over every pooled component so any Ref_Local field
-// whose serialized lid matches a breadcrumb's lid binds to the real handle.
+// placeholder to the real runtime Handle of its target. Then sweep every pooled
+// component and rebind refs that are still UNBOUND (zero, dead, or synthetic
+// placeholder handles) — those are by definition breadcrumb-mediated, whichever
+// component owns them and at whatever nesting depth. Refs already holding live
+// handles were bound in their own file's namespace at load time and are left
+// alone (rebinding them via the host bimap would mis-bind same-numbered lids
+// across namespaces).
 @(private)
 _scene_resolve_breadcrumb_targets :: proc(s: ^Scene) {
     if s == nil do return
     w := ctx_world()
-    migrated := false
     for lid, bc in s.breadcrumb_data {
         if pptr_guid_is_empty(bc.scene_source.guid) do continue
         real := nested_resolve_breadcrumb_to_handle(s, bc)
         if real == {} do continue
         bimap_remove_by_key(&s.local_ids, lid)
         bimap_insert(&s.local_ids, lid, real)
-        migrated = true
     }
-    if !migrated do return
 
     for i in 0 ..< len(w.transforms.slots) {
         slot := &w.transforms.slots[i]
@@ -339,7 +340,7 @@ _scene_resolve_breadcrumb_targets :: proc(s: ^Scene) {
             if raw == nil do continue
             tid := get_typeid_by_type_key(c.handle.type_key)
             if tid == nil do continue
-            _resolve_refs_in_value(raw, type_info_of(tid), s)
+            _resolve_refs_in_value(raw, type_info_of(tid), s, nil, only_unbound = true)
         }
     }
 }

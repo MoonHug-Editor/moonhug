@@ -181,11 +181,11 @@ _ext_set_owner :: proc(w: ^World, h: Handle, owner: Transform_Handle) {
 	if ptr != nil do (cast(^CompData)ptr).owner = owner
 }
 
-_ext_resolve_refs :: proc(w: ^World, h: Handle, s: ^Scene) {
+_ext_resolve_refs :: proc(w: ^World, h: Handle, s: ^Scene, file_local: ^map[Local_ID]Handle = nil) {
 	desc, ok := component_registry[h.type_key]
 	if !ok do return
 	ptr := world_pool_get(w, h)
-	if ptr != nil do _resolve_refs_in_value(ptr, type_info_of(desc.tid), s)
+	if ptr != nil do _resolve_refs_in_value(ptr, type_info_of(desc.tid), s, file_local)
 }
 
 // Remap support for scene paste/instantiate. Records are round-tripped through

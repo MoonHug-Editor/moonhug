@@ -177,28 +177,36 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for bc in sf.breadcrumbs {
 			scene_breadcrumb_put(s, bc)
 		}
+		_file_lookup := make(map[Local_ID]Handle, context.temp_allocator)
+		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
+		for lid, h in id_to_camera_handle do _file_lookup[lid] = h
+		for lid, h in id_to_lifetime_handle do _file_lookup[lid] = h
+		for lid, h in id_to_player_handle do _file_lookup[lid] = h
+		for lid, h in id_to_script_handle do _file_lookup[lid] = h
+		for lid, h in id_to_sprite_renderer_handle do _file_lookup[lid] = h
+		for lid, h in id_to_ext_handle do _file_lookup[lid] = h
 		for _, h in id_to_camera_handle {
 			p := pool_get(&w.cameras, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s, &_file_lookup)
 		}
 		for _, h in id_to_lifetime_handle {
 			p := pool_get(&w.lifetimes, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s, &_file_lookup)
 		}
 		for _, h in id_to_player_handle {
 			p := pool_get(&w.players, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s, &_file_lookup)
 		}
 		for _, h in id_to_script_handle {
 			p := pool_get(&w.scripts, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Script), s)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Script), s, &_file_lookup)
 		}
 		for _, h in id_to_sprite_renderer_handle {
 			p := pool_get(&w.sprite_renderers, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s, &_file_lookup)
 		}
 		for _, h in id_to_ext_handle {
-			_ext_resolve_refs(w, h, s)
+			_ext_resolve_refs(w, h, s, &_file_lookup)
 		}
 	}
 

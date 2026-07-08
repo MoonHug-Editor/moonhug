@@ -457,7 +457,14 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
                 ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
                 current_field_ref_target = ref_tag
+                // Group the drawer's widgets so the field context menu below
+                // binds to the WHOLE row. A drawer can emit several items (e.g.
+                // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
+                // only tests the last one — right-click would then work only on
+                // the tiny X (or only when no value meant no X).
+                im.BeginGroup()
                 drawer(field_ptr, field_type.id, c_field_name)
+                im.EndGroup()
                 current_field_ref_target = ""
                 _undo_finalize_widget()
             } else if is_array_type(field_type.id) {

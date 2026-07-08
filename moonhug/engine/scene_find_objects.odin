@@ -1,5 +1,6 @@
 package engine
 
+import "core:fmt"
 import "core:strings"
 import "base:runtime"
 
@@ -118,10 +119,28 @@ sm_local_id_get_or_mint :: proc(s: ^Scene, h: Handle) -> Local_ID {
 		return bc_lid
 	}
 
+	// Nested-owned targets must be addressed through breadcrumbs — their own
+	// local_id belongs to the prefab's namespace, and registering it in the
+	// host bimap silently corrupts host lookups (it can collide with host lids,
+	// e.g. the NS host transform's own lid). If breadcrumb creation failed,
+	// fail the mint rather than poison the bimap.
+	w := ctx_world()
+	{
+		nested := false
+		if h.type_key == .Transform {
+			if t := pool_get(&w.transforms, h); t != nil do nested = t.nested_owned
+		} else if raw := world_pool_get(w, h); raw != nil {
+			nested = (cast(^CompData)raw).nested_owned
+		}
+		if nested {
+			fmt.printfln("[Scene] could not mint a breadcrumb for nested object %v — reference not recorded", h)
+			return 0
+		}
+	}
+
 	// Live, non-nested entity not yet registered in the bimap. Use its own
 	// local_id (assigned at creation time) and register it now so subsequent
 	// lookups dedupe and so save+reload round-trips correctly.
-	w := ctx_world()
 	existing_lid: Local_ID
 	if h.type_key == .Transform {
 		t := pool_get(&w.transforms, h)

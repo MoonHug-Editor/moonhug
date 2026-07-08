@@ -264,18 +264,15 @@ _json_values_equal :: proc(a, b: json.Value) -> bool {
     return false
 }
 
-_DIFF_TOP_EXCLUDED  :: []string{"parent", "children", "components"}
-_DIFF_ALWAYS_EXCLUDED :: []string{"local_id"}
+_DIFF_TOP_EXCLUDED :: []string{"parent", "children", "components"}
+// A record's IDENTITY lives at exactly these paths ("local_id" on transforms,
+// "base.local_id" on components) — never diff those. Matching by key name at
+// any depth would also swallow Ref_Local VALUES ({"local_id": N}), making every
+// reference field invisible to override capture.
+_DIFF_EXCLUDED_PATHS :: []string{"local_id", "base.local_id"}
 
 _json_diff_objects :: proc(base_obj, work_obj: json.Object, prefix: string, target: PPtr, out: ^[dynamic]Override) {
     for key, work_val in work_obj {
-        {
-            excluded := false
-            for ek in _DIFF_ALWAYS_EXCLUDED {
-                if key == ek { excluded = true; break }
-            }
-            if excluded do continue
-        }
         if prefix == "" {
             excluded := false
             for ek in _DIFF_TOP_EXCLUDED {
@@ -286,6 +283,13 @@ _json_diff_objects :: proc(base_obj, work_obj: json.Object, prefix: string, targ
 
         base_val, has_base := base_obj[key]
         full_path := prefix == "" ? key : strings.concatenate({prefix, ".", key}, context.temp_allocator)
+        {
+            excluded := false
+            for ep in _DIFF_EXCLUDED_PATHS {
+                if full_path == ep { excluded = true; break }
+            }
+            if excluded do continue
+        }
 
         if !has_base {
             append(out, Override{
@@ -526,6 +530,12 @@ _nested_scene_scan_hosts_for_lid :: proc(s: ^Scene, ns: ^NestedScene, lid: Local
 		if ns.expand_parent != {} {
 			if !tt.nested_owned do continue
 			if !_transform_is_descendant_or_self(tH, ns.expand_parent) do continue
+		} else {
+			// A native NS's host is host-authored — never nested_owned. Without
+			// this filter, absorbed prefab content whose (prefab-namespace) lid
+			// happens to equal the host's lid makes the scan ambiguous (n > 1)
+			// and host identification fails.
+			if tt.nested_owned do continue
 		}
 		if n == 0 do first = tH
 		n += 1
@@ -843,6 +853,25 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
 @(private = "file")
 _resolve_guid_stack: [dynamic]Asset_GUID
 
+// Rewrite refs bound to a destroyed prefab-root handle across a transform's
+// components and its whole subtree (see call site in nested_scene_resolve).
+@(private)
+_nested_rewrite_root_handle :: proc(tH: Transform_Handle, old_h: Handle, new_h: Handle) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+    for c in t.components {
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        tid := get_typeid_by_type_key(c.handle.type_key)
+        if tid == nil do continue
+        _rewrite_handle_refs_in_value(raw, type_info_of(tid), old_h, new_h)
+    }
+    for child in t.children {
+        _nested_rewrite_root_handle(Transform_Handle(child.handle), old_h, new_h)
+    }
+}
+
 nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     w := ctx_world()
     host_t := pool_get(&w.transforms, Handle(host_tH))
@@ -941,6 +970,12 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     clear(&nested_root.children)
 
     transform_destroy(nested_root_tH)
+
+    // The prefab's root transform is gone — the host transform took its place.
+    // Any Ref/Ref_Local in the absorbed components that resolved to the prefab
+    // root (e.g. a component on the root referencing its own transform) must be
+    // redirected to the host, or it dangles on a destroyed handle.
+    _nested_rewrite_root_handle(host_tH, Handle(nested_root_tH), Handle(host_tH))
 
     // Resolve nested scenes within the absorbed (now nested-owned) base content.
     host_t = pool_get(&w.transforms, Handle(host_tH))
@@ -1086,10 +1121,22 @@ scene_resolve_all_nested :: proc(root_tH: Transform_Handle) {
     _scene_resolve_nested_in_subtree(root_tH)
 }
 
+// True when an override stored at `ov_path` affects the field drawn at
+// `field_path`: exact match, or the override targets a sub-property of the
+// field. The inspector draws struct-valued fields (e.g. a Ref_Local) as ONE
+// widget at "turret" while the diff stores the change at "turret.local_id" —
+// Unity likewise marks a parent property overridden when any child is.
+override_path_covers :: proc(field_path: string, ov_path: string) -> bool {
+    if ov_path == field_path do return true
+    return len(ov_path) > len(field_path) + 1 &&
+        strings.has_prefix(ov_path, field_path) &&
+        ov_path[len(field_path)] == '.'
+}
+
 nested_scene_has_override :: proc(ns: ^NestedScene, target: PPtr, property_path: string) -> bool {
     if ns == nil do return false
     for &ov in ns.overrides {
-        if pptr_equals(ov.target, target) && ov.property_path == property_path do return true
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) do return true
     }
     return false
 }
@@ -1647,7 +1694,7 @@ nested_scene_revert_override :: proc(
 
     has_match := false
     for &ov in ns.overrides {
-        if pptr_equals(ov.target, target) && ov.property_path == property_path {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
             has_match = true
             break
         }
@@ -1683,7 +1730,6 @@ nested_scene_revert_override :: proc(
         is_root_target,
         revert_field_ptr,
     )
-
     if found && live_ptr != nil {
         // Baseline = the field in leaf_ns's chain-baked base (every ancestor
         // prefab's overrides applied, variants flattened, but NOT the open
@@ -1697,18 +1743,26 @@ nested_scene_revert_override :: proc(
                 type_cleanup_by_typeid(live_tid, live_ptr)
                 if ptr_tid, ptr_ok := get_pointer_typeid_by_typeid(live_tid); ptr_ok {
                     json.unmarshal_any(field_bytes, any{&live_ptr, ptr_tid})
+                    // The baseline's Ref_Local lids are in the LEAF PREFAB's
+                    // namespace — rebind their handles against this instance's
+                    // subtree (host bimap only as fallback for breadcrumb lids),
+                    // exactly as load-time resolution would.
+                    ns_map := make(map[Local_ID]Handle, context.temp_allocator)
+                    _nested_instance_namespace(leaf_host_tH, leaf_root_id, leaf_ns, &ns_map)
+                    _resolve_refs_in_value(live_ptr, type_info_of(live_tid), s, &ns_map)
                 }
             }
         }
     }
 
-    // Remove ALL matching entries. Duplicate (target, property_path) records
-    // can only exist from stale data; leaving any behind would keep the field
-    // visually flagged as overridden and require another revert click.
+    // Remove ALL covered entries (sub-property overrides of a struct-valued
+    // field revert together with it; duplicates from stale data go too) —
+    // leaving any behind would keep the field visually flagged as overridden
+    // and require another revert click.
     write := 0
     for i in 0..<len(ns.overrides) {
         ov := ns.overrides[i]
-        if pptr_equals(ov.target, target) && ov.property_path == property_path {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
             delete(ov.property_path)
             json.destroy_value(ov.value)
             continue
@@ -1717,6 +1771,43 @@ nested_scene_revert_override :: proc(
         write += 1
     }
     resize(&ns.overrides, write)
+}
+
+// lid -> handle table for ONE nested instance's namespace: the host (standing
+// in for the prefab's absorbed root) plus every nested_owned transform and
+// component under it, stopping at inner-NS boundaries (their content lives in
+// a different prefab file's namespace).
+_nested_instance_namespace :: proc(host_tH: Transform_Handle, root_lid: Local_ID, owner_ns: ^NestedScene, out: ^map[Local_ID]Handle) {
+    w := ctx_world()
+    if root_lid != 0 do out^[root_lid] = Handle(host_tH)
+
+    walk :: proc(w: ^World, tH: Transform_Handle, owner_ns: ^NestedScene, out: ^map[Local_ID]Handle, is_host: bool) {
+        t := pool_get(&w.transforms, Handle(tH))
+        if t == nil do return
+
+        if !is_host {
+            if t.nested_owned do out^[t.local_id] = Handle(tH)
+            // Inner-NS host: its transform row belongs to THIS file, its
+            // contents don't.
+            if owning := scene_find_nested_scene_for_host(t.scene, tH); owning != nil && owning != owner_ns {
+                return
+            }
+        }
+
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            raw := world_pool_get(w, c.handle)
+            if raw == nil do continue
+            base := cast(^CompData)raw
+            if base.nested_owned do out^[base.local_id] = c.handle
+        }
+        for child in t.children {
+            ct := pool_get(&w.transforms, child.handle)
+            if ct == nil || !ct.nested_owned do continue
+            walk(w, Transform_Handle(child.handle), owner_ns, out, false)
+        }
+    }
+    walk(w, host_tH, owner_ns, out, true)
 }
 
 // Apply override (mirror of revert). Instead of dropping the override and
