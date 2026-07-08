@@ -63,6 +63,11 @@ _hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
 @(private)
 _hierarchy_nav_list: [dynamic]engine.Transform_Handle
 
+// Name filter (substring, case-insensitive). Non-empty: each scene's tree
+// flattens to just the matching rows.
+@(private)
+_hierarchy_filter_buf: [256]byte
+
 // --- Scene edit stack (Unity prefab-mode style) ----------------------------
 // Entering a nested scene opens its SOURCE .scene asset (replacing the open
 // scene). Each frame records the scene that was open before entering, so `<`
@@ -191,6 +196,24 @@ draw_hierarchy_view :: proc() {
 	text_col := im.GetStyleColorVec4(im.Col.Text)
 	_hierarchy_dimmed_color = {text_col[0] * 0.5, text_col[1] * 0.5, text_col[2] * 0.5, text_col[3]}
 
+	// Filter row (drawn before the compact style vars so it matches the
+	// project view's search box). "x" or Esc clears it.
+	filter_query := strings.trim_space(string(cstring(raw_data(_hierarchy_filter_buf[:]))))
+	clear_btn_w := im.GetFrameHeight()
+	im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if filter_query != "" else -1)
+	// NoTabStop: keyboard tabbing must never land in the filter box.
+	im.PushItemFlag({.NoTabStop}, true)
+	im.InputTextWithHint("##hier_filter", "Filter", cstring(raw_data(_hierarchy_filter_buf[:])), c.size_t(len(_hierarchy_filter_buf)), {})
+	im.PopItemFlag()
+	if filter_query != "" {
+		im.SameLine()
+		if im.Button(ICON_MD_CLOSE + "###hier_filter_clear", im.Vec2{clear_btn_w, 0}) {
+			mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
+			filter_query = ""
+		}
+	}
+	filter := strings.to_lower(filter_query, context.temp_allocator)
+
 	im.PushStyleVarY(im.StyleVar.ItemSpacing, 1)
 	im.PushStyleVarY(im.StyleVar.FramePadding, 1)
 	defer im.PopStyleVar(2)
@@ -210,7 +233,7 @@ draw_hierarchy_view :: proc() {
 		scene := sm.loaded[i]
 		if scene == nil || !engine.sm_scene_is_valid(scene) do continue
 		has_any = true
-		_draw_scene_section(scene, is_last = i == last_valid_idx)
+		_draw_scene_section(scene, is_last = i == last_valid_idx, filter = filter)
 	}
 
 	if !has_any {
@@ -222,7 +245,11 @@ draw_hierarchy_view :: proc() {
 	} else {
 		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
 		has_selected := _hierarchy_selected != _HANDLE_NONE
-		if is_not_renaming && im.IsWindowFocused({}) {
+		// Not while a text input (filter box) owns the keyboard.
+		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
+			if filter != "" && im.IsKeyPressed(im.Key.Escape) {
+				mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
+			}
 			if has_selected {
 				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
 					_begin_rename(_hierarchy_selected)
@@ -234,7 +261,7 @@ draw_hierarchy_view :: proc() {
 }
 
 @(private)
-_draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
+_draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := "") {
 	scene_name := "Untitled"
 	if len(scene.path) > 0 {
 		scene_name = filepath.stem(scene.path)
@@ -243,12 +270,10 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	im.PushIDPtr(scene)
 	defer im.PopID()
 
-	im.Separator()
-
 	// "<" up button: when inside an entered nested scene, go back to the parent.
 	if len(_edit_stack) > 0 {
 		_push_transparent_button_bg()
-		if im.Button("<", im.Vec2{20, 0}) {
+		if im.Button(ICON_MD_CHEVRON_LEFT, im.Vec2{20, 0}) {
 			_hierarchy_exit_scene()
 		}
 		im.PopStyleColor(3)
@@ -295,6 +320,8 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	}
 	_draw_save_as_popup(scene)
 
+	im.Separator()
+
 	root_tH := engine.Transform_Handle(scene.root.handle)
 
 	// Each scene's tree is laid out in a table so per-row action widgets (the ">"
@@ -306,7 +333,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false) {
 	if im.BeginTable("##HierTable", _HIER_COL_COUNT, im.TableFlags_NoBordersInBody) {
 		im.TableSetupColumn("##name", {.WidthStretch})
 		im.TableSetupColumn("##actions_r", {.WidthFixed}, 24)
-		_draw_hierarchy_node(root_tH, scene, is_root = true)
+		_draw_hierarchy_node(root_tH, scene, is_root = true, filter = filter)
 		im.EndTable()
 	}
 
@@ -354,7 +381,7 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 }
 
 @(private)
-_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, is_root := false, parent_inactive := false, parent_nested := false) {
+_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, is_root := false, parent_inactive := false, parent_nested := false, filter := "") {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -364,14 +391,29 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		sc = t.scene
 	}
 
-	has_children := len(t.children) > 0
+	is_nested := t.nested_owned || parent_nested
+	inactive := parent_inactive || !t.is_active
+
+	// Filtered mode: matching nodes draw as FLAT leaf rows (selection, rename,
+	// context menu and the ">" enter button all work as usual); non-matching
+	// nodes draw nothing and only recurse to find deeper matches.
+	filtered := filter != ""
+	if filtered && !strings.contains(strings.to_lower(t.name, context.temp_allocator), filter) {
+		children_copy := make([]engine.Ref, len(t.children), context.temp_allocator)
+		copy(children_copy, t.children[:])
+		for child in children_copy {
+			ch, ok := engine.scene_ref_resolve_transform(sc, child, tH)
+			if !ok do continue
+			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = is_nested, filter = filter)
+		}
+		return
+	}
+
+	has_children := len(t.children) > 0 && !filtered
 	is_selected := _hierarchy_selected == tH
 	is_renaming := _hierarchy_rename_target == tH
 
-	is_nested := t.nested_owned || parent_nested
-
 	pushed_dim := !t.is_active && !parent_inactive
-	inactive := parent_inactive || !t.is_active
 
 	// SpanAllColumns makes the row's frame (hover highlight + hit box) cover the
 	// full table width including the indent and the actions column, so hover
@@ -388,7 +430,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	if is_selected {
 		flags += {.Selected}
 	}
-	if is_root {
+	if is_root && !filtered {
 		flags += {.DefaultOpen}
 	}
 	if !has_children {
@@ -465,13 +507,17 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			text_color = im.GetColorU32ImVec4(_hierarchy_dimmed_color)
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
-		label := t.name
-		if is_ns_host {
-			label = strings.concatenate({t.name, "  [nested scene]"}, context.temp_allocator)
-		}
+		// Every row has an icon slot: stacks for nested-scene hosts (Unity's
+		// prefab icon equivalent), stat_0 as the plain-object default. No variant
+		// icon: telling a variant apart would mean reading the source asset per
+		// row, which isn't worth the cost.
+		row_icon: cstring = ICON_MD_STACKS if is_ns_host else ICON_MD_STAT_0
+		im.DrawList_AddText(draw_list, label_pos, text_color, row_icon)
+		icon_w := im.CalcTextSize(ICON_MD_STACKS).x
+		name_pos := im.Vec2{label_pos.x + icon_w, label_pos.y}
 		// The name column clips its own contents, so the label can't bleed into
 		// the actions column — no manual clip rect needed.
-		im.DrawList_AddText(draw_list, label_pos, text_color, strings.clone_to_cstring(label, context.temp_allocator))
+		im.DrawList_AddText(draw_list, name_pos, text_color, strings.clone_to_cstring(t.name, context.temp_allocator))
 
 		// ">" enter button on a nested-scene host: opens its source .scene asset.
 		// Lives in its own table column, so it never overlaps the name/row.
@@ -480,14 +526,14 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 				if src_path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
 					im.TableSetColumnIndex(_HIER_COL_ACTIONS_R)
 					// Right-align the button within its cell, against the edge.
-					btn_w := im.CalcTextSize(">").x + im.GetStyle().FramePadding.x * 2
+					btn_w := im.CalcTextSize(ICON_MD_CHEVRON_RIGHT).x + im.GetStyle().FramePadding.x * 2
 					avail := im.GetContentRegionAvail().x
 					if avail > btn_w {
 						im.SetCursorPosX(im.GetCursorPosX() + avail - btn_w)
 					}
 					_push_transparent_button_bg()
 					defer im.PopStyleColor(3)
-					if im.SmallButton(">") {
+					if im.SmallButton(ICON_MD_CHEVRON_RIGHT) {
 						// Enter replaces the open scene; this row's tH is now
 						// invalid — bail out of the rest of the node draw, undoing
 						// the same stack state the normal exit path would.
@@ -583,7 +629,9 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		im.EndPopup()
 	}
 
-	if !is_root && !is_nested {
+	// No drop targets while filtered: rows are a flat excerpt, so the
+	// before/after reorder zones would be meaningless.
+	if !is_root && !is_nested && !filtered {
 		_draw_drop_target_on_node(tH, sc, node_rect_min, node_rect_max)
 	}
 
@@ -597,6 +645,17 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = child_parent_nested)
 		}
 		im.TreePop()
+	} else if filtered && len(t.children) > 0 {
+		// Matched row in filtered mode: children were not drawn under it
+		// (forced leaf) — keep recursing for further matches at the same depth.
+		children_copy := make([]engine.Ref, len(t.children), context.temp_allocator)
+		copy(children_copy, t.children[:])
+		child_parent_nested := is_nested || t.nested_owned
+		for child in children_copy {
+			ch, ok := engine.scene_ref_resolve_transform(sc, child, tH)
+			if !ok do continue
+			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = child_parent_nested, filter = filter)
+		}
 	}
 
 	if pushed_dim {

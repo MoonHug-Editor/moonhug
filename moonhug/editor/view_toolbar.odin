@@ -19,7 +19,7 @@ draw_tool_bar :: proc() {
     im.SetNextWindowSize(im.Vec2{vp.WorkSize.x, f32(TOOLBAR_HEIGHT)}, {})
     if !im.Begin("##ToolBar", nil, {.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoDocking}) do return
     defer im.End()
-    button_play_text:cstring= ">"
+    button_play_text: cstring = ICON_MD_PLAY_ARROW
     avail := im.GetContentRegionAvail()
     btn_size := im.CalcTextSize(button_play_text, nil, false, -1)
     style := im.GetStyle()

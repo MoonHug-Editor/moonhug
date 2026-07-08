@@ -87,9 +87,7 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- allow components to be outside engine package (in app package)
-
-- icons in hierarchy (nested scene, variant scene)
+- variant scene icon in hierarchy (needs cheap per-instance variant detection)
 
 - each camera has int order and render_commands buffer
 - Cameras scan scene trees for renderers to add render commands to commands buffers
@@ -111,8 +109,6 @@ For more details see [Contribution](docs/Contribution.md)
   - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
-
-- Asset search / filter in Project View A single text input that filters the visible files by name substring
 
 - run app with currently open scene state
 

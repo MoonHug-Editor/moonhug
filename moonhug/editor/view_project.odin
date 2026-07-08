@@ -34,7 +34,9 @@ _project_tree_rows: [dynamic]Project_Tree_Row
 // after each TreeNodeEx, read next frame to pick the open/closed folder icon.
 _project_tree_open_state: map[string]bool
 Project_Row :: struct {
-    name:   string, // temp-allocated, rebuilt each frame
+    name:   string, // display text, temp-allocated, rebuilt each frame
+    path:   string, // full path; drives selection/rename/activation (display
+                    // names collide across folders in search results)
     is_dir: bool,
 }
 _project_list_rows: [dynamic]Project_Row
@@ -53,6 +55,11 @@ _project_scroll_to_list_sel: bool
 // Set when a pane is clicked/hovered; toggled by Tab.
 Project_Pane :: enum { Tree, List }
 _project_active_pane: Project_Pane = .List
+
+// Search over ALL files and folders under the assets root (not the current
+// folder). Non-empty query swaps the file list for asset-DB search results;
+// keyboard nav follows whichever rows are drawn.
+_project_search_buf: [256]byte
 
 _project_rename_active: bool
 _project_rename_path: string // owned clone of the full path being renamed
@@ -135,10 +142,12 @@ _project_set_current :: proc(path: string) {
     projectViewData.currentPath = new_path
 }
 
-_project_set_selected :: proc(name: string) {
-    new_name := strings.clone(name)
+// Selection holds the FULL path (search results from different folders can
+// share a base name).
+_project_set_selected :: proc(path: string) {
+    new_path := strings.clone(path)
     delete(projectViewData.selectedFile)
-    projectViewData.selectedFile = new_name
+    projectViewData.selectedFile = new_path
 }
 
 _project_path_is_ancestor :: proc(ancestor, path: string) -> bool {
@@ -154,21 +163,39 @@ _project_tree_request_open :: proc(path: string, open: bool) {
     _project_tree_set_open_val = open
 }
 
-_project_enter_dir :: proc(name: string) {
-    full, _ := filepath.join({projectViewData.currentPath, name}, context.temp_allocator)
-    _project_set_current(full)
+// Cancel an active search: clear the query and navigate to the selected item —
+// its containing folder opens with the item still selected and revealed in the
+// tree, so the highlighted hit doesn't vanish.
+_project_cancel_search :: proc() {
+    mem.zero(&_project_search_buf, len(_project_search_buf))
+    sel := projectViewData.selectedFile
+    if sel != "" && os.exists(sel) {
+        parent := filepath.dir(sel) // slice into sel — don't delete
+        if parent == "" {
+            parent = projectViewData.rootPath
+        }
+        _project_set_current(parent)
+        _project_tree_reveal = true
+        _project_scroll_to_list_sel = true
+    }
+}
+
+_project_enter_dir :: proc(full_path: string) {
+    _project_set_current(full_path)
     _project_set_selected("")
+    // Navigating to a folder leaves search mode — the list shows the folder now.
+    mem.zero(&_project_search_buf, len(_project_search_buf))
     _project_tree_reveal = true
 }
 
 _project_go_up :: proc() {
     if projectViewData.currentPath == projectViewData.rootPath do return
-    // filepath.base/dir return SLICES into currentPath (no allocation), so they
-    // must not be deleted, and both must be read before _project_set_current
-    // frees currentPath out from under them.
-    came_from := filepath.base(projectViewData.currentPath)
-    parent := filepath.dir(projectViewData.currentPath)
-    // dir of a first-level folder ("foo") is "" — that's the fake "Assets" root.
+    // Select the folder we're leaving (full path == the old currentPath).
+    // filepath.dir returns a SLICE into currentPath — read it before
+    // _project_set_current frees the string, and never delete it.
+    came_from := projectViewData.currentPath
+    parent := filepath.dir(came_from)
+    // dir of a first-level folder ("foo") is "" — that's the assets root.
     if parent == "" {
         parent = projectViewData.rootPath
     }
@@ -179,17 +206,16 @@ _project_go_up :: proc() {
 }
 
 // Same side effects as clicking/double-clicking the file row.
-_project_activate_file :: proc(name: string) {
-    full_path, _ := filepath.join({projectViewData.currentPath, name}, context.temp_allocator)
-    if strings.has_suffix(name, ".asset") {
+_project_activate_file :: proc(full_path: string) {
+    if strings.has_suffix(full_path, ".asset") {
         undo.clear(undo.get())
         inspector.load_from_file(full_path)
     }
-    if engine.is_importable_extension(filepath.ext(name)) {
+    if engine.is_importable_extension(filepath.ext(full_path)) {
         undo.clear(undo.get())
         inspector.load_import_settings(full_path)
     }
-    if strings.has_suffix(name, ".scene") {
+    if strings.has_suffix(full_path, ".scene") {
         undo.clear(undo.get())
         // Fresh navigation — reset the nested-scene edit stack.
         hierarchy_edit_stack_clear()
@@ -199,14 +225,14 @@ _project_activate_file :: proc(name: string) {
 }
 
 _project_open_selected :: proc() {
-    name := projectViewData.selectedFile
-    if name == "" do return
+    sel := projectViewData.selectedFile
+    if sel == "" do return
     for r in _project_list_rows {
-        if r.name != name do continue
+        if r.path != sel do continue
         if r.is_dir {
-            _project_enter_dir(name)
+            _project_enter_dir(r.path)
         } else {
-            _project_activate_file(name)
+            _project_activate_file(r.path)
         }
         return
     }
@@ -228,18 +254,14 @@ _project_begin_rename :: proc(full_path: string, in_tree: bool) {
 }
 
 _project_begin_rename_selected :: proc() {
-    name := projectViewData.selectedFile
-    if name == "" do return
-    found := false
+    sel := projectViewData.selectedFile
+    if sel == "" do return
     for r in _project_list_rows {
-        if r.name == name {
-            found = true
-            break
+        if r.path == sel {
+            _project_begin_rename(sel, false)
+            return
         }
     }
-    if !found do return
-    full, _ := filepath.join({projectViewData.currentPath, name}, context.temp_allocator)
-    _project_begin_rename(full, false)
 }
 
 _project_apply_rename :: proc() {
@@ -276,7 +298,7 @@ _project_apply_rename :: proc() {
             _project_set_current(new_path)
         }
     } else {
-        _project_set_selected(new_name)
+        _project_set_selected(new_path)
     }
     engine.asset_db_refresh()
 }
@@ -548,9 +570,9 @@ _project_list_ensure_selection :: proc() {
     n := len(_project_list_rows)
     if n == 0 do return
     for r in _project_list_rows {
-        if r.name == projectViewData.selectedFile do return // already valid
+        if r.path == projectViewData.selectedFile do return // already valid
     }
-    _project_set_selected(_project_list_rows[0].name)
+    _project_set_selected(_project_list_rows[0].path)
     _project_scroll_to_list_sel = true
 }
 
@@ -587,14 +609,14 @@ _project_handle_list_keys :: proc() {
 
     cur := -1
     for r, i in _project_list_rows {
-        if r.name == projectViewData.selectedFile {
+        if r.path == projectViewData.selectedFile {
             cur = i
             break
         }
     }
 
     _list_select :: proc(idx: int) {
-        _project_set_selected(_project_list_rows[idx].name)
+        _project_set_selected(_project_list_rows[idx].path)
         _project_scroll_to_list_sel = true
     }
 
@@ -641,37 +663,13 @@ draw_file_list :: proc(path: string) {
         return strings.to_lower(a.name, context.temp_allocator) < strings.to_lower(b.name, context.temp_allocator)
     })
 
-    path_label := strings.clone_to_cstring(fmt.tprintf("Path: %s", path))
-    defer delete(path_label)
-    im.Text(path_label)
-    im.Separator()
-
     // Draw directories first
     for entry in entries {
         if entry.type != .Directory {
             continue
         }
-
-        append(&_project_list_rows, Project_Row{name = entry.name, is_dir = true})
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        if _project_draw_rename_row(entry_path) do continue
-
-        label := strings.clone_to_cstring(fmt.tprintf("%s%s", ICON_MD_FOLDER, entry.name), context.temp_allocator)
-
-        is_selected := _project_active_pane == .List && projectViewData.selectedFile == entry.name
-
-        // Single click selects; double click / open key enters.
-        if im.Selectable(label, is_selected) {
-            _project_set_selected(entry.name)
-        }
-        if is_selected && _project_scroll_to_list_sel {
-            im.SetScrollHereY()
-            _project_scroll_to_list_sel = false
-        }
-
-        if im.IsItemHovered() && im.IsMouseDoubleClicked(.Left) {
-            _project_enter_dir(entry.name)
-        }
+        _project_draw_list_row(entry.name, entry_path, is_dir = true)
     }
 
     // Draw files below directories
@@ -679,43 +677,54 @@ draw_file_list :: proc(path: string) {
         if strings.has_prefix(entry.name, ".") {
             continue
         }
-
         if entry.type == .Directory {
             continue
         }
-
         if filepath.ext(entry.name) == ".meta" {
             continue
         }
-
-        append(&_project_list_rows, Project_Row{name = entry.name, is_dir = false})
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        if _project_draw_rename_row(entry_path) do continue
+        _project_draw_list_row(entry.name, entry_path, is_dir = false)
+    }
+}
 
-        label := strings.clone_to_cstring(fmt.tprintf("%s%s", _project_file_icon(entry.name), entry.name), context.temp_allocator)
+// One row of the right pane, shared by the folder listing and search results.
+// `display` is the shown text; `full_path` drives selection, rename,
+// activation, and the drag payload.
+_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool) {
+    append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
+    if _project_draw_rename_row(full_path) do return
 
-        is_selected := _project_active_pane == .List && projectViewData.selectedFile == entry.name
+    icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
 
-        if !is_known_extension(entry.name) {
-            text_col := im.GetStyleColorVec4(im.Col.Text)
-            dimmed: im.Vec4 = {text_col[0] * 0.6, text_col[1] * 0.6, text_col[2] * 0.6, text_col[3]}
-            im.PushStyleColorImVec4(im.Col.Text, dimmed)
-        }
-        if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
-            _project_set_selected(entry.name)
+    is_selected := _project_active_pane == .List && projectViewData.selectedFile == full_path
 
-            full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
+    dim_unknown := !is_dir && !is_known_extension(full_path)
+    if dim_unknown {
+        text_col := im.GetStyleColorVec4(im.Col.Text)
+        dimmed: im.Vec4 = {text_col[0] * 0.6, text_col[1] * 0.6, text_col[2] * 0.6, text_col[3]}
+        im.PushStyleColorImVec4(im.Col.Text, dimmed)
+    }
 
-            if strings.has_suffix(entry.name, ".asset") {
+    // Single click selects (and loads .asset/import settings for files);
+    // double click enters folders / opens scenes.
+    if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
+        _project_set_selected(full_path)
+        if is_dir {
+            if im.IsMouseDoubleClicked(.Left) {
+                _project_enter_dir(full_path)
+            }
+        } else {
+            if strings.has_suffix(full_path, ".asset") {
                 undo.clear(undo.get())
                 inspector.load_from_file(full_path)
             }
-            ext := filepath.ext(entry.name)
-            if engine.is_importable_extension(ext) {
+            if engine.is_importable_extension(filepath.ext(full_path)) {
                 undo.clear(undo.get())
                 inspector.load_import_settings(full_path)
             }
-            if strings.has_suffix(entry.name, ".scene") && im.IsMouseDoubleClicked(.Left) {
+            if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
                 undo.clear(undo.get())
                 // Fresh navigation — reset the nested-scene edit stack.
                 hierarchy_edit_stack_clear()
@@ -723,27 +732,56 @@ draw_file_list :: proc(path: string) {
                 engine.sm_scene_set_active(scene)
             }
         }
-        if is_selected && _project_scroll_to_list_sel {
-            im.SetScrollHereY()
-            _project_scroll_to_list_sel = false
-        }
+    }
+    if is_selected && _project_scroll_to_list_sel {
+        im.SetScrollHereY()
+        _project_scroll_to_list_sel = false
+    }
+    if !is_dir {
         // Right-click also selects, so the context menu (which acts on the
         // selected asset) targets the row under the cursor, not whatever was
         // previously selected.
         if im.IsItemHovered() && im.IsMouseClicked(.Right) {
-            _project_set_selected(entry.name)
+            _project_set_selected(full_path)
         }
         if im.BeginDragDropSource({}) {
-            full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-            raw := raw_data(full_path)
-            im.SetDragDropPayload("ASSET_PATH", raw, len(full_path))
+            im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
             im.Text(label)
             im.EndDragDropSource()
         }
-        if !is_known_extension(entry.name) {
-            im.PopStyleColor()
+    }
+    if dim_unknown {
+        im.PopStyleColor()
+    }
+}
+
+// Search results: every file/folder under the assets root whose NAME contains
+// the query (case-insensitive), shown as root-relative paths. The asset DB
+// indexes all of them (folders included) and refreshes on rename/create, so
+// it's both the cheapest and the freshest source — no directory re-walk.
+// Returns the match count for the status line.
+_project_draw_search_results :: proc(query: string) -> int {
+    q := strings.to_lower(query, context.temp_allocator)
+
+    matches := make([dynamic]string, context.temp_allocator)
+    for path in engine.asset_db.path_to_guid {
+        name := filepath.base(path)
+        if strings.contains(strings.to_lower(name, context.temp_allocator), q) {
+            append(&matches, path)
         }
     }
+    // Map iteration order is unstable — sort so rows don't jump between frames.
+    slice.sort(matches[:])
+
+    prefix := strings.concatenate({projectViewData.rootPath, "/"}, context.temp_allocator)
+    for path in matches {
+        display := path
+        if strings.has_prefix(path, prefix) {
+            display = path[len(prefix):]
+        }
+        _project_draw_list_row(display, path, os.is_dir(path))
+    }
+    return len(matches)
 }
 
 // Create a prefab variant of the scene at `base_path`, written alongside it as
@@ -799,18 +837,53 @@ draw_project_view :: proc() {
 
         // Right pane: File list
         im.BeginChild("FileList", im.Vec2{0, 0}, {.Borders})
-        if im.IsWindowHovered({}) && im.IsMouseClicked(.Left) {
+        // ChildWindows: the rows live in a nested scroll child below.
+        if im.IsWindowHovered(im.HoveredFlags_ChildWindows) && im.IsMouseClicked(.Left) {
             _project_active_pane = .List
         }
 
         clear(&_project_list_rows)
 
-        // Draw files in current path
-        draw_file_list(projectViewData.currentPath)
+        // Search box above the list. While it has keyboard focus, list/tree key
+        // handling below is skipped (IsAnyItemActive guard). A non-empty query
+        // shows an "x" clear button beside the input.
+        query := strings.trim_space(string(cstring(raw_data(_project_search_buf[:]))))
+        clear_btn_w := im.GetFrameHeight()
+        im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
+        // NoTabStop: Tab must switch panes (handled below), never tab-focus the
+        // search box. Clicking into it still works.
+        im.PushItemFlag({.NoTabStop}, true)
+        im.InputTextWithHint("##prj_search", "Search", cstring(raw_data(_project_search_buf[:])), c.size_t(len(_project_search_buf)), {})
+        im.PopItemFlag()
+        if query != "" {
+            im.SameLine()
+            if im.Button(ICON_MD_CLOSE + "###prj_search_clear", im.Vec2{clear_btn_w, 0}) {
+                _project_cancel_search()
+                query = ""
+            }
+        }
 
+        // Rows scroll in their own child so the status line below stays fixed
+        // at the bottom of the pane.
+        result_count := 0
+        im.BeginChild("FileRows", im.Vec2{0, -im.GetFrameHeightWithSpacing()}, {})
+        if query != "" {
+            result_count = _project_draw_search_results(query)
+        } else {
+            draw_file_list(projectViewData.currentPath)
+        }
         if im.BeginPopupContextWindow("ProjectFileListContext", im.PopupFlags_MouseButtonRight) {
             menu.draw_menu_subtree("Assets")
             im.EndPopup()
+        }
+        im.EndChild()
+
+        // Status line at the bottom of the right pane.
+        im.Separator()
+        if query != "" {
+            im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", result_count), context.temp_allocator))
+        } else {
+            im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
         }
 
         im.EndChild()
@@ -822,9 +895,16 @@ draw_project_view :: proc() {
             _project_list_ensure_selection()
         }
 
+        // Esc cancels an active search from EITHER pane (a rename's Esc wins;
+        // Esc in the search box itself reverts the input first, then this clears).
+        if window_focused && query != "" && !_project_rename_active && im.IsKeyPressed(im.Key.Escape) {
+            _project_cancel_search()
+        }
+
         // Handle keys once, after both panes are drawn (nav lists are populated),
-        // routing to the active pane.
-        if window_focused {
+        // routing to the active pane. Not while a text input (search, rename) is
+        // active — those own the keyboard.
+        if window_focused && !im.IsAnyItemActive() {
             switch _project_active_pane {
             case .Tree: _project_handle_tree_keys()
             case .List: _project_handle_list_keys()

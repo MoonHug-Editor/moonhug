@@ -25,6 +25,7 @@ ICON_MD_MUSIC_NOTE  :: "\ue405"   // music_note
 
 // Scene / hierarchy
 ICON_MD_LAYERS         :: "\ue53b"   // layers
+ICON_MD_STAT_0         :: "\ue697"   // stat_0 (plain object row in hierarchy)
 ICON_MD_STACKS         :: "\uf359"   // stacks (scene/prefab)
 ICON_MD_STACKS_VARIANT :: "\uf607"   // stacks variant (scene variant) \u2014 unused: no cheap+reliable per-file variant detection
 ICON_MD_WIDGETS        :: "\ue1bd"   // widgets
@@ -44,6 +45,8 @@ ICON_MD_WARNING       :: "\uf083"   // warning
 ICON_MD_ERROR         :: "\uf8b6"   // error
 
 // Actions
+ICON_MD_CLOSE         :: "\ue5cd"   // close (clear search)
+ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (toolbar run button)
 ICON_MD_SAVE          :: "\ue161"   // save
 ICON_MD_ADD           :: "\ue145"   // add
 ICON_MD_DELETE        :: "\ue92e"   // delete
