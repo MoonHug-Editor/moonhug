@@ -1,3 +1,9 @@
+## [0.29.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.28.0...v0.29.0) (2026-07-08)
+
+### Features
+
+* console improve ([fa6e9e2](https://github.com/MoonHug-Editor/moonhug/commit/fa6e9e251ea510a1c9de0bae58f1137cc7f1fbb0))
+
 ## [0.28.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.27.0...v0.28.0) (2026-07-08)
 
 ### Features
