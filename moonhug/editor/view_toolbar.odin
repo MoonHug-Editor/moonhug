@@ -2,12 +2,15 @@ package editor
 
 import "base:runtime"
 import "core:strings"
+import "core:strconv"
 import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:thread"
+import "core:time"
 import im "../../external/odin-imgui"
 import "../engine"
+import "../engine/log"
 
 TOOLBAR_HEIGHT :: 28
 
@@ -106,30 +109,44 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
     os.close(stdout_w)
     os.close(stderr_w)
 
-    buf: [4096]byte
-    stdout_done := false
-    stderr_done := false
-
-    for !stdout_done || !stderr_done {
-        if !stdout_done {
-            n, read_err := os.read(stdout_r, buf[:])
-            if n > 0 {
-                output_view_append(buf[:n], nil)
-            }
-            if read_err != nil || n == 0 {
-                stdout_done = true
-            }
-        }
-
-        if !stderr_done {
-            n, read_err := os.read(stderr_r, buf[:])
+    // stderr drains on its own thread: alternating BLOCKING reads on one
+    // thread starve stdout whenever stderr is silent, so app logs used to
+    // arrive in late bursts. output_view_append is mutex-guarded.
+    stderr_thread := thread.create_and_start_with_poly_data(stderr_r, proc(fd: ^os.File) {
+        buf: [4096]byte
+        for {
+            n, read_err := os.read(fd, buf[:])
             if n > 0 {
                 output_view_append(nil, buf[:n])
             }
-            if read_err != nil || n == 0 {
-                stderr_done = true
-            }
+            if read_err != nil || n == 0 do return
         }
+    })
+
+    // stdout is consumed line-wise on this thread: the app's mh_log prints a
+    // machine-tagged format that routes into the editor console; untagged
+    // lines go to the Output view as before.
+    buf: [4096]byte
+    stdout_linebuf := make([dynamic]byte)
+    defer delete(stdout_linebuf)
+
+    for {
+        n, read_err := os.read(stdout_r, buf[:])
+        if n > 0 {
+            _play_consume_stdout(&stdout_linebuf, buf[:n])
+        }
+        if read_err != nil || n == 0 {
+            if len(stdout_linebuf) > 0 {
+                _play_dispatch_line(string(stdout_linebuf[:]))
+                clear(&stdout_linebuf)
+            }
+            break
+        }
+    }
+
+    if stderr_thread != nil {
+        thread.join(stderr_thread)
+        thread.destroy(stderr_thread)
     }
 
     state, wait_err := os.process_wait(process)
@@ -140,6 +157,52 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
     }
 }
 
+// Append a stdout chunk and dispatch every complete line in the buffer.
+_play_consume_stdout :: proc(linebuf: ^[dynamic]byte, chunk: []byte) {
+    append(linebuf, ..chunk)
+    for {
+        nl := -1
+        for b, i in linebuf {
+            if b == '\n' {
+                nl = i
+                break
+            }
+        }
+        if nl < 0 do break
+        _play_dispatch_line(string(linebuf[:nl]))
+        remove_range(linebuf, 0, nl + 1)
+    }
+}
+
+// Tagged mh_log lines become console entries (via the thread-safe intake
+// queue); everything else goes to the Output view.
+_play_dispatch_line :: proc(line: string) {
+    l := line
+    if len(l) > 0 && l[len(l)-1] == '\r' {
+        l = l[:len(l)-1]
+    }
+    if strings.has_prefix(l, log.STDOUT_TAG) {
+        rest := l[len(log.STDOUT_TAG):]
+        parts := strings.split_n(rest, "|", 7, context.temp_allocator)
+        if len(parts) == 7 {
+            lvl_i, lvl_ok := strconv.parse_int(parts[0])
+            t_ns, _ := strconv.parse_i64(parts[1]) // 0 on failure -> intake stamps now()
+            line_no, line_ok := strconv.parse_int(parts[3])
+            if lvl_ok && line_ok && lvl_i >= 0 && lvl_i <= int(max(log.Level)) {
+                // Stack field: frames joined by STACK_SEP; empty when the app
+                // wasn't a debug build.
+                frames: []string
+                if parts[5] != "" {
+                    frames = strings.split(parts[5], log.STACK_SEP, context.temp_allocator)
+                }
+                log.intake_remote(log.Level(lvl_i), time.Time{_nsec = t_ns}, parts[2], line_no, parts[4], parts[6], frames)
+                return
+            }
+        }
+    }
+    output_view_append_line(l)
+}
+
 run_app_play :: proc() {
     if _play_thread != nil && !thread.is_done(_play_thread) {
         return
@@ -148,6 +211,10 @@ run_app_play :: proc() {
         thread.join(_play_thread)
         thread.destroy(_play_thread)
         _play_thread = nil
+    }
+    if _console_clear_on_play {
+        log.clear()
+        _console_last_count = 0
     }
     cwd, _ := os.get_working_directory(context.temp_allocator)
     pa := runtime.default_allocator()
@@ -164,7 +231,7 @@ run_app_play :: proc() {
     }
 
     data.run_dir = rd
-    cmd, merr := make([]string, 4, pa)
+    cmd, merr := make([]string, 5, pa)
     if merr != nil {
         delete(data.run_dir, pa)
         free(data, pa)
@@ -176,15 +243,18 @@ run_app_play :: proc() {
     data.command[1] = "run"
     data.command[2] = "app"
     data.command[3] = "-ignore-unknown-attributes"
+    // Debug build so the app captures call stacks for its console log lines
+    // (capture is ODIN_DEBUG-gated in the app process).
+    data.command[4] = "-debug"
 
     // Pass the editor's active scene to the app (args after "--" reach the
     // program); without one the app falls back to its default scene.
     if scene := engine.sm_scene_get_active(); scene != nil && len(scene.path) > 0 {
-        with_scene, aerr := make([]string, 6, pa)
+        with_scene, aerr := make([]string, 7, pa)
         if aerr == nil {
             copy(with_scene, data.command)
-            with_scene[4] = "--"
-            with_scene[5], _ = strings.clone(scene.path, pa)
+            with_scene[5] = "--"
+            with_scene[6], _ = strings.clone(scene.path, pa)
             delete(data.command, pa)
             data.command = with_scene
         }

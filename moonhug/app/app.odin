@@ -13,6 +13,10 @@ import "../engine/log"
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
 main :: proc() {
+    // Machine-tagged log lines: the editor's play pipe parses them back into
+    // its console (standalone runs just see the tagged text in the terminal).
+    log.stdout_tagged = true
+
     rl.InitWindow(800, 600, "App")
     defer rl.CloseWindow()
 

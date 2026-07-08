@@ -50,20 +50,26 @@ component_registry: map[TypeKey]Component_Desc
 _component_registry_by_guid: map[uuid.Identifier]TypeKey
 
 component_register :: proc(desc: Component_Desc) {
-	// The registry is process-global: it must never borrow the caller's
-	// allocator (the test runner hands every test a scoped tracking allocator
-	// that is torn down afterwards — a registry allocated there would dangle).
-	context.allocator = runtime.default_allocator()
-	component_registry[desc.type_key] = desc
-	_component_registry_by_guid[desc.type_guid] = desc.type_key
+	{
+		// The registry is process-global: it must never borrow the caller's
+		// allocator (the test runner hands every test a scoped tracking allocator
+		// that is torn down afterwards — a registry allocated there would dangle).
+		context.allocator = runtime.default_allocator()
+		component_registry[desc.type_key] = desc
+		_component_registry_by_guid[desc.type_guid] = desc.type_key
 
-	// External components participate in the same runtime lifecycle tables the
-	// engine's generated init fills for engine components.
-	if desc.reset != nil do type_reset_procs[desc.type_key] = desc.reset
-	if desc.cleanup != nil do type_cleanup_procs[desc.type_key] = desc.cleanup
-	if desc.on_validate != nil do component_on_validate_procs[desc.type_key] = desc.on_validate
-	if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
+		// External components participate in the same runtime lifecycle tables the
+		// engine's generated init fills for engine components.
+		if desc.reset != nil do type_reset_procs[desc.type_key] = desc.reset
+		if desc.cleanup != nil do type_cleanup_procs[desc.type_key] = desc.cleanup
+		if desc.on_validate != nil do component_on_validate_procs[desc.type_key] = desc.on_validate
+		if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
+	}
 
+	// Outside the override block: pools belong to the WORLD and must be
+	// allocated under the caller's allocator — world destroy frees them under
+	// that same one (a default-heap pool makes the editor's debug tracking
+	// allocator panic with a bad free at shutdown).
 	if c := ctx_get(); c != nil && c.world != nil {
 		_world_ensure_ext_pool(c.world, desc)
 	}

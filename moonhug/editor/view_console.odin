@@ -11,7 +11,10 @@ _console_last_count: int
 _console_show_info:    bool = true
 _console_show_warning: bool = true
 _console_show_error:   bool = true
+_console_clear_on_play: bool = true
 _console_filter: [256]u8
+_console_selected_id: u64 // log.Entry.id of the row shown in the detail pane
+_console_scroll_to_sel: bool // scroll the selected row into view next frame
 
 // Console text colors, based on Unity's dark palette (default #D2D2D2,
 // warning #F4BC02, error #D32222) but with info nudged bluer/darker so it
@@ -54,6 +57,11 @@ _console_time_str :: proc(t: time.Time) -> string {
 }
 
 draw_status_bar :: proc() {
+	// Publish app-process log entries queued by the play pipe reader. The
+	// status bar draws every frame (the console window may be hidden), so
+	// this is the reliable once-per-frame drain point.
+	log.drain()
+
 	style := im.GetStyle()
 	height := im.GetFrameHeight() + style.WindowPadding.y
 	if !im.BeginViewportSideBar("##StatusBar", im.GetMainViewport(), .Down, height, {.NoScrollbar, .NoSavedSettings, .NoScrollWithMouse}) {
@@ -76,6 +84,8 @@ draw_console_view :: proc() {
 			log.clear()
 			_console_last_count = 0
 		}
+		im.SameLine()
+		filter_toggle_button("Clear on Play", &_console_clear_on_play)
 
 		style := im.GetStyle()
 		btn_labels := [3]cstring{ICON_MD_INFO, ICON_MD_WARNING, ICON_MD_ERROR}
@@ -107,7 +117,9 @@ draw_console_view :: proc() {
 		child_pad := im.GetStyle().WindowPadding
 		child_pad.x = 0
 		im.PushStyleVarImVec2(.WindowPadding, child_pad)
-		im.BeginChild("ConsoleScroll", im.Vec2{0, 0}, {.Borders})
+		// Reserve the bottom of the window for the detail pane.
+		detail_h := im.GetTextLineHeightWithSpacing() * 7
+		im.BeginChild("ConsoleScroll", im.Vec2{0, -detail_h}, {.Borders})
 		im.PopStyleVar()
 
 		filter_str := string(cstring(raw_data(_console_filter[:])))
@@ -116,6 +128,10 @@ draw_console_view :: proc() {
 		for term, i in filter_terms {
 			filter_terms_lower[i] = strings.to_lower(term, context.temp_allocator)
 		}
+
+		// Ids of rows drawn this frame, in draw order — the up/down keys walk
+		// this list so navigation follows the active level/text filters.
+		visible_ids := make([dynamic]u64, 0, len(log.entries), context.temp_allocator)
 
 		visible_row := 0
 		for entry in log.entries {
@@ -146,7 +162,12 @@ draw_console_view :: proc() {
 			// keyed off the theme so it tracks whatever background is in use.
 			row_h := im.GetTextLineHeightWithSpacing() * 2
 			row_start := im.GetCursorScreenPos()
-			if visible_row % 2 == 1 {
+			is_row_selected := entry.id == _console_selected_id
+			if is_row_selected {
+				sel := im.GetStyleColorVec4(.Header)^
+				p_max := im.Vec2{row_start.x + im.GetContentRegionAvail().x, row_start.y + row_h}
+				im.DrawList_AddRectFilled(im.GetWindowDrawList(), row_start, p_max, im.GetColorU32ImVec4(sel))
+			} else if visible_row % 2 == 1 {
 				ALT_ROW_MUL :: 0.98
 				bg := im.GetStyleColorVec4(.WindowBg)^
 				alt := im.Vec4{bg.x * ALT_ROW_MUL, bg.y * ALT_ROW_MUL, bg.z * ALT_ROW_MUL, 1}
@@ -182,34 +203,131 @@ draw_console_view :: proc() {
 			im.EndGroup()
 
 			// Reserve exactly row_h of vertical space (regardless of text height)
-			// via a real item, so imgui grows the scroll region correctly.
+			// via a real item — an invisible button, so the whole row is also the
+			// click target selecting the entry for the detail pane.
 			im.SetCursorScreenPos(row_start)
-			im.Dummy(im.Vec2{row_w, row_h})
+			if im.InvisibleButton(fmt.ctprintf("##crow_%d", entry.id), im.Vec2{max(row_w, 1), row_h}) {
+				_console_selected_id = entry.id
+			}
+			if is_row_selected && _console_scroll_to_sel {
+				im.SetScrollHereY()
+				_console_scroll_to_sel = false
+			}
+			append(&visible_ids, entry.id)
 			visible_row += 1
 		}
 
+		sel_visible := false
+		for id in visible_ids {
+			if id == _console_selected_id {
+				sel_visible = true
+				break
+			}
+		}
+
+		// Follow new entries only while nothing is selected — otherwise the
+		// auto-scroll fights keyboard navigation. Esc deselects to resume.
 		n := len(log.entries)
-		if n > _console_last_count && n > 0 {
+		if n > _console_last_count && n > 0 && !sel_visible {
 			im.SetScrollHereY(1)
 		}
 		_console_last_count = n
 
 		im.EndChild()
+
+		// Up/Down select the previous/next visible row (nothing selected: both
+		// start at the newest). Not while a text input owns the keyboard.
+		if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !im.IsAnyItemActive() && len(visible_ids) > 0 {
+			if im.IsKeyPressed(im.Key.Escape) {
+				_console_selected_id = 0
+			}
+			cur := -1
+			for id, i in visible_ids {
+				if id == _console_selected_id {
+					cur = i
+					break
+				}
+			}
+			if im.IsKeyPressed(im.Key.DownArrow) {
+				if cur == -1 {
+					_console_selected_id = visible_ids[len(visible_ids) - 1]
+				} else if cur + 1 < len(visible_ids) {
+					_console_selected_id = visible_ids[cur + 1]
+				}
+				_console_scroll_to_sel = true
+			}
+			if im.IsKeyPressed(im.Key.UpArrow) {
+				if cur == -1 {
+					_console_selected_id = visible_ids[len(visible_ids) - 1]
+				} else if cur - 1 >= 0 {
+					_console_selected_id = visible_ids[cur - 1]
+				}
+				_console_scroll_to_sel = true
+			}
+		}
+
+		// Bottom detail pane: full message + source + call stack of the
+		// selected entry.
+		im.BeginChild("ConsoleDetail", im.Vec2{0, 0}, {.Borders})
+		_draw_console_detail()
+		im.EndChild()
 	}
 	im.End()
 }
 
-// A filter toggle. When on, uses on_color (or, if that's zero, the theme's
-// default button color like the Clear button); when off, dimmed grey.
+_draw_console_detail :: proc() {
+	sel: ^log.Entry
+	for &e in log.entries {
+		if e.id == _console_selected_id {
+			sel = &e
+			break
+		}
+	}
+	if sel == nil {
+		im.TextDisabled("Select a log entry to see details")
+		return
+	}
+
+	// Plain im.Text can't be mouse-selected — render the details as a
+	// read-only, frameless multiline input instead so they're copyable.
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, fmt.tprintf("%s  %s\n", _console_time_str(sel.time), sel.message))
+	strings.write_string(&b, fmt.tprintf("%s\n\n", string(_console_loc_line(sel^))))
+	if len(sel.stack) > 0 {
+		for line in sel.stack {
+			strings.write_string(&b, line)
+			strings.write_byte(&b, '\n')
+		}
+	} else if sel.owns_loc {
+		strings.write_string(&b, "Call stack: available in debug app builds only (run app with -debug).")
+	} else if !ODIN_DEBUG {
+		strings.write_string(&b, "Call stack: available in debug editor builds only (build with -debug).")
+	} else {
+		strings.write_string(&b, "No call stack captured.")
+	}
+	text := strings.to_string(b)
+	buf := strings.clone_to_cstring(text, context.temp_allocator)
+
+	im.PushStyleColorImVec4(.FrameBg, im.Vec4{0, 0, 0, 0})
+	im.PushStyleColorImVec4(.Text, _console_level_color(sel.level))
+	im.InputTextMultiline("##console_detail_text", buf, uint(len(text) + 1), im.Vec2{-1, -1}, {.ReadOnly, .WordWrap})
+	im.PopStyleColor(2)
+}
+
+// A filter toggle. On: highlighted with on_color (or the theme's active-button
+// color when none given). Off: the theme's NORMAL button with a dimmed label —
+// a near-black button reads as disabled/broken rather than toggled off.
 filter_toggle_button :: proc(label: cstring, on: ^bool, on_color := im.Vec4{}) {
-	pushed := false
-	if !on^ {
-		im.PushStyleColorImVec4(.Button, im.Vec4{0.2, 0.2, 0.2, 1})
-		pushed = true
-	} else if on_color != {} {
-		im.PushStyleColorImVec4(.Button, on_color)
-		pushed = true
+	if on^ {
+		col := on_color
+		if col == {} {
+			col = im.GetStyleColorVec4(im.Col.ButtonActive)^
+		}
+		im.PushStyleColorImVec4(.Button, col)
+	} else {
+		txt := im.GetStyleColorVec4(im.Col.Text)^
+		im.PushStyleColorImVec4(.Text, im.Vec4{txt.x * 0.5, txt.y * 0.5, txt.z * 0.5, txt.w})
 	}
 	if im.Button(label) do on^ = !on^
-	if pushed do im.PopStyleColor()
+	im.PopStyleColor()
 }
