@@ -235,27 +235,27 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	return Transform_Handle(root_handle)
 }
 
-_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
+_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID = nil, user: rawptr = nil) {
 	if s == nil do return
 	remap := make(map[Local_ID]Local_ID)
 	defer delete(remap)
 
 	for &t in sf.transforms {
-		new_id := scene_next_id(s)
+		new_id := _remap_new_id(s, mapper, user, t.local_id)
 		remap[t.local_id] = new_id
 		t.local_id = new_id
 	}
 
-	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	ext_temps := _scene_file_remap_ext_begin(sf, s, &remap)
-	for &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }
+	for &c in sf.cameras { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.lifetimes { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.players { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.scripts { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.sprite_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	ext_temps := _scene_file_remap_ext_begin(sf, s, &remap, mapper, user)
+	for &ns in sf.nested_scenes { new_id := _remap_new_id(s, mapper, user, ns.local_id); remap[ns.local_id] = new_id; ns.local_id = new_id }
 	for &bc in sf.breadcrumbs {
 		old := bc.local_id
-		new_id := scene_next_id(s)
+		new_id := _remap_new_id(s, mapper, user, old)
 		remap[old] = new_id
 		bc.local_id = new_id
 	}

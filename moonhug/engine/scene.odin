@@ -33,6 +33,7 @@ scene_destroy :: proc(s: ^Scene) {
 			json.destroy_value(ov.value)
 		}
 		delete(ns.overrides)
+		delete(ns.source_of_inst)
 	}
 	delete(s.nested_scenes)
 	cleanup_Bimap(&s.local_ids)

@@ -169,6 +169,13 @@ _rewrite_handle_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, old_h
 	}
 }
 
+// New lid for a record during a SceneFile remap: the mapper decides (projection
+// into / out of an instance namespace), or the scene counter mints one (paste).
+_remap_new_id :: proc(s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID, user: rawptr, old: Local_ID) -> Local_ID {
+	if mapper != nil do return mapper(user, old)
+	return scene_next_id(s)
+}
+
 _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
 	if ptr == nil || ti == nil do return
 	base := runtime.type_info_base(ti)
@@ -428,7 +435,11 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 	// each level apply that level's outer prefab's NS-for-(next inner)
 	// overrides to the next prefab raw. The final result is `ns.source_prefab`
 	// raw with every level's overrides on top.
-	Hop :: struct { outer_guid: Asset_GUID, child_guid: Asset_GUID, child_transform_parent: Local_ID }
+	// The hop identifies the child NS's RECORD IN THE OUTER FILE by its
+	// file-stable lid (local_id_in_parent) — runtime metadata like
+	// transform_parent is projected into the host namespace and no longer
+	// matches file values.
+	Hop :: struct { outer_guid: Asset_GUID, child_guid: Asset_GUID, child_ns_file_lid: Local_ID }
 	hops := make([dynamic]Hop, 0, 4, context.temp_allocator)
 
 	cur := ns
@@ -438,9 +449,9 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 		outer := scene_find_nested_scene_for_host(s, ep)
 		if outer == nil do return nil, false
 		append(&hops, Hop{
-			outer_guid             = outer.source_prefab,
-			child_guid             = cur.source_prefab,
-			child_transform_parent = cur.transform_parent,
+			outer_guid        = outer.source_prefab,
+			child_guid        = cur.source_prefab,
+			child_ns_file_lid = _ns_projection_key(cur),
 		})
 		cur = outer
 	}
@@ -468,7 +479,7 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 		matching: []Override
 		for &m in outer_sf.nested_scenes {
 			if m.source_prefab != hop.child_guid do continue
-			if m.transform_parent != hop.child_transform_parent do continue
+			if m.local_id != hop.child_ns_file_lid do continue
 			matching = m.overrides[:]
 			break
 		}
@@ -516,6 +527,34 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 // (the inner ones must end up empty so resolve and serialization see a
 // consistent picture).
 @(private = "file")
+// Rewrites every "local_id" number in a parsed JSON doc through `m` (misses
+// pass through). Record identities and Ref_Local/PPtr values all serialize
+// under that key, so one rule un-projects a collected live doc back to source
+// namespace for override capture (Unity: modifications target source fileIDs).
+// JSON-level on purpose: the collected SceneFile shallow-copies live components,
+// so struct-level remapping could write through shared dynamic arrays.
+_json_remap_lids :: proc(v: json.Value, m: ^map[Local_ID]Local_ID) {
+	#partial switch obj in v {
+	case json.Object:
+		for k, &val in obj {
+			if k == "local_id" {
+				#partial switch num in val {
+				case json.Integer:
+					if src, ok := m^[Local_ID(num)]; ok do val = json.Integer(src)
+				case json.Float:
+					if src, ok := m^[Local_ID(i64(num))]; ok do val = json.Float(f64(src))
+				}
+				continue
+			}
+			_json_remap_lids(val, m)
+		}
+	case json.Array:
+		for &elem in obj {
+			_json_remap_lids(elem, m)
+		}
+	}
+}
+
 _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	w := ctx_world()
 	if ns.source_prefab == (Asset_GUID{}) do return
@@ -548,11 +587,19 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	_collect_nested_owned_subtree(w, host_tH, &work_sf, prefab_root_id, ns, host_tH)
 	defer scene_file_destroy_shallow(&work_sf)
 
-	work_raw, werr := json.marshal(work_sf, json.Marshal_Options{spec = .JSON, pretty = false})
+	work_marshaled, werr := json.marshal(work_sf, json.Marshal_Options{spec = .JSON, pretty = false}, context.temp_allocator)
 	if werr != nil {
 		fmt.printf("[Scene] Failed to marshal working copy for override capture: %v\n", werr)
 		return
 	}
+
+	// The live instance carries composed instance lids; the diff baseline is
+	// the prefab file — un-project the working doc to source namespace.
+	work_val: json.Value
+	if json.unmarshal(work_marshaled, &work_val, .JSON, context.temp_allocator) != nil do return
+	_json_remap_lids(work_val, &ns.source_of_inst)
+	work_raw, rerr := json.marshal(work_val, json.Marshal_Options{spec = .JSON, pretty = false})
+	if rerr != nil do return
 	defer delete(work_raw)
 
 	base_raw, ok := _chain_baked_base_for_ns(s, ns)

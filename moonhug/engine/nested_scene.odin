@@ -2,6 +2,7 @@ package engine
 
 import "core:encoding/json"
 import "core:strings"
+import "base:runtime"
 import "core:reflect"
 import "core:os"
 import "core:fmt"
@@ -404,6 +405,51 @@ NestedScene :: struct {
     source_root_id:       Local_ID `json:"-"`,
     expand_parent:        Transform_Handle `json:"-"`,
     overrides:            [dynamic]Override,
+    // Runtime instance-lid -> source-prefab-lid map, rebuilt on every resolve
+    // (Unity: m_CorrespondingSourceObject). Instance lids are composed
+    // deterministically (nested_lid_compose) so source->instance needs no map;
+    // this is the inverse for override capture, which must write source lids.
+    source_of_inst:       map[Local_ID]Local_ID `json:"-"`,
+}
+
+// Deterministic instance lid for one object of a materialized prefab instance —
+// Unity computes instanced-object fileIDs the same way (a hash of the source
+// fileID and the PrefabInstance id). Determinism is what lets references into
+// nested content be plain lids that survive save/reload. The result is tagged
+// with bit 52 (never collides with counter-minted authored lids) and kept
+// below 2^53 so a lid survives any f64/json round-trip exactly.
+INSTANCE_LID_BIT :: Local_ID(1) << 52
+
+nested_lid_compose :: proc(instance_key: Local_ID, source_lid: Local_ID) -> Local_ID {
+    h := u64(instance_key) * 0x9E3779B97F4A7C15
+    h ~= u64(source_lid) + 0x9E3779B97F4A7C15 + (h << 6) + (h >> 2)
+    h *= 0xBF58476D1CE4E5B9
+    h ~= h >> 27
+    return Local_ID(i64(h) & ((1 << 52) - 1)) | INSTANCE_LID_BIT
+}
+
+// The runtime lid of `source_lid` inside `ns`'s materialized instance. The
+// prefab's root is absorbed into the host transform, so it maps to the host's
+// own lid rather than a composed one.
+nested_scene_instance_lid :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Local_ID {
+    if source_lid == ns.source_root_id {
+        w := ctx_world()
+        host_tH := nested_scene_resolve_host_handle(s, ns)
+        if host_t := pool_get(&w.transforms, Handle(host_tH)); host_t != nil {
+            return host_t.local_id
+        }
+    }
+    return nested_lid_compose(ns.local_id, source_lid)
+}
+
+// Remove a torn-down instance's composed lids from the scene bimap (the host
+// lid stays — it is host-authored). Stale entries would dangle on destroyed
+// handles until the next resolve overwrote them.
+_ns_purge_instance_lids :: proc(s: ^Scene, ns: ^NestedScene) {
+    if s == nil || ns == nil do return
+    for lid in ns.source_of_inst {
+        if lid & INSTANCE_LID_BIT != 0 do bimap_remove_by_key(&s.local_ids, lid)
+    }
 }
 
 transform_is_nested_owned :: proc(tH: Transform_Handle) -> bool {
@@ -924,8 +970,50 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     host_scene := host_t.scene
     ns.source_root_id = sf.root
 
+    // Project the instance into the host namespace (Unity: instanced objects
+    // get deterministic fileIDs composed from source fileID x PrefabInstance).
+    // The prefab root maps to the host transform's own lid — the root is
+    // absorbed into the host, so refs to it resolve to the host naturally.
+    // Everything else composes via nested_lid_compose; the generated remap
+    // rewrites all records, refs, and NS/breadcrumb metadata in one walk.
+    // After this, the instance's lids are unique scene-wide and register in
+    // the host bimap like any authored content.
+    _Project_Ctx :: struct {
+        key:      Local_ID,
+        root:     Local_ID,
+        host_lid: Local_ID,
+        ns:       ^NestedScene,
+    }
+    _project_mapper :: proc(user: rawptr, old: Local_ID) -> Local_ID {
+        c := cast(^_Project_Ctx)user
+        new_id := old == c.root ? c.host_lid : nested_lid_compose(c.key, old)
+        c.ns.source_of_inst[new_id] = old
+        return new_id
+    }
+    _ns_purge_instance_lids(host_scene, ns)
+    delete(ns.source_of_inst)
+    ns.source_of_inst = make(map[Local_ID]Local_ID)
+    pctx := _Project_Ctx{key = ns.local_id, root = sf.root, host_lid = host_t.local_id, ns = ns}
+    _scene_file_remap_local_ids(&sf, host_scene, _project_mapper, &pctx)
+    // Inner NS records: local_id_in_parent is the XOR projection key for deep
+    // override targets and must stay the FILE-stable lid. Older files carry 0
+    // (the key then fell back to local_id, which was the file lid before this
+    // projection existed) — pin it to the pre-projection lid.
+    for &insf in sf.nested_scenes {
+        if insf.local_id_in_parent == 0 {
+            insf.local_id_in_parent = ns.source_of_inst[insf.local_id]
+        }
+    }
+
+    // The host transform must be reachable by lid before the instance's refs
+    // resolve (refs to the prefab root now carry the host's lid). File-loaded
+    // hosts are already registered; runtime-instantiated ones are not.
+    if _, reg := bimap_get(&host_scene.local_ids, host_t.local_id); !reg {
+        bimap_insert(&host_scene.local_ids, host_t.local_id, Handle(host_tH))
+    }
+
     nested_before := len(host_scene.nested_scenes)
-    nested_root_tH := _scene_load_as_child(&sf, host_tH, host_scene, ns.source_prefab, true)
+    nested_root_tH := _scene_load_as_child(&sf, host_tH, host_scene, ns.source_prefab)
 
     for i in nested_before..<len(host_scene.nested_scenes) {
         if host_scene.nested_scenes[i].expand_parent == {} {
@@ -1086,6 +1174,8 @@ _nested_scene_unresolve :: proc(host_tH: Transform_Handle) {
             ep_valid := pool_valid(&w.transforms, Handle(ep))
             if !ep_valid || ep == host_tH {
                 breadcrumb_clear_for_nested_scene(s, ns.local_id)
+                _ns_purge_instance_lids(s, &ns)
+                delete(ns.source_of_inst)
                 for &ov in ns.overrides {
                     delete(ov.property_path)
                     json.destroy_value(ov.value)
@@ -1239,17 +1329,24 @@ nested_scene_locate_root_override :: proc(
     leaf_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
     if leaf_ns == nil do return nil, {}, false
 
+    // Callers pass LIVE lids; override targets are SOURCE-namespace (file
+    // format). Un-map through the leaf instance's correspondence table first.
+    tlid := target_lid
+    if src_lid, has_src := leaf_ns.source_of_inst[tlid]; has_src {
+        tlid = src_lid
+    }
+
     // Native host case: target lid is directly in the root NS prefab namespace.
     if leaf_ns.expand_parent == {} {
-        return root_ns, PPtr{guid = root_ns.source_prefab, local_id = target_lid}, true
+        return root_ns, PPtr{guid = root_ns.source_prefab, local_id = tlid}, true
     }
 
     _, lid_chain, lok := _nested_chain_to_root_lids(s, inner_host_tH)
     if !lok do return nil, {}, false
 
-    // Forward-project target_lid through the chain (top-down): for each NS
+    // Forward-project the source lid through the chain (top-down): for each NS
     // from root to leaf, XOR the running value by that NS's local_id_in_parent.
-    projected := target_lid
+    projected := tlid
     for i := len(lid_chain) - 1; i >= 0; i -= 1 {
         projected = local_id_project(lid_chain[i], projected)
     }
@@ -1302,112 +1399,52 @@ _nested_revert_field_ptr :: proc(ptr: rawptr, tid: typeid, path: string) -> (raw
     return nil, nil, false
 }
 
-// Walks the nested-owned subtree under `host_tH` (and the host itself), looking
-// for a transform or component whose `local_id == target_id`. Returns a pointer
-// into the live data for the property at `property_path`. Scoping the search
-// to one host's subtree is what makes this safe when multiple instances of the
-// same prefab share local_ids — picking by local_id alone would otherwise hit
-// a sibling instance.
+// Locates the live field pointer for `(target_id, property_path)` inside
+// `ns`'s instance: composed-lid bimap lookup, then field resolution on the
+// entity (a transform target also searches its attached components — a
+// root-targeted override may address a component on the absorbed root).
+// `revert_field_ptr`, when set, must match the located pointer (the inspector
+// passes the field it is drawing as a consistency guard).
 @(private = "file")
 _nested_find_revert_target :: proc(
-    host_tH: Transform_Handle,
+    s: ^Scene,
+    ns: ^NestedScene,
     target_id: Local_ID,
     property_path: string,
-    is_root_target: bool,
     revert_field_ptr: rawptr,
 ) -> (rawptr, typeid, bool) {
-    if host_tH == {} do return nil, nil, false
     w := ctx_world()
+    h := _find_source_handle_in_instance(s, ns, target_id)
+    if h == {} do return nil, nil, false
 
-    walk :: proc(
-        w: ^World,
-        tH: Transform_Handle,
-        target_id: Local_ID,
-        property_path: string,
-        is_root_target: bool,
-        is_host: bool,
-        revert_field_ptr: rawptr,
-    ) -> (rawptr, typeid, bool) {
-        t := pool_get(&w.transforms, Handle(tH))
-        if t == nil do return nil, nil, false
-
-        match_self := false
-        if is_host {
-            if is_root_target do match_self = true
-        } else if t.nested_owned && t.local_id == target_id {
-            match_self = true
-        }
-
-        if match_self {
-            if fp, ftid, ok := _nested_revert_field_ptr(t, Transform, property_path); ok {
-                if revert_field_ptr == nil || uintptr(revert_field_ptr) == uintptr(fp) {
-                    return fp, ftid, true
-                }
-            }
-            for c in t.components {
-                if c.handle.type_key == INVALID_TYPE_KEY do continue
-                comp_ptr := world_pool_get(w, c.handle)
-                if comp_ptr == nil do continue
-                base := cast(^CompData)comp_ptr
-                if !base.nested_owned do continue
-                comp_tid := get_typeid_by_type_key(c.handle.type_key)
-                if comp_tid == nil do continue
-                if fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path); ok {
-                    if revert_field_ptr == nil || uintptr(revert_field_ptr) == uintptr(fp) {
-                        return fp, ftid, true
-                    }
-                }
-            }
-        } else if !is_host && t.nested_owned {
-            for c in t.components {
-                if c.handle.type_key == INVALID_TYPE_KEY do continue
-                comp_ptr := world_pool_get(w, c.handle)
-                if comp_ptr == nil do continue
-                base := cast(^CompData)comp_ptr
-                if !base.nested_owned do continue
-                if base.local_id != target_id do continue
-                comp_tid := get_typeid_by_type_key(c.handle.type_key)
-                if comp_tid == nil do continue
-                if fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path); ok {
-                    if revert_field_ptr == nil || uintptr(revert_field_ptr) == uintptr(fp) {
-                        return fp, ftid, true
-                    }
-                }
-            }
-        }
-
-        for child in t.children {
-            ct := pool_get(&w.transforms, child.handle)
-            if ct == nil do continue
-            if !ct.nested_owned do continue
-            cth := Transform_Handle(child.handle)
-            if fp, ftid, ok := walk(w, cth, target_id, property_path, is_root_target, false, revert_field_ptr); ok {
-                return fp, ftid, true
-            }
-        }
-
-        if is_host {
-            for c in t.components {
-                if c.handle.type_key == INVALID_TYPE_KEY do continue
-                comp_ptr := world_pool_get(w, c.handle)
-                if comp_ptr == nil do continue
-                base := cast(^CompData)comp_ptr
-                if !base.nested_owned do continue
-                if base.local_id != target_id do continue
-                comp_tid := get_typeid_by_type_key(c.handle.type_key)
-                if comp_tid == nil do continue
-                if fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path); ok {
-                    if revert_field_ptr == nil || uintptr(revert_field_ptr) == uintptr(fp) {
-                        return fp, ftid, true
-                    }
-                }
-            }
-        }
-
+    try :: proc(fp: rawptr, ftid: typeid, ok: bool, want: rawptr) -> (rawptr, typeid, bool) {
+        if ok && (want == nil || uintptr(want) == uintptr(fp)) do return fp, ftid, true
         return nil, nil, false
     }
 
-    return walk(w, host_tH, target_id, property_path, is_root_target, true, revert_field_ptr)
+    if h.type_key == .Transform {
+        t := pool_get(&w.transforms, h)
+        if t == nil do return nil, nil, false
+        fp, ftid, ok := _nested_revert_field_ptr(t, Transform, property_path)
+        if rp, rtid, rok := try(fp, ftid, ok, revert_field_ptr); rok do return rp, rtid, true
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            comp_ptr := world_pool_get(w, c.handle)
+            if comp_ptr == nil do continue
+            comp_tid := get_typeid_by_type_key(c.handle.type_key)
+            if comp_tid == nil do continue
+            cfp, cftid, cok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+            if rp, rtid, rok := try(cfp, cftid, cok, revert_field_ptr); rok do return rp, rtid, true
+        }
+        return nil, nil, false
+    }
+
+    comp_ptr := world_pool_get(w, h)
+    if comp_ptr == nil do return nil, nil, false
+    comp_tid := get_typeid_by_type_key(h.type_key)
+    if comp_tid == nil do return nil, nil, false
+    fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+    return try(fp, ftid, ok, revert_field_ptr)
 }
 
 // Locates the leaf NS host for an Override.target (a PPtr carrying
@@ -1457,10 +1494,8 @@ _find_descendant_ns_by_projection :: proc(
         next_projected := local_id_unproject(_ns_projection_key(&cand), projected)
 
         if cand.source_prefab == target_guid {
-            // Verify next_projected resolves in this candidate's subtree.
-            is_root := next_projected == cand.source_root_id
-            h := _find_subtree_handle_by_lid(cand_host, next_projected, is_root)
-            if h != {} {
+            // Verify next_projected resolves in this candidate's instance.
+            if _find_source_handle_in_instance(s, &cand, next_projected) != {} {
                 return cand_host, &cand, next_projected
             }
             // Wrong branch: continue searching.
@@ -1473,7 +1508,7 @@ _find_descendant_ns_by_projection :: proc(
 }
 
 @(private = "file")
-ChainHop :: struct { guid: Asset_GUID, transform_parent: Local_ID, lid_in_parent: Local_ID }
+ChainHop :: struct { guid: Asset_GUID, lid_in_parent: Local_ID }
 
 // Builds the hop chain from `start_host_tH` down to (and including) the first
 // inner NS whose source_prefab == target_guid. Each hop entry carries:
@@ -1487,7 +1522,7 @@ _collect_chain_to_prefab :: proc(s: ^Scene, start_host_tH: Transform_Handle, tar
         if cand.expand_parent != start_host_tH do continue
         cand_host := nested_scene_resolve_host_handle(s, &cand)
         if cand_host == {} do continue
-        append(out, ChainHop{guid = cand.source_prefab, transform_parent = cand.transform_parent, lid_in_parent = cand.local_id_in_parent})
+        append(out, ChainHop{guid = cand.source_prefab, lid_in_parent = _ns_projection_key(&cand)})
         if cand.source_prefab == target_guid do return true
         if _collect_chain_to_prefab(s, cand_host, target_guid, out) do return true
         // Backtrack — wrong branch.
@@ -1533,74 +1568,35 @@ nested_resolve_breadcrumb_to_handle :: proc(s: ^Scene, bc: Breadcrumb) -> Handle
         if leaf_host == {} || leaf_ns == nil do return {}
     }
 
-    is_root_target := leaf_lid == leaf_ns.source_root_id
-    return _find_subtree_handle_by_lid(leaf_host, leaf_lid, is_root_target)
+    return _find_source_handle_in_instance(s, leaf_ns, leaf_lid)
 }
 
-// Walks the nested-owned subtree rooted at `host_tH` looking for a transform
-// or component whose prefab-namespaced local_id == target_lid.
-// is_root_target == true means the target is the host transform itself.
+// The live handle of a source-prefab lid inside `ns`'s materialized instance.
+// Instance lids are registered scene-wide, so this is a composed-lid bimap
+// lookup — no subtree walking.
 @(private = "file")
-_find_subtree_handle_by_lid :: proc(host_tH: Transform_Handle, target_lid: Local_ID, is_root_target: bool) -> Handle {
-    if host_tH == {} do return {}
-    w := ctx_world()
-
-    walk :: proc(w: ^World, tH: Transform_Handle, target_lid: Local_ID, is_host_match: bool) -> Handle {
-        t := pool_get(&w.transforms, Handle(tH))
-        if t == nil do return {}
-        if is_host_match do return Handle(tH)
-        if t.nested_owned && t.local_id == target_lid do return Handle(tH)
-        if t.nested_owned {
-            for c in t.components {
-                if c.handle.type_key == INVALID_TYPE_KEY do continue
-                raw := world_pool_get(w, c.handle)
-                if raw == nil do continue
-                base := cast(^CompData)raw
-                if !base.nested_owned do continue
-                if base.local_id == target_lid do return c.handle
-            }
-        }
-        for child in t.children {
-            ct := pool_get(&w.transforms, child.handle)
-            if ct == nil || !ct.nested_owned do continue
-            if h := walk(w, Transform_Handle(child.handle), target_lid, false); h != {} {
-                return h
-            }
-        }
-        return {}
+_find_source_handle_in_instance :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Handle {
+    if s == nil || ns == nil do return {}
+    if h, ok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, ns, source_lid)); ok {
+        return h
     }
-
-    if is_root_target {
-        return walk(w, host_tH, target_lid, true)
-    }
-    // Host's own components share the prefab namespace — check first.
-    if t := pool_get(&w.transforms, Handle(host_tH)); t != nil {
-        for c in t.components {
-            if c.handle.type_key == INVALID_TYPE_KEY do continue
-            raw := world_pool_get(w, c.handle)
-            if raw == nil do continue
-            base := cast(^CompData)raw
-            if !base.nested_owned do continue
-            if base.local_id == target_lid do return c.handle
-        }
-    }
-    return walk(w, host_tH, target_lid, false)
+    return {}
 }
 
-// Patches the live field at `(target_id, property_path)` inside `host_tH`'s
-// subtree using `value` JSON. `cleanup_T` (registered as `type_cleanup_by_typeid`)
+// Patches the live field at `(target_id, property_path)` inside `ns`'s
+// instance using `value` JSON. `cleanup_T` (registered as `type_cleanup_by_typeid`)
 // is contracted to free + zero the field, so unmarshal_any sees a valid empty
 // slot. Returns true on success. Logs and returns false when the locate fails
 // or the field type has no registered pointer typeid.
 @(private = "file")
 _nested_patch_live_field :: proc(
-    host_tH: Transform_Handle,
+    s: ^Scene,
+    ns: ^NestedScene,
     target_id: Local_ID,
     property_path: string,
-    is_root_target: bool,
     value: json.Value,
 ) -> bool {
-    live_ptr, live_tid, found := _nested_find_revert_target(host_tH, target_id, property_path, is_root_target, nil)
+    live_ptr, live_tid, found := _nested_find_revert_target(s, ns, target_id, property_path, nil)
     if !found || live_ptr == nil do return false
 
     field_bytes, merr := json.marshal(value, {spec = .JSON}, context.temp_allocator)
@@ -1610,6 +1606,9 @@ _nested_patch_live_field :: proc(
     ptr_tid, ptr_ok := get_pointer_typeid_by_typeid(live_tid)
     if !ptr_ok do return false
     if uerr := json.unmarshal_any(field_bytes, any{&live_ptr, ptr_tid}); uerr != nil do return false
+    // Override values may hold Ref_Local source lids — bind them into the
+    // instance namespace (composed lid + live handle).
+    _nested_bind_source_refs_in_value(live_ptr, type_info_of(live_tid), s, ns)
     return true
 }
 
@@ -1641,8 +1640,7 @@ _nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^
         // by its local_id_in_parent.
         leaf_host, leaf_ns, leaf_lid := _nested_walk_override_target(s, host_tH, ov.target)
         if leaf_host == {} || leaf_ns == nil do continue
-        is_root_target := leaf_lid == leaf_ns.source_root_id
-        _nested_patch_live_field(leaf_host, leaf_lid, ov.property_path, is_root_target, ov.value)
+        _nested_patch_live_field(s, leaf_ns, leaf_lid, ov.property_path, ov.value)
     }
 }
 
@@ -1706,30 +1704,19 @@ nested_scene_revert_override :: proc(
     // reuse it so revert and apply agree on the target. For a shallow override
     // the leaf prefab is ns.source_prefab and the lid is target.local_id.
     native_host_tH := nested_scene_resolve_host_handle(s, ns)
-    leaf_host_tH := native_host_tH
     leaf_target := target.local_id
     leaf_ns := ns
-    leaf_root_id := ns.source_root_id
 
     is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
     if is_deep {
         lh, lns, lid := _nested_walk_override_target(s, native_host_tH, target)
         if lh != {} && lns != nil {
-            leaf_host_tH = lh
             leaf_target = lid
             leaf_ns = lns
-            leaf_root_id = lns.source_root_id
         }
     }
-    is_root_target := leaf_target == leaf_root_id
 
-    live_ptr, live_tid, found := _nested_find_revert_target(
-        leaf_host_tH,
-        leaf_target,
-        property_path,
-        is_root_target,
-        revert_field_ptr,
-    )
+    live_ptr, live_tid, found := _nested_find_revert_target(s, leaf_ns, leaf_target, property_path, revert_field_ptr)
     if found && live_ptr != nil {
         // Baseline = the field in leaf_ns's chain-baked base (every ancestor
         // prefab's overrides applied, variants flattened, but NOT the open
@@ -1743,13 +1730,9 @@ nested_scene_revert_override :: proc(
                 type_cleanup_by_typeid(live_tid, live_ptr)
                 if ptr_tid, ptr_ok := get_pointer_typeid_by_typeid(live_tid); ptr_ok {
                     json.unmarshal_any(field_bytes, any{&live_ptr, ptr_tid})
-                    // The baseline's Ref_Local lids are in the LEAF PREFAB's
-                    // namespace — rebind their handles against this instance's
-                    // subtree (host bimap only as fallback for breadcrumb lids),
-                    // exactly as load-time resolution would.
-                    ns_map := make(map[Local_ID]Handle, context.temp_allocator)
-                    _nested_instance_namespace(leaf_host_tH, leaf_root_id, leaf_ns, &ns_map)
-                    _resolve_refs_in_value(live_ptr, type_info_of(live_tid), s, &ns_map)
+                    // The baseline's Ref_Local lids are source-namespace — bind
+                    // them to instance lids + live handles.
+                    _nested_bind_source_refs_in_value(live_ptr, type_info_of(live_tid), s, leaf_ns)
                 }
             }
         }
@@ -1773,41 +1756,72 @@ nested_scene_revert_override :: proc(
     resize(&ns.overrides, write)
 }
 
-// lid -> handle table for ONE nested instance's namespace: the host (standing
-// in for the prefab's absorbed root) plus every nested_owned transform and
-// component under it, stopping at inner-NS boundaries (their content lives in
-// a different prefab file's namespace).
-_nested_instance_namespace :: proc(host_tH: Transform_Handle, root_lid: Local_ID, owner_ns: ^NestedScene, out: ^map[Local_ID]Handle) {
-    w := ctx_world()
-    if root_lid != 0 do out^[root_lid] = Handle(host_tH)
+// Walks a value freshly unmarshaled from SOURCE-namespace JSON (an override
+// value or a revert baseline) and binds every Ref/Ref_Local into `ns`'s
+// instance: source lid -> composed instance lid + live handle from the bimap.
+// Lids already carrying INSTANCE_LID_BIT (or pointing outside the prefab, e.g.
+// host lids in ref-override values) resolve through the bimap as-is.
+_nested_bind_source_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, ns: ^NestedScene) {
+    if ptr == nil || ti == nil || s == nil || ns == nil do return
+    base := runtime.type_info_base(ti)
+    if base == nil do return
 
-    walk :: proc(w: ^World, tH: Transform_Handle, owner_ns: ^NestedScene, out: ^map[Local_ID]Handle, is_host: bool) {
-        t := pool_get(&w.transforms, Handle(tH))
-        if t == nil do return
-
-        if !is_host {
-            if t.nested_owned do out^[t.local_id] = Handle(tH)
-            // Inner-NS host: its transform row belongs to THIS file, its
-            // contents don't.
-            if owning := scene_find_nested_scene_for_host(t.scene, tH); owning != nil && owning != owner_ns {
-                return
+    bind :: proc(s: ^Scene, ns: ^NestedScene, lid: ^Local_ID, handle: ^Handle) {
+        if lid^ == 0 do return
+        inst := lid^
+        if inst & INSTANCE_LID_BIT == 0 {
+            if candidate := nested_scene_instance_lid(s, ns, lid^); candidate != 0 {
+                if _, ok := bimap_get(&s.local_ids, candidate); ok {
+                    inst = candidate
+                }
             }
         }
-
-        for c in t.components {
-            if c.handle.type_key == INVALID_TYPE_KEY do continue
-            raw := world_pool_get(w, c.handle)
-            if raw == nil do continue
-            base := cast(^CompData)raw
-            if base.nested_owned do out^[base.local_id] = c.handle
-        }
-        for child in t.children {
-            ct := pool_get(&w.transforms, child.handle)
-            if ct == nil || !ct.nested_owned do continue
-            walk(w, Transform_Handle(child.handle), owner_ns, out, false)
+        if h, ok := bimap_get(&s.local_ids, inst); ok {
+            lid^ = inst
+            handle^ = h
         }
     }
-    walk(w, host_tH, owner_ns, out, true)
+
+    #partial switch info in base.variant {
+    case runtime.Type_Info_Struct:
+        tid := ti.id
+        if tid == typeid_of(PPtr) do return
+        if tid == typeid_of(Ref) {
+            ref := cast(^Ref)ptr
+            if pptr_guid_is_empty(ref.pptr.guid) do bind(s, ns, &ref.pptr.local_id, &ref.handle)
+            return
+        }
+        if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+            rl := cast(^Ref_Local)ptr
+            bind(s, ns, &rl.local_id, &rl.handle)
+            return
+        }
+        for i in 0..<int(info.field_count) {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(ptr) + info.offsets[i]), info.types[i], s, ns)
+        }
+    case runtime.Type_Info_Union:
+        tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+        tag: i64
+        switch info.tag_type.size {
+        case 1: tag = i64((cast(^u8)tag_ptr)^)
+        case 2: tag = i64((cast(^u16)tag_ptr)^)
+        case 4: tag = i64((cast(^u32)tag_ptr)^)
+        case 8: tag = i64((cast(^u64)tag_ptr)^)
+        }
+        idx := tag if info.no_nil else tag - 1
+        if idx < 0 || int(idx) >= len(info.variants) do return
+        _nested_bind_source_refs_in_value(ptr, info.variants[idx], s, ns)
+    case runtime.Type_Info_Dynamic_Array:
+        dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+        if dyn.data == nil || dyn.len == 0 do return
+        for i in 0..<dyn.len {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(dyn.data) + uintptr(i * info.elem_size)), info.elem, s, ns)
+        }
+    case runtime.Type_Info_Array:
+        for i in 0..<info.count {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(ptr) + uintptr(i * info.elem_size)), info.elem, s, ns)
+        }
+    }
 }
 
 // Apply override (mirror of revert). Instead of dropping the override and
@@ -1945,7 +1959,7 @@ nested_scene_apply_override :: proc(
 _apply_resolve_parent :: proc(
     s: ^Scene, ns: ^NestedScene, target: PPtr, levels_up: int,
 ) -> (parent_guid: Asset_GUID, is_direct: bool, parent_lid: Local_ID,
-      rec_child_guid: Asset_GUID, tgt_guid: Asset_GUID, rec_tparent: Local_ID, ok: bool) {
+      rec_child_guid: Asset_GUID, tgt_guid: Asset_GUID, rec_ns_lid: Local_ID, ok: bool) {
     if levels_up < 1 do return {}, false, 0, {}, {}, 0, false
 
     is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
@@ -1991,7 +2005,7 @@ _apply_resolve_parent :: proc(
         plid = local_id_unproject(hops[i].lid_in_parent, plid)
     }
 
-    return file_guid, false, plid, child_hop.guid, target.guid, child_hop.transform_parent, true
+    return file_guid, false, plid, child_hop.guid, target.guid, child_hop.lid_in_parent, true
 }
 
 // Number of Apply targets for this override (the max valid `levels_up`).
@@ -2125,9 +2139,12 @@ _apply_patch_prefab :: proc(
     return true
 }
 
-// True if an NS-record JSON object has source_prefab == guid && transform_parent == tparent.
+// True if an NS-record JSON object has source_prefab == guid and record
+// local_id == ns_lid. The record's own lid is its FILE-stable identity —
+// runtime metadata like transform_parent is projected into the host namespace
+// and no longer matches file values.
 @(private = "file")
-_json_ns_matches :: proc(ns_obj: json.Object, guid: Asset_GUID, tparent: Local_ID) -> bool {
+_json_ns_matches :: proc(ns_obj: json.Object, guid: Asset_GUID, ns_lid: Local_ID) -> bool {
     sp, has_sp := ns_obj["source_prefab"]
     if !has_sp do return false
     sp_str, is_str := sp.(json.String)
@@ -2136,11 +2153,11 @@ _json_ns_matches :: proc(ns_obj: json.Object, guid: Asset_GUID, tparent: Local_I
     if perr != nil do return false
     if Asset_GUID(parsed) != guid do return false
 
-    tp, has_tp := ns_obj["transform_parent"]
-    if !has_tp do return false
-    #partial switch n in tp {
-    case json.Float:   return Local_ID(n) == tparent
-    case json.Integer: return Local_ID(n) == tparent
+    lid, has_lid := ns_obj["local_id"]
+    if !has_lid do return false
+    #partial switch n in lid {
+    case json.Float:   return Local_ID(n) == ns_lid
+    case json.Integer: return Local_ID(n) == ns_lid
     }
     return false
 }
@@ -2340,6 +2357,8 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
         for i in 0..<len(s.nested_scenes) {
             if s.nested_scenes[i].local_id != ns_lid do continue
             ns := &s.nested_scenes[i]
+            _ns_purge_instance_lids(s, ns)
+            delete(ns.source_of_inst)
             for &ov in ns.overrides {
                 delete(ov.property_path)
                 json.destroy_value(ov.value)

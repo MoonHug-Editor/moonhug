@@ -743,10 +743,6 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	testing.expect(t, sr_a != nil && sr_b != nil)
 	if sr_a == nil || sr_b == nil do return
 
-	dup_lid := sr_a.local_id
-	sr_b.local_id = dup_lid
-	sr_a.color = {0.9, 0.4, 0.1, 1}
-
 	owning_ns: ^engine.NestedScene
 	for &ns in loaded.nested_scenes {
 		if ns.source_prefab != g_asset do continue
@@ -756,6 +752,15 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	}
 	testing.expect(t, owning_ns != nil)
 	if owning_ns == nil do return
+
+	// Override targets are SOURCE-namespace lids; live entities carry composed
+	// instance lids. Forge a live-lid duplicate anyway — the composed-id bimap
+	// must still bind the revert to exactly the targeted component.
+	dup_lid, dup_ok := owning_ns.source_of_inst[sr_a.local_id]
+	testing.expect(t, dup_ok, "live sprite lid should be in the instance correspondence map")
+	if !dup_ok do return
+	sr_b.local_id = sr_a.local_id
+	sr_a.color = {0.9, 0.4, 0.1, 1}
 
 	ov_val: json.Value
 	json_err := json.unmarshal_string("[0.9,0.4,0.1,1]", &ov_val)

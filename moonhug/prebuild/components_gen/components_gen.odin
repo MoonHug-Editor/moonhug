@@ -591,23 +591,27 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\treturn Transform_Handle(root_handle)\n")
 	strings.write_string(&b, "}\n\n")
 
-	strings.write_string(&b, "_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {\n")
+	// `mapper` decides each record's new lid (nil = mint from the scene counter,
+	// the paste/duplicate behavior). nested_scene_resolve passes a composing
+	// mapper that projects a prefab instance into the host namespace; override
+	// capture passes an un-projecting one. One walk, three uses.
+	strings.write_string(&b, "_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID = nil, user: rawptr = nil) {\n")
 	strings.write_string(&b, "\tif s == nil do return\n")
 	strings.write_string(&b, "\tremap := make(map[Local_ID]Local_ID)\n")
 	strings.write_string(&b, "\tdefer delete(remap)\n\n")
 	strings.write_string(&b, "\tfor &t in sf.transforms {\n")
-	strings.write_string(&b, "\t\tnew_id := scene_next_id(s)\n")
+	strings.write_string(&b, "\t\tnew_id := _remap_new_id(s, mapper, user, t.local_id)\n")
 	strings.write_string(&b, "\t\tremap[t.local_id] = new_id\n")
 	strings.write_string(&b, "\t\tt.local_id = new_id\n")
 	strings.write_string(&b, "\t}\n\n")
 	for e in eng {
-		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }}\n", e.plural)
+		fmt.sbprintf(&b, "\tfor &c in sf.%s {{ new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }}\n", e.plural)
 	}
-	strings.write_string(&b, "\text_temps := _scene_file_remap_ext_begin(sf, s, &remap)\n")
-	strings.write_string(&b, "\tfor &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }\n")
+	strings.write_string(&b, "\text_temps := _scene_file_remap_ext_begin(sf, s, &remap, mapper, user)\n")
+	strings.write_string(&b, "\tfor &ns in sf.nested_scenes { new_id := _remap_new_id(s, mapper, user, ns.local_id); remap[ns.local_id] = new_id; ns.local_id = new_id }\n")
 	strings.write_string(&b, "\tfor &bc in sf.breadcrumbs {\n")
 	strings.write_string(&b, "\t\told := bc.local_id\n")
-	strings.write_string(&b, "\t\tnew_id := scene_next_id(s)\n")
+	strings.write_string(&b, "\t\tnew_id := _remap_new_id(s, mapper, user, old)\n")
 	strings.write_string(&b, "\t\tremap[old] = new_id\n")
 	strings.write_string(&b, "\t\tbc.local_id = new_id\n")
 	strings.write_string(&b, "\t}\n\n")

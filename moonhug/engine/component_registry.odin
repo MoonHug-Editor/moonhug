@@ -199,7 +199,7 @@ _Ext_Remap_Temp :: struct {
 	val:  ^json.Value,
 }
 
-_scene_file_remap_ext_begin :: proc(sf: ^SceneFile, s: ^Scene, remap: ^map[Local_ID]Local_ID) -> [dynamic]_Ext_Remap_Temp {
+_scene_file_remap_ext_begin :: proc(sf: ^SceneFile, s: ^Scene, remap: ^map[Local_ID]Local_ID, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID = nil, user: rawptr = nil) -> [dynamic]_Ext_Remap_Temp {
 	temps := make([dynamic]_Ext_Remap_Temp, context.temp_allocator)
 	for &v in sf.ext_components {
 		desc, ok := _ext_desc_for_value(v)
@@ -212,7 +212,7 @@ _scene_file_remap_ext_begin :: proc(sf: ^SceneFile, s: ^Scene, remap: ^map[Local
 			continue
 		}
 		base := cast(^CompData)ptr
-		new_id := scene_next_id(s)
+		new_id := _remap_new_id(s, mapper, user, base.local_id)
 		remap[base.local_id] = new_id
 		base.local_id = new_id
 		append(&temps, _Ext_Remap_Temp{desc = desc, ptr = ptr, val = &v})
