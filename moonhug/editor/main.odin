@@ -99,7 +99,18 @@ main :: proc() {
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
 
+    // Unity-style Auto Refresh: re-scan assets when the editor window regains
+    // focus (git checkouts, external editors). The refresh is an incremental
+    // mtime-diff, so an unchanged tree costs one stat pass and touches nothing.
+    window_was_focused := true
+
     for !menu.quit_requested && !rl.WindowShouldClose() {
+        window_focused := rl.IsWindowFocused()
+        if window_focused && !window_was_focused {
+            engine.asset_db_refresh()
+        }
+        window_was_focused = window_focused
+
         // Update ImGui IO
         io := im.GetIO()
         sw := f32(rl.GetScreenWidth())
@@ -281,8 +292,8 @@ scene_create_variant_menu :: proc() {
 		fmt.println("[Editor] Create Scene Variant: select a .scene asset first")
 		return
 	}
-	base_path, _ := filepath.join({projectViewData.currentPath, projectViewData.selectedFile}, context.temp_allocator)
-	create_scene_variant(base_path)
+	// selectedFile holds the FULL path (search results span folders).
+	create_scene_variant(projectViewData.selectedFile)
 }
 
 @(menu_separator={path="Assets/Create", order=-9})

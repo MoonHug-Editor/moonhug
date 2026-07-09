@@ -1040,6 +1040,13 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 		_prefab_bytes_committed(Asset_GUID(guid), data)
 	}
 
+	// Keep the AssetDB current: a save can change the root's components (picker
+	// index) or create the file (Save As). Incremental — unchanged assets cost
+	// nothing. Skipped when no db is initialized (headless scene tooling).
+	if asset_db.root_path != "" {
+		asset_db_refresh()
+	}
+
 	fmt.printf("[Scene] Saved scene to %s\n", path)
 	return true
 }
