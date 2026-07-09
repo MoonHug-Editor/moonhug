@@ -8,6 +8,7 @@ import "core:slice"
 import "core:strings"
 import "core:path/filepath"
 import "core:encoding/uuid"
+import "core:time"
 import im "../../external/odin-imgui"
 import "inspector"
 import "menu"
@@ -62,6 +63,12 @@ _project_active_pane: Project_Pane = .List
 // keyboard nav follows whichever rows are drawn.
 _project_search_buf: [256]byte
 
+// Ping flash (Unity-style): fading row highlight WITHOUT changing selection.
+_PROJECT_PING_NS :: i64(800_000_000)
+_project_ping_path: string // owned; "" = no active ping
+_project_ping_deadline_ns: i64
+_project_scroll_to_ping: bool
+
 _project_rename_active: bool
 _project_rename_path: string // owned clone of the full path being renamed
 _project_rename_in_tree: bool // which pane opened the rename (for selection restore)
@@ -96,6 +103,9 @@ shutdown_project_view :: proc() {
     }
     if _project_rename_path != "" {
         delete(_project_rename_path)
+    }
+    if _project_ping_path != "" {
+        delete(_project_ping_path)
     }
 }
 
@@ -738,6 +748,22 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
         im.SetScrollHereY()
         _project_scroll_to_list_sel = false
     }
+    // Ping flash: fading highlight over the row, selection untouched.
+    if _project_ping_path != "" && full_path == _project_ping_path {
+        remaining := _project_ping_deadline_ns - time.now()._nsec
+        if remaining <= 0 {
+            delete(_project_ping_path)
+            _project_ping_path = ""
+        } else {
+            if _project_scroll_to_ping {
+                im.SetScrollHereY()
+                _project_scroll_to_ping = false
+            }
+            alpha := 0.45 * f32(remaining) / f32(_PROJECT_PING_NS)
+            flash := im.GetColorU32ImVec4(im.Vec4{1.0, 0.8, 0.2, alpha})
+            im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetItemRectMin(), im.GetItemRectMax(), flash)
+        }
+    }
     if !is_dir {
         // Right-click also selects, so the context menu (which acts on the
         // selected asset) targets the row under the cursor, not whatever was
@@ -807,21 +833,41 @@ create_scene_variant :: proc(base_path: string) {
     engine.sm_scene_set_active(scene)
 }
 
+// Leave search mode and open the asset's folder, revealed in the tree.
+// select=true: select the row (open semantics). select=false: ping — a
+// fading flash on the row, selection untouched.
+_project_reveal_path :: proc(path: string, select: bool) {
+    mem.zero(&_project_search_buf, len(_project_search_buf))
+    parent := filepath.dir(path) // slice into path — not owned
+    if parent == "" {
+        parent = projectViewData.rootPath
+    }
+    _project_set_current(parent)
+    if select {
+        _project_set_selected(path)
+        _project_scroll_to_list_sel = true
+    } else {
+        if _project_ping_path != "" do delete(_project_ping_path)
+        _project_ping_path = strings.clone(path)
+        _project_ping_deadline_ns = time.now()._nsec + _PROJECT_PING_NS
+        _project_scroll_to_ping = true
+    }
+    _project_tree_reveal = true
+    _project_active_pane = .List
+}
+
 draw_project_view :: proc() {
-    // Drain cross-package asset pings (inspector value-button clicks): leave
-    // search mode, open the asset's folder with it selected, reveal in tree.
+    // Drain cross-package asset requests (inspector value-button clicks):
+    // ping = reveal + flash; open = reveal + select + activate (double click).
     if ping_guid, ok := engine.inspector_take_pending_ping_asset(); ok {
         if path, pok := engine.asset_db_get_path(uuid.Identifier(ping_guid)); pok {
-            mem.zero(&_project_search_buf, len(_project_search_buf))
-            parent := filepath.dir(path) // slice into path — not owned
-            if parent == "" {
-                parent = projectViewData.rootPath
-            }
-            _project_set_current(parent)
-            _project_set_selected(path)
-            _project_tree_reveal = true
-            _project_scroll_to_list_sel = true
-            _project_active_pane = .List
+            _project_reveal_path(path, select = false)
+        }
+    }
+    if open_guid, ok := engine.inspector_take_pending_open_asset(); ok {
+        if path, pok := engine.asset_db_get_path(uuid.Identifier(open_guid)); pok {
+            _project_reveal_path(path, select = true)
+            _project_activate_file(path)
         }
     }
 

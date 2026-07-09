@@ -6,6 +6,7 @@ import "core:mem"
 import "core:c"
 import "core:path/filepath"
 import "core:encoding/uuid"
+import "core:time"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import clip "clipboard"
@@ -71,6 +72,16 @@ _hierarchy_filter_buf: [256]byte
 // Scroll the selected row into view next frame (set by ping requests).
 @(private)
 _hierarchy_scroll_to_sel: bool
+
+// Ping flash (Unity-style): reveal + fading row highlight WITHOUT changing
+// the selection.
+_HIER_PING_NS :: i64(800_000_000)
+@(private)
+_hierarchy_ping_tH: engine.Transform_Handle
+@(private)
+_hierarchy_ping_deadline_ns: i64
+@(private)
+_hierarchy_scroll_to_ping: bool
 
 // --- Scene edit stack (Unity prefab-mode style) ----------------------------
 // Entering a nested scene opens its SOURCE .scene asset (replacing the open
@@ -167,15 +178,14 @@ draw_hierarchy_view :: proc() {
 	if pending, ok := engine.inspector_take_pending_select(); ok {
 		_hierarchy_selected = pending
 		_hierarchy_scroll_to_sel = true
-		w := engine.ctx_world()
-		cur := pending
-		for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
-			t := engine.pool_get(&w.transforms, engine.Handle(cur))
-			if t == nil do break
-			if !engine.pool_valid(&w.transforms, t.parent.handle) do break
-			cur = engine.Transform_Handle(t.parent.handle)
-			_hierarchy_alt_open_pending[cur] = true
-		}
+		_hierarchy_open_ancestors(pending)
+	}
+	// Ping requests: reveal + flash, selection untouched.
+	if pending, ok := engine.inspector_take_pending_ping(); ok {
+		_hierarchy_ping_tH = pending
+		_hierarchy_ping_deadline_ns = time.now()._nsec + _HIER_PING_NS
+		_hierarchy_scroll_to_ping = true
+		_hierarchy_open_ancestors(pending)
 	}
 
 	open := im.Begin("Hierarchy", nil, {.NoCollapse})
@@ -487,6 +497,22 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
 
+	// Ping flash: fading highlight over the whole row (SpanAllColumns rect).
+	if tH == _hierarchy_ping_tH {
+		remaining := _hierarchy_ping_deadline_ns - time.now()._nsec
+		if remaining <= 0 {
+			_hierarchy_ping_tH = _HANDLE_NONE
+		} else {
+			if _hierarchy_scroll_to_ping {
+				im.SetScrollHereY()
+				_hierarchy_scroll_to_ping = false
+			}
+			alpha := 0.45 * f32(remaining) / f32(_HIER_PING_NS)
+			flash := im.GetColorU32ImVec4(im.Vec4{1.0, 0.8, 0.2, alpha})
+			im.DrawList_AddRectFilled(im.GetWindowDrawList(), node_rect_min, node_rect_max, flash)
+		}
+	}
+
 	text_x := content_x + im.GetTreeNodeToLabelSpacing()
 	if is_renaming {
 		input_width := node_rect_max.x - text_x
@@ -673,6 +699,19 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	im.PopID()
+}
+
+@(private)
+_hierarchy_open_ancestors :: proc(tH: engine.Transform_Handle) {
+	w := engine.ctx_world()
+	cur := tH
+	for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
+		if t == nil do break
+		if !engine.pool_valid(&w.transforms, t.parent.handle) do break
+		cur = engine.Transform_Handle(t.parent.handle)
+		_hierarchy_alt_open_pending[cur] = true
+	}
 }
 
 @(private)

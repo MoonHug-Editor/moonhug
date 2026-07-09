@@ -27,13 +27,16 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         fmt.tprintf("asset_guid_picker##%s", label), context.temp_allocator,
     )
 
-    value_clicked, cleared: bool
+    value_clicked, value_double, cleared: bool
     dropped: string
-    if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &dropped) {
+    if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped) {
         im.OpenPopup(popup_id)
     }
-    if value_clicked && has_value {
-        // Ping: the project view navigates to and selects the asset.
+    // Single click: ping (project view navigates to + selects the asset).
+    // Double click: OPEN it (scene loads, .asset goes to the inspector).
+    if value_double && has_value {
+        engine.inspector_request_open_asset(guid_ptr^)
+    } else if value_clicked && has_value {
         engine.inspector_request_ping_asset(guid_ptr^)
     }
     if cleared {

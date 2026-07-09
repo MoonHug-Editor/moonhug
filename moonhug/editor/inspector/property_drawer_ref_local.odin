@@ -30,12 +30,13 @@ _picker_search_bar :: proc() -> string {
 	return strings.to_lower(strings.trim_space(string(cstring(raw_data(_picker_search_buf[:])))), context.temp_allocator)
 }
 
-// Unity-like reference field row: Label [value][x][pick]. Clicking the value
-// pings the target; [x] clears (shown before [pick] only when set); [pick]
-// opens the picker popup. Returns true when the popup should open. When
-// dropped_asset is non-nil, the value button accepts ASSET_PATH drag-drops and
-// writes the dropped path (temp-allocated) there.
-_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, dropped_asset: ^string = nil) -> bool {
+// Unity-like reference field row: Label [value][x][pick]. Single click on the
+// value pings the target, double click opens/selects it (out params); [x]
+// clears (shown before [pick] only when set); [pick] opens the picker popup.
+// Returns true when the popup should open. When dropped_asset is non-nil, the
+// value button accepts ASSET_PATH drag-drops and writes the dropped path
+// (temp-allocated) there.
+_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
 	im.AlignTextToFramePadding()
 	im.Text(label)
 	im.SameLine(0, 8)
@@ -50,6 +51,9 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	)
 	if im.Button(value_label, {value_w, 0}) {
 		value_clicked^ = true
+	}
+	if value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+		value_double_clicked^ = true
 	}
 	if dropped_asset != nil && im.BeginDragDropTarget() {
 		if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
@@ -96,12 +100,20 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		fmt.tprintf("ref_local_picker##%s", label), context.temp_allocator,
 	)
 
-	value_clicked, cleared: bool
-	if _picker_field_row(label, display, has_value, &value_clicked, &cleared) {
+	value_clicked, value_double, cleared: bool
+	if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
 		im.OpenPopup(popup_id)
 	}
-	if value_clicked {
-		_ref_local_ping(ref_ptr^)
+	// Single click: ping (reveal + flash, selection untouched). Double click:
+	// select in the hierarchy.
+	if value_double {
+		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
+			engine.inspector_request_select(tH)
+		}
+	} else if value_clicked {
+		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
+			engine.inspector_request_ping(tH)
+		}
 	}
 	if cleared {
 		ref_ptr^ = {}
@@ -160,21 +172,17 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 }
 
-// Ping: select the target's transform in the hierarchy (via the cross-package
-// pending-select channel the hierarchy drains each frame).
+// The transform a ref points at (the component's owner for component refs).
 @(private)
-_ref_local_ping :: proc(r: engine.Ref_Local) {
+_ref_local_target_transform :: proc(r: engine.Ref_Local) -> (engine.Transform_Handle, bool) {
 	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, r.handle) do return
-	tH: engine.Transform_Handle
+	if !engine.world_pool_valid(w, r.handle) do return {}, false
 	if r.handle.type_key == .Transform {
-		tH = engine.Transform_Handle(r.handle)
-	} else {
-		raw := engine.world_pool_get(w, r.handle)
-		if raw == nil do return
-		tH = (cast(^engine.CompData)raw).owner
+		return engine.Transform_Handle(r.handle), true
 	}
-	engine.inspector_request_select(tH)
+	raw := engine.world_pool_get(w, r.handle)
+	if raw == nil do return {}, false
+	return (cast(^engine.CompData)raw).owner, true
 }
 
 @(private)

@@ -16,9 +16,15 @@ InspectorState :: struct {
     // transform here; the editor's hierarchy view picks it up next frame and
     // applies it to its own selection state. {} means "no pending request".
     pending_select_tH:     Transform_Handle,
+    // Ping (reveal + highlight flash, does NOT change selection) — the
+    // hierarchy view consumes it. {} means "no pending request".
+    pending_ping_tH:       Transform_Handle,
     // Same channel shape for assets: the project view navigates to and
     // selects the asset ("ping"). {} means "no pending request".
     pending_ping_asset:    Asset_GUID,
+    // Open request: the project view navigates AND activates the asset
+    // (opens scenes, loads .asset into the inspector).
+    pending_open_asset:    Asset_GUID,
 }
 
 ctx_get :: proc() -> ^UserContext {
@@ -100,6 +106,23 @@ inspector_take_pending_select :: proc() -> (Transform_Handle, bool) {
     return tH, true
 }
 
+// Posts a "ping this transform" request: the hierarchy reveals it and flashes
+// its row WITHOUT changing the selection (Unity ping).
+inspector_request_ping :: proc(tH: Transform_Handle) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.pending_ping_tH = tH
+}
+
+inspector_take_pending_ping :: proc() -> (Transform_Handle, bool) {
+    uc := ctx_get()
+    if uc == nil do return {}, false
+    tH := uc.inspector.pending_ping_tH
+    if tH == {} do return {}, false
+    uc.inspector.pending_ping_tH = {}
+    return tH, true
+}
+
 // Posts a cross-package "ping this asset" request; the project view consumes
 // it and navigates to / selects the asset.
 inspector_request_ping_asset :: proc(guid: Asset_GUID) {
@@ -114,5 +137,22 @@ inspector_take_pending_ping_asset :: proc() -> (Asset_GUID, bool) {
     guid := uc.inspector.pending_ping_asset
     if guid == (Asset_GUID{}) do return {}, false
     uc.inspector.pending_ping_asset = {}
+    return guid, true
+}
+
+// Posts an "open this asset" request; the project view navigates to it AND
+// activates it (double-click semantics: open scene / load into inspector).
+inspector_request_open_asset :: proc(guid: Asset_GUID) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.pending_open_asset = guid
+}
+
+inspector_take_pending_open_asset :: proc() -> (Asset_GUID, bool) {
+    uc := ctx_get()
+    if uc == nil do return {}, false
+    guid := uc.inspector.pending_open_asset
+    if guid == (Asset_GUID{}) do return {}, false
+    uc.inspector.pending_open_asset = {}
     return guid, true
 }
