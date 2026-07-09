@@ -7,6 +7,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:path/filepath"
+import "core:encoding/uuid"
 import im "../../external/odin-imgui"
 import "inspector"
 import "menu"
@@ -807,6 +808,23 @@ create_scene_variant :: proc(base_path: string) {
 }
 
 draw_project_view :: proc() {
+    // Drain cross-package asset pings (inspector value-button clicks): leave
+    // search mode, open the asset's folder with it selected, reveal in tree.
+    if ping_guid, ok := engine.inspector_take_pending_ping_asset(); ok {
+        if path, pok := engine.asset_db_get_path(uuid.Identifier(ping_guid)); pok {
+            mem.zero(&_project_search_buf, len(_project_search_buf))
+            parent := filepath.dir(path) // slice into path — not owned
+            if parent == "" {
+                parent = projectViewData.rootPath
+            }
+            _project_set_current(parent)
+            _project_set_selected(path)
+            _project_tree_reveal = true
+            _project_scroll_to_list_sel = true
+            _project_active_pane = .List
+        }
+    }
+
     if im.Begin("Project", nil, {.NoCollapse}) {
         // Create two columns
         im.Columns(2, "ProjectColumns", true)

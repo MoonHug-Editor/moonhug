@@ -16,6 +16,9 @@ InspectorState :: struct {
     // transform here; the editor's hierarchy view picks it up next frame and
     // applies it to its own selection state. {} means "no pending request".
     pending_select_tH:     Transform_Handle,
+    // Same channel shape for assets: the project view navigates to and
+    // selects the asset ("ping"). {} means "no pending request".
+    pending_ping_asset:    Asset_GUID,
 }
 
 ctx_get :: proc() -> ^UserContext {
@@ -95,4 +98,21 @@ inspector_take_pending_select :: proc() -> (Transform_Handle, bool) {
     if tH == {} do return {}, false
     uc.inspector.pending_select_tH = {}
     return tH, true
+}
+
+// Posts a cross-package "ping this asset" request; the project view consumes
+// it and navigates to / selects the asset.
+inspector_request_ping_asset :: proc(guid: Asset_GUID) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.pending_ping_asset = guid
+}
+
+inspector_take_pending_ping_asset :: proc() -> (Asset_GUID, bool) {
+    uc := ctx_get()
+    if uc == nil do return {}, false
+    guid := uc.inspector.pending_ping_asset
+    if guid == (Asset_GUID{}) do return {}, false
+    uc.inspector.pending_ping_asset = {}
+    return guid, true
 }

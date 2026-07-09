@@ -1,5 +1,6 @@
 package engine
 
+import "base:runtime"
 import "core:os"
 import "core:fmt"
 import "core:strings"
@@ -11,6 +12,18 @@ AssetDB :: struct {
     guid_to_path: map[uuid.Identifier]string,
     path_to_guid: map[string]uuid.Identifier,
     root_path:    string,
+
+    // Root-info index for the object picker (docs/ObjectPicker.md): per scene
+    // asset, its root transform; assets_by_type answers "scene assets whose
+    // ROOT has component X" without parsing files. TypeKey keys are safe here
+    // because the index is runtime-only, rebuilt from type GUIDs every refresh.
+    root_info:      map[Asset_GUID]Asset_Root_Info,
+    assets_by_type: map[TypeKey][dynamic]Asset_GUID,
+}
+
+Asset_Root_Info :: struct {
+    root_local_id: Local_ID,
+    root_name:     string, // owned
 }
 
 asset_db: AssetDB
@@ -28,6 +41,7 @@ asset_db_init :: proc(root: string) {
 
 asset_db_shutdown :: proc() {
     _free_maps()
+    _free_root_index()
     delete(asset_db.root_path)
 }
 
@@ -39,6 +53,19 @@ _free_maps :: proc() {
     delete(asset_db.path_to_guid)
 }
 
+_free_root_index :: proc() {
+    for _, info in asset_db.root_info {
+        delete(info.root_name)
+    }
+    delete(asset_db.root_info)
+    for _, arr in asset_db.assets_by_type {
+        delete(arr)
+    }
+    delete(asset_db.assets_by_type)
+    asset_db.root_info = nil
+    asset_db.assets_by_type = nil
+}
+
 asset_db_refresh :: proc() {
     _free_maps()
     asset_db.guid_to_path = make(map[uuid.Identifier]string)
@@ -46,8 +73,104 @@ asset_db_refresh :: proc() {
 
     _scan_directory(asset_db.root_path)
     _cleanup_orphaned_metas(asset_db.root_path)
+    _rebuild_root_index()
 
     fmt.printf("[AssetDB] Refreshed: %d assets indexed\n", len(asset_db.guid_to_path))
+}
+
+// Scene assets whose root transform carries a component of `key`. Empty when
+// none (or before the first refresh).
+asset_db_assets_with_root_type :: proc(key: TypeKey) -> []Asset_GUID {
+    arr, ok := asset_db.assets_by_type[key]
+    if !ok do return nil
+    return arr[:]
+}
+
+asset_db_get_root_info :: proc(guid: Asset_GUID) -> (Asset_Root_Info, bool) {
+    info, ok := asset_db.root_info[guid]
+    return info, ok
+}
+
+_rebuild_root_index :: proc() {
+    _free_root_index()
+    asset_db.root_info = make(map[Asset_GUID]Asset_Root_Info)
+    asset_db.assets_by_type = make(map[TypeKey][dynamic]Asset_GUID)
+    for path, guid in asset_db.path_to_guid {
+        if !strings.has_suffix(path, ".scene") do continue
+        _index_scene_asset(Asset_GUID(guid), path)
+    }
+}
+
+_index_add :: proc(key: TypeKey, guid: Asset_GUID) {
+    arr := asset_db.assets_by_type[key]
+    append(&arr, guid)
+    asset_db.assets_by_type[key] = arr
+}
+
+_index_scene_asset :: proc(guid: Asset_GUID, path: string) {
+    data, read_err := os.read_entire_file(path, context.temp_allocator)
+    if read_err != nil do return
+    sf: SceneFile
+    if json.unmarshal(data, &sf) != nil do return
+    defer scene_file_destroy(&sf)
+
+    root: ^Transform
+    for &t in sf.transforms {
+        if t.local_id == sf.root {
+            root = &t
+            break
+        }
+    }
+    if root == nil do return
+
+    asset_db.root_info[guid] = {root_local_id = sf.root, root_name = strings.clone(root.name)}
+    // Every scene asset's root IS a transform.
+    _index_add(.Transform, guid)
+
+    root_lids := make(map[Local_ID]bool, context.temp_allocator)
+    for c in root.components {
+        root_lids[c.local_id] = true
+    }
+    if len(root_lids) == 0 do return
+
+    // Typed component arrays, found by reflecting over SceneFile (component
+    // structs start with CompData; non-component record arrays are skipped
+    // explicitly). Keeps working when the generator adds component types.
+    ti := runtime.type_info_base(type_info_of(SceneFile)).variant.(runtime.Type_Info_Struct)
+    for i in 0 ..< ti.field_count {
+        ftype := runtime.type_info_base(ti.types[i])
+        dyn, is_dyn := ftype.variant.(runtime.Type_Info_Dynamic_Array)
+        if !is_dyn do continue
+        elem_id := dyn.elem.id
+        if elem_id == typeid_of(Transform) || elem_id == typeid_of(NestedScene) || elem_id == typeid_of(Breadcrumb) do continue
+        key, kok := get_type_key_by_typeid(elem_id)
+        if !kok do continue // e.g. json.Value (ext components, handled below)
+        arr := cast(^runtime.Raw_Dynamic_Array)(rawptr(uintptr(&sf) + ti.offsets[i]))
+        for j in 0 ..< arr.len {
+            base := cast(^CompData)(uintptr(arr.data) + uintptr(j) * uintptr(dyn.elem.size))
+            if root_lids[base.local_id] {
+                _index_add(key, guid)
+                break
+            }
+        }
+    }
+
+    // External (app-package) components: type from the "__type" guid record.
+    for &v in sf.ext_components {
+        desc, dok := _ext_desc_for_value(v)
+        if !dok do continue
+        obj := v.(json.Object)
+        bobj, has_base := obj["base"].(json.Object)
+        if !has_base do continue
+        lid: Local_ID
+        #partial switch n in bobj["local_id"] {
+        case json.Integer: lid = Local_ID(n)
+        case json.Float:   lid = Local_ID(n)
+        }
+        if root_lids[lid] {
+            _index_add(desc.type_key, guid)
+        }
+    }
 }
 
 asset_db_get_path :: proc(guid: uuid.Identifier) -> (string, bool) {

@@ -46,6 +46,7 @@ ICON_MD_ERROR         :: "\uf8b6"   // error
 
 // Actions
 ICON_MD_CLOSE         :: "\ue5cd"   // close (clear search)
+ICON_MD_SEARCH        :: "\uef7a"   // search (object picker button; also in inspector package)
 ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (toolbar run button)
 ICON_MD_SAVE          :: "\ue161"   // save
 ICON_MD_ADD           :: "\ue145"   // add

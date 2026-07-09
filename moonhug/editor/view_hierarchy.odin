@@ -68,6 +68,10 @@ _hierarchy_nav_list: [dynamic]engine.Transform_Handle
 @(private)
 _hierarchy_filter_buf: [256]byte
 
+// Scroll the selected row into view next frame (set by ping requests).
+@(private)
+_hierarchy_scroll_to_sel: bool
+
 // --- Scene edit stack (Unity prefab-mode style) ----------------------------
 // Entering a nested scene opens its SOURCE .scene asset (replacing the open
 // scene). Each frame records the scene that was open before entering, so `<`
@@ -162,6 +166,7 @@ draw_hierarchy_view :: proc() {
 	// Force-open every ancestor so the target is visible after the selection.
 	if pending, ok := engine.inspector_take_pending_select(); ok {
 		_hierarchy_selected = pending
+		_hierarchy_scroll_to_sel = true
 		w := engine.ctx_world()
 		cur := pending
 		for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
@@ -460,6 +465,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// edge, so we can't derive the label/arrow x from it — capture it here.
 	content_x := im.GetCursorScreenPos().x
 	node_open := im.TreeNodeEx("##n", flags)
+
+	if is_selected && _hierarchy_scroll_to_sel {
+		im.SetScrollHereY()
+		_hierarchy_scroll_to_sel = false
+	}
 
 	// Capture the ROW's click/hover state now, before drawing the ">" button —
 	// IsItemClicked() refers to the last item, which becomes the button below.
