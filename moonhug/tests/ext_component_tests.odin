@@ -364,7 +364,7 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, barrel != {}, "Barrel should exist")
 	tank.turret.handle = barrel
 	tank.turret.local_id = engine.sm_local_id_get_or_mint(tc_mem.scene, barrel)
-	testing.expect(t, tank.turret.local_id != 0, "picker mint should produce a breadcrumb lid for a nested target")
+	testing.expect(t, tank.turret.local_id != 0, "picker mint should produce a lid for a nested target")
 
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
 

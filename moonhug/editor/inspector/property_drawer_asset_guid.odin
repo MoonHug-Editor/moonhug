@@ -52,18 +52,10 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 
     if im.BeginPopup(popup_id) {
         search := _picker_search_bar()
+        // Single Project tab: a plain guid can only name an asset (engine.Ref
+        // fields are the ones with both sources).
         if im.BeginTabBar("##picker_tabs") {
-            if im.BeginTabItem("Scene") {
-                // Parity with Unity's picker; a plain guid can only name an asset.
-                im.TextDisabled("Asset_GUID references assets only")
-                im.EndTabItem()
-            }
-            // Project is the applicable tab — select it when the popup opens.
-            proj_flags: im.TabItemFlags
-            if im.IsWindowAppearing() {
-                proj_flags = {.SetSelected}
-            }
-            if im.BeginTabItem("Project", nil, proj_flags) {
+            if im.BeginTabItem("Project") {
                 if im.Selectable("None") {
                     guid_ptr^ = {}
                     mark_inspector_changed()
@@ -78,9 +70,9 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
                         key = v
                     }
                 }
-                picked: engine.Asset_GUID
+                picked: engine.PPtr
                 if _picker_asset_rows(key, search, &picked) {
-                    guid_ptr^ = picked
+                    guid_ptr^ = picked.guid
                     mark_inspector_changed()
                 }
                 im.EndTabItem()
@@ -92,23 +84,23 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 }
 
 // Rows of scene assets whose root carries `key` (INVALID_TYPE_KEY: every
-// asset), name-filtered by `search`. Returns true and writes `picked` when a
-// row is clicked (picked may be nil for display-only lists).
-_picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.Asset_GUID) -> bool {
+// asset, pptr local_id 0), name-filtered by `search`. Returns true and writes
+// `picked` when a row is clicked (picked may be nil for display-only lists).
+_picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.PPtr) -> bool {
     Candidate :: struct {
-        path: string,
-        guid: engine.Asset_GUID,
+        path:  string,
+        entry: engine.PPtr,
     }
     candidates := make([dynamic]Candidate, context.temp_allocator)
     if key != engine.INVALID_TYPE_KEY {
-        for guid in engine.asset_db_assets_with_root_type(key) {
-            if path, pok := engine.asset_db_get_path(uuid.Identifier(guid)); pok {
-                append(&candidates, Candidate{path = path, guid = guid})
+        for entry in engine.asset_db_assets_with_root_type(key) {
+            if path, pok := engine.asset_db_get_path(uuid.Identifier(entry.guid)); pok {
+                append(&candidates, Candidate{path = path, entry = entry})
             }
         }
     } else {
         for path, guid in engine.asset_db.path_to_guid {
-            append(&candidates, Candidate{path = path, guid = engine.Asset_GUID(guid)})
+            append(&candidates, Candidate{path = path, entry = {guid = engine.Asset_GUID(guid)}})
         }
     }
     slice.sort_by(candidates[:], proc(a, b: Candidate) -> bool { return a.path < b.path })
@@ -125,7 +117,7 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.
             fmt.tprintf("%s##%s", cand.path, cand.path), context.temp_allocator,
         )
         if im.Selectable(row) && picked != nil {
-            picked^ = cand.guid
+            picked^ = cand.entry
             result = true
         }
     }
@@ -136,7 +128,6 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.
 }
 
 // filepath.base without importing core:path/filepath (returns a slice into path).
-@(private = "file")
 filepath_base :: proc(path: string) -> string {
     last_slash := strings.last_index(path, "/")
     if last_slash >= 0 && last_slash + 1 < len(path) {

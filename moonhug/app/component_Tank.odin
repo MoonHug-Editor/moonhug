@@ -11,7 +11,8 @@ Tank :: struct {
     using base: engine.CompData `inspect:"-"`,
     turret:            engine.Ref_Local `ref:"Transform"`,
     shoot_from:        engine.Ref_Local `ref:"Transform"`,
-    projectile_prefab: engine.Asset_GUID,
+    projectile_prefab: engine.Asset_GUID `ref:"Transform"`,
+    ref_example:       engine.Ref `ref:"SpriteRenderer"`,
 }
 
 reset_Tank :: proc(comp: ^Tank) {

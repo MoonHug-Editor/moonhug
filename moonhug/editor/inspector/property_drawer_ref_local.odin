@@ -125,6 +125,8 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 			im.TextDisabled("Add `ref:\"TypeName\"` field tag to enable picker")
 		} else {
 			search := _picker_search_bar()
+			// Single Scene tab: a Ref_Local is a same-file local_id — fields
+			// that can also reference assets use engine.Ref (PPtr).
 			if im.BeginTabBar("##picker_tabs") {
 				if im.BeginTabItem("Scene") {
 					if im.Selectable("None") {
@@ -152,17 +154,6 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 					if shown == 0 {
 						im.TextDisabled("(no matches in loaded scenes)")
 					}
-					im.EndTabItem()
-				}
-				if im.BeginTabItem("Project") {
-					// Shown for parity with Unity, but not assignable: a
-					// Ref_Local is a same-file local_id — referencing an asset
-					// needs an engine.Ref (PPtr) field.
-					im.TextDisabled("Ref_Local is scene-only (assets need engine.Ref)")
-					im.Separator()
-					im.BeginDisabled()
-					_picker_asset_rows(target_key, search, nil)
-					im.EndDisabled()
 					im.EndTabItem()
 				}
 				im.EndTabBar()

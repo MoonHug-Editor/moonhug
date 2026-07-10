@@ -66,6 +66,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Scenes](docs/Scenes.md)
 - [Tweens](docs/Tweens.md)
 - [Reference Handles](docs/ReferenceHandles.md)
+- [Object Picker](docs/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 
@@ -87,6 +88,8 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
+- [Object Picker](docs/ObjectPicker.md) polish (roadmap step 7): row icons, asset previews, first app use of engine.Ref
+
 - variant scene icon in hierarchy (needs cheap per-instance variant detection)
 
 - each camera has int order and render_commands buffer
@@ -99,10 +102,6 @@ For more details see [Contribution](docs/Contribution.md)
   - scene view toolbar (move, rotate, scale)
 
 - png - Texture2D with N Sprites
-
-- ping reference object similar to Unity
-  - in scene
-  - in project
 
 - transform:
   - use bit set + procs, instead of direct bool change

@@ -21,7 +21,10 @@ AssetDB :: struct {
     // ROOT has component X" without parsing files. TypeKey keys are safe here
     // because the index is runtime-only, rebuilt from type GUIDs on change.
     root_info:      map[Asset_GUID]Asset_Root_Info,
-    assets_by_type: map[TypeKey][dynamic]Asset_GUID,
+    // Values are complete persistent pointers into the asset (guid + the root
+    // component's local_id — the root transform's own lid for .Transform), so
+    // a picker assignment IS the PPtr, same as Unity's guid+fileID.
+    assets_by_type: map[TypeKey][dynamic]PPtr,
 
     // Refresh snapshot (Unity's SourceAssetDB idea): per path, the stamp seen
     // at the last refresh. asset_db_refresh diffs the tree against this and
@@ -53,7 +56,7 @@ asset_db_init :: proc(root: string) {
     asset_db.guid_to_path = make(map[uuid.Identifier]string)
     asset_db.path_to_guid = make(map[string]uuid.Identifier)
     asset_db.root_info = make(map[Asset_GUID]Asset_Root_Info)
-    asset_db.assets_by_type = make(map[TypeKey][dynamic]Asset_GUID)
+    asset_db.assets_by_type = make(map[TypeKey][dynamic]PPtr)
     asset_db.file_state = make(map[string]Asset_File_Stamp)
     asset_db_refresh()
 }
@@ -194,9 +197,9 @@ _reindex_if_scene :: proc(path: string) {
     _index_scene_asset(Asset_GUID(guid), path)
 }
 
-// Scene assets whose root transform carries a component of `key`. Empty when
-// none (or before the first refresh).
-asset_db_assets_with_root_type :: proc(key: TypeKey) -> []Asset_GUID {
+// Scene assets whose root transform carries a component of `key`, as complete
+// cross-asset PPtrs (guid + root component local_id). Empty when none.
+asset_db_assets_with_root_type :: proc(key: TypeKey) -> []PPtr {
     arr, ok := asset_db.assets_by_type[key]
     if !ok do return nil
     return arr[:]
@@ -207,9 +210,9 @@ asset_db_get_root_info :: proc(guid: Asset_GUID) -> (Asset_Root_Info, bool) {
     return info, ok
 }
 
-_index_add :: proc(key: TypeKey, guid: Asset_GUID) {
+_index_add :: proc(key: TypeKey, guid: Asset_GUID, local_id: Local_ID) {
     arr := asset_db.assets_by_type[key]
-    append(&arr, guid)
+    append(&arr, PPtr{local_id = local_id, guid = guid})
     asset_db.assets_by_type[key] = arr
 }
 
@@ -226,7 +229,7 @@ _index_remove :: proc(guid: Asset_GUID) {
     for key in keys {
         arr := asset_db.assets_by_type[key]
         for i := 0; i < len(arr); {
-            if arr[i] == guid {
+            if arr[i].guid == guid {
                 unordered_remove(&arr, i)
             } else {
                 i += 1
@@ -254,7 +257,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
 
     asset_db.root_info[guid] = {root_local_id = sf.root, root_name = strings.clone(root.name)}
     // Every scene asset's root IS a transform.
-    _index_add(.Transform, guid)
+    _index_add(.Transform, guid, sf.root)
 
     root_lids := make(map[Local_ID]bool, context.temp_allocator)
     for c in root.components {
@@ -278,7 +281,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
         for j in 0 ..< arr.len {
             base := cast(^CompData)(uintptr(arr.data) + uintptr(j) * uintptr(dyn.elem.size))
             if root_lids[base.local_id] {
-                _index_add(key, guid)
+                _index_add(key, guid, base.local_id)
                 break
             }
         }
@@ -297,7 +300,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
         case json.Float:   lid = Local_ID(n)
         }
         if root_lids[lid] {
-            _index_add(desc.type_key, guid)
+            _index_add(desc.type_key, guid, lid)
         }
     }
 }

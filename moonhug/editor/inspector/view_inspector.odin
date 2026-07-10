@@ -26,6 +26,9 @@ inspector_changed: bool
 // read field-level tags that aren't part of the (ptr, tid, label) signature.
 // Currently used by the Ref_Local / Ref pickers to read `ref:"TypeName"`.
 current_field_ref_target: string
+// `pick:"scene"` / `pick:"project"` limits which picker tabs are assignable
+// for engine.Ref fields (no tag = both).
+current_field_pick_mode: string
 
 InspectorData :: struct {
     mode: InspectorMode,
@@ -457,6 +460,8 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
                 ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
                 current_field_ref_target = ref_tag
+                pick_tag, _ := reflect.struct_tag_lookup(field_info.tag, "pick")
+                current_field_pick_mode = pick_tag
                 // Group the drawer's widgets so the field context menu below
                 // binds to the WHOLE row. A drawer can emit several items (e.g.
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
@@ -466,6 +471,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 drawer(field_ptr, field_type.id, c_field_name)
                 im.EndGroup()
                 current_field_ref_target = ""
+                current_field_pick_mode = ""
                 _undo_finalize_widget()
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)

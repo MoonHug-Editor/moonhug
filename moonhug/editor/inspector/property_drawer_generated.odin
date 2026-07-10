@@ -14,5 +14,6 @@ init_property_drawer_map :: proc() {
 	mapPropertyDrawer[typeid_of([3]f32)] = draw_vec3_property
 	mapPropertyDrawer[typeid_of([4]f32)] = draw_vec4_property
 	mapPropertyDrawer[typeid_of(engine.Asset_GUID)] = draw_asset_guid_property
+	mapPropertyDrawer[typeid_of(engine.Ref)] = draw_ref_property
 	mapPropertyDrawer[typeid_of(engine.Ref_Local)] = draw_ref_local_property
 }
