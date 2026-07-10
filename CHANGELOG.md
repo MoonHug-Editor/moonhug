@@ -1,3 +1,15 @@
+## [0.30.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.29.0...v0.30.0) (2026-07-10)
+
+### Features
+
+* asset_db auto refresh ([f22a99f](https://github.com/MoonHug-Editor/moonhug/commit/f22a99ff2013cc94b9d16fd355311d827411e78e))
+* ref object picker ([15a2b6f](https://github.com/MoonHug-Editor/moonhug/commit/15a2b6f5f0337a18a84dfb1ae8ac8d8dda298550))
+
+### Bug Fixes
+
+* scene variant icon, resizable console subview ([459d4d2](https://github.com/MoonHug-Editor/moonhug/commit/459d4d26ff1349a48ac12643c83fe026176a8453))
+* variant overrides regression ([64f44fd](https://github.com/MoonHug-Editor/moonhug/commit/64f44fd53ae7c08f7956e2467c8c6d8f0686ebf5))
+
 ## [0.29.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.28.0...v0.29.0) (2026-07-08)
 
 ### Features
