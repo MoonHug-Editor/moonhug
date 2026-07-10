@@ -88,8 +88,6 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- [Object Picker](docs/ObjectPicker.md) polish (roadmap step 7): row icons, asset previews, first app use of engine.Ref
-
 - each camera has int order and render_commands buffer
 - Cameras scan scene trees for renderers to add render commands to commands buffers
   - transforms have render layer field for camera culling
@@ -106,8 +104,6 @@ For more details see [Contribution](docs/Contribution.md)
   - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
-
-- run app with currently open scene state
 
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs

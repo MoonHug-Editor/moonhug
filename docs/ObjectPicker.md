@@ -7,7 +7,6 @@ what the field's type can physically reference (see
 
 ## Current state
 
-Roadmap steps 1–6 are implemented; step 7 (polish) remains.
 
 - Unity-like field row (`_picker_field_row`, shared by all three drawers):
   label / value / [x] / [pick]. Value single-click pings, double-click
@@ -113,32 +112,6 @@ create / modify / delete, rename as delete+create with the guid riding the
 moved meta. Triggers: the editor's own file operations (save, rename, create)
 and window focus regain (Unity Auto Refresh) — external edits are picked up
 when you return to the editor. Details in roadmap step 5.
-
-## Roadmap
-
-1. ~~**Field row + shared picker popup.**~~ DONE (search field, None entry,
-   tab bar; each type shows only its assignable tabs).
-2. ~~**AssetDB indexes.**~~ DONE.
-3. ~~**Project picker for `Asset_GUID`.**~~ DONE.
-4. ~~**Value ping.**~~ DONE (hierarchy + project view).
-5. ~~**Refresh, the Unity way.**~~ DONE — no polling, no OS watcher.
-   `asset_db_refresh` is an incremental mtime/size diff against a
-   `file_state` snapshot (Unity's SourceAssetDB idea): only deltas are
-   processed (new asset → meta + register + index; changed scene → re-index,
-   guid stable; deleted → unregister + orphan-meta cleanup). Triggered by the
-   editor's own file operations and by window focus regain (Unity Auto
-   Refresh). Optional future: a Windows `ReadDirectoryChangesW` wake-up for
-   changes while focused — the diff stays the source of truth (Unity's
-   Directory Monitoring is likewise Windows-only).
-6. ~~**Cross-asset ref support — `Ref` (PPtr).**~~ DONE (picker side): both
-   tabs assignable, `pick:` tag honored, cross-asset display/ping via AssetDB.
-   The load-time resolver already implements the v1 semantics: local refs
-   (guid 0) bind handles, cross-asset refs stay unresolved (Unity's model).
-   REMAINING (separate work): auto-resolving a cross-asset handle when its
-   target asset gets loaded — the README "generic Handle resolve" considered
-   feature; and first app-side adoption of a `Ref` field.
-7. **Polish.** Icons per row (stacks for scene assets), double-click to
-   assign+close, asset preview thumbnails.
 
 ## Non-goals
 

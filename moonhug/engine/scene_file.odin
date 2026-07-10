@@ -867,8 +867,12 @@ _inner_chain_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]PP
 	return chain, nil, false
 }
 
-scene_save :: proc(s: ^Scene, path: string) -> bool {
-	if s == nil do return false
+// Serializes the scene's CURRENT in-memory state to scene-file bytes without
+// touching disk or any caches. Runs the same normalization a save does
+// (override recapture, orphan pruning, next_local_id repair). Caller owns the
+// returned bytes. Used by scene_save and by Play's live-state snapshot.
+scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
+	if s == nil do return nil, false
 	w := ctx_world()
 
 	// Per docs/NestedPrefabs.md, overrides live at the root scene level only.
@@ -1016,11 +1020,17 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal scene: %v\n", err)
 		scene_file_destroy_shallow(&sf)
-		return false
+		return nil, false
 	}
-	defer delete(data)
 
 	scene_file_destroy_shallow(&sf)
+	return data, true
+}
+
+scene_save :: proc(s: ^Scene, path: string) -> bool {
+	data, ok := scene_serialize(s)
+	if !ok do return false
+	defer delete(data)
 
 	if write_err := os.write_entire_file(path, data); write_err != nil {
 		fmt.printf("[Scene] Failed to write file: %s — %v\n", path, write_err)

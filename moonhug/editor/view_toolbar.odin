@@ -14,6 +14,10 @@ import "../engine/log"
 
 TOOLBAR_HEIGHT :: 28
 
+// Live-state play snapshot lives in library/ (never assets/): the AssetDB
+// walk must not see it, or refresh would mint a guid for a transient file.
+_PLAY_SCENE_SNAPSHOT_PATH :: "library/play_scene_snapshot.scene"
+
 _play_thread: ^thread.Thread
 
 draw_tool_bar :: proc() {
@@ -37,7 +41,7 @@ draw_tool_bar :: proc() {
         im.TextDisabled("(running)")
     }
     if im.IsItemHovered({}) {
-        im.SetTooltip("Run game (odin run app)")
+        im.SetTooltip("Run game with current scene state (odin run app)")
     }
 
     // Dockspace in a host window below the toolbar (so toolbar is fixed under menubar, not floating)
@@ -248,15 +252,29 @@ run_app_play :: proc() {
     data.command[4] = "-debug"
 
     // Pass the editor's active scene to the app (args after "--" reach the
-    // program); without one the app falls back to its default scene.
-    if scene := engine.sm_scene_get_active(); scene != nil && len(scene.path) > 0 {
-        with_scene, aerr := make([]string, 7, pa)
-        if aerr == nil {
-            copy(with_scene, data.command)
-            with_scene[5] = "--"
-            with_scene[6], _ = strings.clone(scene.path, pa)
-            delete(data.command, pa)
-            data.command = with_scene
+    // program); without one the app falls back to its default scene. The app
+    // gets the LIVE scene state: a snapshot of the in-memory scene written
+    // outside assets/ (so refresh never mints a guid for it) — unsaved edits
+    // play as-is, like Unity entering play mode with a dirty scene. Nested
+    // prefabs still resolve by guid from their on-disk files.
+    if scene := engine.sm_scene_get_active(); scene != nil {
+        play_path := scene.path
+        if snapshot, sok := engine.scene_serialize(scene); sok {
+            defer delete(snapshot)
+            os.make_directory("library") // library/ is gitignored; fresh clones lack it
+            if os.write_entire_file(_PLAY_SCENE_SNAPSHOT_PATH, snapshot) == nil {
+                play_path = _PLAY_SCENE_SNAPSHOT_PATH
+            }
+        }
+        if len(play_path) > 0 {
+            with_scene, aerr := make([]string, 7, pa)
+            if aerr == nil {
+                copy(with_scene, data.command)
+                with_scene[5] = "--"
+                with_scene[6], _ = strings.clone(play_path, pa)
+                delete(data.command, pa)
+                data.command = with_scene
+            }
         }
     }
     _play_thread = thread.create_and_start_with_data(data, _run_play_thread_proc)
