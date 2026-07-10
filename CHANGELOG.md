@@ -1,3 +1,9 @@
+## [0.31.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.30.0...v0.31.0) (2026-07-10)
+
+### Features
+
+* run app with current open scene state ([da67963](https://github.com/MoonHug-Editor/moonhug/commit/da67963c83b9d859bfe9d8ebeb5a0d5ae838446f))
+
 ## [0.30.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.29.0...v0.30.0) (2026-07-10)
 
 ### Features
