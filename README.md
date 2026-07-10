@@ -88,14 +88,7 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- each camera has int order and render_commands buffer
-- Cameras scan scene trees for renderers to add render commands to commands buffers
-  - transforms have render layer field for camera culling
-  - then render commands buffer is applied
-
-- Scene view picking - click on a sprite/object in the Scene view to set it as the hierarchy selection
-- scene view gizmos
-  - scene view toolbar (move, rotate, scale)
+- [SDL3 Renderer](docs/SDL3Renderer.md) - raylib → SDL3 + SDL_GPU migration; covers camera render_commands, MeshFilter/MeshRenderer + glTF import, scene view picking, selection outline, transform gizmos + scene view toolbar
 
 - png - Texture2D with N Sprites
 
