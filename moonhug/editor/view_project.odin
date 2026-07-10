@@ -343,11 +343,18 @@ _project_draw_rename_row :: proc(full_path: string) -> bool {
     return true
 }
 
-// Material icon glyph for a file, by extension. Icons are merged into the base
+// Material icon glyph for a file (full path). Icons are merged into the base
 // font, so the returned string is drawn inline as part of a label.
-_project_file_icon :: proc(name: string) -> string {
-    switch filepath.ext(name) {
+_project_file_icon :: proc(path: string) -> string {
+    switch filepath.ext(path) {
     case ".scene":
+        // Variant assets get the variant glyph — detection is a reliable
+        // AssetDB root-info lookup (file inherits a base), not a name check.
+        if guid, ok := engine.asset_db_get_guid(path); ok {
+            if info, iok := engine.asset_db_get_root_info(engine.Asset_GUID(guid)); iok && info.is_variant {
+                return ICON_MD_STACKS_VARIANT
+            }
+        }
         return ICON_MD_STACKS // scene/prefab = stack group
     case ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif":
         return ICON_MD_IMAGE

@@ -27,7 +27,7 @@ ICON_MD_MUSIC_NOTE  :: "\ue405"   // music_note
 ICON_MD_LAYERS         :: "\ue53b"   // layers
 ICON_MD_STAT_0         :: "\ue697"   // stat_0 (plain object row in hierarchy)
 ICON_MD_STACKS         :: "\uf359"   // stacks (scene/prefab)
-ICON_MD_STACKS_VARIANT :: "\uf607"   // stacks variant (scene variant) \u2014 unused: no cheap+reliable per-file variant detection
+ICON_MD_STACKS_VARIANT :: "\uf607"   // stack_star (scene variant; AssetDB root_info.is_variant)
 ICON_MD_WIDGETS        :: "\ue1bd"   // widgets
 ICON_MD_DEPLOYED_CODE  :: "\uf720"   // deployed_code
 ICON_MD_VISIBILITY     :: "\ue8f4"   // visibility

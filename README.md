@@ -90,8 +90,6 @@ For more details see [Contribution](docs/Contribution.md)
 ## TODO
 - [Object Picker](docs/ObjectPicker.md) polish (roadmap step 7): row icons, asset previews, first app use of engine.Ref
 
-- variant scene icon in hierarchy (needs cheap per-instance variant detection)
-
 - each camera has int order and render_commands buffer
 - Cameras scan scene trees for renderers to add render commands to commands buffers
   - transforms have render layer field for camera culling

@@ -345,10 +345,15 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 	// stretchy name column plus a fixed right-actions column. A left-actions
 	// column can be added later (see _HIER_COL_* and the row code in
 	// _draw_hierarchy_node) without touching the recursion.
+	// Host->NS resolved once per frame from the NS side (deterministic; the
+	// per-row reverse scan could cross-match look-alike lids in variant
+	// namespaces and flip icons/enter targets with record order).
+	host_ns := engine.scene_nested_hosts_map(scene)
+
 	if im.BeginTable("##HierTable", _HIER_COL_COUNT, im.TableFlags_NoBordersInBody) {
 		im.TableSetupColumn("##name", {.WidthStretch})
 		im.TableSetupColumn("##actions_r", {.WidthFixed}, 24)
-		_draw_hierarchy_node(root_tH, scene, is_root = true, filter = filter)
+		_draw_hierarchy_node(root_tH, scene, host_ns, is_root = true, filter = filter)
 		im.EndTable()
 	}
 
@@ -396,7 +401,7 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 }
 
 @(private)
-_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, is_root := false, parent_inactive := false, parent_nested := false, filter := "") {
+_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, host_ns: map[engine.Transform_Handle]^engine.NestedScene, is_root := false, parent_inactive := false, parent_nested := false, filter := "") {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -419,7 +424,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		for child in children_copy {
 			ch, ok := engine.scene_ref_resolve_transform(sc, child, tH)
 			if !ok do continue
-			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = is_nested, filter = filter)
+			_draw_hierarchy_node(ch, sc, host_ns, parent_inactive = inactive, parent_nested = is_nested, filter = filter)
 		}
 		return
 	}
@@ -434,7 +439,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// full table width including the indent and the actions column, so hover
 	// highlights the whole row and clicks register anywhere on it. The ">" button
 	// still takes its own clicks because it's a later widget in its own column.
-	is_ns_host := sc != nil && engine.scene_hierarchy_transform_is_nested_scene_host(sc, tH)
+	row_ns, is_ns_host := host_ns[tH]
 	flags := im.TreeNodeFlags{.OpenOnArrow, .SpanAllColumns}
 	// The row frame spans all columns (incl. the actions column), so let the ">"
 	// button — a later, overlapping item — take its own clicks. AllowOverlap in
@@ -544,12 +549,29 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 		label_pos := im.Vec2{text_x, node_rect_min.y + im.GetStyle().FramePadding.y}
 		// Every row has an icon slot: stacks for nested-scene hosts (Unity's
-		// prefab icon equivalent), stat_0 as the plain-object default. No variant
-		// icon: telling a variant apart would mean reading the source asset per
-		// row, which isn't worth the cost.
-		row_icon: cstring = ICON_MD_STACKS if is_ns_host else ICON_MD_STAT_0
-		im.DrawList_AddText(draw_list, label_pos, text_color, row_icon)
+		// prefab icon equivalent), the variant glyph when the source asset is a
+		// variant (one AssetDB root-info lookup), stat_0 as the plain default.
+		row_icon: cstring = ICON_MD_STAT_0
+		if is_ns_host && row_ns != nil {
+			row_icon = ICON_MD_STACKS
+			// Root-variant host: the OPEN SCENE is the variant — its NS points
+			// at the BASE, so checking source_prefab would say "not a variant".
+			// The row is the variant itself.
+			if engine.nested_scene_is_root_variant(sc, row_ns) {
+				row_icon = ICON_MD_STACKS_VARIANT
+			} else if info, ok := engine.asset_db_get_root_info(row_ns.source_prefab); ok && info.is_variant {
+				row_icon = ICON_MD_STACKS_VARIANT
+			}
+		}
+		// Icons draw from the LARGE icon font a couple px above text size —
+		// at 13px the variant glyph's star detail rasterizes away and variants
+		// become indistinguishable from plain stacks.
+		HIER_ICON_SIZE :: f32(FONT_SIZE + 3)
+		im.PushFontFloat(editor_icon_font_lg, HIER_ICON_SIZE)
 		icon_w := im.CalcTextSize(ICON_MD_STACKS).x
+		icon_pos := im.Vec2{label_pos.x, label_pos.y - (HIER_ICON_SIZE - FONT_SIZE) * 0.5}
+		im.DrawList_AddText(draw_list, icon_pos, text_color, row_icon)
+		im.PopFont()
 		name_pos := im.Vec2{label_pos.x + icon_w, label_pos.y}
 		// The name column clips its own contents, so the label can't bleed into
 		// the actions column — no manual clip rect needed.
@@ -558,7 +580,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		// ">" enter button on a nested-scene host: opens its source .scene asset.
 		// Lives in its own table column, so it never overlaps the name/row.
 		if is_ns_host {
-			if ns := engine.scene_find_nested_scene_for_host(sc, tH); ns != nil && ns.source_prefab != (engine.Asset_GUID{}) {
+			if ns := row_ns; ns != nil && ns.source_prefab != (engine.Asset_GUID{}) {
 				if src_path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
 					im.TableSetColumnIndex(_HIER_COL_ACTIONS_R)
 					// Right-align the button within its cell, against the edge.
@@ -678,7 +700,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		for child in children_copy {
 			ch, ok := engine.scene_ref_resolve_transform(sc, child, tH)
 			if !ok do continue
-			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = child_parent_nested)
+			_draw_hierarchy_node(ch, sc, host_ns, parent_inactive = inactive, parent_nested = child_parent_nested)
 		}
 		im.TreePop()
 	} else if filtered && len(t.children) > 0 {
@@ -690,7 +712,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		for child in children_copy {
 			ch, ok := engine.scene_ref_resolve_transform(sc, child, tH)
 			if !ok do continue
-			_draw_hierarchy_node(ch, sc, parent_inactive = inactive, parent_nested = child_parent_nested, filter = filter)
+			_draw_hierarchy_node(ch, sc, host_ns, parent_inactive = inactive, parent_nested = child_parent_nested, filter = filter)
 		}
 	}
 

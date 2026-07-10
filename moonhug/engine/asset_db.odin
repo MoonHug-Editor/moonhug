@@ -38,6 +38,7 @@ AssetDB :: struct {
 Asset_Root_Info :: struct {
     root_local_id: Local_ID,
     root_name:     string, // owned
+    is_variant:    bool,   // file inherits a base (root NS with transform_parent == 0)
 }
 
 Asset_File_Stamp :: struct {
@@ -69,6 +70,10 @@ asset_db_shutdown :: proc() {
     }
     delete(asset_db.file_state)
     delete(asset_db.root_path)
+    // Zero everything: scene_save's refresh trigger tests root_path != "" —
+    // a dangling freed string here would send refreshes walking garbage in
+    // any later db-less context (test pollution).
+    asset_db = {}
 }
 
 _free_maps :: proc() {
@@ -119,20 +124,27 @@ asset_db_refresh :: proc() {
         deleted += 1
     }
 
-    // Creations and modifications.
+    // Creations and modifications: REGISTER first, INDEX second. Indexing a
+    // variant flattens it, which resolves its BASE by guid->path — if the base
+    // hasn't been registered yet (map iteration order is random), the flatten
+    // fails and the variant silently drops from the index for that run.
+    changed := make([dynamic]string, context.temp_allocator)
     for path, stamp in walk.files {
         old, existed := asset_db.file_state[path]
         if !existed {
             _ensure_meta(path)
-            _reindex_if_scene(path)
             asset_db.file_state[strings.clone(path)] = stamp
+            append(&changed, path)
             created += 1
         } else if old != stamp {
             _ensure_meta(path) // re-reads the meta; guid stays stable
-            _reindex_if_scene(path)
             asset_db.file_state[path] = stamp // key exists; stored key is reused
+            append(&changed, path)
             modified += 1
         }
+    }
+    for path in changed {
+        _reindex_if_scene(path)
     }
 
     // Orphaned metas: a .meta whose asset (file or folder) is gone.
@@ -242,8 +254,39 @@ _index_remove :: proc(guid: Asset_GUID) {
 _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     data, read_err := os.read_entire_file(path, context.temp_allocator)
     if read_err != nil do return
+
+    // Externally changed bytes (git checkout, other tools): refresh the
+    // scene_lib cache and re-propagate to loaded scenes, exactly like an
+    // editor save would. The save path itself already committed identical
+    // bytes, so the equality check keeps it from re-propagating twice.
+    if cached, has := scene_lib[guid]; has && string(cached) != string(data) {
+        _prefab_bytes_committed(guid, data)
+    }
+
     sf: SceneFile
     if json.unmarshal(data, &sf) != nil do return
+
+    is_variant := false
+    for &ns in sf.nested_scenes {
+        if ns.transform_parent == 0 {
+            is_variant = true
+            break
+        }
+    }
+    if is_variant {
+        // A variant file has no root transform record of its own (sf.root
+        // names the BASE root; only added content is stored). Index the
+        // FLATTENED form instead, so variants get root info and inherited
+        // root components like any other scene asset.
+        scene_file_destroy(&sf)
+        flat, flat_owned := _prefab_resolved_bytes(guid)
+        if flat == nil do return
+        cpy := make([]byte, len(flat), context.temp_allocator)
+        copy(cpy, flat)
+        if flat_owned do delete(flat)
+        sf = {}
+        if json.unmarshal(cpy, &sf) != nil do return
+    }
     defer scene_file_destroy(&sf)
 
     root: ^Transform
@@ -255,7 +298,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     }
     if root == nil do return
 
-    asset_db.root_info[guid] = {root_local_id = sf.root, root_name = strings.clone(root.name)}
+    asset_db.root_info[guid] = {root_local_id = sf.root, root_name = strings.clone(root.name), is_variant = is_variant}
     // Every scene asset's root IS a transform.
     _index_add(.Transform, guid, sf.root)
 

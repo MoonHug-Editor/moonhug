@@ -15,6 +15,7 @@ _console_clear_on_play: bool = true
 _console_filter: [256]u8
 _console_selected_id: u64 // log.Entry.id of the row shown in the detail pane
 _console_scroll_to_sel: bool // scroll the selected row into view next frame
+_console_split_ratio: f32 = 0.72 // rows pane share of the rows/detail split
 
 // Console text colors, based on Unity's dark palette (default #D2D2D2,
 // warning #F4BC02, error #D32222) but with info nudged bluer/darker so it
@@ -117,9 +118,15 @@ draw_console_view :: proc() {
 		child_pad := im.GetStyle().WindowPadding
 		child_pad.x = 0
 		im.PushStyleVarImVec2(.WindowPadding, child_pad)
-		// Reserve the bottom of the window for the detail pane.
-		detail_h := im.GetTextLineHeightWithSpacing() * 7
-		im.BeginChild("ConsoleScroll", im.Vec2{0, -detail_h}, {.Borders})
+		// Resizable split between the log rows and the detail pane below (same
+		// splitter pattern as the history view).
+		avail := im.GetContentRegionAvail()
+		splitter_h: f32 = 4
+		scroll_h := (avail.y - splitter_h) * _console_split_ratio
+		MIN_PANE :: f32(60)
+		if scroll_h < MIN_PANE do scroll_h = MIN_PANE
+		if scroll_h > avail.y - splitter_h - MIN_PANE do scroll_h = avail.y - splitter_h - MIN_PANE
+		im.BeginChild("ConsoleScroll", im.Vec2{0, scroll_h}, {.Borders})
 		im.PopStyleVar()
 
 		filter_str := string(cstring(raw_data(_console_filter[:])))
@@ -234,6 +241,21 @@ draw_console_view :: proc() {
 		_console_last_count = n
 
 		im.EndChild()
+
+		// Draggable splitter between rows and detail.
+		splitter_pos := im.GetCursorScreenPos()
+		im.InvisibleButton("##console_split", im.Vec2{-1, splitter_h})
+		if im.IsItemActive() {
+			delta := im.GetIO().MouseDelta.y
+			total := avail.y - splitter_h
+			_console_split_ratio = clamp((scroll_h + delta) / total, MIN_PANE / total, (total - MIN_PANE) / total)
+		}
+		if im.IsItemHovered() || im.IsItemActive() {
+			im.SetMouseCursor(.ResizeNS)
+		}
+		dl := im.GetWindowDrawList()
+		split_col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
+		im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, split_col, 1)
 
 		// Up/Down select the previous/next visible row (nothing selected: both
 		// start at the newest). Not while a text input owns the keyboard.

@@ -738,6 +738,26 @@ scene_find_nested_scene_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -
 	return nil
 }
 
+// Deterministic host->NS map, built from the NS side: each record resolves
+// ITS OWN host (nested_scene_resolve_host_handle scopes lids to the record's
+// subtree and demands uniqueness). The reverse question — "which NS hosts this
+// transform?" (scene_find_nested_scene_for_host) — scans records and takes the
+// FIRST fuzzy lid match, so look-alike lids across unprojected variant
+// namespaces can cross-match and the winner depends on record order. Use this
+// map when iterating many rows (hierarchy): one pass, order-independent.
+// Pointers are into s.nested_scenes — valid until records are added/removed.
+scene_nested_hosts_map :: proc(s: ^Scene, allocator := context.temp_allocator) -> map[Transform_Handle]^NestedScene {
+	out := make(map[Transform_Handle]^NestedScene, allocator)
+	if s == nil do return out
+	for &ns in s.nested_scenes {
+		h := nested_scene_resolve_host_handle(s, &ns)
+		if h == {} do continue
+		if _, taken := out[h]; taken do continue
+		out[h] = &ns
+	}
+	return out
+}
+
 // Returns the prefab's bytes with variant inheritance flattened: for a flat
 // prefab, its raw bytes (owned=false, an alias of scene_lib); for a variant
 // (a file whose nested_scenes hold a record with transform_parent == 0), the
