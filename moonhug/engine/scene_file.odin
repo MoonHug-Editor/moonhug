@@ -464,15 +464,18 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 
 	for i := len(hops) - 1; i >= 0; i -= 1 {
 		hop := hops[i]
-		outer_raw, ohas := scene_lib[hop.outer_guid]
-		if !ohas {
-			if !scene_lib_register(hop.outer_guid) do return nil, false
-			outer_raw, ohas = scene_lib[hop.outer_guid]
-			if !ohas do return nil, false
-		}
+		// RESOLVED outer bytes, not raw: when the outer prefab is a VARIANT,
+		// its raw file has no NS records for the base's nested prefabs — those
+		// live in the base file, and the variant's own deep overrides reach
+		// them only in the flattened form (_prefab_resolved_bytes pushes them
+		// down onto the inner NS records). Reading raw here silently skipped
+		// that whole layer, so capture/revert baselines missed variant edits.
+		outer_raw, outer_owned := _prefab_resolved_bytes(hop.outer_guid)
+		if outer_raw == nil do return nil, false
 
 		outer_copy := make([]byte, len(outer_raw), context.temp_allocator)
 		copy(outer_copy, outer_raw)
+		if outer_owned do delete(outer_raw)
 		outer_sf: SceneFile
 		if json.unmarshal(outer_copy, &outer_sf) != nil do return nil, false
 

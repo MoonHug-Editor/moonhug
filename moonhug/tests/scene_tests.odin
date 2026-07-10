@@ -3269,3 +3269,173 @@ test_variant_deep_override_revert :: proc(t: ^testing.T) {
 			fmt.tprintf("after revert color must leave the override %v, got %v", override_color, sr.color))
 	}
 }
+
+// USER-REPORTED REGRESSION: host scene overrides a color DEEP inside a nested
+// variant instance (host -> bullet_Variant -> c). The variant's own value for
+// that color is then edited and saved. Reverting the host's override must
+// restore the variant's CURRENT baked value — not the value from before the
+// variant edit.
+@(test)
+test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_tmp_revert_stale"
+	_ = os.make_directory(dir)
+	defer os.remove(dir)
+	c_path := strings.concatenate({dir, "/c.scene"}, context.temp_allocator)
+	bullet_path := strings.concatenate({dir, "/bullet.scene"}, context.temp_allocator)
+	bv_path := strings.concatenate({dir, "/bullet_Variant.scene"}, context.temp_allocator)
+	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	defer {
+		for p in ([]string{c_path, bullet_path, bv_path, host_path}) {
+			_ = os.remove(p)
+			_ = os.remove(strings.concatenate({p, ".meta"}, context.temp_allocator))
+		}
+	}
+
+	COLOR_BASE := [4]f32{0.5, 0, 0, 1}       // authored in c.scene
+	COLOR_HOST := [4]f32{0, 0, 1, 1}         // host override
+	COLOR_VARIANT := [4]f32{0.9, 0.9, 0.1, 1} // edited into bullet_Variant later
+
+	c_json := `{
+  "root": 1,
+  "next_local_id": 10,
+  "transforms": [
+    {
+      "local_id": 1, "name": "CRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [{"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}],
+      "components": []
+    },
+    {
+      "local_id": 2, "name": "C", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 3}]
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "sprite_renderers": [
+    {"base": {"local_id": 3, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000",
+     "color": [0.5, 0, 0, 1]}
+  ]
+}`
+	testing.expect(t, os.write_entire_file(c_path, transmute([]byte)c_json) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	w := &tc_mem.world
+
+	find_sprite :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
+		for i in 0 ..< len(w.transforms.slots) {
+			slot := &w.transforms.slots[i]
+			if !slot.alive || slot.data.scene != s do continue
+			h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+			_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+			if sr != nil do return sr
+		}
+		return nil
+	}
+	close_to :: proc(a, b: [4]f32) -> bool {
+		d := a - b
+		return d.x*d.x + d.y*d.y + d.z*d.z + d.w*d.w < 0.0001
+	}
+
+	// bullet.scene: nests c.
+	c_guid, cok := engine.asset_db_get_guid(c_path)
+	testing.expect(t, cok, "c.scene registered")
+	{
+		hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(c_guid), engine.Transform_Handle(tc_mem.scene.root.handle))
+		testing.expect(t, hostH != {}, "c should instantiate into bullet")
+		testing.expect(t, engine.scene_save(tc_mem.scene, bullet_path), "save bullet")
+	}
+
+	// bullet_Variant.scene: variant of bullet.
+	testing.expect(t, engine.scene_create_variant_file(bullet_path, bv_path), "create variant file")
+	engine.asset_db_refresh()
+	bv_guid, bvok := engine.asset_db_get_guid(bv_path)
+	testing.expect(t, bvok, "variant registered")
+
+	// host.scene: nests bullet_Variant; override the deep c color. Starts as a
+	// minimal empty file so it arrives through the normal load path.
+	host_json := `{
+  "root": 1,
+  "next_local_id": 5,
+  "transforms": [
+    {
+      "local_id": 1, "name": "HostRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": []
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [], "sprite_renderers": []
+}`
+	testing.expect(t, os.write_entire_file(host_path, transmute([]byte)host_json) == nil)
+	engine.asset_db_refresh()
+	host := engine.scene_load_single_path(host_path)
+	testing.expect(t, host != nil, "empty host loads")
+	if host == nil do return
+	tc_mem.scene = host
+	{
+		hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(bv_guid), engine.Transform_Handle(host.root.handle))
+		testing.expect(t, hostH != {}, "bullet_Variant should instantiate into host")
+		sr := find_sprite(w, host)
+		testing.expect(t, sr != nil, "live sprite in host")
+		if sr == nil do return
+		testing.expect(t, close_to(sr.color, COLOR_BASE), "pre-override color is the authored base")
+		sr.color = COLOR_HOST
+		testing.expect(t, engine.scene_save(host, host_path), "save host")
+	}
+
+	// Edit the variant's own value for the same color and save it.
+	{
+		bv := engine.scene_load_single_path(bv_path)
+		testing.expect(t, bv != nil, "variant loads")
+		if bv == nil do return
+		tc_mem.scene = bv
+		sr := find_sprite(w, bv)
+		testing.expect(t, sr != nil, "live sprite in variant")
+		if sr == nil do return
+		sr.color = COLOR_VARIANT
+		testing.expect(t, engine.scene_save(bv, bv_path), "save variant")
+	}
+
+	// Fresh host: the host override still wins over the edited variant.
+	host2 := engine.scene_load_single_path(host_path)
+	testing.expect(t, host2 != nil, "host reloads")
+	if host2 == nil do return
+	tc_mem.scene = host2
+	sr := find_sprite(w, host2)
+	testing.expect(t, sr != nil)
+	if sr == nil do return
+	testing.expect(t, close_to(sr.color, COLOR_HOST), fmt.tprintf("host override applies after reload (got %v)", sr.color))
+
+	// Revert the host override: the live value must become the variant's
+	// CURRENT baked color (COLOR_VARIANT), not the stale pre-edit base.
+	reverted := false
+	for &ns in host2.nested_scenes {
+		if ns.expand_parent != {} do continue
+		if engine.nested_scene_is_root_variant(host2, &ns) do continue
+		for ov in ns.overrides {
+			if ov.property_path != "color" do continue
+			engine.nested_scene_revert_override(host2, &ns, ov.target, "color")
+			reverted = true
+			break
+		}
+		if reverted do break
+	}
+	testing.expect(t, reverted, "host should carry a color override to revert")
+	if !reverted do return
+
+	testing.expect(t, close_to(sr.color, COLOR_VARIANT),
+		fmt.tprintf("revert must restore the variant's CURRENT color %v, got %v", COLOR_VARIANT, sr.color))
+}
