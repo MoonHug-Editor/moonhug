@@ -194,6 +194,16 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 	_batch_append(.Tris, tex, first, 6)
 }
 
+// Untextured filled triangle (white 1x1 texture bound at draw). Winding is
+// irrelevant — the pipelines don't cull.
+draw_triangle :: proc(a, b, c: [3]f32, color: [4]f32, depth_test := true) {
+	col := _color_u8(color)
+	first := u32(len(_pass.vtx))
+	n := [3]f32{0, 0, 1}
+	append(&_pass.vtx, Vertex{a, n, {}, col}, Vertex{b, n, {}, col}, Vertex{c, n, {}, col})
+	_batch_append(depth_test ? .Tris : .Tris_Overlay, nil, first, 3)
+}
+
 draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))

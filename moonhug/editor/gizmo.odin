@@ -160,14 +160,48 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 		tip := origin_now + dir * size
 		gfx.draw_line(origin_now, tip, col, depth_test = false)
 
-		// Arrowhead: V lines angled back along the other two axes.
-		back := tip - dir * size * 0.18
-		p1 := dirs[(axis + 1) % 3] * size * 0.06
-		p2 := dirs[(axis + 2) % 3] * size * 0.06
-		gfx.draw_line(tip, back + p1, col, depth_test = false)
-		gfx.draw_line(tip, back - p1, col, depth_test = false)
-		gfx.draw_line(tip, back + p2, col, depth_test = false)
-		gfx.draw_line(tip, back - p2, col, depth_test = false)
+		// Arrowhead: solid cone (Unity-like), base pulled back along the axis.
+		_draw_cone(tip - dir * size * 0.18, dir, size * 0.18, size * 0.06, col)
+	}
+}
+
+// Solid overlay cone from base center along dir — the translate arrowhead.
+// The overlay pipeline has no depth test and no culling, so only CAMERA-FACING
+// facets are drawn (back facets would overdraw front ones); for a convex solid
+// their projections never overlap, making draw order irrelevant. The world
+// shader is unlit — 3D reads via flat headlight shading per facet.
+_draw_cone :: proc(base: [3]f32, dir: [3]f32, height, radius: f32, col: [4]f32) {
+	CONE_SEGMENTS :: 16
+	tip := base + dir * height
+	ref := math.abs(dir.y) < 0.9 ? [3]f32{0, 1, 0} : [3]f32{1, 0, 0}
+	u := linalg.normalize0(linalg.cross(ref, dir))
+	v := linalg.cross(dir, u)
+	view_dir := linalg.normalize0(scene_cam_pos - tip)
+
+	// Base cap faces -dir: visible only from behind the base plane.
+	draw_cap := linalg.dot(view_dir, dir) < 0
+	cap_col := [4]f32{col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a}
+
+	prev_ang := f32(0)
+	prev := base + u * radius
+	for i in 1 ..= CONE_SEGMENTS {
+		ang := f32(i) * math.TAU / CONE_SEGMENTS
+		p := base + (u * math.cos(ang) + v * math.sin(ang)) * radius
+		// Outward slant normal at the facet's mid angle: perpendicular to the
+		// slant line and the rim tangent = normalize(radial*height + dir*radius).
+		mid := (prev_ang + ang) * 0.5
+		w := u * math.cos(mid) + v * math.sin(mid)
+		n := linalg.normalize0(w * height + dir * radius)
+		facing := linalg.dot(n, view_dir)
+		if facing > 0 {
+			shade := 0.55 + 0.45 * facing
+			gfx.draw_triangle(tip, prev, p, {col.r * shade, col.g * shade, col.b * shade, col.a}, depth_test = false)
+		}
+		if draw_cap {
+			gfx.draw_triangle(base, prev, p, cap_col, depth_test = false)
+		}
+		prev = p
+		prev_ang = ang
 	}
 }
 
@@ -319,25 +353,31 @@ _gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, orig
 		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
 		tip := origin_now + dir * size
 		gfx.draw_line(origin_now, tip, col, depth_test = false)
-		_draw_box_tip(tip, size * 0.05, col)
+		_draw_cube(tip, local_dirs, size * 0.05, col)
 	}
 	center_col := _gizmo_hot_axis == _GIZMO_UNIFORM_AXIS ? _GIZMO_HOT_COLOR : _GIZMO_UNIFORM_COLOR
-	_draw_box_tip(origin_now, size * 0.06, center_col)
+	_draw_cube(origin_now, local_dirs, size * 0.06, center_col)
 }
 
-// Small wireframe octahedron — reads as a solid handle tip at gizmo sizes.
-_draw_box_tip :: proc(center: [3]f32, r: f32, col: [4]f32) {
-	x := [3]f32{r, 0, 0}
-	y := [3]f32{0, r, 0}
-	z := [3]f32{0, 0, r}
-	gfx.draw_line(center - x, center + y, col, depth_test = false)
-	gfx.draw_line(center + y, center + x, col, depth_test = false)
-	gfx.draw_line(center + x, center - y, col, depth_test = false)
-	gfx.draw_line(center - y, center - x, col, depth_test = false)
-	gfx.draw_line(center - z, center + y, col, depth_test = false)
-	gfx.draw_line(center + y, center + z, col, depth_test = false)
-	gfx.draw_line(center + z, center - y, col, depth_test = false)
-	gfx.draw_line(center - y, center - z, col, depth_test = false)
+// Solid overlay cube (half-extent r) aligned to the axes basis — the scale
+// handle tips, Unity-like. Camera-facing faces only, flat headlight shading;
+// same convex-solid reasoning as _draw_cone.
+_draw_cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32, col: [4]f32) {
+	view_dir := linalg.normalize0(scene_cam_pos - center)
+	for axis in 0 ..< 3 {
+		for side in 0 ..< 2 {
+			n := side == 0 ? axes[axis] : -axes[axis]
+			facing := linalg.dot(n, view_dir)
+			if facing <= 0 do continue
+			a := axes[(axis + 1) % 3] * r
+			b := axes[(axis + 2) % 3] * r
+			c := center + n * r
+			shade := 0.55 + 0.45 * facing
+			face_col := [4]f32{col.r * shade, col.g * shade, col.b * shade, col.a}
+			gfx.draw_triangle(c - a - b, c + a - b, c + a + b, face_col, depth_test = false)
+			gfx.draw_triangle(c - a - b, c + a + b, c - a + b, face_col, depth_test = false)
+		}
+	}
 }
 
 // ------------------------------------------------------------------ shared

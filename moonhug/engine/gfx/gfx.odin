@@ -28,6 +28,7 @@ Mesh :: struct {
 _Pipeline_Kind :: enum u8 {
 	Tris,          // alpha-blended, depth test, NO depth write (sprites)
 	Tris_Depth,    // opaque, depth test + write (meshes)
+	Tris_Overlay,  // alpha-blended, no depth test (gizmo solids, e.g. arrow cones)
 	Lines,         // depth-tested lines (grid, selection outline)
 	Lines_Overlay, // no depth test (gizmos)
 }
@@ -185,6 +186,7 @@ _create_pipelines :: proc() -> bool {
 
 	_gfx.pipelines[.Tris]          = make_pipeline(&info, .TRIANGLELIST, true, false)
 	_gfx.pipelines[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
+	_gfx.pipelines[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
 	_gfx.pipelines[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
 	_gfx.pipelines[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
 	for p in _gfx.pipelines {
