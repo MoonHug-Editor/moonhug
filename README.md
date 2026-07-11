@@ -56,6 +56,8 @@ For more details see [Contribution](docs/Contribution.md)
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
 - vendor:raylib - for Editor's window creation and graphics rendering
+- SDL3 (`brew install sdl3`) - window/input/GPU, replacing raylib (see [SDL3 Renderer](docs/SDL3Renderer.md))
+  - optional, only to edit shaders: `brew install shaderc spirv-cross`
 
 ## Features
 - menu bar - customizable via @(menu_item=...) on proc

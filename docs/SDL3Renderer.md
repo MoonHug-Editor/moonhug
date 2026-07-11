@@ -115,11 +115,16 @@ pipeline set serves both. Draw-order policy: meshes first (depth-write), then
 sprites back-to-front by view depth (no depth-write). Semi-transparent meshes
 sorting wrong is accepted for now.
 
-Shaders: HLSL source in `moonhug/engine/gfx/shaders/`, compiled OFFLINE by
-`shadercross` to SPIR-V + MSL (DXIL when Windows lands), **compiled blobs
-committed** and embedded via `#load`; runtime picks the format via
-`sdl.GetGPUShaderFormats`. Contributors never need shadercross. Fallback if it
-misbehaves: hand-write the one MSL pair (~40 lines).
+Shaders: GLSL (Vulkan-style) source in `moonhug/engine/gfx/shaders/`, compiled
+OFFLINE to SPIR-V by `glslc` and crossed to MSL by `spirv-cross` (both
+`brew install shaderc spirv-cross`; DXIL added when Windows lands). This is the
+same pipeline SDL_shadercross uses internally — chosen over shadercross itself
+because shadercross has no release binaries. **Compiled blobs are committed**
+and embedded via `#load`; runtime picks the format via
+`sdl.GetGPUShaderFormats` (MSL entry point is `main0`, SPIR-V is `main`).
+Contributors never need the toolchain unless they change a shader. SDL_GPU
+SPIR-V binding convention: vertex uniform buffers = set 1, fragment sampled
+textures = set 2.
 
 ## Render commands (engine side)
 
@@ -150,31 +155,33 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 ## Roadmap
 
 ### 0. Dependencies + shaders + doc stubs
-- [ ] `brew install sdl3` (vendor:sdl3 links `system:SDL3`); note in README
-- [ ] shadercross from SDL_shadercross GitHub releases (not in brew)
-- [ ] `engine/gfx/shaders/world.vert.hlsl` + `world.frag.hlsl` (SDL_GPU register
-      convention: vertex UBO `b0,space1`; texture `t0,space2`, sampler `s0,space2`)
-- [ ] `compile.sh` → committed `compiled/*.{spv,msl}` (MSL entrypoint `main0`);
-      optional guard in run.sh: `command -v shadercross && sh ...`
+- [x] `brew install sdl3` (vendor:sdl3 links `system:SDL3`); note in README
+- [x] shader toolchain: `brew install shaderc spirv-cross` (shadercross has no
+      release binaries; glslc + spirv-cross is the same pipeline)
+- [x] `engine/gfx/shaders/world.vert.glsl` + `world.frag.glsl` (SDL_GPU SPIR-V
+      convention: vertex UBO set=1, fragment sampler2D set=2)
+- [x] `compile.sh` → committed `compiled/*.{spv,msl}` (MSL entrypoint `main0`);
+      guarded hook in run.sh
 
 ### 1. gfx package: window + input (new code, unused yet)
-- [ ] `engine/gfx/platform.odin` — init/window/event pump/frame timing; vsync
+- [x] `engine/gfx/platform.odin` — init/window/event pump/frame timing; vsync
       via swapchain params (no SetTargetFPS equivalent; dt-based logic copes)
-- [ ] `engine/gfx/input.odin` — per-frame input snapshot (down/pressed/released,
+- [x] `engine/gfx/input.odin` — per-frame input snapshot (down/pressed/released,
       mouse, wheel, text, focus_gained edge) mirroring every current rl call site
-- [ ] Checkpoint: tree compiles with raylib + SDL3 linked side by side; tests green
+- [x] Checkpoint: tree compiles with raylib + SDL3 linked side by side; tests green
 
 ### 2. gfx package: GPU core
-- [ ] `engine/gfx/gfx.odin` — device, pipelines, frame begin/end
-- [ ] `engine/gfx/pass.odin` — passes, CPU batch → copy pass → render pass,
+- [x] `engine/gfx/gfx.odin` — device, pipelines, textures, meshes, frame begin/end
+- [x] `engine/gfx/pass.odin` — passes, CPU batch → copy pass → render pass,
       render targets, draw procs (seam above)
-- [ ] `engine/gfx/shaders.odin` — `#load` blobs, format negotiation
-- [ ] `engine/gfx/debug_text.odin` — embedded 8×8 bitmap font (replaces
-      rl.DrawText in the app demo menu; future debug overlay)
-- [ ] `matrix4_perspective_z01` / `matrix4_ortho_z01` (SDL_GPU clip z∈[0,1];
-      core linalg is GL-style)
-- [ ] Checkpoint: scratch triangle renders in a test window (validates
-      pipeline/copy-pass ordering BEFORE the cutover)
+- [x] `engine/gfx/shaders.odin` — `#load` blobs, format negotiation
+- [x] `engine/gfx/debug_text.odin` + `font8x8.odin` — embedded 8×8 bitmap font
+      (replaces rl.DrawText in the app demo menu; future debug overlay)
+- [x] `matrix4_perspective_z01` / `matrix4_ortho_z01` in `engine/gfx/math.odin`
+      (SDL_GPU clip z∈[0,1]; core linalg is GL-style)
+- [x] Checkpoint: `engine/gfx/scratch` validation window (deleted after the
+      cutover) — quads, alpha blend, both line pipelines, mid-pass view_proj
+      switch, debug text, offscreen target pass; verified on-screen
 
 ### 3. THE CUTOVER (engine → app → editor, one compiling checkpoint)
 - [ ] `engine/texture2d.odin` — cache becomes `map[Asset_GUID]^gfx.Texture`,
