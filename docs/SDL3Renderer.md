@@ -258,16 +258,18 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       Game views (VERIFY IN EDITOR)
 
 ### 7. Scene picking
-- [ ] `engine/raycast.odin` — `ray_hit_aabb` (slab), `ray_hit_triangle`
-      (Möller–Trumbore); engine-side because game code shares `camera_screen_ray`
-- [ ] `editor/scene_pick.odin` — sprites via `sprite_world_corners` + 2 triangle
+- [x] `engine/raycast.odin` — `ray_hit_aabb` (slab, unnormalized-direction
+      safe for local-space picking), `ray_hit_triangle` (Möller–Trumbore,
+      double-sided); engine-side because game code shares `camera_screen_ray`
+- [x] `editor/scene_pick.odin` — sprites via `sprite_world_corners` + 2 triangle
       tests; meshes via ray→local space + artifact AABB; nearest t wins; editor
       ignores layer mask (Unity behavior). CPU picking, NOT GPU id-buffer
       (hundreds of objects; id-buffer = extra pipeline + readback for no gain)
-- [ ] LMB click hook in `handle_scene_input` (pressed+released under drag
-      threshold, no Alt, gizmo not hot) → `inspector_request_select`; miss clears
-- [ ] Checkpoint: click sprite → hierarchy selects; rotated cube selects;
-      sky click clears; nearest of overlapping wins
+- [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
+      threshold, no Alt) → `inspector_request_select`; miss clears selection
+- [x] Checkpoint: raycast unit tests green (127 tests); in-editor — click
+      sprite → hierarchy selects; rotated cube selects; sky click clears;
+      nearest of overlapping wins (VERIFY IN EDITOR)
 
 ### 8. Selection outline + translate gizmo + scene toolbar
 - [ ] Outline in scene pass: mesh → 12 AABB edges through model matrix; sprite →

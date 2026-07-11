@@ -19,6 +19,12 @@ scene_cam_target: [3]f32
 scene_view_hovered: bool
 scene_flythrough_active: bool
 
+// Click-to-pick state: a click is press+release under a small drag threshold
+// (so orbit/pan drags never select). Set in draw_scene_view / handle_scene_input.
+_scene_img_min: im.Vec2
+_scene_click_pos: im.Vec2
+_scene_click_pending: bool
+
 FLYTHROUGH_BASE_SPEED :: 8.0
 FLYTHROUGH_SHIFT_MULT :: 3.0
 ORBIT_SENSITIVITY :: 0.005
@@ -121,6 +127,7 @@ draw_scene_view :: proc() {
 			render_scene_rt(w, h)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
+			_scene_img_min = im.GetItemRectMin()
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
@@ -140,6 +147,29 @@ handle_scene_input :: proc() {
 	rmb_dragging := im.IsMouseDragging(.Right, 1)
 	mmb_dragging := im.IsMouseDragging(.Middle, 1)
 	lmb_dragging := im.IsMouseDragging(.Left, 1)
+
+	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
+	// Alt+LMB orbits). Hit → select in hierarchy; miss → clear selection.
+	if im.IsMouseClicked(.Left) && !alt_down {
+		_scene_click_pos = im.GetMousePos()
+		_scene_click_pending = true
+	}
+	if _scene_click_pending && im.IsMouseReleased(.Left) {
+		_scene_click_pending = false
+		mp := im.GetMousePos()
+		dx := mp.x - _scene_click_pos.x
+		dy := mp.y - _scene_click_pos.y
+		if !alt_down && dx * dx + dy * dy < 16 && scene_rt != nil {
+			view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
+			px := mp.x - _scene_img_min.x
+			py := mp.y - _scene_img_min.y
+			if tH, hit := scene_view_pick(view, px, py); hit {
+				engine.inspector_request_select(tH)
+			} else {
+				_hierarchy_selected = _HANDLE_NONE
+			}
+		}
+	}
 
 	if rmb_down && !alt_down {
 		scene_flythrough_active = true
