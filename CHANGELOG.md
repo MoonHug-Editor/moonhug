@@ -1,3 +1,13 @@
+## [0.33.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.32.0...v0.33.0) (2026-07-11)
+
+### Features
+
+* dock toolbar in scene view ([9a28875](https://github.com/MoonHug-Editor/moonhug/commit/9a28875e5ff35a57e8e4c17aa3e500ee7657ae9e))
+
+### Bug Fixes
+
+* improve gizmo looks ([c10c19e](https://github.com/MoonHug-Editor/moonhug/commit/c10c19eebff5763b5b4c77c9ada334c0a6a26d02))
+
 ## [0.32.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.31.0...v0.32.0) (2026-07-11)
 
 ### Features
