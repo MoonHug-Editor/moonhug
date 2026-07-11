@@ -43,9 +43,16 @@ init_scene_view :: proc() {
 	scene_cam_dist = 12
 	scene_cam_target = {0, 0, 0}
 	update_scene_camera()
+
+	// Unity-style dockable overlay toolbars (dock.odin): register defaults,
+	// then restore persisted anchors/positions.
+	overlay_register("Tools", draw_tools_overlay, .Top_Left)
+	overlay_register("Pivot", draw_pivot_overlay, .Top_Left)
+	overlays_apply_settings()
 }
 
 shutdown_scene_view :: proc() {
+	overlays_shutdown()
 	gfx.rt_destroy(scene_rt)
 	scene_rt = nil
 }
@@ -193,7 +200,7 @@ draw_scene_view :: proc() {
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_scene_img_min = im.GetItemRectMin()
-			draw_scene_toolbar()
+			overlays_draw(_scene_img_min, im.GetItemRectMax())
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
@@ -204,26 +211,30 @@ draw_scene_view :: proc() {
 	im.End()
 }
 
-// Unity-style overlay buttons in the scene view's top-left corner. Rotate and
-// Scale are stubs until their gizmos land. W/E/R shortcuts live in
-// handle_scene_input (guarded against flythrough's WASD).
-draw_scene_toolbar :: proc() {
-	im.SetCursorPos(im.Vec2{8, 30})
-	mode_button :: proc(label: cstring, mode: Gizmo_Mode, enabled := true) {
-		active := gizmo_mode == mode
-		if active {
-			im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+// Unity-style Tools overlay (dockable toolbar, dock.odin): gizmo mode toggles.
+// Q/W/E/R shortcuts live in handle_scene_input (guarded against flythrough's WASD).
+draw_tools_overlay :: proc(vertical: bool) {
+	mode_button :: proc(icon: cstring, tooltip: cstring, mode: Gizmo_Mode, vertical: bool) {
+		if !vertical do im.SameLine()
+		if overlay_tool_button(icon, tooltip, gizmo_mode == mode) {
+			gizmo_mode = mode
 		}
-		if !enabled do im.BeginDisabled()
-		if im.SmallButton(label) do gizmo_mode = mode
-		if !enabled do im.EndDisabled()
-		if active do im.PopStyleColor()
-		im.SameLine()
 	}
-	mode_button("Move (W)", .Translate)
-	mode_button("Rotate (E)", .Rotate)
-	mode_button("Scale (R)", .Scale)
-	im.NewLine()
+	mode_button(ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical)
+	mode_button(ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
+	mode_button(ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
+	mode_button(ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
+}
+
+// Pivot mini-toolbar: Unity's Global/Local gizmo orientation switch — a single
+// icon+word button that flips the space on click. Scale always stays local
+// (see Gizmo_Space).
+draw_pivot_overlay :: proc(vertical: bool) {
+	if !vertical do im.SameLine()
+	label: cstring = gizmo_space == .Global ? ICON_MD_PUBLIC + " Global" : ICON_MD_DEPLOYED_CODE + " Local"
+	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = 0) {
+		gizmo_space = gizmo_space == .Global ? .Local : .Global
+	}
 }
 
 handle_scene_input :: proc() {
@@ -236,17 +247,26 @@ handle_scene_input :: proc() {
 	mmb_dragging := im.IsMouseDragging(.Middle, 1)
 	lmb_dragging := im.IsMouseDragging(.Left, 1)
 
-	// Gizmo mode shortcuts (Unity's W/E/R) — not during flythrough, whose
+	// Gizmo mode shortcuts (Unity's Q/W/E/R) — not during flythrough, whose
 	// WASDQE movement owns these keys.
 	if !rmb_down {
+		if im.IsKeyPressed(.Q) do gizmo_mode = .Picker
 		if im.IsKeyPressed(.W) do gizmo_mode = .Translate
 		if im.IsKeyPressed(.E) do gizmo_mode = .Rotate
 		if im.IsKeyPressed(.R) do gizmo_mode = .Scale
 	}
 
+	// Escape drops the selection (not mid-gizmo-drag: the drag teardown in
+	// render_scene_rt's else-branch would leave its undo step open).
+	if im.IsKeyPressed(.Escape) && !_gizmo_dragging {
+		_hierarchy_selected = _HANDLE_NONE
+		_scene_click_pending = false
+	}
+
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
-	// Alt+LMB orbits; and not on the gizmo — grabs must not select-through).
-	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() {
+	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
+	// not on an overlay toolbar — button clicks must not pick behind them).
+	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() && !overlay_wants_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true
 	}

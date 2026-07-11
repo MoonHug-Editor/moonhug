@@ -43,17 +43,6 @@ draw_tool_bar :: proc() {
     if im.IsItemHovered({}) {
         im.SetTooltip("Run game with current scene state (odin run app)")
     }
-
-    // Dockspace in a host window below the toolbar (so toolbar is fixed under menubar, not floating)
-    dockspace_pos := im.Vec2{vp.WorkPos.x, vp.WorkPos.y + f32(TOOLBAR_HEIGHT)}
-    dockspace_size := im.Vec2{vp.WorkSize.x, vp.WorkSize.y - f32(TOOLBAR_HEIGHT)}
-    im.SetNextWindowPos(dockspace_pos, {}, {0, 0})
-    im.SetNextWindowSize(dockspace_size, {})
-    if im.Begin("##DockSpaceHost", nil, {.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoCollapse}) {
-        dockspace_id := im.GetID("DockSpace")
-        im.DockSpace(dockspace_id, im.Vec2{0, 0}, {}, nil)
-        im.End()
-    }
 }
 
 RunPlayData :: struct {

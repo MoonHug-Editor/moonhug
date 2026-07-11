@@ -30,6 +30,7 @@ EditorSettings :: struct {
     show_hierarchy:           bool,
     show_history:             bool,
     has_view_state:           bool,
+    scene_overlays:           [dynamic]Overlay_Setting, // dockable toolbar placement (dock.odin)
 }
 
 editor_settings: EditorSettings
@@ -90,6 +91,8 @@ save_editor_settings :: proc() {
     editor_settings.show_hierarchy         = menu.show_hierarchy
     editor_settings.show_history           = menu.show_history
     editor_settings.has_view_state         = true
+
+    overlays_capture_settings()
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

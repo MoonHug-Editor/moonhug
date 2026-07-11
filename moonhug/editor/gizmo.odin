@@ -18,12 +18,23 @@ import "../engine"
 import "undo"
 
 Gizmo_Mode :: enum {
+	Picker, // selection only, no gizmo (Unity's Q hand/view slot)
 	Translate,
 	Rotate,
 	Scale,
 }
 
 gizmo_mode: Gizmo_Mode = .Translate
+
+// Gizmo axis orientation (Unity's Global/Local pivot switch): Global = world
+// axes; Local = the object's rotated axes. Scale IGNORES this — it always
+// composes in local space.
+Gizmo_Space :: enum {
+	Global,
+	Local,
+}
+
+gizmo_space: Gizmo_Space = .Global
 
 // Gizmo screen presence: fraction of the camera distance, so it stays a
 // constant apparent size while zooming (Unity-like).
@@ -35,6 +46,7 @@ _GIZMO_UNIFORM_AXIS :: 3 // scale mode's center handle "axis" index
 _gizmo_hot_axis: int = -1 // -1 none, 0/1/2 = X/Y/Z, 3 = uniform (scale)
 _gizmo_dragging: bool
 _gizmo_drag_axis: int
+_gizmo_drag_dirs: [3][3]f32 // axis dirs captured at grab (local axes move mid-drag)
 _gizmo_grab_s: f32          // axis-line parameter at grab (translate/scale)
 _gizmo_grab_vec: [3]f32     // plane vector at grab (rotate)
 _gizmo_grab_px: [2]f32      // mouse pixels at grab (scale uniform)
@@ -65,6 +77,14 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_V
 	mouse_ray := engine.render_view_screen_ray(view, mouse_px, mouse_py)
 
 	switch gizmo_mode {
+	case .Picker:
+		// Selection only: no handles, never consumes the mouse. Close out any
+		// drag left open by a mid-drag mode switch (Q shortcut).
+		if _gizmo_dragging {
+			_gizmo_dragging = false
+			undo.field_drag_end(&_gizmo_drag)
+		}
+		_gizmo_hot_axis = -1
 	case .Translate:
 		_gizmo_translate(tH, view, origin, size, mouse_ray)
 	case .Rotate:
@@ -72,6 +92,19 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_V
 	case .Scale:
 		_gizmo_scale(tH, view, origin, size, mouse_ray, {mouse_px, mouse_py})
 	}
+}
+
+// Axis directions for translate/rotate honoring gizmo_space: world axes in
+// Global, the object's rotated basis in Local (same column extraction as the
+// scale gizmo, which is always local).
+_gizmo_axes :: proc(tH: engine.Transform_Handle) -> [3][3]f32 {
+	if gizmo_space == .Global do return _GIZMO_AXIS_DIRS
+	rot := engine.quat_to_matrix3(engine.transform_world_rotation(tH))
+	dirs: [3][3]f32
+	for axis in 0 ..< 3 {
+		dirs[axis] = linalg.normalize0([3]f32{rot[0, axis], rot[1, axis], rot[2, axis]})
+	}
+	return dirs
 }
 
 _gizmo_release_if_needed :: proc() -> bool {
@@ -85,7 +118,7 @@ _gizmo_release_if_needed :: proc() -> bool {
 // ---------------------------------------------------------------- Translate
 
 _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, origin: [3]f32, size: f32, mouse_ray: engine.Ray) {
-	dirs := _GIZMO_AXIS_DIRS
+	dirs := _gizmo_axes(tH)
 	colors := _GIZMO_AXIS_COLORS
 
 	hover_axis := -1
@@ -105,14 +138,17 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
 			_gizmo_dragging = true
 			_gizmo_drag_axis = hover_axis
+			_gizmo_drag_dirs = dirs
 			_gizmo_start_world = origin
 			_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
 			_gizmo_drag = undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
 		}
 	}
 	if _gizmo_release_if_needed() {
-		s := _closest_axis_param(_gizmo_start_world, dirs[_gizmo_drag_axis], mouse_ray)
-		delta := dirs[_gizmo_drag_axis] * (s - _gizmo_grab_s)
+		// Drag math uses the grab-time axes (dirs would be stable for
+		// translate, but keep the same convention as rotate).
+		s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
+		delta := _gizmo_drag_dirs[_gizmo_drag_axis] * (s - _gizmo_grab_s)
 		engine.transform_set_world_position(tH, _gizmo_start_world + delta)
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
@@ -138,7 +174,10 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 // ------------------------------------------------------------------- Rotate
 
 _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, origin: [3]f32, size: f32, mouse_ray: engine.Ray) {
-	dirs := _GIZMO_AXIS_DIRS
+	// Local axes MOVE while a rotate drag changes the rotation — the drag math
+	// below must use the grab-time axes (_gizmo_drag_dirs); drawing uses the
+	// current ones so the gizmo visibly rotates with the object (Unity-like).
+	dirs := _gizmo_axes(tH)
 	colors := _GIZMO_AXIS_COLORS
 
 	// Hover: nearest of the three circles, tested segment-by-segment in
@@ -169,6 +208,7 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 			if grab, ok := _ray_plane_vector(mouse_ray, origin, dirs[hover_axis]); ok {
 				_gizmo_dragging = true
 				_gizmo_drag_axis = hover_axis
+				_gizmo_drag_dirs = dirs
 				_gizmo_start_world = origin
 				_gizmo_start_rot = engine.transform_world_rotation(tH)
 				_gizmo_grab_vec = grab
@@ -177,7 +217,7 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 		}
 	}
 	if _gizmo_release_if_needed() {
-		axis := dirs[_gizmo_drag_axis]
+		axis := _gizmo_drag_dirs[_gizmo_drag_axis]
 		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, axis); ok {
 			angle := _signed_angle(_gizmo_grab_vec, cur, axis)
 			delta := linalg.quaternion_angle_axis_f32(angle, axis)
@@ -200,10 +240,11 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 			prev = p
 		}
 	}
-	// During a drag: show the grab and current vectors like Unity's pie hint.
+	// During a drag: show the grab and current vectors like Unity's pie hint
+	// (in the grab-time plane — the live axes rotate with the object).
 	if _gizmo_dragging {
 		gfx.draw_line(origin_now, origin_now + _gizmo_grab_vec * size, _GIZMO_UNIFORM_COLOR, depth_test = false)
-		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, dirs[_gizmo_drag_axis]); ok {
+		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis]); ok {
 			gfx.draw_line(origin_now, origin_now + cur * size, _GIZMO_HOT_COLOR, depth_test = false)
 		}
 	}

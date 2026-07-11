@@ -128,6 +128,9 @@ main :: proc() {
 
         menu.draw_menu_bar()
         draw_tool_bar()
+        // Dockspace host under the toolbar; must precede the dockable views'
+        // Begin() calls (dock.odin — builds the default layout on first run).
+        draw_dockspace()
 
         _process_undo_shortcuts()
 

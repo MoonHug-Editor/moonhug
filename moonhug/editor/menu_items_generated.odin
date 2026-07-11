@@ -25,6 +25,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_toggle("View/History", &menu.show_history, 6)
 	menu.add_menu_toggle("View/Inspector", &menu.show_inspector, 10)
 	menu.add_menu_toggle("View/Project Inspector", &menu.show_project_inspector, 11)
+	menu.add_menu_item("View/Reset Layout", "", view_reset_layout_menu, 20)
 	menu.add_menu_item("View/Theme/Dark", "", menu.menu_item_view_theme_dark, -12)
 	menu.add_menu_item("View/Theme/Light", "", menu.menu_item_view_theme_light, -11)
 	menu.add_menu_item("View/Theme/Classic", "", menu.menu_item_view_theme_classic, -10)

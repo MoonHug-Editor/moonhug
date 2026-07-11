@@ -57,3 +57,11 @@ ICON_MD_MORE_HORIZ    :: "\ue5d3"   // more_horiz
 ICON_MD_MENU          :: "\ue5d4"   // menu ("..." dropdown / overflow menu)
 ICON_MD_SETTINGS      :: "\ue8b8"   // settings
 ICON_MD_REFRESH       :: "\ue5d5"   // refresh
+
+// Scene view overlay toolbars (dock.odin)
+ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle)
+ICON_MD_OPEN_WITH      :: "\ue89f"   // open_with (move tool)
+ICON_MD_ROTATE_RIGHT   :: "\ue41a"   // rotate_right (rotate tool)
+ICON_MD_OPEN_IN_FULL   :: "\uf1ce"   // open_in_full (scale tool)
+ICON_MD_ARROW_SELECTOR :: "\uf82f"   // arrow_selector_tool (picker tool)
+ICON_MD_PUBLIC         :: "\ue80b"   // public/globe (global gizmo space)
