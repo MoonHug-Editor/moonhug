@@ -15,12 +15,8 @@ Vertex :: struct {
 	color:    [4]u8,
 }
 
-// HEAP-allocated by texture_create: the sdlgpu3 imgui backend dereferences
-// &imgui_binding at render time (ImTextureID is a pointer to it), so the
-// address must be stable.
 Texture :: struct {
 	gpu:           ^sdl.GPUTexture,
-	imgui_binding: sdl.GPUTextureSamplerBinding,
 	width, height: i32,
 }
 
@@ -237,7 +233,6 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 
 	tex := new(Texture, runtime.default_allocator())
 	tex.gpu = gpu_tex
-	tex.imgui_binding = {texture = gpu_tex, sampler = _gfx.sampler_linear}
 	tex.width = width
 	tex.height = height
 	return tex
@@ -249,9 +244,11 @@ texture_destroy :: proc(tex: ^Texture) {
 	free(tex, runtime.default_allocator())
 }
 
-// For imgui: ImTextureID is the address of the (stable) binding struct.
+// For imgui: since imgui 1.92.2 the SDLGPU3 backend's ImTextureID is the raw
+// SDL_GPUTexture pointer (NOT a sampler-binding struct — passing one crashes,
+// see the backend's 2025-08-08 breaking change).
 texture_imgui_id :: proc(tex: ^Texture) -> rawptr {
-	return &tex.imgui_binding
+	return tex.gpu
 }
 
 mesh_create :: proc(vertices: []Vertex, indices: []u32) -> Mesh {

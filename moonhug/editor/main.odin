@@ -2,10 +2,12 @@ package editor
 
 import "core:fmt"
 import "core:mem"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
+import gfx "../engine/gfx"
 import strings "core:strings"
 import im "../../external/odin-imgui"
-import im_gl "../../external/odin-imgui/imgui_impl_opengl3"
+import im_sdl "../../external/odin-imgui/imgui_impl_sdl3"
+import im_sdlgpu "../../external/odin-imgui/imgui_impl_sdlgpu3"
 import "inspector"
 import "menu"
 import clip "clipboard"
@@ -44,21 +46,19 @@ main :: proc() {
 
     win_w, win_h, win_x, win_y := load_editor_settings()
     has_saved_settings := win_w > 0 && win_h > 0
-    if has_saved_settings {
-        rl.InitWindow(win_w, win_h, WINDOW_TITLE)
-    } else {
-        rl.InitWindow(800, 600, WINDOW_TITLE)
+    // Window starts hidden so saved geometry applies before first present.
+    if !gfx.init(WINDOW_TITLE, has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
+        fmt.eprintln("gfx init failed (is SDL3 installed? brew install sdl3)")
+        return
     }
-    defer rl.CloseWindow()
+    defer gfx.shutdown()
 
-    rl.SetWindowState({.WINDOW_RESIZABLE})
     if has_saved_settings && win_x >= 0 && win_y >= 0 {
-        rl.SetWindowPosition(win_x, win_y)
+        gfx.set_window_geometry(win_x, win_y, win_w, win_h)
     } else if !has_saved_settings {
         apply_default_window_size()
     }
-    rl.SetExitKey(.KEY_NULL)
-    rl.SetTargetFPS(60)
+    gfx.show_window()
     set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ above
 
     // Setup ImGui
@@ -74,9 +74,17 @@ main :: proc() {
     // before the backend builds the font atlas texture.
     editor_fonts_init()
 
-    // Initialize OpenGL3 backend (Raylib uses OpenGL)
-    im_gl.Init("#version 330")
-    defer im_gl.Shutdown()
+    // SDL3 platform backend (input, DisplaySize, clipboard, text input) +
+    // SDLGPU3 renderer backend.
+    im_sdl.InitForSDLGPU(gfx.window())
+    defer im_sdl.Shutdown()
+    imgui_gpu_info := im_sdlgpu.InitInfo{
+        Device            = gfx.device(),
+        ColorTargetFormat = gfx.swapchain_format(),
+        MSAASamples       = ._1,
+    }
+    im_sdlgpu.Init(&imgui_gpu_info)
+    defer im_sdlgpu.Shutdown()
 
     apply_editor_theme()
 
@@ -99,46 +107,23 @@ main :: proc() {
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
 
-    // Unity-style Auto Refresh: re-scan assets when the editor window regains
-    // focus (git checkouts, external editors). The refresh is an incremental
-    // mtime-diff, so an unchanged tree costs one stat pass and touches nothing.
-    window_was_focused := true
+    for !menu.quit_requested && !gfx.quit_requested() {
+        // Events feed both the editor input snapshot and imgui (the SDL3
+        // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
+        gfx.poll_events(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
 
-    for !menu.quit_requested && !rl.WindowShouldClose() {
-        window_focused := rl.IsWindowFocused()
-        if window_focused && !window_was_focused {
+        // Unity-style Auto Refresh: re-scan assets when the editor window
+        // regains focus (git checkouts, external editors). Incremental
+        // mtime-diff — an unchanged tree costs one stat pass.
+        if gfx.input_focus_gained() {
             engine.asset_db_refresh()
         }
-        window_was_focused = window_focused
 
-        // Update ImGui IO
-        io := im.GetIO()
-        sw := f32(rl.GetScreenWidth())
-        sh := f32(rl.GetScreenHeight())
-        io.DisplaySize = im.Vec2{sw, sh}
-        if menu.scale_ui_for_dpi {
-            rw := f32(rl.GetRenderWidth())
-            rh := f32(rl.GetRenderHeight())
-            io.DisplayFramebufferScale = im.Vec2{
-                rw / sw if sw > 0 else 1,
-                rh / sh if sh > 0 else 1,
-            }
-        } else {
-            io.DisplayFramebufferScale = im.Vec2{1, 1}
-        }
-        io.DeltaTime = rl.GetFrameTime()
-
-        // Update mouse
-        mouse_pos := rl.GetMousePosition()
-        io.MousePos = im.Vec2{mouse_pos.x, mouse_pos.y}
-        io.MouseDown[0] = rl.IsMouseButtonDown(.LEFT)
-        io.MouseDown[1] = rl.IsMouseButtonDown(.RIGHT)
-        io.MouseWheel = rl.GetMouseWheelMove()
-
-        update_imgui_keyboard_input()
+        if !gfx.frame_begin() do continue
 
         // Start ImGui frame
-        im_gl.NewFrame()
+        im_sdlgpu.NewFrame()
+        im_sdl.NewFrame()
         im.NewFrame()
 
         menu.draw_menu_bar()
@@ -186,15 +171,19 @@ main :: proc() {
         draw_about_popup()
         draw_status_bar()
 
-        // Render
-        rl.BeginDrawing()
-        rl.ClearBackground(rl.RAYWHITE)
-
-        // Let ImGui render
+        // Render. Scene/game views already encoded their offscreen passes
+        // into this frame's command buffer during the UI calls above; imgui's
+        // copy passes (PrepareDrawData) must come BEFORE the swapchain render
+        // pass, and its draw happens inside it (pass_end callback).
         im.Render()
-        im_gl.RenderDrawData(im.GetDrawData())
-
-        rl.EndDrawing()
+        dd := im.GetDrawData()
+        im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
+        if gfx.pass_begin_swapchain([4]f32{0.96, 0.96, 0.96, 1}, depth = false) {
+            gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
+                im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+            })
+        }
+        gfx.frame_end()
     }
 
     save_editor_settings()
@@ -268,7 +257,6 @@ editor_shutdown :: proc() {
     inspector.shutdown_registries()
     shutdown_hierarchy_views()
     shutdown_project_view()
-    delete(keys_down_prev)
     menu.shutdown_menu()
     log.info("Editor Shutdown")
     log.shutdown()

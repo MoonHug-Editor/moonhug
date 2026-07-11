@@ -68,13 +68,13 @@ Vertex :: struct { position: [3]f32, normal: [3]f32, uv: [2]f32, color: [4]u8 }
 // ONE vertex format for the CPU batch AND meshes; normals unused by the
 // unlit shader, reserved for lighting.
 
-Texture :: struct { gpu: ^sdl.GPUTexture, imgui_binding: sdl.GPUTextureSamplerBinding, width, height: i32 }
+Texture :: struct { gpu: ^sdl.GPUTexture, width, height: i32 }
 Mesh    :: struct { vbuf, ibuf: ^sdl.GPUBuffer, index_count: u32 }
-Render_Target :: struct { color, depth: ^sdl.GPUTexture, width, height: i32,
-                          imgui_binding: sdl.GPUTextureSamplerBinding }
-// Texture/Render_Target are HEAP-allocated by their creators: the sdlgpu3
-// imgui backend dereferences &imgui_binding at render time (ImTextureID is a
-// pointer to it) — the address must be stable.
+Render_Target :: struct { color, depth: ^sdl.GPUTexture, width, height: i32 }
+// imgui 1.92.2+ SDLGPU3 convention: ImTextureID is the RAW ^sdl.GPUTexture
+// (passing a sampler-binding pointer — the pre-1.92.2 convention — reads
+// garbage and crashes in Metal). texture_imgui_id/rt_imgui_id return it;
+// re-fetch each frame since rt_resize recreates the color texture.
 
 // window / input
 init :: proc(title: cstring, w, h: i32) -> bool     // sdl.Init + window + GPU device + pipelines
@@ -179,33 +179,42 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       (replaces rl.DrawText in the app demo menu; future debug overlay)
 - [x] `matrix4_perspective_z01` / `matrix4_ortho_z01` in `engine/gfx/math.odin`
       (SDL_GPU clip z∈[0,1]; core linalg is GL-style)
-- [x] Checkpoint: `engine/gfx/scratch` validation window (deleted after the
-      cutover) — quads, alpha blend, both line pipelines, mid-pass view_proj
-      switch, debug text, offscreen target pass; verified on-screen
+- [x] Checkpoint: `engine/gfx/scratch` validation window (since deleted) —
+      quads, alpha blend, both line pipelines, mid-pass view_proj switch,
+      debug text, offscreen target pass; verified on-screen
 
 ### 3. THE CUTOVER (engine → app → editor, one compiling checkpoint)
-- [ ] `engine/texture2d.odin` — cache becomes `map[Asset_GUID]^gfx.Texture`,
+- [x] `engine/texture2d.odin` — cache holds `^gfx.Texture` values,
       decode via `vendor:stb/image` (force RGBA8); `texture_load(guid)`
       signature unchanged; add `texture_load_file` (About logo)
-- [ ] `engine/render.odin` — full rewrite straight to render commands (above);
-      kill `camera_to_3d`
-- [ ] `app/app.odin` — SDL loop; `game.odin`/`tick_player.odin` →
-      `gfx.input_*`, `rand.int31_max`; `demo_menu.odin` → `gfx.debug_text`
+- [x] editor's imgui swapchain pass is DEPTH-LESS (`pass_begin_swapchain(...,
+      depth=false)`) — the imgui pipeline declares no depth attachment; the
+      mismatch is an API violation (MTL_DEBUG_LAYER asserts on it; Vulkan is
+      stricter still) though Metal happens to tolerate it unvalidated — NOT
+      the cause of the cutover segfaults (that was ImTextureID, see Risks)
+- [x] `engine/render.odin` — full rewrite straight to render commands (above);
+      killed `camera_to_3d`; `render_world_cameras` leaves its pass OPEN for
+      caller overlays (demo menu, editor)
+- [x] `app/app.odin` — SDL loop; `game.odin`/`tick_player.odin` →
+      `gfx.input_*`, `rand.int_max`; `demo_menu.odin` → `gfx.debug_text`
       (screen-ortho `set_view_proj` in the same swapchain pass)
-- [ ] `editor/main.odin` — `im_sdl.InitForSDLGPU` + `im_sdlgpu.Init`;
+- [x] `editor/main.odin` — `im_sdl.InitForSDLGPU` + `im_sdlgpu.Init`;
       `PrepareDrawData` BEFORE the swapchain pass, `RenderDrawData` inside it;
       focus-regain refresh via `gfx.input_focus_gained()`;
-      DELETE `editor/imgui_raylib_input.odin` + all manual imgui IO code
-- [ ] `editor/view_scene.odin` / `view_game.odin` — `^gfx.Render_Target` +
-      `rt_resize`; scene camera becomes plain `Editor_Camera` struct (orbit/fly
-      logic unchanged); grid/axes via `gfx.draw_line`; imgui image uvs `{0,0}/{1,1}`
-- [ ] `editor/view_about.odin`, `editor/window.odin` (SDL display APIs),
+      DELETED `editor/imgui_raylib_input.odin` + all manual imgui IO code +
+      the `scale_ui_for_dpi` workaround toggle
+- [x] `editor/view_scene.odin` / `view_game.odin` — `^gfx.Render_Target` +
+      `rt_resize`; scene camera stays plain orbit data (orbit/fly logic
+      unchanged); grid/axes via `gfx.draw_line`; imgui image uvs `{0,0}/{1,1}`
+- [x] `editor/view_about.odin`, `editor/window.odin` (SDL display APIs),
       `dock_icon_darwin.odin` unchanged
-- [ ] Checkpoint: run.sh works; tank scene identical in Game and Scene views;
-      turret aims; cameras stack by order; tests green; no runtime raylib
+- [x] Checkpoint: zero `vendor:raylib` imports; tests green; app runs (init +
+      loop + shutdown clean); editor starts and runs its loop clean.
+      VISUAL parity (tank scene in views, turret aim) verified in phase 4
 
 ### 4. Parity polish
-- [ ] Sprite orientation/uv verification (stb top-down vs GL bottom-up flip)
+- [x] Sprite orientation/uv verification — confirmed in-editor; sprites also
+      render SHARPER than raylib did (views run at native HiDPI resolution)
 - [ ] Overlapping-sprite alpha/depth check
 - [ ] Window position persistence across monitors; ProMotion dt sanity
 - [ ] macOS live-resize freeze documented (SDL_AddEventWatch fix deferred)
@@ -290,9 +299,13 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 
 ## Risks
 
-1. **ImTextureID pointer stability** — sdlgpu3 backend dereferences
-   `^GPUTextureSamplerBinding` at render time → heap-allocate Texture and
-   Render_Target. Sneakiest bug; designed out up front.
+1. **ImTextureID convention** — RESOLVED the hard way: imgui 1.92.2 changed
+   the sdlgpu3 backend's ImTextureID from `^GPUTextureSamplerBinding` to the
+   raw `^sdl.GPUTexture`. Passing the old-style binding pointer produced
+   random use-after-free crashes (moving crash sites: atomic refcount,
+   sampler bind, objc_msgSend). The backend source comments the breaking
+   change at the exact crash line — when a GPU crash makes no sense, read
+   the backend .cpp first.
 2. **Copy-pass/render-pass ordering** in one command buffer (batch uploads,
    imgui PrepareDrawData) → validated by the phase-2 scratch triangle.
 3. **Shader toolchain flakiness** → blobs committed, hand-MSL fallback.

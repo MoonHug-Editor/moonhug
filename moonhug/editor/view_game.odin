@@ -1,39 +1,27 @@
 package editor
 
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import im "../../external/odin-imgui"
 import "../engine"
 
-game_rt: rl.RenderTexture2D
+game_rt: ^gfx.Render_Target
 
 init_game_view :: proc() {
-	game_rt = rl.LoadRenderTexture(1, 1)
+	game_rt = gfx.rt_create(1, 1)
 }
 
 shutdown_game_view :: proc() {
-	if rl.IsRenderTextureValid(game_rt) {
-		rl.UnloadRenderTexture(game_rt)
-	}
-}
-
-resize_render_texture :: proc(rt: ^rl.RenderTexture2D, w, h: i32) {
-	if i32(rt.texture.width) != w || i32(rt.texture.height) != h {
-		if rl.IsRenderTextureValid(rt^) {
-			rl.UnloadRenderTexture(rt^)
-		}
-		rt^ = rl.LoadRenderTexture(w, h)
-	}
+	gfx.rt_destroy(game_rt)
+	game_rt = nil
 }
 
 render_game_rt :: proc(w, h: i32) -> bool {
 	if w < 1 || h < 1 do return false
-	resize_render_texture(&game_rt, w, h)
-	rl.BeginTextureMode(game_rt)
-	had_camera := engine.render_world_cameras()
-	if !had_camera {
-		rl.ClearBackground(rl.BLACK)
-	}
-	rl.EndTextureMode()
+	gfx.rt_resize(game_rt, w, h)
+	had_camera := engine.camera_active() != nil
+	// Begins the pass (black clear when no camera) and leaves it open.
+	engine.render_world_cameras(game_rt)
+	gfx.pass_end()
 	return had_camera
 }
 
@@ -48,8 +36,8 @@ draw_game_view :: proc() {
 
 		if w > 0 && h > 0 {
 			had_camera := render_game_rt(w, h)
-			tex_id := im.TextureID(game_rt.texture.id)
-			im.Image(im.TextureRef{_TexID = tex_id}, avail, {0, 1}, {1, 0})
+			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(game_rt)))
+			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 
 			if !had_camera {
 				msg: cstring = "No cameras rendering"

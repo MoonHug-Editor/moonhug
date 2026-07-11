@@ -2,8 +2,8 @@
 package app
 
 import "../engine"
+import gfx "../engine/gfx"
 import "../engine/serialization"
-import rl "vendor:raylib"
 import "core:os"
 import "core:fmt"
 import "core:encoding/json"
@@ -17,12 +17,11 @@ main :: proc() {
     // its console (standalone runs just see the tagged text in the terminal).
     log.stdout_tagged = true
 
-    rl.InitWindow(800, 600, "App")
-    defer rl.CloseWindow()
-
-    rl.SetWindowState({.WINDOW_RESIZABLE})
-    rl.SetExitKey(.KEY_NULL) // ESC is used by the demo menu, not for quitting
-    rl.SetTargetFPS(60)
+    if !gfx.init("App", 800, 600) {
+        log.error("gfx init failed")
+        return
+    }
+    defer gfx.shutdown()
 
     uc := new(engine.UserContext)
     uc.is_playmode = true
@@ -50,15 +49,21 @@ main :: proc() {
         log.errorf("scene not found: %s", scene_path)
     }
 
-    for !rl.WindowShouldClose() {
-        dt := rl.GetFrameTime()
-        __update(dt)
+    for !gfx.quit_requested() {
+        gfx.poll_events()
+        if !gfx.frame_begin() do continue
 
-        rl.BeginDrawing()
-        rl.ClearBackground(rl.BLACK)
-        engine.render_world_cameras()
-        demo_menu_draw()
-        rl.EndDrawing()
+        __update(gfx.delta_time())
+
+        // World cameras render first (pass stays open), then the demo menu
+        // overlays in screen space within the same swapchain pass.
+        if engine.render_world_cameras() {
+            ws := gfx.window_size()
+            gfx.set_view_proj(gfx.matrix4_ortho_pixels(f32(ws.x), f32(ws.y)))
+            demo_menu_draw()
+            gfx.pass_end()
+        }
+        gfx.frame_end()
     }
 
     phase_run(Phase.Shutdown)

@@ -1,27 +1,26 @@
 package editor
 
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import im "../../external/odin-imgui"
+import "../engine"
 import "menu"
 
 ABOUT_POPUP_ID :: "About"
 ABOUT_LOGO_PATH :: "../readme_files/Logo1.png"
 ABOUT_LOGO_MAX_WIDTH :: f32(300)
 
-about_logo_tex: rl.Texture2D
-about_logo_loaded: bool
+about_logo_tex: ^gfx.Texture
 
 draw_about_popup :: proc() {
     if menu.show_about {
         menu.show_about = false
 
-        about_logo_tex = rl.LoadTexture(ABOUT_LOGO_PATH)
-        about_logo_loaded = rl.IsTextureValid(about_logo_tex)
+        about_logo_tex, _ = engine.texture_load_file(ABOUT_LOGO_PATH)
 
         im.OpenPopup(ABOUT_POPUP_ID, {})
     }
 
-    if !about_logo_loaded {
+    if about_logo_tex == nil {
         return
     }
 
@@ -30,20 +29,18 @@ draw_about_popup :: proc() {
     im.SetNextWindowPos(center, .Appearing, im.Vec2{0.5, 0.5})
 
     if im.BeginPopupModal(ABOUT_POPUP_ID, nil, {.AlwaysAutoResize}) {
-        if about_logo_loaded {
-            tex_w := f32(about_logo_tex.width)
-            tex_h := f32(about_logo_tex.height)
-            scale := min(ABOUT_LOGO_MAX_WIDTH / tex_w, 1.0)
-            img_size := im.Vec2{tex_w * scale, tex_h * scale}
+        tex_w := f32(about_logo_tex.width)
+        tex_h := f32(about_logo_tex.height)
+        scale := min(ABOUT_LOGO_MAX_WIDTH / tex_w, 1.0)
+        img_size := im.Vec2{tex_w * scale, tex_h * scale}
 
-            avail := im.GetContentRegionAvail()
-            if avail.x > img_size.x {
-                im.SetCursorPosX(im.GetCursorPosX() + (avail.x - img_size.x) * 0.5)
-            }
-            tex_id := im.TextureID(about_logo_tex.id)
-            im.Image(im.TextureRef{_TexID = tex_id}, img_size)
-            im.Spacing()
+        avail := im.GetContentRegionAvail()
+        if avail.x > img_size.x {
+            im.SetCursorPosX(im.GetCursorPosX() + (avail.x - img_size.x) * 0.5)
         }
+        tex_id := im.TextureID(uintptr(gfx.texture_imgui_id(about_logo_tex)))
+        im.Image(im.TextureRef{_TexID = tex_id}, img_size)
+        im.Spacing()
 
         im.Separator()
         im.Spacing()
@@ -53,14 +50,16 @@ draw_about_popup :: proc() {
         im.Spacing()
 
         btn_width: f32 = 120
-        avail := im.GetContentRegionAvail()
+        avail = im.GetContentRegionAvail()
         im.SetCursorPosX(im.GetCursorPosX() + (avail.x - btn_width) * 0.5)
         if im.Button("OK", im.Vec2{btn_width, 0}) {
             im.CloseCurrentPopup()
         }
         im.EndPopup()
-    } else if about_logo_loaded {
-        rl.UnloadTexture(about_logo_tex)
-        about_logo_loaded = false
+    } else {
+        // Popup closed: release the logo. Deferred GPU release is safe even
+        // though imgui referenced it this frame.
+        gfx.texture_destroy(about_logo_tex)
+        about_logo_tex = nil
     }
 }

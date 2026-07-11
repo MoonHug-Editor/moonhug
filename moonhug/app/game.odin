@@ -6,8 +6,8 @@ package app
 // nothing in scenes without one.
 
 import "core:math"
-import rl "vendor:raylib"
 import "../engine"
+import gfx "../engine/gfx"
 
 TANK_SPEED :: f32(5)
 
@@ -47,10 +47,10 @@ tank_move :: proc(tank: ^Tank, dt: f32) {
     t := engine.pool_get(&w.transforms, engine.Handle(tank.owner))
     if t == nil do return
 
-    if rl.IsKeyDown(.W) do t.position[1] += TANK_SPEED * dt
-    if rl.IsKeyDown(.S) do t.position[1] -= TANK_SPEED * dt
-    if rl.IsKeyDown(.A) do t.position[0] -= TANK_SPEED * dt
-    if rl.IsKeyDown(.D) do t.position[0] += TANK_SPEED * dt
+    if gfx.input_key_down(.W) do t.position[1] += TANK_SPEED * dt
+    if gfx.input_key_down(.S) do t.position[1] -= TANK_SPEED * dt
+    if gfx.input_key_down(.A) do t.position[0] -= TANK_SPEED * dt
+    if gfx.input_key_down(.D) do t.position[0] += TANK_SPEED * dt
 }
 
 turret_aim :: proc(tank: ^Tank) {
@@ -62,12 +62,13 @@ turret_aim :: proc(tank: ^Tank) {
     if cam == nil do return
 
     // Mouse ray intersected with the z=0 gameplay plane.
-    ray := rl.GetScreenToWorldRay(rl.GetMousePosition(), engine.camera_to_3d(cam))
+    ws := gfx.window_size()
+    ray := engine.camera_screen_ray(cam, gfx.input_mouse_position(), {f32(ws.x), f32(ws.y)})
     if math.abs(ray.direction.z) < 1e-6 do return
-    hit_t := -ray.position.z / ray.direction.z
+    hit_t := -ray.origin.z / ray.direction.z
     if hit_t < 0 do return
-    mouse_x := ray.position.x + ray.direction.x * hit_t
-    mouse_y := ray.position.y + ray.direction.y * hit_t
+    mouse_x := ray.origin.x + ray.direction.x * hit_t
+    mouse_y := ray.origin.y + ray.direction.y * hit_t
 
     tw := engine.transform_world(engine.Transform_Handle(tank.turret.handle))
     dx := mouse_x - tw.position.x
@@ -82,7 +83,7 @@ turret_aim :: proc(tank: ^Tank) {
 }
 
 fire :: proc(tank: ^Tank, spawn_parent: engine.Transform_Handle) {
-    if !rl.IsMouseButtonPressed(.LEFT) && !rl.IsKeyPressed(.SPACE) do return
+    if !gfx.input_mouse_pressed(.Left) && !gfx.input_key_pressed(.SPACE) do return
     if engine.asset_guid_is_empty(tank.projectile_prefab) do return
 
     bH := engine.scene_instantiate_guid(tank.projectile_prefab, spawn_parent)

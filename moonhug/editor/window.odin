@@ -1,6 +1,6 @@
 package editor
 
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
@@ -64,22 +64,20 @@ apply_editor_theme :: proc() {
 }
 
 apply_default_window_size :: proc() {
-    monitor := rl.GetCurrentMonitor()
-    mw := rl.GetMonitorWidth(monitor)
-    mh := rl.GetMonitorHeight(monitor)
-    w := i32(f32(mw) * 0.85)
-    h := i32(f32(mh) * 0.85)
-    rl.SetWindowSize(w, h)
-    rl.SetWindowPosition((mw - w) / 2, (mh - h) / 2)
+    dx, dy, dw, dh := gfx.display_usable_bounds()
+    w := i32(f32(dw) * 0.85)
+    h := i32(f32(dh) * 0.85)
+    gfx.set_window_geometry(dx + (dw - w) / 2, dy + (dh - h) / 2, w, h)
 }
 
 save_editor_settings :: proc() {
     os.make_directory(PROJECT_SETTINGS_DIR)
-    pos := rl.GetWindowPosition()
-    editor_settings.width  = i32(rl.GetScreenWidth())
-    editor_settings.height = i32(rl.GetScreenHeight())
-    editor_settings.x      = i32(pos.x)
-    editor_settings.y      = i32(pos.y)
+    pos := gfx.window_position()
+    size := gfx.window_size()
+    editor_settings.width  = size.x
+    editor_settings.height = size.y
+    editor_settings.x      = pos.x
+    editor_settings.y      = pos.y
     editor_settings.theme  = menu.active_theme
 
     editor_settings.show_inspector         = menu.show_inspector

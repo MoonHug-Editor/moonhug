@@ -1,8 +1,46 @@
 package engine
 
-import rl "vendor:raylib"
-import gl "vendor:raylib/rlgl"
+// Camera + render-command pipeline on the gfx package (docs/SDL3Renderer.md).
+// Cameras collect per-frame command lists (temp allocator) from the world's
+// renderer pools and execute them through gfx draws. The editor scene view
+// reuses the SAME collect/execute path with its own (non-component) camera,
+// so game view and scene view render identically by construction.
 
+import gfx "gfx"
+import "core:math"
+import "core:math/linalg"
+import "core:slice"
+
+PIXELS_PER_UNIT :: 100.0
+
+Render_View :: struct {
+	view, proj:    matrix[4, 4]f32,
+	view_proj:     matrix[4, 4]f32,
+	inv_view_proj: matrix[4, 4]f32,
+	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
+	layer_mask:    u32,
+}
+
+Draw_Sprite :: struct {
+	texture: Asset_GUID,
+	corners: [4][3]f32, // world-space bl, br, tr, tl — shared with picking
+	color:   [4]f32,
+}
+
+Render_Command :: struct {
+	depth:   f32, // view-space depth, sprites sort back-to-front
+	// becomes #no_nil once Draw_Mesh joins (docs/SDL3Renderer.md #6)
+	variant: union {
+		Draw_Sprite,
+	},
+}
+
+Ray :: struct {
+	origin, direction: [3]f32,
+}
+
+// Highest-order enabled camera — for game logic queries (mouse rays).
+// Rendering iterates ALL enabled cameras (render_world_cameras).
 camera_active :: proc() -> ^Camera {
 	world := ctx_world()
 	best: ^Camera
@@ -21,40 +59,71 @@ camera_active :: proc() -> ^Camera {
 	return best
 }
 
-// The rl.Camera3D used to render this Camera — also feeds
-// rl.GetScreenToWorldRay for mouse picking from game code.
-camera_to_3d :: proc(cam: ^Camera) -> rl.Camera3D {
-	tw := transform_world(Transform_Handle(cam.owner))
-	rot := quat_to_matrix3(tw.rotation)
-	forward := rl.Vector3{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
-	up := rl.Vector3{rot[0, 1], rot[1, 1], rot[2, 1]}
-	pos := rl.Vector3{tw.position.x, tw.position.y, tw.position.z}
-
-	return rl.Camera3D{
-		position   = pos,
-		target     = pos + forward,
-		up         = up,
-		fovy       = cam.fov,
-		projection = .PERSPECTIVE,
+render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_mask: u32) -> Render_View {
+	vp := proj * view
+	return Render_View{
+		view          = view,
+		proj          = proj,
+		view_proj     = vp,
+		inv_view_proj = linalg.inverse(vp),
+		width         = width,
+		height        = height,
+		layer_mask    = layer_mask,
 	}
 }
 
-render_world_cameras :: proc() -> bool {
-	cam := camera_active()
-	if cam == nil do return false
-
-	cc := cam.clear_color
-	rl.ClearBackground({u8(cc[0] * 255), u8(cc[1] * 255), u8(cc[2] * 255), u8(cc[3] * 255)})
-
-	cam3d := camera_to_3d(cam)
-
-	rl.BeginMode3D(cam3d)
-	render_sprite_renderers(cam.render_layer_mask)
-	rl.EndMode3D()
-	return true
+// View from the camera transform's world rotation (forward = -Z column,
+// up = +Y column); projection honors the component's fov/near/far — near and
+// far were previously ignored (raylib hardcoded them).
+camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
+	tw := transform_world(Transform_Handle(cam.owner))
+	rot := quat_to_matrix3(tw.rotation)
+	forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
+	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
+	view := linalg.matrix4_look_at_f32(tw.position, tw.position + forward, up)
+	aspect := width / max(height, 1)
+	proj := gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
+	return render_view_make(view, proj, width, height, cam.render_layer_mask)
 }
 
-render_sprite_renderers :: proc(layer_mask: u32) {
+// Unprojects a viewport pixel (origin top-left) into a world ray. Replaces
+// rl.GetScreenToWorldRay for game code (turret_aim) and feeds scene picking.
+render_view_screen_ray :: proc(view: Render_View, px, py: f32) -> Ray {
+	ndc_x := 2 * px / max(view.width, 1) - 1
+	ndc_y := 1 - 2 * py / max(view.height, 1)
+	near4 := view.inv_view_proj * [4]f32{ndc_x, ndc_y, 0, 1} // z01: near plane at 0
+	far4 := view.inv_view_proj * [4]f32{ndc_x, ndc_y, 1, 1}
+	near := near4.xyz / near4.w
+	far := far4.xyz / far4.w
+	return Ray{origin = near, direction = linalg.normalize(far - near)}
+}
+
+camera_screen_ray :: proc(cam: ^Camera, screen_pos: [2]f32, viewport: [2]f32) -> Ray {
+	view := camera_render_view(cam, viewport.x, viewport.y)
+	return render_view_screen_ray(view, screen_pos.x, screen_pos.y)
+}
+
+// The world-space quad a SpriteRenderer covers: bl, br, tr, tl. Used by BOTH
+// command collection and scene picking so they can't diverge. Sprites are
+// transform-oriented (not billboards), sized tex_pixels/PIXELS_PER_UNIT.
+sprite_world_corners :: proc(tw: Transform_World, tex_w, tex_h: i32) -> [4][3]f32 {
+	half_w := tw.scale.x * f32(tex_w) / (2.0 * PIXELS_PER_UNIT)
+	half_h := tw.scale.y * f32(tex_h) / (2.0 * PIXELS_PER_UNIT)
+	rot := quat_to_matrix3(tw.rotation)
+	right := [3]f32{rot[0, 0], rot[1, 0], rot[2, 0]}
+	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
+	pos := tw.position
+	return {
+		pos - right * half_w - up * half_h,
+		pos + right * half_w - up * half_h,
+		pos + right * half_w + up * half_h,
+		pos - right * half_w + up * half_h,
+	}
+}
+
+// Appends commands for every renderer visible to `view` (enabled, active in
+// hierarchy, layer mask intersecting). `out` should live on temp_allocator.
+render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	world := ctx_world()
 	for i in 0 ..< len(world.sprite_renderers.slots) {
 		slot := &world.sprite_renderers.slots[i]
@@ -65,47 +134,82 @@ render_sprite_renderers :: proc(layer_mask: u32) {
 
 		t := pool_get(&world.transforms, Handle(sr.owner))
 		if t == nil || !transform_active_in_hierarchy(sr.owner) do continue
-		if t.render_layer & layer_mask == 0 do continue
+		if t.render_layer & view.layer_mask == 0 do continue
 
 		tex, ok := texture_load(sr.texture)
 		if !ok do continue
 
 		tw := transform_world(Transform_Handle(sr.owner))
-		pos := rl.Vector3{tw.position.x, tw.position.y, tw.position.z}
-		tint := rl.Color{
-			u8(sr.color[0] * 255),
-			u8(sr.color[1] * 255),
-			u8(sr.color[2] * 255),
-			u8(sr.color[3] * 255),
-		}
-
-		PIXELS_PER_UNIT :: 100.0
-		half_w := tw.scale.x * f32(tex.width) / (2.0 * PIXELS_PER_UNIT)
-		half_h := tw.scale.y * f32(tex.height) / (2.0 * PIXELS_PER_UNIT)
-
-		rot := quat_to_matrix3(tw.rotation)
-		right := rl.Vector3{rot[0, 0], rot[1, 0], rot[2, 0]}
-		up := rl.Vector3{rot[0, 1], rot[1, 1], rot[2, 1]}
-
-		p0 := pos - right * half_w - up * half_h
-		p1 := pos + right * half_w - up * half_h
-		p2 := pos + right * half_w + up * half_h
-		p3 := pos - right * half_w + up * half_h
-
-		gl.SetTexture(tex.rl_texture.id)
-		gl.Begin(gl.QUADS)
-		gl.Color4ub(tint.r, tint.g, tint.b, tint.a)
-
-		gl.TexCoord2f(0, 1)
-		gl.Vertex3f(p0.x, p0.y, p0.z)
-		gl.TexCoord2f(1, 1)
-		gl.Vertex3f(p1.x, p1.y, p1.z)
-		gl.TexCoord2f(1, 0)
-		gl.Vertex3f(p2.x, p2.y, p2.z)
-		gl.TexCoord2f(0, 0)
-		gl.Vertex3f(p3.x, p3.y, p3.z)
-
-		gl.End()
-		gl.SetTexture(0)
+		pos4 := view.view * [4]f32{tw.position.x, tw.position.y, tw.position.z, 1}
+		append(out, Render_Command{
+			depth   = -pos4.z, // right-handed view looks down -Z; larger = farther
+			variant = Draw_Sprite{
+				texture = sr.texture,
+				corners = sprite_world_corners(tw, tex.width, tex.height),
+				color   = sr.color,
+			},
+		})
 	}
+}
+
+// Sorts (sprites back-to-front) and replays commands into the CURRENT gfx
+// pass. Meshes will run first with depth-write; alpha-blended sprites after.
+render_execute :: proc(view: Render_View, commands: []Render_Command) {
+	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
+		return a.depth > b.depth
+	})
+
+	gfx.set_view_proj(view.view_proj)
+	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
+	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
+	for &cmd in commands {
+		switch d in cmd.variant {
+		case Draw_Sprite:
+			tex, ok := texture_load(d.texture)
+			if !ok do continue
+			gfx.draw_quad(d.corners, uvs, d.color, tex.gfx)
+		}
+	}
+}
+
+// Renders ALL enabled cameras ascending by Camera.order into `target`
+// (nil = swapchain). Begins the pass — cleared by the lowest-order camera's
+// clear_color, black when no camera — and LEAVES IT OPEN so the caller can
+// draw overlays (demo menu, editor grid) before gfx.pass_end().
+// Returns false only when no pass could begin (window minimized).
+render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
+	world := ctx_world()
+	cams := make([dynamic]^Camera, 0, 8, context.temp_allocator)
+	for i in 0 ..< len(world.cameras.slots) {
+		slot := &world.cameras.slots[i]
+		if !slot.alive do continue
+		cam := &slot.data
+		if !cam.enabled do continue
+		if !transform_active_in_hierarchy(cam.owner) do continue
+		append(&cams, cam)
+	}
+	slice.sort_by(cams[:], proc(a, b: ^Camera) -> bool {
+		return a.order < b.order
+	})
+
+	clear_color := [4]f32{0, 0, 0, 1}
+	if len(cams) > 0 do clear_color = cams[0].clear_color
+
+	width, height: f32
+	if target != nil {
+		gfx.pass_begin_target(target, clear_color)
+		width, height = f32(target.width), f32(target.height)
+	} else {
+		if !gfx.pass_begin_swapchain(clear_color) do return false
+		ws := gfx.window_size()
+		width, height = f32(ws.x), f32(ws.y)
+	}
+
+	for cam in cams {
+		view := camera_render_view(cam, width, height)
+		commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
+		render_collect_commands(view, &commands)
+		render_execute(view, commands[:])
+	}
+	return true
 }

@@ -2,13 +2,14 @@ package app
 
 // In-game demo hub: lists the scenes authored on the DemoMenu component and
 // loads one additively on its number key (1..9); ESC unloads it back to the
-// menu. Draws with plain raylib, so demo_menu_draw must run inside the
-// BeginDrawing/EndDrawing block (called from main after world rendering).
+// menu. Draws with gfx.debug_text, so demo_menu_draw must run inside an open
+// gfx pass under a pixel-ortho view_proj (called from main after world
+// rendering, same swapchain pass).
 
 import "core:path/filepath"
 import "core:strings"
 import "core:encoding/uuid"
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import "../engine"
 
 @(private = "file")
@@ -18,9 +19,11 @@ demo_menu_draw :: proc() {
     menu := demo_menu_get()
     if menu == nil do return
 
+    WHITE :: [4]f32{0.96, 0.96, 0.96, 1}
+
     if _current_demo != nil {
-        rl.DrawText("ESC: back to menu", 10, 10, 20, rl.RAYWHITE)
-        if rl.IsKeyReleased(.ESCAPE) {
+        gfx.debug_text({10, 10}, 20, WHITE, "ESC: back to menu")
+        if gfx.input_key_released(.ESCAPE) {
             engine.sm_scene_unload(_current_demo)
             _current_demo = nil
             _menu_root_set_active(menu, true)
@@ -28,21 +31,18 @@ demo_menu_draw :: proc() {
         return
     }
 
-    rl.DrawText("DEMOS", 10, 10, 30, rl.RAYWHITE)
-    y: i32 = 50
+    gfx.debug_text({10, 10}, 30, WHITE, "DEMOS")
+    y := f32(50)
     for guid, i in menu.demos {
         if i >= 9 do break // number keys only reach 9
         path, ok := engine.asset_db_get_path(uuid.Identifier(guid))
         label := filepath.short_stem(filepath.base(path)) if ok else "(missing scene)"
-        line := strings.clone_to_cstring(
-            strings.concatenate({_DIGITS[i], ": ", label}, context.temp_allocator),
-            context.temp_allocator,
-        )
-        rl.DrawText(line, 10, y, 20, rl.RAYWHITE)
+        line := strings.concatenate({_DIGITS[i], ": ", label}, context.temp_allocator)
+        gfx.debug_text({10, y}, 20, WHITE, line)
         y += 26
 
         // React on key UP so the press doesn't leak into the loaded demo.
-        if ok && rl.IsKeyReleased(rl.KeyboardKey(int(rl.KeyboardKey.ONE) + i)) {
+        if ok && gfx.input_key_released(gfx.Key(int(gfx.Key._1) + i)) {
             _current_demo = engine.scene_load_additive_path(path)
             if _current_demo != nil {
                 scene_loaded()

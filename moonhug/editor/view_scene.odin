@@ -1,18 +1,20 @@
 package editor
 
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import im "../../external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
 
-scene_rt: rl.RenderTexture2D
-scene_camera: rl.Camera3D
+scene_rt: ^gfx.Render_Target
 
+// Editor camera: plain orbit data, NOT a Camera component — the scene view
+// renders through the same engine collect/execute path as game cameras.
+scene_cam_pos: [3]f32
 scene_cam_yaw: f32
 scene_cam_pitch: f32
 scene_cam_dist: f32
-scene_cam_target: rl.Vector3
+scene_cam_target: [3]f32
 
 scene_view_hovered: bool
 scene_flythrough_active: bool
@@ -24,8 +26,12 @@ PAN_SENSITIVITY :: 0.003
 ZOOM_SCROLL_FACTOR :: 0.1
 ZOOM_DRAG_FACTOR :: 0.01
 
+SCENE_CAM_FOV_DEG :: f32(45)
+SCENE_CAM_NEAR :: f32(0.1)
+SCENE_CAM_FAR :: f32(1000)
+
 init_scene_view :: proc() {
-	scene_rt = rl.LoadRenderTexture(1, 1)
+	scene_rt = gfx.rt_create(1, 1)
 	scene_cam_yaw = 0.8
 	scene_cam_pitch = 0.6
 	scene_cam_dist = 12
@@ -34,21 +40,20 @@ init_scene_view :: proc() {
 }
 
 shutdown_scene_view :: proc() {
-	if rl.IsRenderTextureValid(scene_rt) {
-		rl.UnloadRenderTexture(scene_rt)
-	}
+	gfx.rt_destroy(scene_rt)
+	scene_rt = nil
 }
 
-scene_cam_forward :: proc() -> rl.Vector3 {
-	return linalg.normalize(scene_cam_target - scene_camera.position)
+scene_cam_forward :: proc() -> [3]f32 {
+	return linalg.normalize(scene_cam_target - scene_cam_pos)
 }
 
-scene_cam_right :: proc() -> rl.Vector3 {
+scene_cam_right :: proc() -> [3]f32 {
 	fwd := scene_cam_forward()
-	return linalg.normalize(linalg.cross(fwd, rl.Vector3{0, 1, 0}))
+	return linalg.normalize(linalg.cross(fwd, [3]f32{0, 1, 0}))
 }
 
-scene_cam_up :: proc() -> rl.Vector3 {
+scene_cam_up :: proc() -> [3]f32 {
 	return linalg.normalize(linalg.cross(scene_cam_right(), scene_cam_forward()))
 }
 
@@ -61,35 +66,46 @@ update_scene_camera :: proc() {
 	sy := math.sin(scene_cam_yaw)
 	cy := math.cos(scene_cam_yaw)
 
-	scene_camera = {
-		position   = scene_cam_target + rl.Vector3{sp * cy, cp, sp * sy} * scene_cam_dist,
-		target     = scene_cam_target,
-		up         = {0, 1, 0},
-		fovy       = 45,
-		projection = .PERSPECTIVE,
-	}
+	scene_cam_pos = scene_cam_target + [3]f32{sp * cy, cp, sp * sy} * scene_cam_dist
+}
+
+// The scene view's Render_View — also the basis for picking rays later.
+scene_render_view :: proc(w, h: f32) -> engine.Render_View {
+	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
+	proj := gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), w / max(h, 1), SCENE_CAM_NEAR, SCENE_CAM_FAR)
+	return engine.render_view_make(view, proj, w, h, ~u32(0)) // editor sees all layers
 }
 
 render_scene_rt :: proc(w, h: i32) {
 	if w < 1 || h < 1 do return
-	resize_render_texture(&scene_rt, w, h)
+	gfx.rt_resize(scene_rt, w, h)
 
-	rl.BeginTextureMode(scene_rt)
-	rl.ClearBackground({38, 38, 38, 255})
-
-	rl.BeginMode3D(scene_camera)
-	rl.DrawGrid(20, 1)
+	gfx.pass_begin_target(scene_rt, [4]f32{0.15, 0.15, 0.15, 1})
+	view := scene_render_view(f32(w), f32(h))
+	gfx.set_view_proj(view.view_proj)
+	draw_grid()
 	draw_axis_lines()
-	engine.render_sprite_renderers(~u32(0))
-	rl.EndMode3D()
 
-	rl.EndTextureMode()
+	commands := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+	engine.render_collect_commands(view, &commands)
+	engine.render_execute(view, commands[:])
+	gfx.pass_end()
+}
+
+draw_grid :: proc() {
+	GRID_HALF :: 10
+	col := [4]f32{0.35, 0.35, 0.35, 1}
+	for i in -GRID_HALF ..= GRID_HALF {
+		f := f32(i)
+		gfx.draw_line({f, 0, -GRID_HALF}, {f, 0, GRID_HALF}, col)
+		gfx.draw_line({-GRID_HALF, 0, f}, {GRID_HALF, 0, f}, col)
+	}
 }
 
 draw_axis_lines :: proc() {
-	rl.DrawLine3D({0, 0, 0}, {5, 0, 0}, rl.RED)
-	rl.DrawLine3D({0, 0, 0}, {0, 5, 0}, rl.GREEN)
-	rl.DrawLine3D({0, 0, 0}, {0, 0, 5}, rl.BLUE)
+	gfx.draw_line({0, 0, 0}, {5, 0, 0}, {0.9, 0.16, 0.22, 1}) // X red
+	gfx.draw_line({0, 0, 0}, {0, 5, 0}, {0, 0.89, 0.19, 1})   // Y green
+	gfx.draw_line({0, 0, 0}, {0, 0, 5}, {0, 0.47, 0.95, 1})   // Z blue
 }
 
 draw_scene_view :: proc() {
@@ -103,8 +119,8 @@ draw_scene_view :: proc() {
 
 		if w > 0 && h > 0 {
 			render_scene_rt(w, h)
-			tex_id := im.TextureID(scene_rt.texture.id)
-			im.Image(im.TextureRef{_TexID = tex_id}, avail, {0, 1}, {1, 0})
+			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
+			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
@@ -135,13 +151,13 @@ handle_scene_input :: proc() {
 		speed: f32 = FLYTHROUGH_BASE_SPEED * dt
 		if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
 
-		move := rl.Vector3{0, 0, 0}
+		move := [3]f32{0, 0, 0}
 		if im.IsKeyDown(.W) do move += scene_cam_forward()
 		if im.IsKeyDown(.S) do move -= scene_cam_forward()
 		if im.IsKeyDown(.D) do move += scene_cam_right()
 		if im.IsKeyDown(.A) do move -= scene_cam_right()
-		if im.IsKeyDown(.E) do move += rl.Vector3{0, 1, 0}
-		if im.IsKeyDown(.Q) do move -= rl.Vector3{0, 1, 0}
+		if im.IsKeyDown(.E) do move += [3]f32{0, 1, 0}
+		if im.IsKeyDown(.Q) do move -= [3]f32{0, 1, 0}
 
 		len := linalg.length(move)
 		if len > 0 {

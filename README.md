@@ -55,8 +55,8 @@ For more details see [Contribution](docs/Contribution.md)
 
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
-- vendor:raylib - for Editor's window creation and graphics rendering
-- SDL3 (`brew install sdl3`) - window/input/GPU, replacing raylib (see [SDL3 Renderer](docs/SDL3Renderer.md))
+- SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/SDL3Renderer.md))
+  - one-time: `make -C "$(odin root)/vendor/stb/src"` - builds vendored stb (image decoding)
   - optional, only to edit shaders: `brew install shaderc spirv-cross`
 
 ## Features

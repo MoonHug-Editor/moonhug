@@ -58,9 +58,6 @@ show_hierarchy := true
 @(menu_toggle={path="View/History", order=6})
 show_history := false
 
-@(menu_toggle={path="View/Scale UI for DPI (sharing)", order=5})
-scale_ui_for_dpi := true
-
 @(menu_item={path="File/Save", order=0, shortcut="Ctrl+S"})
 file_save_menu :: proc()
 {

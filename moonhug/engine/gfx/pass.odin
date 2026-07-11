@@ -7,11 +7,9 @@ package gfx
 import "base:runtime"
 import sdl "vendor:sdl3"
 
-// HEAP-allocated (rt_create): imgui_binding address is the ImTextureID.
 Render_Target :: struct {
 	color, depth:  ^sdl.GPUTexture,
 	width, height: i32,
-	imgui_binding: sdl.GPUTextureSamplerBinding,
 }
 
 _Draw :: struct {
@@ -35,7 +33,7 @@ _Uniform :: struct {
 _pass: struct {
 	active:       bool,
 	target_color: ^sdl.GPUTexture,
-	target_depth: ^sdl.GPUTexture,
+	target_depth: ^sdl.GPUTexture, // nil = depth-less pass (imgui-only)
 	clear:        Maybe([4]f32),
 	vps:          [dynamic]matrix[4, 4]f32,
 	vtx:          [dynamic]Vertex,
@@ -77,12 +75,12 @@ rt_create :: proc(width, height: i32) -> ^Render_Target {
 		layer_count_or_depth = 1,
 		num_levels           = 1,
 	})
-	rt.imgui_binding = {texture = rt.color, sampler = _gfx.sampler_linear}
 	return rt
 }
 
-// No-op when the size is unchanged. The imgui_binding is patched in place so
-// the address handed out by rt_imgui_id stays valid.
+// No-op when the size is unchanged. Callers must re-fetch rt_imgui_id after
+// a resize (the color texture is recreated) — fetching it every frame is the
+// normal pattern.
 rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
 	if rt.width == width && rt.height == height do return
 	sdl.ReleaseGPUTexture(_gfx.device, rt.color)
@@ -92,7 +90,6 @@ rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
 	rt.depth = tmp.depth
 	rt.width = width
 	rt.height = height
-	rt.imgui_binding.texture = tmp.color
 	free(tmp, runtime.default_allocator())
 }
 
@@ -103,8 +100,9 @@ rt_destroy :: proc(rt: ^Render_Target) {
 	free(rt, runtime.default_allocator())
 }
 
+// imgui 1.92.2+ SDLGPU3 convention: ImTextureID = raw ^sdl.GPUTexture.
 rt_imgui_id :: proc(rt: ^Render_Target) -> rawptr {
-	return &rt.imgui_binding
+	return rt.color
 }
 
 pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
@@ -117,7 +115,10 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
 
 // Acquires the swapchain image; false when the window is minimized (skip
 // drawing this frame). The window depth buffer is lazily (re)sized.
-pass_begin_swapchain :: proc(clear: Maybe([4]f32)) -> bool {
+// depth=false makes a depth-less pass — REQUIRED when only external
+// pipelines without a depth attachment draw in it (the editor's imgui pass);
+// our own gfx pipelines must NOT draw in such a pass (they declare D32).
+pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 	assert(!_pass.active, "gfx pass already active")
 	swap_tex: ^sdl.GPUTexture
 	w, h: u32
@@ -125,6 +126,14 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32)) -> bool {
 		return false
 	}
 	if swap_tex == nil do return false
+
+	if !depth {
+		_pass.active = true
+		_pass.target_color = swap_tex
+		_pass.target_depth = nil
+		_pass.clear = clear
+		return true
+	}
 
 	if _gfx.window_depth == nil || _gfx.window_depth_w != w || _gfx.window_depth_h != h {
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
@@ -252,15 +261,21 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		color_info.load_op = .CLEAR
 		color_info.clear_color = {clear.r, clear.g, clear.b, clear.a}
 	}
-	depth_info := sdl.GPUDepthStencilTargetInfo{
-		texture          = _pass.target_depth,
-		clear_depth      = 1,
-		load_op          = .CLEAR, // depth is always per-pass scratch
-		store_op         = .DONT_CARE,
-		stencil_load_op  = .DONT_CARE,
-		stencil_store_op = .DONT_CARE,
+	rp: ^sdl.GPURenderPass
+	if _pass.target_depth != nil {
+		depth_info := sdl.GPUDepthStencilTargetInfo{
+			texture          = _pass.target_depth,
+			clear_depth      = 1,
+			load_op          = .CLEAR, // depth is always per-pass scratch
+			store_op         = .DONT_CARE,
+			stencil_load_op  = .DONT_CARE,
+			stencil_store_op = .DONT_CARE,
+		}
+		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, &depth_info)
+	} else {
+		assert(len(_pass.draws) == 0, "gfx draws recorded in a depth-less pass")
+		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
 	}
-	rp := sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, &depth_info)
 
 	bound_kind: Maybe(_Pipeline_Kind)
 	batch_bound := false
