@@ -12,6 +12,8 @@ SceneFile :: struct {
 	breadcrumbs:   [dynamic]Breadcrumb,
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
+	mesh_filters: [dynamic]MeshFilter,
+	mesh_renderers: [dynamic]MeshRenderer,
 	players: [dynamic]Player,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
@@ -24,6 +26,8 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_mesh_filter_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_mesh_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -59,6 +63,22 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		lifetime^ = lifetime_data
 		id_to_lifetime_handle[lifetime_data.local_id] = handle
 		lifetime_data = {}
+	}
+
+	for &mesh_filter_data in sf.mesh_filters {
+		handle, mesh_filter := pool_create(&w.mesh_filters)
+		handle.type_key = .MeshFilter
+		mesh_filter^ = mesh_filter_data
+		id_to_mesh_filter_handle[mesh_filter_data.local_id] = handle
+		mesh_filter_data = {}
+	}
+
+	for &mesh_renderer_data in sf.mesh_renderers {
+		handle, mesh_renderer := pool_create(&w.mesh_renderers)
+		handle.type_key = .MeshRenderer
+		mesh_renderer^ = mesh_renderer_data
+		id_to_mesh_renderer_handle[mesh_renderer_data.local_id] = handle
+		mesh_renderer_data = {}
 	}
 
 	for &player_data in sf.players {
@@ -129,6 +149,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				lifetime := pool_get(&w.lifetimes, h)
 				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_mesh_filter_handle); ok {
+				c.handle = h
+				mesh_filter := pool_get(&w.mesh_filters, h)
+				if mesh_filter != nil do mesh_filter.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_mesh_renderer_handle); ok {
+				c.handle = h
+				mesh_renderer := pool_get(&w.mesh_renderers, h)
+				if mesh_renderer != nil do mesh_renderer.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
 				c.handle = h
 				player := pool_get(&w.players, h)
@@ -161,6 +189,12 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			for lid, h in id_to_lifetime_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
+			for lid, h in id_to_mesh_filter_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
+			for lid, h in id_to_mesh_renderer_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_player_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -181,6 +215,8 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
 		for lid, h in id_to_camera_handle do _file_lookup[lid] = h
 		for lid, h in id_to_lifetime_handle do _file_lookup[lid] = h
+		for lid, h in id_to_mesh_filter_handle do _file_lookup[lid] = h
+		for lid, h in id_to_mesh_renderer_handle do _file_lookup[lid] = h
 		for lid, h in id_to_player_handle do _file_lookup[lid] = h
 		for lid, h in id_to_script_handle do _file_lookup[lid] = h
 		for lid, h in id_to_sprite_renderer_handle do _file_lookup[lid] = h
@@ -192,6 +228,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for _, h in id_to_lifetime_handle {
 			p := pool_get(&w.lifetimes, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s, &_file_lookup)
+		}
+		for _, h in id_to_mesh_filter_handle {
+			p := pool_get(&w.mesh_filters, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(MeshFilter), s, &_file_lookup)
+		}
+		for _, h in id_to_mesh_renderer_handle {
+			p := pool_get(&w.mesh_renderers, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(MeshRenderer), s, &_file_lookup)
 		}
 		for _, h in id_to_player_handle {
 			p := pool_get(&w.players, h)
@@ -248,6 +292,8 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 
 	for &c in sf.cameras { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.mesh_filters { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.mesh_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.scripts { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.sprite_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
@@ -311,6 +357,8 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
+	for &c in sf.mesh_filters { _remap_refs_in_value(&c, type_info_of(MeshFilter), &remap) }
+	for &c in sf.mesh_renderers { _remap_refs_in_value(&c, type_info_of(MeshRenderer), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
 	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
 	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
@@ -337,6 +385,10 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.cameras)
 	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
 	delete(sf.lifetimes)
+	for &c in sf.mesh_filters { type_cleanup(.MeshFilter, &c) }
+	delete(sf.mesh_filters)
+	for &c in sf.mesh_renderers { type_cleanup(.MeshRenderer, &c) }
+	delete(sf.mesh_renderers)
 	for &c in sf.players { type_cleanup(.Player, &c) }
 	delete(sf.players)
 	for &c in sf.scripts { type_cleanup(.Script, &c) }
@@ -357,6 +409,8 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.breadcrumbs)
 	delete(sf.cameras)
 	delete(sf.lifetimes)
+	delete(sf.mesh_filters)
+	delete(sf.mesh_renderers)
 	delete(sf.players)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)

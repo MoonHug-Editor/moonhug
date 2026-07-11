@@ -240,19 +240,22 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       rejected); the in-editor cube renders in phase 6
 
 ### 6. MeshFilter + MeshRenderer + picker ext: filter
-- [ ] `engine/component_MeshFilter.odin` — `mesh: Asset_GUID` `ext:"glb,gltf"`
-- [ ] `engine/component_MeshRenderer.odin` — `texture: Asset_GUID`
-      `ext:"png,jpg,jpeg,bmp"`, `color: [4]f32 decor:color()` (Unity parity:
-      filter=data, renderer=appearance; no material system yet). Guids via `uuidgen`
-- [ ] `Draw_Mesh` emission in `render_collect_commands` (sibling MeshFilter via
-      transform_get_comp; skip empty guid)
-- [ ] Object Picker `ext:` tag (untagged Asset_GUID currently lists EVERYTHING):
-      `current_field_ext_filter` in `editor/inspector/view_inspector.odin`,
-      row + drag-drop filtering in `property_drawer_asset_guid.odin`;
-      add `ext:` to SpriteRenderer.texture too
-- [ ] prebuild rerun
-- [ ] Checkpoint: Add Component shows both; mesh picker lists only glb/gltf;
-      textured tinted cube renders in Scene AND Game; save/load round-trips
+- [x] `engine/component_MeshFilter.odin` — `mesh: Asset_GUID` `ext:"glb,gltf"`
+- [x] `engine/component_MeshRenderer.odin` — `texture: Asset_GUID`
+      `ext:"png,jpg,jpeg,bmp"` (empty = untextured white), `color: [4]f32
+      decor:color()` (Unity parity: filter=data, renderer=appearance; no
+      material system yet)
+- [x] `Draw_Mesh` emission in `render_collect_commands` (sibling MeshFilter via
+      transform_get_comp; skip empty guid); render_execute draws meshes first
+      (depth-write), then sprites back-to-front
+- [x] Object Picker `ext:` tag: `current_field_ext_filter` in
+      `editor/inspector/view_inspector.odin`, row + drag-drop filtering in
+      `property_drawer_asset_guid.odin`; SpriteRenderer.texture tagged too
+- [x] prebuild rerun
+- [x] Checkpoint: save/load round-trip test green (125 tests);
+      `assets/meshes/cube.glb` added for the in-editor check — Add Component
+      shows both, mesh picker lists only glb/gltf, cube renders in Scene AND
+      Game views (VERIFY IN EDITOR)
 
 ### 7. Scene picking
 - [ ] `engine/raycast.odin` — `ray_hit_aabb` (slab), `ray_hit_triangle`

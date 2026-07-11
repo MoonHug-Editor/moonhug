@@ -59,6 +59,16 @@ __decorator__Camera__clear_color :: proc(ctx: ^DrawContext) {
 
 __decorators__Camera: []DecoratorProc
 
+__decorator__MeshRenderer__color :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_color(ctx)
+	} else {
+		decorator_color(ctx)
+	}
+}
+
+__decorators__MeshRenderer: []DecoratorProc
+
 __decorator__SpriteRenderer__color :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_color(ctx)
@@ -104,6 +114,11 @@ init_decorators :: proc() {
 	__decorators__Camera[5] = __decorator__Camera__clear_color
 	__decorators__Camera[6] = nil
 	decorator_registry[typeid_of(engine.Camera)] = __decorators__Camera
+	__decorators__MeshRenderer = make([]DecoratorProc, 3)
+	__decorators__MeshRenderer[0] = nil
+	__decorators__MeshRenderer[1] = nil
+	__decorators__MeshRenderer[2] = __decorator__MeshRenderer__color
+	decorator_registry[typeid_of(engine.MeshRenderer)] = __decorators__MeshRenderer
 	__decorators__SpriteRenderer = make([]DecoratorProc, 3)
 	__decorators__SpriteRenderer[0] = nil
 	__decorators__SpriteRenderer[1] = nil

@@ -3,6 +3,8 @@ package engine
 World :: struct {
 	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
+	mesh_filters: Pool(MeshFilter),
+	mesh_renderers: Pool(MeshRenderer),
 	players: Pool(Player, 10),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
@@ -16,6 +18,8 @@ w_init :: proc(w:^World)
 {
 	pool_init(&w.cameras)
 	pool_init(&w.lifetimes)
+	pool_init(&w.mesh_filters)
+	pool_init(&w.mesh_renderers)
 	pool_init(&w.players)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
@@ -40,6 +44,22 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.lifetimes, c_copy)
+	}
+	w.pool_table[TypeKey.MeshFilter] = pool_make_entry(&w.mesh_filters)
+	w.pool_table[TypeKey.MeshFilter].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^MeshFilter)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.mesh_filters, c_copy)
+	}
+	w.pool_table[TypeKey.MeshRenderer] = pool_make_entry(&w.mesh_renderers)
+	w.pool_table[TypeKey.MeshRenderer].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^MeshRenderer)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.mesh_renderers, c_copy)
 	}
 	w.pool_table[TypeKey.Player] = pool_make_entry(&w.players)
 	w.pool_table[TypeKey.Player].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -99,6 +119,16 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.lifetimes, owned.handle)
 	}
+	else when T == MeshFilter {
+		owned, _ := transform_find_comp(t, .MeshFilter)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.mesh_filters, owned.handle)
+	}
+	else when T == MeshRenderer {
+		owned, _ := transform_find_comp(t, .MeshRenderer)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.mesh_renderers, owned.handle)
+	}
 	else when T == Player {
 		owned, _ := transform_find_comp(t, .Player)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
@@ -148,6 +178,18 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .Lifetime)
 		if idx < 0 do return
 		pool_destroy(&w.lifetimes, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == MeshFilter {
+		owned, idx := transform_find_comp(t, .MeshFilter)
+		if idx < 0 do return
+		pool_destroy(&w.mesh_filters, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == MeshRenderer {
+		owned, idx := transform_find_comp(t, .MeshRenderer)
+		if idx < 0 do return
+		pool_destroy(&w.mesh_renderers, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 	else when T == Player {

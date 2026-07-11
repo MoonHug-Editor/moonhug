@@ -27,10 +27,17 @@ Draw_Sprite :: struct {
 	color:   [4]f32,
 }
 
+Draw_Mesh :: struct {
+	mesh:    Asset_GUID,
+	texture: Asset_GUID, // empty = untextured white
+	model:   matrix[4, 4]f32,
+	color:   [4]f32,
+}
+
 Render_Command :: struct {
 	depth:   f32, // view-space depth, sprites sort back-to-front
-	// becomes #no_nil once Draw_Mesh joins (docs/SDL3Renderer.md #6)
-	variant: union {
+	variant: union #no_nil {
+		Draw_Mesh,
 		Draw_Sprite,
 	},
 }
@@ -103,6 +110,11 @@ camera_screen_ray :: proc(cam: ^Camera, screen_pos: [2]f32, viewport: [2]f32) ->
 	return render_view_screen_ray(view, screen_pos.x, screen_pos.y)
 }
 
+trs_matrix :: proc(position: [3]f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
+	q := quaternion(x = rotation.x, y = rotation.y, z = rotation.z, w = rotation.w)
+	return linalg.matrix4_from_trs_f32(position, q, scale)
+}
+
 // The world-space quad a SpriteRenderer covers: bl, br, tr, tl. Used by BOTH
 // command collection and scene picking so they can't diverge. Sprites are
 // transform-oriented (not billboards), sized tex_pixels/PIXELS_PER_UNIT.
@@ -125,6 +137,31 @@ sprite_world_corners :: proc(tw: Transform_World, tex_w, tex_h: i32) -> [4][3]f3
 // hierarchy, layer mask intersecting). `out` should live on temp_allocator.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	world := ctx_world()
+
+	for i in 0 ..< len(world.mesh_renderers.slots) {
+		slot := &world.mesh_renderers.slots[i]
+		if !slot.alive do continue
+		mr := &slot.data
+		if !mr.enabled do continue
+
+		t := pool_get(&world.transforms, Handle(mr.owner))
+		if t == nil || !transform_active_in_hierarchy(mr.owner) do continue
+		if t.render_layer & view.layer_mask == 0 do continue
+
+		_, mf := transform_get_comp(Transform_Handle(mr.owner), MeshFilter)
+		if mf == nil || mf.mesh == {} do continue
+
+		tw := transform_world(Transform_Handle(mr.owner))
+		append(out, Render_Command{
+			variant = Draw_Mesh{
+				mesh    = mf.mesh,
+				texture = mr.texture,
+				model   = trs_matrix(tw.position, tw.rotation, tw.scale),
+				color   = mr.color,
+			},
+		})
+	}
+
 	for i in 0 ..< len(world.sprite_renderers.slots) {
 		slot := &world.sprite_renderers.slots[i]
 		if !slot.alive do continue
@@ -152,10 +189,14 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	}
 }
 
-// Sorts (sprites back-to-front) and replays commands into the CURRENT gfx
-// pass. Meshes will run first with depth-write; alpha-blended sprites after.
+// Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
+// (depth-write pipeline handles their ordering), then alpha-blended sprites
+// back-to-front by view depth.
 render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
+		_, a_sprite := a.variant.(Draw_Sprite)
+		_, b_sprite := b.variant.(Draw_Sprite)
+		if a_sprite != b_sprite do return b_sprite // meshes first
 		return a.depth > b.depth
 	})
 
@@ -168,6 +209,16 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			tex, ok := texture_load(d.texture)
 			if !ok do continue
 			gfx.draw_quad(d.corners, uvs, d.color, tex.gfx)
+		case Draw_Mesh:
+			mesh, ok := mesh_load(d.mesh)
+			if !ok do continue
+			gpu_tex: ^gfx.Texture
+			if d.texture != {} {
+				if tex, tex_ok := texture_load(d.texture); tex_ok {
+					gpu_tex = tex.gfx
+				}
+			}
+			gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, d.color)
 		}
 	}
 }

@@ -43,7 +43,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         guid_ptr^ = {}
         mark_inspector_changed()
     }
-    if dropped != "" {
+    if dropped != "" && _ext_filter_matches(dropped) {
         if new_guid, ok := engine.asset_db_get_guid(dropped); ok {
             guid_ptr^ = engine.Asset_GUID(new_guid)
             mark_inspector_changed()
@@ -108,6 +108,7 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.
     result := false
     shown := 0
     for cand in candidates {
+        if !_ext_filter_matches(cand.path) do continue
         name := filepath_base(cand.path)
         if search != "" && !strings.contains(strings.to_lower(name, context.temp_allocator), search) {
             continue
@@ -125,6 +126,21 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.
         im.TextDisabled("(no assets with this root component)" if key != engine.INVALID_TYPE_KEY else "(no matches)")
     }
     return result
+}
+
+// True when `path`'s extension is in the field's `ext:"glb,gltf"` tag (comma
+// separated, no dots). No tag = no filtering. Applies to picker rows AND the
+// drag-drop assign path so a sprite can't be dropped on a mesh field.
+_ext_filter_matches :: proc(path: string) -> bool {
+    if current_field_ext_filter == "" do return true
+    dot := strings.last_index(path, ".")
+    if dot < 0 || dot + 1 >= len(path) do return false
+    ext := strings.to_lower(path[dot + 1:], context.temp_allocator)
+    remaining := current_field_ext_filter
+    for allowed in strings.split_iterator(&remaining, ",") {
+        if ext == strings.trim_space(allowed) do return true
+    }
+    return false
 }
 
 // filepath.base without importing core:path/filepath (returns a slice into path).

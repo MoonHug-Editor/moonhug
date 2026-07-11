@@ -29,6 +29,9 @@ current_field_ref_target: string
 // `pick:"scene"` / `pick:"project"` limits which picker tabs are assignable
 // for engine.Ref fields (no tag = both).
 current_field_pick_mode: string
+// Comma-separated allowed extensions from the field's `ext:"..."` tag; limits
+// the Asset_GUID picker + drag-drop to matching files ("" = everything).
+current_field_ext_filter: string
 
 InspectorData :: struct {
     mode: InspectorMode,
@@ -462,6 +465,8 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 current_field_ref_target = ref_tag
                 pick_tag, _ := reflect.struct_tag_lookup(field_info.tag, "pick")
                 current_field_pick_mode = pick_tag
+                ext_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ext")
+                current_field_ext_filter = ext_tag
                 // Group the drawer's widgets so the field context menu below
                 // binds to the WHOLE row. A drawer can emit several items (e.g.
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
@@ -472,6 +477,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 im.EndGroup()
                 current_field_ref_target = ""
                 current_field_pick_mode = ""
+                current_field_ext_filter = ""
                 _undo_finalize_widget()
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)

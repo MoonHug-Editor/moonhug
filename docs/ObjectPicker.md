@@ -50,7 +50,7 @@ Each drawer shows only the tabs its type can assign (hidden, not disabled):
 | Field type   | Scene tab    | Project tab                                        |
 |--------------|--------------|----------------------------------------------------|
 | `Ref_Local`  | live objects | hidden (a local_id cannot reference another file)  |
-| `Asset_GUID` | hidden       | assets; `ref:"Type"` tag filters to scene assets whose root has that component |
+| `Asset_GUID` | hidden       | assets; `ref:"Type"` tag filters to scene assets whose root has that component; `ext:"glb,gltf"` tag filters by file extension (also gates drag-drop) |
 | `Ref` (PPtr) | live objects | scene-asset roots; assigns the PPtr `{guid, root local_id}`; `pick:` tag can limit to one tab |
 
 The "unlike Unity" part: `Asset_GUID` is a plain guid, yet with a `ref:"Type"`

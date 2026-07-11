@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 183,
+  "next_local_id": 187,
   "transforms": [
     {
       "local_id": 1,
@@ -51,6 +51,12 @@
         {
           "pptr": {
             "local_id": 167,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 184,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -558,6 +564,45 @@
       "components": [
 
       ]
+    },
+    {
+      "local_id": 184,
+      "name": "Transform",
+      "is_active": true,
+      "position": [
+        -2.20000005,
+        0.00000000,
+        0.00000000
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 185
+        },
+        {
+          "local_id": 186
+        }
+      ]
     }
   ],
   "nested_scenes": [
@@ -586,20 +631,20 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "name",
-          "value": "bullet"
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
           "property_path": "position",
           "value": [
             -3.2000000499999999,
             0.0000000000000000,
             0.0000000000000000
           ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "name",
+          "value": "bullet"
         },
         {
           "target": {
@@ -678,18 +723,6 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "position",
-          "value": [
-            3.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
           "property_path": "scale",
           "value": [
             1.0000000000000000,
@@ -704,6 +737,18 @@
           },
           "property_path": "name",
           "value": "bullet"
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "position",
+          "value": [
+            3.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000
+          ]
         },
         {
           "target": {
@@ -757,6 +802,18 @@
         },
         {
           "target": {
+            "local_id": 9,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "position",
+          "value": [
+            -1.6000000200000000,
+            -3.7000000499999999,
+            -0.1000000000000000
+          ]
+        },
+        {
+          "target": {
             "local_id": 22,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
@@ -780,18 +837,6 @@
             1.0000000000000000,
             1.0000000000000000
           ]
-        },
-        {
-          "target": {
-            "local_id": 9,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "position",
-          "value": [
-            -1.6000000200000000,
-            -3.7000000499999999,
-            -0.1000000000000000
-          ]
         }
       ]
     },
@@ -803,6 +848,18 @@
       "host_breadcrumb_id": 169,
       "sibling_index": 3,
       "overrides": [
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
+          ]
+        },
         {
           "target": {
             "local_id": 15,
@@ -822,209 +879,16 @@
           },
           "property_path": "name",
           "value": "bullet_Variant"
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 9,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "position",
-          "value": [
-            -1.6000000200000000,
-            0.0000000000000000,
-            -0.1000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 9,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.2999999499999999,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 9,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "name",
-          "value": "c"
-        },
-        {
-          "target": {
-            "local_id": 4,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "position",
-          "value": [
-            0.0000000000000000,
-            1.5000000000000000,
-            -0.3100000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 4,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "rotation",
-          "value": [
-            0.0000000000000000,
-            0.1149371500000000,
-            0.0000000000000000,
-            0.9933727400000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 22,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "color",
-          "value": [
-            1.0000000000000000,
-            0.9490196100000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 5,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "color",
-          "value": [
-            0.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 17,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 17,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "position",
-          "value": [
-            3.0999998999999998,
-            0.0000000000000000,
-            0.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 17,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "name",
-          "value": "c_Variant"
-        },
-        {
-          "target": {
-            "local_id": 14,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "color",
-          "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            0.6862745300000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 29,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "color",
-          "value": [
-            0.9960784300000000,
-            0.4588235300000000,
-            0.0000000000000000,
-            0.4352941200000000
-          ]
         }
       ]
     }
   ],
   "breadcrumbs": [
     {
-      "local_id": 145,
+      "local_id": 26,
       "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 144,
-      "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 20
-    },
-    {
-      "local_id": 147,
-      "scene_source": {
-        "local_id": 5,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 114,
-      "scene_source": {
-        "local_id": 3,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 20
-    },
-    {
-      "local_id": 146,
-      "scene_source": {
-        "local_id": 22,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 118,
-      "scene_source": {
-        "local_id": 3,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+        "local_id": 23,
+        "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 24
     },
@@ -1045,10 +909,34 @@
       "scene_instance": 24
     },
     {
-      "local_id": 26,
+      "local_id": 146,
       "scene_source": {
-        "local_id": 23,
-        "guid": "00000000-0000-0000-0000-000000000000"
+        "local_id": 22,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 147,
+      "scene_source": {
+        "local_id": 5,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 144,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 20
+    },
+    {
+      "local_id": 145,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
       },
       "scene_instance": 24
     },
@@ -1059,22 +947,6 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 168
-    },
-    {
-      "local_id": 75,
-      "scene_source": {
-        "local_id": 3,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 20
-    },
-    {
-      "local_id": 77,
-      "scene_source": {
-        "local_id": 3,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
     }
   ],
   "cameras": [
@@ -1098,6 +970,30 @@
   ],
   "lifetimes": [
 
+  ],
+  "mesh_filters": [
+    {
+      "base": {
+        "local_id": 185,
+        "enabled": true
+      },
+      "mesh": "91be828d-5f20-40ba-a18a-abdd2309e1e5"
+    }
+  ],
+  "mesh_renderers": [
+    {
+      "base": {
+        "local_id": 186,
+        "enabled": true
+      },
+      "texture": "00000000-0000-0000-0000-000000000000",
+      "color": [
+        1.00000000,
+        1.00000000,
+        1.00000000,
+        0.46274510
+      ]
+    }
   ],
   "players": [
     {
