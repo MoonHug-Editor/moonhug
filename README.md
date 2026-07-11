@@ -57,6 +57,7 @@ For more details see [Contribution](docs/Contribution.md)
 - odin-imgui - for Editor's interface rendering
 - SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/SDL3Renderer.md))
   - one-time: `make -C "$(odin root)/vendor/stb/src"` - builds vendored stb (image decoding)
+  - one-time: `make -C "$(odin root)/vendor/cgltf/src"` - builds vendored cgltf (glTF mesh import)
   - optional, only to edit shaders: `brew install shaderc spirv-cross`
 
 ## Features

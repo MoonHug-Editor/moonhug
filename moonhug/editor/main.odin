@@ -207,6 +207,7 @@ editor_init :: proc() {
     engine.asset_db_init("assets")
     engine.asset_pipeline_import_all()
     engine.texture_cache_init()
+    engine.mesh_cache_init()
     open_scenes_from_settings()
 
     init_scene_view()
@@ -250,6 +251,7 @@ editor_shutdown :: proc() {
     shutdown_game_view()
     shutdown_scene_view()
     engine.texture_cache_shutdown()
+    engine.mesh_cache_shutdown()
     engine.asset_db_shutdown()
     engine.sm_shutdown()
     engine.scene_lib_shutdown()

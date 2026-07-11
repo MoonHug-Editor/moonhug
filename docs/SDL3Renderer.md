@@ -220,21 +220,24 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [ ] macOS live-resize freeze documented (SDL_AddEventWatch fix deferred)
 
 ### 5. glTF mesh pipeline
-- [ ] `engine/asset_pipeline.odin` — `.glb`/`.gltf` importable, `MeshSettings{scale}`
-      in ImportSettings union, importer "mesh" (follow the CODE pattern in
-      asset_importer_texture.odin)
-- [ ] `engine/asset_importer_mesh.odin` — `vendor:cgltf` parse + load_buffers;
-      bake node world matrices, merge primitives into one blob (flat normals /
-      zero uv when missing; flip winding when node determinant < 0); AABB.
+- [x] `engine/asset_pipeline.odin` — `.glb`/`.gltf` importable, `MeshSettings{scale}`
+      in ImportSettings union, importer "mesh"
+- [x] `engine/asset_importer_mesh.odin` — `vendor:cgltf` parse + load_buffers
+      (one-time: `make -C "$(odin root)/vendor/cgltf/src"`); bakes node world
+      matrices, merges triangle primitives into one blob (flat normal / zero
+      uv fallbacks; winding flipped when node determinant < 0); AABB.
       Artifact `library/artifacts/<guid>.bin`:
-      `"MHMESH1\0" | vertex_count u32 | index_count u32 | aabb_min | aabb_max | vertices | indices`
-      (submesh_count reserved =1 for the multi-material follow-up). Prefer `.glb`
-      (a `.gltf`+`.bin` pair mints a harmless extra guid for the .bin)
-- [ ] `engine/mesh.odin` — cache mirroring texture2d.odin: `mesh_load(guid)`
-      (artifact missing → import → retry), init next to texture_cache_init
-- [ ] prebuild rerun (MeshSettings typ_guid)
-- [ ] Checkpoint: drop cube.glb in assets → focus editor → .meta with importer
-      "mesh", artifact with sane counts/AABB
+      `"MHMESH1\0" | vertex_count u32 | index_count u32 | submesh_count u32 |
+      aabb_min [3]f32 | aabb_max [3]f32 | vertices(gfx.Vertex) | indices(u32)`
+      (submesh_count =1 reserved for the multi-material follow-up). Prefer
+      `.glb` (a `.gltf`+`.bin` pair mints a harmless extra guid for the .bin)
+- [x] `engine/mesh.odin` — cache mirroring texture2d.odin: `mesh_load(guid)`
+      (artifact missing → reimport → retry; headless-safe without a GPU
+      device), wired next to texture_cache in app_init and editor init/shutdown
+- [x] prebuild rerun (MeshSettings typ_guid)
+- [x] Checkpoint: import tests over generated `tests/fixtures/meshes/cube.glb`
+      (24 verts / 36 indices / ±0.5 AABB; scale setting honored; garbage blobs
+      rejected); the in-editor cube renders in phase 6
 
 ### 6. MeshFilter + MeshRenderer + picker ext: filter
 - [ ] `engine/component_MeshFilter.odin` — `mesh: Asset_GUID` `ext:"glb,gltf"`

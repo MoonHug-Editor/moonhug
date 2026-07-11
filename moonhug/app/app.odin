@@ -84,6 +84,7 @@ app_init :: proc() {
     serialization.init()
     engine.asset_db_init("assets")
     engine.texture_cache_init()
+    engine.mesh_cache_init()
     engine.tween_init()
 
     log.info("App Init done")
