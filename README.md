@@ -63,6 +63,8 @@ For more details see [Contribution](docs/Contribution.md)
 ## Features
 - menu bar - customizable via @(menu_item=...) on proc
 
+- scene view toolbars - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_toolbar={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the toolbar id and order
+
 - union serialization (#no_nil unions only)
 
 - [Asset Pipeline](docs/AssetPipeline.md) - asset importer/loader
@@ -93,6 +95,8 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
+- SortingGroup component for SpriteRenderer grouping and sorting
+
 - Material asset for MeshRenderer (shader ref + property block; see [SDL3 Renderer](docs/SDL3Renderer.md) risks/notes)
 - mesh submesh/multi-material split (artifact format already reserves it)
 

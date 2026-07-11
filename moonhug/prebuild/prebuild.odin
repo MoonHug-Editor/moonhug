@@ -30,6 +30,7 @@ import _ "components_gen"
 import _ "context_menu_gen"
 import _ "update_gen"
 import _ "tween_gen"
+import _ "scene_toolbar_gen"
 
 PACKAGES := []string{
 	"moonhug/editor",

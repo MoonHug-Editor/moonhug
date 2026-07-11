@@ -44,10 +44,9 @@ init_scene_view :: proc() {
 	scene_cam_target = {0, 0, 0}
 	update_scene_camera()
 
-	// Unity-style dockable overlay toolbars (dock.odin): register defaults,
-	// then restore persisted anchors/positions.
-	overlay_register("Tools", draw_tools_overlay, .Top_Left)
-	overlay_register("Pivot", draw_pivot_overlay, .Top_Left)
+	// Unity-style dockable overlay toolbars (dock.odin): register every
+	// @(scene_toolbar) item (generated), then restore persisted placement.
+	_register_scene_toolbars()
 	overlays_apply_settings()
 }
 
@@ -211,16 +210,18 @@ draw_scene_view :: proc() {
 	im.End()
 }
 
-// Unity-style Tools overlay (dockable toolbar, dock.odin): gizmo mode toggles.
-// Q/W/E/R shortcuts live in handle_scene_input (guarded against flythrough's WASD).
+// Unity-style Tools overlay item (dockable toolbar, dock.odin): gizmo mode
+// toggles. Q/W/E/R shortcuts live in handle_scene_input (guarded against
+// flythrough's WASD). Widgets set their own tooltips, so no attribute tooltip.
+@(scene_toolbar={id="Tools", order=0})
 draw_tools_overlay :: proc(vertical: bool) {
-	mode_button :: proc(icon: cstring, tooltip: cstring, mode: Gizmo_Mode, vertical: bool) {
-		if !vertical do im.SameLine()
+	mode_button :: proc(icon: cstring, tooltip: cstring, mode: Gizmo_Mode, vertical: bool, first := false) {
+		if !vertical && !first do im.SameLine()
 		if overlay_tool_button(icon, tooltip, gizmo_mode == mode) {
 			gizmo_mode = mode
 		}
 	}
-	mode_button(ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical)
+	mode_button(ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical, first = true)
 	mode_button(ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
 	mode_button(ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
 	mode_button(ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
@@ -229,10 +230,16 @@ draw_tools_overlay :: proc(vertical: bool) {
 // Pivot mini-toolbar: Unity's Global/Local gizmo orientation switch — a single
 // icon+word button that flips the space on click. Scale always stays local
 // (see Gizmo_Space).
+@(scene_toolbar={id="Pivot", order=100})
 draw_pivot_overlay :: proc(vertical: bool) {
-	if !vertical do im.SameLine()
-	label: cstring = gizmo_space == .Global ? ICON_MD_PUBLIC + " Global" : ICON_MD_DEPLOYED_CODE + " Local"
-	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = 0) {
+	// Vertical dock: icon-only square button (the word won't fit the column).
+	label: cstring
+	if vertical {
+		label = gizmo_space == .Global ? ICON_MD_PUBLIC : ICON_MD_DEPLOYED_CODE
+	} else {
+		label = gizmo_space == .Global ? ICON_MD_PUBLIC + " World" : ICON_MD_DEPLOYED_CODE + " Local"
+	}
+	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_BUTTON_SIZE : 0) {
 		gizmo_space = gizmo_space == .Global ? .Local : .Global
 	}
 }

@@ -14,7 +14,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_item("File/Save", "Ctrl+S", menu.file_save_menu, 0)
 	menu.add_menu_separator("File", 5)
 	menu.add_menu_item("File/Quit", "Alt+F4", menu.file_quit_menu, 10)
-	menu.add_menu_item("Help/About MoonHug Editor", "", menu.help_about_menu, 1000)
+	menu.add_menu_item("Help/About", "", menu.help_about_menu, 1000)
 	menu.add_menu_separator("View", -7)
 	menu.add_menu_toggle("View/Hierarchy", &menu.show_hierarchy, 0)
 	menu.add_menu_toggle("View/Project", &menu.show_project, 1)

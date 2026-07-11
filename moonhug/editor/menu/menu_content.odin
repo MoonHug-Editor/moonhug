@@ -80,7 +80,7 @@ refresh_asset_db_menu :: proc() {
 
 show_about := false
 
-@(menu_item={path="Help/About MoonHug Editor", order=1000, shortcut=""})
+@(menu_item={path="Help/About", order=1000, shortcut=""})
 help_about_menu :: proc() {
     show_about = true
 }

@@ -8,6 +8,7 @@ package editor
 // - docking to the left/right edge turns the toolbar vertical
 // Overlay placement persists in editor_settings (anchor + normalized float pos).
 
+import "core:fmt"
 import im "../../external/odin-imgui"
 import "menu"
 
@@ -109,11 +110,18 @@ Overlay_Setting :: struct {
 	x, y:   f32, // normalized float position (used when anchor == Float)
 }
 
+// One contributor inside a toolbar, registered via @(scene_toolbar={id="...",
+// order=N}) — see scene_toolbars_generated.odin. The proc draws one or more
+// imgui widgets (tooltips included, e.g. via overlay_tool_button); between its
+// OWN widgets it calls SameLine when !vertical (the system positions the items).
+Overlay_Item :: struct {
+	draw:  proc(vertical: bool),
+	order: int,
+}
+
 Overlay :: struct {
 	id:        cstring,
-	// Body items. When !vertical, call SameLine before EVERY item (the grip
-	// handle precedes the body, so the first item needs it too).
-	draw:      proc(vertical: bool),
+	items:     [dynamic]Overlay_Item, // kept sorted by order
 	anchor:    Overlay_Anchor,
 	float_pos: [2]f32,  // 0..1 inside the view rect, top-left of content
 	size:      im.Vec2, // content size measured last frame ({0,0} first frame)
@@ -126,11 +134,42 @@ Overlay :: struct {
 _overlays: [dynamic]Overlay
 _overlay_mouse_over: bool // mouse over any overlay this frame (or dragging one)
 
-overlay_register :: proc(id: cstring, draw: proc(vertical: bool), default_anchor: Overlay_Anchor) {
-	append(&_overlays, Overlay{id = id, draw = draw, anchor = default_anchor})
+// The item currently being drawn — overlay_tool_button reads it to append the
+// toolbar id/order to tooltips (how-to-extend discoverability).
+_overlay_item_ctx: struct {
+	toolbar_id: cstring,
+	order:      int,
+	active:     bool,
+}
+
+// Add an item to toolbar `toolbar_id`, creating the toolbar on first use
+// (toolbars stack in their dock zone in creation order). Items sort by order.
+overlay_add_item :: proc(toolbar_id: cstring, draw: proc(vertical: bool), order: int) {
+	ov: ^Overlay
+	for &o in _overlays {
+		if o.id == toolbar_id {
+			ov = &o
+			break
+		}
+	}
+	if ov == nil {
+		append(&_overlays, Overlay{id = toolbar_id, anchor = .Top_Left})
+		ov = &_overlays[len(_overlays) - 1]
+	}
+	idx := len(ov.items)
+	for it, i in ov.items {
+		if it.order > order {
+			idx = i
+			break
+		}
+	}
+	inject_at(&ov.items, idx, Overlay_Item{draw = draw, order = order})
 }
 
 overlays_shutdown :: proc() {
+	for &ov in _overlays {
+		delete(ov.items)
+	}
 	delete(_overlays)
 	_overlays = nil
 }
@@ -181,6 +220,20 @@ overlays_draw :: proc(view_min, view_max: im.Vec2) {
 	// Zone stacking cursors: each docked overlay advances its zone's cursor
 	// along the edge; corners on the right/bottom grow leftward/stay aligned.
 	zone_cursor: [Overlay_Anchor]f32
+
+	// Side zones start BELOW the top-corner toolbars (last-frame sizes) so a
+	// Left/Right toolbar never overlaps a Top_Left/Top_Right one.
+	top_left_h, top_right_h: f32
+	for &ov in _overlays {
+		if ov.dragging || ov.size.y <= 0 do continue
+		full_y := ov.size.y + OVERLAY_PAD * 2
+		#partial switch ov.anchor {
+		case .Top_Left:  top_left_h = max(top_left_h, full_y)
+		case .Top_Right: top_right_h = max(top_right_h, full_y)
+		}
+	}
+	if top_left_h > 0 do zone_cursor[.Left] = top_left_h + OVERLAY_SPACING
+	if top_right_h > 0 do zone_cursor[.Right] = top_right_h + OVERLAY_SPACING
 
 	dragging_any := false
 	for &ov in _overlays {
@@ -290,10 +343,25 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	icon_size := im.CalcTextSize(ICON_MD_DRAG_INDICATOR, nil, false, -1)
 	im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, ICON_MD_DRAG_INDICATOR)
 
-	ov.draw(vertical)
+	// Items in order; the ctx lets their widgets' tooltips show where the
+	// hovered item lives (see _overlay_item_tooltip).
+	for &it in ov.items {
+		if !vertical do im.SameLine()
+		_overlay_item_ctx = {toolbar_id = ov.id, order = it.order, active = true}
+		it.draw(vertical)
+	}
+	_overlay_item_ctx = {}
 
 	im.EndGroup()
 	ov.size = im.GetItemRectSize()
+}
+
+// Tooltip text + where the hovered item lives so anyone can see how to
+// target/reorder it with @(scene_toolbar). No braces: ProggyClean renders
+// { } poorly at 13px.
+_overlay_item_tooltip :: proc(tip: cstring) -> cstring {
+	if !_overlay_item_ctx.active do return tip
+	return fmt.ctprintf("%s\nid=\"%s\", order=%d", tip, _overlay_item_ctx.toolbar_id, _overlay_item_ctx.order)
 }
 
 // Which zone a drop at mp lands in: edge bands split at the view's midpoint
@@ -353,7 +421,7 @@ overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width
 		im.PopStyleColor()
 	}
 	if im.IsItemHovered({}) {
-		im.SetTooltip(tooltip)
+		im.SetTooltip(_overlay_item_tooltip(tooltip))
 	}
 	return clicked
 }
