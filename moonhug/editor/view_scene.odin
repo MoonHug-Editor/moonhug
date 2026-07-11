@@ -95,7 +95,72 @@ render_scene_rt :: proc(w, h: i32) {
 	commands := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
+
+	// Selection visuals + gizmo (overlay lines, drawn last). The gizmo also
+	// handles its own mouse interaction, in the same pixel space as picking.
+	sel := _hierarchy_selected
+	if sel != _HANDLE_NONE && engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(sel)) {
+		draw_selection_outline(sel)
+		mp := im.GetMousePos()
+		gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
+	} else {
+		_gizmo_hot_axis = -1
+		_gizmo_dragging = false
+	}
 	gfx.pass_end()
+}
+
+// Unity-orange wireframe on the selected object: mesh → its local AABB edges
+// through the world transform; sprite → its exact world quad; neither → a
+// small axis cross at the position.
+draw_selection_outline :: proc(tH: engine.Transform_Handle) {
+	ORANGE :: [4]f32{1, 0.6, 0.1, 1}
+	tw := engine.transform_world(tH)
+
+	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
+	if mf != nil && mf.mesh != {} {
+		if mesh, ok := engine.mesh_load(mf.mesh); ok {
+			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
+			lo, hi := mesh.aabb_min, mesh.aabb_max
+			corners: [8][3]f32
+			for i in 0 ..< 8 {
+				local := [4]f32{
+					i & 1 == 0 ? lo.x : hi.x,
+					i & 2 == 0 ? lo.y : hi.y,
+					i & 4 == 0 ? lo.z : hi.z,
+					1,
+				}
+				corners[i] = (model * local).xyz
+			}
+			edges := [12][2]int{
+				{0, 1}, {2, 3}, {4, 5}, {6, 7}, // X edges
+				{0, 2}, {1, 3}, {4, 6}, {5, 7}, // Y edges
+				{0, 4}, {1, 5}, {2, 6}, {3, 7}, // Z edges
+			}
+			for e in edges {
+				gfx.draw_line(corners[e[0]], corners[e[1]], ORANGE)
+			}
+			return
+		}
+	}
+
+	_, sr := engine.transform_get_comp(tH, engine.SpriteRenderer)
+	if sr != nil && sr.texture != {} {
+		if tex, ok := engine.texture_load(sr.texture); ok {
+			c := engine.sprite_world_corners(tw, tex.width, tex.height)
+			gfx.draw_line(c[0], c[1], ORANGE)
+			gfx.draw_line(c[1], c[2], ORANGE)
+			gfx.draw_line(c[2], c[3], ORANGE)
+			gfx.draw_line(c[3], c[0], ORANGE)
+			return
+		}
+	}
+
+	S :: f32(0.4)
+	p := tw.position
+	gfx.draw_line(p - {S, 0, 0}, p + {S, 0, 0}, ORANGE)
+	gfx.draw_line(p - {0, S, 0}, p + {0, S, 0}, ORANGE)
+	gfx.draw_line(p - {0, 0, S}, p + {0, 0, S}, ORANGE)
 }
 
 draw_grid :: proc() {
@@ -128,6 +193,7 @@ draw_scene_view :: proc() {
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_scene_img_min = im.GetItemRectMin()
+			draw_scene_toolbar()
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
@@ -136,6 +202,28 @@ draw_scene_view :: proc() {
 		}
 	}
 	im.End()
+}
+
+// Unity-style overlay buttons in the scene view's top-left corner. Rotate and
+// Scale are stubs until their gizmos land. W/E/R shortcuts live in
+// handle_scene_input (guarded against flythrough's WASD).
+draw_scene_toolbar :: proc() {
+	im.SetCursorPos(im.Vec2{8, 30})
+	mode_button :: proc(label: cstring, mode: Gizmo_Mode, enabled := true) {
+		active := gizmo_mode == mode
+		if active {
+			im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+		}
+		if !enabled do im.BeginDisabled()
+		if im.SmallButton(label) do gizmo_mode = mode
+		if !enabled do im.EndDisabled()
+		if active do im.PopStyleColor()
+		im.SameLine()
+	}
+	mode_button("Move (W)", .Translate)
+	mode_button("Rotate (E)", .Rotate)
+	mode_button("Scale (R)", .Scale)
+	im.NewLine()
 }
 
 handle_scene_input :: proc() {
@@ -148,11 +236,22 @@ handle_scene_input :: proc() {
 	mmb_dragging := im.IsMouseDragging(.Middle, 1)
 	lmb_dragging := im.IsMouseDragging(.Left, 1)
 
+	// Gizmo mode shortcuts (Unity's W/E/R) — not during flythrough, whose
+	// WASDQE movement owns these keys.
+	if !rmb_down {
+		if im.IsKeyPressed(.W) do gizmo_mode = .Translate
+		if im.IsKeyPressed(.E) do gizmo_mode = .Rotate
+		if im.IsKeyPressed(.R) do gizmo_mode = .Scale
+	}
+
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
-	// Alt+LMB orbits). Hit → select in hierarchy; miss → clear selection.
-	if im.IsMouseClicked(.Left) && !alt_down {
+	// Alt+LMB orbits; and not on the gizmo — grabs must not select-through).
+	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true
+	}
+	if _scene_click_pending && (gizmo_consumes_mouse() || _gizmo_dragging) {
+		_scene_click_pending = false
 	}
 	if _scene_click_pending && im.IsMouseReleased(.Left) {
 		_scene_click_pending = false

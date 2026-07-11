@@ -217,6 +217,48 @@ transform_world_position :: proc(tH: Transform_Handle) -> [3]f32 { return transf
 transform_world_rotation :: proc(tH: Transform_Handle) -> [4]f32 { return transform_world(tH).rotation }
 transform_world_scale    :: proc(tH: Transform_Handle) -> [3]f32 { return transform_world(tH).scale }
 
+// Writes a WORLD position into the parent-relative t.position (inverse of the
+// parent chain in transform_world). Gizmos drag in world space; this keeps
+// the drag correct for children of rotated/scaled parents.
+transform_set_world_position :: proc(tH: Transform_Handle, world_pos: [3]f32) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+
+    if !pool_valid(&w.transforms, t.parent.handle) {
+        t.position = world_pos
+        return
+    }
+
+    p := transform_world(Transform_Handle(t.parent.handle))
+    inv_rot := linalg.quaternion_inverse(quat_to_native(_quat_safe(p.rotation)))
+    local := linalg.quaternion128_mul_vector3(inv_rot, world_pos - p.position)
+    safe_scale := [3]f32{
+        p.scale.x != 0 ? p.scale.x : 1,
+        p.scale.y != 0 ? p.scale.y : 1,
+        p.scale.z != 0 ? p.scale.z : 1,
+    }
+    t.position = local / safe_scale
+}
+
+// Writes a WORLD rotation into the parent-relative t.rotation:
+// world = parent_world * local  =>  local = inverse(parent_world) * world.
+transform_set_world_rotation :: proc(tH: Transform_Handle, world_rot: [4]f32) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+
+    if !pool_valid(&w.transforms, t.parent.handle) {
+        t.rotation = _quat_safe(world_rot)
+        return
+    }
+
+    p := transform_world(Transform_Handle(t.parent.handle))
+    inv_parent := linalg.quaternion_inverse(quat_to_native(_quat_safe(p.rotation)))
+    local := inv_parent * quat_to_native(_quat_safe(world_rot))
+    t.rotation = quat_from_native(linalg.quaternion_normalize(local))
+}
+
 _transform_append_name_suffix :: proc(tH: Transform_Handle, suffix: string) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))

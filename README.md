@@ -69,7 +69,9 @@ For more details see [Contribution](docs/Contribution.md)
 - [Scenes](docs/Scenes.md)
 - [Tweens](docs/Tweens.md)
 - [Reference Handles](docs/ReferenceHandles.md)
-- [Object Picker](docs/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component
+- [Object Picker](docs/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
+- [SDL3 Renderer](docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
+- [Meshes](docs/Meshes.md) - glTF import, MeshFilter/MeshRenderer components
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 
@@ -91,7 +93,8 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- [SDL3 Renderer](docs/SDL3Renderer.md) - raylib → SDL3 + SDL_GPU migration; covers camera render_commands, MeshFilter/MeshRenderer + glTF import, scene view picking, selection outline, transform gizmos + scene view toolbar
+- Material asset for MeshRenderer (shader ref + property block; see [SDL3 Renderer](docs/SDL3Renderer.md) risks/notes)
+- mesh submesh/multi-material split (artifact format already reserves it)
 
 - png - Texture2D with N Sprites
 

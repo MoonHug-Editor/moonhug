@@ -50,6 +50,10 @@ window :: proc() -> ^sdl.Window {
 
 show_window :: proc() {
 	sdl.ShowWindow(_platform.window)
+	// ShowWindow maps the window but doesn't activate the app (macOS): a
+	// window created HIDDEN (editor: saved geometry applies before first
+	// present) would start behind everything. RaiseWindow activates + focuses.
+	_ = sdl.RaiseWindow(_platform.window)
 }
 
 // Drains the SDL event queue once per frame: updates the input snapshot and

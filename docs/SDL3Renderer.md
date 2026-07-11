@@ -272,27 +272,35 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       nearest of overlapping wins (VERIFY IN EDITOR)
 
 ### 8. Selection outline + translate gizmo + scene toolbar
-- [ ] Outline in scene pass: mesh → 12 AABB edges through model matrix; sprite →
-      quad outline; neither → axis cross. Unity orange `{1, 0.6, 0.1, 1}`
-- [ ] `editor/gizmo.odin` — Translate only, world axes, no plane handles first
-      cut (Rotate/Scale = disabled toolbar stubs). Constant screen size
-      (`distance * 0.15`); overlay lines; hover = mouse-ray↔segment distance;
-      drag = closest-point-on-axis parameter delta
-- [ ] `transform_set_world_position` in `engine/transform.odin`
-      (inverse-parent TRS)
-- [ ] Undo: `undo.field_drag_begin/end` around the drag — docs/Undo.md already
-      anticipates viewport gizmos; one undo step per drag
-- [ ] Scene-window overlay toolbar (icon buttons over the image) + W/E/R keys
-      gated on hovered && !flythrough (W collides with fly-WASD)
-- [ ] Checkpoint: X-arrow drag moves a rotated child under a rotated parent
-      along world X only; one Ctrl+Z reverts the drag; gizmo click never picks
+- [x] Outline in scene pass (`draw_selection_outline`): mesh → 12 local-AABB
+      edges through the model matrix; sprite → its exact world quad; neither →
+      axis cross. Unity orange `{1, 0.6, 0.1, 1}`, depth-tested lines
+- [x] `editor/gizmo.odin` — all three modes. Translate: world-axis arrows,
+      drag = closest-point-on-axis delta. Rotate: world-axis circles, drag =
+      signed ray↔plane angle around the axis (grab/current vectors drawn as a
+      pie hint), via `transform_set_world_rotation` (inverse-parent). Scale:
+      LOCAL-axis handles with octahedron tips + center handle for uniform
+      scale (drag right/up grows), factors clamped > 0. Constant screen size
+      (`distance * 0.15`); overlay lines; hover = screen-space point↔segment
+      distance (8px); W/E/R switch modes (guarded against flythrough WASD)
+- [x] `transform_set_world_position` in `engine/transform.odin`
+      (inverse-parent TRS — world drags stay world-correct under rotated /
+      scaled parents)
+- [x] Undo: `undo.field_drag_begin/end` around the drag — one undo step per drag
+- [x] Scene-window overlay toolbar (Move/Rotate/Scale buttons, active
+      highlighted) + W shortcut gated on !flythrough (E/R follow with their
+      gizmos)
+- [x] Checkpoint: builds, 127 tests green, editor runs clean. IN-EDITOR:
+      X-arrow drag moves a rotated child along world X only; one Ctrl+Z
+      reverts the whole drag; grabbing the gizmo never picks through
 
 ### 9. Purge + docs
-- [ ] `grep -rn "vendor:raylib" moonhug/` → zero hits; delete dead code/comments
-- [ ] docs: finish this file's design sections as things land; `docs/Meshes.md`
+- [x] `grep -rn "vendor:raylib\|rlgl" moonhug/` → zero hits
+- [x] docs: design sections updated per phase; `docs/Meshes.md` written
       (artifact format, components, glb guidance, submesh follow-up)
-- [ ] README: sdl3 install note; move done TODO items to Features; Rotate/Scale
-      gizmos as remaining TODO
+- [x] README: install notes (sdl3, stb, cgltf, optional shader toolchain);
+      SDL3 Renderer + Meshes moved to Features; remaining TODO = Rotate/Scale
+      gizmos, Material asset, submesh split
 
 ## Verification (every phase)
 
