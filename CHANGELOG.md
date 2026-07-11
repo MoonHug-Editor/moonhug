@@ -1,3 +1,13 @@
+## [0.32.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.31.0...v0.32.0) (2026-07-11)
+
+### Features
+
+* add glb, gltf mesh import ([5ded605](https://github.com/MoonHug-Editor/moonhug/commit/5ded605dced702570536090588306226b179cd62))
+* add MeshRenderer, MeshFilter, cube.glb, ext: extension field tag ([6611216](https://github.com/MoonHug-Editor/moonhug/commit/661121627024c8a9e8be6f8de67b99ac0d22cb45))
+* replace raylib with sdl3 ([5f772bf](https://github.com/MoonHug-Editor/moonhug/commit/5f772bf3a593a3d08f41e3217c36147be367090c))
+* rotate, scale gizmos ([2c6cd7d](https://github.com/MoonHug-Editor/moonhug/commit/2c6cd7d4537b3b6ffa000724180f52156b9ac7e9))
+* scene picking ([b4dc8f1](https://github.com/MoonHug-Editor/moonhug/commit/b4dc8f1f7fa79afc33f2b18c11463b74ea508498))
+
 ## [0.31.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.30.0...v0.31.0) (2026-07-10)
 
 ### Features
