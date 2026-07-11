@@ -1,3 +1,9 @@
+## [0.34.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.33.0...v0.34.0) (2026-07-11)
+
+### Features
+
+* added @(scene_toolbar={id="", order=N}) extensibility ([9bf72fb](https://github.com/MoonHug-Editor/moonhug/commit/9bf72fb8f38ae47260cefc79fe0fffe604669fc4))
+
 ## [0.33.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.32.0...v0.33.0) (2026-07-11)
 
 ### Features
