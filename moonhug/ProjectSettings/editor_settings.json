@@ -16,5 +16,39 @@
   "show_output": true,
   "show_hierarchy": true,
   "show_history": true,
-  "has_view_state": true
+  "has_view_state": true,
+  "scene_overlays": [
+    {
+      "id": "Tools",
+      "anchor": 1,
+      "x": 1.00000000,
+      "y": 0.15325077
+    },
+    {
+      "id": "Pivot",
+      "anchor": 1,
+      "x": 0.00000000,
+      "y": 0.00000000
+    },
+    {
+      "id": "Grid",
+      "anchor": 1,
+      "x": 0.11853088,
+      "y": 0.09133127
+    }
+  ],
+  "grid": {
+    "show_xz": true,
+    "show_xy": false,
+    "show_yz": false,
+    "cell_size": 1.00000000,
+    "subdivide": 2,
+    "cells_count": 6
+  },
+  "snap": {
+    "enabled": true,
+    "angle": 15.00000000,
+    "mode": 1,
+    "units": 1.00000000
+  }
 }

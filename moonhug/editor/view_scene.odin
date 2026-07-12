@@ -81,6 +81,88 @@ update_scene_camera :: proc() {
 	scene_cam_pos = scene_cam_target + [3]f32{sp * cy, cp, sp * sy} * scene_cam_dist
 }
 
+// Frame the current selection (Unity's F): center the orbit camera on the
+// object's bounds and pull back far enough to fit them in the FOV. The move
+// tweens with ease-in/out over SCENE_FRAME_TWEEN_SEC (any manual camera input
+// cancels it).
+SCENE_FRAME_TWEEN_SEC :: f32(0.2)
+
+_frame_tween_active: bool
+_frame_tween_t: f32
+_frame_tween_from_target, _frame_tween_to_target: [3]f32
+_frame_tween_from_dist, _frame_tween_to_dist: f32
+
+scene_frame_selected :: proc() {
+	sel := _hierarchy_selected
+	if sel == _HANDLE_NONE || !engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(sel)) do return
+	center, radius := _selection_bounds(sel)
+	_frame_tween_from_target = scene_cam_target
+	_frame_tween_from_dist = scene_cam_dist
+	_frame_tween_to_target = center
+	_frame_tween_to_dist = max(radius / math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5) * 1.2, 1)
+	_frame_tween_t = 0
+	_frame_tween_active = true
+}
+
+_update_frame_tween :: proc(dt: f32) {
+	if !_frame_tween_active do return
+	_frame_tween_t = min(_frame_tween_t + dt / SCENE_FRAME_TWEEN_SEC, 1)
+	t := _frame_tween_t
+	k := t * t * (3 - 2 * t) // smoothstep: ease in/out
+	scene_cam_target = linalg.lerp(_frame_tween_from_target, _frame_tween_to_target, k)
+	scene_cam_dist = _frame_tween_from_dist + (_frame_tween_to_dist - _frame_tween_from_dist) * k
+	update_scene_camera()
+	if _frame_tween_t >= 1 do _frame_tween_active = false
+}
+
+// Bounding sphere of the selection: mesh AABB through the world transform,
+// sprite quad, or a default radius around the position (mirrors the shapes
+// draw_selection_outline draws).
+_selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32) {
+	tw := engine.transform_world(tH)
+	center = tw.position
+	radius = 1.5
+
+	vmin :: proc(a, b: [3]f32) -> [3]f32 {return {min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)}}
+	vmax :: proc(a, b: [3]f32) -> [3]f32 {return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)}}
+
+	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
+	if mf != nil && mf.mesh != {} {
+		if mesh, ok := engine.mesh_load(mf.mesh); ok {
+			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
+			lo, hi := mesh.aabb_min, mesh.aabb_max
+			cmin, cmax: [3]f32
+			for i in 0 ..< 8 {
+				local := [4]f32{
+					i & 1 == 0 ? lo.x : hi.x,
+					i & 2 == 0 ? lo.y : hi.y,
+					i & 4 == 0 ? lo.z : hi.z,
+					1,
+				}
+				p := (model * local).xyz
+				cmin = i == 0 ? p : vmin(cmin, p)
+				cmax = i == 0 ? p : vmax(cmax, p)
+			}
+			center = (cmin + cmax) * 0.5
+			radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
+			return
+		}
+	}
+
+	_, sr := engine.transform_get_comp(tH, engine.SpriteRenderer)
+	if sr != nil && sr.texture != {} {
+		if tex, ok := engine.texture_load(sr.texture); ok {
+			c := engine.sprite_world_corners(tw, tex.width, tex.height)
+			cmin := vmin(vmin(c[0], c[1]), vmin(c[2], c[3]))
+			cmax := vmax(vmax(c[0], c[1]), vmax(c[2], c[3]))
+			center = (cmin + cmax) * 0.5
+			radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
+			return
+		}
+	}
+	return
+}
+
 // The scene view's Render_View — also the basis for picking rays later.
 scene_render_view :: proc(w, h: f32) -> engine.Render_View {
 	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
@@ -184,6 +266,37 @@ Grid_Settings :: struct {
 
 GRID_DEFAULTS :: Grid_Settings{show_xz = true, cell_size = 10, subdivide = 10, cells_count = 2}
 
+// Gizmo drag snapping (Snap toolbar popup; Ctrl inverts enabled while held).
+// Translate step comes from `mode`: a full grid cell, one grid subdivision,
+// or a free `units` value (> 0).
+Snap_Mode :: enum u8 {
+	Grid,
+	SubGrid,
+	Units,
+}
+
+Snap_Settings :: struct {
+	enabled: bool,
+	angle:   f32, // rotate snap, degrees
+	mode:    Snap_Mode,
+	units:   f32, // translate step when mode == .Units
+}
+
+SNAP_DEFAULTS :: Snap_Settings{enabled = false, angle = 15, mode = .SubGrid, units = 1}
+
+snap_settings := SNAP_DEFAULTS
+
+// Translate-snap step in world units per the active snap mode.
+snap_translate_step :: proc() -> f32 {
+	gs := grid_settings
+	switch snap_settings.mode {
+	case .Grid:    return max(gs.cell_size, 0.0001)
+	case .SubGrid: return max(gs.cell_size / f32(max(gs.subdivide, 1)), 0.0001)
+	case .Units:   return max(snap_settings.units, 0.0001)
+	}
+	return 1
+}
+
 grid_settings := GRID_DEFAULTS
 
 _GRID_CELL_COL :: [4]f32{0.46, 0.46, 0.46, 1} // cell-boundary lines
@@ -224,6 +337,8 @@ draw_scene_view :: proc() {
 	defer im.PopStyleVar()
 
 	if im.Begin("Scene", nil, {.NoCollapse}) {
+		_update_frame_tween(im.GetIO().DeltaTime)
+
 		avail := im.GetContentRegionAvail()
 		w := i32(avail.x)
 		h := i32(avail.y)
@@ -309,6 +424,39 @@ draw_grid_overlay :: proc(vertical: bool) {
 	}
 }
 
+// Snap button next to the grid button: popup with the snap settings. Button
+// lights up while snapping is enabled; Ctrl inverts enabled during a drag.
+@(scene_toolbar={id="Grid", order=210})
+draw_snap_overlay :: proc(vertical: bool) {
+	if !vertical do im.SameLine()
+	if overlay_tool_button(ICON_MD_SNAP, "Snap settings (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled) {
+		im.OpenPopup("##snap_settings")
+	}
+	if im.BeginPopup("##snap_settings") {
+		ss := &snap_settings
+		im.Checkbox("Enabled", &ss.enabled)
+		im.SetNextItemWidth(110)
+		im.DragFloat("Angle", &ss.angle, 1, 1, 180, "%.0f deg")
+		if im.IsItemHovered({}) do im.SetTooltip("Rotate gizmo snap increment")
+
+		mode_names := [Snap_Mode]cstring{.Grid = "Grid", .SubGrid = "SubGrid", .Units = "Units"}
+		im.SetNextItemWidth(110)
+		if im.BeginCombo("Move step", mode_names[ss.mode], {}) {
+			for m in Snap_Mode {
+				if im.Selectable(mode_names[m], ss.mode == m) do ss.mode = m
+			}
+			im.EndCombo()
+		}
+		if im.IsItemHovered({}) do im.SetTooltip("Grid = one cell, SubGrid = one subdivision, Units = custom step")
+		if ss.mode == .Units {
+			im.SetNextItemWidth(110)
+			im.DragFloat("Value", &ss.units, 0.1, 0.01, 10000, "%.2f")
+			if ss.units <= 0 do ss.units = 0.01
+		}
+		im.EndPopup()
+	}
+}
+
 handle_scene_input :: proc() {
 	io := im.GetIO()
 	dt := io.DeltaTime
@@ -326,6 +474,7 @@ handle_scene_input :: proc() {
 		if im.IsKeyPressed(.W) do gizmo_mode = .Translate
 		if im.IsKeyPressed(.E) do gizmo_mode = .Rotate
 		if im.IsKeyPressed(.R) do gizmo_mode = .Scale
+		if im.IsKeyPressed(.F) do scene_frame_selected()
 	}
 
 	// Escape drops the selection (not mid-gizmo-drag: the drag teardown in
@@ -360,6 +509,11 @@ handle_scene_input :: proc() {
 				_hierarchy_selected = _HANDLE_NONE
 			}
 		}
+	}
+
+	// Any manual camera input takes over from an in-flight frame tween.
+	if rmb_down || mmb_dragging || (alt_down && lmb_dragging) || io.MouseWheel != 0 {
+		_frame_tween_active = false
 	}
 
 	if rmb_down && !alt_down {

@@ -36,6 +36,25 @@ Gizmo_Space :: enum {
 
 gizmo_space: Gizmo_Space = .Global
 
+_GIZMO_SNAP_SCALE :: f32(0.1)
+
+// Snap is the Snap popup's Enabled XOR the snap modifier: it temporarily
+// snaps when the toggle is off and frees the drag when it's on. io.KeyCtrl
+// follows Unity's convention — Ctrl on Windows/Linux, Cmd on macOS (imgui's
+// ConfigMacOSXBehaviors remaps it there).
+_gizmo_snap_active :: proc() -> bool {
+	return snap_settings.enabled != im.GetIO().KeyCtrl
+}
+
+_gizmo_snap_angle :: proc() -> f32 {
+	return math.to_radians(max(snap_settings.angle, 1))
+}
+
+_snap :: proc(value, step: f32) -> f32 {
+	if step <= 0 do return value
+	return math.round(value / step) * step
+}
+
 // Gizmo screen presence: fraction of the camera distance, so it stays a
 // constant apparent size while zooming (Unity-like).
 _GIZMO_SIZE_FACTOR :: f32(0.15)
@@ -148,7 +167,9 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 		// Drag math uses the grab-time axes (dirs would be stable for
 		// translate, but keep the same convention as rotate).
 		s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
-		delta := _gizmo_drag_dirs[_gizmo_drag_axis] * (s - _gizmo_grab_s)
+		move := s - _gizmo_grab_s
+		if _gizmo_snap_active() do move = _snap(move, snap_translate_step())
+		delta := _gizmo_drag_dirs[_gizmo_drag_axis] * move
 		engine.transform_set_world_position(tH, _gizmo_start_world + delta)
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
@@ -254,6 +275,7 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 		axis := _gizmo_drag_dirs[_gizmo_drag_axis]
 		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, axis); ok {
 			angle := _signed_angle(_gizmo_grab_vec, cur, axis)
+			if _gizmo_snap_active() do angle = _snap(angle, _gizmo_snap_angle())
 			delta := linalg.quaternion_angle_axis_f32(angle, axis)
 			world := delta * engine.quat_to_native(_gizmo_start_rot)
 			engine.transform_set_world_rotation(tH, engine.quat_from_native(world))
@@ -337,10 +359,12 @@ _gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, orig
 				// Uniform: right/up drag grows, left/down shrinks.
 				pixel_delta := (mouse_px.x - _gizmo_grab_px.x) - (mouse_px.y - _gizmo_grab_px.y)
 				factor := max(1 + pixel_delta * 0.005, 0.01)
+				if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
 				t.scale = _gizmo_start_scale * factor
 			} else {
 				s := _closest_axis_param(_gizmo_start_world, local_dirs[_gizmo_drag_axis], mouse_ray)
 				factor := max(1 + (s - _gizmo_grab_s) / size, 0.01)
+				if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
 				t.scale[_gizmo_drag_axis] = _gizmo_start_scale[_gizmo_drag_axis] * factor
 			}
 		}

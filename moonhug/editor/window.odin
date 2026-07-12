@@ -32,6 +32,7 @@ EditorSettings :: struct {
     has_view_state:           bool,
     scene_overlays:           [dynamic]Overlay_Setting, // dockable toolbar placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (view_scene.odin)
+    snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
 }
 
 editor_settings: EditorSettings
@@ -41,9 +42,12 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
     if read_err == nil {
         err := json.unmarshal(data, &editor_settings)
         if err == nil {
-            // Zero grid = settings file predates the field; keep code defaults.
+            // Zero grid/snap = settings file predates the field; keep code defaults.
             if editor_settings.grid.cells_count > 0 && editor_settings.grid.cell_size > 0 {
                 grid_settings = editor_settings.grid
+            }
+            if editor_settings.snap.angle > 0 {
+                snap_settings = editor_settings.snap
             }
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
@@ -99,6 +103,7 @@ save_editor_settings :: proc() {
 
     overlays_capture_settings()
     editor_settings.grid = grid_settings
+    editor_settings.snap = snap_settings
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

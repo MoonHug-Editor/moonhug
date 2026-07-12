@@ -623,11 +623,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		}
 	}
 
-	// Double-click renames — but NOT when this interaction toggled the fold,
-	// otherwise the rename z-fights with the open/close arrow. imgui's own
-	// hit-test (IsItemToggledOpen) tells us the arrow handled this click.
-	if node_hovered && im.IsMouseDoubleClicked(.Left) && !is_renaming && !is_nested && !node_toggled {
-		_begin_rename(tH)
+	// Double-click frames the object in the scene view (Unity). Rename moved
+	// to the context menu only — it used to live here and blocked framing.
+	// Skipped when the interaction toggled the fold (arrow double-clicks).
+	if node_hovered && im.IsMouseDoubleClicked(.Left) && !is_renaming && !node_toggled {
+		scene_frame_selected()
 	}
 
 	im.OpenPopupOnItemClick("##NodeContext", im.PopupFlags_MouseButtonRight)
@@ -1026,6 +1026,13 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		} else if cur_idx - 1 >= 0 {
 			_hierarchy_selected = _hierarchy_nav_list[cur_idx - 1]
 		}
+		return
+	}
+
+	// F frames the selection in the scene view (Unity), from here too so the
+	// hierarchy doesn't need a mouse trip to the scene panel.
+	if im.IsKeyPressed(im.Key.F) {
+		scene_frame_selected()
 		return
 	}
 
