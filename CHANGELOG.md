@@ -1,3 +1,9 @@
+## [0.35.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.34.0...v0.35.0) (2026-07-12)
+
+### Features
+
+* grid scene toolbar ([cb7c35a](https://github.com/MoonHug-Editor/moonhug/commit/cb7c35a9f957eb3c487cbabcbe170d86c8f8a44e))
+
 ## [0.34.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.33.0...v0.34.0) (2026-07-11)
 
 ### Features
