@@ -5,4 +5,5 @@ package editor
 _register_scene_toolbars :: proc() {
 	overlay_add_item("Tools", draw_tools_overlay, 0)
 	overlay_add_item("Pivot", draw_pivot_overlay, 100)
+	overlay_add_item("Grid", draw_grid_overlay, 200)
 }

@@ -169,13 +169,47 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 	gfx.draw_line(p - {0, 0, S}, p + {0, 0, S}, ORANGE)
 }
 
+// Scene grid: per-plane toggles + cell layout, edited via the Grid overlay
+// toolbar popup (draw_grid_overlay) and persisted in editor_settings.
+// A cell is cell_size units, drawn with emphasized lines; subdivide splits
+// each cell into N fine-line divisions; cells_count is cells from center to side.
+Grid_Settings :: struct {
+	show_xz:     bool,
+	show_xy:     bool,
+	show_yz:     bool,
+	cell_size:   f32, // one cell in world units (emphasized lines)
+	subdivide:   i32, // fine-line divisions per cell (1 = none)
+	cells_count: i32, // cells from center to side (radius)
+}
+
+GRID_DEFAULTS :: Grid_Settings{show_xz = true, cell_size = 10, subdivide = 10, cells_count = 2}
+
+grid_settings := GRID_DEFAULTS
+
+_GRID_CELL_COL :: [4]f32{0.46, 0.46, 0.46, 1} // cell-boundary lines
+_GRID_SUB_COL :: [4]f32{0.3, 0.3, 0.3, 1}     // subdivision lines
+
 draw_grid :: proc() {
-	GRID_HALF :: 10
-	col := [4]f32{0.35, 0.35, 0.35, 1}
-	for i in -GRID_HALF ..= GRID_HALF {
-		f := f32(i)
-		gfx.draw_line({f, 0, -GRID_HALF}, {f, 0, GRID_HALF}, col)
-		gfx.draw_line({-GRID_HALF, 0, f}, {GRID_HALF, 0, f}, col)
+	gs := grid_settings
+	if gs.cells_count <= 0 || gs.cell_size <= 0 do return
+	if gs.show_xz do _draw_grid_plane({1, 0, 0}, {0, 0, 1})
+	if gs.show_xy do _draw_grid_plane({1, 0, 0}, {0, 1, 0})
+	if gs.show_yz do _draw_grid_plane({0, 1, 0}, {0, 0, 1})
+}
+
+// One grid plane spanned by axes u,v: fine lines every cell_size/subdivide;
+// every subdivide-th line is a cell boundary and draws emphasized.
+_draw_grid_plane :: proc(u, v: [3]f32) {
+	gs := grid_settings
+	sub := max(gs.subdivide, 1)
+	step := gs.cell_size / f32(sub)
+	n := gs.cells_count * sub // fine steps from center to side
+	half := f32(gs.cells_count) * gs.cell_size
+	for i in -n ..= n {
+		off := f32(i) * step
+		col := i % sub == 0 ? _GRID_CELL_COL : _GRID_SUB_COL
+		gfx.draw_line(u * off - v * half, u * off + v * half, col)
+		gfx.draw_line(v * off - u * half, v * off + u * half, col)
 	}
 }
 
@@ -241,6 +275,37 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	}
 	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_BUTTON_SIZE : 0) {
 		gizmo_space = gizmo_space == .Global ? .Local : .Global
+	}
+}
+
+// Grid toolbar: one button opening a popup with the plane toggles and line
+// spacing settings (see Grid_Settings). Button lights up while any plane shows.
+@(scene_toolbar={id="Grid", order=200})
+draw_grid_overlay :: proc(vertical: bool) {
+	gs := &grid_settings
+	any_plane := gs.show_xz || gs.show_xy || gs.show_yz
+	if overlay_tool_button(ICON_MD_GRID_ON, "Grid settings", any_plane) {
+		im.OpenPopup("##grid_settings")
+	}
+	if im.BeginPopup("##grid_settings") {
+		im.SeparatorText("Planes")
+		im.Checkbox("XZ", &gs.show_xz)
+		im.SameLine()
+		im.Checkbox("XY", &gs.show_xy)
+		im.SameLine()
+		im.Checkbox("YZ", &gs.show_yz)
+
+		im.SeparatorText("Cells")
+		im.SetNextItemWidth(110)
+		im.DragFloat("Cell size", &gs.cell_size, 0.5, 0.01, 10000, "%.2f")
+		if im.IsItemHovered({}) do im.SetTooltip("One cell in world units (emphasized lines)")
+		im.SetNextItemWidth(110)
+		im.DragInt("Subdivide", &gs.subdivide, 1, 1, 100)
+		if im.IsItemHovered({}) do im.SetTooltip("Fine-line divisions inside each cell (1 = none)")
+		im.SetNextItemWidth(110)
+		im.DragInt("Cells count", &gs.cells_count, 1, 1, 1000)
+		if im.IsItemHovered({}) do im.SetTooltip("Cells from the center to the grid's edge")
+		im.EndPopup()
 	}
 }
 

@@ -31,6 +31,7 @@ EditorSettings :: struct {
     show_history:             bool,
     has_view_state:           bool,
     scene_overlays:           [dynamic]Overlay_Setting, // dockable toolbar placement (dock.odin)
+    grid:                     Grid_Settings,            // scene grid (view_scene.odin)
 }
 
 editor_settings: EditorSettings
@@ -40,6 +41,10 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
     if read_err == nil {
         err := json.unmarshal(data, &editor_settings)
         if err == nil {
+            // Zero grid = settings file predates the field; keep code defaults.
+            if editor_settings.grid.cells_count > 0 && editor_settings.grid.cell_size > 0 {
+                grid_settings = editor_settings.grid
+            }
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
                 menu.show_project_inspector = editor_settings.show_project_inspector
@@ -93,6 +98,7 @@ save_editor_settings :: proc() {
     editor_settings.has_view_state         = true
 
     overlays_capture_settings()
+    editor_settings.grid = grid_settings
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
