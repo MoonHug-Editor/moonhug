@@ -3,6 +3,7 @@ package engine
 World :: struct {
 	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
+	lights: Pool(Light, 8),
 	mesh_filters: Pool(MeshFilter),
 	mesh_renderers: Pool(MeshRenderer),
 	players: Pool(Player, 10),
@@ -19,6 +20,7 @@ w_init :: proc(w:^World)
 {
 	pool_init(&w.cameras)
 	pool_init(&w.lifetimes)
+	pool_init(&w.lights)
 	pool_init(&w.mesh_filters)
 	pool_init(&w.mesh_renderers)
 	pool_init(&w.players)
@@ -46,6 +48,14 @@ w_init :: proc(w:^World)
 		c_copy := c^
 		c_copy.owner = {}
 		append(&s.lifetimes, c_copy)
+	}
+	w.pool_table[TypeKey.Light] = pool_make_entry(&w.lights)
+	w.pool_table[TypeKey.Light].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^Light)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.lights, c_copy)
 	}
 	w.pool_table[TypeKey.MeshFilter] = pool_make_entry(&w.mesh_filters)
 	w.pool_table[TypeKey.MeshFilter].collect_fn = proc(comp: rawptr, sf: rawptr) {
@@ -130,6 +140,11 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.lifetimes, owned.handle)
 	}
+	else when T == Light {
+		owned, _ := transform_find_comp(t, .Light)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.lights, owned.handle)
+	}
 	else when T == MeshFilter {
 		owned, _ := transform_find_comp(t, .MeshFilter)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
@@ -194,6 +209,12 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .Lifetime)
 		if idx < 0 do return
 		pool_destroy(&w.lifetimes, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == Light {
+		owned, idx := transform_find_comp(t, .Light)
+		if idx < 0 do return
+		pool_destroy(&w.lights, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 	else when T == MeshFilter {

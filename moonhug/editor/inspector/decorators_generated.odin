@@ -59,6 +59,24 @@ __decorator__Camera__clear_color :: proc(ctx: ^DrawContext) {
 
 __decorators__Camera: []DecoratorProc
 
+__decorator__Light__color :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_color(ctx)
+	} else {
+		decorator_color(ctx)
+	}
+}
+
+__decorator__Light__ambient :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_min(ctx, 0)
+	} else {
+		decorator_min(ctx, 0)
+	}
+}
+
+__decorators__Light: []DecoratorProc
+
 __decorator__Material__color :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_color(ctx)
@@ -114,6 +132,12 @@ init_decorators :: proc() {
 	__decorators__Camera[5] = __decorator__Camera__clear_color
 	__decorators__Camera[6] = nil
 	decorator_registry[typeid_of(engine.Camera)] = __decorators__Camera
+	__decorators__Light = make([]DecoratorProc, 4)
+	__decorators__Light[0] = nil
+	__decorators__Light[1] = __decorator__Light__color
+	__decorators__Light[2] = nil
+	__decorators__Light[3] = __decorator__Light__ambient
+	decorator_registry[typeid_of(engine.Light)] = __decorators__Light
 	__decorators__Material = make([]DecoratorProc, 3)
 	__decorators__Material[0] = nil
 	__decorators__Material[1] = nil

@@ -13,6 +13,7 @@ TypeKey :: enum u16 {
 	DemoMenu,
 	GameSettings,
 	Lifetime,
+	Light,
 	Material,
 	MeshFilter,
 	MeshRenderer,
@@ -49,6 +50,7 @@ Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_N
 DemoMenu__Guid := uuid.read("7cbf2edf-0283-43b3-930e-ef9546d8eed9") or_else UUID_NIL
 GameSettings__Guid := uuid.read("f47ac10b-58cc-4372-a567-0e02b2c3d479") or_else UUID_NIL
 Lifetime__Guid := uuid.read("c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c") or_else UUID_NIL
+Light__Guid := uuid.read("9f36ee91-34b6-4636-a360-ee872af0436b") or_else UUID_NIL
 Material__Guid := uuid.read("4d201ba5-2097-48bb-abd3-1a79e4f6f6f4") or_else UUID_NIL
 MeshFilter__Guid := uuid.read("32f52908-51a9-4f3b-819b-fc9d8cbc5972") or_else UUID_NIL
 MeshRenderer__Guid := uuid.read("73e161a0-c599-4cfb-9826-447e05baa76c") or_else UUID_NIL

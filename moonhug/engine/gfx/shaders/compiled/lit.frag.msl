@@ -3,6 +3,12 @@
 
 using namespace metal;
 
+struct LightUBO
+{
+    float4 light_dir_ambient;
+    float4 light_color;
+};
+
 struct main0_out
 {
     float4 out_color [[color(0)]];
@@ -15,12 +21,13 @@ struct main0_in
     float3 frag_normal [[user(locn2)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _20 [[buffer(0)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float3 n = fast::normalize(in.frag_normal);
-    float diffuse = fast::max(dot(n, float3(0.4210759699344635009765625, 0.842151939868927001953125, 0.33686077594757080078125)), 0.0);
-    float light = 0.3499999940395355224609375 + (0.64999997615814208984375 * diffuse);
+    float diffuse = fast::max(dot(n, -_20.light_dir_ambient.xyz), 0.0);
+    float ambient = _20.light_dir_ambient.w;
+    float3 light = float3(ambient) + (_20.light_color.xyz * ((1.0 - ambient) * diffuse));
     float4 base = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
     out.out_color = float4(base.xyz * light, base.w);
     return out;

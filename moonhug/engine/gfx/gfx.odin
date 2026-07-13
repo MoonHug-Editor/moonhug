@@ -140,7 +140,7 @@ command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
 _create_pipelines :: proc() -> bool {
 	_gfx.shader_sets = make(map[string]_Shader_Set)
 	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
-	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL) do return false
+	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_uniform_buffers = 1) do return false
 	_gfx.pipelines = _gfx.shader_sets[DEFAULT_SHADER]
 	return true
 }
@@ -152,11 +152,12 @@ shader_exists :: proc(name: string) -> bool {
 // Builds the full pipeline set for a vertex+fragment shader pair and registers
 // it under `name` (draw_mesh's shader parameter). Shaders must follow the
 // built-in resource convention: vertex = 1 UBO (_Uniform layout), fragment =
-// 1 sampler2D. Re-registering a name is an error (false).
-shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8) -> bool {
+// 1 sampler2D, plus optionally the Light UBO at fragment slot 0 (set=3 in
+// GLSL; frag_uniform_buffers = 1). Re-registering a name is an error (false).
+shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_uniform_buffers: u32 = 0) -> bool {
 	if name in _gfx.shader_sets do return false
 	vert := _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl)
-	frag := _create_shader(.FRAGMENT, 1, 0, frag_spv, frag_msl)
+	frag := _create_shader(.FRAGMENT, 1, frag_uniform_buffers, frag_spv, frag_msl)
 	if vert == nil || frag == nil do return false
 	defer sdl.ReleaseGPUShader(_gfx.device, vert)
 	defer sdl.ReleaseGPUShader(_gfx.device, frag)

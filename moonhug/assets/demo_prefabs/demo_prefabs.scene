@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 191,
+  "next_local_id": 195,
   "transforms": [
     {
       "local_id": 1,
@@ -112,15 +112,15 @@
       "name": "Directional Light",
       "is_active": true,
       "position": [
-        -4.19999981,
+        -8.04234505,
         0.00000000,
-        0.00000000
+        -5.29197264
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        -0.58801836,
+        0.20533495,
+        -0.15755905,
+        0.76632047
       ],
       "scale": [
         1.00000000,
@@ -138,7 +138,9 @@
 
       ],
       "components": [
-
+        {
+          "local_id": 192
+        }
       ]
     },
     {
@@ -664,11 +666,11 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "position",
+          "property_path": "scale",
           "value": [
-            -3.2000000499999999,
-            0.0000000000000000,
-            0.0000000000000000
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
           ]
         },
         {
@@ -684,11 +686,11 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "scale",
+          "property_path": "position",
           "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
+            -3.2000000499999999,
+            0.0000000000000000,
+            0.0000000000000000
           ]
         },
         {
@@ -720,8 +722,13 @@
             "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "order_in_layer",
-          "value": 0
+          "property_path": "color",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
         },
         {
           "target": {
@@ -736,26 +743,8 @@
             "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "color",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "color",
-          "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
+          "property_path": "order_in_layer",
+          "value": 0
         },
         {
           "target": {
@@ -772,6 +761,19 @@
           },
           "property_path": "sorting_layer",
           "value": 0
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "color",
+          "value": [
+            0.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
         },
         {
           "target": {
@@ -800,14 +802,6 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "name",
-          "value": "bullet"
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
           "property_path": "position",
           "value": [
             3.0000000000000000,
@@ -826,6 +820,14 @@
             1.0000000000000000,
             1.0000000000000000
           ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "name",
+          "value": "bullet"
         },
         {
           "target": {
@@ -885,7 +887,7 @@
             "local_id": 3,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "sorting_layer",
+          "property_path": "order_in_layer",
           "value": 0
         },
         {
@@ -893,7 +895,7 @@
             "local_id": 3,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "order_in_layer",
+          "property_path": "sorting_layer",
           "value": 0
         },
         {
@@ -907,6 +909,18 @@
             0.6000000200000000,
             0.0000000000000000,
             1.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 9,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "position",
+          "value": [
+            -1.6000000200000000,
+            -3.7000000499999999,
+            -0.1000000000000000
           ]
         },
         {
@@ -934,18 +948,6 @@
             1.0000000000000000,
             1.0000000000000000
           ]
-        },
-        {
-          "target": {
-            "local_id": 9,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "position",
-          "value": [
-            -1.6000000200000000,
-            -3.7000000499999999,
-            -0.1000000000000000
-          ]
         }
       ]
     },
@@ -962,11 +964,11 @@
             "local_id": 15,
             "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
           },
-          "property_path": "scale",
+          "property_path": "position",
           "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
+            0.0000000000000000,
+            -10.0000000000000000,
+            0.0000000000000000
           ]
         },
         {
@@ -982,11 +984,11 @@
             "local_id": 15,
             "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
           },
-          "property_path": "position",
+          "property_path": "scale",
           "value": [
-            0.0000000000000000,
-            -10.0000000000000000,
-            0.0000000000000000
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
           ]
         }
       ]
@@ -1000,22 +1002,6 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 168
-    },
-    {
-      "local_id": 147,
-      "scene_source": {
-        "local_id": 5,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 146,
-      "scene_source": {
-        "local_id": 22,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
     },
     {
       "local_id": 145,
@@ -1034,10 +1020,18 @@
       "scene_instance": 20
     },
     {
-      "local_id": 26,
+      "local_id": 147,
       "scene_source": {
-        "local_id": 23,
-        "guid": "00000000-0000-0000-0000-000000000000"
+        "local_id": 5,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 146,
+      "scene_source": {
+        "local_id": 22,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
       },
       "scene_instance": 24
     },
@@ -1056,6 +1050,14 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 20
+    },
+    {
+      "local_id": 26,
+      "scene_source": {
+        "local_id": 23,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 24
     }
   ],
   "cameras": [
@@ -1079,6 +1081,22 @@
   ],
   "lifetimes": [
 
+  ],
+  "lights": [
+    {
+      "base": {
+        "local_id": 192,
+        "enabled": true
+      },
+      "color": [
+        1.00000000,
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "intensity": 1.00000000,
+      "ambient": 0.10000000
+    }
   ],
   "mesh_filters": [
     {

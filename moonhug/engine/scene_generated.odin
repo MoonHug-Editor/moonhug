@@ -12,6 +12,7 @@ SceneFile :: struct {
 	breadcrumbs:   [dynamic]Breadcrumb,
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
+	lights: [dynamic]Light,
 	mesh_filters: [dynamic]MeshFilter,
 	mesh_renderers: [dynamic]MeshRenderer,
 	players: [dynamic]Player,
@@ -27,6 +28,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_light_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_mesh_filter_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_mesh_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -65,6 +67,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		lifetime^ = lifetime_data
 		id_to_lifetime_handle[lifetime_data.local_id] = handle
 		lifetime_data = {}
+	}
+
+	for &light_data in sf.lights {
+		handle, light := pool_create(&w.lights)
+		handle.type_key = .Light
+		light^ = light_data
+		id_to_light_handle[light_data.local_id] = handle
+		light_data = {}
 	}
 
 	for &mesh_filter_data in sf.mesh_filters {
@@ -159,6 +169,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				lifetime := pool_get(&w.lifetimes, h)
 				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_light_handle); ok {
+				c.handle = h
+				light := pool_get(&w.lights, h)
+				if light != nil do light.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_mesh_filter_handle); ok {
 				c.handle = h
 				mesh_filter := pool_get(&w.mesh_filters, h)
@@ -203,6 +217,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			for lid, h in id_to_lifetime_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
+			for lid, h in id_to_light_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_mesh_filter_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -232,6 +249,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
 		for lid, h in id_to_camera_handle do _file_lookup[lid] = h
 		for lid, h in id_to_lifetime_handle do _file_lookup[lid] = h
+		for lid, h in id_to_light_handle do _file_lookup[lid] = h
 		for lid, h in id_to_mesh_filter_handle do _file_lookup[lid] = h
 		for lid, h in id_to_mesh_renderer_handle do _file_lookup[lid] = h
 		for lid, h in id_to_player_handle do _file_lookup[lid] = h
@@ -246,6 +264,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for _, h in id_to_lifetime_handle {
 			p := pool_get(&w.lifetimes, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s, &_file_lookup)
+		}
+		for _, h in id_to_light_handle {
+			p := pool_get(&w.lights, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Light), s, &_file_lookup)
 		}
 		for _, h in id_to_mesh_filter_handle {
 			p := pool_get(&w.mesh_filters, h)
@@ -314,6 +336,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 
 	for &c in sf.cameras { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.lights { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.mesh_filters { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.mesh_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.players { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
@@ -380,6 +403,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
+	for &c in sf.lights { _remap_refs_in_value(&c, type_info_of(Light), &remap) }
 	for &c in sf.mesh_filters { _remap_refs_in_value(&c, type_info_of(MeshFilter), &remap) }
 	for &c in sf.mesh_renderers { _remap_refs_in_value(&c, type_info_of(MeshRenderer), &remap) }
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
@@ -409,6 +433,8 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.cameras)
 	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
 	delete(sf.lifetimes)
+	for &c in sf.lights { type_cleanup(.Light, &c) }
+	delete(sf.lights)
 	for &c in sf.mesh_filters { type_cleanup(.MeshFilter, &c) }
 	delete(sf.mesh_filters)
 	for &c in sf.mesh_renderers { type_cleanup(.MeshRenderer, &c) }
@@ -435,6 +461,7 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.breadcrumbs)
 	delete(sf.cameras)
 	delete(sf.lifetimes)
+	delete(sf.lights)
 	delete(sf.mesh_filters)
 	delete(sf.mesh_renderers)
 	delete(sf.players)

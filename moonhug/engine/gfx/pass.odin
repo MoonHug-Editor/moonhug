@@ -5,6 +5,7 @@
 package gfx
 
 import "base:runtime"
+import "core:math"
 import sdl "vendor:sdl3"
 
 Render_Target :: struct {
@@ -35,11 +36,25 @@ _Uniform :: struct {
 	tint:      [4]f32,
 }
 
+// Must match the lit shader's LightUBO (fragment set=3 binding=0).
+_Light_Uniform :: struct {
+	dir_ambient: [4]f32, // xyz = normalized direction light travels, w = ambient floor
+	color:       [4]f32, // rgb premultiplied by intensity
+}
+
+// Matches the previously baked-in lit shader constants, so scenes without a
+// Light component keep looking the same.
+_LIGHT_DEFAULT :: _Light_Uniform{
+	dir_ambient = {-0.42107597, -0.84215194, -0.33686078, 0.35}, // normalize({-0.5,-1,-0.4})
+	color       = {1, 1, 1, 1},
+}
+
 _pass: struct {
 	active:       bool,
 	target_color: ^sdl.GPUTexture,
 	target_depth: ^sdl.GPUTexture, // nil = depth-less pass (imgui-only)
 	clear:        Maybe([4]f32),
+	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
 	vps:          [dynamic]matrix[4, 4]f32,
 	vtx:          [dynamic]Vertex,
 	draws:        [dynamic]_Draw,
@@ -160,6 +175,24 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 	_pass.target_depth = _gfx.window_depth
 	_pass.clear = clear
 	return true
+}
+
+// Directional light for the CURRENT pass's lit-shader draws (one light —
+// per-draw light lists are a later problem). direction is the way the light
+// travels (sun → scene); zero-length falls back to straight down. Not calling
+// this keeps the default (white, baked direction, 0.35 ambient).
+set_light :: proc(direction: [3]f32, color: [3]f32, intensity: f32, ambient: f32) {
+	d := direction
+	len_sq := d.x * d.x + d.y * d.y + d.z * d.z
+	if len_sq < 1e-12 {
+		d = {0, -1, 0}
+	} else {
+		d /= math.sqrt(len_sq)
+	}
+	_pass.light = _Light_Uniform{
+		dir_ambient = {d.x, d.y, d.z, clamp(ambient, 0, 1)},
+		color       = {color.r * intensity, color.g * intensity, color.b * intensity, 1},
+	}
 }
 
 // May change mid-pass (multi-camera stacking, screen-space overlays).
@@ -302,6 +335,11 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
 	}
 
+	// Light uniforms persist on the command buffer for every draw this pass;
+	// only pipelines that declare the fragment UBO (lit) consume them.
+	light := _pass.light.? or_else _LIGHT_DEFAULT
+	sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
+
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
 	pushed_vp := i32(-1)
@@ -356,6 +394,7 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 	_pass.active = false
 	_pass.target_color = nil
 	_pass.target_depth = nil
+	_pass.light = nil
 }
 
 // One copy pass uploading this pass's vertices. cycle=true keeps earlier

@@ -5,6 +5,7 @@ package engine
 __type_resets_init :: proc() {
 	type_reset_procs[.Camera] = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) }
 	type_reset_procs[.Lifetime] = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) }
+	type_reset_procs[.Light] = proc(ptr: rawptr) { reset_Light(cast(^Light)ptr) }
 	type_reset_procs[.MeshFilter] = proc(ptr: rawptr) { reset_MeshFilter(cast(^MeshFilter)ptr) }
 	type_reset_procs[.Player] = proc(ptr: rawptr) { reset_Player(cast(^Player)ptr) }
 	type_reset_procs[.SpriteRenderer] = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) }

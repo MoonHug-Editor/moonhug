@@ -197,7 +197,27 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // layer, order in layer, view depth back-to-front, tree order
 // (sprite_sort.odin). Sprite keys are unique, so their order is total and
 // deterministic regardless of sort stability.
+// First enabled Light drives the pass's lit-shader uniforms; without one the
+// gfx default applies (white, baked direction — matches the pre-Light look).
+_apply_scene_light :: proc() {
+	world := ctx_world()
+	for i in 0 ..< len(world.lights.slots) {
+		slot := &world.lights.slots[i]
+		if !slot.alive do continue
+		l := &slot.data
+		if !l.enabled do continue
+		if !transform_active_in_hierarchy(l.owner) do continue
+
+		tw := transform_world(Transform_Handle(l.owner))
+		rot := quat_to_matrix3(tw.rotation)
+		forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]} // -Z, like cameras
+		gfx.set_light(forward, l.color.rgb, l.intensity, l.ambient)
+		return
+	}
+}
+
 render_execute :: proc(view: Render_View, commands: []Render_Command) {
+	_apply_scene_light()
 	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
 		am, a_mesh := a.variant.(Draw_Mesh)
 		bm, b_mesh := b.variant.(Draw_Mesh)

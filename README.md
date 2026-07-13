@@ -74,7 +74,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Object Picker](docs/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
 - [SDL3 Renderer](docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
 - [Meshes](docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
-- [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color), live-editing inspector
+- [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color), directional Light component, live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 
@@ -97,7 +97,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 ## TODO
 - custom user shaders (.glsl asset importer feeding gfx.shader_register; see [Materials](docs/Materials.md))
-- Directional Light component (lit shader currently bakes light dir/ambient)
+- multiple/point lights (one directional Light per pass now)
 
 - reorder collection elements in inspector by drag
 

@@ -25,11 +25,18 @@ white unlit — the fallback, not an error.
 | Name | Material_Shader | Effect |
 |---|---|---|
 | `unlit` | `.Unlit` | `texture * color`, no lighting |
-| `lit` | `.Lit` | unlit × fixed directional lambert (baked light dir, 0.35 ambient floor) |
+| `lit` | `.Lit` | unlit × directional lambert, driven by the scene's **Light** component |
+
+### Light component
+
+A directional sun: `color`, `intensity`, `ambient` (unlit floor); direction
+is the transform's forward (-Z, like cameras) — rotate to aim. Rendering
+uses the FIRST enabled light (`_apply_scene_light` → `gfx.set_light`, a
+per-pass fragment UBO); scenes without one get a neutral default (white,
+down-ish direction, 0.35 ambient) so unlit-era scenes look unchanged.
 
 The lit shader uses world-space normals via `mat3(model)` — wrong under
-non-uniform scale (needs inverse-transpose), accepted for now. Light
-components are a follow-up.
+non-uniform scale (needs inverse-transpose), accepted for now.
 
 ## File format
 
@@ -76,5 +83,5 @@ running the `shaders/compile.sh` toolchain (glslc + spirv-cross, already
 optional brew deps) whose artifact feeds `shader_register`; `Material_Shader`
 then widens from an enum to a shader reference. Also deferred: float/vector
 property blocks (spirv-cross `--reflect` can supply exact UBO offsets at
-import time) and light components for the lit shader. Per-submesh materials
-are done (see Meshes.md).
+import time) and multiple/point lights (one directional light per pass now).
+Per-submesh materials are done (see Meshes.md).
