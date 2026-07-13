@@ -17,6 +17,7 @@ SceneFile :: struct {
 	players: [dynamic]Player,
 	scripts: [dynamic]Script,
 	sprite_renderers: [dynamic]SpriteRenderer,
+	sprite_sorting_groups: [dynamic]SpriteSortingGroup,
 	ext_components: [dynamic]json.Value,
 }
 
@@ -31,6 +32,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_sprite_sorting_group_handle := make(map[Local_ID]Handle, context.temp_allocator)
 
 	if s != nil {
 		scene_file_remap_merge_metadata(sf, s)
@@ -105,6 +107,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		sprite_renderer_data = {}
 	}
 
+	for &sprite_sorting_group_data in sf.sprite_sorting_groups {
+		handle, sprite_sorting_group := pool_create(&w.sprite_sorting_groups)
+		handle.type_key = .SpriteSortingGroup
+		sprite_sorting_group^ = sprite_sorting_group_data
+		id_to_sprite_sorting_group_handle[sprite_sorting_group_data.local_id] = handle
+		sprite_sorting_group_data = {}
+	}
+
 	id_to_ext_handle := _scene_load_ext_components(sf)
 
 	for &t_data in sf.transforms {
@@ -169,6 +179,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 				c.handle = h
 				sprite_renderer := pool_get(&w.sprite_renderers, h)
 				if sprite_renderer != nil do sprite_renderer.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_sprite_sorting_group_handle); ok {
+				c.handle = h
+				sprite_sorting_group := pool_get(&w.sprite_sorting_groups, h)
+				if sprite_sorting_group != nil do sprite_sorting_group.owner = Transform_Handle(handle)
 			} else if h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {
 				c.handle = h
 				_ext_set_owner(w, h, Transform_Handle(handle))
@@ -204,6 +218,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			for lid, h in id_to_sprite_renderer_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
+			for lid, h in id_to_sprite_sorting_group_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_ext_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -220,6 +237,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for lid, h in id_to_player_handle do _file_lookup[lid] = h
 		for lid, h in id_to_script_handle do _file_lookup[lid] = h
 		for lid, h in id_to_sprite_renderer_handle do _file_lookup[lid] = h
+		for lid, h in id_to_sprite_sorting_group_handle do _file_lookup[lid] = h
 		for lid, h in id_to_ext_handle do _file_lookup[lid] = h
 		for _, h in id_to_camera_handle {
 			p := pool_get(&w.cameras, h)
@@ -248,6 +266,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for _, h in id_to_sprite_renderer_handle {
 			p := pool_get(&w.sprite_renderers, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s, &_file_lookup)
+		}
+		for _, h in id_to_sprite_sorting_group_handle {
+			p := pool_get(&w.sprite_sorting_groups, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteSortingGroup), s, &_file_lookup)
 		}
 		for _, h in id_to_ext_handle {
 			_ext_resolve_refs(w, h, s, &_file_lookup)
@@ -297,6 +319,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 	for &c in sf.players { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.scripts { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.sprite_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
+	for &c in sf.sprite_sorting_groups { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	ext_temps := _scene_file_remap_ext_begin(sf, s, &remap, mapper, user)
 	for &ns in sf.nested_scenes { new_id := _remap_new_id(s, mapper, user, ns.local_id); remap[ns.local_id] = new_id; ns.local_id = new_id }
 	for &bc in sf.breadcrumbs {
@@ -362,6 +385,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
 	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
 	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
+	for &c in sf.sprite_sorting_groups { _remap_refs_in_value(&c, type_info_of(SpriteSortingGroup), &remap) }
 	_scene_file_remap_ext_finish(ext_temps, &remap)
 }
 
@@ -395,6 +419,8 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	delete(sf.scripts)
 	for &c in sf.sprite_renderers { type_cleanup(.SpriteRenderer, &c) }
 	delete(sf.sprite_renderers)
+	for &c in sf.sprite_sorting_groups { type_cleanup(.SpriteSortingGroup, &c) }
+	delete(sf.sprite_sorting_groups)
 	_scene_file_destroy_ext(sf)
 }
 
@@ -414,5 +440,6 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.players)
 	delete(sf.scripts)
 	delete(sf.sprite_renderers)
+	delete(sf.sprite_sorting_groups)
 	_scene_file_destroy_ext(sf)
 }

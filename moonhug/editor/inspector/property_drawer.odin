@@ -14,6 +14,26 @@ draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
+@(private, property_drawer={type = i32, priority = 0})
+draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+    i32_ptr := cast(^i32)(ptr)
+    value := i32_ptr^
+    if im.DragInt(label, &value) {
+        i32_ptr^ = value
+        mark_inspector_changed()
+    }
+}
+
+@(private, property_drawer={type = u32, priority = 0})
+draw_u32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+    u32_ptr := cast(^u32)(ptr)
+    value := i32(min(u32_ptr^, u32(max(i32))))
+    if im.DragInt(label, &value, 1, 0, max(i32)) {
+        u32_ptr^ = u32(max(value, 0))
+        mark_inspector_changed()
+    }
+}
+
 @(private, property_drawer={type = string, priority = 0})
 draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     str_ptr := cast(^string)(ptr)

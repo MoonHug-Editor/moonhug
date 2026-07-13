@@ -25,6 +25,7 @@ TypeKey :: enum u16 {
 	Script,
 	Sequence,
 	SpriteRenderer,
+	SpriteSortingGroup,
 	Tank,
 	TextureSettings,
 	Transform,
@@ -59,6 +60,7 @@ SceneRefs__Guid := uuid.read("b1d7c74d-4e52-4088-a118-85059cf80149") or_else UUI
 Script__Guid := uuid.read("adaf3551-4704-4255-ad91-fde59441dc53") or_else UUID_NIL
 Sequence__Guid := uuid.read("24d46399-b3a0-44e7-abd1-6da5d759e935") or_else UUID_NIL
 SpriteRenderer__Guid := uuid.read("b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f") or_else UUID_NIL
+SpriteSortingGroup__Guid := uuid.read("2291f857-d2ff-409d-96df-1d87713fdcc2") or_else UUID_NIL
 Tank__Guid := uuid.read("f15b003c-a491-4aec-b838-49e641a25346") or_else UUID_NIL
 TextureSettings__Guid := uuid.read("21d45bcf-2bd8-44db-b780-953c2f8b610f") or_else UUID_NIL
 Transform__Guid := uuid.read("312927b7-3c4a-4929-9807-8216baf26a68") or_else UUID_NIL

@@ -458,6 +458,11 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			}
 			undo.push_component_owner(comp.handle)
 			defer undo.pop_owner()
+			// Scope widget IDs per component: different component types can
+			// share field names (SpriteRenderer.sorting_layer vs
+			// SpriteSortingGroup.sorting_layer) and would collide otherwise.
+			im.PushID(c_type_name)
+			defer im.PopID()
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}
@@ -553,6 +558,9 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 			prev_lid := engine.inspector_set_nested_local_id(comp_base.local_id)
 			defer engine.inspector_set_nested_local_id(prev_lid)
 
+			// Per-component ID scope — same reason as _draw_components_section.
+			im.PushID(c_type_name)
+			defer im.PopID()
 			drawer := inspector.resolve_property_drawer(comp_tid)
 			drawer(comp_ptr, comp_tid, c_type_name)
 		}

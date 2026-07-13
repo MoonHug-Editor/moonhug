@@ -15,6 +15,7 @@ register_component_menus :: proc() {
 	menu.add_menu_item("Component/SceneRefs", "", proc() { _component_menu_add(.SceneRefs) }, 0)
 	menu.add_menu_item("Component/Script", "", proc() { _component_menu_add(.Script) }, 0)
 	menu.add_menu_item("Component/SpriteRenderer", "", proc() { _component_menu_add(.SpriteRenderer) }, 0)
+	menu.add_menu_item("Component/SpriteSortingGroup", "", proc() { _component_menu_add(.SpriteSortingGroup) }, 0)
 	menu.add_menu_item("Component/Tank", "", proc() { _component_menu_add(.Tank) }, 0)
 }
 

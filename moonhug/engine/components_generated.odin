@@ -8,6 +8,7 @@ World :: struct {
 	players: Pool(Player, 10),
 	scripts: Pool(Script),
 	sprite_renderers: Pool(SpriteRenderer),
+	sprite_sorting_groups: Pool(SpriteSortingGroup),
 	transforms: Pool(Transform),
 	tween_unions: Pool(TweenUnion),
 	ext_pools: [TypeKey]rawptr,
@@ -23,6 +24,7 @@ w_init :: proc(w:^World)
 	pool_init(&w.players)
 	pool_init(&w.scripts)
 	pool_init(&w.sprite_renderers)
+	pool_init(&w.sprite_sorting_groups)
 	pool_init(&w.transforms)
 	pool_init(&w.tween_unions)
 	__type_resets_init()
@@ -85,6 +87,14 @@ w_init :: proc(w:^World)
 		c_copy.owner = {}
 		append(&s.sprite_renderers, c_copy)
 	}
+	w.pool_table[TypeKey.SpriteSortingGroup] = pool_make_entry(&w.sprite_sorting_groups)
+	w.pool_table[TypeKey.SpriteSortingGroup].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^SpriteSortingGroup)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.sprite_sorting_groups, c_copy)
+	}
 	w.pool_table[TypeKey.Transform] = pool_make_entry(&w.transforms)
 	w.pool_table[TypeKey.TweenUnion] = pool_make_entry(&w.tween_unions)
 	_w_init_ext_pools(w)
@@ -143,6 +153,11 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 		owned, _ := transform_find_comp(t, .SpriteRenderer)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.sprite_renderers, owned.handle)
+	}
+	else when T == SpriteSortingGroup {
+		owned, _ := transform_find_comp(t, .SpriteSortingGroup)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.sprite_sorting_groups, owned.handle)
 	}
 	return {}, nil
 }
@@ -208,6 +223,12 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 		owned, idx := transform_find_comp(t, .SpriteRenderer)
 		if idx < 0 do return
 		pool_destroy(&w.sprite_renderers, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == SpriteSortingGroup {
+		owned, idx := transform_find_comp(t, .SpriteSortingGroup)
+		if idx < 0 do return
+		pool_destroy(&w.sprite_sorting_groups, owned.handle)
 		ordered_remove(&t.components, idx)
 	}
 }

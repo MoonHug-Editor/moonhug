@@ -95,12 +95,14 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- SortingGroup component for SpriteRenderer grouping and sorting
-
 - Material asset for MeshRenderer (shader ref + property block; see [SDL3 Renderer](docs/SDL3Renderer.md) risks/notes)
 - mesh submesh/multi-material split (artifact format already reserves it)
 
+- reorder collection elements in inspector by drag
+
 - png - Texture2D with N Sprites
+- bug: Refs show unresolved after undo
+- don't depend tests on files in assets folder(fragile)
 
 - transform:
   - use bit set + procs, instead of direct bool change

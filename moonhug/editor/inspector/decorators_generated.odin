@@ -119,10 +119,12 @@ init_decorators :: proc() {
 	__decorators__MeshRenderer[1] = nil
 	__decorators__MeshRenderer[2] = __decorator__MeshRenderer__color
 	decorator_registry[typeid_of(engine.MeshRenderer)] = __decorators__MeshRenderer
-	__decorators__SpriteRenderer = make([]DecoratorProc, 3)
+	__decorators__SpriteRenderer = make([]DecoratorProc, 5)
 	__decorators__SpriteRenderer[0] = nil
 	__decorators__SpriteRenderer[1] = nil
 	__decorators__SpriteRenderer[2] = __decorator__SpriteRenderer__color
+	__decorators__SpriteRenderer[3] = nil
+	__decorators__SpriteRenderer[4] = nil
 	decorator_registry[typeid_of(engine.SpriteRenderer)] = __decorators__SpriteRenderer
 	__decorators__TweenRotateToLocal = make([]DecoratorProc, 5)
 	__decorators__TweenRotateToLocal[0] = nil

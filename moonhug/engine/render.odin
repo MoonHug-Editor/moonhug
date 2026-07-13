@@ -35,7 +35,7 @@ Draw_Mesh :: struct {
 }
 
 Render_Command :: struct {
-	depth:   f32, // view-space depth, sprites sort back-to-front
+	key:     Sprite_Sort_Key, // sprites only (sprite_sort.odin); zero for meshes
 	variant: union #no_nil {
 		Draw_Mesh,
 		Draw_Sprite,
@@ -162,6 +162,9 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		})
 	}
 
+	// One tree pass resolves every sprite's sort key (groups folded in).
+	sort_keys := sprite_sort_build_keys(view)
+
 	for i in 0 ..< len(world.sprite_renderers.slots) {
 		slot := &world.sprite_renderers.slots[i]
 		if !slot.alive do continue
@@ -177,9 +180,10 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		if !ok do continue
 
 		tw := transform_world(Transform_Handle(sr.owner))
-		pos4 := view.view * [4]f32{tw.position.x, tw.position.y, tw.position.z, 1}
+		key, in_tree := sort_keys[Transform_Handle(sr.owner)]
+		if !in_tree do key = sprite_sort_orphan_key(view, sr)
 		append(out, Render_Command{
-			depth   = -pos4.z, // right-handed view looks down -Z; larger = farther
+			key     = key,
 			variant = Draw_Sprite{
 				texture = sr.texture,
 				corners = sprite_world_corners(tw, tex.width, tex.height),
@@ -190,14 +194,16 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 }
 
 // Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
-// (depth-write pipeline handles their ordering), then alpha-blended sprites
-// back-to-front by view depth.
+// (depth-write pipeline handles their ordering), then alpha-blended sprites by
+// their sort key — layer, order in layer, view depth back-to-front, tree order
+// (sprite_sort.odin). Keys are unique per sprite, so the order is total and
+// deterministic regardless of sort stability.
 render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
 		_, a_sprite := a.variant.(Draw_Sprite)
 		_, b_sprite := b.variant.(Draw_Sprite)
 		if a_sprite != b_sprite do return b_sprite // meshes first
-		return a.depth > b.depth
+		return sprite_sort_key_less(a.key, b.key)
 	})
 
 	gfx.set_view_proj(view.view_proj)

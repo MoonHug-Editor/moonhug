@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 17,
+  "next_local_id": 19,
   "transforms": [
     {
       "local_id": 15,
@@ -43,6 +43,9 @@
         },
         {
           "local_id": 1
+        },
+        {
+          "local_id": 18
         }
       ]
     },
@@ -102,6 +105,12 @@
       "time_spent": 0.00000000
     }
   ],
+  "mesh_filters": [
+
+  ],
+  "mesh_renderers": [
+
+  ],
   "players": [
 
   ],
@@ -120,7 +129,9 @@
         0.94901961,
         0.00000000,
         1.00000000
-      ]
+      ],
+      "sorting_layer": 0,
+      "order_in_layer": 0
     },
     {
       "base": {
@@ -133,7 +144,19 @@
         1.00000000,
         0.00000000,
         1.00000000
-      ]
+      ],
+      "sorting_layer": 0,
+      "order_in_layer": 0
+    }
+  ],
+  "sprite_sorting_groups": [
+    {
+      "base": {
+        "local_id": 18,
+        "enabled": true
+      },
+      "sorting_layer": 0,
+      "order_in_layer": 0
     }
   ],
   "ext_components": [

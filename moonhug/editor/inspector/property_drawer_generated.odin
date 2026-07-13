@@ -6,6 +6,8 @@ import "../../engine"
 
 init_property_drawer_map :: proc() {
 	mapPropertyDrawer[typeid_of(int)] = draw_int_property
+	mapPropertyDrawer[typeid_of(i32)] = draw_i32_property
+	mapPropertyDrawer[typeid_of(u32)] = draw_u32_property
 	mapPropertyDrawer[typeid_of(string)] = draw_string_property
 	mapPropertyDrawer[typeid_of(bool)] = draw_bool_property
 	mapPropertyDrawer[typeid_of(f32)] = draw_f32_property

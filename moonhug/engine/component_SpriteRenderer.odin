@@ -6,6 +6,10 @@ SpriteRenderer :: struct {
     using base: CompData `inspect:"-"`,
     texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
     color:   [4]f32 `decor:color()`,
+    // Unity-style sort keys (sprite_sort.odin): layer first, then order in
+    // layer, then view depth back-to-front, then scene-tree order.
+    sorting_layer:  i32,
+    order_in_layer: i32,
 }
 
 reset_SpriteRenderer :: proc(sr: ^SpriteRenderer) {
