@@ -28,10 +28,9 @@ Draw_Sprite :: struct {
 }
 
 Draw_Mesh :: struct {
-	mesh:    Asset_GUID,
-	texture: Asset_GUID, // empty = untextured white
-	model:   matrix[4, 4]f32,
-	color:   [4]f32,
+	mesh:      Asset_GUID,
+	materials: []Asset_GUID, // per-submesh; view into the renderer's array (frame lifetime). missing/empty = white unlit
+	model:     matrix[4, 4]f32,
 }
 
 Render_Command :: struct {
@@ -154,10 +153,9 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		tw := transform_world(Transform_Handle(mr.owner))
 		append(out, Render_Command{
 			variant = Draw_Mesh{
-				mesh    = mf.mesh,
-				texture = mr.texture,
-				model   = trs_matrix(tw.position, tw.rotation, tw.scale),
-				color   = mr.color,
+				mesh      = mf.mesh,
+				materials = mr.materials[:],
+				model     = trs_matrix(tw.position, tw.rotation, tw.scale),
 			},
 		})
 	}
@@ -194,15 +192,22 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 }
 
 // Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
-// (depth-write pipeline handles their ordering), then alpha-blended sprites by
-// their sort key — layer, order in layer, view depth back-to-front, tree order
-// (sprite_sort.odin). Keys are unique per sprite, so the order is total and
+// (depth-write pipeline handles their ordering; grouped by material to batch
+// pipeline/texture binds), then alpha-blended sprites by their sort key —
+// layer, order in layer, view depth back-to-front, tree order
+// (sprite_sort.odin). Sprite keys are unique, so their order is total and
 // deterministic regardless of sort stability.
 render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
-		_, a_sprite := a.variant.(Draw_Sprite)
-		_, b_sprite := b.variant.(Draw_Sprite)
-		if a_sprite != b_sprite do return b_sprite // meshes first
+		am, a_mesh := a.variant.(Draw_Mesh)
+		bm, b_mesh := b.variant.(Draw_Mesh)
+		if a_mesh != b_mesh do return a_mesh // meshes first
+		if a_mesh {
+			// Group by first material so same-material runs share binds.
+			ak: u128 = len(am.materials) > 0 ? transmute(u128)am.materials[0] : 0
+			bk: u128 = len(bm.materials) > 0 ? transmute(u128)bm.materials[0] : 0
+			return ak < bk
+		}
 		return sprite_sort_key_less(a.key, b.key)
 	})
 
@@ -218,13 +223,12 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 		case Draw_Mesh:
 			mesh, ok := mesh_load(d.mesh)
 			if !ok do continue
-			gpu_tex: ^gfx.Texture
-			if d.texture != {} {
-				if tex, tex_ok := texture_load(d.texture); tex_ok {
-					gpu_tex = tex.gfx
-				}
+			for sub, i in mesh.submeshes {
+				mat_guid: Asset_GUID
+				if i < len(d.materials) do mat_guid = d.materials[i]
+				shader, gpu_tex, color := _resolve_material(mat_guid)
+				gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count)
 			}
-			gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, d.color)
 		}
 	}
 }

@@ -20,13 +20,18 @@ _Draw :: struct {
 	first_vertex: u32, // batch draws
 	vertex_count: u32,
 	mesh:         Mesh, // mesh draws
+	mesh_first:   u32, // index range within the mesh (submeshes)
+	mesh_count:   u32,
 	model:        matrix[4, 4]f32,
 	color:        [4]f32,
+	shader:       string, // mesh draws; "" = DEFAULT_SHADER
 }
 
-// Must match the GLSL UBO (std140: mat4 then vec4).
+// Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
+// model = identity (vertices are pre-transformed to world space).
 _Uniform :: struct {
 	view_proj: matrix[4, 4]f32,
+	model:     matrix[4, 4]f32,
 	tint:      [4]f32,
 }
 
@@ -212,16 +217,26 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true) {
 	_batch_append(depth_test ? .Lines : .Lines_Overlay, nil, first, 2)
 }
 
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32) {
+// shader picks a registered shader set (shader_register); ""/unknown names
+// fall back to DEFAULT_SHADER. The caller keeps `shader` alive through
+// pass_end (material cache / string literals — never temp per-frame builds).
+// index_count=0 draws the whole mesh; a submesh passes its index range.
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0) {
 	if mesh.index_count == 0 do return
+	count := index_count == 0 ? mesh.index_count : index_count
+	if first_index >= mesh.index_count do return
+	count = min(count, mesh.index_count - first_index)
 	append(&_pass.draws, _Draw{
-		kind     = .Tris_Depth,
-		is_mesh  = true,
-		texture  = tex,
-		vp_index = _current_vp(),
-		mesh     = mesh,
-		model    = model,
-		color    = color,
+		kind       = .Tris_Depth,
+		is_mesh    = true,
+		texture    = tex,
+		vp_index   = _current_vp(),
+		mesh       = mesh,
+		mesh_first = first_index,
+		mesh_count = count,
+		model      = model,
+		color      = color,
+		shader     = shader,
 	})
 }
 
@@ -287,14 +302,18 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
 	}
 
-	bound_kind: Maybe(_Pipeline_Kind)
+	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
 	pushed_vp := i32(-1)
 	pushed_mesh := false
 	for &d in _pass.draws {
-		if kind, ok := bound_kind.?; !ok || kind != d.kind {
-			sdl.BindGPUGraphicsPipeline(rp, _gfx.pipelines[d.kind])
-			bound_kind = d.kind
+		pipeline := _gfx.pipelines[d.kind]
+		if d.shader != "" {
+			if set, ok := _gfx.shader_sets[d.shader]; ok do pipeline = set[d.kind]
+		}
+		if pipeline != bound {
+			sdl.BindGPUGraphicsPipeline(rp, pipeline)
+			bound = pipeline
 			batch_bound = false // vertex buffer binding survives, but re-bind cheaply per pipeline switch
 		}
 		tex := d.texture != nil ? d.texture : _gfx.white_tex
@@ -302,7 +321,7 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		sdl.BindGPUFragmentSamplers(rp, 0, &binding, 1)
 
 		if d.is_mesh {
-			u := _Uniform{view_proj = _pass.vps[d.vp_index] * d.model, tint = d.color}
+			u := _Uniform{view_proj = _pass.vps[d.vp_index], model = d.model, tint = d.color}
 			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 			pushed_vp = -1
 			pushed_mesh = true
@@ -310,11 +329,11 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 			vb := sdl.GPUBufferBinding{buffer = d.mesh.vbuf}
 			sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)
 			sdl.BindGPUIndexBuffer(rp, {buffer = d.mesh.ibuf}, ._32BIT)
-			sdl.DrawGPUIndexedPrimitives(rp, d.mesh.index_count, 1, 0, 0, 0)
+			sdl.DrawGPUIndexedPrimitives(rp, d.mesh_count, 1, d.mesh_first, 0, 0)
 			batch_bound = false
 		} else {
 			if pushed_vp != d.vp_index || pushed_mesh {
-				u := _Uniform{view_proj = _pass.vps[d.vp_index], tint = {1, 1, 1, 1}}
+				u := _Uniform{view_proj = _pass.vps[d.vp_index], model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
 				pushed_mesh = false

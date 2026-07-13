@@ -9,7 +9,7 @@ set -e
 cd "$(dirname "$0")"
 mkdir -p compiled
 
-for name in world.vert world.frag; do
+for name in world.vert world.frag lit.frag; do
     stage="${name##*.}"
     glslc "-fshader-stage=$stage" "$name.glsl" -o "compiled/$name.spv"
     # MSL entry point becomes main0 (spirv-cross convention, matches shadercross)

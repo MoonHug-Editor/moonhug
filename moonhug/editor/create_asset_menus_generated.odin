@@ -13,6 +13,12 @@ __create_asset__GameSettings :: proc() {
 	serialization.write_asset_to_path(full_path, engine.get_guid_by_type_key(engine.TypeKey.GameSettings), instance)
 }
 
+__create_asset__Material :: proc() {
+	full_path, _ := filepath.join({projectViewData.currentPath, "New Material.mat"}, context.temp_allocator)
+	instance := engine.create_instance_by_type_key(engine.TypeKey.Material)
+	serialization.write_asset_to_path(full_path, engine.get_guid_by_type_key(engine.TypeKey.Material), instance)
+}
+
 __create_asset__PlayerSettings :: proc() {
 	full_path, _ := filepath.join({projectViewData.currentPath, "PlayerSettings.asset"}, context.temp_allocator)
 	instance := engine.create_instance_by_type_key(engine.TypeKey.PlayerSettings)
@@ -21,5 +27,6 @@ __create_asset__PlayerSettings :: proc() {
 
 register_create_asset_menus :: proc() {
 	menu.add_menu_item("Assets/Create/Game Settings", "", __create_asset__GameSettings, 0)
+	menu.add_menu_item("Assets/Create/Material", "", __create_asset__Material, -6)
 	menu.add_menu_item("Assets/Create/Player Settings", "", __create_asset__PlayerSettings, -12)
 }

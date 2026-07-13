@@ -19,7 +19,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	engine.scene_set_root(tc_mem.scene, tH)
 
 	mesh_guid, _ := uuid.read("11111111-2222-3333-4444-555555555555")
-	tex_guid, _ := uuid.read("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+	mat_guid, _ := uuid.read("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
 	_, mf := engine.transform_get_or_add_comp(tH, engine.MeshFilter)
 	testing.expect(t, mf != nil, "MeshFilter should be added")
@@ -30,8 +30,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, mr := engine.transform_get_or_add_comp(tH, engine.MeshRenderer)
 	testing.expect(t, mr != nil, "MeshRenderer should be added")
 	if mr == nil do return
-	mr.texture = engine.Asset_GUID(tex_guid)
-	mr.color = {0.25, 0.5, 0.75, 1}
+	append(&mr.materials, engine.Asset_GUID(mat_guid))
 	mr.enabled = true
 
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
@@ -51,6 +50,5 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, loaded_mr := engine.transform_get_comp(root_tH, engine.MeshRenderer)
 	testing.expect(t, loaded_mr != nil, "MeshRenderer should survive reload")
 	if loaded_mr == nil do return
-	testing.expect(t, loaded_mr.texture == engine.Asset_GUID(tex_guid), "texture guid should round-trip")
-	testing.expect(t, loaded_mr.color == {0.25, 0.5, 0.75, 1}, "color should round-trip")
+	testing.expect(t, len(loaded_mr.materials) == 1 && loaded_mr.materials[0] == engine.Asset_GUID(mat_guid), "materials array should round-trip")
 }

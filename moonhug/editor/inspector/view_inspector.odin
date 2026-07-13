@@ -139,6 +139,17 @@ _draw_asset_inspector :: proc() {
 
     if inspectorData.fileData.data != nil {
         draw_inspector(inspectorData.fileData)
+        _material_live_preview()
+    }
+}
+
+// Material edits render live (Unity-style): the open .mat's values are
+// pushed into the engine material cache every frame, saved or not. Save
+// persists them to disk; unsaved edits revert on the next editor run.
+_material_live_preview :: proc() {
+    if inspectorData.fileData.id != typeid_of(engine.Material) do return
+    if guid, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
+        engine.material_preview(engine.Asset_GUID(guid), (cast(^engine.Material)inspectorData.fileData.data)^)
     }
 }
 
@@ -460,13 +471,22 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         row_popup_done := false
 
         if ctx.is_visible {
+            // Field-level picker tags apply through EVERY drawer path — a
+            // [dynamic]Asset_GUID `ext:"mat"` field reaches the guid drawer
+            // via draw_inspector_array, and the elements must still filter.
+            ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
+            current_field_ref_target = ref_tag
+            pick_tag, _ := reflect.struct_tag_lookup(field_info.tag, "pick")
+            current_field_pick_mode = pick_tag
+            ext_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ext")
+            current_field_ext_filter = ext_tag
+            defer {
+                current_field_ref_target = ""
+                current_field_pick_mode = ""
+                current_field_ext_filter = ""
+            }
+
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
-                ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
-                current_field_ref_target = ref_tag
-                pick_tag, _ := reflect.struct_tag_lookup(field_info.tag, "pick")
-                current_field_pick_mode = pick_tag
-                ext_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ext")
-                current_field_ext_filter = ext_tag
                 // Group the drawer's widgets so the field context menu below
                 // binds to the WHOLE row. A drawer can emit several items (e.g.
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
@@ -475,9 +495,6 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 im.BeginGroup()
                 drawer(field_ptr, field_type.id, c_field_name)
                 im.EndGroup()
-                current_field_ref_target = ""
-                current_field_pick_mode = ""
-                current_field_ext_filter = ""
                 _undo_finalize_widget()
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)

@@ -4,6 +4,7 @@
 package gfx
 
 import "base:runtime"
+import "core:strings"
 import sdl "vendor:sdl3"
 
 // One vertex format for the CPU batch AND meshes. Normals are unused by the
@@ -33,13 +34,21 @@ _Pipeline_Kind :: enum u8 {
 	Lines_Overlay, // no depth test (gizmos)
 }
 
+// One pipeline per kind, per registered shader. All shaders share the Vertex
+// format and the UBO layout (pass.odin _Uniform) — that contract is what lets
+// pass_end switch shaders per draw without re-plumbing uniforms.
+_Shader_Set :: [_Pipeline_Kind]^sdl.GPUGraphicsPipeline
+
+DEFAULT_SHADER :: "unlit"
+
 _DEPTH_FORMAT :: sdl.GPUTextureFormat.D32_FLOAT
 
 _gfx: struct {
 	device:           ^sdl.GPUDevice,
 	swapchain_format: sdl.GPUTextureFormat,
 	cmd:              ^sdl.GPUCommandBuffer, // valid between frame_begin/frame_end
-	pipelines:        [_Pipeline_Kind]^sdl.GPUGraphicsPipeline,
+	shader_sets:      map[string]_Shader_Set, // built-ins registered in init
+	pipelines:        _Shader_Set, // = shader_sets[DEFAULT_SHADER] (batch fast path)
 	sampler_linear:   ^sdl.GPUSampler,
 	sampler_nearest:  ^sdl.GPUSampler,
 	white_tex:        ^Texture,
@@ -87,9 +96,13 @@ shutdown :: proc() {
 		_debug_text_shutdown()
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
-		for p in _gfx.pipelines {
-			if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+		for name, set in _gfx.shader_sets {
+			for p in set {
+				if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+			}
+			delete(name)
 		}
+		delete(_gfx.shader_sets)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
 		sdl.ReleaseWindowFromGPUDevice(_gfx.device, _platform.window)
@@ -125,8 +138,25 @@ command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
 }
 
 _create_pipelines :: proc() -> bool {
-	vert := _create_shader(.VERTEX, 0, 1)
-	frag := _create_shader(.FRAGMENT, 1, 0)
+	_gfx.shader_sets = make(map[string]_Shader_Set)
+	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
+	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL) do return false
+	_gfx.pipelines = _gfx.shader_sets[DEFAULT_SHADER]
+	return true
+}
+
+shader_exists :: proc(name: string) -> bool {
+	return name in _gfx.shader_sets
+}
+
+// Builds the full pipeline set for a vertex+fragment shader pair and registers
+// it under `name` (draw_mesh's shader parameter). Shaders must follow the
+// built-in resource convention: vertex = 1 UBO (_Uniform layout), fragment =
+// 1 sampler2D. Re-registering a name is an error (false).
+shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8) -> bool {
+	if name in _gfx.shader_sets do return false
+	vert := _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl)
+	frag := _create_shader(.FRAGMENT, 1, 0, frag_spv, frag_msl)
 	if vert == nil || frag == nil do return false
 	defer sdl.ReleaseGPUShader(_gfx.device, vert)
 	defer sdl.ReleaseGPUShader(_gfx.device, frag)
@@ -184,14 +214,21 @@ _create_pipelines :: proc() -> bool {
 		return sdl.CreateGPUGraphicsPipeline(_gfx.device, info^)
 	}
 
-	_gfx.pipelines[.Tris]          = make_pipeline(&info, .TRIANGLELIST, true, false)
-	_gfx.pipelines[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
-	_gfx.pipelines[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
-	_gfx.pipelines[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
-	_gfx.pipelines[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
-	for p in _gfx.pipelines {
-		if p == nil do return false
+	set: _Shader_Set
+	set[.Tris]          = make_pipeline(&info, .TRIANGLELIST, true, false)
+	set[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
+	set[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
+	set[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
+	set[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
+	for p in set {
+		if p == nil {
+			for q in set {
+				if q != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, q)
+			}
+			return false
+		}
 	}
+	_gfx.shader_sets[strings.clone(name)] = set
 	return true
 }
 

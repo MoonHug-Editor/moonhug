@@ -216,9 +216,15 @@ _project_go_up :: proc() {
     _project_scroll_to_list_sel = true
 }
 
+// JSON asset files the project inspector opens directly (serialized
+// __type_guid instances): generic .asset plus typed extensions (.mat).
+_is_inspector_asset :: proc(path: string) -> bool {
+    return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat")
+}
+
 // Same side effects as clicking/double-clicking the file row.
 _project_activate_file :: proc(full_path: string) {
-    if strings.has_suffix(full_path, ".asset") {
+    if _is_inspector_asset(full_path) {
         undo.clear(undo.get())
         inspector.load_from_file(full_path)
     }
@@ -360,6 +366,8 @@ _project_file_icon :: proc(path: string) -> string {
         return ICON_MD_IMAGE
     case ".asset":
         return ICON_MD_SETTINGS
+    case ".mat":
+        return ICON_MD_PALETTE
     case:
         return ICON_MD_DESCRIPTION
     }
@@ -658,7 +666,7 @@ _project_handle_list_keys :: proc() {
 
 is_known_extension :: proc(filename: string) -> bool {
     ext := filepath.ext(filename)
-    if ext == ".prefab" || ext == ".asset" || ext == ".scene" do return true
+    if ext == ".prefab" || ext == ".asset" || ext == ".mat" || ext == ".scene" do return true
     return engine.is_importable_extension(ext)
 }
 
@@ -734,7 +742,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
                 _project_enter_dir(full_path)
             }
         } else {
-            if strings.has_suffix(full_path, ".asset") {
+            if _is_inspector_asset(full_path) {
                 undo.clear(undo.get())
                 inspector.load_from_file(full_path)
             }

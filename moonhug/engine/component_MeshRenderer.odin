@@ -1,17 +1,21 @@
 package engine
 
-// Draws the sibling MeshFilter's mesh. No material system yet — texture +
-// tint mirrors SpriteRenderer's shape; a Material asset is the designated
-// follow-up (docs/SDL3Renderer.md).
+// Draws the sibling MeshFilter's mesh with Material assets (material.odin),
+// one per submesh (Unity model: submesh i uses materials[i]). Missing or
+// empty entries render plain white unlit.
 
 @(component)
 @(typ_guid={guid = "73e161a0-c599-4cfb-9826-447e05baa76c"})
 MeshRenderer :: struct {
     using base: CompData `inspect:"-"`,
-    texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
-    color:   [4]f32 `decor:color()`,
+    materials: [dynamic]Asset_GUID `ext:"mat"`,
 }
 
-reset_MeshRenderer :: proc(mr: ^MeshRenderer) {
-    mr.color = {1, 1, 1, 1}
+on_destroy_MeshRenderer :: proc(mr: ^MeshRenderer) {
+    cleanup_MeshRenderer(mr)
+}
+
+cleanup_MeshRenderer :: proc(mr: ^MeshRenderer) {
+    if mr.materials != nil do delete(mr.materials)
+    comp_zero(mr)
 }

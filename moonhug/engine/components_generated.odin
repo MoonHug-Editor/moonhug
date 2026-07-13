@@ -105,6 +105,7 @@ __component_on_validates_init :: proc() {
 }
 
 __component_on_destroys_init :: proc() {
+	component_on_destroy_procs[.MeshRenderer] = proc(ptr: rawptr) { on_destroy_MeshRenderer(cast(^MeshRenderer)ptr) }
 	component_on_destroy_procs[.Player] = proc(ptr: rawptr) { on_destroy_Player(cast(^Player)ptr) }
 }
 
@@ -245,6 +246,11 @@ world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
 
 world_destroy_all :: proc(w: ^World) {
 	_world_destroy_ext(w)
+	for i in 0..<len(w.mesh_renderers.slots) {
+		slot := &w.mesh_renderers.slots[i]
+		if !slot.alive do continue
+		on_destroy_MeshRenderer(&slot.data)
+	}
 	for i in 0..<len(w.players.slots) {
 		slot := &w.players.slots[i]
 		if !slot.alive do continue

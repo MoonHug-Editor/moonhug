@@ -241,10 +241,9 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 
 ### 6. MeshFilter + MeshRenderer + picker ext: filter
 - [x] `engine/component_MeshFilter.odin` — `mesh: Asset_GUID` `ext:"glb,gltf"`
-- [x] `engine/component_MeshRenderer.odin` — `texture: Asset_GUID`
-      `ext:"png,jpg,jpeg,bmp"` (empty = untextured white), `color: [4]f32
-      decor:color()` (Unity parity: filter=data, renderer=appearance; no
-      material system yet)
+- [x] `engine/component_MeshRenderer.odin` — `material: Asset_GUID`
+      `ext:"mat"` (empty = white unlit; originally raw texture+color, replaced
+      by the Material asset — see docs/Materials.md)
 - [x] `Draw_Mesh` emission in `render_collect_commands` (sibling MeshFilter via
       transform_get_comp; skip empty guid); render_execute draws meshes first
       (depth-write), then sprites back-to-front
@@ -300,7 +299,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       (artifact format, components, glb guidance, submesh follow-up)
 - [x] README: install notes (sdl3, stb, cgltf, optional shader toolchain);
       SDL3 Renderer + Meshes moved to Features; remaining TODO = Rotate/Scale
-      gizmos, Material asset, submesh split
+      gizmos (done), Material asset (done — docs/Materials.md), submesh split
 
 ## Verification (every phase)
 
