@@ -138,10 +138,12 @@ init_decorators :: proc() {
 	__decorators__Light[2] = nil
 	__decorators__Light[3] = __decorator__Light__ambient
 	decorator_registry[typeid_of(engine.Light)] = __decorators__Light
-	__decorators__Material = make([]DecoratorProc, 3)
+	__decorators__Material = make([]DecoratorProc, 5)
 	__decorators__Material[0] = nil
 	__decorators__Material[1] = nil
-	__decorators__Material[2] = __decorator__Material__color
+	__decorators__Material[2] = nil
+	__decorators__Material[3] = __decorator__Material__color
+	__decorators__Material[4] = nil
 	decorator_registry[typeid_of(engine.Material)] = __decorators__Material
 	__decorators__SpriteRenderer = make([]DecoratorProc, 5)
 	__decorators__SpriteRenderer[0] = nil

@@ -70,18 +70,81 @@ GPU-free (works headless, fully testable):
 color and calls `gfx.draw_mesh(..., shader)`. Meshes sort by material guid so
 same-material draws share pipeline/texture binds.
 
-## The gfx seam (custom shaders later)
+## Custom user shaders
 
-Pipelines are **name-keyed** in gfx: `shader_register(name, vert_spv,
-vert_msl, frag_spv, frag_msl)` builds the full pipeline set for a shader pair
-("unlit" and "lit" are registered in `gfx.init`). All shaders share the
-`Vertex` format and the UBO layout (`_Uniform`: view_proj, model, tint) —
-that contract is what lets `pass_end` switch shaders per draw.
+A `.glsl` asset under `assets/` is a **fragment shader** — the vertex stage
+is always the built-in world vertex shader, since the vertex format and UBO
+layout are fixed engine contracts. Samples: `assets/shaders/normals.glsl`
+(minimal, no properties) and `assets/shaders/stripes.glsl` (the property
+block walkthrough). Conventions:
 
-User-authored shaders are the designed follow-up: a `.glsl` asset importer
-running the `shaders/compile.sh` toolchain (glslc + spirv-cross, already
-optional brew deps) whose artifact feeds `shader_register`; `Material_Shader`
-then widens from an enum to a shader reference. Also deferred: float/vector
-property blocks (spirv-cross `--reflect` can supply exact UBO offsets at
-import time) and multiple/point lights (one directional light per pass now).
-Per-submesh materials are done (see Meshes.md).
+- inputs: `frag_uv` (loc 0), `frag_color` (loc 1), `frag_normal` (loc 2)
+- `sampler2D` at `set = 2, binding = 0` — declare it even if unused
+- optional `LightUBO` at `set = 3, binding = 0` (see engine's lit.frag.glsl)
+- optional **material property block** at `set = 3, binding = 1` — any
+  uniform block of floats/vec2/vec3/vec4
+
+### Property blocks
+
+Declare a block and its members become material properties:
+
+```glsl
+layout(set = 3, binding = 1) uniform MaterialUBO {
+    float normal_mix;
+    vec4  tint2;
+};
+```
+
+Import reflects the std140 layout (member names, offsets, block size) into
+the artifact. The Material inspector auto-populates a `properties` row per
+member for the assigned shader, with widgets sized to the member type —
+one drag for `float`, two/three for `vec2`/`vec3`, a color picker for
+`vec4`s whose name contains "color" (drags otherwise); rows whose member
+left the shader show dimmed with a remove button
+(property_drawer_material_props.odin). Values are matched BY NAME at draw
+time, packed into the block layout, and pushed as fragment UBO slot 1 per
+draw. Properties the material doesn't set are zero. Matrices/ints/arrays
+are not supported as properties.
+
+MSL note: user shaders compile with `--msl-decoration-binding` so GLSL
+binding numbers survive as Metal buffer indices — spirv-cross's default
+sequential assignment would put a lone binding=1 MaterialUBO at buffer(0),
+silently aliasing the light UBO slot.
+
+**Write shaders so all-zero properties still show something** (in-shader
+fallbacks, like stripes.glsl's black-stripes default) — freshly synced rows
+start at zero, and an effect that's invisible until tuned reads as broken.
+
+Walkthrough (stripes.glsl): create a Material → set `custom_shader` to
+stripes.glsl → black stripes appear immediately → `properties` fills with
+`stripe_color` / `stripe_count` / `tilt` rows → drag values, the mesh
+updates live; Save persists.
+
+Import (`asset_importer_shader.odin`) shells out to the same toolchain as
+compile.sh — glslc → SPIR-V, spirv-cross → MSL + reflection — and caches
+both blobs plus the reflected resource counts and property layout in the
+artifact (`"MHSHDR2\0" | spv_len | msl_len | num_samplers | num_ubos |
+block_size | property_count | spv | msl | property table`).
+Compile errors land in the editor console with the tool's stderr.
+**Authoring shaders needs `brew install shaderc spirv-cross`; opening a
+project that contains them does not** (artifacts are cached in library/,
+rebuilt only when the source changes).
+
+Assign one via Material's `custom_shader` field (picker filters `.glsl`);
+it overrides the built-in `shader` enum when set, and falls back to it when
+the shader can't load (missing toolchain, compile error). Editing the
+`.glsl` **hot-reloads**: the AssetDB refresh (editor focus) reimports and
+swaps the pipelines live.
+
+## The gfx seam
+
+Pipelines are **name-keyed** in gfx: `shader_register(name, ...)` builds the
+full pipeline set for a shader pair ("unlit" and "lit" are registered in
+`gfx.init`; user shaders register through `shader_register_fragment` under
+their guid string, `shader_unregister` enables hot reload). All shaders share
+the `Vertex` format and the vertex UBO layout (`_Uniform`: view_proj, model,
+tint) — that contract is what lets `pass_end` switch shaders per draw.
+
+Still deferred: multiple/point lights (one directional light per pass now).
+Per-submesh materials and property blocks are done (see above and
+Meshes.md).

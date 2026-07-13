@@ -47,6 +47,9 @@ init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
     decorator_registry = make(DecoratorsMap)
     init_property_drawer_map()
+    // Manual registration: the prebuild attribute parser takes plain type
+    // names, not container type expressions.
+    mapPropertyDrawer[typeid_of([dynamic]engine.Material_Property)] = draw_material_properties
     init_decorators()
 }
 
@@ -138,18 +141,26 @@ _draw_asset_inspector :: proc() {
     im.Separator()
 
     if inspectorData.fileData.data != nil {
+        if inspectorData.fileData.id == typeid_of(engine.Material) {
+            current_material = cast(^engine.Material)inspectorData.fileData.data
+        }
         draw_inspector(inspectorData.fileData)
         _material_live_preview()
+        current_material = nil
     }
 }
 
 // Material edits render live (Unity-style): the open .mat's values are
 // pushed into the engine material cache every frame, saved or not. Save
 // persists them to disk; unsaved edits revert on the next editor run.
+// Property rows for the assigned custom shader auto-populate from its
+// reflected UBO members, so names never have to be typed by hand.
 _material_live_preview :: proc() {
     if inspectorData.fileData.id != typeid_of(engine.Material) do return
+    mat := cast(^engine.Material)inspectorData.fileData.data
+    _ = engine.material_sync_properties(mat)
     if guid, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
-        engine.material_preview(engine.Asset_GUID(guid), (cast(^engine.Material)inspectorData.fileData.data)^)
+        engine.material_preview(engine.Asset_GUID(guid), mat^)
     }
 }
 

@@ -26,6 +26,7 @@ _Draw :: struct {
 	model:        matrix[4, 4]f32,
 	color:        [4]f32,
 	shader:       string, // mesh draws; "" = DEFAULT_SHADER
+	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 }
 
 // Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
@@ -242,19 +243,24 @@ draw_triangle :: proc(a, b, c: [3]f32, color: [4]f32, depth_test := true) {
 	_batch_append(depth_test ? .Tris : .Tris_Overlay, nil, first, 3)
 }
 
-draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true) {
+// depth_write=true makes the line participate in occlusion both ways (editor
+// grid): later depth-tested draws can't paint over closer line pixels.
+draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write := false) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := [3]f32{0, 0, 1}
+	kind: _Pipeline_Kind = depth_test ? (depth_write ? .Lines_Depth : .Lines) : .Lines_Overlay
 	append(&_pass.vtx, Vertex{a, n, {}, c}, Vertex{b, n, {}, c})
-	_batch_append(depth_test ? .Lines : .Lines_Overlay, nil, first, 2)
+	_batch_append(kind, nil, first, 2)
 }
 
 // shader picks a registered shader set (shader_register); ""/unknown names
 // fall back to DEFAULT_SHADER. The caller keeps `shader` alive through
-// pass_end (material cache / string literals — never temp per-frame builds).
+// pass_end (material cache / string literals — never temp per-frame builds);
+// `material` (property-block UBO bytes for fragment slot 1) may be
+// temp-allocated — it's read at pass_end within the same frame.
 // index_count=0 draws the whole mesh; a submesh passes its index range.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0) {
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
@@ -270,6 +276,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		model      = model,
 		color      = color,
 		shader     = shader,
+		material   = material,
 	})
 }
 
@@ -361,6 +368,10 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		if d.is_mesh {
 			u := _Uniform{view_proj = _pass.vps[d.vp_index], model = d.model, tint = d.color}
 			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
+			if len(d.material) > 0 {
+				// Shader property block (custom shaders' MaterialUBO, slot 1).
+				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
+			}
 			pushed_vp = -1
 			pushed_mesh = true
 

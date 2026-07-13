@@ -14,6 +14,7 @@ ImportSettings :: union #no_nil{
     TextureSettings,
     AudioSettings,
     MeshSettings,
+    ShaderSettings,
 }
 
 ImportMeta :: struct {
@@ -30,6 +31,8 @@ is_importable_extension :: proc(ext: string) -> bool {
         return true
     case ".glb", ".gltf":
         return true
+    case ".glsl":
+        return true
     }
     return false
 }
@@ -42,6 +45,8 @@ settings_for_extension :: proc(ext: string) -> ImportSettings {
         return default_audio_settings()
     case ".glb", ".gltf":
         return default_mesh_settings()
+    case ".glsl":
+        return default_shader_settings()
     }
     return {}
 }
@@ -168,6 +173,8 @@ _run_import :: proc(source_path: string, artifact_path: string, settings: Import
         return _import_audio(source_path, artifact_path, settings)
     case ".glb", ".gltf":
         return _import_mesh(source_path, artifact_path, settings)
+    case ".glsl":
+        return _import_shader(source_path, artifact_path, settings)
     }
     return false
 }
@@ -295,6 +302,8 @@ asset_pipeline_ensure_import_meta :: proc(asset_path: string) {
         importer_name = "audio"
     case ".glb", ".gltf":
         importer_name = "mesh"
+    case ".glsl":
+        importer_name = "shader"
     }
 
     new_meta := ImportMeta{

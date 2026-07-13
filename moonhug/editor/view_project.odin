@@ -368,6 +368,8 @@ _project_file_icon :: proc(path: string) -> string {
         return ICON_MD_SETTINGS
     case ".mat":
         return ICON_MD_PALETTE
+    case ".glsl":
+        return ICON_MD_CODE
     case:
         return ICON_MD_DESCRIPTION
     }

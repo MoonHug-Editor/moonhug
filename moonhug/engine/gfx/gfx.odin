@@ -30,7 +30,9 @@ _Pipeline_Kind :: enum u8 {
 	Tris,          // alpha-blended, depth test, NO depth write (sprites)
 	Tris_Depth,    // opaque, depth test + write (meshes)
 	Tris_Overlay,  // alpha-blended, no depth test (gizmo solids, e.g. arrow cones)
-	Lines,         // depth-tested lines (grid, selection outline)
+	Lines,         // depth-tested lines (selection outline)
+	Lines_Depth,   // depth test + WRITE (editor grid — occludes and is occluded
+	               // by meshes regardless of draw order; sprites still cover it)
 	Lines_Overlay, // no depth test (gizmos)
 }
 
@@ -149,15 +151,35 @@ shader_exists :: proc(name: string) -> bool {
 	return name in _gfx.shader_sets
 }
 
+// User shaders are fragment-only: the vertex stage is always the built-in
+// world vertex shader (fixed Vertex format + _Uniform contract). Resource
+// counts come from import-time reflection, not convention.
+shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
+	return shader_register(name, _WORLD_VERT_SPV, _WORLD_VERT_MSL, frag_spv, frag_msl,
+		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers)
+}
+
+// Releases the shader's pipelines (SDL_GPU defers actual destruction past
+// in-flight frames). Used by shader hot-reload; unknown names are a no-op.
+shader_unregister :: proc(name: string) {
+	set, ok := _gfx.shader_sets[name]
+	if !ok do return
+	for p in set {
+		if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+	}
+	key, _ := delete_key(&_gfx.shader_sets, name)
+	delete(key)
+}
+
 // Builds the full pipeline set for a vertex+fragment shader pair and registers
-// it under `name` (draw_mesh's shader parameter). Shaders must follow the
-// built-in resource convention: vertex = 1 UBO (_Uniform layout), fragment =
-// 1 sampler2D, plus optionally the Light UBO at fragment slot 0 (set=3 in
-// GLSL; frag_uniform_buffers = 1). Re-registering a name is an error (false).
-shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_uniform_buffers: u32 = 0) -> bool {
+// it under `name` (draw_mesh's shader parameter). The vertex stage must
+// declare 1 UBO (_Uniform layout); fragment resource counts must match the
+// shader's declarations (sampler2D at set=2, optional Light UBO at set=3).
+// Re-registering a name is an error (false).
+shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0) -> bool {
 	if name in _gfx.shader_sets do return false
 	vert := _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl)
-	frag := _create_shader(.FRAGMENT, 1, frag_uniform_buffers, frag_spv, frag_msl)
+	frag := _create_shader(.FRAGMENT, frag_samplers, frag_uniform_buffers, frag_spv, frag_msl)
 	if vert == nil || frag == nil do return false
 	defer sdl.ReleaseGPUShader(_gfx.device, vert)
 	defer sdl.ReleaseGPUShader(_gfx.device, frag)
@@ -220,6 +242,7 @@ shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []
 	set[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
 	set[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
 	set[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
+	set[.Lines_Depth]   = make_pipeline(&info, .LINELIST, true, true)
 	set[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
 	for p in set {
 		if p == nil {

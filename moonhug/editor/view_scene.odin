@@ -321,15 +321,15 @@ _draw_grid_plane :: proc(u, v: [3]f32) {
 	for i in -n ..= n {
 		off := f32(i) * step
 		col := i % sub == 0 ? _GRID_CELL_COL : _GRID_SUB_COL
-		gfx.draw_line(u * off - v * half, u * off + v * half, col)
-		gfx.draw_line(v * off - u * half, v * off + u * half, col)
+		gfx.draw_line(u * off - v * half, u * off + v * half, col, depth_write = true)
+		gfx.draw_line(v * off - u * half, v * off + u * half, col, depth_write = true)
 	}
 }
 
 draw_axis_lines :: proc() {
-	gfx.draw_line({0, 0, 0}, {5, 0, 0}, {0.9, 0.16, 0.22, 1}) // X red
-	gfx.draw_line({0, 0, 0}, {0, 5, 0}, {0, 0.89, 0.19, 1})   // Y green
-	gfx.draw_line({0, 0, 0}, {0, 0, 5}, {0, 0.47, 0.95, 1})   // Z blue
+	gfx.draw_line({0, 0, 0}, {5, 0, 0}, {0.9, 0.16, 0.22, 1}, depth_write = true) // X red
+	gfx.draw_line({0, 0, 0}, {0, 5, 0}, {0, 0.89, 0.19, 1}, depth_write = true)   // Y green
+	gfx.draw_line({0, 0, 0}, {0, 0, 5}, {0, 0.47, 0.95, 1}, depth_write = true)   // Z blue
 }
 
 draw_scene_view :: proc() {

@@ -49,7 +49,7 @@ test_material_marshal_roundtrip :: proc(t: ^testing.T) {
 
 	loaded, ok := engine._material_parse(data)
 	testing.expect(t, ok, "marshaled material should parse back")
-	testing.expect(t, loaded == mat, "material should round-trip")
+	testing.expect(t, engine._material_equal(loaded, mat), "material should round-trip")
 }
 
 @(test)
@@ -69,6 +69,53 @@ test_material_cache_preview_and_unload :: proc(t: ^testing.T) {
 	engine.material_unload(guid)
 	_, still := engine.material_load(guid) // no asset_db in this test → miss
 	testing.expect(t, !still, "unloaded material without a backing file should miss")
+}
+
+// Property packing: named vec4 values land at the shader's reflected std140
+// offsets, truncated to the member size; unmatched names on either side are
+// zero-filled / ignored.
+@(test)
+test_material_pack_properties :: proc(t: ^testing.T) {
+	sr := engine.Shader_Runtime{
+		block_size = 32,
+		properties = []engine.Shader_Property{
+			{name = "mix_amount", offset = 0, size = 4},
+			{name = "rim_color", offset = 16, size = 16},
+		},
+	}
+	mat := engine.Material{}
+	append(&mat.properties, engine.Material_Property{name = "rim_color", value = {1, 2, 3, 4}})
+	append(&mat.properties, engine.Material_Property{name = "mix_amount", value = {0.5, 9, 9, 9}}) // only .x fits a float
+	append(&mat.properties, engine.Material_Property{name = "stale_unknown", value = {7, 7, 7, 7}})
+	defer delete(mat.properties)
+
+	data := engine._material_pack_properties(&mat, &sr)
+	testing.expect(t, len(data) == 32, "packed size = block_size")
+	floats := ([^]f32)(raw_data(data))[:8]
+	testing.expect(t, floats[0] == 0.5, "float lands at offset 0, truncated to 4 bytes")
+	testing.expect(t, floats[1] == 0 && floats[2] == 0 && floats[3] == 0, "float padding stays zero")
+	testing.expect(t, floats[4] == 1 && floats[7] == 4, "vec4 lands at offset 16")
+}
+
+// Clearing custom_shader purges the property rows (they belong to the
+// shader, not the material).
+@(test)
+test_material_sync_purges_on_shader_clear :: proc(t: ^testing.T) {
+	import_strings :: proc(s: string) -> string { // clone helper for owned names
+		b := make([]u8, len(s))
+		copy(b, s)
+		return string(b)
+	}
+	mat := engine.Material{}
+	append(&mat.properties, engine.Material_Property{name = import_strings("old_prop"), value = {1, 2, 3, 4}})
+	defer delete(mat.properties)
+
+	changed := engine.material_sync_properties(&mat)
+	testing.expect(t, changed, "sync should report the purge")
+	testing.expect(t, len(mat.properties) == 0, "empty custom_shader should clear all rows")
+
+	changed = engine.material_sync_properties(&mat)
+	testing.expect(t, !changed, "second sync is a no-op")
 }
 
 @(test)

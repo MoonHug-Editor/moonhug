@@ -57,6 +57,7 @@ ICON_MD_MORE_HORIZ    :: "\ue5d3"   // more_horiz
 ICON_MD_MENU          :: "\ue5d4"   // menu ("..." dropdown / overflow menu)
 ICON_MD_SETTINGS      :: "\ue8b8"   // settings
 ICON_MD_PALETTE       :: "\ue40a"   // palette (.mat material asset)
+ICON_MD_CODE          :: "\ue86f"   // code (.glsl shader asset)
 ICON_MD_REFRESH       :: "\ue5d5"   // refresh
 
 // Scene view overlay toolbars (dock.odin)

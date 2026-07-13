@@ -13,6 +13,7 @@ import "core:fmt"
 import "core:math/linalg"
 import "core:os"
 import "core:strings"
+import "log"
 
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631"})
 MeshSettings :: struct {
@@ -61,7 +62,11 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: Impor
     defer cgltf.free(data)
 
     if load_res := cgltf.load_buffers(opts, data, path_c); load_res != .success {
-        fmt.printf("[Pipeline] Failed to load glTF buffers: %s (%v)\n", source_path, load_res)
+        if load_res == .file_not_found {
+            log.errorf("[Pipeline] glTF buffer file missing for %s — a .gltf references an external .bin that must sit next to it (or use .glb)", source_path)
+        } else {
+            log.errorf("[Pipeline] Failed to load glTF buffers: %s (%v)", source_path, load_res)
+        }
         return false
     }
 
@@ -94,6 +99,10 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: Impor
 
         for &prim in node.mesh.primitives {
             if prim.type != .triangles do continue
+            if prim.has_draco_mesh_compression {
+                log.errorf("[Pipeline] %s uses Draco compression (unsupported) — re-export without compression", source_path)
+                return false
+            }
 
             pos_acc, norm_acc, uv_acc: ^cgltf.accessor
             for &attr in prim.attributes {

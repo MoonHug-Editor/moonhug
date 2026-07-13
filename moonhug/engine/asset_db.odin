@@ -146,6 +146,7 @@ asset_db_refresh :: proc() {
     for path in changed {
         _reindex_if_scene(path)
         material_path_changed(path) // externally edited .mat: drop the cache entry
+        shader_path_changed(path)   // edited .glsl: reimport + hot-reload pipelines
     }
 
     // Orphaned metas: a .meta whose asset (file or folder) is gone.
@@ -196,6 +197,9 @@ _asset_removed :: proc(path: string) {
     guid, ok := asset_db.path_to_guid[path]
     if !ok do return
     material_path_changed(path)
+    if strings.has_suffix(path, ".glsl") {
+        shader_unload(Asset_GUID(guid))
+    }
     stored := asset_db.guid_to_path[guid] // the one owned clone (used as key AND value)
     delete_key(&asset_db.path_to_guid, path)
     delete_key(&asset_db.guid_to_path, guid)
