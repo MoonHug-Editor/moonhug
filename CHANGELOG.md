@@ -1,3 +1,10 @@
+## [0.38.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.37.0...v0.38.0) (2026-07-13)
+
+### Features
+
+* add directional Light component ([0e6fe16](https://github.com/MoonHug-Editor/moonhug/commit/0e6fe16379cfbf7b533add9e15914136e54359dc))
+* custom shaders, material properties ([3d516e5](https://github.com/MoonHug-Editor/moonhug/commit/3d516e5b7f39d7ccf27c312b19b138a789a0df0b))
+
 ## [0.37.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.36.0...v0.37.0) (2026-07-13)
 
 ### Features
