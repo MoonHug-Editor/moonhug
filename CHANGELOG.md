@@ -1,3 +1,10 @@
+## [0.36.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.35.0...v0.36.0) (2026-07-13)
+
+### Features
+
+* add snap toolbar ([8906540](https://github.com/MoonHug-Editor/moonhug/commit/890654065aee1575588d2ec8c689bdad0bb02551))
+* add sprite sorting group ([30dad9f](https://github.com/MoonHug-Editor/moonhug/commit/30dad9f20293f2fe5f16c07e66ca6a3edcc30a0f))
+
 ## [0.35.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.34.0...v0.35.0) (2026-07-12)
 
 ### Features
