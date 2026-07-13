@@ -1,3 +1,9 @@
+## [0.37.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.36.0...v0.37.0) (2026-07-13)
+
+### Features
+
+* add material and shader ([284a91a](https://github.com/MoonHug-Editor/moonhug/commit/284a91a00bd8d06738f2210ef18723c7e12e22be))
+
 ## [0.36.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.35.0...v0.36.0) (2026-07-13)
 
 ### Features
