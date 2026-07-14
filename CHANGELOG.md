@@ -1,3 +1,9 @@
+## [0.39.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.38.0...v0.39.0) (2026-07-14)
+
+### Features
+
+* material in SpriteRenderer ([8671344](https://github.com/MoonHug-Editor/moonhug/commit/86713449a2c2a64ba90baca71a899aa7912c4206))
+
 ## [0.38.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.37.0...v0.38.0) (2026-07-13)
 
 ### Features
