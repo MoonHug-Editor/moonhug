@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 199,
+  "next_local_id": 207,
   "transforms": [
     {
       "local_id": 1,
@@ -69,6 +69,12 @@
         {
           "pptr": {
             "local_id": 196,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 204,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -695,6 +701,45 @@
           "local_id": 198
         }
       ]
+    },
+    {
+      "local_id": 204,
+      "name": "Avocado",
+      "is_active": true,
+      "position": [
+        -2.82728958,
+        2.54266310,
+        -7.68504953
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        20.00000000,
+        20.00000000,
+        20.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 205
+        },
+        {
+          "local_id": 206
+        }
+      ]
     }
   ],
   "nested_scenes": [
@@ -706,19 +751,6 @@
       "host_breadcrumb_id": 25,
       "sibling_index": 0,
       "overrides": [
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "color",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
-        },
         {
           "target": {
             "local_id": 16,
@@ -745,11 +777,16 @@
         },
         {
           "target": {
-            "local_id": 3,
+            "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "sorting_layer",
-          "value": 0
+          "property_path": "color",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
         },
         {
           "target": {
@@ -782,11 +819,11 @@
         },
         {
           "target": {
-            "local_id": 15,
+            "local_id": 3,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "name",
-          "value": "bullet"
+          "property_path": "sorting_layer",
+          "value": 0
         },
         {
           "target": {
@@ -811,6 +848,14 @@
             0.0000000000000000,
             0.0000000000000000
           ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "name",
+          "value": "bullet"
         },
         {
           "target": {
@@ -887,22 +932,6 @@
             "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "sorting_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "order_in_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
           "property_path": "color",
           "value": [
             1.0000000000000000,
@@ -913,7 +942,7 @@
         },
         {
           "target": {
-            "local_id": 3,
+            "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
           "property_path": "sorting_layer",
@@ -921,16 +950,11 @@
         },
         {
           "target": {
-            "local_id": 3,
+            "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "color",
-          "value": [
-            1.0000000000000000,
-            0.6000000200000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
+          "property_path": "order_in_layer",
+          "value": 0
         },
         {
           "target": {
@@ -945,8 +969,29 @@
             "local_id": 3,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
+          "property_path": "sorting_layer",
+          "value": 0
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
           "property_path": "order_in_layer",
           "value": 0
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "color",
+          "value": [
+            1.0000000000000000,
+            0.6000000200000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
         },
         {
           "target": {
@@ -1009,14 +1054,6 @@
             "local_id": 22,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
-            "local_id": 22,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
           "property_path": "color",
           "value": [
             1.0000000000000000,
@@ -1027,7 +1064,7 @@
         },
         {
           "target": {
-            "local_id": 5,
+            "local_id": 22,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
           "property_path": "material",
@@ -1045,6 +1082,14 @@
             1.0000000000000000,
             1.0000000000000000
           ]
+        },
+        {
+          "target": {
+            "local_id": 5,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "material",
+          "value": "00000000-0000-0000-0000-000000000000"
         },
         {
           "target": {
@@ -1073,8 +1118,12 @@
             "local_id": 15,
             "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
           },
-          "property_path": "name",
-          "value": "bullet_Variant"
+          "property_path": "position",
+          "value": [
+            0.0000000000000000,
+            -10.0000000000000000,
+            0.0000000000000000
+          ]
         },
         {
           "target": {
@@ -1093,12 +1142,8 @@
             "local_id": 15,
             "guid": "d8bed4cc-521b-46b6-ac28-9353735d6bff"
           },
-          "property_path": "position",
-          "value": [
-            0.0000000000000000,
-            -10.0000000000000000,
-            0.0000000000000000
-          ]
+          "property_path": "name",
+          "value": "bullet_Variant"
         },
         {
           "target": {
@@ -1129,22 +1174,6 @@
       "scene_instance": 168
     },
     {
-      "local_id": 145,
-      "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 144,
-      "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 20
-    },
-    {
       "local_id": 147,
       "scene_source": {
         "local_id": 5,
@@ -1161,6 +1190,30 @@
       "scene_instance": 24
     },
     {
+      "local_id": 145,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 144,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 20
+    },
+    {
+      "local_id": 26,
+      "scene_source": {
+        "local_id": 23,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 24
+    },
+    {
       "local_id": 25,
       "scene_source": {
         "local_id": 19,
@@ -1173,14 +1226,6 @@
       "scene_source": {
         "local_id": 3,
         "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 26,
-      "scene_source": {
-        "local_id": 23,
-        "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 24
     }
@@ -1244,6 +1289,13 @@
         "enabled": true
       },
       "mesh": "eb28d9ed-803a-446b-bc76-1ff01e138527"
+    },
+    {
+      "base": {
+        "local_id": 205,
+        "enabled": true
+      },
+      "mesh": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292"
     }
   ],
   "mesh_renderers": [
@@ -1273,6 +1325,15 @@
       },
       "materials": [
         "916a80cf-95d1-4ac3-8bab-0f0a90c7f26a"
+      ]
+    },
+    {
+      "base": {
+        "local_id": 206,
+        "enabled": true
+      },
+      "materials": [
+        "32583acf-be2f-4fb3-bef6-1993e9c5a137"
       ]
     }
   ],

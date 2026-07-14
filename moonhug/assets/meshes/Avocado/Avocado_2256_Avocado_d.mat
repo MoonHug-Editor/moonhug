@@ -1,0 +1,68 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 0,
+  "custom_shader": "d85e072d-e69c-421f-ace2-83b602c98eb0",
+  "texture": "260ecd12-5016-4bbd-bfac-a0c98ba4e1c1",
+  "color": [
+    1.00000000,
+    1.00000000,
+    1.00000000,
+    1.00000000
+  ],
+  "properties": [
+    {
+      "name": "emissive_color",
+      "value": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ]
+    },
+    {
+      "name": "metallic",
+      "value": [
+        1.00000000,
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ]
+    },
+    {
+      "name": "roughness",
+      "value": [
+        1.00000000,
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ]
+    },
+    {
+      "name": "normal_strength",
+      "value": [
+        1.00000000,
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "metal_rough_tex",
+      "texture": "1a1290c0-b820-4f0d-9edc-f661e5ea78de"
+    },
+    {
+      "name": "normal_tex",
+      "texture": "f5d180ef-a2d1-4730-a022-cb1698f56a91"
+    },
+    {
+      "name": "ao_tex",
+      "texture": "00000000-0000-0000-0000-000000000000"
+    },
+    {
+      "name": "emissive_tex",
+      "texture": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}
