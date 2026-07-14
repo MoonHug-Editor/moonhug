@@ -3,4 +3,5 @@ set -e
 
 odin run moonhug/prebuild || exit 1
 
-odin run moonhug/editor -ignore-unknown-attributes -debug
+mkdir -p builds
+odin run moonhug/editor -ignore-unknown-attributes -debug -out:builds/MoonHug
