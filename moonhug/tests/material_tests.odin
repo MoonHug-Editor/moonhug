@@ -108,11 +108,14 @@ test_material_sync_purges_on_shader_clear :: proc(t: ^testing.T) {
 	}
 	mat := engine.Material{}
 	append(&mat.properties, engine.Material_Property{name = import_strings("old_prop"), value = {1, 2, 3, 4}})
+	append(&mat.textures, engine.Material_Texture{name = import_strings("old_tex")})
 	defer delete(mat.properties)
+	defer delete(mat.textures)
 
 	changed := engine.material_sync_properties(&mat)
 	testing.expect(t, changed, "sync should report the purge")
-	testing.expect(t, len(mat.properties) == 0, "empty custom_shader should clear all rows")
+	testing.expect(t, len(mat.properties) == 0, "empty custom_shader should clear all property rows")
+	testing.expect(t, len(mat.textures) == 0, "empty custom_shader should clear all texture rows")
 
 	changed = engine.material_sync_properties(&mat)
 	testing.expect(t, !changed, "second sync is a no-op")

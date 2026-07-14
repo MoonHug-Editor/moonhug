@@ -29,6 +29,14 @@ Material_Property :: struct {
 	value: [4]f32,
 }
 
+// A named texture for the custom shader's extra samplers (set=2, binding 1+;
+// binding 0 is Material.texture). Matched to the shader's reflected sampler
+// by name; an empty guid binds white.
+Material_Texture :: struct {
+	name:    string,
+	texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+}
+
 @(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", makeProcName=make_pMaterial, menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
 Material :: struct {
 	shader:        Material_Shader,
@@ -36,6 +44,7 @@ Material :: struct {
 	texture:       Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 	color:         [4]f32 `decor:color()`,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
+	textures:      [dynamic]Material_Texture,  // custom-shader extra sampler assignments
 }
 
 make_pMaterial :: proc() -> any {
@@ -57,8 +66,10 @@ material_shader_name :: proc(shader: Material_Shader) -> string {
 // Resolves a material guid to draw state for gfx.draw_mesh. Empty guid or
 // any load failure falls back to white unlit. material_data (temp-allocated,
 // nil when the shader has no property block) is the packed UBO for the
-// custom shader's material block.
-_resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8) {
+// custom shader's material block; extra_textures (temp-allocated, nil unless
+// the custom shader declares samplers past binding 0) holds bindings 1..N —
+// nil entries bind white.
+_resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
 	shader = material_shader_name(.Unlit)
 	color = {1, 1, 1, 1}
 	if guid == {} do return
@@ -71,6 +82,7 @@ _resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Textur
 		if sr, sr_ok := shader_load(mat.custom_shader); sr_ok {
 			shader = sr.name
 			material_data = _material_pack_properties(mat, sr)
+			extra_textures = _material_resolve_textures(mat, sr)
 		}
 	}
 	color = mat.color
@@ -80,6 +92,25 @@ _resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Textur
 		}
 	}
 	return
+}
+
+// Extra sampler bindings 1..num_samplers-1 for the custom shader
+// (temp-allocated; nil when the shader only uses the main texture). Slot i
+// holds binding i+1; unassigned/unloadable rows stay nil (white at bind).
+_material_resolve_textures :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []^gfx.Texture {
+	if sr.num_samplers <= 1 do return nil
+	extra := make([]^gfx.Texture, sr.num_samplers - 1, context.temp_allocator)
+	for st in sr.textures {
+		if st.binding == 0 do continue
+		for &mt in mat.textures {
+			if mt.name != st.name || mt.texture == {} do continue
+			if t, t_ok := texture_load(mt.texture); t_ok {
+				extra[st.binding - 1] = t.gfx
+			}
+			break
+		}
+	}
+	return extra
 }
 
 // Packs Material.properties into the shader's reflected UBO layout
@@ -99,13 +130,13 @@ _material_pack_properties :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []u8 {
 	return data
 }
 
-// Reconciles the material's property rows with the shader's reflected
-// members: missing rows are added (zero-valued), rows whose name isn't in
-// the shader are REMOVED — including all of them when custom_shader is
-// cleared. The editor calls this for the open material every frame, so the
-// inspector always shows exactly the shader's properties. A shader that
-// fails to load (compile error, missing toolchain) leaves the rows
-// untouched instead of destroying values. Returns true on change.
+// Reconciles the material's property AND texture rows with the shader's
+// reflected members: missing rows are added (zero-valued/empty), rows whose
+// name isn't in the shader are REMOVED — including all of them when
+// custom_shader is cleared. The editor calls this for the open material
+// every frame, so the inspector always shows exactly the shader's rows. A
+// shader that fails to load (compile error, missing toolchain) leaves the
+// rows untouched instead of destroying values. Returns true on change.
 material_sync_properties :: proc(mat: ^Material) -> bool {
 	changed := false
 	if mat.custom_shader == {} {
@@ -114,6 +145,13 @@ material_sync_properties :: proc(mat: ^Material) -> bool {
 				delete(mp.name)
 			}
 			clear(&mat.properties)
+			changed = true
+		}
+		if len(mat.textures) > 0 {
+			for &mt in mat.textures {
+				delete(mt.name)
+			}
+			clear(&mat.textures)
 			changed = true
 		}
 		return changed
@@ -142,6 +180,33 @@ material_sync_properties :: proc(mat: ^Material) -> bool {
 			if mp.name == sp.name do continue outer
 		}
 		append(&mat.properties, Material_Property{name = strings.clone(sp.name)})
+		changed = true
+	}
+
+	// Texture rows: same reconcile against the reflected samplers, skipping
+	// binding 0 (that's Material.texture / the sprite's own texture).
+	for i := 0; i < len(mat.textures); {
+		found := false
+		for st in sr.textures {
+			if st.binding != 0 && st.name == mat.textures[i].name {
+				found = true
+				break
+			}
+		}
+		if found {
+			i += 1
+			continue
+		}
+		delete(mat.textures[i].name)
+		ordered_remove(&mat.textures, i)
+		changed = true
+	}
+	tex_outer: for st in sr.textures {
+		if st.binding == 0 do continue
+		for &mt in mat.textures {
+			if mt.name == st.name do continue tex_outer
+		}
+		append(&mat.textures, Material_Texture{name = strings.clone(st.name)})
 		changed = true
 	}
 	return changed
@@ -219,6 +284,10 @@ _material_destroy :: proc(mat: ^Material) {
 		delete(prop.name)
 	}
 	delete(mat.properties)
+	for &tex in mat.textures {
+		delete(tex.name)
+	}
+	delete(mat.textures)
 	mat^ = {}
 }
 
@@ -228,6 +297,10 @@ _material_clone :: proc(mat: Material) -> Material {
 	for prop in mat.properties {
 		append(&cloned.properties, Material_Property{name = strings.clone(prop.name), value = prop.value})
 	}
+	cloned.textures = make([dynamic]Material_Texture, 0, len(mat.textures))
+	for tex in mat.textures {
+		append(&cloned.textures, Material_Texture{name = strings.clone(tex.name), texture = tex.texture})
+	}
 	return cloned
 }
 
@@ -236,6 +309,10 @@ _material_equal :: proc(a, b: Material) -> bool {
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false
+	}
+	if len(a.textures) != len(b.textures) do return false
+	for tex, i in a.textures {
+		if tex.name != b.textures[i].name || tex.texture != b.textures[i].texture do return false
 	}
 	return true
 }

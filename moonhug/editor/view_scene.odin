@@ -176,7 +176,7 @@ render_scene_rt :: proc(w, h: i32) {
 
 	gfx.pass_begin_target(scene_rt, [4]f32{0.15, 0.15, 0.15, 1})
 	view := scene_render_view(f32(w), f32(h))
-	gfx.set_view_proj(view.view_proj)
+	gfx.set_view_proj(view.view_proj, view.cam_pos)
 	draw_grid()
 	draw_axis_lines()
 

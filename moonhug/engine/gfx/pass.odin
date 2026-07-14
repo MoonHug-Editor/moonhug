@@ -27,7 +27,12 @@ _Draw :: struct {
 	color:        [4]f32,
 	shader:       string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
+	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
 }
+
+// Fragment sampler slots a single draw can bind (mirrors the importer's
+// SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
+MAX_FRAGMENT_SAMPLERS :: 8
 
 // Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
 // model = identity (vertices are pre-transformed to world space).
@@ -38,9 +43,12 @@ _Uniform :: struct {
 }
 
 // Must match the lit shader's LightUBO (fragment set=3 binding=0).
+// cam_pos comes from the draw's view (set_view_proj), not set_light — it's
+// filled in at push time per view switch.
 _Light_Uniform :: struct {
 	dir_ambient: [4]f32, // xyz = normalized direction light travels, w = ambient floor
 	color:       [4]f32, // rgb premultiplied by intensity
+	cam_pos:     [4]f32, // xyz = camera world position (specular shaders), w unused
 }
 
 // Matches the previously baked-in lit shader constants, so scenes without a
@@ -50,13 +58,20 @@ _LIGHT_DEFAULT :: _Light_Uniform{
 	color       = {1, 1, 1, 1},
 }
 
+// One view entry per set_view_proj call: the matrix plus the camera world
+// position fragment shaders see as cam_pos.
+_View :: struct {
+	vp:      matrix[4, 4]f32,
+	cam_pos: [3]f32,
+}
+
 _pass: struct {
 	active:       bool,
 	target_color: ^sdl.GPUTexture,
 	target_depth: ^sdl.GPUTexture, // nil = depth-less pass (imgui-only)
 	clear:        Maybe([4]f32),
 	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
-	vps:          [dynamic]matrix[4, 4]f32,
+	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	draws:        [dynamic]_Draw,
 	// GPU-side batch storage, grown on demand, reused across passes/frames
@@ -197,9 +212,12 @@ set_light :: proc(direction: [3]f32, color: [3]f32, intensity: f32, ambient: f32
 }
 
 // May change mid-pass (multi-camera stacking, screen-space overlays).
-set_view_proj :: proc(vp: matrix[4, 4]f32) {
-	if len(_pass.vps) > 0 && _pass.vps[len(_pass.vps)-1] == vp do return
-	append(&_pass.vps, vp)
+// cam_pos is the camera's world position, exposed to fragment shaders for
+// specular terms — screen-space/ortho callers can leave the zero default.
+set_view_proj :: proc(vp: matrix[4, 4]f32, cam_pos := [3]f32{0, 0, 0}) {
+	v := _View{vp = vp, cam_pos = cam_pos}
+	if len(_pass.vps) > 0 && _pass.vps[len(_pass.vps)-1] == v do return
+	append(&_pass.vps, v)
 }
 
 _MAT4_IDENTITY :: matrix[4, 4]f32{
@@ -211,7 +229,7 @@ _MAT4_IDENTITY :: matrix[4, 4]f32{
 
 _current_vp :: proc() -> i32 {
 	if len(_pass.vps) == 0 {
-		append(&_pass.vps, _MAT4_IDENTITY)
+		append(&_pass.vps, _View{vp = _MAT4_IDENTITY})
 	}
 	return i32(len(_pass.vps) - 1)
 }
@@ -221,7 +239,7 @@ _current_vp :: proc() -> i32 {
 // like draw_mesh's (sprite materials); normal is the quad's facing, consumed
 // by lighting shaders. Same-state consecutive quads merge into one draw —
 // distinct material slices don't merge (compared by pointer).
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}) {
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
@@ -233,7 +251,7 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 		Vertex{corners[2], n, uvs[2], c},
 		Vertex{corners[3], n, uvs[3], c},
 	)
-	_batch_append(.Tris, tex, first, 6, shader, material)
+	_batch_append(.Tris, tex, first, 6, shader, material, extra_tex)
 }
 
 // Untextured filled triangle (white 1x1 texture bound at draw). Winding is
@@ -263,7 +281,7 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // `material` (property-block UBO bytes for fragment slot 1) may be
 // temp-allocated — it's read at pass_end within the same frame.
 // index_count=0 draws the whole mesh; a submesh passes its index range.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil) {
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
@@ -280,6 +298,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		color      = color,
 		shader     = shader,
 		material   = material,
+		extra_tex  = extra_tex,
 	})
 }
 
@@ -295,13 +314,14 @@ _color_u8 :: proc(c: [4]f32) -> [4]u8 {
 // Extends the previous draw when pipeline/texture/view/shader/material
 // match — the common case for sprite runs and grid lines. Material slices
 // compare by pointer: callers reuse one packed slice per material to merge.
-_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil) {
+_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil, extra_tex: []^Texture = nil) {
 	vp := _current_vp()
 	if len(_pass.draws) > 0 {
 		last := &_pass.draws[len(_pass.draws)-1]
 		if !last.is_mesh && last.kind == kind && last.texture == tex && last.vp_index == vp &&
 		   last.shader == shader &&
 		   raw_data(last.material) == raw_data(material) && len(last.material) == len(material) &&
+		   raw_data(last.extra_tex) == raw_data(extra_tex) && len(last.extra_tex) == len(extra_tex) &&
 		   last.first_vertex + last.vertex_count == first {
 			last.vertex_count += count
 			return
@@ -315,6 +335,7 @@ _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u3
 		vertex_count = count,
 		shader       = shader,
 		material     = material,
+		extra_tex    = extra_tex,
 	})
 }
 
@@ -350,16 +371,22 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
 	}
 
-	// Light uniforms persist on the command buffer for every draw this pass;
-	// only pipelines that declare the fragment UBO (lit) consume them.
+	// Light + camera uniforms (fragment slot 0) are re-pushed on view switch —
+	// cam_pos is per-view (multi-camera passes). Only pipelines that declare
+	// the fragment UBO (lit, user shaders) consume them.
 	light := _pass.light.? or_else _LIGHT_DEFAULT
-	sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
 	pushed_vp := i32(-1)
+	pushed_light_vp := i32(-1)
 	pushed_mesh := false
 	for &d in _pass.draws {
+		if pushed_light_vp != d.vp_index {
+			light.cam_pos.xyz = _pass.vps[d.vp_index].cam_pos
+			sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
+			pushed_light_vp = d.vp_index
+		}
 		pipeline := _gfx.pipelines[d.kind]
 		if d.shader != "" {
 			if set, ok := _gfx.shader_sets[d.shader]; ok do pipeline = set[d.kind]
@@ -370,11 +397,24 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 			batch_bound = false // vertex buffer binding survives, but re-bind cheaply per pipeline switch
 		}
 		tex := d.texture != nil ? d.texture : _gfx.white_tex
-		binding := sdl.GPUTextureSamplerBinding{texture = tex.gpu, sampler = _gfx.sampler_linear}
-		sdl.BindGPUFragmentSamplers(rp, 0, &binding, 1)
+		// Meshes wrap (glTF default REPEAT — UVs may live outside [0,1]);
+		// batch quads clamp (sprite edges must not bleed the opposite border).
+		smp := d.is_mesh ? _gfx.sampler_repeat : _gfx.sampler_linear
+		// Slot 0 = main texture; extra_tex fills 1..N (sized by the caller to
+		// the shader's declared sampler count, nil entries bind white).
+		bindings: [MAX_FRAGMENT_SAMPLERS]sdl.GPUTextureSamplerBinding
+		bindings[0] = {texture = tex.gpu, sampler = smp}
+		num_bindings := u32(1)
+		for et in d.extra_tex {
+			if num_bindings >= MAX_FRAGMENT_SAMPLERS do break
+			t := et != nil ? et : _gfx.white_tex
+			bindings[num_bindings] = {texture = t.gpu, sampler = smp}
+			num_bindings += 1
+		}
+		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 
 		if d.is_mesh {
-			u := _Uniform{view_proj = _pass.vps[d.vp_index], model = d.model, tint = d.color}
+			u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = d.model, tint = d.color}
 			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 			if len(d.material) > 0 {
 				// Shader property block (custom shaders' MaterialUBO, slot 1).
@@ -390,7 +430,7 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 			batch_bound = false
 		} else {
 			if pushed_vp != d.vp_index || pushed_mesh {
-				u := _Uniform{view_proj = _pass.vps[d.vp_index], model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
+				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
 				pushed_mesh = false

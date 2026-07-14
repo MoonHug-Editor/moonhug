@@ -15,9 +15,11 @@ import "core:os"
 import "core:strings"
 
 Shader_Runtime :: struct {
-	name:       string, // registered gfx shader-set name (owned guid string)
-	block_size: u32,    // material UBO byte size; 0 = no property block
-	properties: []Shader_Property, // owned (names too)
+	name:         string, // registered gfx shader-set name (owned guid string)
+	block_size:   u32,    // material UBO byte size; 0 = no property block
+	num_samplers: u32,    // fragment sampler slots (max binding + 1)
+	properties:   []Shader_Property, // owned (names too)
+	textures:     []Shader_Texture,  // owned (names too); bindings 1+ are material rows
 }
 
 shader_cache: map[Asset_GUID]Shader_Runtime
@@ -43,6 +45,10 @@ _shader_runtime_destroy :: proc(sr: ^Shader_Runtime) {
 		delete(prop.name)
 	}
 	delete(sr.properties)
+	for tex in sr.textures {
+		delete(tex.name)
+	}
+	delete(sr.textures)
 	sr^ = {}
 }
 
@@ -60,10 +66,11 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	header: Shader_Artifact_Header
 	spv, msl: []u8
 	properties: []Shader_Property
+	textures: []Shader_Texture
 	parse_ok := false
 	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
 	if read_err == nil {
-		header, spv, msl, properties, parse_ok = _shader_artifact_parse(blob)
+		header, spv, msl, properties, textures, parse_ok = _shader_artifact_parse(blob)
 	}
 	if !parse_ok {
 		// Artifact missing (fresh clone, cleaned library/) or stale (format
@@ -73,7 +80,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		if !asset_pipeline_reimport(source_path) do return nil, false
 		blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
 		if read_err != nil do return nil, false
-		header, spv, msl, properties, parse_ok = _shader_artifact_parse(blob)
+		header, spv, msl, properties, textures, parse_ok = _shader_artifact_parse(blob)
 		if !parse_ok do return nil, false
 	}
 
@@ -83,13 +90,17 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		if !gfx.shader_register_fragment(guid_str, spv, msl, header.num_samplers, header.num_uniform_buffers) {
 			for prop in properties do delete(prop.name)
 			delete(properties)
+			for tex in textures do delete(tex.name)
+			delete(textures)
 			return nil, false
 		}
 	}
 	shader_cache[guid] = Shader_Runtime{
-		name       = strings.clone(guid_str),
-		block_size = header.block_size,
-		properties = properties,
+		name         = strings.clone(guid_str),
+		block_size   = header.block_size,
+		num_samplers = header.num_samplers,
+		properties   = properties,
+		textures     = textures,
 	}
 	return &shader_cache[guid], true
 }

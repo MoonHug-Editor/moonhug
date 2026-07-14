@@ -15,6 +15,7 @@ struct main0_out
     float2 frag_uv [[user(locn0)]];
     float4 frag_color [[user(locn1)]];
     float3 frag_normal [[user(locn2)]];
+    float3 frag_world_pos [[user(locn3)]];
     float4 gl_Position [[position]];
 };
 
@@ -26,13 +27,15 @@ struct main0_in
     float4 in_color [[attribute(3)]];
 };
 
-vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _19 [[buffer(0)]])
+vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _13 [[buffer(0)]])
 {
     main0_out out = {};
-    out.gl_Position = (_19.view_proj * _19.model) * float4(in.in_position, 1.0);
+    float4 world = _13.model * float4(in.in_position, 1.0);
+    out.gl_Position = _13.view_proj * world;
     out.frag_uv = in.in_uv;
-    out.frag_color = in.in_color * _19.tint;
-    out.frag_normal = float3x3(_19.model[0].xyz, _19.model[1].xyz, _19.model[2].xyz) * in.in_normal;
+    out.frag_color = in.in_color * _13.tint;
+    out.frag_normal = float3x3(_13.model[0].xyz, _13.model[1].xyz, _13.model[2].xyz) * in.in_normal;
+    out.frag_world_pos = world.xyz;
     return out;
 }
 

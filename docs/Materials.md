@@ -85,12 +85,21 @@ same-material draws share pipeline/texture binds.
 A `.glsl` asset under `assets/` is a **fragment shader** — the vertex stage
 is always the built-in world vertex shader, since the vertex format and UBO
 layout are fixed engine contracts. Samples: `assets/shaders/normals.glsl`
-(minimal, no properties) and `assets/shaders/stripes.glsl` (the property
-block walkthrough). Conventions:
+(minimal, no properties), `assets/shaders/stripes.glsl` (the property block
+walkthrough), `assets/shaders/specular.glsl` (view-dependent shading —
+blinn-phong highlight) and `assets/shaders/pbr.glsl` (the full stack:
+metallic-roughness PBR with multi-texture rows — assign a glTF model's maps,
+Damaged Helmet works out of the box). Conventions:
 
-- inputs: `frag_uv` (loc 0), `frag_color` (loc 1), `frag_normal` (loc 2)
-- `sampler2D` at `set = 2, binding = 0` — declare it even if unused
-- optional `LightUBO` at `set = 3, binding = 0` (see engine's lit.frag.glsl)
+- inputs: `frag_uv` (loc 0), `frag_color` (loc 1), `frag_normal` (loc 2),
+  `frag_world_pos` (loc 3, world-space fragment position) — declare only the
+  ones you read
+- `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
+  samplers at bindings 1..7 become named texture rows (see below)
+- optional `LightUBO` at `set = 3, binding = 0`: three vec4s —
+  `light_dir_ambient` (xyz direction light travels, w ambient floor),
+  `light_color` (rgb premultiplied by intensity), `cam_pos` (xyz camera
+  world position — pair it with `frag_world_pos` for specular/fresnel)
 - optional **material property block** at `set = 3, binding = 1` — any
   uniform block of floats/vec2/vec3/vec4
 
@@ -115,6 +124,23 @@ left the shader show dimmed with a remove button
 time, packed into the block layout, and pushed as fragment UBO slot 1 per
 draw. Properties the material doesn't set are zero. Matrices/ints/arrays
 are not supported as properties.
+
+### Multiple textures
+
+Declare extra samplers past binding 0 and they become texture rows on the
+Material, matched by sampler name (same reconcile as properties — rows
+appear/disappear with the shader):
+
+```glsl
+layout(set = 2, binding = 0) uniform sampler2D tex;        // Material.texture
+layout(set = 2, binding = 1) uniform sampler2D detail_tex; // Material row "detail_tex"
+```
+
+Binding 0 is always the material's main `texture` field (and for sprites,
+the sprite's own texture). Unassigned rows bind WHITE — write shaders so a
+white secondary map is a sensible neutral (multiply-style maps like AO/mask
+are; a normal map is not — gate normal mapping behind a property, see
+`assets/shaders/pbr.glsl`). Up to 8 samplers total.
 
 MSL note: user shaders compile with `--msl-decoration-binding` so GLSL
 binding numbers survive as Metal buffer indices — spirv-cross's default
@@ -155,6 +181,9 @@ their guid string, `shader_unregister` enables hot reload). All shaders share
 the `Vertex` format and the vertex UBO layout (`_Uniform`: view_proj, model,
 tint) — that contract is what lets `pass_end` switch shaders per draw.
 
-Still deferred: multiple/point lights (one directional light per pass now).
-Per-submesh materials and property blocks are done (see above and
-Meshes.md).
+Still deferred: multiple/point lights (one directional light per pass now),
+imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
+instead), IBL/environment lighting (flat ambient only — metals lean on the
+directional highlight), a real linear-color pipeline (pbr.glsl
+decodes/encodes sRGB in-shader). Per-submesh materials, property blocks and
+multi-texture rows are done (see above and Meshes.md).

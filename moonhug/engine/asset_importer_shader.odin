@@ -40,21 +40,36 @@ Shader_Property :: struct {
     size:   u32, // float=4, vec2=8, vec3=12, vec4=16
 }
 
+// One reflected sampler2D (set=2). Binding 0 is the main texture (fed by
+// Material.texture / the sprite's own texture); bindings 1+ become named
+// texture rows on the Material, matched by name like properties.
+Shader_Texture :: struct {
+    name:    string,
+    binding: u32,
+}
+
+// Fragment sampler slots the engine will bind per draw (SDL_GPU wants the
+// exact count the pipeline declares). Shaders with more samplers fail import.
+SHADER_MAX_SAMPLERS :: 8
+
 // Artifact layout (little-endian): header | spirv | msl | property table
-// (per property: offset u32 | size u32 | name_len u32 | name bytes).
+// (per property: offset u32 | size u32 | name_len u32 | name bytes) |
+// texture table (per texture: binding u32 | name_len u32 | name bytes).
 // v2 added the property table + block_size; v3 fixed MSL buffer indices
-// (--msl-decoration-binding). Stale artifacts fail the magic check and
-// shader_load reimports from source.
-SHADER_ARTIFACT_MAGIC :: "MHSHDR3\x00"
+// (--msl-decoration-binding); v4 added the texture table (multi-texture
+// materials). Stale artifacts fail the magic check and shader_load reimports
+// from source.
+SHADER_ARTIFACT_MAGIC :: "MHSHDR4\x00"
 
 Shader_Artifact_Header :: struct #packed {
     magic:               [8]u8,
     spv_len:             u32,
     msl_len:             u32,
-    num_samplers:        u32, // reflected fragment resource counts
+    num_samplers:        u32, // max binding + 1 (bindings may be sparse)
     num_uniform_buffers: u32, // max binding + 1 (bindings may be sparse)
     block_size:          u32, // material UBO byte size; 0 = no property block
     property_count:      u32,
+    texture_count:       u32,
 }
 
 _import_shader :: proc(source_path: string, artifact_path: string, settings: ImportSettings) -> bool {
@@ -91,6 +106,12 @@ _import_shader :: proc(source_path: string, artifact_path: string, settings: Imp
         return false
     }
 
+    if reflect.num_samplers > SHADER_MAX_SAMPLERS {
+        log.errorf("[Pipeline] %s declares sampler binding %d — max is %d",
+            source_path, reflect.num_samplers - 1, SHADER_MAX_SAMPLERS - 1)
+        return false
+    }
+
     header := Shader_Artifact_Header{
         spv_len             = u32(len(spv)),
         msl_len             = u32(len(msl)),
@@ -98,6 +119,7 @@ _import_shader :: proc(source_path: string, artifact_path: string, settings: Imp
         num_uniform_buffers = reflect.num_uniform_buffers,
         block_size          = reflect.block_size,
         property_count      = u32(len(reflect.properties)),
+        texture_count       = u32(len(reflect.textures)),
     }
     copy(header.magic[:], SHADER_ARTIFACT_MAGIC)
 
@@ -111,6 +133,11 @@ _import_shader :: proc(source_path: string, artifact_path: string, settings: Imp
         _blob_append_u32(&blob, prop.size)
         _blob_append_u32(&blob, u32(len(prop.name)))
         append(&blob, ..transmute([]u8)prop.name)
+    }
+    for tex in reflect.textures {
+        _blob_append_u32(&blob, tex.binding)
+        _blob_append_u32(&blob, u32(len(tex.name)))
+        append(&blob, ..transmute([]u8)tex.name)
     }
 
     if write_err := os.write_entire_file(artifact_path, blob[:]); write_err != nil {
@@ -149,6 +176,7 @@ _Shader_Reflect :: struct {
     num_uniform_buffers: u32,
     block_size:          u32,
     properties:          [dynamic]Shader_Property, // temp-allocated names
+    textures:            [dynamic]Shader_Texture,  // temp-allocated names
 }
 
 // From spirv-cross --reflect JSON: sampled images under "textures", uniform
@@ -161,8 +189,18 @@ _shader_reflect :: proc(data: []u8) -> (result: _Shader_Reflect, ok: bool) {
     root, is_obj := value.(json.Object)
     if !is_obj do return
 
+    result.textures = make([dynamic]Shader_Texture, context.temp_allocator)
     if textures, has := root["textures"].(json.Array); has {
-        result.num_samplers = u32(len(textures))
+        for entry in textures {
+            tex, entry_ok := entry.(json.Object)
+            if !entry_ok do continue
+            name, n_ok := tex["name"].(json.String)
+            if !n_ok do continue
+            binding := u32(0)
+            if b, b_ok := tex["binding"].(json.Float); b_ok do binding = u32(b)
+            result.num_samplers = max(result.num_samplers, binding + 1)
+            append(&result.textures, Shader_Texture{name = name, binding = binding})
+        }
     }
 
     result.properties = make([dynamic]Shader_Property, context.temp_allocator)
@@ -209,10 +247,10 @@ _shader_reflect :: proc(data: []u8) -> (result: _Shader_Reflect, ok: bool) {
     return result, true
 }
 
-// Validates an artifact blob; spv/msl are views into it, property names are
-// CLONED with `allocator` (callers keep them past the blob). Shared by
-// shader_load and tests.
-_shader_artifact_parse :: proc(blob: []u8, allocator := context.allocator) -> (header: Shader_Artifact_Header, spv: []u8, msl: []u8, properties: []Shader_Property, ok: bool) {
+// Validates an artifact blob; spv/msl are views into it, property/texture
+// names are CLONED with `allocator` (callers keep them past the blob).
+// Shared by shader_load and tests.
+_shader_artifact_parse :: proc(blob: []u8, allocator := context.allocator) -> (header: Shader_Artifact_Header, spv: []u8, msl: []u8, properties: []Shader_Property, textures: []Shader_Texture, ok: bool) {
     if len(blob) < size_of(Shader_Artifact_Header) do return
     header = (^Shader_Artifact_Header)(raw_data(blob))^
     if string(header.magic[:]) != SHADER_ARTIFACT_MAGIC do return
@@ -224,16 +262,27 @@ _shader_artifact_parse :: proc(blob: []u8, allocator := context.allocator) -> (h
     props := make([dynamic]Shader_Property, 0, header.property_count, allocator)
     cursor := size_of(Shader_Artifact_Header) + int(header.spv_len) + int(header.msl_len)
     for _ in 0 ..< header.property_count {
-        if cursor + 12 > len(blob) do return {}, nil, nil, nil, false
+        if cursor + 12 > len(blob) do return {}, nil, nil, nil, nil, false
         offset := (^u32)(raw_data(blob[cursor:]))^
         size := (^u32)(raw_data(blob[cursor + 4:]))^
         name_len := int((^u32)(raw_data(blob[cursor + 8:]))^)
         cursor += 12
-        if cursor + name_len > len(blob) do return {}, nil, nil, nil, false
+        if cursor + name_len > len(blob) do return {}, nil, nil, nil, nil, false
         name := strings.clone(string(blob[cursor:][:name_len]), allocator)
         cursor += name_len
         append(&props, Shader_Property{name = name, offset = offset, size = size})
     }
-    if cursor != len(blob) do return {}, nil, nil, nil, false
-    return header, spv, msl, props[:], true
+    texs := make([dynamic]Shader_Texture, 0, header.texture_count, allocator)
+    for _ in 0 ..< header.texture_count {
+        if cursor + 8 > len(blob) do return {}, nil, nil, nil, nil, false
+        binding := (^u32)(raw_data(blob[cursor:]))^
+        name_len := int((^u32)(raw_data(blob[cursor + 4:]))^)
+        cursor += 8
+        if cursor + name_len > len(blob) do return {}, nil, nil, nil, nil, false
+        name := strings.clone(string(blob[cursor:][:name_len]), allocator)
+        cursor += name_len
+        append(&texs, Shader_Texture{name = name, binding = binding})
+    }
+    if cursor != len(blob) do return {}, nil, nil, nil, nil, false
+    return header, spv, msl, props[:], texs[:], true
 }

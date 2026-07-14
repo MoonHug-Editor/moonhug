@@ -17,6 +17,7 @@ Render_View :: struct {
 	view, proj:    matrix[4, 4]f32,
 	view_proj:     matrix[4, 4]f32,
 	inv_view_proj: matrix[4, 4]f32,
+	cam_pos:       [3]f32, // camera world position (specular shaders, LOD later)
 	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
 	layer_mask:    u32,
 }
@@ -68,11 +69,16 @@ camera_active :: proc() -> ^Camera {
 
 render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_mask: u32) -> Render_View {
 	vp := proj * view
+	// Camera world position = translation column of the inverted view matrix
+	// — derived here so every caller (game cameras, editor scene view) gets it
+	// without extra plumbing.
+	inv_view := linalg.inverse(view)
 	return Render_View{
 		view          = view,
 		proj          = proj,
 		view_proj     = vp,
 		inv_view_proj = linalg.inverse(vp),
+		cam_pos       = {inv_view[0, 3], inv_view[1, 3], inv_view[2, 3]},
 		width         = width,
 		height        = height,
 		layer_mask    = layer_mask,
@@ -233,7 +239,7 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 		return sprite_sort_key_less(a.key, b.key)
 	})
 
-	gfx.set_view_proj(view.view_proj)
+	gfx.set_view_proj(view.view_proj, view.cam_pos)
 	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
 	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
 
@@ -244,6 +250,7 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 		shader: string,
 		color:  [4]f32,
 		data:   []u8,
+		extra:  []^gfx.Texture, // sampler bindings 1+ (binding 0 is the sprite's own texture)
 	}
 	sprite_mats := make(map[Asset_GUID]Sprite_Mat, context.temp_allocator)
 
@@ -254,22 +261,22 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			if !ok do continue
 			sm, cached := sprite_mats[d.material]
 			if !cached {
-				shader, _, mcolor, mdata := _resolve_material(d.material) // material texture ignored: sprites use their own
-				sm = Sprite_Mat{shader = shader, color = mcolor, data = mdata}
+				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: sprites use their own
+				sm = Sprite_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
 				sprite_mats[d.material] = sm
 			}
 			// Quad facing for lighting shaders (sprites are transform-
 			// oriented, not billboards).
 			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
-			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal)
+			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
 		case Draw_Mesh:
 			mesh, ok := mesh_load(d.mesh)
 			if !ok do continue
 			for sub, i in mesh.submeshes {
 				mat_guid: Asset_GUID
 				if i < len(d.materials) do mat_guid = d.materials[i]
-				shader, gpu_tex, color, mat_data := _resolve_material(mat_guid)
-				gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data)
+				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid)
+				gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
 			}
 		}
 	}

@@ -15,6 +15,7 @@ layout(set = 2, binding = 0) uniform sampler2D tex;
 layout(set = 3, binding = 0) uniform LightUBO {
     vec4 light_dir_ambient; // xyz = normalized direction light travels, w = ambient floor
     vec4 light_color;       // rgb premultiplied by intensity
+    vec4 cam_pos;           // xyz = camera world position (unused here; specular shaders read it)
 };
 
 layout(location = 0) out vec4 out_color;

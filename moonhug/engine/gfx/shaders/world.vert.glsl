@@ -22,12 +22,17 @@ layout(set = 1, binding = 0) uniform UBO {
 layout(location = 0) out vec2 frag_uv;
 layout(location = 1) out vec4 frag_color;
 layout(location = 2) out vec3 frag_normal;
+layout(location = 3) out vec3 frag_world_pos;
 
 void main() {
-    gl_Position = view_proj * model * vec4(in_position, 1.0);
+    vec4 world = model * vec4(in_position, 1.0);
+    gl_Position = view_proj * world;
     frag_uv     = in_uv;
     frag_color  = in_color * tint;
     // mat3(model) is wrong under non-uniform scale (needs inverse-transpose);
     // accepted for the built-in lit shader, normals renormalize in fragment.
     frag_normal = mat3(model) * in_normal;
+    // World-space position for view-dependent shading (specular, fresnel) —
+    // fragment shaders that don't declare the input simply ignore it.
+    frag_world_pos = world.xyz;
 }

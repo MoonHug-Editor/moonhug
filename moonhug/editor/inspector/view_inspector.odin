@@ -50,6 +50,7 @@ init :: proc() {
     // Manual registration: the prebuild attribute parser takes plain type
     // names, not container type expressions.
     mapPropertyDrawer[typeid_of([dynamic]engine.Material_Property)] = draw_material_properties
+    mapPropertyDrawer[typeid_of([dynamic]engine.Material_Texture)] = draw_material_textures
     init_decorators()
 }
 

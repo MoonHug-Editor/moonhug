@@ -1,7 +1,7 @@
 {
   "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
   "shader": 1,
-  "custom_shader": "00000000-0000-0000-0000-000000000000",
+  "custom_shader": "d85e072d-e69c-421f-ace2-83b602c98eb0",
   "texture": "8c509501-1a49-4ab8-bff3-789ed361ec3e",
   "color": [
     1.00000000,
@@ -11,31 +11,67 @@
   ],
   "properties": [
     {
-      "name": "stripe_color",
+      "name": "emissive_color",
+      "value": [
+        1.00000000,
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ]
+    },
+    {
+      "name": "metallic",
       "value": [
         1.00000000,
         0.00000000,
         0.00000000,
-        255.00000000
+        0.00000000
       ]
     },
     {
-      "name": "stripe_count",
+      "name": "roughness",
       "value": [
-        2.00000000,
-        11.00000000,
+        1.00000000,
+        0.00000000,
         0.00000000,
         0.00000000
       ]
     },
     {
-      "name": "tilt",
+      "name": "normal_strength",
       "value": [
-        0.69999999,
+        1.00000000,
         0.00000000,
         0.00000000,
         0.00000000
       ]
+    },
+    {
+      "name": "env_strength",
+      "value": [
+        1.00000000,
+        0.00000000,
+        0.00000000,
+        0.00000000
+      ]
+    }
+  ],
+  "textures": [
+    {
+      "name": "metal_rough_tex",
+      "texture": "3bb0a6da-9d03-41ad-92cf-8f3021fbc5ef"
+    },
+    {
+      "name": "normal_tex",
+      "texture": "24156dac-0eae-49b0-863a-c85a5541463e"
+    },
+    {
+      "name": "ao_tex",
+      "texture": "a7ea0392-632f-4415-8540-65bfba124c30"
+    },
+    {
+      "name": "emissive_tex",
+      "texture": "6788f2e5-990a-41b7-a877-55b59e14664a"
     }
   ]
 }

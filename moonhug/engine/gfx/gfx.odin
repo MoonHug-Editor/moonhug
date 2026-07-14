@@ -53,6 +53,7 @@ _gfx: struct {
 	pipelines:        _Shader_Set, // = shader_sets[DEFAULT_SHADER] (batch fast path)
 	sampler_linear:   ^sdl.GPUSampler,
 	sampler_nearest:  ^sdl.GPUSampler,
+	sampler_repeat:   ^sdl.GPUSampler, // linear + REPEAT — mesh draws (glTF's default wrap)
 	white_tex:        ^Texture,
 	window_depth:     ^sdl.GPUTexture, // lazily sized to the swapchain
 	window_depth_w:   u32,
@@ -79,6 +80,17 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 		address_mode_w = .CLAMP_TO_EDGE,
 	}
 	_gfx.sampler_linear = sdl.CreateGPUSampler(_gfx.device, sampler_info)
+	// Meshes sample with REPEAT — glTF's default wrap mode, and models in the
+	// wild rely on it (UVs offset outside [0,1] that wrap back, tiling
+	// detail maps). Sprites keep CLAMP so quad edges can't bleed the
+	// opposite border under linear filtering.
+	sampler_info.address_mode_u = .REPEAT
+	sampler_info.address_mode_v = .REPEAT
+	sampler_info.address_mode_w = .REPEAT
+	_gfx.sampler_repeat = sdl.CreateGPUSampler(_gfx.device, sampler_info)
+	sampler_info.address_mode_u = .CLAMP_TO_EDGE
+	sampler_info.address_mode_v = .CLAMP_TO_EDGE
+	sampler_info.address_mode_w = .CLAMP_TO_EDGE
 	sampler_info.min_filter = .NEAREST
 	sampler_info.mag_filter = .NEAREST
 	sampler_info.mipmap_mode = .NEAREST
@@ -107,6 +119,7 @@ shutdown :: proc() {
 		delete(_gfx.shader_sets)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
+		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_repeat)
 		sdl.ReleaseWindowFromGPUDevice(_gfx.device, _platform.window)
 		sdl.DestroyGPUDevice(_gfx.device)
 	}
