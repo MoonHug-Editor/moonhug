@@ -22,9 +22,10 @@ Render_View :: struct {
 }
 
 Draw_Sprite :: struct {
-	texture: Asset_GUID,
-	corners: [4][3]f32, // world-space bl, br, tr, tl — shared with picking
-	color:   [4]f32,
+	texture:  Asset_GUID,
+	material: Asset_GUID, // shader/tint/properties; texture stays the sprite's. empty = unlit
+	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
+	color:    [4]f32,
 }
 
 Draw_Mesh :: struct {
@@ -183,9 +184,10 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		append(out, Render_Command{
 			key     = key,
 			variant = Draw_Sprite{
-				texture = sr.texture,
-				corners = sprite_world_corners(tw, tex.width, tex.height),
-				color   = sr.color,
+				texture  = sr.texture,
+				material = sr.material,
+				corners  = sprite_world_corners(tw, tex.width, tex.height),
+				color    = sr.color,
 			},
 		})
 	}
@@ -234,12 +236,32 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	gfx.set_view_proj(view.view_proj)
 	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
 	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
+
+	// One resolve per material guid: equal-material sprites then share the
+	// SAME packed property slice, which is what lets their draws merge in
+	// the gfx batch (material compares by pointer).
+	Sprite_Mat :: struct {
+		shader: string,
+		color:  [4]f32,
+		data:   []u8,
+	}
+	sprite_mats := make(map[Asset_GUID]Sprite_Mat, context.temp_allocator)
+
 	for &cmd in commands {
 		switch d in cmd.variant {
 		case Draw_Sprite:
 			tex, ok := texture_load(d.texture)
 			if !ok do continue
-			gfx.draw_quad(d.corners, uvs, d.color, tex.gfx)
+			sm, cached := sprite_mats[d.material]
+			if !cached {
+				shader, _, mcolor, mdata := _resolve_material(d.material) // material texture ignored: sprites use their own
+				sm = Sprite_Mat{shader = shader, color = mcolor, data = mdata}
+				sprite_mats[d.material] = sm
+			}
+			// Quad facing for lighting shaders (sprites are transform-
+			// oriented, not billboards).
+			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
+			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal)
 		case Draw_Mesh:
 			mesh, ok := mesh_load(d.mesh)
 			if !ok do continue

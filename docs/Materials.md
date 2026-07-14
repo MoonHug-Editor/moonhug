@@ -20,6 +20,16 @@ asset conventions as everything else — a JSON file under `assets/` with a
 A submesh without a material (missing entry or empty guid) renders plain
 white unlit — the fallback, not an error.
 
+**SpriteRenderer** takes one material too (Unity model): the material's
+shader, color (multiplied with the sprite color) and custom-shader
+properties apply, but its texture slot is REPLACED by the sprite's own
+texture. Empty = unlit, exactly the pre-material sprite look. Set the
+material's shader to Lit and sprites shade under the scene's directional
+Light using their quad facing (sprites are transform-oriented, so a rotated
+sprite lights like a rotated surface). Sprites keep back-to-front alpha
+ordering regardless of material; consecutive same-material sprites still
+merge into one draw.
+
 ## Built-in shaders
 
 | Name | Material_Shader | Effect |

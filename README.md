@@ -74,7 +74,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Object Picker](docs/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
 - [SDL3 Renderer](docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
 - [Meshes](docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
-- [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color), custom .glsl shaders with hot reload, directional Light component, live-editing inspector
+- [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks, directional Light component, live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 
@@ -121,6 +121,10 @@ For more details see [Contribution](docs/Contribution.md)
   - must be explained simply as if for someone new to memory handling
 
 - Node graph editor for different use-cases
+  - VFX graph
+
+- Rethink Undo, should also work with assets in project and probably current selection
+- Allow multiselection in scene and project. No multiedit yet
 
 ### Considered Features
 

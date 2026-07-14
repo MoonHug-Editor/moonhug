@@ -5,6 +5,10 @@ package engine
 SpriteRenderer :: struct {
     using base: CompData `inspect:"-"`,
     texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+    // Unity model: the material's shader/tint/properties apply, but its
+    // texture slot is REPLACED by the sprite's own texture. Empty = unlit
+    // (the default sprite material).
+    material: Asset_GUID `ext:"mat"`,
     color:   [4]f32 `decor:color()`,
     // Unity-style sort keys (sprite_sort.odin): layer first, then order in
     // layer, then view depth back-to-front, then scene-tree order.

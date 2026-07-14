@@ -25,7 +25,7 @@ _Draw :: struct {
 	mesh_count:   u32,
 	model:        matrix[4, 4]f32,
 	color:        [4]f32,
-	shader:       string, // mesh draws; "" = DEFAULT_SHADER
+	shader:       string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 }
 
@@ -217,11 +217,14 @@ _current_vp :: proc() -> i32 {
 }
 
 // corners in draw order: bottom-left, bottom-right, top-right, top-left
-// (two CCW triangles). tex=nil draws untextured white.
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture) {
+// (two CCW triangles). tex=nil draws untextured white. shader/material work
+// like draw_mesh's (sprite materials); normal is the quad's facing, consumed
+// by lighting shaders. Same-state consecutive quads merge into one draw —
+// distinct material slices don't merge (compared by pointer).
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
-	n := [3]f32{0, 0, 1}
+	n := normal
 	append(&_pass.vtx,
 		Vertex{corners[0], n, uvs[0], c},
 		Vertex{corners[1], n, uvs[1], c},
@@ -230,7 +233,7 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 		Vertex{corners[2], n, uvs[2], c},
 		Vertex{corners[3], n, uvs[3], c},
 	)
-	_batch_append(.Tris, tex, first, 6)
+	_batch_append(.Tris, tex, first, 6, shader, material)
 }
 
 // Untextured filled triangle (white 1x1 texture bound at draw). Winding is
@@ -289,13 +292,16 @@ _color_u8 :: proc(c: [4]f32) -> [4]u8 {
 	}
 }
 
-// Extends the previous draw when pipeline/texture/view match — the common
-// case for sprite runs and grid lines.
-_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32) {
+// Extends the previous draw when pipeline/texture/view/shader/material
+// match — the common case for sprite runs and grid lines. Material slices
+// compare by pointer: callers reuse one packed slice per material to merge.
+_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil) {
 	vp := _current_vp()
 	if len(_pass.draws) > 0 {
 		last := &_pass.draws[len(_pass.draws)-1]
 		if !last.is_mesh && last.kind == kind && last.texture == tex && last.vp_index == vp &&
+		   last.shader == shader &&
+		   raw_data(last.material) == raw_data(material) && len(last.material) == len(material) &&
 		   last.first_vertex + last.vertex_count == first {
 			last.vertex_count += count
 			return
@@ -307,6 +313,8 @@ _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u3
 		vp_index     = vp,
 		first_vertex = first,
 		vertex_count = count,
+		shader       = shader,
+		material     = material,
 	})
 }
 
@@ -386,6 +394,10 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
 				pushed_mesh = false
+			}
+			if len(d.material) > 0 {
+				// Sprite-material property block (fragment slot 1).
+				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
 			}
 			if !batch_bound {
 				vb := sdl.GPUBufferBinding{buffer = _pass.vbuf}
