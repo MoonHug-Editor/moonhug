@@ -20,6 +20,17 @@ asset conventions as everything else — a JSON file under `assets/` with a
 A submesh without a material (missing entry or empty guid) renders plain
 white unlit — the fallback, not an error.
 
+**Extract from glTF**: select a `.glb`/`.gltf` in the project view →
+right-click → `Extract Textures & Material`. Embedded images are written as
+plain files next to the model (`<model>_<image>.png/jpg`) and one `.mat`
+per glTF material is created with its slots wired — albedo into `texture`,
+metal-rough/normal/ao/emissive into the pbr.glsl rows (built-in Lit with
+albedo only when that shader asset is missing). Everything extracted is an
+ordinary editable asset (deliberately not Unity's read-only sub-assets),
+and existing files are skipped so re-running never overwrites your edits.
+Materials come out in submesh order — assign them to
+`MeshRenderer.materials` in file order.
+
 **SpriteRenderer** takes one material too (Unity model): the material's
 shader, color (multiplied with the sprite color) and custom-shader
 properties apply, but its texture slot is REPLACED by the sprite's own

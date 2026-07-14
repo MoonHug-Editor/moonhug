@@ -7,6 +7,7 @@ import "menu"
 _register_menu_items :: proc() {
 	menu.init_menu()
 	menu.add_menu_separator("Assets/Create", -9)
+	menu.add_menu_item("Assets/Extract Textures & Material", "", extract_gltf_menu, -8)
 	menu.add_menu_item("Assets/Refresh AssetDB", "", menu.refresh_asset_db_menu, 0)
 	menu.add_menu_item("Assets/Create/Scene Variant", "", scene_create_variant_menu, -10)
 	menu.add_menu_item("Assets/Create/Scene", "", scene_create_menu, 0)
