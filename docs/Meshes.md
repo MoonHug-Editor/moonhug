@@ -28,6 +28,9 @@ first appearance — the Unity model):
 
 - missing normals → flat `{0,0,1}` (fine for the unlit shader)
 - missing uvs → zero
+- uvs are taken as-authored and mesh draws sample with REPEAT wrap (the glTF
+  default) — models with UVs outside [0,1] (offset islands, tiling) render
+  correctly; sprites/batch quads still sample CLAMP
 - negative-scale nodes → triangle winding flipped (front faces survive a
   future backface-culling switch)
 - vertex format = `gfx.Vertex` (position, normal, uv, color) — normals feed

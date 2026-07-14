@@ -183,7 +183,8 @@ tint) — that contract is what lets `pass_end` switch shaders per draw.
 
 Still deferred: multiple/point lights (one directional light per pass now),
 imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
-instead), IBL/environment lighting (flat ambient only — metals lean on the
-directional highlight), a real linear-color pipeline (pbr.glsl
-decodes/encodes sRGB in-shader). Per-submesh materials, property blocks and
-multi-texture rows are done (see above and Meshes.md).
+instead), engine-level IBL (pbr.glsl samples an equirect environment via its
+`env_tex` row — `assets/textures/studio_env.png` ships as a starter; no
+prefiltered mips, roughness blur is approximated), a real linear-color
+pipeline (pbr.glsl decodes/encodes sRGB in-shader). Per-submesh materials,
+property blocks and multi-texture rows are done (see above and Meshes.md).

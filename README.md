@@ -97,7 +97,8 @@ For more details see [Contribution](docs/Contribution.md)
 
 ## TODO
 - multiple/point lights (one directional Light per pass now)
-- mesh tangents + IBL + linear color pipeline (pbr.glsl works around all three in-shader)
+- mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
+- extract embedded glb textures on import + auto-create .mat with the right slot assignments (Unity model; today material wiring is manual)
 
 - reorder collection elements in inspector by drag
 

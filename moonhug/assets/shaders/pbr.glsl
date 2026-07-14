@@ -11,6 +11,9 @@
 //        normal_tex       tangent-space normal map
 //        ao_tex           ambient occlusion (r channel)
 //        emissive_tex     emissive map
+//        env_tex          EQUIRECT environment for reflections (IBL) — try
+//                         assets/textures/studio_env.png; set env_tex_amount
+//                         to 1 after assigning
 //   4. Tweak the auto-filled properties:
 //        emissive_color   rgb tint for the emissive map, w = strength (0 = off)
 //        metallic         factor over the map (0 falls back to 1)
@@ -18,9 +21,12 @@
 //        normal_strength  0 = normal map OFF (leave 0 unless normal_tex is
 //                         assigned — the white fallback texture is not a
 //                         valid normal map), 1 = full
-//        env_strength     fake-environment reflection amount (0 falls back
-//                         to 1; metals are mostly THIS — without it chrome
-//                         renders flat grey)
+//        env_strength     reflection amount (0 falls back to 1; metals are
+//                         mostly THIS — without it chrome renders flat grey;
+//                         >1 brightens, the env texture is LDR)
+//        env_tex_amount   0 = built-in gradient environment, 1 = env_tex
+//                         (leave 0 unless env_tex is assigned — the white
+//                         fallback texture is not a valid environment)
 //
 // Unassigned texture rows bind WHITE: metal_rough/ao neutral, emissive
 // gated by emissive_color.w, normals gated by normal_strength.
@@ -42,6 +48,7 @@ layout(set = 2, binding = 1) uniform sampler2D metal_rough_tex; // g=rough, b=me
 layout(set = 2, binding = 2) uniform sampler2D normal_tex;
 layout(set = 2, binding = 3) uniform sampler2D ao_tex;
 layout(set = 2, binding = 4) uniform sampler2D emissive_tex;
+layout(set = 2, binding = 5) uniform sampler2D env_tex; // equirect environment
 
 layout(set = 3, binding = 0) uniform LightUBO {
     vec4 light_dir_ambient; // xyz = direction light travels, w = ambient floor
@@ -54,7 +61,8 @@ layout(set = 3, binding = 1) uniform MaterialUBO {
     float metallic;         // factor over the map; 0 falls back to 1
     float roughness;        // factor over the map; 0 falls back to 1
     float normal_strength;  // 0 = normal map off
-    float env_strength;     // fake env reflections; 0 falls back to 1
+    float env_strength;     // env reflection amount; 0 falls back to 1
+    float env_tex_amount;   // 0 = gradient env, 1 = env_tex (equirect)
 };
 
 layout(location = 0) out vec4 out_color;
@@ -116,18 +124,29 @@ void main() {
     vec3 lo = (diffuse + spec) * light_color.rgb * nol;
 
     float ao = texture(ao_tex, frag_uv).r;
-    vec3 ambient = albedo * (1.0 - metal) * light_dir_ambient.w * ao;
 
-    // Fake environment: a sky/ground hemisphere gradient sampled along the
-    // reflection vector, fresnel-weighted and dulled by roughness. Metals are
-    // almost entirely this term — real IBL replaces it someday.
+    // Environment reflections: a sky/ground gradient by default, the
+    // equirect env_tex when env_tex_amount is up. Metals (and glossy glass)
+    // are almost entirely this term. The env texture has no mips, so
+    // roughness "blur" is faked by fading toward the gradient.
     float env_f = env_strength <= 0.0 ? 1.0 : env_strength;
     vec3 r = reflect(-v, n);
     vec3 sky = vec3(0.62, 0.68, 0.78);
     vec3 ground = vec3(0.22, 0.20, 0.18);
     vec3 env = mix(ground, sky, clamp(r.y * 0.5 + 0.5, 0.0, 1.0));
+    float tex_amt = clamp(env_tex_amount, 0.0, 1.0);
+    if (tex_amt > 0.0) {
+        vec2 euv = vec2(atan(r.z, r.x) / (2.0 * PI) + 0.5,
+                        acos(clamp(r.y, -1.0, 1.0)) / PI);
+        vec3 env_px = pow(texture(env_tex, euv).rgb, vec3(2.2));
+        env = mix(env, env_px, tex_amt * (1.0 - rough * 0.85));
+    }
     vec3 f_amb = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - nov, 5.0);
     vec3 env_spec = env * f_amb * (1.0 - rough * rough) * ao * env_f;
+
+    // Diffuse ambient cedes energy to the reflection (1 - f_amb): smooth
+    // glass at glancing angles is mirror, not milk.
+    vec3 ambient = albedo * (1.0 - metal) * (1.0 - f_amb) * light_dir_ambient.w * ao;
 
     vec3 emissive = pow(texture(emissive_tex, frag_uv).rgb, vec3(2.2))
                   * emissive_color.rgb * emissive_color.w;
