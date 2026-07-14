@@ -1,3 +1,11 @@
+## [0.40.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.39.0...v0.40.0) (2026-07-14)
+
+### Features
+
+* add image based lighting for environment ([6be09e3](https://github.com/MoonHug-Editor/moonhug/commit/6be09e3a62e98f0b90401656606670dfe276fe6a))
+* glb extract textures and auto-create .mat ([9130c3e](https://github.com/MoonHug-Editor/moonhug/commit/9130c3e8a7cfade75db82fe93dea0d2cfd2ade13))
+* pbr, specular shaders ([10ef134](https://github.com/MoonHug-Editor/moonhug/commit/10ef134f49771d85011f2400d862a12c380f9472))
+
 ## [0.39.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.38.0...v0.39.0) (2026-07-14)
 
 ### Features
