@@ -30,6 +30,14 @@ _input: struct {
 	text:           [dynamic]rune, // text typed this frame
 	focused:        bool,
 	focus_gained:   bool, // edge, this frame — drives the editor asset refresh
+
+	// Lifetime diagnostics (never reset): raw SDL event counts, for the
+	// editor's Input Debug window — discriminates "SDL stopped delivering
+	// key events" from "imgui state stuck" when keyboard input dies.
+	dbg_key_down:     u64,
+	dbg_key_up:       u64,
+	dbg_focus_gained: u64,
+	dbg_focus_lost:   u64,
 }
 
 _input_frame_reset :: proc() {
@@ -46,12 +54,14 @@ _input_frame_reset :: proc() {
 _input_apply_event :: proc(e: ^sdl.Event) {
 	#partial switch e.type {
 	case .KEY_DOWN:
+		_input.dbg_key_down += 1
 		sc := int(e.key.scancode)
 		if sc >= 0 && sc < _MAX_KEYS {
 			if !e.key.repeat do _input.key_pressed[sc] = true
 			_input.key_down[sc] = true
 		}
 	case .KEY_UP:
+		_input.dbg_key_up += 1
 		sc := int(e.key.scancode)
 		if sc >= 0 && sc < _MAX_KEYS {
 			_input.key_released[sc] = true
@@ -83,11 +93,18 @@ _input_apply_event :: proc(e: ^sdl.Event) {
 			append(&_input.text, r)
 		}
 	case .WINDOW_FOCUS_GAINED:
+		_input.dbg_focus_gained += 1
 		_input.focus_gained = !_input.focused
 		_input.focused = true
 	case .WINDOW_FOCUS_LOST:
+		_input.dbg_focus_lost += 1
 		_input.focused = false
 	}
+}
+
+// Raw SDL event counters for the editor's Input Debug window.
+input_debug_counters :: proc() -> (key_down, key_up, focus_gained, focus_lost: u64) {
+	return _input.dbg_key_down, _input.dbg_key_up, _input.dbg_focus_gained, _input.dbg_focus_lost
 }
 
 input_key_down :: proc(k: Key) -> bool {

@@ -85,6 +85,11 @@ help_about_menu :: proc() {
     show_about = true
 }
 
+// Diagnostics for the "keyboard input dies until restart" bug — see
+// editor/view_input_debug.odin. Mouse-only operable on purpose.
+@(menu_toggle={path="Help/Input Debug", order=999})
+show_input_debug := false
+
 @(menu_item={path="View/Theme/Dark", order=-12, shortcut=""})
 menu_item_view_theme_dark :: proc() {
     set_theme(.Dark)

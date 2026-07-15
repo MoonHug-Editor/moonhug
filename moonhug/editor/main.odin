@@ -59,7 +59,12 @@ main :: proc() {
         apply_default_window_size()
     }
     gfx.show_window()
-    set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ above
+    // Dock icon is applied AFTER the first focus event (see the main loop),
+    // NOT here: setApplicationIconImage during the launch activation
+    // handshake could wedge key-window status when a click landed early —
+    // keyboard dead for the whole session, mouse fine, only an app switch
+    // repaired it (Help/Input Debug was built to diagnose this).
+    dock_icon_pending := true
 
     // Setup ImGui
     im.CHECKVERSION()
@@ -117,6 +122,10 @@ main :: proc() {
         // mtime-diff — an unchanged tree costs one stat pass.
         if gfx.input_focus_gained() {
             engine.asset_db_refresh()
+            if dock_icon_pending {
+                dock_icon_pending = false
+                set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
+            }
         }
 
         if !gfx.frame_begin() do continue
@@ -165,6 +174,10 @@ main :: proc() {
 
         if menu.show_game {
             draw_game_view()
+        }
+
+        if menu.show_input_debug {
+            draw_input_debug()
         }
 
         if menu.show_output {
