@@ -38,8 +38,14 @@ _duplicate_with_undo :: proc(tH: engine.Transform_Handle) -> engine.Transform_Ha
 	return result
 }
 
+// Selection lives in selection.odin (ordered set + active). This view owns
+// the interaction: plain click = select only, cmd-click = toggle, shift-click
+// = range over the visible rows.
+
+// Shift-click range target — processed AFTER the tree is drawn, because the
+// range spans _hierarchy_nav_list which is still being built at click time.
 @(private)
-_hierarchy_selected: engine.Transform_Handle
+_hierarchy_range_pending: engine.Transform_Handle
 
 @(private)
 _hierarchy_rename_target: engine.Transform_Handle
@@ -148,7 +154,7 @@ _hierarchy_enter_scene :: proc(source_path: string, source_guid: engine.Asset_GU
 		}
 	}
 	undo.clear(undo.get())
-	_hierarchy_selected = _HANDLE_NONE
+	sel_scene_clear()
 	scene := engine.scene_load_single_path(source_path)
 	engine.sm_scene_set_active(scene)
 }
@@ -160,7 +166,7 @@ _hierarchy_exit_scene :: proc() {
 	frame := pop(&_edit_stack)
 	defer delete(frame.path)
 	undo.clear(undo.get())
-	_hierarchy_selected = _HANDLE_NONE
+	sel_scene_clear()
 	scene := engine.scene_load_single_path(frame.path)
 	engine.sm_scene_set_active(scene)
 }
@@ -176,7 +182,7 @@ draw_hierarchy_view :: proc() {
 	// Drain cross-package selection requests (e.g. inspector "ping" button).
 	// Force-open every ancestor so the target is visible after the selection.
 	if pending, ok := engine.inspector_take_pending_select(); ok {
-		_hierarchy_selected = pending
+		sel_scene_only(pending)
 		_hierarchy_scroll_to_sel = true
 		_hierarchy_open_ancestors(pending)
 	}
@@ -243,6 +249,7 @@ draw_hierarchy_view :: proc() {
 	}
 
 	clear(&_hierarchy_nav_list)
+	sel_scene_prune()
 
 	for i in 0..<sm.count {
 		scene := sm.loaded[i]
@@ -255,19 +262,43 @@ draw_hierarchy_view :: proc() {
 		im.TextDisabled("No loaded scenes")
 	}
 
+	// Shift-click range: active row → clicked row over the visible rows,
+	// REPLACING the selection (Unity); the clicked row becomes active. Runs
+	// here because _hierarchy_nav_list is only complete after drawing.
+	if _hierarchy_range_pending != _HANDLE_NONE {
+		target := _hierarchy_range_pending
+		_hierarchy_range_pending = _HANDLE_NONE
+		anchor := sel_scene_active()
+		a_idx, t_idx := -1, -1
+		for h, i in _hierarchy_nav_list {
+			if h == anchor do a_idx = i
+			if h == target do t_idx = i
+		}
+		if a_idx == -1 || t_idx == -1 {
+			sel_scene_only(target)
+		} else {
+			sel_scene_clear()
+			step := 1 if a_idx <= t_idx else -1
+			for i := a_idx; ; i += step {
+				sel_scene_add(_hierarchy_nav_list[i])
+				if i == t_idx do break
+			}
+		}
+	}
+
 	if _hierarchy_rename_just_finished {
 		_hierarchy_rename_just_finished = false
 	} else {
 		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
-		has_selected := _hierarchy_selected != _HANDLE_NONE
+		active_sel := sel_scene_active()
 		// Not while a text input (filter box) owns the keyboard.
 		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
 			if filter != "" && im.IsKeyPressed(im.Key.Escape) {
 				mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
 			}
-			if has_selected {
+			if active_sel != _HANDLE_NONE {
 				if im.IsKeyPressed(im.Key.Enter) || im.IsKeyPressed(im.Key.F2) {
-					_begin_rename(_hierarchy_selected)
+					_begin_rename(active_sel)
 				}
 			}
 			_handle_hierarchy_keyboard_nav(sm)
@@ -430,7 +461,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	has_children := len(t.children) > 0 && !filtered
-	is_selected := _hierarchy_selected == tH
+	is_selected := sel_scene_is(tH)
 	is_renaming := _hierarchy_rename_target == tH
 
 	pushed_dim := !t.is_active && !parent_inactive
@@ -501,6 +532,13 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
+
+	// In a multi-selection, outline the ACTIVE row — the one the inspector
+	// shows and single-target actions (rename, gizmo) operate on.
+	if is_selected && sel_scene_count() > 1 && sel_scene_active() == tH {
+		im.DrawList_AddRect(im.GetWindowDrawList(), node_rect_min, node_rect_max,
+			im.GetColorU32ImVec4(im.Vec4{1, 0.8, 0.2, 0.6}))
+	}
 
 	// Ping flash: fading highlight over the whole row (SpanAllColumns rect).
 	if tH == _hierarchy_ping_tH {
@@ -611,7 +649,8 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// Widening the toggle to the whole strip avoids needing a pixel-perfect hit on
 	// the tiny arrow glyph.
 	if node_clicked {
-		in_arrow_zone := has_children && im.GetIO().MousePos.x < text_x
+		io := im.GetIO()
+		in_arrow_zone := has_children && io.MousePos.x < text_x
 		if in_arrow_zone {
 			// If imgui's own arrow hit-test didn't already toggle, do it ourselves.
 			if !node_toggled {
@@ -619,7 +658,15 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			}
 			// Either way this was a fold, not a selection.
 		} else if !is_renaming {
-			_hierarchy_selected = tH
+			// cmd/ctrl toggles membership; shift ranges from the active row
+			// (deferred — the visible-row list is mid-build); plain replaces.
+			if io.KeyCtrl || io.KeySuper {
+				sel_scene_toggle(tH)
+			} else if io.KeyShift {
+				_hierarchy_range_pending = tH
+			} else {
+				sel_scene_only(tH)
+			}
 		}
 	}
 
@@ -636,9 +683,13 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	if im.BeginPopup("##NodeContext") {
-		_hierarchy_selected = tH
+		// Right-click on an unselected row selects just it; on an already
+		// selected row it keeps the multi-selection (Unity) — Duplicate and
+		// Delete below then act on the whole selection.
+		if !sel_scene_is(tH) do sel_scene_only(tH)
+		multi := sel_scene_count() > 1
 		if im.MenuItem("Create Empty Child", nil, false, !is_nested) {
-			_hierarchy_selected = undo.record_create_child("Transform", tH)
+			sel_scene_only(undo.record_create_child("Transform", tH))
 			_hierarchy_force_open = tH
 		}
 		if !is_root && !is_nested {
@@ -658,22 +709,17 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			engine._transform_append_name_suffix(result, "_copy")
 			_hierarchy_force_open = tH
 		}
-		if im.MenuItem("Duplicate", nil, false, !is_root && !is_nested) {
-			result := _duplicate_with_undo(tH)
-			engine._transform_append_name_suffix(result, "_copy")
-			_hierarchy_selected = result
+		if im.MenuItem(multi ? "Duplicate Selected" : "Duplicate", nil, false, !is_root && !is_nested) {
+			_duplicate_selected()
 		}
 		if !is_root && !is_nested {
 			im.Separator()
-			if im.MenuItem("Delete", nil, false, true) {
-				if _hierarchy_selected == tH {
-					_hierarchy_selected = _HANDLE_NONE
-				}
-				if _hierarchy_rename_target == tH {
+			if im.MenuItem(multi ? "Delete Selected" : "Delete", nil, false, true) {
+				if _hierarchy_rename_target != _HANDLE_NONE && sel_scene_is(_hierarchy_rename_target) {
 					_hierarchy_rename_target = _HANDLE_NONE
 				}
 				im.EndPopup()
-				undo.record_delete(tH)
+				_delete_selected()
 				if node_open && has_children {
 					im.TreePop()
 				}
@@ -721,6 +767,71 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	im.PopID()
+}
+
+// Handle-based equivalents of the row draw's is_root / is_nested guards, for
+// selection members that aren't the clicked row.
+@(private)
+_hierarchy_handle_is_root :: proc(tH: engine.Transform_Handle) -> bool {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return false
+	return !engine.pool_valid(&w.transforms, t.parent.handle)
+}
+
+@(private)
+_hierarchy_handle_is_nested :: proc(tH: engine.Transform_Handle) -> bool {
+	w := engine.ctx_world()
+	cur := tH
+	for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
+		if t == nil do break
+		if t.nested_owned do return true
+		cur = engine.Transform_Handle(t.parent.handle)
+	}
+	return false
+}
+
+// Delete every deletable selected object (not a scene root, not inside a
+// nested-scene instance) as ONE undo step. Children of selected ancestors
+// are skipped — deleting the ancestor removes them anyway.
+@(private)
+_delete_selected :: proc() {
+	targets := sel_scene_top_level()
+	w := engine.ctx_world()
+	g := undo.group_begin("Delete Selected")
+	defer undo.group_end(&g)
+	deleted := 0
+	for h in targets {
+		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
+		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
+		undo.record_delete(h)
+		deleted += 1
+	}
+	if deleted > 0 do undo.group_commit(&g)
+	sel_scene_clear()
+}
+
+// Duplicate every duplicable selected object as ONE undo step; the copies
+// become the new selection.
+@(private)
+_duplicate_selected :: proc() {
+	targets := sel_scene_top_level()
+	w := engine.ctx_world()
+	g := undo.group_begin("Duplicate Selected")
+	defer undo.group_end(&g)
+	results := make([dynamic]engine.Transform_Handle, context.temp_allocator)
+	for h in targets {
+		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
+		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
+		result := _duplicate_with_undo(h)
+		if result == {} do continue
+		engine._transform_append_name_suffix(result, "_copy")
+		append(&results, result)
+	}
+	if len(results) > 0 do undo.group_commit(&g)
+	sel_scene_clear()
+	for r in results do sel_scene_add(r)
 }
 
 @(private)
@@ -792,7 +903,7 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene) 
 	undo.record_reparent_to(tH, new_parent)
 	undo.group_commit(&g)
 
-	_hierarchy_selected = new_parent
+	sel_scene_only(new_parent)
 	_hierarchy_force_open = new_parent
 }
 
@@ -937,7 +1048,7 @@ _hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform
 	if new_tH == {} do return
 
 	undo.record_create(new_tH, parent_tH)
-	_hierarchy_selected = new_tH
+	sel_scene_only(new_tH)
 	_hierarchy_force_open = parent_tH
 }
 
@@ -995,10 +1106,11 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	nav_count := len(_hierarchy_nav_list)
 	if nav_count == 0 do return
 
+	active := sel_scene_active()
 	cur_idx := -1
-	if _hierarchy_selected != _HANDLE_NONE {
+	if active != _HANDLE_NONE {
 		for i in 0..<nav_count {
-			if _hierarchy_nav_list[i] == _hierarchy_selected {
+			if _hierarchy_nav_list[i] == active {
 				cur_idx = i
 				break
 			}
@@ -1007,15 +1119,24 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 
 	_nav_select_first :: proc(nav_count: int) {
 		if nav_count > 0 {
-			_hierarchy_selected = _hierarchy_nav_list[0]
+			sel_scene_only(_hierarchy_nav_list[0])
 		}
 	}
+
+	// Plain arrows move the (single) selection; shift+arrows EXTEND it — the
+	// stepped-onto row joins the selection and becomes active.
+	shift := im.GetIO().KeyShift
 
 	if im.IsKeyPressed(im.Key.DownArrow) {
 		if cur_idx == -1 {
 			_nav_select_first(nav_count)
 		} else if cur_idx + 1 < nav_count {
-			_hierarchy_selected = _hierarchy_nav_list[cur_idx + 1]
+			next := _hierarchy_nav_list[cur_idx + 1]
+			if shift {
+				sel_scene_add(next)
+			} else {
+				sel_scene_only(next)
+			}
 		}
 		return
 	}
@@ -1024,7 +1145,12 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		if cur_idx == -1 {
 			_nav_select_first(nav_count)
 		} else if cur_idx - 1 >= 0 {
-			_hierarchy_selected = _hierarchy_nav_list[cur_idx - 1]
+			prev := _hierarchy_nav_list[cur_idx - 1]
+			if shift {
+				sel_scene_add(prev)
+			} else {
+				sel_scene_only(prev)
+			}
 		}
 		return
 	}
@@ -1054,7 +1180,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 			}
 		}
 		if cur_idx + 1 < nav_count {
-			_hierarchy_selected = _hierarchy_nav_list[cur_idx + 1]
+			sel_scene_only(_hierarchy_nav_list[cur_idx + 1])
 		}
 		return
 	}
@@ -1070,33 +1196,42 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		}
 		parent_tH := engine.Transform_Handle(t.parent.handle)
 		if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) {
-			_hierarchy_selected = parent_tH
+			sel_scene_only(parent_tH)
 		}
 		return
 	}
 }
 
+// The ACTIVE selected object (inspector target, gizmo target). With a
+// multi-selection this is the most recently selected item.
 hierarchy_get_selected :: proc() -> engine.Transform_Handle {
-	w := engine.ctx_world()
-	if w == nil do return {}
-	if !engine.pool_valid(&w.transforms, engine.Handle(_hierarchy_selected)) do return {}
-	return _hierarchy_selected
+	return sel_scene_active()
 }
 
 @(menu_item={path="Edit/Toggle Transform Active", order=0, shortcut="Alt+Shift+A"})
 hierarchy_toggle_active_menu :: proc() {
-	tH := hierarchy_get_selected()
-	if tH == _HANDLE_NONE do return
 	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil do return
-	e := undo.edit_begin(tH, &t.is_active, typeid_of(bool), "Toggle Active")
-	defer undo.edit_end(&e)
-	t.is_active = !t.is_active
+	if w == nil do return
+	sel_scene_prune()
+	targets := sel_scene_items()
+	if len(targets) == 0 do return
+	g := undo.group_begin("Toggle Active")
+	defer undo.group_end(&g)
+	toggled := 0
+	for tH in targets {
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do continue
+		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool), "Toggle Active")
+		defer undo.edit_end(&e)
+		t.is_active = !t.is_active
+		toggled += 1
+	}
+	if toggled > 0 do undo.group_commit(&g)
 }
 
 shutdown_hierarchy_views :: proc() {
 	delete(_hierarchy_nav_list)
 	delete(_hierarchy_alt_open_pending)
 	delete(_inspector_comp_open)
+	selection_shutdown()
 }

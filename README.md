@@ -77,6 +77,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional Light component, live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
+- [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
 
 ### Views
   - inspector view - edit selected object in scene
@@ -111,6 +112,11 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
+- improve project's context menu
+ - Create/New Folder
+ - Show in Finder|Explorer
+ - Cut, Copy, Paste, Duplicate, Delete
+
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs
 
@@ -125,7 +131,7 @@ For more details see [Contribution](docs/Contribution.md)
   - VFX graph
 
 - Rethink Undo, should also work with assets in project and probably current selection
-- Allow multiselection in scene and project. No multiedit yet
+- multiselection follow-ups: multiedit, gizmo moves whole selection, rubber-band box select, multi-path drag-drop
 
 ### Considered Features
 

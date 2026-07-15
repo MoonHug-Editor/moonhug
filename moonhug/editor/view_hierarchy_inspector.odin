@@ -34,6 +34,12 @@ draw_hierarchy_inspector :: proc() {
 		return
 	}
 
+	// Multi-selection shows the ACTIVE object only (no multiedit yet).
+	if n := sel_scene_count(); n > 1 {
+		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected — editing the active object", n), context.temp_allocator))
+		im.Separator()
+	}
+
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil {

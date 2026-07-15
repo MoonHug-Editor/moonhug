@@ -93,8 +93,8 @@ _frame_tween_from_target, _frame_tween_to_target: [3]f32
 _frame_tween_from_dist, _frame_tween_to_dist: f32
 
 scene_frame_selected :: proc() {
-	sel := _hierarchy_selected
-	if sel == _HANDLE_NONE || !engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(sel)) do return
+	sel := sel_scene_active()
+	if sel == _HANDLE_NONE do return
 	center, radius := _selection_bounds(sel)
 	_frame_tween_from_target = scene_cam_target
 	_frame_tween_from_dist = scene_cam_dist
@@ -184,11 +184,16 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
 
-	// Selection visuals + gizmo (overlay lines, drawn last). The gizmo also
-	// handles its own mouse interaction, in the same pixel space as picking.
-	sel := _hierarchy_selected
-	if sel != _HANDLE_NONE && engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(sel)) {
-		draw_selection_outline(sel)
+	// Selection visuals + gizmo (overlay lines, drawn last). Every selected
+	// object gets an outline; the gizmo operates on the ACTIVE one only
+	// (multi-object gizmo drag is a follow-up). The gizmo also handles its
+	// own mouse interaction, in the same pixel space as picking.
+	sel_scene_prune()
+	for h in sel_scene_items() {
+		draw_selection_outline(h)
+	}
+	sel := sel_scene_active()
+	if sel != _HANDLE_NONE {
 		mp := im.GetMousePos()
 		gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
 	} else {
@@ -480,7 +485,7 @@ handle_scene_input :: proc() {
 	// Escape drops the selection (not mid-gizmo-drag: the drag teardown in
 	// render_scene_rt's else-branch would leave its undo step open).
 	if im.IsKeyPressed(.Escape) && !_gizmo_dragging {
-		_hierarchy_selected = _HANDLE_NONE
+		sel_scene_clear()
 		_scene_click_pending = false
 	}
 
@@ -503,10 +508,19 @@ handle_scene_input :: proc() {
 			view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
 			px := mp.x - _scene_img_min.x
 			py := mp.y - _scene_img_min.y
+			// cmd/ctrl-click toggles the picked object in/out of the
+			// selection (no hierarchy reveal); plain click selects only it.
+			// Clicking empty space clears — unless toggling, where a miss
+			// shouldn't nuke the set being built.
+			cmd := io.KeyCtrl || io.KeySuper
 			if tH, hit := scene_view_pick(view, px, py); hit {
-				engine.inspector_request_select(tH)
-			} else {
-				_hierarchy_selected = _HANDLE_NONE
+				if cmd {
+					sel_scene_toggle(tH)
+				} else {
+					engine.inspector_request_select(tH)
+				}
+			} else if !cmd {
+				sel_scene_clear()
 			}
 		}
 	}

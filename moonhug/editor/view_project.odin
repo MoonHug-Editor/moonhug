@@ -154,11 +154,49 @@ _project_set_current :: proc(path: string) {
 }
 
 // Selection holds the FULL path (search results from different folders can
-// share a base name).
-_project_set_selected :: proc(path: string) {
+// share a base name). selectedFile is the ACTIVE path (what the project
+// inspector and single-target actions use); the multi-selection set in
+// selection.odin follows it.
+
+// Re-point the active path WITHOUT touching the multi-selection set
+// (cmd-click toggles, range ends).
+_project_set_active :: proc(path: string) {
     new_path := strings.clone(path)
     delete(projectViewData.selectedFile)
     projectViewData.selectedFile = new_path
+}
+
+// Select only `path` (the pre-multiselect behavior — all existing callers
+// keep this semantics).
+_project_set_selected :: proc(path: string) {
+    _project_set_active(path)
+    sel_proj_only(path)
+}
+
+// Shift-click range target — processed after the list is drawn, because the
+// range spans _project_list_rows which is still being built at click time.
+_project_range_pending: string // owned
+
+// Range from the active row to `target` over the visible rows, REPLACING the
+// selection; `target` becomes active.
+_project_apply_range :: proc(target: string) {
+    anchor := projectViewData.selectedFile
+    a_idx, t_idx := -1, -1
+    for r, i in _project_list_rows {
+        if r.path == anchor do a_idx = i
+        if r.path == target do t_idx = i
+    }
+    if a_idx == -1 || t_idx == -1 {
+        _project_set_selected(target)
+        return
+    }
+    sel_proj_clear()
+    step := 1 if a_idx <= t_idx else -1
+    for i := a_idx; ; i += step {
+        sel_proj_add(_project_list_rows[i].path)
+        if i == t_idx do break
+    }
+    _project_set_active(target)
 }
 
 _project_path_is_ancestor :: proc(ancestor, path: string) -> bool {
@@ -643,24 +681,34 @@ _project_handle_list_keys :: proc() {
         }
     }
 
-    _list_select :: proc(idx: int) {
-        _project_set_selected(_project_list_rows[idx].path)
+    // Plain arrows move the (single) selection; shift+arrows EXTEND it — the
+    // stepped-onto row joins the selection and becomes active.
+    shift := im.GetIO().KeyShift
+
+    _list_select :: proc(idx: int, extend: bool) {
+        path := _project_list_rows[idx].path
+        if extend {
+            sel_proj_add(path)
+            _project_set_active(path)
+        } else {
+            _project_set_selected(path)
+        }
         _project_scroll_to_list_sel = true
     }
 
     if im.IsKeyPressed(im.Key.DownArrow) {
         if cur == -1 {
-            _list_select(0)
+            _list_select(0, false)
         } else if cur + 1 < n {
-            _list_select(cur + 1)
+            _list_select(cur + 1, shift)
         }
         return
     }
     if im.IsKeyPressed(im.Key.UpArrow) {
         if cur == -1 {
-            _list_select(0)
+            _list_select(0, false)
         } else if cur - 1 >= 0 {
-            _list_select(cur - 1)
+            _list_select(cur - 1, shift)
         }
         return
     }
@@ -726,7 +774,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
     label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
 
-    is_selected := _project_active_pane == .List && projectViewData.selectedFile == full_path
+    is_selected := _project_active_pane == .List && sel_proj_is(full_path)
 
     dim_unknown := !is_dir && !is_known_extension(full_path)
     if dim_unknown {
@@ -736,14 +784,33 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     }
 
     // Single click selects (and loads .asset/import settings for files);
-    // double click enters folders / opens scenes.
+    // double click enters folders / opens scenes. cmd/ctrl-click toggles the
+    // row in/out of the multi-selection, shift-click ranges from the active
+    // row (deferred — the row list is mid-build); toggling OFF skips the
+    // activation side effects below.
     if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
-        _project_set_selected(full_path)
-        if is_dir {
+        io := im.GetIO()
+        toggled_off := false
+        if io.KeyCtrl || io.KeySuper {
+            if sel_proj_is(full_path) {
+                sel_proj_remove(full_path)
+                _project_set_active(sel_proj_last())
+                toggled_off = true
+            } else {
+                sel_proj_add(full_path)
+                _project_set_active(full_path)
+            }
+        } else if io.KeyShift {
+            if _project_range_pending != "" do delete(_project_range_pending)
+            _project_range_pending = strings.clone(full_path)
+        } else {
+            _project_set_selected(full_path)
+        }
+        if !toggled_off && is_dir {
             if im.IsMouseDoubleClicked(.Left) {
                 _project_enter_dir(full_path)
             }
-        } else {
+        } else if !toggled_off {
             if _is_inspector_asset(full_path) {
                 undo.clear(undo.get())
                 inspector.load_from_file(full_path)
@@ -784,9 +851,14 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     if !is_dir {
         // Right-click also selects, so the context menu (which acts on the
         // selected asset) targets the row under the cursor, not whatever was
-        // previously selected.
+        // previously selected. Inside an existing multi-selection it only
+        // re-points the active file, keeping the set.
         if im.IsItemHovered() && im.IsMouseClicked(.Right) {
-            _project_set_selected(full_path)
+            if sel_proj_is(full_path) {
+                _project_set_active(full_path)
+            } else {
+                _project_set_selected(full_path)
+            }
         }
         if im.BeginDragDropSource({}) {
             im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
@@ -959,10 +1031,19 @@ draw_project_view :: proc() {
         }
         im.EndChild()
 
+        // Shift-click range, now that the visible rows are complete.
+        if _project_range_pending != "" {
+            _project_apply_range(_project_range_pending)
+            delete(_project_range_pending)
+            _project_range_pending = ""
+        }
+
         // Status line at the bottom of the right pane.
         im.Separator()
         if query != "" {
             im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", result_count), context.temp_allocator))
+        } else if sel_proj_count() > 1 {
+            im.Text(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
         } else {
             im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
         }
