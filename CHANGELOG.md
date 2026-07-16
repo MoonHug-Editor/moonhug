@@ -1,3 +1,15 @@
+## [0.41.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.40.0...v0.41.0) (2026-07-16)
+
+### Features
+
+* input_debug window, apply icon fix ([00409f7](https://github.com/MoonHug-Editor/moonhug/commit/00409f7e625622de556608a05d78cc861a512c87))
+* multiselection ([ce14843](https://github.com/MoonHug-Editor/moonhug/commit/ce14843f345d03449435ea4eb7f5e8e5ce911f05))
+
+### Bug Fixes
+
+* improve gizmo ([51b22fe](https://github.com/MoonHug-Editor/moonhug/commit/51b22fe3b02cc9d78962f3631306148440c0fc20))
+* make undo work for assets and selection ([eb6c6fb](https://github.com/MoonHug-Editor/moonhug/commit/eb6c6fb5b0a31c8fed634945558776b6b0003c49))
+
 ## [0.40.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.39.0...v0.40.0) (2026-07-14)
 
 ### Features
