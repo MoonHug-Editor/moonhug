@@ -1,7 +1,9 @@
 package editor
 
 // Scene-view transform gizmos (docs/SDL3Renderer.md #8 + follow-up).
-// - Translate: world-space axis arrows; drag = closest-point-on-axis delta.
+// - Translate: world-space axis arrows (drag = closest-point-on-axis delta)
+//              + Unity-style plane quads (drag = ray<->plane hit delta,
+//              movement constrained to the plane).
 // - Rotate:    world-space axis circles; drag = signed angle between the
 //              grab and current ray↔plane intersections around the axis.
 // - Scale:     LOCAL axis handles (scale composes in local space, Unity-like)
@@ -61,23 +63,39 @@ _GIZMO_SIZE_FACTOR :: f32(0.15)
 _GIZMO_HOVER_PX :: f32(8)
 _GIZMO_CIRCLE_SEGMENTS :: 48
 _GIZMO_UNIFORM_AXIS :: 3 // scale mode's center handle "axis" index
+// Translate plane handles: hot-axis 4/5/6 = drag on the plane whose NORMAL is
+// X/Y/Z (Unity: the YZ quad is red, XZ green, XY blue — the normal's color).
+_GIZMO_PLANE_AXIS_BASE :: 4
+// Quad extents along both in-plane axes, as fractions of the gizmo size.
+_GIZMO_PLANE_OFFSET :: f32(0)
+_GIZMO_PLANE_SIDE :: f32(0.2)
 
-_gizmo_hot_axis: int = -1 // -1 none, 0/1/2 = X/Y/Z, 3 = uniform (scale)
+_gizmo_hot_axis: int = -1 // -1 none, 0/1/2 = X/Y/Z, 3 = uniform (scale), 4/5/6 = plane
 _gizmo_dragging: bool
 _gizmo_drag_axis: int
 _gizmo_drag_dirs: [3][3]f32 // axis dirs captured at grab (local axes move mid-drag)
 _gizmo_grab_s: f32          // axis-line parameter at grab (translate/scale)
 _gizmo_grab_vec: [3]f32     // plane vector at grab (rotate)
 _gizmo_grab_px: [2]f32      // mouse pixels at grab (scale uniform)
+_gizmo_drag_signs: [3][2]f32 // plane-quad quadrant signs frozen at grab
 _gizmo_start_world: [3]f32
 _gizmo_start_rot: [4]f32
 _gizmo_start_scale: [3]f32
 _gizmo_drag: undo.Field_Drag
 
 _GIZMO_AXIS_DIRS :: [3][3]f32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
-_GIZMO_AXIS_COLORS :: [3][4]f32{{0.9, 0.16, 0.22, 1}, {0, 0.89, 0.19, 1}, {0, 0.47, 0.95, 1}}
-_GIZMO_HOT_COLOR :: [4]f32{1, 0.9, 0.1, 1}
-_GIZMO_UNIFORM_COLOR :: [4]f32{0.9, 0.9, 0.9, 1}
+// Unity's exact handle palette (UnityCsReference Handles.cs): axis colors
+// s_X/Y/ZAxisColor, selected s_SelectedColor, center s_CenterColor.
+_GIZMO_AXIS_COLORS :: [3][4]f32{
+	{219.0 / 255, 62.0 / 255, 29.0 / 255, 0.93},
+	{154.0 / 255, 243.0 / 255, 72.0 / 255, 0.93},
+	{58.0 / 255, 122.0 / 255, 248.0 / 255, 0.93},
+}
+_GIZMO_HOT_COLOR :: [4]f32{246.0 / 255, 242.0 / 255, 50.0 / 255, 0.89}
+_GIZMO_UNIFORM_COLOR :: [4]f32{0.8, 0.8, 0.8, 0.93}
+// Unity's Handles.secondaryColor — what non-participating parts get during a
+// drag (UnityCsReference Handles.cs: Color(.5, .5, .5, .2)).
+_GIZMO_DIM_COLOR :: [4]f32{0.5, 0.5, 0.5, 0.2}
 
 // True while the gizmo owns the mouse (hot or dragging) — checked by the
 // click-picking path so gizmo grabs never select-through.
@@ -140,6 +158,20 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 	dirs := _gizmo_axes(tH)
 	colors := _GIZMO_AXIS_COLORS
 
+	// Plane quads sit in the camera-facing quadrant of each plane (Unity):
+	// flip each in-plane axis toward the viewer so the handles never hide
+	// behind the origin.
+	view_dir := linalg.normalize0(scene_cam_pos - origin)
+	plane_signs: [3][2]f32
+	for axis in 0 ..< 3 {
+		u := dirs[(axis + 1) % 3]
+		v := dirs[(axis + 2) % 3]
+		plane_signs[axis] = {
+			linalg.dot(u, view_dir) >= 0 ? 1 : -1,
+			linalg.dot(v, view_dir) >= 0 ? 1 : -1,
+		}
+	}
+
 	hover_axis := -1
 	if !_gizmo_dragging && scene_view_hovered {
 		best_px := _GIZMO_HOVER_PX
@@ -150,36 +182,115 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 				hover_axis = axis
 			}
 		}
+		// Inside a quad beats a nearby axis line (Unity). Two quads can
+		// overlap on screen — take the one whose plane the ray hits first.
+		best_t := max(f32)
+		for axis in 0 ..< 3 {
+			hit, t, ok := _ray_plane_point(mouse_ray, origin, dirs[axis])
+			if !ok || t >= best_t do continue
+			su := linalg.dot(hit - origin, dirs[(axis + 1) % 3]) * plane_signs[axis][0]
+			sv := linalg.dot(hit - origin, dirs[(axis + 2) % 3]) * plane_signs[axis][1]
+			lo := size * _GIZMO_PLANE_OFFSET
+			hi := size * (_GIZMO_PLANE_OFFSET + _GIZMO_PLANE_SIDE)
+			if su >= lo && su <= hi && sv >= lo && sv <= hi {
+				best_t = t
+				hover_axis = _GIZMO_PLANE_AXIS_BASE + axis
+			}
+		}
 	}
 
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
 		w := engine.ctx_world()
 		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
-			_gizmo_dragging = true
-			_gizmo_drag_axis = hover_axis
-			_gizmo_drag_dirs = dirs
-			_gizmo_start_world = origin
-			_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
-			_gizmo_drag = undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
+			grab_ok := true
+			if hover_axis >= _GIZMO_PLANE_AXIS_BASE {
+				hit, _, ok := _ray_plane_point(mouse_ray, origin, dirs[hover_axis - _GIZMO_PLANE_AXIS_BASE])
+				grab_ok = ok
+				_gizmo_grab_vec = hit
+			} else {
+				_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
+			}
+			if grab_ok {
+				_gizmo_dragging = true
+				_gizmo_drag_axis = hover_axis
+				_gizmo_drag_dirs = dirs
+				_gizmo_drag_signs = plane_signs
+				_gizmo_start_world = origin
+				_gizmo_drag = undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
+			}
 		}
 	}
 	if _gizmo_release_if_needed() {
 		// Drag math uses the grab-time axes (dirs would be stable for
 		// translate, but keep the same convention as rotate).
-		s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
-		move := s - _gizmo_grab_s
-		if _gizmo_snap_active() do move = _snap(move, snap_translate_step())
-		delta := _gizmo_drag_dirs[_gizmo_drag_axis] * move
-		engine.transform_set_world_position(tH, _gizmo_start_world + delta)
+		if _gizmo_drag_axis >= _GIZMO_PLANE_AXIS_BASE {
+			normal_axis := _gizmo_drag_axis - _GIZMO_PLANE_AXIS_BASE
+			n := _gizmo_drag_dirs[normal_axis]
+			if hit, _, ok := _ray_plane_point(mouse_ray, _gizmo_start_world, n); ok {
+				delta := hit - _gizmo_grab_vec
+				if _gizmo_snap_active() {
+					// Per-axis snap on the plane's two spanning directions.
+					u := _gizmo_drag_dirs[(normal_axis + 1) % 3]
+					v := _gizmo_drag_dirs[(normal_axis + 2) % 3]
+					step := snap_translate_step()
+					delta = u * _snap(linalg.dot(delta, u), step) + v * _snap(linalg.dot(delta, v), step)
+				}
+				engine.transform_set_world_position(tH, _gizmo_start_world + delta)
+			}
+		} else {
+			s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
+			move := s - _gizmo_grab_s
+			if _gizmo_snap_active() do move = _snap(move, snap_translate_step())
+			delta := _gizmo_drag_dirs[_gizmo_drag_axis] * move
+			engine.transform_set_world_position(tH, _gizmo_start_world + delta)
+		}
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
 
 	origin_now := engine.transform_world_position(tH)
+	// During a drag: participating parts yellow, everything else faint white
+	// (Unity). A plane drag highlights the quad AND its two spanning axes.
+	// The quads also keep their grab-time quadrant placement until release.
+	dragging := _gizmo_dragging
+	drag_plane_normal := dragging && _gizmo_drag_axis >= _GIZMO_PLANE_AXIS_BASE \
+		? _gizmo_drag_axis - _GIZMO_PLANE_AXIS_BASE : -1
+	draw_signs := dragging ? _gizmo_drag_signs : plane_signs
+
+	// Quads first: axis lines and arrowheads draw over them.
+	for axis in 0 ..< 3 {
+		u := dirs[(axis + 1) % 3] * draw_signs[axis][0]
+		v := dirs[(axis + 2) % 3] * draw_signs[axis][1]
+		lo := size * _GIZMO_PLANE_OFFSET
+		hi := size * (_GIZMO_PLANE_OFFSET + _GIZMO_PLANE_SIDE)
+		hot := _gizmo_hot_axis == _GIZMO_PLANE_AXIS_BASE + axis
+		col := hot ? _GIZMO_HOT_COLOR : colors[axis]
+		fill_a := hot ? f32(0.6) : f32(0.35)
+		if dragging && axis != drag_plane_normal {
+			col = _GIZMO_DIM_COLOR
+			fill_a = 0.05
+		}
+		p00 := origin_now + u * lo + v * lo
+		p10 := origin_now + u * hi + v * lo
+		p11 := origin_now + u * hi + v * hi
+		p01 := origin_now + u * lo + v * hi
+		fill := [4]f32{col.r, col.g, col.b, fill_a}
+		gfx.draw_triangle(p00, p10, p11, fill, depth_test = false)
+		gfx.draw_triangle(p00, p11, p01, fill, depth_test = false)
+		gfx.draw_line(p00, p10, col, depth_test = false)
+		gfx.draw_line(p10, p11, col, depth_test = false)
+		gfx.draw_line(p11, p01, col, depth_test = false)
+		gfx.draw_line(p01, p00, col, depth_test = false)
+	}
 	for axis in 0 ..< 3 {
 		dir := dirs[axis]
 		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
+		if dragging {
+			active := drag_plane_normal >= 0 ? axis != drag_plane_normal : axis == _gizmo_drag_axis
+			col = active ? _GIZMO_HOT_COLOR : _GIZMO_DIM_COLOR
+		}
 		tip := origin_now + dir * size
-		gfx.draw_line(origin_now, tip, col, depth_test = false)
+		// Line stops where the arrowhead begins.
+		gfx.draw_line(origin_now, tip - dir * size * 0.18, col, depth_test = false)
 
 		// Arrowhead: solid cone (Unity-like), base pulled back along the axis.
 		_draw_cone(tip - dir * size * 0.18, dir, size * 0.18, size * 0.06, col)
@@ -453,6 +564,16 @@ _closest_axis_param :: proc(origin, axis: [3]f32, ray: engine.Ray) -> f32 {
 	denom := a * c - b * b
 	if abs(denom) < 1e-9 do return 0
 	return (b * e - c * d) / denom
+}
+
+// Ray<->plane intersection point and ray parameter; false when the ray is
+// (near-)parallel to the plane or hits it behind the camera.
+_ray_plane_point :: proc(ray: engine.Ray, plane_origin, n: [3]f32) -> ([3]f32, f32, bool) {
+	denom := linalg.dot(ray.direction, n)
+	if abs(denom) < 1e-6 do return {}, 0, false
+	t := linalg.dot(plane_origin - ray.origin, n) / denom
+	if t < 0 do return {}, 0, false
+	return ray.origin + ray.direction * t, t, true
 }
 
 // Normalized vector from `plane_origin` to the ray's intersection with the
