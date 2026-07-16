@@ -92,6 +92,9 @@ selection_undo_track :: proc() {
 	s := undo.get()
 	if s == nil do return
 	if engine.ctx_get().is_playmode do return
+	// Rubber-band selection changes live every frame; the baseline stays
+	// pre-band so release records the whole gesture as one step.
+	if scene_band_selecting() do return
 
 	if !_sel_undo_baseline_valid {
 		_sel_undo_baseline = selection_capture_state()

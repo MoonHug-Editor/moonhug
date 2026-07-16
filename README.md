@@ -77,7 +77,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional Light component, live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
-- [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
+- [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
 - [Undo](docs/Undo.md) - editor undo feature
 
 ### Views
@@ -136,7 +136,7 @@ For more details see [Contribution](docs/Contribution.md)
   - VFX graph
 
 - undo follow-ups: asset doc Revert button, import settings onto the asset doc model
-- multiselection follow-ups: multiedit, gizmo moves whole selection, rubber-band box select, multi-path drag-drop
+- multiselection follow-ups: multiedit, multi-path drag-drop
 
 ### Considered Features
 
@@ -173,3 +173,5 @@ For more details see [Contribution](docs/Contribution.md)
 - Convert resource into usable format at buildStage or runtimeStage
 
 - consider SceneFile to hold serialize blobs instead of real types
+
+- bug:[WON'T FIX] terminal-launched editor doesn't gain keyboard focus on some startups (macOS cooperative activation denies non-Launch-Services processes; refocus app to repair). Real fix: .app bundle + `open` in run scripts, icon via Info.plist (drops set_dock_icon)

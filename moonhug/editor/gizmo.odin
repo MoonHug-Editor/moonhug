@@ -1,6 +1,11 @@
 package editor
 
 // Scene-view transform gizmos (docs/SDL3Renderer.md #8 + follow-up).
+// Drags apply to EVERY selected top-level object (Unity): translate offsets
+// them all, rotate orbits positions around the gizmo and spins orientations,
+// scale scales offsets + local scales. One undo GROUP per drag (edit scopes
+// captured at grab, pushed at release). The gizmo anchors at the active
+// object's pivot or the selection centroid (gizmo_pivot toggle).
 // - Translate: world-space axis arrows (drag = closest-point-on-axis delta)
 //              + Unity-style plane quads (drag = ray<->plane hit delta,
 //              movement constrained to the plane).
@@ -37,6 +42,29 @@ Gizmo_Space :: enum {
 }
 
 gizmo_space: Gizmo_Space = .Global
+
+// Gizmo position (Unity's Pivot/Center toggle): the active object's pivot vs
+// the centroid of the selected top-level objects (Unity uses the combined
+// bounds center; the pivot average is our approximation).
+Gizmo_Pivot :: enum {
+	Pivot,
+	Center,
+}
+
+gizmo_pivot: Gizmo_Pivot = .Pivot
+
+gizmo_origin :: proc(tH: engine.Transform_Handle) -> [3]f32 {
+	if gizmo_pivot == .Center {
+		sum: [3]f32
+		n := 0
+		for h in sel_scene_top_level() {
+			sum += engine.transform_world_position(h)
+			n += 1
+		}
+		if n > 0 do return sum / f32(n)
+	}
+	return engine.transform_world_position(tH)
+}
 
 _GIZMO_SNAP_SCALE :: f32(0.1)
 
@@ -78,10 +106,20 @@ _gizmo_grab_s: f32          // axis-line parameter at grab (translate/scale)
 _gizmo_grab_vec: [3]f32     // plane vector at grab (rotate)
 _gizmo_grab_px: [2]f32      // mouse pixels at grab (scale uniform)
 _gizmo_drag_signs: [3][2]f32 // plane-quad quadrant signs frozen at grab
-_gizmo_start_world: [3]f32
-_gizmo_start_rot: [4]f32
-_gizmo_start_scale: [3]f32
-_gizmo_drag: undo.Field_Drag
+_gizmo_start_world: [3]f32 // gizmo origin (pivot point) at grab
+
+// One drag applies to every selected top-level object. Start states are
+// captured at grab; the per-frame apply is absolute (start + delta), and the
+// edit scopes become ONE undo group at release.
+_Gizmo_Target :: struct {
+	tH:          engine.Transform_Handle,
+	start_pos:   [3]f32, // world
+	start_rot:   [4]f32, // world
+	start_scale: [3]f32, // local
+	edit_a:      undo.Edit_Scope, // mode's field: position / rotation / scale
+	edit_b:      undo.Edit_Scope, // position, for rotate/scale orbit offsets
+}
+_gizmo_targets: [dynamic]_Gizmo_Target
 
 _GIZMO_AXIS_DIRS :: [3][3]f32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
 // Unity's exact handle palette (UnityCsReference Handles.cs): axis colors
@@ -108,7 +146,7 @@ gizmo_consumes_mouse :: proc() -> bool {
 // (same space as picking); hover needs the view hovered, an active drag
 // keeps tracking even if the cursor leaves the image.
 gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_View, mouse_px, mouse_py: f32) {
-	origin := engine.transform_world_position(tH)
+	origin := gizmo_origin(tH)
 	size := linalg.length(scene_cam_pos - origin) * _GIZMO_SIZE_FACTOR
 	if size <= 0 do return
 	mouse_ray := engine.render_view_screen_ray(view, mouse_px, mouse_py)
@@ -117,10 +155,7 @@ gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_V
 	case .Picker:
 		// Selection only: no handles, never consumes the mouse. Close out any
 		// drag left open by a mid-drag mode switch (Q shortcut).
-		if _gizmo_dragging {
-			_gizmo_dragging = false
-			undo.field_drag_end(&_gizmo_drag)
-		}
+		gizmo_end_drag_if_any()
 		_gizmo_hot_axis = -1
 	case .Translate:
 		_gizmo_translate(tH, view, origin, size, mouse_ray)
@@ -144,10 +179,71 @@ _gizmo_axes :: proc(tH: engine.Transform_Handle) -> [3][3]f32 {
 	return dirs
 }
 
+@(private)
+_gizmo_collect_targets :: proc() -> bool {
+	clear(&_gizmo_targets)
+	w := engine.ctx_world()
+	for h in sel_scene_top_level() {
+		t := engine.pool_get(&w.transforms, engine.Handle(h))
+		if t == nil do continue
+		tgt := _Gizmo_Target{
+			tH          = h,
+			start_pos   = engine.transform_world_position(h),
+			start_rot   = engine.transform_world_rotation(h),
+			start_scale = t.scale,
+		}
+		switch gizmo_mode {
+		case .Picker:
+		case .Translate:
+			tgt.edit_a = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Move")
+		case .Rotate:
+			tgt.edit_a = undo.edit_begin(h, &t.rotation, typeid_of([4]f32), "Gizmo Rotate")
+			tgt.edit_b = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Rotate")
+		case .Scale:
+			tgt.edit_a = undo.edit_begin(h, &t.scale, typeid_of([3]f32), "Gizmo Scale")
+			tgt.edit_b = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Scale")
+		}
+		append(&_gizmo_targets, tgt)
+	}
+	return len(_gizmo_targets) > 0
+}
+
+@(private)
+_gizmo_end_drag :: proc() {
+	label: string
+	switch gizmo_mode {
+	case .Picker:    label = "Gizmo"
+	case .Translate: label = "Gizmo Move"
+	case .Rotate:    label = "Gizmo Rotate"
+	case .Scale:     label = "Gizmo Scale"
+	}
+	g := undo.group_begin(label)
+	for &tgt in _gizmo_targets {
+		undo.edit_end(&tgt.edit_a)
+		undo.edit_end(&tgt.edit_b)
+	}
+	undo.group_commit(&g)
+	undo.group_end(&g) // no-changes group is dropped by end_group_command
+	clear(&_gizmo_targets)
+}
+
+// Finalize an in-flight drag (mode switch, selection loss) — commits what
+// happened so far as the drag's undo group.
+gizmo_end_drag_if_any :: proc() {
+	if !_gizmo_dragging do return
+	_gizmo_dragging = false
+	_gizmo_end_drag()
+}
+
+gizmo_shutdown :: proc() {
+	delete(_gizmo_targets)
+	_gizmo_targets = nil
+}
+
 _gizmo_release_if_needed :: proc() -> bool {
 	if _gizmo_dragging && !im.IsMouseDown(.Left) {
 		_gizmo_dragging = false
-		undo.field_drag_end(&_gizmo_drag)
+		_gizmo_end_drag()
 	}
 	return _gizmo_dragging
 }
@@ -200,34 +296,32 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 	}
 
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		w := engine.ctx_world()
-		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
-			grab_ok := true
-			if hover_axis >= _GIZMO_PLANE_AXIS_BASE {
-				hit, _, ok := _ray_plane_point(mouse_ray, origin, dirs[hover_axis - _GIZMO_PLANE_AXIS_BASE])
-				grab_ok = ok
-				_gizmo_grab_vec = hit
-			} else {
-				_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
-			}
-			if grab_ok {
-				_gizmo_dragging = true
-				_gizmo_drag_axis = hover_axis
-				_gizmo_drag_dirs = dirs
-				_gizmo_drag_signs = plane_signs
-				_gizmo_start_world = origin
-				_gizmo_drag = undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
-			}
+		grab_ok := true
+		if hover_axis >= _GIZMO_PLANE_AXIS_BASE {
+			hit, _, ok := _ray_plane_point(mouse_ray, origin, dirs[hover_axis - _GIZMO_PLANE_AXIS_BASE])
+			grab_ok = ok
+			_gizmo_grab_vec = hit
+		} else {
+			_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
+		}
+		if grab_ok && _gizmo_collect_targets() {
+			_gizmo_dragging = true
+			_gizmo_drag_axis = hover_axis
+			_gizmo_drag_dirs = dirs
+			_gizmo_drag_signs = plane_signs
+			_gizmo_start_world = origin
 		}
 	}
 	if _gizmo_release_if_needed() {
 		// Drag math uses the grab-time axes (dirs would be stable for
 		// translate, but keep the same convention as rotate).
+		delta: [3]f32
+		have_delta := false
 		if _gizmo_drag_axis >= _GIZMO_PLANE_AXIS_BASE {
 			normal_axis := _gizmo_drag_axis - _GIZMO_PLANE_AXIS_BASE
 			n := _gizmo_drag_dirs[normal_axis]
 			if hit, _, ok := _ray_plane_point(mouse_ray, _gizmo_start_world, n); ok {
-				delta := hit - _gizmo_grab_vec
+				delta = hit - _gizmo_grab_vec
 				if _gizmo_snap_active() {
 					// Per-axis snap on the plane's two spanning directions.
 					u := _gizmo_drag_dirs[(normal_axis + 1) % 3]
@@ -235,19 +329,24 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 					step := snap_translate_step()
 					delta = u * _snap(linalg.dot(delta, u), step) + v * _snap(linalg.dot(delta, v), step)
 				}
-				engine.transform_set_world_position(tH, _gizmo_start_world + delta)
+				have_delta = true
 			}
 		} else {
 			s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
 			move := s - _gizmo_grab_s
 			if _gizmo_snap_active() do move = _snap(move, snap_translate_step())
-			delta := _gizmo_drag_dirs[_gizmo_drag_axis] * move
-			engine.transform_set_world_position(tH, _gizmo_start_world + delta)
+			delta = _gizmo_drag_dirs[_gizmo_drag_axis] * move
+			have_delta = true
+		}
+		if have_delta {
+			for &tgt in _gizmo_targets {
+				engine.transform_set_world_position(tgt.tH, tgt.start_pos + delta)
+			}
 		}
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
 
-	origin_now := engine.transform_world_position(tH)
+	origin_now := gizmo_origin(tH)
 	// During a drag: participating parts yellow, everything else faint white
 	// (Unity). A plane drag highlights the quad AND its two spanning axes.
 	// The quads also keep their grab-time quadrant placement until release.
@@ -369,16 +468,13 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 	}
 
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		w := engine.ctx_world()
-		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
-			if grab, ok := _ray_plane_vector(mouse_ray, origin, dirs[hover_axis]); ok {
+		if grab, ok := _ray_plane_vector(mouse_ray, origin, dirs[hover_axis]); ok {
+			if _gizmo_collect_targets() {
 				_gizmo_dragging = true
 				_gizmo_drag_axis = hover_axis
 				_gizmo_drag_dirs = dirs
 				_gizmo_start_world = origin
-				_gizmo_start_rot = engine.transform_world_rotation(tH)
 				_gizmo_grab_vec = grab
-				_gizmo_drag = undo.field_drag_begin(tH, &t.rotation, typeid_of([4]f32), "Gizmo Rotate")
 			}
 		}
 	}
@@ -388,13 +484,21 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 			angle := _signed_angle(_gizmo_grab_vec, cur, axis)
 			if _gizmo_snap_active() do angle = _snap(angle, _gizmo_snap_angle())
 			delta := linalg.quaternion_angle_axis_f32(angle, axis)
-			world := delta * engine.quat_to_native(_gizmo_start_rot)
-			engine.transform_set_world_rotation(tH, engine.quat_from_native(world))
+			for &tgt in _gizmo_targets {
+				world := delta * engine.quat_to_native(tgt.start_rot)
+				engine.transform_set_world_rotation(tgt.tH, engine.quat_from_native(world))
+				// Orbit the position around the pivot (no-op for the object
+				// AT the pivot — single-object Pivot mode keeps its place).
+				off := tgt.start_pos - _gizmo_start_world
+				if linalg.length(off) > 1e-6 {
+					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + linalg.quaternion128_mul_vector3(delta, off))
+				}
+			}
 		}
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
 
-	origin_now := engine.transform_world_position(tH)
+	origin_now := gizmo_origin(tH)
 	for axis in 0 ..< 3 {
 		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
 		u := dirs[(axis + 1) % 3]
@@ -450,39 +554,52 @@ _gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, orig
 	}
 
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		w := engine.ctx_world()
-		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
+		if _gizmo_collect_targets() {
 			_gizmo_dragging = true
 			_gizmo_drag_axis = hover_axis
 			_gizmo_start_world = origin
-			_gizmo_start_scale = t.scale
 			_gizmo_grab_px = mouse_px
 			if hover_axis < 3 {
 				_gizmo_grab_s = _closest_axis_param(origin, local_dirs[hover_axis], mouse_ray)
 			}
-			_gizmo_drag = undo.field_drag_begin(tH, &t.scale, typeid_of([3]f32), "Gizmo Scale")
 		}
 	}
 	if _gizmo_release_if_needed() {
 		w := engine.ctx_world()
-		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
+		factor: f32
+		if _gizmo_drag_axis == _GIZMO_UNIFORM_AXIS {
+			// Uniform: right/up drag grows, left/down shrinks.
+			pixel_delta := (mouse_px.x - _gizmo_grab_px.x) - (mouse_px.y - _gizmo_grab_px.y)
+			factor = max(1 + pixel_delta * 0.005, 0.01)
+		} else {
+			s := _closest_axis_param(_gizmo_start_world, local_dirs[_gizmo_drag_axis], mouse_ray)
+			factor = max(1 + (s - _gizmo_grab_s) / size, 0.01)
+		}
+		if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
+		for &tgt in _gizmo_targets {
+			t := engine.pool_get(&w.transforms, engine.Handle(tgt.tH))
+			if t == nil do continue
+			off := tgt.start_pos - _gizmo_start_world
 			if _gizmo_drag_axis == _GIZMO_UNIFORM_AXIS {
-				// Uniform: right/up drag grows, left/down shrinks.
-				pixel_delta := (mouse_px.x - _gizmo_grab_px.x) - (mouse_px.y - _gizmo_grab_px.y)
-				factor := max(1 + pixel_delta * 0.005, 0.01)
-				if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
-				t.scale = _gizmo_start_scale * factor
+				t.scale = tgt.start_scale * factor
+				if linalg.length(off) > 1e-6 {
+					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + off * factor)
+				}
 			} else {
-				s := _closest_axis_param(_gizmo_start_world, local_dirs[_gizmo_drag_axis], mouse_ray)
-				factor := max(1 + (s - _gizmo_grab_s) / size, 0.01)
-				if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
-				t.scale[_gizmo_drag_axis] = _gizmo_start_scale[_gizmo_drag_axis] * factor
+				// Per-axis: each object's own local component scales; the
+				// offset scales along the drag axis only (Unity group scale).
+				t.scale[_gizmo_drag_axis] = tgt.start_scale[_gizmo_drag_axis] * factor
+				dir := local_dirs[_gizmo_drag_axis]
+				amt := linalg.dot(off, dir)
+				if abs(amt) > 1e-6 {
+					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + off + dir * amt * (factor - 1))
+				}
 			}
 		}
 	}
 	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
 
-	origin_now := engine.transform_world_position(tH)
+	origin_now := gizmo_origin(tH)
 	for axis in 0 ..< 3 {
 		dir := local_dirs[axis]
 		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]

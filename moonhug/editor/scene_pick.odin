@@ -69,3 +69,80 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 
 	return best, found
 }
+
+// Rubber-band counterpart of scene_view_pick: every enabled renderer (on an
+// active-in-hierarchy transform) whose projected bounds intersect the
+// viewport-pixel rect. Temp-allocated; duplicates are fine (sel_scene_add
+// dedups).
+scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> []engine.Transform_Handle {
+	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
+	w := engine.ctx_world()
+
+	for i in 0 ..< len(w.sprite_renderers.slots) {
+		slot := &w.sprite_renderers.slots[i]
+		if !slot.alive do continue
+		sr := &slot.data
+		if !sr.enabled || sr.texture == {} do continue
+		if !engine.transform_active_in_hierarchy(sr.owner) do continue
+		tex, ok := engine.texture_load(sr.texture)
+		if !ok do continue
+		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
+		c := engine.sprite_world_corners(tw, tex.width, tex.height)
+		if _rect_hits_points(view, rmin, rmax, c[:]) {
+			append(&out, engine.Transform_Handle(sr.owner))
+		}
+	}
+
+	for i in 0 ..< len(w.mesh_renderers.slots) {
+		slot := &w.mesh_renderers.slots[i]
+		if !slot.alive do continue
+		mr := &slot.data
+		if !mr.enabled do continue
+		if !engine.transform_active_in_hierarchy(mr.owner) do continue
+		_, mf := engine.transform_get_comp(engine.Transform_Handle(mr.owner), engine.MeshFilter)
+		if mf == nil || mf.mesh == {} do continue
+		mesh, ok := engine.mesh_load(mf.mesh)
+		if !ok do continue
+		tw := engine.transform_world(engine.Transform_Handle(mr.owner))
+		model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
+		lo, hi := mesh.aabb_min, mesh.aabb_max
+		corners: [8][3]f32
+		for k in 0 ..< 8 {
+			local := [4]f32{
+				k & 1 == 0 ? lo.x : hi.x,
+				k & 2 == 0 ? lo.y : hi.y,
+				k & 4 == 0 ? lo.z : hi.z,
+				1,
+			}
+			corners[k] = (model * local).xyz
+		}
+		if _rect_hits_points(view, rmin, rmax, corners[:]) {
+			append(&out, engine.Transform_Handle(mr.owner))
+		}
+	}
+
+	return out[:]
+}
+
+// Screen-space AABB of the projected points (behind-camera points are
+// skipped) intersected with the rect. Cheap and Unity-close; a giant mesh
+// whose projected box overlaps without any geometry inside can false-match —
+// accepted.
+@(private = "file")
+_rect_hits_points :: proc(view: engine.Render_View, rmin, rmax: [2]f32, points: [][3]f32) -> bool {
+	first := true
+	pmin, pmax: [2]f32
+	for p in points {
+		px, ok := _gizmo_project(view, p)
+		if !ok do continue
+		if first {
+			pmin, pmax = px, px
+			first = false
+		} else {
+			pmin = {min(pmin.x, px.x), min(pmin.y, px.y)}
+			pmax = {max(pmax.x, px.x), max(pmax.y, px.y)}
+		}
+	}
+	if first do return false
+	return pmin.x <= rmax.x && pmax.x >= rmin.x && pmin.y <= rmax.y && pmax.y >= rmin.y
+}

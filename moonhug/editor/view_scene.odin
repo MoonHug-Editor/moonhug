@@ -25,6 +25,24 @@ _scene_img_min: im.Vec2
 _scene_click_pos: im.Vec2
 _scene_click_pending: bool
 
+// Rubber-band box select (Unity): an armed LMB click that travels beyond the
+// click threshold becomes a live box select. The selection updates every
+// frame while the band is open; the selection-undo tracker pauses
+// (scene_band_selecting) so the whole gesture records as ONE "Select" step.
+_band_active: bool
+_band_anchor: im.Vec2 // screen coords
+_band_additive: bool  // cmd/ctrl held at band start: adds to the base set
+_band_base: [dynamic]engine.Transform_Handle // selection at band start
+
+scene_band_selecting :: proc() -> bool {
+	return _band_active
+}
+
+_band_shutdown :: proc() {
+	delete(_band_base)
+	_band_base = nil
+}
+
 FLYTHROUGH_BASE_SPEED :: 8.0
 FLYTHROUGH_SHIFT_MULT :: 3.0
 ORBIT_SENSITIVITY :: 0.005
@@ -51,6 +69,8 @@ init_scene_view :: proc() {
 }
 
 shutdown_scene_view :: proc() {
+	gizmo_shutdown()
+	_band_shutdown()
 	overlays_shutdown()
 	gfx.rt_destroy(scene_rt)
 	scene_rt = nil
@@ -93,9 +113,26 @@ _frame_tween_from_target, _frame_tween_to_target: [3]f32
 _frame_tween_from_dist, _frame_tween_to_dist: f32
 
 scene_frame_selected :: proc() {
-	sel := sel_scene_active()
-	if sel == _HANDLE_NONE do return
-	center, radius := _selection_bounds(sel)
+	// Union over ALL selected objects (Unity frames the whole selection).
+	w := engine.ctx_world()
+	first := true
+	cmin, cmax: [3]f32
+	for h in sel_scene_items() {
+		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
+		c, r := _selection_bounds(h)
+		lo := c - r
+		hi := c + r
+		if first {
+			cmin, cmax = lo, hi
+			first = false
+		} else {
+			cmin = {min(cmin.x, lo.x), min(cmin.y, lo.y), min(cmin.z, lo.z)}
+			cmax = {max(cmax.x, hi.x), max(cmax.y, hi.y), max(cmax.z, hi.z)}
+		}
+	}
+	if first do return
+	center := (cmin + cmax) * 0.5
+	radius := max(linalg.length(cmax - cmin) * 0.5, 0.1)
 	_frame_tween_from_target = scene_cam_target
 	_frame_tween_from_dist = scene_cam_dist
 	_frame_tween_to_target = center
@@ -185,9 +222,10 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_execute(view, commands[:])
 
 	// Selection visuals + gizmo (overlay lines, drawn last). Every selected
-	// object gets an outline; the gizmo operates on the ACTIVE one only
-	// (multi-object gizmo drag is a follow-up). The gizmo also handles its
-	// own mouse interaction, in the same pixel space as picking.
+	// object gets an outline; the gizmo anchors on the ACTIVE object (or the
+	// selection center — gizmo_pivot) and drags apply to every selected
+	// top-level object. It handles its own mouse interaction, in the same
+	// pixel space as picking.
 	sel_scene_prune()
 	for h in sel_scene_items() {
 		draw_selection_outline(h)
@@ -198,7 +236,7 @@ render_scene_rt :: proc(w, h: i32) {
 		gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
 	} else {
 		_gizmo_hot_axis = -1
-		_gizmo_dragging = false
+		gizmo_end_drag_if_any()
 	}
 	gfx.pass_end()
 }
@@ -360,8 +398,39 @@ draw_scene_view :: proc() {
 		if scene_view_hovered {
 			handle_scene_input()
 		}
+		// Band tracking is hover-independent: the drag keeps working when the
+		// cursor leaves the image, like orbit/gizmo drags.
+		if _band_active {
+			_update_rubber_band()
+		}
 	}
 	im.End()
+}
+
+_update_rubber_band :: proc() {
+	if !im.IsMouseDown(.Left) {
+		_band_active = false // released: the tracker records the final set
+		return
+	}
+	mp := im.GetMousePos()
+	rmin := im.Vec2{min(mp.x, _band_anchor.x), min(mp.y, _band_anchor.y)}
+	rmax := im.Vec2{max(mp.x, _band_anchor.x), max(mp.y, _band_anchor.y)}
+
+	if scene_rt != nil {
+		view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
+		vmin := [2]f32{rmin.x - _scene_img_min.x, rmin.y - _scene_img_min.y}
+		vmax := [2]f32{rmax.x - _scene_img_min.x, rmax.y - _scene_img_min.y}
+		hits := scene_view_band_query(view, vmin, vmax)
+		sel_scene_clear()
+		if _band_additive {
+			for h in _band_base do sel_scene_add(h)
+		}
+		for h in hits do sel_scene_add(h)
+	}
+
+	dl := im.GetWindowDrawList()
+	im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32ImVec4(im.Vec4{0.35, 0.55, 1, 0.12}))
+	im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32ImVec4(im.Vec4{0.5, 0.7, 1, 0.9}))
 }
 
 // Unity-style Tools overlay item (dockable toolbar, dock.odin): gizmo mode
@@ -386,7 +455,20 @@ draw_tools_overlay :: proc(vertical: bool) {
 // (see Gizmo_Space).
 @(scene_toolbar={id="Pivot", order=100})
 draw_pivot_overlay :: proc(vertical: bool) {
-	// Vertical dock: icon-only square button (the word won't fit the column).
+	// Unity's Pivot/Center toggle: gizmo at the active object's pivot vs the
+	// center of the selection.
+	// Vertical dock: icon-only square buttons (the words won't fit the column).
+	pivot_label: cstring
+	if vertical {
+		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN : ICON_MD_CENTER_FOCUS
+	} else {
+		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN + " Pivot" : ICON_MD_CENTER_FOCUS + " Center"
+	}
+	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_BUTTON_SIZE : 0) {
+		gizmo_pivot = gizmo_pivot == .Pivot ? .Center : .Pivot
+	}
+
+	if !vertical do im.SameLine()
 	label: cstring
 	if vertical {
 		label = gizmo_space == .Global ? ICON_MD_PUBLIC : ICON_MD_DEPLOYED_CODE
@@ -483,9 +565,16 @@ handle_scene_input :: proc() {
 	}
 
 	// Escape drops the selection (not mid-gizmo-drag: the drag teardown in
-	// render_scene_rt's else-branch would leave its undo step open).
+	// render_scene_rt's else-branch would leave its undo step open). During a
+	// band it cancels the band and restores the pre-band selection instead.
 	if im.IsKeyPressed(.Escape) && !_gizmo_dragging {
-		sel_scene_clear()
+		if _band_active {
+			_band_active = false
+			sel_scene_clear()
+			for h in _band_base do sel_scene_add(h)
+		} else {
+			sel_scene_clear()
+		}
 		_scene_click_pending = false
 	}
 
@@ -498,6 +587,21 @@ handle_scene_input :: proc() {
 	}
 	if _scene_click_pending && (gizmo_consumes_mouse() || _gizmo_dragging) {
 		_scene_click_pending = false
+	}
+	// An armed click that travels beyond the click threshold becomes a rubber
+	// band (works in every tool mode, Unity-style).
+	if _scene_click_pending && !_band_active {
+		mp := im.GetMousePos()
+		dx := mp.x - _scene_click_pos.x
+		dy := mp.y - _scene_click_pos.y
+		if dx * dx + dy * dy >= 16 {
+			_scene_click_pending = false
+			_band_active = true
+			_band_anchor = _scene_click_pos
+			_band_additive = io.KeyCtrl || io.KeySuper
+			clear(&_band_base)
+			for h in sel_scene_items() do append(&_band_base, h)
+		}
 	}
 	if _scene_click_pending && im.IsMouseReleased(.Left) {
 		_scene_click_pending = false

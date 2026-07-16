@@ -20,6 +20,9 @@ Everywhere (hierarchy rows, scene-view picking, project list rows):
 - **shift-click** — range from the active row over the VISIBLE rows,
   replacing the selection (hierarchy + project list; not scene picking)
 - **shift + up/down** — extend the selection row by row
+- **LMB-drag** (scene view) — rubber-band box select: live updates while
+  dragging, cmd/ctrl adds to the existing set, Escape cancels; the whole
+  gesture is ONE selection-undo step
 - **Escape** (scene view) — clear
 
 The active row is outlined in the hierarchy when more than one is selected.
@@ -35,13 +38,17 @@ The project status line shows the count.
   undo step.
 - Right-click on a selected row keeps the selection (menu acts on all of
   it); on an unselected row it selects just that row first.
-- Single-target actions use the active item: rename, gizmo, frame (F),
-  Create Empty Child/Parent, project open/rename/Extract/Scene Variant,
-  drag-drop payloads.
+- **Gizmo drags move the whole selection** (Unity): translate offsets every
+  selected top-level object, rotate orbits positions around the gizmo and
+  spins orientations, scale scales offsets + local scales — one undo group
+  per drag. The gizmo anchors at the active object's pivot or the selection
+  center (Pivot/Center toolbar toggle).
+- **F frames the whole selection** (bounds union).
+- Single-target actions use the active item: rename, Create Empty
+  Child/Parent, project open/rename/Extract/Scene Variant, drag-drop
+  payloads.
 
 ## Not yet (follow-ups)
 
 - Multiedit (editing shared fields across the selection)
-- Gizmo moving the whole selection (active object only today)
-- Rubber-band box select in the scene view
 - Multi-path drag-drop from the project view
