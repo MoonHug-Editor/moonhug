@@ -37,6 +37,7 @@ InspectorData :: struct {
     mode: InspectorMode,
     filePath: string,
     fileData: any,
+    doc: ^Asset_Doc, // .Asset mode: the registry document backing fileData
     statusMessage: string,
     importSettings: engine.ImportSettings,
 }
@@ -52,6 +53,7 @@ init :: proc() {
     mapPropertyDrawer[typeid_of([dynamic]engine.Material_Property)] = draw_material_properties
     mapPropertyDrawer[typeid_of([dynamic]engine.Material_Texture)] = draw_material_textures
     init_decorators()
+    undo.set_asset_apply(asset_doc_apply_json)
 }
 
 shutdown_registries :: proc() {
@@ -63,14 +65,16 @@ shutdown_registries :: proc() {
     if inspectorData.filePath != "" {
         delete(inspectorData.filePath)
     }
+    asset_docs_shutdown()
 }
 
 load_from_file :: proc(filepath: string){
-    file_data, ok := ser.load_from_file(filepath)
-    if ok {
+    doc := asset_doc_get(filepath)
+    if doc != nil {
         delete(inspectorData.filePath)
         inspectorData.filePath = strings.clone(filepath)
-        inspectorData.fileData = file_data
+        inspectorData.fileData = doc.data
+        inspectorData.doc = doc
         inspectorData.mode = .Asset
         inspectorData.statusMessage = fmt.tprintf("Loaded from %s", filepath)
     } else {
@@ -84,6 +88,7 @@ load_import_settings :: proc(filepath: string) {
         delete(inspectorData.filePath)
         inspectorData.filePath = strings.clone(filepath)
         inspectorData.fileData = {}
+        inspectorData.doc = nil
         inspectorData.importSettings = settings
         inspectorData.mode = .ImportSettings
         inspectorData.statusMessage = ""
@@ -99,6 +104,7 @@ get_file_path :: proc() -> string {
 save_to_file :: proc() {
     if ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
     {
+        if inspectorData.doc != nil do inspectorData.doc.dirty = false
         inspectorData.statusMessage = fmt.tprintf("Saved successfully to %s", inspectorData.filePath)
     } else {
         inspectorData.statusMessage = fmt.tprintf("Failed to save %s", inspectorData.filePath)
@@ -118,12 +124,13 @@ view_inspector_draw :: proc() {
 }
 
 _draw_asset_inspector :: proc() {
+    // Undo may have swapped the document payload since last frame.
+    if inspectorData.doc != nil {
+        inspectorData.fileData = inspectorData.doc.data
+    }
+
     if im.Button("Save", im.Vec2{60, 0}) {
-        if ser.save_to_file(inspectorData.filePath, inspectorData.fileData) {
-            inspectorData.statusMessage = fmt.tprintf("Saved successfully to %s", inspectorData.filePath)
-        } else {
-            inspectorData.statusMessage = fmt.tprintf("Failed to save %s", inspectorData.filePath)
-        }
+        save_to_file()
     }
     im.SameLine()
 
@@ -134,7 +141,8 @@ _draw_asset_inspector :: proc() {
     im.Separator()
 
     if inspectorData.filePath != "" {
-        im.Text(strings.clone_to_cstring(fmt.tprintf("File: %s", inspectorData.filePath), context.temp_allocator))
+        dirty := inspectorData.doc != nil && inspectorData.doc.dirty ? " *" : ""
+        im.Text(strings.clone_to_cstring(fmt.tprintf("File: %s%s", inspectorData.filePath, dirty), context.temp_allocator))
     } else {
         im.TextColored(im.Vec4{1, 0, 0, 1}, "No file loaded")
     }
@@ -145,7 +153,19 @@ _draw_asset_inspector :: proc() {
         if inspectorData.fileData.id == typeid_of(engine.Material) {
             current_material = cast(^engine.Material)inspectorData.fileData.data
         }
+        // Whole-document undo: _undo_finalize_widget after each drawer snapshots
+        // and commits against this owner, exactly like the component inspector.
+        if inspectorData.doc != nil {
+            undo.push_asset_owner(inspectorData.doc.guid, inspectorData.fileData.data, inspectorData.fileData.id)
+        }
+        prev_changed := inspector_changed
+        inspector_changed = false
         draw_inspector(inspectorData.fileData)
+        if inspector_changed && inspectorData.doc != nil {
+            inspectorData.doc.dirty = true
+        }
+        inspector_changed |= prev_changed
+        if inspectorData.doc != nil do undo.pop_owner()
         _material_live_preview()
         current_material = nil
     }
@@ -244,7 +264,7 @@ _FieldMenuUndo :: struct {
 @(private)
 _field_menu_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) -> _FieldMenuUndo {
     o, ok := undo.current_owner()
-    if ok && o.kind == .Pooled && o.handle.type_key != .Transform {
+    if ok && (o.kind == .Asset || (o.kind == .Pooled && o.handle.type_key != .Transform)) {
         if undo.pending_is_active() {
             undo.comp_commit()
         }

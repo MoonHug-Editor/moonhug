@@ -263,15 +263,13 @@ _is_inspector_asset :: proc(path: string) -> bool {
 // Same side effects as clicking/double-clicking the file row.
 _project_activate_file :: proc(full_path: string) {
     if _is_inspector_asset(full_path) {
-        undo.clear(undo.get())
         inspector.load_from_file(full_path)
     }
     if engine.is_importable_extension(filepath.ext(full_path)) {
-        undo.clear(undo.get())
         inspector.load_import_settings(full_path)
     }
     if strings.has_suffix(full_path, ".scene") {
-        undo.clear(undo.get())
+        undo.purge_scenes(undo.get())
         // Fresh navigation — reset the nested-scene edit stack.
         hierarchy_edit_stack_clear()
         scene := engine.scene_load_single_path(full_path)
@@ -555,6 +553,7 @@ _project_handle_tree_keys :: proc() {
 
     if im.IsKeyPressed(im.Key.Tab) {
         _project_active_pane = .List
+        _project_list_ensure_selection()
         return
     }
     if _project_key_rename() {
@@ -629,9 +628,10 @@ _project_handle_tree_keys :: proc() {
     }
 }
 
-// When the list pane is active but nothing valid is selected, select the first
-// row. Called after the list is drawn (rows populated) so a fresh Tab into the
-// pane lands on the first file.
+// A fresh Tab into the list pane with no valid selection lands on the first
+// row (rows persist from the last draw — same folder). Only called on the Tab
+// transition: running it every frame auto-selected the first file whenever a
+// folder click cleared the selection, polluting selection undo history.
 _project_list_ensure_selection :: proc() {
     n := len(_project_list_rows)
     if n == 0 do return
@@ -812,15 +812,13 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
             }
         } else if !toggled_off {
             if _is_inspector_asset(full_path) {
-                undo.clear(undo.get())
                 inspector.load_from_file(full_path)
             }
             if engine.is_importable_extension(filepath.ext(full_path)) {
-                undo.clear(undo.get())
                 inspector.load_import_settings(full_path)
             }
             if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
-                undo.clear(undo.get())
+                undo.purge_scenes(undo.get())
                 // Fresh navigation — reset the nested-scene edit stack.
                 hierarchy_edit_stack_clear()
                 scene := engine.scene_load_single_path(full_path)
@@ -916,7 +914,7 @@ create_scene_variant :: proc(base_path: string) {
     // Mint the variant's .meta and register it so it can be loaded by GUID.
     engine.asset_db_refresh()
 
-    undo.clear(undo.get())
+    undo.purge_scenes(undo.get())
     hierarchy_edit_stack_clear()
     scene := engine.scene_load_single_path(variant_path)
     engine.sm_scene_set_active(scene)
@@ -925,6 +923,20 @@ create_scene_variant :: proc(base_path: string) {
 // Leave search mode and open the asset's folder, revealed in the tree.
 // select=true: select the row (open semantics). select=false: ping — a
 // fading flash on the row, selection untouched.
+// Navigate to the file's folder and scroll its row into view WITHOUT
+// touching the selection set — selection undo restores the set itself and
+// only needs the project view to show it.
+_project_reveal_keep_selection :: proc(path: string) {
+    mem.zero(&_project_search_buf, len(_project_search_buf))
+    parent := filepath.dir(path) // slice into path — not owned
+    if parent == "" {
+        parent = projectViewData.rootPath
+    }
+    _project_set_current(parent)
+    _project_scroll_to_list_sel = true
+    _project_tree_reveal = true
+}
+
 _project_reveal_path :: proc(path: string, select: bool) {
     mem.zero(&_project_search_buf, len(_project_search_buf))
     parent := filepath.dir(path) // slice into path — not owned
@@ -1051,11 +1063,6 @@ draw_project_view :: proc() {
         im.EndChild()
 
         im.Columns(1)
-
-        // Entering the right pane with no valid selection lands on the first file.
-        if _project_active_pane == .List {
-            _project_list_ensure_selection()
-        }
 
         // Esc cancels an active search from EITHER pane (a rename's Esc wins;
         // Esc in the search box itself reverts the input first, then this clears).

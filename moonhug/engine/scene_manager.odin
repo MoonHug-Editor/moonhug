@@ -96,6 +96,29 @@ sm_scene_is_valid :: proc(scene: ^Scene) -> bool {
     return scene != nil && scene.generation > 0
 }
 
+// True when the pointer is one of the currently loaded scenes. Distinct from
+// sm_scene_is_valid: a stale pointer into freed memory must never be
+// dereferenced, so identity is checked against the loaded slots first.
+sm_scene_is_loaded :: proc(scene: ^Scene) -> bool {
+    if scene == nil do return false
+    scene_manager := ctx_scene_manager()
+    for i in 0..<scene_manager.count {
+        if scene_manager.loaded[i] == scene do return sm_scene_is_valid(scene)
+    }
+    return false
+}
+
+// The loaded scene backed by the given asset, or nil (empty guid never matches).
+sm_scene_find_by_guid :: proc(guid: Asset_GUID) -> ^Scene {
+    if asset_guid_is_empty(guid) do return nil
+    scene_manager := ctx_scene_manager()
+    for i in 0..<scene_manager.count {
+        s := scene_manager.loaded[i]
+        if s != nil && sm_scene_is_valid(s) && s.asset_guid == guid do return s
+    }
+    return nil
+}
+
 sm_scene_invalidate :: proc(scene: ^Scene) {
     if scene == nil do return
     scene.generation = 0

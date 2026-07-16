@@ -73,7 +73,8 @@ scene_clear_root :: proc(s: ^Scene) {
 	s.root = {}
 }
 
-scene_find_outer_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transform_Handle, bool) {
+@(private)
+_scene_find_transform_local_id :: proc(s: ^Scene, id: Local_ID, include_nested: bool) -> (Transform_Handle, bool) {
 	if s == nil || id == 0 do return {}, false
 	if breadcrumb_is_placeholder(s, id) do return {}, false
 	w := ctx_world()
@@ -81,13 +82,33 @@ scene_find_outer_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transfo
 		slot := &w.transforms.slots[i]
 		if !slot.alive do continue
 		tr := &slot.data
-		if tr.scene != s || tr.nested_owned do continue
-		if !asset_guid_is_empty(s.asset_guid) && !asset_guid_is_empty(tr.scene_asset_guid) && tr.scene_asset_guid != s.asset_guid do continue
+		if tr.scene != s do continue
+		if tr.nested_owned {
+			// Composed contents carry deterministic host-namespace lids
+			// (docs/NestedPrefabs.md), so matching them can't collide with
+			// outer lids. Their scene_asset_guid is the SOURCE scene's — the
+			// mismatch filter below only applies to outer transforms.
+			if !include_nested do continue
+		} else if !asset_guid_is_empty(s.asset_guid) && !asset_guid_is_empty(tr.scene_asset_guid) && tr.scene_asset_guid != s.asset_guid {
+			continue
+		}
 		if tr.local_id == id {
 			return Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform}), true
 		}
 	}
 	return {}, false
+}
+
+// Undo-grade lookup: outer transforms only — structural/value undo must never
+// target nested-scene contents.
+scene_find_outer_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transform_Handle, bool) {
+	return _scene_find_transform_local_id(s, id, include_nested = false)
+}
+
+// Selection-grade lookup: also matches nested-scene contents. Use it to FIND
+// an object (selection restore, reveal, display) — never to mutate it.
+scene_find_selectable_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transform_Handle, bool) {
+	return _scene_find_transform_local_id(s, id, include_nested = true)
 }
 
 scene_ref_resolve_transform :: proc(s: ^Scene, r: Ref, parent_for_local_id: Transform_Handle = {}) -> (Transform_Handle, bool) {

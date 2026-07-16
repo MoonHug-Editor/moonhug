@@ -104,6 +104,9 @@ main :: proc() {
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
     undo.install(undo_stack)
+    // Selection restore/record goes through hooks (undo can't import editor).
+    selection_undo_install()
+    defer selection_undo_shutdown()
     defer { undo.destroy(undo_stack); free(undo_stack) }
 
     defer { engine.world_destroy_all(w); free(w) }
@@ -186,6 +189,10 @@ main :: proc() {
 
         draw_about_popup()
         draw_status_bar()
+
+        // Selection undo steps (Unity model): diff selection against the
+        // frame's baseline after all views handled input.
+        selection_undo_track()
 
         // Render. Scene/game views already encoded their offscreen passes
         // into this frame's command buffer during the UI calls above; imgui's

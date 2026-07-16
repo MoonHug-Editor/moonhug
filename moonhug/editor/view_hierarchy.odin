@@ -153,7 +153,7 @@ _hierarchy_enter_scene :: proc(source_path: string, source_guid: engine.Asset_GU
 			append(&_edit_stack, frame)
 		}
 	}
-	undo.clear(undo.get())
+	undo.purge_scenes(undo.get())
 	sel_scene_clear()
 	scene := engine.scene_load_single_path(source_path)
 	engine.sm_scene_set_active(scene)
@@ -165,7 +165,7 @@ _hierarchy_exit_scene :: proc() {
 	if len(_edit_stack) == 0 do return
 	frame := pop(&_edit_stack)
 	defer delete(frame.path)
-	undo.clear(undo.get())
+	undo.purge_scenes(undo.get())
 	sel_scene_clear()
 	scene := engine.scene_load_single_path(frame.path)
 	engine.sm_scene_set_active(scene)
@@ -201,7 +201,6 @@ draw_hierarchy_view :: proc() {
 		if payload != nil && payload.Data != nil {
 			path := string(([^]byte)(payload.Data)[:payload.DataSize])
 			if strings.has_suffix(path, ".scene") {
-				undo.clear(undo.get())
 				engine.scene_load_additive_path(path)
 			}
 		}
@@ -353,7 +352,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 		}
 		im.Separator()
 		if im.MenuItem("Unload") {
-			undo.clear(undo.get())
+			undo.purge_scene(undo.get(), scene)
 			engine.sm_scene_unload(scene)
 			im.EndPopup()
 			return
@@ -416,7 +415,7 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 		if im.Button("Save", im.Vec2{120, 0}) {
 			path := string(buf_cstr)
 			if len(path) > 0 {
-				undo.clear(undo.get())
+				undo.purge_scene(undo.get(), scene)
 				engine.scene_save(scene, path)
 			}
 			_save_as_open = false
@@ -801,6 +800,7 @@ _delete_selected :: proc() {
 	w := engine.ctx_world()
 	g := undo.group_begin("Delete Selected")
 	defer undo.group_end(&g)
+	undo.record_selection_snapshot()
 	deleted := 0
 	for h in targets {
 		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
@@ -820,6 +820,7 @@ _duplicate_selected :: proc() {
 	w := engine.ctx_world()
 	g := undo.group_begin("Duplicate Selected")
 	defer undo.group_end(&g)
+	undo.record_selection_snapshot()
 	results := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	for h in targets {
 		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue

@@ -43,7 +43,7 @@ record_reparent :: proc(node: engine.Transform_Handle, old_parent, new_parent: e
 	}
 
 	cmd := Reparent_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		node_local_id = node_lid,
 		old_parent_local_id = old_parent_lid,
 		new_parent_local_id = new_parent_lid,
@@ -72,7 +72,7 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	cmd := Create_Subtree_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
@@ -94,7 +94,7 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (Delete_Subtree_Comm
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	return Delete_Subtree_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
@@ -132,7 +132,7 @@ record_add_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: eng
 
 	payload := capture_json(base, tid)
 	cmd := Add_Component_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
@@ -156,7 +156,7 @@ record_remove_component_pre :: proc(owner_tH: engine.Transform_Handle, comp_hand
 
 	payload := capture_json(base, tid)
 	return Remove_Component_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
@@ -171,7 +171,7 @@ record_reorder_components :: proc(owner_tH: engine.Transform_Handle, from, to: i
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return
 	cmd := Reorder_Components_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		old_index = from,
 		new_index = to,

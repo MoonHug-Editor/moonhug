@@ -8,22 +8,43 @@ import "base:builtin"
 import engine "../../engine"
 import "../../engine/log"
 
-MAX_ENTRIES :: 32
+MAX_ENTRIES :: 128
 
 Owner_Kind :: enum {
 	None,
 	Pooled,
 	Raw,
+	Asset, // serialized asset document (.mat/.asset), identified by asset guid
+}
+
+// Scene identity that survives scene reloads: the pointer is the fast path
+// while the scene stays loaded; the asset guid re-finds the reloaded scene
+// afterwards (empty for never-saved scenes — those can't outlive an unload,
+// purge_* removes their entries).
+Scene_Ref :: struct {
+	ptr:  ^engine.Scene,
+	guid: engine.Asset_GUID,
+}
+
+scene_ref :: proc(s: ^engine.Scene) -> Scene_Ref {
+	if s == nil do return {}
+	return Scene_Ref{ptr = s, guid = s.asset_guid}
+}
+
+resolve_scene :: proc(r: Scene_Ref) -> ^engine.Scene {
+	if engine.sm_scene_is_loaded(r.ptr) do return r.ptr
+	return engine.sm_scene_find_by_guid(r.guid)
 }
 
 Property_Target :: struct {
-	kind:      Owner_Kind,
-	scene:     ^engine.Scene,
-	local_id:  engine.Local_ID,
-	handle:    engine.Handle,
-	offset:    u32,
-	type_id:   typeid,
-	raw_ptr:   rawptr,
+	kind:       Owner_Kind,
+	scene:      Scene_Ref,
+	local_id:   engine.Local_ID,
+	handle:     engine.Handle,
+	offset:     u32,
+	type_id:    typeid,
+	raw_ptr:    rawptr,
+	asset_guid: engine.Asset_GUID, // .Asset only
 }
 
 Value_Command :: struct {
@@ -33,7 +54,7 @@ Value_Command :: struct {
 }
 
 Reparent_Command :: struct {
-	scene:                ^engine.Scene,
+	scene:                Scene_Ref,
 	node_local_id:        engine.Local_ID,
 	old_parent_local_id:  engine.Local_ID,
 	new_parent_local_id:  engine.Local_ID,
@@ -42,7 +63,7 @@ Reparent_Command :: struct {
 }
 
 Create_Subtree_Command :: struct {
-	scene:               ^engine.Scene,
+	scene:               Scene_Ref,
 	parent_local_id:     engine.Local_ID,
 	root_local_id:       engine.Local_ID,
 	sibling_index:       int,
@@ -50,7 +71,7 @@ Create_Subtree_Command :: struct {
 }
 
 Delete_Subtree_Command :: struct {
-	scene:               ^engine.Scene,
+	scene:               Scene_Ref,
 	parent_local_id:     engine.Local_ID,
 	root_local_id:       engine.Local_ID,
 	sibling_index:       int,
@@ -58,7 +79,7 @@ Delete_Subtree_Command :: struct {
 }
 
 Add_Component_Command :: struct {
-	scene:               ^engine.Scene,
+	scene:               Scene_Ref,
 	owner_local_id:      engine.Local_ID,
 	type_key:            engine.TypeKey,
 	comp_local_id:       engine.Local_ID,
@@ -67,7 +88,7 @@ Add_Component_Command :: struct {
 }
 
 Remove_Component_Command :: struct {
-	scene:               ^engine.Scene,
+	scene:               Scene_Ref,
 	owner_local_id:      engine.Local_ID,
 	type_key:            engine.TypeKey,
 	comp_local_id:       engine.Local_ID,
@@ -76,7 +97,7 @@ Remove_Component_Command :: struct {
 }
 
 Reorder_Components_Command :: struct {
-	scene:               ^engine.Scene,
+	scene:               Scene_Ref,
 	owner_local_id:      engine.Local_ID,
 	old_index:           int,
 	new_index:           int,
@@ -95,10 +116,31 @@ Group_Command :: struct {
 	subs: [dynamic]Command,
 }
 
+Selection_Scene_Item :: struct {
+	scene:    Scene_Ref,
+	local_id: engine.Local_ID,
+}
+
+// Snapshot of the editor selection (both domains, ordered, last = active).
+// Slices and strings are owned by the command.
+Selection_State :: struct {
+	scene: []Selection_Scene_Item,
+	proj:  []string,
+}
+
+// A selection change as its own undo step (Unity model): undo applies
+// `before`, redo applies `after`. Restoration goes through the editor-side
+// hook installed with set_selection_hooks.
+Selection_Command :: struct {
+	before: Selection_State,
+	after:  Selection_State,
+}
+
 Command :: union {
 	Value_Command,
 	Structural_Command,
 	Group_Command,
+	Selection_Command,
 }
 
 Entry :: struct {
@@ -112,6 +154,10 @@ Undo_Stack :: struct {
 	txn_stack:  [dynamic]Group_Command,
 	recording:  bool,
 	applying:   bool,
+	// Set by every stack mutation (push, undo/redo, clear, purge); consumed
+	// once per frame by the editor's selection tracker so selection changes
+	// caused by data operations don't also record as selection steps.
+	activity:   bool,
 }
 
 init :: proc(s: ^Undo_Stack) {
@@ -131,6 +177,7 @@ clear :: proc(s: ^Undo_Stack) {
 	}
 	builtin.clear(&s.txn_stack)
 	s.top = 0
+	s.activity = true
 }
 
 destroy :: proc(s: ^Undo_Stack) {
@@ -166,6 +213,7 @@ install :: proc(s: ^Undo_Stack) {
 push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 	if s == nil do return
 	if !s.recording || s.applying do return
+	s.activity = true
 
 	if len(s.txn_stack) > 0 {
 		top_txn := &s.txn_stack[len(s.txn_stack) - 1]
@@ -213,6 +261,7 @@ default_label :: proc(cmd: Command) -> string {
 		case .None:   return "Edit Value"
 		case .Pooled: return v.target.handle.type_key == .Transform ? "Edit Transform" : "Edit Component"
 		case .Raw:    return "Edit"
+		case .Asset:  return "Edit Asset"
 		}
 		return "Edit Value"
 	case Structural_Command:
@@ -227,6 +276,8 @@ default_label :: proc(cmd: Command) -> string {
 		return "Structural"
 	case Group_Command:
 		return "Group"
+	case Selection_Command:
+		return "Select"
 	}
 	return ""
 }
@@ -273,8 +324,11 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 		ordered_remove(&s.items, 0)
 		if s.top > 0 do s.top -= 1
 	}
-	append(&s.items, Entry{label = label, cmd = Command(grp)})
+	// Clone like push() does — _entry_destroy deletes the label, and group
+	// labels are usually string literals.
+	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp)})
 	s.top = len(s.items)
+	s.activity = true
 }
 
 can_undo :: proc(s: ^Undo_Stack) -> bool {
@@ -297,6 +351,7 @@ can_redo :: proc(s: ^Undo_Stack) -> bool {
 
 apply_undo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_undo(s) do return false
+	s.activity = true
 	s.applying = true
 	defer s.applying = false
 	s.top -= 1
@@ -307,6 +362,7 @@ apply_undo :: proc(s: ^Undo_Stack) -> bool {
 
 apply_redo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_redo(s) do return false
+	s.activity = true
 	s.applying = true
 	defer s.applying = false
 	cmd := &s.items[s.top].cmd
@@ -326,6 +382,8 @@ _apply_command :: proc(cmd: ^Command) {
 		for i in 0 ..< len(v.subs) {
 			_apply_command(&v.subs[i])
 		}
+	case Selection_Command:
+		_selection_apply(v.after)
 	}
 }
 
@@ -340,6 +398,8 @@ _revert_command :: proc(cmd: ^Command) {
 		for i := len(v.subs) - 1; i >= 0; i -= 1 {
 			_revert_command(&v.subs[i])
 		}
+	case Selection_Command:
+		_selection_apply(v.before)
 	}
 }
 
@@ -362,6 +422,10 @@ _command_destroy :: proc(cmd: ^Command) {
 	case Group_Command:
 		gc := v
 		_group_destroy(&gc)
+	case Selection_Command:
+		sel := v
+		selection_state_destroy(&sel.before)
+		selection_state_destroy(&sel.after)
 	}
 }
 
@@ -400,6 +464,8 @@ resolve_target_ptr :: proc(t: Property_Target) -> rawptr {
 		base, _, ok := resolve_pooled_base(t)
 		if !ok do return nil
 		return rawptr(uintptr(base) + uintptr(t.offset))
+	case .Asset:
+		return nil // applied through the asset hook, never via pointer
 	}
 	return nil
 }
@@ -410,13 +476,14 @@ resolve_pooled_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool)
 	if w == nil do return nil, {}, false
 	h := t.handle
 	if !engine.world_pool_valid(w, h) {
-		if t.scene == nil || t.local_id == 0 do return nil, {}, false
+		sc := resolve_scene(t.scene)
+		if sc == nil || t.local_id == 0 do return nil, {}, false
 		resolved: engine.Handle
 		ok: bool
 		if h.type_key == .Transform {
-			resolved, ok = scene_find_transform_by_local_id(t.scene, t.local_id)
+			resolved, ok = scene_find_transform_by_local_id(sc, t.local_id)
 		} else {
-			resolved, ok = scene_find_component_by_local_id(t.scene, t.local_id)
+			resolved, ok = scene_find_component_by_local_id(sc, t.local_id)
 		}
 		if !ok do return nil, {}, false
 		h = resolved
@@ -451,7 +518,7 @@ make_pooled_target :: proc(h: engine.Handle, offset: uintptr, tid: typeid) -> Pr
 	}
 	return Property_Target{
 		kind = .Pooled,
-		scene = scene,
+		scene = scene_ref(scene),
 		local_id = lid,
 		handle = h,
 		offset = u32(offset),
@@ -510,6 +577,16 @@ push_value :: proc(s: ^Undo_Stack, t: Property_Target, old_json, new_json: []byt
 
 @(private)
 _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
+	if vc.target.kind == .Asset {
+		if _asset_apply_hook == nil {
+			log.error("undo: no asset apply hook installed (inspector init missing?)")
+			return
+		}
+		if !_asset_apply_hook(vc.target.asset_guid, json_bytes) {
+			log.error(fmt.tprintf("undo: asset apply failed (guid=%v)", vc.target.asset_guid))
+		}
+		return
+	}
 	ptr := resolve_target_ptr(vc.target)
 	if ptr == nil {
 		log.error(fmt.tprintf("undo: failed to resolve target for value command (tid=%v)", vc.target.type_id))
@@ -584,7 +661,7 @@ scene_find_component_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 _structural_apply :: proc(sc: Structural_Command) {
 	switch v in sc {
 	case Reparent_Command:
-		_do_reparent(v.scene, v.node_local_id, v.new_parent_local_id, v.new_index)
+		_do_reparent(resolve_scene(v.scene), v.node_local_id, v.new_parent_local_id, v.new_index)
 	case Create_Subtree_Command:
 		_do_create_subtree(v)
 	case Delete_Subtree_Command:
@@ -594,7 +671,7 @@ _structural_apply :: proc(sc: Structural_Command) {
 	case Remove_Component_Command:
 		_do_remove_component(v)
 	case Reorder_Components_Command:
-		_do_reorder_components(v.scene, v.owner_local_id, v.old_index, v.new_index)
+		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.old_index, v.new_index)
 	}
 }
 
@@ -602,7 +679,7 @@ _structural_apply :: proc(sc: Structural_Command) {
 _structural_revert :: proc(sc: Structural_Command) {
 	switch v in sc {
 	case Reparent_Command:
-		_do_reparent(v.scene, v.node_local_id, v.old_parent_local_id, v.old_index)
+		_do_reparent(resolve_scene(v.scene), v.node_local_id, v.old_parent_local_id, v.old_index)
 	case Create_Subtree_Command:
 		_undo_create_subtree(v)
 	case Delete_Subtree_Command:
@@ -612,7 +689,7 @@ _structural_revert :: proc(sc: Structural_Command) {
 	case Remove_Component_Command:
 		_undo_remove_component(v)
 	case Reorder_Components_Command:
-		_do_reorder_components(v.scene, v.owner_local_id, v.new_index, v.old_index)
+		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.new_index, v.old_index)
 	}
 }
 
@@ -634,28 +711,28 @@ _do_reparent :: proc(s: ^engine.Scene, node_id: engine.Local_ID, new_parent_id: 
 
 @(private)
 _do_create_subtree :: proc(v: Create_Subtree_Command) {
-	parent_h, ok := scene_find_transform_by_local_id(v.scene, v.parent_local_id)
+	parent_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.parent_local_id)
 	if !ok do return
 	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
 }
 
 @(private)
 _undo_create_subtree :: proc(v: Create_Subtree_Command) {
-	node_h, ok := scene_find_transform_by_local_id(v.scene, v.root_local_id)
+	node_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.root_local_id)
 	if !ok do return
 	engine.transform_destroy(engine.Transform_Handle(node_h))
 }
 
 @(private)
 _do_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	node_h, ok := scene_find_transform_by_local_id(v.scene, v.root_local_id)
+	node_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.root_local_id)
 	if !ok do return
 	engine.transform_destroy(engine.Transform_Handle(node_h))
 }
 
 @(private)
 _undo_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	parent_h, ok := scene_find_transform_by_local_id(v.scene, v.parent_local_id)
+	parent_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.parent_local_id)
 	if !ok do return
 	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
 }
@@ -709,7 +786,7 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 
 @(private)
 _do_add_component :: proc(v: Add_Component_Command) {
-	owner_h, ok := scene_find_transform_by_local_id(v.scene, v.owner_local_id)
+	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
 	if !ok do return
 	tH := engine.Transform_Handle(owner_h)
 
@@ -756,18 +833,20 @@ _do_add_component :: proc(v: Add_Component_Command) {
 
 @(private)
 _undo_add_component :: proc(v: Add_Component_Command) {
-	comp_h, ok := scene_find_component_by_local_id(v.scene, v.comp_local_id)
+	sc := resolve_scene(v.scene)
+	comp_h, ok := scene_find_component_by_local_id(sc, v.comp_local_id)
 	if !ok do return
-	owner_h, oh_ok := scene_find_transform_by_local_id(v.scene, v.owner_local_id)
+	owner_h, oh_ok := scene_find_transform_by_local_id(sc, v.owner_local_id)
 	if !oh_ok do return
 	engine.transform_remove_comp(engine.Transform_Handle(owner_h), comp_h)
 }
 
 @(private)
 _do_remove_component :: proc(v: Remove_Component_Command) {
-	comp_h, ok := scene_find_component_by_local_id(v.scene, v.comp_local_id)
+	sc := resolve_scene(v.scene)
+	comp_h, ok := scene_find_component_by_local_id(sc, v.comp_local_id)
 	if !ok do return
-	owner_h, oh_ok := scene_find_transform_by_local_id(v.scene, v.owner_local_id)
+	owner_h, oh_ok := scene_find_transform_by_local_id(sc, v.owner_local_id)
 	if !oh_ok do return
 	engine.transform_remove_comp(engine.Transform_Handle(owner_h), comp_h)
 }
@@ -806,4 +885,168 @@ capture_transform_subtree :: proc(tH: engine.Transform_Handle) -> []byte {
 
 capture_component_json :: proc(ptr: rawptr, tid: typeid) -> []byte {
 	return capture_json(ptr, tid)
+}
+
+// --- Editor hooks -------------------------------------------------------------
+// The undo package sits below the editor (it may not import selection or the
+// inspector), so restoration of editor-level state goes through hooks
+// installed at startup. Unset hooks degrade to no-ops (tests, headless).
+
+@(private) _selection_capture_hook: proc() -> Selection_State
+@(private) _selection_apply_hook:   proc(state: Selection_State)
+@(private) _asset_apply_hook:       proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool
+
+set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(state: Selection_State)) {
+	_selection_capture_hook = capture
+	_selection_apply_hook = apply
+}
+
+// cb replaces the whole asset document identified by guid with the given
+// JSON payload (installed by the project inspector's doc registry).
+set_asset_apply :: proc(cb: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool) {
+	_asset_apply_hook = cb
+}
+
+@(private)
+_selection_apply :: proc(state: Selection_State) {
+	if _selection_apply_hook != nil do _selection_apply_hook(state)
+}
+
+make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid) -> Property_Target {
+	return Property_Target{kind = .Asset, asset_guid = guid, type_id = tid}
+}
+
+// --- Selection state helpers ----------------------------------------------------
+
+selection_state_destroy :: proc(st: ^Selection_State) {
+	if st.scene != nil do delete(st.scene)
+	for p in st.proj do delete(p)
+	if st.proj != nil do delete(st.proj)
+	st^ = {}
+}
+
+selection_state_equal :: proc(a, b: Selection_State) -> bool {
+	if len(a.scene) != len(b.scene) || len(a.proj) != len(b.proj) do return false
+	for it, i in a.scene {
+		if it != b.scene[i] do return false
+	}
+	for p, i in a.proj {
+		if p != b.proj[i] do return false
+	}
+	return true
+}
+
+// Pushes one selection step. Takes OWNERSHIP of both states on every path
+// (pushed, skipped as equal, or dropped because recording is off).
+push_selection :: proc(s: ^Undo_Stack, before, after: Selection_State, label := "") {
+	b := before
+	a := after
+	if s == nil || !s.recording || s.applying || selection_state_equal(b, a) {
+		selection_state_destroy(&b)
+		selection_state_destroy(&a)
+		return
+	}
+	push(s, Command(Selection_Command{before = b, after = a}), label)
+}
+
+// For structural groups that consume the selection (delete/duplicate): push a
+// selection step whose `before` is the current selection and `after` is empty.
+// Push it FIRST inside the group, so group revert (which walks subs in
+// reverse) restores the selection only after the objects are back.
+record_selection_snapshot :: proc() {
+	s := get()
+	if s == nil || !s.recording || s.applying do return
+	if _selection_capture_hook == nil do return
+	before := _selection_capture_hook()
+	if len(before.scene) == 0 && len(before.proj) == 0 {
+		selection_state_destroy(&before)
+		return
+	}
+	push(s, Command(Selection_Command{before = before}))
+}
+
+// True once after any stack mutation since the last call. The editor's
+// per-frame selection tracker uses this to re-baseline instead of recording.
+activity_consume :: proc(s: ^Undo_Stack) -> bool {
+	if s == nil do return false
+	res := s.activity
+	s.activity = false
+	return res
+}
+
+// --- Purge ----------------------------------------------------------------------
+// Scene load/unload no longer wipes the whole history: only entries that
+// reference the affected scene(s) are dropped. Asset edits and pure project
+// selection steps survive scene navigation.
+
+@(private)
+_scene_ref_matches :: proc(r: Scene_Ref, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
+	if r.ptr == nil && engine.asset_guid_is_empty(r.guid) do return false
+	if any_scene do return true
+	if r.ptr != nil && r.ptr == ptr do return true
+	if !engine.asset_guid_is_empty(guid) && r.guid == guid do return true
+	return false
+}
+
+@(private)
+_selection_state_refs_scene :: proc(st: Selection_State, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
+	for it in st.scene {
+		if _scene_ref_matches(it.scene, ptr, guid, any_scene) do return true
+	}
+	return false
+}
+
+@(private)
+_command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
+	switch v in cmd {
+	case Value_Command:
+		if v.target.kind != .Pooled do return false
+		return _scene_ref_matches(v.target.scene, ptr, guid, any_scene)
+	case Structural_Command:
+		r: Scene_Ref
+		switch sv in v {
+		case Reparent_Command:           r = sv.scene
+		case Create_Subtree_Command:     r = sv.scene
+		case Delete_Subtree_Command:     r = sv.scene
+		case Add_Component_Command:      r = sv.scene
+		case Remove_Component_Command:   r = sv.scene
+		case Reorder_Components_Command: r = sv.scene
+		}
+		return _scene_ref_matches(r, ptr, guid, any_scene)
+	case Group_Command:
+		for i in 0 ..< len(v.subs) {
+			if _command_refs_scene(&v.subs[i], ptr, guid, any_scene) do return true
+		}
+		return false
+	case Selection_Command:
+		return _selection_state_refs_scene(v.before, ptr, guid, any_scene) ||
+			_selection_state_refs_scene(v.after, ptr, guid, any_scene)
+	}
+	return false
+}
+
+@(private)
+_purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) {
+	if s == nil do return
+	for i := len(s.items) - 1; i >= 0; i -= 1 {
+		if !_command_refs_scene(&s.items[i].cmd, ptr, guid, any_scene) do continue
+		e := &s.items[i]
+		_entry_destroy(e)
+		ordered_remove(&s.items, i)
+		if i < s.top do s.top -= 1
+	}
+	s.activity = true
+}
+
+// Drop entries that reference this scene. Call BEFORE unloading, while the
+// pointer is still valid.
+purge_scene :: proc(s: ^Undo_Stack, scene: ^engine.Scene) {
+	if scene == nil do return
+	_purge(s, scene, scene.asset_guid, false)
+}
+
+// Drop entries that reference ANY scene (single-scene loads unload everything);
+// asset edits and project-only selection steps survive.
+purge_scenes :: proc(s: ^Undo_Stack) {
+	_purge(s, nil, {}, true)
 }

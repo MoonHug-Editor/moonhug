@@ -1,6 +1,6 @@
 # Undo
 
-Editor-only undo/redo for value edits and hierarchy changes.  
+Editor-only undo/redo for value edits, hierarchy changes, asset (.mat/.asset) edits, and selection changes.
 
 > A stack of commands that restore before(undo) or after(redo) state when executed.
 
@@ -39,24 +39,27 @@ WIP: API and implementation are subject to change
 
 ## Core concepts
 
-- Undo_Stack        — ordered history of commands with top for redo. The stack is scoped to the editor 
+- Undo_Stack        — ordered history of commands with top for redo. ONE stack for the whole editor: scene edits, asset edits and selection changes share the timeline
 - Command           — union of other undo commands
-  - Value_Command   — change to a single field (old_json / new_json payloads)
+  - Value_Command   — change to a single field (old_json / new_json payloads); an `.Asset`-kind target holds a whole asset document
   - Structural_Command — hierarchy mutation (reparent, create, delete, add/remove/reorder component)
   - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
-- Property_Target   — robust identifier for a field (Owner_Kind + Scene + Local_ID + Handle + offset + typeid)
-- Inspector_Owner   — current Transform/Component frame the inspector is drawing; pushed by the inspector before drawing a component/transform so nested drawers can resolve it
+  - Selection_Command — a selection change (before/after states), Unity's "Selection Change" steps
+- Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
+- Scene_Ref         — scene identity that survives reloads: live pointer fast path + asset guid fallback (`resolve_scene`)
+- Inspector_Owner   — current Transform/Component/Asset-document frame the inspector is drawing; pushed by the inspector before drawing so nested drawers can resolve it
 
 ## `Property_Target` for targets to survive pool reallocation
 
 > Raw pointers are unsafe as undo targets. Pools recycle slots and structural undo/redo destroys and recreates objects.
 
 `Property_Target` stores robust identifier that works even after destroy/recreate object.
-- `kind` — `Pooled` (anything in the `World` pool table) or `Raw` (non-pooled memory).
-- `scene` + `local_id` — persistent, file-stable identity used when a `Handle` is stale.
+- `kind` — `Pooled` (anything in the `World` pool table), `Raw` (non-pooled memory) or `Asset` (serialized asset document).
+- `scene` (a `Scene_Ref`) + `local_id` — persistent, file-stable identity used when a `Handle` is stale; the scene re-resolves by asset guid after a reload.
   - `handle` — fast path; falls back to `local_id` scan when invalid.
 - `offset` + `type_id` — where and what inside the resolved struct.
 - `raw_ptr` — used only for `.Raw` (non-scene data like import settings).
+- `asset_guid` — used only for `.Asset`; applied through the inspector's asset-document hook, never via pointer.
 
 ## Value payloads are JSON
 
@@ -67,13 +70,35 @@ Because of this, every field `T` that can be undone needs a pointer typeid regis
 ## Stack behavior
 
 ```
-push        — appends to stack; drops redo tail; FIFO-evicts at MAX_ENTRIES (32)
-apply_undo  — walks back one entry, reverts it, decrements top
-apply_redo  — walks forward one entry, applies it, increments top
-clear       — wipes stack (used on scene load/unload, inspector target change)
+push          — appends to stack; drops redo tail; FIFO-evicts at MAX_ENTRIES (128)
+apply_undo    — walks back one entry, reverts it, decrements top
+apply_redo    — walks forward one entry, applies it, increments top
+purge_scene   — drops entries referencing ONE scene (call before unloading it)
+purge_scenes  — drops entries referencing ANY scene (single-scene loads); asset
+                edits and project-only selection steps survive
+clear         — wipes stack (History view's Clear button only)
 ```
 
-`applying` flag blocks re-entrant recording during undo/redo. `recording` flag is false in playmode.
+Scene navigation purges instead of clearing: opening a scene, entering/exiting
+a nested scene (edit stack) or unloading calls `purge_scenes`/`purge_scene`,
+so `.mat` edits and project selection steps outlive scene trips. Clicking an
+asset in the project view touches nothing at all. A group is purged whole if
+ANY sub-command touches the purged scene — groups are atomic, a partial group
+would corrupt the timeline.
+
+`applying` flag blocks re-entrant recording during undo/redo. `recording` flag is false in playmode. `activity` is set by every stack mutation and consumed once per frame by the selection tracker (see below).
+
+Behavior examples:
+
+- Edit transform → click a .mat → tweak color → Ctrl+Z three times: undo 1
+  reverts the color, undo 2 reverts the "Select .mat" step, undo 3 reverts
+  the transform.
+- Delete 3 selected objects → Ctrl+Z: objects return AND all three are
+  selected again with the same active one.
+- Enter nested scene (edit stack) → edit a .mat → exit: scene entries purge
+  on each swap; the .mat edit survives and stays undoable.
+- Click through 5 objects → Ctrl+Z walks back through the selections,
+  Unity-style.
 
 ## Group Command
 
@@ -84,6 +109,42 @@ undo.end_group_command(s, "Create Empty Parent")
 ```
 
 Sub-commands collect into a `Group_Command` and push as one undo step. Used for "Create Empty Parent" and for Euler rotation (three float edits → one quaternion change).
+
+## Asset edits (project inspector)
+
+`.mat`/`.asset` files open into an **asset document registry**
+(`inspector/asset_docs.odin`): one in-memory doc per asset GUID that outlives
+the inspector's current selection. The project inspector shows the doc for
+the selected file; clicking away and back keeps unsaved edits.
+
+Every field edit records a whole-document `Value_Command` with an `.Asset`
+target — the same whole-owner snapshot pattern as the component inspector
+(`_draw_asset_inspector` pushes `undo.push_asset_owner(guid, ptr, tid)`
+around `draw_inspector`, so all drawers get asset undo for free). Undo/redo
+replaces the document payload through the hook installed by
+`inspector.init()` (`undo.set_asset_apply`), marks it dirty (`*` next to the
+file path) and re-pushes material live preview. Undo edits the doc, not the
+disk — Save persists, like unsaved live-preview edits always worked.
+
+## Selection undo (Unity model)
+
+Selection changes are undo steps. A per-frame tracker
+(`editor/selection_undo.odin`, called at the end of the main loop) diffs the
+selection against a baseline and records one `Selection_Command` per changed
+frame — "Select Cube", "Select 3 Items", "Clear Selection". Frames where the
+stack itself mutated (data edit, undo/redo, purge) only re-baseline, so data
+operations never double-record.
+
+Delete/duplicate groups embed `undo.record_selection_snapshot()` as their
+first sub-command: undoing a delete restores the objects first, then
+re-selects them.
+
+Snapshots store scene items as `(Scene_Ref, local_id)` and project items as
+paths, so they survive object recreation and scene reloads; whatever no
+longer resolves is silently pruned on restore. The undo package reaches the
+editor's selection through hooks (`undo.set_selection_hooks`, installed by
+`selection_undo_install` in `main.odin`) — unset hooks (tests) make selection
+commands no-ops.
 
 ## Inspector integration
 
@@ -244,15 +305,19 @@ drawer(comp_ptr, comp_tid, label)
 The underlying primitives (`make_transform_target`, `make_component_target`, `capture_json`, `push_value`, `begin_group_command` / `end_group_command` / `abort_group_command`, `record_reparent`, `record_create`, `record_delete_pre`, `record_add_component`, `record_remove_component_pre`, `record_cleanup`, `record_commit`) remain available and are what the ergonomic helpers call internally.  
 Reach for them only when the scope helpers can't express what you need.
 
-Clear the stack when context changes (handled automatically for scene load/unload/save-as and inspector target change):
+Purge scene entries before unloading a scene (handled automatically for
+scene open/unload/save-as and nested-scene edit-stack navigation):
 
 ```odin
-undo.clear(undo.get())
+undo.purge_scene(undo.get(), scene) // one scene, before sm_scene_unload
+undo.purge_scenes(undo.get())       // all scenes, before a single-scene load
 ```
 
 ## Limitations
 
-- Capacity is 32 entries; overflow drops the oldest.
-- Non-scene inspector targets (import settings, asset inspectors) use `.Raw` targets and stop being valid when the inspector switches away — the stack is cleared on target change.
+- Capacity is 128 entries; overflow drops the oldest.
+- Import settings edits are not recorded (the Apply+reimport button is already an explicit transaction).
+- Undoing an asset edit replaces the whole document instance; the old instance's nested allocations live until editor shutdown (same lifetime the pre-registry reload-on-click had). Asset docs have no eviction — `.mat`-scale files only.
+- File operations in the project view (rename/move/delete files) are not undoable — Unity doesn't undo these either.
 - Structural commands capture full subtree JSON on delete/remove; large subtrees produce large entries.
 - Component inspector edits serialize the whole component per step. Components with large dynamic arrays produce correspondingly large entries; in practice the inspector is not the hot path so this is acceptable.

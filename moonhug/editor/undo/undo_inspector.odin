@@ -4,11 +4,13 @@ import "core:slice"
 import engine "../../engine"
 
 Inspector_Owner :: struct {
-	kind:     Owner_Kind,
-	scene:    ^engine.Scene,
-	local_id: engine.Local_ID,
-	handle:   engine.Handle,
-	base_ptr: rawptr,
+	kind:       Owner_Kind,
+	scene:      Scene_Ref,
+	local_id:   engine.Local_ID,
+	handle:     engine.Handle,
+	base_ptr:   rawptr,
+	asset_guid: engine.Asset_GUID, // .Asset only
+	asset_tid:  typeid,            // .Asset only: the document's typeid
 }
 
 @(private)
@@ -97,7 +99,7 @@ push_pooled_owner :: proc(h: engine.Handle) {
 	}
 	push_owner(Inspector_Owner{
 		kind = .Pooled,
-		scene = scene,
+		scene = scene_ref(scene),
 		local_id = lid,
 		handle = h,
 		base_ptr = base,
@@ -119,6 +121,17 @@ push_raw_owner :: proc(base_ptr: rawptr) {
 	})
 }
 
+// Asset document (project inspector): whole-document snapshots, applied back
+// through the asset hook by guid — the doc pointer may be swapped by undo.
+push_asset_owner :: proc(guid: engine.Asset_GUID, base_ptr: rawptr, tid: typeid) {
+	push_owner(Inspector_Owner{
+		kind = .Asset,
+		base_ptr = base_ptr,
+		asset_guid = guid,
+		asset_tid = tid,
+	})
+}
+
 edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
 	o, ok := current_owner()
 	if !ok || o.kind == .None do return {}
@@ -127,6 +140,10 @@ edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label :
 	if o.kind == .Raw {
 		if o.base_ptr == nil do return {}
 		return edit_raw_begin(o.base_ptr, field_ptr, field_tid, label)
+	}
+
+	if o.kind == .Asset {
+		return edit_asset_begin(o, label)
 	}
 
 	w := engine.ctx_world()
@@ -147,9 +164,26 @@ edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label :
 	return edit_pooled_begin(o.handle, base_pool, owner_tid, label)
 }
 
+// Whole-document edit scope for an .Asset owner (field context menus etc.):
+// old/new payloads are the full document, applied back via the asset hook.
+edit_asset_begin :: proc(o: Inspector_Owner, label := "") -> Edit_Scope {
+	s := get()
+	if s == nil || !s.recording || s.applying do return {}
+	if o.base_ptr == nil || o.asset_tid == nil do return {}
+	old_json := capture_json(o.base_ptr, o.asset_tid)
+	if old_json == nil do return {}
+	return Edit_Scope{
+		active = true,
+		target = make_asset_target(o.asset_guid, o.asset_tid),
+		field_ptr = o.base_ptr,
+		old_json = old_json,
+		label = label,
+	}
+}
+
 target_for_field :: proc(field_ptr: rawptr, field_tid: typeid) -> (Property_Target, bool) {
 	o, ok := current_owner()
-	if !ok || o.kind == .None do return {}, false
+	if !ok || o.kind == .None || o.kind == .Asset do return {}, false
 	if o.base_ptr == nil do return {}, false
 	offset := uintptr(field_ptr) - uintptr(o.base_ptr)
 	return Property_Target{
@@ -298,12 +332,19 @@ pending_matches :: proc(field_ptr: rawptr) -> bool {
 comp_snapshot :: proc() {
 	o, ok := current_owner()
 	if !ok || o.kind == .None || o.base_ptr == nil do return
-	owner_tid := engine.get_typeid_by_type_key(o.handle.type_key)
+	owner_tid: typeid
+	target: Property_Target
+	if o.kind == .Asset {
+		owner_tid = o.asset_tid
+		target = make_asset_target(o.asset_guid, o.asset_tid)
+	} else {
+		owner_tid = engine.get_typeid_by_type_key(o.handle.type_key)
+		target = make_pooled_target(o.handle, 0, owner_tid)
+	}
 	if owner_tid == nil do return
 	if _pending_edit.active && _pending_edit.base_ptr == o.base_ptr do return
 	s := get()
 	if s == nil || !s.recording || s.applying do return
-	target := make_pooled_target(o.handle, 0, owner_tid)
 	old_json := capture_json(o.base_ptr, owner_tid)
 	if old_json == nil do return
 	if _pending_edit.active {

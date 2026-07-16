@@ -2,6 +2,7 @@ package editor
 
 import "core:fmt"
 import "core:strings"
+import "core:encoding/uuid"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import "undo"
@@ -174,6 +175,29 @@ _draw_command_details :: proc(cmd: ^undo.Command, depth: int) {
 			sub := v.subs[i]
 			_draw_command_details(&sub, depth + 1)
 		}
+	case undo.Selection_Command:
+		im.TextUnformatted(cstr(fmt.tprintf("%sSelection change", _indent(depth))))
+		_draw_selection_state("before", v.before, depth + 1)
+		_draw_selection_state("after", v.after, depth + 1)
+	}
+}
+
+@(private="file")
+_draw_selection_state :: proc(name: string, st: undo.Selection_State, depth: int) {
+	indent := _indent(depth)
+	im.TextUnformatted(cstr(fmt.tprintf("%s%s: %d scene, %d project", indent, name, len(st.scene), len(st.proj))))
+	for it in st.scene {
+		resolved := "unresolved"
+		if sc := undo.resolve_scene(it.scene); sc != nil {
+			if tH, ok := engine.scene_find_selectable_transform_local_id(sc, it.local_id); ok {
+				w := engine.ctx_world()
+				if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil do resolved = t.name
+			}
+		}
+		im.TextUnformatted(cstr(fmt.tprintf("%s  local_id=%d  %s", indent, i64(it.local_id), resolved)))
+	}
+	for p in st.proj {
+		im.TextUnformatted(cstr(fmt.tprintf("%s  %s", indent, p)))
 	}
 }
 
@@ -201,6 +225,7 @@ _draw_target :: proc(t: undo.Property_Target, depth: int) {
 	case .None:   kind_str = "None"
 	case .Pooled: kind_str = t.handle.type_key == .Transform ? "Transform" : "Component"
 	case .Raw:    kind_str = "Raw"
+	case .Asset:  kind_str = "Asset"
 	}
 	im.TextUnformatted(cstr(fmt.tprintf("%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v",
 		indent,
@@ -219,17 +244,22 @@ _draw_target :: proc(t: undo.Property_Target, depth: int) {
 		case .None:
 		case .Raw:
 			if t.raw_ptr != nil do resolved = "raw"
+		case .Asset:
+			if path, ok := engine.asset_db_get_path(uuid.Identifier(t.asset_guid)); ok {
+				resolved = path
+			}
 		case .Pooled:
-			if engine.world_pool_valid(w, t.handle) {
-				if base := engine.world_pool_get(w, t.handle); base != nil {
-					if t.handle.type_key == .Transform {
-						tr := cast(^engine.Transform)base
-						resolved = tr.name
-					} else {
-						c := cast(^engine.CompData)base
-						if ot := engine.pool_get(&w.transforms, engine.Handle(c.owner)); ot != nil {
-							resolved = ot.name
-						}
+			// resolve_pooled_base falls back to a scene local_id scan, so
+			// entries stay resolvable after undo/redo recreated the object
+			// under a fresh handle.
+			if base, h, ok := undo.resolve_pooled_base(t); ok {
+				if h.type_key == .Transform {
+					tr := cast(^engine.Transform)base
+					resolved = tr.name
+				} else {
+					c := cast(^engine.CompData)base
+					if ot := engine.pool_get(&w.transforms, engine.Handle(c.owner)); ot != nil {
+						resolved = ot.name
 					}
 				}
 			}

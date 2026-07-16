@@ -78,6 +78,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 - [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
+- [Undo](docs/Undo.md) - editor undo feature
 
 ### Views
   - inspector view - edit selected object in scene
@@ -120,6 +121,10 @@ For more details see [Contribution](docs/Contribution.md)
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs
 
+- plugins feature
+  - 'plugins' — folder outside editor and app with packages
+  - 'packages' — folder with symlinks to package folders. Symlinks work as install/remove switch
+
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call
@@ -130,7 +135,7 @@ For more details see [Contribution](docs/Contribution.md)
 - Node graph editor for different use-cases
   - VFX graph
 
-- Rethink Undo, should also work with assets in project and probably current selection
+- undo follow-ups: asset doc Revert button, import settings onto the asset doc model
 - multiselection follow-ups: multiedit, gizmo moves whole selection, rubber-band box select, multi-path drag-drop
 
 ### Considered Features
