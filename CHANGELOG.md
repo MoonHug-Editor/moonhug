@@ -1,3 +1,10 @@
+## [0.42.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.41.0...v0.42.0) (2026-07-17)
+
+### Features
+
+* more context menu items in project ([890a9be](https://github.com/MoonHug-Editor/moonhug/commit/890a9be73e3a0cae485e5bcc7a89c07c9ddabd7b))
+* multi move and rubber-band select ([6991f02](https://github.com/MoonHug-Editor/moonhug/commit/6991f029064df3c57330c9ec35d41a3d3b788fb3))
+
 ## [0.41.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.40.0...v0.41.0) (2026-07-16)
 
 ### Features
