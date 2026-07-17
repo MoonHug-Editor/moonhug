@@ -29,6 +29,10 @@ draw_input_debug :: proc() {
 	}
 	defer im.End()
 
+	im.SeparatorText("frame timing")
+	io_fps := im.GetIO()
+	_dbg_text("fps: %.1f   frame: %.2f ms", io_fps.Framerate, 1000.0 / max(io_fps.Framerate, 0.001))
+
 	im.SeparatorText("SDL layer (before imgui)")
 	kd, ku, fg, fl := gfx.input_debug_counters()
 	_dbg_text("key events: %d down / %d up  (press keys — must increase)", kd, ku)
