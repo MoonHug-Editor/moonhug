@@ -113,17 +113,27 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
-- improve project's context menu
- - Create/New Folder
- - Show in Finder|Explorer
- - Cut, Copy, Paste, Duplicate, Delete
+- think about ticking simulation and view(one fixed rate tick?)
+
+- project settings window with left pane — tabs, right pane — settings of selected tabs
+
+- project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
+
+- menu validators - proc that returns show/hide/disable based on selected items or other state, menu then shows/hides/or disables menu item
 
 - improve transform context menu in hierarchy
   - fix copy/paste/duplicate bugs
 
+- playable graph - to play animations on hierarchies(needs hierarchy?)
+  - no Mecanim, needs something else more like timelines blending
+  - tool for tech-art to author and preview animations without entering playmode
+
+- on_draw_gizmos and on_draw_gizmos_selected callbacks
 - plugins feature
   - 'plugins' — folder outside editor and app with packages
   - 'packages' — folder with symlinks to package folders. Symlinks work as install/remove switch
+  - first plugins:
+    - box2d, box3d from vendor
 
 - come up with more TODO and Considered features
 

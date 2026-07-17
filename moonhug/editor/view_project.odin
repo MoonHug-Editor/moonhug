@@ -74,7 +74,7 @@ _project_rename_path: string // owned clone of the full path being renamed
 _project_rename_in_tree: bool // which pane opened the rename (for selection restore)
 _project_rename_buf: [256]byte
 _project_rename_focus: bool
-_project_rename_just_opened: bool
+_project_rename_focus_tries: int
 _project_rename_just_finished: bool
 
 init_project_view :: proc() {
@@ -87,6 +87,7 @@ init_project_view :: proc() {
 }
 
 shutdown_project_view :: proc() {
+    project_file_ops_shutdown()
     delete(projectViewData.rootPath)
     delete(projectViewData.currentPath)
     if projectViewData.selectedFile != "" {
@@ -299,6 +300,7 @@ _project_begin_rename :: proc(full_path: string, in_tree: bool) {
     _project_rename_active = true
     _project_rename_in_tree = in_tree
     _project_rename_focus = true
+    _project_rename_focus_tries = 0
     if _project_rename_path != "" do delete(_project_rename_path)
     _project_rename_path = strings.clone(full_path)
     mem.zero(&_project_rename_buf, len(_project_rename_buf))
@@ -361,18 +363,28 @@ _project_apply_rename :: proc() {
 _project_draw_rename_row :: proc(full_path: string) -> bool {
     if !_project_rename_active || _project_rename_path != full_path do return false
 
+    // Keep requesting focus until it actually LANDS: a rename begun from a
+    // context-menu item races the closing popup for focus — a single request
+    // can lose it, and the frame after would read !IsItemActive as "clicked
+    // away" and cancel (nameplate flashed for one frame).
     if _project_rename_focus {
         im.SetKeyboardFocusHere(0)
-        _project_rename_focus = false
-        _project_rename_just_opened = true
     }
     im.SetNextItemWidth(im.GetContentRegionAvail().x)
     buf_cstr := cstring(raw_data(_project_rename_buf[:]))
     if im.InputText("##prj_rename", buf_cstr, c.size_t(len(_project_rename_buf)), {.EnterReturnsTrue, .AutoSelectAll}) {
         _project_apply_rename()
     }
-    if _project_rename_just_opened {
-        _project_rename_just_opened = false
+    if _project_rename_focus {
+        if im.IsItemActive() {
+            _project_rename_focus = false // focus landed; watch deactivation from here on
+        } else {
+            _project_rename_focus_tries += 1
+            if _project_rename_focus_tries > 10 {
+                _project_rename_active = false // give up instead of stealing focus forever
+                _project_rename_just_finished = true
+            }
+        }
     } else if !im.IsItemActive() {
         if im.IsItemDeactivatedAfterEdit() {
             _project_apply_rename()
@@ -422,7 +434,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string) {
     // Folder being renamed: swap the node for an inline input. Still recorded in
     // the nav list so keyboard indices stay consistent; children are hidden for
     // the duration of the edit.
-    if _project_rename_active && _project_rename_path == full_path {
+    if _project_rename_active && _project_rename_in_tree && _project_rename_path == full_path {
         append(&_project_tree_rows, Project_Tree_Row{path = full_path, open = false})
         im.Indent(im.GetTreeNodeToLabelSpacing())
         _project_draw_rename_row(full_path)
@@ -669,7 +681,14 @@ _project_handle_list_keys :: proc() {
         return
     }
 
-    if _project_cmd_down() do return
+    if _project_cmd_down() {
+        if im.IsKeyPressed(im.Key.C) do project_ops_copy()
+        if im.IsKeyPressed(im.Key.X) do project_ops_cut()
+        if im.IsKeyPressed(im.Key.V) do project_ops_paste()
+        if im.IsKeyPressed(im.Key.D) do project_ops_duplicate()
+        if im.IsKeyPressed(im.Key.Backspace) || im.IsKeyPressed(im.Key.Delete) do project_ops_delete()
+        return
+    }
     n := len(_project_list_rows)
     if n == 0 do return
 
@@ -769,14 +788,14 @@ draw_file_list :: proc(path: string) {
 // activation, and the drag payload.
 _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool) {
     append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
-    if _project_draw_rename_row(full_path) do return
+    if !_project_rename_in_tree && _project_draw_rename_row(full_path) do return
 
     icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
     label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
 
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
 
-    dim_unknown := !is_dir && !is_known_extension(full_path)
+    dim_unknown := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
     if dim_unknown {
         text_col := im.GetStyleColorVec4(im.Col.Text)
         dimmed: im.Vec4 = {text_col[0] * 0.6, text_col[1] * 0.6, text_col[2] * 0.6, text_col[3]}

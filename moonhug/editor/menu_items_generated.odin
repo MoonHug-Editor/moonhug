@@ -6,9 +6,15 @@ import "menu"
 
 _register_menu_items :: proc() {
 	menu.init_menu()
+	menu.add_menu_separator("Assets", -90)
+	menu.add_menu_item("Assets/Show in Finder", "", project_menu_show_in_finder, -69)
+	menu.add_menu_item("Assets/Delete", "", project_menu_delete, -67)
+	menu.add_menu_separator("Assets", -45)
+	menu.add_menu_item("Assets/Extract Textures & Material", "", extract_gltf_menu, -40)
+	menu.add_menu_separator("Assets/Create", -15)
 	menu.add_menu_separator("Assets/Create", -9)
-	menu.add_menu_item("Assets/Extract Textures & Material", "", extract_gltf_menu, -8)
 	menu.add_menu_item("Assets/Refresh AssetDB", "", menu.refresh_asset_db_menu, 0)
+	menu.add_menu_item("Assets/Create/Folder", "", project_menu_new_folder, -20)
 	menu.add_menu_item("Assets/Create/Scene Variant", "", scene_create_variant_menu, -10)
 	menu.add_menu_item("Assets/Create/Scene", "", scene_create_menu, 0)
 	menu.add_menu_item("Edit/Toggle Transform Active", "Alt+Shift+A", hierarchy_toggle_active_menu, 0)

@@ -18,7 +18,10 @@ import "core:strings"
 import engine "../engine"
 import "../engine/serialization"
 
-@(menu_item={path="Assets/Extract Textures & Material", order=-8, shortcut=""})
+@(menu_separator={path="Assets", order=-45})
+extract_gltf_separator :: proc() {}
+
+@(menu_item={path="Assets/Extract Textures & Material", order=-40, shortcut=""})
 extract_gltf_menu :: proc() {
 	path := projectViewData.selectedFile
 	if !strings.has_suffix(path, ".glb") && !strings.has_suffix(path, ".gltf") {
