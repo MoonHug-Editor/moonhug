@@ -135,6 +135,7 @@ project_ops_new_folder :: proc() {
 		return
 	}
 	engine.asset_db_refresh()
+	project_dir_cache_invalidate()
 	_project_set_selected(dst)
 	_project_begin_rename(dst, false)
 }
@@ -195,6 +196,7 @@ project_ops_paste :: proc() {
 		_file_clip_cut = false
 	}
 	engine.asset_db_refresh()
+	project_dir_cache_invalidate()
 	_project_select_paths(pasted[:])
 }
 
@@ -211,6 +213,7 @@ project_ops_duplicate :: proc() {
 		if _project_copy_recursive(src, dst) do append(&dups, dst)
 	}
 	engine.asset_db_refresh()
+	project_dir_cache_invalidate()
 	_project_select_paths(dups[:])
 }
 
@@ -232,6 +235,7 @@ project_ops_delete :: proc() {
 	sel_proj_clear()
 	_project_set_active("")
 	engine.asset_db_refresh()
+	project_dir_cache_invalidate()
 }
 
 // --- Menu registration ----------------------------------------------------------

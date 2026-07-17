@@ -88,6 +88,7 @@ init_project_view :: proc() {
 
 shutdown_project_view :: proc() {
     project_file_ops_shutdown()
+    project_dir_cache_shutdown()
     delete(projectViewData.rootPath)
     delete(projectViewData.currentPath)
     if projectViewData.selectedFile != "" {
@@ -347,6 +348,7 @@ _project_apply_rename :: proc() {
         new_meta := strings.concatenate({new_path, ".meta"}, context.temp_allocator)
         os.rename(old_meta, new_meta)
     }
+    project_dir_cache_invalidate()
     if _project_rename_in_tree {
         // Renamed folder: if it was the current path, follow it.
         if projectViewData.currentPath == old_path {
@@ -515,26 +517,10 @@ _project_draw_tree_node :: proc(full_path: string, name: string) {
 // Draw the subfolders of `path` as tree nodes (sorted). Does not draw `path`
 // itself — the caller decides whether the parent gets a node.
 draw_directory_tree :: proc(path: string, level: int = 0) {
-    handle, err := os.open(path)
-    if err != nil {
-        return
-    }
-    defer os.close(handle)
-
-    entries, read_err := os.read_dir(handle, -1, context.temp_allocator)
-    if read_err != nil {
-        return
-    }
-    defer os.file_info_slice_delete(entries, context.temp_allocator)
-
-    slice.sort_by(entries, proc(a, b: os.File_Info) -> bool {
-        return strings.to_lower(a.name, context.temp_allocator) < strings.to_lower(b.name, context.temp_allocator)
-    })
-
+    entries, ok := project_dir_listing(path)
+    if !ok do return
     for entry in entries {
-        if entry.type != .Directory {
-            continue
-        }
+        if !entry.is_dir do continue
         full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
         _project_draw_tree_node(full_path, entry.name)
     }
@@ -542,14 +528,9 @@ draw_directory_tree :: proc(path: string, level: int = 0) {
 
 // True if `dir` contains at least one subdirectory.
 _project_dir_has_subdir :: proc(dir: string) -> bool {
-    handle, err := os.open(dir)
-    if err != nil do return false
-    defer os.close(handle)
-    entries, read_err := os.read_dir(handle, -1, context.temp_allocator)
-    if read_err != nil do return false
-    defer os.file_info_slice_delete(entries, context.temp_allocator)
+    entries, _ := project_dir_listing(dir)
     for entry in entries {
-        if entry.type == .Directory do return true
+        if entry.is_dir do return true
     }
     return false
 }
@@ -740,44 +721,24 @@ is_known_extension :: proc(filename: string) -> bool {
 }
 
 draw_file_list :: proc(path: string) {
-    handle, err := os.open(path)
-    if err != nil {
-        im.Text("Failed to open directory")
-        return
-    }
-    defer os.close(handle)
-
-    entries, read_err := os.read_dir(handle, -1, context.temp_allocator)
-    if read_err != nil {
+    entries, ok := project_dir_listing(path)
+    if !ok {
         im.Text("Failed to read directory")
         return
     }
-    defer os.file_info_slice_delete(entries, context.temp_allocator)
-
-    slice.sort_by(entries, proc(a, b: os.File_Info) -> bool {
-        return strings.to_lower(a.name, context.temp_allocator) < strings.to_lower(b.name, context.temp_allocator)
-    })
 
     // Draw directories first
     for entry in entries {
-        if entry.type != .Directory {
-            continue
-        }
+        if !entry.is_dir do continue
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
         _project_draw_list_row(entry.name, entry_path, is_dir = true)
     }
 
     // Draw files below directories
     for entry in entries {
-        if strings.has_prefix(entry.name, ".") {
-            continue
-        }
-        if entry.type == .Directory {
-            continue
-        }
-        if filepath.ext(entry.name) == ".meta" {
-            continue
-        }
+        if entry.is_dir do continue
+        if strings.has_prefix(entry.name, ".") do continue
+        if filepath.ext(entry.name) == ".meta" do continue
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
         _project_draw_list_row(entry.name, entry_path, is_dir = false)
     }

@@ -125,6 +125,7 @@ main :: proc() {
         // mtime-diff — an unchanged tree costs one stat pass.
         if gfx.input_focus_gained() {
             engine.asset_db_refresh()
+            project_dir_cache_invalidate()
             if dock_icon_pending {
                 dock_icon_pending = false
                 set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
