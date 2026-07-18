@@ -3,6 +3,7 @@ package engine
 import "base:runtime"
 import "core:crypto"
 import "core:os"
+import "core:slice"
 import "core:fmt"
 import "core:strings"
 import "core:time"
@@ -50,6 +51,39 @@ asset_db: AssetDB
 
 MetaFile :: struct {
     guid: string,
+}
+
+// Installed packages (docs/Plugins.md): every folder in packages/ (a cwd
+// sibling of the assets root) is an installed package, and its assets/
+// subtree is an additional asset-db root. The assets/ folder is ENSURED
+// (created if missing) so package roots always resolve.
+ASSET_DB_PACKAGES_DIR :: "packages"
+
+Asset_Package_Root :: struct {
+    name:        string, // package folder name
+    assets_path: string, // "packages/<name>/assets"
+}
+
+// Temp-allocated, sorted by name. Empty when packages/ doesn't exist (tests,
+// bare projects).
+asset_db_package_roots :: proc() -> []Asset_Package_Root {
+    handle, err := os.open(ASSET_DB_PACKAGES_DIR)
+    if err != nil do return nil
+    defer os.close(handle)
+    entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+    if rerr != nil do return nil
+    defer os.file_info_slice_delete(entries, context.temp_allocator)
+
+    roots := make([dynamic]Asset_Package_Root, context.temp_allocator)
+    for entry in entries {
+        if entry.type != .Directory do continue
+        if strings.has_prefix(entry.name, ".") do continue
+        assets_path, _ := filepath.join({ASSET_DB_PACKAGES_DIR, entry.name, "assets"}, context.temp_allocator)
+        os.make_directory(assets_path) // ensure — no-op when it exists
+        append(&roots, Asset_Package_Root{name = strings.clone(entry.name, context.temp_allocator), assets_path = assets_path})
+    }
+    slice.sort_by(roots[:], proc(a, b: Asset_Package_Root) -> bool { return a.name < b.name })
+    return roots[:]
 }
 
 asset_db_init :: proc(root: string) {
@@ -107,6 +141,11 @@ asset_db_refresh :: proc() {
     walk.files = make(map[string]Asset_File_Stamp, context.temp_allocator)
     walk.metas = make([dynamic]string, context.temp_allocator)
     _db_walk(asset_db.root_path, &walk)
+    // Installed packages: each packages/<name>/assets is a further root,
+    // scanned by the same machinery (docs/Plugins.md).
+    for root in asset_db_package_roots() {
+        _db_walk(root.assets_path, &walk)
+    }
 
     created, modified, deleted: int
 
@@ -390,6 +429,14 @@ _register_asset :: proc(path: string, guid: uuid.Identifier) {
         if existing == guid do return
         // guid changed (meta edited externally) — drop the old registration.
         _asset_removed(path)
+    }
+    // Same guid at two paths (a copied package/asset WITH its metas): keep the
+    // first registration and complain loudly — references would silently
+    // resolve to whichever won otherwise.
+    if other, taken := asset_db.guid_to_path[guid]; taken && other != path {
+        guid_str := uuid.to_string(guid, context.temp_allocator)
+        log.errorf("[AssetDB] duplicate guid %s: %s and %s — second one NOT registered (delete one .meta to mint a fresh guid)", guid_str, other, path)
+        return
     }
     p := strings.clone(path)
     asset_db.guid_to_path[guid] = p

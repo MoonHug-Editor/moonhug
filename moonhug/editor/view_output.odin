@@ -82,19 +82,20 @@ draw_output_view :: proc() {
 	im.Text("Last run stdout/stderr (max %d lines)", MAX_OUTPUT_LINES)
 	im.Separator()
 
-	im.BeginChild("OutputScroll", im.Vec2{0, 0}, {.Borders})
-	defer im.EndChild()
-
+	// Read-only multiline input: real text selection + copy (an error line
+	// from a build failure must be selectable). Lines are joined per frame —
+	// bounded by MAX_OUTPUT_LINES, temp-allocated.
 	sync.mutex_lock(&_output_mutex)
 	n := len(_output_lines)
-	for line in _output_lines {
-		cstr := strings.clone_to_cstring(line)
-		defer delete(cstr)
-		im.TextUnformatted(cstr)
-	}
+	joined := strings.join(_output_lines[:], "\n", context.temp_allocator)
+	sync.mutex_unlock(&_output_mutex)
+
 	if n > _output_last_count && n > 0 {
-		im.SetScrollHereY(1)
+		// New output: pin the input's internal child (the NEXT window imgui
+		// creates) to the bottom. x = -1 leaves horizontal scroll alone.
+		im.SetNextWindowScroll(im.Vec2{-1, max(f32)})
 	}
 	_output_last_count = n
-	sync.mutex_unlock(&_output_mutex)
+	buf := strings.clone_to_cstring(joined, context.temp_allocator)
+	im.InputTextMultiline("##output_text", buf, len(joined) + 1, im.Vec2{-1, -1}, {.ReadOnly})
 }

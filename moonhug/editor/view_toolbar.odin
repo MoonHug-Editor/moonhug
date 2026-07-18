@@ -6,6 +6,7 @@ import "core:strconv"
 import "core:fmt"
 import "core:mem"
 import "core:os"
+import "core:path/filepath"
 import "core:thread"
 import "core:time"
 import im "../../external/odin-imgui"
@@ -209,7 +210,12 @@ run_app_play :: proc() {
         log.clear()
         _console_last_count = 0
     }
+    // Build from the REPO ROOT (parent of the editor's normalized moonhug/
+    // cwd) so the packages: collection flag is the one canonical spelling
+    // used by every build site. The app normalizes its own runtime cwd back
+    // to moonhug/.
     cwd, _ := os.get_working_directory(context.temp_allocator)
+    repo_root := filepath.dir(cwd) // slice into the temp cwd string
     pa := runtime.default_allocator()
     data, derr := new(RunPlayData, pa)
     if derr != nil {
@@ -217,14 +223,14 @@ run_app_play :: proc() {
     }
 
     data.alloc = pa
-    rd, cerr := strings.clone(cwd, pa)
+    rd, cerr := strings.clone(repo_root, pa)
     if cerr != nil {
         free(data, pa)
         return
     }
 
     data.run_dir = rd
-    cmd, merr := make([]string, 5, pa)
+    cmd, merr := make([]string, 6, pa)
     if merr != nil {
         delete(data.run_dir, pa)
         free(data, pa)
@@ -234,11 +240,14 @@ run_app_play :: proc() {
     data.command = cmd
     data.command[0] = "odin"
     data.command[1] = "run"
-    data.command[2] = "app"
+    data.command[2] = "moonhug/app"
     data.command[3] = "-ignore-unknown-attributes"
+    // Installed packages (docs/Plugins.md) — same flag as run_app.sh; the
+    // generated packages_generated.odin imports need the collection.
+    data.command[4] = "-collection:packages=moonhug/packages"
     // Debug build so the app captures call stacks for its console log lines
     // (capture is ODIN_DEBUG-gated in the app process).
-    data.command[4] = "-debug"
+    data.command[5] = "-debug"
 
     // Pass the editor's active scene to the app (args after "--" reach the
     // program); without one the app falls back to its default scene. The app
@@ -256,11 +265,11 @@ run_app_play :: proc() {
             }
         }
         if len(play_path) > 0 {
-            with_scene, aerr := make([]string, 7, pa)
+            with_scene, aerr := make([]string, 8, pa)
             if aerr == nil {
                 copy(with_scene, data.command)
-                with_scene[5] = "--"
-                with_scene[6], _ = strings.clone(play_path, pa)
+                with_scene[6] = "--"
+                with_scene[7], _ = strings.clone(play_path, pa)
                 delete(data.command, pa)
                 data.command = with_scene
             }

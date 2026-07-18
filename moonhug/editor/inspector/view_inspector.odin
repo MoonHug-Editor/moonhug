@@ -16,6 +16,7 @@ import "../undo"
 InspectorMode :: enum {
     Asset,
     ImportSettings,
+    Package,
 }
 
 mapPropertyDrawer: MapPropertyDrawer
@@ -40,6 +41,8 @@ InspectorData :: struct {
     doc: ^Asset_Doc, // .Asset mode: the registry document backing fileData
     statusMessage: string,
     importSettings: engine.ImportSettings,
+    packageName: string, // .Package mode (owned)
+    packageAssetCount: int,
 }
 
 MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
@@ -64,6 +67,9 @@ shutdown_registries :: proc() {
     delete(decorator_registry)
     if inspectorData.filePath != "" {
         delete(inspectorData.filePath)
+    }
+    if inspectorData.packageName != "" {
+        delete(inspectorData.packageName)
     }
     asset_docs_shutdown()
 }
@@ -97,6 +103,20 @@ load_import_settings :: proc(filepath: string) {
     }
 }
 
+// Package selected in the project view's Packages section (docs/Plugins.md):
+// shows the package inspector instead of an asset document.
+load_package :: proc(name: string, assets_path: string, asset_count: int) {
+    delete(inspectorData.filePath)
+    inspectorData.filePath = strings.clone(assets_path)
+    delete(inspectorData.packageName)
+    inspectorData.packageName = strings.clone(name)
+    inspectorData.packageAssetCount = asset_count
+    inspectorData.fileData = {}
+    inspectorData.doc = nil
+    inspectorData.mode = .Package
+    inspectorData.statusMessage = ""
+}
+
 get_file_path :: proc() -> string {
     return inspectorData.filePath
 }
@@ -118,9 +138,22 @@ view_inspector_draw :: proc() {
             _draw_asset_inspector()
         case .ImportSettings:
             _draw_import_settings_inspector()
+        case .Package:
+            _draw_package_inspector()
         }
     }
     im.End()
+}
+
+// Package inspector (docs/Plugins.md): shown when a package row is selected
+// in the project view's Packages section. Read-only summary for now — a
+// manifest (name/version/description) can feed it later.
+_draw_package_inspector :: proc() {
+    im.Text(strings.clone_to_cstring(fmt.tprintf("Package: %s", inspectorData.packageName), context.temp_allocator))
+    im.Separator()
+    im.Text(strings.clone_to_cstring(fmt.tprintf("Content root: %s", inspectorData.filePath), context.temp_allocator))
+    im.Text(strings.clone_to_cstring(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount), context.temp_allocator))
+    im.TextDisabled("Installed package (moonhug/packages) — remove the folder to uninstall.")
 }
 
 _draw_asset_inspector :: proc() {

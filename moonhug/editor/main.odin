@@ -220,6 +220,7 @@ editor_init :: proc() {
 	log.error("test error")
 	log.warning("test warning")
     app.register_app_components()
+    app.register_packages()
     app.register_component_serializers()
     inspector.init()
     serialization.init()

@@ -15,6 +15,9 @@ package main
 // package + import it below" — no edits to this file's logic.
 
 import "core:os"
+import "core:path/filepath"
+import "core:slice"
+import "core:strings"
 import db "gen_db"
 
 // Importing each module pulls in its @(init) system registration. The blank
@@ -31,6 +34,7 @@ import _ "context_menu_gen"
 import _ "update_gen"
 import _ "tween_gen"
 import _ "scene_toolbar_gen"
+import _ "packages_gen"
 
 PACKAGES := []string{
 	"moonhug/editor",
@@ -42,6 +46,59 @@ PACKAGES := []string{
 	"moonhug/engine_editor",
 }
 
+// Installed packages (docs/Plugins.md): presence in moonhug/packages/ is the
+// install state. Each package root — and its editor/ subpackage when present —
+// joins the attribute scan exactly like moonhug/app.
+PACKAGES_DIR :: "moonhug/packages"
+
+_dir_has_odin :: proc(dir: string) -> bool {
+	handle, err := os.open(dir)
+	if err != nil do return false
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return false
+	defer os.file_info_slice_delete(entries, context.temp_allocator)
+	for entry in entries {
+		if entry.type != .Directory && strings.has_suffix(entry.name, ".odin") do return true
+	}
+	return false
+}
+
+_installed_packages :: proc(list: ^[dynamic]string) {
+	// The collection flag (-collection:packages=moonhug/packages) needs the
+	// directory to exist even with zero packages installed.
+	os.make_directory(PACKAGES_DIR)
+	handle, err := os.open(PACKAGES_DIR)
+	if err != nil do return
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return
+	defer os.file_info_slice_delete(entries, context.temp_allocator)
+
+	names: [dynamic]string
+	defer delete(names)
+	for entry in entries {
+		if entry.type != .Directory do continue
+		if strings.has_prefix(entry.name, ".") do continue
+		append(&names, entry.name)
+	}
+	slice.sort(names[:]) // deterministic scan order regardless of readdir order
+
+	for name in names {
+		root, _ := filepath.join({PACKAGES_DIR, name})
+		if _dir_has_odin(root) {
+			append(list, root)
+		}
+		editor_dir, _ := filepath.join({root, "editor"})
+		if _dir_has_odin(editor_dir) {
+			append(list, editor_dir)
+		}
+	}
+}
+
 main :: proc() {
-	if !db.run_all(PACKAGES) do os.exit(1)
+	all: [dynamic]string
+	append(&all, ..PACKAGES)
+	_installed_packages(&all)
+	if !db.run_all(all[:]) do os.exit(1)
 }

@@ -14,4 +14,4 @@ fi
 # -out names the binary MoonHug so macOS (App Switcher, menu bar) shows that
 # instead of the package name "editor".
 mkdir -p builds
-odin run moonhug/editor -ignore-unknown-attributes -out:builds/MoonHug
+odin run moonhug/editor -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/MoonHug

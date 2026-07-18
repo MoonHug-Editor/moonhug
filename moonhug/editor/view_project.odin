@@ -240,16 +240,13 @@ _project_enter_dir :: proc(full_path: string) {
 }
 
 _project_go_up :: proc() {
-    if projectViewData.currentPath == projectViewData.rootPath do return
     // Select the folder we're leaving (full path == the old currentPath).
-    // filepath.dir returns a SLICE into currentPath — read it before
-    // _project_set_current frees the string, and never delete it.
+    // _project_parent_dir returns a SLICE into currentPath — read it before
+    // _project_set_current frees the string, and never delete it. Package
+    // roots go up to the Packages node, roots themselves stop.
     came_from := projectViewData.currentPath
-    parent := filepath.dir(came_from)
-    // dir of a first-level folder ("foo") is "" — that's the assets root.
-    if parent == "" {
-        parent = projectViewData.rootPath
-    }
+    parent, ok := _project_parent_dir(came_from)
+    if !ok do return
     _project_set_selected(came_from)
     _project_set_current(parent)
     _project_tree_reveal = true
@@ -296,7 +293,9 @@ _project_open_selected :: proc() {
 // Begin renaming the file/folder at `full_path`. Rename is keyed off the full
 // path so both panes (right list = files, left tree = folders) share one flow.
 _project_begin_rename :: proc(full_path: string, in_tree: bool) {
-    if full_path == "" || full_path == projectViewData.rootPath do return
+    // Roots (Assets, Packages, package roots) are structural — renaming a
+    // package is a disk operation (imports depend on the folder name).
+    if full_path == "" || project_path_is_protected(full_path) do return
     name := filepath.base(full_path)
     _project_rename_active = true
     _project_rename_in_tree = in_tree
@@ -603,17 +602,11 @@ _project_handle_tree_keys :: proc() {
     if im.IsKeyPressed(im.Key.LeftArrow) {
         // An open folder collapses first — even one that shows no subfolders
         // (imgui still tracks its open state). Only when already collapsed does
-        // Left jump to the parent.
+        // Left jump to the parent (package roots jump to the Packages node,
+        // roots themselves stay put — _project_parent_dir knows the shape).
         if open {
             _project_tree_request_open(sel, false)
-        } else if sel != projectViewData.rootPath {
-            parent := filepath.dir(sel) // slice into sel — not owned, don't delete
-            // filepath.dir of a first-level folder ("foo") is "" — that's the
-            // fake "Assets" root, so select rootPath rather than an empty path
-            // (which matches no tree row and blanks the selection).
-            if parent == "" {
-                parent = projectViewData.rootPath
-            }
+        } else if parent, pok := _project_parent_dir(sel); pok {
             _project_set_current(parent)
             _project_scroll_to_tree_sel = true
         }
@@ -973,6 +966,9 @@ draw_project_view :: proc() {
         // contents). It's a genuine on-disk folder, but renaming it is blocked in
         // the rename entry points (it's the project root).
         _project_draw_tree_node(projectViewData.rootPath, filepath.base(projectViewData.rootPath))
+        // Installed packages: additional roots under a Packages node
+        // (docs/Plugins.md — label = package name, path = its assets dir).
+        _project_draw_packages_tree()
         // Reveal requests from the right pane were consumed by this draw.
         _project_tree_reveal = false
 
@@ -1014,6 +1010,10 @@ draw_project_view :: proc() {
         im.BeginChild("FileRows", im.Vec2{0, -im.GetFrameHeightWithSpacing()}, {})
         if query != "" {
             result_count = _project_draw_search_results(query)
+        } else if projectViewData.currentPath == _PROJECT_PACKAGES_PATH {
+            // The Packages node lists package roots, never the raw packages/
+            // folder (which would expose code to the file list).
+            _project_draw_packages_list()
         } else {
             draw_file_list(projectViewData.currentPath)
         }

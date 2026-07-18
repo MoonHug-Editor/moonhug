@@ -52,6 +52,8 @@ _file_clip_set :: proc(cut: bool) {
 	clear(&_file_clip)
 	_file_clip_cut = cut
 	for p in sel_proj_items() {
+		// Roots (Assets, Packages, package roots) are structural, not files.
+		if project_path_is_protected(p) do continue
 		append(&_file_clip, strings.clone(p))
 	}
 }
@@ -129,6 +131,10 @@ _project_select_paths :: proc(paths: []string) {
 project_ops_new_folder :: proc() {
 	dir := projectViewData.currentPath
 	if dir == "" do return
+	if dir == _PROJECT_PACKAGES_PATH {
+		fmt.println("[Editor] New Folder: packages are managed on disk (moonhug/packages), not here")
+		return
+	}
 	dst := _project_unique_dest(dir, "New Folder")
 	if os.make_directory(dst) != nil {
 		fmt.printf("[Editor] New Folder: failed to create %s\n", dst)
@@ -170,6 +176,10 @@ project_ops_paste :: proc() {
 	}
 	dst_dir := projectViewData.currentPath
 	if dst_dir == "" do return
+	if dst_dir == _PROJECT_PACKAGES_PATH {
+		fmt.println("[Editor] Paste: the Packages node lists packages, not files — paste inside a package's content instead")
+		return
+	}
 
 	pasted := make([dynamic]string, context.temp_allocator)
 	for src in _file_clip {
@@ -224,6 +234,10 @@ project_ops_delete :: proc() {
 		return
 	}
 	for src in srcs {
+		if project_path_is_protected(src) {
+			fmt.printf("[Editor] Delete: %s is a package root — remove the package folder on disk to uninstall\n", src)
+			continue
+		}
 		if !os.exists(src) do continue // a trashed parent folder took it along
 		if !file_move_to_trash(src) {
 			fmt.printf("[Editor] Delete: failed to trash %s\n", src)

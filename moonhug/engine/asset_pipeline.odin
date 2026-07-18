@@ -58,6 +58,9 @@ asset_pipeline_init :: proc() {
 
 asset_pipeline_import_all :: proc() {
     _import_directory(asset_db.root_path)
+    for root in asset_db_package_roots() {
+        _import_directory(root.assets_path)
+    }
     _cleanup_stale_artifacts()
     fmt.printf("[Pipeline] Import pass complete\n")
 }

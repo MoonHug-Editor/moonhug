@@ -6,6 +6,8 @@ import gfx "../engine/gfx"
 import "../engine/serialization"
 import "core:os"
 import "core:fmt"
+import "core:path/filepath"
+import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "../engine/log"
@@ -16,6 +18,15 @@ main :: proc() {
     // Machine-tagged log lines: the editor's play pipe parses them back into
     // its console (standalone runs just see the tagged text in the terminal).
     log.stdout_tagged = true
+
+    // Normalize the runtime cwd to moonhug/ (same as the editor): asset paths
+    // are moonhug-relative, and builds always run from the repo root so the
+    // packages: collection flag is one canonical spelling everywhere.
+    cwd, _ := os.get_working_directory(context.temp_allocator)
+    if !strings.has_suffix(cwd, "moonhug") {
+        moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
+        os.set_working_directory(moonhug_dir)
+    }
 
     if !gfx.init("App", 800, 600) {
         log.error("gfx init failed")
@@ -79,6 +90,7 @@ BULLET_SCENE_GUID :: "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
 app_init :: proc() {
     log.info("App Init")
     register_app_components()
+    register_packages()
     register_type_guids()
     register_component_serializers()
     serialization.init()
