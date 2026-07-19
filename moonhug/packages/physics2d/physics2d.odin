@@ -245,7 +245,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
 			box := b2.MakeOffsetBox(c.size.x * 0.5, c.size.y * 0.5, target.center, b2.MakeRot(target.angle))
-			c.shape = b2.CreatePolygonShape(target.body, def, box)
+			c.shape = b2.CreatePolygonShape(target.body, def, &box)
 			_register_shape(c.shape, c.owner)
 		}
 	}
@@ -260,7 +260,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
 			circle := b2.Circle{center = target.center, radius = c.radius}
-			c.shape = b2.CreateCircleShape(target.body, def, circle)
+			c.shape = b2.CreateCircleShape(target.body, def, &circle)
 			_register_shape(c.shape, c.owner)
 		}
 	}
@@ -291,7 +291,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 				center2 = target.center + axis * half,
 				radius  = radius,
 			}
-			c.shape = b2.CreateCapsuleShape(target.body, def, capsule)
+			c.shape = b2.CreateCapsuleShape(target.body, def, &capsule)
 			_register_shape(c.shape, c.owner)
 		}
 	}

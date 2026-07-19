@@ -58,6 +58,7 @@ For more details see [Contribution](docs/Contribution.md)
 - SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/SDL3Renderer.md))
   - one-time: `make -C "$(odin root)/vendor/stb/src"` - builds vendored stb (image decoding)
   - one-time: `make -C "$(odin root)/vendor/cgltf/src"` - builds vendored cgltf (glTF mesh import)
+  - one-time: `sh "$(odin root)/vendor/box2d/build_box2d.sh"` - builds vendored box2d (physics2d package; needs cmake, WASM step may warn — harmless)
   - optional, only to AUTHOR shaders (engine built-ins or .glsl assets): `brew install shaderc spirv-cross`
 
 ## Features
@@ -113,8 +114,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
-- think about ticking simulation and view(one fixed rate tick?)
-
 - project settings window with left pane — tabs, right pane — settings of selected tabs
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
@@ -128,12 +127,8 @@ For more details see [Contribution](docs/Contribution.md)
   - no Mecanim, needs something else more like timelines blending
   - tool for tech-art to author and preview animations without entering playmode
 
-- on_draw_gizmos and on_draw_gizmos_selected callbacks
-- plugins feature
-  - 'plugins' — folder outside editor and app with packages
-  - 'packages' — folder with symlinks to package folders. Symlinks work as install/remove switch
-  - first plugins:
-    - box2d, box3d from vendor
+- physics2d follow-ups: layer collision matrix, effectors/polygon colliders, PhysicsMaterial2D asset
+- box3d package — source open (not in odin vendor)
 
 - come up with more TODO and Considered features
 
