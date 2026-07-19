@@ -88,7 +88,7 @@ physics_step :: proc(fixed_dt: f32) {
 	context.allocator = runtime.default_allocator()
 	_ensure_world()
 	w := engine.ctx_world()
-	_sync_bodies(w)
+	_sync_bodies(w, fixed_dt)
 	_sync_colliders(w)
 	b2.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
@@ -110,7 +110,7 @@ _world_z_angle :: proc(rotation: [4]f32) -> f32 {
 	return math.to_radians(engine.quat_to_euler_xyz(rotation).z)
 }
 
-_sync_bodies :: proc(w: ^engine.World) {
+_sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
 	pool := rigidbody2_ds(w)
 	if pool == nil do return
 	for i in 0 ..< len(pool.slots) {
@@ -143,16 +143,27 @@ _sync_bodies :: proc(w: ^engine.World) {
 			if rb.enabled do b2.Body_Enable(rb.body)
 			else do b2.Body_Disable(rb.body)
 		}
-		// Kinematic/static bodies follow their transforms (scripts move the
-		// transform, physics obeys). Dynamic transforms are owned by the
-		// write-back below.
+		// Kinematic bodies follow their transforms (scripts move the
+		// transform, physics obeys) — driven by VELOCITY, not teleport
+		// (Unity MovePosition): the step itself moves the body, so contacts
+		// push dynamic bodies. A Body_SetTransform teleport carries zero
+		// velocity — dynamics would only depenetrate, never be pushed.
+		// Static bodies keep the teleport (they aren't supposed to move),
+		// dynamic transforms are owned by the write-back below.
 		if rb.body_type != .Dynamic && rb.enabled {
 			tw := engine.transform_world(rb.owner)
 			pos := b2.Body_GetPosition(rb.body)
 			angle := b2.Rot_GetAngle(b2.Body_GetRotation(rb.body))
 			want := [2]f32{tw.position.x, tw.position.y}
 			want_angle := _world_z_angle(tw.rotation)
-			if pos != want || angle != want_angle {
+			if rb.body_type == .Kinematic {
+				inv_dt := 1.0 / fixed_dt
+				b2.Body_SetLinearVelocity(rb.body, (want - pos) * inv_dt)
+				// Shortest-arc angle delta, wrapped to [-pi, pi].
+				dang := math.mod(want_angle - angle + math.PI, math.TAU)
+				if dang < 0 do dang += math.TAU
+				b2.Body_SetAngularVelocity(rb.body, (dang - math.PI) * inv_dt)
+			} else if pos != want || angle != want_angle {
 				b2.Body_SetTransform(rb.body, want, b2.MakeRot(want_angle))
 			}
 		}

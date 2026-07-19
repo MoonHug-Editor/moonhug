@@ -95,3 +95,52 @@ physics3d_transform_scale_affects_collider :: proc(t: ^testing.T) {
 	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
 	testing.expect(t, y > -1.6, "scaled floor should catch the ball at x=3")
 }
+
+@(test)
+physics3d_kinematic_body_pushes_dynamic :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	app.register_packages()
+
+	// Kinematic pusher moved via its TRANSFORM (the script-driven pattern).
+	// Velocity-driven follow makes the step carry it into the crate — a
+	// teleporting follow would never impart momentum.
+	pusher := engine.transform_new("Pusher")
+	pt := engine.pool_get(&tc.world.transforms, engine.Handle(pusher))
+	pt.position = {0, 0, 0}
+	_, prb_ptr := engine.transform_add_comp(pusher, .Rigidbody)
+	prb := cast(^physics3d.Rigidbody)prb_ptr
+	prb.enabled = true
+	prb.is_kinematic = true
+	_, pbox_ptr := engine.transform_add_comp(pusher, .BoxCollider)
+	pbox := cast(^physics3d.BoxCollider)pbox_ptr
+	pbox.enabled = true
+
+	// Dynamic crate ahead on +x, gravity off so it can only move by contact.
+	crate := engine.transform_new("Crate")
+	ct := engine.pool_get(&tc.world.transforms, engine.Handle(crate))
+	ct.position = {1.2, 0, 0}
+	_, crb_ptr := engine.transform_add_comp(crate, .Rigidbody)
+	crb := cast(^physics3d.Rigidbody)crb_ptr
+	crb.enabled = true
+	crb.use_gravity = false
+	_, cbox_ptr := engine.transform_add_comp(crate, .BoxCollider)
+	cbox := cast(^physics3d.BoxCollider)cbox_ptr
+	cbox.enabled = true
+
+	// Drive the pusher 2 m/s along +x for one second of sim time.
+	dt :: f32(1.0 / 60.0)
+	for _ in 0 ..< 60 {
+		pt = engine.pool_get(&tc.world.transforms, engine.Handle(pusher))
+		pt.position.x += 2 * dt
+		physics3d.physics_step(dt)
+	}
+
+	x := engine.pool_get(&tc.world.transforms, engine.Handle(crate)).position.x
+	// Pusher front face ends at 2.5; the crate center must sit past 3.0
+	// minus a small solver margin.
+	testing.expect(t, x > 2.8, "kinematic pusher should shove the dynamic crate along +x")
+}

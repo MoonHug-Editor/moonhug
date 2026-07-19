@@ -21,6 +21,7 @@ package physics3d
 // component field edits at runtime don't re-sync (use the escape hatch).
 
 import "base:runtime"
+import "core:math"
 import "core:math/linalg"
 import b3 "vendor:box3d"
 import "../../engine"
@@ -87,7 +88,7 @@ physics_step :: proc(fixed_dt: f32) {
 	context.allocator = runtime.default_allocator()
 	_ensure_world()
 	w := engine.ctx_world()
-	_sync_bodies(w)
+	_sync_bodies(w, fixed_dt)
 	_sync_colliders(w)
 	b3.World_Step(_state.world, fixed_dt, _SUB_STEPS)
 	_write_back(w)
@@ -109,7 +110,7 @@ _world_quat :: proc(rotation: [4]f32) -> b3.Quat {
 	return engine.quat_to_native(rotation)
 }
 
-_sync_bodies :: proc(w: ^engine.World) {
+_sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
 	pool := rigidbodies(w)
 	if pool == nil do return
 	for i in 0 ..< len(pool.slots) {
@@ -146,16 +147,26 @@ _sync_bodies :: proc(w: ^engine.World) {
 			else do b3.Body_Disable(rb.body)
 		}
 		// Kinematic bodies follow their transforms (scripts move the
-		// transform, physics obeys). Dynamic transforms are owned by the
-		// write-back below.
+		// transform, physics obeys) — driven by VELOCITY, not teleport
+		// (Unity MovePosition): the step itself moves the body, so contacts
+		// push dynamic bodies. A Body_SetTransform teleport carries zero
+		// velocity — dynamics would only depenetrate, never be pushed.
+		// Dynamic transforms are owned by the write-back below.
 		if rb.is_kinematic && rb.enabled {
 			tw := engine.transform_world(rb.owner)
 			pos := b3.Body_GetPosition(rb.body)
-			q := engine.quat_from_native(b3.Body_GetRotation(rb.body))
-			want_q := engine.quat_from_native(_world_quat(tw.rotation))
-			if pos != tw.position || q != want_q {
-				b3.Body_SetTransform(rb.body, tw.position, _world_quat(tw.rotation))
+			inv_dt := 1.0 / fixed_dt
+			b3.Body_SetLinearVelocity(rb.body, (tw.position - pos) * inv_dt)
+			// Angular velocity from the shortest-arc delta rotation.
+			dq := _world_quat(tw.rotation) * linalg.quaternion_inverse(b3.Body_GetRotation(rb.body))
+			if dq.w < 0 do dq = -dq
+			omega := [3]f32{}
+			half_sin := math.sqrt(max(1 - dq.w*dq.w, 0))
+			if half_sin > 1e-6 {
+				angle := 2 * math.acos(clamp(dq.w, -1, 1))
+				omega = [3]f32{dq.x, dq.y, dq.z} * (angle / half_sin * inv_dt)
 			}
+			b3.Body_SetAngularVelocity(rb.body, omega)
 		}
 	}
 }
