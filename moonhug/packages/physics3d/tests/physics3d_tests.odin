@@ -58,3 +58,40 @@ physics3d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	_, ok := physics3d.body_of(ball)
 	testing.expect(t, ok, "body_of should find the live body")
 }
+
+@(test)
+physics3d_transform_scale_affects_collider :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	app.register_packages()
+
+	// 1x1x1 floor collider scaled 40x wide: only an effective 40x1x40 shape
+	// can catch a ball dropped at x = 3 (the unscaled half-width is 0.5).
+	floor := engine.transform_new("Floor")
+	ft := engine.pool_get(&tc.world.transforms, engine.Handle(floor))
+	ft.position = {0, -2, 0}
+	ft.scale = {40, 1, 40}
+	_, box_ptr := engine.transform_add_comp(floor, .BoxCollider)
+	box := cast(^physics3d.BoxCollider)box_ptr
+	box.enabled = true
+
+	ball := engine.transform_new("Ball")
+	bt := engine.pool_get(&tc.world.transforms, engine.Handle(ball))
+	bt.position = {3, 3, 0}
+	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody)
+	rb := cast(^physics3d.Rigidbody)rb_ptr
+	rb.enabled = true
+	_, sphere_ptr := engine.transform_add_comp(ball, .SphereCollider)
+	sphere := cast(^physics3d.SphereCollider)sphere_ptr
+	sphere.enabled = true
+
+	for _ in 0 ..< 200 {
+		physics3d.physics_step(1.0 / 60.0)
+	}
+
+	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
+	testing.expect(t, y > -1.6, "scaled floor should catch the ball at x=3")
+}

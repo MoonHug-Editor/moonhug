@@ -51,8 +51,8 @@ _arc :: proc(f: _Gizmo_Frame, center: [2]f32, radius: f32, from, sweep: f32, seg
 @(on_draw_gizmos_selected={component=BoxCollider2D})
 box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D) {
 	f := _frame_of(c.owner)
-	h := c.size * 0.5
-	o := c.offset
+	size, o := physics2d.box_scaled(c, physics2d.collider_scale(c.owner))
+	h := size * 0.5
 	corners := [4][2]f32{
 		o + {-h.x, -h.y}, o + {h.x, -h.y},
 		o + {h.x, h.y}, o + {-h.x, h.y},
@@ -65,30 +65,32 @@ box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D) {
 @(on_draw_gizmos_selected={component=CircleCollider2D})
 circle_collider_gizmos :: proc(c: ^physics2d.CircleCollider2D) {
 	f := _frame_of(c.owner)
-	_arc(f, c.offset, c.radius, 0, math.TAU, _CIRCLE_SEGMENTS)
+	radius, o := physics2d.circle_scaled(c, physics2d.collider_scale(c.owner))
+	_arc(f, o, radius, 0, math.TAU, _CIRCLE_SEGMENTS)
 }
 
 @(on_draw_gizmos_selected={component=CapsuleCollider2D})
 capsule_collider_gizmos :: proc(c: ^physics2d.CapsuleCollider2D) {
 	f := _frame_of(c.owner)
+	size, o := physics2d.capsule_scaled(c, physics2d.collider_scale(c.owner))
 	radius, half: f32
 	axis, side: [2]f32
 	cap_from: f32
 	if c.direction == .Vertical {
-		radius = c.size.x * 0.5
-		half = max(c.size.y * 0.5 - radius, 0)
+		radius = size.x * 0.5
+		half = max(size.y * 0.5 - radius, 0)
 		axis = {0, 1}
 		side = {1, 0}
 		cap_from = 0 // top cap sweeps 0..pi, bottom pi..2pi
 	} else {
-		radius = c.size.y * 0.5
-		half = max(c.size.x * 0.5 - radius, 0)
+		radius = size.y * 0.5
+		half = max(size.x * 0.5 - radius, 0)
 		axis = {1, 0}
 		side = {0, 1}
 		cap_from = math.PI * 0.5
 	}
-	c1 := c.offset + axis * half // cap center on the +axis end
-	c2 := c.offset - axis * half
+	c1 := o + axis * half // cap center on the +axis end
+	c2 := o - axis * half
 	_arc(f, c1, radius, cap_from, math.PI, _CIRCLE_SEGMENTS / 2)
 	_arc(f, c2, radius, cap_from + math.PI, math.PI, _CIRCLE_SEGMENTS / 2)
 	_line(f, c1 + side * radius, c2 + side * radius)

@@ -15,9 +15,10 @@ package physics2d
 // - Escape hatch: body_of(tH) returns the live b2.BodyId — use vendor:box2d
 //   directly for forces, joints, filters, raycasts and runtime mutation.
 //
-// v1 limitations: transform scale is ignored by shapes; moving a child
-// collider after creation doesn't re-bake its offset; component field edits
-// at runtime don't re-sync (use the escape hatch).
+// Transform scale affects shapes (Unity semantics — see collider_scale). The
+// whole relative transform, scale included, is BAKED at shape creation:
+// moving or rescaling a child collider afterwards doesn't re-bake, and
+// component field edits at runtime don't re-sync (use the escape hatch).
 
 import "base:runtime"
 import "core:math"
@@ -190,6 +191,29 @@ _rotate2 :: proc(v: [2]f32, angle: f32) -> [2]f32 {
 	return {v.x * c - v.y * s, v.x * s + v.y * c}
 }
 
+// --- Scale (Unity semantics) ----------------------------------------------------
+// The owner's ABSOLUTE world scale affects collider dims: box/capsule size
+// scales per-axis, circle radius by the LARGER axis, offsets scale too.
+// Shared by the sync and the editor gizmos; baked at shape creation like the
+// rest of the relative transform (rescaling later doesn't re-bake).
+
+collider_scale :: proc(owner: engine.Transform_Handle) -> [2]f32 {
+	tw := engine.transform_world(owner)
+	return {abs(tw.scale.x), abs(tw.scale.y)}
+}
+
+box_scaled :: proc(c: ^BoxCollider2D, s: [2]f32) -> (size, offset: [2]f32) {
+	return c.size * s, c.offset * s
+}
+
+circle_scaled :: proc(c: ^CircleCollider2D, s: [2]f32) -> (radius: f32, offset: [2]f32) {
+	return c.radius * max(s.x, s.y), c.offset * s
+}
+
+capsule_scaled :: proc(c: ^CapsuleCollider2D, s: [2]f32) -> (size, offset: [2]f32) {
+	return c.size * s, c.offset * s
+}
+
 // Resolve which body a collider attaches to and the baked relative
 // transform. Creates the implicit static body when no RB is above.
 _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, offset: [2]f32, static_body: ^b2.BodyId) -> (_Shape_Target, bool) {
@@ -241,10 +265,11 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.offset, &c.static_body)
+			size, offset := box_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
-			box := b2.MakeOffsetBox(c.size.x * 0.5, c.size.y * 0.5, target.center, b2.MakeRot(target.angle))
+			box := b2.MakeOffsetBox(size.x * 0.5, size.y * 0.5, target.center, b2.MakeRot(target.angle))
 			c.shape = b2.CreatePolygonShape(target.body, def, &box)
 			_register_shape(c.shape, c.owner)
 		}
@@ -256,10 +281,11 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.offset, &c.static_body)
+			radius, offset := circle_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
-			circle := b2.Circle{center = target.center, radius = c.radius}
+			circle := b2.Circle{center = target.center, radius = radius}
 			c.shape = b2.CreateCircleShape(target.body, def, &circle)
 			_register_shape(c.shape, c.owner)
 		}
@@ -271,18 +297,19 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.offset, &c.static_body)
+			size, offset := capsule_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
 			radius, half: f32
 			axis: [2]f32
 			if c.direction == .Vertical {
-				radius = c.size.x * 0.5
-				half = max(c.size.y * 0.5 - radius, 0)
+				radius = size.x * 0.5
+				half = max(size.y * 0.5 - radius, 0)
 				axis = {0, 1}
 			} else {
-				radius = c.size.y * 0.5
-				half = max(c.size.x * 0.5 - radius, 0)
+				radius = size.y * 0.5
+				half = max(size.x * 0.5 - radius, 0)
 				axis = {1, 0}
 			}
 			axis = _rotate2(axis, target.angle)

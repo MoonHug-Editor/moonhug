@@ -10,6 +10,7 @@ import "core:time"
 import im "../../external/odin-imgui"
 import engine "../engine"
 import clip "clipboard"
+import "menu"
 import "undo"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
@@ -391,12 +392,20 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 		_draw_drop_target_empty_space(scene)
 	}
 
+	// Unity model: the hierarchy's background context menu IS the GameObject
+	// menu (Create Empty + registered @(menu_item) items, plugin ones
+	// included). Items create under the ACTIVE scene's root.
 	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
-		if im.MenuItem("Create Empty", nil, false, true) {
-			undo.record_create_child("Transform", root_tH)
-		}
+		menu.draw_menu_subtree("GameObject")
 		im.EndPopup()
 	}
+}
+
+@(menu_item={path="GameObject/Create Empty", order=-100, shortcut=""})
+hierarchy_create_empty_menu :: proc() {
+	scene := engine.sm_scene_get_active()
+	if scene == nil do return
+	undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle))
 }
 
 @(private)

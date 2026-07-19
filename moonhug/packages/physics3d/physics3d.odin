@@ -15,8 +15,9 @@ package physics3d
 // - Escape hatch: body_of(tH) returns the live b3.BodyId — use vendor:box3d
 //   directly for forces, joints, mass overrides, raycasts, runtime mutation.
 //
-// v1 limitations (same as physics2d): transform scale is ignored by shapes;
-// moving a child collider after creation doesn't re-bake its offset;
+// Transform scale affects shapes (Unity semantics — see collider_scale). The
+// whole relative transform, scale included, is BAKED at shape creation:
+// moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
 
 import "base:runtime"
@@ -186,6 +187,35 @@ _Shape_Target :: struct {
 	rot:    b3.Quat, // shape rotation in body-local space
 }
 
+// --- Scale (Unity semantics) ----------------------------------------------------
+// The owner's ABSOLUTE world scale affects collider dims: box size scales
+// per-axis, sphere radius by the LARGEST axis, capsule height by its axis
+// component and radius by the larger perpendicular axis, centers scale too.
+// Shared by the sync and the editor gizmos; baked at shape creation like the
+// rest of the relative transform (rescaling later doesn't re-bake).
+
+collider_scale :: proc(owner: engine.Transform_Handle) -> [3]f32 {
+	tw := engine.transform_world(owner)
+	return {abs(tw.scale.x), abs(tw.scale.y), abs(tw.scale.z)}
+}
+
+box_scaled :: proc(c: ^BoxCollider, s: [3]f32) -> (size, center: [3]f32) {
+	return c.size * s, c.center * s
+}
+
+sphere_scaled :: proc(c: ^SphereCollider, s: [3]f32) -> (radius: f32, center: [3]f32) {
+	return c.radius * max(s.x, s.y, s.z), c.center * s
+}
+
+capsule_scaled :: proc(c: ^CapsuleCollider, s: [3]f32) -> (radius, height: f32, center: [3]f32) {
+	switch c.direction {
+	case .X_Axis: return c.radius * max(s.y, s.z), c.height * s.x, c.center * s
+	case .Y_Axis: return c.radius * max(s.x, s.z), c.height * s.y, c.center * s
+	case .Z_Axis: return c.radius * max(s.x, s.y), c.height * s.z, c.center * s
+	}
+	return c.radius, c.height, c.center * s
+}
+
 // Resolve which body a collider attaches to and the baked relative
 // transform. Creates the implicit static body when no RB is above.
 _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, center: [3]f32, static_body: ^b3.BodyId) -> (_Shape_Target, bool) {
@@ -249,10 +279,11 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.center, &c.static_body)
+			size, center := box_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
-			h := c.size * 0.5
+			h := size * 0.5
 			bh := b3.MakeTransformedBoxHull(h.x, h.y, h.z, b3.Transform{p = target.center, q = target.rot})
 			c.shape = b3.CreateHullShape(target.body, def, &bh.base)
 			_register_shape(c.shape, c.owner)
@@ -265,10 +296,11 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.center, &c.static_body)
+			radius, center := sphere_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
-			sphere := b3.Sphere{center = target.center, radius = c.radius}
+			sphere := b3.Sphere{center = target.center, radius = radius}
 			c.shape = b3.CreateSphereShape(target.body, def, &sphere)
 			_register_shape(c.shape, c.owner)
 		}
@@ -280,15 +312,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 			c := &slot.data
 			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
-			target, ok := _shape_target(w, c.owner, c.center, &c.static_body)
+			radius, height, center := capsule_scaled(c, collider_scale(c.owner))
+			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
 			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
-			half := max(c.height * 0.5 - c.radius, 0)
+			half := max(height * 0.5 - radius, 0)
 			axis := linalg.quaternion128_mul_vector3(target.rot, _capsule_axis(c.direction))
 			capsule := b3.Capsule{
 				center1 = target.center - axis * half,
 				center2 = target.center + axis * half,
-				radius  = c.radius,
+				radius  = radius,
 			}
 			c.shape = b3.CreateCapsuleShape(target.body, def, &capsule)
 			_register_shape(c.shape, c.owner)

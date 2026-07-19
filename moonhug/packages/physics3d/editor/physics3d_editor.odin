@@ -51,8 +51,8 @@ _circle :: proc(f: _Gizmo_Frame, center: [3]f32, u, v: [3]f32, radius: f32) {
 @(on_draw_gizmos_selected={component=BoxCollider})
 box_collider_gizmos :: proc(c: ^physics3d.BoxCollider) {
 	f := _frame_of(c.owner)
-	h := c.size * 0.5
-	o := c.center
+	size, o := physics3d.box_scaled(c, physics3d.collider_scale(c.owner))
+	h := size * 0.5
 	corners: [8][3]f32
 	for i in 0 ..< 8 {
 		corners[i] = o + {
@@ -74,12 +74,13 @@ box_collider_gizmos :: proc(c: ^physics3d.BoxCollider) {
 @(on_draw_gizmos_selected={component=SphereCollider})
 sphere_collider_gizmos :: proc(c: ^physics3d.SphereCollider) {
 	f := _frame_of(c.owner)
+	radius, o := physics3d.sphere_scaled(c, physics3d.collider_scale(c.owner))
 	x := [3]f32{1, 0, 0}
 	y := [3]f32{0, 1, 0}
 	z := [3]f32{0, 0, 1}
-	_circle(f, c.center, x, y, c.radius)
-	_circle(f, c.center, x, z, c.radius)
-	_circle(f, c.center, y, z, c.radius)
+	_circle(f, o, x, y, radius)
+	_circle(f, o, x, z, radius)
+	_circle(f, o, y, z, radius)
 }
 
 @(on_draw_gizmos_selected={component=CapsuleCollider})
@@ -91,20 +92,21 @@ capsule_collider_gizmos :: proc(c: ^physics3d.CapsuleCollider) {
 	case .Y_Axis: axis = {0, 1, 0}; u = {1, 0, 0}; v = {0, 0, 1}
 	case .Z_Axis: axis = {0, 0, 1}; u = {1, 0, 0}; v = {0, 1, 0}
 	}
-	half := max(c.height * 0.5 - c.radius, 0)
-	c1 := c.center + axis * half
-	c2 := c.center - axis * half
+	radius, height, o := physics3d.capsule_scaled(c, physics3d.collider_scale(c.owner))
+	half := max(height * 0.5 - radius, 0)
+	c1 := o + axis * half
+	c2 := o - axis * half
 
 	// Rings at the hemisphere centers.
-	_circle(f, c1, u, v, c.radius)
-	_circle(f, c2, u, v, c.radius)
+	_circle(f, c1, u, v, radius)
+	_circle(f, c2, u, v, radius)
 	// Side lines.
 	for side in ([4][3]f32{u, -u, v, -v}) {
-		_line(f, c1 + side * c.radius, c2 + side * c.radius)
+		_line(f, c1 + side * radius, c2 + side * radius)
 	}
 	// End caps: half-arcs in the axis/u and axis/v planes.
-	_arc(f, c1, u, axis, c.radius, 0, math.PI, _SEGMENTS / 2)
-	_arc(f, c1, v, axis, c.radius, 0, math.PI, _SEGMENTS / 2)
-	_arc(f, c2, u, axis, c.radius, math.PI, math.PI, _SEGMENTS / 2)
-	_arc(f, c2, v, axis, c.radius, math.PI, math.PI, _SEGMENTS / 2)
+	_arc(f, c1, u, axis, radius, 0, math.PI, _SEGMENTS / 2)
+	_arc(f, c1, v, axis, radius, 0, math.PI, _SEGMENTS / 2)
+	_arc(f, c2, u, axis, radius, math.PI, math.PI, _SEGMENTS / 2)
+	_arc(f, c2, v, axis, radius, math.PI, math.PI, _SEGMENTS / 2)
 }
