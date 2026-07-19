@@ -8,13 +8,24 @@ import "../engine"
 
 scene_rt: ^gfx.Render_Target
 
-// Editor camera: plain orbit data, NOT a Camera component — the scene view
-// renders through the same engine collect/execute path as game cameras.
+// Editor camera: first-person data (position + yaw/pitch about the EYE), NOT
+// a Camera component — the scene view renders through the same engine
+// collect/execute path as game cameras. scene_cam_target is derived: the
+// look-at anchor scene_cam_dist along the forward ray. Orbit/zoom/frame pull
+// toward it; fly and pan carry it along (Unity's pivot model).
 scene_cam_pos: [3]f32
-scene_cam_yaw: f32
-scene_cam_pitch: f32
+scene_cam_yaw: f32   // radians, atan2(fwd.z, fwd.x)
+scene_cam_pitch: f32 // radians, asin(fwd.y), clamped just short of the poles
 scene_cam_dist: f32
 scene_cam_target: [3]f32
+
+// Flythrough speed: wheel while flying rescales the base (kept for the whole
+// session), holding movement keys ramps the current speed toward base*mult.
+scene_fly_speed: f32
+_fly_speed_cur: f32
+
+_orbit_active: bool
+_orbit_pivot: [3]f32
 
 scene_view_hovered: bool
 scene_flythrough_active: bool
@@ -43,11 +54,14 @@ _band_shutdown :: proc() {
 	_band_base = nil
 }
 
-FLYTHROUGH_BASE_SPEED :: 8.0
-FLYTHROUGH_SHIFT_MULT :: 3.0
-ORBIT_SENSITIVITY :: 0.005
-PAN_SENSITIVITY :: 0.003
-ZOOM_SCROLL_FACTOR :: 0.1
+FLYTHROUGH_BASE_SPEED :: f32(8.0)
+FLYTHROUGH_SHIFT_MULT :: f32(3.0)
+FLYTHROUGH_RAMP_MULT :: f32(3.0) // held movement accelerates up to base*this
+FLYTHROUGH_RAMP_TIME :: f32(2.0) // seconds to reach the ramp cap
+FLY_SPEED_WHEEL_BASE :: f32(1.2) // wheel during fly: speed *= base^notches
+LOOK_SENSITIVITY :: f32(0.005) // radians per pixel (fly + orbit)
+ZOOM_WHEEL_BASE :: f32(1.2) // wheel dolly: dist *= base^-notches
+ZOOM_MIN_STEP :: f32(0.25) // keeps close-range dolly responsive
 ZOOM_DRAG_FACTOR :: 0.01
 
 SCENE_CAM_FOV_DEG :: f32(45)
@@ -56,11 +70,9 @@ SCENE_CAM_FAR :: f32(1000)
 
 init_scene_view :: proc() {
 	scene_rt = gfx.rt_create(1, 1)
-	scene_cam_yaw = 0.8
-	scene_cam_pitch = 0.6
-	scene_cam_dist = 12
-	scene_cam_target = {0, 0, 0}
-	update_scene_camera()
+	scene_fly_speed = FLYTHROUGH_BASE_SPEED
+	_fly_speed_cur = FLYTHROUGH_BASE_SPEED
+	scene_cam_look_at({7, 7, 7}, {0, 0, 0})
 
 	// Unity-style dockable overlay toolbars (dock.odin): register every
 	// @(scene_toolbar) item (generated), then restore persisted placement.
@@ -76,29 +88,65 @@ shutdown_scene_view :: proc() {
 	scene_rt = nil
 }
 
+// Orthonormal frame from yaw/pitch. The pitch clamp in update_scene_camera
+// keeps fwd off the world-up pole, so the crosses never degenerate.
+_scene_cam_basis :: proc() -> (fwd, right, up: [3]f32) {
+	cp := math.cos(scene_cam_pitch)
+	fwd = {math.cos(scene_cam_yaw) * cp, math.sin(scene_cam_pitch), math.sin(scene_cam_yaw) * cp}
+	right = linalg.normalize(linalg.cross(fwd, [3]f32{0, 1, 0}))
+	up = linalg.cross(right, fwd)
+	return
+}
+
 scene_cam_forward :: proc() -> [3]f32 {
-	return linalg.normalize(scene_cam_target - scene_cam_pos)
+	fwd, _, _ := _scene_cam_basis()
+	return fwd
 }
 
 scene_cam_right :: proc() -> [3]f32 {
-	fwd := scene_cam_forward()
-	return linalg.normalize(linalg.cross(fwd, [3]f32{0, 1, 0}))
+	_, right, _ := _scene_cam_basis()
+	return right
 }
 
 scene_cam_up :: proc() -> [3]f32 {
-	return linalg.normalize(linalg.cross(scene_cam_right(), scene_cam_forward()))
+	_, _, up := _scene_cam_basis()
+	return up
 }
 
+// Place the camera and derive yaw/pitch/dist so it looks at target.
+scene_cam_look_at :: proc(pos, target: [3]f32) {
+	scene_cam_pos = pos
+	d := target - pos
+	scene_cam_dist = linalg.length(d)
+	if scene_cam_dist > 0.0001 {
+		dir := d / scene_cam_dist
+		scene_cam_pitch = math.asin(clamp(dir.y, -1, 1))
+		scene_cam_yaw = math.atan2(dir.z, dir.x)
+	}
+	update_scene_camera()
+}
+
+PITCH_LIMIT :: f32(math.PI / 2 - 0.02)
+
+// Clamp the angles and re-derive the look-at anchor from the eye. A NaN/inf
+// guard resets the camera instead of leaving the view unrecoverably black
+// (bad mesh bounds or a zero-length basis would poison every later frame).
 update_scene_camera :: proc() {
-	scene_cam_pitch = clamp(scene_cam_pitch, 0.05, math.PI - 0.05)
-	scene_cam_dist = max(scene_cam_dist, 0.1)
+	scene_cam_pitch = clamp(scene_cam_pitch, -PITCH_LIMIT, PITCH_LIMIT)
+	scene_cam_dist = clamp(scene_cam_dist, 0.1, 10000)
 
-	sp := math.sin(scene_cam_pitch)
-	cp := math.cos(scene_cam_pitch)
-	sy := math.sin(scene_cam_yaw)
-	cy := math.cos(scene_cam_yaw)
+	fwd, _, _ := _scene_cam_basis()
+	scene_cam_target = scene_cam_pos + fwd * scene_cam_dist
 
-	scene_cam_pos = scene_cam_target + [3]f32{sp * cy, cp, sp * sy} * scene_cam_dist
+	ok :: proc(v: [3]f32) -> bool {
+		for c in v {
+			if c != c || abs(c) > 1e20 do return false
+		}
+		return true
+	}
+	if !ok(scene_cam_pos) || !ok(scene_cam_target) || scene_cam_yaw != scene_cam_yaw {
+		scene_cam_look_at({7, 7, 7}, {0, 0, 0})
+	}
 }
 
 // Frame the current selection (Unity's F): center the orbit camera on the
@@ -146,8 +194,12 @@ _update_frame_tween :: proc(dt: f32) {
 	_frame_tween_t = min(_frame_tween_t + dt / SCENE_FRAME_TWEEN_SEC, 1)
 	t := _frame_tween_t
 	k := t * t * (3 - 2 * t) // smoothstep: ease in/out
-	scene_cam_target = linalg.lerp(_frame_tween_from_target, _frame_tween_to_target, k)
+	// Framing keeps the view direction (Unity's F): the eye rides behind the
+	// tweened anchor along the current forward ray.
+	tgt := linalg.lerp(_frame_tween_from_target, _frame_tween_to_target, k)
 	scene_cam_dist = _frame_tween_from_dist + (_frame_tween_to_dist - _frame_tween_from_dist) * k
+	fwd, _, _ := _scene_cam_basis()
+	scene_cam_pos = tgt - fwd * scene_cam_dist
 	update_scene_camera()
 	if _frame_tween_t >= 1 do _frame_tween_active = false
 }
@@ -640,26 +692,42 @@ handle_scene_input :: proc() {
 
 	if rmb_down && !alt_down {
 		scene_flythrough_active = true
+		_orbit_active = false
 
+		// First-person look: yaw/pitch rotate about the EYE (the anchor swings
+		// with the view), never about the anchor — that's orbit's job.
 		delta := io.MouseDelta
-		scene_cam_yaw += delta.x * ORBIT_SENSITIVITY
-		scene_cam_pitch -= delta.y * ORBIT_SENSITIVITY
+		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
+		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 
-		speed: f32 = FLYTHROUGH_BASE_SPEED * dt
-		if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
+		// Wheel during fly rescales the base speed for the session (Unity).
+		if io.MouseWheel != 0 {
+			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, io.MouseWheel), 0.5, 100)
+			_fly_speed_cur = min(_fly_speed_cur, scene_fly_speed * FLYTHROUGH_RAMP_MULT)
+		}
 
+		fwd, right, _ := _scene_cam_basis()
 		move := [3]f32{0, 0, 0}
-		if im.IsKeyDown(.W) do move += scene_cam_forward()
-		if im.IsKeyDown(.S) do move -= scene_cam_forward()
-		if im.IsKeyDown(.D) do move += scene_cam_right()
-		if im.IsKeyDown(.A) do move -= scene_cam_right()
+		if im.IsKeyDown(.W) do move += fwd
+		if im.IsKeyDown(.S) do move -= fwd
+		if im.IsKeyDown(.D) do move += right
+		if im.IsKeyDown(.A) do move -= right
 		if im.IsKeyDown(.E) do move += [3]f32{0, 1, 0}
 		if im.IsKeyDown(.Q) do move -= [3]f32{0, 1, 0}
 
 		len := linalg.length(move)
 		if len > 0 {
-			move = move / len * speed
-			scene_cam_target += move
+			// Held movement ramps toward the cap, so short taps stay precise
+			// and long hauls get fast. Release resets to base.
+			_fly_speed_cur = min(
+				_fly_speed_cur + scene_fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
+				scene_fly_speed * FLYTHROUGH_RAMP_MULT,
+			)
+			speed := _fly_speed_cur
+			if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
+			scene_cam_pos += move / len * speed * dt
+		} else {
+			_fly_speed_cur = scene_fly_speed
 		}
 
 		update_scene_camera()
@@ -667,38 +735,64 @@ handle_scene_input :: proc() {
 	}
 
 	scene_flythrough_active = false
+	_fly_speed_cur = scene_fly_speed
 
 	if alt_down && lmb_dragging {
+		// Orbit around the anchor captured when the drag started (Unity's
+		// pivot model: F/pan/zoom place it, orbit revolves around it).
+		if !_orbit_active {
+			_orbit_active = true
+			_orbit_pivot = scene_cam_target
+			scene_cam_dist = max(linalg.length(scene_cam_pos - _orbit_pivot), 0.1)
+		}
 		delta := io.MouseDelta
-		scene_cam_yaw += delta.x * ORBIT_SENSITIVITY
-		scene_cam_pitch -= delta.y * ORBIT_SENSITIVITY
+		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
+		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		fwd, _, _ := _scene_cam_basis()
+		scene_cam_pos = _orbit_pivot - fwd * scene_cam_dist
 		update_scene_camera()
 		return
 	}
+	_orbit_active = false
 
 	if alt_down && rmb_dragging {
+		// Zoom drag: dolly the eye toward/away from the fixed anchor.
 		delta := io.MouseDelta
 		zoom_delta := (delta.x + delta.y) * ZOOM_DRAG_FACTOR
-		scene_cam_dist *= 1 - zoom_delta
+		anchor := scene_cam_target
+		scene_cam_dist = clamp(scene_cam_dist * (1 - zoom_delta), 0.1, 10000)
+		fwd, _, _ := _scene_cam_basis()
+		scene_cam_pos = anchor - fwd * scene_cam_dist
 		update_scene_camera()
 		return
 	}
 
 	if mmb_dragging {
 		delta := io.MouseDelta
-		r := scene_cam_right()
-		u := scene_cam_up()
+		_, r, u := _scene_cam_basis()
 
-		pan_speed: f32 = scene_cam_dist * PAN_SENSITIVITY
-		scene_cam_target -= r * delta.x * pan_speed
-		scene_cam_target += u * delta.y * pan_speed
+		// Distance/viewport scaling keeps the grabbed point under the cursor
+		// at any zoom level and window size.
+		units_per_px := scene_cam_dist / max(f32(scene_rt.height), 1)
+		pan := r * (-delta.x * units_per_px) + u * (delta.y * units_per_px)
+		scene_cam_pos += pan
 		update_scene_camera()
 		return
 	}
 
 	wheel := io.MouseWheel
 	if wheel != 0 {
-		scene_cam_dist *= 1 - wheel * ZOOM_SCROLL_FACTOR
+		// Logarithmic dolly toward the fixed anchor, with a minimum absolute
+		// step so close-range zoom stays responsive.
+		anchor := scene_cam_target
+		old_dist := scene_cam_dist
+		new_dist := old_dist * math.pow(ZOOM_WHEEL_BASE, -wheel)
+		min_step := ZOOM_MIN_STEP * abs(wheel)
+		if wheel > 0 && old_dist - new_dist < min_step do new_dist = old_dist - min_step
+		if wheel < 0 && new_dist - old_dist < min_step do new_dist = old_dist + min_step
+		scene_cam_dist = clamp(new_dist, 0.1, 10000)
+		fwd, _, _ := _scene_cam_basis()
+		scene_cam_pos = anchor - fwd * scene_cam_dist
 		update_scene_camera()
 	}
 }
