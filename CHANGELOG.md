@@ -1,3 +1,13 @@
+## [0.46.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.45.0...v0.46.0) (2026-07-19)
+
+### Features
+
+* f3 in app to debug draw physics gizmos ([396918b](https://github.com/MoonHug-Editor/moonhug/commit/396918b7761c654e2c8f21781dcc45c753716e33))
+
+### Bug Fixes
+
+* improve scene camera fly-through ([7c49a1c](https://github.com/MoonHug-Editor/moonhug/commit/7c49a1cd59d6142b756efce63c690be8a267afa2))
+
 ## [0.45.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.44.0...v0.45.0) (2026-07-19)
 
 ### Features
