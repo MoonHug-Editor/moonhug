@@ -1,3 +1,11 @@
+## [0.44.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.43.0...v0.44.0) (2026-07-19)
+
+### Features
+
+* add 3D Object menus, scale collider with transform ([1f27645](https://github.com/MoonHug-Editor/moonhug/commit/1f276451e3dba390486da26d2670c8229eaeb201))
+* add essentials plugin with meshes, shaders, materials ([fadfa2c](https://github.com/MoonHug-Editor/moonhug/commit/fadfa2c223eef11b68652d77f51fd97309c8403e))
+* improve menus ([0e2bc50](https://github.com/MoonHug-Editor/moonhug/commit/0e2bc5035524487f16f054119dacee685de66fc0))
+
 ## [0.43.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.42.0...v0.43.0) (2026-07-19)
 
 ### Features
