@@ -38,6 +38,16 @@ file_move_to_trash :: proc(path: string) -> bool {
 	return bool(msgSend(NS.BOOL, fm, "trashItemAtURL:resultingItemURL:error:", url, rawptr(nil), rawptr(nil)))
 }
 
+// Opens the file with its OS-associated application (folders open in Finder).
+file_open_in_os :: proc(path: string) -> bool {
+	ws := msgSend(^Workspace, Workspace, "sharedWorkspace")
+	if ws == nil do return false
+	abs, abs_err := filepath.abs(path, context.temp_allocator)
+	if abs_err != nil do return false
+	ns_path := NS.String_initWithOdinString(NS.String_alloc(), abs)
+	return bool(msgSend(NS.BOOL, ws, "openFile:", ns_path))
+}
+
 // Reveals (selects) the file/folder in Finder.
 file_reveal_in_os :: proc(path: string) -> bool {
 	ws := msgSend(^Workspace, Workspace, "sharedWorkspace")

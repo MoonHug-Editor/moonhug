@@ -12,6 +12,11 @@ file_move_to_trash :: proc(path: string) -> bool {
 	return false
 }
 
+file_open_in_os :: proc(path: string) -> bool {
+	fmt.printf("[Editor] Open with OS: not implemented on this OS (%s)\n", path)
+	return false
+}
+
 file_reveal_in_os :: proc(path: string) -> bool {
 	fmt.printf("[Editor] Show in file manager: not implemented on this OS (%s)\n", path)
 	return false

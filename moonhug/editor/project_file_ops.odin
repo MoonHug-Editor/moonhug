@@ -1,10 +1,10 @@
 package editor
 
-// Project-view file operations: New Folder, Show in Finder and Delete are
-// Assets/... menu items (appearing in BOTH the top Assets menu and the
-// project view's right-click menu — Unity puts only these in the context
-// menu). Cut/Copy/Paste/Duplicate are shortcut-only, like Finder:
-// cmd+C/X/V/D and cmd+Backspace in _project_handle_list_keys.
+// Project-view file operations. The Assets/... menu (appearing in BOTH the
+// top Assets menu and the project view's right-click menu) carries Unity's
+// top section: Create | Reveal in Finder, Open, Delete, Rename, Copy Path |
+// Open Scene Additive. Cut/Copy/Paste/Duplicate are shortcut-only, like
+// Finder: cmd+C/X/V/D and cmd+Backspace in _project_handle_list_keys.
 //
 // Guid rules (the part that keeps references alive):
 // - Cut/Paste MOVES the .meta with the asset — same asset, new path, guid
@@ -21,6 +21,8 @@ import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import strings "core:strings"
+import "core:encoding/uuid"
+import im "../../external/odin-imgui"
 import engine "../engine"
 
 // --- File clipboard -----------------------------------------------------------
@@ -263,18 +265,72 @@ project_menu_new_folder :: proc() {
 @(menu_separator = {path = "Assets/Create", order = -15})
 project_menu_folder_separator :: proc() {}
 
-// Unity's project context grouping: Create | Show in Finder, Delete |
-// tools (Extract...). The Create submenu is pinned first via top_order in
-// main.odin; orders -68/-66 stay free for future Open/Rename items.
 @(menu_separator = {path = "Assets", order = -90})
 project_menu_ops_separator :: proc() {}
 
-@(menu_item = {path = "Assets/Show in Finder", order = -69, shortcut = ""})
+@(private)
+_project_has_selection :: proc() -> bool {
+	return projectViewData.selectedFile != ""
+}
+
+@(private)
+_project_selection_renameable :: proc() -> bool {
+	sel := projectViewData.selectedFile
+	return sel != "" && !project_path_is_protected(sel)
+}
+
+@(private)
+_project_selection_is_scene :: proc() -> bool {
+	return strings.has_suffix(projectViewData.selectedFile, ".scene")
+}
+
+@(menu_item = {path = "Assets/Reveal in Finder", order = -69, shortcut = ""})
 project_menu_show_in_finder :: proc() {
 	project_ops_show_in_finder()
 }
 
-@(menu_item = {path = "Assets/Delete", order = -67, shortcut = ""})
+@(menu_item = {path = "Assets/Open", order = -68, enabled = _project_has_selection})
+project_menu_open :: proc() {
+	sel := projectViewData.selectedFile
+	if sel == "" do return
+	file_open_in_os(sel)
+}
+
+@(menu_item = {path = "Assets/Delete", order = -67, enabled = _project_has_selection})
 project_menu_delete :: proc() {
 	project_ops_delete()
+}
+
+@(menu_item = {path = "Assets/Rename", order = -66, enabled = _project_selection_renameable})
+project_menu_rename :: proc() {
+	_project_begin_rename_selected()
+}
+
+@(menu_item = {path = "Assets/Copy Path", order = -65, enabled = _project_has_selection})
+project_menu_copy_path :: proc() {
+	sel := projectViewData.selectedFile
+	if sel == "" do return
+	im.SetClipboardText(strings.clone_to_cstring(sel, context.temp_allocator))
+}
+
+@(private)
+_project_selection_has_guid :: proc() -> bool {
+	sel := projectViewData.selectedFile
+	if sel == "" do return false
+	_, ok := engine.asset_db_get_guid(sel)
+	return ok
+}
+
+@(menu_item = {path = "Assets/Copy GUID", order = -64, enabled = _project_selection_has_guid})
+project_menu_copy_uuid :: proc() {
+	guid, ok := engine.asset_db_get_guid(projectViewData.selectedFile)
+	if !ok do return
+	im.SetClipboardText(strings.clone_to_cstring(uuid.to_string(guid, context.temp_allocator), context.temp_allocator))
+}
+
+@(menu_separator = {path = "Assets", order = -60})
+@(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene})
+project_menu_open_scene_additive :: proc() {
+	if !_project_selection_is_scene() do return
+	engine.scene_load_additive_path(projectViewData.selectedFile)
 }
