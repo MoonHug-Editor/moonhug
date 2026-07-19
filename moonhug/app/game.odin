@@ -16,7 +16,7 @@ TANK_SPEED :: f32(5)
 @(private = "file")
 _aim_dir: [2]f32 = {0, 1}
 
-@(update={order=0})
+@(fixed_update={order=0})
 game_tick :: proc(dt: f32) {
     refs := scene_refs_get()
     if refs != nil && refs.enabled {
@@ -47,10 +47,10 @@ tank_move :: proc(tank: ^Tank, dt: f32) {
     t := engine.pool_get(&w.transforms, engine.Handle(tank.owner))
     if t == nil do return
 
-    if gfx.input_key_down(.W) do t.position[1] += TANK_SPEED * dt
-    if gfx.input_key_down(.S) do t.position[1] -= TANK_SPEED * dt
-    if gfx.input_key_down(.A) do t.position[0] -= TANK_SPEED * dt
-    if gfx.input_key_down(.D) do t.position[0] += TANK_SPEED * dt
+    if gfx.input_key_down_fixed(.W) do t.position[1] += TANK_SPEED * dt
+    if gfx.input_key_down_fixed(.S) do t.position[1] -= TANK_SPEED * dt
+    if gfx.input_key_down_fixed(.A) do t.position[0] -= TANK_SPEED * dt
+    if gfx.input_key_down_fixed(.D) do t.position[0] += TANK_SPEED * dt
 }
 
 turret_aim :: proc(tank: ^Tank) {
@@ -83,7 +83,7 @@ turret_aim :: proc(tank: ^Tank) {
 }
 
 fire :: proc(tank: ^Tank, spawn_parent: engine.Transform_Handle) {
-    if !gfx.input_mouse_pressed(.Left) && !gfx.input_key_pressed(.SPACE) do return
+    if !gfx.input_mouse_pressed_fixed(.Left) && !gfx.input_key_pressed_fixed(.SPACE) do return
     if engine.asset_guid_is_empty(tank.projectile_prefab) do return
 
     bH := engine.scene_instantiate_guid(tank.projectile_prefab, spawn_parent)

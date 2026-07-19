@@ -259,6 +259,7 @@ editor_init :: proc() {
         // Create submenu pinned to the top of the Assets menu (Unity).
         top_order["Assets/Create"] = -100
         top_order["Component"] = 15
+        top_order["Tools"] = 20 // plugin/tooling menu items (e.g. packages)
         top_order["Help"] = 30
         menu.sort_top_menu(top_order)
     }

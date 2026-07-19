@@ -8,8 +8,11 @@ TypeKey :: enum u16 {
 	A,
 	AudioSettings,
 	B,
+	BoxCollider2D,
 	C,
 	Camera,
+	CapsuleCollider2D,
+	CircleCollider2D,
 	DemoMenu,
 	GameSettings,
 	Lifetime,
@@ -22,6 +25,7 @@ TypeKey :: enum u16 {
 	Player,
 	PlayerSettings,
 	Projectile,
+	Rigidbody2D,
 	SceneFile,
 	SceneRefs,
 	Script,
@@ -47,8 +51,11 @@ UUID_NIL :: uuid.Identifier{};
 A__Guid := uuid.read("f49ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else UUID_NIL
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
+BoxCollider2D__Guid := uuid.read("1e2d0da1-9df6-4668-9f86-f76351378394") or_else UUID_NIL
 C__Guid := uuid.read("f51ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_NIL
+CapsuleCollider2D__Guid := uuid.read("11cbe045-afe7-413a-837e-167ca23b7ca1") or_else UUID_NIL
+CircleCollider2D__Guid := uuid.read("657711b4-6689-479e-9eec-da439658cadf") or_else UUID_NIL
 DemoMenu__Guid := uuid.read("7cbf2edf-0283-43b3-930e-ef9546d8eed9") or_else UUID_NIL
 GameSettings__Guid := uuid.read("f47ac10b-58cc-4372-a567-0e02b2c3d479") or_else UUID_NIL
 Lifetime__Guid := uuid.read("c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c") or_else UUID_NIL
@@ -61,6 +68,7 @@ Parallel__Guid := uuid.read("916005b6-1c68-49e7-88be-0add6164d3a8") or_else UUID
 Player__Guid := uuid.read("d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c") or_else UUID_NIL
 PlayerSettings__Guid := uuid.read("c8b1e4a2-9d3f-4c5e-a6b7-8f1d2e3c4b5a") or_else UUID_NIL
 Projectile__Guid := uuid.read("7f5e6f68-938f-467f-993e-4d92adb25233") or_else UUID_NIL
+Rigidbody2D__Guid := uuid.read("add56122-a3b9-4fcb-a924-0fa64b35d523") or_else UUID_NIL
 SceneFile__Guid := uuid.read("0d489fce-9c04-4e4d-be12-f3f590d60cea") or_else UUID_NIL
 SceneRefs__Guid := uuid.read("b1d7c74d-4e52-4088-a118-85059cf80149") or_else UUID_NIL
 Script__Guid := uuid.read("adaf3551-4704-4255-ad91-fde59441dc53") or_else UUID_NIL

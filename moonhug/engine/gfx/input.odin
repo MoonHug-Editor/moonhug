@@ -31,6 +31,21 @@ _input: struct {
 	focused:        bool,
 	focus_gained:   bool, // edge, this frame — drives the editor asset refresh
 
+	// Fixed-tick input latching (docs/FixedTick.md): edges ACCUMULATE across
+	// frames and are consumed once per fixed tick (input_fixed_latch), so a
+	// press shorter than a tick still registers on the next tick. The
+	// non-accum fields are the latched view fixed-update code reads.
+	fixed_key_pressed_accum:    [_MAX_KEYS]bool,
+	fixed_key_released_accum:   [_MAX_KEYS]bool,
+	fixed_mouse_pressed_accum:  [Mouse_Button]bool,
+	fixed_mouse_released_accum: [Mouse_Button]bool,
+	fixed_key_pressed:          [_MAX_KEYS]bool,
+	fixed_key_released:         [_MAX_KEYS]bool,
+	fixed_key_down:             [_MAX_KEYS]bool,
+	fixed_mouse_pressed:        [Mouse_Button]bool,
+	fixed_mouse_released:       [Mouse_Button]bool,
+	fixed_mouse_down:           [Mouse_Button]bool,
+
 	// Lifetime diagnostics (never reset): raw SDL event counts, for the
 	// editor's Input Debug window — discriminates "SDL stopped delivering
 	// key events" from "imgui state stuck" when keyboard input dies.
@@ -57,7 +72,10 @@ _input_apply_event :: proc(e: ^sdl.Event) {
 		_input.dbg_key_down += 1
 		sc := int(e.key.scancode)
 		if sc >= 0 && sc < _MAX_KEYS {
-			if !e.key.repeat do _input.key_pressed[sc] = true
+			if !e.key.repeat {
+				_input.key_pressed[sc] = true
+				_input.fixed_key_pressed_accum[sc] = true
+			}
 			_input.key_down[sc] = true
 		}
 	case .KEY_UP:
@@ -65,6 +83,7 @@ _input_apply_event :: proc(e: ^sdl.Event) {
 		sc := int(e.key.scancode)
 		if sc >= 0 && sc < _MAX_KEYS {
 			_input.key_released[sc] = true
+			_input.fixed_key_released_accum[sc] = true
 			_input.key_down[sc] = false
 		}
 	case .MOUSE_MOTION:
@@ -82,9 +101,11 @@ _input_apply_event :: proc(e: ^sdl.Event) {
 		if e.button.down {
 			_input.mouse_down[btn] = true
 			_input.mouse_pressed[btn] = true
+			_input.fixed_mouse_pressed_accum[btn] = true
 		} else {
 			_input.mouse_down[btn] = false
 			_input.mouse_released[btn] = true
+			_input.fixed_mouse_released_accum[btn] = true
 		}
 	case .MOUSE_WHEEL:
 		_input.wheel += e.wheel.y
@@ -149,6 +170,55 @@ input_text :: proc() -> []rune {
 
 input_focused :: proc() -> bool {
 	return _input.focused
+}
+
+// --- Fixed-tick input (docs/FixedTick.md) -----------------------------------
+// Call once at the START of every fixed tick: moves the accumulated edges
+// into the latched view and clears the accumulators. With several ticks in
+// one frame the first tick consumes the edges (a press fires once); with
+// zero ticks the edges carry over to the next frame's first tick.
+
+input_fixed_latch :: proc() {
+	_input.fixed_key_pressed = _input.fixed_key_pressed_accum
+	_input.fixed_key_released = _input.fixed_key_released_accum
+	_input.fixed_mouse_pressed = _input.fixed_mouse_pressed_accum
+	_input.fixed_mouse_released = _input.fixed_mouse_released_accum
+	// Down = held now OR pressed since the last tick — a tap that started and
+	// ended between ticks still reads as down for one tick.
+	for i in 0 ..< _MAX_KEYS {
+		_input.fixed_key_down[i] = _input.key_down[i] || _input.fixed_key_pressed_accum[i]
+	}
+	for b in Mouse_Button {
+		_input.fixed_mouse_down[b] = _input.mouse_down[b] || _input.fixed_mouse_pressed_accum[b]
+	}
+	_input.fixed_key_pressed_accum = {}
+	_input.fixed_key_released_accum = {}
+	_input.fixed_mouse_pressed_accum = {}
+	_input.fixed_mouse_released_accum = {}
+}
+
+input_key_down_fixed :: proc(k: Key) -> bool {
+	return _input.fixed_key_down[int(k)]
+}
+
+input_key_pressed_fixed :: proc(k: Key) -> bool {
+	return _input.fixed_key_pressed[int(k)]
+}
+
+input_key_released_fixed :: proc(k: Key) -> bool {
+	return _input.fixed_key_released[int(k)]
+}
+
+input_mouse_down_fixed :: proc(b: Mouse_Button) -> bool {
+	return _input.fixed_mouse_down[b]
+}
+
+input_mouse_pressed_fixed :: proc(b: Mouse_Button) -> bool {
+	return _input.fixed_mouse_pressed[b]
+}
+
+input_mouse_released_fixed :: proc(b: Mouse_Button) -> bool {
+	return _input.fixed_mouse_released[b]
 }
 
 input_focus_gained :: proc() -> bool {

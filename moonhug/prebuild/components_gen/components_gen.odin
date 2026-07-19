@@ -231,11 +231,23 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "import \"menu\"\n")
 	strings.write_string(&b, "import \"undo\"\n\n")
 
+	// Sorted by menu path (not type name) so the emitted registration mirrors
+	// the menu. Slashes in @(component={menu="Sub/Name"}) nest submenus like
+	// any other menu path; items use the DEFAULT order, so the menu sorter's
+	// name tiebreak yields an alphabetical Component menu with submenus
+	// interleaved by name.
+	menu_entries := make([]ComponentEntry, len(data.entries))
+	defer delete(menu_entries)
+	copy(menu_entries, data.entries[:])
+	slice.sort_by(menu_entries, proc(a, b: ComponentEntry) -> bool {
+		return a.menu_path < b.menu_path
+	})
+
 	strings.write_string(&b, "register_component_menus :: proc() {\n")
-	for e in data.entries {
+	for e in menu_entries {
 		menu_full := strings.concatenate({"Component/", e.menu_path})
 		defer delete(menu_full)
-		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }}, 0)\n", menu_full, e.type_name)
+		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }})\n", menu_full, e.type_name)
 	}
 	strings.write_string(&b, "}\n\n")
 

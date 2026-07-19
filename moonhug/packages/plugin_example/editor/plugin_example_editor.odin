@@ -6,7 +6,7 @@ package plugin_example_editor
 
 import "../../../engine/log"
 
-@(menu_item={path="Help/Plugin Example", order=100, shortcut=""})
+@(menu_item={path="Tools/Plugin Example/Log", shortcut=""})
 plugin_example_menu :: proc() {
 	log.info("[plugin_example] Hello from the plugin's editor package!")
 }

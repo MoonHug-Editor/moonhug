@@ -5,7 +5,7 @@ import gfx "../engine/gfx"
 import "core:encoding/uuid"
 import "core:math/rand"
 
-@(update={order=0})
+@(fixed_update={order=0})
 tick_player :: proc(dt: f32) {
     w := engine.ctx_world()
     for i in 0..<len(w.players.slots) {
@@ -19,24 +19,24 @@ tick_player :: proc(dt: f32) {
 
         speed := p.speed if p.speed > 0 else 100
 
-        if gfx.input_key_down(.W) do t.position[1] += speed * dt
-        if gfx.input_key_down(.S) do t.position[1] -= speed * dt
-        if gfx.input_key_down(.A) do t.position[0] -= speed * dt
-        if gfx.input_key_down(.D) do t.position[0] += speed * dt
+        if gfx.input_key_down_fixed(.W) do t.position[1] += speed * dt
+        if gfx.input_key_down_fixed(.S) do t.position[1] -= speed * dt
+        if gfx.input_key_down_fixed(.A) do t.position[0] -= speed * dt
+        if gfx.input_key_down_fixed(.D) do t.position[0] += speed * dt
 
         // animations
-        if gfx.input_key_down(._1) do engine.tween_run("Anim0", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._2) do engine.tween_run("Anim1", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._3) do engine.tween_run("Anim2", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._4) do engine.tween_run("Anim3", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._5) do engine.tween_run("Anim4", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._6) do engine.tween_run("Anim5", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._7) do engine.tween_run("Anim6", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._8) do engine.tween_run("Anim7", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._9) do engine.tween_run("Anim8", engine.TweenContext{ subject = p.owner })
-        if gfx.input_key_down(._0) do engine.tween_run("Anim9", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._1) do engine.tween_run("Anim0", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._2) do engine.tween_run("Anim1", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._3) do engine.tween_run("Anim2", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._4) do engine.tween_run("Anim3", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._5) do engine.tween_run("Anim4", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._6) do engine.tween_run("Anim5", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._7) do engine.tween_run("Anim6", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._8) do engine.tween_run("Anim7", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._9) do engine.tween_run("Anim8", engine.TweenContext{ subject = p.owner })
+        if gfx.input_key_down_fixed(._0) do engine.tween_run("Anim9", engine.TweenContext{ subject = p.owner })
 
-        if gfx.input_key_pressed(.SPACE) && len(p.colors) > 0 {
+        if gfx.input_key_pressed_fixed(.SPACE) && len(p.colors) > 0 {
             _, sr := engine.transform_get_comp(p.owner, engine.SpriteRenderer)
             if sr != nil {
                 idx := rand.int_max(len(p.colors))
@@ -44,7 +44,7 @@ tick_player :: proc(dt: f32) {
             }
         }
 
-        if gfx.input_key_pressed(.SPACE) {
+        if gfx.input_key_pressed_fixed(.SPACE) {
             bullet_guid, guid_ok := uuid.read(BULLET_SCENE_GUID)
             if guid_ok == nil {
                 bullet_tH := engine.scene_instantiate_guid(engine.Asset_GUID(bullet_guid), p.owner)

@@ -5,20 +5,24 @@ import "menu"
 import "undo"
 
 register_component_menus :: proc() {
-	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) }, 0)
-	menu.add_menu_item("Component/DemoMenu", "", proc() { _component_menu_add(.DemoMenu) }, 0)
-	menu.add_menu_item("Component/Lifetime", "", proc() { _component_menu_add(.Lifetime) }, 0)
-	menu.add_menu_item("Component/Light", "", proc() { _component_menu_add(.Light) }, 0)
-	menu.add_menu_item("Component/MeshFilter", "", proc() { _component_menu_add(.MeshFilter) }, 0)
-	menu.add_menu_item("Component/MeshRenderer", "", proc() { _component_menu_add(.MeshRenderer) }, 0)
-	menu.add_menu_item("Component/Player", "", proc() { _component_menu_add(.Player) }, 0)
-	menu.add_menu_item("Component/Projectile", "", proc() { _component_menu_add(.Projectile) }, 0)
-	menu.add_menu_item("Component/SceneRefs", "", proc() { _component_menu_add(.SceneRefs) }, 0)
-	menu.add_menu_item("Component/Script", "", proc() { _component_menu_add(.Script) }, 0)
-	menu.add_menu_item("Component/Spinner", "", proc() { _component_menu_add(.Spinner) }, 0)
-	menu.add_menu_item("Component/SpriteRenderer", "", proc() { _component_menu_add(.SpriteRenderer) }, 0)
-	menu.add_menu_item("Component/SpriteSortingGroup", "", proc() { _component_menu_add(.SpriteSortingGroup) }, 0)
-	menu.add_menu_item("Component/Tank", "", proc() { _component_menu_add(.Tank) }, 0)
+	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) })
+	menu.add_menu_item("Component/DemoMenu", "", proc() { _component_menu_add(.DemoMenu) })
+	menu.add_menu_item("Component/Lifetime", "", proc() { _component_menu_add(.Lifetime) })
+	menu.add_menu_item("Component/Light", "", proc() { _component_menu_add(.Light) })
+	menu.add_menu_item("Component/MeshFilter", "", proc() { _component_menu_add(.MeshFilter) })
+	menu.add_menu_item("Component/MeshRenderer", "", proc() { _component_menu_add(.MeshRenderer) })
+	menu.add_menu_item("Component/Physics2D/BoxCollider2D", "", proc() { _component_menu_add(.BoxCollider2D) })
+	menu.add_menu_item("Component/Physics2D/CapsuleCollider2D", "", proc() { _component_menu_add(.CapsuleCollider2D) })
+	menu.add_menu_item("Component/Physics2D/CircleCollider2D", "", proc() { _component_menu_add(.CircleCollider2D) })
+	menu.add_menu_item("Component/Physics2D/Rigidbody2D", "", proc() { _component_menu_add(.Rigidbody2D) })
+	menu.add_menu_item("Component/Player", "", proc() { _component_menu_add(.Player) })
+	menu.add_menu_item("Component/Plugin Example/Spinner", "", proc() { _component_menu_add(.Spinner) })
+	menu.add_menu_item("Component/Projectile", "", proc() { _component_menu_add(.Projectile) })
+	menu.add_menu_item("Component/SceneRefs", "", proc() { _component_menu_add(.SceneRefs) })
+	menu.add_menu_item("Component/Script", "", proc() { _component_menu_add(.Script) })
+	menu.add_menu_item("Component/SpriteRenderer", "", proc() { _component_menu_add(.SpriteRenderer) })
+	menu.add_menu_item("Component/SpriteSortingGroup", "", proc() { _component_menu_add(.SpriteSortingGroup) })
+	menu.add_menu_item("Component/Tank", "", proc() { _component_menu_add(.Tank) })
 }
 
 _component_menu_add :: proc(key: engine.TypeKey) {

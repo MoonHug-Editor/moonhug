@@ -10,7 +10,7 @@ import "../../engine"
 
 // Spins its transform by `speed` degrees per second around each local axis
 // (Unity rotator style: rotation += speed * dt), in playmode.
-@(component)
+@(component={menu="Plugin Example/Spinner"})
 @(typ_guid={guid = "84040061-0c08-4f71-84ae-255899c77d9f"})
 Spinner :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -21,7 +21,7 @@ reset_Spinner :: proc(comp: ^Spinner) {
 	comp.speed = {0, 0, 90}
 }
 
-@(update={order=0})
+@(fixed_update={order=0})
 spinner_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
 	pool := spinners(w)

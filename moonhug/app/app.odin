@@ -64,6 +64,14 @@ main :: proc() {
         gfx.poll_events()
         if !gfx.frame_begin() do continue
 
+        // Fixed-rate sim ticks first (0..k this frame, accumulator-driven —
+        // docs/FixedTick.md), then the per-frame view tick.
+        steps := engine.fixed_frame_ticks(gfx.delta_time())
+        for _ in 0 ..< steps {
+            gfx.input_fixed_latch()
+            __fixed_update(engine.fixed_dt())
+            engine.fixed_tick_advance()
+        }
         __update(gfx.delta_time())
 
         // World cameras render first (pass stays open), then the demo menu

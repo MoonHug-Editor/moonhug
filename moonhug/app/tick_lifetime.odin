@@ -2,7 +2,7 @@ package app
 
 import "../engine"
 
-@(update={order=-50})
+@(fixed_update={order=-50})
 tick_lifetime :: proc(dt: f32) {
     w := engine.ctx_world()
     for i in 0..<len(w.lifetimes.slots) {
@@ -18,7 +18,7 @@ tick_lifetime :: proc(dt: f32) {
     }
 }
 
-@(update={order=9999})
+@(fixed_update={order=9999})
 tick_destroy :: proc(dt: f32) {
     engine.transform_tick_destroy()
 }

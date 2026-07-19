@@ -2,7 +2,7 @@ package menu
 
 import "core:fmt"
 import "core:mem"
-import "core:sort"
+import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
 import im "../../../external/odin-imgui"
@@ -56,10 +56,11 @@ _sort_children_by_order :: proc(node: ^MenuNode, parent_path: string, top_order:
 		ord := path in top_order ? top_order[path] : c.order
 		pairs[i] = {c, ord}
 	}
-	sort.quick_sort_proc(pairs[:], proc(a, b: _NodeOrder) -> int {
-		if a.order < b.order do return -1
-		if a.order > b.order do return 1
-		return 0
+	// STABLE sort: equal orders keep registration order (an unstable sort
+	// scrambled ties — e.g. the Component menu, which prebuild already emits
+	// alphabetically and registers in one run).
+	slice.stable_sort_by(pairs[:], proc(a, b: _NodeOrder) -> bool {
+		return a.order < b.order
 	})
 	clear(children)
 	for p in pairs do append(children, p.node)
