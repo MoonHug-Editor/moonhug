@@ -46,9 +46,11 @@ moonhug/packages/
   prebuild only scans its explicit targets (package root and `editor/`), so
   nothing ever looks inside `samples/` until a sample is installed.
 - **`tests/`** — the package's test suite (`package <name>_tests`), sharing
-  the bootstrap in `moonhug/tests/common`. run_tests.sh runs the central
-  suite, then every `packages/*/tests`. Tests ship with the package and die
-  with it on uninstall — the central suite never imports `packages:`.
+  the bootstrap in `moonhug/tests/common`. Prebuild imports every installed
+  suite into `moonhug/tests/packages_tests_generated.odin`, so run_tests.sh
+  covers everything in one `odin test -all-packages` run. Tests ship with the
+  package and die with it on uninstall — the central suite only reaches
+  `packages:` through that generated file.
 - Other subfolders are just folders with no special meaning.
 
 ## Install model
