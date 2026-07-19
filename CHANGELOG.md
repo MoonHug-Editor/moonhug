@@ -1,3 +1,18 @@
+## [0.43.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.42.0...v0.43.0) (2026-07-19)
+
+### Features
+
+* add physics(3d) plugin ([f27ef3a](https://github.com/MoonHug-Editor/moonhug/commit/f27ef3a454a0b311d3e20b445c79b1adbd22da74))
+* add physics2d plugin, fixed tick ([97143e9](https://github.com/MoonHug-Editor/moonhug/commit/97143e9eabc6e66c8554df17ea544a254d169a26))
+* add plugins feature ([c684149](https://github.com/MoonHug-Editor/moonhug/commit/c6841493a1823cbce9af535d55b039c152380f1d))
+* on_draw_gizmos attributes ([627be40](https://github.com/MoonHug-Editor/moonhug/commit/627be40c20f2b618bc992915eec08ba1f8e5a718))
+* tests per plugin ([07358ab](https://github.com/MoonHug-Editor/moonhug/commit/07358ab8fe7e5bf884e73c5805b7c0247d67a690))
+
+### Bug Fixes
+
+* cache project dirs for performance ([3d30999](https://github.com/MoonHug-Editor/moonhug/commit/3d309995fd786fbcb024b21a124c8d2b5e521a25))
+* compilation fix after odin update ([e0a2e94](https://github.com/MoonHug-Editor/moonhug/commit/e0a2e9490830552b3103adaa8d13e1b8a2363929))
+
 ## [0.42.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.41.0...v0.42.0) (2026-07-17)
 
 ### Features
