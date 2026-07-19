@@ -23,6 +23,9 @@ demo_menu_draw :: proc() {
 
     if _current_demo != nil {
         gfx.debug_text({10, 10}, 20, WHITE, "ESC: back to menu")
+        if engine.debug_draw_enabled {
+            gfx.debug_text({10, 36}, 20, WHITE, "F3: colliders (on)")
+        }
         if gfx.input_key_released(.ESCAPE) {
             engine.sm_scene_unload(_current_demo)
             _current_demo = nil

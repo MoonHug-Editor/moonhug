@@ -74,9 +74,16 @@ main :: proc() {
         }
         __update(gfx.delta_time())
 
-        // World cameras render first (pass stays open), then the demo menu
-        // overlays in screen space within the same swapchain pass.
+        // F3 toggles the packages' @(debug_draw) view (collider wireframes).
+        if gfx.input_key_pressed(.F3) {
+            engine.debug_draw_enabled = !engine.debug_draw_enabled
+        }
+
+        // World cameras render first (pass stays open, world view_proj still
+        // set — debug draw rides it), then the demo menu overlays in screen
+        // space within the same swapchain pass.
         if engine.render_world_cameras() {
+            if engine.debug_draw_enabled do __debug_draw()
             ws := gfx.window_size()
             gfx.set_view_proj(gfx.matrix4_ortho_pixels(f32(ws.x), f32(ws.y)))
             demo_menu_draw()

@@ -119,10 +119,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
-- menu validators - proc that returns show/hide/disable based on selected items or other state, menu then shows/hides/or disables menu item
-
-- improve transform context menu in hierarchy
-  - fix copy/paste/duplicate bugs
+- hierarchy fix copy/paste/duplicate bugs
 
 - playable graph - to play animations on hierarchies(needs hierarchy?)
   - no Mecanim, needs something else more like timelines blending

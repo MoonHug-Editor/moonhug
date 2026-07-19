@@ -282,6 +282,11 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	}
 }
 
+// In-app debug drawing (collider wireframes etc): when on, the app loop
+// calls the generated __debug_draw() dispatcher (@(debug_draw) procs from
+// installed packages) inside the open world pass. Toggled with F3.
+debug_draw_enabled: bool
+
 // Renders ALL enabled cameras ascending by Camera.order into `target`
 // (nil = swapchain). Begins the pass — cleared by the lowest-order camera's
 // clear_color, black when no camera — and LEAVES IT OPEN so the caller can

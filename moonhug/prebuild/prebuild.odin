@@ -36,6 +36,7 @@ import _ "tween_gen"
 import _ "scene_toolbar_gen"
 import _ "packages_gen"
 import _ "gizmos_gen"
+import _ "debug_draw_gen"
 
 PACKAGES := []string{
 	"moonhug/editor",
