@@ -25,6 +25,7 @@ MenuEntry :: struct {
 	name:        string,
 	shortcut:    string,
 	order:       int,
+	enabled:     string, // optional predicate proc name in the source package
 	source_pkg:  string,
 	source_path: string,
 }
@@ -43,9 +44,9 @@ _register :: proc "contextless" () {
 }
 
 
-// Extract path, order, shortcut from a flattened attribute's fields.
-_extract_menu_item_comp :: proc(args: gen_facts.Attr_Args) -> (path: string, order: int, shortcut: string) {
-	return args.fields["path"], gen_facts.attr_int(args, "order"), args.fields["shortcut"]
+// Extract path, order, shortcut, enabled from a flattened attribute's fields.
+_extract_menu_item_comp :: proc(args: gen_facts.Attr_Args) -> (path: string, order: int, shortcut: string, enabled: string) {
+	return args.fields["path"], gen_facts.attr_int(args, "order"), args.fields["shortcut"], args.fields["enabled"]
 }
 
 _parent_path :: proc(path: string) -> string {
@@ -86,29 +87,29 @@ provide :: proc(w: ^db.World) -> bool {
 			// Iterate attributes in source order: a proc may carry several
 			// menu_item / menu_separator entries and their order matters.
 			for args in attr_set.attrs {
-				path, shortcut, separator_path: string
+				path, shortcut, enabled, separator_path: string
 				menu_order: int = 0
 				separator_order: int = 0
 
 				if args.key == "menu_item" {
-					path, menu_order, shortcut = _extract_menu_item_comp(args)
+					path, menu_order, shortcut, enabled = _extract_menu_item_comp(args)
 				}
 				if args.key == "menu_separator" {
-					separator_path, separator_order, _ = _extract_menu_item_comp(args)
+					separator_path, separator_order, _, _ = _extract_menu_item_comp(args)
 				}
 
 				if path != "" && separator_path == "" {
-					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, decl.pkg.name, decl.pkg_path})
+					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, decl.pkg.name, decl.pkg_path})
 				} else if separator_path != "" {
-					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", ""})
+					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", ""})
 				}
 			}
 		} else {
 			for args in attr_set.attrs {
 				if args.key == "menu_toggle" {
-					path, menu_order, _ := _extract_menu_item_comp(args)
+					path, menu_order, _, _ := _extract_menu_item_comp(args)
 					if path != "" {
-						append(&entries, MenuEntry{.Toggle, path, ident_name, "", menu_order, decl.pkg.name, decl.pkg_path})
+						append(&entries, MenuEntry{.Toggle, path, ident_name, "", menu_order, "", decl.pkg.name, decl.pkg_path})
 					}
 				}
 			}
@@ -123,11 +124,15 @@ provide :: proc(w: ^db.World) -> bool {
 	return true
 }
 
-_qualified_name :: proc(pkg_name: string, e: MenuEntry) -> string {
-	if e.source_pkg != "" && e.source_pkg != pkg_name {
-		return fmt.tprintf("%s.%s", e.source_pkg, e.name)
+_qualified_ident :: proc(pkg_name: string, source_pkg: string, name: string) -> string {
+	if source_pkg != "" && source_pkg != pkg_name {
+		return fmt.tprintf("%s.%s", source_pkg, name)
 	}
-	return e.name
+	return name
+}
+
+_qualified_name :: proc(pkg_name: string, e: MenuEntry) -> string {
+	return _qualified_ident(pkg_name, e.source_pkg, e.name)
 }
 
 _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
@@ -230,7 +235,11 @@ generate :: proc(w: ^db.World) -> bool {
 			strings.write_string(&b, e.shortcut)
 			strings.write_string(&b, "\", ")
 			strings.write_string(&b, _qualified_name(_PKG_NAME, e))
-			fmt.sbprintf(&b, ", %d)\n", e.order)
+			fmt.sbprintf(&b, ", %d", e.order)
+			if e.enabled != "" {
+				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.enabled))
+			}
+			strings.write_string(&b, ")\n")
 		case .Toggle:
 			strings.write_string(&b, "\tmenu.add_menu_toggle(\"")
 			strings.write_string(&b, e.path)

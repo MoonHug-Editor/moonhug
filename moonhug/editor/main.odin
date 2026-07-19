@@ -258,7 +258,7 @@ editor_init :: proc() {
         top_order["Assets"] = 8
         // Create submenu pinned to the top of the Assets menu (Unity).
         top_order["Assets/Create"] = -100
-        top_order["GameObject"] = 10 // also the hierarchy's context menu
+        top_order["GameObject"] = 10 // creation band also mirrors into the hierarchy popup
         top_order["Component"] = 15
         top_order["Tools"] = 20 // plugin/tooling menu items (e.g. packages)
         top_order["Help"] = 30
@@ -322,20 +322,15 @@ scene_create_variant_menu :: proc() {
 @(menu_separator={path="Assets/Create", order=-9})
 scene_create_variant_separator :: proc() {}
 
+// Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
+// (hierarchy_menu.odin) — only the Ctrl+Y redo alias is handled here.
 _process_undo_shortcuts :: proc() {
 	if engine.ctx_get().is_playmode do return
 	s := undo.get()
 	if s == nil do return
 
-	undo_chord  := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Z)
 	redo_chord_y := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Y)
-	redo_chord_shift := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Z)
-
-	if im.Shortcut(redo_chord_shift, {.RouteGlobal}) {
-		undo.apply_redo(s)
-	} else if im.Shortcut(undo_chord, {.RouteGlobal}) {
-		undo.apply_undo(s)
-	} else if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
+	if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
 		undo.apply_redo(s)
 	}
 }

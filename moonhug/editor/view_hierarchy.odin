@@ -9,7 +9,6 @@ import "core:encoding/uuid"
 import "core:time"
 import im "../../external/odin-imgui"
 import engine "../engine"
-import clip "clipboard"
 import "menu"
 import "undo"
 
@@ -392,20 +391,17 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 		_draw_drop_target_empty_space(scene)
 	}
 
-	// Unity model: the hierarchy's background context menu IS the GameObject
-	// menu (Create Empty + registered @(menu_item) items, plugin ones
-	// included). Items create under the ACTIVE scene's root.
+	// Unity model: the hierarchy's background context menu is composed from
+	// the shared GameObject bands (creation + view ops) — registered
+	// @(menu_item) items, plugin ones included. Items create under the
+	// ACTIVE scene's root.
 	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
-		menu.draw_menu_subtree("GameObject")
+		menu.draw_menu_sections({
+			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
+			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),
+		})
 		im.EndPopup()
 	}
-}
-
-@(menu_item={path="GameObject/Create Empty", order=-100, shortcut=""})
-hierarchy_create_empty_menu :: proc() {
-	scene := engine.sm_scene_get_active()
-	if scene == nil do return
-	undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle))
 }
 
 @(private)
@@ -692,53 +688,29 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	if im.BeginPopup("##NodeContext") {
 		// Right-click on an unselected row selects just it; on an already
-		// selected row it keeps the multi-selection (Unity) — Duplicate and
-		// Delete below then act on the whole selection.
+		// selected row it keeps the multi-selection (Unity) — the registered
+		// actions then act on the selection. The menu itself is COMPOSED from
+		// registered items (hierarchy_menu.odin + the shared GameObject
+		// bands), so plugins can extend every section.
 		if !sel_scene_is(tH) do sel_scene_only(tH)
-		multi := sel_scene_count() > 1
-		if im.MenuItem("Create Empty Child", nil, false, !is_nested) {
-			sel_scene_only(undo.record_create_child("Transform", tH))
-			_hierarchy_force_open = tH
-		}
-		if !is_root && !is_nested {
-			if im.MenuItem("Create Empty Parent", nil, false, true) {
-				_create_empty_parent(tH, sc)
-			}
-		}
-		if im.MenuItem("Rename", nil, false, !is_nested) {
-			_begin_rename(tH)
-		}
-		im.Separator()
-		if im.MenuItem("Copy", nil, false, true) {
-			clip.copy_hierarchy(engine.scene_copy_subtree(tH))
-		}
-		if im.MenuItem("Paste", nil, false, clip.has_hierarchy() && !is_nested) {
-			result := _paste_subtree_with_undo(clip.paste_hierarchy(), tH)
-			engine._transform_append_name_suffix(result, "_copy")
-			_hierarchy_force_open = tH
-		}
-		if im.MenuItem(multi ? "Duplicate Selected" : "Duplicate", nil, false, !is_root && !is_nested) {
-			_duplicate_selected()
-		}
-		if !is_root && !is_nested {
-			im.Separator()
-			if im.MenuItem(multi ? "Delete Selected" : "Delete", nil, false, true) {
-				if _hierarchy_rename_target != _HANDLE_NONE && sel_scene_is(_hierarchy_rename_target) {
-					_hierarchy_rename_target = _HANDLE_NONE
-				}
-				im.EndPopup()
-				_delete_selected()
-				if node_open && has_children {
-					im.TreePop()
-				}
-				if pushed_dim {
-					im.PopStyleColor(1)
-				}
-				im.PopID()
-				return
-			}
-		}
+		menu.draw_menu_sections({
+			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
+			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
+			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),
+		})
 		im.EndPopup()
+		// A destructive item (Delete) may have killed this row mid-draw —
+		// unwind the node scope the same way the rest of the draw would.
+		if !engine.pool_valid(&w.transforms, engine.Handle(tH)) {
+			if node_open && has_children {
+				im.TreePop()
+			}
+			if pushed_dim {
+				im.PopStyleColor(1)
+			}
+			im.PopID()
+			return
+		}
 	}
 
 	// No drop targets while filtered: rows are a flat excerpt, so the
@@ -896,7 +868,7 @@ _apply_rename :: proc(t: ^engine.Transform) {
 }
 
 @(private)
-_create_empty_parent :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene) {
+_create_empty_parent :: proc(tH: engine.Transform_Handle) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
