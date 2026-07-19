@@ -221,6 +221,10 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
 
+	// @(on_draw_gizmos) / @(on_draw_gizmos_selected) hooks (generated dispatcher) —
+	// the pass is open, so procs draw with the gfx line API like the grid.
+	__draw_gizmos()
+
 	// Selection visuals + gizmo (overlay lines, drawn last). Every selected
 	// object gets an outline; the gizmo anchors on the ACTIVE object (or the
 	// selection center — gizmo_pivot) and drags apply to every selected
