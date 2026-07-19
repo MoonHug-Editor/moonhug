@@ -26,6 +26,7 @@ moonhug/packages/
       platformer/
         *.odin
         assets/
+    tests/                  ← OPTIONAL test suite: `package physics2d_tests`
 ```
 
 - **Package root = the runtime Odin package.** Compiled into BOTH binaries
@@ -44,6 +45,10 @@ moonhug/packages/
   Inert by construction: the asset db only reads `assets/`, and
   prebuild only scans its explicit targets (package root and `editor/`), so
   nothing ever looks inside `samples/` until a sample is installed.
+- **`tests/`** — the package's test suite (`package <name>_tests`), sharing
+  the bootstrap in `moonhug/tests/common`. run_tests.sh runs the central
+  suite, then every `packages/*/tests`. Tests ship with the package and die
+  with it on uninstall — the central suite never imports `packages:`.
 - Other subfolders are just folders with no special meaning.
 
 ## Install model

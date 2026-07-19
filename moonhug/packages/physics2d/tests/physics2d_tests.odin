@@ -1,20 +1,23 @@
-package tests
+package physics2d_tests
 
 // End-to-end physics2d package test: authored components -> box2d sync ->
 // step -> transform write-back, through the same path the app takes.
+// Ships WITH the package (docs/Plugins.md) — run_tests.sh runs every
+// packages/*/tests suite after the central one.
 
 import "core:testing"
-import "../engine"
-import "../app"
-import physics2d "packages:physics2d"
+import "../../../engine"
+import "../../../app"
+import common "../../../tests/common"
+import physics2d ".."
 
 @(test)
 physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	setup(tc)
+	common.setup(tc)
 	context.user_ptr = &tc.uc
-	defer teardown(tc)
+	defer common.teardown(tc)
 	app.register_packages()
 
 	// Floor: box collider with NO rigidbody = implicit static body.
@@ -44,9 +47,9 @@ physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	circle.density = 1
 	circle.friction = 0.6
 
-	// ~4 sim seconds at 50 Hz — plenty to fall 5m and settle.
+	// ~3.3 sim seconds at 60 Hz — plenty to fall 5m and settle.
 	for _ in 0 ..< 200 {
-		physics2d.physics_step(0.02)
+		physics2d.physics_step(1.0 / 60.0)
 	}
 
 	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
@@ -54,9 +57,7 @@ physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	testing.expect(t, y < 0, "ball should have fallen from y=3")
 	testing.expect(t, y > -1.6, "ball should rest ON the floor, not fall through")
 
-	// The landing produced contact events at some step; at rest the pair
-	// still exists — begin fired once, so check the escape hatch instead.
-	body, ok := physics2d.body_of(ball)
+	// Escape hatch resolves the live body.
+	_, ok := physics2d.body_of(ball)
 	testing.expect(t, ok, "body_of should find the live body")
-	_ = body
 }
