@@ -75,9 +75,20 @@ _to_snake_case :: proc(name: string) -> string {
 	return strings.to_string(b)
 }
 
+_is_vowel :: proc(b: byte) -> bool {
+	switch b {
+	case 'a', 'e', 'i', 'o', 'u': return true
+	}
+	return false
+}
+
 _pluralize :: proc(s: string) -> string {
 	if strings.has_suffix(s, "s") || strings.has_suffix(s, "x") || strings.has_suffix(s, "sh") || strings.has_suffix(s, "ch") {
 		return strings.concatenate({s, "es"})
+	}
+	// consonant + y -> ies (rigidbody -> rigidbodies).
+	if len(s) >= 2 && s[len(s)-1] == 'y' && !_is_vowel(s[len(s)-2]) {
+		return strings.concatenate({s[:len(s)-1], "ies"})
 	}
 	return strings.concatenate({s, "s"})
 }

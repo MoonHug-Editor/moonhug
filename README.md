@@ -59,6 +59,7 @@ For more details see [Contribution](docs/Contribution.md)
   - one-time: `make -C "$(odin root)/vendor/stb/src"` - builds vendored stb (image decoding)
   - one-time: `make -C "$(odin root)/vendor/cgltf/src"` - builds vendored cgltf (glTF mesh import)
   - one-time: `sh "$(odin root)/vendor/box2d/build_box2d.sh"` - builds vendored box2d (physics2d package; needs cmake, WASM step may warn — harmless)
+  - one-time: `cd "$(odin root)/vendor/box3d/src" && sh build.sh` - builds vendored box3d (physics3d package; bundled source, clang only)
   - optional, only to AUTHOR shaders (engine built-ins or .glsl assets): `brew install shaderc spirv-cross`
 
 ## Features
@@ -128,7 +129,7 @@ For more details see [Contribution](docs/Contribution.md)
   - tool for tech-art to author and preview animations without entering playmode
 
 - physics2d follow-ups: layer collision matrix, effectors/polygon colliders, PhysicsMaterial2D asset
-- box3d package — source open (not in odin vendor)
+- physics3d follow-ups: layer collision matrix, mesh/compound colliders, PhysicMaterial asset, explicit mass
 
 - come up with more TODO and Considered features
 

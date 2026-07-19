@@ -4,4 +4,5 @@ package editor
 // Editor halves of installed packages — see docs/Plugins.md.
 
 import _ "packages:physics2d/editor"
+import _ "packages:physics3d/editor"
 import _ "packages:plugin_example/editor"

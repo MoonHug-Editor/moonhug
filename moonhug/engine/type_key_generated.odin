@@ -8,9 +8,11 @@ TypeKey :: enum u16 {
 	A,
 	AudioSettings,
 	B,
+	BoxCollider,
 	BoxCollider2D,
 	C,
 	Camera,
+	CapsuleCollider,
 	CapsuleCollider2D,
 	CircleCollider2D,
 	DemoMenu,
@@ -25,12 +27,14 @@ TypeKey :: enum u16 {
 	Player,
 	PlayerSettings,
 	Projectile,
+	Rigidbody,
 	Rigidbody2D,
 	SceneFile,
 	SceneRefs,
 	Script,
 	Sequence,
 	ShaderSettings,
+	SphereCollider,
 	Spinner,
 	SpriteRenderer,
 	SpriteSortingGroup,
@@ -51,9 +55,11 @@ UUID_NIL :: uuid.Identifier{};
 A__Guid := uuid.read("f49ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else UUID_NIL
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
+BoxCollider__Guid := uuid.read("13101cd5-e0a6-49d4-a310-953001ebae6b") or_else UUID_NIL
 BoxCollider2D__Guid := uuid.read("1e2d0da1-9df6-4668-9f86-f76351378394") or_else UUID_NIL
 C__Guid := uuid.read("f51ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_NIL
+CapsuleCollider__Guid := uuid.read("91ddc047-6a91-4142-bc9c-d219570192b6") or_else UUID_NIL
 CapsuleCollider2D__Guid := uuid.read("11cbe045-afe7-413a-837e-167ca23b7ca1") or_else UUID_NIL
 CircleCollider2D__Guid := uuid.read("657711b4-6689-479e-9eec-da439658cadf") or_else UUID_NIL
 DemoMenu__Guid := uuid.read("7cbf2edf-0283-43b3-930e-ef9546d8eed9") or_else UUID_NIL
@@ -68,12 +74,14 @@ Parallel__Guid := uuid.read("916005b6-1c68-49e7-88be-0add6164d3a8") or_else UUID
 Player__Guid := uuid.read("d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c") or_else UUID_NIL
 PlayerSettings__Guid := uuid.read("c8b1e4a2-9d3f-4c5e-a6b7-8f1d2e3c4b5a") or_else UUID_NIL
 Projectile__Guid := uuid.read("7f5e6f68-938f-467f-993e-4d92adb25233") or_else UUID_NIL
+Rigidbody__Guid := uuid.read("82976d39-c450-4464-87e2-c260c430c157") or_else UUID_NIL
 Rigidbody2D__Guid := uuid.read("add56122-a3b9-4fcb-a924-0fa64b35d523") or_else UUID_NIL
 SceneFile__Guid := uuid.read("0d489fce-9c04-4e4d-be12-f3f590d60cea") or_else UUID_NIL
 SceneRefs__Guid := uuid.read("b1d7c74d-4e52-4088-a118-85059cf80149") or_else UUID_NIL
 Script__Guid := uuid.read("adaf3551-4704-4255-ad91-fde59441dc53") or_else UUID_NIL
 Sequence__Guid := uuid.read("24d46399-b3a0-44e7-abd1-6da5d759e935") or_else UUID_NIL
 ShaderSettings__Guid := uuid.read("fa4de399-c86a-47fa-821f-ddd6276562ad") or_else UUID_NIL
+SphereCollider__Guid := uuid.read("8295fbf3-a792-4f02-9bea-b63fc056b99f") or_else UUID_NIL
 Spinner__Guid := uuid.read("84040061-0c08-4f71-84ae-255899c77d9f") or_else UUID_NIL
 SpriteRenderer__Guid := uuid.read("b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f") or_else UUID_NIL
 SpriteSortingGroup__Guid := uuid.read("2291f857-d2ff-409d-96df-1d87713fdcc2") or_else UUID_NIL

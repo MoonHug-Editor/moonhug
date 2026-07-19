@@ -5,11 +5,23 @@ package editor
 import engine "../engine"
 import physics2d "packages:physics2d"
 import physics2d_editor "packages:physics2d/editor"
+import physics3d "packages:physics3d"
+import physics3d_editor "packages:physics3d/editor"
 
 // Called by the scene view while its offscreen pass is open.
 __draw_gizmos :: proc() {
 	w := engine.ctx_world()
 	_ = w
+	if pool := w.ext_pools[engine.TypeKey.BoxCollider]; pool != nil {
+		if desc, ok := engine.component_registry[engine.TypeKey.BoxCollider]; ok && desc.each_alive != nil {
+			desc.each_alive(pool, proc(ptr: rawptr) {
+				c := cast(^physics3d.BoxCollider)ptr
+				if !c.enabled do return
+				if !sel_scene_is(c.owner) do return
+				physics3d_editor.box_collider_gizmos(c)
+			})
+		}
+	}
 	if pool := w.ext_pools[engine.TypeKey.BoxCollider2D]; pool != nil {
 		if desc, ok := engine.component_registry[engine.TypeKey.BoxCollider2D]; ok && desc.each_alive != nil {
 			desc.each_alive(pool, proc(ptr: rawptr) {
@@ -17,6 +29,16 @@ __draw_gizmos :: proc() {
 				if !c.enabled do return
 				if !sel_scene_is(c.owner) do return
 				physics2d_editor.box_collider_gizmos(c)
+			})
+		}
+	}
+	if pool := w.ext_pools[engine.TypeKey.CapsuleCollider]; pool != nil {
+		if desc, ok := engine.component_registry[engine.TypeKey.CapsuleCollider]; ok && desc.each_alive != nil {
+			desc.each_alive(pool, proc(ptr: rawptr) {
+				c := cast(^physics3d.CapsuleCollider)ptr
+				if !c.enabled do return
+				if !sel_scene_is(c.owner) do return
+				physics3d_editor.capsule_collider_gizmos(c)
 			})
 		}
 	}
@@ -37,6 +59,16 @@ __draw_gizmos :: proc() {
 				if !c.enabled do return
 				if !sel_scene_is(c.owner) do return
 				physics2d_editor.circle_collider_gizmos(c)
+			})
+		}
+	}
+	if pool := w.ext_pools[engine.TypeKey.SphereCollider]; pool != nil {
+		if desc, ok := engine.component_registry[engine.TypeKey.SphereCollider]; ok && desc.each_alive != nil {
+			desc.each_alive(pool, proc(ptr: rawptr) {
+				c := cast(^physics3d.SphereCollider)ptr
+				if !c.enabled do return
+				if !sel_scene_is(c.owner) do return
+				physics3d_editor.sphere_collider_gizmos(c)
 			})
 		}
 	}

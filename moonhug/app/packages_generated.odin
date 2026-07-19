@@ -4,9 +4,11 @@ package app
 // Installed packages (moonhug/packages/*) — see docs/Plugins.md.
 
 import physics2d "packages:physics2d"
+import physics3d "packages:physics3d"
 import plugin_example "packages:plugin_example"
 
 register_packages :: proc() {
 	physics2d.register_physics2d_components()
+	physics3d.register_physics3d_components()
 	plugin_example.register_plugin_example_components()
 }
