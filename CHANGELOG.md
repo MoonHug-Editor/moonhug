@@ -1,3 +1,9 @@
+## [0.47.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.46.1...v0.47.0) (2026-07-20)
+
+### Features
+
+* wrap input into package ([78327fe](https://github.com/MoonHug-Editor/moonhug/commit/78327fe0fa517d931b9185e14f535805d447db03))
+
 ## [0.46.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.46.0...v0.46.1) (2026-07-20)
 
 ### Bug Fixes
