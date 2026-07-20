@@ -451,7 +451,9 @@ draw_scene_view :: proc() {
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
-		if scene_view_hovered {
+		// Flythrough is hover-independent once latched: the captured cursor
+		// is pinned, so hover can't be trusted mid-flight.
+		if scene_view_hovered || scene_flythrough_active {
 			handle_scene_input()
 		}
 		// Band tracking is hover-independent: the drag keeps working when the
@@ -610,6 +612,74 @@ handle_scene_input :: proc() {
 	mmb_dragging := im.IsMouseDragging(.Middle, 1)
 	lmb_dragging := im.IsMouseDragging(.Left, 1)
 
+	// Flythrough latches on entry (RMB pressed over the view) and holds until
+	// RMB releases. Relative mouse mode hides and PINS the cursor while SDL
+	// keeps streaming raw deltas — without it the visible cursor stalls the
+	// rotation at every screen edge and drops the camera whenever it drifts
+	// off the window (the "jaggy flythrough" bug).
+	if scene_flythrough_active && (!rmb_down || alt_down) {
+		scene_flythrough_active = false
+		gfx.set_mouse_relative(false)
+	}
+	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered {
+		scene_flythrough_active = true
+		gfx.set_mouse_relative(true)
+	}
+
+	// Any manual camera input takes over from an in-flight frame tween.
+	if rmb_down || mmb_dragging || (alt_down && lmb_dragging) || io.MouseWheel != 0 {
+		_frame_tween_active = false
+	}
+
+	// Fly camera FIRST and returns: while captured, the shortcut/pick/band
+	// handling below must not react to the pinned cursor (and this proc runs
+	// un-hovered while latched).
+	if scene_flythrough_active {
+		_orbit_active = false
+
+		// First-person look: yaw/pitch rotate about the EYE (the anchor
+		// swings with the view), never about the anchor — that's orbit's job.
+		// Raw SDL deltas, NOT io.MouseDelta: imgui derives its delta from the
+		// cursor position, which relative mode pins.
+		delta := gfx.input_mouse_delta()
+		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
+		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+
+		// Wheel during fly rescales the base speed for the session (Unity).
+		if io.MouseWheel != 0 {
+			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, io.MouseWheel), 0.5, 100)
+			_fly_speed_cur = min(_fly_speed_cur, scene_fly_speed * FLYTHROUGH_RAMP_MULT)
+		}
+
+		fwd, right, _ := _scene_cam_basis()
+		move := [3]f32{0, 0, 0}
+		if im.IsKeyDown(.W) do move += fwd
+		if im.IsKeyDown(.S) do move -= fwd
+		if im.IsKeyDown(.D) do move += right
+		if im.IsKeyDown(.A) do move -= right
+		if im.IsKeyDown(.E) do move += [3]f32{0, 1, 0}
+		if im.IsKeyDown(.Q) do move -= [3]f32{0, 1, 0}
+
+		len := linalg.length(move)
+		if len > 0 {
+			// Held movement ramps toward the cap, so short taps stay precise
+			// and long hauls get fast. Release resets to base.
+			_fly_speed_cur = min(
+				_fly_speed_cur + scene_fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
+				scene_fly_speed * FLYTHROUGH_RAMP_MULT,
+			)
+			speed := _fly_speed_cur
+			if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
+			scene_cam_pos += move / len * speed * dt
+		} else {
+			_fly_speed_cur = scene_fly_speed
+		}
+
+		update_scene_camera()
+		return
+	}
+	_fly_speed_cur = scene_fly_speed
+
 	// Gizmo mode shortcuts (Unity's Q/W/E/R) — not during flythrough, whose
 	// WASDQE movement owns these keys.
 	if !rmb_down {
@@ -684,58 +754,6 @@ handle_scene_input :: proc() {
 			}
 		}
 	}
-
-	// Any manual camera input takes over from an in-flight frame tween.
-	if rmb_down || mmb_dragging || (alt_down && lmb_dragging) || io.MouseWheel != 0 {
-		_frame_tween_active = false
-	}
-
-	if rmb_down && !alt_down {
-		scene_flythrough_active = true
-		_orbit_active = false
-
-		// First-person look: yaw/pitch rotate about the EYE (the anchor swings
-		// with the view), never about the anchor — that's orbit's job.
-		delta := io.MouseDelta
-		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
-		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
-
-		// Wheel during fly rescales the base speed for the session (Unity).
-		if io.MouseWheel != 0 {
-			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, io.MouseWheel), 0.5, 100)
-			_fly_speed_cur = min(_fly_speed_cur, scene_fly_speed * FLYTHROUGH_RAMP_MULT)
-		}
-
-		fwd, right, _ := _scene_cam_basis()
-		move := [3]f32{0, 0, 0}
-		if im.IsKeyDown(.W) do move += fwd
-		if im.IsKeyDown(.S) do move -= fwd
-		if im.IsKeyDown(.D) do move += right
-		if im.IsKeyDown(.A) do move -= right
-		if im.IsKeyDown(.E) do move += [3]f32{0, 1, 0}
-		if im.IsKeyDown(.Q) do move -= [3]f32{0, 1, 0}
-
-		len := linalg.length(move)
-		if len > 0 {
-			// Held movement ramps toward the cap, so short taps stay precise
-			// and long hauls get fast. Release resets to base.
-			_fly_speed_cur = min(
-				_fly_speed_cur + scene_fly_speed * (FLYTHROUGH_RAMP_MULT - 1) / FLYTHROUGH_RAMP_TIME * dt,
-				scene_fly_speed * FLYTHROUGH_RAMP_MULT,
-			)
-			speed := _fly_speed_cur
-			if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
-			scene_cam_pos += move / len * speed * dt
-		} else {
-			_fly_speed_cur = scene_fly_speed
-		}
-
-		update_scene_camera()
-		return
-	}
-
-	scene_flythrough_active = false
-	_fly_speed_cur = scene_fly_speed
 
 	if alt_down && lmb_dragging {
 		// Orbit around the anchor captured when the drag started (Unity's

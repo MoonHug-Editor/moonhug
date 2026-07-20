@@ -123,6 +123,13 @@ _input_apply_event :: proc(e: ^sdl.Event) {
 	}
 }
 
+// Relative mouse mode (camera capture): hides the cursor and pins it in place
+// while SDL streams raw deltas — the cursor can never hit a screen edge or
+// leave the window mid-drag, so the delta stream never stalls.
+set_mouse_relative :: proc(on: bool) {
+	_ = sdl.SetWindowRelativeMouseMode(_platform.window, on)
+}
+
 // Raw SDL event counters for the editor's Input Debug window.
 input_debug_counters :: proc() -> (key_down, key_up, focus_gained, focus_lost: u64) {
 	return _input.dbg_key_down, _input.dbg_key_up, _input.dbg_focus_gained, _input.dbg_focus_lost
