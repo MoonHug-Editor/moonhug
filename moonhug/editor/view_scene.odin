@@ -25,6 +25,13 @@ scene_cam_target: [3]f32
 scene_fly_speed: f32
 _fly_speed_cur: f32
 
+// Flythrough smoothing: mouse look drives TARGET angles and the camera
+// exponentially chases them; movement velocity chases the keyed direction the
+// same way. Both use 1-exp(-dt/tau), so the lag feel is frame-rate independent.
+_fly_yaw_target: f32
+_fly_pitch_target: f32
+_fly_vel: [3]f32
+
 _orbit_active: bool
 _orbit_pivot: [3]f32
 
@@ -60,6 +67,8 @@ FLYTHROUGH_SHIFT_MULT :: f32(3.0)
 FLYTHROUGH_RAMP_MULT :: f32(3.0) // held movement accelerates up to base*this
 FLYTHROUGH_RAMP_TIME :: f32(2.0) // seconds to reach the ramp cap
 FLY_SPEED_WHEEL_BASE :: f32(1.2) // wheel during fly: speed *= base^notches
+FLY_LOOK_SMOOTH_TAU :: f32(0.025) // seconds for look to catch its target (~63%)
+FLY_MOVE_SMOOTH_TAU :: f32(0.08) // seconds for velocity to catch its target
 LOOK_SENSITIVITY :: f32(0.005) // radians per pixel (fly + orbit)
 ZOOM_WHEEL_BASE :: f32(1.2) // wheel dolly: dist *= base^-notches
 ZOOM_MIN_STEP :: f32(0.25) // keeps close-range dolly responsive
@@ -521,7 +530,7 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	if vertical {
 		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN : ICON_MD_CENTER_FOCUS
 	} else {
-		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN + " Pivot" : ICON_MD_CENTER_FOCUS + " Center"
+		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN + " Pivot" : ICON_MD_CENTER_FOCUS + "Center"
 	}
 	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		gizmo_pivot = gizmo_pivot == .Pivot ? .Center : .Pivot
@@ -640,6 +649,10 @@ handle_scene_input :: proc() {
 	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered {
 		scene_flythrough_active = true
 		input.set_mouse_relative(true)
+		// Smoothing state starts at rest so entry doesn't inherit stale lag.
+		_fly_yaw_target = scene_cam_yaw
+		_fly_pitch_target = scene_cam_pitch
+		_fly_vel = {0, 0, 0}
 	}
 
 	// Any manual camera input takes over from an in-flight frame tween.
@@ -656,9 +669,14 @@ handle_scene_input :: proc() {
 		// First-person look — all reads below go through the input package
 		// (raw SDL snapshot): imgui derives its mouse delta from the cursor
 		// position, which relative mode pins.
+		// Mouse moves the TARGET; the camera exponentially chases it, which
+		// smooths sensor jitter into a short, frame-rate-independent glide.
 		delta := input.mouse_delta()
-		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
-		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		_fly_yaw_target += delta.x * LOOK_SENSITIVITY
+		_fly_pitch_target = clamp(_fly_pitch_target - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
+		look_k := 1 - math.exp(-dt / FLY_LOOK_SMOOTH_TAU)
+		scene_cam_yaw += (_fly_yaw_target - scene_cam_yaw) * look_k
+		scene_cam_pitch = clamp(scene_cam_pitch + (_fly_pitch_target - scene_cam_pitch) * look_k, -PITCH_LIMIT, PITCH_LIMIT)
 
 		// Wheel during fly rescales the base speed for the session (Unity).
 		if wheel := input.wheel(); wheel != 0 {
@@ -675,6 +693,9 @@ handle_scene_input :: proc() {
 		if input.key_down(.E) do move += [3]f32{0, 1, 0}
 		if input.key_down(.Q) do move -= [3]f32{0, 1, 0}
 
+		// Target velocity from the keys; the smoothed velocity chases it so
+		// starts, stops, and direction changes ease instead of stepping.
+		target_vel: [3]f32
 		len := linalg.length(move)
 		if len > 0 {
 			// Held movement ramps toward the cap, so short taps stay precise
@@ -685,10 +706,13 @@ handle_scene_input :: proc() {
 			)
 			speed := _fly_speed_cur
 			if input.key_down(.LSHIFT) || input.key_down(.RSHIFT) do speed *= FLYTHROUGH_SHIFT_MULT
-			scene_cam_pos += move / len * speed * dt
+			target_vel = move / len * speed
 		} else {
 			_fly_speed_cur = scene_fly_speed
 		}
+		move_k := 1 - math.exp(-dt / FLY_MOVE_SMOOTH_TAU)
+		_fly_vel += (target_vel - _fly_vel) * move_k
+		scene_cam_pos += _fly_vel * dt
 
 		update_scene_camera()
 		return
