@@ -10,8 +10,10 @@ if command -v glslc >/dev/null && command -v spirv-cross >/dev/null; then
     sh moonhug/engine/gfx/shaders/compile.sh
 fi
 
-# Run assets package (uses -ignore-unknown-attributes for custom menu attributes).
+# Build then exec (uses -ignore-unknown-attributes for custom menu attributes).
 # -out names the binary MoonHug so macOS (App Switcher, menu bar) shows that
-# instead of the package name "editor".
+# instead of the package name "editor". Build+exec (NOT `odin run`) so the ~1GB
+# compiler process exits before the editor runs instead of lingering to wait().
 mkdir -p builds
-odin run moonhug/editor -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/MoonHug
+odin build moonhug/editor -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/MoonHug
+exec builds/MoonHug

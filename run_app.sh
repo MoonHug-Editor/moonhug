@@ -5,4 +5,8 @@ set -e
 # packages: collection flag is the same spelling as every other build.
 cd "$(cd "$(dirname "$0")" && pwd)"
 
-odin run moonhug/app -ignore-unknown-attributes -collection:packages=moonhug/packages
+# Build+exec (NOT `odin run`) so the ~1GB compiler process exits before the app
+# runs instead of lingering to wait() on it.
+mkdir -p builds
+odin build moonhug/app -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/app
+exec builds/app
