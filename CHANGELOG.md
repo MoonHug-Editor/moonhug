@@ -1,3 +1,9 @@
+## [0.46.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.46.0...v0.46.1) (2026-07-20)
+
+### Bug Fixes
+
+* make phase Phases work across plugins, replace debug_draw with phase ([34a0299](https://github.com/MoonHug-Editor/moonhug/commit/34a02991046349fb39dd4988295aaf15fcbf643c))
+
 ## [0.46.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.45.0...v0.46.0) (2026-07-19)
 
 ### Features
