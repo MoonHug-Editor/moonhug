@@ -409,10 +409,17 @@ _overlay_draw_drop_zones :: proc(mp, view_min, view_max: im.Vec2) {
 // ---------------------------------------------------------------------------
 // Toolbar button helper (shared look for overlay toolbars)
 
+OVERLAY_ARROW_WIDTH :: f32(11)  // dropdown half, narrower than the icon half
+OVERLAY_SPLIT_GAP :: f32(1)     // 1px seam between the two halves
+// Full width of a split button. Single-icon buttons default to this too, so a
+// toolbar of plain buttons and split buttons reads as one consistent row.
+OVERLAY_SPLIT_WIDTH :: OVERLAY_BUTTON_SIZE + OVERLAY_SPLIT_GAP + OVERLAY_ARROW_WIDTH
+
 // Icon toggle button for overlay toolbars; SameLine handled by the caller's
 // vertical flag via overlay body procs. width = 0 auto-sizes to the label
-// (icon + word buttons); the default is a square icon button.
-overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width: f32 = OVERLAY_BUTTON_SIZE) -> bool {
+// (icon + word buttons); the default matches a split button's full width so
+// single-icon buttons line up with them.
+overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width: f32 = OVERLAY_SPLIT_WIDTH) -> bool {
 	if active {
 		im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	}
@@ -424,4 +431,54 @@ overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width
 		im.SetTooltip(_overlay_item_tooltip(tooltip))
 	}
 	return clicked
+}
+
+// Split toggle+dropdown button for overlay toolbars: the icon on the left is a
+// toggle (returns toggled=true on click), the narrow arrow on the right opens
+// the settings popup (returns arrow=true). A 1px seam separates the two halves.
+// `active` lights the icon while the tool is on.
+// `id` must be unique per split button (the arrow glyph alone is shared, so
+// without it two split buttons collide on the same imgui ID).
+overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggled, arrow: bool) {
+	im.PushID(id)
+	defer im.PopID()
+
+	// 1px seam between the halves. Trim frame padding so the fixed-size buttons
+	// center their glyphs cleanly instead of reserving room for default padding
+	// and drifting the icon.
+	im.PushStyleVarImVec2(.ItemSpacing, im.Vec2{OVERLAY_SPLIT_GAP, 0})
+	im.PushStyleVarImVec2(.FramePadding, im.Vec2{0, 0})
+	defer im.PopStyleVar(2)
+
+	if active {
+		im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+	}
+	toggled = im.Button(icon, im.Vec2{OVERLAY_BUTTON_SIZE, OVERLAY_BUTTON_SIZE})
+	if im.IsItemHovered({}) {
+		im.SetTooltip(_overlay_item_tooltip(tooltip))
+	}
+	im.SameLine()
+	// Arrow half: empty-label button so imgui's text centering can't drift the
+	// glyph (the EXPAND_MORE glyph has left bearing that offsets it in a narrow
+	// box). Draw the glyph ourselves, centered on the button rect.
+	arrow = im.Button("##arrow", im.Vec2{OVERLAY_ARROW_WIDTH, OVERLAY_BUTTON_SIZE})
+	_draw_centered_glyph(ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
+	if active {
+		im.PopStyleColor()
+	}
+	if im.IsItemHovered({}) {
+		im.SetTooltip(_overlay_item_tooltip("Settings"))
+	}
+	return
+}
+
+// Draw a glyph centered within the rect [rmin, rmax] on the current draw list,
+// in the current text color.
+_draw_centered_glyph :: proc(glyph: cstring, rmin, rmax: im.Vec2) {
+	sz := im.CalcTextSize(glyph, nil, false, -1)
+	pos := im.Vec2{
+		rmin.x + (rmax.x - rmin.x - sz.x) * 0.5,
+		rmin.y + (rmax.y - rmin.y - sz.y) * 0.5,
+	}
+	im.DrawList_AddText(im.GetWindowDrawList(), pos, im.GetColorU32(.Text), glyph)
 }

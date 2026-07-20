@@ -523,7 +523,7 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	} else {
 		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN + " Pivot" : ICON_MD_CENTER_FOCUS + " Center"
 	}
-	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_BUTTON_SIZE : 0) {
+	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		gizmo_pivot = gizmo_pivot == .Pivot ? .Center : .Pivot
 	}
 
@@ -534,20 +534,35 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	} else {
 		label = gizmo_space == .Global ? ICON_MD_PUBLIC + " World" : ICON_MD_DEPLOYED_CODE + " Local"
 	}
-	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_BUTTON_SIZE : 0) {
+	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		gizmo_space = gizmo_space == .Global ? .Local : .Global
 	}
 }
 
-// Grid toolbar: one button opening a popup with the plane toggles and line
-// spacing settings (see Grid_Settings). Button lights up while any plane shows.
+// Planes restored when the grid toggle is switched back on after hiding all
+// planes. XZ is the sensible fallback if nothing was shown when it was hidden.
+_grid_last_planes := Grid_Settings{show_xz = true}
+
+// Grid toolbar: a split button. The icon toggles all grid planes on/off; the
+// dropdown arrow opens the popup with the plane and spacing settings (see
+// Grid_Settings). Button lights up while any plane shows.
 @(scene_toolbar={id="Grid", order=200})
 draw_grid_overlay :: proc(vertical: bool) {
 	gs := &grid_settings
 	any_plane := gs.show_xz || gs.show_xy || gs.show_yz
-	if overlay_tool_button(ICON_MD_GRID_ON, "Grid settings", any_plane) {
-		im.OpenPopup("##grid_settings")
+	toggled, arrow := overlay_split_button("grid", ICON_MD_GRID_ON, "Toggle grid", any_plane)
+	if toggled {
+		if any_plane {
+			_grid_last_planes = gs^ // remember which planes were showing
+			gs.show_xz, gs.show_xy, gs.show_yz = false, false, false
+		} else {
+			gs.show_xz = _grid_last_planes.show_xz
+			gs.show_xy = _grid_last_planes.show_xy
+			gs.show_yz = _grid_last_planes.show_yz
+			if !(gs.show_xz || gs.show_xy || gs.show_yz) do gs.show_xz = true
+		}
 	}
+	if arrow do im.OpenPopup("##grid_settings")
 	if im.BeginPopup("##grid_settings") {
 		im.SeparatorText("Planes")
 		im.Checkbox("XZ", &gs.show_xz)
@@ -570,17 +585,17 @@ draw_grid_overlay :: proc(vertical: bool) {
 	}
 }
 
-// Snap button next to the grid button: popup with the snap settings. Button
-// lights up while snapping is enabled; Ctrl inverts enabled during a drag.
+// Snap split button next to the grid button. The icon toggles snapping on/off;
+// the dropdown arrow opens the snap settings popup. Button lights up while
+// snapping is enabled; Ctrl inverts enabled during a drag.
 @(scene_toolbar={id="Grid", order=210})
 draw_snap_overlay :: proc(vertical: bool) {
 	if !vertical do im.SameLine()
-	if overlay_tool_button(ICON_MD_SNAP, "Snap settings (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled) {
-		im.OpenPopup("##snap_settings")
-	}
+	toggled, arrow := overlay_split_button("snap", ICON_MD_SNAP, "Toggle snap (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled)
+	if toggled do snap_settings.enabled = !snap_settings.enabled
+	if arrow do im.OpenPopup("##snap_settings")
 	if im.BeginPopup("##snap_settings") {
 		ss := &snap_settings
-		im.Checkbox("Enabled", &ss.enabled)
 		im.SetNextItemWidth(110)
 		im.DragFloat("Angle", &ss.angle, 1, 1, 180, "%.0f deg")
 		if im.IsItemHovered({}) do im.SetTooltip("Rotate gizmo snap increment")
