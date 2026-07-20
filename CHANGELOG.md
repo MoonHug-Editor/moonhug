@@ -1,3 +1,10 @@
+## [0.47.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.47.0...v0.47.1) (2026-07-20)
+
+### Bug Fixes
+
+* improve grid and snap scene overlay buttons ([e0939ee](https://github.com/MoonHug-Editor/moonhug/commit/e0939ee62b37101b107a6e4fc8ebb237d668be9a))
+* use odin build -out instead of odin run to prevent odin process in memory ([930ced8](https://github.com/MoonHug-Editor/moonhug/commit/930ced8ef7fce752dfd26eefe629e8543644b4ca))
+
 ## [0.47.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.46.1...v0.47.0) (2026-07-20)
 
 ### Features
