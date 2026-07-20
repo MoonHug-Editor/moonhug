@@ -29,11 +29,11 @@ tween_tick :: proc(dt: f32) {}
 
 ## Input latching
 
-Per-frame edges (`input_key_pressed`) can fall between fixed ticks. Fixed
-code uses the `_fixed` variants — `gfx.input_key_down_fixed`,
-`input_key_pressed_fixed`, `input_mouse_pressed_fixed`, … — whose edges
+Per-frame edges (`input.key_pressed`) can fall between fixed ticks. Fixed
+code uses the `_fixed` variants — `input.key_down_fixed`,
+`input.key_pressed_fixed`, `input.mouse_pressed_fixed`, … — whose edges
 accumulate across frames and are consumed once per tick
-(`gfx.input_fixed_latch`, called by the app loop). A press shorter than a
+(`input.fixed_latch`, called by the app loop). A press shorter than a
 tick still registers on the next tick; a tap that started and ended between
 ticks reads as down for one tick.
 

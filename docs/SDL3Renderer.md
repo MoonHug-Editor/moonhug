@@ -76,15 +76,18 @@ Render_Target :: struct { color, depth: ^sdl.GPUTexture, width, height: i32 }
 // garbage and crashes in Metal). texture_imgui_id/rt_imgui_id return it;
 // re-fetch each frame since rt_resize recreates the color texture.
 
-// window / input
+// window
 init :: proc(title: cstring, w, h: i32) -> bool     // sdl.Init + window + GPU device + pipelines
 shutdown :: proc()
 poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil)  // editor passes imgui ProcessEvent
 quit_requested, delta_time, window_size, pixel_size, window_position,
 set_window_geometry, display_usable_bounds
-input_key_down / input_key_pressed / input_key_released :: proc(k: Key) -> bool
-input_mouse_down / input_mouse_pressed / input_mouse_position / input_wheel
-input_focus_gained :: proc() -> bool                // edge; drives editor asset refresh
+
+// Input lives in engine/input (import "engine/input"): poll_events feeds it,
+// call sites read input.key_down / key_pressed / key_released, mouse_down /
+// mouse_pressed / mouse_position / wheel, focus_gained (edge; drives editor
+// asset refresh), set_mouse_relative, plus the *_fixed tick-latched variants
+// (docs/FixedTick.md).
 
 // frame + passes
 frame_begin :: proc() -> bool                       // AcquireGPUCommandBuffer

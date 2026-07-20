@@ -10,6 +10,7 @@ import "core:path/filepath"
 import "core:strings"
 import "core:encoding/uuid"
 import gfx "../engine/gfx"
+import input "../engine/input"
 import "../engine"
 
 @(private = "file")
@@ -26,7 +27,7 @@ demo_menu_draw :: proc() {
         if engine.debug_draw_enabled {
             gfx.debug_text({10, 36}, 20, WHITE, "F3: colliders (on)")
         }
-        if gfx.input_key_released(.ESCAPE) {
+        if input.key_released(.ESCAPE) {
             engine.sm_scene_unload(_current_demo)
             _current_demo = nil
             _menu_root_set_active(menu, true)
@@ -45,7 +46,7 @@ demo_menu_draw :: proc() {
         y += 26
 
         // React on key UP so the press doesn't leak into the loaded demo.
-        if ok && gfx.input_key_released(gfx.Key(int(gfx.Key._1) + i)) {
+        if ok && input.key_released(input.Key(int(input.Key._1) + i)) {
             _current_demo = engine.scene_load_additive_path(path)
             if _current_demo != nil {
                 scene_loaded()

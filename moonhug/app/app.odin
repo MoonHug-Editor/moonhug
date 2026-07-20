@@ -3,6 +3,7 @@ package app
 
 import "../engine"
 import gfx "../engine/gfx"
+import input "../engine/input"
 import "../engine/serialization"
 import "core:os"
 import "core:fmt"
@@ -68,14 +69,14 @@ main :: proc() {
         // docs/FixedTick.md), then the per-frame view tick.
         steps := engine.fixed_frame_ticks(gfx.delta_time())
         for _ in 0 ..< steps {
-            gfx.input_fixed_latch()
+            input.fixed_latch()
             __fixed_update(engine.fixed_dt())
             engine.fixed_tick_advance()
         }
         __update(gfx.delta_time())
 
         // F3 toggles the DebugDraw phase (collider wireframes etc).
-        if gfx.input_key_pressed(.F3) {
+        if input.key_pressed(.F3) {
             engine.debug_draw_enabled = !engine.debug_draw_enabled
         }
 

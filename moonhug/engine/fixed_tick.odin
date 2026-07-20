@@ -7,7 +7,7 @@ package engine
 //
 //   steps := engine.fixed_frame_ticks(gfx.delta_time())
 //   for _ in 0 ..< steps {
-//       gfx.input_fixed_latch()
+//       input.fixed_latch()
 //       __fixed_update(engine.fixed_dt())
 //       engine.fixed_tick_advance()
 //   }

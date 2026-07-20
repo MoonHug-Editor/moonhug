@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:mem"
 import sdl "vendor:sdl3"
 import gfx "../engine/gfx"
+import input "../engine/input"
 import strings "core:strings"
 import im "../../external/odin-imgui"
 import im_sdl "../../external/odin-imgui/imgui_impl_sdl3"
@@ -123,7 +124,7 @@ main :: proc() {
         // Unity-style Auto Refresh: re-scan assets when the editor window
         // regains focus (git checkouts, external editors). Incremental
         // mtime-diff — an unchanged tree costs one stat pass.
-        if gfx.input_focus_gained() {
+        if input.focus_gained() {
             engine.asset_db_refresh()
             project_dir_cache_invalidate()
             if dock_icon_pending {

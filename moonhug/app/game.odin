@@ -8,6 +8,7 @@ package app
 import "core:math"
 import "../engine"
 import gfx "../engine/gfx"
+import input "../engine/input"
 
 TANK_SPEED :: f32(5)
 
@@ -47,10 +48,10 @@ tank_move :: proc(tank: ^Tank, dt: f32) {
     t := engine.pool_get(&w.transforms, engine.Handle(tank.owner))
     if t == nil do return
 
-    if gfx.input_key_down_fixed(.W) do t.position[1] += TANK_SPEED * dt
-    if gfx.input_key_down_fixed(.S) do t.position[1] -= TANK_SPEED * dt
-    if gfx.input_key_down_fixed(.A) do t.position[0] -= TANK_SPEED * dt
-    if gfx.input_key_down_fixed(.D) do t.position[0] += TANK_SPEED * dt
+    if input.key_down_fixed(.W) do t.position[1] += TANK_SPEED * dt
+    if input.key_down_fixed(.S) do t.position[1] -= TANK_SPEED * dt
+    if input.key_down_fixed(.A) do t.position[0] -= TANK_SPEED * dt
+    if input.key_down_fixed(.D) do t.position[0] += TANK_SPEED * dt
 }
 
 turret_aim :: proc(tank: ^Tank) {
@@ -63,7 +64,7 @@ turret_aim :: proc(tank: ^Tank) {
 
     // Mouse ray intersected with the z=0 gameplay plane.
     ws := gfx.window_size()
-    ray := engine.camera_screen_ray(cam, gfx.input_mouse_position(), {f32(ws.x), f32(ws.y)})
+    ray := engine.camera_screen_ray(cam, input.mouse_position(), {f32(ws.x), f32(ws.y)})
     if math.abs(ray.direction.z) < 1e-6 do return
     hit_t := -ray.origin.z / ray.direction.z
     if hit_t < 0 do return
@@ -83,7 +84,7 @@ turret_aim :: proc(tank: ^Tank) {
 }
 
 fire :: proc(tank: ^Tank, spawn_parent: engine.Transform_Handle) {
-    if !gfx.input_mouse_pressed_fixed(.Left) && !gfx.input_key_pressed_fixed(.SPACE) do return
+    if !input.mouse_pressed_fixed(.Left) && !input.key_pressed_fixed(.SPACE) do return
     if engine.asset_guid_is_empty(tank.projectile_prefab) do return
 
     bH := engine.scene_instantiate_guid(tank.projectile_prefab, spawn_parent)

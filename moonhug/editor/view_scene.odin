@@ -1,6 +1,7 @@
 package editor
 
 import gfx "../engine/gfx"
+import input "../engine/input"
 import im "../../external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
@@ -619,11 +620,11 @@ handle_scene_input :: proc() {
 	// off the window (the "jaggy flythrough" bug).
 	if scene_flythrough_active && (!rmb_down || alt_down) {
 		scene_flythrough_active = false
-		gfx.set_mouse_relative(false)
+		input.set_mouse_relative(false)
 	}
 	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered {
 		scene_flythrough_active = true
-		gfx.set_mouse_relative(true)
+		input.set_mouse_relative(true)
 	}
 
 	// Any manual camera input takes over from an in-flight frame tween.
@@ -637,28 +638,27 @@ handle_scene_input :: proc() {
 	if scene_flythrough_active {
 		_orbit_active = false
 
-		// First-person look: yaw/pitch rotate about the EYE (the anchor
-		// swings with the view), never about the anchor — that's orbit's job.
-		// Raw SDL deltas, NOT io.MouseDelta: imgui derives its delta from the
-		// cursor position, which relative mode pins.
-		delta := gfx.input_mouse_delta()
+		// First-person look — all reads below go through the input package
+		// (raw SDL snapshot): imgui derives its mouse delta from the cursor
+		// position, which relative mode pins.
+		delta := input.mouse_delta()
 		scene_cam_yaw += delta.x * LOOK_SENSITIVITY
 		scene_cam_pitch = clamp(scene_cam_pitch - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 
 		// Wheel during fly rescales the base speed for the session (Unity).
-		if io.MouseWheel != 0 {
-			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, io.MouseWheel), 0.5, 100)
+		if wheel := input.wheel(); wheel != 0 {
+			scene_fly_speed = clamp(scene_fly_speed * math.pow(FLY_SPEED_WHEEL_BASE, wheel), 0.5, 100)
 			_fly_speed_cur = min(_fly_speed_cur, scene_fly_speed * FLYTHROUGH_RAMP_MULT)
 		}
 
 		fwd, right, _ := _scene_cam_basis()
 		move := [3]f32{0, 0, 0}
-		if im.IsKeyDown(.W) do move += fwd
-		if im.IsKeyDown(.S) do move -= fwd
-		if im.IsKeyDown(.D) do move += right
-		if im.IsKeyDown(.A) do move -= right
-		if im.IsKeyDown(.E) do move += [3]f32{0, 1, 0}
-		if im.IsKeyDown(.Q) do move -= [3]f32{0, 1, 0}
+		if input.key_down(.W) do move += fwd
+		if input.key_down(.S) do move -= fwd
+		if input.key_down(.D) do move += right
+		if input.key_down(.A) do move -= right
+		if input.key_down(.E) do move += [3]f32{0, 1, 0}
+		if input.key_down(.Q) do move -= [3]f32{0, 1, 0}
 
 		len := linalg.length(move)
 		if len > 0 {
@@ -669,7 +669,7 @@ handle_scene_input :: proc() {
 				scene_fly_speed * FLYTHROUGH_RAMP_MULT,
 			)
 			speed := _fly_speed_cur
-			if io.KeyShift do speed *= FLYTHROUGH_SHIFT_MULT
+			if input.key_down(.LSHIFT) || input.key_down(.RSHIFT) do speed *= FLYTHROUGH_SHIFT_MULT
 			scene_cam_pos += move / len * speed * dt
 		} else {
 			_fly_speed_cur = scene_fly_speed

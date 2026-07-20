@@ -1,12 +1,13 @@
-// Window, event pump, and frame timing on SDL3. This package is the only
-// place vendor:sdl3 is imported (plus editor/main.odin for the imgui backend
-// hookup) — engine and app code go through the procs here and in input.odin.
+// Window, event pump, and frame timing on SDL3. Input state lives in the
+// engine/input package — poll_events feeds it events, call sites read it
+// through `import "engine/input"` and never touch SDL directly.
 //
 // gfx never imports engine: it knows nothing about assets, scenes, or
 // components. See docs/SDL3Renderer.md.
 package gfx
 
 import sdl "vendor:sdl3"
+import "../input"
 
 _platform: struct {
 	window:         ^sdl.Window,
@@ -30,6 +31,7 @@ _platform_init :: proc(title: cstring, width, height: i32, show := true) -> bool
 		sdl.Quit()
 		return false
 	}
+	input.attach_window(_platform.window)
 	_platform.perf_freq = f64(sdl.GetPerformanceFrequency())
 	_platform.last_counter = sdl.GetPerformanceCounter()
 	return true
@@ -59,7 +61,7 @@ show_window :: proc() {
 // Drains the SDL event queue once per frame: updates the input snapshot and
 // forwards every event to event_cb (the editor passes imgui's ProcessEvent).
 poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil) {
-	_input_frame_reset()
+	input.frame_reset()
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
 		if event_cb != nil do event_cb(&e)
@@ -67,7 +69,7 @@ poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil) {
 		case .QUIT, .WINDOW_CLOSE_REQUESTED:
 			_platform.quit_requested = true
 		case:
-			_input_apply_event(&e)
+			input.apply_event(&e)
 		}
 	}
 }
