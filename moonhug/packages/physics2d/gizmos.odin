@@ -2,7 +2,7 @@ package physics2d
 
 // Collider outlines, shared by two callers: the editor's selected-object
 // gizmos (packages/physics2d/editor delegates here) and the in-app debug
-// view — @(debug_draw) draws EVERY enabled collider and runs when
+// view — the DebugDraw phase subscriber draws EVERY enabled collider when
 // engine.debug_draw_enabled is on. World-space lines in the XY plane at the
 // owner's z, matching the sync's v1 rules. Lines go through the gfx line
 // API, so the caller must have an open pass with a world-space view_proj.
@@ -100,7 +100,7 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
 
 // Every enabled collider as an outline (Unity's Physics Debug view, there is
 // no selection in the app).
-@(debug_draw)
+@(phase={key=DebugDraw, mode=App})
 debug_draw :: proc() {
 	w := engine.ctx_world()
 	if pool := box_collider2_ds(w); pool != nil {

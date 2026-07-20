@@ -208,6 +208,8 @@ main :: proc() {
             })
         }
         gfx.frame_end()
+
+        free_all(context.temp_allocator)
     }
 
     save_editor_settings()

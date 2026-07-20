@@ -2,7 +2,7 @@ package physics3d
 
 // Collider wireframes, shared by two callers: the editor's selected-object
 // gizmos (packages/physics3d/editor delegates here) and the in-app debug
-// view — @(debug_draw) draws EVERY enabled collider and runs when
+// view — the DebugDraw phase subscriber draws EVERY enabled collider when
 // engine.debug_draw_enabled is on. Full 3D: points go through the owner's
 // world rotation (scale ignored, matching the sync). Lines go through the
 // gfx line API, so the caller must have an open pass with a world-space
@@ -114,7 +114,7 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider, color: [4]f32) {
 
 // Every enabled collider as a wireframe (Unity's Physics Debug view, there is
 // no selection in the app).
-@(debug_draw)
+@(phase={key=DebugDraw, mode=App})
 debug_draw :: proc() {
 	w := engine.ctx_world()
 	if pool := box_colliders(w); pool != nil {

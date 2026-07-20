@@ -76,8 +76,10 @@ Prebuild scans `packages/*` and `packages/*/editor` like it scans
 - `@update` ticks and `@typ_guid` types are baked package-qualified into the
   existing central dispatchers (`__update`, `register_type_guids`), fully
   interleaved with app entries by order. `@menu_item` in `editor/` packages
-  lands in the editor's menu registration the same way. (`@phase` in packages:
-  not yet supported.)
+  lands in the editor's menu registration the same way. `@phase` subscribers
+  work from packages too (editor-side ones must declare `mode=Editor`) — the
+  `Phase` enum plus a subscriber table live in
+  `engine/phases_generated.odin`.
 - The import lines, so presence = compiled + registered in both binaries:
 
   ```

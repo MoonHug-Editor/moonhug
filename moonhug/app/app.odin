@@ -74,7 +74,7 @@ main :: proc() {
         }
         __update(gfx.delta_time())
 
-        // F3 toggles the packages' @(debug_draw) view (collider wireframes).
+        // F3 toggles the DebugDraw phase (collider wireframes etc).
         if gfx.input_key_pressed(.F3) {
             engine.debug_draw_enabled = !engine.debug_draw_enabled
         }
@@ -83,13 +83,15 @@ main :: proc() {
         // set — debug draw rides it), then the demo menu overlays in screen
         // space within the same swapchain pass.
         if engine.render_world_cameras() {
-            if engine.debug_draw_enabled do __debug_draw()
+            if engine.debug_draw_enabled do phase_run(.DebugDraw)
             ws := gfx.window_size()
             gfx.set_view_proj(gfx.matrix4_ortho_pixels(f32(ws.x), f32(ws.y)))
             demo_menu_draw()
             gfx.pass_end()
         }
         gfx.frame_end()
+
+        free_all(context.temp_allocator)
     }
 
     phase_run(Phase.Shutdown)
