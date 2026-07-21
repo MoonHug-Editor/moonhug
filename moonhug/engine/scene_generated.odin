@@ -10,6 +10,7 @@ SceneFile :: struct {
 	transforms:    [dynamic]Transform,
 	nested_scenes: [dynamic]NestedScene,
 	breadcrumbs:   [dynamic]Breadcrumb,
+	animations: [dynamic]Animation,
 	cameras: [dynamic]Camera,
 	lifetimes: [dynamic]Lifetime,
 	lights: [dynamic]Light,
@@ -26,6 +27,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	w := ctx_world()
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
+	id_to_animation_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
 	id_to_light_handle := make(map[Local_ID]Handle, context.temp_allocator)
@@ -51,6 +53,14 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 			}
 			append(&s.nested_scenes, ns_copy)
 		}
+	}
+
+	for &animation_data in sf.animations {
+		handle, animation := pool_create(&w.animations)
+		handle.type_key = .Animation
+		animation^ = animation_data
+		id_to_animation_handle[animation_data.local_id] = handle
+		animation_data = {}
 	}
 
 	for &camera_data in sf.cameras {
@@ -161,7 +171,11 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 
 		for &c in t.components {
-			if h, ok := resolve_handle(c.local_id, id_to_camera_handle); ok {
+			if h, ok := resolve_handle(c.local_id, id_to_animation_handle); ok {
+				c.handle = h
+				animation := pool_get(&w.animations, h)
+				if animation != nil do animation.owner = Transform_Handle(handle)
+			} else if h, ok := resolve_handle(c.local_id, id_to_camera_handle); ok {
 				c.handle = h
 				camera := pool_get(&w.cameras, h)
 				if camera != nil do camera.owner = Transform_Handle(handle)
@@ -211,6 +225,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 					bimap_insert(&s.local_ids, lid, h)
 				}
 			}
+			for lid, h in id_to_animation_handle {
+				bimap_insert(&s.local_ids, lid, h)
+			}
 			for lid, h in id_to_camera_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -247,6 +264,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 		_file_lookup := make(map[Local_ID]Handle, context.temp_allocator)
 		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
+		for lid, h in id_to_animation_handle do _file_lookup[lid] = h
 		for lid, h in id_to_camera_handle do _file_lookup[lid] = h
 		for lid, h in id_to_lifetime_handle do _file_lookup[lid] = h
 		for lid, h in id_to_light_handle do _file_lookup[lid] = h
@@ -257,6 +275,10 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		for lid, h in id_to_sprite_renderer_handle do _file_lookup[lid] = h
 		for lid, h in id_to_sprite_sorting_group_handle do _file_lookup[lid] = h
 		for lid, h in id_to_ext_handle do _file_lookup[lid] = h
+		for _, h in id_to_animation_handle {
+			p := pool_get(&w.animations, h)
+			if p != nil do _resolve_refs_in_value(p, type_info_of(Animation), s, &_file_lookup)
+		}
 		for _, h in id_to_camera_handle {
 			p := pool_get(&w.cameras, h)
 			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s, &_file_lookup)
@@ -334,6 +356,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 		t.local_id = new_id
 	}
 
+	for &c in sf.animations { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.cameras { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lifetimes { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	for &c in sf.lights { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
@@ -401,6 +424,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 		sf.root = new_root
 	}
 
+	for &c in sf.animations { _remap_refs_in_value(&c, type_info_of(Animation), &remap) }
 	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
 	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
 	for &c in sf.lights { _remap_refs_in_value(&c, type_info_of(Light), &remap) }
@@ -429,6 +453,8 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	}
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
+	for &c in sf.animations { type_cleanup(.Animation, &c) }
+	delete(sf.animations)
 	for &c in sf.cameras { type_cleanup(.Camera, &c) }
 	delete(sf.cameras)
 	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
@@ -459,6 +485,7 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.transforms)
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
+	delete(sf.animations)
 	delete(sf.cameras)
 	delete(sf.lifetimes)
 	delete(sf.lights)

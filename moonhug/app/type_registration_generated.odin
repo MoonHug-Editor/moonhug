@@ -15,6 +15,8 @@ _register_type_guids_once: sync.Once
 register_type_guids :: proc() {
 	sync.once_do(&_register_type_guids_once, proc() {
 		engine.register_type(engine.A, engine.A__Guid)
+		engine.register_type(engine.Animation, engine.Animation__Guid)
+		engine.register_type(engine.AnimationClip, engine.AnimationClip__Guid, engine.make_pAnimationClip)
 		engine.register_type(engine.AudioSettings, engine.AudioSettings__Guid, engine.make_pAudioSettings)
 		engine.register_type(engine.B, engine.B__Guid)
 		engine.register_type(physics3d.BoxCollider, engine.BoxCollider__Guid)
@@ -57,6 +59,8 @@ register_type_guids :: proc() {
 		engine.register_type(engine.TweenUnion, engine.TweenUnion__Guid)
 		engine.register_type(string, engine.string__Guid)
 		engine.register_type_key(engine.A, engine.TypeKey.A)
+		engine.register_type_key(engine.Animation, engine.TypeKey.Animation)
+		engine.register_type_key(engine.AnimationClip, engine.TypeKey.AnimationClip)
 		engine.register_type_key(engine.AudioSettings, engine.TypeKey.AudioSettings)
 		engine.register_type_key(engine.B, engine.TypeKey.B)
 		engine.register_type_key(physics3d.BoxCollider, engine.TypeKey.BoxCollider)

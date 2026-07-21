@@ -186,6 +186,7 @@ asset_db_refresh :: proc() {
         _reindex_if_scene(path)
         material_path_changed(path) // externally edited .mat: drop the cache entry
         shader_path_changed(path)   // edited .glsl: reimport + hot-reload pipelines
+        animation_clip_path_changed(path) // edited .anim: drop the cache entry
     }
 
     // Orphaned metas: a .meta whose asset (file or folder) is gone.

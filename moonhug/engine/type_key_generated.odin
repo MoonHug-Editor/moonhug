@@ -6,6 +6,8 @@ import "core:encoding/uuid"
 
 TypeKey :: enum u16 {
 	A,
+	Animation,
+	AnimationClip,
 	AudioSettings,
 	B,
 	BoxCollider,
@@ -53,6 +55,8 @@ INVALID_TYPE_KEY :: TypeKey(max(u16))
 
 UUID_NIL :: uuid.Identifier{};
 A__Guid := uuid.read("f49ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
+Animation__Guid := uuid.read("5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13") or_else UUID_NIL
+AnimationClip__Guid := uuid.read("0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90") or_else UUID_NIL
 AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else UUID_NIL
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 BoxCollider__Guid := uuid.read("13101cd5-e0a6-49d4-a310-953001ebae6b") or_else UUID_NIL

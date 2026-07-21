@@ -238,6 +238,7 @@ editor_init :: proc() {
     engine.mesh_cache_init()
     engine.material_cache_init()
     engine.shader_cache_init()
+    engine.animation_clip_cache_init()
     open_scenes_from_settings()
 
     init_scene_view()

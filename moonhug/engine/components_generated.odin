@@ -1,6 +1,7 @@
 package engine
 
 World :: struct {
+	animations: Pool(Animation),
 	cameras: Pool(Camera, 32),
 	lifetimes: Pool(Lifetime),
 	lights: Pool(Light, 8),
@@ -18,6 +19,7 @@ World :: struct {
 
 w_init :: proc(w:^World)
 {
+	pool_init(&w.animations)
 	pool_init(&w.cameras)
 	pool_init(&w.lifetimes)
 	pool_init(&w.lights)
@@ -33,6 +35,14 @@ w_init :: proc(w:^World)
 	__type_cleanups_init()
 	__component_on_validates_init()
 	__component_on_destroys_init()
+	w.pool_table[TypeKey.Animation] = pool_make_entry(&w.animations)
+	w.pool_table[TypeKey.Animation].collect_fn = proc(comp: rawptr, sf: rawptr) {
+		c := cast(^Animation)comp
+		s := cast(^SceneFile)sf
+		c_copy := c^
+		c_copy.owner = {}
+		append(&s.animations, c_copy)
+	}
 	w.pool_table[TypeKey.Camera] = pool_make_entry(&w.cameras)
 	w.pool_table[TypeKey.Camera].collect_fn = proc(comp: rawptr, sf: rawptr) {
 		c := cast(^Camera)comp
@@ -130,7 +140,12 @@ transform_get_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return {}, nil
-	when T == Camera {
+	when T == Animation {
+		owned, _ := transform_find_comp(t, .Animation)
+		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
+		return owned, pool_get(&w.animations, owned.handle)
+	}
+	else when T == Camera {
 		owned, _ := transform_find_comp(t, .Camera)
 		if owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil
 		return owned, pool_get(&w.cameras, owned.handle)
@@ -199,7 +214,13 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
-	when T == Camera {
+	when T == Animation {
+		owned, idx := transform_find_comp(t, .Animation)
+		if idx < 0 do return
+		pool_destroy(&w.animations, owned.handle)
+		ordered_remove(&t.components, idx)
+	}
+	else when T == Camera {
 		owned, idx := transform_find_comp(t, .Camera)
 		if idx < 0 do return
 		pool_destroy(&w.cameras, owned.handle)

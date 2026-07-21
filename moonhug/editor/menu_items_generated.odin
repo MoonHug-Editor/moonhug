@@ -18,7 +18,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_separator("Assets", -60)
 	menu.add_menu_item("Assets/Open Scene Additive", "", project_menu_open_scene_additive, -55, _project_selection_is_scene)
 	menu.add_menu_separator("Assets", -45)
-	menu.add_menu_item("Assets/Extract Textures & Material", "", extract_gltf_menu, -40)
+	menu.add_menu_item("Assets/Extract Assets", "", extract_gltf_menu, -40)
 	menu.add_menu_separator("Assets/Create", -15)
 	menu.add_menu_separator("Assets/Create", -9)
 	menu.add_menu_item("Assets/Refresh AssetDB", "", menu.refresh_asset_db_menu, 0)

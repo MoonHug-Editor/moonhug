@@ -1,14 +1,14 @@
 package editor
 
-// "Assets/Extract Textures & Material" — turns a downloaded .glb/.gltf into
-// ready-to-use assets (docs/Materials.md). Embedded images are written as
-// PLAIN FILES next to the model and one .mat per glTF material is created
-// with its slots wired (albedo → texture; metal-rough/normal/ao/emissive →
-// pbr.glsl rows when that shader asset exists, built-in Lit otherwise).
-// Deliberately NOT Unity's read-only sub-assets: everything extracted is an
-// ordinary editable asset, and existing files are SKIPPED — re-running never
-// overwrites user edits. Acts on projectViewData.selectedFile, like
-// Create/Scene Variant.
+// "Assets/Extract Assets" — turns a downloaded .glb/.gltf into ready-to-use
+// assets (docs/Materials.md). Embedded images are written as PLAIN FILES next
+// to the model, one .mat per glTF material is created with its slots wired
+// (albedo → texture; metal-rough/normal/ao/emissive → pbr.glsl rows when that
+// shader asset exists, built-in Lit otherwise), and one .anim AnimationClip
+// per glTF animation (played by the Animation component). Deliberately NOT
+// Unity's read-only sub-assets: everything extracted is an ordinary editable
+// asset, and existing files are SKIPPED — re-running never overwrites user
+// edits. Acts on projectViewData.selectedFile, like Create/Scene Variant.
 
 import cgltf "vendor:cgltf"
 import "core:fmt"
@@ -21,11 +21,11 @@ import "../engine/serialization"
 @(menu_separator={path="Assets", order=-45})
 extract_gltf_separator :: proc() {}
 
-@(menu_item={path="Assets/Extract Textures & Material", order=-40, shortcut=""})
+@(menu_item={path="Assets/Extract Assets", order=-40, shortcut=""})
 extract_gltf_menu :: proc() {
 	path := projectViewData.selectedFile
 	if !strings.has_suffix(path, ".glb") && !strings.has_suffix(path, ".gltf") {
-		fmt.println("[Editor] Extract Textures & Material: select a .glb/.gltf asset first")
+		fmt.println("[Editor] Extract Assets: select a .glb/.gltf asset first")
 		return
 	}
 	extract_gltf_assets(path)
@@ -158,8 +158,31 @@ extract_gltf_assets :: proc(model_path: string) {
 		}
 		mats_written += 1
 	}
+	// 3) One .anim AnimationClip per glTF animation. Channel targets are the
+	// glTF node-name paths ("Root/Bone"), matching child transforms under the
+	// object that carries the Animation component (Unity's curve bindings).
+	anims_written := 0
+	for &an, ai in data.animations {
+		anim_name := fmt.tprintf("%d", ai)
+		if an.name != nil && len(string(an.name)) > 0 do anim_name = string(an.name)
+		out, _ := filepath.join({dir, fmt.tprintf("%s_%s.anim", stem, anim_name)}, context.temp_allocator)
+		if os.exists(out) {
+			fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
+			continue
+		}
+		clip, ok := engine.animation_clip_from_gltf(&an)
+		if !ok {
+			fmt.printf("[Editor] Extract: no usable channels in animation %s\n", anim_name)
+			continue
+		}
+		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip) {
+			fmt.printf("[Editor] Extract: failed to write %s\n", out)
+			continue
+		}
+		anims_written += 1
+	}
 	engine.asset_db_refresh()
 
-	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s) created\n",
-		model_path, written, skipped, mats_written)
+	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s), %d animation clip(s) created\n",
+		model_path, written, skipped, mats_written, anims_written)
 }

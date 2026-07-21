@@ -8,6 +8,7 @@ import plugin_example "packages:plugin_example"
 
 __update :: proc(dt: f32) {
 	tween_tick(dt)
+	animation_update(dt)
 }
 
 __fixed_update :: proc(fixed_dt: f32) {

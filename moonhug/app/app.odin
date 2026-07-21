@@ -117,6 +117,7 @@ app_init :: proc() {
     engine.mesh_cache_init()
     engine.material_cache_init()
     engine.shader_cache_init()
+    engine.animation_clip_cache_init()
     engine.tween_init()
 
     log.info("App Init done")
@@ -145,4 +146,11 @@ app_shutdown :: proc() {
 @(update={order=1})
 tween_tick :: proc(dt: f32) {
     engine.tween_tick_running(dt, {})
+}
+
+// Clip playback is per-frame like Unity's Update-driven animation (the
+// legacy Animation component, not Mecanim).
+@(update={order=2})
+animation_update :: proc(dt: f32) {
+    engine.animation_tick(dt)
 }
