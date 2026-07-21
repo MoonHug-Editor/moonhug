@@ -49,7 +49,7 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if !engine.transform_active_in_hierarchy(mr.owner) do continue
 		_, mf := engine.transform_get_comp(engine.Transform_Handle(mr.owner), engine.MeshFilter)
 		if mf == nil || mf.mesh == {} do continue
-		mesh, ok := engine.mesh_load(mf.mesh)
+		mesh, ok := engine.mesh_load(mf.mesh, mf.part)
 		if !ok do continue
 
 		// Ray into local space (direction NOT renormalized so t stays
@@ -101,7 +101,7 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		if !engine.transform_active_in_hierarchy(mr.owner) do continue
 		_, mf := engine.transform_get_comp(engine.Transform_Handle(mr.owner), engine.MeshFilter)
 		if mf == nil || mf.mesh == {} do continue
-		mesh, ok := engine.mesh_load(mf.mesh)
+		mesh, ok := engine.mesh_load(mf.mesh, mf.part)
 		if !ok do continue
 		tw := engine.transform_world(engine.Transform_Handle(mr.owner))
 		model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)

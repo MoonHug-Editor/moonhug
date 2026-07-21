@@ -174,22 +174,28 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	root := engine.pool_get(&w.transforms, s.root.handle)
 	testing.expect(t, root.name == "AnimatedCube", "root should be named after the model")
 
-	// Node hierarchy: Root under the scene root, Cube under Root, with the
-	// fixture's identity TRS defaults.
-	found_cube := false
+	// Node hierarchy: Root under the scene root, Cube under Root.
+	cube: engine.Transform_Handle
 	for child in root.children {
 		ct := engine.pool_get(&w.transforms, child.handle)
 		if ct == nil || ct.name != "Root" do continue
 		for gc in ct.children {
 			gt := engine.pool_get(&w.transforms, gc.handle)
-			if gt != nil && gt.name == "Cube" do found_cube = true
+			if gt != nil && gt.name == "Cube" do cube = engine.Transform_Handle(gc.handle)
 		}
 	}
-	testing.expect(t, found_cube, "node hierarchy Root/Cube should exist")
+	testing.expect(t, cube != {}, "node hierarchy Root/Cube should exist")
+	if cube == {} do return
 
-	// References wired on the root.
-	_, mf := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.MeshFilter)
-	testing.expect(t, mf != nil && mf.mesh == mesh_guid, "MeshFilter should reference the model")
+	// Mesh components live on the MESH NODE, wired to its part; the root only
+	// carries the Animation.
+	_, mf := engine.transform_get_comp(cube, engine.MeshFilter)
+	testing.expect(t, mf != nil && mf.mesh == mesh_guid, "Cube should reference the model")
+	if mf != nil do testing.expect_value(t, mf.part, i32(1))
+	_, mr := engine.transform_get_comp(cube, engine.MeshRenderer)
+	testing.expect(t, mr != nil && len(mr.materials) == 1, "Cube should have one material slot")
+	_, root_mf := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.MeshFilter)
+	testing.expect(t, root_mf == nil, "root should not draw the whole model on top of the parts")
 	_, a := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.Animation)
 	testing.expect(t, a != nil && a.clip == clip_guid, "Animation should reference the first clip")
 	if a != nil do testing.expect(t, a.play_automatically, "Animation should default to play automatically")

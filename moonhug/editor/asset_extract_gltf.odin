@@ -182,11 +182,11 @@ extract_gltf_assets :: proc(model_path: string) {
 	engine.asset_db_refresh()
 
 	// 4) <stem>.scene mirroring the glTF node hierarchy (the Unity
-	// model-prefab analog): root MeshFilter/MeshRenderer wired to the .glb and
-	// the extracted materials in submesh order, an Animation component with
-	// the first clip, node children so clip target paths resolve. References
-	// resolve by the extract paths above, so re-running after a partial
-	// extract (or with pre-existing assets) still wires everything available.
+	// model-prefab analog): mesh nodes wired to their part of the .glb and
+	// the extracted materials, an Animation component with the first clip on
+	// the root, so clips move real geometry. References resolve by the
+	// extract paths above, so re-running after a partial extract (or with
+	// pre-existing assets) still wires everything available.
 	scenes_written := 0
 	scene_out, _ := filepath.join({dir, fmt.tprintf("%s.scene", stem)}, context.temp_allocator)
 	if os.exists(scene_out) {
@@ -198,15 +198,10 @@ extract_gltf_assets :: proc(model_path: string) {
 		}
 		mesh_guid := path_guid(model_path)
 
-		submesh_mats := engine.gltf_submesh_materials(data)
+		// Indexed by glTF material index (scene_from_gltf's contract).
 		mats := make([dynamic]engine.Asset_GUID, context.temp_allocator)
-		for m in submesh_mats {
-			g: engine.Asset_GUID
-			if m != nil {
-				mi := int(cgltf.material_index(data, m))
-				g = path_guid(_gltf_mat_out_path(dir, stem, m, mi))
-			}
-			append(&mats, g)
+		for &m, mi in data.materials {
+			append(&mats, path_guid(_gltf_mat_out_path(dir, stem, &m, mi)))
 		}
 
 		clip_guid: engine.Asset_GUID

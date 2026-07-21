@@ -202,6 +202,11 @@ _cleanup_stale_artifacts :: proc() {
         if !strings.has_suffix(entry.name, ".bin") do continue
 
         guid_str := strings.trim_suffix(entry.name, ".bin")
+        // Mesh part artifacts are "<guid>_m<i>.bin" — strip the suffix so
+        // they map to their owning asset instead of parsing as garbage.
+        if m := strings.last_index(guid_str, "_m"); m >= 0 {
+            guid_str = guid_str[:m]
+        }
         guid, parse_err := uuid.read(guid_str)
         if parse_err != nil {
             full_path, _ := filepath.join({ARTIFACTS_DIR, entry.name}, context.temp_allocator)

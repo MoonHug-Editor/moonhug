@@ -21,10 +21,20 @@ it draws (via its Materials — submesh i uses `materials[i]`).
 
 ## Import behavior
 
-All of the glTF's triangle primitives are BAKED (node world transforms
-applied) into one vertex blob; indices are grouped **by glTF material** into
-submeshes (primitives sharing a material merge into one submesh, ordered by
-first appearance — the Unity model):
+One import writes the whole-model artifact plus one **part** artifact per
+glTF mesh:
+
+- **Whole model** (`MeshFilter.part == 0`, the default): all triangle
+  primitives BAKED (node world transforms applied) into one vertex blob.
+- **Parts** (`MeshFilter.part == N` = glTF mesh N−1): that mesh's primitives
+  in NODE-LOCAL space — the transform hierarchy positions them at draw time,
+  so animated node transforms move real geometry. "Extract Assets" writes a
+  .scene wiring mesh nodes to their parts.
+
+In both, indices are grouped **by glTF material** into submeshes (primitives
+sharing a material merge into one submesh, ordered by first appearance — the
+Unity model; across the file for the whole model, within the mesh for a
+part):
 
 - missing normals → flat `{0,0,1}` (fine for the unlit shader)
 - missing uvs → zero
@@ -44,7 +54,8 @@ first appearance — the Unity model):
 
 ## Artifact format
 
-`library/artifacts/<guid>.bin`, little-endian (see `asset_importer_mesh.odin`):
+`library/artifacts/<guid>.bin` (whole model) and `<guid>_m<i>.bin` (part =
+glTF mesh i), little-endian, same layout (see `asset_importer_mesh.odin`):
 
 ```
 "MHMESH2\0" | vertex_count u32 | index_count u32 | submesh_count u32 |
@@ -62,8 +73,9 @@ vertex data on the CPU).
 
 ## Runtime
 
-`mesh_load(guid)` (engine/mesh.odin) mirrors the texture cache: artifact →
-GPU buffers + submesh table, cached by guid. A missing OR stale artifact
+`mesh_load(guid, part)` (engine/mesh.odin) mirrors the texture cache:
+artifact → GPU buffers + submesh table, cached by (guid, part). A missing OR
+stale artifact
 (fresh clone, cleaned `library/`, format bump) triggers reimport from the
 source glTF. Headless contexts (tests) get a graceful `false` — no GPU device
 required to load scenes that contain mesh components. Rendering draws each

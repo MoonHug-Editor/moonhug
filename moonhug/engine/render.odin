@@ -31,6 +31,7 @@ Draw_Sprite :: struct {
 
 Draw_Mesh :: struct {
 	mesh:      Asset_GUID,
+	part:      i32, // MeshFilter.part: 0 = whole model, N = glTF mesh N-1
 	materials: []Asset_GUID, // per-submesh; view into the renderer's array (frame lifetime). missing/empty = white unlit
 	model:     matrix[4, 4]f32,
 }
@@ -161,6 +162,7 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		append(out, Render_Command{
 			variant = Draw_Mesh{
 				mesh      = mf.mesh,
+				part      = mf.part,
 				materials = mr.materials[:],
 				model     = trs_matrix(tw.position, tw.rotation, tw.scale),
 			},
@@ -270,7 +272,7 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
 			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
 		case Draw_Mesh:
-			mesh, ok := mesh_load(d.mesh)
+			mesh, ok := mesh_load(d.mesh, d.part)
 			if !ok do continue
 			for sub, i in mesh.submeshes {
 				mat_guid: Asset_GUID

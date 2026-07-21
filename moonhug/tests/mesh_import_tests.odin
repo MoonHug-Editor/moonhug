@@ -15,9 +15,23 @@ CUBE_GLB :: "moonhug/tests/fixtures/meshes/cube.glb"
 test_mesh_import_cube_glb :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/meshes/_cube_test_artifact.bin"
 	defer os.remove(artifact)
+	part0 := engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator)
+	defer os.remove(part0)
 
 	ok := engine._import_mesh(CUBE_GLB, artifact, engine.default_mesh_settings())
 	testing.expect(t, ok, "cube.glb import failed")
+
+	// Import also writes one node-local PART artifact per glTF mesh
+	// (MeshFilter.part = index + 1). The single-mesh cube's part matches the
+	// whole model.
+	part_blob, part_err := os.read_entire_file(part0, context.temp_allocator)
+	testing.expect(t, part_err == nil, "part artifact not written")
+	if part_err == nil {
+		ph, _, _, psubs, p_ok := engine._mesh_artifact_parse(part_blob)
+		testing.expect(t, p_ok, "part artifact failed to parse")
+		testing.expect_value(t, ph.vertex_count, u32(24))
+		testing.expect(t, len(psubs) == 1, "single-material cube part = one submesh")
+	}
 
 	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
 	testing.expect(t, read_err == nil, "artifact not written")

@@ -1,9 +1,11 @@
 package engine
 
-// GUID-keyed mesh cache, mirroring texture2d.odin. Unlike textures, the raw
-// glTF is never loaded at runtime — the imported artifact IS the runtime
-// format (see asset_importer_mesh.odin); a missing OR stale artifact (format
-// bump, corruption) triggers an import-then-retry.
+// Mesh cache keyed by (guid, part), mirroring texture2d.odin. Unlike
+// textures, the raw glTF is never loaded at runtime — the imported artifact
+// IS the runtime format (see asset_importer_mesh.odin); a missing OR stale
+// artifact (format bump, corruption) triggers an import-then-retry.
+// part == 0 is the whole baked model; part == i+1 is glTF mesh i in
+// node-local space (MeshFilter.part).
 
 import gfx "gfx"
 import "core:encoding/uuid"
@@ -17,10 +19,15 @@ Mesh :: struct {
     gpu:       gfx.Mesh,
 }
 
-mesh_cache: map[Asset_GUID]Mesh
+Mesh_Key :: struct {
+    guid: Asset_GUID,
+    part: i32,
+}
+
+mesh_cache: map[Mesh_Key]Mesh
 
 mesh_cache_init :: proc() {
-    mesh_cache = make(map[Asset_GUID]Mesh)
+    mesh_cache = make(map[Mesh_Key]Mesh)
 }
 
 mesh_cache_shutdown :: proc() {
@@ -31,15 +38,20 @@ mesh_cache_shutdown :: proc() {
     delete(mesh_cache)
 }
 
-mesh_load :: proc(guid: Asset_GUID) -> (^Mesh, bool) {
-    if mesh, ok := &mesh_cache[guid]; ok {
+mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
+    key := Mesh_Key{guid, part}
+    if mesh, ok := &mesh_cache[key]; ok {
         return mesh, true
     }
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
 
-    artifact := _artifact_path(uuid.Identifier(guid))
-    defer delete(artifact)
+    whole := _artifact_path(uuid.Identifier(guid))
+    defer delete(whole)
+    artifact := whole
+    if part > 0 {
+        artifact = mesh_part_artifact_path(whole, int(part - 1), context.temp_allocator)
+    }
 
     header: Mesh_Artifact_Header
     vertices: []gfx.Vertex
@@ -67,20 +79,26 @@ mesh_load :: proc(guid: Asset_GUID) -> (^Mesh, bool) {
 
     owned_submeshes := make([]Mesh_Submesh, len(submeshes))
     copy(owned_submeshes, submeshes)
-    mesh_cache[guid] = Mesh{
+    mesh_cache[key] = Mesh{
         guid      = guid,
         aabb_min  = header.aabb_min,
         aabb_max  = header.aabb_max,
         submeshes = owned_submeshes,
         gpu       = gpu,
     }
-    return &mesh_cache[guid], true
+    return &mesh_cache[key], true
 }
 
+// Drops every cached part of the asset.
 mesh_unload :: proc(guid: Asset_GUID) {
-    if mesh, ok := &mesh_cache[guid]; ok {
+    keys := make([dynamic]Mesh_Key, context.temp_allocator)
+    for key in mesh_cache {
+        if key.guid == guid do append(&keys, key)
+    }
+    for key in keys {
+        mesh := &mesh_cache[key]
         gfx.mesh_destroy(&mesh.gpu)
         delete(mesh.submeshes)
-        delete_key(&mesh_cache, guid)
+        delete_key(&mesh_cache, key)
     }
 }

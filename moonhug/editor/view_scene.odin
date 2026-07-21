@@ -227,7 +227,7 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 
 	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
 	if mf != nil && mf.mesh != {} {
-		if mesh, ok := engine.mesh_load(mf.mesh); ok {
+		if mesh, ok := engine.mesh_load(mf.mesh, mf.part); ok {
 			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
 			lo, hi := mesh.aabb_min, mesh.aabb_max
 			cmin, cmax: [3]f32
@@ -316,7 +316,7 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 
 	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
 	if mf != nil && mf.mesh != {} {
-		if mesh, ok := engine.mesh_load(mf.mesh); ok {
+		if mesh, ok := engine.mesh_load(mf.mesh, mf.part); ok {
 			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
 			lo, hi := mesh.aabb_min, mesh.aabb_max
 			corners: [8][3]f32
