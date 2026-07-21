@@ -4,11 +4,13 @@ package editor
 // assets (docs/Materials.md). Embedded images are written as PLAIN FILES next
 // to the model, one .mat per glTF material is created with its slots wired
 // (albedo → texture; metal-rough/normal/ao/emissive → pbr.glsl rows when that
-// shader asset exists, built-in Lit otherwise), and one .anim AnimationClip
-// per glTF animation (played by the Animation component). Deliberately NOT
-// Unity's read-only sub-assets: everything extracted is an ordinary editable
-// asset, and existing files are SKIPPED — re-running never overwrites user
-// edits. Acts on projectViewData.selectedFile, like Create/Scene Variant.
+// shader asset exists, built-in Lit otherwise), one .anim AnimationClip per
+// glTF animation (played by the Animation component), and one .scene
+// mirroring the node hierarchy with all of the above referenced — the Unity
+// model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
+// everything extracted is an ordinary editable asset, and existing files are
+// SKIPPED — re-running never overwrites user edits. Acts on
+// projectViewData.selectedFile, like Create/Scene Variant.
 
 import cgltf "vendor:cgltf"
 import "core:fmt"
@@ -103,9 +105,7 @@ extract_gltf_assets :: proc(model_path: string) {
 	// in file order.
 	mats_written := 0
 	for &m, mi in data.materials {
-		mat_name := fmt.tprintf("%d", mi)
-		if m.name != nil && len(string(m.name)) > 0 do mat_name = string(m.name)
-		out, _ := filepath.join({dir, fmt.tprintf("%s_%s.mat", stem, mat_name)}, context.temp_allocator)
+		out := _gltf_mat_out_path(dir, stem, &m, mi)
 		if os.exists(out) {
 			fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
 			continue
@@ -163,16 +163,14 @@ extract_gltf_assets :: proc(model_path: string) {
 	// object that carries the Animation component (Unity's curve bindings).
 	anims_written := 0
 	for &an, ai in data.animations {
-		anim_name := fmt.tprintf("%d", ai)
-		if an.name != nil && len(string(an.name)) > 0 do anim_name = string(an.name)
-		out, _ := filepath.join({dir, fmt.tprintf("%s_%s.anim", stem, anim_name)}, context.temp_allocator)
+		out := _gltf_anim_out_path(dir, stem, &an, ai)
 		if os.exists(out) {
 			fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
 			continue
 		}
-		clip, ok := engine.animation_clip_from_gltf(&an)
+		clip, ok := engine.animation_clip_from_gltf(data, &an)
 		if !ok {
-			fmt.printf("[Editor] Extract: no usable channels in animation %s\n", anim_name)
+			fmt.printf("[Editor] Extract: no usable channels in %s\n", out)
 			continue
 		}
 		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip) {
@@ -183,6 +181,64 @@ extract_gltf_assets :: proc(model_path: string) {
 	}
 	engine.asset_db_refresh()
 
-	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s), %d animation clip(s) created\n",
-		model_path, written, skipped, mats_written, anims_written)
+	// 4) <stem>.scene mirroring the glTF node hierarchy (the Unity
+	// model-prefab analog): root MeshFilter/MeshRenderer wired to the .glb and
+	// the extracted materials in submesh order, an Animation component with
+	// the first clip, node children so clip target paths resolve. References
+	// resolve by the extract paths above, so re-running after a partial
+	// extract (or with pre-existing assets) still wires everything available.
+	scenes_written := 0
+	scene_out, _ := filepath.join({dir, fmt.tprintf("%s.scene", stem)}, context.temp_allocator)
+	if os.exists(scene_out) {
+		fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", scene_out)
+	} else {
+		path_guid := proc(path: string) -> (g: engine.Asset_GUID) {
+			if id, ok := engine.asset_db_get_guid(path); ok do g = engine.Asset_GUID(id)
+			return
+		}
+		mesh_guid := path_guid(model_path)
+
+		submesh_mats := engine.gltf_submesh_materials(data)
+		mats := make([dynamic]engine.Asset_GUID, context.temp_allocator)
+		for m in submesh_mats {
+			g: engine.Asset_GUID
+			if m != nil {
+				mi := int(cgltf.material_index(data, m))
+				g = path_guid(_gltf_mat_out_path(dir, stem, m, mi))
+			}
+			append(&mats, g)
+		}
+
+		clip_guid: engine.Asset_GUID
+		if len(data.animations) > 0 {
+			clip_guid = path_guid(_gltf_anim_out_path(dir, stem, &data.animations[0], 0))
+		}
+
+		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], clip_guid, scene_out) {
+			scenes_written += 1
+		} else {
+			fmt.printf("[Editor] Extract: failed to write %s\n", scene_out)
+		}
+	}
+	engine.asset_db_refresh()
+
+	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s), %d animation clip(s), %d scene(s) created\n",
+		model_path, written, skipped, mats_written, anims_written, scenes_written)
+}
+
+// Extraction output paths, shared by the writers and the scene reference
+// wiring: "<model>_<name-or-index>.mat" / ".anim" next to the model
+// (temp-allocated).
+_gltf_mat_out_path :: proc(dir, stem: string, m: ^cgltf.material, index: int) -> string {
+	name := fmt.tprintf("%d", index)
+	if m.name != nil && len(string(m.name)) > 0 do name = string(m.name)
+	out, _ := filepath.join({dir, fmt.tprintf("%s_%s.mat", stem, name)}, context.temp_allocator)
+	return out
+}
+
+_gltf_anim_out_path :: proc(dir, stem: string, an: ^cgltf.animation, index: int) -> string {
+	name := fmt.tprintf("%d", index)
+	if an.name != nil && len(string(an.name)) > 0 do name = string(an.name)
+	out, _ := filepath.join({dir, fmt.tprintf("%s_%s.anim", stem, name)}, context.temp_allocator)
+	return out
 }

@@ -12,7 +12,7 @@ import "core:strings"
 // samplers keep only the middle element of each [in-tangent, value,
 // out-tangent] triplet and play back linearly; morph-weight channels are
 // skipped (no morph targets in the renderer).
-animation_clip_from_gltf :: proc(an: ^cgltf.animation) -> (clip: AnimationClip, ok: bool) {
+animation_clip_from_gltf :: proc(data: ^cgltf.data, an: ^cgltf.animation) -> (clip: AnimationClip, ok: bool) {
 	clip.wrap = .Once // Unity's imported-clip default (loop is a play-time choice)
 	clip.channels = make([dynamic]Animation_Channel, context.temp_allocator)
 	for &ch in an.channels {
@@ -51,7 +51,7 @@ animation_clip_from_gltf :: proc(an: ^cgltf.animation) -> (clip: AnimationClip, 
 		}
 		for tm in times do clip.length = max(clip.length, tm)
 		append(&clip.channels, Animation_Channel{
-			target = _gltf_node_path(ch.target_node),
+			target = _gltf_node_path(data, ch.target_node),
 			path   = path,
 			step   = ch.sampler.interpolation == .step,
 			times  = times,
@@ -62,13 +62,12 @@ animation_clip_from_gltf :: proc(an: ^cgltf.animation) -> (clip: AnimationClip, 
 }
 
 // Node's name path from the hierarchy root down, "/"-joined (temp-allocated).
-// Unnamed nodes contribute the placeholder "node".
-_gltf_node_path :: proc(node: ^cgltf.node) -> string {
+// Names come from gltf_node_name (scene_gltf.odin), matching the transforms
+// scene_from_gltf creates.
+_gltf_node_path :: proc(data: ^cgltf.data, node: ^cgltf.node) -> string {
 	parts := make([dynamic]string, context.temp_allocator)
 	for n := node; n != nil; n = n.parent {
-		name := "node"
-		if n.name != nil && len(string(n.name)) > 0 do name = string(n.name)
-		inject_at(&parts, 0, name)
+		inject_at(&parts, 0, gltf_node_name(data, n))
 	}
 	return strings.join(parts[:], "/", context.temp_allocator)
 }
