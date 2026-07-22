@@ -1,3 +1,11 @@
+## [0.48.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.47.1...v0.48.0) (2026-07-22)
+
+### Features
+
+* Animation, AnimationClip.anim, prewired scene extraction from gltf ([2c9694a](https://github.com/MoonHug-Editor/moonhug/commit/2c9694a17432450432f7d15a33ba4b61537b42aa))
+* app as package ([78b157d](https://github.com/MoonHug-Editor/moonhug/commit/78b157d848a0e85d2a0f3e91a285bce881613d72))
+* scene view flythrough smoothing ([3333a8d](https://github.com/MoonHug-Editor/moonhug/commit/3333a8d58b35259abd7f5bef82d68ec92d49410c))
+
 ## [0.47.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.47.0...v0.47.1) (2026-07-20)
 
 ### Bug Fixes
