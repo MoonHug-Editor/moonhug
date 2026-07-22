@@ -2,7 +2,7 @@ package inspector
 
 import "core:fmt"
 import "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import engine "../../engine"
 
 Min_Value :: union { int, f64 }

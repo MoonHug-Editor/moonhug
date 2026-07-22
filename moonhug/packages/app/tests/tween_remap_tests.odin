@@ -5,8 +5,8 @@ package app_tests
 // test ships with the app package).
 
 import app ".."
-import "../../../engine"
-import common "../../../tests/common"
+import "moonhug:engine"
+import common "moonhug:tests/common"
 import "core:testing"
 
 @(test)

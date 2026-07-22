@@ -3,7 +3,7 @@ package editor
 import "core:fmt"
 import "core:strings"
 import "core:encoding/uuid"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import "undo"
 

@@ -23,7 +23,7 @@ package physics2d
 import "base:runtime"
 import "core:math"
 import b2 "vendor:box2d"
-import "../../engine"
+import "moonhug:engine"
 
 GRAVITY_DEFAULT :: [2]f32{0, -9.81}
 _SUB_STEPS :: 4

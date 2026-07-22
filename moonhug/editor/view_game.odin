@@ -1,7 +1,7 @@
 package editor
 
 import gfx "../engine/gfx"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../engine"
 
 game_rt: ^gfx.Render_Target

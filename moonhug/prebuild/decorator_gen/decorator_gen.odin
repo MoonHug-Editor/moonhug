@@ -207,7 +207,7 @@ generate :: proc(w: ^db.World) -> bool {
 		if pkg == "engine" {
 			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
 		} else {
-			fmt.sbprintf(&b, "import %s \"packages:%s\"\n", pkg, pkg)
+			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
 		}
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")

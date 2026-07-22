@@ -24,7 +24,7 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import b3 "vendor:box3d"
-import "../../engine"
+import "moonhug:engine"
 
 GRAVITY_DEFAULT :: [3]f32{0, -9.81, 0}
 _SUB_STEPS :: 4

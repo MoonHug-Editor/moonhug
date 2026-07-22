@@ -6,7 +6,7 @@ package physics2d
 // joints, filters) use body_of(tH) and vendor:box2d directly.
 
 import b2 "vendor:box2d"
-import "../../engine"
+import "moonhug:engine"
 
 // Unity's order (Dynamic is the default zero value).
 Body_Type :: enum {

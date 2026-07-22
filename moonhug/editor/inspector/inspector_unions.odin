@@ -6,7 +6,7 @@ import "core:mem"
 import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import engine "../../engine"
 import "../undo"
 

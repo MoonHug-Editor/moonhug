@@ -2,9 +2,9 @@ package app_editor
 
 import "core:fmt"
 import "core:strings"
-import im "../../../../external/odin-imgui"
-import engine "../../../engine"
-import log "../../../engine/log"
+import im "moonhug:external/odin-imgui"
+import engine "moonhug:engine"
+import log "moonhug:engine/log"
 
 //@(property_drawer={type=app.A, priority = 10})
 draw_A_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {

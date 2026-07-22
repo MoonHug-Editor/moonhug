@@ -9,9 +9,9 @@ package physics3d_editor
 
 import "core:encoding/uuid"
 import "core:fmt"
-import essentials "packages:essentials"
-import "../../../engine"
-import "../../../editor/undo"
+import essentials "moonhug:packages/essentials"
+import "moonhug:engine"
+import "moonhug:editor/undo"
 
 @(menu_item={path="GameObject/3D Object/Cube (Physics)", shortcut=""})
 create_cube_menu :: proc() {

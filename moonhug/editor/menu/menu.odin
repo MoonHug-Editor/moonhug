@@ -5,7 +5,7 @@ import "core:mem"
 import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 
 MenuEntryKind :: enum {
 	Submenu,

@@ -1,6 +1,6 @@
 package editor
 
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "core:math"
 
 // ProggyClean (imgui's built-in default) is a bitmap font designed for 13px.
@@ -16,9 +16,9 @@ ICON_FONT_SIZE_LG :: 26
 editor_icon_font_lg: ^im.Font
 
 // Material Symbols Outlined, embedded at compile time so the editor is
-// independent of the runtime working directory (#load path is relative to this
-// source file). License: Apache-2.0 (see external/fonts/material).
-MATERIAL_FONT_DATA := #load("../../external/fonts/material/MaterialSymbolsOutlined.ttf")
+// independent of the runtime working directory (#load path resolves through the
+// `moonhug` collection). License: Apache-2.0 (see moonhug/external/fonts/material).
+MATERIAL_FONT_DATA := #load("moonhug:external/fonts/material/MaterialSymbolsOutlined.ttf")
 
 // A VALID FontConfig at an EXPLICIT reference size. Odin zero-inits, but imgui
 // 1.92's rasterizer relies on several non-zero ctor defaults — missing any bakes

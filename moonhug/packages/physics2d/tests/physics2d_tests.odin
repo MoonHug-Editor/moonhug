@@ -6,8 +6,8 @@ package physics2d_tests
 // packages/*/tests suite after the central one.
 
 import "core:testing"
-import "../../../engine"
-import common "../../../tests/common"
+import "moonhug:engine"
+import common "moonhug:tests/common"
 import physics2d ".."
 
 @(test)

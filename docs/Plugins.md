@@ -1,9 +1,16 @@
 # Plugins (Packages)
 
 Plugin is a package folder in `moonhug/packages/`.
-- Its code is a plain Odin package reached through the `packages:` collection.
+- Its code is a plain Odin package reached as `moonhug:packages/<name>`.
 - Its `assets/` folder is scanned by the asset db — nothing else in the package is.
 - Samples install as further packages.
+
+Everything is reached through one collection, `moonhug`, rooted at `moonhug/`
+and passed to every build/test command. Imports are depth-independent no matter
+how deeply the file is nested: `import "moonhug:engine"`,
+`import "moonhug:engine/gfx"`, `import common "moonhug:tests/common"`,
+`import "moonhug:editor/undo"`, `import im "moonhug:external/odin-imgui"`.
+Sibling packages import as `moonhug:packages/<name>`.
 
 The attribute system (`@component`, `@update`, `@phase`, `@menu_item`,
 `@property_drawer`, …) is the plugin API — packages use the exact same markers
@@ -27,11 +34,11 @@ app leaves a fully working editor.
 
 ```
 moonhug/packages/
-  physics2d/                ← runtime package:  import "packages:physics2d"
+  physics2d/                ← runtime package:  import "moonhug:packages/physics2d"
     physics.odin
     component_Rigidbody2D.odin
     components_ext_generated.odin  ← emitted by prebuild: component registration
-    editor/                 ← OPTIONAL editor-only package:  import "packages:physics2d/editor"
+    editor/                 ← OPTIONAL editor-only package:  import "moonhug:packages/physics2d/editor"
       gizmos.odin
     assets/                 ← the ONLY subtree the asset db scans. Visible in project view (auto-created)
       debug.mat
@@ -67,7 +74,7 @@ moonhug/packages/
   suite into `moonhug/tests/packages_tests_generated.odin`, so run_tests.sh
   covers everything in one `odin test -all-packages` run. Tests ship with the
   package and die with it on uninstall — the central suite only reaches
-  `packages:` through that generated file.
+  `moonhug:packages/` through that generated file.
 - **`run_configs/`** — shell scripts that build+run the package as a program
   (see Run configurations). Inert to the asset db and the compiler.
 - Other subfolders are just folders with no special meaning.
@@ -123,7 +130,7 @@ carries no special scan status), then generates:
 
   ```
   moonhug/packages/app/packages_generated.odin   imports + register_packages()
-  moonhug/editor/packages_generated.odin         import _ "packages:<name>/editor"
+  moonhug/editor/packages_generated.odin         import _ "moonhug:packages/<name>/editor"
   ```
 
   `register_packages()` is called from `app_init`/`editor_init` right after

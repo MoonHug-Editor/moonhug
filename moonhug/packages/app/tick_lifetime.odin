@@ -1,6 +1,6 @@
 package app
 
-import "../../engine"
+import "moonhug:engine"
 
 @(fixed_update={order=-50})
 tick_lifetime :: proc(dt: f32) {

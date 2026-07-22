@@ -9,7 +9,7 @@ package editor
 // Overlay placement persists in editor_settings (anchor + normalized float pos).
 
 import "core:fmt"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "menu"
 
 // ---------------------------------------------------------------------------

@@ -10,7 +10,7 @@ package physics3d
 // physics through body_of(tH) + vendor:box3d.
 
 import b3 "vendor:box3d"
-import "../../engine"
+import "moonhug:engine"
 
 @(component={menu="Physics/BoxCollider"})
 @(typ_guid={guid = "13101cd5-e0a6-49d4-a310-953001ebae6b"})

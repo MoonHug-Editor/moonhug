@@ -6,8 +6,8 @@ package app_tests
 // every JSON-level walker (diff/apply/lid-collect) sees the same shape.
 
 import app ".."
-import "../../../engine"
-import common "../../../tests/common"
+import "moonhug:engine"
+import common "moonhug:tests/common"
 
 import "core:encoding/json"
 import "core:encoding/uuid"

@@ -9,7 +9,7 @@ package inspector
 // Material_Property drawer.
 
 import "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../../engine"
 
 draw_material_textures :: proc(ptr: rawptr, tid: typeid, label: cstring) {

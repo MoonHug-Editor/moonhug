@@ -10,8 +10,8 @@ package physics3d
 
 import "core:math"
 import "core:math/linalg"
-import "../../engine"
-import gfx "../../engine/gfx"
+import "moonhug:engine"
+import gfx "moonhug:engine/gfx"
 
 // Unity's collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}

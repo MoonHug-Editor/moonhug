@@ -4,7 +4,7 @@ package tests
 // (moonhug/packages/<name>/tests — docs/Plugins.md) can import it too. The
 // central suite keeps the short names through these aliases.
 //
-// RULE: this package never imports "packages:..." — core tests test core;
+// RULE: this package never imports "moonhug:packages/..." — core tests test core;
 // a package's tests live WITH the package and die with it on uninstall.
 
 import common "common"

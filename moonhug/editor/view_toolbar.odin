@@ -9,7 +9,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:thread"
 import "core:time"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../engine"
 import "../engine/log"
 

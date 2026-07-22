@@ -2,7 +2,7 @@ package editor
 
 import gfx "../engine/gfx"
 import input "../engine/input"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
 import "../engine"

@@ -707,14 +707,10 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 // concrete type, so they must be compiled in the component's own package)
 // plus typed pool accessors and a typed get_comp that falls back to engine's.
 // "moonhug/app" -> "../engine"; "moonhug/packages/x" -> "../../engine".
+// External packages import engine via the `moonhug` collection, so the path
+// is depth-independent (no ../ counting).
 _engine_import_path :: proc(pkg_path: string) -> string {
-	depth := strings.count(pkg_path, "/") // segments below the repo prefix
-	b := strings.builder_make(context.temp_allocator)
-	for _ in 0 ..< depth {
-		strings.write_string(&b, "../")
-	}
-	strings.write_string(&b, "engine")
-	return strings.to_string(b)
+	return "moonhug:engine"
 }
 
 generate_ext_components :: proc(w: ^db.World) -> bool {

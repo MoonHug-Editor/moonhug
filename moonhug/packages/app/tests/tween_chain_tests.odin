@@ -7,8 +7,8 @@ package app_tests
 // app's per-frame free_all dangled them and number keys stopped running.
 
 import app ".."
-import "../../../engine"
-import common "../../../tests/common"
+import "moonhug:engine"
+import common "moonhug:tests/common"
 import "core:fmt"
 import "core:testing"
 

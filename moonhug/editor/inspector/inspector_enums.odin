@@ -4,7 +4,7 @@ import "core:c"
 import "core:fmt"
 import "base:runtime"
 import strings "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 
 is_enum_type :: proc(tid: typeid) -> bool {
 	ti := runtime.type_info_base(type_info_of(tid))

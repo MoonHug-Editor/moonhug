@@ -7,7 +7,7 @@ package physics3d
 // (forces, joints, mass overrides) use body_of(tH) and vendor:box3d.
 
 import b3 "vendor:box3d"
-import "../../engine"
+import "moonhug:engine"
 
 @(component={menu="Physics/Rigidbody"})
 @(typ_guid={guid = "82976d39-c450-4464-87e2-c260c430c157"})

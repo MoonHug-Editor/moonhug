@@ -1,6 +1,6 @@
 package app
 
-import "../../engine"
+import "moonhug:engine"
 
 // Straight-line mover: flies along dir at speed until its Lifetime expires.
 // dir is set by game code at spawn (not authored), speed is authored.

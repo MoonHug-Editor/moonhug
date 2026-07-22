@@ -1,6 +1,6 @@
 package menu
 import "core:fmt"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../inspector"
 import engine "../../engine"
 import "core:path/filepath"

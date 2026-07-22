@@ -6,8 +6,8 @@ package app_tests
 // docs/Plugins.md).
 
 import app ".."
-import "../../../engine"
-import common "../../../tests/common"
+import "moonhug:engine"
+import common "moonhug:tests/common"
 import "core:fmt"
 import "core:strings"
 import "core:testing"

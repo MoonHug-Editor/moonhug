@@ -1,17 +1,17 @@
 #+feature dynamic-literals
 package app
 
-import "../../engine"
-import gfx "../../engine/gfx"
-import input "../../engine/input"
-import "../../engine/serialization"
+import "moonhug:engine"
+import gfx "moonhug:engine/gfx"
+import input "moonhug:engine/input"
+import "moonhug:engine/serialization"
 import "core:os"
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
-import "../../engine/log"
+import "moonhug:engine/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 

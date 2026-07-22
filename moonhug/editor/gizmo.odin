@@ -18,7 +18,7 @@ package editor
 // (undo.field_drag_* on t.position / t.rotation / t.scale).
 
 import gfx "../engine/gfx"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
 import "../engine"

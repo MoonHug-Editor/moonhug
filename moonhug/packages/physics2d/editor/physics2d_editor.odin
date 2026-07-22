@@ -6,7 +6,7 @@ package physics2d_editor
 // shared with the in-app @(debug_draw) view — here only the selected-only
 // policy and the color choice remain.
 
-import physics2d "packages:physics2d"
+import physics2d "moonhug:packages/physics2d"
 
 @(on_draw_gizmos_selected={component=BoxCollider2D})
 box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D) {

@@ -2,7 +2,7 @@ package editor
 
 import "core:strings"
 import "core:sync"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 
 MAX_OUTPUT_LINES :: 2000
 

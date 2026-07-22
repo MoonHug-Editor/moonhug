@@ -22,7 +22,7 @@ import "core:path/filepath"
 import "core:slice"
 import strings "core:strings"
 import "core:encoding/uuid"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import engine "../engine"
 
 // --- File clipboard -----------------------------------------------------------

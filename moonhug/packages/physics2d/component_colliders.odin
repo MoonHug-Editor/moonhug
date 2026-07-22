@@ -10,7 +10,7 @@ package physics2d
 // physics through body_of(tH) + vendor:box2d.
 
 import b2 "vendor:box2d"
-import "../../engine"
+import "moonhug:engine"
 
 @(component={menu="Physics2D/BoxCollider2D"})
 @(typ_guid={guid = "1e2d0da1-9df6-4668-9f86-f76351378394"})

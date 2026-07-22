@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:strings"
 import "core:path/filepath"
 import "core:time"
-import im "../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../engine/log"
 
 _console_last_count: int

@@ -4,6 +4,6 @@ package tests
 // Installed packages' test suites — run via `odin test moonhug/tests
 // -all-packages` (run_tests.sh); see docs/Plugins.md.
 
-import _ "packages:app/tests"
-import _ "packages:physics2d/tests"
-import _ "packages:physics3d/tests"
+import _ "moonhug:packages/app/tests"
+import _ "moonhug:packages/physics2d/tests"
+import _ "moonhug:packages/physics3d/tests"

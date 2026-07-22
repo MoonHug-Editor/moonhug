@@ -67,8 +67,8 @@ _dir_has_odin :: proc(dir: string) -> bool {
 }
 
 _installed_packages :: proc(list: ^[dynamic]string) {
-	// The collection flag (-collection:packages=moonhug/packages) needs the
-	// directory to exist even with zero packages installed.
+	// Packages resolve through the `moonhug` collection as `moonhug:packages/<name>`;
+	// the directory must exist even with zero packages installed.
 	os.make_directory(PACKAGES_DIR)
 	handle, err := os.open(PACKAGES_DIR)
 	if err != nil do return

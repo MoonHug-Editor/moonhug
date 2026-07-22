@@ -4,7 +4,7 @@ package plugin_example_editor
 // the app. May import engine, imgui and the editor's subpackages (menu,
 // inspector, undo) — never the editor root (docs/Plugins.md layering rule).
 
-import "../../../engine/log"
+import "moonhug:engine/log"
 
 @(menu_item={path="Tools/Plugin Example/Log", shortcut=""})
 plugin_example_menu :: proc() {

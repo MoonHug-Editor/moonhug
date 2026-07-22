@@ -8,8 +8,8 @@ package physics2d
 // API, so the caller must have an open pass with a world-space view_proj.
 
 import "core:math"
-import "../../engine"
-import gfx "../../engine/gfx"
+import "moonhug:engine"
+import gfx "moonhug:engine/gfx"
 
 // Unity's 2D collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}

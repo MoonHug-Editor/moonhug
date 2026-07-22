@@ -5,5 +5,5 @@
 # to the binary with "$@". Works identically from a terminal.
 set -e
 mkdir -p builds
-odin build moonhug/packages/app -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/app
+odin build moonhug/packages/app -ignore-unknown-attributes -collection:moonhug=moonhug -out:builds/app
 exec builds/app "$@"

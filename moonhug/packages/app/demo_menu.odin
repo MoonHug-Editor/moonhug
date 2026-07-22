@@ -9,9 +9,9 @@ package app
 import "core:path/filepath"
 import "core:strings"
 import "core:encoding/uuid"
-import gfx "../../engine/gfx"
-import input "../../engine/input"
-import "../../engine"
+import gfx "moonhug:engine/gfx"
+import input "moonhug:engine/input"
+import "moonhug:engine"
 
 @(private = "file")
 _current_demo: ^engine.Scene

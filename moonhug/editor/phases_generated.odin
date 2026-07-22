@@ -4,7 +4,7 @@ package editor
 // Subscriber table: engine/phases_generated.odin (with the Phase enum).
 
 import "../engine"
-import app "packages:app"
+import app "moonhug:packages/app"
 
 phase_editor_run :: proc(key: engine.Phase) {
 	#partial switch key {

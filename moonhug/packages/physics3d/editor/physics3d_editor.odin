@@ -6,7 +6,7 @@ package physics3d_editor
 // the in-app @(debug_draw) view — here only the selected-only policy and the
 // color choice remain.
 
-import physics3d "packages:physics3d"
+import physics3d "moonhug:packages/physics3d"
 
 @(on_draw_gizmos_selected={component=BoxCollider})
 box_collider_gizmos :: proc(c: ^physics3d.BoxCollider) {

@@ -79,7 +79,7 @@ _PACKAGES_PREFIX :: "moonhug/packages/"
 _import_path :: proc(pkg_path: string) -> string {
 	if strings.has_prefix(pkg_path, _PACKAGES_PREFIX) {
 		rest := pkg_path[len(_PACKAGES_PREFIX):]
-		return fmt.tprintf("packages:%s", rest)
+		return fmt.tprintf("moonhug:packages/%s", rest)
 	}
 	// Relative from moonhug/editor: "moonhug/app_editor" -> "../app_editor",
 	// "moonhug/editor/menu" -> "menu".

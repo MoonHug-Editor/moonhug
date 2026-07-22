@@ -2,4 +2,4 @@
 set -e
 
 
-odin test moonhug/tests -all-packages -ignore-unknown-attributes -collection:packages=moonhug/packages -define:ODIN_TEST_THREADS=1
+odin test moonhug/tests -all-packages -ignore-unknown-attributes -collection:moonhug=moonhug -define:ODIN_TEST_THREADS=1

@@ -147,12 +147,12 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 	_collect_imports(&imports, fixed_rows, host.name, runnables)
 	slice.sort(imports[:])
 	for p in imports {
-		fmt.sbprintf(&b, "import %s \"packages:%s\"\n", p, p)
+		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p, p)
 	}
 	// Divisor guards read the engine tick counter.
 	needs_engine := false
 	for e in fixed_rows do if _included(e, host.name, runnables) && e.divisor > 1 { needs_engine = true; break }
-	if needs_engine do strings.write_string(&b, "import \"../../engine\"\n")
+	if needs_engine do strings.write_string(&b, "import \"moonhug:engine\"\n")
 	if len(imports) > 0 || needs_engine do strings.write_string(&b, "\n")
 
 	_call_name :: proc(e: _UpdateRow, host: string) -> string {

@@ -15,5 +15,5 @@ fi
 # instead of the package name "editor". Build+exec (NOT `odin run`) so the ~1GB
 # compiler process exits before the editor runs instead of lingering to wait().
 mkdir -p builds
-odin build moonhug/editor -ignore-unknown-attributes -collection:packages=moonhug/packages -out:builds/MoonHug
+odin build moonhug/editor -ignore-unknown-attributes -collection:moonhug=moonhug -out:builds/MoonHug
 exec builds/MoonHug
