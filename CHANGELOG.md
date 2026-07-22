@@ -1,3 +1,9 @@
+## [0.48.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.48.0...v0.48.1) (2026-07-22)
+
+### Bug Fixes
+
+* change import collection ([8b6ad5b](https://github.com/MoonHug-Editor/moonhug/commit/8b6ad5be2c60d1e46fb75d6e906106361c1ecd99))
+
 ## [0.48.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.47.1...v0.48.0) (2026-07-22)
 
 ### Features
