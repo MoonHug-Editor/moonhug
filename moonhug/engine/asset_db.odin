@@ -305,12 +305,22 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     // scene_lib cache and re-propagate to loaded scenes, exactly like an
     // editor save would. The save path itself already committed identical
     // bytes, so the equality check keeps it from re-propagating twice.
-    if cached, has := scene_lib[guid]; has && string(cached) != string(data) {
-        _prefab_bytes_committed(guid, data)
+    // scene_lib holds the unified record format, so legacy disk bytes must
+    // be compared in migrated form — raw legacy bytes never match and would
+    // re-propagate on every refresh.
+    if cached, has := scene_lib[guid]; has {
+        cmp := data
+        if _scene_file_is_legacy(data) {
+            context.allocator = context.temp_allocator
+            if migrated, mok := _scene_file_migrate_legacy(data); mok do cmp = migrated
+        }
+        if string(cached) != string(cmp) {
+            _prefab_bytes_committed(guid, cmp)
+        }
     }
 
     sf: SceneFile
-    if json.unmarshal(data, &sf) != nil do return
+    if scene_file_unmarshal(data, &sf) != nil do return
 
     is_variant := false
     for &ns in sf.nested_scenes {
@@ -331,7 +341,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
         copy(cpy, flat)
         if flat_owned do delete(flat)
         sf = {}
-        if json.unmarshal(cpy, &sf) != nil do return
+        if scene_file_unmarshal(cpy, &sf) != nil do return
     }
     defer scene_file_destroy(&sf)
 
@@ -377,7 +387,7 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     }
 
     // External (app-package) components: type from the "__type" guid record.
-    for &v in sf.ext_components {
+    for &v in sf.components {
         desc, dok := _ext_desc_for_value(v)
         if !dok do continue
         obj := v.(json.Object)

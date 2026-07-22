@@ -477,7 +477,7 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 		copy(outer_copy, outer_raw)
 		if outer_owned do delete(outer_raw)
 		outer_sf: SceneFile
-		if json.unmarshal(outer_copy, &outer_sf) != nil do return nil, false
+		if scene_file_unmarshal(outer_copy, &outer_sf) != nil do return nil, false
 
 		matching: []Override
 		for &m in outer_sf.nested_scenes {
@@ -579,7 +579,7 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 		prefab_copy := make([]byte, len(prefab_raw), context.temp_allocator)
 		copy(prefab_copy, prefab_raw)
 		base_sf: SceneFile
-		if json.unmarshal(prefab_copy, &base_sf) == nil {
+		if scene_file_unmarshal(prefab_copy, &base_sf) == nil {
 			prefab_root_id = base_sf.root
 			scene_file_destroy(&base_sf)
 		}
@@ -609,7 +609,14 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	if !ok do return
 	defer delete(base_raw)
 
-	diff := nested_scene_diff_overrides(base_raw, work_raw, ns.source_prefab)
+	// Normalize the prefab base's component records to the live struct field
+	// set: a prefab authored before a component gained a field omits that key,
+	// but the live content always serializes it — without this, an unchanged
+	// save captures every such field as a spurious override.
+	diff_base := base_raw
+	if normalized, nok := _normalize_component_records(base_raw); nok do diff_base = normalized
+
+	diff := nested_scene_diff_overrides(diff_base, work_raw, ns.source_prefab)
 	defer {
 		// `diff` ownership is transferred into native_ns.overrides (or freed if
 		// any entries are skipped); destroy the dynamic-array shell at end.
@@ -989,6 +996,19 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 		}
 	}
 
+	// Unknown components preserved from load:
+	// re-emit each record verbatim and restore the owning transform's
+	// components entry — a missing package must never wipe data. A record
+	// whose transform is gone from the file dies with it (deleted transform).
+	for &uc in s.unknown_components {
+		for &tr in sf.transforms {
+			if tr.local_id != uc.owner_lid do continue
+			append(&tr.components, Owned{local_id = uc.local_id})
+			append(&sf.components, json.clone_value(uc.value))
+			break
+		}
+	}
+
 	// Repair next_local_id: any local_id present in the file must be strictly
 	// less than next_local_id. Otherwise a future scene_next_id() collides with
 	// an existing entity, which on reload can cause a regular transform to be
@@ -998,11 +1018,6 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 		bump(&sf.next_local_id, tr.local_id)
 		for &c in tr.components do bump(&sf.next_local_id, c.local_id)
 	}
-	for &c in sf.cameras          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.lifetimes        do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.players          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.scripts          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.sprite_renderers do bump(&sf.next_local_id, c.local_id)
 	for &ns in sf.nested_scenes   do bump(&sf.next_local_id, ns.local_id)
 	for &bc in sf.breadcrumbs     do bump(&sf.next_local_id, bc.local_id)
 	s.next_local_id = sf.next_local_id
@@ -1127,9 +1142,22 @@ _prefab_bytes_committed :: proc(guid: Asset_GUID, data: []byte) {
 // several prefab files (and its own in-memory NS state) before triggering a
 // single propagation pass — avoids re-resolving against a half-updated world.
 _prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
+	// scene_lib is process-global — its bytes must not borrow the caller's
+	// allocator (see scene_lib_register).
+	context.allocator = runtime.default_allocator()
 	if existing, has := scene_lib[guid]; has do delete(existing)
-	fresh := make([]byte, len(data))
-	copy(fresh, data)
+	// scene_lib holds the unified "components" record format only — migrate
+	// legacy bytes at intake, same as scene_lib_register.
+	fresh: []byte
+	if _scene_file_is_legacy(data) {
+		if migrated, mok := _scene_file_migrate_legacy(data); mok {
+			fresh = migrated
+		}
+	}
+	if fresh == nil {
+		fresh = make([]byte, len(data))
+		copy(fresh, data)
+	}
 	scene_lib[guid] = fresh
 	scene_lib_unpacked_invalidate(guid)
 }
@@ -1148,6 +1176,9 @@ prefab_propagate :: proc(guid: Asset_GUID) {
 // up the freshly-saved prefab content.
 @(private = "file")
 _propagate_prefab_save :: proc(saved_guid: Asset_GUID) {
+	// No user context (e.g. asset_db_init before a world exists) means no
+	// loaded scenes to propagate into.
+	if ctx_get() == nil do return
 	sm := ctx_scene_manager()
 	for i in 0 ..< sm.count {
 		s := sm.loaded[i]
@@ -1202,13 +1233,121 @@ scene_file_load :: proc(filepath: string) -> (SceneFile, bool) {
 	defer delete(data)
 
 	sf: SceneFile
-	unmarshal_err := json.unmarshal(data, &sf)
+	unmarshal_err := scene_file_unmarshal(data, &sf)
 	if unmarshal_err != nil {
 		fmt.printf("[Scene] Failed to unmarshal scene: %v\n", unmarshal_err)
 		return {}, false
 	}
 
 	return sf, true
+}
+
+// --- Legacy scene format migration -------------
+// Pre-unification scene files carried one TYPED array per engine component
+// section plus "ext_components"; the unified format is ONE "components" array
+// of guid-tagged records. Load-time migration folds legacy sections into
+// records so old files keep loading; saving writes the unified format. The
+// section-name → guid table is CLOSED — typed sections can never reappear.
+
+_Legacy_Section :: struct {
+	name: string,
+	guid: string,
+}
+
+_LEGACY_SECTIONS :: [?]_Legacy_Section{
+	{"animations",            "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"}, // Animation
+	{"cameras",               "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d"}, // Camera
+	{"lights",                "9f36ee91-34b6-4636-a360-ee872af0436b"}, // Light
+	{"mesh_filters",          "32f52908-51a9-4f3b-819b-fc9d8cbc5972"}, // MeshFilter
+	{"mesh_renderers",        "73e161a0-c599-4cfb-9826-447e05baa76c"}, // MeshRenderer
+	{"scripts",               "adaf3551-4704-4255-ad91-fde59441dc53"}, // Script
+	{"sprite_renderers",      "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"}, // SpriteRenderer
+	{"sprite_sorting_groups", "2291f857-d2ff-409d-96df-1d87713fdcc2"}, // SpriteSortingGroup
+	{"players",               "d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c"}, // Player (moved to packages/app)
+	{"lifetimes",             "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c"}, // Lifetime (moved to packages/app)
+}
+
+// Cheap pre-check: quoted section keys only appear in legacy files (a false
+// positive from a same-named nested field just triggers a harmless parse).
+_scene_file_is_legacy :: proc(data: []byte) -> bool {
+	text := string(data)
+	if strings.contains(text, "\"ext_components\"") do return true
+	sections := _LEGACY_SECTIONS
+	for s in sections {
+		key := fmt.tprintf("%q", s.name)
+		if strings.contains(text, key) do return true
+	}
+	return false
+}
+
+// SceneFile unmarshal front door: EVERY byte→SceneFile path goes through
+// here so legacy files migrate uniformly.
+scene_file_unmarshal :: proc(data: []byte, sf: ^SceneFile) -> json.Unmarshal_Error {
+	// On error, json.unmarshal leaves already-populated fields allocated —
+	// free the partial result so callers can just bail.
+	unmarshal_owning :: proc(data: []byte, sf: ^SceneFile) -> json.Unmarshal_Error {
+		err := json.unmarshal(data, sf)
+		if err != nil {
+			scene_file_destroy(sf)
+			sf^ = {}
+		}
+		return err
+	}
+	if !_scene_file_is_legacy(data) {
+		return unmarshal_owning(data, sf)
+	}
+	migrated, ok := _scene_file_migrate_legacy(data)
+	if !ok {
+		return unmarshal_owning(data, sf) // fall through: parse errors surface normally
+	}
+	defer delete(migrated)
+	return unmarshal_owning(migrated, sf)
+}
+
+// Fold legacy typed sections + "ext_components" into "components" at the JSON
+// level and re-marshal (context.allocator result).
+_scene_file_migrate_legacy :: proc(data: []byte) -> ([]byte, bool) {
+	// All intermediate JSON work is temp — only the marshaled result goes to
+	// the caller's allocator.
+	out_allocator := context.allocator
+	context.allocator = context.temp_allocator
+	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
+	if perr != nil do return nil, false
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return nil, false
+
+	components: json.Array
+	if existing, has := obj["components"]; has {
+		if arr, is_arr := existing.(json.Array); is_arr do components = arr
+	}
+
+	move_section :: proc(obj: ^json.Object, name: string, guid: string, components: ^json.Array) {
+		v, has := obj[name]
+		if !has do return
+		if arr, is_arr := v.(json.Array); is_arr {
+			for rec in arr {
+				rec_obj, rec_is_obj := rec.(json.Object)
+				if !rec_is_obj do continue
+				if guid != "" {
+					rec_obj[strings.clone(EXT_TYPE_KEY, context.temp_allocator)] = json.String(guid)
+				}
+				append(components, json.Value(rec_obj))
+			}
+		}
+		delete_key(obj, name)
+	}
+
+	sections := _LEGACY_SECTIONS
+	for s in sections {
+		move_section(&obj, s.name, s.guid, &components)
+	}
+	move_section(&obj, "ext_components", "", &components) // records already tagged
+
+	obj["components"] = json.Value(components)
+
+	out, merr := json.marshal(json.Value(obj), {spec = .JSON}, out_allocator)
+	if merr != nil do return nil, false
+	return out, true
 }
 
 resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Handle, bool) {
@@ -1277,7 +1416,7 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 	if !pool_valid(&w.transforms, Handle(parent)) do return {}
 
 	sf: SceneFile
-	if err := json.unmarshal(data, &sf); err != nil {
+	if err := scene_file_unmarshal(data, &sf); err != nil {
 		fmt.printf("[Scene] Failed to unmarshal subtree: %v\n", err)
 		return {}
 	}

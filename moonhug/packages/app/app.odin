@@ -1,17 +1,17 @@
 #+feature dynamic-literals
 package app
 
-import "../engine"
-import gfx "../engine/gfx"
-import input "../engine/input"
-import "../engine/serialization"
+import "../../engine"
+import gfx "../../engine/gfx"
+import input "../../engine/input"
+import "../../engine/serialization"
 import "core:os"
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
-import "../engine/log"
+import "../../engine/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
@@ -110,7 +110,6 @@ app_init :: proc() {
     register_app_components()
     register_packages()
     register_type_guids()
-    register_component_serializers()
     serialization.init()
     engine.asset_db_init("assets")
     engine.texture_cache_init()
@@ -126,10 +125,12 @@ app_init :: proc() {
 setup_player_animations :: proc()
 {
     w := engine.ctx_world()
-    for i in 0..<len(w.players.slots) {
-        slot := &w.players.slots[i]
+    players_pool := players(w)
+    if players_pool == nil do return
+    for i in 0..<len(players_pool.slots) {
+        slot := &players_pool.slots[i]
         if !slot.alive do continue
-        p :^engine.Player= &slot.data;
+        p: ^Player = &slot.data;
         for &ht, i in p.animations{
         	anim_key := fmt.tprintf("Anim%d", i)
          	engine.tween_register(anim_key, &ht)

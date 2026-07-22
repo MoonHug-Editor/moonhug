@@ -1,7 +1,7 @@
 package app
 
 import "../app"
-import "../engine"
+import "../../engine"
 import "core:sync"
 import physics2d "packages:physics2d"
 import physics3d "packages:physics3d"
@@ -28,14 +28,14 @@ register_type_guids :: proc() {
 		engine.register_type(physics2d.CircleCollider2D, engine.CircleCollider2D__Guid)
 		engine.register_type(app.DemoMenu, engine.DemoMenu__Guid)
 		engine.register_type(app.GameSettings, engine.GameSettings__Guid)
-		engine.register_type(engine.Lifetime, engine.Lifetime__Guid)
+		engine.register_type(app.Lifetime, engine.Lifetime__Guid)
 		engine.register_type(engine.Light, engine.Light__Guid)
 		engine.register_type(engine.Material, engine.Material__Guid, engine.make_pMaterial)
 		engine.register_type(engine.MeshFilter, engine.MeshFilter__Guid)
 		engine.register_type(engine.MeshRenderer, engine.MeshRenderer__Guid)
 		engine.register_type(engine.MeshSettings, engine.MeshSettings__Guid)
 		engine.register_type(engine.Parallel, engine.Parallel__Guid)
-		engine.register_type(engine.Player, engine.Player__Guid)
+		engine.register_type(app.Player, engine.Player__Guid)
 		engine.register_type(app.PlayerSettings, engine.PlayerSettings__Guid, app.make_pPlayerSettings)
 		engine.register_type(app.Projectile, engine.Projectile__Guid)
 		engine.register_type(physics3d.Rigidbody, engine.Rigidbody__Guid)
@@ -72,14 +72,14 @@ register_type_guids :: proc() {
 		engine.register_type_key(physics2d.CircleCollider2D, engine.TypeKey.CircleCollider2D)
 		engine.register_type_key(app.DemoMenu, engine.TypeKey.DemoMenu)
 		engine.register_type_key(app.GameSettings, engine.TypeKey.GameSettings)
-		engine.register_type_key(engine.Lifetime, engine.TypeKey.Lifetime)
+		engine.register_type_key(app.Lifetime, engine.TypeKey.Lifetime)
 		engine.register_type_key(engine.Light, engine.TypeKey.Light)
 		engine.register_type_key(engine.Material, engine.TypeKey.Material)
 		engine.register_type_key(engine.MeshFilter, engine.TypeKey.MeshFilter)
 		engine.register_type_key(engine.MeshRenderer, engine.TypeKey.MeshRenderer)
 		engine.register_type_key(engine.MeshSettings, engine.TypeKey.MeshSettings)
 		engine.register_type_key(engine.Parallel, engine.TypeKey.Parallel)
-		engine.register_type_key(engine.Player, engine.TypeKey.Player)
+		engine.register_type_key(app.Player, engine.TypeKey.Player)
 		engine.register_type_key(app.PlayerSettings, engine.TypeKey.PlayerSettings)
 		engine.register_type_key(app.Projectile, engine.TypeKey.Projectile)
 		engine.register_type_key(physics3d.Rigidbody, engine.TypeKey.Rigidbody)

@@ -28,6 +28,7 @@ _test_capture_hook :: proc() -> undo.Selection_State {
 
 @(private="file")
 _test_apply_hook :: proc(state: undo.Selection_State) {
+	for p in _applied_sel do delete(p)
 	clear(&_applied_sel)
 	for p in state.proj {
 		append(&_applied_sel, strings.clone(p))

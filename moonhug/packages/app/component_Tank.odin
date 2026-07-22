@@ -1,6 +1,6 @@
 package app
 
-import "../engine"
+import "../../engine"
 
 // The tank: gameplay component holding references to its own moving parts and
 // the projectile it fires. Lives on the tank object. SceneRefs (on the scene

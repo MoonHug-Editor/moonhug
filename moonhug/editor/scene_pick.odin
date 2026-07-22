@@ -18,8 +18,9 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 	best: engine.Transform_Handle
 	found := false
 
-	for i in 0 ..< len(w.sprite_renderers.slots) {
-		slot := &w.sprite_renderers.slots[i]
+	sprite_renderers_pool := engine.sprite_renderers(w)
+	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
+		slot := &sprite_renderers_pool.slots[i]
 		if !slot.alive do continue
 		sr := &slot.data
 		if !sr.enabled || sr.texture == {} do continue
@@ -41,8 +42,9 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		}
 	}
 
-	for i in 0 ..< len(w.mesh_renderers.slots) {
-		slot := &w.mesh_renderers.slots[i]
+	mesh_renderers_pool := engine.mesh_renderers(w)
+	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
+		slot := &mesh_renderers_pool.slots[i]
 		if !slot.alive do continue
 		mr := &slot.data
 		if !mr.enabled do continue
@@ -78,8 +80,9 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 
-	for i in 0 ..< len(w.sprite_renderers.slots) {
-		slot := &w.sprite_renderers.slots[i]
+	sprite_renderers_pool := engine.sprite_renderers(w)
+	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
+		slot := &sprite_renderers_pool.slots[i]
 		if !slot.alive do continue
 		sr := &slot.data
 		if !sr.enabled || sr.texture == {} do continue
@@ -93,8 +96,9 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		}
 	}
 
-	for i in 0 ..< len(w.mesh_renderers.slots) {
-		slot := &w.mesh_renderers.slots[i]
+	mesh_renderers_pool := engine.mesh_renderers(w)
+	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
+		slot := &mesh_renderers_pool.slots[i]
 		if !slot.alive do continue
 		mr := &slot.data
 		if !mr.enabled do continue

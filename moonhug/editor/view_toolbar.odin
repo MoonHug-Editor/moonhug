@@ -21,28 +21,128 @@ _PLAY_SCENE_SNAPSHOT_PATH :: "library/play_scene_snapshot.scene"
 
 _play_thread: ^thread.Thread
 
+// A run configuration = one shell script in a package's run_configs/ folder
+// (docs/Plugins.md). The Play button runs the selected one from the REPO
+// ROOT with the scene snapshot path as its argument; the script builds and
+// exec's the game, forwarding "$@".
+Run_Config :: struct {
+    id:     string,  // "pkg/name" — persisted in editor_settings.run_config
+    label:  cstring, // "pkg: name" — dropdown row
+    script: string,  // repo-root-relative script path
+}
+
+_run_configs: [dynamic]Run_Config
+
+// Editor cwd is normalized to moonhug/, so packages sit at "packages" and
+// script paths get the "moonhug/" prefix back for the repo-root spawn.
+_scan_run_configs :: proc() {
+    for &rc in _run_configs {
+        delete(rc.id)
+        delete(rc.label)
+        delete(rc.script)
+    }
+    clear(&_run_configs)
+
+    pkgs_dir, err := os.open("packages")
+    if err != nil do return
+    defer os.close(pkgs_dir)
+    pkgs, rerr := os.read_dir(pkgs_dir, -1, context.temp_allocator)
+    if rerr != nil do return
+    defer os.file_info_slice_delete(pkgs, context.temp_allocator)
+
+    for pkg in pkgs {
+        if pkg.type != .Directory do continue
+        rc_path, _ := filepath.join({"packages", pkg.name, "run_configs"}, context.temp_allocator)
+        rc_dir, rc_err := os.open(rc_path)
+        if rc_err != nil do continue
+        defer os.close(rc_dir)
+        files, f_err := os.read_dir(rc_dir, -1, context.temp_allocator)
+        if f_err != nil do continue
+        defer os.file_info_slice_delete(files, context.temp_allocator)
+        for file in files {
+            if file.type == .Directory || !strings.has_suffix(file.name, ".sh") do continue
+            name := strings.trim_suffix(file.name, ".sh")
+            append(&_run_configs, Run_Config{
+                id     = fmt.aprintf("%s/%s", pkg.name, name),
+                label  = fmt.caprintf("%s: %s", pkg.name, name),
+                script = fmt.aprintf("moonhug/packages/%s/run_configs/%s", pkg.name, file.name),
+            })
+        }
+    }
+}
+
+// Selected config, resolving the persisted id; empty selection prefers the
+// debug config (call-stack capture for console logs), then the first.
+_selected_run_config :: proc() -> ^Run_Config {
+    for &rc in _run_configs {
+        if rc.id == editor_settings.run_config do return &rc
+    }
+    for &rc in _run_configs {
+        if strings.has_suffix(rc.id, "run_debug") do return &rc
+    }
+    if len(_run_configs) > 0 do return &_run_configs[0]
+    return nil
+}
+
+_select_run_config :: proc(id: string) {
+    if editor_settings.run_config != "" do delete(editor_settings.run_config)
+    editor_settings.run_config = strings.clone(id)
+}
+
 draw_tool_bar :: proc() {
     vp := im.GetMainViewport()
     im.SetNextWindowPos(vp.WorkPos, {}, {0, 0})
     im.SetNextWindowSize(im.Vec2{vp.WorkSize.x, f32(TOOLBAR_HEIGHT)}, {})
     if !im.Begin("##ToolBar", nil, {.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoDocking}) do return
     defer im.End()
+
+    if len(_run_configs) == 0 do _scan_run_configs()
+    sel := _selected_run_config()
+
+    // Split button (grid/snap pattern): Play runs the selected config, the
+    // narrow arrow opens the config picker. Centered as one control.
     button_play_text: cstring = ICON_MD_PLAY_ARROW
     avail := im.GetContentRegionAvail()
-    btn_size := im.CalcTextSize(button_play_text, nil, false, -1)
     style := im.GetStyle()
+    btn_size := im.CalcTextSize(button_play_text, nil, false, -1)
     btn_size.x += style.FramePadding.x * 2
     btn_size.y += style.FramePadding.y * 2
-    im.SetCursorPosX((avail.x - btn_size.x) * 0.5)
-    if im.Button(button_play_text) {
-        run_app_play()
+    total_w := btn_size.x + OVERLAY_SPLIT_GAP + OVERLAY_ARROW_WIDTH
+    im.SetCursorPosX((avail.x - total_w) * 0.5)
+
+    im.PushStyleVarImVec2(.ItemSpacing, im.Vec2{OVERLAY_SPLIT_GAP, style.ItemSpacing.y})
+    if im.Button(button_play_text) && sel != nil {
+        run_app_play(sel.script)
     }
+    if im.IsItemHovered({}) {
+        if sel != nil {
+            im.SetTooltip(fmt.ctprintf("Run game with current scene state (%s)", sel.label))
+        } else {
+            im.SetTooltip("No run configs found (packages/*/run_configs/*.sh)")
+        }
+    }
+    im.SameLine()
+    if im.Button("##run_config_arrow", im.Vec2{OVERLAY_ARROW_WIDTH, btn_size.y}) {
+        _scan_run_configs() // pick up new/removed scripts right when picking
+        im.OpenPopup("##run_config_popup")
+    }
+    _draw_centered_glyph(ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
+    im.PopStyleVar()
+    if im.IsItemHovered({}) {
+        im.SetTooltip("Pick run configuration")
+    }
+    if im.BeginPopup("##run_config_popup") {
+        for &rc in _run_configs {
+            if im.Selectable(rc.label, sel != nil && sel.id == rc.id) {
+                _select_run_config(rc.id)
+            }
+        }
+        im.EndPopup()
+    }
+
     if _play_thread != nil && !thread.is_done(_play_thread) {
         im.SameLine()
         im.TextDisabled("(running)")
-    }
-    if im.IsItemHovered({}) {
-        im.SetTooltip("Run game with current scene state (odin run app)")
     }
 }
 
@@ -197,7 +297,9 @@ _play_dispatch_line :: proc(line: string) {
     output_view_append_line(l)
 }
 
-run_app_play :: proc() {
+// Runs the given run-config script (repo-root-relative, see Run_Config) with
+// the live-scene snapshot path as its argument.
+run_app_play :: proc(script: string) {
     if _play_thread != nil && !thread.is_done(_play_thread) {
         return
     }
@@ -210,10 +312,9 @@ run_app_play :: proc() {
         log.clear()
         _console_last_count = 0
     }
-    // Build from the REPO ROOT (parent of the editor's normalized moonhug/
-    // cwd) so the packages: collection flag is the one canonical spelling
-    // used by every build site. The app normalizes its own runtime cwd back
-    // to moonhug/.
+    // Scripts run from the REPO ROOT (parent of the editor's normalized
+    // moonhug/ cwd) — the one canonical build cwd. The app normalizes its own
+    // runtime cwd back to moonhug/.
     cwd, _ := os.get_working_directory(context.temp_allocator)
     repo_root := filepath.dir(cwd) // slice into the temp cwd string
     pa := runtime.default_allocator()
@@ -230,7 +331,7 @@ run_app_play :: proc() {
     }
 
     data.run_dir = rd
-    cmd, merr := make([]string, 6, pa)
+    cmd, merr := make([]string, 2, pa)
     if merr != nil {
         delete(data.run_dir, pa)
         free(data, pa)
@@ -238,23 +339,15 @@ run_app_play :: proc() {
     }
 
     data.command = cmd
-    data.command[0] = "odin"
-    data.command[1] = "run"
-    data.command[2] = "moonhug/app"
-    data.command[3] = "-ignore-unknown-attributes"
-    // Installed packages (docs/Plugins.md) — same flag as run_app.sh; the
-    // generated packages_generated.odin imports need the collection.
-    data.command[4] = "-collection:packages=moonhug/packages"
-    // Debug build so the app captures call stacks for its console log lines
-    // (capture is ODIN_DEBUG-gated in the app process).
-    data.command[5] = "-debug"
+    data.command[0] = "sh"
+    data.command[1], _ = strings.clone(script, pa)
 
-    // Pass the editor's active scene to the app (args after "--" reach the
-    // program); without one the app falls back to its default scene. The app
-    // gets the LIVE scene state: a snapshot of the in-memory scene written
-    // outside assets/ (so refresh never mints a guid for it) — unsaved edits
-    // play as-is, like Unity entering play mode with a dirty scene. Nested
-    // prefabs still resolve by guid from their on-disk files.
+    // Pass the editor's active scene to the app (the script forwards its args
+    // to the binary via "$@"); without one the app falls back to its default
+    // scene. The app gets the LIVE scene state: a snapshot of the in-memory
+    // scene written outside assets/ (so refresh never mints a guid for it) —
+    // unsaved edits play as-is, like Unity entering play mode with a dirty
+    // scene. Nested prefabs still resolve by guid from their on-disk files.
     if scene := engine.sm_scene_get_active(); scene != nil {
         play_path := scene.path
         if snapshot, sok := engine.scene_serialize(scene); sok {
@@ -265,11 +358,10 @@ run_app_play :: proc() {
             }
         }
         if len(play_path) > 0 {
-            with_scene, aerr := make([]string, 8, pa)
+            with_scene, aerr := make([]string, 3, pa)
             if aerr == nil {
                 copy(with_scene, data.command)
-                with_scene[6] = "--"
-                with_scene[7], _ = strings.clone(play_path, pa)
+                with_scene[2], _ = strings.clone(play_path, pa)
                 delete(data.command, pa)
                 data.command = with_scene
             }

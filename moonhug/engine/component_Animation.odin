@@ -52,8 +52,10 @@ animation_stop :: proc(a: ^Animation) {
 // Per-frame clip advance + sample for every enabled Animation component.
 animation_tick :: proc(dt: f32) {
 	w := ctx_world()
-	for i in 0 ..< len(w.animations.slots) {
-		slot := &w.animations.slots[i]
+	pool := animations(w)
+	if pool == nil do return
+	for i in 0 ..< len(pool.slots) {
+		slot := &pool.slots[i]
 		if !slot.alive do continue
 		a := &slot.data
 		if !a.enabled do continue

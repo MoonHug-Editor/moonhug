@@ -1,6 +1,6 @@
 package app
 
-import "../engine"
+import "../../engine"
 
 // List of demo scenes the in-game demo menu offers. Authored in the inspector
 // by dragging .scene assets into the array; app code loads/unloads them

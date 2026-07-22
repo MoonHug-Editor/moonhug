@@ -1,12 +1,13 @@
-package tests
+package app_tests
 
 // External (app-package) components must behave EXACTLY like engine components
 // in the nested-prefab override machinery. Their serialized form is a plain
 // component object in `ext_components` with an extra "__type" guid key, so
 // every JSON-level walker (diff/apply/lid-collect) sees the same shape.
 
-import "../app"
-import "../engine"
+import app ".."
+import "../../../engine"
+import common "../../../tests/common"
 
 import "core:encoding/json"
 import "core:encoding/uuid"
@@ -91,11 +92,11 @@ test_ext_component_override_round_trip :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "")
+	common.setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	prefab_guid, gerr := uuid.read(PREFAB_GUID)
 	testing.expect(t, gerr == nil)
@@ -210,11 +211,11 @@ test_ext_component_nested_intra_prefab_refs :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "")
+	common.setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	prefab_guid, gerr := uuid.read(PREFAB_GUID)
 	testing.expect(t, gerr == nil)
@@ -322,11 +323,11 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "")
+	common.setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	prefab_guid, gerr := uuid.read(PREFAB_GUID)
 	testing.expect(t, gerr == nil)
@@ -470,11 +471,11 @@ test_host_ref_into_nested_instance_round_trip :: proc(t: ^testing.T) {
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "")
+	common.setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	prefab_guid, gerr := uuid.read(PREFAB_GUID)
 	testing.expect(t, gerr == nil)

@@ -1,6 +1,6 @@
 {
   "root": 1,
-  "next_local_id": 207,
+  "next_local_id": 211,
   "transforms": [
     {
       "local_id": 1,
@@ -75,6 +75,12 @@
         {
           "pptr": {
             "local_id": 204,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 208,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -740,6 +746,40 @@
           "local_id": 206
         }
       ]
+    },
+    {
+      "local_id": 208,
+      "name": "BoxAnimated",
+      "is_active": true,
+      "position": [
+        2.70906973,
+        0.00000000,
+        -3.02906609
+      ],
+      "rotation": [
+        0.00000000,
+        0.00000000,
+        0.00000000,
+        1.00000000
+      ],
+      "scale": [
+        1.00000000,
+        1.00000000,
+        1.00000000
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -756,40 +796,24 @@
             "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
+          "property_path": "color",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            0.0000000000000000,
+            1.0000000000000000
+          ]
+        },
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
           "property_path": "material",
           "value": "0884a4d9-3048-4b0b-9a2b-5aba8d7236d7"
         },
         {
           "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "sorting_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "order_in_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "color",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
             "local_id": 3,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
@@ -798,42 +822,6 @@
             0.0000000000000000,
             0.0000000000000000,
             0.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "order_in_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "sorting_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
             1.0000000000000000
           ]
         },
@@ -859,6 +847,18 @@
         },
         {
           "target": {
+            "local_id": 15,
+            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
+          ]
+        },
+        {
+          "target": {
             "local_id": 5,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
@@ -880,22 +880,6 @@
             1.5000000000000000,
             -0.0100000000000000
           ]
-        },
-        {
-          "target": {
-            "local_id": 22,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
-            "local_id": 5,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
         },
         {
           "target": {
@@ -924,14 +908,6 @@
             "local_id": 16,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
           "property_path": "color",
           "value": [
             1.0000000000000000,
@@ -939,46 +915,6 @@
             0.6588235500000000,
             1.0000000000000000
           ]
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "sorting_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "order_in_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "sorting_layer",
-          "value": 0
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
-          },
-          "property_path": "order_in_layer",
-          "value": 0
         },
         {
           "target": {
@@ -1010,20 +946,20 @@
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "position",
-          "value": [
-            3.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
-          ]
+          "property_path": "name",
+          "value": "bullet"
         },
         {
           "target": {
             "local_id": 15,
             "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
           },
-          "property_path": "name",
-          "value": "bullet"
+          "property_path": "position",
+          "value": [
+            3.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000
+          ]
         },
         {
           "target": {
@@ -1064,14 +1000,6 @@
         },
         {
           "target": {
-            "local_id": 22,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
-        },
-        {
-          "target": {
             "local_id": 5,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
@@ -1082,14 +1010,6 @@
             1.0000000000000000,
             1.0000000000000000
           ]
-        },
-        {
-          "target": {
-            "local_id": 5,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
         },
         {
           "target": {
@@ -1147,72 +1067,51 @@
         },
         {
           "target": {
-            "local_id": 22,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+            "local_id": 14,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
+          "property_path": "color",
+          "value": [
+            0.0000000000000000,
+            0.5803921800000000,
+            0.0000000000000000,
+            0.6862745300000000
+          ]
+        }
+      ]
+    },
+    {
+      "local_id": 209,
+      "local_id_in_parent": 209,
+      "source_prefab": "7f3a6162-c0b2-4944-a153-c1971af3d3af",
+      "transform_parent": 208,
+      "host_breadcrumb_id": 210,
+      "sibling_index": 8,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "7f3a6162-c0b2-4944-a153-c1971af3d3af"
+          },
+          "property_path": "position",
+          "value": [
+            2.7090697300000000,
+            0.0000000000000000,
+            -3.0290660900000002
+          ]
         },
         {
           "target": {
-            "local_id": 5,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+            "local_id": 3,
+            "guid": "7f3a6162-c0b2-4944-a153-c1971af3d3af"
           },
-          "property_path": "material",
-          "value": "00000000-0000-0000-0000-000000000000"
+          "property_path": "wrap_mode",
+          "value": 2
         }
       ]
     }
   ],
   "breadcrumbs": [
-    {
-      "local_id": 169,
-      "scene_source": {
-        "local_id": 167,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
-      "scene_instance": 168
-    },
-    {
-      "local_id": 147,
-      "scene_source": {
-        "local_id": 5,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 146,
-      "scene_source": {
-        "local_id": 22,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 145,
-      "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 24
-    },
-    {
-      "local_id": 144,
-      "scene_source": {
-        "local_id": 9,
-        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-      },
-      "scene_instance": 20
-    },
-    {
-      "local_id": 26,
-      "scene_source": {
-        "local_id": 23,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
-      "scene_instance": 24
-    },
     {
       "local_id": 25,
       "scene_source": {
@@ -1228,90 +1127,390 @@
         "guid": "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
       },
       "scene_instance": 24
-    }
-  ],
-  "cameras": [
+    },
     {
-      "base": {
-        "local_id": 3,
-        "enabled": true
+      "local_id": 26,
+      "scene_source": {
+        "local_id": 23,
+        "guid": "00000000-0000-0000-0000-000000000000"
       },
-      "order": 0,
-      "fov": 60.00000000,
-      "near_clip": 0.30000001,
-      "far_clip": 1000.00000000,
-      "clear_color": [
-        0.19000000,
-        0.30000001,
-        0.47000000,
-        1.00000000
-      ],
-      "render_layer_mask": 4294967295
+      "scene_instance": 24
+    },
+    {
+      "local_id": 144,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 20
+    },
+    {
+      "local_id": 145,
+      "scene_source": {
+        "local_id": 9,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 146,
+      "scene_source": {
+        "local_id": 22,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 210,
+      "scene_source": {
+        "local_id": 208,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 209
+    },
+    {
+      "local_id": 147,
+      "scene_source": {
+        "local_id": 5,
+        "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+      },
+      "scene_instance": 24
+    },
+    {
+      "local_id": 169,
+      "scene_source": {
+        "local_id": 167,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 168
     }
   ],
-  "lifetimes": [
-
-  ],
-  "lights": [
+  "components": [
     {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
       "base": {
-        "local_id": 192,
-        "enabled": true
+        "enabled": true,
+        "local_id": 3
+      },
+      "clear_color": [
+        0.1900000000000000,
+        0.3000000100000000,
+        0.4700000000000000,
+        1.0000000000000000
+      ],
+      "far_clip": 1000.0000000000000000,
+      "fov": 60.0000000000000000,
+      "near_clip": 0.3000000100000000,
+      "order": 0,
+      "render_layer_mask": 4294967295
+    },
+    {
+      "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
+      "ambient": 0.1000000000000000,
+      "base": {
+        "enabled": true,
+        "local_id": 192
       },
       "color": [
-        1.00000000,
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0000000000000000,
+        1.0000000000000000,
+        1.0000000000000000,
+        1.0000000000000000
       ],
-      "intensity": 1.00000000,
-      "ambient": 0.10000000
-    }
-  ],
-  "mesh_filters": [
-    {
-      "base": {
-        "local_id": 185,
-        "enabled": true
-      },
-      "mesh": "91be828d-5f20-40ba-a18a-abdd2309e1e5"
+      "intensity": 1.0000000000000000
     },
     {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
       "base": {
-        "local_id": 189,
-        "enabled": true
+        "enabled": true,
+        "local_id": 13
       },
-      "mesh": "849de0c4-a34d-4295-8d10-60cd2d6a5496"
+      "color": [
+        1.0000000000000000,
+        1.0000000000000000,
+        1.0000000000000000,
+        1.0000000000000000
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
     },
     {
+      "__type": "d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c",
+      "animations": [
+        {
+          "__type_guid": "24d46399-b3a0-44e7-abd1-6da5d759e935",
+          "base": {
+            "delay": 0.0000000000000000,
+            "is_await": false,
+            "skip": false,
+            "subject": {
+              "pptr": {
+                "guid": "00000000-0000-0000-0000-000000000000",
+                "local_id": 0
+              }
+            }
+          },
+          "children": [
+            {
+              "__type_guid": "da9d301a-66a3-450c-8c0b-8c696ad60b0b",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": true,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 2.0000000000000000,
+              "position": [
+                2.0000000000000000,
+                2.0000000000000000,
+                2.0000000000000000
+              ]
+            },
+            {
+              "__type_guid": "da9d301a-66a3-450c-8c0b-8c696ad60b0b",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": false,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 2.0000000000000000,
+              "position": [
+                -2.0000000000000000,
+                -2.0000000000000000,
+                -2.0000000000000000
+              ]
+            }
+          ]
+        },
+        {
+          "__type_guid": "24d46399-b3a0-44e7-abd1-6da5d759e935",
+          "base": {
+            "delay": 0.0000000000000000,
+            "is_await": false,
+            "skip": false,
+            "subject": {
+              "pptr": {
+                "guid": "00000000-0000-0000-0000-000000000000",
+                "local_id": 0
+              }
+            }
+          },
+          "children": [
+            {
+              "__type_guid": "aa1970c6-51d2-4d27-9dc8-718ad1e51160",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": false,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 1.0000000000000000,
+              "scale": [
+                2.0000000000000000,
+                2.0000000000000000,
+                2.0000000000000000
+              ]
+            },
+            {
+              "__type_guid": "aa1970c6-51d2-4d27-9dc8-718ad1e51160",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": false,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 1.0000000000000000,
+              "scale": [
+                1.0000000000000000,
+                1.0000000000000000,
+                1.0000000000000000
+              ]
+            }
+          ]
+        },
+        {
+          "__type_guid": "24d46399-b3a0-44e7-abd1-6da5d759e935",
+          "base": {
+            "delay": 0.0000000000000000,
+            "is_await": false,
+            "skip": false,
+            "subject": {
+              "pptr": {
+                "guid": "00000000-0000-0000-0000-000000000000",
+                "local_id": 0
+              }
+            }
+          },
+          "children": [
+            {
+              "__type_guid": "b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": true,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 1.0000000000000000,
+              "rotation": [
+                0.0000000000000000,
+                0.6087614300000000,
+                0.0000000000000000,
+                0.7933533200000000
+              ]
+            },
+            {
+              "__type_guid": "b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": true,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 2.0000000000000000,
+              "rotation": [
+                0.0000000000000000,
+                -0.6087614300000000,
+                0.0000000000000000,
+                0.7933533200000000
+              ]
+            },
+            {
+              "__type_guid": "b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
+              "base": {
+                "delay": 0.0000000000000000,
+                "is_await": true,
+                "skip": false,
+                "subject": {
+                  "pptr": {
+                    "guid": "00000000-0000-0000-0000-000000000000",
+                    "local_id": 0
+                  }
+                }
+              },
+              "duration": 1.0000000000000000,
+              "rotation": [
+                0.0000000000000000,
+                0.0000000000000000,
+                0.0000000000000000,
+                0.0000000000000000
+              ]
+            }
+          ]
+        }
+      ],
       "base": {
-        "local_id": 197,
-        "enabled": true
+        "enabled": true,
+        "local_id": 14
       },
-      "mesh": "eb28d9ed-803a-446b-bc76-1ff01e138527"
+      "colors": [
+        [
+          1.0000000000000000,
+          0.0000000000000000,
+          1.0000000000000000,
+          1.0000000000000000
+        ],
+        [
+          1.0000000000000000,
+          1.0000000000000000,
+          0.0000000000000000,
+          1.0000000000000000
+        ],
+        [
+          0.0000000000000000,
+          1.0000000000000000,
+          1.0000000000000000,
+          1.0000000000000000
+        ],
+        [
+          1.0000000000000000,
+          0.0000000000000000,
+          0.0000000000000000,
+          1.0000000000000000
+        ],
+        [
+          0.0000000000000000,
+          1.0000000000000000,
+          0.0000000000000000,
+          1.0000000000000000
+        ],
+        [
+          0.0000000000000000,
+          0.0000000000000000,
+          1.0000000000000000,
+          1.0000000000000000
+        ]
+      ],
+      "speed": 2.0000000000000000,
+      "sprite": {
+        "local_id": 153
+      }
     },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 205,
-        "enabled": true
+        "enabled": true,
+        "local_id": 185
       },
-      "mesh": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292"
-    }
-  ],
-  "mesh_renderers": [
+      "mesh": "91be828d-5f20-40ba-a18a-abdd2309e1e5",
+      "part": 0
+    },
     {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
-        "local_id": 186,
-        "enabled": true
+        "enabled": true,
+        "local_id": 186
       },
       "materials": [
         "0884a4d9-3048-4b0b-9a2b-5aba8d7236d7"
       ]
     },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 190,
-        "enabled": true
+        "enabled": true,
+        "local_id": 189
+      },
+      "mesh": "849de0c4-a34d-4295-8d10-60cd2d6a5496",
+      "part": 0
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 190
       },
       "materials": [
         "ac10cafc-8354-4abb-9485-2a3a21076578",
@@ -1319,282 +1518,42 @@
       ]
     },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 198,
-        "enabled": true
+        "enabled": true,
+        "local_id": 197
+      },
+      "mesh": "eb28d9ed-803a-446b-bc76-1ff01e138527",
+      "part": 0
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 198
       },
       "materials": [
         "916a80cf-95d1-4ac3-8bab-0f0a90c7f26a"
       ]
     },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 206,
-        "enabled": true
+        "enabled": true,
+        "local_id": 205
+      },
+      "mesh": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292",
+      "part": 0
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 206
       },
       "materials": [
         "32583acf-be2f-4fb3-bef6-1993e9c5a137"
       ]
     }
-  ],
-  "players": [
-    {
-      "base": {
-        "local_id": 14,
-        "enabled": true
-      },
-      "speed": 2.00000000,
-      "colors": [
-        [
-          1.00000000,
-          0.00000000,
-          1.00000000,
-          1.00000000
-        ],
-        [
-          1.00000000,
-          1.00000000,
-          0.00000000,
-          1.00000000
-        ],
-        [
-          0.00000000,
-          1.00000000,
-          1.00000000,
-          1.00000000
-        ],
-        [
-          1.00000000,
-          0.00000000,
-          0.00000000,
-          1.00000000
-        ],
-        [
-          0.00000000,
-          1.00000000,
-          0.00000000,
-          1.00000000
-        ],
-        [
-          0.00000000,
-          0.00000000,
-          1.00000000,
-          1.00000000
-        ]
-      ],
-      "animations": [
-        {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
-          "base": {
-            "skip": false,
-            "is_await": false,
-            "delay": 0.00000000,
-            "subject": {
-              "pptr": {
-                "local_id": 0,
-                "guid": "00000000-0000-0000-0000-000000000000"
-              }
-            }
-          },
-          "children": [
-            {"__type_guid":"da9d301a-66a3-450c-8c0b-8c696ad60b0b",
-              "base": {
-                "skip": false,
-                "is_await": true,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "position": [
-                2.00000000,
-                2.00000000,
-                2.00000000
-              ],
-              "duration": 2.00000000
-            },
-            {"__type_guid":"da9d301a-66a3-450c-8c0b-8c696ad60b0b",
-              "base": {
-                "skip": false,
-                "is_await": false,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "position": [
-                -2.00000000,
-                -2.00000000,
-                -2.00000000
-              ],
-              "duration": 2.00000000
-            }
-          ]
-        },
-        {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
-          "base": {
-            "skip": false,
-            "is_await": false,
-            "delay": 0.00000000,
-            "subject": {
-              "pptr": {
-                "local_id": 0,
-                "guid": "00000000-0000-0000-0000-000000000000"
-              }
-            }
-          },
-          "children": [
-            {"__type_guid":"aa1970c6-51d2-4d27-9dc8-718ad1e51160",
-              "base": {
-                "skip": false,
-                "is_await": false,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "scale": [
-                2.00000000,
-                2.00000000,
-                2.00000000
-              ],
-              "duration": 1.00000000
-            },
-            {"__type_guid":"aa1970c6-51d2-4d27-9dc8-718ad1e51160",
-              "base": {
-                "skip": false,
-                "is_await": false,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "scale": [
-                1.00000000,
-                1.00000000,
-                1.00000000
-              ],
-              "duration": 1.00000000
-            }
-          ]
-        },
-        {"__type_guid":"24d46399-b3a0-44e7-abd1-6da5d759e935",
-          "base": {
-            "skip": false,
-            "is_await": false,
-            "delay": 0.00000000,
-            "subject": {
-              "pptr": {
-                "local_id": 0,
-                "guid": "00000000-0000-0000-0000-000000000000"
-              }
-            }
-          },
-          "children": [
-            {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
-              "base": {
-                "skip": false,
-                "is_await": true,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "rotation": [
-                0.00000000,
-                0.60876143,
-                0.00000000,
-                0.79335332
-              ],
-              "duration": 1.00000000
-            },
-            {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
-              "base": {
-                "skip": false,
-                "is_await": true,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "rotation": [
-                0.00000000,
-                -0.60876143,
-                0.00000000,
-                0.79335332
-              ],
-              "duration": 2.00000000
-            },
-            {"__type_guid":"b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94",
-              "base": {
-                "skip": false,
-                "is_await": true,
-                "delay": 0.00000000,
-                "subject": {
-                  "pptr": {
-                    "local_id": 0,
-                    "guid": "00000000-0000-0000-0000-000000000000"
-                  }
-                }
-              },
-              "rotation": [
-                0.00000000,
-                0.00000000,
-                0.00000000,
-                0.00000000
-              ],
-              "duration": 1.00000000
-            }
-          ]
-        }
-      ],
-      "sprite": {
-        "local_id": 153
-      }
-    }
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-    {
-      "base": {
-        "local_id": 13,
-        "enabled": true
-      },
-      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f",
-      "material": "00000000-0000-0000-0000-000000000000",
-      "color": [
-        1.00000000,
-        1.00000000,
-        1.00000000,
-        1.00000000
-      ],
-      "sorting_layer": 0,
-      "order_in_layer": 0
-    }
-  ],
-  "sprite_sorting_groups": [
-
-  ],
-  "ext_components": [
-
   ]
 }

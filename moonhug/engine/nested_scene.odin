@@ -57,9 +57,9 @@ pptr_equals :: proc(a, b: PPtr) -> bool {
 }
 
 // Reads `local_id` directly off `obj`, falling back to `obj.base.local_id` when
-// the row stores its identity under a wrapper. Used by overrides apply/diff and
-// any other code walking serialized scene-section arrays.
-@(private = "file")
+// the row stores its identity under a wrapper. Used by overrides apply/diff,
+// unknown-component preservation, and any other code walking serialized
+// scene-section arrays.
 _json_local_id_of :: proc(obj: json.Object) -> (Local_ID, bool) {
 	from_value :: proc(v: json.Value) -> (Local_ID, bool) {
 		if f, ok := v.(json.Float);   ok do return Local_ID(f), true
@@ -334,12 +334,33 @@ _json_diff_objects :: proc(base_obj, work_obj: json.Object, prefix: string, targ
 nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_guid: Asset_GUID = {}) -> [dynamic]Override {
 	out := make([dynamic]Override)
 
-	base_copy := make([]byte, len(base_raw))
+	// Both sides must speak the unified record format or same-name section
+	// matching silently finds nothing.
+	base_in := base_raw
+	base_in_owned := false
+	if _scene_file_is_legacy(base_in) {
+		if m, mok := _scene_file_migrate_legacy(base_in); mok {
+			base_in = m
+			base_in_owned = true
+		}
+	}
+	defer if base_in_owned do delete(base_in)
+	work_in := work_raw
+	work_in_owned := false
+	if _scene_file_is_legacy(work_in) {
+		if m, mok := _scene_file_migrate_legacy(work_in); mok {
+			work_in = m
+			work_in_owned = true
+		}
+	}
+	defer if work_in_owned do delete(work_in)
+
+	base_copy := make([]byte, len(base_in))
 	defer delete(base_copy)
-	copy(base_copy, base_raw)
-	work_copy := make([]byte, len(work_raw))
+	copy(base_copy, base_in)
+	work_copy := make([]byte, len(work_in))
 	defer delete(work_copy)
-	copy(work_copy, work_raw)
+	copy(work_copy, work_in)
 
 	base_val: json.Value
 	work_val: json.Value
@@ -786,7 +807,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     {
         cpy := make([]byte, len(raw), context.temp_allocator)
         copy(cpy, raw)
-        if json.unmarshal(cpy, &vf) != nil do return nil, false
+        if scene_file_unmarshal(cpy, &vf) != nil do return nil, false
     }
     root_ns_idx := -1
     for ns, i in vf.nested_scenes {
@@ -817,7 +838,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     {
         cpy := make([]byte, len(baked), context.temp_allocator)
         copy(cpy, baked)
-        ok := json.unmarshal(cpy, &base_sf) == nil
+        ok := scene_file_unmarshal(cpy, &base_sf) == nil
         if baked_owned do delete(baked)
         else if base_owned do delete(base_bytes)
         if !ok {
@@ -842,12 +863,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
             }
         }
     }
-    for c in vf.cameras          do append(&base_sf.cameras, c)
-    for c in vf.lifetimes        do append(&base_sf.lifetimes, c)
-    for c in vf.players          do append(&base_sf.players, c)
-    for c in vf.scripts          do append(&base_sf.scripts, c)
-    for c in vf.sprite_renderers do append(&base_sf.sprite_renderers, c)
-    for v in vf.ext_components   do append(&base_sf.ext_components, v)
+    for v in vf.components   do append(&base_sf.components, v)
     for ns, i in vf.nested_scenes {
         if i == root_ns_idx do continue
         append(&base_sf.nested_scenes, ns)
@@ -899,12 +915,7 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     delete(vf.transforms); vf.transforms = nil
     delete(vf.nested_scenes); vf.nested_scenes = nil
     delete(vf.breadcrumbs); vf.breadcrumbs = nil
-    delete(vf.cameras); vf.cameras = nil
-    delete(vf.lifetimes); vf.lifetimes = nil
-    delete(vf.players); vf.players = nil
-    delete(vf.scripts); vf.scripts = nil
-    delete(vf.sprite_renderers); vf.sprite_renderers = nil
-    delete(vf.ext_components); vf.ext_components = nil
+    delete(vf.components); vf.components = nil
 
     opts := json.Marshal_Options{spec = .JSON, pretty = false}
     data, merr := json.marshal(base_sf, opts)
@@ -984,7 +995,7 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 	defer if baked_owned do delete(baked)
 
     sf: SceneFile
-    if err := json.unmarshal(baked, &sf); err != nil do return
+    if err := scene_file_unmarshal(baked, &sf); err != nil do return
     defer scene_file_destroy(&sf)
 
     host_scene := host_t.scene
@@ -2227,16 +2238,21 @@ _json_merge_override :: proc(
         return
     }
 
-    // Append a new entry.
+    // Append a new entry. Keys are cloned, not literals: the whole tree is
+    // torn down with json.destroy_value, which frees map keys too.
     tgt_obj := make(json.Object)
-    tgt_obj["local_id"] = json.Integer(target_lid)
-    tgt_obj["guid"] = json.String(strings.clone(guid_str))
+    tgt_obj[strings.clone("local_id")] = json.Integer(target_lid)
+    tgt_obj[strings.clone("guid")] = json.String(strings.clone(guid_str))
     new_ov := make(json.Object)
-    new_ov["target"] = tgt_obj
-    new_ov["property_path"] = json.String(strings.clone(property_path))
-    new_ov["value"] = json.clone_value(value)
+    new_ov[strings.clone("target")] = tgt_obj
+    new_ov[strings.clone("property_path")] = json.String(strings.clone(property_path))
+    new_ov[strings.clone("value")] = json.clone_value(value)
     append(&ov_arr, new_ov)
-    ns_obj["overrides"] = ov_arr
+    if has_ov {
+        ns_obj["overrides"] = ov_arr
+    } else {
+        ns_obj[strings.clone("overrides")] = ov_arr
+    }
 }
 
 // Removes every override entry matching (target_lid, property_path) from an

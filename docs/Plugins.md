@@ -9,6 +9,20 @@ The attribute system (`@component`, `@update`, `@phase`, `@menu_item`,
 `@property_drawer`, …) is the plugin API — packages use the exact same markers
 app code already uses.
 
+**The app is a package too** (`packages/app`): the game — main loop included —
+is an ordinary package with a `main :: proc()`. In Odin `main` is only special
+in the package handed to `odin build`, so the same package builds as the game
+executable AND imports into the editor like any plugin.
+
+**Runnable packages, 0..N of them.** Any package root declaring `main` is
+"runnable" and receives its OWN generated dispatcher set (`__update`,
+`phase_run`, `register_type_guids`, `register_packages`): its own subscribers
+call unqualified, library packages import through the collection, OTHER
+runnable packages are excluded (they're separate programs). The editor and
+the tests bootstrap depend on no runnable package — they use the generated
+`moonhug/registration` package (all types, all packages), so deleting the
+app leaves a fully working editor.
+
 ## Folder structure
 
 ```
@@ -27,6 +41,9 @@ moonhug/packages/
         *.odin
         assets/
     tests/                  ← OPTIONAL test suite: `package physics2d_tests`
+    run_configs/            ← OPTIONAL runnable-package scripts (see Run configurations)
+      run.sh
+      run_debug.sh
 ```
 
 - **Package root = the runtime Odin package.** Compiled into BOTH binaries
@@ -51,7 +68,29 @@ moonhug/packages/
   covers everything in one `odin test -all-packages` run. Tests ship with the
   package and die with it on uninstall — the central suite only reaches
   `packages:` through that generated file.
+- **`run_configs/`** — shell scripts that build+run the package as a program
+  (see Run configurations). Inert to the asset db and the compiler.
 - Other subfolders are just folders with no special meaning.
+
+## Run configurations
+
+A package that can run as a program (the `app` package, a future headless
+server, an engine sample) ships scripts in `run_configs/`:
+
+- One `.sh` per configuration; the FILENAME is the config's name — no
+  metadata inside, no manifest.
+- Scripts run from the REPO ROOT and receive the editor's args (`"$@"` —
+  the live-scene snapshot path when launched via Play); they build the
+  package and `exec` the binary, forwarding the args. The same script works
+  from a terminal: `sh moonhug/packages/app/run_configs/run.sh`.
+- The editor's toolbar Play is a split button: the play half runs the
+  selected configuration, the dropdown half lists every
+  `packages/*/run_configs/*.sh` as `<package>: <name>`. The selection
+  persists in `ProjectSettings/editor_settings.json`; with no selection the
+  editor prefers a `run_debug` config (call-stack capture for console logs).
+
+Build variants (debug/release), extra flags, program args — all just script
+content, no schema.
 
 ## Install model
 
@@ -67,8 +106,8 @@ Install/remove changes what gets compiled, so it takes a prebuild + rebuild
 plugin code debuggable and optimizable like first-party code.
 
 ## Code
-Prebuild scans `packages/*` and `packages/*/editor` like it scans
-`moonhug/app`, then generates:
+Prebuild scans `packages/*` and `packages/*/editor` (the app included — it
+carries no special scan status), then generates:
 
 - `components_ext_generated.odin` inside each package — the same runtime
   component registration app components use (`register_<name>_components()`,
@@ -83,8 +122,8 @@ Prebuild scans `packages/*` and `packages/*/editor` like it scans
 - The import lines, so presence = compiled + registered in both binaries:
 
   ```
-  moonhug/app/packages_generated.odin      imports + register_packages()
-  moonhug/editor/packages_generated.odin   import _ "packages:<name>/editor"
+  moonhug/packages/app/packages_generated.odin   imports + register_packages()
+  moonhug/editor/packages_generated.odin         import _ "packages:<name>/editor"
   ```
 
   `register_packages()` is called from `app_init`/`editor_init` right after

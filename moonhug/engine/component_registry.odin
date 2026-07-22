@@ -19,6 +19,7 @@ import "core:encoding/uuid"
 import "core:fmt"
 import "core:mem"
 import "core:strings"
+import "log"
 
 Component_Desc :: struct {
 	type_key:  TypeKey,
@@ -148,7 +149,7 @@ _ext_collect_component :: proc(desc: Component_Desc, comp: rawptr, sf: ^SceneFil
 	v, ok := _ext_value_from(desc, comp)
 	if !ok do return
 	_ext_value_stamp_type(&v, desc)
-	append(&sf.ext_components, v)
+	append(&sf.components, v)
 }
 
 // Add EXT_TYPE_KEY to a freshly parsed component object. Key and value are
@@ -161,25 +162,69 @@ _ext_value_stamp_type :: proc(v: ^json.Value, desc: Component_Desc) {
 	v^ = obj
 }
 
-// Load path: create pool instances for every ext record. Returns
-// local_id -> handle (temp allocator), mirroring the typed id_to_*_handle maps.
-_scene_load_ext_components :: proc(sf: ^SceneFile) -> map[Local_ID]Handle {
+// Load path: create pool instances for every component record. Returns
+// local_id -> handle (temp allocator). Records whose guid has no registered
+// desc are STASHED on `s` (when given) instead of dropped — they re-emit on
+// save so a binary without that package can't destroy the data
+// (Unity's missing-script behavior). Nested-prefab
+// loads pass s == nil here: their records live in the prefab FILE, which host
+// saves never rewrite.
+_scene_load_ext_components :: proc(sf: ^SceneFile, s: ^Scene = nil) -> map[Local_ID]Handle {
 	w := ctx_world()
 	out := make(map[Local_ID]Handle, context.temp_allocator)
-	for &v in sf.ext_components {
+	for &v in sf.components {
 		desc, ok := _ext_desc_for_value(v)
-		if !ok do continue
+		if !ok {
+			_stash_unknown_component(sf, s, v)
+			continue
+		}
 		_world_ensure_ext_pool(w, desc)
 		handle, ptr := world_pool_create(w, desc.type_key)
 		if ptr == nil do continue
 		if !_ext_value_into(desc, v, ptr) {
+			// The type IS registered but the record won't parse into it
+			// (corrupt/incompatible field). Dropping it silently loses data on
+			// the next save — preserve it verbatim exactly like an unknown type.
+			guid_str := "?"
+			if tv, has := v.(json.Object); has {
+				if gs, ok := tv[EXT_TYPE_KEY].(json.String); ok do guid_str = string(gs)
+			}
+			log.errorf("[Scene] Component %s failed to parse into its registered type — preserved verbatim, not loaded", guid_str)
 			world_pool_destroy(w, handle)
+			_stash_unknown_component(sf, s, v)
 			continue
 		}
 		base := cast(^CompData)ptr
 		out[base.local_id] = handle
 	}
 	return out
+}
+
+// Preserve an unresolvable record: clone it plus the lid of the transform
+// whose components list references it. Records with no owner in the file are
+// orphans and stay dropped.
+_stash_unknown_component :: proc(sf: ^SceneFile, s: ^Scene, v: json.Value) {
+	if s == nil do return
+	obj, is_obj := v.(json.Object)
+	if !is_obj do return
+	lid, lid_ok := _json_local_id_of(obj)
+	if !lid_ok || lid == 0 do return
+	for &tr in sf.transforms {
+		for c in tr.components {
+			if c.local_id != lid do continue
+			guid_str := "?"
+			if tv, has := obj[EXT_TYPE_KEY]; has {
+				if gs, is_str := tv.(json.String); is_str do guid_str = string(gs)
+			}
+			log.warningf("[Scene] Unknown component type %s (lid %d) — preserved, not loaded (package missing?)", guid_str, lid)
+			append(&s.unknown_components, Unknown_Component{
+				owner_lid = tr.local_id,
+				local_id  = lid,
+				value     = json.clone_value(v),
+			})
+			return
+		}
+	}
 }
 
 _ext_set_owner :: proc(w: ^World, h: Handle, owner: Transform_Handle) {
@@ -207,7 +252,7 @@ _Ext_Remap_Temp :: struct {
 
 _scene_file_remap_ext_begin :: proc(sf: ^SceneFile, s: ^Scene, remap: ^map[Local_ID]Local_ID, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID = nil, user: rawptr = nil) -> [dynamic]_Ext_Remap_Temp {
 	temps := make([dynamic]_Ext_Remap_Temp, context.temp_allocator)
-	for &v in sf.ext_components {
+	for &v in sf.components {
 		desc, ok := _ext_desc_for_value(v)
 		if !ok do continue
 		ti := type_info_of(desc.tid)
@@ -241,8 +286,59 @@ _scene_file_remap_ext_finish :: proc(temps: [dynamic]_Ext_Remap_Temp, remap: ^ma
 
 // Called from generated scene_file_destroy.
 _scene_file_destroy_ext :: proc(sf: ^SceneFile) {
-	for &v in sf.ext_components {
+	for &v in sf.components {
 		json.destroy_value(v)
 	}
-	delete(sf.ext_components)
+	delete(sf.components)
+}
+
+// Rewrite each component record through its registered type: parse into the
+// typed struct (missing keys default to zero), then re-marshal. The result has
+// the SAME field set the LIVE struct produces on save, so an override diff of
+// (normalized prefab base) vs (live content) never fires on fields the prefab
+// file simply omitted (a field added to a component after the prefab was
+// authored). Records whose type isn't registered pass through untouched.
+// Returns fresh bytes on the temp allocator; nil bytes leaves the input unusable.
+_normalize_component_records :: proc(raw: []byte, allocator := context.temp_allocator) -> ([]byte, bool) {
+	// Everything below allocates on temp: the parsed tree and every rewritten
+	// record are transient, freed together by the frame's free_all — no manual
+	// destroy_value (mixing temp/default frees is what triggers bad-free).
+	prev := context.allocator
+	context.allocator = context.temp_allocator
+	defer context.allocator = prev
+
+	root, perr := json.parse(raw, .JSON, true)
+	if perr != nil do return nil, false
+	obj, is_obj := root.(json.Object)
+	if !is_obj do return nil, false
+	comps_val, has := obj["components"]
+	if !has {
+		out, merr := json.marshal(root, {spec = .JSON}, allocator)
+		return out, merr == nil
+	}
+	arr, is_arr := comps_val.(json.Array)
+	if !is_arr {
+		out, merr := json.marshal(root, {spec = .JSON}, allocator)
+		return out, merr == nil
+	}
+
+	for &rec, i in arr {
+		desc, ok := _ext_desc_for_value(rec)
+		if !ok do continue // unknown type: leave verbatim
+		ti := type_info_of(desc.tid)
+		ptr, aerr := mem.alloc(ti.size, ti.align) // zero, temp-allocated
+		if aerr != nil do continue
+		// Match the LOAD path exactly (world_pool_create yields a zeroed slot,
+		// then _ext_value_into overwrites only present keys) — no reset, so a
+		// field absent from BOTH file and live struct compares equal (zero).
+		if !_ext_value_into(desc, rec, ptr) do continue // corrupt: leave verbatim
+		nv, nok := _ext_value_from(desc, ptr)
+		if !nok do continue
+		_ext_value_stamp_type(&nv, desc)
+		arr[i] = nv // old rec is temp too; freed with the tree
+	}
+	obj["components"] = arr
+
+	out, merr := json.marshal(json.Value(obj), {spec = .JSON}, allocator)
+	return out, merr == nil
 }

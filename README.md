@@ -100,6 +100,10 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
+- "missing component" inspector row for preserved unknown records (scene
+  load/save already keeps records whose component package isn't compiled in;
+  the inspector just doesn't show them yet)
+
 - multiple/point lights (one directional Light per pass now)
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
@@ -125,8 +129,19 @@ For more details see [Contribution](docs/Contribution.md)
   - no Mecanim, needs something else more like timelines blending
   - tool for tech-art to author and preview animations without entering playmode
 
-- physics2d follow-ups: layer collision matrix, effectors/polygon colliders, PhysicsMaterial2D asset
-- physics3d follow-ups: layer collision matrix, mesh/compound colliders, PhysicMaterial asset, explicit mass
+- plugin inspector when selecting packages/package folder in project view
+  - samples install/uninstall. Support symlink and copying for install.
+
+- physics2d follow-ups:
+  - PhysicsLayerCollision2D settings asset
+  - PhysicsMaterial2D asset
+  - effectors/polygon colliders
+
+- physics3d follow-ups:
+  - PhysicsLayerCollision settings asset
+  - PhysicsMaterial asset
+  - mesh/compound colliders
+  - explicit mass
 
 - come up with more TODO and Considered features
 

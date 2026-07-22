@@ -1,6 +1,6 @@
 package app
 
-import "../engine"
+import "../../engine"
 
 // References to long-lived scene objects, placed once on the scene root. Game
 // code (app package) fetches the singleton via its pool and reads the resolved

@@ -16,15 +16,16 @@
             "guid": "a1000000-0000-4000-8000-0000000000b1"
           },
           "property_path": "color",
-          "value": [0, 0, 1, 1]
+          "value": [
+            0,
+            0,
+            1,
+            1
+          ]
         }
       ]
     }
   ],
   "breadcrumbs": [],
-  "cameras": [],
-  "lifetimes": [],
-  "players": [],
-  "scripts": [],
-  "sprite_renderers": []
+  "components": []
 }

@@ -182,10 +182,10 @@
   ],
   "breadcrumbs": [
     {
-      "local_id": 7,
+      "local_id": 10,
       "scene_source": {
-        "local_id": 5,
-        "guid": "00000000-0000-0000-0000-000000000000"
+        "local_id": 16,
+        "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
       },
       "scene_instance": 6
     },
@@ -198,46 +198,33 @@
       "scene_instance": 6
     },
     {
-      "local_id": 10,
+      "local_id": 7,
       "scene_source": {
-        "local_id": 16,
-        "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
+        "local_id": 5,
+        "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 6
     }
   ],
-  "cameras": [
+  "components": [
     {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
       "base": {
-        "local_id": 13,
-        "enabled": true
+        "enabled": true,
+        "local_id": 13
       },
-      "order": 0,
-      "fov": 60.00000000,
-      "near_clip": 0.30000001,
-      "far_clip": 1000.00000000,
       "clear_color": [
-        0.19000000,
-        0.30000001,
-        0.47000000,
-        1.00000000
+        0.1900000000000000,
+        0.3000000100000000,
+        0.4700000000000000,
+        1.0000000000000000
       ],
+      "far_clip": 1000.0000000000000000,
+      "fov": 60.0000000000000000,
+      "near_clip": 0.3000000100000000,
+      "order": 0,
       "render_layer_mask": 4294967295
-    }
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ],
-  "ext_components": [
+    },
     {
       "__type": "b1d7c74d-4e52-4088-a118-85059cf80149",
       "base": {

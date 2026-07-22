@@ -17,9 +17,9 @@ ai_tick :: proc(dt: f32) {}
 tween_tick :: proc(dt: f32) {}
 ```
 
-- Works in `moonhug/app` and in package runtime code (docs/Plugins.md) —
-  prebuild bakes both into `__fixed_update` in `update_generated.odin`,
-  interleaved with app entries by order.
+- Works in any package's runtime code, the app included (docs/Plugins.md) —
+  prebuild bakes every subscriber into `__fixed_update` in
+  `update_generated.odin`, interleaved by order.
 - The app loop drives it with an accumulator: consume frame dt, run 0..k
   ticks, carry the remainder. After a stall at most
   `FIXED_MAX_CATCHUP_TICKS` catch-up ticks run and the rest of the backlog is

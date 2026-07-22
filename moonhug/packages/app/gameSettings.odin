@@ -1,6 +1,6 @@
 package app
 
-import "../engine"
+import "../../engine"
 
 @(typ_guid={guid = "f47ac10b-58cc-4372-a567-0e02b2c3d479", menu_assets_create = {menu_name = "Game Settings", order = 0}})
 GameSettings :: struct {

@@ -16,7 +16,8 @@ package tests_common
 
 import "core:os"
 import "../../engine"
-import "../../app"
+import "../../engine/serialization"
+import "../../engine/registration"
 
 TestCtx :: struct {
 	world: engine.World,
@@ -32,10 +33,15 @@ _serializers_registered: bool
 _tween_initialized: bool
 
 setup :: proc(tc: ^TestCtx, path: string = "") {
-	app.register_type_guids()
+	registration.register_type_guids()
 	if !_serializers_registered {
-		app.register_app_components()
-		app.register_component_serializers()
+		// EVERY installed package registers (registration is the same
+		// all-packages generated bundle the editor uses), so tests never
+		// depend on a specific runnable package being installed.
+		registration.register_packages()
+		// User marshalers (Asset_GUID, unions) ride serialization.init —
+		// scene JSON round-trips fail without them.
+		serialization.init()
 		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 		// typeids for primitive field types (position, color, scale, …) so it
 		// can hand a properly-typed `any` to json.unmarshal_any.
@@ -62,9 +68,11 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 }
 
 teardown :: proc(tc: ^TestCtx) {
-	if tc.scene != nil {
-		engine.sm_scene_destroy_or_unload(tc.scene)
-	}
+	// Destroy every scene still registered with the scene manager — NOT
+	// tc.scene by pointer: scene_load_single_path destroys all loaded scenes
+	// (tc.scene included), so that pointer may be stale, and the scenes the
+	// test loaded afterwards live only in the manager's slots.
+	engine.sm_shutdown()
 	engine.sm_scene_set_active(nil)
 	engine.world_destroy_all(&tc.world)
 	if tc.path != "" do os.remove(tc.path)

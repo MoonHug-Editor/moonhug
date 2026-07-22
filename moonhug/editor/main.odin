@@ -14,8 +14,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import "../engine/serialization"
-import "../app"
-import "../app_editor"
+import "../engine/registration"
 import "core:os"
 import "../engine"
 import "core:path/filepath"
@@ -216,19 +215,17 @@ main :: proc() {
     save_editor_settings()
 }
 
-@(phase={key=app.Phase.EditorInit, order=0, mode=Editor})
+@(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
 
 	log.info("Editor Init")
 	log.error("test error")
 	log.warning("test warning")
-    app.register_app_components()
-    app.register_packages()
-    app.register_component_serializers()
+    registration.register_packages()
     inspector.init()
     serialization.init()
     clip.init()
-    app.register_type_guids()
+    registration.register_type_guids()
     _init_context_menu_registry()
     init_project_view()
     engine.asset_pipeline_init()
@@ -280,7 +277,7 @@ open_scenes_from_settings :: proc() {
     }
 }
 
-@(phase={key=app.Phase.EditorShutdown, order=0, mode=Editor})
+@(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_view()

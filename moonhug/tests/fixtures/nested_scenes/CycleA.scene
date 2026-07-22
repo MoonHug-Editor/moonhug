@@ -6,9 +6,22 @@
       "local_id": 1,
       "name": "CycleARoot",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -30,9 +43,22 @@
       "local_id": 2,
       "name": "CycleAHost",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -65,9 +91,5 @@
       "scene_instance": 10
     }
   ],
-  "cameras": [],
-  "lifetimes": [],
-  "players": [],
-  "scripts": [],
-  "sprite_renderers": []
+  "components": []
 }

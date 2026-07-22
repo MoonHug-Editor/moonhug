@@ -6,9 +6,22 @@
       "local_id": 10,
       "name": "HostRoot",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -30,9 +43,22 @@
       "local_id": 11,
       "name": "Slot",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0,
+        0,
+        0
+      ],
+      "rotation": [
+        0,
+        0,
+        0,
+        1
+      ],
+      "scale": [
+        1,
+        1,
+        1
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -64,9 +90,5 @@
       "scene_instance": 12
     }
   ],
-  "cameras": [],
-  "lifetimes": [],
-  "players": [],
-  "scripts": [],
-  "sprite_renderers": []
+  "components": []
 }

@@ -89,41 +89,7 @@
   "breadcrumbs": [
 
   ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-    {
-      "base": {
-        "local_id": 20,
-        "enabled": true
-      },
-      "duration": 3.00000000,
-      "time_spent": 0.00000000
-    }
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-    {
-      "base": {
-        "local_id": 16,
-        "enabled": true
-      },
-      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f",
-      "color": [
-        1.00000000,
-        0.32549021,
-        0.00000000,
-        1.00000000
-      ]
-    }
-  ],
-  "ext_components": [
+  "components": [
     {
       "__type": "7f5e6f68-938f-467f-993e-4d92adb25233",
       "base": {
@@ -135,6 +101,32 @@
         0.0000000000000000
       ],
       "speed": 5.0000000000000000
+    },
+    {
+      "__type": "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c",
+      "base": {
+        "enabled": true,
+        "local_id": 20
+      },
+      "duration": 3.0000000000000000,
+      "time_spent": 0.0000000000000000
+    },
+    {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+      "base": {
+        "enabled": true,
+        "local_id": 16
+      },
+      "color": [
+        1.0000000000000000,
+        0.7607843300000000,
+        0.1411764800000000,
+        1.0000000000000000
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
     }
   ]
 }

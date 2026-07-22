@@ -1,7 +1,7 @@
 package app
 
 import "core:encoding/uuid"
-import "../engine"
+import "../../engine"
 
 // Game-side startup, separate from the generic app plumbing in app_init
 // (order=1 runs after it). Registers prefabs the game spawns at runtime.

@@ -33,6 +33,7 @@ EditorSettings :: struct {
     scene_overlays:           [dynamic]Overlay_Setting, // dockable toolbar placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (view_scene.odin)
     snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
+    run_config:               string,                   // Play button's selected run config (view_toolbar.odin), "pkg/name"
 }
 
 editor_settings: EditorSettings

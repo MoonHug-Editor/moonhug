@@ -8,10 +8,10 @@ import cgltf "vendor:cgltf"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
+import "core:strings"
 import "core:testing"
 import "core:math"
 import "../engine"
-import "../app"
 import common "common"
 
 // A 1-second clip: owner position x 0→2, plus a child "Arm" scale snap
@@ -28,7 +28,8 @@ _make_test_clip :: proc(alloc := context.allocator) -> engine.AnimationClip {
 	append(&clip.channels, pos)
 
 	arm := engine.Animation_Channel{path = .Scale, step = true}
-	arm.target = "Arm"
+	// Cloned, not a literal: _animation_clip_destroy deletes channel targets.
+	arm.target = strings.clone("Arm", alloc)
 	arm.times = make([dynamic]f32, alloc)
 	arm.values = make([dynamic][4]f32, alloc)
 	append(&arm.times, 0, 0.5)
@@ -61,7 +62,6 @@ test_animation_component_tick :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	app.register_packages()
 
 	engine.animation_clip_cache_init()
 	defer engine.animation_clip_cache_shutdown()
@@ -147,7 +147,6 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	app.register_packages()
 
 	opts := cgltf.options{}
 	data, res := cgltf.parse_file(opts, "moonhug/tests/fixtures/animated_cube.gltf")

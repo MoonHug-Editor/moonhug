@@ -54,8 +54,9 @@ camera_active :: proc() -> ^Camera {
 	world := ctx_world()
 	best: ^Camera
 	best_order: i32 = min(i32)
-	for i in 0 ..< len(world.cameras.slots) {
-		slot := &world.cameras.slots[i]
+	cameras_pool := cameras(world)
+	if cameras_pool != nil do for i in 0 ..< len(cameras_pool.slots) {
+		slot := &cameras_pool.slots[i]
 		if !slot.alive do continue
 		cam := &slot.data
 		if !cam.enabled do continue
@@ -145,8 +146,9 @@ sprite_world_corners :: proc(tw: Transform_World, tex_w, tex_h: i32) -> [4][3]f3
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	world := ctx_world()
 
-	for i in 0 ..< len(world.mesh_renderers.slots) {
-		slot := &world.mesh_renderers.slots[i]
+	mesh_renderers_pool := mesh_renderers(world)
+	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
+		slot := &mesh_renderers_pool.slots[i]
 		if !slot.alive do continue
 		mr := &slot.data
 		if !mr.enabled do continue
@@ -172,8 +174,9 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	// One tree pass resolves every sprite's sort key (groups folded in).
 	sort_keys := sprite_sort_build_keys(view)
 
-	for i in 0 ..< len(world.sprite_renderers.slots) {
-		slot := &world.sprite_renderers.slots[i]
+	sprite_renderers_pool := sprite_renderers(world)
+	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
+		slot := &sprite_renderers_pool.slots[i]
 		if !slot.alive do continue
 		sr := &slot.data
 		if !sr.enabled do continue
@@ -211,8 +214,9 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // gfx default applies (white, baked direction — matches the pre-Light look).
 _apply_scene_light :: proc() {
 	world := ctx_world()
-	for i in 0 ..< len(world.lights.slots) {
-		slot := &world.lights.slots[i]
+	lights_pool := lights(world)
+	if lights_pool != nil do for i in 0 ..< len(lights_pool.slots) {
+		slot := &lights_pool.slots[i]
 		if !slot.alive do continue
 		l := &slot.data
 		if !l.enabled do continue
@@ -297,8 +301,9 @@ debug_draw_enabled: bool
 render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
 	world := ctx_world()
 	cams := make([dynamic]^Camera, 0, 8, context.temp_allocator)
-	for i in 0 ..< len(world.cameras.slots) {
-		slot := &world.cameras.slots[i]
+	cameras_pool := cameras(world)
+	if cameras_pool != nil do for i in 0 ..< len(cameras_pool.slots) {
+		slot := &cameras_pool.slots[i]
 		if !slot.alive do continue
 		cam := &slot.data
 		if !cam.enabled do continue

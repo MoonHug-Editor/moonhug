@@ -2,6 +2,7 @@ package gen_core
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:odin/parser"
 import "core:odin/ast"
 import "core:odin/tokenizer"
@@ -398,8 +399,14 @@ StructFields :: proc(v_decl: ^ast.Value_Decl) -> []Struct_Field {
 	return out[:]
 }
 
-// WriteGeneratedFile writes content to path and reports errors. Returns false on failure.
+// WriteGeneratedFile writes content to path (creating the parent directory —
+// e.g. moonhug/engine/registration exists only as generated output) and reports
+// errors. Returns false on failure.
 WriteGeneratedFile :: proc(path: string, content: string) -> bool {
+	// filepath.dir returns a view into path — nothing to free.
+	if dir := filepath.dir(path); dir != "." {
+		os.make_directory(dir)
+	}
 	if err := os.write_entire_file(path, transmute([]u8)(content)); err != nil {
 		fmt.eprintf("gen_core: failed to write %s\n", path)
 		return false

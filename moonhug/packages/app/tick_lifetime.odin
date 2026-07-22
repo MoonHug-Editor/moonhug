@@ -1,12 +1,14 @@
 package app
 
-import "../engine"
+import "../../engine"
 
 @(fixed_update={order=-50})
 tick_lifetime :: proc(dt: f32) {
     w := engine.ctx_world()
-    for i in 0..<len(w.lifetimes.slots) {
-        slot := &w.lifetimes.slots[i]
+    pool := lifetimes(w)
+    if pool == nil do return
+    for i in 0..<len(pool.slots) {
+        slot := &pool.slots[i]
         if !slot.alive do continue
         lt := &slot.data
         if !lt.enabled do continue

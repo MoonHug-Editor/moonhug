@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1019,
+  "next_local_id": 1020,
   "transforms": [
 
   ],
@@ -13,54 +13,14 @@
       "host_breadcrumb_id": 0,
       "sibling_index": 0,
       "overrides": [
-        {
-          "target": {
-            "local_id": 16,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "color",
-          "value": [
-            0.5019608100000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            0.6862745300000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "color",
-          "value": [
-            0.0000000000000000,
-            0.4588235300000000,
-            1.0000000000000000,
-            0.4352941200000000
-          ]
-        }
+
       ]
     }
   ],
   "breadcrumbs": [
 
   ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ],
-  "ext_components": [
+  "components": [
 
   ]
 }

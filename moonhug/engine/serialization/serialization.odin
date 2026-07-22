@@ -21,6 +21,7 @@ init :: proc() {
 	mapBeforeSerialize = make(map[typeid]BeforeSerializeProc)
 	mapAfterDeserialize = make(map[typeid]AfterDeserializeProc)
 	init_serialization_callbacks()
+	register_component_serializers()
 }
 
 Run_Before_Serialize :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool) {

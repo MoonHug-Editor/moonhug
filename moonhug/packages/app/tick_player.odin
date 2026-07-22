@@ -1,16 +1,18 @@
 package app
 
-import "../engine"
-import gfx "../engine/gfx"
-import input "../engine/input"
+import "../../engine"
+import gfx "../../engine/gfx"
+import input "../../engine/input"
 import "core:encoding/uuid"
 import "core:math/rand"
 
 @(fixed_update={order=0})
 tick_player :: proc(dt: f32) {
     w := engine.ctx_world()
-    for i in 0..<len(w.players.slots) {
-        slot := &w.players.slots[i]
+    players_pool := players(w)
+    if players_pool == nil do return
+    for i in 0..<len(players_pool.slots) {
+        slot := &players_pool.slots[i]
         if !slot.alive do continue
         p := &slot.data
         if !p.enabled do continue

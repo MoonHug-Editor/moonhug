@@ -10,33 +10,13 @@ SceneFile :: struct {
 	transforms:    [dynamic]Transform,
 	nested_scenes: [dynamic]NestedScene,
 	breadcrumbs:   [dynamic]Breadcrumb,
-	animations: [dynamic]Animation,
-	cameras: [dynamic]Camera,
-	lifetimes: [dynamic]Lifetime,
-	lights: [dynamic]Light,
-	mesh_filters: [dynamic]MeshFilter,
-	mesh_renderers: [dynamic]MeshRenderer,
-	players: [dynamic]Player,
-	scripts: [dynamic]Script,
-	sprite_renderers: [dynamic]SpriteRenderer,
-	sprite_sorting_groups: [dynamic]SpriteSortingGroup,
-	ext_components: [dynamic]json.Value,
+	components:    [dynamic]json.Value, // guid-tagged records, every component type
 }
 
 _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil, transform_scope_guid: Asset_GUID = {}, skip_scene_local_id_registration := false) -> Transform_Handle {
 	w := ctx_world()
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_animation_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_light_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_mesh_filter_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_mesh_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_sprite_sorting_group_handle := make(map[Local_ID]Handle, context.temp_allocator)
 
 	if s != nil {
 		scene_file_remap_merge_metadata(sf, s)
@@ -55,87 +35,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 	}
 
-	for &animation_data in sf.animations {
-		handle, animation := pool_create(&w.animations)
-		handle.type_key = .Animation
-		animation^ = animation_data
-		id_to_animation_handle[animation_data.local_id] = handle
-		animation_data = {}
-	}
-
-	for &camera_data in sf.cameras {
-		handle, camera := pool_create(&w.cameras)
-		handle.type_key = .Camera
-		camera^ = camera_data
-		id_to_camera_handle[camera_data.local_id] = handle
-		camera_data = {}
-	}
-
-	for &lifetime_data in sf.lifetimes {
-		handle, lifetime := pool_create(&w.lifetimes)
-		handle.type_key = .Lifetime
-		lifetime^ = lifetime_data
-		id_to_lifetime_handle[lifetime_data.local_id] = handle
-		lifetime_data = {}
-	}
-
-	for &light_data in sf.lights {
-		handle, light := pool_create(&w.lights)
-		handle.type_key = .Light
-		light^ = light_data
-		id_to_light_handle[light_data.local_id] = handle
-		light_data = {}
-	}
-
-	for &mesh_filter_data in sf.mesh_filters {
-		handle, mesh_filter := pool_create(&w.mesh_filters)
-		handle.type_key = .MeshFilter
-		mesh_filter^ = mesh_filter_data
-		id_to_mesh_filter_handle[mesh_filter_data.local_id] = handle
-		mesh_filter_data = {}
-	}
-
-	for &mesh_renderer_data in sf.mesh_renderers {
-		handle, mesh_renderer := pool_create(&w.mesh_renderers)
-		handle.type_key = .MeshRenderer
-		mesh_renderer^ = mesh_renderer_data
-		id_to_mesh_renderer_handle[mesh_renderer_data.local_id] = handle
-		mesh_renderer_data = {}
-	}
-
-	for &player_data in sf.players {
-		handle, player := pool_create(&w.players)
-		handle.type_key = .Player
-		player^ = player_data
-		id_to_player_handle[player_data.local_id] = handle
-		player_data = {}
-	}
-
-	for &script_data in sf.scripts {
-		handle, script := pool_create(&w.scripts)
-		handle.type_key = .Script
-		script^ = script_data
-		id_to_script_handle[script_data.local_id] = handle
-		script_data = {}
-	}
-
-	for &sprite_renderer_data in sf.sprite_renderers {
-		handle, sprite_renderer := pool_create(&w.sprite_renderers)
-		handle.type_key = .SpriteRenderer
-		sprite_renderer^ = sprite_renderer_data
-		id_to_sprite_renderer_handle[sprite_renderer_data.local_id] = handle
-		sprite_renderer_data = {}
-	}
-
-	for &sprite_sorting_group_data in sf.sprite_sorting_groups {
-		handle, sprite_sorting_group := pool_create(&w.sprite_sorting_groups)
-		handle.type_key = .SpriteSortingGroup
-		sprite_sorting_group^ = sprite_sorting_group_data
-		id_to_sprite_sorting_group_handle[sprite_sorting_group_data.local_id] = handle
-		sprite_sorting_group_data = {}
-	}
-
-	id_to_ext_handle := _scene_load_ext_components(sf)
+	// Own-file loads stash unknown records on the scene; nested-prefab
+	// materializations (scoped guid) never do — their file owns them.
+	id_to_ext_handle := _scene_load_ext_components(sf, asset_guid_is_empty(transform_scope_guid) ? s : nil)
 
 	for &t_data in sf.transforms {
 		handle, t := pool_create(&w.transforms)
@@ -171,47 +73,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 
 		for &c in t.components {
-			if h, ok := resolve_handle(c.local_id, id_to_animation_handle); ok {
-				c.handle = h
-				animation := pool_get(&w.animations, h)
-				if animation != nil do animation.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_camera_handle); ok {
-				c.handle = h
-				camera := pool_get(&w.cameras, h)
-				if camera != nil do camera.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_lifetime_handle); ok {
-				c.handle = h
-				lifetime := pool_get(&w.lifetimes, h)
-				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_light_handle); ok {
-				c.handle = h
-				light := pool_get(&w.lights, h)
-				if light != nil do light.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_mesh_filter_handle); ok {
-				c.handle = h
-				mesh_filter := pool_get(&w.mesh_filters, h)
-				if mesh_filter != nil do mesh_filter.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_mesh_renderer_handle); ok {
-				c.handle = h
-				mesh_renderer := pool_get(&w.mesh_renderers, h)
-				if mesh_renderer != nil do mesh_renderer.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
-				c.handle = h
-				player := pool_get(&w.players, h)
-				if player != nil do player.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_script_handle); ok {
-				c.handle = h
-				script := pool_get(&w.scripts, h)
-				if script != nil do script.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_sprite_renderer_handle); ok {
-				c.handle = h
-				sprite_renderer := pool_get(&w.sprite_renderers, h)
-				if sprite_renderer != nil do sprite_renderer.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_sprite_sorting_group_handle); ok {
-				c.handle = h
-				sprite_sorting_group := pool_get(&w.sprite_sorting_groups, h)
-				if sprite_sorting_group != nil do sprite_sorting_group.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {
+			if h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {
 				c.handle = h
 				_ext_set_owner(w, h, Transform_Handle(handle))
 			}
@@ -225,36 +87,6 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 					bimap_insert(&s.local_ids, lid, h)
 				}
 			}
-			for lid, h in id_to_animation_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_camera_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_lifetime_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_light_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_mesh_filter_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_mesh_renderer_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_player_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_script_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_sprite_renderer_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_sprite_sorting_group_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
 			for lid, h in id_to_ext_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
@@ -264,57 +96,7 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 		_file_lookup := make(map[Local_ID]Handle, context.temp_allocator)
 		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
-		for lid, h in id_to_animation_handle do _file_lookup[lid] = h
-		for lid, h in id_to_camera_handle do _file_lookup[lid] = h
-		for lid, h in id_to_lifetime_handle do _file_lookup[lid] = h
-		for lid, h in id_to_light_handle do _file_lookup[lid] = h
-		for lid, h in id_to_mesh_filter_handle do _file_lookup[lid] = h
-		for lid, h in id_to_mesh_renderer_handle do _file_lookup[lid] = h
-		for lid, h in id_to_player_handle do _file_lookup[lid] = h
-		for lid, h in id_to_script_handle do _file_lookup[lid] = h
-		for lid, h in id_to_sprite_renderer_handle do _file_lookup[lid] = h
-		for lid, h in id_to_sprite_sorting_group_handle do _file_lookup[lid] = h
 		for lid, h in id_to_ext_handle do _file_lookup[lid] = h
-		for _, h in id_to_animation_handle {
-			p := pool_get(&w.animations, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Animation), s, &_file_lookup)
-		}
-		for _, h in id_to_camera_handle {
-			p := pool_get(&w.cameras, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s, &_file_lookup)
-		}
-		for _, h in id_to_lifetime_handle {
-			p := pool_get(&w.lifetimes, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s, &_file_lookup)
-		}
-		for _, h in id_to_light_handle {
-			p := pool_get(&w.lights, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Light), s, &_file_lookup)
-		}
-		for _, h in id_to_mesh_filter_handle {
-			p := pool_get(&w.mesh_filters, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(MeshFilter), s, &_file_lookup)
-		}
-		for _, h in id_to_mesh_renderer_handle {
-			p := pool_get(&w.mesh_renderers, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(MeshRenderer), s, &_file_lookup)
-		}
-		for _, h in id_to_player_handle {
-			p := pool_get(&w.players, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s, &_file_lookup)
-		}
-		for _, h in id_to_script_handle {
-			p := pool_get(&w.scripts, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Script), s, &_file_lookup)
-		}
-		for _, h in id_to_sprite_renderer_handle {
-			p := pool_get(&w.sprite_renderers, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s, &_file_lookup)
-		}
-		for _, h in id_to_sprite_sorting_group_handle {
-			p := pool_get(&w.sprite_sorting_groups, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteSortingGroup), s, &_file_lookup)
-		}
 		for _, h in id_to_ext_handle {
 			_ext_resolve_refs(w, h, s, &_file_lookup)
 		}
@@ -356,16 +138,6 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 		t.local_id = new_id
 	}
 
-	for &c in sf.animations { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.cameras { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.lifetimes { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.lights { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.mesh_filters { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.mesh_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.players { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.scripts { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.sprite_renderers { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.sprite_sorting_groups { new_id := _remap_new_id(s, mapper, user, c.local_id); remap[c.local_id] = new_id; c.local_id = new_id }
 	ext_temps := _scene_file_remap_ext_begin(sf, s, &remap, mapper, user)
 	for &ns in sf.nested_scenes { new_id := _remap_new_id(s, mapper, user, ns.local_id); remap[ns.local_id] = new_id; ns.local_id = new_id }
 	for &bc in sf.breadcrumbs {
@@ -424,16 +196,6 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user
 		sf.root = new_root
 	}
 
-	for &c in sf.animations { _remap_refs_in_value(&c, type_info_of(Animation), &remap) }
-	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
-	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
-	for &c in sf.lights { _remap_refs_in_value(&c, type_info_of(Light), &remap) }
-	for &c in sf.mesh_filters { _remap_refs_in_value(&c, type_info_of(MeshFilter), &remap) }
-	for &c in sf.mesh_renderers { _remap_refs_in_value(&c, type_info_of(MeshRenderer), &remap) }
-	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
-	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
-	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
-	for &c in sf.sprite_sorting_groups { _remap_refs_in_value(&c, type_info_of(SpriteSortingGroup), &remap) }
 	_scene_file_remap_ext_finish(ext_temps, &remap)
 }
 
@@ -453,26 +215,6 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 	}
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
-	for &c in sf.animations { type_cleanup(.Animation, &c) }
-	delete(sf.animations)
-	for &c in sf.cameras { type_cleanup(.Camera, &c) }
-	delete(sf.cameras)
-	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
-	delete(sf.lifetimes)
-	for &c in sf.lights { type_cleanup(.Light, &c) }
-	delete(sf.lights)
-	for &c in sf.mesh_filters { type_cleanup(.MeshFilter, &c) }
-	delete(sf.mesh_filters)
-	for &c in sf.mesh_renderers { type_cleanup(.MeshRenderer, &c) }
-	delete(sf.mesh_renderers)
-	for &c in sf.players { type_cleanup(.Player, &c) }
-	delete(sf.players)
-	for &c in sf.scripts { type_cleanup(.Script, &c) }
-	delete(sf.scripts)
-	for &c in sf.sprite_renderers { type_cleanup(.SpriteRenderer, &c) }
-	delete(sf.sprite_renderers)
-	for &c in sf.sprite_sorting_groups { type_cleanup(.SpriteSortingGroup, &c) }
-	delete(sf.sprite_sorting_groups)
 	_scene_file_destroy_ext(sf)
 }
 
@@ -485,15 +227,5 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.transforms)
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
-	delete(sf.animations)
-	delete(sf.cameras)
-	delete(sf.lifetimes)
-	delete(sf.lights)
-	delete(sf.mesh_filters)
-	delete(sf.mesh_renderers)
-	delete(sf.players)
-	delete(sf.scripts)
-	delete(sf.sprite_renderers)
-	delete(sf.sprite_sorting_groups)
 	_scene_file_destroy_ext(sf)
 }

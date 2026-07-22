@@ -291,20 +291,50 @@ _generate_type_key :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
 
 _PACKAGES_PREFIX :: "moonhug/packages/"
 
+// register_type_guids copies (docs/Plugins.md): one in the shared
+// `registration` package (ALL types — imported by the editor and the tests
+// bootstrap, which must work with zero runnable packages), plus one INSIDE
+// each runnable package (its own types + engine + library packages; other
+// runnable packages are separate programs and excluded). Hosts get their own
+// copy because a shared package importing the host would cycle.
 _generate_type_registration :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
+	runnables := gen_facts.runnable_packages(w)
+	defer delete(runnables)
+
+	_write_registration(entries, w, "registration", "moonhug/engine/registration", "..", "", runnables[:])
+	for host in runnables {
+		_write_registration(entries, w, host.name, host.path, "../../engine", host.name, runnables[:])
+	}
+	return true
+}
+
+// host_name == "" writes the shared all-types package.
+_write_registration :: proc(entries: []_TypeGuidRow, w: ^db.World, pkg_name, out_dir, engine_rel, host_name: string, runnables: []gen_facts.Runnable_Pkg) {
+	included :: proc(e: _TypeGuidRow, host_name: string, runnables: []gen_facts.Runnable_Pkg) -> bool {
+		if host_name == "" do return true
+		if e.pkg_name == host_name do return true
+		return !gen_facts.is_runnable(runnables, e.pkg_name)
+	}
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
-	strings.write_string(&b, "package app\n\n")
-	strings.write_string(&b, "import \"../app\"\n")
-	strings.write_string(&b, "import \"../engine\"\n")
+	fmt.sbprintf(&b, "package %s\n\n", pkg_name)
+	if host_name != "" {
+		// Self-import: the host's own types reference as <host>.T like every
+		// other package's.
+		fmt.sbprintf(&b, "import \"../%s\"\n", host_name)
+	}
+	fmt.sbprintf(&b, "import \"%s\"\n", engine_rel)
 	strings.write_string(&b, "import \"core:sync\"\n")
-	// Types declared by installed packages register like app types; their
-	// packages are reached through the packages: collection (docs/Plugins.md).
+	// Types declared by installed packages are reached through the packages:
+	// collection (docs/Plugins.md).
 	pkg_imports: [dynamic]string
 	defer delete(pkg_imports)
 	for e in entries {
+		if !included(e, host_name, runnables) do continue
 		if !strings.has_prefix(e.pkg_path, _PACKAGES_PREFIX) do continue
+		if e.pkg_name == host_name do continue
 		found := false
 		for p in pkg_imports do if p == e.pkg_name { found = true; break }
 		if !found do append(&pkg_imports, e.pkg_name)
@@ -320,6 +350,7 @@ _generate_type_registration :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bo
 	strings.write_string(&b, "register_type_guids :: proc() {\n")
 	strings.write_string(&b, "\tsync.once_do(&_register_type_guids_once, proc() {\n")
 	for e in entries {
+		if !included(e, host_name, runnables) do continue
 		type_arg := fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
 		if e.tid_expr != "" {
 			type_arg = e.tid_expr
@@ -338,6 +369,7 @@ _generate_type_registration :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bo
 		}
 	}
 	for e in entries {
+		if !included(e, host_name, runnables) do continue
 		type_arg := fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
 		if e.tid_expr != "" {
 			type_arg = e.tid_expr
@@ -347,8 +379,7 @@ _generate_type_registration :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bo
 	strings.write_string(&b, "\t})\n")
 	strings.write_string(&b, "}\n")
 
-	db.emit(w, "moonhug/app/type_registration_generated.odin", strings.to_string(b))
-	return true
+	db.emit(w, fmt.tprintf("%s/type_registration_generated.odin", out_dir), strings.to_string(b))
 }
 
 _generate_create_asset_menus :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {

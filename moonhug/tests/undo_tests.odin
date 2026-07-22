@@ -399,7 +399,7 @@ test_undo_inspector_flow_f32_field :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, p := engine.transform_get_or_add_comp(tH, engine.Player)
+	owned, p := engine.transform_get_or_add_comp(tH, engine.Animation)
 	if p == nil do return
 	p.speed = 55
 
@@ -431,7 +431,7 @@ test_undo_drag_sequence_commits_on_release :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, p := engine.transform_get_or_add_comp(tH, engine.Player)
+	owned, p := engine.transform_get_or_add_comp(tH, engine.Animation)
 	if p == nil do return
 	p.speed = 55
 

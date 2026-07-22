@@ -1,6 +1,8 @@
 package engine
 
+import "base:runtime"
 import "core:reflect"
+import "core:strings"
 import "core:encoding/json"
 
 TweenStatus :: enum { Pending, Running, Done }
@@ -18,7 +20,7 @@ Tween :: struct {
     skip:bool,
     is_await:bool,
     delay:f32,
-    subject: Ref,
+    subject: Ref `ref:"Transform"`,
 
     // runtime only fields:
     delay_elapsed:f32 `json:"-"`,
@@ -64,7 +66,9 @@ TweenRunning :: struct {
 }
 
 tween_init :: proc() {
-    tween_lib = make(map[string][]byte)
+    // The map's own storage is process-global too — growth must not go
+    // through whatever allocator the first caller happened to have.
+    tween_lib = make(map[string][]byte, runtime.default_allocator())
     __tween_ticks_init()
 }
 
@@ -73,9 +77,16 @@ tween_register :: proc(key: string, tween: ^TweenUnion) {
         //log.error("Tween is already registered: ''")
         return
     }
+    // tween_lib is process-global — keys and marshaled bytes must never
+    // borrow the caller's allocator (test tracking allocators tear down while
+    // the entry lives on).
+    context.allocator = runtime.default_allocator()
     data, err := json.marshal(tween^)
     if err != nil do return
-    tween_lib[key] = data
+    // The map OWNS its key: callers routinely build keys with tprintf, and a
+    // temp-allocated key dangles after the frame's free_all — lookups then
+    // miss ("Anim0" stopped running tweens once the bytes got reused).
+    tween_lib[strings.clone(key)] = data
 }
 
 tween_running_head : ^TweenRunning
@@ -86,6 +97,9 @@ tween_run_key :: proc(key: string, ctx: TweenContext) -> bool {
     raw, ok := tween_lib[key]
     if !ok do return false
 
+    // Running nodes link into the process-global tween_running list and can
+    // outlive the caller's allocator scope.
+    context.allocator = runtime.default_allocator()
     node := new(TweenRunning)
     if err := json.unmarshal(raw, &node.data); err != nil {
         free(node)
@@ -95,12 +109,14 @@ tween_run_key :: proc(key: string, ctx: TweenContext) -> bool {
 }
 
 tween_run_tween :: proc(tween: ^TweenUnion, ctx: TweenContext) -> bool {
+    context.allocator = runtime.default_allocator()
     node := new(TweenRunning)
     node.data = tween^
     return tween_run_internal(node, ctx)
 }
 
 tween_run_internal :: proc(node: ^TweenRunning, ctx: TweenContext) -> bool {
+    context.allocator = runtime.default_allocator()
     if tween_base(&node.data).skip {
         tween_free(&node.data)
         free(node)
@@ -122,6 +138,9 @@ tween_free :: proc(task : ^TweenUnion) {
 }
 
 tween_tick_running :: proc(delta_time: f32, ctx: TweenContext) {
+    // Running nodes (and their unmarshaled internals) live under the default
+    // allocator — free them there too.
+    context.allocator = runtime.default_allocator()
     node := tween_running_head
     for node != nil {
         next := node.next

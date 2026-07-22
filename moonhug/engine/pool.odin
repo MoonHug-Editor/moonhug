@@ -41,6 +41,11 @@ pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
     p.count += 1
     slot := &p.slots[idx]
     slot.alive = true
+    // A recycled slot keeps the destroyed instance's bytes. Hand out zeroed
+    // memory: loaders unmarshal IN PLACE and json:"-" fields (nested_owned,
+    // owner) are never in the payload — stale values would survive. A stale
+    // nested_owned=true makes every save silently skip the component.
+    slot.data = {}
     handle := Handle{ index = idx, generation = slot.generation, type_key = INVALID_TYPE_KEY }
     return handle, &slot.data
 }

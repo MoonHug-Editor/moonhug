@@ -26,6 +26,8 @@ package gen_facts
 // typed components.
 
 import "core:odin/ast"
+import "core:slice"
+import "core:strings"
 import "../gen_core"
 import db "../gen_db"
 
@@ -174,4 +176,41 @@ _pkg_constants :: proc(cache: ^map[string]map[string]string, pkg_path: string, p
 	if c, ok := &cache[pkg_path]; ok do return c
 	cache[pkg_path] = gen_core.BuildConstants(pkg)
 	return &cache[pkg_path]
+}
+
+// ---------------------------------------------------------------------------
+// Runnable packages ("app-like", docs/Plugins.md): an installed package whose
+// ROOT declares `main :: proc()`. Each one hosts its own generated dispatcher
+// set (update_gen, phase_gen, type_guid_gen, packages_gen) and builds as an
+// executable. 0..N of them may be installed — the editor depends on none.
+
+Runnable_Pkg :: struct {
+	name: string, // package name ("app")
+	path: string, // scan path ("moonhug/packages/app")
+}
+
+// Sorted by name. Result is allocated with context.allocator — delete it.
+runnable_packages :: proc(w: ^db.World) -> [dynamic]Runnable_Pkg {
+	out := make([dynamic]Runnable_Pkg)
+	decls := db.get_comps_DeclInfo()
+	procs := db.get_comps(w, Proc_GenComp)
+	m := db.all_of(db.r(decls), db.r(procs))
+	defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		if decl.name != "main" do continue
+		if !strings.has_prefix(decl.pkg_path, "moonhug/packages/") do continue
+		if strings.has_suffix(decl.pkg_path, "/editor") do continue
+		dup := false
+		for r in out do if r.path == decl.pkg_path { dup = true; break }
+		if !dup do append(&out, Runnable_Pkg{name = decl.pkg.name, path = decl.pkg_path})
+	}
+	slice.sort_by(out[:], proc(a, b: Runnable_Pkg) -> bool { return a.name < b.name })
+	return out
+}
+
+// True when pkg_name is one of the runnable packages.
+is_runnable :: proc(runnables: []Runnable_Pkg, pkg_name: string) -> bool {
+	for r in runnables do if r.name == pkg_name do return true
+	return false
 }

@@ -5,7 +5,6 @@ package physics3d_tests
 
 import "core:testing"
 import "../../../engine"
-import "../../../app"
 import common "../../../tests/common"
 import physics3d ".."
 
@@ -16,7 +15,6 @@ physics3d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	app.register_packages()
 
 	// Floor: box collider with NO rigidbody = implicit static body.
 	floor := engine.transform_new("Floor")
@@ -66,7 +64,6 @@ physics3d_transform_scale_affects_collider :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	app.register_packages()
 
 	// 1x1x1 floor collider scaled 40x wide: only an effective 40x1x40 shape
 	// can catch a ball dropped at x = 3 (the unscaled half-width is 0.5).
@@ -103,7 +100,6 @@ physics3d_kinematic_body_pushes_dynamic :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	app.register_packages()
 
 	// Kinematic pusher moved via its TRANSFORM (the script-driven pattern).
 	// Velocity-driven follow makes the step carry it into the crate — a

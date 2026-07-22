@@ -183,8 +183,15 @@ _run_import :: proc(source_path: string, artifact_path: string, settings: Import
 }
 
 _ensure_artifact_dir :: proc(artifact_path: string) {
+    // Create every missing segment — os.make_directory is non-recursive, so a
+    // bare "library/artifacts" fails outright when "library" itself is absent
+    // (fresh checkout, cleaned workspace).
     dir := filepath.dir(artifact_path)
-    os.make_directory(dir)
+    for i := 0; i <= len(dir); i += 1 {
+        if i == len(dir) || dir[i] == '/' {
+            if i > 0 do os.make_directory(dir[:i])
+        }
+    }
 }
 
 _cleanup_stale_artifacts :: proc() {

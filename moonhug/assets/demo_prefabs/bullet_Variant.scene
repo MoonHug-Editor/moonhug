@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1033,
+  "next_local_id": 1034,
   "transforms": [
     {
       "local_id": 1018,
@@ -74,11 +74,11 @@
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "position",
+          "property_path": "scale",
           "value": [
-            7.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            1.0000000000000000,
+            1.0000000000000000,
+            1.0000000000000000
           ]
         },
         {
@@ -94,11 +94,11 @@
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "scale",
+          "property_path": "position",
           "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
+            7.0000000000000000,
+            0.0000000000000000,
+            0.0000000000000000
           ]
         },
         {
@@ -140,22 +140,7 @@
       "scene_instance": 1019
     }
   ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ],
-  "ext_components": [
+  "components": [
 
   ]
 }

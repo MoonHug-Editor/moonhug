@@ -7,20 +7,20 @@
       "name": "VariantExtra",
       "is_active": true,
       "position": [
-        11.00000000,
-        22.00000000,
-        33.00000000
+        11.0,
+        22.0,
+        33.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -29,12 +29,8 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     }
   ],
   "nested_scenes": [
@@ -60,30 +56,14 @@
           },
           "property_path": "position",
           "value": [
-            71.00000000,
-            81.00000000,
-            91.00000000
+            71.0,
+            81.0,
+            91.0
           ]
         }
       ]
     }
   ],
-  "breadcrumbs": [
-
-  ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ]
+  "breadcrumbs": [],
+  "components": []
 }

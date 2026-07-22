@@ -41,15 +41,16 @@ PACKAGES := []string{
 	"moonhug/editor",
 	"moonhug/editor/menu",
 	"moonhug/editor/inspector",
-	"moonhug/app",
-	"moonhug/app_editor",
 	"moonhug/engine",
 	"moonhug/engine_editor",
 }
 
 // Installed packages (docs/Plugins.md): presence in moonhug/packages/ is the
 // install state. Each package root — and its editor/ subpackage when present —
-// joins the attribute scan exactly like moonhug/app.
+// joins the attribute scan. RUNNABLE packages (a root with `main`, 0..N of
+// them, the app included) each receive their own generated dispatcher set
+// (__update, phase_run, register_type_guids, register_packages); the shared
+// all-packages copy lands in moonhug/engine/registration for the editor and tests.
 PACKAGES_DIR :: "moonhug/packages"
 
 _dir_has_odin :: proc(dir: string) -> bool {

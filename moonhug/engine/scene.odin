@@ -2,6 +2,16 @@ package engine
 
 import "core:encoding/json"
 
+// A component record whose "__type" guid has no registered component in this
+// binary (its package isn't compiled in). Preserved VERBATIM across load/save
+// — Unity's missing-script behavior; a binary
+// with the package installed reads the record back intact.
+Unknown_Component :: struct {
+	owner_lid: Local_ID,   // serialized transform that carried the record
+	local_id:  Local_ID,   // the record's own base.local_id
+	value:     json.Value, // cloned record, re-emitted on save
+}
+
 Scene :: struct {
 	generation:           int,
 	next_local_id:        Local_ID,
@@ -12,6 +22,7 @@ Scene :: struct {
 	breadcrumb_data:      map[Local_ID]Breadcrumb,
 	breadcrumb_synth_seq: u32,
 	nested_scenes:        [dynamic]NestedScene,
+	unknown_components:   [dynamic]Unknown_Component `json:"-"`,
 }
 
 scene_new :: proc() -> ^Scene {
@@ -36,6 +47,10 @@ scene_destroy :: proc(s: ^Scene) {
 		delete(ns.source_of_inst)
 	}
 	delete(s.nested_scenes)
+	for &uc in s.unknown_components {
+		json.destroy_value(uc.value)
+	}
+	delete(s.unknown_components)
 	cleanup_Bimap(&s.local_ids)
 	delete(s.breadcrumb_data)
 	s.generation = 0

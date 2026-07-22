@@ -13,9 +13,5 @@
     }
   ],
   "breadcrumbs": [],
-  "cameras": [],
-  "lifetimes": [],
-  "players": [],
-  "scripts": [],
-  "sprite_renderers": []
+  "components": []
 }

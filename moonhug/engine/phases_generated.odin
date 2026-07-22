@@ -10,10 +10,10 @@ package engine
 // EditorShutdown [Editor]
 //       0  editor_shutdown  editor  [Editor]
 // Init
-//       0  app_init  app
-//       1  game_bootstrap  app
+//       0  app_init  packages:app
+//       1  game_bootstrap  packages:app
 // Shutdown
-//       0  app_shutdown  app
+//       0  app_shutdown  packages:app
 // DebugDraw [App]
 //       0  debug_draw  packages:physics2d  [App]
 //       0  debug_draw  packages:physics3d  [App]

@@ -1,5 +1,6 @@
 package engine
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -171,7 +172,7 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
     defer if baked_owned do delete(baked)
 
     base_sf: SceneFile
-    if json.unmarshal(baked, &base_sf) != nil do return {}
+    if scene_file_unmarshal(baked, &base_sf) != nil do return {}
     defer scene_file_destroy(&base_sf)
 
     base_root_lid := base_sf.root
@@ -381,6 +382,7 @@ sm_shutdown :: proc() {
 }
 
 scene_lib_shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	for _, data in scene_lib {
 		delete(data)
 	}
@@ -399,6 +401,7 @@ scene_lib_shutdown :: proc() {
 // instantiate picks up the new content. Editor-side instantiation uses
 // scene_instantiate_guid_nested, which doesn't touch this cache.
 scene_lib_unpacked_invalidate :: proc(guid: Asset_GUID) {
+	context.allocator = runtime.default_allocator()
 	if data, ok := scene_lib_unpacked_cache[guid]; ok {
 		delete(data)
 		delete_key(&scene_lib_unpacked_cache, guid)
@@ -409,10 +412,23 @@ scene_lib_register :: proc(guid: Asset_GUID) -> bool {
 	if _, ok := scene_lib[guid]; ok {
 		return true
 	}
+	// scene_lib is PROCESS-GLOBAL: its bytes must never borrow the caller's
+	// allocator (a test's scoped tracking allocator tears down while the cache
+	// entry lives on — later reads walk freed memory).
+	context.allocator = runtime.default_allocator()
 	path, ok := asset_db_get_path(uuid.Identifier(guid))
 	if !ok do return false
 	data, err := os.read_entire_file(path, context.allocator)
 	if err != nil do return false
+	// Legacy files migrate ONCE at intake, so
+	// every byte-level consumer downstream — unmarshal, override diff/apply,
+	// lid walkers — sees the unified "components" record format.
+	if _scene_file_is_legacy(data) {
+		if migrated, mok := _scene_file_migrate_legacy(data); mok {
+			delete(data)
+			data = migrated
+		}
+	}
 	scene_lib[guid] = data
 	return true
 }
@@ -434,7 +450,14 @@ scene_instantiate_guid :: proc(guid: Asset_GUID, parent: Transform_Handle) -> Tr
     nested_scene_unpack_subtree(host_tH)
 
     if bytes := scene_copy_subtree(host_tH); bytes != nil {
-        scene_lib_unpacked_cache[guid] = bytes
+        // Process-global cache: the snapshot AND the map's own storage live
+        // under the default allocator (see scene_lib_register); `bytes` came
+        // from the caller's allocator and is freed there before the switch.
+        owned := make([]byte, len(bytes), runtime.default_allocator())
+        copy(owned, bytes)
+        delete(bytes)
+        context.allocator = runtime.default_allocator()
+        scene_lib_unpacked_cache[guid] = owned
     }
     return host_tH
 }
@@ -513,7 +536,7 @@ _prefab_inherits_from :: proc(guid: Asset_GUID, needle: Asset_GUID, depth := 0) 
     sf: SceneFile
     cpy := make([]byte, len(raw), context.temp_allocator)
     copy(cpy, raw)
-    if json.unmarshal(cpy, &sf) != nil do return false
+    if scene_file_unmarshal(cpy, &sf) != nil do return false
     defer scene_file_destroy(&sf)
 
     // Follow ONLY the variant base (the root NS with transform_parent == 0).
@@ -530,7 +553,7 @@ _prefab_raw_root_scale_rotation :: proc(guid: Asset_GUID) -> (scale: [3]f32, rot
     raw, has := scene_lib[guid]
     if !has do return {1, 1, 1}, QUAT_IDENTITY, false
     sf: SceneFile
-    if err := json.unmarshal(raw, &sf); err != nil do return {1, 1, 1}, QUAT_IDENTITY, false
+    if err := scene_file_unmarshal(raw, &sf); err != nil do return {1, 1, 1}, QUAT_IDENTITY, false
     defer scene_file_destroy(&sf)
     for &t in sf.transforms {
         if t.local_id == sf.root {
