@@ -1041,7 +1041,7 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 		// "__type" sorts before lowercase field names, so it leads each record.
 		sort_maps_by_key = true,
 	}
-	data, err := json.marshal(sf, opts)
+	raw, err := json.marshal(sf, opts)
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal scene: %v\n", err)
 		scene_file_destroy_shallow(&sf)
@@ -1049,7 +1049,71 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	}
 
 	scene_file_destroy_shallow(&sf)
+	data := json_canonicalize_floats(raw)
+	delete(raw)
 	return data, true
+}
+
+// Canonicalizes float text in marshaled JSON. Core's writer emits floats at
+// fixed width — f32 fields with 8 fraction digits, f64 (every json.Value
+// number) with 16 — so the same value serializes to different text depending
+// on whether it took the typed-struct or the json.Value path, and one scene
+// file mixes both. Trimming trailing fraction zeros converges the two forms.
+// One digit always stays after the '.' so the token reparses as Float, not
+// Integer (override diffs compare parsed values, and Integer(1) != Float(1.0)).
+// Numbers inside strings and exponent forms are untouched. Returns a new
+// allocation.
+json_canonicalize_floats :: proc(data: []byte, allocator := context.allocator) -> []byte {
+	out := make([dynamic]byte, 0, len(data), allocator)
+	in_string := false
+	i := 0
+	for i < len(data) {
+		c := data[i]
+		if in_string {
+			append(&out, c)
+			if c == '\\' && i + 1 < len(data) {
+				append(&out, data[i + 1])
+				i += 2
+				continue
+			}
+			if c == '"' do in_string = false
+			i += 1
+			continue
+		}
+		if c == '"' {
+			in_string = true
+			append(&out, c)
+			i += 1
+			continue
+		}
+		if c != '-' && (c < '0' || c > '9') {
+			append(&out, c)
+			i += 1
+			continue
+		}
+		start := i
+		dot := -1
+		exp := false
+		scan: for i < len(data) {
+			switch data[i] {
+			case '0' ..= '9', '-', '+':
+			case '.':
+				if dot < 0 do dot = i - start
+			case 'e', 'E':
+				exp = true
+			case:
+				break scan
+			}
+			i += 1
+		}
+		tok := data[start:i]
+		end := len(tok)
+		if dot >= 0 && !exp {
+			for end > dot + 2 && tok[end - 1] == '0' do end -= 1
+		}
+		append(&out, ..tok[:end])
+	}
+	return out[:]
 }
 
 scene_save :: proc(s: ^Scene, path: string) -> bool {
@@ -1124,11 +1188,13 @@ scene_create_variant_file :: proc(base_path: string, out_path: string) -> bool {
 	defer scene_file_destroy(&vf)
 
 	opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2}
-	data, err := json.marshal(vf, opts)
+	raw, err := json.marshal(vf, opts)
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal variant: %v\n", err)
 		return false
 	}
+	data := json_canonicalize_floats(raw)
+	delete(raw)
 	defer delete(data)
 
 	if write_err := os.write_entire_file(out_path, data); write_err != nil {
@@ -1156,18 +1222,8 @@ _prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
 	// allocator (see scene_lib_register).
 	context.allocator = runtime.default_allocator()
 	if existing, has := scene_lib[guid]; has do delete(existing)
-	// scene_lib holds the unified "components" record format only — migrate
-	// legacy bytes at intake, same as scene_lib_register.
-	fresh: []byte
-	if _scene_file_is_legacy(data) {
-		if migrated, mok := _scene_file_migrate_legacy(data); mok {
-			fresh = migrated
-		}
-	}
-	if fresh == nil {
-		fresh = make([]byte, len(data))
-		copy(fresh, data)
-	}
+	fresh := make([]byte, len(data))
+	copy(fresh, data)
 	scene_lib[guid] = fresh
 	scene_lib_unpacked_invalidate(guid)
 }
@@ -1252,112 +1308,16 @@ scene_file_load :: proc(filepath: string) -> (SceneFile, bool) {
 	return sf, true
 }
 
-// --- Legacy scene format migration -------------
-// Pre-unification scene files carried one TYPED array per engine component
-// section plus "ext_components"; the unified format is ONE "components" array
-// of guid-tagged records. Load-time migration folds legacy sections into
-// records so old files keep loading; saving writes the unified format. The
-// section-name → guid table is CLOSED — typed sections can never reappear.
-
-_Legacy_Section :: struct {
-	name: string,
-	guid: string,
-}
-
-_LEGACY_SECTIONS :: [?]_Legacy_Section{
-	{"animations",            "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"}, // Animation
-	{"cameras",               "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d"}, // Camera
-	{"lights",                "9f36ee91-34b6-4636-a360-ee872af0436b"}, // Light
-	{"mesh_filters",          "32f52908-51a9-4f3b-819b-fc9d8cbc5972"}, // MeshFilter
-	{"mesh_renderers",        "73e161a0-c599-4cfb-9826-447e05baa76c"}, // MeshRenderer
-	{"scripts",               "adaf3551-4704-4255-ad91-fde59441dc53"}, // Script
-	{"sprite_renderers",      "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"}, // SpriteRenderer
-	{"sprite_sorting_groups", "2291f857-d2ff-409d-96df-1d87713fdcc2"}, // SpriteSortingGroup
-	{"players",               "d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c"}, // Player (moved to packages/app)
-	{"lifetimes",             "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c"}, // Lifetime (moved to packages/app)
-}
-
-// Cheap pre-check: quoted section keys only appear in legacy files (a false
-// positive from a same-named nested field just triggers a harmless parse).
-_scene_file_is_legacy :: proc(data: []byte) -> bool {
-	text := string(data)
-	if strings.contains(text, "\"ext_components\"") do return true
-	sections := _LEGACY_SECTIONS
-	for s in sections {
-		key := fmt.tprintf("%q", s.name)
-		if strings.contains(text, key) do return true
-	}
-	return false
-}
-
-// SceneFile unmarshal front door: EVERY byte→SceneFile path goes through
-// here so legacy files migrate uniformly.
+// SceneFile unmarshal front door. On error, json.unmarshal leaves already-
+// populated fields allocated — free the partial result so callers can just
+// bail.
 scene_file_unmarshal :: proc(data: []byte, sf: ^SceneFile) -> json.Unmarshal_Error {
-	// On error, json.unmarshal leaves already-populated fields allocated —
-	// free the partial result so callers can just bail.
-	unmarshal_owning :: proc(data: []byte, sf: ^SceneFile) -> json.Unmarshal_Error {
-		err := json.unmarshal(data, sf)
-		if err != nil {
-			scene_file_destroy(sf)
-			sf^ = {}
-		}
-		return err
+	err := json.unmarshal(data, sf)
+	if err != nil {
+		scene_file_destroy(sf)
+		sf^ = {}
 	}
-	if !_scene_file_is_legacy(data) {
-		return unmarshal_owning(data, sf)
-	}
-	migrated, ok := _scene_file_migrate_legacy(data)
-	if !ok {
-		return unmarshal_owning(data, sf) // fall through: parse errors surface normally
-	}
-	defer delete(migrated)
-	return unmarshal_owning(migrated, sf)
-}
-
-// Fold legacy typed sections + "ext_components" into "components" at the JSON
-// level and re-marshal (context.allocator result).
-_scene_file_migrate_legacy :: proc(data: []byte) -> ([]byte, bool) {
-	// All intermediate JSON work is temp — only the marshaled result goes to
-	// the caller's allocator.
-	out_allocator := context.allocator
-	context.allocator = context.temp_allocator
-	root, perr := json.parse(data, .JSON, true, context.temp_allocator)
-	if perr != nil do return nil, false
-	obj, is_obj := root.(json.Object)
-	if !is_obj do return nil, false
-
-	components: json.Array
-	if existing, has := obj["components"]; has {
-		if arr, is_arr := existing.(json.Array); is_arr do components = arr
-	}
-
-	move_section :: proc(obj: ^json.Object, name: string, guid: string, components: ^json.Array) {
-		v, has := obj[name]
-		if !has do return
-		if arr, is_arr := v.(json.Array); is_arr {
-			for rec in arr {
-				rec_obj, rec_is_obj := rec.(json.Object)
-				if !rec_is_obj do continue
-				if guid != "" {
-					rec_obj[strings.clone(EXT_TYPE_KEY, context.temp_allocator)] = json.String(guid)
-				}
-				append(components, json.Value(rec_obj))
-			}
-		}
-		delete_key(obj, name)
-	}
-
-	sections := _LEGACY_SECTIONS
-	for s in sections {
-		move_section(&obj, s.name, s.guid, &components)
-	}
-	move_section(&obj, "ext_components", "", &components) // records already tagged
-
-	obj["components"] = json.Value(components)
-
-	out, merr := json.marshal(json.Value(obj), {spec = .JSON}, out_allocator)
-	if merr != nil do return nil, false
-	return out, true
+	return err
 }
 
 resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Handle, bool) {

@@ -334,33 +334,12 @@ _json_diff_objects :: proc(base_obj, work_obj: json.Object, prefix: string, targ
 nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_guid: Asset_GUID = {}) -> [dynamic]Override {
 	out := make([dynamic]Override)
 
-	// Both sides must speak the unified record format or same-name section
-	// matching silently finds nothing.
-	base_in := base_raw
-	base_in_owned := false
-	if _scene_file_is_legacy(base_in) {
-		if m, mok := _scene_file_migrate_legacy(base_in); mok {
-			base_in = m
-			base_in_owned = true
-		}
-	}
-	defer if base_in_owned do delete(base_in)
-	work_in := work_raw
-	work_in_owned := false
-	if _scene_file_is_legacy(work_in) {
-		if m, mok := _scene_file_migrate_legacy(work_in); mok {
-			work_in = m
-			work_in_owned = true
-		}
-	}
-	defer if work_in_owned do delete(work_in)
-
-	base_copy := make([]byte, len(base_in))
+	base_copy := make([]byte, len(base_raw))
 	defer delete(base_copy)
-	copy(base_copy, base_in)
-	work_copy := make([]byte, len(work_in))
+	copy(base_copy, base_raw)
+	work_copy := make([]byte, len(work_raw))
 	defer delete(work_copy)
-	copy(work_copy, work_in)
+	copy(work_copy, work_raw)
 
 	base_val: json.Value
 	work_val: json.Value
@@ -2166,8 +2145,10 @@ _apply_patch_prefab :: proc(
     if !patched do return false
 
     opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2}
-    data, merr := json.marshal(root_obj, opts)
+    marshaled, merr := json.marshal(root_obj, opts)
     if merr != nil do return false
+    data := json_canonicalize_floats(marshaled)
+    delete(marshaled)
     defer delete(data)
 
     path, path_ok := asset_db_get_path(uuid.Identifier(parent_guid))

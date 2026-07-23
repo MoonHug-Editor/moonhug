@@ -22,8 +22,8 @@ TANK_TYPE_GUID :: "f15b003c-a491-4aec-b838-49e641a25346"
 // JSON level: diff and apply must see ext components like any other section.
 @(test)
 test_ext_component_json_diff_and_apply :: proc(t: ^testing.T) {
-	base := fmt.tprintf(`{{"ext_components":[{{"__type":"%s","base":{{"local_id":7,"enabled":true}},"speed":3}}]}}`, PROJECTILE_TYPE_GUID)
-	work := fmt.tprintf(`{{"ext_components":[{{"__type":"%s","base":{{"local_id":7,"enabled":true}},"speed":99}}]}}`, PROJECTILE_TYPE_GUID)
+	base := fmt.tprintf(`{{"components":[{{"__type":"%s","base":{{"local_id":7,"enabled":true}},"speed":3}}]}}`, PROJECTILE_TYPE_GUID)
+	work := fmt.tprintf(`{{"components":[{{"__type":"%s","base":{{"local_id":7,"enabled":true}},"speed":99}}]}}`, PROJECTILE_TYPE_GUID)
 
 	out := engine.nested_scene_diff_overrides(transmute([]byte)base, transmute([]byte)work)
 	defer {
@@ -80,7 +80,7 @@ test_ext_component_override_round_trip :: proc(t: ^testing.T) {
     }}
   ],
   "nested_scenes": [], "breadcrumbs": [],
-  "ext_components": [
+  "components": [
     {{"__type": "%s", "base": {{"local_id": 7, "enabled": true}}, "speed": 3, "dir": [0,0]}}
   ]
 }}`, PROJECTILE_TYPE_GUID)
@@ -197,7 +197,7 @@ test_ext_component_nested_intra_prefab_refs :: proc(t: ^testing.T) {
     }}
   ],
   "nested_scenes": [], "breadcrumbs": [],
-  "ext_components": [
+  "components": [
     {{"__type": "%s", "base": {{"local_id": 7, "enabled": true}},
       "turret": {{"local_id": 2}}, "shoot_from": {{"local_id": 1}},
       "projectile_prefab": "00000000-0000-0000-0000-000000000000"}}
@@ -309,7 +309,7 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
     }}
   ],
   "nested_scenes": [], "breadcrumbs": [],
-  "ext_components": [
+  "components": [
     {{"__type": "%s", "base": {{"local_id": 7, "enabled": true}},
       "turret": {{"local_id": 2}}, "shoot_from": {{"local_id": 3}},
       "projectile_prefab": "00000000-0000-0000-0000-000000000000"}}
@@ -461,7 +461,7 @@ test_host_ref_into_nested_instance_round_trip :: proc(t: ^testing.T) {
       "children": [], "components": []
     }
   ],
-  "nested_scenes": [], "breadcrumbs": [], "ext_components": []
+  "nested_scenes": [], "breadcrumbs": [], "components": []
 }`
 	testing.expect(t, os.write_entire_file(prefab_path, transmute([]byte)prefab_json) == nil)
 	meta := fmt.tprintf(`{{"guid": "%s"}}`, PREFAB_GUID)

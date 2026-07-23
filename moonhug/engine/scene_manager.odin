@@ -420,15 +420,6 @@ scene_lib_register :: proc(guid: Asset_GUID) -> bool {
 	if !ok do return false
 	data, err := os.read_entire_file(path, context.allocator)
 	if err != nil do return false
-	// Legacy files migrate ONCE at intake, so
-	// every byte-level consumer downstream — unmarshal, override diff/apply,
-	// lid walkers — sees the unified "components" record format.
-	if _scene_file_is_legacy(data) {
-		if migrated, mok := _scene_file_migrate_legacy(data); mok {
-			delete(data)
-			data = migrated
-		}
-	}
 	scene_lib[guid] = data
 	return true
 }

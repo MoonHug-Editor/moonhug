@@ -7,20 +7,20 @@
       "name": "BoxAnimated",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -54,20 +54,20 @@
       "name": "node_0",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        -0.00000000,
-        -0.00000000,
-        -0.00000000,
-        -1.00000000
+        -0.0,
+        -0.0,
+        -0.0,
+        -1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -93,20 +93,20 @@
       "name": "node_1",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -132,20 +132,20 @@
       "name": "node_2",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        -0.00000000,
-        -0.00000000,
-        -0.00000000,
-        -1.00000000
+        -0.0,
+        -0.0,
+        -0.0,
+        -1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -171,20 +171,20 @@
       "name": "node_3",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -212,78 +212,55 @@
   "breadcrumbs": [
 
   ],
-  "animations": [
+  "components": [
     {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
       "base": {
-        "local_id": 3,
-        "enabled": true
+        "enabled": true,
+        "local_id": 3
       },
       "clip": "14fec817-ce17-463f-a083-7616d69b8a5d",
       "play_automatically": true,
-      "wrap_mode": 0,
-      "speed": 1.00000000
-    }
-  ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "lights": [
-
-  ],
-  "mesh_filters": [
+      "speed": 1.0,
+      "wrap_mode": 0
+    },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 7,
-        "enabled": true
+        "enabled": true,
+        "local_id": 7
       },
       "mesh": "b106d05e-4d2c-471e-b185-c9f89335ae21",
       "part": 1
     },
     {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
-        "local_id": 10,
-        "enabled": true
-      },
-      "mesh": "b106d05e-4d2c-471e-b185-c9f89335ae21",
-      "part": 2
-    }
-  ],
-  "mesh_renderers": [
-    {
-      "base": {
-        "local_id": 8,
-        "enabled": true
+        "enabled": true,
+        "local_id": 8
       },
       "materials": [
         "174a1535-ddfa-4242-a3db-fecda7ee5380"
       ]
     },
     {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
-        "local_id": 11,
-        "enabled": true
+        "enabled": true,
+        "local_id": 10
+      },
+      "mesh": "b106d05e-4d2c-471e-b185-c9f89335ae21",
+      "part": 2
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 11
       },
       "materials": [
         "9df4ba28-e240-4001-897f-176fb05bec72"
       ]
     }
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ],
-  "sprite_sorting_groups": [
-
-  ],
-  "ext_components": [
-
   ]
 }

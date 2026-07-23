@@ -301,3 +301,78 @@ test_remove_and_restore_unknown_component :: proc(t: ^testing.T) {
 	saved2, _ := os.read_entire_file(path, context.temp_allocator)
 	testing.expect(t, strings.contains(string(saved2), "mystery"), "restored record must re-save")
 }
+
+// Float text must be canonical regardless of serialization path: typed f32
+// fields print 8 fraction digits, json.Value floats (unknown components,
+// overrides) print 16 — canonicalization trims both to the shortest form with
+// at least one fraction digit, so one file never mixes widths.
+@(test)
+test_float_canonical_formatting :: proc(t: ^testing.T) {
+	// Unit-level: the trimmer itself.
+	cases := [][2]string{
+		{`{"a": 0.10000000}`, `{"a": 0.1}`},                    // f32 path
+		{`{"a": 0.1000000000000000}`, `{"a": 0.1}`},            // f64 path
+		{`{"a": 0.30000001}`, `{"a": 0.30000001}`},             // real digits stay
+		{`{"a": 1.00000000}`, `{"a": 1.0}`},                    // stays Float, not Integer
+		{`{"a": -2.50000000, "b": 42}`, `{"a": -2.5, "b": 42}`},// integers untouched
+		{`{"a": 1e-10, "b": 1.20000000e+5}`, `{"a": 1e-10, "b": 1.20000000e+5}`}, // exponents untouched
+		{`{"s": "v1.00000000", "a": 3.00000000}`, `{"s": "v1.00000000", "a": 3.0}`}, // strings untouched
+		{`{"s": "q\"0.10000000", "a": 0.0000000000000000}`, `{"s": "q\"0.10000000", "a": 0.0}`}, // escaped quote
+	}
+	for c in cases {
+		got := engine.json_canonicalize_floats(transmute([]byte)c[0], context.temp_allocator)
+		testing.expect_value(t, string(got), c[1])
+	}
+
+	// Save-path: a scene mixing a typed transform (f32) and an unknown
+	// component record (json.Value f64) serializes with no fixed-width padding.
+	dir := "moonhug/tests/_test_float_canon"
+	os.make_directory(dir)
+	path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
+	defer { os.remove(path); os.remove(meta); os.remove(dir) }
+
+	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000044"
+	scene_json := fmt.tprintf(`{{
+  "root": 1, "next_local_id": 20,
+  "transforms": [
+    {{"local_id": 1, "name": "Root", "is_active": true,
+      "position": [0.1, 2.5, 0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 11}}]}}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "speed": 0.1}}
+  ]
+}}`, FAKE_GUID)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000004"}`)) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	s := engine.scene_load_single_path(path)
+	testing.expect(t, s != nil, "load")
+	if s == nil do return
+	tc.scene = s
+	testing.expect(t, engine.scene_save(s, path), "save")
+
+	saved, rerr := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, rerr == nil, "read saved")
+	text := string(saved)
+	testing.expect(t, !strings.contains(text, "0.10000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "2.50000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "0.00000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "0.1000000000000000"), "f64 padding must be trimmed")
+	testing.expect(t, strings.contains(text, "0.1"), "transform float present")
+	testing.expect(t, strings.contains(text, "2.5"), "transform float present")
+	testing.expect(t, strings.contains(text, `"speed": 0.1`), "record float canonical")
+}

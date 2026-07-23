@@ -1,26 +1,26 @@
 {
   "root": 15,
-  "next_local_id": 1034,
+  "next_local_id": 1035,
   "transforms": [
     {
       "local_id": 1018,
       "name": "c_Variant",
       "is_active": true,
       "position": [
-        7.00000000,
-        0.00000000,
-        0.00000000
+        7.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -53,10 +53,10 @@
           },
           "property_path": "color",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            0.6862745300000000
+            0.0,
+            0.0,
+            0.0,
+            0.68627453
           ]
         }
       ]
@@ -71,47 +71,15 @@
       "overrides": [
         {
           "target": {
-            "local_id": 15,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "name",
-          "value": "c_Variant"
-        },
-        {
-          "target": {
-            "local_id": 15,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "position",
-          "value": [
-            7.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
-          ]
-        },
-        {
-          "target": {
             "local_id": 16,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
           "property_path": "color",
           "value": [
-            0.4745098100000000,
-            0.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
+            0.47450981,
+            0.0,
+            1.0,
+            1.0
           ]
         },
         {
@@ -121,11 +89,43 @@
           },
           "property_path": "color",
           "value": [
-            0.0000000000000000,
-            0.4588235300000000,
-            1.0000000000000000,
-            1.0000000000000000
+            0.0,
+            0.45882353,
+            1.0,
+            1.0
           ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "position",
+          "value": [
+            7.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "name",
+          "value": "c_Variant"
         }
       ]
     }

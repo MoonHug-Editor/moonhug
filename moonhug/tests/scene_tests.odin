@@ -3184,8 +3184,9 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
     }
   ],
   "nested_scenes": [], "breadcrumbs": [],
-  "sprite_renderers": [
-    {"base": {"local_id": 3, "enabled": true},
+  "components": [
+    {"__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+     "base": {"local_id": 3, "enabled": true},
      "texture": "00000000-0000-0000-0000-000000000000",
      "color": [0.5, 0, 0, 1]}
   ]
@@ -3247,7 +3248,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
       "children": [], "components": []
     }
   ],
-  "nested_scenes": [], "breadcrumbs": [], "sprite_renderers": []
+  "nested_scenes": [], "breadcrumbs": [], "components": []
 }`
 	testing.expect(t, os.write_entire_file(host_path, transmute([]byte)host_json) == nil)
 	engine.asset_db_refresh()
