@@ -57,6 +57,52 @@ scene_destroy :: proc(s: ^Scene) {
 	free(s)
 }
 
+// The editor's missing-component row removes through this: detaches the
+// preserved record AND the owning transform's dangling components entry (its
+// handle never resolves — the package isn't compiled in). Returns the entry's
+// list index for undo, or ok=false when no record matched.
+transform_remove_unknown_comp :: proc(tH: Transform_Handle, comp_local_id: Local_ID) -> (list_index: int, ok: bool) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil || t.scene == nil do return -1, false
+	s := t.scene
+	found := false
+	for &uc, i in s.unknown_components {
+		if uc.owner_lid != t.local_id || uc.local_id != comp_local_id do continue
+		json.destroy_value(uc.value)
+		ordered_remove(&s.unknown_components, i)
+		found = true
+		break
+	}
+	if !found do return -1, false
+	list_index = -1
+	for i in 0 ..< len(t.components) {
+		if t.components[i].local_id == comp_local_id {
+			list_index = i
+			ordered_remove(&t.components, i)
+			break
+		}
+	}
+	return list_index, true
+}
+
+// Undo of transform_remove_unknown_comp: re-stashes the record (cloning
+// `value` — caller keeps ownership) and re-inserts the components entry at
+// its old list index (append when out of range).
+transform_restore_unknown_comp :: proc(tH: Transform_Handle, comp_local_id: Local_ID, value: json.Value, list_index: int) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil || t.scene == nil do return
+	append(&t.scene.unknown_components, Unknown_Component{
+		owner_lid = t.local_id,
+		local_id  = comp_local_id,
+		value     = json.clone_value(value),
+	})
+	idx := list_index
+	if idx < 0 || idx > len(t.components) do idx = len(t.components)
+	inject_at(&t.components, idx, Owned{local_id = comp_local_id})
+}
+
 scene_next_id :: proc(s: ^Scene) -> Local_ID {
 	s.next_local_id += 1
 	id := s.next_local_id

@@ -316,6 +316,13 @@ _draw_structural_details :: proc(sc: undo.Structural_Command, depth: int) {
 			i64(v.owner_local_id),
 			v.old_index,
 			v.new_index)))
+	case undo.Remove_Unknown_Component_Command:
+		im.TextUnformatted(cstr(fmt.tprintf("%sRemove Missing Component: owner=%d  comp_local_id=%d  idx=%d  payload=%d bytes",
+			indent,
+			i64(v.owner_local_id),
+			i64(v.comp_local_id),
+			v.list_index,
+			len(v.payload))))
 	}
 }
 

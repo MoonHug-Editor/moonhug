@@ -100,10 +100,6 @@ For more details see [Contribution](docs/Contribution.md)
   - if no menu path specified, type name is used
 
 ## TODO
-- "missing component" inspector row for preserved unknown records (scene
-  load/save already keeps records whose component package isn't compiled in;
-  the inspector just doesn't show them yet)
-
 - multiple/point lights (one directional Light per pass now)
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 

@@ -4,6 +4,7 @@ import "core:strings"
 import "core:mem"
 import "core:c"
 import "core:fmt"
+import "core:encoding/json"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
@@ -79,6 +80,7 @@ draw_hierarchy_inspector :: proc() {
 	im.Separator()
 	_draw_transform_section(t, tH)
 	_draw_components_section(t, tH)
+	_draw_missing_components(t, tH)
 	_draw_add_component_button(t, tH)
 }
 
@@ -483,6 +485,66 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		ordered_remove(&t.components, _comp_pending_move_from)
 		inject_at(&t.components, _comp_pending_move_to, entry)
 		undo.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
+	}
+}
+
+// Preserved unknown-component records owned by this transform (the component's
+// package isn't compiled into this binary — Unity's missing-script row). The
+// data has no live pool instance or typeid: header-only, not editable, and it
+// re-emits verbatim on save. The overflow menu sits where the live components'
+// menu sits, but only offers Remove — reset/copy/paste/reorder all need a
+// typed instance. Own-file transforms only: nested content's unknowns live in
+// the PREFAB's file (stash skips them at load), so nested rows never match.
+@(private)
+_draw_missing_components :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+	s := t.scene
+	if s == nil do return
+
+	pending_remove := engine.Local_ID(0)
+	for &uc in s.unknown_components {
+		if uc.owner_lid != t.local_id do continue
+
+		guid_str := "?"
+		if obj, is_obj := uc.value.(json.Object); is_obj {
+			if gs, gok := obj[engine.EXT_TYPE_KEY].(json.String); gok do guid_str = string(gs)
+		}
+
+		header := strings.clone_to_cstring(
+			fmt.tprintf("%s Missing Component (%s)##missing_%d", ICON_MD_WARNING, guid_str, uc.local_id),
+			context.temp_allocator,
+		)
+		header_open := im.CollapsingHeader(header, {.AllowOverlap})
+
+		// Overflow menu in the same spot as live components'.
+		popup_id := strings.clone_to_cstring(fmt.tprintf("##MissCtx_%d", uc.local_id), context.temp_allocator)
+		im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
+		btn_label := strings.clone_to_cstring(fmt.tprintf("%s##mbtn_%d", ICON_MD_MENU, uc.local_id), context.temp_allocator)
+		if im.SmallButton(btn_label) {
+			im.OpenPopup(popup_id)
+		}
+		if im.BeginPopup(popup_id) {
+			if im.MenuItem("Remove Component") {
+				pending_remove = uc.local_id
+			}
+			im.EndPopup()
+		}
+
+		if header_open {
+			// The preserved record as read-only (selectable) JSON.
+			opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2, sort_maps_by_key = true}
+			if data, merr := json.marshal(uc.value, opts, context.temp_allocator); merr == nil {
+				text := string(data)
+				lines := strings.count(text, "\n") + 1
+				height := f32(min(lines, 16)) * im.GetTextLineHeight() + im.GetStyle().FramePadding.y * 2
+				buf := strings.clone_to_cstring(text, context.temp_allocator)
+				field_id := strings.clone_to_cstring(fmt.tprintf("##missing_json_%d", uc.local_id), context.temp_allocator)
+				im.InputTextMultiline(field_id, buf, uint(len(text) + 1), im.Vec2{-1, height}, {.ReadOnly})
+			}
+		}
+	}
+
+	if pending_remove != 0 {
+		undo.record_remove_unknown_component(tH, pending_remove)
 	}
 }
 

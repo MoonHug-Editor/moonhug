@@ -103,6 +103,17 @@ Reorder_Components_Command :: struct {
 	new_index:           int,
 }
 
+// Removal of a PRESERVED unknown-component record (the component's package
+// isn't compiled in — no type_key, no live pool instance). `payload` is the
+// marshaled record; undo re-stashes it verbatim.
+Remove_Unknown_Component_Command :: struct {
+	scene:               Scene_Ref,
+	owner_local_id:      engine.Local_ID,
+	comp_local_id:       engine.Local_ID,
+	payload:             []byte,
+	list_index:          int,
+}
+
 Structural_Command :: union {
 	Reparent_Command,
 	Create_Subtree_Command,
@@ -110,6 +121,7 @@ Structural_Command :: union {
 	Add_Component_Command,
 	Remove_Component_Command,
 	Reorder_Components_Command,
+	Remove_Unknown_Component_Command,
 }
 
 Group_Command :: struct {
@@ -272,6 +284,7 @@ default_label :: proc(cmd: Command) -> string {
 		case Add_Component_Command:      return "Add Component"
 		case Remove_Component_Command:   return "Remove Component"
 		case Reorder_Components_Command: return "Reorder Components"
+		case Remove_Unknown_Component_Command: return "Remove Missing Component"
 		}
 		return "Structural"
 	case Group_Command:
@@ -450,6 +463,8 @@ _structural_destroy :: proc(sc: ^Structural_Command) {
 	case Remove_Component_Command:
 		if v.payload != nil do delete(v.payload)
 	case Reorder_Components_Command:
+	case Remove_Unknown_Component_Command:
+		if v.payload != nil do delete(v.payload)
 	}
 }
 
@@ -672,6 +687,8 @@ _structural_apply :: proc(sc: Structural_Command) {
 		_do_remove_component(v)
 	case Reorder_Components_Command:
 		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.old_index, v.new_index)
+	case Remove_Unknown_Component_Command:
+		_do_remove_unknown_component(v)
 	}
 }
 
@@ -690,6 +707,8 @@ _structural_revert :: proc(sc: Structural_Command) {
 		_undo_remove_component(v)
 	case Reorder_Components_Command:
 		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.new_index, v.old_index)
+	case Remove_Unknown_Component_Command:
+		_undo_remove_unknown_component(v)
 	}
 }
 
@@ -865,6 +884,23 @@ _undo_remove_component :: proc(v: Remove_Component_Command) {
 }
 
 @(private)
+_do_remove_unknown_component :: proc(v: Remove_Unknown_Component_Command) {
+	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
+	if !ok do return
+	engine.transform_remove_unknown_comp(engine.Transform_Handle(owner_h), v.comp_local_id)
+}
+
+@(private)
+_undo_remove_unknown_component :: proc(v: Remove_Unknown_Component_Command) {
+	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
+	if !ok do return
+	val, perr := json.parse(v.payload, .JSON, true, context.temp_allocator)
+	if perr != nil do return
+	// transform_restore_unknown_comp clones `val` — the temp parse dies with the frame.
+	engine.transform_restore_unknown_comp(engine.Transform_Handle(owner_h), v.comp_local_id, val, v.list_index)
+}
+
+@(private)
 _do_reorder_components :: proc(s: ^engine.Scene, owner_local_id: engine.Local_ID, from, to: int) {
 	owner_h, ok := scene_find_transform_by_local_id(s, owner_local_id)
 	if !ok do return
@@ -1011,6 +1047,7 @@ _command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asse
 		case Add_Component_Command:      r = sv.scene
 		case Remove_Component_Command:   r = sv.scene
 		case Reorder_Components_Command: r = sv.scene
+		case Remove_Unknown_Component_Command: r = sv.scene
 		}
 		return _scene_ref_matches(r, ptr, guid, any_scene)
 	case Group_Command:

@@ -1000,10 +1000,20 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	// re-emit each record verbatim and restore the owning transform's
 	// components entry — a missing package must never wipe data. A record
 	// whose transform is gone from the file dies with it (deleted transform).
+	// The live transform usually still CARRIES the entry (its handle just
+	// never resolved, so the collect kept it) — append only when absent, or
+	// every save cycle grows the list by one duplicate.
 	for &uc in s.unknown_components {
 		for &tr in sf.transforms {
 			if tr.local_id != uc.owner_lid do continue
-			append(&tr.components, Owned{local_id = uc.local_id})
+			already := false
+			for c in tr.components {
+				if c.local_id == uc.local_id {
+					already = true
+					break
+				}
+			}
+			if !already do append(&tr.components, Owned{local_id = uc.local_id})
 			append(&sf.components, json.clone_value(uc.value))
 			break
 		}
