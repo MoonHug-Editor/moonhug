@@ -1,11 +1,11 @@
 package editor
 
 // Docking: the main dockspace (with a Unity-style default layout built via
-// DockBuilder on first run / View->Reset Layout) and dockable view toolbars
+// DockBuilder on first run / View->Reset Layout) and dockable view overlays
 // modeled on Unity's Scene View overlays:
-// - toolbars dock to the view's corners/edges or float anywhere inside it
+// - overlays dock to the view's corners/edges or float anywhere inside it
 // - drag by the grip handle; drop zones highlight while dragging
-// - docking to the left/right edge turns the toolbar vertical
+// - docking to the left/right edge turns the overlay vertical
 // Overlay placement persists in editor_settings (anchor + normalized float pos).
 
 import "core:fmt"
@@ -84,11 +84,11 @@ view_reset_layout_menu :: proc() {
 }
 
 // ---------------------------------------------------------------------------
-// Dockable view toolbars (Unity Scene View overlays)
+// Dockable view overlays (Unity Scene View overlays)
 
-OVERLAY_MARGIN :: f32(8)     // gap between a docked toolbar and the view edge
-OVERLAY_SPACING :: f32(6)    // gap between toolbars stacked in one zone
-OVERLAY_PAD :: f32(4)        // background padding around toolbar content
+OVERLAY_MARGIN :: f32(8)     // gap between a docked overlay and the view edge
+OVERLAY_SPACING :: f32(6)    // gap between overlays stacked in one zone
+OVERLAY_PAD :: f32(4)        // background padding around overlay content
 OVERLAY_DROP_BAND :: f32(48) // px from an edge that counts as a dock drop
 OVERLAY_BUTTON_SIZE :: f32(24)
 OVERLAY_GRIP_THICK :: f32(12)
@@ -110,8 +110,8 @@ Overlay_Setting :: struct {
 	x, y:   f32, // normalized float position (used when anchor == Float)
 }
 
-// One contributor inside a toolbar, registered via @(scene_toolbar={id="...",
-// order=N}) — see scene_toolbars_generated.odin. The proc draws one or more
+// One contributor inside an overlay, registered via @(scene_overlay={id="...",
+// order=N}) — see scene_overlays_generated.odin. The proc draws one or more
 // imgui widgets (tooltips included, e.g. via overlay_tool_button); between its
 // OWN widgets it calls SameLine when !vertical (the system positions the items).
 Overlay_Item :: struct {
@@ -135,25 +135,25 @@ _overlays: [dynamic]Overlay
 _overlay_mouse_over: bool // mouse over any overlay this frame (or dragging one)
 
 // The item currently being drawn — overlay_tool_button reads it to append the
-// toolbar id/order to tooltips (how-to-extend discoverability).
+// overlay id/order to tooltips (how-to-extend discoverability).
 _overlay_item_ctx: struct {
-	toolbar_id: cstring,
+	overlay_id: cstring,
 	order:      int,
 	active:     bool,
 }
 
-// Add an item to toolbar `toolbar_id`, creating the toolbar on first use
-// (toolbars stack in their dock zone in creation order). Items sort by order.
-overlay_add_item :: proc(toolbar_id: cstring, draw: proc(vertical: bool), order: int) {
+// Add an item to overlay `overlay_id`, creating the overlay on first use
+// (overlays stack in their dock zone in creation order). Items sort by order.
+overlay_add_item :: proc(overlay_id: cstring, draw: proc(vertical: bool), order: int) {
 	ov: ^Overlay
 	for &o in _overlays {
-		if o.id == toolbar_id {
+		if o.id == overlay_id {
 			ov = &o
 			break
 		}
 	}
 	if ov == nil {
-		append(&_overlays, Overlay{id = toolbar_id, anchor = .Top_Left})
+		append(&_overlays, Overlay{id = overlay_id, anchor = .Top_Left})
 		ov = &_overlays[len(_overlays) - 1]
 	}
 	idx := len(ov.items)
@@ -175,7 +175,7 @@ overlays_shutdown :: proc() {
 }
 
 // True while an overlay owns the mouse — the scene view's click-to-pick must
-// not select through toolbar buttons.
+// not select through overlay buttons.
 overlay_wants_mouse :: proc() -> bool {
 	return _overlay_mouse_over
 }
@@ -221,8 +221,8 @@ overlays_draw :: proc(view_min, view_max: im.Vec2) {
 	// along the edge; corners on the right/bottom grow leftward/stay aligned.
 	zone_cursor: [Overlay_Anchor]f32
 
-	// Side zones start BELOW the top-corner toolbars (last-frame sizes) so a
-	// Left/Right toolbar never overlaps a Top_Left/Top_Right one.
+	// Side zones start BELOW the top-corner overlays (last-frame sizes) so a
+	// Left/Right overlay never overlaps a Top_Left/Top_Right one.
 	top_left_h, top_right_h: f32
 	for &ov in _overlays {
 		if ov.dragging || ov.size.y <= 0 do continue
@@ -244,7 +244,7 @@ overlays_draw :: proc(view_min, view_max: im.Vec2) {
 		pos: im.Vec2
 		if ov.dragging {
 			pos = mp - ov.drag_off
-			vertical = false // dragged toolbars preview horizontal, Unity-like
+			vertical = false // dragged overlays preview horizontal, Unity-like
 			full = ov.size + {OVERLAY_PAD * 2, OVERLAY_PAD * 2}
 		} else {
 			switch ov.anchor {
@@ -331,7 +331,7 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	im.BeginGroup()
 
 	// Grip: invisible button with drag_indicator dots; dragging it moves the
-	// toolbar (drop handling in overlays_draw).
+	// overlay (drop handling in overlays_draw).
 	grip_size := vertical ? im.Vec2{OVERLAY_BUTTON_SIZE, OVERLAY_GRIP_THICK} : im.Vec2{OVERLAY_GRIP_THICK, OVERLAY_BUTTON_SIZE}
 	grip_min := im.GetCursorScreenPos()
 	im.InvisibleButton("##grip", grip_size)
@@ -347,7 +347,7 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	// hovered item lives (see _overlay_item_tooltip).
 	for &it in ov.items {
 		if !vertical do im.SameLine()
-		_overlay_item_ctx = {toolbar_id = ov.id, order = it.order, active = true}
+		_overlay_item_ctx = {overlay_id = ov.id, order = it.order, active = true}
 		it.draw(vertical)
 	}
 	_overlay_item_ctx = {}
@@ -357,11 +357,11 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 }
 
 // Tooltip text + where the hovered item lives so anyone can see how to
-// target/reorder it with @(scene_toolbar). No braces: ProggyClean renders
+// target/reorder it with @(scene_overlay). No braces: ProggyClean renders
 // { } poorly at 13px.
 _overlay_item_tooltip :: proc(tip: cstring) -> cstring {
 	if !_overlay_item_ctx.active do return tip
-	return fmt.ctprintf("%s\nid=\"%s\", order=%d", tip, _overlay_item_ctx.toolbar_id, _overlay_item_ctx.order)
+	return fmt.ctprintf("%s\nid=\"%s\", order=%d", tip, _overlay_item_ctx.overlay_id, _overlay_item_ctx.order)
 }
 
 // Which zone a drop at mp lands in: edge bands split at the view's midpoint
@@ -392,7 +392,7 @@ _overlay_zone_rect :: proc(zone: Overlay_Anchor, view_min, view_max: im.Vec2) ->
 	return {}, {}, false
 }
 
-// While a toolbar drags: faint fill on every dock zone, accent on the one
+// While an overlay drags: faint fill on every dock zone, accent on the one
 // under the cursor (DockingPreview, same color imgui uses for window docking).
 _overlay_draw_drop_zones :: proc(mp, view_min, view_max: im.Vec2) {
 	dl := im.GetWindowDrawList()
@@ -407,15 +407,15 @@ _overlay_draw_drop_zones :: proc(mp, view_min, view_max: im.Vec2) {
 }
 
 // ---------------------------------------------------------------------------
-// Toolbar button helper (shared look for overlay toolbars)
+// Overlay button helper (shared look for overlays)
 
 OVERLAY_ARROW_WIDTH :: f32(11)  // dropdown half, narrower than the icon half
 OVERLAY_SPLIT_GAP :: f32(1)     // 1px seam between the two halves
 // Full width of a split button. Single-icon buttons default to this too, so a
-// toolbar of plain buttons and split buttons reads as one consistent row.
+// overlay of plain buttons and split buttons reads as one consistent row.
 OVERLAY_SPLIT_WIDTH :: OVERLAY_BUTTON_SIZE + OVERLAY_SPLIT_GAP + OVERLAY_ARROW_WIDTH
 
-// Icon toggle button for overlay toolbars; SameLine handled by the caller's
+// Icon toggle button for overlays; SameLine handled by the caller's
 // vertical flag via overlay body procs. width = 0 auto-sizes to the label
 // (icon + word buttons); the default matches a split button's full width so
 // single-icon buttons line up with them.
@@ -433,7 +433,7 @@ overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width
 	return clicked
 }
 
-// Split toggle+dropdown button for overlay toolbars: the icon on the left is a
+// Split toggle+dropdown button for overlays: the icon on the left is a
 // toggle (returns toggled=true on click), the narrow arrow on the right opens
 // the settings popup (returns arrow=true). A 1px seam separates the two halves.
 // `active` lights the icon while the tool is on.

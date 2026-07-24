@@ -1,17 +1,17 @@
-package scene_toolbar_gen
+package scene_overlay_gen
 
-// scene_toolbar_gen: ECS prebuild module for scene_toolbars_generated.odin.
+// scene_overlay_gen: ECS prebuild module for scene_overlays_generated.odin.
 //
 //   provide  - query {DeclInfo, Proc}, recognise procs carrying a
-//              @(scene_toolbar={id="...", order=N}) attribute, tag each with
-//              a Toolbar_GenComp.
-//   generate - query {DeclInfo, Toolbar_GenComp}, sort by (order, id, name),
-//              dedupe, build scene_toolbars_generated.odin registering every
-//              item into the editor's dockable overlay toolbars (dock.odin).
+//              @(scene_overlay={id="...", order=N}) attribute, tag each with
+//              a Overlay_GenComp.
+//   generate - query {DeclInfo, Overlay_GenComp}, sort by (order, id, name),
+//              dedupe, build scene_overlays_generated.odin registering every
+//              item into the editor's dockable overlays (dock.odin).
 //
 // The proc draws imgui items (signature `proc(vertical: bool)`). Items with the
-// same id share one toolbar; order sorts items inside it and — via the first
-// item registered — the toolbar's default stacking position in its dock zone.
+// same id share one overlay; order sorts items inside it and — via the first
+// item registered — the overlay's default stacking position in its dock zone.
 
 import "core:fmt"
 import "core:strings"
@@ -21,7 +21,7 @@ import "../gen_facts"
 
 _PKG_NAME :: "editor"
 
-ToolbarEntry :: struct {
+OverlayEntry :: struct {
 	id:          string,
 	name:        string,
 	order:       int,
@@ -29,18 +29,18 @@ ToolbarEntry :: struct {
 	source_path: string,
 }
 
-Toolbar_GenComp :: struct {
-	entries: [dynamic]ToolbarEntry,
+Overlay_GenComp :: struct {
+	entries: [dynamic]OverlayEntry,
 }
 
 @(init)
 _register :: proc "contextless" () {
-	db.provider("scene_toolbar/provide", provide)
-	db.generator("scene_toolbar/generate", generate)
+	db.provider("scene_overlay/provide", provide)
+	db.generator("scene_overlay/generate", generate)
 }
 
 provide :: proc(w: ^db.World) -> bool {
-	_toolbars := db.get_or_create_comps(w, Toolbar_GenComp)
+	_overlays := db.get_or_create_comps(w, Overlay_GenComp)
 	decls := db.get_comps_DeclInfo()
 	procs := db.get_comps(w, gen_facts.Proc_GenComp)
 	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
@@ -51,12 +51,12 @@ provide :: proc(w: ^db.World) -> bool {
 		if decl.name == "" do continue
 		attr_set := db.get(attrs, entity)
 
-		entries: [dynamic]ToolbarEntry
+		entries: [dynamic]OverlayEntry
 		for args in attr_set.attrs {
-			if args.key != "scene_toolbar" do continue
+			if args.key != "scene_overlay" do continue
 			id := args.fields["id"]
 			if id == "" do continue
-			append(&entries, ToolbarEntry{
+			append(&entries, OverlayEntry{
 				id          = id,
 				name        = decl.name,
 				order       = gen_facts.attr_int(args, "order"),
@@ -66,7 +66,7 @@ provide :: proc(w: ^db.World) -> bool {
 		}
 
 		if len(entries) > 0 {
-			db.set(_toolbars, entity, Toolbar_GenComp{entries = entries})
+			db.set(_overlays, entity, Overlay_GenComp{entries = entries})
 		} else {
 			delete(entries)
 		}
@@ -74,7 +74,7 @@ provide :: proc(w: ^db.World) -> bool {
 	return true
 }
 
-_qualified_name :: proc(pkg_name: string, e: ToolbarEntry) -> string {
+_qualified_name :: proc(pkg_name: string, e: OverlayEntry) -> string {
 	if e.source_pkg != "" && e.source_pkg != pkg_name {
 		return fmt.tprintf("%s.%s", e.source_pkg, e.name)
 	}
@@ -107,23 +107,23 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 generate :: proc(w: ^db.World) -> bool {
 	out_dir :: "moonhug/editor"
 
-	entries: [dynamic]ToolbarEntry
+	entries: [dynamic]OverlayEntry
 	defer delete(entries)
 
 	decls := db.get_comps_DeclInfo()
-	_toolbars := db.get_comps(w, Toolbar_GenComp)
-	m := db.all_of(db.r(decls), db.r(_toolbars)); defer db.matcher_destroy(&m)
+	_overlays := db.get_comps(w, Overlay_GenComp)
+	m := db.all_of(db.r(decls), db.r(_overlays)); defer db.matcher_destroy(&m)
 	for entity in db.matched(w, &m) {
-		tb := db.get(_toolbars, entity)
+		tb := db.get(_overlays, entity)
 		for entry in tb.entries {
 			append(&entries, entry)
 		}
 	}
 
-	// (order, id, name): items sort inside their toolbar by order; the first
-	// emitted item of an id creates the toolbar, so toolbars stack in their
+	// (order, id, name): items sort inside their overlay by order; the first
+	// emitted item of an id creates the overlay, so overlays stack in their
 	// dock zone by lowest item order.
-	slice.sort_by(entries[:], proc(a, b: ToolbarEntry) -> bool {
+	slice.sort_by(entries[:], proc(a, b: OverlayEntry) -> bool {
 		if a.order != b.order do return a.order < b.order
 		if a.id != b.id do return a.id < b.id
 		return a.name < b.name
@@ -165,14 +165,14 @@ generate :: proc(w: ^db.World) -> bool {
 		fmt.sbprintf(&b, "import \"%s\"\n", packages_used[pkg])
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")
-	strings.write_string(&b, "// Code generated by scene_toolbar_gen. Do not edit.\n\n")
-	strings.write_string(&b, "_register_scene_toolbars :: proc() {\n")
+	strings.write_string(&b, "// Code generated by scene_overlay_gen. Do not edit.\n\n")
+	strings.write_string(&b, "_register_scene_overlays :: proc() {\n")
 	for e in entries {
 		fmt.sbprintf(&b, "\toverlay_add_item(\"%s\", %s, %d)\n",
 			e.id, _qualified_name(_PKG_NAME, e), e.order)
 	}
 	strings.write_string(&b, "}\n")
 
-	db.emit(w, "moonhug/editor/scene_toolbars_generated.odin", strings.to_string(b))
+	db.emit(w, "moonhug/editor/scene_overlays_generated.odin", strings.to_string(b))
 	return true
 }

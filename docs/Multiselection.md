@@ -42,7 +42,7 @@ The project status line shows the count.
   selected top-level object, rotate orbits positions around the gizmo and
   spins orientations, scale scales offsets + local scales — one undo group
   per drag. The gizmo anchors at the active object's pivot or the selection
-  center (Pivot/Center toolbar toggle).
+  center (Pivot/Center overlay toggle).
 - **F frames the whole selection** (bounds union).
 - Single-target actions use the active item: rename, Create Empty
   Child/Parent, project open/rename/Extract/Scene Variant, drag-drop

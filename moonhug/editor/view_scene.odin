@@ -84,9 +84,9 @@ init_scene_view :: proc() {
 	_fly_speed_cur = FLYTHROUGH_BASE_SPEED
 	scene_cam_look_at({7, 7, 7}, {0, 0, 0})
 
-	// Unity-style dockable overlay toolbars (dock.odin): register every
-	// @(scene_toolbar) item (generated), then restore persisted placement.
-	_register_scene_toolbars()
+	// Unity-style dockable overlays (dock.odin): register every
+	// @(scene_overlay) item (generated), then restore persisted placement.
+	_register_scene_overlays()
 	overlays_apply_settings()
 }
 
@@ -361,7 +361,7 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 }
 
 // Scene grid: per-plane toggles + cell layout, edited via the Grid overlay
-// toolbar popup (draw_grid_overlay) and persisted in editor_settings.
+// overlay popup (draw_grid_overlay) and persisted in editor_settings.
 // A cell is cell_size units, drawn with emphasized lines; subdivide splits
 // each cell into N fine-line divisions; cells_count is cells from center to side.
 Grid_Settings :: struct {
@@ -375,7 +375,7 @@ Grid_Settings :: struct {
 
 GRID_DEFAULTS :: Grid_Settings{show_xz = true, cell_size = 10, subdivide = 10, cells_count = 2}
 
-// Gizmo drag snapping (Snap toolbar popup; Ctrl inverts enabled while held).
+// Gizmo drag snapping (Snap overlay popup; Ctrl inverts enabled while held).
 // Translate step comes from `mode`: a full grid cell, one grid subdivision,
 // or a free `units` value (> 0).
 Snap_Mode :: enum u8 {
@@ -501,10 +501,10 @@ _update_rubber_band :: proc() {
 	im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32ImVec4(im.Vec4{0.5, 0.7, 1, 0.9}))
 }
 
-// Unity-style Tools overlay item (dockable toolbar, dock.odin): gizmo mode
+// Unity-style Tools overlay item (dockable, dock.odin): gizmo mode
 // toggles. Q/W/E/R shortcuts live in handle_scene_input (guarded against
 // flythrough's WASD). Widgets set their own tooltips, so no attribute tooltip.
-@(scene_toolbar={id="Tools", order=0})
+@(scene_overlay={id="Tools", order=0})
 draw_tools_overlay :: proc(vertical: bool) {
 	mode_button :: proc(icon: cstring, tooltip: cstring, mode: Gizmo_Mode, vertical: bool, first := false) {
 		if !vertical && !first do im.SameLine()
@@ -518,10 +518,10 @@ draw_tools_overlay :: proc(vertical: bool) {
 	mode_button(ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
 }
 
-// Pivot mini-toolbar: Unity's Global/Local gizmo orientation switch — a single
+// Pivot mini-overlay: Unity's Global/Local gizmo orientation switch — a single
 // icon+word button that flips the space on click. Scale always stays local
 // (see Gizmo_Space).
-@(scene_toolbar={id="Pivot", order=100})
+@(scene_overlay={id="Pivot", order=100})
 draw_pivot_overlay :: proc(vertical: bool) {
 	// Unity's Pivot/Center toggle: gizmo at the active object's pivot vs the
 	// center of the selection.
@@ -552,10 +552,10 @@ draw_pivot_overlay :: proc(vertical: bool) {
 // planes. XZ is the sensible fallback if nothing was shown when it was hidden.
 _grid_last_planes := Grid_Settings{show_xz = true}
 
-// Grid toolbar: a split button. The icon toggles all grid planes on/off; the
+// Grid overlay: a split button. The icon toggles all grid planes on/off; the
 // dropdown arrow opens the popup with the plane and spacing settings (see
 // Grid_Settings). Button lights up while any plane shows.
-@(scene_toolbar={id="Grid", order=200})
+@(scene_overlay={id="Grid", order=200})
 draw_grid_overlay :: proc(vertical: bool) {
 	gs := &grid_settings
 	any_plane := gs.show_xz || gs.show_xy || gs.show_yz
@@ -597,7 +597,7 @@ draw_grid_overlay :: proc(vertical: bool) {
 // Snap split button next to the grid button. The icon toggles snapping on/off;
 // the dropdown arrow opens the snap settings popup. Button lights up while
 // snapping is enabled; Ctrl inverts enabled during a drag.
-@(scene_toolbar={id="Grid", order=210})
+@(scene_overlay={id="Grid", order=210})
 draw_snap_overlay :: proc(vertical: bool) {
 	if !vertical do im.SameLine()
 	toggled, arrow := overlay_split_button("snap", ICON_MD_SNAP, "Toggle snap (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled)
@@ -745,7 +745,7 @@ handle_scene_input :: proc() {
 
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
-	// not on an overlay toolbar — button clicks must not pick behind them).
+	// not on an overlay — button clicks must not pick behind them).
 	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() && !overlay_wants_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true

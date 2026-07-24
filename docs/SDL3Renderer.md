@@ -273,7 +273,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       sprite → hierarchy selects; rotated cube selects; sky click clears;
       nearest of overlapping wins (VERIFY IN EDITOR)
 
-### 8. Selection outline + translate gizmo + scene toolbar
+### 8. Selection outline + translate gizmo + scene overlay
 - [x] Outline in scene pass (`draw_selection_outline`): mesh → 12 local-AABB
       edges through the model matrix; sprite → its exact world quad; neither →
       axis cross. Unity orange `{1, 0.6, 0.1, 1}`, depth-tested lines
@@ -289,7 +289,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       (inverse-parent TRS — world drags stay world-correct under rotated /
       scaled parents)
 - [x] Undo: `undo.field_drag_begin/end` around the drag — one undo step per drag
-- [x] Scene-window overlay toolbar (Move/Rotate/Scale buttons, active
+- [x] Scene-window overlay (Move/Rotate/Scale buttons, active
       highlighted) + W shortcut gated on !flythrough (E/R follow with their
       gizmos)
 - [x] Checkpoint: builds, 127 tests green, editor runs clean. IN-EDITOR:

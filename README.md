@@ -65,7 +65,7 @@ For more details see [Contribution](docs/Contribution.md)
 ## Features
 - menu bar - customizable via @(menu_item=...) on proc
 
-- scene view toolbars - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_toolbar={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the toolbar id and order
+- scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 
 - union serialization (#no_nil unions only)
 
