@@ -353,6 +353,18 @@ _scene_resolve_breadcrumb_targets :: proc(s: ^Scene) {
         bimap_insert(&s.local_ids, lid, real)
     }
 
+    scene_rebind_unbound_refs(s)
+}
+
+// Sweeps every pooled component in `s` and rebinds refs that are UNBOUND
+// (zero, dead, or synthetic placeholder handles) via the scene's live lid
+// index. Refs already holding live handles are left alone. Load runs this
+// after nested resolve, and undo runs it after restoring deleted content —
+// components OUTSIDE the restored subtree still hold dead handles to it, and
+// only a scene-wide pass can reach them.
+scene_rebind_unbound_refs :: proc(s: ^Scene) {
+    if s == nil do return
+    w := ctx_world()
     for i in 0 ..< len(w.transforms.slots) {
         slot := &w.transforms.slots[i]
         if !slot.alive do continue

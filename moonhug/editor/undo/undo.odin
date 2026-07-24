@@ -805,6 +805,13 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 	if !engine.ctx_get().is_playmode {
 		engine._scene_resolve_nested_in_subtree(root_tH)
 	}
+
+	// Components OUTSIDE the restored subtree may reference INTO it (a Tank on
+	// the root pointing at a deleted-then-restored Turret) — their handles are
+	// dead and only a scene-wide rebind reaches them. The loader re-registered
+	// the restored lids (dead-entry repair), so the sweep binds them live.
+	engine.scene_rebind_unbound_refs(parent_scene)
+
 	return root_tH
 }
 
@@ -849,6 +856,13 @@ _do_add_component :: proc(v: Add_Component_Command) {
 
 	base := cast(^engine.CompData)ptr
 	base.local_id = v.comp_local_id
+	// transform_add_comp minted (and registered) a throwaway lid — the restored
+	// component answers to its RECORDED lid, so point the live index at it and
+	// rebind any refs that dangled while the component was gone.
+	if s := resolve_scene(v.scene); s != nil {
+		engine.bimap_insert(&s.local_ids, v.comp_local_id, owned.handle)
+		engine.scene_rebind_unbound_refs(s)
+	}
 	if t != nil {
 		for i in 0 ..< len(t.components) {
 			if t.components[i].handle == owned.handle {

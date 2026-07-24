@@ -216,8 +216,10 @@ _ref_local_display :: proc(r: engine.Ref_Local, key: engine.TypeKey) -> string {
 			}
 		}
 	}
-	if r.local_id != 0 {
-		return fmt.tprintf("[unresolved local_id=%d]", r.local_id)
+	// Once-set reference whose target is gone (deleted object, dead handle) —
+	// Unity shows "Missing (Type)" here.
+	if key != engine.INVALID_TYPE_KEY {
+		return fmt.tprintf("Missing (%v)", key)
 	}
-	return "[invalid]"
+	return "Missing"
 }
