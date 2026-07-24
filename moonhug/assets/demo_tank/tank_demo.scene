@@ -182,6 +182,14 @@
   ],
   "breadcrumbs": [
     {
+      "local_id": 7,
+      "scene_source": {
+        "local_id": 5,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 6
+    },
+    {
       "local_id": 9,
       "scene_source": {
         "local_id": 7,
@@ -194,14 +202,6 @@
       "scene_source": {
         "local_id": 16,
         "guid": "79d3d2e9-3eb8-4ba2-860f-5b2eb54655b9"
-      },
-      "scene_instance": 6
-    },
-    {
-      "local_id": 7,
-      "scene_source": {
-        "local_id": 5,
-        "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 6
     }

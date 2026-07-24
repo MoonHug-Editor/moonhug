@@ -1,6 +1,6 @@
 {
   "root": 15,
-  "next_local_id": 1035,
+  "next_local_id": 1036,
   "transforms": [
     {
       "local_id": 1018,
@@ -71,19 +71,6 @@
       "overrides": [
         {
           "target": {
-            "local_id": 16,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "color",
-          "value": [
-            0.47450981,
-            0.0,
-            1.0,
-            1.0
-          ]
-        },
-        {
-          "target": {
             "local_id": 3,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
@@ -94,6 +81,14 @@
             1.0,
             1.0
           ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "name",
+          "value": "c_Variant"
         },
         {
           "target": {
@@ -121,11 +116,16 @@
         },
         {
           "target": {
-            "local_id": 15,
+            "local_id": 16,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "name",
-          "value": "c_Variant"
+          "property_path": "color",
+          "value": [
+            0.47450981,
+            0.0,
+            1.0,
+            1.0
+          ]
         }
       ]
     }

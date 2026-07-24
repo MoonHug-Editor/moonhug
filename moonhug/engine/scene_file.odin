@@ -3,6 +3,7 @@ package engine
 import "core:encoding/json"
 import "core:os"
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "base:runtime"
 
@@ -922,7 +923,10 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	}
 
 	sf := SceneFile{}
-	sf.next_local_id = s.next_local_id
+	// Seed from the FILE's counter, not the live one: the live counter also
+	// advanced for transient never-persisted allocations (root-variant host
+	// pegs), and the repair pass below bumps over every lid that IS persisted.
+	sf.next_local_id = s.file_next_local_id
 
 	// Only persist NS records that belong to this scene file. Records with
 	// `expand_parent` set were pulled in from inner prefabs during resolve
@@ -969,6 +973,10 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 			append(&sf.breadcrumbs, bc)
 		}
 	}
+	// breadcrumb_data is a map — iteration order varies with world history, so
+	// an unchanged scene would serialize its breadcrumbs in a different order
+	// from one editor session to the next. Sort for byte-stable output.
+	slice.sort_by(sf.breadcrumbs[:], proc(a, b: Breadcrumb) -> bool { return a.local_id < b.local_id })
 
 	if s.root.handle != {} {
 		t := pool_get(&w.transforms, s.root.handle)
@@ -1030,7 +1038,10 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	}
 	for &ns in sf.nested_scenes   do bump(&sf.next_local_id, ns.local_id)
 	for &bc in sf.breadcrumbs     do bump(&sf.next_local_id, bc.local_id)
-	s.next_local_id = sf.next_local_id
+	// Raise-only: live transient pegs may sit above the persisted counter, and
+	// lowering next_local_id under them would hand out colliding lids.
+	if sf.next_local_id > s.next_local_id do s.next_local_id = sf.next_local_id
+	s.file_next_local_id = sf.next_local_id
 
 	opts := json.Marshal_Options{
 		spec       = .JSON,

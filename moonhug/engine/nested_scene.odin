@@ -1,6 +1,7 @@
 package engine
 
 import "core:encoding/json"
+import "core:slice"
 import "core:strings"
 import "base:runtime"
 import "core:reflect"
@@ -385,6 +386,19 @@ nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_g
             }
         }
     }
+
+    // The walk above iterates json.Object MAPS (root sections, record fields),
+    // so append order varies with map layout history — an unchanged scene
+    // would capture the same overrides in a different order from one session
+    // to the next. At most one override exists per (target, property_path),
+    // so sorting is purely cosmetic and makes serialization byte-stable.
+    slice.sort_by(out[:], proc(a, b: Override) -> bool {
+        if a.target.local_id != b.target.local_id do return a.target.local_id < b.target.local_id
+        ga := transmute(u128be)a.target.guid
+        gb := transmute(u128be)b.target.guid
+        if ga != gb do return ga < gb
+        return a.property_path < b.property_path
+    })
 
     return out
 }

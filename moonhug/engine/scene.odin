@@ -15,6 +15,11 @@ Unknown_Component :: struct {
 Scene :: struct {
 	generation:           int,
 	next_local_id:        Local_ID,
+	// The counter as loaded from (or last written to) the file. Serialization
+	// seeds from THIS, not next_local_id: the live counter also covers
+	// transient allocations that are never persisted (root-variant host pegs),
+	// so persisting it would make the saved value drift with load history.
+	file_next_local_id:   Local_ID `json:"-"`,
 	root:                 Ref,
 	path:                 string,
 	asset_guid:           Asset_GUID `json:"-"`,

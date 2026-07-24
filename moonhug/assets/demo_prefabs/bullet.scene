@@ -174,15 +174,27 @@
       "overrides": [
         {
           "target": {
-            "local_id": 16,
+            "local_id": 2,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
-          "property_path": "color",
+          "property_path": "position",
           "value": [
-            1.0,
-            0.94901961,
-            1.0,
-            1.0
+            0.0,
+            1.5,
+            -0.31
+          ]
+        },
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            0.11493715,
+            0.0,
+            0.99337274
           ]
         },
         {
@@ -203,12 +215,8 @@
             "local_id": 15,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
-          "property_path": "scale",
-          "value": [
-            1.0,
-            1.2999999499999999,
-            1.0
-          ]
+          "property_path": "name",
+          "value": "c"
         },
         {
           "target": {
@@ -227,32 +235,24 @@
             "local_id": 15,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
-          "property_path": "name",
-          "value": "c"
-        },
-        {
-          "target": {
-            "local_id": 2,
-            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
-          },
-          "property_path": "rotation",
+          "property_path": "scale",
           "value": [
-            0.0,
-            0.11493715,
-            0.0,
-            0.99337274
+            1.0,
+            1.2999999499999999,
+            1.0
           ]
         },
         {
           "target": {
-            "local_id": 2,
+            "local_id": 16,
             "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
           },
-          "property_path": "position",
+          "property_path": "color",
           "value": [
-            0.0,
-            1.5,
-            -0.31
+            1.0,
+            0.94901961,
+            1.0,
+            1.0
           ]
         }
       ]
@@ -267,15 +267,24 @@
       "overrides": [
         {
           "target": {
+            "local_id": 3,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.99607843,
+            0.45882353,
+            0.0,
+            0.43529412
+          ]
+        },
+        {
+          "target": {
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "scale",
-          "value": [
-            1.0,
-            1.0,
-            1.0
-          ]
+          "property_path": "name",
+          "value": "c_Variant"
         },
         {
           "target": {
@@ -294,8 +303,12 @@
             "local_id": 15,
             "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
           },
-          "property_path": "name",
-          "value": "c_Variant"
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
+          ]
         },
         {
           "target": {
@@ -308,19 +321,6 @@
             0.5411764999999999,
             0.0,
             0.68627453
-          ]
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
-          },
-          "property_path": "color",
-          "value": [
-            0.99607843,
-            0.45882353,
-            0.0,
-            0.43529412
           ]
         }
       ]
