@@ -49,6 +49,10 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
         t.local_id = scene_new_lid(s)
         t.scene = s
         t.scene_asset_guid = s.asset_guid
+        // local_ids is the scene's LIVE lid index — created objects register
+        // immediately (not just at load), so lid-based resolution (undo
+        // payload rebinding, pickers) and the mint collision check see them.
+        bimap_insert(&s.local_ids, t.local_id, Handle(tH))
     }
     else {
         t.local_id = 1
@@ -90,6 +94,11 @@ transform_destroy :: proc(tH: Transform_Handle) {
     delete(t.children)
 
     transform_destroy_components(tH)
+    // The scene's local_ids entry is deliberately NOT removed here. The
+    // nested-resolve machinery is stale-tolerant by design — entries are
+    // re-pointed on the next resolve/registration, and eager removal breaks
+    // the peg-rebinding chain during instance teardown/rebuild. Dead entries
+    // are repaired at the next load-time registration (overwrite-if-dead).
     delete(t.name)
     t^ = {}
     pool_destroy(&w.transforms, Handle(tH))
@@ -115,15 +124,24 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return
+    old_scene := t.scene
     t.scene = s
     if s != nil && !t.nested_owned {
+        if old_scene != nil && t.local_id != 0 {
+            bimap_remove_by_key(&old_scene.local_ids, t.local_id)
+        }
         t.local_id = scene_new_lid(s)
+        bimap_insert(&s.local_ids, t.local_id, Handle(tH))
         for &c in t.components {
             raw := world_pool_get(w, c.handle)
             if raw == nil do continue
             base := cast(^CompData)raw
+            if old_scene != nil && base.local_id != 0 {
+                bimap_remove_by_key(&old_scene.local_ids, base.local_id)
+            }
             base.local_id = scene_new_lid(s)
             c.local_id = base.local_id
+            bimap_insert(&s.local_ids, base.local_id, c.handle)
         }
     }
     for child in t.children {

@@ -40,6 +40,9 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
 
     base := cast(^CompData)pComp
     owned := Owned{handle = handle, local_id = base.local_id}
+    if t.scene != nil && base.local_id != 0 {
+        bimap_insert(&t.scene.local_ids, base.local_id, handle)
+    }
     append(&t.components, owned)
     return owned, pComp
 }

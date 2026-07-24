@@ -110,10 +110,12 @@ transform_restore_unknown_comp :: proc(tH: Transform_Handle, comp_local_id: Loca
 // fits below 2^53 so a lid survives any f64/json round-trip exactly.
 AUTHORED_LID_MASK :: (Local_ID(1) << 52) - 1
 
-// Mints a lid unused by anything registered in the scene. Lids on
-// not-yet-registered objects (fresh unsaved transforms and their components)
-// are not visible here — a collision with one of those needs the same random
-// value twice in one scene, ~n/2^52 per mint.
+// Mints a lid unused by anything registered in the scene. local_ids is fed by
+// load, create, add-component and remap, and destroy deliberately leaves
+// entries behind (stale-tolerant design, see transform_destroy) — so the
+// check covers every lid ever used this session, live or dead. Conservative
+// is correct here: a dead lid must not be reissued while references to it may
+// still exist in undo payloads or other files.
 scene_new_lid :: proc(s: ^Scene) -> Local_ID {
 	for {
 		id := Local_ID(rand.uint64()) & AUTHORED_LID_MASK

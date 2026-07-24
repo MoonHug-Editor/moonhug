@@ -686,3 +686,41 @@ test_undo_ref_clear_restores_resolved_handle :: proc(t: ^testing.T) {
 	testing.expect(t, undo.apply_undo(s), "second undo succeeded")
 	testing.expect(t, turret.parent.handle == root_h, "resolved again after redo cycle")
 }
+
+// The same clear→undo cycle for objects created THIS session and never saved:
+// creation registers lids in the scene's live index (local_ids), so undo
+// resolution binds without a save/reload round-trip.
+@(test)
+test_undo_ref_clear_resolves_for_fresh_objects :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	pH := engine.transform_new("Turret")
+	cH := engine.transform_new("Body")
+	engine.transform_set_parent(cH, pH)
+
+	w := engine.ctx_world()
+	ct := engine.pool_get(&w.transforms, engine.Handle(cH))
+	pt := engine.pool_get(&w.transforms, engine.Handle(pH))
+	testing.expect(t, ct != nil && pt != nil)
+	if ct == nil || pt == nil do return
+	testing.expect(t, ct.parent.pptr.local_id == pt.local_id, "ref carries the fresh lid")
+
+	// Fresh lids must be registered in the live index at creation.
+	reg_h, reg_ok := engine.bimap_get(&tc_mem.scene.local_ids, pt.local_id)
+	testing.expect(t, reg_ok && reg_h == engine.Handle(pH), "created transform registered in local_ids")
+
+	target := undo.make_transform_target(cH, offset_of(engine.Transform, parent), typeid_of(engine.Ref))
+	old_json := undo.capture_json(&ct.parent, typeid_of(engine.Ref))
+	ct.parent = engine.Ref{}
+	new_json := undo.capture_json(&ct.parent, typeid_of(engine.Ref))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect(t, undo.apply_undo(s), "undo succeeded")
+	testing.expect_value(t, ct.parent.pptr.local_id, pt.local_id)
+	testing.expect(t, ct.parent.handle == engine.Handle(pH),
+		"ref to a never-saved transform must resolve after undo")
+}

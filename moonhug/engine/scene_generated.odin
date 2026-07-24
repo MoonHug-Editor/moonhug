@@ -82,7 +82,11 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	if s != nil {
 		if !skip_scene_local_id_registration {
 			for lid, h in id_to_transform_handle {
-				if _, exists := bimap_get(&s.local_ids, lid); !exists {
+				// First-registered entry wins (inner-prefab namespace protection),
+				// but a DEAD transform entry is a leftover of a destroyed object
+				// (destroy never unregisters) — repair it so restored content
+				// resolves again. Synthetic breadcrumb entries are never touched.
+				if prev, exists := bimap_get(&s.local_ids, lid); !exists || (prev.type_key == .Transform && !pool_valid(&w.transforms, prev)) {
 					bimap_insert(&s.local_ids, lid, h)
 				}
 			}
