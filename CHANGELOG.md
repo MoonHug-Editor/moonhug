@@ -1,3 +1,18 @@
+## [0.49.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.48.1...v0.49.0) (2026-07-24)
+
+### Features
+
+* drop incremental local_id in favour of random for better support of merging ([ec8ec30](https://github.com/MoonHug-Editor/moonhug/commit/ec8ec30fb8b1b5c310afb243fad969b7ec95ff39))
+* missing components support in inspector ([f77b69e](https://github.com/MoonHug-Editor/moonhug/commit/f77b69e8d7ce7bd945d0d4e166f9d6e5caca360e))
+
+### Bug Fixes
+
+* drop legacy save data, save floats without trailing 0 ([d95d983](https://github.com/MoonHug-Editor/moonhug/commit/d95d983564cda400a5faff214fcd697f101aa67e))
+* file_next_local_id grows only for unique local_ids ([30560c1](https://github.com/MoonHug-Editor/moonhug/commit/30560c105756f99ba8d9b9bdea360ede478cf882))
+* rebind deleted object id when undo delete ([6c110ec](https://github.com/MoonHug-Editor/moonhug/commit/6c110ec7b3e531940a40b074528c3a21b349970a))
+* resolve refs to non-saved objects ([0b3a174](https://github.com/MoonHug-Editor/moonhug/commit/0b3a174a7e7f6e5a11b6a1f1bfe8c455b8be8862))
+* unresolved ref fix ([d6b4754](https://github.com/MoonHug-Editor/moonhug/commit/d6b4754f112ee399ddf556f75620006cb9220a70))
+
 ## [0.48.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.48.0...v0.48.1) (2026-07-22)
 
 ### Bug Fixes
