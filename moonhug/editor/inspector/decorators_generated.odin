@@ -49,6 +49,19 @@ __decorator__GameSettings__dynamicInt :: proc(ctx: ^DrawContext) {
 
 __decorators__GameSettings: []DecoratorProc
 
+__decorator__Tank__turret :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_button(ctx, app.tank_clear_turret, label="Clear", row=2)
+		decorator_button(ctx, app.tank_btn_wide, label="Wide w=3", row=1, weight=3)
+		decorator_button(ctx, app.tank_btn_narrow, label="w=1", row=1)
+		decorator_button(ctx, app.tank_btn_a, label="A", row=0)
+	} else {
+		decorator_button(ctx, app.tank_btn_b, label="B", row=-1)
+	}
+}
+
+__decorators__Tank: []DecoratorProc
+
 __decorator__Camera__clear_color :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_color(ctx)
@@ -123,6 +136,13 @@ init_decorators :: proc() {
 	__decorators__GameSettings[11] = nil
 	__decorators__GameSettings[12] = nil
 	decorator_registry[typeid_of(app.GameSettings)] = __decorators__GameSettings
+	__decorators__Tank = make([]DecoratorProc, 5)
+	__decorators__Tank[0] = nil
+	__decorators__Tank[1] = __decorator__Tank__turret
+	__decorators__Tank[2] = nil
+	__decorators__Tank[3] = nil
+	__decorators__Tank[4] = nil
+	decorator_registry[typeid_of(app.Tank)] = __decorators__Tank
 	__decorators__Camera = make([]DecoratorProc, 7)
 	__decorators__Camera[0] = nil
 	__decorators__Camera[1] = nil

@@ -56,6 +56,8 @@ init :: proc() {
     mapPropertyDrawer[typeid_of([dynamic]engine.Material_Property)] = draw_material_properties
     mapPropertyDrawer[typeid_of([dynamic]engine.Material_Texture)] = draw_material_textures
     init_decorators()
+    inspector_buttons = make(map[typeid][]Inspector_Button)
+    _register_inspector_buttons()
     undo.set_asset_apply(asset_doc_apply_json)
 }
 
@@ -65,6 +67,10 @@ shutdown_registries :: proc() {
         delete(v)
     }
     delete(decorator_registry)
+    for _, v in inspector_buttons {
+        delete(v)
+    }
+    delete(inspector_buttons)
     if inspectorData.filePath != "" {
         delete(inspectorData.filePath)
     }
@@ -489,6 +495,11 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
     types := reflect.struct_field_types(tid)
     count := len(names)
 
+    // @(inspector_button) rows >= 0 frame the component from the TOP.
+    if path_prefix == "" {
+        draw_inspector_buttons(tid, ptr, above = true)
+    }
+
     for i in 0..<count {
         field_info := reflect.struct_field_at(tid, i)
         inspect_val, has_inspect := reflect.struct_tag_lookup(field_info.tag, "inspect")
@@ -521,7 +532,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
             }
         }
 
-		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name}
+		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name, owner_ptr = ptr, owner_type = tid}
 
         im.PushID(c_field_name)
         prev_changed_outside := inspector_changed
@@ -610,5 +621,12 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
 
         ctx.is_pre = false
         run_field_decorators(tid, i, &ctx)
+    }
+
+    // @(inspector_button) rows < 0 close the component from the BOTTOM. Both
+    // blocks draw only at the top level of a component/asset draw (recursions
+    // into nested structs pass a non-empty path_prefix).
+    if path_prefix == "" {
+        draw_inspector_buttons(tid, ptr, above = false)
     }
 }

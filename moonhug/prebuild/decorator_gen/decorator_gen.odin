@@ -13,12 +13,15 @@ package decorator_gen
 
 import "core:fmt"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
 import db "../gen_db"
 import "../gen_facts"
 
 DecoratorCall :: struct {
 	call_with_ctx: string, // e.g. `header(ctx, text="Hello")`
+	is_button:     bool,   // buttons are position-sorted by row, not tag order
+	row:           int,    // button row: >= 0 above the field, < 0 below
 }
 
 FieldDecorators :: struct {
@@ -62,7 +65,43 @@ _write_call_line :: proc(b: ^strings.Builder, call_with_ctx: string) {
 	strings.write_string(b, "\n")
 }
 
-_parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
+// `button(proc_name, args...)` references a PROC, not a literal — qualify it
+// with the component's package so the generated file compiles the reference
+// (a renamed proc then fails the build there), and default the label to the
+// proc name when the tag doesn't set one. Also extracts `row` so emission can
+// position-sort buttons (row >= 0 above the field, < 0 below).
+_rewrite_button_call :: proc(rest: string, pkg_name: string) -> (call: string, row: int) {
+	// rest is everything after "button(" e.g. `tank_fire, label="Fire", row=0)`
+	end := strings.index_rune(rest, ',')
+	tail: string
+	proc_name: string
+	if end < 0 {
+		close := strings.index_rune(rest, ')')
+		if close < 0 do return "", 0
+		proc_name = strings.trim_space(rest[:close])
+		tail = ")"
+	} else {
+		proc_name = strings.trim_space(rest[:end])
+		tail = rest[end:] // ", label=..., row=...)"
+	}
+	if proc_name == "" do return "", 0
+	if ri := strings.index(tail, "row="); ri >= 0 {
+		rv := tail[ri + len("row="):]
+		re := 0
+		for re < len(rv) && (rv[re] == '-' || (rv[re] >= '0' && rv[re] <= '9')) do re += 1
+		if v, rok := strconv.parse_int(rv[:re]); rok do row = v
+	}
+	qualified := proc_name
+	if pkg_name != "" {
+		qualified = fmt.tprintf("%s.%s", pkg_name, proc_name)
+	}
+	if !strings.contains(tail, "label=") {
+		tail = fmt.tprintf(", label=\"%s\"%s", proc_name, tail)
+	}
+	return fmt.tprintf("decorator_button(ctx, %s%s", qualified, tail), row
+}
+
+_parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> [dynamic]DecoratorCall {
 	calls: [dynamic]DecoratorCall
 	defer if len(calls) > 0 do delete(calls)
 
@@ -95,6 +134,12 @@ _parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
 		// val is e.g. "header(text=\"Hello\")" or "separator()"
 		// Prepend "decorator_" to proc name; insert "ctx, " after "(" (or just "ctx" if no args)
 		paren := strings.index_rune(val, '(')
+		if paren >= 0 && val[:paren] == "button" {
+			call, row := _rewrite_button_call(val[paren+1:], pkg_name)
+			if call != "" do append(&calls, DecoratorCall{call_with_ctx = call, is_button = true, row = row})
+			pos = end
+			continue
+		}
 		if paren >= 0 {
 			proc_name := fmt.tprintf("decorator_%s", val[:paren])
 			rest := val[paren+1:]
@@ -136,7 +181,7 @@ provide :: proc(w: ^db.World) -> bool {
 		has_any := false
 		for sf in struct_fields {
 			if sf.name == "" do continue
-			calls := _parse_decor_calls_from_tag(sf.tag)
+			calls := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
 			defer delete(calls)
 			if len(calls) == 0 {
 				append(&fields, FieldDecorators{field_name = sf.name})
@@ -225,10 +270,42 @@ generate :: proc(w: ^db.World) -> bool {
 			proc_name := fmt.tprintf("%s%s", type_prefix, fd.field_name)
 			strings.write_string(&b, proc_name)
 			strings.write_string(&b, " :: proc(ctx: ^DrawContext) {\n")
+
+			// Buttons are position-sorted by row (HIGHER row renders HIGHER on
+			// screen): row >= 0 rows stack above the field in the pre pass,
+			// row < 0 rows below it in the post pass. Non-button decorators
+			// keep tag order; the above-field button block sits where the
+			// first button appeared in the tag. Ties (same row) keep tag order
+			// left-to-right on the shared line.
+			above: [dynamic]DecoratorCall
+			below: [dynamic]DecoratorCall
+			others: [dynamic]DecoratorCall
+			defer { delete(above); delete(below); delete(others) }
+			first_button := -1
+			for c in fd.calls {
+				if c.is_button {
+					if first_button < 0 do first_button = len(others)
+					if c.row >= 0 do append(&above, c)
+					else do append(&below, c)
+				} else {
+					append(&others, c)
+				}
+			}
+			slice.stable_sort_by(above[:], proc(a, b: DecoratorCall) -> bool { return a.row > b.row })
+			slice.stable_sort_by(below[:], proc(a, b: DecoratorCall) -> bool { return a.row > b.row })
+
 			strings.write_string(&b, "\tif ctx.is_pre {\n")
-			for c in fd.calls do _write_call_line(&b, c.call_with_ctx)
+			insert_at := first_button < 0 ? len(others) : first_button
+			for c, ci in others {
+				if ci == insert_at do for a in above do _write_call_line(&b, a.call_with_ctx)
+				_write_call_line(&b, c.call_with_ctx)
+			}
+			if insert_at == len(others) do for a in above do _write_call_line(&b, a.call_with_ctx)
 			strings.write_string(&b, "\t} else {\n")
-			for i := len(fd.calls) - 1; i >= 0; i -= 1 do _write_call_line(&b, fd.calls[i].call_with_ctx)
+			// Non-buttons run reversed (push/pop symmetry: readonly's End,
+			// tooltip against the just-drawn field), THEN the below-field rows.
+			for i := len(others) - 1; i >= 0; i -= 1 do _write_call_line(&b, others[i].call_with_ctx)
+			for c in below do _write_call_line(&b, c.call_with_ctx)
 			strings.write_string(&b, "\t}\n")
 			strings.write_string(&b, "}\n\n")
 		}

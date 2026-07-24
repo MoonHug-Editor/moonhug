@@ -18,6 +18,11 @@ DrawContext :: struct {
     field_ptr:  rawptr,
     field_type: typeid,
     field_label: cstring,
+    // The struct the field belongs to (the component for top-level fields, the
+    // sub-struct when draw_inspector recurses). decorator_button invokes its
+    // action against this.
+    owner_ptr:  rawptr,
+    owner_type: typeid,
 }
 
 // inspector should run decorators in regular order for pre stage and in reverse order for post stage
