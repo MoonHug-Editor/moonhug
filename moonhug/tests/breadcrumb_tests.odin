@@ -63,7 +63,6 @@ test_breadcrumb_create_allocates_idempotent_and_scoped :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	s := tc_mem.scene
-	s.next_local_id = 100
 	append(&s.nested_scenes, engine.NestedScene{local_id = 200})
 	append(&s.nested_scenes, engine.NestedScene{local_id = 201})
 
@@ -71,7 +70,7 @@ test_breadcrumb_create_allocates_idempotent_and_scoped :: proc(t: ^testing.T) {
 
 	ph1, ok1 := engine.breadcrumb_create(s, 200, src)
 	testing.expect(t, ok1)
-	testing.expect_value(t, ph1, engine.Local_ID(101))
+	testing.expect(t, ph1 != 0)
 	testing.expect_value(t, len(s.breadcrumb_data), 1)
 
 	ph1b, ok1b := engine.breadcrumb_create(s, 200, src)
@@ -81,7 +80,7 @@ test_breadcrumb_create_allocates_idempotent_and_scoped :: proc(t: ^testing.T) {
 
 	ph2, ok2 := engine.breadcrumb_create(s, 201, src)
 	testing.expect(t, ok2)
-	testing.expect_value(t, ph2, engine.Local_ID(102))
+	testing.expect(t, ph2 != 0)
 	testing.expect_value(t, len(s.breadcrumb_data), 2)
 	testing.expect(t, ph2 != ph1)
 
@@ -236,7 +235,6 @@ test_breadcrumb_create_dedup_with_non_empty_guid :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	s := tc_mem.scene
-	s.next_local_id = 100
 	append(&s.nested_scenes, engine.NestedScene{local_id = 200})
 
 	guid_a, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
@@ -270,7 +268,6 @@ test_breadcrumb_materialize_target_branches :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	s := tc_mem.scene
-	s.next_local_id = 100
 	append(&s.nested_scenes, engine.NestedScene{local_id = 200})
 
 	in_local := engine.PPtr{local_id = 7, guid = engine.Asset_GUID{}}
@@ -311,7 +308,6 @@ test_remap_merge_rewires_host_breadcrumb_id_on_collision :: proc(t: ^testing.T) 
 	defer teardown(tc_mem)
 
 	s := tc_mem.scene
-	s.next_local_id = 50
 	// Reserve id 30 in the live scene's local_ids forward map so any incoming
 	// breadcrumb that wants id 30 must be remapped.
 	engine.bimap_insert(&s.local_ids, engine.Local_ID(30), engine.Handle{index = 999, generation = 1, type_key = .Transform})
@@ -331,8 +327,8 @@ test_remap_merge_rewires_host_breadcrumb_id_on_collision :: proc(t: ^testing.T) 
 
 	engine.scene_file_remap_merge_metadata(&sf, s)
 
-	// Breadcrumb id was bumped past 30; nested scene's host_breadcrumb_id must
-	// follow it. Otherwise the host pointer would dangle.
+	// The colliding breadcrumb id was reminted — the nested scene's
+	// host_breadcrumb_id must follow it or the host pointer dangles.
 	testing.expect(t, sf.breadcrumbs[0].local_id != 30)
 	testing.expect_value(t, sf.nested_scenes[0].host_breadcrumb_id, sf.breadcrumbs[0].local_id)
 	testing.expect_value(t, sf.breadcrumbs[0].scene_instance, sf.nested_scenes[0].local_id)

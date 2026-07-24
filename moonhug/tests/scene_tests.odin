@@ -12,61 +12,26 @@ import "core:encoding/uuid"
 // TestCtx/setup/teardown live in tests/common (importable by per-package
 // test suites too) and are re-exported by bootstrap.odin.
 
-// Helpers for next_local_id invariant ---------------------------------------
-
-@(private)
-_max_local_id_in_file :: proc(sf: ^engine.SceneFile) -> engine.Local_ID {
-	max_id := engine.Local_ID(0)
-	bump :: proc(m: ^engine.Local_ID, v: engine.Local_ID) {
-		if v > m^ do m^ = v
-	}
-	for &tr in sf.transforms {
-		bump(&max_id, tr.local_id)
-		for &c in tr.components do bump(&max_id, c.local_id)
-	}
-	for &ns in sf.nested_scenes   do bump(&max_id, ns.local_id)
-	for &bc in sf.breadcrumbs     do bump(&max_id, bc.local_id)
-	return max_id
-}
-
-// Saving a scene must persist next_local_id strictly greater than any local_id
-// the file actually contains. Otherwise a future scene_next_id() call will hand
-// out an id that collides with an existing transform/component, and on reload
-// the duplicated id can make a regular transform look like the host of a
-// NestedScene record (see _nested_scene_find_outer_non_nested in nested_scene.odin).
+// Authored lids are minted randomly (Unity's fileID model): nonzero, below
+// 2^52, bit 52 clear (that bit tags composed instance lids), unique within
+// the scene.
 @(test)
-test_save_writes_next_local_id_above_max_used :: proc(t: ^testing.T) {
+test_new_lids_unique_and_in_authored_range :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_next_id_invariant.scene")
+	setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
-	childH := engine.transform_new("Child", rootH)
-	_, sr := engine.transform_get_or_add_comp(childH, engine.SpriteRenderer)
-	testing.expect(t, sr != nil)
-
-	// Simulate the c.scene-style corrupt state: a transform's local_id is far
-	// above scene.next_local_id. This mirrors how the bug manifested on disk
-	// (next_local_id=4 while transforms used 15/16).
-	child_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(childH))
-	testing.expect(t, child_t != nil)
-	if child_t == nil do return
-	child_t.local_id = 999
-
-	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
-	testing.expect(t, ok, "scene_save should succeed")
-	if !ok do return
-
-	sf, fok := engine.scene_file_load(tc_mem.path)
-	testing.expect(t, fok)
-	if !fok do return
-	defer engine.scene_file_destroy(&sf)
-
-	max_used := _max_local_id_in_file(&sf)
-	testing.expect(t, sf.next_local_id > max_used,
-		"saved next_local_id must be greater than every persisted local_id")
+	seen := make(map[engine.Local_ID]bool, context.temp_allocator)
+	for _ in 0 ..< 1000 {
+		lid := engine.scene_new_lid(tc_mem.scene)
+		testing.expect(t, lid != 0, "lid must be nonzero")
+		testing.expect(t, lid & engine.INSTANCE_LID_BIT == 0, "authored lid must not carry the instance bit")
+		testing.expect(t, lid == (lid & engine.AUTHORED_LID_MASK), "authored lid must fit in 52 bits")
+		testing.expect(t, !seen[lid], "minted lids must not repeat")
+		seen[lid] = true
+	}
 }
 
 // Sanity: a regular transform with no NestedScene records pointing at it must
@@ -126,13 +91,11 @@ test_save_load_empty_scene :: proc(t: ^testing.T) {
 	if rt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_mem.scene.root.handle)); rt != nil {
 		want_root_lid = rt.local_id
 	}
-	want_next := tc_mem.scene.next_local_id
 
 	loaded := engine.scene_load_single_path(tc_mem.path)
 	testing.expect(t, loaded != nil, "scene_load should return non-nil")
 	if loaded == nil do return
 
-	testing.expect_value(t, loaded.next_local_id, want_next)
 	testing.expect_value(t, loaded.root.pptr.local_id, want_root_lid)
 
 	tc_mem.scene = loaded

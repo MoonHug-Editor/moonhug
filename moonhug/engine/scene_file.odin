@@ -1,6 +1,7 @@
 package engine
 
 import "core:encoding/json"
+import "core:math/rand"
 import "core:os"
 import "core:fmt"
 import "core:slice"
@@ -174,7 +175,7 @@ _rewrite_handle_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, old_h
 // into / out of an instance namespace), or the scene counter mints one (paste).
 _remap_new_id :: proc(s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID, user: rawptr, old: Local_ID) -> Local_ID {
 	if mapper != nil do return mapper(user, old)
-	return scene_next_id(s)
+	return scene_new_lid(s)
 }
 
 _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
@@ -877,8 +878,8 @@ _inner_chain_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]PP
 
 // Serializes the scene's CURRENT in-memory state to scene-file bytes without
 // touching disk or any caches. Runs the same normalization a save does
-// (override recapture, orphan pruning, next_local_id repair). Caller owns the
-// returned bytes. Used by scene_save and by Play's live-state snapshot.
+// (override recapture, orphan pruning). Caller owns the returned bytes. Used
+// by scene_save and by Play's live-state snapshot.
 scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	if s == nil do return nil, false
 	w := ctx_world()
@@ -923,10 +924,6 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	}
 
 	sf := SceneFile{}
-	// Seed from the FILE's counter, not the live one: the live counter also
-	// advanced for transient never-persisted allocations (root-variant host
-	// pegs), and the repair pass below bumps over every lid that IS persisted.
-	sf.next_local_id = s.file_next_local_id
 
 	// Only persist NS records that belong to this scene file. Records with
 	// `expand_parent` set were pulled in from inner prefabs during resolve
@@ -1026,22 +1023,6 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 			break
 		}
 	}
-
-	// Repair next_local_id: any local_id present in the file must be strictly
-	// less than next_local_id. Otherwise a future scene_next_id() collides with
-	// an existing entity, which on reload can cause a regular transform to be
-	// matched as the host of a NestedScene record.
-	bump :: proc(m: ^Local_ID, v: Local_ID) { if v >= m^ do m^ = v + 1 }
-	for &tr in sf.transforms {
-		bump(&sf.next_local_id, tr.local_id)
-		for &c in tr.components do bump(&sf.next_local_id, c.local_id)
-	}
-	for &ns in sf.nested_scenes   do bump(&sf.next_local_id, ns.local_id)
-	for &bc in sf.breadcrumbs     do bump(&sf.next_local_id, bc.local_id)
-	// Raise-only: live transient pegs may sit above the persisted counter, and
-	// lowering next_local_id under them would hand out colliding lids.
-	if sf.next_local_id > s.next_local_id do s.next_local_id = sf.next_local_id
-	s.file_next_local_id = sf.next_local_id
 
 	opts := json.Marshal_Options{
 		spec       = .JSON,
@@ -1181,12 +1162,16 @@ scene_create_variant_file :: proc(base_path: string, out_path: string) -> bool {
 
 	// Build a minimal variant SceneFile: one root NS, no own transforms. `root`
 	// references the base root lid so reload re-materializes the base via the
-	// root-variant load path. Local ids for the NS sit above the base's
-	// namespace to avoid colliding with materialized base lids.
-	ns_lid := base_root_lid + 1000
+	// root-variant load path. No live Scene exists here, so mint the NS lid
+	// with a bare draw — the only lids it could collide with are the base's
+	// materialized ones, and a 52-bit draw repeats one of those with
+	// probability ~n/2^52 (retry only guards the known root lid and zero).
+	ns_lid := Local_ID(rand.uint64()) & AUTHORED_LID_MASK
+	for ns_lid == 0 || ns_lid == base_root_lid {
+		ns_lid = Local_ID(rand.uint64()) & AUTHORED_LID_MASK
+	}
 	vf := SceneFile{}
 	vf.root = base_root_lid
-	vf.next_local_id = ns_lid + 1
 	append(&vf.nested_scenes, NestedScene{
 		local_id           = ns_lid,
 		local_id_in_parent = ns_lid,

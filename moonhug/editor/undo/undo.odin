@@ -775,10 +775,6 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 	root_tH := engine._scene_load_as_child(&sf, parent, parent_scene)
 	if root_tH == {} do return {}
 
-	if parent_scene != nil && sf.next_local_id > parent_scene.next_local_id {
-		parent_scene.next_local_id = sf.next_local_id
-	}
-
 	p := engine.pool_get(&w.transforms, engine.Handle(parent))
 	if p != nil && sibling_index >= 0 {
 		current_idx := -1

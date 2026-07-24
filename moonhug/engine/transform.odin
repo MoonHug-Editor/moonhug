@@ -46,7 +46,7 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     t.render_layer = 1
 
     if s != nil {
-        t.local_id = scene_next_id(s)
+        t.local_id = scene_new_lid(s)
         t.scene = s
         t.scene_asset_guid = s.asset_guid
     }
@@ -117,12 +117,12 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     if t == nil do return
     t.scene = s
     if s != nil && !t.nested_owned {
-        t.local_id = scene_next_id(s)
+        t.local_id = scene_new_lid(s)
         for &c in t.components {
             raw := world_pool_get(w, c.handle)
             if raw == nil do continue
             base := cast(^CompData)raw
-            base.local_id = scene_next_id(s)
+            base.local_id = scene_new_lid(s)
             c.local_id = base.local_id
         }
     }

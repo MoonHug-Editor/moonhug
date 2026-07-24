@@ -33,7 +33,6 @@ Following Unity's approach, `NestedScene` is **metadata** in the scene file — 
 ```
 SceneFile {
   root:              Local_ID
-  next_local_id:     Local_ID
   transforms:        []Transform         // only non-nested-owned nodes
   nested_scenes:     []NestedScene       // metadata, analogous to Unity PrefabInstance
   breadcrumbs:       []Breadcrumb        // stripped-placeholder anchors for intra-file

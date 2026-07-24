@@ -479,7 +479,6 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "@(typ_guid={guid = \"0d489fce-9c04-4e4d-be12-f3f590d60cea\"})\n")
 	strings.write_string(&b, "SceneFile :: struct {\n")
 	strings.write_string(&b, "\troot:          Local_ID,\n")
-	strings.write_string(&b, "\tnext_local_id: Local_ID,\n")
 	strings.write_string(&b, "\ttransforms:    [dynamic]Transform,\n")
 	strings.write_string(&b, "\tnested_scenes: [dynamic]NestedScene,\n")
 	strings.write_string(&b, "\tbreadcrumbs:   [dynamic]Breadcrumb,\n")

@@ -6,7 +6,6 @@ import "core:strings"
 @(typ_guid={guid = "0d489fce-9c04-4e4d-be12-f3f590d60cea"})
 SceneFile :: struct {
 	root:          Local_ID,
-	next_local_id: Local_ID,
 	transforms:    [dynamic]Transform,
 	nested_scenes: [dynamic]NestedScene,
 	breadcrumbs:   [dynamic]Breadcrumb,

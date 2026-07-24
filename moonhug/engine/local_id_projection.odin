@@ -21,8 +21,8 @@ local_id_project :: proc(outer, inner: Local_ID) -> Local_ID {
 
 // Inverse of local_id_project given the same outer lid. Implemented via the
 // same XOR+mask: project(a, project(a, b)) == b for any b that fits in the
-// lower 63 bits, which is the case for all valid Local_IDs (we only mint via
-// scene_next_id which monotonically increments from 1).
+// lower 63 bits, which is the case for all valid Local_IDs (authored lids are
+// minted below 2^52 by scene_new_lid, composed instance lids sit below 2^53).
 local_id_unproject :: proc(outer, derived: Local_ID) -> Local_ID {
 	return local_id_project(outer, derived)
 }

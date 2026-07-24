@@ -1,6 +1,7 @@
 package engine
 
 import "core:encoding/json"
+import "core:math/rand"
 
 // A component record whose "__type" guid has no registered component in this
 // binary (its package isn't compiled in). Preserved VERBATIM across load/save
@@ -14,12 +15,6 @@ Unknown_Component :: struct {
 
 Scene :: struct {
 	generation:           int,
-	next_local_id:        Local_ID,
-	// The counter as loaded from (or last written to) the file. Serialization
-	// seeds from THIS, not next_local_id: the live counter also covers
-	// transient allocations that are never persisted (root-variant host pegs),
-	// so persisting it would make the saved value drift with load history.
-	file_next_local_id:   Local_ID `json:"-"`,
 	root:                 Ref,
 	path:                 string,
 	asset_guid:           Asset_GUID `json:"-"`,
@@ -33,7 +28,6 @@ Scene :: struct {
 scene_new :: proc() -> ^Scene {
 	s := new(Scene)
 	s.generation = 1 // FIX
-	s.next_local_id = 1
 	return s
 }
 
@@ -108,10 +102,27 @@ transform_restore_unknown_comp :: proc(tH: Transform_Handle, comp_local_id: Loca
 	inject_at(&t.components, idx, Owned{local_id = comp_local_id})
 }
 
-scene_next_id :: proc(s: ^Scene) -> Local_ID {
-	s.next_local_id += 1
-	id := s.next_local_id
-	return id
+// Authored lids are minted RANDOMLY in [1, 2^52) — Unity's fileID model.
+// Random identity (instead of a persisted counter) means two branches adding
+// objects to the same scene merge without lid collisions, and no allocator
+// state exists to persist, repair, or drift with load history. Bit 52 stays
+// clear — composed instance lids own it (nested_lid_compose) — and everything
+// fits below 2^53 so a lid survives any f64/json round-trip exactly.
+AUTHORED_LID_MASK :: (Local_ID(1) << 52) - 1
+
+// Mints a lid unused by anything registered in the scene. Lids on
+// not-yet-registered objects (fresh unsaved transforms and their components)
+// are not visible here — a collision with one of those needs the same random
+// value twice in one scene, ~n/2^52 per mint.
+scene_new_lid :: proc(s: ^Scene) -> Local_ID {
+	for {
+		id := Local_ID(rand.uint64()) & AUTHORED_LID_MASK
+		if id == 0 do continue
+		if _, taken := bimap_get(&s.local_ids, id); taken do continue
+		if id in s.breadcrumb_data do continue
+		if _, is_ns := scene_nested_scene_by_local_id(s, id); is_ns do continue
+		return id
+	}
 }
 
 scene_set_root :: proc(s: ^Scene, tH: Transform_Handle) {

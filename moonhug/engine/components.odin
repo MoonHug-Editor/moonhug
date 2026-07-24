@@ -23,7 +23,7 @@ comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {
     base.owner = owner
     base.enabled = true
     if t != nil && t.scene != nil {
-        base.local_id = scene_next_id(t.scene)
+        base.local_id = scene_new_lid(t.scene)
     }
 }
 

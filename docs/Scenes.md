@@ -12,7 +12,7 @@ assets/
 ```
 World          — owner of all runtime pools (transforms, sprite_renderers, scripts, …)
 SceneManager   — holds up to MAX_SCENES loaded scenes at once
-Scene          — runtime scene: generation counter, root Ref, next_local_id counter
+Scene          — runtime scene: generation counter, root Ref, breadcrumb + NS metadata
 SceneFile      — plain-struct snapshot of a transform tree, used for save/load
 ```
 
@@ -29,7 +29,12 @@ Owned  :: struct { local_id: Local_ID, handle: Handle, type_key: Type_Key } // l
 
 - `PPtr` survives save/load — it is what goes to disk.
 - `Handle` is resolved at load time and never serialized.
-- `Local_ID` is file-scoped; for scene file every transform and component gets one
+- `Local_ID` is file-scoped; every transform and component gets one. Authored
+  lids are minted randomly in `[1, 2^52)` (Unity's fileID model) via
+  `scene_new_lid` — random identity lets parallel branches add objects to the
+  same scene and merge without collisions. Bit 52 tags composed instance lids
+  (`nested_lid_compose`), and all lids stay below 2^53 so they survive
+  f64/json round-trips exactly.
 
 ## SceneFile
 
@@ -38,11 +43,11 @@ Owned  :: struct { local_id: Local_ID, handle: Handle, type_key: Type_Key } // l
 ### Serialization
 ```odin
 SceneFile :: struct {
-    root:             Local_ID,
-    next_local_id:    Local_ID,
-    transforms:       [dynamic]Transform,
-    sprite_renderers: [dynamic]SpriteRenderer,
-    scripts:          [dynamic]Script,
+    root:          Local_ID,
+    transforms:    [dynamic]Transform,
+    nested_scenes: [dynamic]NestedScene,
+    breadcrumbs:   [dynamic]Breadcrumb,
+    components:    [dynamic]json.Value, // guid-tagged records, every component type
 }
 ```
 
@@ -51,7 +56,6 @@ Saving walks the transform tree starting from `Scene.root`, collecting every tra
 ```odin
 scene_save :: proc(s: ^Scene, path: string) -> bool {
     sf := SceneFile{}
-    sf.next_local_id = s.next_local_id
     _collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
     data, _ := json.marshal(sf, opts)   // pretty JSON
     os.write_entire_file(path, data)

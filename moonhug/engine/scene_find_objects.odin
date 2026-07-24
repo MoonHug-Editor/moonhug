@@ -157,7 +157,7 @@ sm_local_id_get_or_mint :: proc(s: ^Scene, h: Handle) -> Local_ID {
 		return existing_lid
 	}
 
-	new_lid := scene_next_id(s)
+	new_lid := scene_new_lid(s)
 	bimap_insert(&s.local_ids, new_lid, h)
 	return new_lid
 }

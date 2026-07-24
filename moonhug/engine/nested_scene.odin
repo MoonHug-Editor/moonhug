@@ -101,7 +101,7 @@ scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
 			ns.local_id_in_parent = old
 		}
 		if used[old] {
-			new_id := scene_next_id(s)
+			new_id := scene_new_lid(s)
 			ns_remap[old] = new_id
 			ns.local_id = new_id
 			used[new_id] = true
@@ -120,7 +120,7 @@ scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
 	for &bc in sf.breadcrumbs {
 		old := bc.local_id
 		if used[old] {
-			new_id := scene_next_id(s)
+			new_id := scene_new_lid(s)
 			bc_remap[old] = new_id
 			bc.local_id = new_id
 			used[new_id] = true
@@ -717,7 +717,7 @@ nested_scene_resolve_host_handle :: proc(s: ^Scene, ns: ^NestedScene) -> Transfo
 
 nested_scene_attach_host_breadcrumb :: proc(s: ^Scene, ns: ^NestedScene, host_local_id: Local_ID) -> bool {
     if s == nil || ns == nil || host_local_id == 0 do return false
-    peg := scene_next_id(s)
+    peg := scene_new_lid(s)
     if !scene_breadcrumb_put(
         s,
         Breadcrumb{
@@ -892,7 +892,6 @@ _prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, ow
     }
 
     for bc in vf.breadcrumbs do append(&base_sf.breadcrumbs, bc)
-    if vf.next_local_id > base_sf.next_local_id do base_sf.next_local_id = vf.next_local_id
     // base_sf.root stays the base root lid. Detach moved containers from vf so
     // scene_file_destroy(&vf) below doesn't double-free their elements (the
     // root NS's overrides were consumed into the bake and are freed with vf).
@@ -2297,7 +2296,7 @@ nested_scene_add :: proc(s: ^Scene, source_prefab: Asset_GUID, host_tH: Transfor
     t := pool_get(&w.transforms, Handle(host_tH))
     if t == nil do return nil
     ns := NestedScene{
-        local_id         = scene_next_id(s),
+        local_id         = scene_new_lid(s),
         source_prefab    = source_prefab,
         transform_parent = t.local_id,
         sibling_index    = sibling_index,
@@ -2332,7 +2331,7 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
         if t == nil do return
         t.nested_owned = false
 
-        new_lid := scene_next_id(s)
+        new_lid := scene_new_lid(s)
         bimap_remove_by_val(&s.local_ids, Handle(tH))
         if pool_valid(&w.transforms, t.parent.handle) {
             pt := pool_get(&w.transforms, t.parent.handle)
@@ -2362,7 +2361,7 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
             if raw == nil do continue
             base := cast(^CompData)raw
             base.nested_owned = false
-            new_clid := scene_next_id(s)
+            new_clid := scene_new_lid(s)
             bimap_remove_by_val(&s.local_ids, c.handle)
             base.local_id = new_clid
             c.local_id = new_clid
@@ -2480,7 +2479,7 @@ breadcrumb_create :: proc(s: ^Scene, scene_instance: Local_ID, src: PPtr) -> (Lo
     if ph, ok := breadcrumb_placeholder(s, scene_instance, src); ok {
         return ph, true
     }
-    lid := scene_next_id(s)
+    lid := scene_new_lid(s)
     if !scene_breadcrumb_put(s, Breadcrumb{
         local_id       = lid,
         scene_source   = src,

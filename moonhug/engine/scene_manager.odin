@@ -258,8 +258,6 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
 _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUID = {}) -> ^Scene {
     scene_manager := ctx_scene_manager()
     s := scene_new()
-    s.next_local_id = scene_file.next_local_id
-    s.file_next_local_id = scene_file.next_local_id
     s.asset_guid = scene_asset_guid
 
     root_tH := _scene_load_as_child(scene_file, {}, s)
