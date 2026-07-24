@@ -3,6 +3,7 @@ package tests
 import "../engine"
 import "../editor/undo"
 
+import "core:os"
 import "core:strings"
 import "core:testing"
 
@@ -20,6 +21,7 @@ setup_undo :: proc(tc: ^TestCtx) -> ^undo.Undo_Stack {
 		engine.register_pointer_type(u32)
 		engine.register_pointer_type(f32)
 		engine.register_pointer_type(string)
+		engine.register_pointer_type(engine.Ref)
 		_undo_pointer_types_registered = true
 	}
 
@@ -610,4 +612,77 @@ test_undo_new_edit_truncates_redo :: proc(t: ^testing.T) {
 
 	push_edit(s, tr, target, {9, 9, 9})
 	testing.expect(t, !undo.can_redo(s), "redo truncated by new edit")
+}
+
+// Undoing a cleared Ref must restore it RESOLVED. The undo payload carries
+// only PPtr data (Handle fields are json:"-" and unmarshal to zero), so the
+// apply path re-binds handles against the live scene — without that, the
+// inspector shows "unresolved local_id = N" until the scene reloads
+// (repro: open tank.scene, clear tank.turret, undo).
+@(test)
+test_undo_ref_clear_restores_resolved_handle :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	// Loaded scene, so transforms register in local_ids — the repro state.
+	path := "moonhug/tests/_test_undo_ref.scene"
+	defer os.remove(path)
+	scene_json := `{
+  "root": 1,
+  "transforms": [
+    {"local_id": 1, "name": "Root", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [{"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}],
+     "components": []},
+    {"local_id": 2, "name": "Turret", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [], "components": []}
+  ],
+  "nested_scenes": [], "breadcrumbs": [], "components": []
+}`
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+
+	loaded := engine.scene_load_single_path(path)
+	testing.expect(t, loaded != nil, "scene loads")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	root_h, root_ok := engine.bimap_get(&loaded.local_ids, engine.Local_ID(1))
+	turret_h, turret_ok := engine.bimap_get(&loaded.local_ids, engine.Local_ID(2))
+	testing.expect(t, root_ok && turret_ok, "lids registered at load")
+	if !root_ok || !turret_ok do return
+
+	w := engine.ctx_world()
+	turret := engine.pool_get(&w.transforms, turret_h)
+	testing.expect(t, turret != nil)
+	if turret == nil do return
+	testing.expect(t, turret.parent.handle == root_h, "loaded ref starts resolved")
+
+	// Inspector flow: capture old, clear to none, capture new, push.
+	target := undo.make_transform_target(engine.Transform_Handle(turret_h), offset_of(engine.Transform, parent), typeid_of(engine.Ref))
+	old_json := undo.capture_json(&turret.parent, typeid_of(engine.Ref))
+	turret.parent = engine.Ref{}
+	new_json := undo.capture_json(&turret.parent, typeid_of(engine.Ref))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect(t, undo.apply_undo(s), "undo succeeded")
+	testing.expect_value(t, turret.parent.pptr.local_id, engine.Local_ID(1))
+	testing.expect(t, turret.parent.handle == root_h,
+		"undone ref must be RESOLVED, not just carry the local_id")
+
+	// Redo re-clears: the handle must clear too — unmarshal alone leaves the
+	// pre-apply (resolved) handle under the zeroed pptr and the field would
+	// still look assigned.
+	testing.expect(t, undo.apply_redo(s), "redo succeeded")
+	testing.expect_value(t, turret.parent.pptr.local_id, engine.Local_ID(0))
+	testing.expect(t, turret.parent.handle == engine.Handle{},
+		"redone clear must clear the handle as well")
+
+	testing.expect(t, undo.apply_undo(s), "second undo succeeded")
+	testing.expect(t, turret.parent.handle == root_h, "resolved again after redo cycle")
 }

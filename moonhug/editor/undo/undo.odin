@@ -622,6 +622,15 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		return
 	}
 
+	// The payload carries only PPtr data — Handle fields are json:"-", so
+	// unmarshal leaves whatever handle the pre-apply value had (zero after a
+	// load, RESOLVED after a prior undo). Authoritative mode derives handles
+	// entirely from the payload: bound when the lid resolves, cleared when
+	// the payload says none.
+	if s := resolve_scene(vc.target.scene); s != nil {
+		engine._resolve_refs_in_value(ptr, type_info_of(vc.target.type_id), s, nil, false, true)
+	}
+
 	if vc.target.kind == .Pooled && vc.target.handle.type_key != .Transform {
 		if base, h, ok := resolve_pooled_base(vc.target); ok {
 			engine.component_on_validate(h.type_key, base)
@@ -819,6 +828,10 @@ _do_add_component :: proc(v: Add_Component_Command) {
 			base := cast(^engine.CompData)ptr
 			base.owner = tH
 			base.local_id = v.comp_local_id
+			// Handles are json:"-" — rebind the payload's Refs (see _value_apply).
+			if s := resolve_scene(v.scene); s != nil {
+				engine._resolve_refs_in_value(ptr, type_info_of(tid), s, nil, false, true)
+			}
 			engine.component_on_validate(v.type_key, ptr)
 		}
 	}

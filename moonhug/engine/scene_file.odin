@@ -34,7 +34,16 @@ _resolve_lid :: proc(s: ^Scene, file_local: ^map[Local_ID]Handle, lid: Local_ID)
 // the host bimap (same-numbered lids across namespaces would mis-bind); a ref
 // holding a placeholder is by definition breadcrumb-mediated and needs the
 // migrated binding — regardless of which component owns it or how deep it sits.
-_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, file_local: ^map[Local_ID]Handle = nil, only_unbound := false) {
+//
+// `authoritative` makes the serialized identity the single source of truth for
+// the runtime handle: a local ref's handle is OVERWRITTEN — bound when the lid
+// resolves, zeroed when the lid is 0 or unresolvable. Undo/redo applies need
+// this: json.unmarshal writes only the fields present in the payload, so a
+// stale handle from the pre-apply value survives underneath a cleared pptr
+// (redo of "clear ref" left the field looking assigned). Load paths keep the
+// default — freshly unmarshaled values have zero handles, and guid-bearing
+// (cross-asset) refs are bound by asset resolution, not here.
+_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, file_local: ^map[Local_ID]Handle = nil, only_unbound := false, authoritative := false) {
 	if ptr == nil || ti == nil || s == nil do return
 	base := runtime.type_info_base(ti)
 	if base == nil do return
@@ -54,7 +63,11 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 				if only_unbound && world_pool_valid(ctx_world(), ref.handle) do return
 				if h, ok := _resolve_lid(s, file_local, ref.pptr.local_id); ok {
 					ref.handle = h
+				} else if authoritative {
+					ref.handle = {}
 				}
+			} else if authoritative && pptr_guid_is_empty(ref.pptr.guid) {
+				ref.handle = {} // cleared ref: serialized state says none
 			}
 			return
 		}
@@ -64,7 +77,11 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 				if only_unbound && world_pool_valid(ctx_world(), rl.handle) do return
 				if h, ok := _resolve_lid(s, file_local, rl.local_id); ok {
 					rl.handle = h
+				} else if authoritative {
+					rl.handle = {}
 				}
+			} else if authoritative {
+				rl.handle = {}
 			}
 			return
 		}
@@ -72,7 +89,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 		count := int(info.field_count)
 		for i in 0..<count {
 			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
-			_resolve_refs_in_value(field_ptr, info.types[i], s, file_local, only_unbound)
+			_resolve_refs_in_value(field_ptr, info.types[i], s, file_local, only_unbound, authoritative)
 		}
 
 	case runtime.Type_Info_Union:
@@ -87,7 +104,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 		idx := tag if info.no_nil else tag - 1
 		if idx < 0 || int(idx) >= len(info.variants) do return
 		variant_ti := info.variants[idx]
-		_resolve_refs_in_value(ptr, variant_ti, s, file_local, only_unbound)
+		_resolve_refs_in_value(ptr, variant_ti, s, file_local, only_unbound, authoritative)
 
 	case runtime.Type_Info_Dynamic_Array:
 		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
@@ -95,14 +112,14 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 		elem_size := info.elem_size
 		for i in 0..<dyn.len {
 			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound, authoritative)
 		}
 
 	case runtime.Type_Info_Array:
 		elem_size := info.elem_size
 		for i in 0..<info.count {
 			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound, authoritative)
 		}
 	}
 }

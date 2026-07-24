@@ -106,7 +106,6 @@ For more details see [Contribution](docs/Contribution.md)
 - reorder collection elements in inspector by drag
 
 - png - Texture2D with N Sprites
-- bug: Refs show unresolved after undo
 - don't depend tests on files in assets folder(fragile)
 
 - transform:
