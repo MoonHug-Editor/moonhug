@@ -3,11 +3,10 @@ package menu
 import im "moonhug:external/odin-imgui"
 
 // Adobe Spectrum theme for imgui, ported from adobe/imgui
-// (imgui_spectrum.cpp). A coherent gray design system: input fields AND
-// buttons are the same neutral gray (GRAY75), distinguished by border and
-// shape rather than color, with blue reserved for selection/headers. This is
-// why action buttons stop reading as fields under this theme without any
-// per-widget hacks.
+// (imgui_spectrum.cpp). A coherent gray design system built on one neutral
+// ramp, with blue reserved for anything "on" — selection, headers, checkmarks.
+// Buttons sit on that ramp between the field gray and the header, so a button
+// never reads as an input field without any per-widget hacks.
 
 // 0xRRGGBB -> ImVec4 with full alpha. Spectrum stores sRGB hex; imgui expects
 // linear-ish 0..1 floats and the upstream theme feeds them straight through,
@@ -134,7 +133,15 @@ style_colors_spectrum :: proc(dark: bool) {
 	c[im.Col.NavWindowingHighlight] = im.Vec4{1, 1, 1, 0.7}
 	c[im.Col.NavWindowingDimBg]     = im.Vec4{0.8, 0.8, 0.8, 0.2}
 	c[im.Col.ModalWindowDimBg]      = im.Vec4{0.2, 0.2, 0.2, 0.35}
-	c[im.Col.CheckMark]             = _rgb(p.gray50)
+	// The checkmark is BLUE, not a gray. Spectrum's checkbox spec is a blue box
+	// with a white tick, but imgui draws the tick over FrameBg, which every input
+	// field shares — so the accent has to live in the tick itself. Blue is already
+	// this theme's "on / selected" color, and blue500 is the one value that clears
+	// 3.0 contrast against all three frame fills (GRAY75 / GRAY50 / GRAY200) in
+	// both themes. Any gray fails: GRAY50 is exactly FrameBgHovered, so a gray50
+	// tick vanishes on hover, and the grays that do contrast with one fill collide
+	// with another.
+	c[im.Col.CheckMark]             = _rgb(p.blue500)
 	c[im.Col.Tab]                   = _rgb(p.gray300)
 	c[im.Col.TabSelected]           = _rgba(p.blue500, sel_hi) // translucent so gray text stays legible
 	c[im.Col.TabHovered]            = _rgba(p.blue600, sel_a)
