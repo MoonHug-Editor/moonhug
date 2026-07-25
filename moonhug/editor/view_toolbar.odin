@@ -10,6 +10,7 @@ import "core:path/filepath"
 import "core:thread"
 import "core:time"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/runconfig"
 import "../engine"
 import "../engine/log"
 
@@ -21,25 +22,26 @@ _PLAY_SCENE_SNAPSHOT_PATH :: "library/play_scene_snapshot.scene"
 
 _play_thread: ^thread.Thread
 
-// A run configuration = one shell script in a package's run_configs/ folder
-// (docs/Plugins.md). The Play button runs the selected one from the REPO
-// ROOT with the scene snapshot path as its argument; the script builds and
-// exec's the game, forwarding "$@".
+// A run configuration = one Odin PROGRAM in a package's run_configs/ folder
+// (docs/Plugins.md). The Play button compiles the selected one and runs it from
+// the REPO ROOT with the scene snapshot path as its argument; the config builds
+// and runs the game, forwarding that argument. Odin rather than sh because Odin
+// is already a hard dependency, so configs work on every OS the editor does.
 Run_Config :: struct {
     id:     string,  // "pkg/name" — persisted in editor_settings.run_config
     label:  cstring, // "pkg: name" — dropdown row
-    script: string,  // repo-root-relative script path
+    source: string,  // repo-root-relative path to the config's .odin file
 }
 
 _run_configs: [dynamic]Run_Config
 
 // Editor cwd is normalized to moonhug/, so packages sit at "packages" and
-// script paths get the "moonhug/" prefix back for the repo-root spawn.
+// config source paths get the "moonhug/" prefix back for the repo-root spawn.
 _scan_run_configs :: proc() {
     for &rc in _run_configs {
         delete(rc.id)
         delete(rc.label)
-        delete(rc.script)
+        delete(rc.source)
     }
     clear(&_run_configs)
 
@@ -60,12 +62,12 @@ _scan_run_configs :: proc() {
         if f_err != nil do continue
         defer os.file_info_slice_delete(files, context.temp_allocator)
         for file in files {
-            if file.type == .Directory || !strings.has_suffix(file.name, ".sh") do continue
-            name := strings.trim_suffix(file.name, ".sh")
+            if file.type == .Directory || !strings.has_suffix(file.name, ".odin") do continue
+            name := strings.trim_suffix(file.name, ".odin")
             append(&_run_configs, Run_Config{
                 id     = fmt.aprintf("%s/%s", pkg.name, name),
                 label  = fmt.caprintf("%s: %s", pkg.name, name),
-                script = fmt.aprintf("moonhug/packages/%s/run_configs/%s", pkg.name, file.name),
+                source = fmt.aprintf("moonhug/packages/%s/run_configs/%s", pkg.name, file.name),
             })
         }
     }
@@ -125,20 +127,20 @@ draw_tool_bar :: proc() {
     im.SetCursorPosX((avail.x - total_w) * 0.5)
 
     if im.Button(button_play_text) && sel != nil {
-        run_app_play(sel.script)
+        run_app_play(sel.id, sel.source)
     }
     if im.IsItemHovered({}) {
         if sel != nil {
             im.SetTooltip(fmt.ctprintf("Run game with current scene state (%s)", sel.label))
         } else {
-            im.SetTooltip("No run configs found (packages/*/run_configs/*.sh)")
+            im.SetTooltip("No run configs found (packages/*/run_configs/*.odin)")
         }
     }
 
     im.SameLine()
     im.SetNextItemWidth(combo_w)
     if im.BeginCombo("##run_config", preview, {}) {
-        // Rescan on open to pick up new/removed scripts. That frees every label
+        // Rescan on open to pick up new/removed configs. That frees every label
         // and id, so `sel` points into released memory until it is recomputed.
         if im.IsWindowAppearing() {
             _scan_run_configs()
@@ -162,26 +164,70 @@ draw_tool_bar :: proc() {
 }
 
 RunPlayData :: struct {
-    alloc:   mem.Allocator,
-    run_dir: string,
-    command: []string,
+    alloc:         mem.Allocator,
+    run_dir:       string,
+    build_command: []string, // compile the run config
+    run_command:   []string, // then execute it, with the scene snapshot appended
 }
 
 _destroy_run_play_data :: proc(data: ^RunPlayData) {
     a := data.alloc
     delete(data.run_dir, a)
-    delete(data.command, a)
+    _delete_command(data.build_command, a)
+    _delete_command(data.run_command, a)
     free(data, a)
+}
+
+// Commands cross a thread boundary and outlive the frame that built them, so
+// every element is owned rather than borrowed from temp storage.
+@(private="file")
+_clone_command :: proc(parts: []string, a: mem.Allocator) -> []string {
+    out, err := make([]string, len(parts), a)
+    if err != nil do return nil
+    for p, i in parts {
+        out[i], _ = strings.clone(p, a)
+    }
+    return out
+}
+
+@(private="file")
+_delete_command :: proc(cmd: []string, a: mem.Allocator) {
+    for s in cmd do delete(s, a)
+    delete(cmd, a)
+}
+
+// Runs one child to completion on the given pipe write-ends, returning its exit
+// code (negative when it never started).
+@(private="file")
+_run_child :: proc(run_dir: string, command: []string, out_w, err_w: ^os.File) -> int {
+    process, err := os.process_start({
+        working_dir = run_dir,
+        command     = command,
+        stdout      = out_w,
+        stderr      = err_w,
+    })
+    if err != nil {
+        output_view_append_line(fmt.tprintf("run error: %v (%v)", err, command))
+        return -1
+    }
+    state, wait_err := os.process_wait(process)
+    if wait_err != nil {
+        output_view_append_line(fmt.tprintf("--- wait error: %v ---", wait_err))
+        return -1
+    }
+    return state.exit_code
 }
 
 _run_play_thread_proc :: proc(user_data: rawptr) {
     data := (^RunPlayData)(user_data)
     a := data.alloc
     run_dir := data.run_dir
-    command := data.command
+    build_command := data.build_command
+    run_command := data.run_command
     free(data, a)
     defer delete(run_dir, a)
-    defer delete(command, a)
+    defer _delete_command(build_command, a)
+    defer _delete_command(run_command, a)
 
     stdout_r, stdout_w, stdout_err := os.pipe()
     if stdout_err != nil {
@@ -198,29 +244,14 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
     }
     defer os.close(stderr_r)
 
-    desc := os.Process_Desc{
-        working_dir = run_dir,
-        command     = command,
-        env         = nil,
-        stdout      = stdout_w,
-        stderr      = stderr_w,
-        stdin       = nil,
-    }
-
-    process, err := os.process_start(desc)
-    if err != nil {
-        os.close(stdout_w)
-        os.close(stderr_w)
-        output_view_append_line(fmt.tprintf("run app error: %v", err))
-        return
-    }
-
-    os.close(stdout_w)
-    os.close(stderr_w)
-
-    // stderr drains on its own thread: alternating BLOCKING reads on one
-    // thread starve stdout whenever stderr is silent, so app logs used to
-    // arrive in late bursts. output_view_append is mutex-guarded.
+    // BOTH streams drain on their own threads, for the whole session and across
+    // both children. Two reasons, and each alone would force it:
+    //   - waiting on a child while nothing reads its pipe deadlocks the moment
+    //     the child fills the buffer, and an `odin build` error page easily does.
+    //   - alternating BLOCKING reads on one thread starve stdout whenever stderr
+    //     is silent, which used to make app logs arrive in late bursts.
+    // output_view_append is mutex-guarded and log.intake_remote is queued, so
+    // both readers are safe off the main thread.
     stderr_thread := thread.create_and_start_with_poly_data(stderr_r, proc(fd: ^os.File) {
         buf: [4096]byte
         for {
@@ -232,37 +263,51 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
         }
     })
 
-    // stdout is consumed line-wise on this thread: the app's mh_log prints a
-    // machine-tagged format that routes into the editor console; untagged
-    // lines go to the Output view as before.
-    buf: [4096]byte
-    stdout_linebuf := make([dynamic]byte)
-    defer delete(stdout_linebuf)
-
-    for {
-        n, read_err := os.read(stdout_r, buf[:])
-        if n > 0 {
-            _play_consume_stdout(&stdout_linebuf, buf[:n])
-        }
-        if read_err != nil || n == 0 {
-            if len(stdout_linebuf) > 0 {
-                _play_dispatch_line(string(stdout_linebuf[:]))
-                clear(&stdout_linebuf)
+    // stdout is consumed line-wise: the app's mh_log prints a machine-tagged
+    // format that routes into the editor console, untagged lines go to Output.
+    stdout_thread := thread.create_and_start_with_poly_data(stdout_r, proc(fd: ^os.File) {
+        linebuf := make([dynamic]byte)
+        defer delete(linebuf)
+        buf: [4096]byte
+        for {
+            n, read_err := os.read(fd, buf[:])
+            if n > 0 {
+                _play_consume_stdout(&linebuf, buf[:n])
             }
-            break
+            if read_err != nil || n == 0 {
+                if len(linebuf) > 0 {
+                    _play_dispatch_line(string(linebuf[:]))
+                }
+                return
+            }
         }
+    })
+
+    // Compile the run config, then run it. A config that fails to compile never
+    // launches, and its diagnostics are already in the console by then.
+    code := _run_child(run_dir, build_command, stdout_w, stderr_w)
+    build_ok := code == 0
+    if build_ok {
+        code = _run_child(run_dir, run_command, stdout_w, stderr_w)
     }
 
+    // Dropping the parent's write ends is what gives the readers EOF. Join
+    // before reporting so the exit line lands after the output it describes.
+    os.close(stdout_w)
+    os.close(stderr_w)
+    if stdout_thread != nil {
+        thread.join(stdout_thread)
+        thread.destroy(stdout_thread)
+    }
     if stderr_thread != nil {
         thread.join(stderr_thread)
         thread.destroy(stderr_thread)
     }
 
-    state, wait_err := os.process_wait(process)
-    if wait_err != nil {
-        output_view_append_line(fmt.tprintf("--- wait error: %v ---", wait_err))
+    if build_ok {
+        output_view_append_line(fmt.tprintf("--- exit code %d ---", code))
     } else {
-        output_view_append_line(fmt.tprintf("--- exit code %d ---", state.exit_code))
+        output_view_append_line(fmt.tprintf("--- run config failed to build (exit code %d) ---", code))
     }
 }
 
@@ -312,9 +357,10 @@ _play_dispatch_line :: proc(line: string) {
     output_view_append_line(l)
 }
 
-// Runs the given run-config script (repo-root-relative, see Run_Config) with
-// the live-scene snapshot path as its argument.
-run_app_play :: proc(script: string) {
+// Compiles the given run config (an Odin program, see Run_Config) and runs it
+// with the live-scene snapshot path as its argument. `id` only names the config
+// binary, so two packages can each ship a run.odin without colliding.
+run_app_play :: proc(id: string, source: string) {
     if _play_thread != nil && !thread.is_done(_play_thread) {
         return
     }
@@ -327,42 +373,39 @@ run_app_play :: proc(script: string) {
         log.clear()
         _console_last_count = 0
     }
-    // Scripts run from the REPO ROOT (parent of the editor's normalized
+    // Configs run from the REPO ROOT (parent of the editor's normalized
     // moonhug/ cwd) — the one canonical build cwd. The app normalizes its own
     // runtime cwd back to moonhug/.
     cwd, _ := os.get_working_directory(context.temp_allocator)
     repo_root := filepath.dir(cwd) // slice into the temp cwd string
-    pa := runtime.default_allocator()
-    data, derr := new(RunPlayData, pa)
-    if derr != nil {
-        return
+
+    // Config binaries sit in builds/ beside the game binaries they produce.
+    // Always rebuilt, so there is no staleness to invalidate and nothing to
+    // clean up. -file compiles the single config source, -ignore-unknown-
+    // attributes lets a config import engine or editor packages.
+    safe_id, _ := strings.replace_all(id, "/", "_", context.temp_allocator)
+    config_exe := fmt.tprintf("builds/run_config_%s%s", safe_id, runconfig.EXE_SUFFIX)
+    build_parts := []string{
+        "odin", "build", source, "-file",
+        "-ignore-unknown-attributes", "-collection:moonhug=moonhug",
+        fmt.tprintf("-out:%s", config_exe),
     }
 
-    data.alloc = pa
-    rd, cerr := strings.clone(repo_root, pa)
-    if cerr != nil {
-        free(data, pa)
-        return
-    }
+    // The binary to RUN must be an absolute path. os.process_start resolves
+    // command[0] in the PARENT, before the child chdir's to working_dir: a bare
+    // name goes through PATH, but anything containing a '/' is opened relative to
+    // the EDITOR's cwd (moonhug/), not the repo root. Only `odin` and `sh` got
+    // away with being relative, because PATH resolved them.
+    config_exe_abs, _ := filepath.join({repo_root, config_exe}, context.temp_allocator)
 
-    data.run_dir = rd
-    cmd, merr := make([]string, 2, pa)
-    if merr != nil {
-        delete(data.run_dir, pa)
-        free(data, pa)
-        return
-    }
-
-    data.command = cmd
-    data.command[0] = "sh"
-    data.command[1], _ = strings.clone(script, pa)
-
-    // Pass the editor's active scene to the app (the script forwards its args
-    // to the binary via "$@"); without one the app falls back to its default
-    // scene. The app gets the LIVE scene state: a snapshot of the in-memory
-    // scene written outside assets/ (so refresh never mints a guid for it) —
-    // unsaved edits play as-is, like Unity entering play mode with a dirty
-    // scene. Nested prefabs still resolve by guid from their on-disk files.
+    // Pass the editor's active scene to the config, which forwards it to the
+    // game; without one the app falls back to its default scene. The app gets
+    // the LIVE scene state: a snapshot of the in-memory scene written outside
+    // assets/ (so refresh never mints a guid for it) — unsaved edits play as-is,
+    // like Unity entering play mode with a dirty scene. Nested prefabs still
+    // resolve by guid from their on-disk files.
+    run_parts := make([dynamic]string, context.temp_allocator)
+    append(&run_parts, config_exe_abs)
     if scene := engine.sm_scene_get_active(); scene != nil {
         play_path := scene.path
         if snapshot, sok := engine.scene_serialize(scene); sok {
@@ -372,16 +415,28 @@ run_app_play :: proc(script: string) {
                 play_path = _PLAY_SCENE_SNAPSHOT_PATH
             }
         }
-        if len(play_path) > 0 {
-            with_scene, aerr := make([]string, 3, pa)
-            if aerr == nil {
-                copy(with_scene, data.command)
-                with_scene[2], _ = strings.clone(play_path, pa)
-                delete(data.command, pa)
-                data.command = with_scene
-            }
-        }
+        if len(play_path) > 0 do append(&run_parts, play_path)
     }
+
+    pa := runtime.default_allocator()
+    data, derr := new(RunPlayData, pa)
+    if derr != nil {
+        return
+    }
+    data.alloc = pa
+    rd, cerr := strings.clone(repo_root, pa)
+    if cerr != nil {
+        free(data, pa)
+        return
+    }
+    data.run_dir = rd
+    data.build_command = _clone_command(build_parts, pa)
+    data.run_command = _clone_command(run_parts[:], pa)
+    if data.build_command == nil || data.run_command == nil {
+        _destroy_run_play_data(data)
+        return
+    }
+
     _play_thread = thread.create_and_start_with_data(data, _run_play_thread_proc)
     if _play_thread == nil {
         _destroy_run_play_data(data)

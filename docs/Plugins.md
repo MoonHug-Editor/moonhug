@@ -5,30 +5,16 @@ Plugin is a package folder in `moonhug/packages/`.
 - Its `assets/` folder is scanned by the asset db — nothing else in the package is.
 - Samples install as further packages.
 
-Everything is reached through one collection, `moonhug`, rooted at `moonhug/`
-and passed to every build/test command. Imports are depth-independent no matter
-how deeply the file is nested: `import "moonhug:engine"`,
-`import "moonhug:engine/gfx"`, `import common "moonhug:tests/common"`,
-`import "moonhug:editor/undo"`, `import im "moonhug:external/odin-imgui"`.
-Sibling packages import as `moonhug:packages/<name>`.
-
 The attribute system (`@component`, `@update`, `@phase`, `@menu_item`,
 `@property_drawer`, …) is the plugin API — packages use the exact same markers
 app code already uses.
 
-**The app is a package too** (`packages/app`): the game — main loop included —
-is an ordinary package with a `main :: proc()`. In Odin `main` is only special
-in the package handed to `odin build`, so the same package builds as the game
-executable AND imports into the editor like any plugin.
+## app plugin
+**The app is a plugin too** (`packages/app`) — an ordinary package with a `main :: proc()`, a and game loop.
 
-**Runnable packages, 0..N of them.** Any package root declaring `main` is
-"runnable" and receives its OWN generated dispatcher set (`__update`,
-`phase_run`, `register_type_guids`, `register_packages`): its own subscribers
-call unqualified, library packages import through the collection, OTHER
-runnable packages are excluded (they're separate programs). The editor and
-the tests bootstrap depend on no runnable package — they use the generated
-`moonhug/registration` package (all types, all packages), so deleting the
-app leaves a fully working editor.
+**Runnable packages** Any package root declaring `main` is "runnable"
+and receives its OWN generated dispatcher set (`__update`, `phase_run`,
+`register_type_guids`, `register_packages`).
 
 ## Folder structure
 
@@ -48,9 +34,9 @@ moonhug/packages/
         *.odin
         assets/
     tests/                  ← OPTIONAL test suite: `package physics2d_tests`
-    run_configs/            ← OPTIONAL runnable-package scripts (see Run configurations)
-      run.sh
-      run_debug.sh
+    run_configs/            ← OPTIONAL runnable-package programs (see Run configurations)
+      run.odin
+      run_debug.odin
 ```
 
 - **Package root = the runtime Odin package.** Compiled into BOTH binaries
@@ -75,29 +61,51 @@ moonhug/packages/
   covers everything in one `odin test -all-packages` run. Tests ship with the
   package and die with it on uninstall — the central suite only reaches
   `moonhug:packages/` through that generated file.
-- **`run_configs/`** — shell scripts that build+run the package as a program
-  (see Run configurations). Inert to the asset db and the compiler.
+- **`run_configs/`** — Odin programs that build+run the package as a program (see Run configurations)
 - Other subfolders are just folders with no special meaning.
 
 ## Run configurations
 
 A package that can run as a program (the `app` package, a future headless
-server, an engine sample) ships scripts in `run_configs/`:
+server, an engine sample) ships configurations in `run_configs/`:
 
-- One `.sh` per configuration; the FILENAME is the config's name — no
-  metadata inside, no manifest.
-- Scripts run from the REPO ROOT and receive the editor's args (`"$@"` —
-  the live-scene snapshot path when launched via Play); they build the
-  package and `exec` the binary, forwarding the args. The same script works
-  from a terminal: `sh moonhug/packages/app/run_configs/run.sh`.
-- The editor's toolbar Play is a split button: the play half runs the
-  selected configuration, the dropdown half lists every
-  `packages/*/run_configs/*.sh` as `<package>: <name>`. The selection
+- One `.odin` file per configuration; the FILENAME is the config's name — no
+  metadata inside, no manifest. Each file declares its own `package` name
+  (matching the filename by convention) and a `main`, so several configs
+  coexist in the folder: the editor compiles each with `-file`, one at a time.
+- A config is an Odin PROGRAM, not a script. `moonhug:editor/runconfig` — an
+  editor-only subpackage, like `moonhug:editor/undo` — supplies the shared odin
+  flags, the platform executable suffix, output-directory creation, and
+  argument forwarding, so the common case is one call:
+
+  ```odin
+  package run_debug
+
+  import rc "moonhug:editor/runconfig"
+
+  main :: proc() {
+      rc.build_and_run({
+          package_path = "moonhug/packages/app",
+          out          = "builds/app_debug",
+          flags        = {"-debug"},
+      })
+  }
+  ```
+
+- Configs run from the REPO ROOT and receive the editor's args — the
+  live-scene snapshot path when launched via Play. `build_and_run` forwards
+  them to the game and exits with the game's exit code. The same config runs
+  from a terminal:
+  `odin run moonhug/packages/app/run_configs/run.odin -file -collection:moonhug=moonhug`
+- The editor's toolbar Play is a split button: the play half compiles and runs
+  the selected configuration, the dropdown half lists every
+  `packages/*/run_configs/*.odin` as `<package>: <name>`. The selection
   persists in `ProjectSettings/editor_settings.json`; with no selection the
   editor prefers a `run_debug` config (call-stack capture for console logs).
-
-Build variants (debug/release), extra flags, program args — all just script
-content, no schema.
+- Configs are ALWAYS recompiled before running, into
+  `builds/run_config_<package>_<name>`. No cache, so nothing goes stale. A
+  config that fails to compile never launches, and its diagnostics reach the
+  console the same way build output does.
 
 ## Install model
 
