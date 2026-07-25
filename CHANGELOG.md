@@ -1,3 +1,16 @@
+## [0.51.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.50.0...v0.51.0) (2026-07-25)
+
+### Features
+
+* add spectrum theme ([e61c00c](https://github.com/MoonHug-Editor/moonhug/commit/e61c00c97bc6dd5bcde83a7b86cca31c74a60052))
+* left aligned input fields ([b911297](https://github.com/MoonHug-Editor/moonhug/commit/b91129718a0fb32cf13d8da10e1aa9e0289fec7a))
+
+### Bug Fixes
+
+* checkmark visible color ([c33663e](https://github.com/MoonHug-Editor/moonhug/commit/c33663ecb4b2f39fdcb744c10b76598b40c7ffe6))
+* field label and value size UX ([632275c](https://github.com/MoonHug-Editor/moonhug/commit/632275ce8a2793cfe7dd0eba26fce793846abb14))
+* text color in history view ([604c0d2](https://github.com/MoonHug-Editor/moonhug/commit/604c0d29bb29c26713dd339a0dc3b8f933993161))
+
 ## [0.50.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.49.0...v0.50.0) (2026-07-25)
 
 ### Features
