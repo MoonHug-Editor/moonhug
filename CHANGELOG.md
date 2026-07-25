@@ -1,3 +1,9 @@
+## [0.52.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.51.0...v0.52.0) (2026-07-25)
+
+### Features
+
+* use *.odin files for run configs ([7ad4b7c](https://github.com/MoonHug-Editor/moonhug/commit/7ad4b7cb5bc85edaf81bd1d45e09376a9c6890ff))
+
 ## [0.51.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.50.0...v0.51.0) (2026-07-25)
 
 ### Features
