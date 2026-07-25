@@ -1,3 +1,10 @@
+## [0.50.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.49.0...v0.50.0) (2026-07-25)
+
+### Features
+
+* add decorator_button ([cc38ada](https://github.com/MoonHug-Editor/moonhug/commit/cc38ada652c6476c3cb7fd40cd3db2c6dd702002))
+* inspector button improvements ([4cdb8a1](https://github.com/MoonHug-Editor/moonhug/commit/4cdb8a12415172a7f4328137fc30c46589d074d5))
+
 ## [0.49.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.48.1...v0.49.0) (2026-07-24)
 
 ### Features
