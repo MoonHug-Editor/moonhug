@@ -94,6 +94,13 @@ For more details see [Contribution](docs/Contribution.md)
   - custom property drawers - via @(property_drawer=...) on proc
   - custom decorator drawers - via field tags `decor:procName(arg=value)`
 
+- inspector buttons (invoke a proc from the inspector, one undo step)
+  - component-level via @(inspector_button={label="...", row=0, weight=1, show_in_array=true}) on a `(^Component)` proc
+  - field-anchored via field tag `decor:button(proc_name, label="", row=0, weight=1)`
+    - proc is `()`, `(^Component)` or `(^Component, ^Field)`
+    - same `row` shares one line, widths split by `weight`
+  - higher row renders higher on screen — rows >= 0 stack above the field/fields, rows < 0 below
+
 ### Components
 - Component menu - via @(component={menu="menu/path"}) on struct
   - adds to Component menu bar and Add Component button popup
@@ -114,7 +121,10 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
+- OS independent run configs
+
 - project settings window with left pane — tabs, right pane — settings of selected tabs
+  - @(project_settings="Left Pane Tab name") above IMGUI draw proc (draws right pane)
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 

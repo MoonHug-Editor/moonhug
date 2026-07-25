@@ -120,7 +120,10 @@ draw_array_element :: proc(ptr: rawptr, elem_tid: typeid, label: cstring) {
 		tree_open := im.TreeNode(label)
 		draw_field_context_menu(ptr, elem_tid)
 		if tree_open {
+			prev_in_elem := _in_array_element
+			_in_array_element = true
 			draw_inspector(elem_any)
+			_in_array_element = prev_in_elem
 			im.TreePop()
 		}
 		return

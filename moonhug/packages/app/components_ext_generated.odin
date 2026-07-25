@@ -11,6 +11,22 @@ _register_app_components_once: sync.Once
 register_app_components :: proc() {
 	sync.once_do(&_register_app_components_once, proc() {
 		engine.component_register(engine.Component_Desc{
+			type_key  = .ButtonsExample,
+			type_guid = engine.ButtonsExample__Guid,
+			tid       = typeid_of(ButtonsExample),
+			ptr_tid   = typeid_of(^ButtonsExample),
+			pool_create = proc() -> rawptr { p := new(engine.Pool(ButtonsExample)); engine.pool_init(p); return p },
+			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(ButtonsExample))pool) },
+			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(ButtonsExample))pool) },
+			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
+				p := cast(^engine.Pool(ButtonsExample))pool
+				for i in 0..<len(p.slots) {
+					if p.slots[i].alive do fn(&p.slots[i].data)
+				}
+			},
+			reset = proc(ptr: rawptr) { reset_ButtonsExample(cast(^ButtonsExample)ptr) },
+		})
+		engine.component_register(engine.Component_Desc{
 			type_key  = .DemoMenu,
 			type_guid = engine.DemoMenu__Guid,
 			tid       = typeid_of(DemoMenu),
@@ -114,6 +130,10 @@ register_app_components :: proc() {
 	})
 }
 
+buttons_examples :: proc(w: ^engine.World) -> ^engine.Pool(ButtonsExample) {
+	return cast(^engine.Pool(ButtonsExample)) w.ext_pools[engine.TypeKey.ButtonsExample]
+}
+
 demo_menus :: proc(w: ^engine.World) -> ^engine.Pool(DemoMenu, 1) {
 	return cast(^engine.Pool(DemoMenu, 1)) w.ext_pools[engine.TypeKey.DemoMenu]
 }
@@ -139,7 +159,17 @@ tanks :: proc(w: ^engine.World) -> ^engine.Pool(Tank) {
 }
 
 get_comp :: proc(tH: engine.Transform_Handle, $T: typeid) -> (engine.Owned, ^T) {
-	when T == DemoMenu {
+	when T == ButtonsExample {
+		w := engine.ctx_world()
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}, nil
+		owned, _ := engine.transform_find_comp(t, .ButtonsExample)
+		if owned.handle.type_key == engine.INVALID_TYPE_KEY do return owned, nil
+		pool := buttons_examples(w)
+		if pool == nil do return owned, nil
+		return owned, engine.pool_get(pool, owned.handle)
+	}
+	else when T == DemoMenu {
 		w := engine.ctx_world()
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do return {}, nil

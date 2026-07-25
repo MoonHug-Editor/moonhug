@@ -8,6 +8,7 @@ register_component_menus :: proc() {
 	menu.add_menu_item("Component/Animation", "", proc() { _component_menu_add(.Animation) })
 	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) })
 	menu.add_menu_item("Component/DemoMenu", "", proc() { _component_menu_add(.DemoMenu) })
+	menu.add_menu_item("Component/Examples/Buttons Example", "", proc() { _component_menu_add(.ButtonsExample) })
 	menu.add_menu_item("Component/Lifetime", "", proc() { _component_menu_add(.Lifetime) })
 	menu.add_menu_item("Component/Light", "", proc() { _component_menu_add(.Light) })
 	menu.add_menu_item("Component/MeshFilter", "", proc() { _component_menu_add(.MeshFilter) })

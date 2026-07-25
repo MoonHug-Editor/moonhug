@@ -12,6 +12,7 @@ TypeKey :: enum u16 {
 	B,
 	BoxCollider,
 	BoxCollider2D,
+	ButtonsExample,
 	C,
 	Camera,
 	CapsuleCollider,
@@ -61,6 +62,7 @@ AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 BoxCollider__Guid := uuid.read("13101cd5-e0a6-49d4-a310-953001ebae6b") or_else UUID_NIL
 BoxCollider2D__Guid := uuid.read("1e2d0da1-9df6-4668-9f86-f76351378394") or_else UUID_NIL
+ButtonsExample__Guid := uuid.read("c9fc78b6-6022-4723-8dea-6b2544b6480d") or_else UUID_NIL
 C__Guid := uuid.read("f51ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Camera__Guid := uuid.read("7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d") or_else UUID_NIL
 CapsuleCollider__Guid := uuid.read("91ddc047-6a91-4142-bc9c-d219570192b6") or_else UUID_NIL

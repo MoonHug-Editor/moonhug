@@ -5,6 +5,7 @@ import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "../../engine"
+import "../../engine/log"
 import "../undo"
 
 Min_Value :: union { int, f64 }
@@ -180,6 +181,20 @@ _Button_Row_Key :: struct {
 @(private = "file")
 _button_rows: map[_Button_Row_Key]_Button_Row_State
 
+// One warning per action proc when a button is drawn on a struct its proc
+// doesn't take — the polymorphic call compiles for any first-param type, so
+// this mismatch (e.g. ^Component proc on a NESTED struct's field) is only
+// detectable at draw time and would otherwise hide the button silently.
+@(private = "file")
+_button_owner_warned: map[rawptr]bool
+
+decorators_shutdown :: proc() {
+	delete(_button_rows)
+	_button_rows = {}
+	delete(_button_owner_warned)
+	_button_owner_warned = {}
+}
+
 decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), row := 0, weight := f32(1))
 	where intrinsics.type_is_proc(P) {
 	if !ctx.is_visible do return
@@ -188,7 +203,15 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 	if ctx.owner_ptr == nil do return
 
 	when intrinsics.type_proc_parameter_count(P) > 0 {
-		if ctx.owner_type != typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))) do return
+		if ctx.owner_type != typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))) {
+			akey := transmute(rawptr)action
+			if !_button_owner_warned[akey] {
+				_button_owner_warned[akey] = true
+				log.warningf("decor:button \"%s\": field belongs to %v but the proc takes ^%v — button hidden (use the owning struct's type, or proc())",
+					label, ctx.owner_type, typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))))
+			}
+			return
+		}
 	}
 
 	key := _Button_Row_Key{field = ctx.field_ptr, row = row}

@@ -71,6 +71,7 @@ shutdown_registries :: proc() {
         delete(v)
     }
     delete(inspector_buttons)
+    decorators_shutdown()
     if inspectorData.filePath != "" {
         delete(inspectorData.filePath)
     }
@@ -495,10 +496,10 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
     types := reflect.struct_field_types(tid)
     count := len(names)
 
-    // @(inspector_button) rows >= 0 frame the component from the TOP.
-    if path_prefix == "" {
-        draw_inspector_buttons(tid, ptr, above = true)
-    }
+    // @(inspector_button) rows >= 0 frame this struct's draw from the TOP —
+    // wherever it appears (component, nested field, array element); buttons
+    // with show_in_array=false skip array elements.
+    draw_inspector_buttons(tid, ptr, above = true, element_ctx = _in_array_element)
 
     for i in 0..<count {
         field_info := reflect.struct_field_at(tid, i)
@@ -623,10 +624,6 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         run_field_decorators(tid, i, &ctx)
     }
 
-    // @(inspector_button) rows < 0 close the component from the BOTTOM. Both
-    // blocks draw only at the top level of a component/asset draw (recursions
-    // into nested structs pass a non-empty path_prefix).
-    if path_prefix == "" {
-        draw_inspector_buttons(tid, ptr, above = false)
-    }
+    // @(inspector_button) rows < 0 close this struct's draw from the BOTTOM.
+    draw_inspector_buttons(tid, ptr, above = false, element_ctx = _in_array_element)
 }

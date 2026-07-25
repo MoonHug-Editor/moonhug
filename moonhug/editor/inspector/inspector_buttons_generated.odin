@@ -6,11 +6,17 @@ import app "moonhug:packages/app"
 
 _register_inspector_buttons :: proc() {
 	{
+		btns := make([]Inspector_Button, 2)
+		btns[0] = {label = "Log Item", row = 0, weight = 1, show_in_array = true, invoke = proc(comp: rawptr) { app.be_log_item(cast(^app.Button_Item)comp) }}
+		btns[1] = {label = "Only Standalone", row = 0, weight = 1, show_in_array = false, invoke = proc(comp: rawptr) { app.be_item_standalone(cast(^app.Button_Item)comp) }}
+		inspector_buttons[typeid_of(app.Button_Item)] = btns
+	}
+	{
 		btns := make([]Inspector_Button, 4)
-		btns[0] = {label = "Ping", row = 1, weight = 1, invoke = proc(comp: rawptr) { app.tank_ping(cast(^app.Tank)comp) }}
-		btns[1] = {label = "Clear All Refs", row = 0, weight = 2, invoke = proc(comp: rawptr) { app.tank_clear_refs(cast(^app.Tank)comp) }}
-		btns[2] = {label = "Log State", row = 0, weight = 1, invoke = proc(comp: rawptr) { app.tank_log_state(cast(^app.Tank)comp) }}
-		btns[3] = {label = "Log State Below", row = -1, weight = 1, invoke = proc(comp: rawptr) { app.tank_log_state_below(cast(^app.Tank)comp) }}
-		inspector_buttons[typeid_of(app.Tank)] = btns
+		btns[0] = {label = "Ping Top", row = 1, weight = 1, show_in_array = true, invoke = proc(comp: rawptr) { app.be_ping(cast(^app.ButtonsExample)comp) }}
+		btns[1] = {label = "Count++", row = 0, weight = 2, show_in_array = true, invoke = proc(comp: rawptr) { app.be_count_up(cast(^app.ButtonsExample)comp) }}
+		btns[2] = {label = "Reset Count", row = 0, weight = 1, show_in_array = true, invoke = proc(comp: rawptr) { app.be_count_reset(cast(^app.ButtonsExample)comp) }}
+		btns[3] = {label = "Log State", row = -1, weight = 1, show_in_array = true, invoke = proc(comp: rawptr) { app.be_log_state(cast(^app.ButtonsExample)comp) }}
+		inspector_buttons[typeid_of(app.ButtonsExample)] = btns
 	}
 }

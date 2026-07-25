@@ -29,6 +29,7 @@ ButtonEntry :: struct {
 	label:       string,
 	row:         int,
 	weight:      f64,
+	show_in_array: bool,
 	source_pkg:  string,
 	source_path: string,
 }
@@ -84,6 +85,9 @@ provide :: proc(w: ^db.World) -> bool {
 			if ws := args.fields["weight"]; ws != "" {
 				if v, wok := strconv.parse_f64(ws); wok do weight = v
 			}
+			// show_in_array: also frame array ELEMENTS of the component type.
+			// Default true — set show_in_array=false for singular actions.
+			show_in_array := args.fields["show_in_array"] != "false"
 			append(&entries, ButtonEntry{
 				comp_pkg    = decl.pkg.name,
 				comp_type   = comp_type,
@@ -91,6 +95,7 @@ provide :: proc(w: ^db.World) -> bool {
 				label       = label,
 				row         = gen_facts.attr_int(args, "row"),
 				weight      = weight,
+				show_in_array = show_in_array,
 				source_pkg  = decl.pkg.name,
 				source_path = decl.pkg_path,
 			})
@@ -171,8 +176,8 @@ generate :: proc(w: ^db.World) -> bool {
 		for k in i ..< j {
 			be := entries[k]
 			fmt.sbprintf(&b,
-				"\t\tbtns[%d] = {{label = \"%s\", row = %d, weight = %v, invoke = proc(comp: rawptr) {{ %s.%s(cast(^%s)comp) }}}}\n",
-				k - i, be.label, be.row, f32(be.weight), be.comp_pkg, be.proc_name, qual)
+				"\t\tbtns[%d] = {{label = \"%s\", row = %d, weight = %v, show_in_array = %v, invoke = proc(comp: rawptr) {{ %s.%s(cast(^%s)comp) }}}}\n",
+				k - i, be.label, be.row, f32(be.weight), be.show_in_array, be.comp_pkg, be.proc_name, qual)
 		}
 		fmt.sbprintf(&b, "\t\tinspector_buttons[typeid_of(%s)] = btns\n", qual)
 		strings.write_string(&b, "\t}\n")
