@@ -6,18 +6,22 @@ import engine "../../engine"
 import "core:path/filepath"
 
 Theme :: enum {
+    Spectrum_Dark,
+    Spectrum_Light,
     Dark,
     Light,
     Classic,
 }
 
-active_theme: Theme
+active_theme: Theme = .Spectrum_Dark
 
 apply_theme :: proc() {
     switch active_theme {
-    case .Dark:    im.StyleColorsDark()
-    case .Light:   im.StyleColorsLight()
-    case .Classic: im.StyleColorsClassic()
+    case .Spectrum_Dark:  style_colors_spectrum(dark = true)
+    case .Spectrum_Light: style_colors_spectrum(dark = false)
+    case .Dark:           im.StyleColorsDark()
+    case .Light:          im.StyleColorsLight()
+    case .Classic:        im.StyleColorsClassic()
     }
     // StyleColors* resets the full style, so re-apply our overrides here.
     // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
@@ -89,6 +93,16 @@ help_about_menu :: proc() {
 // editor/view_input_debug.odin. Mouse-only operable on purpose.
 @(menu_toggle={path="Help/Input Debug", order=999})
 show_input_debug := false
+
+@(menu_item={path="View/Theme/Spectrum Dark", order=-14, shortcut=""})
+menu_item_view_theme_spectrum_dark :: proc() {
+    set_theme(.Spectrum_Dark)
+}
+
+@(menu_item={path="View/Theme/Spectrum Light", order=-13, shortcut=""})
+menu_item_view_theme_spectrum_light :: proc() {
+    set_theme(.Spectrum_Light)
+}
 
 @(menu_item={path="View/Theme/Dark", order=-12, shortcut=""})
 menu_item_view_theme_dark :: proc() {
