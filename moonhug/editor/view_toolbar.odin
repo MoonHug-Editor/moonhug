@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:mem"
 import "core:os"
 import "core:path/filepath"
+import "core:sync"
 import "core:thread"
 import "core:time"
 import im "moonhug:external/odin-imgui"
@@ -21,6 +22,19 @@ TOOLBAR_HEIGHT :: 28
 _PLAY_SCENE_SNAPSHOT_PATH :: "library/play_scene_snapshot.scene"
 
 _play_thread: ^thread.Thread
+
+// Which stage the play thread is in, so the toolbar can say "Compiling" for the
+// several seconds of `odin build` instead of claiming the game is already
+// running. Written by the play thread, read by the UI thread every frame —
+// atomic because that is a cross-thread scalar, not because the two ever race
+// for a decision.
+Play_Phase :: enum i32 {
+    Idle,
+    Compiling,
+    Running,
+}
+
+_play_phase: Play_Phase
 
 // A run configuration = one Odin PROGRAM in a package's run_configs/ folder
 // (docs/Plugins.md). The Play button compiles the selected one and runs it from
@@ -157,9 +171,14 @@ draw_tool_bar :: proc() {
         im.SetTooltip("Run configuration")
     }
 
-    if _play_thread != nil && !thread.is_done(_play_thread) {
+    switch sync.atomic_load(&_play_phase) {
+    case .Compiling:
+        im.SameLine()
+        im.TextDisabled("(compiling)")
+    case .Running:
         im.SameLine()
         im.TextDisabled("(running)")
+    case .Idle:
     }
 }
 
@@ -228,6 +247,18 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
     defer delete(run_dir, a)
     defer _delete_command(build_command, a)
     defer _delete_command(run_command, a)
+    // Every exit path clears the phase, including the pipe failures below.
+    defer sync.atomic_store(&_play_phase, Play_Phase.Idle)
+
+    // The config binary is a build artifact of this one launch, so it is removed
+    // at both ends: before the build so a crashed editor can never leave one
+    // behind, and after the run so builds/ does not collect one per config
+    // forever. Removing it first also means a build that reports success without
+    // writing its output fails loudly at spawn instead of silently re-running the
+    // previous binary. run_command[0] is that path.
+    config_exe := run_command[0] if len(run_command) > 0 else ""
+    if config_exe != "" do os.remove(config_exe)
+    defer if config_exe != "" do os.remove(config_exe)
 
     stdout_r, stdout_w, stdout_err := os.pipe()
     if stdout_err != nil {
@@ -285,9 +316,14 @@ _run_play_thread_proc :: proc(user_data: rawptr) {
 
     // Compile the run config, then run it. A config that fails to compile never
     // launches, and its diagnostics are already in the console by then.
+    //
+    // The config itself builds the game before launching it, so Running covers
+    // that second compile too — the editor cannot see where one ends and the
+    // other begins without the config reporting it.
     code := _run_child(run_dir, build_command, stdout_w, stderr_w)
     build_ok := code == 0
     if build_ok {
+        sync.atomic_store(&_play_phase, Play_Phase.Running)
         code = _run_child(run_dir, run_command, stdout_w, stderr_w)
     }
 
@@ -437,8 +473,12 @@ run_app_play :: proc(id: string, source: string) {
         return
     }
 
+    // Set before the spawn, not inside the thread, so there is no frame where the
+    // thread is alive but the toolbar still reads Idle.
+    sync.atomic_store(&_play_phase, Play_Phase.Compiling)
     _play_thread = thread.create_and_start_with_data(data, _run_play_thread_proc)
     if _play_thread == nil {
+        sync.atomic_store(&_play_phase, Play_Phase.Idle)
         _destroy_run_play_data(data)
     }
 }
