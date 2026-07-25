@@ -95,13 +95,13 @@ draw_history_view :: proc() {
 			row := fmt.tprintf("%s %2d. %s  [%s]", is_current ? ">" : " ", step_index, label, status)
 			crow := strings.clone_to_cstring(row, context.temp_allocator)
 
-			if !is_current && step_index > top {
-				im.PushStyleColorImVec4(.Text, im.Vec4{0.6, 0.6, 0.6, 1})
-			} else if is_current {
-				im.PushStyleColorImVec4(.Text, im.Vec4{0.9, 0.8, 0.3, 1})
-			} else {
-				im.PushStyleColorImVec4(.Text, im.Vec4{1, 1, 1, 1})
+			text_col := im.GetStyleColorVec4(.Text)^
+			if is_current {
+				text_col = im.Vec4{0.9, 0.8, 0.3, 1}
+			} else if step_index > top {
+				text_col = im.GetStyleColorVec4(.TextDisabled)^
 			}
+			im.PushStyleColorImVec4(.Text, text_col)
 
 			if im.Selectable(crow, _history_selected == step_index, {.SpanAllColumns}) {
 				_history_selected = step_index
