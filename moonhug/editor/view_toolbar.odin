@@ -99,18 +99,31 @@ draw_tool_bar :: proc() {
     if len(_run_configs) == 0 do _scan_run_configs()
     sel := _selected_run_config()
 
-    // Split button (grid/snap pattern): Play runs the selected config, the
-    // narrow arrow opens the config picker. Centered as one control.
+    // Play button + run-config dropdown, centered together. The dropdown reads
+    // out the selected config rather than being an icon-only arrow: which config
+    // Play will run is worth seeing without opening anything.
     button_play_text: cstring = ICON_MD_PLAY_ARROW
     avail := im.GetContentRegionAvail()
     style := im.GetStyle()
     btn_size := im.CalcTextSize(button_play_text, nil, false, -1)
     btn_size.x += style.FramePadding.x * 2
     btn_size.y += style.FramePadding.y * 2
-    total_w := btn_size.x + OVERLAY_SPLIT_GAP + OVERLAY_ARROW_WIDTH
+
+    NO_CONFIGS :: cstring("No run configs")
+    preview := NO_CONFIGS
+    if sel != nil do preview = sel.label
+
+    // Sized to the WIDEST config, not the selected one, so switching configs
+    // never shifts the toolbar. GetFrameHeight is the combo's square arrow box.
+    combo_w := im.CalcTextSize(NO_CONFIGS, nil, false, -1).x
+    for &rc in _run_configs {
+        combo_w = max(combo_w, im.CalcTextSize(rc.label, nil, false, -1).x)
+    }
+    combo_w += style.FramePadding.x * 2 + im.GetFrameHeight()
+
+    total_w := btn_size.x + style.ItemSpacing.x + combo_w
     im.SetCursorPosX((avail.x - total_w) * 0.5)
 
-    im.PushStyleVarImVec2(.ItemSpacing, im.Vec2{OVERLAY_SPLIT_GAP, style.ItemSpacing.y})
     if im.Button(button_play_text) && sel != nil {
         run_app_play(sel.script)
     }
@@ -121,23 +134,25 @@ draw_tool_bar :: proc() {
             im.SetTooltip("No run configs found (packages/*/run_configs/*.sh)")
         }
     }
+
     im.SameLine()
-    if im.Button("##run_config_arrow", im.Vec2{OVERLAY_ARROW_WIDTH, btn_size.y}) {
-        _scan_run_configs() // pick up new/removed scripts right when picking
-        im.OpenPopup("##run_config_popup")
-    }
-    _draw_centered_glyph(ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
-    im.PopStyleVar()
-    if im.IsItemHovered({}) {
-        im.SetTooltip("Pick run configuration")
-    }
-    if im.BeginPopup("##run_config_popup") {
+    im.SetNextItemWidth(combo_w)
+    if im.BeginCombo("##run_config", preview, {}) {
+        // Rescan on open to pick up new/removed scripts. That frees every label
+        // and id, so `sel` points into released memory until it is recomputed.
+        if im.IsWindowAppearing() {
+            _scan_run_configs()
+            sel = _selected_run_config()
+        }
         for &rc in _run_configs {
             if im.Selectable(rc.label, sel != nil && sel.id == rc.id) {
                 _select_run_config(rc.id)
             }
         }
-        im.EndPopup()
+        im.EndCombo()
+    }
+    if im.IsItemHovered({}) {
+        im.SetTooltip("Run configuration")
     }
 
     if _play_thread != nil && !thread.is_done(_play_thread) {
