@@ -6,6 +6,7 @@ import im "moonhug:external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
+import "inspector"
 
 scene_rt: ^gfx.Render_Target
 
@@ -582,13 +583,13 @@ draw_grid_overlay :: proc(vertical: bool) {
 
 		im.SeparatorText("Cells")
 		im.SetNextItemWidth(110)
-		im.DragFloat("Cell size", &gs.cell_size, 0.5, 0.01, 10000, "%.2f")
+		inspector.drag_float("Cell size", &gs.cell_size, 0.5, 0.01, 10000, "%.2f")
 		if im.IsItemHovered({}) do im.SetTooltip("One cell in world units (emphasized lines)")
 		im.SetNextItemWidth(110)
-		im.DragInt("Subdivide", &gs.subdivide, 1, 1, 100)
+		inspector.drag_int("Subdivide", &gs.subdivide, 1, 1, 100)
 		if im.IsItemHovered({}) do im.SetTooltip("Fine-line divisions inside each cell (1 = none)")
 		im.SetNextItemWidth(110)
-		im.DragInt("Cells count", &gs.cells_count, 1, 1, 1000)
+		inspector.drag_int("Cells count", &gs.cells_count, 1, 1, 1000)
 		if im.IsItemHovered({}) do im.SetTooltip("Cells from the center to the grid's edge")
 		im.EndPopup()
 	}
@@ -606,7 +607,7 @@ draw_snap_overlay :: proc(vertical: bool) {
 	if im.BeginPopup("##snap_settings") {
 		ss := &snap_settings
 		im.SetNextItemWidth(110)
-		im.DragFloat("Angle", &ss.angle, 1, 1, 180, "%.0f deg")
+		inspector.drag_float("Angle", &ss.angle, 1, 1, 180, "%.0f deg")
 		if im.IsItemHovered({}) do im.SetTooltip("Rotate gizmo snap increment")
 
 		mode_names := [Snap_Mode]cstring{.Grid = "Grid", .SubGrid = "SubGrid", .Units = "Units"}
@@ -620,7 +621,7 @@ draw_snap_overlay :: proc(vertical: bool) {
 		if im.IsItemHovered({}) do im.SetTooltip("Grid = one cell, SubGrid = one subdivision, Units = custom step")
 		if ss.mode == .Units {
 			im.SetNextItemWidth(110)
-			im.DragFloat("Value", &ss.units, 0.1, 0.01, 10000, "%.2f")
+			inspector.drag_float("Value", &ss.units, 0.1, 0.01, 10000, "%.2f")
 			if ss.units <= 0 do ss.units = 0.01
 		}
 		im.EndPopup()

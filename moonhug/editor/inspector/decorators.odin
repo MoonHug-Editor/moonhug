@@ -116,7 +116,7 @@ decorator_euler :: proc(ctx: ^DrawContext) {
 	im.SameLine(label_w)
 	im.SetNextItemWidth(field_w)
 	id := fmt.tprintf("##euler_%s", label)
-	if im.DragFloat3(strings.clone_to_cstring(id, context.temp_allocator), &euler, 0.1) {
+	if drag_float3(strings.clone_to_cstring(id, context.temp_allocator), &euler, 0.1) {
 		quat_ptr^ = engine.quat_from_euler_xyz(euler.x, euler.y, euler.z)
 		mark_inspector_changed()
 	}

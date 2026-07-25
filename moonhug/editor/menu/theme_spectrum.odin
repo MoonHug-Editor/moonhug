@@ -30,6 +30,16 @@ _rgba :: proc(hex: u32, a: f32) -> im.Vec4 {
 }
 
 @(private = "file")
+_lerp :: proc(a, b: im.Vec4, t: f32) -> im.Vec4 {
+	return im.Vec4{
+		a.x + (b.x - a.x) * t,
+		a.y + (b.y - a.y) * t,
+		a.z + (b.z - a.z) * t,
+		a.w + (b.w - a.w) * t,
+	}
+}
+
+@(private = "file")
 Spectrum_Palette :: struct {
 	gray50, gray75, gray100, gray200, gray300, gray400, gray500, gray600, gray700, gray800, gray900: u32,
 	blue400, blue500, blue600, blue700:                                                              u32,
@@ -90,9 +100,16 @@ style_colors_spectrum :: proc(dark: bool) {
 	c[im.Col.ScrollbarGrabActive]   = _rgb(p.gray700)
 	c[im.Col.SliderGrab]            = _rgb(p.gray700)
 	c[im.Col.SliderGrabActive]      = _rgb(p.gray800)
-	c[im.Col.Button]                = _rgb(p.gray75) // Spectrum 'Action Button' — same gray as a field, told apart by border
-	c[im.Col.ButtonHovered]         = _rgb(p.gray50)
-	c[im.Col.ButtonActive]          = _rgb(p.gray200)
+	// Buttons sit at the MIDPOINT between the field fill (FrameBg = GRAY75) and
+	// the component collapsible header. The header is TRANSLUCENT blue, so its
+	// on-screen color is blue400 composited over the window — lerp toward THAT
+	// effective color (not solid blue400, which overshoots and matches the
+	// header). 0.50 = halfway; hover/active step toward the header.
+	field_col      := _rgb(p.gray75)
+	eff_header_col := _lerp(_rgb(p.gray100), _rgb(p.blue400), sel_a) // header over WindowBg=GRAY100
+	c[im.Col.Button]                = _lerp(field_col, eff_header_col, 0.50)
+	c[im.Col.ButtonHovered]         = _lerp(field_col, eff_header_col, 0.70)
+	c[im.Col.ButtonActive]          = _lerp(field_col, eff_header_col, 0.90)
 	// Selection fills are TRANSLUCENT blue, not solid: Spectrum has one gray
 	// Text color, and solid blue fails contrast against it (gray-on-blue ~2.1,
 	// unreadable). A blue wash over the window keeps the single text color

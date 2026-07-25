@@ -8,7 +8,7 @@ import im "moonhug:external/odin-imgui"
 draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     int_ptr := cast(^int)(ptr)
     value := cast(i32)(int_ptr^)
-    if im.DragInt(label, &value) {
+    if drag_int(label, &value) {
         int_ptr^ = int(value)
         mark_inspector_changed()
     }
@@ -18,7 +18,7 @@ draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     i32_ptr := cast(^i32)(ptr)
     value := i32_ptr^
-    if im.DragInt(label, &value) {
+    if drag_int(label, &value) {
         i32_ptr^ = value
         mark_inspector_changed()
     }
@@ -28,7 +28,7 @@ draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_u32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     u32_ptr := cast(^u32)(ptr)
     value := i32(min(u32_ptr^, u32(max(i32))))
-    if im.DragInt(label, &value, 1, 0, max(i32)) {
+    if drag_int(label, &value, 1, 0, max(i32)) {
         u32_ptr^ = u32(max(value, 0))
         mark_inspector_changed()
     }
@@ -65,7 +65,7 @@ draw_float_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     if tid == typeid_of(f32) {
         float_ptr := cast(^f32)(ptr)
         value := float_ptr^
-        if im.DragFloat(label, &value, 0.01, format="%g") {
+        if drag_float(label, &value, 0.01, format="%g") {
             float_ptr^ = value
             mark_inspector_changed()
         }
@@ -101,7 +101,7 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     im.SameLine(label_w)
     im.SetNextItemWidth(field_w)
     id := fmt.tprintf("##%s", label)
-    if im.DragFloat3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1) {
+    if drag_float3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1) {
         mark_inspector_changed()
     }
     im.EndGroup()
@@ -110,7 +110,7 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(property_drawer={type=[3]f32, priority = 0})
 draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[3]f32)(ptr)
-    if im.DragFloat3(label, v, 0.1) {
+    if drag_float3(label, v, 0.1) {
         mark_inspector_changed()
     }
 }
@@ -118,7 +118,7 @@ draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(property_drawer={type=[4]f32, priority = 0})
 draw_vec4_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[4]f32)(ptr)
-    if im.DragFloat4(label, v, 0.1) {
+    if drag_float4(label, v, 0.1) {
         mark_inspector_changed()
     }
 }

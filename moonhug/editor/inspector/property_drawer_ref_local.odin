@@ -49,7 +49,17 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	value_label := strings.clone_to_cstring(
 		fmt.tprintf("%s##val_%s", display, label), context.temp_allocator,
 	)
-	if im.Button(value_label, {value_w, 0}) {
+	// This button shows a reference VALUE, so make it read as a FIELD, not a
+	// button: left-aligned text (like a text field) and the frame-bg fill (so
+	// it matches the other input boxes rather than the distinct button gray).
+	im.PushStyleVarImVec2(.ButtonTextAlign, im.Vec2{0, 0.5})
+	im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.FrameBg)^)
+	im.PushStyleColorImVec4(.ButtonHovered, im.GetStyleColorVec4(.FrameBgHovered)^)
+	im.PushStyleColorImVec4(.ButtonActive, im.GetStyleColorVec4(.FrameBgActive)^)
+	value_pressed := im.Button(value_label, {value_w, 0})
+	im.PopStyleColor(3)
+	im.PopStyleVar()
+	if value_pressed {
 		value_clicked^ = true
 	}
 	if value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {

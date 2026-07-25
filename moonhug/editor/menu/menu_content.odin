@@ -16,16 +16,34 @@ Theme :: enum {
 active_theme: Theme = .Spectrum_Dark
 
 apply_theme :: proc() {
+    // StyleColors* only reset COLORS, not scalar style vars. Spectrum mutates
+    // scalars (rounding, borders) directly on the shared style struct, so
+    // switching Spectrum -> Dark/Light must reset those scalars back to imgui
+    // defaults or Spectrum's rounding leaks into the other themes.
+    _reset_style_scalars_to_imgui_default()
     switch active_theme {
-    case .Spectrum_Dark:  style_colors_spectrum(dark = true)
+    case .Spectrum_Dark:  style_colors_spectrum(dark = true)  // sets its own scalars
     case .Spectrum_Light: style_colors_spectrum(dark = false)
     case .Dark:           im.StyleColorsDark()
     case .Light:          im.StyleColorsLight()
     case .Classic:        im.StyleColorsClassic()
     }
-    // StyleColors* resets the full style, so re-apply our overrides here.
     // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
     im.GetStyle().IndentSpacing = 14
+}
+
+// imgui's default (StyleColorsDark) scalar values for the vars Spectrum
+// overrides — restored before applying any theme so themes don't inherit each
+// other's scalars.
+@(private = "file")
+_reset_style_scalars_to_imgui_default :: proc() {
+    s := im.GetStyle()
+    s.FrameRounding   = 0
+    s.FrameBorderSize = 0
+    s.WindowRounding  = 0
+    s.PopupRounding   = 0
+    s.GrabRounding    = 0
+    s.TabRounding     = 4 // imgui default is non-zero (4)
 }
 
 set_theme :: proc(theme: Theme) {
