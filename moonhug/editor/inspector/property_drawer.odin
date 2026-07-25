@@ -1,6 +1,5 @@
 package inspector
 
-import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 
@@ -8,7 +7,7 @@ import im "moonhug:external/odin-imgui"
 draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     int_ptr := cast(^int)(ptr)
     value := cast(i32)(int_ptr^)
-    if drag_int(label, &value) {
+    if drag_int(field_row(label), &value) {
         int_ptr^ = int(value)
         mark_inspector_changed()
     }
@@ -18,7 +17,7 @@ draw_int_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     i32_ptr := cast(^i32)(ptr)
     value := i32_ptr^
-    if drag_int(label, &value) {
+    if drag_int(field_row(label), &value) {
         i32_ptr^ = value
         mark_inspector_changed()
     }
@@ -28,7 +27,7 @@ draw_i32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_u32_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     u32_ptr := cast(^u32)(ptr)
     value := i32(min(u32_ptr^, u32(max(i32))))
-    if drag_int(label, &value, 1, 0, max(i32)) {
+    if drag_int(field_row(label), &value, 1, 0, max(i32)) {
         u32_ptr^ = u32(max(value, 0))
         mark_inspector_changed()
     }
@@ -40,7 +39,7 @@ draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     value := str_ptr^
     buf: [256]u8
     copy(buf[:], value)
-    if im.InputText(label, cstring(raw_data(buf[:])), len(buf), {}) {
+    if im.InputText(field_row(label), cstring(raw_data(buf[:])), len(buf), {}) {
         str_len := 0
         for str_len < len(buf) && buf[str_len] != 0 {
             str_len += 1
@@ -54,7 +53,7 @@ draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 draw_bool_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     bool_ptr := cast(^bool)(ptr)
     value := bool_ptr^
-    if im.Checkbox(label, &value) {
+    if im.Checkbox(field_row(label), &value) {
         bool_ptr^ = value
         mark_inspector_changed()
     }
@@ -65,14 +64,14 @@ draw_float_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     if tid == typeid_of(f32) {
         float_ptr := cast(^f32)(ptr)
         value := float_ptr^
-        if drag_float(label, &value, 0.01, format="%g") {
+        if drag_float(field_row(label), &value, 0.01, format="%g") {
             float_ptr^ = value
             mark_inspector_changed()
         }
     } else if tid == typeid_of(f64) {
         float_ptr := cast(^f64)(ptr)
         value := float_ptr^
-        if im.InputDouble(label, &value, 0.01, 0.1, "%g") {
+        if im.InputDouble(field_row(label), &value, 0.01, 0.1, "%g") {
             float_ptr^ = value
             mark_inspector_changed()
         }
@@ -92,16 +91,8 @@ draw_f64_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(private, property_drawer={type = ^[3]f32, priority = 0})
 draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[3]f32)(ptr)
-    im.AlignTextToFramePadding()
     im.BeginGroup()
-    im.Text(label)
-    avail := im.GetContentRegionAvail().x
-    label_w: f32 = 70
-    field_w := avail - label_w
-    im.SameLine(label_w)
-    im.SetNextItemWidth(field_w)
-    id := fmt.tprintf("##%s", label)
-    if drag_float3(strings.clone_to_cstring(id, context.temp_allocator), v, 0.1) {
+    if drag_float3(field_row(label), v, 0.1) {
         mark_inspector_changed()
     }
     im.EndGroup()
@@ -110,7 +101,7 @@ draw_vec3_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(property_drawer={type=[3]f32, priority = 0})
 draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[3]f32)(ptr)
-    if drag_float3(label, v, 0.1) {
+    if drag_float3(field_row(label), v, 0.1) {
         mark_inspector_changed()
     }
 }
@@ -118,7 +109,7 @@ draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 @(property_drawer={type=[4]f32, priority = 0})
 draw_vec4_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[4]f32)(ptr)
-    if drag_float4(label, v, 0.1) {
+    if drag_float4(field_row(label), v, 0.1) {
         mark_inspector_changed()
     }
 }

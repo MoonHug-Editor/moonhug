@@ -85,13 +85,13 @@ decorator_color :: proc(ctx: ^DrawContext) {
 	label := ctx.field_label
 	switch ctx.field_type {
 	case typeid_of([4]f32):
-		if im.ColorEdit4(label, cast(^[4]f32)ctx.field_ptr) {
+		if im.ColorEdit4(field_row(label), cast(^[4]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case typeid_of([3]f32):
-		if im.ColorEdit3(label, cast(^[3]f32)ctx.field_ptr) {
+		if im.ColorEdit3(field_row(label), cast(^[3]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
 		ctx.is_visible = false
@@ -108,15 +108,7 @@ decorator_euler :: proc(ctx: ^DrawContext) {
 	quat_ptr := cast(^[4]f32)ctx.field_ptr
 	euler := engine.quat_to_euler_xyz(quat_ptr^)
 	label := ctx.field_label
-	avail := im.GetContentRegionAvail().x
-	label_w: f32 = 70
-	field_w := avail - label_w
-	im.AlignTextToFramePadding()
-	im.Text(label)
-	im.SameLine(label_w)
-	im.SetNextItemWidth(field_w)
-	id := fmt.tprintf("##euler_%s", label)
-	if drag_float3(strings.clone_to_cstring(id, context.temp_allocator), &euler, 0.1) {
+	if drag_float3(field_row(label), &euler, 0.1) {
 		quat_ptr^ = engine.quat_from_euler_xyz(euler.x, euler.y, euler.z)
 		mark_inspector_changed()
 	}
@@ -131,13 +123,13 @@ decorator_color_picker :: proc(ctx: ^DrawContext) {
 	label := ctx.field_label
 	switch ctx.field_type {
 	case typeid_of([4]f32):
-		if im.ColorPicker4(label, cast(^[4]f32)ctx.field_ptr) {
+		if im.ColorPicker4(field_row(label), cast(^[4]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case typeid_of([3]f32):
-		if im.ColorPicker3(label, cast(^[3]f32)ctx.field_ptr) {
+		if im.ColorPicker3(field_row(label), cast(^[3]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
 		ctx.is_visible = false

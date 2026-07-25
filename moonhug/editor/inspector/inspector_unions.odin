@@ -52,8 +52,9 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 	}
 	draw_field_context_menu(ptr, field_tid)
 
-	im.SameLine(im.GetContentRegionAvail().x - 150)
-	im.SetNextItemWidth(150)
+	// The label is a foldout, so it is already drawn — this only claims the value
+	// column for the type dropdown.
+	type_id := field_row_value("type")
 
 	selected: c.int
 	if is_no_nil {
@@ -66,7 +67,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 	if readonly {
 		im.BeginDisabled(true)
 	}
-	if im.ComboChar("##type", &selected, ([^]cstring)(raw_data(variant_names[:])), c.int(len(variant_names))) && !readonly {
+	if im.ComboChar(type_id, &selected, ([^]cstring)(raw_data(variant_names[:])), c.int(len(variant_names))) && !readonly {
 		undo.comp_snapshot()
 		new_tag: i64
 		if is_no_nil {

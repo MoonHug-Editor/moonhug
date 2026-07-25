@@ -37,11 +37,12 @@ _picker_search_bar :: proc() -> string {
 // value button accepts ASSET_PATH drag-drops and writes the dropped path
 // (temp-allocated) there.
 _picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
-	im.AlignTextToFramePadding()
-	im.Text(label)
-	im.SameLine(0, 8)
+	field_row(label)
 
 	BTN_W :: f32(24)
+	// field_row left the cursor at the value column, so this is that column's
+	// width. The buttons size themselves, hence reading it rather than relying on
+	// the item width field_row also set.
 	avail := im.GetContentRegionAvail().x
 	value_w := avail - BTN_W
 	if has_value do value_w -= BTN_W

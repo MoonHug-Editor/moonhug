@@ -46,16 +46,16 @@ draw_material_properties :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		changed := false
 		switch sp.size {
 		case 4:
-			changed = drag_float(name_c, &prop.value.x, 0.01, format = "%g")
+			changed = drag_float(field_row(name_c), &prop.value.x, 0.01, format = "%g")
 		case 8:
-			changed = drag_float2(name_c, cast(^[2]f32)&prop.value, 0.01, format = "%g")
+			changed = drag_float2(field_row(name_c), cast(^[2]f32)&prop.value, 0.01, format = "%g")
 		case 12:
-			changed = drag_float3(name_c, cast(^[3]f32)&prop.value, 0.01, format = "%g")
+			changed = drag_float3(field_row(name_c), cast(^[3]f32)&prop.value, 0.01, format = "%g")
 		case:
 			if strings.contains(sp.name, "color") || strings.contains(sp.name, "colour") {
-				changed = im.ColorEdit4(name_c, &prop.value)
+				changed = im.ColorEdit4(field_row(name_c), &prop.value)
 			} else {
-				changed = drag_float4(name_c, &prop.value, 0.01, format = "%g")
+				changed = drag_float4(field_row(name_c), &prop.value, 0.01, format = "%g")
 			}
 		}
 		if changed do mark_inspector_changed()
