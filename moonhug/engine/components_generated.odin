@@ -43,6 +43,7 @@ register_engine_components :: proc() {
 				}
 			},
 			reset = proc(ptr: rawptr) { reset_Animation(cast(^Animation)ptr) },
+			on_destroy = proc(ptr: rawptr) { on_destroy_Animation(cast(^Animation)ptr) },
 		})
 		component_register(Component_Desc{
 			type_key  = .Camera,
