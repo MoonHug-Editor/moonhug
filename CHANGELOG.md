@@ -1,3 +1,9 @@
+## [0.54.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.53.0...v0.54.0) (2026-07-28)
+
+### Features
+
+* view_animation tracks and key frames ([b870b33](https://github.com/MoonHug-Editor/moonhug/commit/b870b33a95948ae5e1a55274717f8bf53c9bce0b))
+
 ## [0.53.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.52.0...v0.53.0) (2026-07-28)
 
 ### Features
