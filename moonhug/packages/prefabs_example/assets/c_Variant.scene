@@ -1,0 +1,25 @@
+{
+  "root": 15,
+  "transforms": [
+
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 1015,
+      "local_id_in_parent": 1015,
+      "source_prefab": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+
+  ]
+}

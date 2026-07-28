@@ -7,3 +7,4 @@ package tests
 import _ "moonhug:packages/app/tests"
 import _ "moonhug:packages/physics2d/tests"
 import _ "moonhug:packages/physics3d/tests"
+import _ "moonhug:packages/prefabs_example/tests"

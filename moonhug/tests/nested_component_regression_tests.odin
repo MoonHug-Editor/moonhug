@@ -8,53 +8,6 @@ import "core:testing"
 import "../engine"
 import common "common"
 
-// Saving an UNCHANGED nested scene must not invent overrides. A prefab authored
-// before a component gained a field omits that key on disk, but the live struct
-// always serializes it — the capture diff must normalize the prefab base to the
-// live struct's field set, or every such field is captured as a false override.
-// (tank_demo nests tank; tank's SpriteRenderers predate material/sort keys.)
-@(test)
-test_nested_save_no_spurious_overrides :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	src := "moonhug/assets/demo_tank/tank_demo.scene"
-	tmp := "moonhug/assets/_test_tank_demo_rt.scene"
-	defer os.remove(tmp)
-	{
-		data, rerr := os.read_entire_file(src, context.temp_allocator)
-		testing.expect(t, rerr == nil, "read source")
-		if rerr == nil do _ = os.write_entire_file(tmp, data)
-	}
-
-	tc := new(common.TestCtx)
-	defer free(tc)
-	common.setup(tc)
-	context.user_ptr = &tc.uc
-	defer common.teardown(tc)
-
-	s := engine.scene_load_single_path(tmp)
-	testing.expect(t, s != nil, "load")
-	if s == nil do return
-	tc.scene = s
-	engine.sm_scene_set_active(s)
-
-	before := 0
-	for &ns in s.nested_scenes do before += len(ns.overrides)
-
-	testing.expect(t, engine.scene_save(s, tmp), "save")
-
-	after := 0
-	for &ns in s.nested_scenes {
-		for ov in ns.overrides {
-			fmt.printf("[overrides]   target.lid=%d path=%s\n", ov.target.local_id, ov.property_path)
-			after += 1
-		}
-	}
-	testing.expect(t, after == before,
-		fmt.tprintf("spurious overrides captured on unchanged save: %d -> %d", before, after))
-}
 
 // A component whose registered type can't parse the record (corrupt/incompatible
 // field) must be PRESERVED verbatim, never silently dropped. Also covers the
@@ -115,18 +68,79 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 		"unknown-type component must survive verbatim")
 }
 
-// EXACT editor repro: tank_demo (which NESTS tank) is open first — the editor
-// auto-loads it from settings. The user then opens tank.scene directly
-// (single load unloads tank_demo) and saves. Components must survive.
+// EXACT editor repro: a host that NESTS a prefab is open first — the editor
+// auto-loads it from settings. The user then opens the prefab directly
+// (single load unloads the host, recycling its pool slots into the prefab's)
+// and saves. Every component must survive. The prefab carries THREE sprites
+// so a partial drop is distinguishable from a total one.
 @(test)
 test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
+	dir := "moonhug/tests/_fx_host_prefab_save"
+	os.make_directory(dir)
+	p_path := strings.concatenate({dir, "/p.scene"}, context.temp_allocator)
+	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	tmp := strings.concatenate({dir, "/_p_copy.scene"}, context.temp_allocator)
+	defer {
+		for f in ([]string{p_path, host_path, tmp}) {
+			os.remove(f)
+			os.remove(strings.concatenate({f, ".meta"}, context.temp_allocator))
+		}
+		os.remove(dir)
+	}
+
+	// Prefab: root + three sprite children.
+	p_json := `{
+  "root": 1,
+  "next_local_id": 20,
+  "transforms": [
+    {
+      "local_id": 1, "name": "PRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+        {"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 3, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 4, "guid": "00000000-0000-0000-0000-000000000000"}}
+      ],
+      "components": []
+    },
+    {
+      "local_id": 2, "name": "S1", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 12}]
+    },
+    {
+      "local_id": 3, "name": "S2", "is_active": true,
+      "position": [1,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 13}]
+    },
+    {
+      "local_id": 4, "name": "S3", "is_active": true,
+      "position": [2,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 14}]
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 12, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [1, 0, 0, 1]},
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 13, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 1, 0, 1]},
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 14, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 0, 1, 1]}
+  ]
+}`
+	testing.expect(t, os.write_entire_file(p_path, transmute([]byte)p_json) == nil, "write prefab")
+
+	engine.asset_db_init(dir)
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
-
-	tank_src := "moonhug/assets/demo_tank/tank.scene"
-	tmp := "moonhug/assets/demo_tank/_test_tank_copy.scene"
-	defer os.remove(tmp)
 
 	tc := new(common.TestCtx)
 	defer free(tc)
@@ -134,27 +148,34 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	// Step 1: open tank_demo (host that nests tank + tank_projectile).
-	host := engine.scene_load_single_path("moonhug/assets/demo_tank/tank_demo.scene")
-	testing.expect(t, host != nil, "tank_demo should load")
+	// Author the host: nests the prefab.
+	p_guid, gok := engine.asset_db_get_guid(p_path)
+	testing.expect(t, gok, "prefab registered")
+	if !gok do return
+	nested := engine.scene_instantiate_guid_nested(engine.Asset_GUID(p_guid), engine.Transform_Handle(tc.scene.root.handle))
+	testing.expect(t, nested != {}, "prefab nests into host")
+	testing.expect(t, engine.scene_save(tc.scene, host_path), "save host")
+	engine.asset_db_refresh()
+
+	// Step 1: open the host (as the editor auto-loads it from settings).
+	host := engine.scene_load_single_path(host_path)
+	testing.expect(t, host != nil, "host should load")
 	if host == nil do return
 	tc.scene = host
 	engine.sm_scene_set_active(host)
 
-	// Step 2: open tank.scene directly (unloads tank_demo), save to tmp.
-	s := engine.scene_load_single_path(tank_src)
-	testing.expect(t, s != nil, "tank should load")
+	// Step 2: open the prefab directly (unloads the host), save a copy.
+	s := engine.scene_load_single_path(p_path)
+	testing.expect(t, s != nil, "prefab should load")
 	if s == nil do return
 	tc.scene = s
 	engine.sm_scene_set_active(s)
 
 	testing.expect(t, engine.scene_save(s, tmp), "save")
 	saved, _ := os.read_entire_file(tmp, context.temp_allocator)
-	n_sprites := strings.count(string(saved), "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f")
-	n_tank := strings.count(string(saved), "f15b003c-a491-4aec-b838-49e641a25346")
-	fmt.printf("[REPRO] saved sprites=%d tank=%d\n", n_sprites, n_tank)
+	n_sprites := strings.count(string(saved), FIXTURE_SPRITE_GUID)
+	fmt.printf("[REPRO] saved sprites=%d\n", n_sprites)
 	testing.expect_value(t, n_sprites, 3)
-	testing.expect_value(t, n_tank, 1)
 }
 
 // Resaving a scene with preserved unknown records must not GROW the owning

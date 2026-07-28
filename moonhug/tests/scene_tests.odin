@@ -2789,114 +2789,57 @@ test_variant_nested_in_variant_edit_round_trip :: proc(t: ^testing.T) {
 	}
 }
 
-// s.scene nests bullet_Variant. Editing+saving bullet_Variant must propagate
-// into the already-loaded s.scene's nested copy. Reproduces "s.scene has
-// bullet_variant and changes are not propagated there".
+// Variant-edit propagation into a nesting host is covered in
+// packages/prefabs_example/tests against that package's committed scenes.
+
+// THE central prefab-chain test — the hermetic counterpart to the scenario
+// tests in packages/prefabs_example/tests, which run on committed editable
+// files and so can never pin authored values. This one builds the chain from
+// scratch through the AUTHORING APIs (variant file creation, nesting,
+// override capture on save) and asserts EXACT values end to end:
+//   (1) authoring captured the deep override on the root variant NS with the
+//       exact edited value,
+//   (2) editing inherited content and saving to the SAME path (the way the
+//       editor overwrites the open file) persists across reload, without the
+//       root child order drifting,
+//   (3) the override applies when the variant is NESTED, not only top-level,
+//   (4) reverting the override restores the exact inherited base value.
 @(test)
-test_variant_save_propagates_to_host_scene :: proc(t: ^testing.T) {
-	// Hermetic: copy the asset chain into a temp dir so the save below can't
-	// mutate the real assets or leak edited bytes into another test's scene_lib.
-	dir := "moonhug/tests/_tmp_propagate"
-	mkerr := os.make_directory(dir)
-	testing.expect(t, mkerr == nil || os.exists(dir), fmt.tprintf("temp dir: %v", mkerr))
-	copied: [dynamic]string
-	defer { for f in copied { os.remove(f); delete(f) }; delete(copied); os.remove(dir) }
-	for name in ([]string{"demo_prefabs.scene", "bullet_Variant.scene", "bullet.scene", "c.scene", "c_Variant.scene"}) {
-		for suffix in ([]string{"", ".meta"}) {
-			fn := strings.concatenate({name, suffix}, context.temp_allocator)
-			src := strings.concatenate({"moonhug/assets/demo_prefabs/", fn}, context.temp_allocator)
-			dst := strings.concatenate({dir, "/", fn}, context.allocator)
-			data, e := os.read_entire_file(src, context.temp_allocator)
-			if e != nil { delete(dst); continue }
-			werr := os.write_entire_file(dst, data)
-			testing.expect(t, werr == nil, fmt.tprintf("copy %s: %v", fn, werr))
-			append(&copied, dst)
-		}
-	}
-
-	engine.asset_db_init(dir)
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
+test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
+	fx: Fixture_Chain
+	defer fixture_chain_destroy(&fx)
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
 	setup(tc_mem, "")
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
-	bv_path := strings.concatenate({dir, "/bullet_Variant.scene"}, context.temp_allocator)
-	s_path := strings.concatenate({dir, "/demo_prefabs.scene"}, context.temp_allocator)
+	fx_ok: bool
+	fx, fx_ok = fixture_chain_author(t, tc_mem, "moonhug/tests/_fx_chain_semantics")
+	if !fx_ok do return
+	tmp := fx.bv_path
 
-	new_color := [4]f32{0.111, 0.222, 0.333, 1}
-
-	// EDITOR FLOW: open the variant SINGLE (unloads everything else), edit an
-	// inherited-content sprite, save. s.scene is NOT loaded during this.
-	variant := engine.scene_load_single_path(bv_path)
-	testing.expect(t, variant != nil, "bullet_Variant should load")
-	if variant == nil do return
-	tc_mem.scene = variant
-
-	edited := false
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != variant || !slot.data.nested_owned do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
-		if sr != nil {
-			sr.color = new_color
-			edited = true
-			break
-		}
-	}
-	testing.expect(t, edited, "should edit a sprite on the variant")
-	if !edited do return
-	testing.expect(t, engine.scene_save(variant, bv_path), "variant save should succeed")
-
-	// Now open s.scene FRESH (as the editor does when you switch to it). Its
-	// nested copy of bullet_Variant must reflect the saved edit.
-	host := engine.scene_load_single_path(s_path)
-	testing.expect(t, host != nil, "s.scene should load")
-	if host == nil do return
-	tc_mem.scene = host
-
-	propagated := false
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != host do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
-		if sr != nil && sr.color == new_color do propagated = true
-	}
-	testing.expect(t, propagated, "edited variant color must appear in s.scene's nested copy after fresh load")
-}
-
-// Reproduces the editor bug against the REAL asset files: bullet_Variant is a
-// variant of bullet, and bullet itself contains a nested c_Variant. Editing the
-// inherited c_Variant's content (a SpriteRenderer color) while bullet_Variant is
-// open must capture as an override on bullet_Variant's root NS and survive
-// save+reload, AND the root child order must not drift.
-@(test)
-test_bullet_variant_inherited_c_variant_edit :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	// Save+reload to the SAME path the editor uses (overwrite the open file),
-	// so the chain bake reads the just-written bytes — matching the editor.
-	src := "moonhug/assets/demo_prefabs/bullet_Variant.scene"
-	tmp := "moonhug/assets/_test_bullet_variant_rt.scene"
-	defer os.remove(tmp)
+	// (1) Authoring capture is exact: the file's root variant NS carries the
+	// color override with the value the edit wrote.
 	{
-		data, rerr := os.read_entire_file(src, context.temp_allocator)
-		testing.expect(t, rerr == nil, "read source variant")
-		if rerr == nil do _ = os.write_entire_file(tmp, data)
+		sf, ok := engine.scene_file_load(tmp)
+		testing.expect(t, ok, "authored bullet_Variant file loads")
+		if !ok do return
+		defer engine.scene_file_destroy(&sf)
+		captured := false
+		for &ns in sf.nested_scenes {
+			if ns.transform_parent != 0 do continue
+			for ov in ns.overrides {
+				if ov.property_path != "color" do continue
+				arr, is_arr := ov.value.(json.Array)
+				if !is_arr || len(arr) < 4 do continue
+				got: [4]f32
+				for k in 0 ..< 4 do got[k] = f32(arr[k].(json.Float))
+				if fixture_color_close(got, FIXTURE_COLOR_DEEP) do captured = true
+			}
+		}
+		testing.expect(t, captured, "authoring must capture the deep override on the root NS with the exact value")
 	}
-
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	setup(tc_mem, tmp)
-	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
 
 	loaded := engine.scene_load_single_path(tmp)
 	testing.expect(t, loaded != nil, "bullet_Variant.scene should load")
@@ -2955,7 +2898,7 @@ test_bullet_variant_inherited_c_variant_edit :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, found, "edited inherited-c_Variant color must persist across save+reload")
 
-	// (2) root child order stable.
+	// (2b) root child order stable.
 	rroot_tH := engine.Transform_Handle(reloaded.root.handle)
 	rroot_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(rroot_tH))
 	if rroot_t != nil {
@@ -2974,133 +2917,61 @@ test_bullet_variant_inherited_c_variant_edit :: proc(t: ^testing.T) {
 			}
 		}
 	}
-}
 
-// A variant's DEEP override (on content inside the base's own nested prefab)
-// must render when the variant is NESTED as a child, not only when opened
-// top-level. bullet_Variant's root NS overrides a c_Variant sprite color to
-// [0,1,1,.686]; nesting bullet_Variant must show that, not the base color.
-@(test)
-test_variant_deep_override_applies_when_nested :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	setup(tc_mem, "")
-	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
-
-	// Read the variant's deep color override value from its file (don't hardcode
-	// — the live asset's value changes as it is edited).
-	want: [4]f32
+	// (4) Revert restores the EXACT inherited base value. The live world only
+	// — nothing is saved, so the file keeps new_color for step (3).
 	{
-		sf, ok := engine.scene_file_load("moonhug/assets/demo_prefabs/bullet_Variant.scene")
-		testing.expect(t, ok, "load bullet_Variant file")
-		if !ok do return
-		defer engine.scene_file_destroy(&sf)
-		got := false
-		for &ns in sf.nested_scenes {
-			if ns.transform_parent != 0 do continue
-			for ov in ns.overrides {
-				if ov.property_path != "color" do continue
-				arr, is_arr := ov.value.(json.Array)
-				if !is_arr || len(arr) < 4 do continue
-				for k in 0..<4 do want[k] = f32(arr[k].(json.Float))
-				got = true
+		root_ns: ^engine.NestedScene = nil
+		for &ns in reloaded.nested_scenes {
+			if engine.nested_scene_is_root_variant(reloaded, &ns) {
+				root_ns = &ns
+				break
 			}
 		}
-		testing.expect(t, got, "bullet_Variant should have a root-NS color override")
-		if !got do return
-	}
-
-	bv, _ := uuid.read("d8bed4cc-521b-46b6-ac28-9353735d6bff")
-	root := engine.Transform_Handle(tc_mem.scene.root.handle)
-	host := engine.scene_instantiate_guid_nested(engine.Asset_GUID(bv), root)
-	testing.expect(t, host != {}, "nesting bullet_Variant should succeed")
-	if host == {} do return
-
-	found := false
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != tc_mem.scene do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
-		if sr == nil do continue
-		d := sr.color - want
-		if d.x*d.x + d.y*d.y + d.z*d.z + d.w*d.w < 0.0001 do found = true
-	}
-	testing.expect(t, found, "bullet_Variant's deep color override must apply to nested c_Variant content")
-}
-
-// Reverting a variant's DEEP override must restore the inherited base value.
-// bullet_Variant's root NS overrides a c_Variant sprite color to [0,1,1,.686];
-// the base c_Variant color is [.5,0,0,.686]. After revert the live sprite must
-// show the base color, not the override.
-@(test)
-test_variant_deep_override_revert :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	setup(tc_mem, "")
-	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
-
-	loaded := engine.scene_load_single_path("moonhug/assets/demo_prefabs/bullet_Variant.scene")
-	testing.expect(t, loaded != nil)
-	if loaded == nil do return
-	tc_mem.scene = loaded
-
-	// Locate the root variant NS and its deep override (c_Variant guid, lid 14).
-	root_ns: ^engine.NestedScene = nil
-	for &ns in loaded.nested_scenes {
-		if engine.nested_scene_is_root_variant(loaded, &ns) { root_ns = &ns; break }
-	}
-	testing.expect(t, root_ns != nil, "root variant NS")
-	if root_ns == nil do return
-	cv, _ := uuid.read("3062313e-26b3-4cfb-a408-cdea7fc0b27f")
-	target := engine.PPtr{ guid = engine.Asset_GUID(cv), local_id = 14 }
-
-	override_color: [4]f32
-	has := false
-	for ov in root_ns.overrides {
-		if ov.target.guid == engine.Asset_GUID(cv) && ov.target.local_id == 14 && ov.property_path == "color" {
-			arr := ov.value.(json.Array)
-			for k in 0..<4 do override_color[k] = f32(arr[k].(json.Float))
+		testing.expect(t, root_ns != nil, "root variant NS")
+		if root_ns == nil do return
+		target: engine.PPtr
+		has := false
+		for ov in root_ns.overrides {
+			if ov.property_path != "color" do continue
+			target = ov.target
 			has = true
 		}
+		testing.expect(t, has, "the deep color override survives on the root NS")
+		if !has do return
+		sr, sr_h := fixture_find_sprite(&tc_mem.world, reloaded, nested_only = true)
+		testing.expect(t, sr != nil, "live inherited sprite")
+		if sr == nil do return
+		engine.nested_scene_revert_override(reloaded, root_ns, target, "color")
+		_, sr2 := engine.transform_get_comp(sr_h, engine.SpriteRenderer)
+		testing.expect(t, sr2 != nil)
+		if sr2 != nil {
+			testing.expect(t, fixture_color_close(sr2.color, FIXTURE_COLOR_BASE),
+				fmt.tprintf("revert must restore the exact base %v, got %v", FIXTURE_COLOR_BASE, sr2.color))
+		}
 	}
-	testing.expect(t, has, "bullet_Variant carries the deep c_Variant color override")
-	if !has do return
 
-	// Find the live sprite the override is applied to (color == override value).
-	target_h: engine.Transform_Handle = {}
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != loaded do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
-		if sr == nil do continue
-		d := sr.color - override_color
-		if d.x*d.x+d.y*d.y+d.z*d.z+d.w*d.w < 0.0001 { target_h = h; break }
+	// (3) The override applies when the variant is NESTED: a fresh scene
+	// instantiating bullet_Variant shows the file's current override value
+	// (new_color — the revert above never saved).
+	fresh_path := strings.concatenate({fx.dir, "/fresh.scene"}, context.temp_allocator)
+	testing.expect(t, fixture_write_empty_scene(fresh_path, "Fresh"), "write fresh host")
+	defer {
+		os.remove(fresh_path)
+		os.remove(strings.concatenate({fresh_path, ".meta"}, context.temp_allocator))
 	}
-	testing.expect(t, target_h != {}, "override should be applied to a live sprite before revert")
-	if target_h == {} do return
-
-	// Revert must move the sprite OFF the override value (back to the inherited
-	// c_Variant baseline). We don't hardcode the baseline (it depends on the live
-	// file); the contract is: after revert the value differs from the override.
-	engine.nested_scene_revert_override(loaded, root_ns, target, "color")
-
-	_, sr := engine.transform_get_comp(target_h, engine.SpriteRenderer)
-	testing.expect(t, sr != nil)
-	if sr != nil {
-		d := sr.color - override_color
-		testing.expect(t, d.x*d.x+d.y*d.y+d.z*d.z+d.w*d.w > 0.0001,
-			fmt.tprintf("after revert color must leave the override %v, got %v", override_color, sr.color))
-	}
+	engine.asset_db_refresh()
+	fresh := engine.scene_load_single_path(fresh_path)
+	testing.expect(t, fresh != nil, "fresh host loads")
+	if fresh == nil do return
+	tc_mem.scene = fresh
+	engine.sm_scene_set_active(fresh)
+	nested := engine.scene_instantiate_guid_nested(fx.bv_guid, engine.Transform_Handle(fresh.root.handle))
+	testing.expect(t, nested != {}, "nesting bullet_Variant should succeed")
+	if nested == {} do return
+	fsr, _ := fixture_find_sprite(&tc_mem.world, fresh)
+	testing.expect(t, fsr != nil && fixture_color_close(fsr.color, new_color),
+		"the deep override must apply to nested content with the exact file value")
 }
 
 // USER-REPORTED REGRESSION: host scene overrides a color DEEP inside a nested

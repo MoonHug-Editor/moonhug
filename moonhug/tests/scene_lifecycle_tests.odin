@@ -11,61 +11,6 @@ import "core:strings"
 import "core:testing"
 import "../engine"
 
-// Every committed asset scene must re-serialize byte-identical to its disk
-// bytes — loads happen SEQUENTIALLY in one world, so each scene deserializes
-// into slots recycled from the previous one. Catches silent component drops,
-// duplicate entry growth, spurious override capture and float-format drift in
-// one assertion. Two passes double the recycling pressure.
-@(test)
-test_asset_scenes_roundtrip_byte_stable :: proc(t: ^testing.T) {
-	engine.asset_db_init("moonhug/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	tc := new(TestCtx)
-	defer free(tc)
-	setup(tc, "")
-	context.user_ptr = &tc.uc
-	defer teardown(tc)
-
-	paths := []string{
-		"moonhug/assets/demo_prefabs/c.scene",
-		"moonhug/assets/demo_prefabs/c_Variant.scene",
-		"moonhug/assets/demo_prefabs/bullet.scene",
-		"moonhug/assets/demo_prefabs/bullet_Variant.scene",
-		"moonhug/assets/demo_prefabs/demo_prefabs.scene",
-		"moonhug/assets/demo_tank/tank.scene",
-		"moonhug/assets/demo_tank/tank_projectile.scene",
-		"moonhug/assets/demo_tank/tank_demo.scene",
-		"moonhug/assets/demo_menu/menu.scene",
-		"moonhug/assets/meshes/BoxAnimated/BoxAnimated.scene",
-	}
-	for pass in 0 ..< 2 {
-		for path in paths {
-			disk, rerr := os.read_entire_file(path, context.temp_allocator)
-			testing.expectf(t, rerr == nil, "read %s", path)
-
-			s := engine.scene_load_single_path(path)
-			testing.expectf(t, s != nil, "pass %d: load %s", pass, path)
-			if s == nil do continue
-			tc.scene = s
-			engine.sm_scene_set_active(s)
-
-			data, ok := engine.scene_serialize(s)
-			testing.expectf(t, ok, "pass %d: serialize %s", pass, path)
-			if !ok do continue
-			defer delete(data)
-			if string(data) != string(disk) {
-				di := 0
-				for di < min(len(data), len(disk)) && data[di] == disk[di] do di += 1
-				testing.expectf(t, false,
-					"pass %d: %s not byte-stable (disk %d bytes, serialized %d, first diff at %d: %q)",
-					pass, path, len(disk), len(data), di,
-					string(data[di:min(di + 40, len(data))]))
-			}
-		}
-	}
-}
 
 @(private = "file")
 _find_sprite_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
