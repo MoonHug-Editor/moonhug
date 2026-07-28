@@ -1,3 +1,10 @@
+## [0.53.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.52.0...v0.53.0) (2026-07-28)
+
+### Features
+
+* playable graph ([81095d1](https://github.com/MoonHug-Editor/moonhug/commit/81095d181d35c09c479b173a9b6ac479a3219aab))
+* view_animation, scrub preview ([a8cd619](https://github.com/MoonHug-Editor/moonhug/commit/a8cd619c0eab1cf49688c08fd0731a7f2e86c1fd))
+
 ## [0.52.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.51.0...v0.52.0) (2026-07-25)
 
 ### Features
