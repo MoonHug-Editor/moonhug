@@ -458,3 +458,34 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, ot.position == [3]f32{5, 2, 3}, "restore should return the EDITED authored pose")
 }
+
+// animation_clip_preview replaces the cached clip with a deep copy — the
+// editor's live preview of unsaved keyframe edits. The cache copy must be
+// independent of the source (the document keeps mutating after the sync).
+@(test)
+test_animation_clip_preview_replaces_cache :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	engine.animation_clip_cache_init()
+	defer engine.animation_clip_cache_shutdown()
+
+	guid := _clip_guid(41)
+	engine.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+
+	doc := _const_clip(.Position, {7, 0, 0, 0}, length = 2)
+	defer engine._animation_clip_destroy(&doc)
+	engine.animation_clip_preview(guid, doc)
+
+	cached, ok := engine.animation_clip_load(guid)
+	testing.expect(t, ok, "cache entry survives the preview swap")
+	testing.expect(t, abs(cached.length - 2) < 0.001, "preview replaced the cached length")
+	testing.expect(t, abs(cached.channels[0].values[0].x - 7) < 0.001, "preview replaced the cached values")
+
+	// Independence: mutating the source must not reach the cache.
+	doc.channels[0].values[0].x = 9
+	cached2, _ := engine.animation_clip_load(guid)
+	testing.expect(t, abs(cached2.channels[0].values[0].x - 7) < 0.001, "cache copy is deep")
+}

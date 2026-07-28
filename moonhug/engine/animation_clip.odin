@@ -103,6 +103,28 @@ animation_clip_unload :: proc(guid: Asset_GUID) {
 	}
 }
 
+// Replace the cached clip with a deep copy of `clip` — the editor's live
+// preview of unsaved asset-document edits (mirrors material_preview): the
+// scrub preview and any playing Animation component sample the edited values
+// immediately, while the file keeps the last saved state.
+animation_clip_preview :: proc(guid: Asset_GUID, clip: AnimationClip) {
+	if !_animation_clip_cache_ready do return
+	if old, ok := &animation_clip_cache[guid]; ok {
+		_animation_clip_destroy(old)
+	}
+	cp := AnimationClip{length = clip.length, wrap = clip.wrap}
+	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
+	for &ch in clip.channels {
+		c := Animation_Channel{target = strings.clone(ch.target), path = ch.path, step = ch.step}
+		c.times = make([dynamic]f32, len(ch.times))
+		copy(c.times[:], ch.times[:])
+		c.values = make([dynamic][4]f32, len(ch.values))
+		copy(c.values[:], ch.values[:])
+		append(&cp.channels, c)
+	}
+	animation_clip_cache[guid] = cp
+}
+
 // Cache invalidation for external file changes, called from asset_db_refresh.
 animation_clip_path_changed :: proc(path: string) {
 	if !strings.has_suffix(path, ".anim") do return

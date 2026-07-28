@@ -99,6 +99,12 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> boo
         _ = engine.material_sync_properties(mat)
         engine.material_preview(doc.guid, mat^)
     }
+    // Same live-preview contract for clips: an undone/redone clip document
+    // must reach the engine cache the scrub preview and runtime sample from.
+    if tid == typeid_of(engine.AnimationClip) {
+        anim := cast(^engine.AnimationClip)doc.data.data
+        engine.animation_clip_preview(doc.guid, anim^)
+    }
     return true
 }
 

@@ -369,11 +369,19 @@ Done:
    the world holds authored values whenever saves, undo or the inspector
    run. Preview cannot leak into files by construction, and there is no
    preview state to revert when it ends.
+6. Animation window UI: dopesheet (rows per channel, diamond keys, drag to
+   retime, double-click to add a shape-preserving sampled key, right-click
+   to delete) and curves (per-component polylines, drag keys in time and
+   value, rotation keys renormalize on release), with a selected-key field
+   row for exact values. Keyframes edit the clip's ASSET DOCUMENT — the
+   session registry the project inspector uses — so every operation is a
+   whole-document undo step found by guid, and edits live-preview through
+   the engine clip cache (animation_clip_preview, the material_preview
+   pattern) that the scrub preview and runtime sample. Save writes the
+   document to the .anim file.
 
 Next:
 
-6. Animation window UI (dopesheet, curves, keyframe editing) on top of the
-   scrub path.
 7. Node canvas seeded by the read-only graph visualizer (see Graph UI above)
    — independent of 5-6.
 8. Later, in whatever order need dictates: audio playback runtime + audio
