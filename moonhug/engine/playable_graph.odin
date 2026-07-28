@@ -228,6 +228,40 @@ _binding_resolve :: proc(b: ^Animation_Binding, s: ^Binding_Slot) {
 	s.default_scl = t.scale
 }
 
+// Re-capture the defaults from the live transforms (dead slots re-resolve).
+// The editor's scrub preview calls this right before evaluating: at that point
+// the transforms hold their authored values (the preview restores them after
+// rendering), so partial-weight blends resolve against the CURRENT authored
+// pose and edits made between scrubs are picked up.
+animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
+	w := ctx_world()
+	for &s in b.slots {
+		if !s.resolved || !pool_valid(&w.transforms, Handle(s.target)) {
+			_binding_resolve(b, &s)
+			continue
+		}
+		t := pool_get(&w.transforms, Handle(s.target))
+		if t == nil do continue
+		s.default_pos = t.position
+		s.default_rot = t.rotation
+		s.default_scl = t.scale
+	}
+}
+
+// Write the defaults back to the bound transforms, animated properties only —
+// the scrub preview's restore: the world returns to its authored pose.
+animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
+	w := ctx_world()
+	for &s in b.slots {
+		if !s.resolved || !pool_valid(&w.transforms, Handle(s.target)) do continue
+		t := pool_get(&w.transforms, Handle(s.target))
+		if t == nil do continue
+		if .Position in s.animated do t.position = s.default_pos
+		if .Rotation in s.animated do t.rotation = s.default_rot
+		if .Scale in s.animated do t.scale = s.default_scl
+	}
+}
+
 // --- Evaluation ---------------------------------------------------------------------
 
 Script_Invocation :: struct {

@@ -361,10 +361,17 @@ Done:
    (the pre-graph component test passes unchanged).
 4. **MILESTONE** — `Animation` has layers, cross-fade, interruption, queue
    (see What Animation becomes): N layers x M clips on a live graph.
+5. Editor scrub preview (editor/view_animation.odin): the Animation window
+   picks a clip on the selected object's Animation component and scrubs it
+   while stopped. Preview is a per-frame apply/restore cycle — refresh the
+   binding defaults from the live transforms, evaluate at the scrub time,
+   apply the pose for the scene/game render, write the defaults back — so
+   the world holds authored values whenever saves, undo or the inspector
+   run. Preview cannot leak into files by construction, and there is no
+   preview state to revert when it ends.
 
 Next:
 
-5. Editor scrub preview: evaluate at a UI-driven time while stopped.
 6. Animation window UI (dopesheet, curves, keyframe editing) on top of the
    scrub path.
 7. Node canvas seeded by the read-only graph visualizer (see Graph UI above)

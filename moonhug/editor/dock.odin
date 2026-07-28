@@ -64,6 +64,7 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 	im.DockBuilderDockWindow("Console", bottom)
 	im.DockBuilderDockWindow("Output", bottom)
 	im.DockBuilderDockWindow("History", bottom)
+	im.DockBuilderDockWindow("Animation", bottom)
 	im.DockBuilderFinish(dockspace_id)
 }
 
@@ -81,6 +82,7 @@ view_reset_layout_menu :: proc() {
 	menu.show_console = true
 	menu.show_output = true
 	menu.show_history = true
+	menu.show_animation = true
 }
 
 // ---------------------------------------------------------------------------

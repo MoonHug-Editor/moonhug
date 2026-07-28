@@ -391,3 +391,70 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	testing.expect(t, abs(ot.position.x - 15) < 0.01, "layer 1 mid-fade should blend 10 -> 20")
 	testing.expect(t, len(a.rt_layers) == 2, "two layers exist")
 }
+
+// The editor scrub preview's per-frame cycle (view_animation.odin): refresh
+// defaults from the live transforms, evaluate at the scrub time, apply, then
+// write the defaults back. The world returns to authored values every frame,
+// and an authored edit made between scrubs becomes the new restore target.
+@(test)
+test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	engine.animation_clip_cache_init()
+	defer engine.animation_clip_cache_shutdown()
+
+	// Two-key clip: x moves 0 -> 8 over 1s, so the scrub time is observable.
+	guid := _clip_guid(40)
+	clip := engine.AnimationClip{length = 1, wrap = .Once}
+	clip.channels = make([dynamic]engine.Animation_Channel)
+	ch := engine.Animation_Channel{path = .Position}
+	ch.times = make([dynamic]f32)
+	ch.values = make([dynamic][4]f32)
+	append(&ch.times, 0)
+	append(&ch.values, [4]f32{0, 0, 0, 0})
+	append(&ch.times, 1)
+	append(&ch.values, [4]f32{8, 0, 0, 0})
+	append(&clip.channels, ch)
+	engine.animation_clip_cache[guid] = clip
+
+	owner := engine.transform_new("Rig")
+	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	ot.position = {1, 2, 3} // authored pose
+
+	g: engine.Playable_Graph
+	engine.playable_graph_init(&g)
+	defer engine.playable_graph_destroy(&g)
+	b: engine.Animation_Binding
+	engine.animation_binding_init(&b, owner)
+	defer engine.animation_binding_destroy(&b)
+	g.root = engine.playable_add(&g, engine.Clip_Playable{clip = guid})
+
+	// Frame 1: scrub to t=0.5 — the pose renders, the restore puts the
+	// authored values back.
+	engine.animation_binding_refresh_defaults(&b)
+	if n := engine.playable_node(&g, g.root); n != nil do n.time = 0.5
+	pose := engine.playable_graph_evaluate(&g, &b)
+	engine.animation_pose_apply(&b, pose)
+	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expect(t, abs(ot.position.x - 4) < 0.001, "scrub at t=0.5 should pose x at 4")
+	engine.animation_binding_write_defaults(&b)
+	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expect(t, ot.position == [3]f32{1, 2, 3}, "restore should return the authored pose")
+
+	// Frame 2: the user edits the authored value between scrubs — refresh
+	// captures it, so the next restore lands on the EDITED value, not the
+	// value captured when the preview started.
+	ot.position = {5, 2, 3}
+	engine.animation_binding_refresh_defaults(&b)
+	if n := engine.playable_node(&g, g.root); n != nil do n.time = 0.25
+	pose2 := engine.playable_graph_evaluate(&g, &b)
+	engine.animation_pose_apply(&b, pose2)
+	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expect(t, abs(ot.position.x - 2) < 0.001, "scrub at t=0.25 should pose x at 2")
+	engine.animation_binding_write_defaults(&b)
+	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expect(t, ot.position == [3]f32{5, 2, 3}, "restore should return the EDITED authored pose")
+}

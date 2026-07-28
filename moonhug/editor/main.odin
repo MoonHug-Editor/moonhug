@@ -172,6 +172,16 @@ main :: proc() {
             draw_hierarchy_view()
         }
 
+        if menu.show_animation {
+            draw_animation_view()
+        } else {
+            animation_preview_stop()
+        }
+
+        // The scrub preview poses the world ONLY for the scene/game render:
+        // apply here, restore right after, so every other consumer of the
+        // world this frame (saves, undo, inspector) sees authored values.
+        animation_preview_apply()
         if menu.show_scene {
             draw_scene_view()
         }
@@ -179,6 +189,7 @@ main :: proc() {
         if menu.show_game {
             draw_game_view()
         }
+        animation_preview_restore()
 
         if menu.show_input_debug {
             draw_input_debug()
@@ -280,6 +291,7 @@ open_scenes_from_settings :: proc() {
 @(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
+    shutdown_animation_view()
     shutdown_game_view()
     shutdown_scene_view()
     engine.texture_cache_shutdown()
