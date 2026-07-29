@@ -83,6 +83,9 @@ show_history := false
 @(menu_toggle={path="View/Animation", order=7})
 show_animation := false
 
+@(menu_toggle={path="View/Playable Graph", order=8})
+show_playable_graph := false
+
 @(menu_item={path="File/Save", order=0, shortcut="Ctrl+S"})
 file_save_menu :: proc()
 {

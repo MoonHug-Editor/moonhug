@@ -62,10 +62,11 @@ _pv: struct {
 	owner:   engine.Transform_Handle, // the Animation component's transform
 	clip:    engine.Asset_GUID,
 	time:    f32,
-	graph:   engine.Playable_Graph, // single clip node, root
-	binding: engine.Animation_Binding,
-	node:    engine.Playable_Handle,
-	ready:   bool,
+	graph:     engine.Playable_Graph, // the component's FULL authored graph
+	binding:   engine.Animation_Binding,
+	node:      engine.Playable_Handle, // the scrubbed clip's node (weight 1)
+	graph_sig: u64, // authored clip set the graph was built from
+	ready:     bool,
 
 	mode:      _Anim_Mode,
 	sel_ch:    int, // selected channel row, -1 = none
@@ -102,10 +103,19 @@ _pv_deselect :: proc() {
 	_pv.drag_key = false
 }
 
+// The scrub preview's live graph, for the Playable Graph visualizer — nil
+// unless the preview is on for `owner` and its graph exists.
+@(private)
+_pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^engine.Playable_Graph {
+	if !_pv.active || !_pv.ready || _pv.owner != owner do return nil
+	return &_pv.graph
+}
+
 // The Animation component the window targets: on the active selection or its
 // nearest ancestor — Unity resolves the window's target the same way, so
-// selecting a child bone keeps the window on the animated root.
-@(private = "file")
+// selecting a child bone keeps the window on the animated root. Shared with
+// the Playable Graph visualizer, which targets identically.
+@(private)
 _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^engine.Animation) {
 	w := engine.ctx_world()
 	tH := sel_scene_active()
@@ -141,7 +151,8 @@ _pv_clips_add :: proc(clips: ^[dynamic]engine.Asset_GUID, g: engine.Asset_GUID) 
 	append(clips, g)
 }
 
-@(private = "file")
+// Shared with the Playable Graph visualizer's clip node labels.
+@(private)
 _pv_clip_name :: proc(g: engine.Asset_GUID) -> string {
 	if path, ok := engine.asset_db_get_path(uuid.Identifier(g)); ok {
 		return filepath.stem(path)
@@ -750,6 +761,62 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationCl
 
 // --- Preview apply/restore (main loop hooks) --------------------------------------------
 
+// A fingerprint of the component's authored clip set, so the preview graph
+// rebuilds when layers/clips are edited while previewing.
+@(private = "file")
+_pv_authored_sig :: proc(a: ^engine.Animation) -> u64 {
+	sig := u64(0xcbf29ce484222325)
+	_pv_sig_mix(&sig, a.clip)
+	for &l in a.layers {
+		sig ~= 0x9e37
+		for c in l.clips do _pv_sig_mix(&sig, c)
+	}
+	return sig
+}
+
+@(private = "file")
+_pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
+	bytes := transmute([16]u8)g
+	for b in bytes do sig^ = (sig^ ~ u64(b)) * 0x100000001b3
+}
+
+// The scrub preview evaluates the component's FULL authored graph — layer
+// mixer root, one mixer per authored layer, every clip a leaf — with the
+// scrubbed clip at weight 1 and everything else at 0. The zero-weight nodes
+// cost nothing (the evaluator skips them) and change nothing in the pose,
+// but the preview path is the graph the component actually plays, and the
+// Playable Graph visualizer shows the real topology with live weights.
+@(private = "file")
+_pv_build_graph :: proc(a: ^engine.Animation) {
+	engine.playable_graph_init(&_pv.graph)
+	engine.animation_binding_init(&_pv.binding, _pv.owner)
+	_pv.graph.root = engine.playable_add(&_pv.graph, engine.Layer_Mixer_Playable{})
+	_pv.node = {}
+
+	n_layers := max(len(a.layers), 1)
+	for li in 0 ..< n_layers {
+		mixer := engine.playable_add(&_pv.graph, engine.Mixer_Playable{})
+		engine.playable_connect(&_pv.graph, _pv.graph.root, mixer, 1)
+
+		clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
+		if li == 0 do _pv_clips_add(&clips, a.clip)
+		if li < len(a.layers) {
+			for c in a.layers[li].clips do _pv_clips_add(&clips, c)
+		}
+		for c in clips {
+			node := engine.playable_add(&_pv.graph, engine.Clip_Playable{clip = c})
+			w := f32(0)
+			if c == _pv.clip && _pv.node == {} {
+				_pv.node = node
+				w = 1
+			}
+			engine.playable_connect(&_pv.graph, mixer, node, w)
+		}
+	}
+	_pv.graph_sig = _pv_authored_sig(a)
+	_pv.ready = true
+}
+
 // Apply the preview pose for this frame's scene/game render. Runs in the main
 // loop after the window UI set the scrub state, right before the world renders.
 animation_preview_apply :: proc() {
@@ -759,16 +826,16 @@ animation_preview_apply :: proc() {
 		_pv.active = false
 		return
 	}
+	_, a := engine.transform_get_comp(_pv.owner, engine.Animation)
+	if a == nil {
+		_pv.active = false
+		return
+	}
 	clip, ok := engine.animation_clip_load(_pv.clip)
 	if !ok do return
 
-	if !_pv.ready {
-		engine.playable_graph_init(&_pv.graph)
-		engine.animation_binding_init(&_pv.binding, _pv.owner)
-		_pv.node = engine.playable_add(&_pv.graph, engine.Clip_Playable{clip = _pv.clip})
-		_pv.graph.root = _pv.node
-		_pv.ready = true
-	}
+	if _pv.ready && _pv.graph_sig != _pv_authored_sig(a) do _pv_teardown()
+	if !_pv.ready do _pv_build_graph(a)
 	if n := engine.playable_node(&_pv.graph, _pv.node); n != nil {
 		n.time = clamp(_pv.time, 0, clip.length)
 	}

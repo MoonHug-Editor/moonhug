@@ -30,6 +30,7 @@ EditorSettings :: struct {
     show_hierarchy:           bool,
     show_history:             bool,
     show_animation:           bool,
+    show_playable_graph:      bool,
     has_view_state:           bool,
     scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
     grid:                     Grid_Settings,            // scene grid (view_scene.odin)
@@ -62,6 +63,7 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
                 menu.show_hierarchy         = editor_settings.show_hierarchy
                 menu.show_history           = editor_settings.show_history
                 menu.show_animation         = editor_settings.show_animation
+                menu.show_playable_graph    = editor_settings.show_playable_graph
             }
             if editor_settings.width > 0 && editor_settings.height > 0 {
                 return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
@@ -103,6 +105,7 @@ save_editor_settings :: proc() {
     editor_settings.show_hierarchy         = menu.show_hierarchy
     editor_settings.show_history           = menu.show_history
     editor_settings.show_animation         = menu.show_animation
+    editor_settings.show_playable_graph    = menu.show_playable_graph
     editor_settings.has_view_state         = true
 
     overlays_capture_settings()

@@ -379,11 +379,19 @@ Done:
    the engine clip cache (animation_clip_preview, the material_preview
    pattern) that the scrub preview and runtime sample. Save writes the
    document to the .anim file.
+7. Node canvas (editor/node_canvas.odin) seeded by the read-only visualizer
+   (editor/view_playable_graph.odin, the Playable Graph window). The canvas
+   is the shared presentation/interaction layer from Graph UI above:
+   pan/zoom grid, node chrome with ports, bezier edges, node dragging and
+   selection — no document model, ports render but do not interact yet.
+   The visualizer ranks nodes by depth from the root (leaves left, output
+   right), keeps dragged positions until the structure changes, and shows
+   the most live source available: the component's runtime graph, else the
+   scrub-preview graph, else the authored shape the component builds when
+   it plays. Edge opacity and labels follow input weights when live.
 
 Next:
 
-7. Node canvas seeded by the read-only graph visualizer (see Graph UI above)
-   — independent of 5-6.
 8. Later, in whatever order need dictates: audio playback runtime + audio
    output, the graph asset + canvas-as-editor (see Graph asset above),
    Timeline, ShaderGraph/VfxGraph, and a state-machine asset only if

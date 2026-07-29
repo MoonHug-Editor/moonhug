@@ -178,6 +178,10 @@ main :: proc() {
             animation_preview_stop()
         }
 
+        if menu.show_playable_graph {
+            draw_playable_graph_view()
+        }
+
         // The scrub preview poses the world ONLY for the scene/game render:
         // apply here, restore right after, so every other consumer of the
         // world this frame (saves, undo, inspector) sees authored values.
@@ -291,6 +295,7 @@ open_scenes_from_settings :: proc() {
 @(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
+    shutdown_playable_graph_view()
     shutdown_animation_view()
     shutdown_game_view()
     shutdown_scene_view()
