@@ -31,6 +31,7 @@ import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import ser "../engine/serialization"
 import "inspector"
+import "menu"
 import "undo"
 
 @(private = "file") _ANIM_LEFT_W :: f32(200) // property column
@@ -278,7 +279,7 @@ _pv_drag_time_bounds :: proc(ch: ^engine.Animation_Channel, k: int, length: f32)
 // --- Window ---------------------------------------------------------------------------
 
 draw_animation_view :: proc() {
-	if !im.Begin("Animation", nil, {.NoCollapse}) {
+	if !im.Begin("Animation", &menu.show_animation, {.NoCollapse}) {
 		// Tabbed-away, not closed: the preview keeps running.
 		im.End()
 		return

@@ -168,10 +168,16 @@ add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int
 }
 
 // add_menu_toggle adds a checkbox at the given path that toggles the value.
-add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil) {
+// A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
+add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil) {
 	node := _get_or_create_path(path)
 	node.kind = .Toggle
 	node.order = order
+	if node.shortcut_cstr != nil {
+		mem.delete_cstring(node.shortcut_cstr)
+	}
+	node.shortcut, _ = strings.clone(shortcut)
+	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.value = value
 	node.enabled = enabled
 }
@@ -289,6 +295,13 @@ _process_menu_shortcuts :: proc(node: ^MenuNode) {
 			// recurse in case this node has children (shouldn't for Action, but safe)
 			_process_menu_shortcuts(child)
 		case .Toggle:
+			if child.shortcut != "" && child.value != nil {
+				if chord, ok := _parse_shortcut(child.shortcut); ok {
+					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
+						child.value^ = !child.value^
+					}
+				}
+			}
 			_process_menu_shortcuts(child)
 		}
 	}
@@ -323,7 +336,7 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 				}
 			case .Toggle:
 				if child.value != nil {
-					im.MenuItemBoolPtr(child.name_cstr, nil, child.value, _node_enabled(child))
+					im.MenuItemBoolPtr(child.name_cstr, child.shortcut_cstr, child.value, _node_enabled(child))
 				}
 			}
 		}

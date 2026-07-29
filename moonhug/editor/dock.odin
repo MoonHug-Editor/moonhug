@@ -71,7 +71,7 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 
 // Rebuild the default layout next frame. Also shows the windows the layout
 // docks, so a reset never produces empty nodes.
-@(menu_item={path="View/Reset Layout", order=20, shortcut=""})
+@(menu_item={path="Window/Reset Layout", order=20, shortcut=""})
 view_reset_layout_menu :: proc() {
 	_dock_layout_reset = true
 	menu.show_hierarchy = true

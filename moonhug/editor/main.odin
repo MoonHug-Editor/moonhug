@@ -153,7 +153,7 @@ main :: proc() {
         }
 
         if menu.show_project_inspector {
-            inspector.view_inspector_draw()
+            inspector.view_inspector_draw(&menu.show_project_inspector)
         }
 
         if menu.show_project {
@@ -268,15 +268,20 @@ editor_init :: proc() {
         defer delete(top_order)
 
         top_order["File"] = 0
-        top_order["View"] = 1
         top_order["Edit"] = 4
-        top_order["View/Theme"] = -10
         top_order["Assets"] = 8
         // Create submenu pinned to the top of the Assets menu (Unity).
         top_order["Assets/Create"] = -100
         top_order["GameObject"] = 10 // creation band also mirrors into the hierarchy popup
         top_order["Component"] = 15
         top_order["Tools"] = 20 // plugin/tooling menu items (e.g. packages)
+        // Window menu sits before Help (Unity). Submenus first: General,
+        // then domain groups (Animation), separator at -7, Theme, Reset
+        // Layout (item order 20).
+        top_order["Window"] = 25
+        top_order["Window/General"] = -20
+        top_order["Window/Animation"] = -15
+        top_order["Window/Theme"] = 10
         top_order["Help"] = 30
         menu.sort_top_menu(top_order)
     }

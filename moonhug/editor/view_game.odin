@@ -2,6 +2,7 @@ package editor
 
 import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"
+import "menu"
 import "../engine"
 
 game_rt: ^gfx.Render_Target
@@ -29,7 +30,7 @@ draw_game_view :: proc() {
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
 	defer im.PopStyleVar()
 
-	if im.Begin("Game", nil, {.NoCollapse}) {
+	if im.Begin("Game", &menu.show_game, {.NoCollapse}) {
 		avail := im.GetContentRegionAvail()
 		w := i32(avail.x)
 		h := i32(avail.y)

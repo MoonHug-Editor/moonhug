@@ -194,7 +194,7 @@ draw_hierarchy_view :: proc() {
 		_hierarchy_open_ancestors(pending)
 	}
 
-	open := im.Begin("Hierarchy", nil, {.NoCollapse})
+	open := im.Begin("Hierarchy", &menu.show_hierarchy, {.NoCollapse})
 
 	if im.BeginDragDropTarget() {
 		payload := im.AcceptDragDropPayload("ASSET_PATH", {})

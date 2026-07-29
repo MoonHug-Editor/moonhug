@@ -3,6 +3,7 @@ package editor
 import gfx "../engine/gfx"
 import input "../engine/input"
 import im "moonhug:external/odin-imgui"
+import "menu"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
@@ -446,7 +447,7 @@ draw_scene_view :: proc() {
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
 	defer im.PopStyleVar()
 
-	if im.Begin("Scene", nil, {.NoCollapse}) {
+	if im.Begin("Scene", &menu.show_scene, {.NoCollapse}) {
 		_update_frame_tween(im.GetIO().DeltaTime)
 
 		avail := im.GetContentRegionAvail()

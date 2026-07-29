@@ -3,6 +3,7 @@ package editor
 import "core:strings"
 import "core:sync"
 import im "moonhug:external/odin-imgui"
+import "menu"
 
 MAX_OUTPUT_LINES :: 2000
 
@@ -69,7 +70,7 @@ output_view_clear :: proc() {
 }
 
 draw_output_view :: proc() {
-	if !im.Begin("Output", nil, {.NoCollapse}) {
+	if !im.Begin("Output", &menu.show_output, {.NoCollapse}) {
 		im.End()
 		return
 	}

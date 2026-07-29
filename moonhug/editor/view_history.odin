@@ -4,6 +4,7 @@ import "core:fmt"
 import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
+import "menu"
 import engine "../engine"
 import "undo"
 
@@ -17,7 +18,7 @@ _history_last_count: int
 _history_split_ratio: f32 = 0.6
 
 draw_history_view :: proc() {
-	if !im.Begin("History", nil, {.NoCollapse}) {
+	if !im.Begin("History", &menu.show_history, {.NoCollapse}) {
 		im.End()
 		return
 	}

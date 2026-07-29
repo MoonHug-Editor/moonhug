@@ -945,7 +945,7 @@ draw_project_view :: proc() {
         }
     }
 
-    if im.Begin("Project", nil, {.NoCollapse}) {
+    if im.Begin("Project", &menu.show_project, {.NoCollapse}) {
         // Create two columns
         im.Columns(2, "ProjectColumns", true)
 

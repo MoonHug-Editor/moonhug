@@ -138,8 +138,10 @@ save_to_file :: proc() {
     }
 }
 
-view_inspector_draw :: proc() {
-    if im.Begin("Project Inspector", nil, {.NoCollapse}) {
+// p_open: the editor's show flag, so the dock tab's X can close the window
+// (the menu package imports this one, so the flag is passed in).
+view_inspector_draw :: proc(p_open: ^bool) {
+    if im.Begin("Project Inspector", p_open, {.NoCollapse}) {
         switch inspectorData.mode {
         case .Asset:
             _draw_asset_inspector()

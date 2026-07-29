@@ -107,9 +107,9 @@ provide :: proc(w: ^db.World) -> bool {
 		} else {
 			for args in attr_set.attrs {
 				if args.key == "menu_toggle" {
-					path, menu_order, _, _ := _extract_menu_item_comp(args)
+					path, menu_order, shortcut, _ := _extract_menu_item_comp(args)
 					if path != "" {
-						append(&entries, MenuEntry{.Toggle, path, ident_name, "", menu_order, "", decl.pkg.name, decl.pkg_path})
+						append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", decl.pkg.name, decl.pkg_path})
 					}
 				}
 			}
@@ -245,7 +245,11 @@ generate :: proc(w: ^db.World) -> bool {
 			strings.write_string(&b, e.path)
 			strings.write_string(&b, "\", &")
 			strings.write_string(&b, _qualified_name(_PKG_NAME, e))
-			fmt.sbprintf(&b, ", %d)\n", e.order)
+			fmt.sbprintf(&b, ", %d", e.order)
+			if e.shortcut != "" {
+				fmt.sbprintf(&b, ", \"%s\"", e.shortcut)
+			}
+			strings.write_string(&b, ")\n")
 		case .Separator:
 			strings.write_string(&b, "\tmenu.add_menu_separator(\"")
 			strings.write_string(&b, e.path)

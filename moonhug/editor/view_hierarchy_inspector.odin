@@ -23,7 +23,7 @@ _inspector_transform_open: bool = true
 _inspector_comp_open: map[engine.TypeKey]bool
 
 draw_hierarchy_inspector :: proc() {
-	if !im.Begin("Inspector", nil, {.NoCollapse}) {
+	if !im.Begin("Inspector", &menu.show_inspector, {.NoCollapse}) {
 		im.End()
 		return
 	}

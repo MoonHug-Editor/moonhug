@@ -18,6 +18,7 @@ package editor
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
+import "menu"
 import engine "../engine"
 
 @(private = "file") _PG_COL_W :: f32(230) // one depth rank
@@ -36,7 +37,7 @@ shutdown_playable_graph_view :: proc() {
 }
 
 draw_playable_graph_view :: proc() {
-	if !im.Begin("Playable Graph", nil, {.NoCollapse}) {
+	if !im.Begin("Playable Graph", &menu.show_playable_graph, {.NoCollapse}) {
 		im.End()
 		return
 	}

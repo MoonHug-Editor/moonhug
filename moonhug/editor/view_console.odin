@@ -5,6 +5,7 @@ import "core:strings"
 import "core:path/filepath"
 import "core:time"
 import im "moonhug:external/odin-imgui"
+import "menu"
 import "../engine/log"
 
 _console_last_count: int
@@ -80,7 +81,7 @@ draw_status_bar :: proc() {
 }
 
 draw_console_view :: proc() {
-	if im.Begin("Console", nil, {.NoCollapse}) {
+	if im.Begin("Console", &menu.show_console, {.NoCollapse}) {
 		if im.Button("Clear") {
 			log.clear()
 			_console_last_count = 0
