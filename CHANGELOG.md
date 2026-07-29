@@ -1,3 +1,10 @@
+## [0.55.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.54.0...v0.55.0) (2026-07-29)
+
+### Features
+
+* add view_playable_graph ([64e5d59](https://github.com/MoonHug-Editor/moonhug/commit/64e5d5945f58bdefbc309e33e1f1ad8237cca747))
+* change View menu to Window, add shortcuts ([eac9195](https://github.com/MoonHug-Editor/moonhug/commit/eac9195d51920932cce35931aad9dbac3bf8019d))
+
 ## [0.54.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.53.0...v0.54.0) (2026-07-28)
 
 ### Features
