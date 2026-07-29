@@ -99,7 +99,7 @@ _project_draw_packages_tree :: proc() {
 
 	expanded := len(pkgs) > 0 && _project_tree_open_state[_PROJECT_PACKAGES_PATH]
 	icon := ICON_MD_FOLDER_OPEN if expanded else ICON_MD_FOLDER
-	label := strings.clone_to_cstring(fmt.tprintf("%sPackages###node", icon), context.temp_allocator)
+	label := strings.clone_to_cstring(fmt.tprintf("%spackages###node", icon), context.temp_allocator)
 
 	node_open := im.TreeNodeEx(label, node_flags)
 	open := node_open && len(pkgs) > 0
