@@ -1,3 +1,9 @@
+## [0.56.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.55.0...v0.56.0) (2026-07-30)
+
+### Features
+
+* texture pixels per unit, physics2d_sample package ([5946487](https://github.com/MoonHug-Editor/moonhug/commit/5946487d77ae7eca6da8193a75f0e9fd44a5c7fe))
+
 ## [0.55.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.54.0...v0.55.0) (2026-07-29)
 
 ### Features
