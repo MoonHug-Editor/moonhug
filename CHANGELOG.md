@@ -1,3 +1,10 @@
+## [0.57.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.56.0...v0.57.0) (2026-07-30)
+
+### Features
+
+* add physics3d_sample sample package ([8f56faa](https://github.com/MoonHug-Editor/moonhug/commit/8f56faaf53cb68d541b7331f39cd04542f69136e))
+* package folder inspector ([8af3c5d](https://github.com/MoonHug-Editor/moonhug/commit/8af3c5dd5ea0070c64d8029d2809e981ea73c7d3))
+
 ## [0.56.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.55.0...v0.56.0) (2026-07-30)
 
 ### Features
