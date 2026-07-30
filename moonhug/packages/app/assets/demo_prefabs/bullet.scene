@@ -97,7 +97,7 @@
       "is_active": true,
       "position": [
         0.0,
-        1.5,
+        0.60686123,
         -0.01
       ],
       "rotation": [
@@ -179,7 +179,7 @@
           "property_path": "position",
           "value": [
             0.0,
-            1.5,
+            0.56293339,
             -0.31
           ]
         },

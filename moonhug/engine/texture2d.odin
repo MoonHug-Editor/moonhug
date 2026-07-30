@@ -11,6 +11,9 @@ Texture2D :: struct {
     guid:   Asset_GUID,
     width:  i32,
     height: i32,
+    // From the texture's import settings (Unity's Pixels Per Unit): sprite
+    // world size = pixel size / this. Always > 0.
+    pixels_per_unit: f32,
     gfx:    ^gfx.Texture,
 }
 
@@ -45,10 +48,18 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     }
     if g == nil do return nil, false
 
+    ppu := f32(PIXELS_PER_UNIT)
+    if settings, sok := asset_pipeline_get_settings(path); sok {
+        if ts, is_tex := settings.(TextureSettings); is_tex && ts.pixels_per_unit > 0 {
+            ppu = ts.pixels_per_unit
+        }
+    }
+
     texture_cache[guid] = Texture2D{
         guid   = guid,
         width  = g.width,
         height = g.height,
+        pixels_per_unit = ppu,
         gfx    = g,
     }
     return &texture_cache[guid], true

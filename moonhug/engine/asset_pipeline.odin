@@ -255,6 +255,13 @@ _read_import_meta :: proc(meta_path: string) -> ImportMeta {
         return {}
     }
 
+    // Metas written before pixels_per_unit existed carry 0 — normalize to
+    // the default so old textures keep their size.
+    if ts, is_tex := result.settings.(TextureSettings); is_tex && ts.pixels_per_unit <= 0 {
+        ts.pixels_per_unit = PIXELS_PER_UNIT
+        result.settings = ts
+    }
+
     return ImportMeta{
         guid     = strings.clone(result.guid),
         importer = result.importer,

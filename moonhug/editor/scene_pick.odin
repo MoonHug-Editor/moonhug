@@ -29,7 +29,7 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if !ok do continue
 
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := engine.sprite_world_corners(tw, tex.width, tex.height)
+		c := engine.sprite_world_corners(tw, tex)
 		if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
 			best_t = t
 			best = engine.Transform_Handle(sr.owner)
@@ -90,7 +90,7 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		tex, ok := engine.texture_load(sr.texture)
 		if !ok do continue
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := engine.sprite_world_corners(tw, tex.width, tex.height)
+		c := engine.sprite_world_corners(tw, tex)
 		if _rect_hits_points(view, rmin, rmax, c[:]) {
 			append(&out, engine.Transform_Handle(sr.owner))
 		}

@@ -5,6 +5,7 @@
     "filter": 0,
     "wrap": 1,
     "srgb": false,
-    "max_size": 0
+    "max_size": 0,
+    "pixels_per_unit": 256.00000000
   }
 }

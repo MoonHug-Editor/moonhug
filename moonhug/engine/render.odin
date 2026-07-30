@@ -125,10 +125,12 @@ trs_matrix :: proc(position: [3]f32, rotation: [4]f32, scale: [3]f32) -> matrix[
 
 // The world-space quad a SpriteRenderer covers: bl, br, tr, tl. Used by BOTH
 // command collection and scene picking so they can't diverge. Sprites are
-// transform-oriented (not billboards), sized tex_pixels/PIXELS_PER_UNIT.
-sprite_world_corners :: proc(tw: Transform_World, tex_w, tex_h: i32) -> [4][3]f32 {
-	half_w := tw.scale.x * f32(tex_w) / (2.0 * PIXELS_PER_UNIT)
-	half_h := tw.scale.y * f32(tex_h) / (2.0 * PIXELS_PER_UNIT)
+// transform-oriented (not billboards), sized tex_pixels/pixels_per_unit —
+// the texture's import setting (Unity's Pixels Per Unit, default 100).
+sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 {
+	ppu := max(tex.pixels_per_unit, 0.0001)
+	half_w := tw.scale.x * f32(tex.width) / (2.0 * ppu)
+	half_h := tw.scale.y * f32(tex.height) / (2.0 * ppu)
 	rot := quat_to_matrix3(tw.rotation)
 	right := [3]f32{rot[0, 0], rot[1, 0], rot[2, 0]}
 	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
@@ -197,7 +199,7 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			variant = Draw_Sprite{
 				texture  = sr.texture,
 				material = sr.material,
-				corners  = sprite_world_corners(tw, tex.width, tex.height),
+				corners  = sprite_world_corners(tw, tex),
 				color    = sr.color,
 			},
 		})

@@ -231,6 +231,11 @@ _draw_import_settings_inspector :: proc() {
     if im.Button("Apply", im.Vec2{60, 0}) {
         if engine.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
             engine.asset_pipeline_reimport(inspectorData.filePath)
+            // Cached textures bake pixels_per_unit at load — evict so the new
+            // settings apply without an editor restart.
+            if guid, gok := engine.asset_db_get_guid(inspectorData.filePath); gok {
+                engine.texture_unload(engine.Asset_GUID(guid))
+            }
             inspectorData.statusMessage = fmt.tprintf("Reimported %s", inspectorData.filePath)
         } else {
             inspectorData.statusMessage = fmt.tprintf("Failed to save settings for %s", inspectorData.filePath)
