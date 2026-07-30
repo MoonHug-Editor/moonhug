@@ -82,7 +82,9 @@ _project_draw_packages_tree :: proc() {
 	defer im.PopID()
 
 	is_selected := _project_active_pane == .Tree && projectViewData.currentPath == _PROJECT_PACKAGES_PATH
-	node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick}
+	// DefaultOpen: installed packages are visible from the first frame, like
+	// the Assets root.
+	node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick, .DefaultOpen}
 	if is_selected do node_flags += {.Selected}
 	if len(pkgs) == 0 do node_flags += {.Leaf, .NoTreePushOnOpen}
 

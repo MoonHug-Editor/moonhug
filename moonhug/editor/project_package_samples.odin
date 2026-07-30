@@ -108,8 +108,20 @@ _sample_after_change :: proc(verb, name: string) {
 	fmt.printf("[Editor] %s sample %s — code changes need a prebuild + rebuild (run.sh)\n", verb, name)
 }
 
+// Installs never overwrite: anything already at the destination (a stale
+// link, a same-named package) fails loudly instead of nesting into it.
+@(private = "file")
+_sample_dst_taken :: proc(s: Package_Sample) -> bool {
+	if _, lerr := os.lstat(s.dst, context.temp_allocator); lerr == nil {
+		fmt.printf("[Editor] Install sample: %s already exists — remove it first\n", s.dst)
+		return true
+	}
+	return false
+}
+
 @(private = "file")
 _sample_install_copy :: proc(s: Package_Sample) {
+	if _sample_dst_taken(s) do return
 	if !_sample_copy_recursive(s.src, s.dst) {
 		fmt.printf("[Editor] Install sample: copy %s -> %s failed\n", s.src, s.dst)
 		return
@@ -119,6 +131,7 @@ _sample_install_copy :: proc(s: Package_Sample) {
 
 @(private = "file")
 _sample_install_link :: proc(s: Package_Sample) {
+	if _sample_dst_taken(s) do return
 	// Both live under packages/, so the relative target is just the
 	// source path with the "packages/" prefix dropped.
 	target := s.src[len(_PROJECT_PACKAGES_PATH) + 1:]

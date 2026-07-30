@@ -6,7 +6,6 @@ package registration
 import app "moonhug:packages/app"
 import _ "moonhug:packages/essentials"
 import physics2d "moonhug:packages/physics2d"
-import _ "moonhug:packages/physics2d_sample"
 import physics3d "moonhug:packages/physics3d"
 import plugin_example "moonhug:packages/plugin_example"
 import _ "moonhug:packages/prefabs_example"
