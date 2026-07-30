@@ -10,7 +10,6 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "inspector"
 import "../engine"
 
 _PROJECT_PACKAGES_PATH :: "packages"
@@ -133,7 +132,7 @@ _project_draw_packages_list :: proc() {
 		is_selected := _project_active_pane == .List && sel_proj_is(pkg.assets_path)
 		if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
 			_project_set_selected(pkg.assets_path)
-			inspector.load_package(pkg.name, pkg.assets_path, _project_package_asset_count(pkg.assets_path))
+			_project_inspect_path(pkg.assets_path)
 			if im.IsMouseDoubleClicked(.Left) {
 				_project_enter_dir(pkg.assets_path)
 			}

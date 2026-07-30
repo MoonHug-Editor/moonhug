@@ -154,15 +154,21 @@ view_inspector_draw :: proc(p_open: ^bool) {
     im.End()
 }
 
-// Package inspector (docs/Plugins.md): shown when a package row is selected
-// in the project view's Packages section. Read-only summary for now — a
-// manifest (name/version/description) can feed it later.
+// Samples section hook, injected by the editor root at startup (the file ops
+// and dir cache live there, and this package can't import the editor root).
+package_samples_draw: proc(pkg_name: string)
+
+// Package inspector (docs/Plugins.md): shown when a package is selected in
+// the project view's Packages section (left-pane node or right-pane row).
 _draw_package_inspector :: proc() {
     im.Text(strings.clone_to_cstring(fmt.tprintf("Package: %s", inspectorData.packageName), context.temp_allocator))
     im.Separator()
     im.Text(strings.clone_to_cstring(fmt.tprintf("Content root: %s", inspectorData.filePath), context.temp_allocator))
     im.Text(strings.clone_to_cstring(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount), context.temp_allocator))
     im.TextDisabled("Installed package (moonhug/packages) — remove the folder to uninstall.")
+    if package_samples_draw != nil {
+        package_samples_draw(inspectorData.packageName)
+    }
 }
 
 _draw_asset_inspector :: proc() {

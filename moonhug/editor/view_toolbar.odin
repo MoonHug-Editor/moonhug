@@ -67,7 +67,12 @@ _scan_run_configs :: proc() {
     defer os.file_info_slice_delete(pkgs, context.temp_allocator)
 
     for pkg in pkgs {
-        if pkg.type != .Directory do continue
+        // Symlinked packages (samples installed via symlink) read as
+        // .Symlink — follow them like every other package scan.
+        if pkg.type != .Directory {
+            full, _ := filepath.join({"packages", pkg.name}, context.temp_allocator)
+            if pkg.type != .Symlink || !os.is_dir(full) do continue
+        }
         rc_path, _ := filepath.join({"packages", pkg.name, "run_configs"}, context.temp_allocator)
         rc_dir, rc_err := os.open(rc_path)
         if rc_err != nil do continue

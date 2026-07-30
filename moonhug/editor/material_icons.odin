@@ -46,6 +46,8 @@ ICON_MD_ERROR         :: "\uf8b6"   // error
 
 // Actions
 ICON_MD_CLOSE         :: "\ue5cd"   // close (clear search)
+ICON_MD_FOLDER_CHECK  :: "\uf3d7"   // folder_check (sample installed by copy)
+ICON_MD_LINK          :: "\ue250"   // link (sample installed by symlink)
 ICON_MD_SEARCH        :: "\uef7a"   // search (object picker button; also in inspector package)
 ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (toolbar run button)
 ICON_MD_SAVE          :: "\ue161"   // save

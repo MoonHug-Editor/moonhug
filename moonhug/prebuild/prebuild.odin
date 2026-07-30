@@ -81,8 +81,13 @@ _installed_packages :: proc(list: ^[dynamic]string) {
 	names: [dynamic]string
 	defer delete(names)
 	for entry in entries {
-		if entry.type != .Directory do continue
 		if strings.has_prefix(entry.name, ".") do continue
+		// A symlinked package (samples installed via symlink) reads as
+		// .Symlink — follow it so its code compiles like any package.
+		if entry.type != .Directory {
+			full, _ := filepath.join({PACKAGES_DIR, entry.name}, context.temp_allocator)
+			if entry.type != .Symlink || !os.is_dir(full) do continue
+		}
 		append(&names, entry.name)
 	}
 	slice.sort(names[:]) // deterministic scan order regardless of readdir order

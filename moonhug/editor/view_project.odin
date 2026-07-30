@@ -88,6 +88,7 @@ init_project_view :: proc() {
 
 shutdown_project_view :: proc() {
     project_file_ops_shutdown()
+    project_package_samples_shutdown()
     project_dir_cache_shutdown()
     delete(projectViewData.rootPath)
     delete(projectViewData.currentPath)
@@ -259,14 +260,27 @@ _is_inspector_asset :: proc(path: string) -> bool {
     return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat")
 }
 
-// Same side effects as clicking/double-clicking the file row.
-_project_activate_file :: proc(full_path: string) {
+// Selection-driven inspector routing — the ONE code path shared by mouse
+// clicks and keyboard navigation in both panes: package roots open the
+// package inspector, JSON assets the asset inspector, importables their
+// import settings. Anything else leaves the inspector as it is.
+_project_inspect_path :: proc(full_path: string) {
+    if project_path_is_package_root(full_path) {
+        inspector.load_package(project_package_root_name(full_path), full_path, _project_package_asset_count(full_path))
+        return
+    }
     if _is_inspector_asset(full_path) {
         inspector.load_from_file(full_path)
+        return
     }
     if engine.is_importable_extension(filepath.ext(full_path)) {
         inspector.load_import_settings(full_path)
     }
+}
+
+// Same side effects as clicking/double-clicking the file row.
+_project_activate_file :: proc(full_path: string) {
+    _project_inspect_path(full_path)
     if strings.has_suffix(full_path, ".scene") {
         undo.purge_scenes(undo.get())
         // Fresh navigation — reset the nested-scene edit stack.
@@ -502,9 +516,10 @@ _project_draw_tree_node :: proc(full_path: string, name: string) {
         _project_scroll_to_tree_sel = false
     }
 
-    // Handle selection
+    // Handle selection (a package root also opens the package inspector).
     if im.IsItemClicked() {
         _project_set_current(full_path)
+        _project_inspect_path(full_path)
     }
 
     if node_open && !is_leaf {
@@ -566,6 +581,7 @@ _project_handle_tree_keys :: proc() {
 
     _tree_select :: proc(idx: int) {
         _project_set_current(_project_tree_rows[idx].path)
+        _project_inspect_path(_project_tree_rows[idx].path)
         _project_scroll_to_tree_sel = true
     }
 
@@ -686,6 +702,7 @@ _project_handle_list_keys :: proc() {
         } else {
             _project_set_selected(path)
         }
+        _project_inspect_path(path)
         _project_scroll_to_list_sel = true
     }
 
@@ -784,12 +801,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
                 _project_enter_dir(full_path)
             }
         } else if !toggled_off {
-            if _is_inspector_asset(full_path) {
-                inspector.load_from_file(full_path)
-            }
-            if engine.is_importable_extension(filepath.ext(full_path)) {
-                inspector.load_import_settings(full_path)
-            }
+            _project_inspect_path(full_path)
             if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
                 undo.purge_scenes(undo.get())
                 // Fresh navigation — reset the nested-scene edit stack.

@@ -76,8 +76,13 @@ asset_db_package_roots :: proc() -> []Asset_Package_Root {
 
     roots := make([dynamic]Asset_Package_Root, context.temp_allocator)
     for entry in entries {
-        if entry.type != .Directory do continue
         if strings.has_prefix(entry.name, ".") do continue
+        // A symlinked package (samples installed via symlink) reads as
+        // .Symlink here — follow it, everything below resolves normally.
+        if entry.type != .Directory {
+            full, _ := filepath.join({ASSET_DB_PACKAGES_DIR, entry.name}, context.temp_allocator)
+            if entry.type != .Symlink || !os.is_dir(full) do continue
+        }
         assets_path, _ := filepath.join({ASSET_DB_PACKAGES_DIR, entry.name, "assets"}, context.temp_allocator)
         os.make_directory(assets_path) // ensure — no-op when it exists
         append(&roots, Asset_Package_Root{name = strings.clone(entry.name, context.temp_allocator), assets_path = assets_path})

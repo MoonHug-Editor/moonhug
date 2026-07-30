@@ -14,6 +14,7 @@ package editor
 // the asset db, at 2 Hz instead of 120 Hz.
 
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:time"
 import strings "core:strings"
@@ -93,10 +94,17 @@ _dir_scan :: proc(path: string) -> ([]Project_Dir_Entry, bool) {
 	}
 	rows := make([dynamic]Sort_Row, 0, len(infos), context.temp_allocator)
 	for info in infos {
+		// Symlinked dirs (samples installed via symlink) count as dirs —
+		// os.is_dir follows the link.
+		is_dir := info.type == .Directory
+		if !is_dir && info.type == .Symlink {
+			full, _ := filepath.join({path, info.name}, context.temp_allocator)
+			is_dir = os.is_dir(full)
+		}
 		append(&rows, Sort_Row{
 			lower  = strings.to_lower(info.name, context.temp_allocator),
 			name   = info.name,
-			is_dir = info.type == .Directory,
+			is_dir = is_dir,
 		})
 	}
 	slice.sort_by(rows[:], proc(a, b: Sort_Row) -> bool {

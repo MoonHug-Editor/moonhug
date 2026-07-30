@@ -163,19 +163,18 @@ as the existing Assets root: label = package name, path = the root directory
 exists because refresh auto-creates a missing `assets/` folder. The Packages
 node and its direct children (the package
 rows) are special the way the Assets root already is: non-renameable,
-non-deletable, no file ops on the rows themselves. Selecting a package row
-opens a special package inspector.
+non-deletable, no file ops on the rows themselves. Selecting a package —
+the left-pane node or the right-pane row — opens the package inspector:
+name, content root, asset count, and the Samples section.
 
 ## Samples
 - `samples/` itself is never scanned by AssetDb, so the originals' guids don't exist until installed.
-- Install/Remove should happen via package inspector, but also can be done manually.
-- Install = copy `packages/<pkg>/samples/<sample>/` → `packages/<sample>/`. Or use symlink/junction to modify sample files.
-  - From that moment it's an ordinary package: code compiles, assets mount, user-owned,
-- uninstall = delete the folder.
-
-## Later
-- Install Samples inspector when selecting packages/package folder
-  - should handle all kinds of situations(Add/Remove/Replace, symlinks)
+- Install/Remove happens via the package inspector's Samples section (manual folder ops work too — presence = installed).
+- Install = copy `packages/<pkg>/samples/<sample>/` → `packages/<sample>/`, `.meta` files included (sample guids are committed with the package). Or Symlink — a relative link `packages/<sample>` → the sample source, for live-editing sample files.
+  - From that moment it's an ordinary package: code compiles, assets mount, user-owned (copy) or source-backed (symlink).
+- Remove asks confirmation: a copied install goes to the OS Trash (it may carry user edits), a symlink is just unlinked — the source stays.
+- Assets mount immediately on install; code takes a prebuild + rebuild (run.sh), like any package install.
+- The package scans follow directory symlinks (prebuild discovery, asset-db package roots, project-view listings), so a linked sample behaves exactly like a copied one.
 
 ## Considered Later
 - Package Manager window — list packages/samples, install-sample button, "rebuild required" notice.

@@ -113,15 +113,12 @@ For more details see [Contribution](docs/Contribution.md)
 - reorder collection elements in inspector by drag
 
 - png - Texture2D with N Sprites
-- don't depend tests on files in assets folder(fragile)
 
 - transform:
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
-
-- OS independent run configs
 
 - project settings window with left pane — tabs, right pane — settings of selected tabs
   - @(project_settings="Left Pane Tab name") above IMGUI draw proc (draws right pane)
@@ -133,9 +130,6 @@ For more details see [Contribution](docs/Contribution.md)
 - playable graph - to play animations on hierarchies(needs hierarchy?)
   - no Mecanim, needs something else more like timelines blending
   - tool for tech-art to author and preview animations without entering playmode
-
-- plugin inspector when selecting packages/package folder in project view
-  - samples install/uninstall. Support symlink and copying for install.
 
 - physics2d follow-ups:
   - PhysicsLayerCollision2D settings asset
