@@ -131,8 +131,14 @@ Resolution at load loads the target if needed, wires the real object handle into
 - Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`. `target.guid` names the deepest prefab the field lives in, and `target.local_id` is the leaf-prefab lid XOR-projected through every inner NS's `local_id_in_parent` on the way up. Inner `NestedScene` records never store the root's overrides.
 - Inner `NestedScene` records loaded into memory at runtime carry their own prefab file's overrides (e.g. A.scene's overrides on B). Those exist as runtime state to drive each level's own-overrides bake during resolve, and are never persisted by the open scene's save.
 
-Serialization triggers baking base and working copy, diffs them to produce overrides written onto the **root** scene's `NestedScene` record.
-- UX: overrides grow only — if same value but override exists, keep it
+Overrides have **two producers**, both writing onto the root scene's `NestedScene` record:
+
+1. **Live recording** (`nested_scene_record_override`) — editing a field in the inspector records the override as the edit commits, so the override marker, Revert and Apply are available immediately, with no save in between. Undo of that edit takes the record away with the value, and redo restores both; editing a field that is already overridden leaves the existing override in place.
+2. **Save-time diff** (`_capture_overrides_to_native`) — bakes base and working copy and diffs them, catching everything not routed through an inspector field (engine-API mutations, drag-and-drop, batch tooling).
+
+Serialization reconciles the two: it sets existing entries aside, lets the diff repopulate from scratch, then restores any set-aside entry the diff did not reproduce. **The diff's value wins where it found one** (it reflects the live world); entries it cannot see survive.
+
+- UX: overrides grow only — if same value but override exists, keep it. An override whose value is set back to the base value STAYS an override, in the file too.
 - Removing an override requires explicit UI action (revert)
 - diff produces overrides between baked_base and working_copy
 - baked_base for a chain depth N walks all N prefab files in order, applying each file's NS-for-next-child overrides to the next prefab's raw — this is the "what this nested instance looks like before any root-scene overrides" baseline
@@ -206,6 +212,12 @@ Unity intentionally preserves orphan modifications and stripped objects so that 
 
 # TODO
 - (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
+
+- add/remove objects as override
+- add/remove components as override
+  - until this lands the inspector disables Remove Component / Paste Component as New / reorder on prefab-instance components (value edits stay available)
+
+- revert on a variant ROOT's nested content clears the override but leaves the field value; regular nested prefabs restore correctly
 
 # Consider Later
 ## Prefab isolation mode (alternative to opening the source asset)

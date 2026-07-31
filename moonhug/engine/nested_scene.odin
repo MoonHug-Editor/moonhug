@@ -1266,6 +1266,171 @@ nested_scene_has_override :: proc(ns: ^NestedScene, target: PPtr, property_path:
     return false
 }
 
+// Records an override from a LIVE edit, so the blue marker, Revert and Apply
+// work the instant a field changes instead of only after a save (the save-time
+// diff in _capture_overrides_to_native is the other producer).
+//
+// STICKY, like Unity: an entry, once recorded, is only removed by an explicit
+// nested_scene_revert_override. Setting a field back to its base value by hand
+// KEEPS the override — membership is never recomputed from a comparison
+// (docs/NestedPrefabs.md "overrides grow only").
+//
+// `field_ptr`/`field_tid` name the live field; its current value is marshaled
+// as the override value. Same-(target, path) entries are replaced in place, so
+// repeated edits to one field never accumulate duplicates.
+//
+// `created` distinguishes a NEW entry from an update of an existing one, so
+// undo can remove exactly the override its edit introduced and leave a
+// pre-existing one alone (see undo's Record_Override_Command).
+nested_scene_record_override :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    field_ptr: rawptr,
+    field_tid: typeid,
+) -> (created: bool, ok: bool) {
+    if s == nil || ns == nil || field_ptr == nil || property_path == "" do return false, false
+
+    bytes, merr := json.marshal(any{field_ptr, field_tid}, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false, false
+    val: json.Value
+    if json.unmarshal(bytes, &val) != nil do return false, false
+
+    // Replace an existing exact entry rather than appending a second one.
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        json.destroy_value(ov.value)
+        ov.value = val
+        return false, true
+    }
+
+    // A coarser entry already covering this path (e.g. "turret" vs
+    // "turret.local_id") keeps ownership — the capture pass records whichever
+    // granularity the diff produces, and two overlapping entries would apply
+    // twice with an undefined winner.
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
+            json.destroy_value(val)
+            return false, false
+        }
+    }
+
+    append(&ns.overrides, Override{
+        target        = target,
+        property_path = strings.clone(property_path),
+        value         = val,
+    })
+    return true, true
+}
+
+// The live field behind `(host, target_lid, property_path)`, for undo's redo
+// path (re-record an override from the value the undo stack just restored).
+//
+// `target_lid` is a LIVE lid, the way the inspector reports it — NOT a
+// source-namespace lid. The two coincide for a shallow instance but diverge in
+// a deep chain, where live lids are composed with INSTANCE_LID_BIT, so the
+// bimap is consulted directly and the source-namespace resolve (which composes
+// the lid before looking up) is only the fallback.
+nested_scene_find_live_field :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+) -> (rawptr, typeid, bool) {
+    if s == nil do return nil, nil, false
+
+    if h, ok := bimap_get(&s.local_ids, target_lid); ok {
+        if ptr, tid, found := _nested_live_field_on_handle(h, property_path); found {
+            return ptr, tid, true
+        }
+    }
+
+    leaf_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
+    if leaf_ns == nil do return nil, nil, false
+    return _nested_find_revert_target(s, leaf_ns, target_lid, property_path, nil)
+}
+
+// Field resolution on an already-resolved entity: a transform target also
+// searches its attached components, since a transform-targeted override may
+// address a component on it (mirrors _nested_find_revert_target).
+@(private)
+_nested_live_field_on_handle :: proc(h: Handle, property_path: string) -> (rawptr, typeid, bool) {
+    w := ctx_world()
+    if h == {} do return nil, nil, false
+
+    if h.type_key == .Transform {
+        t := pool_get(&w.transforms, h)
+        if t == nil do return nil, nil, false
+        if fp, ftid, ok := _nested_revert_field_ptr(t, Transform, property_path); ok {
+            return fp, ftid, true
+        }
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            comp_ptr := world_pool_get(w, c.handle)
+            if comp_ptr == nil do continue
+            comp_tid := get_typeid_by_type_key(c.handle.type_key)
+            if comp_tid == nil do continue
+            if fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path); ok {
+                return fp, ftid, true
+            }
+        }
+        return nil, nil, false
+    }
+
+    comp_ptr := world_pool_get(w, h)
+    if comp_ptr == nil do return nil, nil, false
+    comp_tid := get_typeid_by_type_key(h.type_key)
+    if comp_tid == nil do return nil, nil, false
+    return _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+}
+
+// Drops the exact `(target, property_path)` entry — the bookkeeping inverse of
+// nested_scene_record_override, for undo of the edit that CREATED an override.
+// Unlike nested_scene_revert_override this only removes the record: the caller
+// (undo) restores the field value itself. Returns true when an entry went away.
+nested_scene_unrecord_override :: proc(ns: ^NestedScene, target: PPtr, property_path: string) -> bool {
+    if ns == nil do return false
+    for i in 0 ..< len(ns.overrides) {
+        ov := ns.overrides[i]
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        delete(ov.property_path)
+        json.destroy_value(ov.value)
+        ordered_remove(&ns.overrides, i)
+        return true
+    }
+    return false
+}
+
+nested_scene_unrecord_override_for_host :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+) -> bool {
+    root_ns, target, ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !ok || root_ns == nil do return false
+    return nested_scene_unrecord_override(root_ns, target, property_path)
+}
+
+// Live-edit recording keyed the way the inspector sees the world: the host
+// transform of the nested instance plus the live local_id of the edited row.
+// Resolves to the ROOT scene's NS and the correctly projected target (deep
+// chains included) via the same locate the marker and Revert use, so all
+// three agree by construction.
+nested_scene_record_override_for_host :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+    field_ptr: rawptr,
+    field_tid: typeid,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !loc_ok || root_ns == nil do return false, false
+    return nested_scene_record_override(s, root_ns, target, property_path, field_ptr, field_tid)
+}
+
 // Walks from `inner_host_tH` up the chain of expand_parent hosts to the root
 // native NS, collecting (prefab_guid, transform_parent) hops along the way.
 // Returns the root NS and the chain hops (top-down: chain[0] is the hop from

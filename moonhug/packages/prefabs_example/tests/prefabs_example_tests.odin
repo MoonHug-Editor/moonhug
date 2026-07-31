@@ -38,6 +38,52 @@ _scene_paths :: proc(dir := ASSETS) -> []string {
 	return out[:]
 }
 
+// The chain's root-variant scene, found by STRUCTURE rather than by name: the
+// scene whose file carries a root NS (`transform_parent == 0`) with a color
+// override. Renaming the scenes in the editor never touches test code — same
+// rule as _scene_paths and the file-derived expectations.
+@(private = "file")
+_find_root_variant_path :: proc(t: ^testing.T, dir := ASSETS) -> (path: string, ok: bool) {
+	for p in _scene_paths(dir) {
+		sf, lok := engine.scene_file_load(p)
+		if !lok do continue
+		defer engine.scene_file_destroy(&sf)
+		for &ns in sf.nested_scenes {
+			if ns.transform_parent != 0 do continue
+			for ov in ns.overrides {
+				if ov.property_path != "color" do continue
+				if arr, is_arr := ov.value.(json.Array); is_arr && len(arr) >= 4 {
+					return p, true
+				}
+			}
+		}
+	}
+	testing.expect(t, false, "the chain should contain a root-variant scene with a color override (the test-bed structure)")
+	return "", false
+}
+
+// The scene that NESTS `nested_path` — matched on the nested scene's GUID, not
+// on a filename, so renames don't reach test code.
+@(private = "file")
+_find_host_path_for :: proc(t: ^testing.T, nested_path: string, dir := ASSETS) -> (path: string, ok: bool) {
+	want, gok := engine.asset_db_get_guid(nested_path)
+	if !gok {
+		testing.expectf(t, false, "%s should be registered in the asset db", nested_path)
+		return "", false
+	}
+	for p in _scene_paths(dir) {
+		if p == nested_path do continue
+		sf, lok := engine.scene_file_load(p)
+		if !lok do continue
+		defer engine.scene_file_destroy(&sf)
+		for &ns in sf.nested_scenes {
+			if ns.source_prefab == engine.Asset_GUID(want) do return p, true
+		}
+	}
+	testing.expectf(t, false, "a host scene nesting %s should exist (the chain's test-bed structure)", nested_path)
+	return "", false
+}
+
 @(private = "file")
 _find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.SpriteRenderer, engine.Transform_Handle) {
 	for i in 0 ..< len(w.transforms.slots) {
@@ -135,8 +181,8 @@ test_prefabs_example_no_spurious_overrides :: proc(t: ^testing.T) {
 	}
 }
 
-// Editing bullet_Variant's inherited content and saving must propagate into a
-// freshly loaded host. Mutates files, so it runs on a temp copy of the chain.
+// Editing the root variant's inherited content and saving must propagate into
+// a freshly loaded host. Mutates files, so it runs on a temp copy of the chain.
 @(test)
 test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	dir := "moonhug/packages/prefabs_example/tests/_tmp_propagate"
@@ -166,18 +212,22 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	bv_path := strings.concatenate({dir, "/bullet_Variant.scene"}, context.temp_allocator)
-	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	// Both resolved by structure inside the COPY: the root variant carries the
+	// color override, the host is the scene that NESTS it by guid.
+	bv_path, bvok := _find_root_variant_path(t, dir)
+	if !bvok do return
+	host_path, hok := _find_host_path_for(t, bv_path, dir)
+	if !hok do return
 	new_color := [4]f32{0.111, 0.222, 0.333, 1}
 
 	// EDITOR FLOW: open the variant single, edit inherited content, save.
 	variant := engine.scene_load_single_path(bv_path)
-	testing.expect(t, variant != nil, "bullet_Variant should load")
+	testing.expectf(t, variant != nil, "%s should load", bv_path)
 	if variant == nil do return
 	tc.scene = variant
 	engine.sm_scene_set_active(variant)
 	sr, _ := _find_sprite(&tc.world, variant, nested_only = true)
-	testing.expect(t, sr != nil, "bullet_Variant should have inherited sprite content")
+	testing.expect(t, sr != nil, "the root variant should have inherited sprite content")
 	if sr == nil do return
 	sr.color = new_color
 	testing.expect(t, engine.scene_save(variant, bv_path), "variant save")
@@ -198,12 +248,14 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	testing.expect(t, found, "edited variant color must appear in the host's nested copy")
 }
 
-// The value of bullet_Variant's root-NS color override, read from the file —
+// The value of the root variant's root-NS color override, read from the file —
 // never hardcoded, the scenes are editable.
 @(private = "file")
 _deep_override_from_file :: proc(t: ^testing.T) -> (val: [4]f32, ok: bool) {
-	sf, lok := engine.scene_file_load(strings.concatenate({ASSETS, "/bullet_Variant.scene"}, context.temp_allocator))
-	testing.expect(t, lok, "load bullet_Variant file")
+	vpath, vok := _find_root_variant_path(t)
+	if !vok do return
+	sf, lok := engine.scene_file_load(vpath)
+	testing.expectf(t, lok, "load %s", vpath)
 	if !lok do return
 	defer engine.scene_file_destroy(&sf)
 	for &ns in sf.nested_scenes {
@@ -216,7 +268,7 @@ _deep_override_from_file :: proc(t: ^testing.T) -> (val: [4]f32, ok: bool) {
 			ok = true
 		}
 	}
-	testing.expect(t, ok, "bullet_Variant should carry a root-NS color override (the chain's test-bed structure)")
+	testing.expect(t, ok, "the root variant should carry a root-NS color override (the chain's test-bed structure)")
 	return
 }
 
@@ -236,13 +288,15 @@ test_prefabs_example_deep_override_applies_when_nested :: proc(t: ^testing.T) {
 	want, wok := _deep_override_from_file(t)
 	if !wok do return
 
-	bv_guid, gok := engine.asset_db_get_guid(strings.concatenate({ASSETS, "/bullet_Variant.scene"}, context.temp_allocator))
-	testing.expect(t, gok, "bullet_Variant registered")
+	vpath, vok := _find_root_variant_path(t)
+	if !vok do return
+	bv_guid, gok := engine.asset_db_get_guid(vpath)
+	testing.expectf(t, gok, "%s registered", vpath)
 	if !gok do return
 
 	root := engine.Transform_Handle(tc.scene.root.handle)
 	nested := engine.scene_instantiate_guid_nested(engine.Asset_GUID(bv_guid), root)
-	testing.expect(t, nested != {}, "nesting bullet_Variant should succeed")
+	testing.expectf(t, nested != {}, "nesting %s should succeed", vpath)
 	if nested == {} do return
 
 	found := false
@@ -270,8 +324,10 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	loaded := engine.scene_load_single_path(strings.concatenate({ASSETS, "/bullet_Variant.scene"}, context.temp_allocator))
-	testing.expect(t, loaded != nil, "bullet_Variant loads")
+	vpath, vok := _find_root_variant_path(t)
+	if !vok do return
+	loaded := engine.scene_load_single_path(vpath)
+	testing.expectf(t, loaded != nil, "%s loads", vpath)
 	if loaded == nil do return
 	tc.scene = loaded
 	engine.sm_scene_set_active(loaded)
@@ -297,7 +353,7 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 		target = ov.target
 		has = true
 	}
-	testing.expect(t, has, "bullet_Variant should carry a root-NS color override (the chain's test-bed structure)")
+	testing.expect(t, has, "the root variant should carry a root-NS color override (the chain's test-bed structure)")
 	if !has do return
 
 	// The live sprite the override is applied to.

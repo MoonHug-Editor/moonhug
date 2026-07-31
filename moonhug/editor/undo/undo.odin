@@ -148,11 +148,25 @@ Selection_Command :: struct {
 	after:  Selection_State,
 }
 
+// Bookkeeping for the prefab override that a live edit CREATED (see
+// engine.nested_scene_record_override). Paired in a group with the
+// Value_Command that changed the field: undoing the value must also take the
+// override record away, or the field would read as overridden while holding
+// its baseline value. Only ever recorded for a NEW entry — an edit that
+// updated a pre-existing override leaves that override alone on undo.
+Record_Override_Command :: struct {
+	scene:         Scene_Ref,
+	host_local_id: engine.Local_ID, // NS host transform, resolved on apply
+	target_lid:    engine.Local_ID, // live lid of the overridden row
+	property_path: string,          // owned
+}
+
 Command :: union {
 	Value_Command,
 	Structural_Command,
 	Group_Command,
 	Selection_Command,
+	Record_Override_Command,
 }
 
 Entry :: struct {
@@ -276,6 +290,10 @@ default_label :: proc(cmd: Command) -> string {
 		case .Asset:  return "Edit Asset"
 		}
 		return "Edit Value"
+	case Record_Override_Command:
+		// Never the label of a step on its own — it always rides the value
+		// command's group, which supplies the label.
+		return "Prefab Override"
 	case Structural_Command:
 		switch sv in v {
 		case Reparent_Command:           return "Reparent"
@@ -397,6 +415,10 @@ _apply_command :: proc(cmd: ^Command) {
 		}
 	case Selection_Command:
 		_selection_apply(v.after)
+	case Record_Override_Command:
+		// REDO: the value sub-command restores the edited value, so the
+		// override record has to come back with it.
+		_override_record_reapply(v)
 	}
 }
 
@@ -413,7 +435,39 @@ _revert_command :: proc(cmd: ^Command) {
 		}
 	case Selection_Command:
 		_selection_apply(v.before)
+	case Record_Override_Command:
+		// UNDO: drop the override this edit introduced. The paired
+		// Value_Command puts the old value back, so leaving the record would
+		// mark the field overridden while it holds its baseline.
+		_override_record_remove(v)
 	}
+}
+
+@(private)
+_override_host :: proc(v: Record_Override_Command) -> (^engine.Scene, engine.Transform_Handle, bool) {
+	s := resolve_scene(v.scene)
+	if s == nil do return nil, {}, false
+	h, ok := engine.bimap_get(&s.local_ids, v.host_local_id)
+	if !ok || h.type_key != .Transform do return nil, {}, false
+	return s, engine.Transform_Handle(h), true
+}
+
+@(private)
+_override_record_remove :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_unrecord_override_for_host(s, host, v.target_lid, v.property_path)
+}
+
+@(private)
+_override_record_reapply :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	// Re-record from the live field, which the paired Value_Command has
+	// already restored to the overridden value by now (subs apply in order).
+	ptr, tid, found := engine.nested_scene_find_live_field(s, host, v.target_lid, v.property_path)
+	if !found || ptr == nil do return
+	engine.nested_scene_record_override_for_host(s, host, v.target_lid, v.property_path, ptr, tid)
 }
 
 @(private)
@@ -439,7 +493,59 @@ _command_destroy :: proc(cmd: ^Command) {
 		sel := v
 		selection_state_destroy(&sel.before)
 		selection_state_destroy(&sel.after)
+	case Record_Override_Command:
+		delete(v.property_path)
 	}
+}
+
+// Attaches "this edit created a prefab override" to the undo step that just
+// recorded the value change, so undoing the edit also removes the record (and
+// redo puts it back). Call right after the engine reports created == true.
+//
+// Field edits push their Value_Command standalone rather than inside a
+// transaction, so this FOLDS the top entry and the override bookkeeping into
+// one Group_Command — the two must be inseparable, or a value undo would
+// strand a record marking the field overridden while it holds its baseline.
+record_override_created :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	target_lid: engine.Local_ID,
+	property_path: string,
+) {
+	u := get()
+	if u == nil || !u.recording || u.applying do return
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+
+	cmd := Record_Override_Command{
+		scene         = scene_ref(s),
+		host_local_id = ht.local_id,
+		target_lid    = target_lid,
+		property_path = strings.clone(property_path),
+	}
+
+	// Inside a transaction (multi-field edits, gizmo drags): just join it.
+	if len(u.txn_stack) > 0 {
+		g := &u.txn_stack[len(u.txn_stack) - 1]
+		append(&g.subs, Command(cmd))
+		return
+	}
+
+	// Standalone: fold with the value entry that was pushed a moment ago.
+	if u.top <= 0 || u.top > len(u.items) {
+		delete(cmd.property_path)
+		return
+	}
+	e := &u.items[u.top - 1]
+	if grp, is_group := &e.cmd.(Group_Command); is_group {
+		append(&grp.subs, Command(cmd))
+		return
+	}
+	subs := make([dynamic]Command)
+	append(&subs, e.cmd)
+	append(&subs, Command(cmd))
+	e.cmd = Group_Command{subs = subs}
 }
 
 @(private)
@@ -1078,6 +1184,8 @@ _command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asse
 			if _command_refs_scene(&v.subs[i], ptr, guid, any_scene) do return true
 		}
 		return false
+	case Record_Override_Command:
+		return _scene_ref_matches(v.scene, ptr, guid, any_scene)
 	case Selection_Command:
 		return _selection_state_refs_scene(v.before, ptr, guid, any_scene) ||
 			_selection_state_refs_scene(v.after, ptr, guid, any_scene)

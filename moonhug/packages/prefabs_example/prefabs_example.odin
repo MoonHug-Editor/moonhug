@@ -1,7 +1,7 @@
 package prefabs_example
 
 // A test-bed package: its assets/ holds an editable prefab/variant chain
-// (c -> c_Variant -> bullet -> bullet_Variant -> host) and its tests/ runs
+// (c -> c_Variant -> blobs -> blobs_Variant -> host) and its tests/ runs
 // INVARIANT tests against those committed files — byte-stable roundtrip,
 // no spurious override capture, variant edit propagation, deep overrides.
 //

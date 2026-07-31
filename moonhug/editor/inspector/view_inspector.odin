@@ -283,16 +283,81 @@ is_changed_flag_set :: proc() -> bool {
     return inspector_changed
 }
 
+// Whole-document / component snapshot-commit boundary. Both commit kinds go
+// through the same call here, so the switch is on presence only.
 @(private)
-_undo_finalize_widget :: proc() {
+_undo_finalize_widget :: proc() -> Field_Commit {
     if im.IsItemActivated() {
         undo.comp_snapshot()
     }
-    if im.IsItemDeactivatedAfterEdit() {
-        undo.comp_commit()
-    } else if inspector_changed && !im.IsItemActive() {
+    state := field_commit_state()
+    if state != .None {
         undo.comp_commit()
     }
+    return state
+}
+
+// Records a prefab-instance override for a field whose edit just committed, so
+// the override marker / Revert / Apply light up immediately instead of after a
+// save. No-op for non-nested content.
+//
+// `committed` is the caller's commit signal, from Field_Commit (see
+// field_commit_state): the generic loop passes what _undo_finalize_widget
+// detected, the transform wrappers what their own commit branch decided.
+// Recording is a CONSEQUENCE of committing, never its own detection — that
+// split is what let the transform fields miss overrides.
+//
+// When the edit CREATED the override (as opposed to updating an existing one),
+// the undo step is told, so undo takes the record away with the value.
+record_nested_override :: proc(field_ptr: rawptr, field_tid: typeid, property_path: string, committed: bool) {
+    if !committed || property_path == "" || field_ptr == nil do return
+
+    host_tH := engine.inspector_get_nested_host()
+    nested_lid := engine.inspector_get_nested_local_id()
+    if host_tH == {} || nested_lid == 0 do return
+
+    w := engine.ctx_world()
+    ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+    if ht == nil do return
+    created, ok := engine.nested_scene_record_override_for_host(ht.scene, host_tH, nested_lid, property_path, field_ptr, field_tid)
+    if ok && created {
+        undo.record_override_created(ht.scene, host_tH, nested_lid, property_path)
+    }
+}
+
+// THE commit predicate for an inspector field widget, in one place. Every
+// field-edit boundary is one of these two events:
+//
+//   Field_Commit.Drag_Released — the widget owned the edit and gave it back
+//     (imgui's IsItemDeactivatedAfterEdit: drag release, InputText Enter/blur).
+//   Field_Commit.Value_Applied — the value changed without the widget holding
+//     focus (typed digits applied inline, drawer wrote through immediately).
+//
+// The two are NOT interchangeable to callers: the undo wrappers commit through
+// different APIs per case (pending_commit vs end_field(changed), or
+// field_drag_end for the euler cache). Returning WHICH event happened, rather
+// than a bare bool, is what lets every wrapper share this detection while
+// keeping its own commit strategy — the duplication that previously let one
+// wrapper consume the changed flag another wrapper needed to read.
+Field_Commit :: enum {
+    None,
+    Drag_Released,
+    Value_Applied,
+}
+
+// `changed`: did the value change this frame. Pass the caller's OWN signal —
+// a wrapper that consumed the package flag (the transform wrappers) has to,
+// since the flag reads false by then. field_commit_state() uses the package
+// flag and is what the generic field loop wants.
+field_commit_state_of :: proc(changed: bool) -> Field_Commit {
+    if im.IsItemDeactivatedAfterEdit() do return .Drag_Released
+    if changed && !im.IsItemActive() do return .Value_Applied
+    return .None
+}
+
+// Commit state from the package changed flag (generic field loop).
+field_commit_state :: proc() -> Field_Commit {
+    return field_commit_state_of(inspector_changed)
 }
 
 resolve_property_drawer :: proc(tid: typeid) -> proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -585,7 +650,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 im.BeginGroup()
                 drawer(field_ptr, field_type.id, c_field_name)
                 im.EndGroup()
-                _undo_finalize_widget()
+                record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
             } else if is_array_type(field_type.id) {
                 draw_inspector_array(field_ptr, field_type.id, c_field_name)
                 row_popup_done = true
@@ -594,7 +659,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
-                _undo_finalize_widget()
+                record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
@@ -622,7 +687,7 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 draw_field_context_menu(field_ptr, field_type.id, full_path)
             }
         } else if ctx.handled_draw {
-            _undo_finalize_widget()
+            record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
             draw_field_context_menu(field_ptr, field_type.id, full_path)
         }
 

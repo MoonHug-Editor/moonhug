@@ -214,12 +214,15 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 	}
 
 	pushed := _push_override_style(is_overridden)
-	_wrap_transform_field(tH, field_ptr, 0, field_tid, drawer, drawer_tid, label)
+	committed := _wrap_transform_field(tH, field_ptr, 0, field_tid, drawer, drawer_tid, label)
 	_pop_override_style(pushed)
 
 	prev_nested_lid := engine.inspector_get_nested_local_id()
 	if is_in_nested_ctx {
 		engine.inspector_set_nested_local_id(target_id)
+		// Transform fields go through _wrap_transform_field, not the generic
+		// field loop, so they pass that wrapper's own commit signal.
+		inspector.record_nested_override(field_ptr, field_tid, prop_path, committed)
 	}
 	inspector.draw_field_context_menu(field_ptr, field_tid, prop_path)
 	if is_in_nested_ctx {
@@ -240,12 +243,15 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	}
 
 	pushed := _push_override_style(is_overridden)
-	_wrap_transform_rotation(tH, t, drawer)
+	committed := _wrap_transform_rotation(tH, t, drawer)
 	_pop_override_style(pushed)
 
 	prev_nested_lid := engine.inspector_get_nested_local_id()
 	if is_in_nested_ctx {
 		engine.inspector_set_nested_local_id(target_id)
+		// The euler widget writes t.rotation, so the override records the
+		// quaternion — the same field the diff and revert use.
+		inspector.record_nested_override(&t.rotation, typeid_of([4]f32), "rotation", committed)
 	}
 	inspector.draw_field_context_menu(&t.rotation, typeid_of([4]f32), "rotation")
 	if is_in_nested_ctx {
@@ -256,8 +262,10 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 @(private)
 _inspector_rot_drag: undo.Field_Drag
 
+// `committed`: see _wrap_transform_field. The euler widget writes through to
+// t.rotation, so the commit point is the drag release.
 @(private)
-_wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, drawer: proc(ptr: rawptr, tid: typeid, label: cstring)) {
+_wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, drawer: proc(ptr: rawptr, tid: typeid, label: cstring)) -> (committed: bool) {
 	if _inspector_euler_quat_src != t.rotation {
 		_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
 		_inspector_euler_quat_src = t.rotation
@@ -277,15 +285,31 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 		inspector.mark_inspector_changed()
 	}
 
+	// This widget edits a CACHE (euler) that writes through to t.rotation, so
+	// its change signal is the cache delta, not the package changed flag, and
+	// a release only ends the undo entry when a drag actually opened one.
+	// Commit either way — inspector.Field_Commit's two events, with the drag
+	// close attached to the first.
+	euler_changed := _inspector_euler_cache != prev_euler
 	if im.IsItemDeactivatedAfterEdit() && _inspector_rot_drag.active {
 		undo.field_drag_end(&_inspector_rot_drag)
+		committed = true
+	} else if inspector.field_commit_state_of(euler_changed) != .None {
+		committed = true
 	}
 
 	if prev_changed do inspector.mark_inspector_changed()
+	return
 }
 
+// `committed` reports that this frame closed an edit of the field — the moment
+// a prefab-instance override must be recorded. The caller can't re-derive it:
+// the changed flag is consumed here, so reading it afterwards would miss
+// typed-in edits. Commit DETECTION is inspector.field_commit_state (one
+// predicate for every field widget); this wrapper only chooses which undo API
+// each kind commits through.
 @(private)
-_wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) {
+_wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) -> (committed: bool) {
 	prev_changed := inspector.consume_inspector_changed()
 	undo.begin_field(field_ptr, field_tid)
 
@@ -294,16 +318,24 @@ _wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, of
 	if im.IsItemActivated() {
 		undo.promote_to_pending()
 	}
-	if im.IsItemDeactivatedAfterEdit() && undo.pending_matches(field_ptr) {
+	// A released drag commits the pending entry it opened; otherwise a value
+	// that landed while the widget isn't holding focus ends the field as
+	// changed. `pending_matches` failing on release falls through to the
+	// value case, exactly as the original chained conditions did.
+	state := inspector.field_commit_state_of(inspector.is_changed_flag_set())
+	if state == .Drag_Released && undo.pending_matches(field_ptr) {
 		undo.pending_commit()
 		undo.end_field(false)
+		committed = true
 	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo.pending_is_active() {
 		undo.end_field(true)
+		committed = true
 	} else {
 		undo.end_field(false)
 	}
 
 	if prev_changed do inspector.mark_inspector_changed()
+	return
 }
 
 @(private)
@@ -315,6 +347,12 @@ _comp_pending_move_from: int = -1
 @(private)
 _comp_pending_move_to: int = -1
 
+// `nested`: the component belongs to a nested prefab instance. Structural
+// edits (add / remove / reorder) have no override representation yet
+// (docs/NestedPrefabs.md TODO "add/remove components as override"), so they
+// would silently revert on the next resolve — disabled with a tooltip rather
+// than offered and quietly discarded. Value edits stay available: those DO
+// capture as overrides.
 @(private)
 _draw_component_overflow_menu :: proc(
 	t: ^engine.Transform,
@@ -324,6 +362,7 @@ _draw_component_overflow_menu :: proc(
 	comp_tid: typeid,
 	comp_idx: int,
 	comp_count: int,
+	nested := false,
 ) {
 	popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
@@ -347,7 +386,7 @@ _draw_component_overflow_menu :: proc(
 
 		clip_tid := clip.target_typeid()
 		clip_key, clip_key_ok := engine.get_type_key_by_typeid(clip_tid)
-		can_paste_as_new := clip.has() && clip_key_ok
+		can_paste_as_new := clip.has() && clip_key_ok && !nested
 		if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
 			new_owned, new_ptr := engine.transform_add_comp(tH, clip_key)
 			if new_ptr != nil {
@@ -382,14 +421,14 @@ _draw_component_overflow_menu :: proc(
 
 		if comp_idx > 0 {
 			move_up_label := shift_held ? "Move to Top" : "Move Up"
-			if im.MenuItem(strings.clone_to_cstring(move_up_label, context.temp_allocator)) {
+			if im.MenuItem(strings.clone_to_cstring(move_up_label, context.temp_allocator), nil, false, !nested) {
 				_comp_pending_move_from = comp_idx
 				_comp_pending_move_to = shift_held ? 0 : comp_idx - 1
 			}
 		}
 		if comp_idx < comp_count - 1 {
 			move_down_label := shift_held ? "Move to Bottom" : "Move Down"
-			if im.MenuItem(strings.clone_to_cstring(move_down_label, context.temp_allocator)) {
+			if im.MenuItem(strings.clone_to_cstring(move_down_label, context.temp_allocator), nil, false, !nested) {
 				_comp_pending_move_from = comp_idx
 				_comp_pending_move_to = shift_held ? comp_count - 1 : comp_idx + 1
 			}
@@ -397,8 +436,11 @@ _draw_component_overflow_menu :: proc(
 
 		im.Separator()
 
-		if im.MenuItem("Remove Component") {
+		if im.MenuItem("Remove Component", nil, false, !nested) {
 			_comp_pending_remove = comp.handle
+		}
+		if nested && im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
+			im.SetTooltip("Prefab instance components can't be added, removed or reordered yet — edit the prefab itself (>)")
 		}
 		ctx_entries := _get_context_menu_entries(comp.handle.type_key)
 		if len(ctx_entries) > 0 {
@@ -613,7 +655,7 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 		inspector.draw_field_context_menu(&comp_base.enabled, typeid_of(bool), "base.enabled")
 		engine.inspector_set_nested_local_id(prev_enabled_lid)
 
-		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count)
+		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count, nested = true)
 
 		if header_open {
 			inspector.consume_inspector_changed()

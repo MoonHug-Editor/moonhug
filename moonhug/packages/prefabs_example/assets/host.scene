@@ -42,7 +42,7 @@
     },
     {
       "local_id": 2278904649649046,
-      "name": "bullet_Variant",
+      "name": "blobs_Variant",
       "is_active": true,
       "position": [
         0.0,
@@ -90,7 +90,7 @@
             "guid": "8254eb09-f662-42a9-ad7a-b389702e109c"
           },
           "property_path": "name",
-          "value": "bullet_Variant"
+          "value": "blobs_Variant"
         },
         {
           "target": {

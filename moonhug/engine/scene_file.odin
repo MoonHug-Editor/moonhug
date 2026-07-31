@@ -905,18 +905,42 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	// Capture writes directly onto each chain's native NS; inner-NS records
 	// keep the overrides they loaded from their inner-prefab files (those are
 	// runtime-only — used by per-level shallow bake during resolve, never
-	// persisted by save's filter). Clear native NS overrides so the diff
-	// repopulates from scratch.
+	// persisted by save's filter).
+	//
+	// The diff repopulates native NS overrides from scratch, so entries it
+	// cannot reproduce are SET ASIDE first and merged back after: a live-
+	// recorded override whose value now equals the prefab baseline diffs to
+	// nothing, and dropping it would silently un-stick what the user
+	// overrode (see nested_scene_record_override — overrides grow only).
+	kept := make([dynamic]Override, 0, 8, context.temp_allocator)
+	kept_owner := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
 	for &ns in s.nested_scenes {
 		if ns.expand_parent != {} do continue
 		for &ov in ns.overrides {
-			delete(ov.property_path)
-			json.destroy_value(ov.value)
+			append(&kept, ov)
+			append(&kept_owner, ns.local_id)
 		}
 		clear(&ns.overrides)
 	}
 	for &ns in s.nested_scenes {
 		_capture_overrides_to_native(s, &ns)
+	}
+	// Merge: the diff's value wins for anything it found (it reflects the live
+	// world); set-aside entries it missed are restored, transferring ownership
+	// of their heap payloads. Everything else is freed.
+	for i in 0 ..< len(kept) {
+		ov := kept[i]
+		restored := false
+		if ns, ns_ok := _find_ns_by_local_id(s, kept_owner[i]); ns_ok && ns != nil {
+			if !nested_scene_has_override(ns, ov.target, ov.property_path) {
+				append(&ns.overrides, ov)
+				restored = true
+			}
+		}
+		if !restored {
+			delete(ov.property_path)
+			json.destroy_value(ov.value)
+		}
 	}
 
 	// Prune orphan breadcrumbs whose owning NS no longer references them as a

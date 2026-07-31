@@ -127,10 +127,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - hierarchy fix copy/paste/duplicate bugs
 
-- playable graph - to play animations on hierarchies(needs hierarchy?)
-  - no Mecanim, needs something else more like timelines blending
-  - tool for tech-art to author and preview animations without entering playmode
-
 - physics2d follow-ups:
   - PhysicsLayerCollision2D settings asset
   - PhysicsMaterial2D asset
@@ -154,6 +150,8 @@ For more details see [Contribution](docs/Contribution.md)
 
 - undo follow-ups: asset doc Revert button, import settings onto the asset doc model
 - multiselection follow-ups: multiedit, multi-path drag-drop
+
+- rethink library folder
 
 ### Considered Features
 
