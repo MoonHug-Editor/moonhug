@@ -1413,6 +1413,58 @@ nested_scene_unrecord_override_for_host :: proc(
     return nested_scene_unrecord_override(root_ns, target, property_path)
 }
 
+// Puts an override entry back verbatim, for undo of a Revert. `value_json` is
+// the entry's value as JSON (undo captured it before the revert deleted it).
+// Replaces a same-(target, path) entry rather than duplicating it.
+nested_scene_restore_override :: proc(
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    value_json: []byte,
+) -> bool {
+    if ns == nil || property_path == "" do return false
+    val: json.Value
+    if json.unmarshal(value_json, &val) != nil do return false
+
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        json.destroy_value(ov.value)
+        ov.value = val
+        return true
+    }
+    append(&ns.overrides, Override{
+        target        = target,
+        property_path = strings.clone(property_path),
+        value         = val,
+    })
+    return true
+}
+
+// The override entries matching `(target, property_path)` under path-covering
+// rules — what a Revert at `property_path` will remove. Undo captures these
+// before reverting so it can restore them. Values are marshaled into
+// `context.temp_allocator`; the caller clones what it keeps.
+nested_scene_overrides_covered_by :: proc(
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+) -> (targets: []PPtr, paths: []string, values: [][]byte) {
+    if ns == nil do return nil, nil, nil
+    t_out := make([dynamic]PPtr, context.temp_allocator)
+    p_out := make([dynamic]string, context.temp_allocator)
+    v_out := make([dynamic][]byte, context.temp_allocator)
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) do continue
+        if !override_path_covers(property_path, ov.property_path) do continue
+        bytes, merr := json.marshal(ov.value, {spec = .JSON}, context.temp_allocator)
+        if merr != nil do continue
+        append(&t_out, ov.target)
+        append(&p_out, ov.property_path)
+        append(&v_out, bytes)
+    }
+    return t_out[:], p_out[:], v_out[:]
+}
+
 // Live-edit recording keyed the way the inspector sees the world: the host
 // transform of the nested instance plus the live local_id of the edited row.
 // Resolves to the ROOT scene's NS and the correctly projected target (deep

@@ -378,3 +378,64 @@ test_live_override_deep_chain_redo_finds_field :: proc(t: ^testing.T) {
 	testing.expect(t, engine.nested_scene_has_root_override(loaded, host, lid, "position"),
 		"REDO must re-mark the deep override")
 }
+
+// Undo of a REVERT must put the override record back, not just the value. The
+// entries are snapshotted before the revert deletes them and restored verbatim.
+@(test)
+test_override_restore_after_revert :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_override_restore.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/VariantC.scene")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host := find_transform_named(&tc_mem.world, loaded, "RootC", false)
+	edited := find_transform_named(&tc_mem.world, loaded, "TransformC_Variant", true)
+	if host == {} || edited == {} do return
+	ct := engine.pool_get(&tc_mem.world.transforms, engine.Handle(edited))
+	if ct == nil do return
+	lid := ct.local_id
+
+	ct.scale = {6, 6, 6}
+	_record_live(loaded, host, lid, "scale", &ct.scale, typeid_of([3]f32))
+	root_ns, target, ok := engine.nested_scene_locate_root_override(loaded, host, lid)
+	if !ok || root_ns == nil do return
+
+	// What undo snapshots before reverting.
+	targets, paths, values := engine.nested_scene_overrides_covered_by(root_ns, target, "scale")
+	testing.expect(t, len(paths) == 1, "one entry covers the reverted path")
+	if len(paths) != 1 do return
+	saved_target := targets[0]
+	saved_path := strings.clone(paths[0], context.temp_allocator)
+	saved_value := make([]byte, len(values[0]), context.temp_allocator)
+	copy(saved_value, values[0])
+
+	engine.nested_scene_revert_override(loaded, root_ns, target, "scale", &ct.scale)
+	testing.expect(t, !engine.nested_scene_has_root_override(loaded, host, lid, "scale"),
+		"revert clears the record")
+
+	// Undo of the revert.
+	testing.expect(t, engine.nested_scene_restore_override(root_ns, saved_target, saved_path, saved_value),
+		"restore should succeed")
+	testing.expect(t, engine.nested_scene_has_root_override(loaded, host, lid, "scale"),
+		"UNDO of a revert must bring the override back")
+
+	// Restored verbatim, and not duplicated.
+	count := 0
+	for ov in root_ns.overrides {
+		if ov.target.local_id == target.local_id && strings.compare(ov.property_path, "scale") == 0 {
+			count += 1
+			testing.expect(t, override_vec3_matches(ov.value, {6, 6, 6}),
+				"the restored override must carry its original value")
+		}
+	}
+	testing.expect(t, count == 1, "restore must not duplicate the entry")
+}

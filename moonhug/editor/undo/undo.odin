@@ -154,11 +154,29 @@ Selection_Command :: struct {
 // override record away, or the field would read as overridden while holding
 // its baseline value. Only ever recorded for a NEW entry — an edit that
 // updated a pre-existing override leaves that override alone on undo.
+// Which way the override record moved, so undo/redo can invert it. An edit
+// that CREATED an override and a Revert that REMOVED one are the same
+// bookkeeping in opposite directions.
+Override_Record_Op :: enum {
+	Created, // apply: record exists   / revert(undo): remove it
+	Removed, // apply: record is gone  / revert(undo): put it back
+}
+
 Record_Override_Command :: struct {
 	scene:         Scene_Ref,
 	host_local_id: engine.Local_ID, // NS host transform, resolved on apply
 	target_lid:    engine.Local_ID, // live lid of the overridden row
 	property_path: string,          // owned
+	op:            Override_Record_Op,
+	// .Removed only: the entries Revert deleted, verbatim, so undo restores
+	// them exactly (a revert can clear several paths under one field).
+	removed:       []Removed_Override, // owned
+}
+
+Removed_Override :: struct {
+	target:        engine.PPtr,
+	property_path: string,     // owned
+	value_json:    []byte,     // owned; the override's value re-marshaled
 }
 
 Command :: union {
@@ -416,9 +434,15 @@ _apply_command :: proc(cmd: ^Command) {
 	case Selection_Command:
 		_selection_apply(v.after)
 	case Record_Override_Command:
-		// REDO: the value sub-command restores the edited value, so the
-		// override record has to come back with it.
-		_override_record_reapply(v)
+		// REDO: put the record back the way the original action left it.
+		switch v.op {
+		case .Created:
+			// The value sub-command restored the edited value, so the record
+			// comes back with it.
+			_override_record_reapply(v)
+		case .Removed:
+			_override_record_rerevert(v)
+		}
 	}
 }
 
@@ -436,10 +460,18 @@ _revert_command :: proc(cmd: ^Command) {
 	case Selection_Command:
 		_selection_apply(v.before)
 	case Record_Override_Command:
-		// UNDO: drop the override this edit introduced. The paired
-		// Value_Command puts the old value back, so leaving the record would
-		// mark the field overridden while it holds its baseline.
-		_override_record_remove(v)
+		// UNDO: invert whatever the action did to the record.
+		switch v.op {
+		case .Created:
+			// Drop the override this edit introduced — the paired
+			// Value_Command puts the old value back, so leaving the record
+			// would mark the field overridden while it holds its baseline.
+			_override_record_remove(v)
+		case .Removed:
+			// Undo of a Revert: the value command restores the overridden
+			// value, so the record must come back too.
+			_override_record_restore(v)
+		}
 	}
 }
 
@@ -470,6 +502,30 @@ _override_record_reapply :: proc(v: Record_Override_Command) {
 	engine.nested_scene_record_override_for_host(s, host, v.target_lid, v.property_path, ptr, tid)
 }
 
+// Puts back exactly the entries a Revert deleted (captured at revert time).
+@(private)
+_override_record_restore :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	root_ns, _, loc_ok := engine.nested_scene_locate_root_override(s, host, v.target_lid)
+	if !loc_ok || root_ns == nil do return
+	for r in v.removed {
+		engine.nested_scene_restore_override(root_ns, r.target, r.property_path, r.value_json)
+	}
+}
+
+// Re-runs the Revert's record removal (redo of a Revert).
+@(private)
+_override_record_rerevert :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	root_ns, _, loc_ok := engine.nested_scene_locate_root_override(s, host, v.target_lid)
+	if !loc_ok || root_ns == nil do return
+	for r in v.removed {
+		engine.nested_scene_unrecord_override(root_ns, r.target, r.property_path)
+	}
+}
+
 @(private)
 _entry_destroy :: proc(e: ^Entry) {
 	delete(e.label)
@@ -494,7 +550,8 @@ _command_destroy :: proc(cmd: ^Command) {
 		selection_state_destroy(&sel.before)
 		selection_state_destroy(&sel.after)
 	case Record_Override_Command:
-		delete(v.property_path)
+		roc := v
+		_command_destroy_override(&roc)
 	}
 }
 
@@ -518,13 +575,94 @@ record_override_created :: proc(
 	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
 	if ht == nil do return
 
-	cmd := Record_Override_Command{
+	_override_cmd_attach(u, Record_Override_Command{
 		scene         = scene_ref(s),
 		host_local_id = ht.local_id,
 		target_lid    = target_lid,
 		property_path = strings.clone(property_path),
+		op            = .Created,
+	})
+}
+
+// Copies the override entries a Revert is about to delete. Call BEFORE
+// nested_scene_revert_override — afterwards they are gone. Hand the result to
+// record_override_removed once the Revert's own undo step has committed.
+// Owned: record_override_removed takes it over, or discard_override_removal
+// frees it.
+override_removal_snapshot :: proc(
+	ns: ^engine.NestedScene,
+	target: engine.PPtr,
+	property_path: string,
+) -> []Removed_Override {
+	targets, paths, values := engine.nested_scene_overrides_covered_by(ns, target, property_path)
+	if len(paths) == 0 do return nil
+	out := make([]Removed_Override, len(paths))
+	for i in 0 ..< len(paths) {
+		out[i] = Removed_Override{
+			target        = targets[i],
+			property_path = strings.clone(paths[i]),
+			value_json    = slice_clone_bytes(values[i]),
+		}
+	}
+	return out
+}
+
+discard_override_removal :: proc(snap: []Removed_Override) {
+	for r in snap {
+		delete(r.property_path)
+		delete(r.value_json)
+	}
+	if snap != nil do delete(snap)
+}
+
+// Attaches a snapshot of Revert-deleted override entries to the undo step that
+// just recorded the Revert's value change, so undoing the Revert restores both
+// the value (its own Value_Command) and the record.
+record_override_removed :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	target_lid: engine.Local_ID,
+	property_path: string,
+	snap: []Removed_Override,
+) {
+	if len(snap) == 0 do return
+	u := get()
+	if u == nil || !u.recording || u.applying {
+		discard_override_removal(snap)
+		return
+	}
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil {
+		discard_override_removal(snap)
+		return
 	}
 
+	_override_cmd_attach(u, Record_Override_Command{
+		scene         = scene_ref(s),
+		host_local_id = ht.local_id,
+		target_lid    = target_lid,
+		property_path = strings.clone(property_path),
+		op            = .Removed,
+		removed       = snap,
+	})
+}
+
+@(private)
+slice_clone_bytes :: proc(src: []byte) -> []byte {
+	out := make([]byte, len(src))
+	copy(out, src)
+	return out
+}
+
+// Attaches override bookkeeping to the CURRENT undo step. Value edits and the
+// Revert menu both push their Value_Command standalone rather than inside a
+// transaction, so this FOLDS the top entry and the bookkeeping into one
+// Group_Command — the two must be inseparable, or a value undo would leave the
+// record disagreeing with the value it describes.
+@(private)
+_override_cmd_attach :: proc(u: ^Undo_Stack, cmd: Record_Override_Command) {
+	cmd := cmd
 	// Inside a transaction (multi-field edits, gizmo drags): just join it.
 	if len(u.txn_stack) > 0 {
 		g := &u.txn_stack[len(u.txn_stack) - 1]
@@ -534,7 +672,8 @@ record_override_created :: proc(
 
 	// Standalone: fold with the value entry that was pushed a moment ago.
 	if u.top <= 0 || u.top > len(u.items) {
-		delete(cmd.property_path)
+		c := cmd
+		_command_destroy_override(&c)
 		return
 	}
 	e := &u.items[u.top - 1]
@@ -546,6 +685,16 @@ record_override_created :: proc(
 	append(&subs, e.cmd)
 	append(&subs, Command(cmd))
 	e.cmd = Group_Command{subs = subs}
+}
+
+@(private)
+_command_destroy_override :: proc(v: ^Record_Override_Command) {
+	delete(v.property_path)
+	for r in v.removed {
+		delete(r.property_path)
+		delete(r.value_json)
+	}
+	if v.removed != nil do delete(v.removed)
 }
 
 @(private)

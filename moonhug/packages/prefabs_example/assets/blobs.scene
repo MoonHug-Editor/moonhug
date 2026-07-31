@@ -97,7 +97,7 @@
       "is_active": true,
       "position": [
         0.0,
-        1.5,
+        0.62414706,
         -0.01
       ],
       "rotation": [
@@ -179,7 +179,7 @@
           "property_path": "position",
           "value": [
             0.0,
-            1.5,
+            0.4349781,
             -0.31
           ]
         },
@@ -264,6 +264,18 @@
       "host_breadcrumb_id": 31,
       "sibling_index": 2,
       "overrides": [
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
+          },
+          "property_path": "position",
+          "value": [
+            0.0,
+            0.58655226,
+            -0.01
+          ]
+        },
         {
           "target": {
             "local_id": 3,

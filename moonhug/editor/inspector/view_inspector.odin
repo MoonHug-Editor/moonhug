@@ -451,6 +451,9 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
                 engine.type_reset(key, field_ptr)
             }
             _field_menu_undo_end(u)
+            // Reset is an ordinary value edit: on prefab-instance content it
+            // creates an override like typing a value would.
+            record_nested_override(field_ptr, field_tid, property_path, true)
             mark_inspector_changed()
         }
         return true
@@ -476,6 +479,9 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
                 mem.zero(field_ptr, full_ti.size)
             }
             _field_menu_undo_end(u)
+            // Reset is an ordinary value edit: on prefab-instance content it
+            // creates an override like typing a value would.
+            record_nested_override(field_ptr, field_tid, property_path, true)
             mark_inspector_changed()
         }
         return true
@@ -505,9 +511,14 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
                 is_overridden := ok && engine.nested_scene_has_override(root_ns, root_target, property_path)
                 if is_overridden {
 	                if im.MenuItem("Revert", nil, false, is_overridden) {
+	                    // Snapshot the entries BEFORE the revert deletes them;
+	                    // they are attached to the undo step after it commits,
+	                    // so the record undoes together with the value.
+	                    snap := undo.override_removal_snapshot(root_ns, root_target, property_path)
 	                    u := _field_menu_undo_begin(field_ptr, field_tid, "Revert")
 	                    engine.nested_scene_revert_override(ht.scene, root_ns, root_target, property_path, field_ptr)
 	                    _field_menu_undo_end(u)
+	                    undo.record_override_removed(ht.scene, host_tH, nested_lid, property_path, snap)
 	                    mark_inspector_changed()
 	                }
 	                // Apply bakes the override up into an ancestor prefab. Unity-
