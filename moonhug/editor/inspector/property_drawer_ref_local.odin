@@ -36,6 +36,10 @@ _picker_search_bar :: proc() -> string {
 // Returns true when the popup should open. When dropped_asset is non-nil, the
 // value button accepts ASSET_PATH drag-drops and writes the dropped path
 // (temp-allocated) there.
+//
+// An EMPTY field ("None") has nothing to ping or open, so its value area acts
+// as the pick button — clicking anywhere on the row opens the picker instead of
+// hitting a dead zone.
 _picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
 	field_row(label)
 
@@ -60,10 +64,15 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	value_pressed := im.Button(value_label, {value_w, 0})
 	im.PopStyleColor(3)
 	im.PopStyleVar()
+	open_picker := false
 	if value_pressed {
-		value_clicked^ = true
+		if has_value {
+			value_clicked^ = true
+		} else {
+			open_picker = true
+		}
 	}
-	if value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+	if has_value && value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
 		value_double_clicked^ = true
 	}
 	if dropped_asset != nil && im.BeginDragDropTarget() {
@@ -88,7 +97,7 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	pick_label := strings.clone_to_cstring(
 		fmt.tprintf("%s##pick_%s", ICON_MD_SEARCH, label), context.temp_allocator,
 	)
-	return im.Button(pick_label, {BTN_W, 0})
+	return im.Button(pick_label, {BTN_W, 0}) || open_picker
 }
 
 @(property_drawer={type = engine.Ref_Local, priority = 0})
