@@ -176,6 +176,12 @@
           "property_path": "name",
           "value": "tank"
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
       ]
     }
   ],

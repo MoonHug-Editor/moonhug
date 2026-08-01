@@ -1,10 +1,12 @@
 {
   "root": 1,
-  "next_local_id": 1011,
-  "transforms": [],
+  "transforms": [
+
+  ],
   "nested_scenes": [
     {
       "local_id": 1010,
+      "local_id_in_parent": 1010,
       "source_prefab": "a1000000-0000-4000-8000-0000000000b1",
       "transform_parent": 0,
       "host_breadcrumb_id": 0,
@@ -17,15 +19,25 @@
           },
           "property_path": "color",
           "value": [
-            0,
-            0,
-            1,
-            1
+            0.0,
+            0.0,
+            1.0,
+            1.0
           ]
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
       ]
     }
   ],
-  "breadcrumbs": [],
-  "components": []
+  "breadcrumbs": [
+
+  ],
+  "components": [
+
+  ]
 }

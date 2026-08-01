@@ -1,6 +1,5 @@
 {
   "root": 10,
-  "next_local_id": 15,
   "transforms": [
     {
       "local_id": 10,
@@ -43,7 +42,9 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 12,
@@ -72,8 +73,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     },
     {
       "local_id": 1,
@@ -102,8 +107,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -155,6 +164,12 @@
           "property_path": "name",
           "value": "TestD"
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
       ]
     }
   ],
@@ -168,5 +183,7 @@
       "scene_instance": 13
     }
   ],
-  "components": []
+  "components": [
+
+  ]
 }

@@ -1,26 +1,25 @@
 {
   "root": 1,
-  "next_local_id": 20,
   "transforms": [
     {
       "local_id": 1,
       "name": "CycleARoot",
       "is_active": true,
       "position": [
-        0,
-        0,
-        0
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0,
-        0,
-        0,
-        1
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -37,27 +36,29 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 2,
       "name": "CycleAHost",
       "is_active": true,
       "position": [
-        0,
-        0,
-        0
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0,
-        0,
-        0,
-        1
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1,
-        1,
-        1
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -66,8 +67,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -78,7 +83,22 @@
       "transform_parent": 2,
       "host_breadcrumb_id": 11,
       "sibling_index": 0,
-      "overrides": []
+      "overrides": [
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "a2000000-0000-4000-8000-0000000000c2"
+          },
+          "property_path": "name",
+          "value": "CycleAHost"
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ]
     }
   ],
   "breadcrumbs": [
@@ -91,5 +111,7 @@
       "scene_instance": 10
     }
   ],
-  "components": []
+  "components": [
+
+  ]
 }

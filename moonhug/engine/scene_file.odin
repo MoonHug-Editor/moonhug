@@ -382,15 +382,17 @@ _collect_nested_owned_subtree :: proc(
 			if ct != nil do append(&t_copy.children, child)
 		}
 	}
+	// Nested-owned components are the instance's prefab content. NON-owned
+	// components on nested-owned content are host ADDITIONS — they are
+	// collected too, so override capture can see them and record them as
+	// added_components (docs/NestedPrefabs.md); without them the working copy
+	// would look identical to the prefab and the addition would be lost.
 	t_copy.components = make([dynamic]Owned, 0, len(t.components))
 	if !is_inner_boundary {
 		for c in t.components {
 			if c.handle.type_key == INVALID_TYPE_KEY do continue
 			raw := world_pool_get(w, c.handle)
-			if raw != nil {
-				base := cast(^CompData)raw
-				if base.nested_owned do append(&t_copy.components, c)
-			}
+			if raw != nil do append(&t_copy.components, c)
 		}
 	}
 	append(&sf.transforms, t_copy)
@@ -401,8 +403,7 @@ _collect_nested_owned_subtree :: proc(
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
 		raw := world_pool_get(w, c.handle)
 		if raw == nil do continue
-		base := cast(^CompData)raw
-		if base.nested_owned do world_pool_collect(w, c.handle, sf)
+		world_pool_collect(w, c.handle, sf)
 	}
 
 	for child in t.children {
@@ -711,6 +712,66 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 			value         = ov.value,
 		})
 	}
+
+	// Structural component edits: components the instance lost or gained
+	// relative to its prefab. Same baseline and working copy the field diff
+	// used, so the two stay consistent by construction.
+	_capture_component_edits(s, ns, native_ns, diff_base, work_raw, chain_lids[:])
+}
+
+// Records removed/added components onto `native_ns`, projecting targets up the
+// inner-NS chain exactly as field overrides are projected.
+@(private = "file")
+_capture_component_edits :: proc(
+	s: ^Scene,
+	ns: ^NestedScene,
+	native_ns: ^NestedScene,
+	base_raw, work_raw: []byte,
+	chain_lids: []Local_ID,
+) {
+	removed, added, ok := nested_scene_diff_component_sets(base_raw, work_raw, ns.source_prefab)
+	if !ok do return
+
+	project :: proc(lid: Local_ID, chain: []Local_ID) -> Local_ID {
+		out := lid
+		for i := len(chain) - 1; i >= 0; i -= 1 {
+			out = local_id_project(chain[i], out)
+		}
+		return out
+	}
+
+	for rc in removed {
+		target := rc.target
+		target.local_id = project(target.local_id, chain_lids)
+		dup := false
+		for existing in native_ns.removed_components {
+			if pptr_equals(existing.target, target) {
+				dup = true
+				break
+			}
+		}
+		if dup do continue
+		append(&native_ns.removed_components, Removed_Component{target = target})
+	}
+
+	for ac in added {
+		owner := ac.owner
+		owner.local_id = project(owner.local_id, chain_lids)
+		dup := false
+		for existing in native_ns.added_components {
+			if existing.local_id == ac.local_id {
+				dup = true
+				break
+			}
+		}
+		if dup do continue
+		append(&native_ns.added_components, Added_Component{
+			owner     = owner,
+			local_id  = ac.local_id,
+			type_guid = strings.clone(ac.type_guid),
+			json      = strings.clone(ac.json),
+		})
+	}
 }
 
 // Returns the set of local_ids that appear in the prefab base file's section
@@ -921,6 +982,17 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 			append(&kept_owner, ns.local_id)
 		}
 		clear(&ns.overrides)
+		// Component edits are re-derived by the same capture pass, so they
+		// clear with the overrides. Unlike field overrides they need no
+		// set-aside: a removed/added component is a STRUCTURAL fact the diff
+		// always reproduces (the component is either there or not), never a
+		// value that can coincide with the baseline.
+		clear(&ns.removed_components)
+		for &ac in ns.added_components {
+			delete(ac.type_guid)
+			delete(ac.json)
+		}
+		clear(&ns.added_components)
 	}
 	for &ns in s.nested_scenes {
 		_capture_overrides_to_native(s, &ns)
@@ -1086,7 +1158,6 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	delete(raw)
 	return data, true
 }
-
 // Canonicalizes float text in marshaled JSON. Core's writer emits floats at
 // fixed width — f32 fields with 8 fraction digits, f64 (every json.Value
 // number) with 16 — so the same value serializes to different text depending

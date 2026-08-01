@@ -38,11 +38,7 @@ scene_destroy :: proc(s: ^Scene) {
 	}
 	delete(s.path)
 	for &ns in s.nested_scenes {
-		for &ov in ns.overrides {
-			delete(ov.property_path)
-			json.destroy_value(ov.value)
-		}
-		delete(ns.overrides)
+		nested_scene_free_owned(&ns)
 		delete(ns.source_of_inst)
 	}
 	delete(s.nested_scenes)

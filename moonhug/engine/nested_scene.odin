@@ -224,6 +224,228 @@ nested_scene_apply_overrides :: proc(raw: []byte, overrides: []Override, prefab_
     return data
 }
 
+// Structural edits on an instance's components, baked into the prefab bytes
+// before deserialization so the materialized instance simply doesn't have the
+// removed components and does have the added ones. Both lists are filtered to
+// `prefab_guid` the way overrides are — deeper targets belong to inner levels.
+//
+// Runs after nested_scene_apply_overrides (field patches address prefab rows;
+// removing a row first would drop patches that still name it).
+nested_scene_apply_component_edits :: proc(
+    raw: []byte,
+    removed: []Removed_Component,
+    added: []Added_Component,
+    prefab_guid: Asset_GUID = {},
+) -> []byte {
+    if len(removed) == 0 && len(added) == 0 do return raw
+
+    raw_copy := make([]byte, len(raw))
+    defer delete(raw_copy)
+    copy(raw_copy, raw)
+
+    root_val: json.Value
+    if json.unmarshal_string(string(raw_copy), &root_val) != nil do return raw
+    defer json.destroy_value(root_val)
+    root_obj, is_obj := root_val.(json.Object)
+    if !is_obj do return raw
+
+    skip_filter := asset_guid_is_empty(prefab_guid)
+
+    // --- Removals: drop the component record AND the owner's components entry.
+    for rc in removed {
+        if !skip_filter && rc.target.guid != prefab_guid do continue
+        _json_remove_component_row(root_obj, rc.target.local_id)
+    }
+
+    // --- Additions: append the record and link it under its owner transform.
+    for ac in added {
+        if !skip_filter && ac.owner.guid != prefab_guid do continue
+        _json_add_component_row(root_obj, ac)
+    }
+
+    opts := json.Marshal_Options{spec = .JSON, pretty = false}
+    data, merr := json.marshal(root_obj, opts)
+    if merr != nil do return raw
+    return data
+}
+
+// Removes the component record with `lid` from "components" and the matching
+// {local_id} entry from whichever transform lists it.
+@(private)
+_json_remove_component_row :: proc(root_obj: json.Object, lid: Local_ID) {
+    root_obj := root_obj
+    comps, has_comps := root_obj["components"].(json.Array)
+    if has_comps {
+        for item, idx in comps {
+            obj, is_o := item.(json.Object)
+            if !is_o do continue
+            if _json_component_lid_of(obj) != lid do continue
+            json.destroy_value(comps[idx])
+            ordered_remove(&comps, idx)
+            root_obj["components"] = comps
+            break
+        }
+    }
+    if trs, ok := root_obj["transforms"].(json.Array); ok {
+        for t_item in trs {
+            t_obj, is_o := t_item.(json.Object)
+            if !is_o do continue
+            list, has := t_obj["components"].(json.Array)
+            if !has do continue
+            for entry, ei in list {
+                e_obj, e_ok := entry.(json.Object)
+                if !e_ok do continue
+                if elid, lok := _json_local_id_of(e_obj); !lok || elid != lid do continue
+                json.destroy_value(list[ei])
+                ordered_remove(&list, ei)
+                t_obj["components"] = list
+                return
+            }
+        }
+    }
+}
+
+// Appends `ac`'s record to "components" and links it under the owner transform.
+@(private)
+_json_add_component_row :: proc(root_obj: json.Object, ac: Added_Component) {
+    rec_val: json.Value
+    if json.unmarshal_string(ac.json, &rec_val) != nil do return
+    rec, is_obj := rec_val.(json.Object)
+    if !is_obj {
+        json.destroy_value(rec_val)
+        return
+    }
+    // The record must carry its type tag and lid — the loader keys on both.
+    rec["__type"] = json.Value(strings.clone(ac.type_guid))
+    base, has_base := rec["base"].(json.Object)
+    if !has_base {
+        base = make(json.Object)
+    }
+    base["local_id"] = json.Value(json.Integer(ac.local_id))
+    rec["base"] = base
+
+    root_obj := root_obj
+    comps, _ := root_obj["components"].(json.Array)
+    append(&comps, json.Value(rec))
+    root_obj["components"] = comps
+
+    if trs, ok := root_obj["transforms"].(json.Array); ok {
+        for t_item in trs {
+            t_obj, is_o := t_item.(json.Object)
+            if !is_o do continue
+            tlid, lok := _json_local_id_of(t_obj)
+            if !lok || tlid != ac.owner.local_id do continue
+            list, _ := t_obj["components"].(json.Array)
+            entry := make(json.Object)
+            entry["local_id"] = json.Value(json.Integer(ac.local_id))
+            append(&list, json.Value(entry))
+            t_obj["components"] = list
+            return
+        }
+    }
+}
+
+// Component-set difference between a prefab baseline and an instance's live
+// content, both as scene-file JSON in the SAME namespace (the caller
+// un-projects the working copy first, as override capture does).
+//
+// A component in `base` but not in `work` was REMOVED from the instance; one in
+// `work` but not in `base` was ADDED. Identity is the component's own lid,
+// which survives materialization — nested content keeps its prefab lid.
+// `prefab_guid` tags the produced targets, matching Override.target encoding.
+//
+// Results are temp-allocated; the caller clones what it stores.
+nested_scene_diff_component_sets :: proc(
+    base_raw, work_raw: []byte,
+    prefab_guid: Asset_GUID,
+) -> (removed: []Removed_Component, added: []Added_Component, ok: bool) {
+    base_val, work_val: json.Value
+    if json.unmarshal(base_raw, &base_val, .JSON, context.temp_allocator) != nil do return nil, nil, false
+    if json.unmarshal(work_raw, &work_val, .JSON, context.temp_allocator) != nil do return nil, nil, false
+    base_obj, b_ok := base_val.(json.Object)
+    work_obj, w_ok := work_val.(json.Object)
+    if !b_ok || !w_ok do return nil, nil, false
+
+    base_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+    work_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+    _json_collect_component_lids(base_obj, &base_lids)
+    _json_collect_component_lids(work_obj, &work_lids)
+
+    rem := make([dynamic]Removed_Component, context.temp_allocator)
+    for lid in base_lids {
+        if lid in work_lids do continue
+        append(&rem, Removed_Component{target = PPtr{guid = prefab_guid, local_id = lid}})
+    }
+
+    add := make([dynamic]Added_Component, context.temp_allocator)
+    if comps, has := work_obj["components"].(json.Array); has {
+        for item in comps {
+            rec, is_o := item.(json.Object)
+            if !is_o do continue
+            lid := _json_component_lid_of(rec)
+            if lid == 0 || lid in base_lids do continue
+            type_guid := ""
+            if tg, tok := rec["__type"].(json.String); tok do type_guid = string(tg)
+            if type_guid == "" do continue
+            owner_lid := _json_owner_of_component(work_obj, lid)
+            if owner_lid == 0 do continue
+            bytes, merr := json.marshal(rec, {spec = .JSON}, context.temp_allocator)
+            if merr != nil do continue
+            append(&add, Added_Component{
+                owner     = PPtr{guid = prefab_guid, local_id = owner_lid},
+                local_id  = lid,
+                type_guid = type_guid,
+                json      = string(bytes),
+            })
+        }
+    }
+    return rem[:], add[:], true
+}
+
+@(private)
+_json_collect_component_lids :: proc(root_obj: json.Object, out: ^map[Local_ID]bool) {
+    comps, has := root_obj["components"].(json.Array)
+    if !has do return
+    for item in comps {
+        rec, is_o := item.(json.Object)
+        if !is_o do continue
+        if lid := _json_component_lid_of(rec); lid != 0 do out^[lid] = true
+    }
+}
+
+// The transform whose `components` list names `comp_lid`.
+@(private)
+_json_owner_of_component :: proc(root_obj: json.Object, comp_lid: Local_ID) -> Local_ID {
+    trs, has := root_obj["transforms"].(json.Array)
+    if !has do return 0
+    for t_item in trs {
+        t_obj, is_o := t_item.(json.Object)
+        if !is_o do continue
+        list, l_ok := t_obj["components"].(json.Array)
+        if !l_ok do continue
+        for entry in list {
+            e_obj, e_ok := entry.(json.Object)
+            if !e_ok do continue
+            if elid, lok := _json_local_id_of(e_obj); lok && elid == comp_lid {
+                if tlid, tok := _json_local_id_of(t_obj); tok do return tlid
+                return 0
+            }
+        }
+    }
+    return 0
+}
+
+// A component record's own lid, from `base.local_id` (records nest their
+// CompData under "base"; a bare "local_id" is the transform-entry form).
+@(private)
+_json_component_lid_of :: proc(obj: json.Object) -> Local_ID {
+    if base, ok := obj["base"].(json.Object); ok {
+        if lid, lok := _json_local_id_of(base); lok do return lid
+    }
+    if lid, lok := _json_local_id_of(obj); lok do return lid
+    return 0
+}
+
 _json_values_equal :: proc(a, b: json.Value) -> bool {
     switch av in a {
     case json.Null:
@@ -419,11 +641,58 @@ NestedScene :: struct {
     source_root_id:       Local_ID `json:"-"`,
     expand_parent:        Transform_Handle `json:"-"`,
     overrides:            [dynamic]Override,
+    // Components removed from / added to this instance's content. Separate
+    // lists rather than Override entries (Unity's m_RemovedComponents /
+    // m_AddedComponents): an Override names a FIELD to patch, which cannot
+    // express "this component is not here" or "this component is extra".
+    removed_components:   [dynamic]Removed_Component,
+    added_components:     [dynamic]Added_Component,
     // Runtime instance-lid -> source-prefab-lid map, rebuilt on every resolve
     // (Unity: m_CorrespondingSourceObject). Instance lids are composed
     // deterministically (nested_lid_compose) so source->instance needs no map;
     // this is the inverse for override capture, which must write source lids.
     source_of_inst:       map[Local_ID]Local_ID `json:"-"`,
+}
+
+// Frees everything a NestedScene record owns. One proc so a new owned list
+// (removed/added components) can't be missed at one of the teardown sites.
+// `source_of_inst` is NOT freed here — some callers purge instance lids
+// through it first and delete it themselves.
+nested_scene_free_owned :: proc(ns: ^NestedScene) {
+    if ns == nil do return
+    for &ov in ns.overrides {
+        delete(ov.property_path)
+        json.destroy_value(ov.value)
+    }
+    delete(ns.overrides)
+    ns.overrides = nil
+    delete(ns.removed_components)
+    ns.removed_components = nil
+    for &ac in ns.added_components {
+        delete(ac.type_guid)
+        delete(ac.json)
+    }
+    delete(ns.added_components)
+    ns.added_components = nil
+}
+
+// A component the prefab declares that this instance does NOT have. `target`
+// names the component row in the prefab it lives in, encoded exactly like
+// Override.target (deep targets XOR-projected up the chain), so one resolution
+// rule serves both.
+Removed_Component :: struct {
+    target: PPtr,
+}
+
+// A component this instance has that its prefab does not. The component data
+// is carried as a serialized record so it survives without a row in any prefab
+// file; `owner` names the prefab transform it hangs off (Override.target
+// encoding), and `local_id` is the lid its record uses within this scene file.
+Added_Component :: struct {
+    owner:    PPtr,
+    local_id: Local_ID,
+    type_guid: string,
+    json:      string, // the component's serialized fields
 }
 
 // Deterministic instance lid for one object of a materialized prefab instance —
@@ -986,6 +1255,16 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 	baked_owned := len(ns.overrides) > 0 && raw_data(baked) != raw_data(resolved)
 	defer if baked_owned do delete(baked)
 
+	// Structural component edits ride on top of the field patches, so the
+	// materialized instance is missing removed components and carries added
+	// ones (docs/NestedPrefabs.md).
+	structural := nested_scene_apply_component_edits(
+		baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
+	)
+	structural_owned := raw_data(structural) != raw_data(baked)
+	defer if structural_owned do delete(structural)
+	baked = structural
+
     sf: SceneFile
     if err := scene_file_unmarshal(baked, &sf); err != nil do return
     defer scene_file_destroy(&sf)
@@ -1211,11 +1490,7 @@ _nested_scene_unresolve :: proc(host_tH: Transform_Handle) {
                 breadcrumb_clear_for_nested_scene(s, ns.local_id)
                 _ns_purge_instance_lids(s, &ns)
                 delete(ns.source_of_inst)
-                for &ov in ns.overrides {
-                    delete(ov.property_path)
-                    json.destroy_value(ov.value)
-                }
-                delete(ns.overrides)
+                nested_scene_free_owned(&ns)
                 continue
             }
             s.nested_scenes[write] = ns
@@ -2618,11 +2893,7 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
             ns := &s.nested_scenes[i]
             _ns_purge_instance_lids(s, ns)
             delete(ns.source_of_inst)
-            for &ov in ns.overrides {
-                delete(ov.property_path)
-                json.destroy_value(ov.value)
-            }
-            delete(ns.overrides)
+            nested_scene_free_owned(ns)
             ordered_remove(&s.nested_scenes, i)
             break
         }

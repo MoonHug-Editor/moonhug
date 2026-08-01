@@ -219,6 +219,9 @@
         "local_id": 3
       },
       "clip": "14fec817-ce17-463f-a083-7616d69b8a5d",
+      "layers": [
+
+      ],
       "play_automatically": true,
       "speed": 1.0,
       "wrap_mode": 0

@@ -1,6 +1,5 @@
 {
   "root": 10,
-  "next_local_id": 23,
   "transforms": [
     {
       "local_id": 10,
@@ -49,7 +48,9 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 12,
@@ -78,8 +79,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     },
     {
       "local_id": 15,
@@ -108,8 +113,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     },
     {
       "local_id": 2,
@@ -138,8 +147,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -151,6 +164,26 @@
       "host_breadcrumb_id": 14,
       "sibling_index": 0,
       "overrides": [
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "name",
+          "value": "TestB"
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "position",
+          "value": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
         {
           "target": {
             "local_id": 10,
@@ -178,26 +211,6 @@
         },
         {
           "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
-          "property_path": "name",
-          "value": "TestB"
-        },
-        {
-          "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
-          "property_path": "position",
-          "value": [
-            0.0,
-            0.0,
-            0.0
-          ]
-        },
-        {
-          "target": {
             "local_id": 8,
             "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
           },
@@ -216,6 +229,12 @@
             0.0
           ]
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
       ]
     },
     {
@@ -239,6 +258,18 @@
             "local_id": 10,
             "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
           },
+          "property_path": "position",
+          "value": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "rotation",
           "value": [
             0.0,
@@ -261,18 +292,6 @@
         },
         {
           "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
-          "property_path": "position",
-          "value": [
-            0.0,
-            0.0,
-            0.0
-          ]
-        },
-        {
-          "target": {
             "local_id": 8,
             "guid": "9d8c54a0-6f5b-4d0e-9b8a-1a2c3d4e5f60"
           },
@@ -291,18 +310,16 @@
             0.0
           ]
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
       ]
     }
   ],
   "breadcrumbs": [
-    {
-      "local_id": 17,
-      "scene_source": {
-        "local_id": 15,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
-      "scene_instance": 16
-    },
     {
       "local_id": 14,
       "scene_source": {
@@ -310,7 +327,17 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 13
+    },
+    {
+      "local_id": 17,
+      "scene_source": {
+        "local_id": 15,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 16
     }
   ],
-  "components": []
+  "components": [
+
+  ]
 }

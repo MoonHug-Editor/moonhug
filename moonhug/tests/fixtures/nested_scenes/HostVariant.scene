@@ -1,6 +1,5 @@
 {
   "root": 10,
-  "next_local_id": 15,
   "transforms": [
     {
       "local_id": 10,
@@ -37,7 +36,9 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 12,
@@ -66,8 +67,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -78,7 +83,59 @@
       "transform_parent": 12,
       "host_breadcrumb_id": 14,
       "sibling_index": 0,
-      "overrides": []
+      "overrides": [
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "name",
+          "value": "VariantHost"
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "position",
+          "value": [
+            5.0,
+            5.0,
+            5.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ]
     }
   ],
   "breadcrumbs": [
@@ -91,5 +148,7 @@
       "scene_instance": 13
     }
   ],
-  "components": []
+  "components": [
+
+  ]
 }
