@@ -9,7 +9,8 @@ package resave_scenes
 //
 // Run from the REPO ROOT. Scenes are re-saved in place — commit the result as
 // its own reviewed change, and check the diff: only the new keys should appear.
-// Anything else (a changed value, a new override) is a real bug, not migration.
+// A changed value or a new override in a scene that is NOT in SKIP is a real
+// bug, not migration.
 
 import "core:fmt"
 import "core:os"
@@ -27,6 +28,21 @@ ROOTS :: []string{
 	"moonhug/packages/physics2d/samples/physics2d_sample/assets",
 	"moonhug/packages/physics3d/samples/physics3d_sample/assets",
 	"moonhug/tests/fixtures/nested_scenes",
+}
+
+// Scenes whose committed bytes are load-bearing, so a re-save would break the
+// test that reads them. These are hand-authored baselines, deliberately NOT at
+// the serializer's fixed point: test_apply_override_clears_shadowing_intermediate
+// writes a TestD override into TestC.scene during the run and then asserts a
+// shallower Apply clears it. Re-saving bakes that override into the committed
+// file, so the test starts from the state it means to produce and its assertion
+// no longer proves anything.
+//
+// A migration that must reach these has to be applied by hand, keeping whatever
+// property the test depends on intact.
+SKIP :: []string{
+	"moonhug/tests/fixtures/nested_scenes/TestC.scene",
+	"moonhug/tests/fixtures/nested_scenes/TestD.scene",
 }
 
 _scenes :: proc(dir: string) -> []string {
@@ -59,6 +75,18 @@ main :: proc() {
 		context.user_ptr = &tc.uc
 
 		for path in paths {
+			skipped := false
+			for s in SKIP {
+				if path == s {
+					skipped = true
+					break
+				}
+			}
+			if skipped {
+				fmt.printfln("SKIP (hand-authored baseline) %s", path)
+				continue
+			}
+
 			total += 1
 			before, _ := os.read_entire_file(path, context.temp_allocator)
 			s := engine.scene_load_single_path(path)
