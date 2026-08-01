@@ -2355,6 +2355,58 @@ _nested_revert_field_ptr :: proc(ptr: rawptr, tid: typeid, path: string) -> (raw
 // root-targeted override may address a component on the absorbed root).
 // `revert_field_ptr`, when set, must match the located pointer (the inspector
 // passes the field it is drawing as a consistency guard).
+// Public wrapper: the Overrides dropdown wraps its revert in an undo
+// Value_Command, which needs the live field pointer up front — the same one
+// nested_scene_revert_override will write through.
+// Also returns the HANDLE that owns the field (the transform, or the component
+// it lives on) — undo's Value_Command is keyed by owner, so the caller has to
+// push that owner before opening the edit scope.
+nested_scene_find_revert_target :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+) -> (rawptr, typeid, Handle, bool) {
+    if s == nil || ns == nil do return nil, nil, {}, false
+    leaf_ns := ns
+    leaf_lid := target.local_id
+    if !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab {
+        host := nested_scene_resolve_host_handle(s, ns)
+        if _, lns, lid := _nested_walk_override_target(s, host, target); lns != nil {
+            leaf_ns = lns
+            leaf_lid = lid
+        }
+    }
+    fp, ftid, ok := _nested_find_revert_target(s, leaf_ns, leaf_lid, property_path, nil)
+    if !ok do return nil, nil, {}, false
+    return fp, ftid, _nested_field_owner_handle(s, leaf_ns, leaf_lid, fp), true
+}
+
+// Which live object physically contains `field_ptr`: the transform itself, or
+// one of its components.
+@(private = "file")
+_nested_field_owner_handle :: proc(s: ^Scene, ns: ^NestedScene, lid: Local_ID, field_ptr: rawptr) -> Handle {
+    w := ctx_world()
+    h := _find_source_handle_in_instance(s, ns, lid)
+    if h == {} do return {}
+    if h.type_key != .Transform do return h
+
+    t := pool_get(&w.transforms, h)
+    if t == nil do return {}
+    fp := uintptr(field_ptr)
+    if tp := uintptr(rawptr(t)); fp >= tp && fp < tp + uintptr(size_of(Transform)) do return h
+    for c in t.components {
+        if c.handle.type_key == INVALID_TYPE_KEY do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        ti := type_info_of(get_typeid_by_type_key(c.handle.type_key))
+        if ti == nil do continue
+        cp := uintptr(raw)
+        if fp >= cp && fp < cp + uintptr(ti.size) do return c.handle
+    }
+    return h
+}
+
 @(private = "file")
 _nested_find_revert_target :: proc(
     s: ^Scene,
@@ -2404,6 +2456,16 @@ _nested_find_revert_target :: proc(
 // candidate whose source_prefab matches target.guid, verify by checking the
 // candidate's resolved subtree contains the un-projected lid. Returns
 // ({}, nil, 0) if not found.
+// Public wrapper: the overrides list resolves each row's target to a live
+// object the same way revert does, so the label names what the revert touches.
+nested_scene_walk_override_target :: proc(
+    s: ^Scene,
+    native_host_tH: Transform_Handle,
+    target: PPtr,
+) -> (Transform_Handle, ^NestedScene, Local_ID) {
+    return _nested_walk_override_target(s, native_host_tH, target)
+}
+
 @(private = "file")
 _nested_walk_override_target :: proc(
     s: ^Scene,
@@ -2538,6 +2600,18 @@ _find_source_handle_in_instance :: proc(s: ^Scene, ns: ^NestedScene, source_lid:
 // is contracted to free + zero the field, so unmarshal_any sees a valid empty
 // slot. Returns true on success. Logs and returns false when the locate fails
 // or the field type has no registered pointer typeid.
+// Public wrapper: undo of a dropdown revert has to restore the live value as
+// well as the record (see nested_override_restore_field).
+nested_scene_patch_live_field :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target_id: Local_ID,
+    property_path: string,
+    value: json.Value,
+) -> bool {
+    return _nested_patch_live_field(s, ns, target_id, property_path, value)
+}
+
 @(private = "file")
 _nested_patch_live_field :: proc(
     s: ^Scene,

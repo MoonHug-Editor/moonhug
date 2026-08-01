@@ -180,6 +180,9 @@ _draw_command_details :: proc(cmd: ^undo.Command, depth: int) {
 		im.TextUnformatted(cstr(fmt.tprintf("%sSelection change", _indent(depth))))
 		_draw_selection_state("before", v.before, depth + 1)
 		_draw_selection_state("after", v.after, depth + 1)
+	case undo.Dropdown_Revert_Command:
+		im.TextUnformatted(cstr(fmt.tprintf("%sOverride reverted (%v): %q",
+			_indent(depth), v.kind, v.property_path)))
 	case undo.Record_Override_Command:
 		im.TextUnformatted(cstr(fmt.tprintf("%sPrefab override created: lid %v %q",
 			_indent(depth), v.target_lid, v.property_path)))

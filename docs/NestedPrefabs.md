@@ -176,6 +176,14 @@ A root VARIANT's base content and additions are owned by the variant save path, 
 
 - UX: overrides grow only — if same value but override exists, keep it. An override whose value is set back to the base value STAYS an override, in the file too.
 - Removing an override requires explicit UI action (revert)
+
+### Overrides dropdown
+
+The inspector shows an **Overrides (N)** button on a prefab instance's root, listing every override the instance carries — modified properties, added and removed components, added and removed objects — in one place, so divergence is visible without opening each field's context menu.
+
+Rows are selectable: click for one, ctrl/cmd for a set, shift for a range. **Revert All** and **Revert Selected** drop the chosen records. A field revert restores the base value as well as the record; the structural kinds only drop the record, and the instance rebuilds from its prefab on the next resolve.
+
+Per-field revert and Apply stay on the property context menu — the dropdown is the aggregate view, and does not apply.
 - diff produces overrides between baked_base and working_copy
 - baked_base for a chain depth N walks all N prefab files in order, applying each file's NS-for-next-child overrides to the next prefab's raw — this is the "what this nested instance looks like before any root-scene overrides" baseline
 

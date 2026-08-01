@@ -196,12 +196,32 @@ Removed_Override :: struct {
 	value_json:    []byte,     // owned; the override's value re-marshaled
 }
 
+// One row reverted from the Overrides dropdown. Unlike Record_Override_Command
+// this stands ALONE: the dropdown drops a record without a paired live-world
+// command, so undo has to rebuild the record from a snapshot rather than lean
+// on a Value_/Add_/Remove_ command to restore the world half.
+//
+// Field rows still carry `removed` (the value must come back with the record);
+// structural rows carry the engine snapshot of the record itself.
+Dropdown_Revert_Command :: struct {
+	scene:         Scene_Ref,
+	host_local_id: engine.Local_ID,
+	kind:          engine.Override_Entry_Kind,
+	// Modified_Property
+	target:        engine.PPtr,
+	property_path: string,             // owned
+	removed:       []Removed_Override, // owned
+	// structural kinds
+	snapshot:      engine.Override_Snapshot, // owns its clones
+}
+
 Command :: union {
 	Value_Command,
 	Structural_Command,
 	Group_Command,
 	Selection_Command,
 	Record_Override_Command,
+	Dropdown_Revert_Command,
 }
 
 Entry :: struct {
@@ -325,6 +345,8 @@ default_label :: proc(cmd: Command) -> string {
 		case .Asset:  return "Edit Asset"
 		}
 		return "Edit Value"
+	case Dropdown_Revert_Command:
+		return "Revert Override"
 	case Record_Override_Command:
 		// Never the label of a step on its own — it always rides the value
 		// command's group, which supplies the label.
@@ -466,6 +488,8 @@ _apply_command :: proc(cmd: ^Command) {
 		case .Obj_Removed:
 			_obj_removal_record(v)
 		}
+	case Dropdown_Revert_Command:
+		_dropdown_revert_apply(v) // REDO: drop the record again
 	}
 }
 
@@ -507,6 +531,8 @@ _revert_command :: proc(cmd: ^Command) {
 			// the suppression so a resolve keeps it.
 			_obj_removal_retract(v)
 		}
+	case Dropdown_Revert_Command:
+		_dropdown_revert_undo(v)
 	}
 }
 
@@ -517,6 +543,91 @@ _override_host :: proc(v: Record_Override_Command) -> (^engine.Scene, engine.Tra
 	h, ok := engine.bimap_get(&s.local_ids, v.host_local_id)
 	if !ok || h.type_key != .Transform do return nil, {}, false
 	return s, engine.Transform_Handle(h), true
+}
+
+// The NS the dropdown's rows came from. Resolved on each apply/undo rather
+// than stored, because a scene reload replaces the NestedScene values.
+@(private)
+_dropdown_revert_ns :: proc(v: Dropdown_Revert_Command) -> (^engine.Scene, ^engine.NestedScene, bool) {
+	s := resolve_scene(v.scene)
+	if s == nil do return nil, nil, false
+	h, ok := engine.bimap_get(&s.local_ids, v.host_local_id)
+	if !ok || h.type_key != .Transform do return nil, nil, false
+	ns := engine.scene_find_nested_scene_for_host(s, engine.Transform_Handle(h))
+	if ns == nil do return nil, nil, false
+	return s, ns, true
+}
+
+// REDO: re-run the revert.
+@(private)
+_dropdown_revert_apply :: proc(v: Dropdown_Revert_Command) {
+	s, ns, ok := _dropdown_revert_ns(v)
+	if !ok do return
+	if v.kind == .Modified_Property {
+		engine.nested_scene_revert_override(s, ns, v.target, v.property_path)
+		return
+	}
+	engine.nested_override_entry_revert(s, ns, engine.Override_Entry{
+		kind     = v.kind,
+		target   = v.snapshot.target,
+		owner    = v.snapshot.owner,
+		local_id = v.snapshot.local_id,
+	})
+}
+
+// UNDO: put the reverted record back. A field row restores its value entries
+// verbatim (a revert can clear several paths under one field); a structural row
+// rebuilds from the engine snapshot.
+@(private)
+_dropdown_revert_undo :: proc(v: Dropdown_Revert_Command) {
+	s, ns, ok := _dropdown_revert_ns(v)
+	if !ok do return
+	if v.kind == .Modified_Property {
+		for r in v.removed {
+			engine.nested_override_restore_field(s, ns, r.target, r.property_path, r.value_json)
+		}
+		return
+	}
+	engine.nested_override_snapshot_restore(ns, v.snapshot)
+}
+
+@(private)
+_command_destroy_dropdown_revert :: proc(v: ^Dropdown_Revert_Command) {
+	delete(v.property_path)
+	discard_override_removal(v.removed)
+	v.removed = nil
+	engine.nested_override_snapshot_destroy(&v.snapshot)
+}
+
+// Records a dropdown revert as its own undo step. `snap` and `removed` transfer
+// ownership — on a stack that is not recording they are freed here.
+record_dropdown_revert :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	kind: engine.Override_Entry_Kind,
+	target: engine.PPtr,
+	property_path: string,
+	removed: []Removed_Override,
+	snap: engine.Override_Snapshot,
+) {
+	snap := snap
+	u := get()
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if u == nil || !u.recording || u.applying || ht == nil {
+		discard_override_removal(removed)
+		engine.nested_override_snapshot_destroy(&snap)
+		return
+	}
+	push(u, Dropdown_Revert_Command{
+		scene         = scene_ref(s),
+		host_local_id = ht.local_id,
+		kind          = kind,
+		target        = target,
+		property_path = strings.clone(property_path),
+		removed       = removed,
+		snapshot      = snap,
+	}, "Revert Override")
 }
 
 @(private)
@@ -638,6 +749,9 @@ _command_destroy :: proc(cmd: ^Command) {
 	case Record_Override_Command:
 		roc := v
 		_command_destroy_override(&roc)
+	case Dropdown_Revert_Command:
+		drc := v
+		_command_destroy_dropdown_revert(&drc)
 	}
 }
 
@@ -1508,6 +1622,8 @@ _command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asse
 		case Remove_Unknown_Component_Command: r = sv.scene
 		}
 		return _scene_ref_matches(r, ptr, guid, any_scene)
+	case Dropdown_Revert_Command:
+		return _scene_ref_matches(v.scene, ptr, guid, any_scene)
 	case Group_Command:
 		for i in 0 ..< len(v.subs) {
 			if _command_refs_scene(&v.subs[i], ptr, guid, any_scene) do return true

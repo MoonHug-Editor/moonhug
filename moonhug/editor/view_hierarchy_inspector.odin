@@ -109,8 +109,207 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 		label = fmt.tprintf("Nested  -  host: %s", host_name)
 	}
 	im.TextColored(im.Vec4{1.0, 0.75, 0.3, 1.0}, strings.clone_to_cstring(label, context.temp_allocator))
+	_draw_overrides_button(host_tH)
 	im.Separator()
 }
+
+// Unity's Overrides dropdown: every override on this instance in one list,
+// multi-selectable, with Revert All / Revert Selected. Per-field revert still
+// lives on the property context menu — this is the aggregate view for seeing
+// what an instance has diverged on without hunting field by field.
+//
+// Shown on the instance ROOT only (Unity puts it on the root GameObject), and
+// only for a NATIVE NS: inner NSs never hold records (docs/NestedPrefabs.md),
+// so a nested-owned row deeper in the chain has nothing of its own to list.
+@(private)
+_draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
+	if ns == nil || ns.expand_parent != {} do return
+
+	entries := engine.nested_scene_list_overrides(ht.scene, ns)
+	if len(entries) == 0 {
+		im.TextDisabled("No overrides")
+		return
+	}
+
+	// Selection is keyed by list index, so it is dropped whenever the set of
+	// rows changes underneath it (a revert, or another edit while open).
+	if _overrides_popup_host != host_tH {
+		_overrides_popup_host = host_tH
+		clear(&_overrides_selected)
+	}
+
+	label := fmt.tprintf("Overrides (%d)", len(entries))
+	if im.Button(strings.clone_to_cstring(label, context.temp_allocator)) {
+		clear(&_overrides_selected)
+		im.OpenPopup("##OverridesList")
+	}
+
+	if im.BeginPopup("##OverridesList") {
+		im.TextDisabled("Click to select, ctrl/cmd or shift for multiple")
+		im.Separator()
+
+		if im.BeginChild("##OverridesRows", im.Vec2{460, 260}, {}, {}) {
+			nodes := engine.nested_scene_override_tree(ht.scene, host_tH, entries)
+			for node in nodes {
+				im.PushIDInt(c.int(engine.Handle(node.tH).index))
+				if node.depth > 0 do im.Indent(f32(node.depth) * 12)
+
+				// The object header is a heading, not a proxy for the rows under
+				// it — every element selects separately (Unity). An object with
+				// no overrides of its own still appears when a descendant has
+				// them, so the path stays walkable, drawn dimmed.
+				if !node.has_own do im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
+				im.TextUnformatted(strings.clone_to_cstring(node.label, context.temp_allocator))
+				if !node.has_own do im.PopStyleColor(1)
+
+				// The object's own rows: components and property changes.
+				for ri in node.rows {
+					e := entries[ri]
+					im.Indent(14)
+					if im.Selectable(
+						strings.clone_to_cstring(
+							fmt.tprintf("%s##r%d", e.detail, ri), context.temp_allocator),
+						ri in _overrides_selected,
+						{.NoAutoClosePopups},
+					) {
+						_overrides_apply_click(ri)
+					}
+					im.Unindent(14)
+				}
+
+				if node.depth > 0 do im.Unindent(f32(node.depth) * 12)
+				im.PopID()
+			}
+		}
+		im.EndChild()
+
+		im.Separator()
+		n_sel := len(_overrides_selected)
+
+		if im.Button("Revert All") {
+			_overrides_revert(ht.scene, ns, host_tH, entries, nil)
+			im.CloseCurrentPopup()
+		}
+		im.SameLine()
+
+		sel_label := n_sel > 0 \
+			? fmt.tprintf("Revert Selected (%d)", n_sel) \
+			: "Revert Selected"
+		im.BeginDisabled(n_sel == 0)
+		if im.Button(strings.clone_to_cstring(sel_label, context.temp_allocator)) {
+			_overrides_revert(ht.scene, ns, host_tH, entries, &_overrides_selected)
+			im.CloseCurrentPopup()
+		}
+		im.EndDisabled()
+
+		im.EndPopup()
+	}
+}
+
+// Click handling for a row: ctrl/cmd toggles it, shift ranges from the anchor,
+// plain click replaces the selection. Rows are the only selectable elements —
+// object headers are headings, so there is no span-select to handle.
+@(private)
+_overrides_apply_click :: proc(ri: int) {
+	io := im.GetIO()
+	if io.KeyCtrl || io.KeySuper {
+		if ri in _overrides_selected {
+			delete_key(&_overrides_selected, ri)
+		} else {
+			_overrides_selected[ri] = true
+		}
+	} else if io.KeyShift && _overrides_anchor >= 0 {
+		clear(&_overrides_selected)
+		lo := min(_overrides_anchor, ri)
+		hi := max(_overrides_anchor, ri)
+		for k in lo ..= hi do _overrides_selected[k] = true
+	} else {
+		clear(&_overrides_selected)
+		_overrides_selected[ri] = true
+		_overrides_anchor = ri
+	}
+}
+
+// Reverts `which` (nil = all). Iterates in REVERSE so each removal cannot
+// shift the index of a row not yet processed — the entries are positional
+// snapshots of the record arrays.
+@(private)
+_overrides_revert :: proc(
+	s: ^engine.Scene,
+	ns: ^engine.NestedScene,
+	host_tH: engine.Transform_Handle,
+	entries: []engine.Override_Entry,
+	which: ^map[int]bool,
+) {
+	// One undo step for the whole action, however many rows it touched — the
+	// group is opened first so each row's record lands inside it.
+	u := undo.get()
+	undo.begin_group_command(u)
+
+	reverted := false
+	for i := len(entries) - 1; i >= 0; i -= 1 {
+		if which != nil && !(i in which^) do continue
+		e := entries[i]
+
+		if e.kind == .Modified_Property {
+			// Exactly the property menu's Revert (view_inspector.odin): wrap the
+			// live field in a Value_Command so undo AND redo restore the value,
+			// then fold the record removal into that same step. Rebuilding this
+			// by hand is what left redo broken — the record round-tripped but
+			// the value did not.
+			fp, ftid, owner, found := engine.nested_scene_find_revert_target(s, ns, e.target, e.property_path)
+			snap := undo.override_removal_snapshot(ns, e.target, e.property_path)
+			// The Value_Command is keyed by the object that CONTAINS the field,
+			// which is the row's target, not the inspected object.
+			if found do undo.push_pooled_owner(owner)
+			scope := undo.edit_inspector_field_begin(fp, ftid, "Revert Override") if found else undo.Edit_Scope{}
+			engine.nested_scene_revert_override(s, ns, e.target, e.property_path, fp)
+			if found {
+				undo.edit_end(&scope)
+				undo.pop_owner()
+			}
+			undo.record_override_removed(s, host_tH, e.target.local_id, e.property_path, snap)
+			reverted = true
+			continue
+		}
+
+		// Structural kinds have no live field to snapshot — the record IS the
+		// edit, and the instance rebuilds from the prefab on the next resolve.
+		snap := engine.nested_override_snapshot(ns, e)
+		if engine.nested_override_entry_revert(s, ns, e) {
+			reverted = true
+			undo.record_dropdown_revert(s, host_tH, e.kind, e.target, e.property_path, nil, snap)
+		} else {
+			engine.nested_override_snapshot_destroy(&snap)
+		}
+	}
+
+	if reverted {
+		undo.end_group_command(u, "Revert Override")
+	} else {
+		undo.abort_group_command(u)
+	}
+
+	if reverted {
+		clear(&_overrides_selected)
+		_overrides_anchor = -1
+		// Field reverts restore the live value themselves. The structural kinds
+		// only drop the record — the instance rebuilds from the prefab on the
+		// next resolve, which is how the undo paths handle them too.
+		inspector.mark_inspector_changed()
+	}
+}
+
+@(private)
+_overrides_selected: map[int]bool
+@(private)
+_overrides_anchor: int = -1
+@(private)
+_overrides_popup_host: engine.Transform_Handle
 
 @(private)
 _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
