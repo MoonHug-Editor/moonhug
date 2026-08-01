@@ -347,12 +347,10 @@ _comp_pending_move_from: int = -1
 @(private)
 _comp_pending_move_to: int = -1
 
-// `nested`: the component belongs to a nested prefab instance. Structural
-// edits (add / remove / reorder) have no override representation yet
-// (docs/NestedPrefabs.md TODO "add/remove components as override"), so they
-// would silently revert on the next resolve — disabled with a tooltip rather
-// than offered and quietly discarded. Value edits stay available: those DO
-// capture as overrides.
+// `nested`: the component belongs to a nested prefab instance. Remove and Add
+// are recorded as removed_components / added_components on the instance's
+// NestedScene, so they survive save and the next resolve. Reorder has no
+// representation (component order is prefab content) and stays disabled.
 @(private)
 _draw_component_overflow_menu :: proc(
 	t: ^engine.Transform,
@@ -386,7 +384,7 @@ _draw_component_overflow_menu :: proc(
 
 		clip_tid := clip.target_typeid()
 		clip_key, clip_key_ok := engine.get_type_key_by_typeid(clip_tid)
-		can_paste_as_new := clip.has() && clip_key_ok && !nested
+		can_paste_as_new := clip.has() && clip_key_ok
 		if im.MenuItem("Paste Component as New", nil, false, can_paste_as_new) {
 			new_owned, new_ptr := engine.transform_add_comp(tH, clip_key)
 			if new_ptr != nil {
@@ -436,11 +434,8 @@ _draw_component_overflow_menu :: proc(
 
 		im.Separator()
 
-		if im.MenuItem("Remove Component", nil, false, !nested) {
+		if im.MenuItem("Remove Component") {
 			_comp_pending_remove = comp.handle
-		}
-		if nested && im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-			im.SetTooltip("Prefab instance components can't be added, removed or reordered yet — edit the prefab itself (>)")
 		}
 		ctx_entries := _get_context_menu_entries(comp.handle.type_key)
 		if len(ctx_entries) > 0 {
@@ -677,7 +672,19 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 	}
 
 	if _comp_pending_remove.type_key != engine.INVALID_TYPE_KEY {
+		// Removing PREFAB content is a structural override: the component is
+		// destroyed AND recorded as removed, so the next resolve doesn't bring
+		// it back. Both steps ride one undo entry.
+		comp_lid: engine.Local_ID
+		if raw := engine.world_pool_get(w, _comp_pending_remove); raw != nil {
+			comp_lid = (cast(^engine.CompData)raw).local_id
+		}
 		undo.record_remove_component(tH, _comp_pending_remove)
+		if comp_lid != 0 {
+			if _, ok := engine.nested_scene_record_component_removed(t.scene, host_tH, comp_lid); ok {
+				undo.record_component_removed_on_instance(t.scene, host_tH, comp_lid)
+			}
+		}
 	}
 
 	if _comp_pending_move_from >= 0 && _comp_pending_move_to >= 0 && _comp_pending_move_from != _comp_pending_move_to {
@@ -685,6 +692,34 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 		ordered_remove(&t.components, _comp_pending_move_from)
 		inject_at(&t.components, _comp_pending_move_to, entry)
 		undo.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
+	}
+
+	_draw_add_component_button_nested(t, tH, host_tH)
+}
+
+// Add Component on prefab-instance content. The add itself is the shared path
+// (component_add_to_selected records the addition on the instance's NestedScene);
+// this only supplies the button, with its own popup id so it can't collide with
+// the non-nested one.
+@(private)
+_draw_add_component_button_nested :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, host_tH: engine.Transform_Handle) {
+	im.Spacing()
+	im.Separator()
+	im.Spacing()
+
+	avail := im.GetContentRegionAvail().x
+	btn_w: f32 = 220
+	im.SetCursorPosX((avail - btn_w) * 0.5 + im.GetCursorPosX())
+	if im.Button("Add Component", im.Vec2{btn_w, 0}) {
+		im.OpenPopup("##AddComponentPopupNested")
+	}
+	if im.IsItemHovered({}) {
+		im.SetTooltip("Adds a component to this prefab instance only (recorded as an override)")
+	}
+
+	if im.BeginPopup("##AddComponentPopupNested") {
+		menu.draw_menu_subtree("Component")
+		im.EndPopup()
 	}
 }
 

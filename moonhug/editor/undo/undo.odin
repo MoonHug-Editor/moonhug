@@ -160,6 +160,12 @@ Selection_Command :: struct {
 Override_Record_Op :: enum {
 	Created, // apply: record exists   / revert(undo): remove it
 	Removed, // apply: record is gone  / revert(undo): put it back
+	// Structural component edits on a prefab instance. The LIVE component is
+	// created/destroyed by the paired Add_/Remove_Component_Command; these ops
+	// only keep the NestedScene bookkeeping in step, so the edit also survives
+	// the next resolve (which rebuilds the instance from its prefab).
+	Comp_Removed, // apply: removal recorded / undo: retract the removal
+	Comp_Added,   // apply: addition recorded / undo: retract the addition
 }
 
 Record_Override_Command :: struct {
@@ -171,6 +177,12 @@ Record_Override_Command :: struct {
 	// .Removed only: the entries Revert deleted, verbatim, so undo restores
 	// them exactly (a revert can clear several paths under one field).
 	removed:       []Removed_Override, // owned
+	// .Comp_Added only: what rebuilding the addition record needs on redo. The
+	// live component is re-created by the paired Add_Component_Command; these
+	// carry the data the NestedScene record itself needs.
+	owner_lid:       engine.Local_ID,
+	comp_type_guid:  string, // owned
+	comp_json:       string, // owned
 }
 
 Removed_Override :: struct {
@@ -442,6 +454,10 @@ _apply_command :: proc(cmd: ^Command) {
 			_override_record_reapply(v)
 		case .Removed:
 			_override_record_rerevert(v)
+		case .Comp_Removed:
+			_comp_removal_record(v)
+		case .Comp_Added:
+			_comp_addition_record(v)
 		}
 	}
 }
@@ -471,6 +487,14 @@ _revert_command :: proc(cmd: ^Command) {
 			// Undo of a Revert: the value command restores the overridden
 			// value, so the record must come back too.
 			_override_record_restore(v)
+		case .Comp_Removed:
+			// The paired Remove_Component_Command re-created the component;
+			// retract the removal so a resolve keeps it.
+			_comp_removal_retract(v)
+		case .Comp_Added:
+			// The paired Add_Component_Command destroyed the component;
+			// retract the addition record with it.
+			_comp_addition_retract(v)
 		}
 	}
 }
@@ -512,6 +536,43 @@ _override_record_restore :: proc(v: Record_Override_Command) {
 	for r in v.removed {
 		engine.nested_scene_restore_override(root_ns, r.target, r.property_path, r.value_json)
 	}
+}
+
+// --- Structural component-edit bookkeeping ------------------------------------
+// The live component is handled by the paired Add_/Remove_Component_Command;
+// these only add or retract the NestedScene record, so the edit survives the
+// next resolve.
+
+@(private)
+_comp_removal_record :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_record_component_removed(s, host, v.target_lid)
+}
+
+@(private)
+_comp_removal_retract :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_unrecord_component_removed(s, host, v.target_lid)
+}
+
+@(private)
+_comp_addition_record :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	root_ns, owner_target, loc_ok := engine.nested_scene_locate_root_override(s, host, v.owner_lid)
+	if !loc_ok || root_ns == nil do return
+	engine.nested_scene_restore_component_added(
+		root_ns, owner_target, v.target_lid, v.comp_type_guid, v.comp_json,
+	)
+}
+
+@(private)
+_comp_addition_retract :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_unrecord_component_added(s, host, v.target_lid)
 }
 
 // Re-runs the Revert's record removal (redo of a Revert).
@@ -581,6 +642,54 @@ record_override_created :: proc(
 		target_lid    = target_lid,
 		property_path = strings.clone(property_path),
 		op            = .Created,
+	})
+}
+
+// Attaches "this edit removed a prefab-instance component" to the undo step
+// that just recorded the component removal, so undo retracts the removal record
+// along with re-creating the component.
+record_component_removed_on_instance :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	comp_lid: engine.Local_ID,
+) {
+	u := get()
+	if u == nil || !u.recording || u.applying do return
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	_override_cmd_attach(u, Record_Override_Command{
+		scene         = scene_ref(s),
+		host_local_id = ht.local_id,
+		target_lid    = comp_lid,
+		op            = .Comp_Removed,
+	})
+}
+
+// Attaches "this edit added a component to a prefab instance" to the undo step
+// that just recorded the component add. `type_guid`/`comp_json` let redo rebuild
+// the NestedScene record for the re-created component.
+record_component_added_on_instance :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	owner_lid: engine.Local_ID,
+	comp_lid: engine.Local_ID,
+	type_guid: string,
+	comp_json: string,
+) {
+	u := get()
+	if u == nil || !u.recording || u.applying do return
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	_override_cmd_attach(u, Record_Override_Command{
+		scene          = scene_ref(s),
+		host_local_id  = ht.local_id,
+		target_lid     = comp_lid,
+		op             = .Comp_Added,
+		owner_lid      = owner_lid,
+		comp_type_guid = strings.clone(type_guid),
+		comp_json      = strings.clone(comp_json),
 	})
 }
 
@@ -690,6 +799,8 @@ _override_cmd_attach :: proc(u: ^Undo_Stack, cmd: Record_Override_Command) {
 @(private)
 _command_destroy_override :: proc(v: ^Record_Override_Command) {
 	delete(v.property_path)
+	delete(v.comp_type_guid)
+	delete(v.comp_json)
 	for r in v.removed {
 		delete(r.property_path)
 		delete(r.value_json)

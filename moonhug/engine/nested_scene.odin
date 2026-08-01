@@ -239,13 +239,20 @@ nested_scene_apply_component_edits :: proc(
 ) -> []byte {
     if len(removed) == 0 && len(added) == 0 do return raw
 
-    raw_copy := make([]byte, len(raw))
-    defer delete(raw_copy)
+    // Everything below allocates on TEMP: the parsed tree plus the values the
+    // edit passes insert into it (cloned strings, new json.Objects). Mixing
+    // allocators inside one tree and then destroy_value-ing it is a bad free —
+    // same rule as _normalize_component_records. The frame's free_all releases
+    // it; the returned bytes are the only default-allocated result.
+    prev_alloc := context.allocator
+    context.allocator = context.temp_allocator
+    defer context.allocator = prev_alloc
+
+    raw_copy := make([]byte, len(raw), context.temp_allocator)
     copy(raw_copy, raw)
 
     root_val: json.Value
     if json.unmarshal_string(string(raw_copy), &root_val) != nil do return raw
-    defer json.destroy_value(root_val)
     root_obj, is_obj := root_val.(json.Object)
     if !is_obj do return raw
 
@@ -263,8 +270,9 @@ nested_scene_apply_component_edits :: proc(
         _json_add_component_row(root_obj, ac)
     }
 
+    // Result on the CALLER's allocator (it owns/frees the bytes), not temp.
     opts := json.Marshal_Options{spec = .JSON, pretty = false}
-    data, merr := json.marshal(root_obj, opts)
+    data, merr := json.marshal(root_obj, opts, prev_alloc)
     if merr != nil do return raw
     return data
 }
@@ -280,8 +288,7 @@ _json_remove_component_row :: proc(root_obj: json.Object, lid: Local_ID) {
             obj, is_o := item.(json.Object)
             if !is_o do continue
             if _json_component_lid_of(obj) != lid do continue
-            json.destroy_value(comps[idx])
-            ordered_remove(&comps, idx)
+            ordered_remove(&comps, idx) // temp-allocated; freed with the tree
             root_obj["components"] = comps
             break
         }
@@ -296,8 +303,7 @@ _json_remove_component_row :: proc(root_obj: json.Object, lid: Local_ID) {
                 e_obj, e_ok := entry.(json.Object)
                 if !e_ok do continue
                 if elid, lok := _json_local_id_of(e_obj); !lok || elid != lid do continue
-                json.destroy_value(list[ei])
-                ordered_remove(&list, ei)
+                ordered_remove(&list, ei) // temp-allocated; freed with the tree
                 t_obj["components"] = list
                 return
             }
@@ -311,10 +317,7 @@ _json_add_component_row :: proc(root_obj: json.Object, ac: Added_Component) {
     rec_val: json.Value
     if json.unmarshal_string(ac.json, &rec_val) != nil do return
     rec, is_obj := rec_val.(json.Object)
-    if !is_obj {
-        json.destroy_value(rec_val)
-        return
-    }
+    if !is_obj do return // temp-allocated; freed with the tree
     // The record must carry its type tag and lid — the loader keys on both.
     rec["__type"] = json.Value(strings.clone(ac.type_guid))
     base, has_base := rec["base"].(json.Object)
@@ -1251,19 +1254,21 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     if resolved == nil do return
     defer if resolved_owned do delete(resolved)
 
-	baked := nested_scene_apply_overrides(resolved, ns.overrides[:], ns.source_prefab)
-	baked_owned := len(ns.overrides) > 0 && raw_data(baked) != raw_data(resolved)
-	defer if baked_owned do delete(baked)
+	// NOTE: a `defer` closes over the VARIABLE, so each stage's bytes get their
+	// own name — reassigning one shared `baked` would make the first defer free
+	// whatever the last stage produced (double free + leak).
+	field_baked := nested_scene_apply_overrides(resolved, ns.overrides[:], ns.source_prefab)
+	field_baked_owned := len(ns.overrides) > 0 && raw_data(field_baked) != raw_data(resolved)
+	defer if field_baked_owned do delete(field_baked)
 
 	// Structural component edits ride on top of the field patches, so the
 	// materialized instance is missing removed components and carries added
 	// ones (docs/NestedPrefabs.md).
-	structural := nested_scene_apply_component_edits(
-		baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
+	baked := nested_scene_apply_component_edits(
+		field_baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
 	)
-	structural_owned := raw_data(structural) != raw_data(baked)
-	defer if structural_owned do delete(structural)
-	baked = structural
+	structural_owned := raw_data(baked) != raw_data(field_baked)
+	defer if structural_owned do delete(baked)
 
     sf: SceneFile
     if err := scene_file_unmarshal(baked, &sf); err != nil do return
@@ -1686,6 +1691,136 @@ nested_scene_unrecord_override_for_host :: proc(
     root_ns, target, ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
     if !ok || root_ns == nil do return false
     return nested_scene_unrecord_override(root_ns, target, property_path)
+}
+
+// --- Structural component edits on a prefab instance -------------------------
+// Live counterparts of the removed_components / added_components records: the
+// editor mutates the world, these keep the NS bookkeeping in step so the edit
+// survives save AND the next resolve (which rebuilds from the prefab).
+
+// Marks `comp_lid` (a live component lid on nested content) as removed from the
+// instance. Returns false when the component isn't prefab content — a host
+// ADDITION is removed by simply deleting it (and dropping its added_components
+// entry), never by recording a removal.
+nested_scene_record_component_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    // An added component is not prefab content: retract the addition instead.
+    for i in 0 ..< len(root_ns.added_components) {
+        if root_ns.added_components[i].local_id != target.local_id do continue
+        ac := root_ns.added_components[i]
+        delete(ac.type_guid)
+        delete(ac.json)
+        ordered_remove(&root_ns.added_components, i)
+        return false, true
+    }
+
+    for rc in root_ns.removed_components {
+        if pptr_equals(rc.target, target) do return false, true // already recorded
+    }
+    append(&root_ns.removed_components, Removed_Component{target = target})
+    return true, true
+}
+
+// Drops a removal record, restoring the component to prefab-supplied content
+// (undo of a remove). The caller re-creates the live component itself.
+nested_scene_unrecord_component_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> bool {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.removed_components) {
+        if !pptr_equals(root_ns.removed_components[i].target, target) do continue
+        ordered_remove(&root_ns.removed_components, i)
+        return true
+    }
+    return false
+}
+
+// Records a component the editor just added to nested content, so it survives
+// the next resolve. `owner_lid` is the live lid of the transform it hangs off,
+// `comp_ptr`/`comp_tid` the live component, `type_guid` its registered type id.
+nested_scene_record_component_added :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    owner_lid: Local_ID,
+    comp_lid: Local_ID,
+    type_guid: string,
+    comp_ptr: rawptr,
+    comp_tid: typeid,
+) -> (created: bool, ok: bool) {
+    if comp_ptr == nil || type_guid == "" do return false, false
+    root_ns, owner_target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, owner_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    bytes, merr := json.marshal(any{comp_ptr, comp_tid}, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false, false
+
+    for &ac in root_ns.added_components {
+        if ac.local_id != comp_lid do continue
+        delete(ac.json)
+        ac.json = strings.clone(string(bytes))
+        return false, true
+    }
+    append(&root_ns.added_components, Added_Component{
+        owner     = owner_target,
+        local_id  = comp_lid,
+        type_guid = strings.clone(type_guid),
+        json      = strings.clone(string(bytes)),
+    })
+    return true, true
+}
+
+// Re-adds an addition record from saved data, for redo of an add (the live
+// component is re-created by the caller, which mints a fresh lid — pass it).
+nested_scene_restore_component_added :: proc(
+    ns: ^NestedScene,
+    owner: PPtr,
+    comp_lid: Local_ID,
+    type_guid: string,
+    comp_json: string,
+) -> bool {
+    if ns == nil || type_guid == "" do return false
+    for &ac in ns.added_components {
+        if ac.local_id != comp_lid do continue
+        delete(ac.json)
+        ac.json = strings.clone(comp_json)
+        return true
+    }
+    append(&ns.added_components, Added_Component{
+        owner     = owner,
+        local_id  = comp_lid,
+        type_guid = strings.clone(type_guid),
+        json      = strings.clone(comp_json),
+    })
+    return true
+}
+
+// Drops an addition record (undo of an add). The caller destroys the live
+// component itself.
+nested_scene_unrecord_component_added :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> bool {
+    root_ns, _, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.added_components) {
+        if root_ns.added_components[i].local_id != comp_lid do continue
+        ac := root_ns.added_components[i]
+        delete(ac.type_guid)
+        delete(ac.json)
+        ordered_remove(&root_ns.added_components, i)
+        return true
+    }
+    return false
 }
 
 // Puts an override entry back verbatim, for undo of a Revert. `value_json` is

@@ -8,6 +8,9 @@ import "../engine"
 
 import "core:testing"
 import "core:strings"
+import "core:encoding/uuid"
+import "core:mem"
+import "core:fmt"
 
 // Records the override for a field edited on nested content, the way the
 // inspector does at its commit boundary.
@@ -438,4 +441,228 @@ test_override_restore_after_revert :: proc(t: ^testing.T) {
 		}
 	}
 	testing.expect(t, count == 1, "restore must not duplicate the entry")
+}
+
+// --- Structural component edits on a prefab instance -------------------------
+// docs/NestedPrefabs.md: removing/adding a component on nested content is
+// recorded on the instance's NestedScene, so it survives BOTH the save and the
+// next resolve (which rebuilds the instance from its prefab).
+
+// HostDup nests SpriteDup, whose SpriteA child carries a SpriteRenderer.
+@(test)
+test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_comp_removed.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	// The nested SpriteRoot and its SpriteRenderer.
+	sprite_tH := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	testing.expect(t, sprite_tH != {}, "nested SpriteA should resolve")
+	if sprite_tH == {} do return
+	st := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_tH))
+	if st == nil do return
+	host_tH := engine.transform_immediate_nested_host(sprite_tH)
+	testing.expect(t, host_tH != {})
+	if host_tH == {} do return
+
+	comp_h, sr := engine.transform_get_comp(sprite_tH, engine.SpriteRenderer)
+	testing.expect(t, sr != nil, "the nested content should carry a SpriteRenderer")
+	if sr == nil do return
+	comp_lid := (cast(^engine.CompData)sr).local_id
+
+	// Remove it the way the inspector does: destroy + record.
+	engine.transform_remove_comp(sprite_tH, comp_h.handle)
+	created, ok := engine.nested_scene_record_component_removed(loaded, host_tH, comp_lid)
+	testing.expect(t, ok && created, "removing prefab content should record a removal")
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	// The file must carry the removal record.
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			// The record stores a SOURCE-namespace target; the live lid is an
+			// instance lid, so assert on presence rather than equality.
+			count := 0
+			for ns in sf.nested_scenes {
+				count += len(ns.removed_components)
+			}
+			testing.expect(t, count == 1, "the removal must be written to the file")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// RELOAD: the resolve rebuilds from the prefab, so this is the assertion
+	// that matters — the component must NOT come back.
+	engine.sm_scene_destroy_or_unload(loaded)
+	engine.sm_scene_set_active(nil)
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
+	testing.expect(t, sprite2 != {}, "SpriteA itself should still be there")
+	if sprite2 == {} do return
+	_, sr2 := engine.transform_get_comp(sprite2, engine.SpriteRenderer)
+	testing.expect(t, sr2 == nil, "a REMOVED component must not reappear after reload")
+}
+
+@(test)
+test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_comp_added.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	sprite_tH := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	if sprite_tH == {} do return
+	st := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_tH))
+	if st == nil do return
+	host_tH := engine.transform_immediate_nested_host(sprite_tH)
+	if host_tH == {} do return
+
+	// Add a component the prefab does NOT have.
+	owned, ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+	testing.expect(t, ptr != nil, "adding a component should succeed")
+	if ptr == nil do return
+	comp_lid := (cast(^engine.CompData)ptr).local_id
+	guid := engine.get_guid_by_type_key(.SpriteSortingGroup)
+	type_guid := uuid.to_string(guid, context.temp_allocator)
+
+	created, ok := engine.nested_scene_record_component_added(
+		loaded, host_tH, st.local_id, comp_lid, type_guid,
+		ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+	)
+	testing.expect(t, ok && created, "adding to prefab content should record an addition")
+	_ = owned
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			count := 0
+			for ns in sf.nested_scenes {
+				count += len(ns.added_components)
+			}
+			testing.expect(t, count == 1, "the addition must be written to the file")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	engine.sm_scene_destroy_or_unload(loaded)
+	engine.sm_scene_set_active(nil)
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
+	if sprite2 == {} do return
+	_, spin := engine.transform_get_comp(sprite2, engine.SpriteSortingGroup)
+	testing.expect(t, spin != nil, "an ADDED component must be present after reload")
+}
+
+// The add/remove component bake edits a parsed JSON tree in place and inserts
+// new values into it. Allocating those inserts from a DIFFERENT allocator than
+// the tree, then destroying the tree, is a bad free — it crashed the editor on
+// load (the editor runs a tracking allocator; the plain test allocator hides
+// it). This runs the same path under tracking so the mistake can't come back.
+@(test)
+test_component_edits_no_bad_free :: proc(t: ^testing.T) {
+	track: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&track, context.allocator)
+	defer mem.tracking_allocator_destroy(&track)
+	context.allocator = mem.tracking_allocator(&track)
+
+	{
+		engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+		defer engine.asset_db_shutdown()
+		defer engine.scene_lib_shutdown()
+
+		tc_mem := new(TestCtx)
+		defer free(tc_mem)
+		setup(tc_mem, "moonhug/tests/fixtures/_test_comp_badfree.scene")
+		context.user_ptr = &tc_mem.uc
+		defer teardown(tc_mem)
+
+		loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+		if loaded == nil do return
+		tc_mem.scene = loaded
+
+		sprite_tH := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+		if sprite_tH == {} do return
+		st := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_tH))
+		if st == nil do return
+		host_tH := engine.transform_immediate_nested_host(sprite_tH)
+		if host_tH == {} do return
+
+		// ADD a component, save, then LOAD — the load runs the resolve-time
+		// bake, which is where the bad free happened.
+		_, ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+		if ptr == nil do return
+		comp_lid := (cast(^engine.CompData)ptr).local_id
+		guid := engine.get_guid_by_type_key(.SpriteSortingGroup)
+		engine.nested_scene_record_component_added(
+			loaded, host_tH, st.local_id, comp_lid,
+			uuid.to_string(guid, context.temp_allocator),
+			ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		)
+		testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+		engine.sm_scene_destroy_or_unload(loaded)
+		engine.sm_scene_set_active(nil)
+		reloaded := engine.scene_load_single_path(tc_mem.path)
+		testing.expect(t, reloaded != nil, "the scene must load without crashing")
+		tc_mem.scene = reloaded
+
+		// And the same path with a REMOVAL.
+		if reloaded != nil {
+			s2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
+			if s2 != {} {
+				h2 := engine.transform_immediate_nested_host(s2)
+				ch, sr := engine.transform_get_comp(s2, engine.SpriteRenderer)
+				if sr != nil && h2 != {} {
+					lid2 := (cast(^engine.CompData)sr).local_id
+					engine.transform_remove_comp(s2, ch.handle)
+					engine.nested_scene_record_component_removed(reloaded, h2, lid2)
+					testing.expect(t, engine.scene_save(reloaded, tc_mem.path))
+					engine.sm_scene_destroy_or_unload(reloaded)
+					engine.sm_scene_set_active(nil)
+					r3 := engine.scene_load_single_path(tc_mem.path)
+					testing.expect(t, r3 != nil, "reload after a removal must not crash")
+					tc_mem.scene = r3
+				}
+			}
+		}
+	}
+
+	testing.expectf(t, len(track.bad_free_array) == 0,
+		"component-edit bake must not free across allocators (%d bad frees)", len(track.bad_free_array))
+	for bf in track.bad_free_array {
+		fmt.printfln("  bad free at %v", bf.location)
+	}
 }

@@ -32,13 +32,5 @@ register_component_menus :: proc() {
 }
 
 _component_menu_add :: proc(key: engine.TypeKey) {
-	tH := hierarchy_get_selected()
-	if tH == _HANDLE_NONE do return
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil do return
-	_, existing_idx := engine.transform_find_comp(t, key)
-	if existing_idx >= 0 do return
-	owned, _ := engine.transform_add_comp(tH, key)
-	undo.record_add_component(tH, owned.handle, len(t.components) - 1)
+	component_add_to_selected(key)
 }

@@ -138,6 +138,21 @@ Overrides have **two producers**, both writing onto the root scene's `NestedScen
 
 Serialization reconciles the two: it sets existing entries aside, lets the diff repopulate from scratch, then restores any set-aside entry the diff did not reproduce. **The diff's value wins where it found one** (it reflects the live world); entries it cannot see survive.
 
+### Added / removed components
+
+A component added to or removed from a prefab instance is recorded on the instance's `NestedScene` as `added_components` / `removed_components` — separate lists, like Unity's `m_AddedComponents` / `m_RemovedComponents`, because an `Override` names a field to patch and cannot express "this component is not here".
+
+```
+Removed_Component { target: PPtr }                       // the prefab's component row
+Added_Component   { owner: PPtr, local_id, type_guid, json }
+```
+
+Both are baked into the prefab bytes at resolve, after the field overrides, so a materialized instance simply lacks its removed components and carries its added ones — the edit survives the next resolve, not just the save. Targets use `Override.target`'s encoding, so deep targets project up the chain the same way.
+
+- Removing an ADDED component retracts the addition rather than recording a removal — it was never prefab content.
+- Component ORDER is prefab content: reorder stays disabled on instances.
+- The inspector's Add Component on an instance adds to that instance only.
+
 - UX: overrides grow only — if same value but override exists, keep it. An override whose value is set back to the base value STAYS an override, in the file too.
 - Removing an override requires explicit UI action (revert)
 - diff produces overrides between baked_base and working_copy
@@ -214,8 +229,6 @@ Unity intentionally preserves orphan modifications and stripped objects so that 
 - (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
 
 - add/remove objects as override
-- add/remove components as override
-  - until this lands the inspector disables Remove Component / Paste Component as New / reorder on prefab-instance components (value edits stay available)
 
 - revert on a variant ROOT's nested content clears the override but leaves the field value; regular nested prefabs restore correctly
 

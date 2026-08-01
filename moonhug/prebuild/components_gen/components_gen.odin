@@ -265,16 +265,11 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	}
 	strings.write_string(&b, "}\n\n")
 
+	// The add itself lives in hand-written editor code (component_add.odin) —
+	// it has to handle prefab-instance additions, which is real logic rather
+	// than boilerplate worth generating.
 	strings.write_string(&b, "_component_menu_add :: proc(key: engine.TypeKey) {\n")
-	strings.write_string(&b, "\ttH := hierarchy_get_selected()\n")
-	strings.write_string(&b, "\tif tH == _HANDLE_NONE do return\n")
-	strings.write_string(&b, "\tw := engine.ctx_world()\n")
-	strings.write_string(&b, "\tt := engine.pool_get(&w.transforms, engine.Handle(tH))\n")
-	strings.write_string(&b, "\tif t == nil do return\n")
-	strings.write_string(&b, "\t_, existing_idx := engine.transform_find_comp(t, key)\n")
-	strings.write_string(&b, "\tif existing_idx >= 0 do return\n")
-	strings.write_string(&b, "\towned, _ := engine.transform_add_comp(tH, key)\n")
-	strings.write_string(&b, "\tundo.record_add_component(tH, owned.handle, len(t.components) - 1)\n")
+	strings.write_string(&b, "\tcomponent_add_to_selected(key)\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, "moonhug/editor/menu_component_generated.odin", strings.to_string(b))
