@@ -129,6 +129,12 @@ get_file_path :: proc() -> string {
 }
 
 save_to_file :: proc() {
+    // Only an ASSET has a document to write. A package folder (or an import
+    // settings view) leaves fileData as a nil `any`, and serializing that asks
+    // for the GUID of a nil typeid — which panics rather than failing softly.
+    if inspectorData.mode != .Asset || inspectorData.fileData.data == nil {
+        return
+    }
     if ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
     {
         if inspectorData.doc != nil do inspectorData.doc.dirty = false
