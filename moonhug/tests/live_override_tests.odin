@@ -710,3 +710,105 @@ test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
 		tc_mem.scene = nil
 	}
 }
+
+// --- Structural OBJECT edits on a prefab instance ----------------------------
+
+// A transform added under prefab content is recorded as an added_object and
+// grafted back at resolve, so it survives a full save/reload — not just the
+// save. HostDup nests SpriteDup (SpriteA/SpriteB) under a regular host.
+@(test)
+test_object_addition_survives_save_and_reload :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_obj_added.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	parent := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	testing.expect(t, parent != {}, "nested SpriteA should resolve")
+	if parent == {} do return
+
+	// Add a child under PREFAB content — the host addition.
+	added := engine.transform_new("HostAddedChild", parent)
+	testing.expect(t, added != {}, "creating the child should succeed")
+	if added == {} do return
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			count := 0
+			for ns in sf.nested_scenes do count += len(ns.added_objects)
+			testing.expect(t, count == 1, "the addition must be written to the file")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// RELOAD: resolve rebuilds the instance from its prefab, so this is the
+	// assertion that matters — the added object must be grafted back.
+	engine.sm_scene_destroy_or_unload(loaded)
+	engine.sm_scene_set_active(nil)
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	back := find_transform_named(&tc_mem.world, reloaded, "HostAddedChild", false)
+	testing.expect(t, back != {}, "an ADDED object must be present after reload")
+	if back == {} do return
+	bt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(back))
+	testing.expect(t, bt != nil)
+	if bt == nil do return
+	pt := engine.pool_get(&tc_mem.world.transforms, bt.parent.handle)
+	testing.expect(t, pt != nil && strings.compare(pt.name, "SpriteA") == 0,
+		"the added object must come back under its prefab parent")
+}
+
+// An unchanged load->save must not invent object edits. The live walk skips the
+// base root and inner-NS content, so "absent from the walk" does NOT mean the
+// user removed something — inferring removals that way invented them.
+@(test)
+test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
+	ASSETS :: "moonhug/packages/prefabs_example/assets"
+	engine.asset_db_init(ASSETS)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_no_phantom_objs.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
+		loaded := engine.scene_load_single_path(path)
+		testing.expectf(t, loaded != nil, "load %s", path)
+		if loaded == nil do continue
+		tc_mem.scene = loaded
+		engine.sm_scene_set_active(loaded)
+
+		data, ok := engine.scene_serialize(loaded)
+		if ok do delete(data)
+
+		for &ns in loaded.nested_scenes {
+			testing.expectf(t, len(ns.added_objects) == 0,
+				"%s: unchanged save invented %d added_objects", path, len(ns.added_objects))
+			testing.expectf(t, len(ns.removed_objects) == 0,
+				"%s: unchanged save invented %d removed_objects", path, len(ns.removed_objects))
+		}
+		engine.sm_scene_destroy_or_unload(loaded)
+		engine.sm_scene_set_active(nil)
+		tc_mem.scene = nil
+	}
+}

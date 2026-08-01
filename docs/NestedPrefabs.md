@@ -153,6 +153,23 @@ Both are baked into the prefab bytes at resolve, after the field overrides, so a
 - Component ORDER is prefab content: reorder stays disabled on instances.
 - The inspector's Add Component on an instance adds to that instance only.
 
+### Added / removed objects
+
+An object added under a prefab instance is recorded the same way, as `added_objects` (Unity's `m_AddedGameObjects`), and grafted back at resolve.
+
+```
+Added_Object   { parent: PPtr, local_id, json }  // subtree as a SceneFile fragment
+Removed_Object { target: PPtr }                  // the prefab object this instance lacks
+```
+
+An added subtree has no row in any prefab file, so it carries its own content. Its lids are host-authored — minted by `scene_new_lid`, random in [1, 2^52) — and random identity is collision-free by construction, so added content needs no lid band of its own.
+
+Removing an object takes its whole subtree with it: the rows, their components, and the parent's child link.
+
+**Additions are identified positively** — a non-owned transform whose parent is prefab content. Removals are NOT inferred from absence: the live walk skips the base root and inner-nested content, so "not in the walk" does not mean the user deleted anything. A removal needs an explicit signal recorded when the user deletes, which is what the editor path supplies.
+
+A root VARIANT's base content and additions are owned by the variant save path, which writes them itself.
+
 - UX: overrides grow only — if same value but override exists, keep it. An override whose value is set back to the base value STAYS an override, in the file too.
 - Removing an override requires explicit UI action (revert)
 - diff produces overrides between baked_base and working_copy

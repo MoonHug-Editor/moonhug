@@ -236,8 +236,10 @@ nested_scene_apply_component_edits :: proc(
     removed: []Removed_Component,
     added: []Added_Component,
     prefab_guid: Asset_GUID = {},
+    removed_objs: []Removed_Object = nil,
+    added_objs: []Added_Object = nil,
 ) -> []byte {
-    if len(removed) == 0 && len(added) == 0 do return raw
+    if len(removed) == 0 && len(added) == 0 && len(removed_objs) == 0 && len(added_objs) == 0 do return raw
 
     // Everything below allocates on TEMP: the parsed tree plus the values the
     // edit passes insert into it (cloned strings, new json.Objects). Mixing
@@ -270,11 +272,176 @@ nested_scene_apply_component_edits :: proc(
         _json_add_component_row(root_obj, ac)
     }
 
+    // --- Removed objects: drop the subtree and unlink it from its parent.
+    for ro in removed_objs {
+        if !skip_filter && ro.target.guid != prefab_guid do continue
+        _json_remove_object_subtree(root_obj, ro.target.local_id)
+    }
+
+    // --- Added objects: graft the stored subtree under its prefab parent.
+    for ao in added_objs {
+        if !skip_filter && ao.parent.guid != prefab_guid do continue
+        _json_add_object_subtree(root_obj, ao)
+    }
+
     // Result on the CALLER's allocator (it owns/frees the bytes), not temp.
     opts := json.Marshal_Options{spec = .JSON, pretty = false}
     data, merr := json.marshal(root_obj, opts, prev_alloc)
     if merr != nil do return raw
     return data
+}
+
+// Removes transform `lid` and its whole descendant subtree: their rows, their
+// component records, and the surviving parent's child link. A removed object
+// takes its children with it — the prefab's structure decides what is below it.
+@(private)
+_json_remove_object_subtree :: proc(root_obj: json.Object, lid: Local_ID) {
+    root_obj := root_obj
+    trs, has_trs := root_obj["transforms"].(json.Array)
+    if !has_trs do return
+
+    // The subtree, by transitive closure over the file's parent links.
+    doomed := make(map[Local_ID]bool, 0, context.temp_allocator)
+    doomed[lid] = true
+    for {
+        grew := false
+        for item in trs {
+            t_obj, ok := item.(json.Object)
+            if !ok do continue
+            tlid, lok := _json_local_id_of(t_obj)
+            if !lok || tlid in doomed do continue
+            if p := _json_parent_lid_of(t_obj); p != 0 && p in doomed {
+                doomed[tlid] = true
+                grew = true
+            }
+        }
+        if !grew do break
+    }
+
+    // Their components go with them.
+    doomed_comps := make(map[Local_ID]bool, 0, context.temp_allocator)
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || !(tlid in doomed) do continue
+        if list, has := t_obj["components"].(json.Array); has {
+            for entry in list {
+                if e_obj, e_ok := entry.(json.Object); e_ok {
+                    if clid, cok := _json_local_id_of(e_obj); cok do doomed_comps[clid] = true
+                }
+            }
+        }
+    }
+    if comps, has := root_obj["components"].(json.Array); has {
+        w := 0
+        for item in comps {
+            keep := true
+            if rec, ok := item.(json.Object); ok {
+                if l := _json_component_lid_of(rec); l != 0 && l in doomed_comps do keep = false
+            }
+            if keep {
+                comps[w] = item
+                w += 1
+            }
+        }
+        resize(&comps, w)
+        root_obj["components"] = comps
+    }
+
+    // Unlink from the surviving parent, then drop the rows themselves.
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || tlid in doomed do continue
+        list, has := t_obj["children"].(json.Array)
+        if !has do continue
+        cw := 0
+        for entry in list {
+            drop := false
+            if e_obj, e_ok := entry.(json.Object); e_ok {
+                if clid := _json_ref_lid_of(e_obj); clid != 0 && clid in doomed do drop = true
+            }
+            if !drop {
+                list[cw] = entry
+                cw += 1
+            }
+        }
+        resize(&list, cw)
+        t_obj["children"] = list
+    }
+    tw := 0
+    for item in trs {
+        keep := true
+        if t_obj, ok := item.(json.Object); ok {
+            if tlid, lok := _json_local_id_of(t_obj); lok && tlid in doomed do keep = false
+        }
+        if keep {
+            trs[tw] = item
+            tw += 1
+        }
+    }
+    resize(&trs, tw)
+    root_obj["transforms"] = trs
+}
+
+// Grafts `ao`'s stored subtree into the doc and links its root under the
+// prefab transform named by `ao.parent`.
+@(private)
+_json_add_object_subtree :: proc(root_obj: json.Object, ao: Added_Object) {
+    root_obj := root_obj
+    frag_val: json.Value
+    if json.unmarshal_string(ao.json, &frag_val) != nil do return
+    frag, is_obj := frag_val.(json.Object)
+    if !is_obj do return
+
+    trs, _ := root_obj["transforms"].(json.Array)
+    if frag_trs, has := frag["transforms"].(json.Array); has {
+        for item in frag_trs do append(&trs, item)
+    }
+    root_obj["transforms"] = trs
+
+    comps, _ := root_obj["components"].(json.Array)
+    if frag_comps, has := frag["components"].(json.Array); has {
+        for item in frag_comps do append(&comps, item)
+    }
+    root_obj["components"] = comps
+
+    // The subtree root's own `parent` already names the prefab parent; add the
+    // reciprocal child entry the loader walks.
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || tlid != ao.parent.local_id do continue
+        list, _ := t_obj["children"].(json.Array)
+        entry := make(json.Object)
+        pptr := make(json.Object)
+        pptr["local_id"] = json.Value(json.Integer(ao.local_id))
+        entry["pptr"] = json.Value(pptr)
+        append(&list, json.Value(entry))
+        t_obj["children"] = list
+        return
+    }
+}
+
+// A transform row's parent lid (`parent: {pptr: {local_id}}`).
+@(private)
+_json_parent_lid_of :: proc(t_obj: json.Object) -> Local_ID {
+    p, has := t_obj["parent"].(json.Object)
+    if !has do return 0
+    return _json_ref_lid_of(p)
+}
+
+// The lid inside a `{pptr: {local_id}}` or bare `{local_id}` reference.
+@(private)
+_json_ref_lid_of :: proc(obj: json.Object) -> Local_ID {
+    if pptr, has := obj["pptr"].(json.Object); has {
+        if lid, ok := _json_local_id_of(pptr); ok do return lid
+    }
+    if lid, ok := _json_local_id_of(obj); ok do return lid
+    return 0
 }
 
 // Removes the component record with `lid` from "components" and the matching
@@ -659,6 +826,8 @@ NestedScene :: struct {
     // express "this component is not here" or "this component is extra".
     removed_components:   [dynamic]Removed_Component,
     added_components:     [dynamic]Added_Component,
+    removed_objects:      [dynamic]Removed_Object,
+    added_objects:        [dynamic]Added_Object,
     // Runtime instance-lid -> source-prefab-lid map, rebuilt on every resolve
     // (Unity: m_CorrespondingSourceObject). Instance lids are composed
     // deterministically (nested_lid_compose) so source->instance needs no map;
@@ -686,6 +855,13 @@ nested_scene_free_owned :: proc(ns: ^NestedScene) {
     }
     delete(ns.added_components)
     ns.added_components = nil
+    delete(ns.removed_objects)
+    ns.removed_objects = nil
+    for &ao in ns.added_objects {
+        delete(ao.json)
+    }
+    delete(ns.added_objects)
+    ns.added_objects = nil
 }
 
 // A component the prefab declares that this instance does NOT have. `target`
@@ -705,6 +881,26 @@ Added_Component :: struct {
     local_id: Local_ID,
     type_guid: string,
     json:      string, // the component's serialized fields
+}
+
+// An OBJECT the prefab declares that this instance does NOT have. Removing an
+// object takes its whole subtree with it — the prefab's own structure decides
+// what "below" means (Unity: m_RemovedGameObjects).
+Removed_Object :: struct {
+    target: PPtr,
+}
+
+// A transform subtree the host added under this instance's prefab content
+// (Unity: m_AddedGameObjects). It has no row in any prefab file, so it carries
+// its own content as a serialized SceneFile fragment.
+//
+// Lids inside the fragment are host-authored (scene_new_lid: random in
+// [1, 2^52)) — random identity is collision-free by construction, which is why
+// added content needs no lid band of its own alongside authored and composed.
+Added_Object :: struct {
+    parent:   PPtr,      // the prefab transform the subtree hangs off
+    local_id: Local_ID,  // the subtree root's lid
+    json:     string,    // SceneFile fragment: transforms + their components
 }
 
 // Deterministic instance lid for one object of a materialized prefab instance —
@@ -1275,6 +1471,7 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 	// ones (docs/NestedPrefabs.md).
 	baked := nested_scene_apply_component_edits(
 		field_baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
+		ns.removed_objects[:], ns.added_objects[:],
 	)
 	structural_owned := raw_data(baked) != raw_data(field_baked)
 	defer if structural_owned do delete(baked)

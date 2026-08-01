@@ -44,6 +44,19 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 					json      = strings.clone(src.json),
 				}
 			}
+			ns_copy.removed_objects = make([dynamic]Removed_Object, len(ns_data.removed_objects))
+			for i in 0..<len(ns_data.removed_objects) {
+				ns_copy.removed_objects[i] = ns_data.removed_objects[i]
+			}
+			ns_copy.added_objects = make([dynamic]Added_Object, len(ns_data.added_objects))
+			for i in 0..<len(ns_data.added_objects) {
+				src := &ns_data.added_objects[i]
+				ns_copy.added_objects[i] = Added_Object{
+					parent   = src.parent,
+					local_id = src.local_id,
+					json     = strings.clone(src.json),
+				}
+			}
 			append(&s.nested_scenes, ns_copy)
 		}
 	}
@@ -235,6 +248,11 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 			delete(ac.json)
 		}
 		delete(ns.added_components)
+		delete(ns.removed_objects)
+		for &ao in ns.added_objects {
+			delete(ao.json)
+		}
+		delete(ns.added_objects)
 	}
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
