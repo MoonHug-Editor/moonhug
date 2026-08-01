@@ -508,7 +508,7 @@ test_revert_override_scoped_to_owning_instance :: proc(t: ^testing.T) {
 	testing.expect_value(t, t_c1r.position, [3]f32{11, 11, 11})
 	testing.expect_value(t, t_c2r.position, [3]f32{22, 22, 22})
 
-	// Per docs/NestedPrefabs.md: overrides live at the root scene level only.
+	// Per docs/PrefabsSpec.md §3.2: overrides live at the root scene level only.
 	// The TestA-1 → TestB-1 deep override on TransformC.position is stored on
 	// the native (root-scene) NS for TestB-1 with target.guid == TestC's guid.
 	// After XOR projection target.local_id is no longer the literal TransformC
@@ -612,7 +612,7 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	testing.expect_value(t, sr_b.color, [4]f32{0, 1, 0, 1})
 }
 
-// Per docs/NestedPrefabs.md, an outer prefab's overrides on its inner prefab
+// Per docs/PrefabsSpec.md §3.2, an outer prefab's overrides on its inner prefab
 // are "baked" into the inner content as the parent scene sees it — they're
 // opaque from the root scene's perspective. So when the root scene records
 // its own override on top and the user later reverts it, the live value must

@@ -1,6 +1,13 @@
-# Nested Prefabs WIP Plan
+# Nested Prefabs
 
-> MoonHug Editor uses scenes as prefabs so prefab is synonym to scene in thid document.
+> MoonHug Editor uses scenes as prefabs, so "prefab" and "scene" are synonyms in
+> this document.
+
+**Behaviour is specified separately** in
+[PrefabsSpec.md](PrefabsSpec.md) — what prefabs do, in implementation-independent
+terms. This document describes how that specification is implemented here: file
+layout, records, and the resolve/save pipeline. Section references like §4.7
+point into the spec.
 
 ## Links
 - [Technical deep dive into the new Prefab system - Unite LA](https://www.youtube.com/watch?v=HxbSJ-EIjXI)
@@ -257,9 +264,9 @@ Unity intentionally preserves orphan modifications and stripped objects so that 
 # TODO
 - (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
 
-- reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it
+- reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it. This is specified behaviour, not a gap (§4.6).
 
-- revert on a variant ROOT's nested content clears the override but leaves the field value; regular nested prefabs restore correctly
+- **Known conformance gap (§4.7):** revert on a variant ROOT's nested content clears the override but leaves the field value. Regular nested prefabs restore correctly.
 
 # Consider Later
 ## Prefab isolation mode (alternative to opening the source asset)

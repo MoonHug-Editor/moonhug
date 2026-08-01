@@ -5,7 +5,7 @@ package editor
 //
 // On PREFAB-INSTANCE content the component is an addition the prefab doesn't
 // have, so it is recorded on the instance's NestedScene as an added_component
-// (docs/NestedPrefabs.md) — otherwise the next resolve, which rebuilds the
+// (docs/PrefabsSpec.md §4.2) — otherwise the next resolve, which rebuilds the
 // instance from its prefab, would drop it.
 
 import "core:encoding/json"

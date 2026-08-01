@@ -119,7 +119,7 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 // what an instance has diverged on without hunting field by field.
 //
 // Shown on the instance ROOT only (Unity puts it on the root GameObject), and
-// only for a NATIVE NS: inner NSs never hold records (docs/NestedPrefabs.md),
+// only for a NATIVE NS: inner NSs never hold records (docs/PrefabsSpec.md §3.2),
 // so a nested-owned row deeper in the chain has nothing of its own to list.
 @(private)
 _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
@@ -859,7 +859,7 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 		type_name := fmt.tprintf("%v", comp_tid)
 		c_type_name := strings.clone_to_cstring(type_name, context.temp_allocator)
 
-		// Per docs/NestedPrefabs.md, only root scene's overrides should color
+		// Per docs/PrefabsSpec.md §3.2, only root scene's overrides should color
 		// the component header. Walk up to the root NS and check if it has
 		// any override targeting this component (directly via lid for native
 		// hosts, or via a breadcrumb for deep ones).

@@ -510,7 +510,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
             w := engine.ctx_world()
             ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
             if ht != nil {
-                // Per docs/NestedPrefabs.md, overrides live at the root scene
+                // Per docs/PrefabsSpec.md §3.2, overrides live at the root scene
                 // level only. Walk up to the root native NS and look for the
                 // breadcrumb-keyed override that root holds for this field.
                 root_ns, root_target, ok := engine.nested_scene_locate_root_override(ht.scene, host_tH, nested_lid)

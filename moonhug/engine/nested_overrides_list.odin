@@ -49,7 +49,7 @@ Override_Entry :: struct {
 // properties first (grouped by the object they touch), then structural edits.
 //
 // `ns` must be the NATIVE NS that owns the records — inner NSs never hold any
-// (docs/NestedPrefabs.md), so passing one yields an empty list rather than an
+// (docs/PrefabsSpec.md §3.2), so passing one yields an empty list rather than an
 // error.
 nested_scene_list_overrides :: proc(s: ^Scene, ns: ^NestedScene) -> []Override_Entry {
     out := make([dynamic]Override_Entry, context.temp_allocator)

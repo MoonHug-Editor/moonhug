@@ -1115,7 +1115,7 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	if s == nil do return nil, false
 	w := ctx_world()
 
-	// Per docs/NestedPrefabs.md, overrides live at the root scene level only.
+	// Per docs/PrefabsSpec.md §3.2, overrides live at the root scene level only.
 	// Capture writes directly onto each chain's native NS; inner-NS records
 	// keep the overrides they loaded from their inner-prefab files (those are
 	// runtime-only — used by per-level shallow bake during resolve, never

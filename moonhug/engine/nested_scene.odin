@@ -1796,7 +1796,7 @@ nested_scene_has_override :: proc(ns: ^NestedScene, target: PPtr, property_path:
 // STICKY, like Unity: an entry, once recorded, is only removed by an explicit
 // nested_scene_revert_override. Setting a field back to its base value by hand
 // KEEPS the override — membership is never recomputed from a comparison
-// (docs/NestedPrefabs.md "overrides grow only").
+// (docs/PrefabsSpec.md §4.1: overrides grow only).
 //
 // `field_ptr`/`field_tid` name the live field; its current value is marshaled
 // as the override value. Same-(target, path) entries are replaced in place, so

@@ -33,7 +33,7 @@ _hierarchy_active_or_root :: proc() -> engine.Transform_Handle {
 // Any selected row that can be moved/duplicated/deleted (not a scene root,
 // not inside a nested-scene instance).
 // Delete is allowed on prefab-instance content: it records a removed_object on
-// the instance (docs/NestedPrefabs.md), unlike rename/cut/duplicate which have
+// the instance (docs/PrefabsSpec.md §4.5), unlike rename/cut/duplicate which have
 // no override representation. The scene root is never deletable.
 @(private)
 _hierarchy_selection_deletable :: proc() -> bool {
@@ -194,7 +194,7 @@ hierarchy_create_empty_child_menu :: proc() {
 	parent := _hierarchy_active_or_root()
 	if parent == _HANDLE_NONE do return
 	// A child under prefab content is an added_object on the instance
-	// (docs/NestedPrefabs.md) — the capture pass picks it up on save.
+	// (docs/PrefabsSpec.md §4.4) — the capture pass picks it up on save.
 	sel_scene_only(undo.record_create_child("Transform", parent))
 	_hierarchy_force_open = parent
 }
