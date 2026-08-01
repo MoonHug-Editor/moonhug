@@ -64,6 +64,12 @@ _hierarchy_dimmed_color: im.Vec4
 @(private)
 _hierarchy_force_open: engine.Transform_Handle
 
+// Set while drawing if the mouse is inside ANY row's rect. The background
+// context menu is suppressed then, so a right-click anywhere on a row — text,
+// actions column, or the padding between them — gets that row's menu.
+@(private)
+_hierarchy_pointer_over_row: bool
+
 @(private)
 _hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
 
@@ -249,6 +255,7 @@ draw_hierarchy_view :: proc() {
 
 	clear(&_hierarchy_nav_list)
 	sel_scene_prune()
+	_hierarchy_pointer_over_row = false
 
 	for i in 0..<sm.count {
 		scene := sm.loaded[i]
@@ -395,7 +402,14 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 	// the shared GameObject bands (creation + view ops) — registered
 	// @(menu_item) items, plugin ones included. Items create under the
 	// ACTIVE scene's root.
-	if im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
+	//
+	// Suppressed over rows. NoOpenOverItems is not enough: the rows are
+	// SpanAllColumns tree nodes submitted in the NAME column, so imgui's item
+	// hit-test misses the actions column and the cell padding — right-clicking
+	// those few pixels opened this GameObject-only menu instead of the row's
+	// full one, which is why the menu changed with the click position.
+	if !_hierarchy_pointer_over_row &&
+	   im.BeginPopupContextWindow("##HierarchyContextBg", im.PopupFlags_MouseButtonRight | im.PopupFlags_NoOpenOverItems) {
 		menu.draw_menu_sections({
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
 			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),
@@ -541,6 +555,21 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 	node_rect_min := im.GetItemRectMin()
 	node_rect_max := im.GetItemRectMax()
+
+	// SpanAllColumns makes this rect cover the whole row, so it is the honest
+	// answer to "is the pointer on this row" — imgui's item hit-test misses the
+	// actions column and the cell padding. Used both to suppress the background
+	// menu (_hierarchy_pointer_over_row) and to open THIS row's menu, so the
+	// two agree on where a row begins and ends and no dead zone is left between
+	// them — notably over a nested host's ">" button, which is submitted after
+	// the row and would otherwise swallow the right-click.
+	mp := im.GetIO().MousePos
+	pointer_on_row := mp.x >= node_rect_min.x && mp.x <= node_rect_max.x &&
+		mp.y >= node_rect_min.y && mp.y <= node_rect_max.y
+	if pointer_on_row do _hierarchy_pointer_over_row = true
+	if pointer_on_row && im.IsMouseClicked(.Right) && im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+		node_right_clicked = true
+	}
 
 	// In a multi-selection, outline the ACTIVE row — the one the inspector
 	// shows and single-target actions (rename, gizmo) operate on.
