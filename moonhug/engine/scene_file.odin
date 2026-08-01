@@ -719,6 +719,45 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	_capture_component_edits(s, ns, native_ns, diff_base, work_raw, chain_lids[:])
 }
 
+// The instance's component sets, read from the LIVE world rather than from
+// serialized text. Whether a component is prefab content is a live fact
+// (`CompData.nested_owned`); JSON lid matching cannot substitute, because a
+// component owned by a DEEPER nesting level un-projects with that level's
+// table, not the level being captured, and would read as an unmatched — i.e.
+// added — row. This is our equivalent of Unity answering the same question
+// from the object's own m_CorrespondingSourceObject.
+//
+// Temp-allocated.
+@(private = "file")
+_live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool {
+	added := make(map[Local_ID]bool, 0, context.temp_allocator)
+	w := ctx_world()
+	host_tH := nested_scene_resolve_host_handle(s, ns)
+	if host_tH == {} do return added
+
+	_walk :: proc(w: ^World, tH: Transform_Handle, out: ^map[Local_ID]bool, is_root: bool) {
+		t := pool_get(&w.transforms, Handle(tH))
+		if t == nil do return
+		if is_root || t.nested_owned {
+			for comp in t.components {
+				if comp.handle.type_key == INVALID_TYPE_KEY do continue
+				raw := world_pool_get(w, comp.handle)
+				if raw == nil do continue
+				base := cast(^CompData)raw
+				if !base.nested_owned do out^[base.local_id] = true
+			}
+		}
+		for child in t.children {
+			ct := pool_get(&w.transforms, child.handle)
+			if ct != nil && ct.nested_owned {
+				_walk(w, Transform_Handle(child.handle), out, false)
+			}
+		}
+	}
+	_walk(w, host_tH, &added, true)
+	return added
+}
+
 // Records removed/added components onto `native_ns`, projecting targets up the
 // inner-NS chain exactly as field overrides are projected.
 @(private = "file")
@@ -729,7 +768,8 @@ _capture_component_edits :: proc(
 	base_raw, work_raw: []byte,
 	chain_lids: []Local_ID,
 ) {
-	removed, added, ok := nested_scene_diff_component_sets(base_raw, work_raw, ns.source_prefab)
+	live_added := _live_added_components(s, ns)
+	removed, added, ok := nested_scene_diff_component_sets(base_raw, work_raw, ns.source_prefab, &live_added)
 	if !ok do return
 
 	project :: proc(lid: Local_ID, chain: []Local_ID) -> Local_ID {

@@ -345,15 +345,7 @@
 
       ],
       "added_components": [
-        {
-          "owner": {
-            "local_id": 2,
-            "guid": "bdb81005-069f-405f-9a4d-fe9fb3f2bcb7"
-          },
-          "local_id": 1695229572068673,
-          "type_guid": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
-          "json": "{\"base\":{\"local_id\":1695229572068673,\"enabled\":true},\"clip\":\"00000000-0000-0000-0000-000000000000\",\"layers\":[],\"__type\":\"5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13\",\"wrap_mode\":0,\"play_automatically\":true,\"speed\":1.0000000000000000}"
-        }
+
       ]
     }
   ],

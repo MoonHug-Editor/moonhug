@@ -358,9 +358,16 @@ _json_add_component_row :: proc(root_obj: json.Object, ac: Added_Component) {
 // `prefab_guid` tags the produced targets, matching Override.target encoding.
 //
 // Results are temp-allocated; the caller clones what it stores.
+// `live_added` is the set of host-ADDED component lids, classified from the
+// LIVE world (_live_component_sets) rather than from the docs: whether a
+// component is prefab content is a live fact, and JSON lid matching cannot
+// substitute — one owned by a DEEPER nesting level un-projects with that
+// level's table, not this one's, so it stays composed and would read as an
+// unmatched, i.e. added, row.
 nested_scene_diff_component_sets :: proc(
     base_raw, work_raw: []byte,
     prefab_guid: Asset_GUID,
+    live_added: ^map[Local_ID]bool,
 ) -> (removed: []Removed_Component, added: []Added_Component, ok: bool) {
     base_val, work_val: json.Value
     if json.unmarshal(base_raw, &base_val, .JSON, context.temp_allocator) != nil do return nil, nil, false
@@ -387,6 +394,8 @@ nested_scene_diff_component_sets :: proc(
             if !is_o do continue
             lid := _json_component_lid_of(rec)
             if lid == 0 || lid in base_lids do continue
+            // Only genuine host additions (live-classified).
+            if live_added != nil && !(lid in live_added^) do continue
             type_guid := ""
             if tg, tok := rec["__type"].(json.String); tok do type_guid = string(tg)
             if type_guid == "" do continue

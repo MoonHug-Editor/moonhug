@@ -666,3 +666,47 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 		fmt.printfln("  bad free at %v", bf.location)
 	}
 }
+
+// An UNCHANGED load->save must not invent structural component edits. Lid
+// matching alone can't classify a component: one owned by a DEEPER nesting
+// level un-projects with that level's table, not the level being captured, so
+// it stays composed and reads as an unmatched (added) row. The live
+// `nested_owned` flag is the authority instead. This is the shape of the bug
+// that shipped a phantom added_components entry into blobs.scene.
+@(test)
+test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
+	ASSETS :: "moonhug/packages/prefabs_example/assets"
+	engine.asset_db_init(ASSETS)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_no_phantom_comps.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// host.scene nests a chain deep enough that inner levels own components
+	// the capturing level cannot un-project.
+	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
+		loaded := engine.scene_load_single_path(path)
+		testing.expectf(t, loaded != nil, "load %s", path)
+		if loaded == nil do continue
+		tc_mem.scene = loaded
+		engine.sm_scene_set_active(loaded)
+
+		data, ok := engine.scene_serialize(loaded)
+		testing.expectf(t, ok, "serialize %s", path)
+		if ok do delete(data)
+
+		for &ns in loaded.nested_scenes {
+			testing.expectf(t, len(ns.added_components) == 0,
+				"%s: unchanged save invented %d added_components", path, len(ns.added_components))
+			testing.expectf(t, len(ns.removed_components) == 0,
+				"%s: unchanged save invented %d removed_components", path, len(ns.removed_components))
+		}
+		engine.sm_scene_destroy_or_unload(loaded)
+		engine.sm_scene_set_active(nil)
+		tc_mem.scene = nil
+	}
+}
