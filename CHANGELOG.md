@@ -1,3 +1,10 @@
+## [0.59.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.58.0...v0.59.0) (2026-08-01)
+
+### Features
+
+* add PrefabsSpec.md ([a447d0f](https://github.com/MoonHug-Editor/moonhug/commit/a447d0ffe43ebe2af2192d9303aac4c677d92602))
+* overrides list ([b925bd5](https://github.com/MoonHug-Editor/moonhug/commit/b925bd52d5c3f4211da24ed0ffc60aa5cee9b5d7))
+
 ## [0.58.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.57.0...v0.58.0) (2026-08-01)
 
 ### Features
