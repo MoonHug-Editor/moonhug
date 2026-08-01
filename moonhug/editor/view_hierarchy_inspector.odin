@@ -152,31 +152,48 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 		im.TextDisabled("Click to select, ctrl/cmd or shift for multiple")
 		im.Separator()
 
+		nodes_for_revert := engine.nested_scene_override_tree(ht.scene, ns, host_tH, entries)
 		if im.BeginChild("##OverridesRows", im.Vec2{460, 260}, {}, {}) {
-			nodes := engine.nested_scene_override_tree(ht.scene, host_tH, entries)
-			for node in nodes {
-				im.PushIDInt(c.int(engine.Handle(node.tH).index))
+			nodes := nodes_for_revert
+
+			// Every element is separately selectable. Object elements use a
+			// NEGATIVE key (-1 - node_index) so they share one selection map
+			// with the rows without colliding.
+			for node, ni in nodes {
+				im.PushIDInt(c.int(ni))
 				if node.depth > 0 do im.Indent(f32(node.depth) * 12)
 
-				// The object header is a heading, not a proxy for the rows under
-				// it — every element selects separately (Unity). An object with
-				// no overrides of its own still appears when a descendant has
-				// them, so the path stays walkable, drawn dimmed.
-				if !node.has_own do im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
-				im.TextUnformatted(strings.clone_to_cstring(node.label, context.temp_allocator))
-				if !node.has_own do im.PopStyleColor(1)
+				obj_key := -1 - ni
+				// Dimmed when the TRANSFORM itself has no overrides — the object
+				// may still be listed for its components or for a descendant, and
+				// stays selectable either way.
+				obj_dim := len(node.own_rows) == 0
+				if obj_dim do im.PushStyleColorImVec4(im.Col.Text, _hierarchy_dimmed_color)
+				if im.Selectable(
+					strings.clone_to_cstring(
+						fmt.tprintf("%s %s##o", _overrides_object_icon(ht.scene, node.tH), node.label),
+						context.temp_allocator),
+					obj_key in _overrides_selected,
+					{.NoAutoClosePopups},
+				) {
+					_overrides_apply_click(obj_key)
+				}
+				if obj_dim do im.PopStyleColor(1)
 
-				// The object's own rows: components and property changes.
-				for ri in node.rows {
-					e := entries[ri]
+				// One element per COMPONENT (or the transform), not per field —
+				// three position/rotation/scale changes read as one "Transform".
+				// The group's first row is its selection key.
+				for g in node.groups {
+					if len(g.rows) == 0 do continue
+					key := g.rows[0]
 					im.Indent(14)
 					if im.Selectable(
 						strings.clone_to_cstring(
-							fmt.tprintf("%s##r%d", e.detail, ri), context.temp_allocator),
-						ri in _overrides_selected,
+							fmt.tprintf("%s##g%d", g.label, key), context.temp_allocator),
+						key in _overrides_selected,
 						{.NoAutoClosePopups},
 					) {
-						_overrides_apply_click(ri)
+						_overrides_apply_click(key)
 					}
 					im.Unindent(14)
 				}
@@ -187,8 +204,23 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 		}
 		im.EndChild()
 
+		// Detail panel for a SINGLE selected element (Unity): the source prefab
+		// it came from, and what this element overrides. A multi-selection has
+		// no single subject, so the panel is hidden and only the bulk buttons
+		// below apply.
+		if len(_overrides_selected) == 1 {
+			for key in _overrides_selected {
+				im.Separator()
+				_draw_override_detail(ht.scene, ns, nodes_for_revert, entries, key)
+			}
+		}
+
 		im.Separator()
-		n_sel := len(_overrides_selected)
+		// An object element stands for its OWN rows when reverting (selecting
+		// it and hitting Revert should do something), but it is still a
+		// separate element for selection — clicking it does not select them.
+		sel_rows := _overrides_selected_rows(nodes_for_revert)
+		n_sel := len(sel_rows)
 
 		if im.Button("Revert All") {
 			_overrides_revert(ht.scene, ns, host_tH, entries, nil)
@@ -201,7 +233,7 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 			: "Revert Selected"
 		im.BeginDisabled(n_sel == 0)
 		if im.Button(strings.clone_to_cstring(sel_label, context.temp_allocator)) {
-			_overrides_revert(ht.scene, ns, host_tH, entries, &_overrides_selected)
+			_overrides_revert(ht.scene, ns, host_tH, entries, &sel_rows)
 			im.CloseCurrentPopup()
 		}
 		im.EndDisabled()
@@ -210,19 +242,38 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 	}
 }
 
-// Click handling for a row: ctrl/cmd toggles it, shift ranges from the anchor,
-// plain click replaces the selection. Rows are the only selectable elements —
-// object headers are headings, so there is no span-select to handle.
+// The same glyph the hierarchy row uses (view_hierarchy.odin): stacks for a
+// nested-scene host, the variant glyph when its source asset is a variant,
+// stat_0 for a plain object — so an object reads the same in both views.
 @(private)
-_overrides_apply_click :: proc(ri: int) {
+_overrides_object_icon :: proc(s: ^engine.Scene, tH: engine.Transform_Handle) -> cstring {
+	if tH == _HANDLE_NONE do return ICON_MD_STAT_0
+	ns := engine.scene_find_nested_scene_for_host(s, tH)
+	if ns == nil do return ICON_MD_STAT_0
+	if engine.nested_scene_is_root_variant(s, ns) do return ICON_MD_STACKS_VARIANT
+	if info, ok := engine.asset_db_get_root_info(ns.source_prefab); ok && info.is_variant {
+		return ICON_MD_STACKS_VARIANT
+	}
+	return ICON_MD_STACKS
+}
+
+// Click handling: ctrl/cmd toggles, shift ranges from the anchor, plain click
+// replaces. `key` is a row index, or -1 - node_index for an object element.
+// A shift range only spans keys of the SAME kind — objects and rows interleave
+// in the display but not in the key space, so a mixed range would select
+// arbitrary unrelated elements.
+@(private)
+_overrides_apply_click :: proc(key: int) {
 	io := im.GetIO()
+	ri := key
 	if io.KeyCtrl || io.KeySuper {
 		if ri in _overrides_selected {
 			delete_key(&_overrides_selected, ri)
 		} else {
 			_overrides_selected[ri] = true
 		}
-	} else if io.KeyShift && _overrides_anchor >= 0 {
+	} else if io.KeyShift && _overrides_anchor_valid &&
+	          (_overrides_anchor < 0) == (ri < 0) {
 		clear(&_overrides_selected)
 		lo := min(_overrides_anchor, ri)
 		hi := max(_overrides_anchor, ri)
@@ -231,6 +282,7 @@ _overrides_apply_click :: proc(ri: int) {
 		clear(&_overrides_selected)
 		_overrides_selected[ri] = true
 		_overrides_anchor = ri
+		_overrides_anchor_valid = true
 	}
 }
 
@@ -296,7 +348,7 @@ _overrides_revert :: proc(
 
 	if reverted {
 		clear(&_overrides_selected)
-		_overrides_anchor = -1
+		_overrides_anchor_valid = false
 		// Field reverts restore the live value themselves. The structural kinds
 		// only drop the record — the instance rebuilds from the prefab on the
 		// next resolve, which is how the undo paths handle them too.
@@ -307,7 +359,9 @@ _overrides_revert :: proc(
 @(private)
 _overrides_selected: map[int]bool
 @(private)
-_overrides_anchor: int = -1
+_overrides_anchor: int
+@(private)
+_overrides_anchor_valid: bool
 @(private)
 _overrides_popup_host: engine.Transform_Handle
 
@@ -938,5 +992,177 @@ _draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Ha
 	if im.BeginPopup("##AddComponentPopup") {
 		menu.draw_menu_subtree("Component")
 		im.EndPopup()
+	}
+}
+
+// The selected elements expanded to actual row indices: a selected row is
+// itself, a selected object contributes its OWN rows. Object elements carry no
+// record of their own, so they cannot be reverted directly.
+@(private)
+_overrides_selected_rows :: proc(nodes: []engine.Override_Node) -> map[int]bool {
+	out := make(map[int]bool, 0, context.temp_allocator)
+	for key in _overrides_selected {
+		if key < 0 {
+			// An object element covers the TRANSFORM's own rows only. Its
+			// components are separate elements — selecting the object is not a
+			// shorthand for selecting them (Unity treats each separately).
+			ni := -1 - key
+			if ni < 0 || ni >= len(nodes) do continue
+			for ri in nodes[ni].own_rows do out[ri] = true
+			continue
+		}
+		// A group element, keyed by its first row — reverting it reverts every
+		// field on that component, not just the one the key names.
+		found := false
+		for node in nodes {
+			for g in node.groups {
+				if len(g.rows) == 0 || g.rows[0] != key do continue
+				for ri in g.rows do out[ri] = true
+				found = true
+				break
+			}
+			if found do break
+		}
+		if !found do out[key] = true
+	}
+	return out
+}
+
+// The single-selection detail view (Unity): the object's values as the PREFAB
+// defines them on the left, read-only, and the live instance on the right where
+// they are editable. Both panes are real inspectors — the same property drawers
+// the main inspector uses — so a comparison shows the fields, not a text
+// summary of them.
+//
+// Prefab Source names the asset above the panes. An object with no overrides of
+// its own says so rather than drawing two identical panes.
+@(private)
+_draw_override_detail :: proc(
+	s: ^engine.Scene,
+	ns: ^engine.NestedScene,
+	nodes: []engine.Override_Node,
+	entries: []engine.Override_Entry,
+	key: int,
+) {
+	source := "(unknown)"
+	if path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
+		source = path
+	}
+	im.TextDisabled("Prefab Source")
+	im.BeginDisabled(true)
+	im.SetNextItemWidth(-1)
+	im.InputText("##PrefabSource",
+		strings.clone_to_cstring(source, context.temp_allocator),
+		c.size_t(len(source) + 1), {.ReadOnly})
+	im.EndDisabled()
+
+	// Which object, and which component on it, this element is about.
+	obj_tH := engine.Transform_Handle{}
+	target := engine.PPtr{}
+	if key >= 0 {
+		if key >= len(entries) do return
+		obj_tH = entries[key].object_tH
+		target = entries[key].target
+	} else {
+		ni := -1 - key
+		if ni < 0 || ni >= len(nodes) do return
+		if len(nodes[ni].own_rows) == 0 {
+			im.Spacing()
+			im.TextDisabled("No overrides")
+			return
+		}
+		obj_tH = nodes[ni].tH
+		// An object element is about the TRANSFORM, so the target must come
+		// from its own rows. Taking rows[0] could hand a COMPONENT target to
+		// the left pane while the right drew the transform — the two panes then
+		// described different objects.
+		target = entries[nodes[ni].own_rows[0]].target
+	}
+
+	// Resolve the target ONCE to the live object it names — a transform or a
+	// component on it — so both panes describe the same thing.
+	w := engine.ctx_world()
+	live := engine.nested_override_live_handle(s, ns, target)
+	is_comp := live != {} && live.type_key != .Transform
+
+	im.Spacing()
+	if im.BeginTable("##OverrideCompare", 2, im.TableFlags_BordersInner | im.TableFlags_SizingStretchSame) {
+		im.TableSetupColumn("Prefab Source")
+		im.TableSetupColumn("Overrides")
+		im.TableHeadersRow()
+		im.TableNextRow()
+
+		// LEFT: the prefab's values, read-only. Asking for the same type_key
+		// the live side draws keeps the two panes comparable.
+		im.TableSetColumnIndex(0)
+		base_key := live.type_key if is_comp else engine.INVALID_TYPE_KEY
+		base := engine.nested_override_baseline(s, ns, target, base_key)
+		if base.ok {
+			// Clear the nested context for this pane: these are PREFAB values,
+			// not instance content, so nothing here is an override. Leaving the
+			// live context set made the left side mark the same fields bold as
+			// the right, so both panes looked overridden.
+			base_prev_host := engine.inspector_set_nested_host({})
+			base_prev_lid := engine.inspector_set_nested_local_id(0)
+			im.BeginDisabled(true)
+			im.PushID("##base")
+			if drawer := inspector.resolve_property_drawer(base.tid); drawer != nil {
+				drawer(base.ptr, base.tid,
+					strings.clone_to_cstring(base.label, context.temp_allocator))
+			}
+			im.PopID()
+			im.EndDisabled()
+			engine.inspector_set_nested_host(base_prev_host)
+			engine.inspector_set_nested_local_id(base_prev_lid)
+		} else {
+			// An ADDED component or object has no prefab side by definition.
+			im.TextDisabled("(not in prefab)")
+		}
+
+		// RIGHT: the live instance, editable — edits record overrides exactly
+		// as they do in the main inspector, via the same drawers and owner.
+		//
+		// The nested host/local_id context is what tells a field it is prefab
+		// content: without it the drawers cannot mark overrides (bold) or offer
+		// Revert/Apply, and an edit here would not record an override at all.
+		// The main inspector sets the same pair before drawing.
+		im.TableSetColumnIndex(1)
+		host_for_ctx := engine.nested_scene_resolve_host_handle(s, ns)
+		prev_host := engine.inspector_set_nested_host(host_for_ctx)
+		defer engine.inspector_set_nested_host(prev_host)
+		if is_comp {
+			if raw := engine.world_pool_get(w, live); raw != nil {
+				ctid := engine.get_typeid_by_type_key(live.type_key)
+				im.PushID("##live")
+				undo.push_component_owner(live)
+				prev_lid := engine.inspector_set_nested_local_id(
+					(cast(^engine.CompData)raw).local_id)
+				if drawer := inspector.resolve_property_drawer(ctid); drawer != nil {
+					drawer(raw, ctid, strings.clone_to_cstring(
+						fmt.tprintf("%v", live.type_key), context.temp_allocator))
+				}
+				engine.inspector_set_nested_local_id(prev_lid)
+				undo.pop_owner()
+				im.PopID()
+			} else {
+				im.TextDisabled("(not in instance)")
+			}
+		} else if lt := engine.pool_get(&w.transforms, engine.Handle(obj_tH)); lt != nil {
+			im.PushID("##live")
+			undo.push_transform_owner(obj_tH)
+			prev_lid := engine.inspector_set_nested_local_id(lt.local_id)
+			if drawer := inspector.resolve_property_drawer(typeid_of(engine.Transform)); drawer != nil {
+				drawer(lt, typeid_of(engine.Transform), "Transform")
+			}
+			engine.inspector_set_nested_local_id(prev_lid)
+			undo.pop_owner()
+			im.PopID()
+		} else {
+			// A REMOVED object/component: gone from the instance, still in the
+			// prefab — the left pane is the whole story.
+			im.TextDisabled("(removed from instance)")
+		}
+
+		im.EndTable()
 	}
 }

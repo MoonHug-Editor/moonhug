@@ -13,6 +13,7 @@ package engine
 // way the rest of the inspector treats derived display data.
 
 import "core:fmt"
+import "core:mem"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:strings"
@@ -377,6 +378,26 @@ Override_Node :: struct {
     depth:    int,
     has_own:  bool,  // this object owns at least one row
     rows:     []int, // indices into the entries slice passed to the builder
+
+    // The object's rows collapsed to one entry per COMPONENT. The list shows
+    // these, not individual fields — several changed fields on one component
+    // read as one element, the way Unity groups overrides.
+    groups:   []Override_Group,
+
+    // Rows on the TRANSFORM itself (and structural rows about this object).
+    // They belong to the object element, which already represents the
+    // transform — there is no separate "Transform" child.
+    own_rows: []int,
+}
+
+// One listable element under an object: everything overridden on a single
+// component (or on the transform). `rows` are the underlying records, so
+// reverting the group reverts each of them.
+Override_Group :: struct {
+    label:    string,
+    type_key: TypeKey, // INVALID_TYPE_KEY = the transform itself
+    kind:     Override_Entry_Kind,
+    rows:     []int,
 }
 
 // Groups `entries` by object and orders them as a hierarchy: each object node,
@@ -389,12 +410,14 @@ Override_Node :: struct {
 // in, and dropping them would hide a real override.
 nested_scene_override_tree :: proc(
     s: ^Scene,
+    ns: ^NestedScene,
     host_tH: Transform_Handle,
     entries: []Override_Entry,
 ) -> []Override_Node {
     out := make([dynamic]Override_Node, context.temp_allocator)
     if s == nil do return out[:]
     w := ctx_world()
+    ns_arg := ns
 
     // Rows per object, plus every ancestor up to the host so the tree is
     // connected even where the intermediate objects are clean.
@@ -421,6 +444,9 @@ nested_scene_override_tree :: proc(
         tH: Transform_Handle,
         depth: int,
         rows_of: ^map[Transform_Handle][dynamic]int,
+        entries: []Override_Entry,
+        s: ^Scene,
+        ns: ^NestedScene,
         out: ^[dynamic]Override_Node,
     ) {
         t := pool_get(&w.transforms, Handle(tH))
@@ -436,19 +462,23 @@ nested_scene_override_tree :: proc(
         if has_own do rows = own[:]
         append(out, Override_Node{
             tH = tH, label = t.name, depth = depth, has_own = has_own, rows = rows,
+            groups = _group_rows_by_owner(s, ns, rows, entries),
+            own_rows = _transform_own_rows(s, ns, rows, entries),
         })
 
         for child in t.children {
-            _emit(w, Transform_Handle(child.handle), depth + 1, rows_of, out)
+            _emit(w, Transform_Handle(child.handle), depth + 1, rows_of, entries, s, ns, out)
         }
     }
-    _emit(w, host_tH, 0, &rows_of, &out)
+    _emit(w, host_tH, 0, &rows_of, entries, s, ns_arg, &out)
 
     // Rows with no live object: their own top-level nodes.
     for i in orphans {
+        rows := slice_one_temp(i)
         append(&out, Override_Node{
             label = entries[i].object_label, depth = 0, has_own = true,
-            rows = slice_one_temp(i),
+            rows = rows, groups = _group_rows_by_owner(s, ns, rows, entries),
+            own_rows = _transform_own_rows(s, ns, rows, entries),
         })
     }
     return out[:]
@@ -476,4 +506,180 @@ slice_one_temp :: proc(i: int) -> []int {
     out := make([]int, 1, context.temp_allocator)
     out[0] = i
     return out
+}
+
+// --- Prefab-side values for the comparison view -------------------------------
+
+// A temp copy of the object as the PREFAB defines it, for the read-only left
+// pane of the dropdown's comparison view. The bytes come from the same
+// chain-baked baseline revert diffs against, so the two panes disagree exactly
+// where an override exists.
+//
+// `ptr` points at a scratch instance of the type `tid` names, temp-allocated —
+// valid until the frame's free_all, which is the lifetime a drawer needs.
+Override_Baseline :: struct {
+    ptr:   rawptr,
+    tid:   typeid,
+    label: string,
+    ok:    bool,
+}
+
+// The baseline for a transform row, or for one component on it. `type_key` of
+// INVALID_TYPE_KEY asks for the transform itself.
+nested_override_baseline :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    type_key: TypeKey = INVALID_TYPE_KEY,
+) -> Override_Baseline {
+    if s == nil || ns == nil do return {}
+
+    // Resolve deep targets to the NS that owns the row, as revert does.
+    leaf_ns := ns
+    leaf_lid := target.local_id
+    if !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab {
+        host := nested_scene_resolve_host_handle(s, ns)
+        if _, lns, lid := nested_scene_walk_override_target(s, host, target); lns != nil {
+            leaf_ns = lns
+            leaf_lid = lid
+        }
+    }
+
+    raw, ok := chain_baked_base_for_ns(s, leaf_ns)
+    if !ok do return {}
+    defer delete(raw)
+
+    sf: SceneFile
+    if scene_file_unmarshal(raw, &sf) != nil do return {}
+    defer scene_file_destroy(&sf)
+
+    if type_key == INVALID_TYPE_KEY {
+        for &t in sf.transforms {
+            if t.local_id != leaf_lid do continue
+            out := new(Transform, context.temp_allocator)
+            out^ = t
+            // The scratch copy outlives sf's teardown only for the fields a
+            // drawer reads; the name is the one heap field, so clone it.
+            out.name = strings.clone(t.name, context.temp_allocator)
+            out.children = nil
+            out.components = nil
+            return {ptr = out, tid = typeid_of(Transform), label = "Transform", ok = true}
+        }
+        return {}
+    }
+
+    // A component baseline: find the record whose lid matches, then unmarshal
+    // it into a scratch instance of its registered type. The record carries its
+    // own guid tag, so the type comes from the registry rather than the caller.
+    for rec in sf.components {
+        obj, is_obj := rec.(json.Object)
+        if !is_obj do continue
+        if _json_component_lid_of(obj) != leaf_lid do continue
+        desc, dok := _ext_desc_for_value(rec)
+        if !dok || desc.type_key != type_key do continue
+
+        ti := type_info_of(desc.tid)
+        if ti == nil do return {}
+        block, aerr := mem.alloc(ti.size, ti.align, context.temp_allocator)
+        if aerr != nil || block == nil do return {}
+        if !_ext_value_into(desc, rec, block) do return {}
+        return {
+            ptr   = block,
+            tid   = desc.tid,
+            label = fmt.tprintf("%v", type_key),
+            ok    = true,
+        }
+    }
+    return {}
+}
+
+// The LIVE object an override target names: the transform itself, or the
+// component on it. The comparison view needs this so both panes describe the
+// same thing — the baseline is looked up by the same identity.
+nested_override_live_handle :: proc(s: ^Scene, ns: ^NestedScene, target: PPtr) -> Handle {
+    if s == nil || ns == nil do return {}
+    leaf_ns := ns
+    leaf_lid := target.local_id
+    if !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab {
+        host := nested_scene_resolve_host_handle(s, ns)
+        if _, lns, lid := nested_scene_walk_override_target(s, host, target); lns != nil {
+            leaf_ns = lns
+            leaf_lid = lid
+        }
+    }
+    if h, ok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, leaf_ns, leaf_lid)); ok {
+        return h
+    }
+    return {}
+}
+
+// Collapses an object's rows to one element per owning COMPONENT. Fields on the
+// transform itself are NOT a group — the object element already represents the
+// transform, so they attach to it via Override_Node.own_rows and would be a
+// duplicate "Transform" child otherwise.
+//
+// Field rows on the same component merge into one group; structural rows stay
+// one element each, since "Added SpriteRenderer" is already component-granular.
+@(private = "file")
+_group_rows_by_owner :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    rows: []int,
+    entries: []Override_Entry,
+) -> []Override_Group {
+    if len(rows) == 0 do return nil
+    out := make([dynamic]Override_Group, context.temp_allocator)
+
+    for ri in rows {
+        e := entries[ri]
+
+        // Which component (if any) owns the overridden field. Structural kinds
+        // name their own subject, so they never merge.
+        key := INVALID_TYPE_KEY
+        label := e.detail
+        if e.kind == .Modified_Property {
+            h := nested_override_live_handle(s, ns, e.target)
+            // A transform field belongs to the object element itself.
+            if h == {} || h.type_key == .Transform do continue
+            key = h.type_key
+            label = fmt.tprintf("%v", h.type_key)
+
+            merged := false
+            for &g in out {
+                if g.kind != .Modified_Property || g.type_key != key do continue
+                rs := make([dynamic]int, context.temp_allocator)
+                append(&rs, ..g.rows)
+                append(&rs, ri)
+                g.rows = rs[:]
+                merged = true
+                break
+            }
+            if merged do continue
+        }
+
+        append(&out, Override_Group{
+            label = label, type_key = key, kind = e.kind, rows = slice_one_temp(ri),
+        })
+    }
+    return out[:]
+}
+
+// The rows that belong to the object element itself: fields on the transform,
+// plus structural rows whose subject IS this object (a removed/added object).
+@(private = "file")
+_transform_own_rows :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    rows: []int,
+    entries: []Override_Entry,
+) -> []int {
+    if len(rows) == 0 do return nil
+    out := make([dynamic]int, context.temp_allocator)
+    for ri in rows {
+        e := entries[ri]
+        if e.kind != .Modified_Property do continue
+        h := nested_override_live_handle(s, ns, e.target)
+        if h == {} || h.type_key == .Transform do append(&out, ri)
+    }
+    return out[:]
 }

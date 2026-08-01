@@ -288,3 +288,152 @@ test_overrides_dropdown_revert_is_undoable :: proc(t: ^testing.T) {
 			"redo must re-apply the reverted VALUE, got %q", at3.name)
 	}
 }
+
+// The comparison view's left pane: the object's values as the PREFAB defines
+// them. Must materialize a real typed instance for BOTH a transform and a
+// component, and must report the PREFAB's value even when the live instance has
+// been overridden — that difference is the whole point of the two panes.
+@(test)
+test_override_baseline_materializes_prefab_values :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_ov_baseline.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	sprite_a := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	if sprite_a == {} do return
+	host_tH := engine.transform_immediate_nested_host(sprite_a)
+	if host_tH == {} do return
+	ht := engine.pool_get(&tc_mem.world.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	at := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_a))
+	if at == nil do return
+	ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
+	if ns == nil do return
+
+	src_lid := at.local_id
+	if s2, has := ns.source_of_inst[at.local_id]; has do src_lid = s2
+	target := engine.PPtr{guid = ns.source_prefab, local_id = src_lid}
+
+	// TRANSFORM baseline: overriding the live name must NOT move the baseline.
+	at.name = "Renamed"
+	engine.nested_scene_record_override_for_host(
+		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
+	)
+
+	base := engine.nested_override_baseline(loaded, ns, target)
+	testing.expect(t, base.ok, "the transform baseline should materialize")
+	if base.ok {
+		bt := cast(^engine.Transform)base.ptr
+		testing.expectf(t, strings.compare(bt.name, "SpriteA") == 0,
+			"baseline must hold the PREFAB name, got %q", bt.name)
+		testing.expect(t, base.tid == typeid_of(engine.Transform), "baseline names its type")
+	}
+
+	// COMPONENT baseline: SpriteA carries a SpriteRenderer in SpriteDup.scene.
+	comp_key := engine.TypeKey.SpriteRenderer
+	comp_h := engine.Handle{}
+	for c in at.components {
+		if c.handle.type_key == comp_key do comp_h = c.handle
+	}
+	testing.expect(t, comp_h != {}, "SpriteA should carry a SpriteRenderer")
+	if comp_h == {} do return
+
+	raw := engine.world_pool_get(&tc_mem.world, comp_h)
+	testing.expect(t, raw != nil)
+	if raw == nil do return
+	comp_lid := (cast(^engine.CompData)raw).local_id
+	comp_src := comp_lid
+	if s2, has := ns.source_of_inst[comp_lid]; has do comp_src = s2
+
+	cbase := engine.nested_override_baseline(
+		loaded, ns, engine.PPtr{guid = ns.source_prefab, local_id = comp_src}, comp_key,
+	)
+	testing.expect(t, cbase.ok, "the component baseline should materialize")
+	if cbase.ok {
+		testing.expect(t, cbase.ptr != nil, "a component baseline needs backing memory")
+		testing.expectf(t, cbase.tid == engine.get_typeid_by_type_key(comp_key),
+			"the baseline must be typed as its component, got %v", cbase.tid)
+	}
+
+	// The live handle both panes key off must name the component, not its owner.
+	live := engine.nested_override_live_handle(
+		loaded, ns, engine.PPtr{guid = ns.source_prefab, local_id = comp_src},
+	)
+	testing.expectf(t, live.type_key == comp_key,
+		"a component target must resolve to the component, got %v", live.type_key)
+}
+
+// The list shows one element per COMPONENT (or the transform), never per field:
+// several changed transform fields read as a single "Transform" element, the way
+// Unity groups overrides by component.
+@(test)
+test_override_tree_groups_rows_by_component :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_ov_group.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	sprite_a := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	if sprite_a == {} do return
+	host_tH := engine.transform_immediate_nested_host(sprite_a)
+	if host_tH == {} do return
+	ht := engine.pool_get(&tc_mem.world.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	at := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_a))
+	if at == nil do return
+
+	// THREE separate transform-field overrides on one object.
+	at.name = "Renamed"
+	engine.nested_scene_record_override_for_host(
+		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
+	)
+	at.position = {1, 2, 3}
+	engine.nested_scene_record_override_for_host(
+		loaded, host_tH, at.local_id, "position", &at.position, typeid_of([3]f32),
+	)
+	at.scale = {2, 2, 2}
+	engine.nested_scene_record_override_for_host(
+		loaded, host_tH, at.local_id, "scale", &at.scale, typeid_of([3]f32),
+	)
+
+	ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
+	if ns == nil do return
+	entries := engine.nested_scene_list_overrides(loaded, ns)
+	nodes := engine.nested_scene_override_tree(loaded, ns, host_tH, entries)
+
+	// Transform fields belong to the OBJECT element, not a "Transform" child —
+	// the object row already represents the transform.
+	found := false
+	for node in nodes {
+		if node.tH != sprite_a do continue
+		found = true
+		testing.expectf(t, len(node.own_rows) == 3,
+			"all 3 transform fields attach to the object element, got %d", len(node.own_rows))
+		for g in node.groups {
+			testing.expectf(t, strings.compare(g.label, "Transform") != 0,
+				"there must be no duplicate \"Transform\" child element")
+			testing.expectf(t, g.kind != .Modified_Property || g.type_key != engine.INVALID_TYPE_KEY,
+				"a field group must name a real component, got %v", g.type_key)
+		}
+	}
+	testing.expect(t, found, "SpriteA should appear in the tree")
+}
