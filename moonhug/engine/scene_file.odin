@@ -717,7 +717,7 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	// relative to its prefab. Same baseline and working copy the field diff
 	// used, so the two stay consistent by construction.
 	_capture_component_edits(s, ns, native_ns, diff_base, work_raw, chain_lids[:])
-	_capture_object_edits(s, ns, native_ns, diff_base, chain_lids[:])
+	_capture_object_edits(s, ns, native_ns, chain_lids[:])
 }
 
 // The instance's component sets, read from the LIVE world rather than from
@@ -759,90 +759,97 @@ _live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool
 	return added
 }
 
-// OBJECT edits on an instance, classified from the LIVE world for the same
-// reason component edits are (see _live_added_components): prefab membership
-// is a live fact, not something JSON lid matching can recover.
+// Roots of host-added subtrees DIRECTLY owned by `ns` — a non-owned transform
+// whose parent is a transform in THIS instance's content.
 //
-// `added` are the roots of host-added subtrees — a non-owned transform whose
-// parent IS prefab content. Only the ROOT is reported: everything under it
-// travels with it as part of the stored fragment.
-// `present` are the instance's live prefab-content lids, so the caller can tell
-// which of the prefab's own objects the instance no longer has.
+// Ownership comes from `ns.source_of_inst`, which maps this instance's live
+// composed lids to the source lids in its own prefab file. That table is the
+// authoritative one-level oracle: a live transform's lid is a key in exactly
+// the NS that owns it, never an outer one. (scene_find_nested_scene_for_host
+// is NOT usable here — its own doc-comment notes it takes the first fuzzy lid
+// match and cross-matches look-alike lids across variant namespaces, which is
+// what attributed one added subtree to two levels.)
+//
+// Each NS reports only what IT directly owns, so an addition is attributed to
+// exactly one level and counted once. Depth is handled by the caller, which
+// projects the parent lid up the inner-NS chain onto the enclosing native NS —
+// Unity keeps the record in the file containing the instance and addresses a
+// deep parent by a composed fileID, rather than writing into the source prefab.
 @(private = "file")
-_live_object_sets :: proc(s: ^Scene, ns: ^NestedScene) -> (added: [dynamic]Transform_Handle, present: map[Local_ID]bool) {
+_live_added_objects :: proc(s: ^Scene, ns: ^NestedScene) -> (added: [dynamic]Transform_Handle) {
 	added = make([dynamic]Transform_Handle, context.temp_allocator)
-	present = make(map[Local_ID]bool, 0, context.temp_allocator)
 	w := ctx_world()
 	host_tH := nested_scene_resolve_host_handle(s, ns)
 	if host_tH == {} do return
 
-	Ctx :: struct { added: ^[dynamic]Transform_Handle, present: ^map[Local_ID]bool, ns: ^NestedScene, s: ^Scene }
-	c := Ctx{&added, &present, ns, s}
-	_walk :: proc(w: ^World, tH: Transform_Handle, c: Ctx, is_root: bool) {
-		t := pool_get(&w.transforms, Handle(tH))
-		if t == nil do return
-		if !is_root do c.present^[t.local_id] = true
-		for child in t.children {
-			ct := pool_get(&w.transforms, child.handle)
-			if ct == nil do continue
-			if ct.nested_owned {
-				// An inner NS's own content belongs to that level, not this one.
-				owning := scene_find_nested_scene_for_host(ct.scene, Transform_Handle(child.handle))
-				if owning != nil && owning != c.ns do continue
-				_walk(w, Transform_Handle(child.handle), c, false)
-			} else {
-				// Non-owned child of prefab content = host addition root.
-				append(c.added, Transform_Handle(child.handle))
-			}
-		}
+	// Every live transform this instance owns, plus the host itself (the
+	// absorbed prefab root, whose lid is the host's, not a composed one).
+	owned := make(map[Local_ID]bool, 0, context.temp_allocator)
+	for inst_lid in ns.source_of_inst do owned[inst_lid] = true
+	if ht := pool_get(&w.transforms, Handle(host_tH)); ht != nil do owned[ht.local_id] = true
+
+	for i in 0 ..< len(w.transforms.slots) {
+		slot := &w.transforms.slots[i]
+		if !slot.alive do continue
+		t := &slot.data
+		if t.scene != s do continue
+		if t.nested_owned do continue // prefab content, not an addition
+		pt := pool_get(&w.transforms, t.parent.handle)
+		if pt == nil do continue
+		if !(pt.local_id in owned) do continue // parent isn't this instance's content
+		added_h := Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+		append(&added, added_h)
 	}
-	_walk(w, host_tH, c, true)
 	return
 }
 
-// Records removed/added objects onto `native_ns`. Added subtrees are collected
-// as SceneFile fragments (the same shape the resolve-time graft expects).
+// Records added objects for `ns` onto the enclosing NATIVE NS.
+//
+// Unity records an addition in the file that CONTAINS the instance — the scene
+// or outer prefab holding the PrefabInstance, never the source prefab. That
+// holds at any depth: a modification targeting an object inside a prefab nested
+// within the instance still lives in the outer file, addressed by a COMPOSED
+// fileID, (nested_PrefabInstance_fileID ^ object_fileID) & mask. Our
+// local_id_project is that same XOR fold, so a deep addition projects up the
+// inner-NS chain exactly as field overrides and component edits already do.
+//
+// Inner NS records are themselves never persisted, so an addition parented to
+// inner content is written to the native NS with a projected parent lid, and
+// _find_descendant_ns_by_projection decodes it back at resolve.
 @(private = "file")
-_capture_object_edits :: proc(
-	s: ^Scene,
-	ns: ^NestedScene,
-	native_ns: ^NestedScene,
-	base_raw: []byte,
-	chain_lids: []Local_ID,
-) {
-	// A ROOT VARIANT's base content and additions are owned by the variant
-	// save path (_collect_variant_added_subtree writes additions; the base is
-	// never emitted). Capturing them here too would double-record the
-	// additions and, because the walk deliberately skips the base root and
-	// inner-NS content, invent removals for rows it never visits.
+_capture_object_edits :: proc(s: ^Scene, ns: ^NestedScene, native_ns: ^NestedScene, chain_lids: []Local_ID) {
+	// A ROOT VARIANT's additions are written by the variant save path
+	// (_collect_variant_added_subtree); capturing here would double-record.
 	if nested_scene_is_root_variant(s, ns) do return
+	if native_ns == nil do return
 
 	w := ctx_world()
-	added_roots, _ := _live_object_sets(s, ns)
-
-	project :: proc(lid: Local_ID, chain: []Local_ID) -> Local_ID {
-		out := lid
-		for i := len(chain) - 1; i >= 0; i -= 1 {
-			out = local_id_project(chain[i], out)
-		}
-		return out
-	}
-
-	// Removal detection is NOT done here. It would have to mean "a prefab row
-	// with no live counterpart", but the live walk deliberately skips the base
-	// root and inner-NS content, so absence from it does not imply the user
-	// removed anything — inferring removals from that set invents them. Doing
-	// this correctly needs a positive signal (an explicit suppression recorded
-	// when the user deletes), which is how the editor path will drive it.
-	// --- Added: serialize each host-added subtree as a SceneFile fragment.
-	for root_tH in added_roots {
+	for root_tH in _live_added_objects(s, ns) {
 		rt := pool_get(&w.transforms, Handle(root_tH))
 		if rt == nil do continue
-		parent_lid: Local_ID
-		if pt := pool_get(&w.transforms, rt.parent.handle); pt != nil {
-			parent_lid = pt.local_id
+		pt := pool_get(&w.transforms, rt.parent.handle)
+		if pt == nil do continue
+
+		// Live composed lid -> this prefab's own source lid. The host itself
+		// stands in for the absorbed prefab root, whose source lid is
+		// ns.source_root_id.
+		src_parent_lid, has_src := ns.source_of_inst[pt.local_id]
+		if !has_src {
+			host_tH := nested_scene_resolve_host_handle(s, ns)
+			if host_tH != {} && Handle(host_tH) == rt.parent.handle && ns.source_root_id != 0 {
+				src_parent_lid = ns.source_root_id
+			} else {
+				continue
+			}
 		}
-		if parent_lid == 0 do continue
+
+		// Fold through each enclosing inner NS so the address is meaningful in
+		// the native NS's file (empty chain for a native ns == unchanged).
+		parent_lid := src_parent_lid
+		for i := len(chain_lids) - 1; i >= 0; i -= 1 {
+			parent_lid = local_id_project(chain_lids[i], parent_lid)
+		}
+		parent_guid := len(chain_lids) > 0 ? native_ns.source_prefab : ns.source_prefab
 
 		frag := SceneFile{}
 		frag.root = rt.local_id
@@ -851,14 +858,13 @@ _capture_object_edits :: proc(
 		bytes, merr := json.marshal(frag, json.Marshal_Options{spec = .JSON, pretty = false}, context.temp_allocator)
 		if merr != nil do continue
 
-		owner := PPtr{guid = ns.source_prefab, local_id = project(parent_lid, chain_lids)}
 		dup := false
 		for existing in native_ns.added_objects {
 			if existing.local_id == rt.local_id { dup = true; break }
 		}
 		if dup do continue
 		append(&native_ns.added_objects, Added_Object{
-			parent   = owner,
+			parent   = PPtr{guid = parent_guid, local_id = parent_lid},
 			local_id = rt.local_id,
 			json     = strings.clone(string(bytes)),
 		})
@@ -1140,7 +1146,11 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 			delete(ac.json)
 		}
 		clear(&ns.added_components)
-		clear(&ns.removed_objects)
+		// Added objects ARE re-derived (a non-owned child of prefab content is
+		// positively identifiable), so they clear like the rest. Removed
+		// objects are NOT: absence from the live walk doesn't imply deletion
+		// (see _capture_object_edits), so the record IS the only evidence the
+		// user deleted something — it must survive the rebuild.
 		for &ao in ns.added_objects {
 			delete(ao.json)
 		}
@@ -1620,14 +1630,56 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	return s
 }
 
-scene_copy_subtree :: proc(tH: Transform_Handle) -> []byte {
+// `include_nested_owned` captures PREFAB CONTENT too. _collect_transform_tree
+// refuses nested-owned nodes because the host scene must never emit prefab
+// content into its own file — but undo capture is not a file write: deleting
+// prefab content needs the subtree preserved so undo can put it back.
+// Collects a transform subtree regardless of nested_owned, with every
+// component. Used by undo capture (see scene_copy_subtree) — never by a save.
+@(private)
+_collect_subtree_verbatim :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+
+	t_copy := t^
+	t_copy.name = strings.clone(t.name)
+	t_copy.children = make([dynamic]Ref, 0, len(t.children))
+	for child in t.children {
+		if ct := pool_get(&w.transforms, child.handle); ct != nil {
+			append(&t_copy.children, child)
+		}
+	}
+	t_copy.components = make([dynamic]Owned, 0, len(t.components))
+	for c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if world_pool_get(w, c.handle) != nil do append(&t_copy.components, c)
+	}
+	append(&sf.transforms, t_copy)
+
+	for &c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if world_pool_get(w, c.handle) == nil do continue
+		world_pool_collect(w, c.handle, sf)
+	}
+	for child in t.children {
+		if ct := pool_get(&w.transforms, child.handle); ct != nil {
+			_collect_subtree_verbatim(w, Transform_Handle(child.handle), sf)
+		}
+	}
+}
+
+scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) -> []byte {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return nil
 
 	sf := SceneFile{}
 	sf.root = t.local_id
-	_collect_transform_tree(w, tH, &sf)
+	if include_nested_owned {
+		_collect_subtree_verbatim(w, tH, &sf)
+	} else {
+		_collect_transform_tree(w, tH, &sf)
+	}
 	defer scene_file_destroy_shallow(&sf)
 
 	opts := json.Marshal_Options{spec = .JSON, pretty = false}

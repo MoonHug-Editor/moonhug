@@ -32,6 +32,19 @@ _hierarchy_active_or_root :: proc() -> engine.Transform_Handle {
 
 // Any selected row that can be moved/duplicated/deleted (not a scene root,
 // not inside a nested-scene instance).
+// Delete is allowed on prefab-instance content: it records a removed_object on
+// the instance (docs/NestedPrefabs.md), unlike rename/cut/duplicate which have
+// no override representation. The scene root is never deletable.
+@(private)
+_hierarchy_selection_deletable :: proc() -> bool {
+	for h in sel_scene_items() {
+		if !_hierarchy_handle_valid(h) do continue
+		if _hierarchy_handle_is_root(h) do continue
+		return true
+	}
+	return false
+}
+
 @(private)
 _hierarchy_selection_mutable :: proc() -> bool {
 	for h in sel_scene_items() {
@@ -147,7 +160,7 @@ hierarchy_rename_menu :: proc() {
 }
 
 @(menu_separator={path="Edit", order=-40})
-@(menu_item={path="Edit/Delete", order=-45, enabled=_hierarchy_selection_mutable})
+@(menu_item={path="Edit/Delete", order=-45, enabled=_hierarchy_selection_deletable})
 hierarchy_delete_menu :: proc() {
 	if _hierarchy_rename_target != _HANDLE_NONE && sel_scene_is(_hierarchy_rename_target) {
 		_hierarchy_rename_target = _HANDLE_NONE
@@ -168,16 +181,20 @@ hierarchy_create_empty_menu :: proc() {
 }
 
 @(private)
+// Creating a child under prefab-instance content is representable as an
+// added_object, so nested targets are allowed here.
 _hierarchy_can_create_child :: proc() -> bool {
 	active := sel_scene_active()
 	if !_hierarchy_handle_valid(active) do return engine.sm_scene_get_active() != nil
-	return !_hierarchy_handle_is_nested(active)
+	return true
 }
 
 @(menu_item={path="GameObject/Create Empty Child", order=-99, enabled=_hierarchy_can_create_child})
 hierarchy_create_empty_child_menu :: proc() {
 	parent := _hierarchy_active_or_root()
-	if parent == _HANDLE_NONE || _hierarchy_handle_is_nested(parent) do return
+	if parent == _HANDLE_NONE do return
+	// A child under prefab content is an added_object on the instance
+	// (docs/NestedPrefabs.md) — the capture pass picks it up on save.
 	sel_scene_only(undo.record_create_child("Transform", parent))
 	_hierarchy_force_open = parent
 }

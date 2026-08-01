@@ -34,7 +34,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_item("Edit/Paste", "", hierarchy_paste_menu, -48, _hierarchy_can_paste)
 	menu.add_menu_item("Edit/Duplicate", "", hierarchy_duplicate_menu, -47, _hierarchy_selection_mutable)
 	menu.add_menu_item("Edit/Rename", "", hierarchy_rename_menu, -46, _hierarchy_can_rename)
-	menu.add_menu_item("Edit/Delete", "", hierarchy_delete_menu, -45, _hierarchy_selection_mutable)
+	menu.add_menu_item("Edit/Delete", "", hierarchy_delete_menu, -45, _hierarchy_selection_deletable)
 	menu.add_menu_separator("Edit", -40)
 	menu.add_menu_item("Edit/Toggle Transform Active", "Alt+Shift+A", hierarchy_toggle_active_menu, 0)
 	menu.add_menu_item("File/Save", "Ctrl+S", menu.file_save_menu, 0)

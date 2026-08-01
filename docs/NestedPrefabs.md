@@ -164,9 +164,13 @@ Removed_Object { target: PPtr }                  // the prefab object this insta
 
 An added subtree has no row in any prefab file, so it carries its own content. Its lids are host-authored — minted by `scene_new_lid`, random in [1, 2^52) — and random identity is collision-free by construction, so added content needs no lid band of its own.
 
+Additions work at any depth. The record always lives in the file that CONTAINS the instance — the open scene or outer prefab, never the source prefab — so `parent` uses `Override.target`'s encoding: a parent inside the instance's own prefab is named directly, and a parent that lives inside a prefab nested WITHIN the instance is XOR-projected up the chain. A shallow parent is grafted into the prefab bytes at resolve. A deep one cannot be — that parent does not exist until the inner prefab expands — so it is grafted onto the live tree afterwards, alongside deep field overrides. Either way the object is host-authored, not prefab content, so the next save re-captures it.
+
 Removing an object takes its whole subtree with it: the rows, their components, and the parent's child link.
 
-**Additions are identified positively** — a non-owned transform whose parent is prefab content. Removals are NOT inferred from absence: the live walk skips the base root and inner-nested content, so "not in the walk" does not mean the user deleted anything. A removal needs an explicit signal recorded when the user deletes, which is what the editor path supplies.
+**Additions are identified positively** at save time — a non-owned transform whose parent is prefab content — so they are re-derived on every save. **Removals are not inferrable**: the live walk skips the base root and inner-nested content, so "not in the walk" does not mean the user deleted anything. The record is written when the user deletes and is preserved across save (never rebuilt), because it is the only evidence the deletion happened.
+
+Deleting an ADDED object retracts the addition instead of recording a removal — it was never prefab content.
 
 A root VARIANT's base content and additions are owned by the variant save path, which writes them itself.
 
@@ -245,7 +249,7 @@ Unity intentionally preserves orphan modifications and stripped objects so that 
 # TODO
 - (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
 
-- add/remove objects as override
+- reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it
 
 - revert on a variant ROOT's nested content clears the override but leaves the field value; regular nested prefabs restore correctly
 

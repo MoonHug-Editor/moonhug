@@ -5,6 +5,7 @@ package tests
 // only an explicit revert removes it.
 
 import "../engine"
+import "../editor/undo"
 
 import "core:testing"
 import "core:strings"
@@ -811,4 +812,178 @@ test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
 		engine.sm_scene_set_active(nil)
 		tc_mem.scene = nil
 	}
+}
+
+// Deleting prefab content records a removed_object, so the next resolve — which
+// rebuilds the instance from its prefab — does not bring it back.
+@(test)
+test_object_removal_survives_save_and_reload :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_obj_removed.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	victim := find_transform_named(&tc_mem.world, loaded, "SpriteB", true)
+	testing.expect(t, victim != {}, "nested SpriteB should resolve")
+	if victim == {} do return
+	vt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(victim))
+	if vt == nil do return
+	host_tH := engine.transform_immediate_nested_host(victim)
+	testing.expect(t, host_tH != {})
+	if host_tH == {} do return
+	obj_lid := vt.local_id
+
+	// Delete the way the hierarchy does: destroy + record.
+	engine.transform_destroy(victim)
+	created, ok := engine.nested_scene_record_object_removed(loaded, host_tH, obj_lid)
+	testing.expect(t, ok && created, "deleting prefab content should record a removal")
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	{
+		sf, fok := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, fok)
+		if fok {
+			count := 0
+			for ns in sf.nested_scenes do count += len(ns.removed_objects)
+			testing.expect(t, count == 1, "the removal must be written to the file")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	engine.sm_scene_destroy_or_unload(loaded)
+	engine.sm_scene_set_active(nil)
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	gone := find_transform_named(&tc_mem.world, reloaded, "SpriteB", true)
+	testing.expect(t, gone == {}, "a REMOVED object must not reappear after reload")
+	// Its sibling is untouched.
+	sibling := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
+	testing.expect(t, sibling != {}, "removing one object must not affect its siblings")
+}
+
+// Undo of a nested delete must RESTORE the object, and restore it as prefab
+// content. Two things made this fail: scene_copy_subtree refuses nested-owned
+// nodes (correct for a save — the host file must not contain prefab content —
+// but it left undo with an empty payload), and the restored rows come back
+// from the loader as plain host content unless the flag is re-applied.
+@(test)
+test_nested_delete_undo_restores_object :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	u := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, u)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+	engine.sm_scene_set_active(loaded)
+
+	victim := find_transform_named(&tc_mem.world, loaded, "SpriteB", true)
+	testing.expect(t, victim != {}, "nested SpriteB should resolve")
+	if victim == {} do return
+	vt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(victim))
+	if vt == nil do return
+	host := engine.transform_immediate_nested_host(victim)
+	if host == {} do return
+	lid := vt.local_id
+
+	// Delete exactly as the hierarchy does.
+	{
+		g := undo.group_begin("Delete Selected")
+		defer undo.group_end(&g)
+		undo.record_delete(victim)
+		engine.nested_scene_record_object_removed(loaded, host, lid)
+		undo.record_object_removed_on_instance(loaded, host, lid)
+		undo.group_commit(&g)
+	}
+	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "SpriteB", true) == {},
+		"delete should remove it")
+
+	testing.expect(t, undo.apply_undo(u), "undo should apply")
+	back := find_transform_named(&tc_mem.world, loaded, "SpriteB", true)
+	testing.expect(t, back != {}, "UNDO must restore the deleted object")
+	if back == {} do return
+	bt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(back))
+	testing.expect(t, bt != nil && bt.nested_owned,
+		"the restored object must be prefab content again, not a host addition")
+	total := 0
+	for &ns in loaded.nested_scenes do total += len(ns.removed_objects)
+	testing.expect(t, total == 0, "undo must retract the removal record")
+
+	// REDO deletes it again (its lid is not in the scene bimap, so the redo
+	// lookup has to fall back to a live scan).
+	testing.expect(t, undo.apply_redo(u), "redo should apply")
+	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "SpriteB", true) == {},
+		"REDO must delete it again")
+	total2 := 0
+	for &ns in loaded.nested_scenes do total2 += len(ns.removed_objects)
+	testing.expect(t, total2 == 1, "redo must re-record the removal")
+}
+
+// Create-child under prefab content, undo, redo. Redo looked the PARENT up in
+// the scene bimap, which does not hold prefab-content lids (composed instance
+// lids belong to the instance, not the host), so it silently did nothing.
+@(test)
+test_nested_create_child_undo_redo :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	u := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, u)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+	engine.sm_scene_set_active(loaded)
+
+	parent := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	testing.expect(t, parent != {}, "nested SpriteA should resolve")
+	if parent == {} do return
+
+	child := undo.record_create_child("HostChild", parent)
+	testing.expect(t, child != {}, "create should succeed")
+	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "HostChild", false) != {},
+		"the child should exist after create")
+
+	testing.expect(t, undo.apply_undo(u), "undo should apply")
+	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "HostChild", false) == {},
+		"undo should remove the child")
+
+	testing.expect(t, undo.apply_redo(u), "redo should apply")
+	back := find_transform_named(&tc_mem.world, loaded, "HostChild", false)
+	testing.expect(t, back != {}, "REDO must recreate the child under prefab content")
+	if back == {} do return
+	bt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(back))
+	testing.expect(t, bt != nil, "recreated child should be live")
+	if bt == nil do return
+	pt := engine.pool_get(&tc_mem.world.transforms, bt.parent.handle)
+	testing.expect(t, pt != nil && strings.compare(pt.name, "SpriteA") == 0,
+		"the child must come back under its original parent")
+	// A host addition, NOT prefab content — it must stay capturable as an
+	// added_object.
+	testing.expect(t, !bt.nested_owned, "a host-created child is not prefab content")
 }

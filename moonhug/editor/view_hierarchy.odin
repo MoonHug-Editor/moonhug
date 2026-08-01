@@ -525,6 +525,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// IsItemClicked() refers to the last item, which becomes the button below.
 	node_clicked := im.IsItemClicked(.Left)
 	node_hovered := im.IsItemHovered({})
+	// Same hazard for the context menu: on a nested-scene host the ">" button
+	// is submitted after this row, so OpenPopupOnItemClick down there would
+	// bind to the BUTTON and right-click would only work on that few-pixel
+	// target. Record the row's right-click here and open the popup by name.
+	node_right_clicked := im.IsItemClicked(.Right)
 
 	append(&_hierarchy_nav_list, tH)
 
@@ -681,7 +686,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		scene_frame_selected()
 	}
 
-	im.OpenPopupOnItemClick("##NodeContext", im.PopupFlags_MouseButtonRight)
+	if node_right_clicked do im.OpenPopup("##NodeContext")
 	if !is_root && !is_nested {
 		_draw_drag_source(tH)
 	}
@@ -785,12 +790,42 @@ _delete_selected :: proc() {
 	deleted := 0
 	for h in targets {
 		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
-		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
+		if _hierarchy_handle_is_root(h) do continue
+		// Deleting PREFAB content is a structural override: the subtree is
+		// destroyed AND recorded as removed, so the next resolve (which
+		// rebuilds the instance from its prefab) doesn't bring it back. Both
+		// steps ride this group's single undo entry.
+		nested_host, obj_lid, scene, is_prefab_content := _nested_removal_target(h)
 		undo.record_delete(h)
+		if is_prefab_content {
+			if _, ok := engine.nested_scene_record_object_removed(scene, nested_host, obj_lid); ok {
+				undo.record_object_removed_on_instance(scene, nested_host, obj_lid)
+			}
+		}
 		deleted += 1
 	}
 	if deleted > 0 do undo.group_commit(&g)
 	sel_scene_clear()
+}
+
+// The NS bookkeeping a delete of `tH` needs, when `tH` is prefab content of a
+// nested instance. Returns is_prefab_content=false for ordinary host objects
+// (nothing to record) and for host ADDITIONS living under prefab content —
+// those are retracted by the record proc itself, which needs the same host.
+@(private)
+_nested_removal_target :: proc(tH: engine.Transform_Handle) -> (host: engine.Transform_Handle, obj_lid: engine.Local_ID, scene: ^engine.Scene, ok: bool) {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return {}, 0, nil, false
+	// Prefab content, or a host object grafted under prefab content.
+	parent_nested := false
+	if pt := engine.pool_get(&w.transforms, t.parent.handle); pt != nil {
+		parent_nested = pt.nested_owned || engine.scene_find_nested_scene_for_host(pt.scene, engine.Transform_Handle(t.parent.handle)) != nil
+	}
+	if !t.nested_owned && !parent_nested do return {}, 0, nil, false
+	h := engine.transform_immediate_nested_host(tH)
+	if h == {} do return {}, 0, nil, false
+	return h, t.local_id, t.scene, true
 }
 
 // Duplicate every duplicable selected object as ONE undo step; the copies

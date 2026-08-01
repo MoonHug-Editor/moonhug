@@ -68,7 +68,9 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 		}
 	}
 
-	payload := engine.scene_copy_subtree(root)
+	// Prefab content must be captured too, or undo of a nested delete has
+	// nothing to restore.
+	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
 	if payload == nil do return
 
 	sibling_idx := engine.transform_get_sibling_index(root)
@@ -90,16 +92,25 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (Delete_Subtree_Comm
 	if !ok do return {}, false
 	parent_lid := parent_local_id(root)
 
-	payload := engine.scene_copy_subtree(root)
+	// Prefab content must be captured too, or undo of a nested delete has
+	// nothing to restore.
+	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
 	if payload == nil do return {}, false
 
 	sibling_idx := engine.transform_get_sibling_index(root)
+	owned := false
+	if w := engine.ctx_world(); w != nil {
+		if rt := engine.pool_get(&w.transforms, engine.Handle(root)); rt != nil {
+			owned = rt.nested_owned
+		}
+	}
 	return Delete_Subtree_Command{
 		scene = scene_ref(scene),
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
 		payload = payload,
+		nested_owned = owned,
 	}, true
 }
 

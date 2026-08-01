@@ -76,6 +76,10 @@ Delete_Subtree_Command :: struct {
 	root_local_id:       engine.Local_ID,
 	sibling_index:       int,
 	payload:             []byte,
+	// The subtree was PREFAB CONTENT (nested_owned). Restoring it has to put
+	// that back, or the next save would treat the restored rows as a host
+	// addition and emit them into the host file.
+	nested_owned:        bool,
 }
 
 Add_Component_Command :: struct {
@@ -166,6 +170,7 @@ Override_Record_Op :: enum {
 	// the next resolve (which rebuilds the instance from its prefab).
 	Comp_Removed, // apply: removal recorded / undo: retract the removal
 	Comp_Added,   // apply: addition recorded / undo: retract the addition
+	Obj_Removed,  // same, for an OBJECT (transform subtree) the instance lacks
 }
 
 Record_Override_Command :: struct {
@@ -458,6 +463,8 @@ _apply_command :: proc(cmd: ^Command) {
 			_comp_removal_record(v)
 		case .Comp_Added:
 			_comp_addition_record(v)
+		case .Obj_Removed:
+			_obj_removal_record(v)
 		}
 	}
 }
@@ -495,6 +502,10 @@ _revert_command :: proc(cmd: ^Command) {
 			// The paired Add_Component_Command destroyed the component;
 			// retract the addition record with it.
 			_comp_addition_retract(v)
+		case .Obj_Removed:
+			// The paired Delete_Subtree_Command restored the subtree; retract
+			// the suppression so a resolve keeps it.
+			_obj_removal_retract(v)
 		}
 	}
 }
@@ -555,6 +566,20 @@ _comp_removal_retract :: proc(v: Record_Override_Command) {
 	s, host, ok := _override_host(v)
 	if !ok do return
 	engine.nested_scene_unrecord_component_removed(s, host, v.target_lid)
+}
+
+@(private)
+_obj_removal_record :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_record_object_removed(s, host, v.target_lid)
+}
+
+@(private)
+_obj_removal_retract :: proc(v: Record_Override_Command) {
+	s, host, ok := _override_host(v)
+	if !ok do return
+	engine.nested_scene_unrecord_object_removed(s, host, v.target_lid)
 }
 
 @(private)
@@ -690,6 +715,27 @@ record_component_added_on_instance :: proc(
 		owner_lid      = owner_lid,
 		comp_type_guid = strings.clone(type_guid),
 		comp_json      = strings.clone(comp_json),
+	})
+}
+
+// Attaches "this delete removed a prefab-instance object" to the undo step
+// that just recorded the subtree deletion, so undo retracts the suppression
+// along with restoring the subtree.
+record_object_removed_on_instance :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	obj_lid: engine.Local_ID,
+) {
+	u := get()
+	if u == nil || !u.recording || u.applying do return
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+	_override_cmd_attach(u, Record_Override_Command{
+		scene         = scene_ref(s),
+		host_local_id = ht.local_id,
+		target_lid    = obj_lid,
+		op            = .Obj_Removed,
 	})
 }
 
@@ -1105,30 +1151,53 @@ _do_reparent :: proc(s: ^engine.Scene, node_id: engine.Local_ID, new_parent_id: 
 
 @(private)
 _do_create_subtree :: proc(v: Create_Subtree_Command) {
-	parent_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.parent_local_id)
+	parent_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.parent_local_id)
 	if !ok do return
 	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
 }
 
 @(private)
 _undo_create_subtree :: proc(v: Create_Subtree_Command) {
-	node_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.root_local_id)
+	node_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.root_local_id)
 	if !ok do return
 	engine.transform_destroy(engine.Transform_Handle(node_h))
 }
 
 @(private)
 _do_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	node_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.root_local_id)
+	node_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.root_local_id)
 	if !ok do return
 	engine.transform_destroy(engine.Transform_Handle(node_h))
 }
 
+// Transform lookup for undo/redo of structural edits. PREFAB CONTENT is not in
+// the scene bimap — composed instance lids belong to the instance, not the host
+// — and neither is a host object created under prefab content, so the bimap
+// lookup alone silently no-ops every nested structural redo. Falls back to a
+// live scan of the scene's transforms.
+@(private)
+_find_transform_for_undo :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engine.Handle, bool) {
+	if h, ok := scene_find_transform_by_local_id(s, id); ok do return h, true
+	if s == nil || id == 0 do return {}, false
+	w := engine.ctx_world()
+	if w == nil do return {}, false
+	for i in 0 ..< len(w.transforms.slots) {
+		slot := &w.transforms.slots[i]
+		if !slot.alive || slot.data.scene != s do continue
+		if slot.data.local_id != id do continue
+		return engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform}, true
+	}
+	return {}, false
+}
+
 @(private)
 _undo_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	parent_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.parent_local_id)
+	parent_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.parent_local_id)
 	if !ok do return
-	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
+	root := _paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
+	if v.nested_owned && root != {} {
+		engine.transform_mark_subtree_nested_owned(root)
+	}
 }
 
 @(private)

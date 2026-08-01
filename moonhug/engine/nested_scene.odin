@@ -398,7 +398,23 @@ _json_add_object_subtree :: proc(root_obj: json.Object, ao: Added_Object) {
 
     trs, _ := root_obj["transforms"].(json.Array)
     if frag_trs, has := frag["transforms"].(json.Array); has {
-        for item in frag_trs do append(&trs, item)
+        for item in frag_trs {
+            // The fragment was collected from the LIVE world, so its root row's
+            // `parent` holds the instance's composed lid — meaningless in the
+            // prefab's own namespace we are grafting into. `ao.parent` carries
+            // the un-projected source lid, so restate it here. Inner rows point
+            // at their siblings inside the fragment and stay as authored.
+            if t_obj, ok := item.(json.Object); ok {
+                if tlid, lok := _json_local_id_of(t_obj); lok && tlid == ao.local_id {
+                    pptr := make(json.Object)
+                    pptr["local_id"] = json.Value(json.Integer(ao.parent.local_id))
+                    parent := make(json.Object)
+                    parent["pptr"] = json.Value(pptr)
+                    t_obj["parent"] = json.Value(parent)
+                }
+            }
+            append(&trs, item)
+        }
     }
     root_obj["transforms"] = trs
 
@@ -408,8 +424,7 @@ _json_add_object_subtree :: proc(root_obj: json.Object, ao: Added_Object) {
     }
     root_obj["components"] = comps
 
-    // The subtree root's own `parent` already names the prefab parent; add the
-    // reciprocal child entry the loader walks.
+    // Add the reciprocal child entry the loader walks.
     for item in trs {
         t_obj, ok := item.(json.Object)
         if !ok do continue
@@ -1573,12 +1588,20 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     }
     clear(&nested_root.components)
 
+    // Host additions grafted into the bake are instance content but not PREFAB
+    // content — they must stay host-authored so the next save re-captures them.
+    // Their file lids went through the same projection as everything else.
+    added_live := make(map[Local_ID]bool, 0, context.temp_allocator)
+    for ao in ns.added_objects {
+        added_live[nested_lid_compose(ns.local_id, ao.local_id)] = true
+    }
+
     for child in nested_root.children {
         ct := pool_get(&w.transforms, child.handle)
         if ct == nil do continue
         ct.parent = make_transform_ref(host_tH)
         append(&host_t.children, child)
-        _mark_subtree_nested_owned(Transform_Handle(child.handle))
+        _mark_subtree_nested_owned(Transform_Handle(child.handle), &added_live)
     }
     clear(&nested_root.children)
 
@@ -1620,10 +1643,24 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     _nested_scene_apply_deep_overrides_live(host_tH, ns)
 }
 
-_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
+// Re-marks a restored subtree as prefab content. Undo of a nested delete needs
+// this: the payload round-trips through the loader, which creates plain
+// host-authored rows, and without the flag the next save would emit them into
+// the host file as an addition.
+transform_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
+    _mark_subtree_nested_owned(root_tH)
+}
+
+// `skip` holds the live lids of host-added subtree roots grafted into this
+// instance. They sit inside the materialized tree but are NOT prefab content:
+// marking them owned would hide them from the next save's capture walk, so the
+// addition would vanish from the file on the following write. Their whole
+// subtree is skipped — everything under a host addition is host-authored too.
+_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle, skip: ^map[Local_ID]bool = nil) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(root_tH))
     if t == nil do return
+    if skip != nil && t.local_id in skip^ do return
     t.nested_owned = true
     for &c in t.components {
         raw := world_pool_get(w, c.handle)
@@ -1632,7 +1669,7 @@ _mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
         base.nested_owned = true
     }
     for child in t.children {
-        _mark_subtree_nested_owned(Transform_Handle(child.handle))
+        _mark_subtree_nested_owned(Transform_Handle(child.handle), skip)
     }
 }
 
@@ -1931,6 +1968,51 @@ nested_scene_record_component_removed :: proc(
     }
     append(&root_ns.removed_components, Removed_Component{target = target})
     return true, true
+}
+
+// Records that this instance does NOT have the prefab object `obj_lid`. The
+// live transform is destroyed by the caller; this is the bookkeeping that makes
+// the deletion survive the next resolve.
+//
+// Deleting an ADDED object retracts the addition instead — it was never prefab
+// content, so there is nothing to suppress.
+nested_scene_record_object_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    obj_lid: Local_ID,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, obj_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    for i in 0 ..< len(root_ns.added_objects) {
+        if root_ns.added_objects[i].local_id != obj_lid do continue
+        delete(root_ns.added_objects[i].json)
+        ordered_remove(&root_ns.added_objects, i)
+        return false, true
+    }
+
+    for ro in root_ns.removed_objects {
+        if pptr_equals(ro.target, target) do return false, true // already recorded
+    }
+    append(&root_ns.removed_objects, Removed_Object{target = target})
+    return true, true
+}
+
+// Drops an object-removal record (undo of a delete). The caller restores the
+// live transform subtree itself.
+nested_scene_unrecord_object_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    obj_lid: Local_ID,
+) -> bool {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, obj_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.removed_objects) {
+        if !pptr_equals(root_ns.removed_objects[i].target, target) do continue
+        ordered_remove(&root_ns.removed_objects, i)
+        return true
+    }
+    return false
 }
 
 // Drops a removal record, restoring the component to prefab-supplied content
@@ -2509,6 +2591,41 @@ _nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^
         leaf_host, leaf_ns, leaf_lid := _nested_walk_override_target(s, host_tH, ov.target)
         if leaf_host == {} || leaf_ns == nil do continue
         _nested_patch_live_field(s, leaf_ns, leaf_lid, ov.property_path, ov.value)
+    }
+
+    _nested_apply_deep_added_objects_live(s, host_tH, ns)
+}
+
+// Grafts additions whose parent lives inside a prefab nested WITHIN this
+// instance. The shallow graft works on the source prefab's bytes, where such a
+// parent does not exist — the inner prefab has not been expanded at that point.
+// These records address their parent by the XOR-composed lid (Unity's
+// nested_PrefabInstance ^ object fileID), so they resolve only once the whole
+// chain is materialized, which is here.
+@(private = "file")
+_nested_apply_deep_added_objects_live :: proc(s: ^Scene, host_tH: Transform_Handle, ns: ^NestedScene) {
+    w := ctx_world()
+    for &ao in ns.added_objects {
+        // Shallow records (parent in this instance's own prefab) were already
+        // grafted into the bytes — re-adding them here would duplicate.
+        if ao.parent.guid == ns.source_prefab do continue
+        if pptr_guid_is_empty(ao.parent.guid) do continue
+
+        _, leaf_ns, leaf_lid := _nested_walk_override_target(s, host_tH, ao.parent)
+        if leaf_ns == nil do continue
+        parent_tH := _find_source_handle_in_instance(s, leaf_ns, leaf_lid)
+        if parent_tH == {} do continue
+        // Already present from an earlier resolve of this same instance.
+        if _, live := bimap_get(&s.local_ids, ao.local_id); live do continue
+
+        sf: SceneFile
+        if scene_file_unmarshal(transmute([]byte)ao.json, &sf) != nil do continue
+        defer scene_file_destroy(&sf)
+        added_tH := _scene_load_as_child(&sf, Transform_Handle(parent_tH), s)
+        if added_tH == {} do continue
+        // Host-authored content inside prefab material: leave it un-owned so
+        // the next save re-captures it (see _mark_subtree_nested_owned).
+        if at := pool_get(&w.transforms, Handle(added_tH)); at != nil do at.nested_owned = false
     }
 }
 
