@@ -1,3 +1,16 @@
+## [0.58.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.57.0...v0.58.0) (2026-08-01)
+
+### Features
+
+* add/remove component on nested scene ([d0fd9c0](https://github.com/MoonHug-Editor/moonhug/commit/d0fd9c0c4820e624282d77f0592c3d606238aef7))
+* immediate overrides, rename fixes ([a87a680](https://github.com/MoonHug-Editor/moonhug/commit/a87a680bb557e54eb68116a97b4edf539ed136bd))
+
+### Bug Fixes
+
+* make Ref field open picker on press None ([42b7f10](https://github.com/MoonHug-Editor/moonhug/commit/42b7f10a9d941851b3f712f2aba57c7fb0810c5b))
+* menu fix ([30846d5](https://github.com/MoonHug-Editor/moonhug/commit/30846d51a951237065d5eb60b21090bcf9898012))
+* revert and reset override fixes ([5ca565d](https://github.com/MoonHug-Editor/moonhug/commit/5ca565d400a7d849e8f05eb147786c703eaf501e))
+
 ## [0.57.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.56.0...v0.57.0) (2026-07-30)
 
 ### Features
