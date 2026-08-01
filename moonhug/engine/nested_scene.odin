@@ -945,6 +945,12 @@ nested_scene_instance_lid :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local
             return host_t.local_id
         }
     }
+    // A ROOT VARIANT loads its base directly into this scene, keeping the base's
+    // own lids (_variant_materialize_root) — no projection runs, so
+    // source_of_inst stays empty and source lid IS live lid. Composing here
+    // would invent a lid nothing is registered under, and every lookup keyed
+    // through this proc (revert, override display) would silently miss.
+    if nested_scene_is_root_variant(s, ns) do return source_lid
     return nested_lid_compose(ns.local_id, source_lid)
 }
 
@@ -2586,11 +2592,45 @@ nested_resolve_breadcrumb_to_handle :: proc(s: ^Scene, bc: Breadcrumb) -> Handle
 // The live handle of a source-prefab lid inside `ns`'s materialized instance.
 // Instance lids are registered scene-wide, so this is a composed-lid bimap
 // lookup — no subtree walking.
+// Public wrapper: the overrides list resolves rows to live objects with the
+// same rule revert uses, so a row's label names exactly what its revert touches.
+nested_scene_find_source_handle :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Handle {
+    return _find_source_handle_in_instance(s, ns, source_lid)
+}
+
 @(private = "file")
 _find_source_handle_in_instance :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Handle {
     if s == nil || ns == nil do return {}
     if h, ok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, ns, source_lid)); ok {
         return h
+    }
+    // A ROOT VARIANT's base content is loaded with registration SKIPPED
+    // (_variant_materialize_root), so the variant's own authored lids keep the
+    // namespace and the base's lids collide with nothing. Nothing is registered
+    // under them, so the bimap cannot answer — walk the live subtree instead and
+    // match on the lid each object carries.
+    if nested_scene_is_root_variant(s, ns) {
+        return _find_lid_in_subtree(nested_scene_resolve_host_handle(s, ns), source_lid)
+    }
+    return {}
+}
+
+// Depth-first search for the transform or component carrying `lid`. Used where
+// the scene bimap has no entry — see _find_source_handle_in_instance.
+@(private = "file")
+_find_lid_in_subtree :: proc(root_tH: Transform_Handle, lid: Local_ID) -> Handle {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(root_tH))
+    if t == nil do return {}
+    if t.local_id == lid do return Handle(root_tH)
+    for c in t.components {
+        if c.handle.type_key == INVALID_TYPE_KEY do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        if (cast(^CompData)raw).local_id == lid do return c.handle
+    }
+    for child in t.children {
+        if h := _find_lid_in_subtree(Transform_Handle(child.handle), lid); h != {} do return h
     }
     return {}
 }

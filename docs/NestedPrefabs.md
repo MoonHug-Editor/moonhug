@@ -266,7 +266,7 @@ Unity intentionally preserves orphan modifications and stripped objects so that 
 
 - reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it. This is specified behaviour, not a gap (§4.6).
 
-- **Known conformance gap (§4.7):** revert on a variant ROOT's nested content clears the override but leaves the field value. Regular nested prefabs restore correctly.
+- (done) revert on a variant ROOT's nested content restores the field value, not just the record (§4.7). A root variant loads its base with lid registration skipped, so the scene bimap can't resolve base lids — `nested_scene_find_source_handle` falls back to a live subtree walk for that case.
 
 # Consider Later
 ## Prefab isolation mode (alternative to opening the source asset)

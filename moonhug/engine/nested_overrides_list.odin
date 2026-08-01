@@ -131,7 +131,7 @@ _override_object_label :: proc(s: ^Scene, ns: ^NestedScene, target: PPtr) -> (st
         }
     }
 
-    if h, hok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, leaf_ns, leaf_lid)); hok {
+    if h := nested_scene_find_source_handle(s, leaf_ns, leaf_lid); h != {} {
         if h.type_key == .Transform {
             if t := pool_get(&w.transforms, h); t != nil do return t.name, Transform_Handle(h)
         } else {
@@ -607,10 +607,7 @@ nested_override_live_handle :: proc(s: ^Scene, ns: ^NestedScene, target: PPtr) -
             leaf_lid = lid
         }
     }
-    if h, ok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, leaf_ns, leaf_lid)); ok {
-        return h
-    }
-    return {}
+    return nested_scene_find_source_handle(s, leaf_ns, leaf_lid)
 }
 
 // Collapses an object's rows to one element per owning COMPONENT. Fields on the

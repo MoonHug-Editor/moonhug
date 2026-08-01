@@ -540,9 +540,17 @@ _revert_command :: proc(cmd: ^Command) {
 _override_host :: proc(v: Record_Override_Command) -> (^engine.Scene, engine.Transform_Handle, bool) {
 	s := resolve_scene(v.scene)
 	if s == nil do return nil, {}, false
-	h, ok := engine.bimap_get(&s.local_ids, v.host_local_id)
-	if !ok || h.type_key != .Transform do return nil, {}, false
-	return s, engine.Transform_Handle(h), true
+	if h, ok := engine.bimap_get(&s.local_ids, v.host_local_id); ok && h.type_key == .Transform {
+		return s, engine.Transform_Handle(h), true
+	}
+	// A ROOT VARIANT's base content is loaded with lid registration skipped, so
+	// the base root — which IS the scene root — has no bimap entry. Match it
+	// directly rather than failing, or undo of a revert silently does nothing.
+	if rt := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(s.root.handle));
+	   rt != nil && rt.local_id == v.host_local_id {
+		return s, engine.Transform_Handle(s.root.handle), true
+	}
+	return nil, {}, false
 }
 
 // The NS the dropdown's rows came from. Resolved on each apply/undo rather
