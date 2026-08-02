@@ -243,3 +243,51 @@ _ref_local_display :: proc(r: engine.Ref_Local, key: engine.TypeKey) -> string {
 	}
 	return "Missing"
 }
+
+// A reference field with NO pick or clear buttons — the value is fixed by what
+// it describes, not chosen by the user (e.g. the Prefab Asset a Prefab Instance
+// came from). Click semantics match a normal Ref field: single click pings,
+// double click opens.
+//
+// Not `im.BeginDisabled` styling: the value is still interactive, just not
+// re-assignable, so it keeps the field look and hover feedback.
+// `inline_label`: draw "Label:" immediately before the value instead of at the
+// inspector's shared label column. A compact header row wants the two hugging
+// each other, not the wide label gutter a property row uses.
+picker_field_row_readonly :: proc(
+	label: cstring,
+	display: string,
+	clicked: ^bool,
+	double_clicked: ^bool = nil,
+	inline_label := false,
+) {
+	if inline_label {
+		if len(string(label)) > 0 {
+			im.AlignTextToFramePadding()
+			im.TextUnformatted(label)
+			im.SameLine()
+		}
+	} else {
+		field_row(label)
+	}
+
+	value_label := strings.clone_to_cstring(
+		fmt.tprintf("%s##ro_%s", display, label), context.temp_allocator,
+	)
+	im.PushStyleVarImVec2(.ButtonTextAlign, im.Vec2{0, 0.5})
+	im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.FrameBg)^)
+	im.PushStyleColorImVec4(.ButtonHovered, im.GetStyleColorVec4(.FrameBgHovered)^)
+	im.PushStyleColorImVec4(.ButtonActive, im.GetStyleColorVec4(.FrameBgActive)^)
+	// Fill the remaining width, but never wider than the text needs plus a
+	// little padding — a short path should not stretch a whole column.
+	avail := im.GetContentRegionAvail().x
+	want := im.CalcTextSize(value_label, nil, true).x + im.GetStyle().FramePadding.x * 4
+	pressed := im.Button(value_label, {min(avail, want), 0})
+	im.PopStyleColor(3)
+	im.PopStyleVar()
+
+	if pressed do clicked^ = true
+	if double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+		double_clicked^ = true
+	}
+}

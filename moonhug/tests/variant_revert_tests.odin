@@ -184,3 +184,38 @@ test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {
 	testing.expect(t, engine.nested_scene_has_override(ns, victim.target, victim.property_path),
 		"undo of a revert MUST restore the override record")
 }
+
+// The inspector header shows a Base ref for a Prefab Variant, so the AssetDB
+// has to record which Base Prefab a variant inherits from.
+@(test)
+test_asset_db_records_variant_base_prefab :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_base_guid.scene")
+	engine.asset_db_init("moonhug/packages/prefabs_example/assets")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// c_Variant inherits from c.scene.
+	var_guid, vok := engine.asset_db_get_guid("moonhug/packages/prefabs_example/assets/c_Variant.scene")
+	testing.expect(t, vok, "c_Variant should be in the AssetDB")
+	base_guid, bok := engine.asset_db_get_guid("moonhug/packages/prefabs_example/assets/c.scene")
+	testing.expect(t, bok, "c.scene should be in the AssetDB")
+	if !vok || !bok do return
+
+	info, ok := engine.asset_db_get_root_info(engine.Asset_GUID(var_guid))
+	testing.expect(t, ok, "c_Variant should have root info")
+	if !ok do return
+	testing.expect(t, info.is_variant, "c_Variant must be flagged a variant")
+	testing.expectf(t, info.base_prefab == engine.Asset_GUID(base_guid),
+		"base_prefab must name c.scene, got %v", info.base_prefab)
+
+	// A plain prefab has no base.
+	if pinfo, pok := engine.asset_db_get_root_info(engine.Asset_GUID(base_guid)); pok {
+		testing.expect(t, !pinfo.is_variant, "c.scene is not a variant")
+		testing.expect(t, pinfo.base_prefab == engine.Asset_GUID{},
+			"a plain prefab must carry no base")
+	}
+}

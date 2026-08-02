@@ -6,6 +6,7 @@ import "core:c"
 import "core:fmt"
 import "core:encoding/json"
 import "core:encoding/uuid"
+import "core:path/filepath"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import "inspector"
@@ -84,33 +85,71 @@ draw_hierarchy_inspector :: proc() {
 	_draw_add_component_button(t, tH)
 }
 
+// The prefab-instance header, Unity's layout: the Prefab Asset this instance
+// came from, the Base Prefab when that asset is a Prefab Variant, and the
+// Overrides dropdown — one row.
+//
+// Both refs are READ-ONLY: they describe what the instance IS, so there is
+// nothing to pick or clear. Clicking still behaves like a Ref field — single
+// click pings the asset in the project view, double click opens it.
 @(private)
 _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 	w := engine.ctx_world()
-	source_path := ""
-	ht_for_scene := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ns := engine.scene_find_nested_scene_for_host(ht_for_scene != nil ? ht_for_scene.scene : nil, host_tH); ns != nil {
-		empty_guid := engine.Asset_GUID{}
-		if ns.source_prefab != empty_guid {
-			if path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
-				source_path = path
-			}
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	if ht == nil do return
+
+	source_guid := engine.Asset_GUID{}
+	if ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH); ns != nil {
+		source_guid = ns.source_prefab
+	}
+
+	// The Base Prefab exists only when the source asset is itself a Variant.
+	base_guid := engine.Asset_GUID{}
+	if info, ok := engine.asset_db_get_root_info(source_guid); ok && info.is_variant {
+		base_guid = info.base_prefab
+	}
+
+	// One row: the Overrides button, then the instance's own asset and — for a
+	// Prefab Variant — a "<" leading to the Base Prefab it inherits from. The
+	// refs carry no label: the chevron reads as "derives from".
+	if _draw_overrides_button(host_tH) do im.SameLine()
+	_draw_readonly_asset_ref("", source_guid, "scene")
+	if base_guid != (engine.Asset_GUID{}) {
+		im.SameLine()
+		_draw_readonly_asset_ref(ICON_MD_CHEVRON_LEFT, base_guid, "base")
+	}
+	im.Separator()
+}
+
+// One read-only asset reference: click pings it in the project view, double
+// click opens it — the same gestures a Ref field uses.
+@(private)
+_draw_readonly_asset_ref :: proc(label: string, guid: engine.Asset_GUID, id: cstring = "ref") {
+	// Own ID scope: the Base ref draws with an empty label, so without this its
+	// imgui id would collide with the Scene ref whenever both show the same path.
+	im.PushID(id)
+	defer im.PopID()
+
+	display := "(none)"
+	if guid != (engine.Asset_GUID{}) {
+		if path, ok := engine.asset_db_get_path(uuid.Identifier(guid)); ok {
+			display = filepath.base(path)
+		} else {
+			display = fmt.tprintf("%v", guid)
 		}
 	}
-	host_name := "?"
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht != nil {
-		host_name = ht.name
+
+	clicked, double: bool
+	inspector.picker_field_row_readonly(
+		strings.clone_to_cstring(label, context.temp_allocator), display, &clicked, &double,
+		inline_label = true)
+
+	if guid == (engine.Asset_GUID{}) do return
+	if double {
+		engine.inspector_request_open_asset(guid)
+	} else if clicked {
+		engine.inspector_request_ping_asset(guid)
 	}
-	label: string
-	if source_path != "" {
-		label = fmt.tprintf("Nested from %s  -  host: %s", source_path, host_name)
-	} else {
-		label = fmt.tprintf("Nested  -  host: %s", host_name)
-	}
-	im.TextColored(im.Vec4{1.0, 0.75, 0.3, 1.0}, strings.clone_to_cstring(label, context.temp_allocator))
-	_draw_overrides_button(host_tH)
-	im.Separator()
 }
 
 // Unity's Overrides dropdown: every override on this instance in one list,
@@ -122,17 +161,19 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 // only for a NATIVE NS: inner NSs never hold records (docs/PrefabsSpec.md §3.2),
 // so a nested-owned row deeper in the chain has nothing of its own to list.
 @(private)
-_draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
+// Returns whether it drew anything, so a caller laying out a row with SameLine
+// knows if there is an item to attach to — the early exits below draw nothing.
+_draw_overrides_button :: proc(host_tH: engine.Transform_Handle) -> bool {
 	w := engine.ctx_world()
 	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil do return
+	if ht == nil do return false
 	ns := engine.scene_find_nested_scene_for_host(ht.scene, host_tH)
-	if ns == nil || ns.expand_parent != {} do return
+	if ns == nil || ns.expand_parent != {} do return false
 
 	entries := engine.nested_scene_list_overrides(ht.scene, ns)
 	if len(entries) == 0 {
 		im.TextDisabled("No overrides")
-		return
+		return true
 	}
 
 	// Selection is keyed by list index, so it is dropped whenever the set of
@@ -147,6 +188,11 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 		clear(&_overrides_selected)
 		im.OpenPopup("##OverridesList")
 	}
+	// Anchor the popup under the button (a dropdown), not at the mouse — which
+	// is where imgui puts a popup by default.
+	btn_min := im.GetItemRectMin()
+	btn_max := im.GetItemRectMax()
+	im.SetNextWindowPos(im.Vec2{btn_min.x, btn_max.y}, .Appearing)
 
 	if im.BeginPopup("##OverridesList") {
 		im.TextDisabled("Click to select, ctrl/cmd or shift for multiple")
@@ -240,6 +286,7 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) {
 
 		im.EndPopup()
 	}
+	return true
 }
 
 // The same glyph the hierarchy row uses (view_hierarchy.odin): stacks for a

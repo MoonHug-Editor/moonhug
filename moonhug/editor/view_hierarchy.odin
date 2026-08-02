@@ -332,7 +332,19 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := ""
 		im.SameLine()
 	}
 
-	im.Text(strings.clone_to_cstring(scene_name, context.temp_allocator))
+	// The title pings the scene asset in the project view (same gesture as a
+	// Ref field's value). Drawn as transparent-background text so it still
+	// reads as a heading, not a button.
+	_push_transparent_button_bg()
+	im.PushStyleVarImVec2(.ButtonTextAlign, im.Vec2{0, 0.5})
+	if im.Button(strings.clone_to_cstring(
+		fmt.tprintf("%s###SceneTitle", scene_name), context.temp_allocator)) {
+		if scene.asset_guid != (engine.Asset_GUID{}) {
+			engine.inspector_request_ping_asset(scene.asset_guid)
+		}
+	}
+	im.PopStyleVar()
+	im.PopStyleColor(3)
 	btn_size := im.Vec2{24, 0}
 	im.SameLine(im.GetContentRegionAvail().x + im.GetCursorPosX() - btn_size.x)
 	if im.Button(ICON_MD_MENU + "###SceneHeaderMenuBtn", btn_size) {

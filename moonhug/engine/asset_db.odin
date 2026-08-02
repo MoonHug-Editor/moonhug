@@ -40,6 +40,7 @@ Asset_Root_Info :: struct {
     root_local_id: Local_ID,
     root_name:     string, // owned
     is_variant:    bool,   // file inherits a base (root NS with transform_parent == 0)
+    base_prefab:   Asset_GUID, // is_variant only: the Base Prefab it inherits from
 }
 
 Asset_File_Stamp :: struct {
@@ -320,9 +321,11 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     if scene_file_unmarshal(data, &sf) != nil do return
 
     is_variant := false
+    base_prefab := Asset_GUID{}
     for &ns in sf.nested_scenes {
         if ns.transform_parent == 0 {
             is_variant = true
+            base_prefab = ns.source_prefab
             break
         }
     }
@@ -351,7 +354,12 @@ _index_scene_asset :: proc(guid: Asset_GUID, path: string) {
     }
     if root == nil do return
 
-    asset_db.root_info[guid] = {root_local_id = sf.root, root_name = strings.clone(root.name), is_variant = is_variant}
+    asset_db.root_info[guid] = {
+        root_local_id = sf.root,
+        root_name     = strings.clone(root.name),
+        is_variant    = is_variant,
+        base_prefab   = base_prefab,
+    }
     // Every scene asset's root IS a transform.
     _index_add(.Transform, guid, sf.root)
 

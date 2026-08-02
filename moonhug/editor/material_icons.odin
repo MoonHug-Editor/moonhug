@@ -38,6 +38,7 @@ ICON_MD_CHEVRON_RIGHT :: "\ue5cc"   // chevron_right
 ICON_MD_CHEVRON_LEFT  :: "\ue5cb"   // chevron_left
 ICON_MD_EXPAND_MORE   :: "\ue5cf"   // expand_more
 ICON_MD_EXPAND_LESS   :: "\ue5ce"   // expand_less
+ICON_MD_ARROW_RIGHT   :: "\ue5df"   // arrow_right
 
 // Log levels (console)
 ICON_MD_INFO          :: "\uf52b"   // info
