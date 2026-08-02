@@ -1,3 +1,9 @@
+## [0.59.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.59.0...v0.59.1) (2026-08-02)
+
+### Bug Fixes
+
+* inspector UX ([ee359e7](https://github.com/MoonHug-Editor/moonhug/commit/ee359e7adbee3a5baa1ca2f06b18311c5a18312e))
+
 ## [0.59.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.58.0...v0.59.0) (2026-08-01)
 
 ### Features
