@@ -60,6 +60,9 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 	}
 	engine.w_init(&tc.world)
 	tc.uc.world = &tc.world
+	// Tests exercise editor behaviour: nested-prefab resolve is gated on
+	// application_is_editor(), and the fixtures assume it runs.
+	tc.uc.is_editor = true
 	tc.path = path
 	context.user_ptr = &tc.uc
 	tc.scene = engine.scene_new()

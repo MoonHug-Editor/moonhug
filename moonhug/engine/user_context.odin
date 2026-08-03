@@ -3,19 +3,16 @@ package engine
 UserContext :: struct {
     world         : ^World,
     scene_manager : SceneManager,
-    // TRUE ONLY IN THE STANDALONE APP BINARY. Despite the name this is not
-    // "gameplay is running" — the editor's Simulate runs gameplay with this
-    // false, because the flag also gates editor-only work (nested-prefab resolve
-    // in _scene_load_as_child). Ask application_is_playing() for "is gameplay
-    // running", and is_editor for "which binary am I in". See the README TODO
-    // about splitting the two meanings apart properly.
-    is_playmode : bool,
     // TRUE IN THE EDITOR BINARY, false in the standalone app. Unity's
-    // Application.isEditor: fixed per binary, unaffected by Simulate.
+    // Application.isEditor: fixed per binary, unaffected by Simulate. Set by each
+    // binary's main (and by the test bootstrap, which exercises editor behaviour).
     is_editor : bool,
-    // TRUE WHILE THE EDITOR IS SIMULATING (editor/simulate.odin). Always false in
-    // the app, which uses is_playmode instead.
-    is_simulating : bool,
+    // Unity's Application.isPlaying. The app sets it once at startup (true for
+    // the process lifetime). The editor's Simulate sets it at Start and clears it
+    // at Stop - it stays true while paused, pause being a separate condition.
+    // "Is this a simulation?" is not stored anywhere: it is is_playing &&
+    // is_editor.
+    is_playing : bool,
     inspector     : InspectorState,
     undo          : rawptr,
 }
@@ -28,16 +25,11 @@ application_is_editor :: proc() -> bool {
     return uc != nil && uc.is_editor
 }
 
-// Unity's Application.isPlaying: true whenever GAMEPLAY is advancing — in the
-// standalone app always, in the editor only while Simulate runs (and not while
-// paused, since nothing is ticking).
-//
-// This is the one component code should ask. `is_playmode` is not it: that flag
-// means "standalone app binary" and stays false during Simulate.
+// Unity's Application.isPlaying - see the field. This is the one component code
+// should ask.
 application_is_playing :: proc() -> bool {
     uc := ctx_get()
-    if uc == nil do return false
-    return uc.is_playmode || uc.is_simulating
+    return uc != nil && uc.is_playing
 }
 
 InspectorState :: struct {

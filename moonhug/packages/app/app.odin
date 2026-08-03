@@ -36,7 +36,8 @@ main :: proc() {
     defer gfx.shutdown()
 
     uc := new(engine.UserContext)
-    uc.is_editor = false // standalone binary (engine.application_is_editor)
+    uc.is_editor = false  // standalone binary (engine.application_is_editor)
+    uc.is_playing = true  // for the process lifetime (engine.application_is_playing)
     context.user_ptr = uc
 
     w := new(engine.World)

@@ -156,12 +156,11 @@ sim_set_paused :: proc(paused: bool) {
 // Mirror the state machine onto the engine context, so component code can ask
 // engine.application_is_playing() without knowing about the editor.
 //
-// Paused reads as NOT playing: nothing is ticking, which is what a component
-// asking "is gameplay advancing?" wants to know. A step flips it true for that
-// one tick (sim_tick), then back.
+// True from Start until Stop, INCLUDING while paused - pause is a separate
+// condition, not "not playing". Pause lives in sim_state()/_sim_state only.
 _sim_sync_context :: proc() {
     if uc := engine.ctx_get(); uc != nil {
-        uc.is_simulating = _sim_state == .Running
+        uc.is_playing = _sim_state != .Stopped
     }
 }
 
@@ -289,16 +288,6 @@ sim_tick :: proc(dt: f32) {
 
     host, ok := sim_host()
     if !ok do return
-
-    // A step IS gameplay advancing, so application_is_playing() reports true for
-    // the whole tick even though the state stays Paused. Restored at proc exit,
-    // not block exit, so the flag covers every dispatcher call below.
-    if step {
-        if uc := engine.ctx_get(); uc != nil {
-            uc.is_simulating = true
-            defer _sim_sync_context()
-        }
-    }
 
     // A step advances by exactly one fixed tick and one frame tick, ignoring the
     // accumulator: a step should be a unit of simulation, not "however much wall
