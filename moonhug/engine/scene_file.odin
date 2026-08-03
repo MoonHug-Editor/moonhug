@@ -1751,7 +1751,11 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 
 	_scene_file_remap_local_ids(&sf, s)
 	root_tH := _scene_load_as_child(&sf, parent, s)
-	if root_tH != {} && !ctx_get().is_playmode {
+	// Resolve builds the AUTHORING structures (live prefab-content/override split
+	// the inspector edits through). The standalone app only needs the objects, so
+	// this is an editor-binary question, not a gameplay-state one - Simulate must
+	// keep resolving or prefabs break mid-run.
+	if root_tH != {} && application_is_editor() {
 		_scene_resolve_nested_in_subtree(root_tH)
 	}
 	return root_tH

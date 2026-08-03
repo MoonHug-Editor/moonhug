@@ -1359,7 +1359,7 @@ _paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Ha
 		}
 	}
 
-	if !engine.ctx_get().is_playmode {
+	if engine.application_is_editor() {
 		engine._scene_resolve_nested_in_subtree(root_tH)
 	}
 

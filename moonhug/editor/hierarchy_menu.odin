@@ -64,14 +64,14 @@ _hierarchy_has_selection :: proc() -> bool {
 
 @(private)
 _edit_can_undo :: proc() -> bool {
-	if engine.ctx_get().is_playmode do return false
+	if engine.application_is_playing() do return false
 	s := undo.get()
 	return s != nil && undo.can_undo(s)
 }
 
 @(private)
 _edit_can_redo :: proc() -> bool {
-	if engine.ctx_get().is_playmode do return false
+	if engine.application_is_playing() do return false
 	s := undo.get()
 	return s != nil && undo.can_redo(s)
 }

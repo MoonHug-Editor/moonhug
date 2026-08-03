@@ -362,7 +362,7 @@ scene_create_variant_separator :: proc() {}
 // Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
 // (hierarchy_menu.odin) — only the Ctrl+Y redo alias is handled here.
 _process_undo_shortcuts :: proc() {
-	if engine.ctx_get().is_playmode do return
+	if engine.application_is_playing() do return
 	s := undo.get()
 	if s == nil do return
 

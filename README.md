@@ -124,12 +124,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
-- `@(tooltip="...")` attribute on component fields — hover text in inspector
-
-- rename run config -> build config: `run_configs/` folder, `Run_Config`,
-  `runconfig` package, `editor_settings.run_config`. The settings key is
-  persisted, so the rename needs a read-old-write-new fallback or projects lose
-  their selection.
+- `tooltip="..."` attribute on component fields — hover text in inspector
 
 - `phase_editor_run` runs EVERY host's `.All` phase subscribers, not the active
   host's (prebuild/phase_gen.odin `_split_entries`). With one runnable package
@@ -138,21 +133,16 @@ For more details see [Contribution](docs/Contribution.md)
   `sim_hosts` (sim_hosts_generated.odin) exists to select against.
 
 - Simulate follow-ups (docs/Simulate.md):
-  - finish the `is_playmode` split. `engine.application_is_editor()` and
-    `application_is_playing()` now exist and are what component code should use,
-    but `is_playmode` itself still carries two meanings: "standalone app binary"
-    AND "skip editor-side nested-prefab resolve" (scene_file.odin
-    `_scene_load_as_child`). Rename it to something capability-shaped
-    (`skip_nested_resolve`?) so the name stops implying "gameplay is running".
   - scene start/stop hooks: no `@(on_scene_started)` / `@(on_scene_stopped)`
     equivalent, so a component cannot initialize or tear down around a Simulate
     run (Sedulous fires these per module from Scene.Start/Stop). Cheap to add
     now, an audit of every component later.
+  
   - verify per-subsystem cleanup on restore. Restore reuses the ordinary scene
     load/unload path, which SHOULD match the manual-delete path that clears
     physics bodies, audio voices and animation runners - but this is unproven.
     Test: simulate, let bodies collide, stop, assert the physics world is empty.
-  - visual "simulating" state (tint the scene view border, like Unity)
+
   - test the Sim_State machine (Start/Stop/Pause/Step, host selection, undo
     purging). Blocked on the test suite not being able to import the editor
     package - needs the state machine extracted or a test hook.
@@ -194,13 +184,11 @@ For more details see [Contribution](docs/Contribution.md)
 
 - Task tracking with backlog, todo, etc.
 
-- decide shaders and rendering pipeline
-
 - some kind of type defaults fill only what json serialized data doesn't cover
 
 - doc generation
 
-- multiple views of same type support, with lock toggle
+- multiple views(windows) of same type support, with lock toggle
 - popup manager
   - show serialized or in-memory asset inspector as popup with custom title
     - override property drawer for custom popup look
@@ -210,17 +198,9 @@ For more details see [Contribution](docs/Contribution.md)
 - generalized serialization of Owned and Ref
 - generic Handle resolve and reset Handle when resolve fails
 
-- App buttons Bar
-  - ?Frame Step, Pause buttons
-
 - ability to switch Value/Ref field in inspector where valid
 
-- Run configurations - dropdown to select config that runs game (release/debug, etc.) when press Play
-- Ability to observe and edit app during its runtime
-  - maybe create app_world:^World in user context, load main scene into it and switch views into working with app_world, not editor world
-
 - Dirty flags for modified data
-- file watcher for rebuilding and asset updates
 
 - Convert resource into usable format at buildStage or runtimeStage
 
