@@ -27,7 +27,7 @@ ICON_MD_MUSIC_NOTE  :: "\ue405"   // music_note
 ICON_MD_LAYERS         :: "\ue53b"   // layers
 ICON_MD_STAT_0         :: "\ue697"   // stat_0 (plain object row in hierarchy)
 ICON_MD_STACKS         :: "\uf720"   // stacks (scene/prefab)
-ICON_MD_STACKS_VARIANT :: "\uf5f2"   // stack_star (scene variant; AssetDB root_info.is_variant)
+ICON_MD_STACKS_VARIANT :: "\uf569"   // scene variant (AssetDB root_info.is_variant)
 ICON_MD_WIDGETS        :: "\ue1bd"   // widgets
 ICON_MD_DEPLOYED_CODE  :: "\uf720"   // deployed_code
 ICON_MD_VISIBILITY     :: "\ue8f4"   // visibility
@@ -50,7 +50,12 @@ ICON_MD_CLOSE         :: "\ue5cd"   // close (clear search)
 ICON_MD_FOLDER_CHECK  :: "\uf3d7"   // folder_check (sample installed by copy)
 ICON_MD_LINK          :: "\ue250"   // link (sample installed by symlink)
 ICON_MD_SEARCH        :: "\uef7a"   // search (object picker button; also in inspector package)
-ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (toolbar run button)
+ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (Simulate resume)
+ICON_MD_PLAY_CIRCLE   :: "\ue1c4"   // play_circle (toolbar Simulate button)
+ICON_MD_PAUSE         :: "\ue034"   // pause (Simulate pause)
+ICON_MD_STOP          :: "\ue047"   // stop (Simulate stop)
+ICON_MD_SKIP_NEXT     :: "\ue044"   // skip_next (Simulate step one frame)
+ICON_MD_RUN_CONFIG    :: "\ue869"   // run/build config (toolbar Play button)
 ICON_MD_SAVE          :: "\ue161"   // save
 ICON_MD_ADD           :: "\ue145"   // add
 ICON_MD_DELETE        :: "\ue92e"   // delete

@@ -1614,6 +1614,48 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 	return s
 }
 
+// Load a scene from BYTES in the on-disk scene format, replacing everything
+// loaded — the in-memory twin of scene_load_single_path.
+//
+// For snapshot restore (the editor's Simulate, see editor/simulate.odin): the
+// snapshot is whatever scene_serialize produced, so restore goes through the
+// same unmarshal + load path a file does. `path` and `guid` are restated by the
+// caller because the bytes are not a file and carry neither.
+scene_load_single_bytes :: proc(data: []byte, guid: Asset_GUID = {}, path := "") -> ^Scene {
+	sf: SceneFile
+	if err := scene_file_unmarshal(data, &sf); err != nil {
+		fmt.printf("[Scene] Failed to unmarshal scene bytes: %v\n", err)
+		return nil
+	}
+	defer scene_file_destroy(&sf)
+
+	s := _scene_load_single(&sf, guid)
+	if s != nil && len(path) > 0 {
+		s.path = strings.clone(path)
+	}
+	return s
+}
+
+// Replace ONE loaded scene from bytes, leaving other loaded scenes alone.
+// The in-place counterpart of scene_load_single_bytes — see
+// scene_reload_in_place for why snapshot restore needs the scoped form.
+// Returns nil (target already destroyed) if the bytes do not parse or the load
+// fails, so callers must treat nil as "the scene is gone", not "nothing changed".
+scene_reload_in_place_bytes :: proc(target: ^Scene, data: []byte, guid: Asset_GUID = {}, path := "") -> ^Scene {
+	sf: SceneFile
+	if err := scene_file_unmarshal(data, &sf); err != nil {
+		fmt.printf("[Scene] Failed to unmarshal scene bytes: %v\n", err)
+		return nil
+	}
+	defer scene_file_destroy(&sf)
+
+	s := scene_reload_in_place(target, &sf, guid)
+	if s != nil && len(path) > 0 {
+		s.path = strings.clone(path)
+	}
+	return s
+}
+
 scene_load_additive_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil

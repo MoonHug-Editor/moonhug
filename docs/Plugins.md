@@ -16,6 +16,13 @@ app code already uses.
 and receives its OWN generated dispatcher set (`__update`, `phase_run`,
 `register_type_guids`, `register_packages`).
 
+Each dispatcher is emitted per runnable package under a fixed name, which is
+unambiguous inside a game binary — it contains one host. The EDITOR links all of
+them, so it also gets a table naming them: `editor/sim_hosts_generated.odin`, one row
+per runnable package with its `__update` / `__fixed_update`. That is how the
+editor's Simulate (docs/Simulate.md) knows which game to tick, and what its Sim
+Host dropdown lists.
+
 ## Folder structure
 
 ```

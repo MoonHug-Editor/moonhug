@@ -37,6 +37,7 @@ main :: proc() {
 
     uc := new(engine.UserContext)
     uc.is_playmode = true
+    uc.is_editor = false // standalone binary (engine.application_is_editor)
     context.user_ptr = uc
 
     w := new(engine.World)

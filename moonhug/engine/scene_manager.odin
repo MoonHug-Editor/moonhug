@@ -139,6 +139,66 @@ _scene_load_single :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUID 
 
 // A variant's root NS: transform_parent == 0, not pulled in from an inner
 // prefab (expand_parent == {}). Returns the first such record in `s`, or nil.
+// Replace ONE loaded scene's contents from a SceneFile, leaving every other
+// loaded scene untouched. The replacement takes over the target's slot, so it
+// stays at the same index and keeps active-scene status.
+//
+// Distinct from _scene_load_single, which unloads EVERY scene: that is right for
+// opening a file (the editor is switching what it edits) and wrong for snapshot
+// restore (editor/simulate.odin), where additively loaded scenes were never
+// captured and must survive the round trip.
+//
+// The Scene POINTER does not survive — scene_destroy frees it — so callers must
+// re-read the returned pointer. Handles into the old scene are invalid either
+// way, since restore re-creates every object; identity is re-resolved by
+// local_id, as selection restore does.
+scene_reload_in_place :: proc(target: ^Scene, scene_file: ^SceneFile, scene_asset_guid: Asset_GUID = {}) -> ^Scene {
+    if target == nil do return nil
+    scene_manager := ctx_scene_manager()
+
+    slot := -1
+    for i in 0 ..< scene_manager.count {
+        if scene_manager.loaded[i] == target {
+            slot = i
+            break
+        }
+    }
+    if slot < 0 do return nil // not loaded: nothing to replace in place
+
+    was_active := scene_manager.active_scene == Scene_ID(slot)
+
+    // Free the slot BEFORE building the replacement, so _scene_load_additive's
+    // own slot search cannot pick a different one and leave two scenes where
+    // there was one.
+    scene_manager.loaded[slot] = nil
+    if was_active do scene_manager.active_scene = -1
+    scene_destroy(target)
+
+    s := _scene_load_additive(scene_file, scene_asset_guid)
+    if s == nil {
+        // Load failed and the old scene is already gone. The slot stays empty
+        // rather than holding a dangling pointer.
+        return nil
+    }
+
+    // _scene_load_additive placed it in the first free slot — which is `slot`
+    // unless a lower one was already free. Move it back so indices are stable
+    // across a restore.
+    for i in 0 ..< scene_manager.count {
+        if scene_manager.loaded[i] == s && i != slot {
+            scene_manager.loaded[i] = nil
+            scene_manager.loaded[slot] = s
+            if scene_manager.active_scene == Scene_ID(i) {
+                scene_manager.active_scene = Scene_ID(slot)
+            }
+            break
+        }
+    }
+    if int(slot) >= scene_manager.count do scene_manager.count = int(slot) + 1
+    if was_active do scene_manager.active_scene = Scene_ID(slot)
+    return s
+}
+
 _scene_find_root_variant_ns :: proc(s: ^Scene) -> ^NestedScene {
     if s == nil do return nil
     for &ns in s.nested_scenes {

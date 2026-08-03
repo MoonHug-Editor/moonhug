@@ -120,13 +120,19 @@ draw_tool_bar :: proc() {
     if len(_run_configs) == 0 do _scan_run_configs()
     sel := _selected_run_config()
 
-    // Play button + run-config dropdown, centered together. The dropdown reads
-    // out the selected config rather than being an icon-only arrow: which config
-    // Play will run is worth seeing without opening anything.
-    button_play_text: cstring = ICON_MD_PLAY_ARROW
+    // Two clusters: Simulate + sim host CENTERED (the controls used constantly),
+    // Play + run-config dropdown pinned RIGHT (build-and-launch, used rarely).
+    // Separating them by position keeps "tick this scene" from reading as part of
+    // the same control group as "compile and launch the game".
+    //
+    // Explicit ### id: the label is icon-only, and imgui derives ids from labels
+    // — so a Simulate button showing the same glyph would share this one's id.
+    button_play_text: cstring = ICON_MD_RUN_CONFIG + "###RunConfigPlay"
     avail := im.GetContentRegionAvail()
     style := im.GetStyle()
-    btn_size := im.CalcTextSize(button_play_text, nil, false, -1)
+    // hide_text_after_double_hash: the ### id suffix is not drawn, so it must
+    // not be measured either.
+    btn_size := im.CalcTextSize(button_play_text, nil, true, -1)
     btn_size.x += style.FramePadding.x * 2
     btn_size.y += style.FramePadding.y * 2
 
@@ -142,8 +148,43 @@ draw_tool_bar :: proc() {
     }
     combo_w += style.FramePadding.x * 2 + im.GetFrameHeight()
 
-    total_w := btn_size.x + style.ItemSpacing.x + combo_w
-    im.SetCursorPosX((avail.x - total_w) * 0.5)
+    // Centered cluster. Widths are state-independent (each button slot is sized to
+    // its widest glyph), so the group never shifts when a run starts or pauses.
+    sim_w := _simulate_controls_width()
+    sim_host_w := _sim_host_combo_width()
+    sim_total := sim_w + style.ItemSpacing.x + sim_host_w
+    im.SetCursorPosX(max(0, (avail.x - sim_total) * 0.5))
+
+    _draw_simulate_controls()
+    im.SameLine(0, style.ItemSpacing.x)
+    _draw_sim_host_combo()
+
+    // Right-pinned cluster. Measured from the right edge of the content region,
+    // clamped so a narrow window degrades to "as far right as fits" instead of
+    // drawing off-screen or overlapping the centered group.
+    // The phase label is part of the right cluster and sits LEFT of Play, so a
+    // long "(compiling)" grows inward instead of off the right edge.
+    phase_text: cstring = nil
+    switch sync.atomic_load(&_play_phase) {
+    case .Compiling: phase_text = "(compiling)"
+    case .Running:   phase_text = "(running)"
+    case .Idle:
+    }
+    phase_w: f32 = 0
+    if phase_text != nil {
+        phase_w = im.CalcTextSize(phase_text, nil, false, -1).x + style.ItemSpacing.x
+    }
+
+    run_total := phase_w + btn_size.x + style.ItemSpacing.x + combo_w
+    right_x := avail.x - run_total
+    im.SameLine(0, 0)
+    im.SetCursorPosX(max(im.GetCursorPosX() + style.ItemSpacing.x, right_x))
+
+    if phase_text != nil {
+        im.AlignTextToFramePadding()
+        im.TextDisabled(phase_text)
+        im.SameLine(0, style.ItemSpacing.x)
+    }
 
     if im.Button(button_play_text) && sel != nil {
         run_app_play(sel.id, sel.source)
@@ -176,15 +217,6 @@ draw_tool_bar :: proc() {
         im.SetTooltip("Run configuration")
     }
 
-    switch sync.atomic_load(&_play_phase) {
-    case .Compiling:
-        im.SameLine()
-        im.TextDisabled("(compiling)")
-    case .Running:
-        im.SameLine()
-        im.TextDisabled("(running)")
-    case .Idle:
-    }
 }
 
 RunPlayData :: struct {

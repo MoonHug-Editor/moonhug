@@ -96,6 +96,7 @@ main :: proc() {
     // Init user context and world
     uc := new(engine.UserContext)
     context.user_ptr = uc
+    uc.is_editor = true // engine.application_is_editor; never changes at runtime
 
     w := new(engine.World)
     engine.w_init(w)
@@ -114,6 +115,12 @@ main :: proc() {
 
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
+
+    // Resolve which host Simulate ticks, from the generated table
+    // (sim_hosts_generated.odin) and the persisted setting. Must follow
+    // load_editor_settings.
+    simulate_init()
+    defer simulate_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
         // Events feed both the editor input snapshot and imgui (the SDL3
@@ -146,6 +153,13 @@ main :: proc() {
         draw_dockspace()
 
         _process_undo_shortcuts()
+        _process_simulate_shortcuts()
+
+        // Advance the in-editor simulation before the views draw, so hierarchy,
+        // inspector and scene all show the same frame. Placed AFTER the toolbar
+        // so a Stop pressed this frame takes effect before the tick, never
+        // ticking a scene that is already being torn down.
+        sim_tick(gfx.delta_time())
 
         // ImGui UI
         if menu.show_inspector {
