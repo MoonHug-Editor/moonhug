@@ -1,3 +1,9 @@
+## [0.61.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.60.0...v0.61.0) (2026-08-04)
+
+### Features
+
+* reorder collection elements in inspector by drag ([faed162](https://github.com/MoonHug-Editor/moonhug/commit/faed162dc214904569acc8933a1fb5833479ae15))
+
 ## [0.60.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.59.1...v0.60.0) (2026-08-04)
 
 ### Features
