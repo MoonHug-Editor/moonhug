@@ -1,3 +1,10 @@
+## [0.62.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.61.0...v0.62.0) (2026-08-04)
+
+### Features
+
+* editor_window feature ([72d59ce](https://github.com/MoonHug-Editor/moonhug/commit/72d59ce746c2cde550ad0741b57d6d5a40ab0caa))
+* up to 8 lights rendering ([7d995a3](https://github.com/MoonHug-Editor/moonhug/commit/7d995a3ed6b63554e8ee8f21160ee56b50e3d7a2))
+
 ## [0.61.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.60.0...v0.61.0) (2026-08-04)
 
 ### Features
