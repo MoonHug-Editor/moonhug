@@ -156,8 +156,38 @@ carries no special scan status), then generates:
 
 An editor package may import its own runtime package, `engine`,
 `engine_editor`, imgui and the editor's subpackages (`menu`, `inspector`,
-`undo`). Never the editor root — that's a cycle, the root imports plugin
-editor packages. Editor integration goes through attributes.
+`undo`, `window`). Never the editor root — that's a cycle, the root imports
+plugin editor packages. Editor integration goes through attributes.
+
+## Editor windows
+
+A plugin declares a dockable editor window with an attribute and opens it by
+id, the way Unity's `[MenuItem]` calls `EditorWindow.GetWindow`:
+
+```odin
+import wnd "moonhug:editor/window"
+
+@(editor_window={id="physics2d", title="Physics 2D", width=420, height=240})
+draw_physics_debug :: proc() {
+    // window CONTENT only — Begin/End, the close button and the open flag
+    // belong to the host
+}
+
+@(menu_item={path="Window/Physics 2D", shortcut=""})
+open_physics_debug :: proc() {
+    wnd.open("physics2d")
+}
+```
+
+- `title` defaults to the id. `width`/`height` are the first-shown size,
+  applied only while imgui.ini has no entry for the title (`FirstUseEver`) —
+  once the user resizes or docks it, imgui.ini wins.
+- `open` focuses the window if it is already open. Any code path can call it —
+  a button or context menu works as well as a menu item.
+- The open list is process-lifetime (reopen from the menu after a restart);
+  dock position and size persist in imgui.ini by title.
+- Declarations land in `editor/editor_windows_generated.odin`
+  (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 
 ## Assets
 

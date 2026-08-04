@@ -13,6 +13,7 @@ import "inspector"
 import "menu"
 import clip "clipboard"
 import "undo"
+import wnd "moonhug:editor/window"
 import "../engine/serialization"
 import "../engine/registration"
 import "core:os"
@@ -121,6 +122,8 @@ main :: proc() {
     // load_editor_settings.
     simulate_init()
     defer simulate_shutdown()
+    _register_editor_windows() // plugin @(editor_window) declarations
+    defer wnd.shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
         // Events feed both the editor input snapshot and imgui (the SDL3
@@ -216,6 +219,9 @@ main :: proc() {
         if menu.show_output {
             draw_output_view()
         }
+
+        // Plugin-opened windows (editor/window, docs/Plugins.md).
+        wnd.draw_all()
 
         draw_about_popup()
         draw_status_bar()
