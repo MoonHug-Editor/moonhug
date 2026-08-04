@@ -7,15 +7,16 @@ import "../engine"
 import app "moonhug:packages/app"
 
 phase_editor_run :: proc(key: engine.Phase) {
+	sim_host_is_app := sim_host_is("app")
 	#partial switch key {
 	case .EditorInit:
 		editor_init()
 	case .EditorShutdown:
 		editor_shutdown()
 	case .Init:
-		app.app_init()
-		app.game_bootstrap()
+		if sim_host_is_app do app.app_init()
+		if sim_host_is_app do app.game_bootstrap()
 	case .Shutdown:
-		app.app_shutdown()
+		if sim_host_is_app do app.app_shutdown()
 	}
 }

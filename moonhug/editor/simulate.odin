@@ -244,6 +244,13 @@ sim_host :: proc() -> (Sim_Host, bool) {
     return sim_hosts[_sim_host], true
 }
 
+// True when `name` is the active sim host. Generated host-owned phase entries
+// are guarded with this (phase_editor_run, phases_generated.odin).
+sim_host_is :: proc(name: string) -> bool {
+    h, ok := sim_host()
+    return ok && h.name == name
+}
+
 // Selecting a different host mid-run would tick a scene with another game's
 // update set, so the running simulation is stopped (and thus reverted) first.
 sim_set_host :: proc(idx: int) {

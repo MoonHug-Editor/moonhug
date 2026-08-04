@@ -331,8 +331,23 @@ _write_dispatcher :: proc(
 	key_type: string,
 	entries: []PhaseEntry,
 	home_pkg: string,
+	hosts: []gen_facts.Runnable_Pkg = nil, // editor dispatcher: host-owned entries run only for the active sim host
 ) {
 	fmt.sbprintf(b, "%s :: proc(key: %s) {{\n", proc_name, key_type)
+	// One bool per host that owns entries, resolved once up front.
+	guarded: [dynamic]string
+	defer delete(guarded)
+	if hosts != nil {
+		for e in entries {
+			if !gen_facts.is_runnable(hosts, e.pkg_name) do continue
+			found := false
+			for g in guarded do if g == e.pkg_name { found = true; break }
+			if !found do append(&guarded, e.pkg_name)
+		}
+	}
+	for g in guarded {
+		fmt.sbprintf(b, "\tsim_host_is_%s := sim_host_is(%q)\n", g, g)
+	}
 	strings.write_string(b, "\t#partial switch key {\n")
 	current_key := ""
 	for e in entries {
@@ -341,6 +356,11 @@ _write_dispatcher :: proc(
 			fmt.sbprintf(b, "\tcase .%s:\n", current_key)
 		}
 		strings.write_string(b, "\t\t")
+		is_guarded := false
+		for g in guarded do if g == e.pkg_name { is_guarded = true; break }
+		if is_guarded {
+			fmt.sbprintf(b, "if sim_host_is_%s do ", e.pkg_name)
+		}
 		if e.pkg_name != home_pkg {
 			strings.write_string(b, e.pkg_name)
 			strings.write_string(b, ".")
@@ -370,7 +390,9 @@ generate_editor :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "import \"../engine\"\n")
 	_write_imports(&b, editor_entries[:], "editor", true, "engine")
 	strings.write_string(&b, "\n")
-	_write_dispatcher(&b, "phase_editor_run", "engine.Phase", editor_entries[:], "editor")
+	hosts := gen_facts.runnable_packages(w)
+	defer delete(hosts)
+	_write_dispatcher(&b, "phase_editor_run", "engine.Phase", editor_entries[:], "editor", hosts[:])
 
 	db.emit(w, "moonhug/editor/phases_generated.odin", strings.to_string(b))
 	return true
