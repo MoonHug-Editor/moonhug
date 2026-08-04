@@ -124,8 +124,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
-- `tooltip="..."` attribute on component fields - hover text in inspector
-
 - project settings window with left pane — tabs, right pane — settings of selected tabs
   - @(project_settings="Left Pane Tab name") above IMGUI draw proc (draws right pane)
 
