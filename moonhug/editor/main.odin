@@ -246,10 +246,6 @@ main :: proc() {
 
 @(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
-
-	log.info("Editor Init")
-	log.error("test error")
-	log.warning("test warning")
     registration.register_packages()
     inspector.init()
     serialization.init()

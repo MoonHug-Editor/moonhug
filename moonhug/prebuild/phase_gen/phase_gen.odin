@@ -27,7 +27,13 @@ import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 
-DEFAULT_PHASE_NAMES :: []string{"EditorInit", "EditorShutdown", "Init", "Shutdown", "DebugDraw"}
+DEFAULT_PHASE_NAMES :: []string{
+	"EditorInit", "EditorShutdown",
+	// Play-mode transitions, fired by the editor's Simulate (Unity's
+	// PlayModeStateChange). Exiting* run before the switch, Entered* after.
+	"ExitingEditMode", "EnteredPlayMode", "ExitingPlayMode", "EnteredEditMode",
+	"Init", "Shutdown", "DebugDraw",
+}
 
 PhaseMode :: enum {
 	All,

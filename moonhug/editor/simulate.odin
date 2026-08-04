@@ -72,7 +72,7 @@ sim_is_ticking :: proc() -> bool {
 }
 
 // Capture the open scene, then start ticking it.
-sim_start :: proc() -> bool {
+sim_start :: proc(paused := false) -> bool {
     if _sim_state != .Stopped do return false
     if !sim_available() {
         log.error("Simulate: no tick dispatchers registered")
@@ -102,15 +102,19 @@ sim_start :: proc() -> bool {
         }
     }
 
-    _sim_state = .Running
+    phase_editor_run(.ExitingEditMode)
+    _sim_state = paused ? .Paused : .Running
     _sim_sync_context()
     engine.fixed_reset()
+    phase_editor_run(.EnteredPlayMode)
     return true
 }
 
 // Roll the scene back to its pre-Start state.
 sim_stop :: proc() {
     if _sim_state == .Stopped do return
+
+    phase_editor_run(.ExitingPlayMode)
 
     // Selection goes first, while the handles it holds are still live: the
     // inspector and gizmos react to the clear, so they let go before anything
@@ -145,6 +149,7 @@ sim_stop :: proc() {
     _sim_state = .Stopped
     _sim_sync_context()
     engine.fixed_reset()
+    phase_editor_run(.EnteredEditMode)
 }
 
 sim_set_paused :: proc(paused: bool) {
@@ -181,8 +186,7 @@ sim_toggle_pause :: proc() {
 sim_step :: proc() {
     switch _sim_state {
     case .Stopped:
-        if !sim_start() do return
-        _sim_state = .Paused
+        if !sim_start(paused = true) do return
     case .Running:
         _sim_state = .Paused
     case .Paused:
@@ -389,7 +393,7 @@ _draw_simulate_controls :: proc() {
         } else {
             // Pause from Stopped enters a paused run, so the scene is captured
             // and sitting on frame zero rather than nothing happening.
-            if sim_start() do sim_set_paused(true)
+            sim_start(paused = true)
         }
     }
     _pop_sim_button_bg()

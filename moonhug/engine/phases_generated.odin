@@ -9,6 +9,10 @@ package engine
 //       0  editor_init  editor  [Editor]
 // EditorShutdown [Editor]
 //       0  editor_shutdown  editor  [Editor]
+// ExitingEditMode
+// EnteredPlayMode
+// ExitingPlayMode
+// EnteredEditMode
 // Init
 //       0  app_init  packages:app
 //       1  game_bootstrap  packages:app
@@ -22,6 +26,10 @@ package engine
 Phase :: enum {
 	EditorInit,
 	EditorShutdown,
+	ExitingEditMode,
+	EnteredPlayMode,
+	ExitingPlayMode,
+	EnteredEditMode,
 	Init,
 	Shutdown,
 	DebugDraw,
