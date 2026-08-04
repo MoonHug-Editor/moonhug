@@ -80,6 +80,30 @@ __decorator__Light__color :: proc(ctx: ^DrawContext) {
 	}
 }
 
+__decorator__Light__range :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_min(ctx, 0)
+	} else {
+		decorator_min(ctx, 0)
+	}
+}
+
+__decorator__Light__spot_angle :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_min(ctx, 0)
+	} else {
+		decorator_min(ctx, 0)
+	}
+}
+
+__decorator__Light__inner_spot_angle :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_min(ctx, 0)
+	} else {
+		decorator_min(ctx, 0)
+	}
+}
+
 __decorator__Light__ambient :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_min(ctx, 0)
@@ -152,11 +176,15 @@ init_decorators :: proc() {
 	__decorators__Camera[5] = __decorator__Camera__clear_color
 	__decorators__Camera[6] = nil
 	decorator_registry[typeid_of(engine.Camera)] = __decorators__Camera
-	__decorators__Light = make([]DecoratorProc, 4)
+	__decorators__Light = make([]DecoratorProc, 8)
 	__decorators__Light[0] = nil
-	__decorators__Light[1] = __decorator__Light__color
-	__decorators__Light[2] = nil
-	__decorators__Light[3] = __decorator__Light__ambient
+	__decorators__Light[1] = nil
+	__decorators__Light[2] = __decorator__Light__color
+	__decorators__Light[3] = nil
+	__decorators__Light[4] = __decorator__Light__range
+	__decorators__Light[5] = __decorator__Light__spot_angle
+	__decorators__Light[6] = __decorator__Light__inner_spot_angle
+	__decorators__Light[7] = __decorator__Light__ambient
 	decorator_registry[typeid_of(engine.Light)] = __decorators__Light
 	__decorators__Material = make([]DecoratorProc, 6)
 	__decorators__Material[0] = nil

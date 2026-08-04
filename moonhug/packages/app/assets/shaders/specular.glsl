@@ -1,4 +1,6 @@
-// SPECULAR EXAMPLE — blinn-phong on top of the scene's directional Light.
+// SPECULAR EXAMPLE — blinn-phong on top of the scene's FIRST light (kept a
+// single-light sample; the multi-light loop lives in lit.frag.glsl and
+// pbr.glsl).
 // Demonstrates the view-dependent shading contract: `frag_world_pos`
 // (vertex output, location 3) plus the camera position in the LightUBO.
 //
@@ -18,10 +20,17 @@ layout(location = 3) in vec3 frag_world_pos;
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
+#define MAX_LIGHTS 8
+struct GpuLight {
+    vec4 pos_type;    // xyz = position, w = kind (0 dir, 1 point, 2 spot)
+    vec4 dir_range;   // xyz = normalized travel direction, w = range
+    vec4 color_outer; // rgb premultiplied by intensity, w = cos outer half-angle
+    vec4 params;      // x = cos inner half-angle, yzw reserved
+};
 layout(set = 3, binding = 0) uniform LightUBO {
-    vec4 light_dir_ambient; // xyz = direction light travels, w = ambient floor
-    vec4 light_color;       // rgb premultiplied by intensity
-    vec4 cam_pos;           // xyz = camera world position
+    vec4 ambient_count; // x = ambient floor, y = light count
+    vec4 cam_pos;       // xyz = camera world position
+    GpuLight lights[MAX_LIGHTS];
 };
 
 layout(set = 3, binding = 1) uniform MaterialUBO {
@@ -33,13 +42,13 @@ layout(location = 0) out vec4 out_color;
 
 void main() {
     vec3 n = normalize(frag_normal);
-    vec3 to_light = -light_dir_ambient.xyz;
+    vec3 to_light = -lights[0].dir_range.xyz;
     vec3 to_cam   = normalize(cam_pos.xyz - frag_world_pos);
 
     // Same diffuse as the built-in lit shader.
     float diffuse = max(dot(n, to_light), 0.0);
-    float ambient = light_dir_ambient.w;
-    vec3 light = vec3(ambient) + light_color.rgb * ((1.0 - ambient) * diffuse);
+    float ambient = ambient_count.x;
+    vec3 light = vec3(ambient) + lights[0].color_outer.rgb * ((1.0 - ambient) * diffuse);
 
     vec4 sc = spec_color;
     if (sc == vec4(0.0)) sc = vec4(1.0); // unset: white, full strength
@@ -50,6 +59,6 @@ void main() {
     float spec = pow(max(dot(n, half_dir), 0.0), shiny) * step(0.0, diffuse);
 
     vec4 base = texture(tex, frag_uv) * frag_color;
-    vec3 rgb = base.rgb * light + light_color.rgb * sc.rgb * (spec * clamp(sc.a, 0.0, 1.0));
+    vec3 rgb = base.rgb * light + lights[0].color_outer.rgb * sc.rgb * (spec * clamp(sc.a, 0.0, 1.0));
     out_color = vec4(rgb, base.a);
 }

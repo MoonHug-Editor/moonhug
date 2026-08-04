@@ -1,13 +1,31 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
 using namespace metal;
 
+struct GpuLight
+{
+    float4 pos_type;
+    float4 dir_range;
+    float4 color_outer;
+    float4 params;
+};
+
+struct GpuLight_1
+{
+    float4 pos_type;
+    float4 dir_range;
+    float4 color_outer;
+    float4 params;
+};
+
 struct LightUBO
 {
-    float4 light_dir_ambient;
-    float4 light_color;
+    float4 ambient_count;
     float4 cam_pos;
+    GpuLight_1 lights[8];
 };
 
 struct main0_out
@@ -20,15 +38,63 @@ struct main0_in
     float2 frag_uv [[user(locn0)]];
     float4 frag_color [[user(locn1)]];
     float3 frag_normal [[user(locn2)]];
+    float3 frag_world_pos [[user(locn3)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _20 [[buffer(0)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+static inline __attribute__((always_inline))
+float light_attenuation(thread const GpuLight& l, thread const float3& to_frag, thread const float& dist)
+{
+    if (l.pos_type.w < 0.5)
+    {
+        return 1.0;
+    }
+    float range = fast::max(l.dir_range.w, 9.9999997473787516355514526367188e-05);
+    float ratio = dist / range;
+    float a = fast::clamp(1.0 - (ratio * ratio), 0.0, 1.0);
+    a *= a;
+    if (l.pos_type.w > 1.5)
+    {
+        float cos_a = dot(to_frag, l.dir_range.xyz);
+        float inner = l.params.x;
+        float outer = l.color_outer.w;
+        a *= fast::clamp((cos_a - outer) / fast::max(inner - outer, 9.9999997473787516355514526367188e-05), 0.0, 1.0);
+    }
+    return a;
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _99 [[buffer(0)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float3 n = fast::normalize(in.frag_normal);
-    float diffuse = fast::max(dot(n, -_20.light_dir_ambient.xyz), 0.0);
-    float ambient = _20.light_dir_ambient.w;
-    float3 light = float3(ambient) + (_20.light_color.xyz * ((1.0 - ambient) * diffuse));
+    float ambient = _99.ambient_count.x;
+    int count = int(_99.ambient_count.y);
+    float3 light = float3(ambient);
+    GpuLight l;
+    float3 L;
+    for (int i = 0; i < count; i++)
+    {
+        l.pos_type = _99.lights[i].pos_type;
+        l.dir_range = _99.lights[i].dir_range;
+        l.color_outer = _99.lights[i].color_outer;
+        l.params = _99.lights[i].params;
+        float dist = 0.0;
+        if (l.pos_type.w < 0.5)
+        {
+            L = l.dir_range.xyz;
+        }
+        else
+        {
+            float3 d = in.frag_world_pos - l.pos_type.xyz;
+            dist = length(d);
+            L = d / float3(fast::max(dist, 9.9999999747524270787835121154785e-07));
+        }
+        float diffuse = fast::max(dot(n, -L), 0.0);
+        GpuLight param = l;
+        float3 param_1 = L;
+        float param_2 = dist;
+        float atten = light_attenuation(param, param_1, param_2);
+        light += (l.color_outer.xyz * (((1.0 - ambient) * diffuse) * atten));
+    }
     float4 base = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
     out.out_color = float4(base.xyz * light, base.w);
     return out;

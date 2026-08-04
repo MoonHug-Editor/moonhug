@@ -46,15 +46,23 @@ merge into one draw.
 | Name | Material_Shader | Effect |
 |---|---|---|
 | `unlit` | `.Unlit` | `texture * color`, no lighting |
-| `lit` | `.Lit` | unlit × directional lambert, driven by the scene's **Light** component |
+| `lit` | `.Lit` | unlit × per-light lambert, driven by the scene's **Light** components |
 
 ### Light component
 
-A directional sun: `color`, `intensity`, `ambient` (unlit floor); direction
-is the transform's forward (-Z, like cameras) — rotate to aim. Rendering
-uses the FIRST enabled light (`_apply_scene_light` → `gfx.set_light`, a
-per-pass fragment UBO); scenes without one get a neutral default (white,
-down-ish direction, 0.35 ambient) so unlit-era scenes look unchanged.
+Directional, Point or Spot via `type` (Unity's `Light.type`): `color`,
+`intensity`, plus `range` (point/spot falloff end), `spot_angle` /
+`inner_spot_angle` (full cone angles, degrees) and `ambient` (unlit floor). A
+directional light travels along the transform's forward (-Z, like cameras);
+point and spot sit at the transform's position, spot aiming along forward.
+
+Rendering gathers EVERY enabled light, up to 8 (the pool max), into one
+per-pass fragment UBO (`scene_collect_lights` → `gfx.set_lights`); the ambient
+floor comes from the first enabled light in slot order. Scenes without a light
+get a neutral default (one white directional, down-ish, 0.35 ambient) so
+unlit-era scenes look unchanged. Point/spot falloff is the smooth
+`(1 - (d/range)^2)^2` — predictable zero at range, no inverse-square hot
+center — and spot fades between the inner and outer cone.
 
 The lit shader uses world-space normals via `mat3(model)` — wrong under
 non-uniform scale (needs inverse-transpose), accepted for now.
@@ -107,10 +115,13 @@ Damaged Helmet works out of the box). Conventions:
   ones you read
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
   samplers at bindings 1..7 become named texture rows (see below)
-- optional `LightUBO` at `set = 3, binding = 0`: three vec4s —
-  `light_dir_ambient` (xyz direction light travels, w ambient floor),
-  `light_color` (rgb premultiplied by intensity), `cam_pos` (xyz camera
-  world position — pair it with `frag_world_pos` for specular/fresnel)
+- optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
+  floor, y light count), `cam_pos` (xyz camera world position — pair it with
+  `frag_world_pos` for specular/fresnel), then `lights[8]` of four vec4s each:
+  `pos_type` (xyz position, w kind: 0 dir, 1 point, 2 spot), `dir_range` (xyz
+  travel direction, w range), `color_outer` (rgb premultiplied by intensity, w
+  cos outer half-angle), `params` (x cos inner half-angle). Copy the block from
+  `lit.frag.glsl`
 - optional **material property block** at `set = 3, binding = 1` — any
   uniform block of floats/vec2/vec3/vec4
 
@@ -192,8 +203,8 @@ their guid string, `shader_unregister` enables hot reload). All shaders share
 the `Vertex` format and the vertex UBO layout (`_Uniform`: view_proj, model,
 tint) — that contract is what lets `pass_end` switch shaders per draw.
 
-Still deferred: multiple/point lights (one directional light per pass now),
-imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
+Still deferred: light gizmos (range sphere, spot cone), shadows, per-draw
+light culling (all 8 lights reach every draw), imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
 instead), engine-level IBL (pbr.glsl samples an equirect environment via its
 `env_tex` row — `assets/textures/studio_env.png` ships as a starter; no
 prefiltered mips, roughness blur is approximated), a real linear-color

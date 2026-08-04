@@ -212,12 +212,15 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // layer, order in layer, view depth back-to-front, tree order
 // (sprite_sort.odin). Sprite keys are unique, so their order is total and
 // deterministic regardless of sort stability.
-// First enabled Light drives the pass's lit-shader uniforms; without one the
-// gfx default applies (white, baked direction — matches the pre-Light look).
-_apply_scene_light :: proc() {
+// Every enabled Light (up to gfx.MAX_LIGHTS, the pool max) fills `buf` in pool
+// order. The ambient floor is the first enabled light's. Returns the count and
+// ambient; count 0 leaves the gfx default in effect.
+scene_collect_lights :: proc(buf: []gfx.Light) -> (n: int, ambient: f32) {
 	world := ctx_world()
 	lights_pool := lights(world)
-	if lights_pool != nil do for i in 0 ..< len(lights_pool.slots) {
+	if lights_pool == nil do return 0, 0
+	for i in 0 ..< len(lights_pool.slots) {
+		if n >= len(buf) do break
 		slot := &lights_pool.slots[i]
 		if !slot.alive do continue
 		l := &slot.data
@@ -225,11 +228,19 @@ _apply_scene_light :: proc() {
 		if !transform_active_in_hierarchy(l.owner) do continue
 
 		tw := transform_world(Transform_Handle(l.owner))
-		rot := quat_to_matrix3(tw.rotation)
-		forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]} // -Z, like cameras
-		gfx.set_light(forward, l.color.rgb, l.intensity, l.ambient)
-		return
+		if n == 0 do ambient = l.ambient
+		buf[n] = light_to_gfx(l, tw)
+		n += 1
 	}
+	return n, ambient
+}
+
+// Enabled Lights drive the pass's lit-shader uniforms; without any the gfx
+// default applies (one white directional — matches the pre-Light look).
+_apply_scene_light :: proc() {
+	buf: [gfx.MAX_LIGHTS]gfx.Light
+	n, ambient := scene_collect_lights(buf[:])
+	if n > 0 do gfx.set_lights(buf[:n], ambient)
 }
 
 render_execute :: proc(view: Render_View, commands: []Render_Command) {

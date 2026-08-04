@@ -50,10 +50,17 @@ layout(set = 2, binding = 3) uniform sampler2D ao_tex;
 layout(set = 2, binding = 4) uniform sampler2D emissive_tex;
 layout(set = 2, binding = 5) uniform sampler2D env_tex; // equirect environment
 
+#define MAX_LIGHTS 8
+struct GpuLight {
+    vec4 pos_type;    // xyz = position, w = kind (0 dir, 1 point, 2 spot)
+    vec4 dir_range;   // xyz = normalized travel direction, w = range
+    vec4 color_outer; // rgb premultiplied by intensity, w = cos outer half-angle
+    vec4 params;      // x = cos inner half-angle, yzw reserved
+};
 layout(set = 3, binding = 0) uniform LightUBO {
-    vec4 light_dir_ambient; // xyz = direction light travels, w = ambient floor
-    vec4 light_color;       // rgb premultiplied by intensity
-    vec4 cam_pos;           // xyz = camera world position
+    vec4 ambient_count; // x = ambient floor, y = light count
+    vec4 cam_pos;       // xyz = camera world position
+    GpuLight lights[MAX_LIGHTS];
 };
 
 layout(set = 3, binding = 1) uniform MaterialUBO {
@@ -101,27 +108,51 @@ void main() {
     }
 
     vec3 v = normalize(cam_pos.xyz - frag_world_pos);
-    vec3 l = -light_dir_ambient.xyz;
-    vec3 h = normalize(v + l);
-    float nol = max(dot(n, l), 0.0);
     float nov = max(dot(n, v), 1e-4);
-    float noh = max(dot(n, h), 0.0);
-
-    // Cook-Torrance: GGX distribution, Smith-Schlick geometry, Schlick fresnel.
-    float a = rough * rough;
-    float a2 = a * a;
-    float denom = noh * noh * (a2 - 1.0) + 1.0;
-    float D = a2 / (PI * denom * denom);
-    float k = (rough + 1.0) * (rough + 1.0) / 8.0;
-    float G = (nol / (nol * (1.0 - k) + k)) * (nov / (nov * (1.0 - k) + k));
     vec3 f0 = mix(vec3(0.04), albedo, metal);
-    vec3 F = f0 + (1.0 - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
 
-    vec3 spec = (D * G * F) / max(4.0 * nol * nov, 1e-4);
-    // Diffuse keeps parity with the lit shader (no 1/π); the specular lobe
-    // stays physical — an extra ×π there blows out highlights.
-    vec3 diffuse = (1.0 - F) * (1.0 - metal) * albedo;
-    vec3 lo = (diffuse + spec) * light_color.rgb * nol;
+    // One Cook-Torrance evaluation per light: GGX distribution, Smith-Schlick
+    // geometry, Schlick fresnel. Point/spot attenuate with the same smooth
+    // falloff the lit shader uses.
+    vec3 lo = vec3(0.0);
+    int light_n = int(ambient_count.y);
+    for (int i = 0; i < light_n; ++i) {
+        GpuLight gl = lights[i];
+        vec3 l;
+        float atten = 1.0;
+        if (gl.pos_type.w < 0.5) {
+            l = -gl.dir_range.xyz;
+        } else {
+            vec3 d = gl.pos_type.xyz - frag_world_pos;
+            float dist = length(d);
+            l = d / max(dist, 1e-6);
+            float ratio = dist / max(gl.dir_range.w, 1e-4);
+            atten = clamp(1.0 - ratio * ratio, 0.0, 1.0);
+            atten *= atten;
+            if (gl.pos_type.w > 1.5) { // spot cone
+                float cos_a = dot(-l, gl.dir_range.xyz);
+                atten *= clamp((cos_a - gl.color_outer.w)
+                             / max(gl.params.x - gl.color_outer.w, 1e-4), 0.0, 1.0);
+            }
+        }
+        vec3 h = normalize(v + l);
+        float nol = max(dot(n, l), 0.0);
+        float noh = max(dot(n, h), 0.0);
+
+        float a = rough * rough;
+        float a2 = a * a;
+        float denom = noh * noh * (a2 - 1.0) + 1.0;
+        float D = a2 / (PI * denom * denom);
+        float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+        float G = (nol / (nol * (1.0 - k) + k)) * (nov / (nov * (1.0 - k) + k));
+        vec3 F = f0 + (1.0 - f0) * pow(1.0 - max(dot(h, v), 0.0), 5.0);
+
+        vec3 spec = (D * G * F) / max(4.0 * nol * nov, 1e-4);
+        // Diffuse keeps parity with the lit shader (no 1/π); the specular lobe
+        // stays physical — an extra ×π there blows out highlights.
+        vec3 diffuse = (1.0 - F) * (1.0 - metal) * albedo;
+        lo += (diffuse + spec) * gl.color_outer.rgb * (nol * atten);
+    }
 
     float ao = texture(ao_tex, frag_uv).r;
 
@@ -146,7 +177,7 @@ void main() {
 
     // Diffuse ambient cedes energy to the reflection (1 - f_amb): smooth
     // glass at glancing angles is mirror, not milk.
-    vec3 ambient = albedo * (1.0 - metal) * (1.0 - f_amb) * light_dir_ambient.w * ao;
+    vec3 ambient = albedo * (1.0 - metal) * (1.0 - f_amb) * ambient_count.x * ao;
 
     vec3 emissive = pow(texture(emissive_tex, frag_uv).rgb, vec3(2.2))
                   * emissive_color.rgb * emissive_color.w;

@@ -42,20 +42,59 @@ _Uniform :: struct {
 	tint:      [4]f32,
 }
 
-// Must match the lit shader's LightUBO (fragment set=3 binding=0).
-// cam_pos comes from the draw's view (set_view_proj), not set_light — it's
-// filled in at push time per view switch.
+// Up to MAX_LIGHTS lights reach the shader in one UBO. Matches the Light
+// component's pool max, so every enabled light in a scene fits.
+MAX_LIGHTS :: 8
+
+Light_Kind :: enum u32 {
+	Directional,
+	Point,
+	Spot,
+}
+
+// One light as the renderer takes it (set_lights). Angles arrive as cosines of
+// the HALF angle, so the shader compares dot products directly.
+Light :: struct {
+	kind:      Light_Kind,
+	position:  [3]f32, // point/spot
+	direction: [3]f32, // the way the light travels
+	color:     [3]f32,
+	intensity: f32,
+	range:     f32,    // point/spot falloff end
+	inner_cos: f32,    // spot: full brightness inside
+	outer_cos: f32,    // spot: zero outside
+}
+
+// Must match the lit shader's GpuLight (fragment set=3 binding=0), std140:
+// four vec4 per light.
+_Gpu_Light :: struct {
+	pos_type:    [4]f32, // xyz = position, w = kind (0 dir, 1 point, 2 spot)
+	dir_range:   [4]f32, // xyz = normalized travel direction, w = range
+	color_outer: [4]f32, // rgb premultiplied by intensity, w = cos outer half-angle
+	params:      [4]f32, // x = cos inner half-angle, yzw reserved
+}
+
+// Must match the lit shader's LightUBO. cam_pos comes from the draw's view
+// (set_view_proj), not set_lights — it's filled in at push time per view
+// switch.
 _Light_Uniform :: struct {
-	dir_ambient: [4]f32, // xyz = normalized direction light travels, w = ambient floor
-	color:       [4]f32, // rgb premultiplied by intensity
-	cam_pos:     [4]f32, // xyz = camera world position (specular shaders), w unused
+	ambient_count: [4]f32, // x = ambient floor, y = light count
+	cam_pos:       [4]f32, // xyz = camera world position (specular shaders), w unused
+	lights:        [MAX_LIGHTS]_Gpu_Light,
 }
 
 // Matches the previously baked-in lit shader constants, so scenes without a
-// Light component keep looking the same.
+// Light component keep looking the same: one white directional, 0.35 ambient.
 _LIGHT_DEFAULT :: _Light_Uniform{
-	dir_ambient = {-0.42107597, -0.84215194, -0.33686078, 0.35}, // normalize({-0.5,-1,-0.4})
-	color       = {1, 1, 1, 1},
+	ambient_count = {0.35, 1, 0, 0},
+	lights = {
+		0 = {
+			pos_type    = {0, 0, 0, 0},
+			dir_range   = {-0.42107597, -0.84215194, -0.33686078, 0}, // normalize({-0.5,-1,-0.4})
+			color_outer = {1, 1, 1, 0},
+			params      = {0, 0, 0, 0},
+		},
+	},
 }
 
 // One view entry per set_view_proj call: the matrix plus the camera world
@@ -194,21 +233,30 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 }
 
 // Directional light for the CURRENT pass's lit-shader draws (one light —
-// per-draw light lists are a later problem). direction is the way the light
-// travels (sun → scene); zero-length falls back to straight down. Not calling
-// this keeps the default (white, baked direction, 0.35 ambient).
-set_light :: proc(direction: [3]f32, color: [3]f32, intensity: f32, ambient: f32) {
-	d := direction
-	len_sq := d.x * d.x + d.y * d.y + d.z * d.z
-	if len_sq < 1e-12 {
-		d = {0, -1, 0}
-	} else {
-		d /= math.sqrt(len_sq)
+// per-draw light lists are a later problem). Each direction is the way the
+// light travels (sun → scene); zero-length falls back to straight down. Not
+// calling this keeps the default (one white directional, 0.35 ambient).
+set_lights :: proc(ls: []Light, ambient: f32) {
+	u := _Light_Uniform{}
+	n := min(len(ls), MAX_LIGHTS)
+	u.ambient_count = {clamp(ambient, 0, 1), f32(n), 0, 0}
+	for i in 0 ..< n {
+		l := ls[i]
+		d := l.direction
+		len_sq := d.x * d.x + d.y * d.y + d.z * d.z
+		if len_sq < 1e-12 {
+			d = {0, -1, 0}
+		} else {
+			d /= math.sqrt(len_sq)
+		}
+		u.lights[i] = _Gpu_Light{
+			pos_type    = {l.position.x, l.position.y, l.position.z, f32(l.kind)},
+			dir_range   = {d.x, d.y, d.z, max(l.range, 0)},
+			color_outer = {l.color.r * l.intensity, l.color.g * l.intensity, l.color.b * l.intensity, l.outer_cos},
+			params      = {l.inner_cos, 0, 0, 0},
+		}
 	}
-	_pass.light = _Light_Uniform{
-		dir_ambient = {d.x, d.y, d.z, clamp(ambient, 0, 1)},
-		color       = {color.r * intensity, color.g * intensity, color.b * intensity, 1},
-	}
+	_pass.light = u
 }
 
 // May change mid-pass (multi-camera stacking, screen-space overlays).
