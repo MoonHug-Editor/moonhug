@@ -114,8 +114,6 @@ For more details see [Contribution](docs/Contribution.md)
 - multiple/point lights (one directional Light per pass now)
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
-- reorder collection elements in inspector by drag
-
 - png - Texture2D with N Sprites
 
 - transform:
