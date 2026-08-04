@@ -1,3 +1,13 @@
+## [0.60.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.59.1...v0.60.0) (2026-08-04)
+
+### Features
+
+* simulate playmode in editor ([49a615d](https://github.com/MoonHug-Editor/moonhug/commit/49a615d9f744bfe0b54d356f13963c53ff7b87a2))
+
+### Bug Fixes
+
+* sim_host phase_run ([1089991](https://github.com/MoonHug-Editor/moonhug/commit/1089991a85a29ccbc3558ad815b939684f1ea8bc))
+
 ## [0.59.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.59.0...v0.59.1) (2026-08-02)
 
 ### Bug Fixes
