@@ -97,8 +97,10 @@ and load a scene?" — which every save, every scene test, and
 could quietly fall behind when a field is added.
 
 Restore reuses the ordinary scene load, which means per-object teardown runs the
-same code path a manual delete does. Nothing about stopping a simulation is
-special-cased.
+same code path a manual delete does: `transform_destroy` fires each component's
+`on_destroy_*`, so subsystem state (box2d bodies, audio voices, animation
+runners) is released. Nothing about stopping a simulation is special-cased.
+`physics2d/tests` covers this for physics.
 
 Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`).
 Additively loaded scenes are untouched, and the restored scene keeps its slot and
@@ -179,9 +181,49 @@ engine.application_is_editor()   // editor binary? fixed per process, Unity's Ap
 engine.application_is_playing()  // gameplay advancing? true in the app, and in the editor while simulating
 ```
 
-`application_is_playing()` is the one component code wants. It is false while
-paused (nothing is ticking) and true for the duration of a single step.
+`application_is_playing()` is the one component code wants. It stays true while
+paused - Unity's model, where a paused play mode still reports `isPlaying` and
+paused is a separate condition. Ask `sim_state()` if you need the distinction.
 
-Do **not** read `is_playmode` for this. Despite the name it means "standalone app
-binary" and stays false throughout Simulate, because it also gates editor-only
-nested-prefab resolve. Splitting that name apart is a TODO.
+These two are the whole vocabulary - there is no other mode flag. Editor-only
+work (nested-prefab resolve) gates on `application_is_editor()`, so it keeps
+running during Simulate. Undo gates on `application_is_playing()`, so it is
+unavailable for the whole simulation, paused included - everything a run touches
+is discarded on Stop anyway.
+
+## Play-mode phases
+
+Simulate fires four phases, mirroring Unity's `PlayModeStateChange`:
+
+| Phase | When |
+| --- | --- |
+| `ExitingEditMode` | Simulate pressed, after the snapshot is captured, before the state flips |
+| `EnteredPlayMode` | simulation live |
+| `ExitingPlayMode` | Stop pressed, while the simulated world is still intact |
+| `EnteredEditMode` | after the scene is restored |
+
+```odin
+@(phase={key=engine.Phase.EnteredPlayMode, mode=Editor})
+my_setup :: proc() { ... }
+```
+
+`ExitingEditMode` fires only once the snapshot exists, so a Simulate that fails
+to start never emits an unpaired transition. `ExitingPlayMode` runs before the
+scene is touched, so subscribers can read the simulated world. Pause fires
+nothing - it is not a mode change.
+
+Subscribers owned by a runnable package run only when that package is the active
+sim host.
+
+## Code layout
+
+```
+editor/simulate/          state machine: start/stop/pause/step, host selection
+editor/simulate_view.odin toolbar, shortcuts, and the hooks into editor state
+```
+
+The state machine is a subpackage with no imgui or view dependencies, so tests
+and tools drive a simulation without the editor root. Editor-owned state
+(selection, phase dispatch, the persisted host name) arrives through
+`simulate.Hooks`; unset hooks are no-ops, so a driver supplies only what it
+needs.

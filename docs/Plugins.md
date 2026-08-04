@@ -140,7 +140,10 @@ carries no special scan status), then generates:
   lands in the editor's menu registration the same way. `@phase` subscribers
   work from packages too (editor-side ones must declare `mode=Editor`) — the
   `Phase` enum plus a subscriber table live in
-  `engine/phases_generated.odin`.
+  `engine/phases_generated.odin`. In the editor dispatcher
+  (`phase_editor_run`), entries owned by a runnable package run only when that
+  package is the active sim host — subscribers from several hosts interleave by
+  `order`, and the guard skips the inactive ones.
 - The import lines, so presence = compiled + registered in both binaries:
 
   ```

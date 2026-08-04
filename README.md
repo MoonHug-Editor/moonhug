@@ -84,7 +84,7 @@ For more details see [Contribution](docs/Contribution.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 - [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
 - [Undo](docs/Undo.md) - editor undo feature
-- [Simulate](docs/Simulate.md) - play the open scene inside the editor (everything stays inspectable), snapshot/restore on stop; separate from the Play button that builds and launches the game as its own process
+- [Simulate](docs/Simulate.md) - play the open scene inside the editor with everything still inspectable: Simulate/Pause/Step controls, snapshot+restore on stop, sim-host dropdown picking which game's update code runs. Separate from the Play button, which builds and launches the game as its own process
 
 ### Views
   - inspector view - edit selected object in scene
@@ -124,28 +124,7 @@ For more details see [Contribution](docs/Contribution.md)
 
 - improve default types inspector UX
 
-- `tooltip="..."` attribute on component fields — hover text in inspector
-
-- `phase_editor_run` runs EVERY host's `.All` phase subscribers, not the active
-  host's (prebuild/phase_gen.odin `_split_entries`). With one runnable package
-  that is correct by accident; with two, the editor would run both games'
-  `Init`/`Shutdown`. Same class as the Simulate host problem, now that
-  `sim_hosts` (sim_hosts_generated.odin) exists to select against.
-
-- Simulate follow-ups (docs/Simulate.md):
-  - scene start/stop hooks: no `@(on_scene_started)` / `@(on_scene_stopped)`
-    equivalent, so a component cannot initialize or tear down around a Simulate
-    run (Sedulous fires these per module from Scene.Start/Stop). Cheap to add
-    now, an audit of every component later.
-  
-  - verify per-subsystem cleanup on restore. Restore reuses the ordinary scene
-    load/unload path, which SHOULD match the manual-delete path that clears
-    physics bodies, audio voices and animation runners - but this is unproven.
-    Test: simulate, let bodies collide, stop, assert the physics world is empty.
-
-  - test the Sim_State machine (Start/Stop/Pause/Step, host selection, undo
-    purging). Blocked on the test suite not being able to import the editor
-    package - needs the state machine extracted or a test hook.
+- `tooltip="..."` attribute on component fields - hover text in inspector
 
 - project settings window with left pane — tabs, right pane — settings of selected tabs
   - @(project_settings="Left Pane Tab name") above IMGUI draw proc (draws right pane)

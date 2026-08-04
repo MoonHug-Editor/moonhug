@@ -9,6 +9,7 @@ import "core:testing"
 import "moonhug:engine"
 import common "moonhug:tests/common"
 import physics2d ".."
+import b2 "vendor:box2d"
 
 @(test)
 physics2d_dynamic_body_falls_onto_static_floor :: proc(t: ^testing.T) {
@@ -145,4 +146,89 @@ physics2d_kinematic_body_pushes_dynamic :: proc(t: ^testing.T) {
 	// Pusher front face ends at 2.5; the crate center must sit past 3.0
 	// minus a small solver margin.
 	testing.expect(t, x > 2.8, "kinematic pusher should shove the dynamic crate along +x")
+}
+
+// Snapshot/restore (docs/Simulate.md) must leave no box2d bodies behind.
+// Restore destroys every object in the scene, which fires on_destroy_* the same
+// way a manual delete does; this pins that the physics side really is released.
+@(test)
+physics2d_bodies_released_on_scene_restore :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	scene := engine.sm_scene_get_active()
+	testing.expect(t, scene != nil)
+	if scene == nil do return
+	root := engine.Transform_Handle(scene.root.handle)
+
+	floor := engine.transform_new("Floor", root)
+	engine.pool_get(&tc.world.transforms, engine.Handle(floor)).position = {0, -2, 0}
+	_, box_ptr := engine.transform_add_comp(floor, .BoxCollider2D)
+	box := cast(^physics2d.BoxCollider2D)box_ptr
+	box.enabled = true
+	box.size = {20, 1}
+	box.density = 1
+
+	ball := engine.transform_new("Ball", root)
+	engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position = {0, 3, 0}
+	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody2D)
+	rb := cast(^physics2d.Rigidbody2D)rb_ptr
+	rb.enabled = true
+	rb.body_type = .Dynamic
+	rb.gravity_scale = 1
+	_, circle_ptr := engine.transform_add_comp(ball, .CircleCollider2D)
+	circle := cast(^physics2d.CircleCollider2D)circle_ptr
+	circle.enabled = true
+	circle.radius = 0.5
+	circle.density = 1
+
+	snapshot, ok := engine.scene_serialize(scene)
+	testing.expect(t, ok, "captured the pre-simulation snapshot")
+	if !ok do return
+	defer delete(snapshot)
+
+	// "Play": step until the ball lands, so bodies are live and touching.
+	for _ in 0 ..< 200 {
+		physics2d.physics_step(1.0 / 60.0)
+	}
+	ball_body, live := physics2d.body_of(ball)
+	testing.expect(t, live, "ball body is live before restore")
+	if !live do return
+	floor_body := box.static_body
+	floor_live := b2.Body_IsValid(floor_body)
+	testing.expect(t, floor_live, "floor's implicit static body is live before restore")
+
+	// "Stop".
+	restored := engine.scene_reload_in_place_bytes(
+		scene, snapshot, scene.asset_guid, scene.path)
+	testing.expect(t, restored != nil, "restore succeeded")
+	if restored == nil do return
+	tc.scene = restored
+
+	testing.expect(t, !b2.Body_IsValid(ball_body),
+		"ball's box2d body is destroyed by restore")
+	if floor_live {
+		testing.expect(t, !b2.Body_IsValid(floor_body),
+			"floor's implicit static body is destroyed by restore")
+	}
+
+	// The restored scene re-syncs its own bodies on the next step: no leak, and
+	// the objects are usable again.
+	physics2d.physics_step(1.0 / 60.0)
+	new_ball := engine.Transform_Handle{}
+	for &slot, i in tc.world.transforms.slots {
+		if !slot.alive || slot.data.name != "Ball" do continue
+		new_ball = engine.Transform_Handle(engine.Handle{
+			index = u32(i), generation = slot.generation, type_key = .Transform,
+		})
+		break
+	}
+	testing.expect(t, new_ball != {}, "Ball is back after restore")
+	if new_ball != {} {
+		_, reborn := physics2d.body_of(new_ball)
+		testing.expect(t, reborn, "restored Ball gets a fresh live body")
+	}
 }
