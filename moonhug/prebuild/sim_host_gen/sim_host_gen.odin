@@ -1,22 +1,15 @@
 package sim_host_gen
 
-// host_gen: gives the EDITOR a table of the SIMULATION HOSTS (docs/Plugins.md) —
-// the installed packages whose root declares `main`, i.e. the games.
+// sim_host_gen: the editor's table of simulation hosts (docs/Plugins.md) — the
+// installed packages whose root declares `main`.
 //
 //   generate - moonhug/editor/sim_hosts_generated.odin: `sim_hosts`, one row per
-//              runnable package, each carrying that host's generated entry
-//              points (__update / __fixed_update from update_gen).
+//              runnable package with that host's __update / __fixed_update.
 //
-// Why this exists: every OTHER generated dispatcher is emitted per host, into
-// that host's own package, under a fixed name (`__update`, `phase_run`, …). That
-// works for the app binary, which IS one host. The editor is not a host and
-// links all of them, so "which host?" is a runtime choice there — and without a
-// table the editor can only hardcode one, which silently ticks the wrong game
-// once a second host exists.
-//
-// The table is the editor's only way to answer that question. Simulate
-// (editor/simulate.odin) reads the selected row's procs; the Sim Host dropdown
-// in the toolbar is this list.
+// Other dispatchers are emitted per host under a fixed name, unambiguous inside a
+// game binary. The editor is not a host and links all of them, so which host to
+// tick is a runtime choice: editor/simulate reads the selected row's procs, and
+// the Sim Host dropdown lists them.
 
 import "core:fmt"
 import "core:strings"
@@ -41,8 +34,8 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "// can tick. Entry points come from that host's update_generated.odin.\n\n")
 
 	for h in hosts {
-		// The collection maps `moonhug` to the moonhug/ folder, so the import is
-		// the scan path with that prefix dropped (same form update_gen emits).
+		// The `moonhug` collection maps to the moonhug/ folder, so the import is the
+		// scan path minus that prefix (the form update_gen emits).
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", h.name, h.name)
 	}
 	if len(hosts) > 0 do strings.write_string(&b, "\n")
@@ -54,9 +47,8 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tfixed_update: proc(dt: f32), // that host's __fixed_update\n")
 	strings.write_string(&b, "}\n\n")
 
-	// A slice literal rather than a map: the set is fixed at build time, tiny,
-	// and needs a stable order for the dropdown. Sorted by name by
-	// runnable_packages, so row 0 is a deterministic default.
+	// A slice, not a map: the set is fixed at build time and the dropdown needs a
+	// stable order. runnable_packages sorts by name, so row 0 is deterministic.
 	strings.write_string(&b, "sim_hosts := []Sim_Host{\n")
 	for h in hosts {
 		fmt.sbprintf(&b, "\t{{\"%s\", \"%s\", %s.__update, %s.__fixed_update},\n",

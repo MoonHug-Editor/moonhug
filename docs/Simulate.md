@@ -11,10 +11,8 @@ Play button and its run-config dropdown are pinned to the right — a different 
 
 ## Controls
 
-All three buttons are always visible and always enabled, and the cluster never
-changes width — a control never moves out from under the cursor. Unity does the
-same, because pressing Pause or Step while stopped is a valid way to *enter* a
-run.
+All three buttons are always visible and always enabled, and the cluster keeps its
+width. Pressing Pause or Step while stopped enters a run, as in Unity.
 
 | Button | Stopped | Running | Paused |
 | --- | --- | --- | --- |
@@ -25,16 +23,14 @@ run.
 Simulate becomes Stop while a run is active, the way Unity's Play button does.
 Pause shows a resume icon while held.
 
-**All three buttons turn orange while a simulation is active** — including when
-paused, since the scene is still in a simulated state that Stop will revert. The
-accent marks the editor's state, not which button is toggled, and the rest of the
-toolbar stays theme-neutral. Mistaking a running sim for a stopped editor is the
-expensive confusion, because Stop throws away everything the run touched.
+**All three buttons turn orange while a simulation is active**, paused included —
+the scene is still in a simulated state that Stop reverts. The accent marks the
+editor's state, not which button is toggled; the rest of the toolbar is
+theme-neutral.
 
 A **step** advances exactly one fixed tick and one frame tick, ignoring the
-frame-time accumulator — a step is a unit of simulation, not "however long you
-spent reading the inspector". A normal run uses the real accumulator, so gameplay
-speed matches standalone.
+frame-time accumulator. A normal run uses it, so gameplay speed matches
+standalone.
 
 ## Simulate vs Play
 
@@ -48,10 +44,9 @@ Two separate buttons, two different jobs.
 | Proves the game runs standalone | no | yes |
 | Start cost | instant | seconds |
 
-Simulate is for watching and poking at gameplay. Play is the shipping truth: it
-compiles the run config, launches the game on its own, and hands it the current
-scene state — so it is the one that catches anything working only because the
-editor set it up.
+Simulate is for watching and poking at gameplay. Play compiles the run config,
+launches the game on its own, and hands it the current scene state — the only path
+that shows the game running standalone.
 
 ## What Stop restores
 
@@ -74,11 +69,9 @@ Removed:
 material, a texture, or a settings asset, that change stays after Stop. The
 guarantee is "your scene is safe", not "nothing changed".
 
-This matches Unity, and is deliberate rather than a shortfall. Assets live on
-disk and are shared by every scene that references them, so they are not part of
-any one scene's state. Mutating a material at runtime is also legitimate
-gameplay, so refusing the write would break real games. Git is the restore path
-for an asset a run changed — the same answer Unity gives.
+Assets live on disk and are shared by every scene that references them, so they
+are not part of any one scene's state, and mutating one at runtime is legitimate
+gameplay. Git is the restore path for an asset a run changed, as in Unity.
 
 **Undo history from the run.** Edits made while simulating are dropped on Stop,
 along with anything the run recorded. Undo cannot step back into a world that
@@ -92,28 +85,25 @@ written to disk. Capture goes through the save path (`scene_serialize`), restore
 goes through the load path (`scene_load_single_bytes`).
 
 So "can Simulate revert correctly?" is the same question as "can the editor save
-and load a scene?" — which every save, every scene test, and
-`tests/resave_scenes` already exercise. There is no separate capture format that
-could quietly fall behind when a field is added.
+and load a scene?", which every save and `tests/resave_scenes` exercise. There is
+no separate capture format to fall behind when a field is added.
 
-Restore reuses the ordinary scene load, which means per-object teardown runs the
-same code path a manual delete does: `transform_destroy` fires each component's
-`on_destroy_*`, so subsystem state (box2d bodies, audio voices, animation
-runners) is released. Nothing about stopping a simulation is special-cased.
-`physics2d/tests` covers this for physics.
+Restore reuses the ordinary scene load, so per-object teardown runs the same code
+path a manual delete does: `transform_destroy` fires each component's
+`on_destroy_*`, releasing subsystem state (box2d bodies, audio voices, animation
+runners). `physics2d/tests` covers this for physics.
 
 Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`).
 Additively loaded scenes are untouched, and the restored scene keeps its slot and
 its active-scene status, so the editor carries on editing what it was editing.
 
-It is not atomic: once the old contents are dropped they are gone, so a snapshot
-that fails to load leaves the scene unrestored rather than reverted. That is
-reported as an error telling you to reopen the scene.
+It is not atomic: a snapshot that fails to load leaves the scene unrestored, and
+reports an error telling you to reopen it.
 
 ## Identity across the boundary
 
-Handles do not survive. A handle is a pool slot plus a generation, and restore
-re-creates every object, so any handle held across Stop would dangle.
+Handles do not survive: a handle is a pool slot plus a generation, and restore
+re-creates every object.
 
 Selection is therefore captured as **local ids** — the same stable ids the scene
 file stores. On Stop the selection is cleared first (while its handles are still
@@ -148,17 +138,14 @@ package into `editor/sim_hosts_generated.odin`, each carrying that host's
 `__update` / `__fixed_update`. Install a second game and it appears; there is
 nothing to register.
 
-Most repos have exactly one sim host. The dropdown is then **disabled but still
-visible**, reading out that game's name — so "which game am I simulating?" always
-has a visible answer, and the toolbar never changes shape when a second game
-arrives. The choice persists in `editor_settings.sim_host`, stored by name so it
-survives hosts being added or removed.
+With one sim host the dropdown is **disabled but still visible**, reading out that
+game's name. The choice persists in `editor_settings.sim_host`, stored by name so
+it survives hosts being added or removed.
 
-Why this needs choosing at all: every generated dispatcher is emitted *per host*
-under a fixed name, which is unambiguous inside a game binary — there is only one
-host in it. The editor is not a host and links all of them, so with two games
-installed both `app.__update` and `game2.__update` exist. Without a table the
-editor could only hardcode one, and would silently tick the wrong game.
+Every generated dispatcher is emitted *per host* under a fixed name, unambiguous
+inside a game binary. The editor is not a host and links all of them, so with two
+games both `app.__update` and `game2.__update` exist and the table is what picks
+between them.
 
 Changing host while a simulation runs stops it first, since ticking a scene with
 another game's update set is not a meaningful state.
@@ -185,11 +172,10 @@ engine.application_is_playing()  // gameplay advancing? true in the app, and in 
 paused - Unity's model, where a paused play mode still reports `isPlaying` and
 paused is a separate condition. Ask `sim_state()` if you need the distinction.
 
-These two are the whole vocabulary - there is no other mode flag. Editor-only
-work (nested-prefab resolve) gates on `application_is_editor()`, so it keeps
-running during Simulate. Undo gates on `application_is_playing()`, so it is
-unavailable for the whole simulation, paused included - everything a run touches
-is discarded on Stop anyway.
+These two are the whole vocabulary. Editor-only work (nested-prefab resolve) gates
+on `application_is_editor()`, so it keeps running during Simulate. Undo gates on
+`application_is_playing()`, so it is unavailable for the whole simulation, paused
+included.
 
 ## Play-mode phases
 
@@ -207,10 +193,10 @@ Simulate fires four phases, mirroring Unity's `PlayModeStateChange`:
 my_setup :: proc() { ... }
 ```
 
-`ExitingEditMode` fires only once the snapshot exists, so a Simulate that fails
-to start never emits an unpaired transition. `ExitingPlayMode` runs before the
-scene is touched, so subscribers can read the simulated world. Pause fires
-nothing - it is not a mode change.
+`ExitingEditMode` fires only once the snapshot exists, so a failed start emits no
+unpaired transition. `ExitingPlayMode` runs before the scene is touched, so
+subscribers can read the simulated world. Pause fires nothing, not being a mode
+change.
 
 Subscribers owned by a runnable package run only when that package is the active
 sim host.
@@ -222,8 +208,7 @@ editor/simulate/          state machine: start/stop/pause/step, host selection
 editor/simulate_view.odin toolbar, shortcuts, and the hooks into editor state
 ```
 
-The state machine is a subpackage with no imgui or view dependencies, so tests
-and tools drive a simulation without the editor root. Editor-owned state
-(selection, phase dispatch, the persisted host name) arrives through
-`simulate.Hooks`; unset hooks are no-ops, so a driver supplies only what it
-needs.
+The state machine is a subpackage with no imgui or view dependencies, so tests and
+tools drive a simulation without the editor root. Editor-owned state (selection,
+phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an
+unset hook is a no-op.

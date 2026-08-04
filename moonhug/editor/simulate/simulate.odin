@@ -1,14 +1,13 @@
 package simulate
 
 // In-editor simulation: tick the open scene in place, then roll it back.
-// UX and rationale: docs/Simulate.md.
+// See docs/Simulate.md.
 //
-// Logic only — no imgui, no view state, so tests and tools (MCP, scripting) can
-// drive a simulation without the editor root. The toolbar lives in
-// editor/simulate_view.odin.
+// Logic only, with no imgui or view dependency, so tests and tools drive a
+// simulation without the editor root. Toolbar: editor/simulate_view.odin.
 //
-// Revert rests on the snapshot being the same bytes a save writes: capture is
-// scene_serialize, restore is scene_reload_in_place_bytes.
+// The snapshot is the same bytes a save writes: capture is scene_serialize,
+// restore is scene_reload_in_place_bytes.
 
 import "core:strings"
 import "moonhug:engine"
@@ -23,7 +22,7 @@ State :: enum {
 }
 
 // One runnable package the editor can tick. Rows come from the generated table
-// (editor/sim_hosts_generated.odin) via set_hosts.
+// (editor/sim_hosts_generated.odin), passed to install.
 Host :: struct {
     name:         string,
     path:         string,
@@ -31,10 +30,9 @@ Host :: struct {
     fixed_update: proc(dt: f32),
 }
 
-// Editor-root state this package reaches through callbacks: selection, phase
-// dispatch and the persisted host name all live in the root, which cannot be
-// imported from here. Unset hooks make the corresponding step a no-op, so a
-// non-editor driver only supplies what it needs.
+// Editor-root state reached through callbacks: selection, phase dispatch and the
+// persisted host name live in the root, which this package cannot import. An
+// unset hook makes its step a no-op.
 Hooks :: struct {
     selection_ids:     proc() -> []engine.Local_ID, // ids to restore after Stop
     selection_clear:   proc(),
@@ -44,8 +42,8 @@ Hooks :: struct {
     host_name_store:   proc(name: string),
 }
 
-// Play-mode transitions, mirroring Unity's PlayModeStateChange. The root maps
-// these onto engine.Phase values.
+// Play-mode transitions (Unity's PlayModeStateChange). The root maps these onto
+// engine.Phase values.
 Phase :: enum {
     ExitingEditMode,
     EnteredPlayMode,
@@ -58,13 +56,13 @@ _hooks: Hooks
 _hosts: []Host
 _host: int
 
-// Snapshot of the scene at Start, in the on-disk scene format, held in memory.
+// The scene at Start, in the on-disk scene format, held in memory.
 _snapshot: []byte
 _scene: ^engine.Scene
 _scene_path: string
 
-// Ids of the objects selected at Start. Handles hold a pool slot + generation
-// and restore re-creates every object, so ids are what survives.
+// Ids of the objects selected at Start. Handles hold a pool slot + generation and
+// restore re-creates every object, so ids are what survives.
 _selection: [dynamic]engine.Local_ID
 
 // Set by step, consumed by the next tick: advance one frame, then hold.
@@ -99,15 +97,13 @@ is_active :: proc() -> bool {
     return _state != .Stopped
 }
 
-// True while the scene advances. Paused holds the world without leaving the
-// simulation.
+// True while the scene advances. Paused holds the world without leaving.
 is_ticking :: proc() -> bool {
     return _state == .Running
 }
 
 // Capture the open scene, then start ticking it. `paused` starts on frame zero
-// without advancing, so callers that want a held simulation get the transition
-// phases in the state they will observe.
+// without advancing, so the transition phases fire in the state callers observe.
 start :: proc(paused := false) -> bool {
     if _state != .Stopped do return false
     if !available() {
@@ -154,9 +150,9 @@ stop :: proc() {
     // gizmos let go before anything is destroyed.
     if _hooks.selection_clear != nil do _hooks.selection_clear()
 
-    // Scene-referencing undo entries go before the scene does, while the pointer
-    // is valid. This also drops what the run recorded: those commands target
-    // objects Stop replaces. Asset edits survive.
+    // Scene-referencing undo entries go while the scene pointer is still valid.
+    // This also drops what the run recorded, since those commands target objects
+    // Stop replaces. Asset edits survive.
     if us := undo.get(); us != nil {
         undo.purge_scenes(us)
     }
@@ -198,7 +194,7 @@ toggle_pause :: proc() {
 }
 
 // Advance one frame, then hold. From Running this pauses first; from Stopped it
-// enters a held simulation, so the button is also a way in.
+// enters a held simulation.
 step :: proc() {
     switch _state {
     case .Stopped:
@@ -211,12 +207,11 @@ step :: proc() {
     _step_pending = true
 }
 
-// Advance the simulation for one frame. Mirrors the app loop's order (fixed
-// ticks from the accumulator, then the frame tick).
+// Advance the simulation for one frame, in the app loop's order: fixed ticks from
+// the accumulator, then the frame tick.
 //
 // A step advances exactly one fixed tick and one frame tick, ignoring the
-// accumulator: a step is a unit of simulation, not elapsed wall clock. A normal
-// run uses the accumulator, so gameplay speed matches standalone.
+// accumulator. A normal run uses it, so gameplay speed matches standalone.
 tick :: proc(dt: f32) {
     if _state == .Stopped do return
 
@@ -257,8 +252,8 @@ host_is :: proc(name: string) -> bool {
     return ok && h.name == name
 }
 
-// A running simulation is stopped first: ticking a scene with another game's
-// update set is not a meaningful state.
+// Stops a running simulation first: a scene must not tick with another game's
+// update set.
 set_host :: proc(idx: int) {
     if idx < 0 || idx >= len(_hosts) do return
     if idx == _host do return
@@ -267,7 +262,7 @@ set_host :: proc(idx: int) {
     if _hooks.host_name_store != nil do _hooks.host_name_store(_hosts[idx].name)
 }
 
-// False when no runnable package is installed — the editor depends on none, so
+// False when no runnable package is installed. The editor depends on none, so
 // zero hosts is a valid build.
 available :: proc() -> bool {
     _, ok := active_host()
@@ -275,19 +270,16 @@ available :: proc() -> bool {
 }
 
 // Deserialize the snapshot back over the simulated scene, then re-resolve
-// selection by id.
+// selection by id. Scoped to that one scene, keeping its slot and active status;
+// additively loaded scenes are untouched.
 //
-// Scoped to that one scene: additively loaded scenes were never captured, and it
-// keeps the scene's slot and active status.
-//
-// On failure the target scene is already destroyed — restore cannot be atomic
-// once the old contents are gone.
+// Not atomic: on failure the target scene is already destroyed.
 _restore :: proc() -> bool {
     scene := engine.scene_reload_in_place_bytes(
         _scene, _snapshot, _scene.asset_guid, _scene_path)
     if scene == nil do return false
 
-    // Objects the game destroyed are not in the restored scene either, so they
+    // Objects the game destroyed are absent from the restored scene too, so they
     // do not resolve and drop out of the selection.
     if _hooks.selection_add_id != nil {
         for id in _selection do _hooks.selection_add_id(scene, id)
@@ -296,8 +288,8 @@ _restore :: proc() -> bool {
     return true
 }
 
-// engine.application_is_playing() answers "is gameplay advancing" without the
-// caller knowing about the editor. True from Start to Stop, paused included.
+// Feeds engine.application_is_playing(). True from Start to Stop, paused
+// included.
 _sync_context :: proc() {
     if uc := engine.ctx_get(); uc != nil {
         uc.is_playing = _state != .Stopped

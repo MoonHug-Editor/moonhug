@@ -10,9 +10,8 @@ import im "moonhug:external/odin-imgui"
 import "../engine"
 import sim "./simulate"
 
-// Simulate's accent. Orange marks an active simulation against an otherwise
-// theme-neutral toolbar: Stop reverts the scene, so mistaking a running
-// simulation for a stopped editor is the expensive confusion.
+// Simulate's accent, on every simulate button while a run is active. The rest of
+// the toolbar is theme-neutral.
 SIM_ACCENT         :: im.Vec4{0.85, 0.42, 0.10, 1.00}
 SIM_ACCENT_HOVERED :: im.Vec4{0.95, 0.52, 0.16, 1.00}
 SIM_ACCENT_ACTIVE  :: im.Vec4{0.72, 0.34, 0.06, 1.00}
@@ -109,8 +108,8 @@ _process_simulate_shortcuts :: proc() {
     }
 }
 
-// Simulate / Pause / Step, all three always visible and enabled: the cluster
-// keeps its width, and pressing Pause or Step while stopped enters a held run.
+// Simulate / Pause / Step, all three always visible and enabled. Pressing Pause
+// or Step while stopped enters a held run.
 _draw_simulate_controls :: proc() {
     style := im.GetStyle()
 
@@ -179,8 +178,8 @@ _draw_simulate_controls :: proc() {
     }
 }
 
-// Which game Simulate ticks. Always drawn, disabled when there is nothing to
-// choose (0 or 1 host): with one game it reads out that game's name.
+// Which game Simulate ticks. Always drawn, disabled below two hosts, where it
+// reads out the sole game's name.
 _draw_sim_host_combo :: proc() {
     host, has_host := sim.active_host()
     all := sim.hosts()
@@ -224,9 +223,8 @@ _sim_host_combo_width :: proc() -> f32 {
     return w + style.FramePadding.x * 2 + im.GetFrameHeight()
 }
 
-// `on` tints with the accent; off keeps the theme colours. Every simulate button
-// passes the same condition, so the cluster lights up together. Always pushes 3
-// colours — pair with _pop_sim_button_bg.
+// `on` tints with the accent, off keeps the theme colours. Every simulate button
+// passes the same condition. Pushes 3 colours: pair with _pop_sim_button_bg.
 _push_sim_button_bg :: proc(on: bool) {
     style := im.GetStyle()
     if on {

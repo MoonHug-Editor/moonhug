@@ -5,8 +5,8 @@ import sim "../editor/simulate"
 
 import "core:testing"
 
-// The Simulate state machine (docs/Simulate.md). Reachable because the logic
-// lives in editor/simulate, a subpackage with no imgui or view dependencies.
+// The Simulate state machine (docs/Simulate.md), reachable because the logic lives
+// in editor/simulate, a subpackage with no imgui or view dependencies.
 
 // A host whose ticks only count, so tests can assert what advanced.
 _sim_ticks: int
@@ -18,8 +18,8 @@ _count_update :: proc(dt: f32) { _sim_ticks += 1 }
 @(private="file")
 _count_fixed :: proc(dt: f32) { _sim_fixed_ticks += 1 }
 
-// Fixed storage: a package-level dynamic array outlives the per-test allocator
-// and reads stale after teardown frees it.
+// Fixed storage: a dynamic array here reads stale once teardown frees the
+// per-test allocator.
 @(private="file")
 _phase_buf: [16]sim.Phase
 @(private="file")
@@ -36,8 +36,8 @@ _record_phase :: proc(p: sim.Phase) {
 @(private="file")
 _phases_seen :: proc() -> []sim.Phase { return _phase_buf[:_phase_n] }
 
-// Installs a counting host and a phase recorder. Selection and settings hooks
-// stay nil: unset hooks are no-ops, which is what a non-editor driver does.
+// Installs a counting host and a phase recorder. Selection and settings hooks stay
+// nil, exercising the unset-hook no-op path.
 @(private="file")
 _sim_install :: proc(hosts: []sim.Host) {
 	_sim_ticks = 0
@@ -46,8 +46,8 @@ _sim_install :: proc(hosts: []sim.Host) {
 	sim.install(sim.Hooks{phase = _record_phase}, hosts)
 }
 
-// Drops the phase recorder before shutting the simulation down: shutdown stops a
-// still-active run, and those transitions belong to no test.
+// Drops the phase recorder before shutdown, whose stop() would record
+// transitions belonging to no test.
 @(private="file")
 _sim_uninstall :: proc() {
 	sim.install(sim.Hooks{}, sim.hosts())
@@ -91,7 +91,7 @@ test_sim_start_stop_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, sim.is_ticking())
 	testing.expect(t, engine.application_is_playing(), "playing while running")
 
-	// A second start is refused rather than re-capturing over the first snapshot.
+	// A second start is refused rather than re-capturing over the snapshot.
 	testing.expect(t, !sim.start(), "start is refused while active")
 
 	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH)); tr != nil {
@@ -114,8 +114,8 @@ test_sim_start_stop_round_trip :: proc(t: ^testing.T) {
 		"stop reverts the run's changes, got %v", rt.position)
 }
 
-// Pause holds the world without leaving the simulation: isPlaying stays true
-// (Unity's model), ticking stops.
+// Pause holds the world without leaving the simulation: isPlaying stays true,
+// ticking stops.
 @(test)
 test_sim_pause_holds_without_leaving :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
@@ -147,8 +147,8 @@ test_sim_pause_holds_without_leaving :: proc(t: ^testing.T) {
 	sim.stop()
 }
 
-// Step advances exactly one fixed tick and one frame tick, from either state,
-// and leaves the simulation held.
+// Step advances exactly one fixed and one frame tick from either state, and leaves
+// the simulation held.
 @(test)
 test_sim_step_advances_one_tick :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
@@ -209,7 +209,7 @@ test_sim_phase_order :: proc(t: ^testing.T) {
 	}
 }
 
-// With no host there is nothing to tick, so start refuses and emits no phases.
+// With no host there is nothing to tick: start refuses and emits no phases.
 @(test)
 test_sim_refuses_without_host :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
@@ -227,8 +227,8 @@ test_sim_refuses_without_host :: proc(t: ^testing.T) {
 		"a refused start fires no transitions, got %d", _phase_n)
 }
 
-// Host selection: persists by index, guards by name, and stops a running
-// simulation rather than swapping update sets mid-run.
+// Host selection: guards by name, and stops a running simulation rather than
+// swapping update sets mid-run.
 @(test)
 test_sim_host_selection :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
@@ -242,7 +242,7 @@ test_sim_host_selection :: proc(t: ^testing.T) {
 	})
 	defer _sim_uninstall()
 
-	// Row 0 is the default, so a repo with one game needs no setting.
+	// Row 0 is the default, so one game needs no setting.
 	h, ok := sim.active_host()
 	testing.expect(t, ok && h.name == "app", "defaults to the first host")
 	testing.expect(t, sim.host_is("app"))
