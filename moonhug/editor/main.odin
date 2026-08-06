@@ -126,6 +126,7 @@ main :: proc() {
     defer wnd.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs
     defer settings_shutdown()
+    defer thumbnails_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
         // Events feed both the editor input snapshot and imgui (the SDL3
@@ -145,6 +146,11 @@ main :: proc() {
         }
 
         if !gfx.frame_begin() do continue
+
+        // Thumbnail generation before ANY view draws: scene previews spawn and
+        // destroy live content within this call, so nothing leaks into the
+        // frame's visible rendering (thumbnails.odin).
+        thumbnails_tick()
 
         // Start ImGui frame
         im_sdlgpu.NewFrame()

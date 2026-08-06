@@ -69,6 +69,14 @@ material_shader_name :: proc(shader: Material_Shader) -> string {
 // custom shader's material block; extra_textures (temp-allocated, nil unless
 // the custom shader declares samplers past binding 0) holds bindings 1..N —
 // nil entries bind white.
+// Public resolve for preview/tooling draws (the editor's thumbnails): the
+// shader name, bound texture, tint, packed property block and extra textures
+// one gfx.draw_quad call needs. The returned slices are cached by the material
+// system — do not free.
+material_resolve_draw :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
+	return _resolve_material(guid)
+}
+
 _resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
 	shader = material_shader_name(.Unlit)
 	color = {1, 1, 1, 1}

@@ -377,7 +377,13 @@ _project_apply_rename :: proc() {
 // renamed. Returns true if it did (caller skips the normal row).
 _project_draw_rename_row :: proc(full_path: string) -> bool {
     if !_project_rename_active || _project_rename_path != full_path do return false
+    _project_rename_input(im.GetContentRegionAvail().x)
+    return true
+}
 
+// The rename InputText plus its focus/commit/cancel state machine, at the
+// given width — the row form and the grid cell form share it.
+_project_rename_input :: proc(width: f32) {
     // Keep requesting focus until it actually LANDS: a rename begun from a
     // context-menu item races the closing popup for focus — a single request
     // can lose it, and the frame after would read !IsItemActive as "clicked
@@ -385,7 +391,7 @@ _project_draw_rename_row :: proc(full_path: string) -> bool {
     if _project_rename_focus {
         im.SetKeyboardFocusHere(0)
     }
-    im.SetNextItemWidth(im.GetContentRegionAvail().x)
+    im.SetNextItemWidth(width)
     buf_cstr := cstring(raw_data(_project_rename_buf[:]))
     if im.InputText("##prj_rename", buf_cstr, c.size_t(len(_project_rename_buf)), {.EnterReturnsTrue, .AutoSelectAll}) {
         _project_apply_rename()
@@ -409,7 +415,6 @@ _project_draw_rename_row :: proc(full_path: string) -> bool {
             _project_rename_just_finished = true
         }
     }
-    return true
 }
 
 // Material icon glyph for a file (full path). Icons are merged into the base
@@ -754,6 +759,109 @@ draw_file_list :: proc(path: string) {
     }
 }
 
+// Unity's grid mode: a cell per item — thumbnail or scaled type glyph with the
+// name below — laid out in columns. Same order (directories first) and same
+// row list as the list form, so keyboard navigation and range select carry
+// over unchanged.
+_project_draw_grid :: proc(path: string, cell: f32) {
+    entries, ok := project_dir_listing(path)
+    if !ok {
+        im.Text("Failed to read directory")
+        return
+    }
+    pad := im.GetStyle().ItemSpacing.x
+    cols := max(int((im.GetContentRegionAvail().x + pad) / (cell + pad)), 1)
+    col := 0
+    for pass in 0 ..< 2 {
+        for entry in entries {
+            if entry.is_dir != (pass == 0) do continue
+            if !entry.is_dir {
+                if strings.has_prefix(entry.name, ".") do continue
+                if filepath.ext(entry.name) == ".meta" do continue
+            }
+            if col > 0 do im.SameLine()
+            entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
+            _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell)
+            col = (col + 1) % cols
+        }
+    }
+}
+
+_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32) {
+    append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
+
+    label_h := im.GetTextLineHeightWithSpacing()
+    im.PushIDStr(strings.clone_to_cstring(full_path, context.temp_allocator), nil)
+    defer im.PopID()
+
+    // In-place rename: the art block, then the input where the label goes.
+    if !_project_rename_in_tree && _project_rename_active && _project_rename_path == full_path {
+        pos := im.GetCursorScreenPos()
+        im.Dummy(im.Vec2{cell, cell})
+        _project_grid_cell_art(full_path, is_dir, pos, cell, false)
+        im.SetCursorScreenPos(im.Vec2{pos.x, pos.y + cell})
+        _project_rename_input(cell)
+        return
+    }
+
+    is_selected := _project_active_pane == .List && sel_proj_is(full_path)
+    dim := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
+
+    if im.Selectable("##cell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
+        _project_item_clicked(full_path, is_dir)
+    }
+    rect_min := im.GetItemRectMin()
+    if is_selected && _project_scroll_to_list_sel {
+        im.SetScrollHereY()
+        _project_scroll_to_list_sel = false
+    }
+    _project_item_ping_flash(full_path)
+    icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    drag_label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
+    _project_item_extras(full_path, is_dir, drag_label)
+
+    _project_grid_cell_art(full_path, is_dir, rect_min, cell, dim)
+
+    // Name centered under the art, clipped to the cell.
+    dl := im.GetWindowDrawList()
+    cdisplay := strings.clone_to_cstring(display, context.temp_allocator)
+    tsize := im.CalcTextSize(cdisplay)
+    text_col := im.GetStyleColorVec4(im.Col.Text)^
+    if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
+    im.DrawList_PushClipRect(dl,
+        rect_min, im.Vec2{rect_min.x + cell, rect_min.y + cell + label_h}, true)
+    im.DrawList_AddText(dl,
+        im.Vec2{rect_min.x + max((cell - tsize.x) * 0.5, 0), rect_min.y + cell},
+        im.GetColorU32ImVec4(text_col), cdisplay)
+    im.DrawList_PopClipRect(dl)
+}
+
+// The cell's art: the asset's thumbnail when the service has one, the type
+// glyph scaled to the cell otherwise.
+_project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec2, cell: f32, dim: bool) {
+    dl := im.GetWindowDrawList()
+    if !is_dir {
+        if id, ok := thumbnail_get(full_path); ok {
+            inset := cell * 0.04
+            im.DrawList_AddImage(dl,
+                im.TextureRef{_TexID = im.TextureID(uintptr(id))},
+                im.Vec2{rect_min.x + inset, rect_min.y + inset},
+                im.Vec2{rect_min.x + cell - inset, rect_min.y + cell - inset})
+            return
+        }
+    }
+    glyph := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    cglyph := strings.clone_to_cstring(glyph, context.temp_allocator)
+    text_col := im.GetStyleColorVec4(im.Col.Text)^
+    if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
+    im.PushFontFloat(nil, cell * 0.55)
+    gsize := im.CalcTextSize(cglyph)
+    im.DrawList_AddText(dl,
+        im.Vec2{rect_min.x + (cell - gsize.x) * 0.5, rect_min.y + (cell - gsize.y) * 0.5},
+        im.GetColorU32ImVec4(text_col), cglyph)
+    im.PopFont()
+}
+
 // One row of the right pane, shared by the folder listing and search results.
 // `display` is the shown text; `full_path` drives selection, rename,
 // activation, and the drag payload.
@@ -773,84 +881,95 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
         im.PushStyleColorImVec4(im.Col.Text, dimmed)
     }
 
-    // Single click selects (and loads .asset/import settings for files);
-    // double click enters folders / opens scenes. cmd/ctrl-click toggles the
-    // row in/out of the multi-selection, shift-click ranges from the active
-    // row (deferred — the row list is mid-build); toggling OFF skips the
-    // activation side effects below.
     if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
-        io := im.GetIO()
-        toggled_off := false
-        if io.KeyCtrl || io.KeySuper {
-            if sel_proj_is(full_path) {
-                sel_proj_remove(full_path)
-                _project_set_active(sel_proj_last())
-                toggled_off = true
-            } else {
-                sel_proj_add(full_path)
-                _project_set_active(full_path)
-            }
-        } else if io.KeyShift {
-            if _project_range_pending != "" do delete(_project_range_pending)
-            _project_range_pending = strings.clone(full_path)
-        } else {
-            _project_set_selected(full_path)
-        }
-        if !toggled_off && is_dir {
-            if im.IsMouseDoubleClicked(.Left) {
-                _project_enter_dir(full_path)
-            }
-        } else if !toggled_off {
-            _project_inspect_path(full_path)
-            if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
-                undo.purge_scenes(undo.get())
-                // Fresh navigation — reset the nested-scene edit stack.
-                hierarchy_edit_stack_clear()
-                scene := engine.scene_load_single_path(full_path)
-                engine.sm_scene_set_active(scene)
-            }
-        }
+        _project_item_clicked(full_path, is_dir)
     }
     if is_selected && _project_scroll_to_list_sel {
         im.SetScrollHereY()
         _project_scroll_to_list_sel = false
     }
-    // Ping flash: fading highlight over the row, selection untouched.
-    if _project_ping_path != "" && full_path == _project_ping_path {
-        remaining := _project_ping_deadline_ns - time.now()._nsec
-        if remaining <= 0 {
-            delete(_project_ping_path)
-            _project_ping_path = ""
-        } else {
-            if _project_scroll_to_ping {
-                im.SetScrollHereY()
-                _project_scroll_to_ping = false
-            }
-            alpha := 0.45 * f32(remaining) / f32(_PROJECT_PING_NS)
-            flash := im.GetColorU32ImVec4(im.Vec4{1.0, 0.8, 0.2, alpha})
-            im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetItemRectMin(), im.GetItemRectMax(), flash)
-        }
-    }
-    if !is_dir {
-        // Right-click also selects, so the context menu (which acts on the
-        // selected asset) targets the row under the cursor, not whatever was
-        // previously selected. Inside an existing multi-selection it only
-        // re-points the active file, keeping the set.
-        if im.IsItemHovered() && im.IsMouseClicked(.Right) {
-            if sel_proj_is(full_path) {
-                _project_set_active(full_path)
-            } else {
-                _project_set_selected(full_path)
-            }
-        }
-        if im.BeginDragDropSource({}) {
-            im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
-            im.Text(label)
-            im.EndDragDropSource()
-        }
-    }
+    _project_item_ping_flash(full_path)
+    _project_item_extras(full_path, is_dir, label)
     if dim_unknown {
         im.PopStyleColor()
+    }
+}
+
+// Single click selects (and loads .asset/import settings for files); double
+// click enters folders / opens scenes. cmd/ctrl-click toggles the item in/out
+// of the multi-selection, shift-click ranges from the active item (deferred —
+// the row list is mid-build); toggling OFF skips the activation side effects.
+// Shared by list rows and grid cells.
+_project_item_clicked :: proc(full_path: string, is_dir: bool) {
+    io := im.GetIO()
+    toggled_off := false
+    if io.KeyCtrl || io.KeySuper {
+        if sel_proj_is(full_path) {
+            sel_proj_remove(full_path)
+            _project_set_active(sel_proj_last())
+            toggled_off = true
+        } else {
+            sel_proj_add(full_path)
+            _project_set_active(full_path)
+        }
+    } else if io.KeyShift {
+        if _project_range_pending != "" do delete(_project_range_pending)
+        _project_range_pending = strings.clone(full_path)
+    } else {
+        _project_set_selected(full_path)
+    }
+    if !toggled_off && is_dir {
+        if im.IsMouseDoubleClicked(.Left) {
+            _project_enter_dir(full_path)
+        }
+    } else if !toggled_off {
+        _project_inspect_path(full_path)
+        if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
+            undo.purge_scenes(undo.get())
+            // Fresh navigation — reset the nested-scene edit stack.
+            hierarchy_edit_stack_clear()
+            scene := engine.scene_load_single_path(full_path)
+            engine.sm_scene_set_active(scene)
+        }
+    }
+}
+
+// Ping flash: fading highlight over the LAST item, selection untouched.
+_project_item_ping_flash :: proc(full_path: string) {
+    if _project_ping_path == "" || full_path != _project_ping_path do return
+    remaining := _project_ping_deadline_ns - time.now()._nsec
+    if remaining <= 0 {
+        delete(_project_ping_path)
+        _project_ping_path = ""
+        return
+    }
+    if _project_scroll_to_ping {
+        im.SetScrollHereY()
+        _project_scroll_to_ping = false
+    }
+    alpha := 0.45 * f32(remaining) / f32(_PROJECT_PING_NS)
+    flash := im.GetColorU32ImVec4(im.Vec4{1.0, 0.8, 0.2, alpha})
+    im.DrawList_AddRectFilled(im.GetWindowDrawList(), im.GetItemRectMin(), im.GetItemRectMax(), flash)
+}
+
+// Right-click select and the drag source, on the LAST item (files only).
+_project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstring) {
+    if is_dir do return
+    // Right-click also selects, so the context menu (which acts on the
+    // selected asset) targets the item under the cursor, not whatever was
+    // previously selected. Inside an existing multi-selection it only
+    // re-points the active file, keeping the set.
+    if im.IsItemHovered() && im.IsMouseClicked(.Right) {
+        if sel_proj_is(full_path) {
+            _project_set_active(full_path)
+        } else {
+            _project_set_selected(full_path)
+        }
+    }
+    if im.BeginDragDropSource({}) {
+        im.SetDragDropPayload("ASSET_PATH", raw_data(full_path), len(full_path))
+        im.Text(drag_label)
+        im.EndDragDropSource()
     }
 }
 
@@ -1026,6 +1145,11 @@ draw_project_view :: proc() {
             // The Packages node lists package roots, never the raw packages/
             // folder (which would expose code to the file list).
             _project_draw_packages_list()
+        } else if editor_settings.project_zoom > 0 {
+            // Unity's zoom model: the slider's low end is the list, anything
+            // above it a thumbnail grid scaling with the value.
+            cell := 40 + editor_settings.project_zoom * 56
+            _project_draw_grid(projectViewData.currentPath, cell)
         } else {
             draw_file_list(projectViewData.currentPath)
         }
@@ -1042,7 +1166,8 @@ draw_project_view :: proc() {
             _project_range_pending = ""
         }
 
-        // Status line at the bottom of the right pane.
+        // Status line at the bottom of the right pane, with Unity's zoom
+        // slider on the right: minimum = list view, above it a thumbnail grid.
         im.Separator()
         if query != "" {
             im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", result_count), context.temp_allocator))
@@ -1051,6 +1176,10 @@ draw_project_view :: proc() {
         } else {
             im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
         }
+        zoom_w: f32 = 48
+        im.SameLine(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
+        im.SetNextItemWidth(zoom_w)
+        im.DragFloat("##prj_zoom", &editor_settings.project_zoom, 0.01, 0, 1, "%.2f", {.ClampOnInput})
 
         im.EndChild()
 

@@ -38,6 +38,7 @@ EditorSettings :: struct {
     run_config:               string,                   // Play button's selected run config (view_toolbar.odin), "pkg/name"
     sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
     project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
+    project_zoom:             f32,                      // project view zoom: 0 = list, >0 = thumbnail grid (view_project.odin)
 }
 
 editor_settings: EditorSettings

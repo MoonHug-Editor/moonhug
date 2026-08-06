@@ -180,6 +180,36 @@ rt_imgui_id :: proc(rt: ^Render_Target) -> rawptr {
 	return rt.color
 }
 
+// Copies the RT's color into a new standalone sampled texture the caller owns
+// (texture_destroy frees it). The blit records on the FRAME command buffer, so
+// call it between passes, after the pass that filled the RT — ordering within
+// the frame makes the copy valid for any later sampling, imgui included.
+rt_snapshot :: proc(rt: ^Render_Target) -> ^Texture {
+	assert(!_pass.active, "rt_snapshot must run between passes")
+	if _gfx.cmd == nil do return nil
+	gpu_tex := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _gfx.swapchain_format,
+		usage                = {.SAMPLER, .COLOR_TARGET},
+		width                = u32(rt.width),
+		height               = u32(rt.height),
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	if gpu_tex == nil do return nil
+	sdl.BlitGPUTexture(_gfx.cmd, sdl.GPUBlitInfo{
+		source      = {texture = rt.color, w = u32(rt.width), h = u32(rt.height)},
+		destination = {texture = gpu_tex, w = u32(rt.width), h = u32(rt.height)},
+		load_op     = .DONT_CARE,
+		filter      = .LINEAR,
+	})
+	tex := new(Texture, runtime.default_allocator())
+	tex.gpu = gpu_tex
+	tex.width = rt.width
+	tex.height = rt.height
+	return tex
+}
+
 pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true

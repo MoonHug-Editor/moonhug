@@ -92,7 +92,7 @@ For more details see [Contribution](docs/Contribution.md)
   - inspector view - edit selected object in scene
   - project inspector - preview and edit selected asset in project
   - hierarchy view - shows scene tree
-  - project view - left pane is folder tree, right pane is selected folder contents
+  - project view - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp)
   - console view
   - scene view - view and edit scene contents
 

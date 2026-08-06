@@ -274,6 +274,13 @@ asset_db_get_root_info :: proc(guid: Asset_GUID) -> (Asset_Root_Info, bool) {
     return info, ok
 }
 
+// The refresh-tracked file stamp (mtime + size) — a cheap freshness key for
+// caches derived from asset contents (the editor's thumbnails).
+asset_db_get_stamp :: proc(path: string) -> (Asset_File_Stamp, bool) {
+    stamp, ok := asset_db.file_state[path]
+    return stamp, ok
+}
+
 _index_add :: proc(key: TypeKey, guid: Asset_GUID, local_id: Local_ID) {
     arr := asset_db.assets_by_type[key]
     append(&arr, PPtr{local_id = local_id, guid = guid})
