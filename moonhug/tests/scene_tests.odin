@@ -3791,3 +3791,66 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 	tc_mem.scene = fresh
 	check_live(t, &tc_mem.world, fresh)
 }
+
+// The editor's thumbnail service instantiates a browsed scene into a scratch
+// scene, renders, and destroys it again — every session, for every visible
+// scene asset. This cycles that exact data flow and requires it to be clean:
+// no NestedScene records left on the scratch scene (the "pruning orphan NS"
+// leak), no transform slot growth, and an active scene that still serializes.
+@(test)
+test_scratch_instantiate_destroy_cycles_clean :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	scratch := engine.scene_new()
+	engine.scene_ensure_root(scratch)
+	defer engine.scene_destroy(scratch)
+	root := engine.Transform_Handle(scratch.root.handle)
+
+	alive_transforms :: proc(w: ^engine.World) -> int {
+		n := 0
+		for i in 0 ..< len(w.transforms.slots) {
+			if w.transforms.slots[i].alive do n += 1
+		}
+		return n
+	}
+
+	guid_a, _ := engine.asset_db_get_guid("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	guid_dup, _ := engine.asset_db_get_guid("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	guid_v, _ := engine.asset_db_get_guid("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	guids := [3]engine.Asset_GUID{
+		engine.Asset_GUID(guid_a), engine.Asset_GUID(guid_dup), engine.Asset_GUID(guid_v),
+	}
+
+	baseline := -1
+	for i in 0 ..< 60 {
+		guid := guids[i % len(guids)]
+		spawned := engine.scene_instantiate_guid(guid, root)
+		testing.expect(t, spawned != {}, "instantiate should succeed")
+		if spawned == {} do return
+		engine.transform_destroy(spawned)
+
+		if baseline < 0 do baseline = alive_transforms(&tc_mem.world)
+		testing.expectf(t, len(scratch.nested_scenes) == 0,
+			"cycle %d: scratch scene should carry no NS records, has %d", i, len(scratch.nested_scenes))
+		if len(scratch.nested_scenes) != 0 do return
+	}
+	testing.expectf(t, alive_transforms(&tc_mem.world) == baseline,
+		"transform slots should be stable across cycles (baseline %d, now %d)",
+		baseline, alive_transforms(&tc_mem.world))
+
+	// The active scene is untouched by the scratch churn and still serializes.
+	testing.expect_value(t, len(tc_mem.scene.nested_scenes), 0)
+	data, sok := engine.scene_serialize(tc_mem.scene)
+	testing.expect(t, sok)
+	if sok do delete(data)
+	testing.expect(t, engine.sm_scene_get_active() == tc_mem.scene,
+		"scratch instantiate must never steal the active scene")
+}

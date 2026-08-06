@@ -132,6 +132,15 @@ scene_set_root :: proc(s: ^Scene, tH: Transform_Handle) {
 		transform_unlink_from_parent(tH)
 	}
 	t.parent = {}
+	// The root of `s` belongs to `s`. A transform created while another scene
+	// was active carries THAT scene's tag and lid registration (transform_new
+	// stamps the active scene) — without the migration, everything ever
+	// parented under this root lands its records in the wrong scene's
+	// metadata: the editor's thumbnail scratch scene leaked NestedScene
+	// records into the open scene this way.
+	if t.scene != s {
+		_transform_remap_scene(tH, s)
+	}
 	s.root = Ref{ pptr = PPtr{local_id = t.local_id}, handle = Handle(tH) }
 }
 

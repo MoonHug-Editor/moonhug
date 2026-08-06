@@ -3699,8 +3699,6 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
             renumber(w, Transform_Handle(child.handle), s)
         }
     }
-    renumber(w, host_tH, s)
-
     is_in_subtree :: proc(w: ^World, tH, root: Transform_Handle) -> bool {
         cur := tH
         for cur != {} {
@@ -3712,6 +3710,10 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
         return false
     }
 
+    // Drop the subtree's NS records BEFORE the renumber: host resolution is
+    // lid-based (host pegs, transform_parent), and the renumber re-mints every
+    // lid — after it, no record's host resolves and every record silently
+    // leaks into the scene's metadata.
     ns_lids := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
     for &ns in s.nested_scenes {
         host := nested_scene_resolve_host_handle(s, &ns)
@@ -3733,6 +3735,8 @@ nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
             break
         }
     }
+
+    renumber(w, host_tH, s)
 }
 
 nested_scene_remove :: proc(s: ^Scene, host_tH: Transform_Handle) {

@@ -770,7 +770,11 @@ _project_draw_grid :: proc(path: string, cell: f32) {
         return
     }
     pad := im.GetStyle().ItemSpacing.x
-    cols := max(int((im.GetContentRegionAvail().x + pad) / (cell + pad)), 1)
+    // Selectables expand their rect by half the item spacing on both sides —
+    // lead each row by that much so the first column's highlight and art stay
+    // inside the pane instead of clipping on its left border.
+    lead := pad * 0.5
+    cols := max(int((im.GetContentRegionAvail().x - lead + pad) / (cell + pad)), 1)
     col := 0
     for pass in 0 ..< 2 {
         for entry in entries {
@@ -780,6 +784,7 @@ _project_draw_grid :: proc(path: string, cell: f32) {
                 if filepath.ext(entry.name) == ".meta" do continue
             }
             if col > 0 do im.SameLine()
+            else do im.SetCursorPosX(im.GetCursorPosX() + lead)
             entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
             _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell)
             col = (col + 1) % cols
@@ -807,10 +812,13 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
     dim := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
 
+    // The cell origin is the CURSOR, not the Selectable's item rect — imgui
+    // expands a Selectable's rect by half the item spacing on both sides, so
+    // anchoring content on GetItemRectMin draws everything left of center.
+    rect_min := im.GetCursorScreenPos()
     if im.Selectable("##cell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
         _project_item_clicked(full_path, is_dir)
     }
-    rect_min := im.GetItemRectMin()
     if is_selected && _project_scroll_to_list_sel {
         im.SetScrollHereY()
         _project_scroll_to_list_sel = false
@@ -1138,7 +1146,11 @@ draw_project_view :: proc() {
         // Rows scroll in their own child so the status line below stays fixed
         // at the bottom of the pane.
         result_count := 0
-        im.BeginChild("FileRows", im.Vec2{0, -im.GetFrameHeightWithSpacing()}, {})
+        // Reserve the bottom strip exactly: spacing + separator + spacing +
+        // one FRAME-height line (the zoom widget makes the status line frame-
+        // sized — reserving only text height leaves the pane a few pixels
+        // short and grows a stray scrollbar).
+        im.BeginChild("FileRows", im.Vec2{0, -(im.GetFrameHeightWithSpacing() + im.GetStyle().ItemSpacing.y + 1)}, {})
         if query != "" {
             result_count = _project_draw_search_results(query)
         } else if projectViewData.currentPath == _PROJECT_PACKAGES_PATH {
@@ -1169,6 +1181,7 @@ draw_project_view :: proc() {
         // Status line at the bottom of the right pane, with Unity's zoom
         // slider on the right: minimum = list view, above it a thumbnail grid.
         im.Separator()
+        im.AlignTextToFramePadding() // center the text against the zoom widget
         if query != "" {
             im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", result_count), context.temp_allocator))
         } else if sel_proj_count() > 1 {
