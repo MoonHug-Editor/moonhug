@@ -1,3 +1,9 @@
+## [0.63.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.62.0...v0.63.0) (2026-08-06)
+
+### Features
+
+* apply overrides, project_settings feature ([4e60308](https://github.com/MoonHug-Editor/moonhug/commit/4e6030860b810eb1b27b86b9a9fd6259947133fc))
+
 ## [0.62.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.61.0...v0.62.0) (2026-08-04)
 
 ### Features
