@@ -7,4 +7,5 @@ import plugin_example_editor "../packages/plugin_example/editor"
 
 _register_editor_windows :: proc() {
 	__wnd.register("plugin_example", "Plugin Example", plugin_example_editor.plugin_example_window_draw, 420, 200)
+	__wnd.register("project_settings", "Project Settings", project_settings_window_draw, 720, 440)
 }

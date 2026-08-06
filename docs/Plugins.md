@@ -189,6 +189,36 @@ open_physics_debug :: proc() {
 - Declarations land in `editor/editor_windows_generated.odin`
   (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 
+## Project settings
+
+A plugin adds a section to the editor's Project Settings window
+(Edit ▸ Project Settings…) by marking a package-level struct var — the data IS
+the registration:
+
+```odin
+@(project_settings={name="Physics 2D"})
+physics2d_settings := Physics2D_Settings{gravity = GRAVITY_DEFAULT}
+
+Physics2D_Settings :: struct {
+    gravity: [2]f32,
+}
+```
+
+- The window draws the struct through the inspector, so `decor:` tags and
+  @(property_drawer) overrides apply — register a drawer for the settings TYPE
+  for a fully custom pane. Edits land in the global undo history.
+- Values persist to `ProjectSettings/<slug>.json` ("Physics 2D" →
+  `physics_2d.json`) whenever they change while the window is open, and again
+  at editor shutdown.
+- The OWNING system loads its own file (`engine.project_settings_load`) and
+  consumes the var by polling, so an edit — typed, undone or redone — reaches
+  the runtime with no editor coupling, and the game binary reads the same
+  files. `packages/physics2d/settings.odin` is the shipped example: the fixed
+  step syncs the var into the live box2d world.
+- Declarations land in `editor/project_settings_generated.odin`
+  (project_settings_gen). Built-in tabs use the same attribute — Time
+  (`engine.time_settings`, the fixed tick rate) is one.
+
 ## Assets
 
 The asset db walks `assets/` plus `packages/<name>/assets` per package.

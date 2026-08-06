@@ -134,6 +134,16 @@ __decorator__SpriteRenderer__color :: proc(ctx: ^DrawContext) {
 
 __decorators__SpriteRenderer: []DecoratorProc
 
+__decorator__Time_Settings__fixed_rate :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_min(ctx, 1)
+	} else {
+		decorator_min(ctx, 1)
+	}
+}
+
+__decorators__Time_Settings: []DecoratorProc
+
 __decorator__TweenRotateToLocal__rotation :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_euler(ctx)
@@ -202,6 +212,9 @@ init_decorators :: proc() {
 	__decorators__SpriteRenderer[4] = nil
 	__decorators__SpriteRenderer[5] = nil
 	decorator_registry[typeid_of(engine.SpriteRenderer)] = __decorators__SpriteRenderer
+	__decorators__Time_Settings = make([]DecoratorProc, 1)
+	__decorators__Time_Settings[0] = __decorator__Time_Settings__fixed_rate
+	decorator_registry[typeid_of(engine.Time_Settings)] = __decorators__Time_Settings
 	__decorators__TweenRotateToLocal = make([]DecoratorProc, 5)
 	__decorators__TweenRotateToLocal[0] = nil
 	__decorators__TweenRotateToLocal[1] = __decorator__TweenRotateToLocal__rotation

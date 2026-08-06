@@ -124,6 +124,8 @@ main :: proc() {
     defer simulate_shutdown()
     _register_editor_windows() // plugin @(editor_window) declarations
     defer wnd.shutdown()
+    _register_project_settings() // @(project_settings) vars -> settings tabs
+    defer settings_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
         // Events feed both the editor input snapshot and imgui (the SDL3
@@ -248,6 +250,7 @@ main :: proc() {
     }
 
     save_editor_settings()
+    settings_save_all()
 }
 
 @(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})

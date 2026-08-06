@@ -70,6 +70,8 @@ For more details see [Contribution](docs/Contribution.md)
 
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 
+- Project Settings window (Edit ▸ Project Settings…) - Unity-style section list + inspector pane, extensible via @(project_settings={name="Tab"}) on a package-level settings struct var; values persist to ProjectSettings/*.json, read by editor and game, edits undoable (see [Plugins](docs/Plugins.md))
+
 - union serialization (#no_nil unions only)
 
 - [Asset Pipeline](docs/AssetPipeline.md) - asset importer/loader
@@ -120,9 +122,6 @@ For more details see [Contribution](docs/Contribution.md)
   - consider making transform regular component (required or optional), node will hold all components
 
 - improve default types inspector UX
-
-- project settings window with left pane — tabs, right pane — settings of selected tabs
-  - @(project_settings="Left Pane Tab name") above IMGUI draw proc (draws right pane)
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 

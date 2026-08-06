@@ -31,10 +31,14 @@ _fixed: struct {
 }
 
 fixed_rate :: proc() -> f32 {
-	return _fixed.rate > 0 ? _fixed.rate : FIXED_RATE_DEFAULT
+	if _fixed.rate > 0 do return _fixed.rate
+	_ensure_time_settings()
+	if time_settings.fixed_rate > 0 do return time_settings.fixed_rate
+	return FIXED_RATE_DEFAULT
 }
 
-// Future ProjectSettings hook; takes effect at the next frame's accumulation.
+// Explicit override; wins over the Time project setting until reset to 0.
+// Takes effect at the next frame's accumulation.
 fixed_set_rate :: proc(hz: f32) {
 	_fixed.rate = hz
 }

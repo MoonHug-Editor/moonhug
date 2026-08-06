@@ -527,29 +527,32 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
 	                    undo.record_override_removed(ht.scene, host_tH, nested_lid, property_path, snap)
 	                    mark_inspector_changed()
 	                }
-	                // Apply bakes the override up into an ancestor prefab. Unity-
-	                // style: flat menu items (not a submenu), one per applicable
-	                // level, ordered shallowest -> deepest. The deepest level
-	                // (lvl 1) is the prefab that actually owns the field — applying
-	                // there bakes the value in ("Apply to Prefab X"); shallower
-	                // levels record an override in an intermediate prefab
-	                // ("Apply as Override in X").
-	                levels := engine.nested_scene_apply_levels(ht.scene, root_ns, root_target)
-	                for lvl := levels; lvl >= 1; lvl -= 1 {
+	                // Apply pushes the override into a prefab on the field's chain.
+	                // Unity-style: flat menu items (not a submenu), one per target,
+	                // ordered closest -> base. The last target is the file that
+	                // owns the row — applying there bakes the value in ("Apply to
+	                // Scene X"); every other target records an override in that
+	                // prefab ("Apply as Override in X"), variants included.
+	                targets := engine.nested_scene_apply_targets(ht.scene, root_ns, root_target)
+	                for tgt in targets {
 	                    name := "scene"
-	                    is_owner := false
-	                    if g, owner, gok := engine.nested_scene_apply_target_guid(ht.scene, root_ns, root_target, lvl); gok {
-	                        is_owner = owner
-	                        if p, pok := engine.asset_db_get_path(uuid.Identifier(g)); pok {
-	                            name = filepath.stem(p)
-	                        }
+	                    if p, pok := engine.asset_db_get_path(uuid.Identifier(tgt.guid)); pok {
+	                        name = filepath.stem(p)
 	                    }
-	                    text := is_owner \
+	                    text := tgt.is_owner \
 	                        ? fmt.tprintf("Apply to Scene '%s'", name) \
 	                        : fmt.tprintf("Apply as Override in '%s'", name)
 	                    label := strings.clone_to_cstring(text, context.temp_allocator)
 	                    if im.MenuItem(label, nil, false, true) {
-	                        engine.nested_scene_apply_override(ht.scene, root_ns, root_target, property_path, lvl)
+	                        entry := engine.Override_Entry{
+	                            kind          = .Modified_Property,
+	                            target        = root_target,
+	                            property_path = property_path,
+	                        }
+	                        root_host := engine.Transform_Handle(
+	                            engine.nested_scene_resolve_host_handle(ht.scene, root_ns))
+	                        engine.nested_scene_apply_entries(
+	                            ht.scene, root_host, tgt.guid, {entry})
 	                        mark_inspector_changed()
 	                    }
 	                }

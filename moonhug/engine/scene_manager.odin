@@ -218,8 +218,16 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
     if base_bytes == nil do return {}
     defer if base_owned do delete(base_bytes)
 
-    baked := nested_scene_apply_overrides(base_bytes, root_ns.overrides[:], guid)
-    baked_owned := raw_data(baked) != raw_data(base_bytes)
+    field_baked := nested_scene_apply_overrides(base_bytes, root_ns.overrides[:], guid)
+    field_owned := raw_data(field_baked) != raw_data(base_bytes)
+    defer if field_owned do delete(field_baked)
+
+    // The variant's structural records bake in like its field overrides, so
+    // top-level open matches what the flatten produces for nested use.
+    baked := nested_scene_apply_component_edits(
+        field_baked, root_ns.removed_components[:], root_ns.added_components[:], guid,
+        root_ns.removed_objects[:], root_ns.added_objects[:])
+    baked_owned := raw_data(baked) != raw_data(field_baked)
     defer if baked_owned do delete(baked)
 
     base_sf: SceneFile

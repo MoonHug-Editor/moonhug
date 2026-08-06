@@ -97,7 +97,9 @@ draw_all :: proc() {
 			im.SetNextWindowFocus()
 			_focus_request = -1
 		}
-		if im.Begin(r.title, &e.open) {
+		// NoCollapse matches every built-in view — no collapse triangle when
+		// the window floats.
+		if im.Begin(r.title, &e.open, {.NoCollapse}) {
 			r.draw()
 		}
 		im.End()

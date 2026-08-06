@@ -190,7 +190,9 @@ The inspector shows an **Overrides (N)** button on a prefab instance's root, lis
 
 Rows are selectable: click for one, ctrl/cmd for a set, shift for a range. **Revert All** and **Revert Selected** drop the chosen records. A field revert restores the base value as well as the record; the structural kinds only drop the record, and the instance rebuilds from its prefab on the next resolve.
 
-Per-field revert and Apply stay on the property context menu — the dropdown is the aggregate view, and does not apply.
+**Apply All** and **Apply Selected** each open a menu listing every prefab all the chosen overrides can go to, closest to base (`nested_scene_apply_targets_common`). Picking one runs the shared apply core — see "Apply" under Extras. Structural entries narrow the menu to the levels their record is expressible at, and Apply is not undoable (it rewrites prefab files).
+
+Per-field revert and Apply stay on the property context menu, listing the same target chain per field.
 - diff produces overrides between baked_base and working_copy
 - baked_base for a chain depth N walks all N prefab files in order, applying each file's NS-for-next-child overrides to the next prefab's raw — this is the "what this nested instance looks like before any root-scene overrides" baseline
 
@@ -223,19 +225,21 @@ On save, for the saved prefab's GUID:
 - Walk every loaded scene; for any chain that transitively contains the saved GUID (the saved prefab itself OR any inner NS whose `source_prefab` matches), find the native NS at the top of that chain and re-resolve it. The re-resolve rebuilds the subtree fresh with the new prefab content while preserving the open scene's overrides.
 
 ## Extras
-Apply override — pushes an override into an **ancestor prefab** (mirror of revert), then clears every shallower copy of it so the value becomes a shared baseline. `nested_scene_apply_override(s, ns, target, property_path, levels_up)`.
+Apply — pushes overrides into a prefab on their chain (mirror of revert), making the value a shared baseline. One core serves the per-field menu and the dropdown, for all five override kinds: `nested_scene_apply_entries(s, host_tH, target_guid, entries, which)`, with `nested_scene_apply_targets` / `nested_scene_apply_targets_common` producing the menu and `nested_scene_apply_override` as the one-field convenience.
 
-**Level model** (`levels_up`, 1-based, deepest→shallowest; `nested_scene_apply_levels` = max):
-- **Level 1 = bake into the field's OWNER prefab** — for a deep override the owner is `target.guid` (the leaf prefab the field lives in); for a shallow override it's `ns.source_prefab`. The value is patched DIRECTLY onto the owner's transform/component row (`is_direct`), so it stops being an override. Editor label: **"Apply to Scene '<owner>'"**.
-- **Levels 2..N = override RECORD in each ancestor** between the owner and the open scene's direct prefab (`ns.source_prefab`). Editor label: **"Apply as Override in '<ancestor>'"**.
-- A shallow override has exactly 1 level. A deep override over `n` hops has `n + 1` levels (1 owner-bake + n ancestor-overrides). The editor inlines a flat menu item per level (Unity-style, no submenu), ordered shallowest→deepest.
+**Target chain** (closest → base, `Apply_Target{guid, is_owner}`):
+- Each **nesting ancestor** between the instance and the subject holds the value as a record on its NS-for-child, lids un-projected per hop. Editor label: **"Apply as Override in '<ancestor>'"**.
+- Each **variant** in the subject's inheritance chain holds it as a record on its ROOT NS — a variant file has no base rows to patch. The record names the direct base with the lid unchanged (the flatten preserves base lids), exactly what the variant's own override capture writes. Same editor label.
+- The **owner** — the file that physically contains the row, found by walking nesting hops then descending the variant base chain until a file contains the subject lid — gets the value **baked** onto its own rows. Editor label: **"Apply to Scene '<owner>'"**.
+- Field overrides can target every level. A structural record is expressible only where the resolve-time bake can apply it: the owner, a variant root NS, or the nesting record whose direct child is the subject's prefab — the menu omits the rest.
 
-Clear-above-target — because precedence is **shallower-wins** (the root scene's deep override is applied last, on top of every inner-prefab bake; see `_nested_scene_apply_deep_overrides_live`), the same `(leaf-guid, property_path)` override is removed from every level strictly SHALLOWER than the chosen target (higher level number, closer to the root) and from the root scene NS — otherwise a surviving shallower override would shadow the freshly-applied value.
+Clear-above-target — precedence is **shallower-wins** (the root scene's deep override is applied last, on top of every inner-prefab bake; see `_nested_scene_apply_deep_overrides_live`), so the same field override is removed from every chain level strictly SHALLOWER than the chosen target (variant roots included) and from the root scene NS — otherwise a surviving shallower override would shadow the freshly-applied value.
 
-Mechanics:
-- All file mutations refresh `scene_lib` bytes only (`_prefab_bytes_refresh`); a single propagation pass per touched prefab runs at the END (after the root override is removed), via `prefab_propagate`. This avoids re-resolving against a half-applied world or re-distributing the not-yet-removed root override. Peers with their own explicit override keep it; peers without pick up the new baseline.
-- Atomic: if the chain can't be resolved or the target file write fails, nothing is changed (no data loss).
-- Caller caution: `nested_scene_apply_override` triggers propagation that re-resolves and may reallocate `s.nested_scenes`, so the passed `ns` pointer must not be reused afterward.
+Mechanics — each touched file is RESAVED once, not patched textually:
+- Bake edits run the same procs the resolve-time bake uses (`nested_scene_apply_overrides`, `nested_scene_apply_component_edits`) over the file bytes; record merges and clears mutate the typed `SceneFile`; the result marshals with `scene_serialize`'s options. The file comes out exactly as if the edit had been made while editing that prefab.
+- Every destination is resolved and every file's new bytes are computed before anything is written, so a failing entry aborts the whole apply with files and records untouched (§4.8 atomicity).
+- Writes refresh `scene_lib` bytes only (`_prefab_bytes_refresh`); after the root records drop, a single propagation pass per touched prefab runs via `prefab_propagate`. Peers with their own explicit override keep it; peers without pick up the new baseline.
+- Caller caution: apply triggers propagation that re-resolves and may reallocate `s.nested_scenes`, so `ns` pointers must not be reused afterward.
 
 Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
 - Removes the matching `(target, property_path)` entry from the root NS's overrides.
@@ -262,7 +266,9 @@ A **variant** is a scene asset that is a NestedScene over a base prefab — *bas
 Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target.local_id` no longer exists in the prefab named by `target.guid`, and prunes orphan stripped-placeholder breadcrumbs that no NS host or live `Ref_Local` references. Trade-off: cleaner files, no recovery on accidental field removal.
 
 # TODO
-- (done) prefab overrides — Apply menu matches Unity: flat context-menu items (no submenu), shallowest→deepest. There are N+1 targets for an override n hops deep: the deepest item bakes into the field's OWNER scene ("Apply to Scene '<owner>'"), and one item per ancestor records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins.
+- Apply is not undoable — it rewrites prefab files, and undo has no file-snapshot command. Unity's Apply is undoable; matching it needs before/after file bytes captured into an undo entry that rewrites the file and re-propagates on undo/redo.
+
+- (done) prefab overrides — Apply matches Unity: flat menu items (no submenu), one per chain target ordered closest→base, variant bases included. The deepest item bakes into the owner file ("Apply to Scene '<owner>'"), every other target records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins. The Overrides dropdown applies in bulk through the same targets.
 
 - reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it. This is specified behaviour, not a gap (§4.6).
 

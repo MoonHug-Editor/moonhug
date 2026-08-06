@@ -37,6 +37,7 @@ EditorSettings :: struct {
     snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
     run_config:               string,                   // Play button's selected run config (view_toolbar.odin), "pkg/name"
     sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
+    project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
 }
 
 editor_settings: EditorSettings

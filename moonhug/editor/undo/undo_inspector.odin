@@ -11,6 +11,7 @@ Inspector_Owner :: struct {
 	base_ptr:   rawptr,
 	asset_guid: engine.Asset_GUID, // .Asset only
 	asset_tid:  typeid,            // .Asset only: the document's typeid
+	raw_tid:    typeid,            // .Raw only: enables whole-owner snapshots (comp_snapshot)
 }
 
 @(private)
@@ -114,10 +115,14 @@ push_component_owner :: proc(comp_handle: engine.Handle) {
 	push_pooled_owner(comp_handle)
 }
 
-push_raw_owner :: proc(base_ptr: rawptr) {
+// A stable non-pooled struct (a project-settings var). `tid` may be nil:
+// field edits still undo (target_for_field), but whole-owner snapshots
+// (comp_snapshot — array ops, decorators, buttons) need the type.
+push_raw_owner :: proc(base_ptr: rawptr, tid: typeid) {
 	push_owner(Inspector_Owner{
 		kind = .Raw,
 		base_ptr = base_ptr,
+		raw_tid = tid,
 	})
 }
 
@@ -337,6 +342,9 @@ comp_snapshot :: proc() {
 	if o.kind == .Asset {
 		owner_tid = o.asset_tid
 		target = make_asset_target(o.asset_guid, o.asset_tid)
+	} else if o.kind == .Raw {
+		owner_tid = o.raw_tid
+		target = make_raw_target(o.base_ptr, 0, owner_tid)
 	} else {
 		owner_tid = engine.get_typeid_by_type_key(o.handle.type_key)
 		target = make_pooled_target(o.handle, 0, owner_tid)

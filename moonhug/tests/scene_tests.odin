@@ -1374,18 +1374,15 @@ test_apply_levels_owner_plus_ancestor :: proc(t: ^testing.T) {
 	testing.expect(t, owning_ns != nil)
 	if owning_ns == nil do return
 
-	// Two targets.
-	testing.expect_value(t, engine.nested_scene_apply_levels(reloaded, owning_ns, owning_target), 2)
-
-	// Level 1 = owner bake → TestC, flagged is_owner.
-	g1, owner1, ok1 := engine.nested_scene_apply_target_guid(reloaded, owning_ns, owning_target, 1)
-	testing.expect(t, ok1 && owner1)
-	testing.expect(t, g1 == guid_c_a, "level 1 should target the owner prefab TestC")
-
-	// Level 2 = ancestor override → TestB, NOT owner.
-	g2, owner2, ok2 := engine.nested_scene_apply_target_guid(reloaded, owning_ns, owning_target, 2)
-	testing.expect(t, ok2 && !owner2)
-	testing.expect(t, g2 == guid_b_a, "level 2 should target the ancestor prefab TestB")
+	// Two targets, closest first: TestB records an override, TestC (the owner)
+	// bakes the value in.
+	targets := engine.nested_scene_apply_targets(reloaded, owning_ns, owning_target)
+	testing.expect_value(t, len(targets), 2)
+	if len(targets) != 2 do return
+	testing.expect(t, !targets[0].is_owner && targets[0].guid == guid_b_a,
+		"closest target should be the ancestor prefab TestB, as a record")
+	testing.expect(t, targets[1].is_owner && targets[1].guid == guid_c_a,
+		"deepest target should be the owner prefab TestC, baked")
 }
 
 // Apply on one instance must update PEER instances' baselines via propagation.
@@ -1637,7 +1634,7 @@ test_apply_override_multilevel_grandparent :: proc(t: ^testing.T) {
 
 	// Three levels: lvl1 = bake into TestD (owner), lvl2 = override in TestC,
 	// lvl3 = override in TestB. We apply at lvl3 (the shallowest: TestB).
-	testing.expect_value(t, engine.nested_scene_apply_levels(reloaded, owning_ns, owning_target), 3)
+	testing.expect_value(t, len(engine.nested_scene_apply_targets(reloaded, owning_ns, owning_target)), 3)
 
 	ok := engine.nested_scene_apply_override(reloaded, owning_ns, owning_target, "position", 3)
 	testing.expect(t, ok, "levels_up=3 apply should succeed")
@@ -3143,4 +3140,654 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 
 	testing.expect(t, close_to(sr.color, COLOR_VARIANT),
 		fmt.tprintf("revert must restore the variant's CURRENT color %v, got %v", COLOR_VARIANT, sr.color))
+}
+
+// Bulk Apply (the Overrides dropdown): nested_scene_apply_entries pushes the
+// chosen entries into the instance's own Prefab Asset in one file write. This
+// covers the SHALLOW paths — a field override patches the prefab's own row, an
+// added component grafts into the prefab file — and the record drop afterward.
+// SpriteDup.scene is rewritten on disk, so it is snapshotted and restored.
+@(test)
+test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	prefab_path := "moonhug/tests/fixtures/nested_scenes/SpriteDup.scene"
+	orig, read_err := os.read_entire_file(prefab_path, context.allocator)
+	testing.expect(t, read_err == nil, "should read SpriteDup.scene fixture")
+	if read_err != nil do return
+	defer {
+		_ = os.write_entire_file(prefab_path, orig)
+		delete(orig)
+	}
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_apply_entries_shallow.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	sprite_tH := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
+	testing.expect(t, sprite_tH != {})
+	if sprite_tH == {} do return
+	st := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_tH))
+	if st == nil do return
+	inner_host := engine.transform_immediate_nested_host(sprite_tH)
+	if inner_host == {} do return
+
+	// One field override plus one added component, so one apply exercises both
+	// plan shapes.
+	want_pos := [3]f32{7, 8, 9}
+	st.position = want_pos
+	_, comp_ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+	testing.expect(t, comp_ptr != nil)
+	if comp_ptr == nil do return
+	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	_, rec_ok := engine.nested_scene_record_component_added(
+		loaded, inner_host, st.local_id, comp_lid, type_guid,
+		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+	)
+	testing.expect(t, rec_ok)
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	// The NS host is the materialized instance root — locate it through the
+	// native NS record rather than by name.
+	native_ns: ^engine.NestedScene
+	for &ns_it in reloaded.nested_scenes {
+		if ns_it.expand_parent == {} {
+			native_ns = &ns_it
+			break
+		}
+	}
+	testing.expect(t, native_ns != nil)
+	if native_ns == nil do return
+	host_h := engine.nested_scene_resolve_host_handle(reloaded, native_ns)
+	testing.expect(t, host_h != {})
+	if host_h == {} do return
+	host_tH := engine.Transform_Handle(host_h)
+
+	entries := engine.nested_scene_list_overrides(reloaded, native_ns)
+	testing.expect(t, len(entries) > 0, "the instance should list overrides to apply")
+	has_added := false
+	for e in entries do if e.kind == .Added_Component do has_added = true
+	testing.expect(t, has_added, "the added component should be listed")
+
+	// Every subject is shallow, so the common target list is exactly the
+	// instance's own prefab, as the owner.
+	targets := engine.nested_scene_apply_targets_common(reloaded, native_ns, entries)
+	testing.expect_value(t, len(targets), 1)
+	if len(targets) != 1 do return
+	testing.expect(t, targets[0].is_owner)
+
+	ok := engine.nested_scene_apply_entries(reloaded, host_tH, targets[0].guid, entries)
+	testing.expect(t, ok, "apply entries should succeed")
+
+	// The records are gone from the (re-found — apply propagates) root NS.
+	ns_after := engine.scene_find_nested_scene_for_host(reloaded, host_tH)
+	testing.expect(t, ns_after != nil)
+	if ns_after != nil {
+		testing.expect_value(t, len(ns_after.overrides), 0)
+		testing.expect_value(t, len(ns_after.added_components), 0)
+	}
+
+	// SpriteDup.scene on disk carries both: the position on SpriteA's row
+	// (lid 2) and the component row linked under it.
+	sf, fok := engine.scene_file_load(prefab_path)
+	testing.expect(t, fok)
+	if fok {
+		pos_ok := false
+		comp_link := 0
+		for tr in sf.transforms {
+			if tr.local_id != 2 do continue
+			pos_ok = tr.position == want_pos
+			for c in tr.components {
+				if c.local_id == comp_lid do comp_link += 1
+			}
+			break
+		}
+		testing.expect(t, pos_ok, "SpriteA's prefab row should carry the applied position")
+		testing.expect_value(t, comp_link, 1)
+		engine.scene_file_destroy(&sf)
+	}
+
+	// Save + reload: the component is prefab content now — present exactly once,
+	// with no addition record re-invented.
+	testing.expect(t, engine.scene_save(reloaded, tc_mem.path))
+	{
+		sf2, f2 := engine.scene_file_load(tc_mem.path)
+		testing.expect(t, f2)
+		if f2 {
+			count := 0
+			for ns_f in sf2.nested_scenes do count += len(ns_f.added_components)
+			testing.expect_value(t, count, 0)
+			engine.scene_file_destroy(&sf2)
+		}
+	}
+	engine.sm_scene_destroy_or_unload(reloaded)
+	engine.sm_scene_set_active(nil)
+	r2 := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, r2 != nil)
+	if r2 == nil do return
+	tc_mem.scene = r2
+	sprite2 := find_transform_named(&tc_mem.world, r2, "SpriteA", true)
+	testing.expect(t, sprite2 != {})
+	if sprite2 != {} {
+		st2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite2))
+		n_groups := 0
+		for c in st2.components {
+			if c.handle.type_key == .SpriteSortingGroup do n_groups += 1
+		}
+		testing.expect_value(t, n_groups, 1)
+		testing.expect_value(t, st2.position, want_pos)
+	}
+}
+
+// Bulk Apply, DEEP structural path: a component added to TransformC (inside
+// TestC, one hop below the instance's prefab TestB) applies into TestB.scene as
+// an added_components record on its NS-for-TestC — the record the file would
+// carry had the component been added while editing TestB. The peer instance
+// (TestB2, same prefab) picks it up through propagation. TestB.scene is
+// rewritten on disk, so it is snapshotted and restored.
+@(test)
+test_apply_entries_deep_added_component :: proc(t: ^testing.T) {
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	testb_path := "moonhug/tests/fixtures/nested_scenes/TestB.scene"
+	orig, read_err := os.read_entire_file(testb_path, context.allocator)
+	testing.expect(t, read_err == nil, "should read TestB.scene fixture")
+	if read_err != nil do return
+	defer {
+		_ = os.write_entire_file(testb_path, orig)
+		delete(orig)
+	}
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_apply_entries_deep.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/TestA.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host_b1 := find_transform_named(&tc_mem.world, loaded, "TestB", false)
+	tc_under_b1 := find_nested_named_under_host(&tc_mem.world, loaded, host_b1, "TransformC")
+	testing.expect(t, host_b1 != {} && tc_under_b1 != {})
+	if host_b1 == {} || tc_under_b1 == {} do return
+	t_c := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_under_b1))
+	if t_c == nil do return
+	inner_host := engine.transform_immediate_nested_host(tc_under_b1)
+	if inner_host == {} do return
+
+	_, comp_ptr := engine.transform_add_comp(tc_under_b1, .SpriteSortingGroup)
+	testing.expect(t, comp_ptr != nil)
+	if comp_ptr == nil do return
+	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	_, rec_ok := engine.nested_scene_record_component_added(
+		loaded, inner_host, t_c.local_id, comp_lid, type_guid,
+		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+	)
+	testing.expect(t, rec_ok)
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	host_b2 := find_transform_named(&tc_mem.world, reloaded, "TestB", false)
+	testing.expect(t, host_b2 != {})
+	if host_b2 == {} do return
+	ns := engine.scene_find_nested_scene_for_host(reloaded, host_b2)
+	testing.expect(t, ns != nil)
+	if ns == nil do return
+
+	// Apply ONLY the added-component entry, so the fixture's own field
+	// overrides stay on the instance.
+	entries := engine.nested_scene_list_overrides(reloaded, ns)
+	which := make(map[int]bool, 0, context.temp_allocator)
+	for e, i in entries {
+		if e.kind == .Added_Component do which[i] = true
+	}
+	testing.expect_value(t, len(which), 1)
+	if len(which) != 1 do return
+
+	// Structural targets for a 1-hop subject: the record in TestB, or baked
+	// into the owner TestC. Apply as a record in TestB (the closest).
+	targets := engine.nested_scene_apply_targets_common(reloaded, ns, entries, &which)
+	testing.expect_value(t, len(targets), 2)
+	if len(targets) != 2 do return
+	testing.expect(t, !targets[0].is_owner && targets[1].is_owner)
+
+	ok := engine.nested_scene_apply_entries(reloaded, host_b2, targets[0].guid, entries, &which)
+	testing.expect(t, ok, "deep structural apply should succeed")
+
+	ns_after := engine.scene_find_nested_scene_for_host(reloaded, host_b2)
+	testing.expect(t, ns_after != nil)
+	if ns_after != nil {
+		testing.expect_value(t, len(ns_after.added_components), 0)
+	}
+
+	// TestB.scene's NS-for-TestC now carries the record, owner un-projected to
+	// TransformC's lid in TestC's own namespace (2).
+	guid_c, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
+	guid_c_a := engine.Asset_GUID(guid_c)
+	sf, fok := engine.scene_file_load(testb_path)
+	testing.expect(t, fok)
+	if fok {
+		found := false
+		for ns_f in sf.nested_scenes {
+			if ns_f.source_prefab != guid_c_a do continue
+			for ac in ns_f.added_components {
+				testing.expect_value(t, ac.owner.guid, guid_c_a)
+				testing.expect_value(t, ac.owner.local_id, engine.Local_ID(2))
+				testing.expect_value(t, ac.local_id, comp_lid)
+				found = true
+			}
+		}
+		testing.expect(t, found, "TestB.scene NS-for-TestC should gain the added_components record")
+		engine.scene_file_destroy(&sf)
+	}
+
+	// Propagation re-resolves both TestB instances — the PEER (TestB2) now has
+	// the component too, since the record is shared prefab state.
+	check_instance :: proc(t: ^testing.T, world: ^engine.World, s: ^engine.Scene, host_name: string) {
+		host := find_transform_named(world, s, host_name, false)
+		tc := find_nested_named_under_host(world, s, host, "TransformC")
+		testing.expectf(t, host != {} && tc != {}, "%s/TransformC should be live", host_name)
+		if tc == {} do return
+		tct := engine.pool_get(&world.transforms, engine.Handle(tc))
+		n := 0
+		for c in tct.components {
+			if c.handle.type_key == .SpriteSortingGroup do n += 1
+		}
+		testing.expectf(t, n == 1, "%s/TransformC should carry the component once, has %d", host_name, n)
+	}
+	check_instance(t, &tc_mem.world, reloaded, "TestB")
+	check_instance(t, &tc_mem.world, reloaded, "TestB2")
+}
+
+// Apply through a VARIANT chain, closest target: HostVariant hosts VariantC
+// (a variant of TestC). A field override on variant content lists two targets —
+// the variant (as a record on its root NS, since its file has no base rows)
+// and the base TestC (baked). Applying to the VARIANT replaces its root NS's
+// existing override for the same field. VariantC.scene is rewritten on disk,
+// so it is snapshotted and restored.
+@(test)
+test_apply_variant_record_target :: proc(t: ^testing.T) {
+
+	variant_path := "moonhug/tests/fixtures/nested_scenes/VariantC.scene"
+	orig, read_err := os.read_entire_file(variant_path, context.allocator)
+	testing.expect(t, read_err == nil)
+	if read_err != nil do return
+	defer {
+		_ = os.write_entire_file(variant_path, orig)
+		delete(orig)
+	}
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_apply_variant_rec.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// AFTER setup: the asset index parses typed SceneFiles, which needs the
+	// Asset_GUID unmarshaler serialization.init (inside setup) registers —
+	// indexing before that silently yields no root_info, and the variant
+	// chain below depends on it.
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host_v := find_transform_named(&tc_mem.world, loaded, "VariantHost", false)
+	tc_v := find_nested_named_under_host(&tc_mem.world, loaded, host_v, "TransformC_Variant")
+	testing.expect(t, host_v != {} && tc_v != {})
+	if host_v == {} || tc_v == {} do return
+
+	t_c := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v))
+	if t_c == nil do return
+	want_pos := [3]f32{200, 300, 400}
+	t_c.position = want_pos
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	guid_v, _ := uuid.read("ba583c80-c557-4eae-8a6e-fa440602cef2")
+	guid_v_a := engine.Asset_GUID(guid_v)
+	guid_c, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
+	guid_c_a := engine.Asset_GUID(guid_c)
+
+	owning_ns: ^engine.NestedScene
+	owning_target: engine.PPtr
+	vr_outer: for &ns_iter in reloaded.nested_scenes {
+		if ns_iter.expand_parent != {} do continue
+		for ov in ns_iter.overrides {
+			if strings.compare(ov.property_path, "position") == 0 && override_vec3_matches(ov.value, want_pos) {
+				owning_ns = &ns_iter
+				owning_target = ov.target
+				break vr_outer
+			}
+		}
+	}
+	testing.expect(t, owning_ns != nil)
+	if owning_ns == nil do return
+
+	// Two targets, closest first: the variant (record), then the base (owner).
+	targets := engine.nested_scene_apply_targets(reloaded, owning_ns, owning_target)
+	testing.expect_value(t, len(targets), 2)
+	if len(targets) != 2 do return
+	testing.expect(t, !targets[0].is_owner && targets[0].guid == guid_v_a,
+		"closest target should be the variant, as a record")
+	testing.expect(t, targets[1].is_owner && targets[1].guid == guid_c_a,
+		"deepest target should be the base TestC, baked")
+
+	testing.expect(t, engine.nested_scene_apply_override(reloaded, owning_ns, owning_target, "position", 2))
+
+	// VariantC.scene's root NS holds the applied value — REPLACING its previous
+	// position override for the same row, not duplicating it.
+	sf, fok := engine.scene_file_load(variant_path)
+	testing.expect(t, fok)
+	if fok {
+		n_pos := 0
+		val_ok := false
+		for ns_f in sf.nested_scenes {
+			if ns_f.transform_parent != 0 do continue
+			for ov in ns_f.overrides {
+				if ov.target.local_id != 2 || strings.compare(ov.property_path, "position") != 0 do continue
+				n_pos += 1
+				val_ok = override_vec3_matches(ov.value, want_pos)
+			}
+		}
+		testing.expect_value(t, n_pos, 1)
+		testing.expect(t, val_ok, "the variant's position override should hold the applied value")
+		engine.scene_file_destroy(&sf)
+	}
+
+	// Live value survives propagation (it is the new baseline through the variant).
+	host_v2 := find_transform_named(&tc_mem.world, reloaded, "VariantHost", false)
+	tc_v2 := find_nested_named_under_host(&tc_mem.world, reloaded, host_v2, "TransformC_Variant")
+	testing.expect(t, tc_v2 != {})
+	if tc_v2 != {} {
+		t_c2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v2))
+		if t_c2 != nil do testing.expect_value(t, t_c2.position, want_pos)
+	}
+}
+
+// Apply through a VARIANT chain, owner target: the value bakes into the base
+// TestC's own row, and the variant's SHADOWING override for the same field is
+// cleared (shallower-wins would mask the bake otherwise). Both files are
+// rewritten on disk, so both are snapshotted and restored.
+@(test)
+test_apply_variant_owner_bake_clears_variant_override :: proc(t: ^testing.T) {
+
+	variant_path := "moonhug/tests/fixtures/nested_scenes/VariantC.scene"
+	base_path := "moonhug/tests/fixtures/nested_scenes/TestC.scene"
+	orig_v, ev := os.read_entire_file(variant_path, context.allocator)
+	orig_c, ec := os.read_entire_file(base_path, context.allocator)
+	testing.expect(t, ev == nil && ec == nil)
+	if ev != nil || ec != nil do return
+	defer {
+		_ = os.write_entire_file(variant_path, orig_v); delete(orig_v)
+		_ = os.write_entire_file(base_path, orig_c); delete(orig_c)
+	}
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_apply_variant_own.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// AFTER setup: the asset index parses typed SceneFiles, which needs the
+	// Asset_GUID unmarshaler serialization.init (inside setup) registers —
+	// indexing before that silently yields no root_info, and the variant
+	// chain below depends on it.
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host_v := find_transform_named(&tc_mem.world, loaded, "VariantHost", false)
+	tc_v := find_nested_named_under_host(&tc_mem.world, loaded, host_v, "TransformC_Variant")
+	testing.expect(t, host_v != {} && tc_v != {})
+	if host_v == {} || tc_v == {} do return
+
+	t_c := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v))
+	if t_c == nil do return
+	want_pos := [3]f32{111, 222, 333}
+	t_c.position = want_pos
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	owning_ns: ^engine.NestedScene
+	owning_target: engine.PPtr
+	vo_outer: for &ns_iter in reloaded.nested_scenes {
+		if ns_iter.expand_parent != {} do continue
+		for ov in ns_iter.overrides {
+			if strings.compare(ov.property_path, "position") == 0 && override_vec3_matches(ov.value, want_pos) {
+				owning_ns = &ns_iter
+				owning_target = ov.target
+				break vo_outer
+			}
+		}
+	}
+	testing.expect(t, owning_ns != nil)
+	if owning_ns == nil do return
+
+	// Level 1 = the owner (base TestC).
+	testing.expect(t, engine.nested_scene_apply_override(reloaded, owning_ns, owning_target, "position"))
+
+	// TestC.scene's own TransformC row carries the baked value.
+	{
+		sf, fok := engine.scene_file_load(base_path)
+		testing.expect(t, fok)
+		if fok {
+			found := false
+			for tr in sf.transforms {
+				if tr.local_id != 2 do continue
+				testing.expect_value(t, tr.position, want_pos)
+				found = true
+			}
+			testing.expect(t, found)
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// VariantC.scene's shadowing position override is GONE (its name override stays).
+	{
+		sf, fok := engine.scene_file_load(variant_path)
+		testing.expect(t, fok)
+		if fok {
+			has_pos := false
+			has_name := false
+			for ns_f in sf.nested_scenes {
+				if ns_f.transform_parent != 0 do continue
+				for ov in ns_f.overrides {
+					if ov.target.local_id != 2 do continue
+					if strings.compare(ov.property_path, "position") == 0 do has_pos = true
+					if strings.compare(ov.property_path, "name") == 0 do has_name = true
+				}
+			}
+			testing.expect(t, !has_pos, "owner bake must clear the variant's shadowing override")
+			testing.expect(t, has_name, "unrelated variant overrides must survive")
+			engine.scene_file_destroy(&sf)
+		}
+	}
+
+	// Live value survives (baseline now comes from the base row).
+	host_v2 := find_transform_named(&tc_mem.world, reloaded, "VariantHost", false)
+	tc_v2 := find_nested_named_under_host(&tc_mem.world, reloaded, host_v2, "TransformC_Variant")
+	testing.expect(t, tc_v2 != {})
+	if tc_v2 != {} {
+		t_c2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v2))
+		if t_c2 != nil do testing.expect_value(t, t_c2.position, want_pos)
+	}
+}
+
+// STRUCTURAL apply into a variant: a component added on variant-instance
+// content applies as an added_components record on the variant's root NS, and
+// the flatten bakes it — the component survives propagation and a fresh load.
+// VariantC.scene is rewritten on disk, so it is snapshotted and restored.
+@(test)
+test_apply_variant_structural_record :: proc(t: ^testing.T) {
+
+	variant_path := "moonhug/tests/fixtures/nested_scenes/VariantC.scene"
+	orig, read_err := os.read_entire_file(variant_path, context.allocator)
+	testing.expect(t, read_err == nil)
+	if read_err != nil do return
+	defer {
+		_ = os.write_entire_file(variant_path, orig)
+		delete(orig)
+	}
+
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_apply_variant_struct.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	// AFTER setup: the asset index parses typed SceneFiles, which needs the
+	// Asset_GUID unmarshaler serialization.init (inside setup) registers —
+	// indexing before that silently yields no root_info, and the variant
+	// chain below depends on it.
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	loaded := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, loaded != nil)
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	host_v := find_transform_named(&tc_mem.world, loaded, "VariantHost", false)
+	tc_v := find_nested_named_under_host(&tc_mem.world, loaded, host_v, "TransformC_Variant")
+	testing.expect(t, host_v != {} && tc_v != {})
+	if host_v == {} || tc_v == {} do return
+	st := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tc_v))
+	if st == nil do return
+	inner_host := engine.transform_immediate_nested_host(tc_v)
+	if inner_host == {} do return
+
+	_, comp_ptr := engine.transform_add_comp(tc_v, .SpriteSortingGroup)
+	testing.expect(t, comp_ptr != nil)
+	if comp_ptr == nil do return
+	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	_, rec_ok := engine.nested_scene_record_component_added(
+		loaded, inner_host, st.local_id, comp_lid, type_guid,
+		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+	)
+	testing.expect(t, rec_ok)
+
+	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
+	reloaded := engine.scene_load_single_path(tc_mem.path)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc_mem.scene = reloaded
+
+	host_v2 := find_transform_named(&tc_mem.world, reloaded, "VariantHost", false)
+	ns := engine.scene_find_nested_scene_for_host(reloaded, host_v2)
+	testing.expect(t, ns != nil)
+	if ns == nil do return
+
+	entries := engine.nested_scene_list_overrides(reloaded, ns)
+	which := make(map[int]bool, 0, context.temp_allocator)
+	for e, i in entries {
+		if e.kind == .Added_Component do which[i] = true
+	}
+	testing.expect_value(t, len(which), 1)
+	if len(which) != 1 do return
+
+	// Structural targets: the variant's root NS record, or baked into TestC.
+	// Apply to the VARIANT (closest).
+	guid_v, _ := uuid.read("ba583c80-c557-4eae-8a6e-fa440602cef2")
+	guid_v_a := engine.Asset_GUID(guid_v)
+	targets := engine.nested_scene_apply_targets_common(reloaded, ns, entries, &which)
+	testing.expect_value(t, len(targets), 2)
+	if len(targets) != 2 do return
+	testing.expect(t, !targets[0].is_owner && targets[0].guid == guid_v_a)
+
+	ok := engine.nested_scene_apply_entries(reloaded, host_v2, targets[0].guid, entries, &which)
+	testing.expect(t, ok, "structural apply into the variant should succeed")
+
+	// VariantC.scene's root NS carries the record, owner in the BASE's namespace.
+	guid_c, _ := uuid.read("ee7d67e6-2c06-41a5-a1f2-3b021b642202")
+	guid_c_a := engine.Asset_GUID(guid_c)
+	sf, fok := engine.scene_file_load(variant_path)
+	testing.expect(t, fok)
+	if fok {
+		found := false
+		for ns_f in sf.nested_scenes {
+			if ns_f.transform_parent != 0 do continue
+			for ac in ns_f.added_components {
+				testing.expect_value(t, ac.owner.guid, guid_c_a)
+				testing.expect_value(t, ac.owner.local_id, engine.Local_ID(2))
+				testing.expect_value(t, ac.local_id, comp_lid)
+				found = true
+			}
+		}
+		testing.expect(t, found, "the variant's root NS should gain the added_components record")
+		engine.scene_file_destroy(&sf)
+	}
+
+	// The record is gone from the host scene's NS, and the component is still
+	// live after propagation — the flatten bakes it as variant content now.
+	ns_after := engine.scene_find_nested_scene_for_host(reloaded, host_v2)
+	testing.expect(t, ns_after != nil)
+	if ns_after != nil do testing.expect_value(t, len(ns_after.added_components), 0)
+
+	check_live :: proc(t: ^testing.T, world: ^engine.World, s: ^engine.Scene) {
+		hv := find_transform_named(world, s, "VariantHost", false)
+		tc := find_nested_named_under_host(world, s, hv, "TransformC_Variant")
+		testing.expect(t, tc != {})
+		if tc == {} do return
+		tct := engine.pool_get(&world.transforms, engine.Handle(tc))
+		n := 0
+		for c in tct.components {
+			if c.handle.type_key == .SpriteSortingGroup do n += 1
+		}
+		testing.expectf(t, n == 1, "TransformC_Variant should carry the component once, has %d", n)
+	}
+	check_live(t, &tc_mem.world, reloaded)
+
+	// And from a completely fresh load of the host scene.
+	engine.sm_scene_destroy_or_unload(reloaded)
+	engine.sm_scene_set_active(nil)
+	fresh := engine.scene_load_single_path("moonhug/tests/fixtures/nested_scenes/HostVariant.scene")
+	testing.expect(t, fresh != nil)
+	if fresh == nil do return
+	tc_mem.scene = fresh
+	check_live(t, &tc_mem.world, fresh)
 }

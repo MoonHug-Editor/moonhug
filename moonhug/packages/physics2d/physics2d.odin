@@ -86,6 +86,7 @@ physics_step :: proc(fixed_dt: f32) {
 	// caller's allocator — same rule as engine.component_register (the test
 	// runner hands each test a scoped tracking allocator).
 	context.allocator = runtime.default_allocator()
+	_settings_sync()
 	_ensure_world()
 	w := engine.ctx_world()
 	_sync_bodies(w, fixed_dt)

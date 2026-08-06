@@ -37,6 +37,8 @@ _register_menu_items :: proc() {
 	menu.add_menu_item("Edit/Delete", "", hierarchy_delete_menu, -45, _hierarchy_selection_deletable)
 	menu.add_menu_separator("Edit", -40)
 	menu.add_menu_item("Edit/Toggle Transform Active", "Alt+Shift+A", hierarchy_toggle_active_menu, 0)
+	menu.add_menu_separator("Edit", 99)
+	menu.add_menu_item("Edit/Project Settings...", "", open_project_settings, 100)
 	menu.add_menu_item("File/Save", "Ctrl+S", menu.file_save_menu, 0)
 	menu.add_menu_separator("File", 5)
 	menu.add_menu_item("File/Quit", "Alt+F4", menu.file_quit_menu, 10)

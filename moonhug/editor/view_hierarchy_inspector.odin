@@ -153,9 +153,11 @@ _draw_readonly_asset_ref :: proc(label: string, guid: engine.Asset_GUID, id: cst
 }
 
 // Unity's Overrides dropdown: every override on this instance in one list,
-// multi-selectable, with Revert All / Revert Selected. Per-field revert still
-// lives on the property context menu — this is the aggregate view for seeing
-// what an instance has diverged on without hunting field by field.
+// multi-selectable, with Revert All / Revert Selected and Apply All / Apply
+// Selected — each Apply button opens a menu of target prefabs, closest to
+// base. Per-field revert and Apply still live on the property context menu —
+// this is the aggregate view for seeing what an instance has diverged on
+// without hunting field by field.
 //
 // Shown on the instance ROOT only (Unity puts it on the root GameObject), and
 // only for a NATIVE NS: inner NSs never hold records (docs/PrefabsSpec.md §3.2),
@@ -284,9 +286,78 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) -> bool {
 		}
 		im.EndDisabled()
 
+		// Apply pushes the chosen overrides into a prefab on their chain. Each
+		// button opens a menu listing every prefab all the chosen overrides can
+		// go to, closest first, ending at the file that owns the rows (variants
+		// included) — Unity's Overrides-window Apply targets.
+		im.SameLine()
+		if im.Button("Apply All") do im.OpenPopup("##ApplyAllTargets")
+		applied := false
+		if im.BeginPopup("##ApplyAllTargets") {
+			applied = _overrides_apply_menu(ht.scene, ns, host_tH, entries, nil, "Apply All to '%s'")
+			im.EndPopup()
+		}
+
+		im.SameLine()
+		apply_label := n_sel > 0 \
+			? fmt.tprintf("Apply Selected (%d)", n_sel) \
+			: "Apply Selected"
+		im.BeginDisabled(n_sel == 0)
+		if im.Button(strings.clone_to_cstring(apply_label, context.temp_allocator)) {
+			im.OpenPopup("##ApplySelTargets")
+		}
+		im.EndDisabled()
+		if im.BeginPopup("##ApplySelTargets") {
+			applied = _overrides_apply_menu(ht.scene, ns, host_tH, entries, &sel_rows, "Apply Selected to '%s'")
+			im.EndPopup()
+		}
+
+		if applied {
+			// `ns` and every row derived from it are stale now (apply propagates
+			// and re-resolves) — close the dropdown rather than draw from them.
+			clear(&_overrides_selected)
+			_overrides_anchor_valid = false
+			inspector.mark_inspector_changed()
+			im.CloseCurrentPopup()
+		}
+
 		im.EndPopup()
 	}
 	return true
+}
+
+// The Apply target menu: one item per prefab every chosen override can go to,
+// closest first, ending at the file that owns the rows. Returns whether an
+// apply ran — the caller closes the dropdown, its rows are stale afterward.
+// Apply writes prefab files and is not undoable.
+@(private)
+_overrides_apply_menu :: proc(
+	s: ^engine.Scene,
+	ns: ^engine.NestedScene,
+	host_tH: engine.Transform_Handle,
+	entries: []engine.Override_Entry,
+	which: ^map[int]bool,
+	label_fmt: string,
+) -> bool {
+	targets := engine.nested_scene_apply_targets_common(s, ns, entries, which)
+	if len(targets) == 0 {
+		im.TextDisabled("No common apply target")
+		return false
+	}
+	applied := false
+	for tgt in targets {
+		name := "scene"
+		if p, pok := engine.asset_db_get_path(uuid.Identifier(tgt.guid)); pok {
+			name = filepath.base(p)
+		}
+		label := strings.clone_to_cstring(fmt.tprintf(label_fmt, name), context.temp_allocator)
+		if im.MenuItem(label) {
+			if engine.nested_scene_apply_entries(s, host_tH, tgt.guid, entries, which) {
+				applied = true
+			}
+		}
+	}
+	return applied
 }
 
 // The same glyph the hierarchy row uses (view_hierarchy.odin): stacks for a
