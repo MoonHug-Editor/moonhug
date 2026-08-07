@@ -1,3 +1,10 @@
+## [0.65.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.64.0...v0.65.0) (2026-08-07)
+
+### Features
+
+* pool_next components iteration ([392007e](https://github.com/MoonHug-Editor/moonhug/commit/392007eeffb2be0b75d7fdc6a7d2e10d65ac6d4f))
+* shader compile failure fallback to older artifact ([ff4268d](https://github.com/MoonHug-Editor/moonhug/commit/ff4268da4999fecbe1a729582ac67a4680e29aab))
+
 ## [0.64.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.63.0...v0.64.0) (2026-08-07)
 
 ### Features
