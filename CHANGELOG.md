@@ -1,3 +1,10 @@
+## [0.64.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.63.0...v0.64.0) (2026-08-07)
+
+### Features
+
+* library folder rework, cache thumbnails ([7961536](https://github.com/MoonHug-Editor/moonhug/commit/7961536e17bf2fe5c6332d9eeebc142547ee8cc1))
+* project_view thumbnails ([50ee18a](https://github.com/MoonHug-Editor/moonhug/commit/50ee18a91cb01be4efba77189fda10c77184d1ff))
+
 ## [0.63.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.62.0...v0.63.0) (2026-08-06)
 
 ### Features
