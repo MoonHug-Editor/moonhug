@@ -24,12 +24,8 @@ reset_Spinner :: proc(comp: ^Spinner) {
 @(fixed_update={order=0})
 spinner_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
-	pool := spinners(w)
-	if pool == nil do return
-	for i in 0 ..< len(pool.slots) {
-		slot := &pool.slots[i]
-		if !slot.alive do continue
-		s := &slot.data
+	it := engine.pool_iterator(spinners(w))
+	for s, _ in engine.pool_next(&it) {
 		if !s.enabled do continue
 		t := engine.pool_get(&w.transforms, engine.Handle(s.owner))
 		if t == nil do continue

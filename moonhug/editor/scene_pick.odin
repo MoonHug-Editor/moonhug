@@ -18,11 +18,8 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 	best: engine.Transform_Handle
 	found := false
 
-	sprite_renderers_pool := engine.sprite_renderers(w)
-	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
-		slot := &sprite_renderers_pool.slots[i]
-		if !slot.alive do continue
-		sr := &slot.data
+	sr_it := engine.pool_iterator(engine.sprite_renderers(w))
+	for sr, _ in engine.pool_next(&sr_it) {
 		if !sr.enabled || sr.texture == {} do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
 		tex, ok := engine.texture_load(sr.texture)
@@ -42,11 +39,8 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		}
 	}
 
-	mesh_renderers_pool := engine.mesh_renderers(w)
-	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
-		slot := &mesh_renderers_pool.slots[i]
-		if !slot.alive do continue
-		mr := &slot.data
+	mr_it := engine.pool_iterator(engine.mesh_renderers(w))
+	for mr, _ in engine.pool_next(&mr_it) {
 		if !mr.enabled do continue
 		if !engine.transform_active_in_hierarchy(mr.owner) do continue
 		_, mf := engine.transform_get_comp(engine.Transform_Handle(mr.owner), engine.MeshFilter)
@@ -80,11 +74,8 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 
-	sprite_renderers_pool := engine.sprite_renderers(w)
-	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
-		slot := &sprite_renderers_pool.slots[i]
-		if !slot.alive do continue
-		sr := &slot.data
+	sr_it := engine.pool_iterator(engine.sprite_renderers(w))
+	for sr, _ in engine.pool_next(&sr_it) {
 		if !sr.enabled || sr.texture == {} do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
 		tex, ok := engine.texture_load(sr.texture)
@@ -96,11 +87,8 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		}
 	}
 
-	mesh_renderers_pool := engine.mesh_renderers(w)
-	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
-		slot := &mesh_renderers_pool.slots[i]
-		if !slot.alive do continue
-		mr := &slot.data
+	mr_it := engine.pool_iterator(engine.mesh_renderers(w))
+	for mr, _ in engine.pool_next(&mr_it) {
 		if !mr.enabled do continue
 		if !engine.transform_active_in_hierarchy(mr.owner) do continue
 		_, mf := engine.transform_get_comp(engine.Transform_Handle(mr.owner), engine.MeshFilter)

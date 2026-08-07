@@ -14,10 +14,12 @@ import "../engine"
 
 @(private = "file")
 _find_sprite_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive || slot.data.scene != s do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&w.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != s do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil do return sr
 	}

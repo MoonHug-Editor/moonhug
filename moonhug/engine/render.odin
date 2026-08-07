@@ -54,11 +54,8 @@ camera_active :: proc() -> ^Camera {
 	world := ctx_world()
 	best: ^Camera
 	best_order: i32 = min(i32)
-	cameras_pool := cameras(world)
-	if cameras_pool != nil do for i in 0 ..< len(cameras_pool.slots) {
-		slot := &cameras_pool.slots[i]
-		if !slot.alive do continue
-		cam := &slot.data
+	it := pool_iterator(cameras(world))
+	for cam, _ in pool_next(&it) {
 		if !cam.enabled do continue
 		if !transform_active_in_hierarchy(cam.owner) do continue
 		if cam.order > best_order {
@@ -148,11 +145,8 @@ sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	world := ctx_world()
 
-	mesh_renderers_pool := mesh_renderers(world)
-	if mesh_renderers_pool != nil do for i in 0 ..< len(mesh_renderers_pool.slots) {
-		slot := &mesh_renderers_pool.slots[i]
-		if !slot.alive do continue
-		mr := &slot.data
+	mr_it := pool_iterator(mesh_renderers(world))
+	for mr, _ in pool_next(&mr_it) {
 		if !mr.enabled do continue
 
 		t := pool_get(&world.transforms, Handle(mr.owner))
@@ -176,11 +170,8 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	// One tree pass resolves every sprite's sort key (groups folded in).
 	sort_keys := sprite_sort_build_keys(view)
 
-	sprite_renderers_pool := sprite_renderers(world)
-	if sprite_renderers_pool != nil do for i in 0 ..< len(sprite_renderers_pool.slots) {
-		slot := &sprite_renderers_pool.slots[i]
-		if !slot.alive do continue
-		sr := &slot.data
+	sr_it := pool_iterator(sprite_renderers(world))
+	for sr, _ in pool_next(&sr_it) {
 		if !sr.enabled do continue
 		if sr.texture == {} do continue
 
@@ -217,13 +208,9 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 // ambient; count 0 leaves the gfx default in effect.
 scene_collect_lights :: proc(buf: []gfx.Light) -> (n: int, ambient: f32) {
 	world := ctx_world()
-	lights_pool := lights(world)
-	if lights_pool == nil do return 0, 0
-	for i in 0 ..< len(lights_pool.slots) {
+	it := pool_iterator(lights(world))
+	for l, _ in pool_next(&it) {
 		if n >= len(buf) do break
-		slot := &lights_pool.slots[i]
-		if !slot.alive do continue
-		l := &slot.data
 		if !l.enabled do continue
 		if !transform_active_in_hierarchy(l.owner) do continue
 
@@ -314,11 +301,8 @@ debug_draw_enabled: bool
 render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
 	world := ctx_world()
 	cams := make([dynamic]^Camera, 0, 8, context.temp_allocator)
-	cameras_pool := cameras(world)
-	if cameras_pool != nil do for i in 0 ..< len(cameras_pool.slots) {
-		slot := &cameras_pool.slots[i]
-		if !slot.alive do continue
-		cam := &slot.data
+	it := pool_iterator(cameras(world))
+	for cam, _ in pool_next(&it) {
 		if !cam.enabled do continue
 		if !transform_active_in_hierarchy(cam.owner) do continue
 		append(&cams, cam)

@@ -1039,14 +1039,14 @@ _nested_scene_find_outer_non_nested :: proc(s: ^Scene, id: Local_ID) -> (Transfo
 	w := ctx_world()
 	first: Transform_Handle = {}
 	n := 0
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tt := &slot.data
+	it := pool_iterator(&w.transforms)
+	for tt, h in pool_next(&it) {
 		if tt.scene != s || tt.local_id != id do continue
 		if tt.nested_owned do continue
 		if n == 0 {
-			first = Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+			h := h
+			h.type_key = .Transform
+			first = Transform_Handle(h)
 		}
 		n += 1
 	}
@@ -1079,12 +1079,12 @@ _nested_scene_scan_hosts_for_lid :: proc(s: ^Scene, ns: ^NestedScene, lid: Local
 	w := ctx_world()
 	first: Transform_Handle = {}
 	n := 0
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tt := &slot.data
+	it := pool_iterator(&w.transforms)
+	for tt, h in pool_next(&it) {
 		if tt.scene != s || tt.local_id != lid do continue
-		tH := Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+		h := h
+		h.type_key = .Transform
+		tH := Transform_Handle(h)
 		if ns.expand_parent != {} {
 			if !tt.nested_owned do continue
 			if !_transform_is_descendant_or_self(tH, ns.expand_parent) do continue

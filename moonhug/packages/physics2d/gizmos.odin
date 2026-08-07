@@ -103,22 +103,16 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
 @(phase={key=DebugDraw, mode=App})
 debug_draw :: proc() {
 	w := engine.ctx_world()
-	if pool := box_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if slot.alive && slot.data.enabled do draw_box_collider_wires(&slot.data, COLLIDER_GIZMO_COLOR)
-		}
+	it := engine.pool_iterator(box_collider2_ds(w))
+	for c, _ in engine.pool_next(&it) {
+		if c.enabled do draw_box_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
-	if pool := circle_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if slot.alive && slot.data.enabled do draw_circle_collider_wires(&slot.data, COLLIDER_GIZMO_COLOR)
-		}
+	it2 := engine.pool_iterator(circle_collider2_ds(w))
+	for c, _ in engine.pool_next(&it2) {
+		if c.enabled do draw_circle_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
-	if pool := capsule_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if slot.alive && slot.data.enabled do draw_capsule_collider_wires(&slot.data, COLLIDER_GIZMO_COLOR)
-		}
+	it3 := engine.pool_iterator(capsule_collider2_ds(w))
+	for c, _ in engine.pool_next(&it3) {
+		if c.enabled do draw_capsule_collider_wires(c, COLLIDER_GIZMO_COLOR)
 	}
 }

@@ -162,10 +162,8 @@ _scene_find_transform_local_id :: proc(s: ^Scene, id: Local_ID, include_nested: 
 	if s == nil || id == 0 do return {}, false
 	if breadcrumb_is_placeholder(s, id) do return {}, false
 	w := ctx_world()
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it := pool_iterator(&w.transforms)
+	for tr, h in pool_next(&it) {
 		if tr.scene != s do continue
 		if tr.nested_owned {
 			// Composed contents carry deterministic host-namespace lids
@@ -177,7 +175,9 @@ _scene_find_transform_local_id :: proc(s: ^Scene, id: Local_ID, include_nested: 
 			continue
 		}
 		if tr.local_id == id {
-			return Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform}), true
+			h := h
+			h.type_key = .Transform
+			return Transform_Handle(h), true
 		}
 	}
 	return {}, false
@@ -218,17 +218,17 @@ scene_ref_resolve_transform :: proc(s: ^Scene, r: Ref, parent_for_local_id: Tran
 	if breadcrumb_is_placeholder(s, r.pptr.local_id) do return {}, false
 	count := 0
 	last: Transform_Handle
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it := pool_iterator(&w.transforms)
+	for tr, h in pool_next(&it) {
 		if tr.scene != s || tr.local_id != r.pptr.local_id do continue
 		if use_parent && tr.parent.handle != parent_h do continue
 		count += 1
 		if count > 1 {
 			return {}, false
 		}
-		last = Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+		h := h
+		h.type_key = .Transform
+		last = Transform_Handle(h)
 	}
 	if count == 1 {
 		return last, true

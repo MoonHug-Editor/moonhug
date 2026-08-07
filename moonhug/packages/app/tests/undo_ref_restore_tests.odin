@@ -73,10 +73,9 @@ test_undo_delete_restores_refs_outside_subtree :: proc(t: ^testing.T) {
 	if !tok do return
 
 	find_tank :: proc(w: ^engine.World) -> ^app.Tank {
-		pool := app.tanks(w)
-		if pool == nil do return nil
-		for i in 0 ..< len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.tanks(w))
+		for tank, _ in engine.pool_next(&it) {
+			return tank
 		}
 		return nil
 	}
@@ -177,10 +176,9 @@ test_undo_group_delete_restores_cross_subtree_refs :: proc(t: ^testing.T) {
 	if !aok || !bok do return
 
 	find_tank :: proc(w: ^engine.World) -> ^app.Tank {
-		pool := app.tanks(w)
-		if pool == nil do return nil
-		for i in 0 ..< len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.tanks(w))
+		for tank, _ in engine.pool_next(&it) {
+			return tank
 		}
 		return nil
 	}

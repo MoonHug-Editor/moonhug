@@ -307,12 +307,12 @@ transform_tick_destroy :: proc() {
     w := ctx_world()
     to_destroy: [dynamic]Transform_Handle
     defer delete(to_destroy)
-    for i in 0..<len(w.transforms.slots) {
-        slot := &w.transforms.slots[i]
-        if !slot.alive do continue
-        if slot.data.destroy {
-            handle := Handle{ index = u32(i), generation = slot.generation, type_key = .Transform }
-            append(&to_destroy, Transform_Handle(handle))
+    it := pool_iterator(&w.transforms)
+    for t, h in pool_next(&it) {
+        if t.destroy {
+            h := h
+            h.type_key = .Transform
+            append(&to_destroy, Transform_Handle(h))
         }
     }
     for tH in to_destroy {

@@ -285,12 +285,12 @@ _variant_materialize_root :: proc(s: ^Scene, root_ns: ^NestedScene, file_root_li
     if br != nil {
         added: [dynamic]Transform_Handle
         defer delete(added)
-        for i in 0..<len(w.transforms.slots) {
-            slot := &w.transforms.slots[i]
-            if !slot.alive do continue
-            at := &slot.data
+        it := pool_iterator(&w.transforms)
+        for at, h in pool_next(&it) {
             if at.scene != s || at.nested_owned do continue
-            atH := Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+            h := h
+            h.type_key = .Transform
+            atH := Transform_Handle(h)
             if atH == base_root_tH do continue
             if pool_valid(&w.transforms, at.parent.handle) do continue
             if at.parent.pptr.local_id != base_root_lid do continue
@@ -424,11 +424,10 @@ _scene_resolve_breadcrumb_targets :: proc(s: ^Scene) {
 scene_rebind_unbound_refs :: proc(s: ^Scene) {
     if s == nil do return
     w := ctx_world()
-    for i in 0 ..< len(w.transforms.slots) {
-        slot := &w.transforms.slots[i]
-        if !slot.alive do continue
-        if slot.data.scene != s do continue
-        for c in slot.data.components {
+    it := pool_iterator(&w.transforms)
+    for t, _ in pool_next(&it) {
+        if t.scene != s do continue
+        for c in t.components {
             if c.handle.type_key == INVALID_TYPE_KEY do continue
             raw := world_pool_get(w, c.handle)
             if raw == nil do continue

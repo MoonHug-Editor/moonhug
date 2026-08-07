@@ -1196,12 +1196,11 @@ scene_find_component_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) 
 	if s == nil || id == 0 do return {}, false
 	w := engine.ctx_world()
 	if w == nil do return {}, false
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene != s do continue
-		if slot.data.nested_owned do continue
-		for c in slot.data.components {
+	it := engine.pool_iterator(&w.transforms)
+	for t, _ in engine.pool_next(&it) {
+		if t.scene != s do continue
+		if t.nested_owned do continue
+		for c in t.components {
 			if c.local_id == id && c.handle.type_key != engine.INVALID_TYPE_KEY {
 				raw := engine.world_pool_get(w, c.handle)
 				if raw != nil {
@@ -1303,11 +1302,12 @@ _find_transform_for_undo :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engi
 	if s == nil || id == 0 do return {}, false
 	w := engine.ctx_world()
 	if w == nil do return {}, false
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive || slot.data.scene != s do continue
-		if slot.data.local_id != id do continue
-		return engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform}, true
+	it := engine.pool_iterator(&w.transforms)
+	for t, h in engine.pool_next(&it) {
+		if t.scene != s || t.local_id != id do continue
+		h := h
+		h.type_key = .Transform
+		return h, true
 	}
 	return {}, false
 }

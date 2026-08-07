@@ -1423,14 +1423,13 @@ test_apply_override_propagates_to_peers :: proc(t: ^testing.T) {
 
 	// Both TestB instances host a TestC. Find the two TransformC handles.
 	tc_handles := make([dynamic]engine.Transform_Handle, 0, 2, context.temp_allocator)
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it_tc := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, h in engine.pool_next(&it_tc) {
 		if tr.scene != loaded || !tr.nested_owned do continue
 		if strings.compare(tr.name, "TransformC") != 0 do continue
-		append(&tc_handles, engine.Transform_Handle(
-			engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform}))
+		th := h
+		th.type_key = .Transform
+		append(&tc_handles, engine.Transform_Handle(th))
 	}
 	testing.expect(t, len(tc_handles) == 2, "TestA should yield two TransformC instances")
 	if len(tc_handles) != 2 do return
@@ -1472,10 +1471,8 @@ test_apply_override_propagates_to_peers :: proc(t: ^testing.T) {
 	// value: the edited instance (override removed → new baseline) and the peer
 	// (no explicit override → picks up the new shared baseline).
 	matches := 0
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it_m := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, _ in engine.pool_next(&it_m) {
 		if tr.scene != reloaded || !tr.nested_owned do continue
 		if strings.compare(tr.name, "TransformC") != 0 do continue
 		if tr.position == want_pos do matches += 1
@@ -1855,10 +1852,8 @@ test_reresolve_duplicate_instances_stable :: proc(t: ^testing.T) {
 	{
 		seen := 0
 		vals := [][3]f32{{1, 2, 3}, {4, 5, 6}, {7, 8, 9}}
-		for i in 0 ..< len(tc_mem.world.transforms.slots) {
-			slot := &tc_mem.world.transforms.slots[i]
-			if !slot.alive do continue
-			tr := &slot.data
+		it := engine.pool_iterator(&tc_mem.world.transforms)
+		for tr, _ in engine.pool_next(&it) {
 			if tr.scene != loaded || !tr.nested_owned do continue
 			if strings.compare(tr.name, "TransformD") != 0 do continue
 			tr.position = vals[seen % len(vals)]
@@ -1876,10 +1871,8 @@ test_reresolve_duplicate_instances_stable :: proc(t: ^testing.T) {
 	// Collect all TransformD positions into a multiset (sorted) for comparison.
 	collect_sorted :: proc(world: ^engine.World, s: ^engine.Scene) -> [dynamic][3]f32 {
 		out := make([dynamic][3]f32, 0, 4)
-		for i in 0 ..< len(world.transforms.slots) {
-			slot := &world.transforms.slots[i]
-			if !slot.alive do continue
-			tr := &slot.data
+		it := engine.pool_iterator(&world.transforms)
+		for tr, _ in engine.pool_next(&it) {
 			if tr.scene != s || !tr.nested_owned do continue
 			if strings.compare(tr.name, "TransformD") != 0 do continue
 			append(&out, tr.position)
@@ -2253,10 +2246,9 @@ test_create_scene_variant_file :: proc(t: ^testing.T) {
 	// transform. TestC.scene has exactly one transform named "RootC"; the variant
 	// must too (the placeholder adopts the base root, it is not a separate node).
 	rootc_count := 0
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene == loaded && strings.compare(slot.data.name, "RootC") == 0 {
+	it_rc := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, _ in engine.pool_next(&it_rc) {
+		if tr.scene == loaded && strings.compare(tr.name, "RootC") == 0 {
 			rootc_count += 1
 		}
 	}
@@ -2533,8 +2525,9 @@ test_variant_nesting_cycle_does_not_crash :: proc(t: ^testing.T) {
 	// The native root + host resolve; the cycle is broken (finite transform set).
 	testing.expect(t, find_transform_named(&tc_mem.world, loaded, "CycleARoot", false) != {})
 	count := 0
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		if tc_mem.world.transforms.slots[i].alive && tc_mem.world.transforms.slots[i].data.scene == loaded {
+	it_c := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, _ in engine.pool_next(&it_c) {
+		if tr.scene == loaded {
 			count += 1
 		}
 	}
@@ -2665,10 +2658,9 @@ test_variant_nest_variant_round_trip :: proc(t: ^testing.T) {
 
 	// Two TransformC_Variant instances (the host variant's own + the nested one).
 	count := 0
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene == reloaded && strings.compare(slot.data.name, "TransformC_Variant") == 0 {
+	it_cv := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, _ in engine.pool_next(&it_cv) {
+		if tr.scene == reloaded && strings.compare(tr.name, "TransformC_Variant") == 0 {
 			count += 1
 		}
 	}
@@ -2724,12 +2716,13 @@ test_variant_nested_in_variant_edit_round_trip :: proc(t: ^testing.T) {
 	// There are two TransformC_Variant instances now (host's own + the nested);
 	// pick the one whose enclosing host is the freshly-nested instance.
 	target_tH: engine.Transform_Handle = {}
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene != loaded do continue
-		if strings.compare(slot.data.name, "TransformC_Variant") != 0 do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it_t := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, ih in engine.pool_next(&it_t) {
+		if tr.scene != loaded do continue
+		if strings.compare(tr.name, "TransformC_Variant") != 0 do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		if engine.transform_nested_enclosing_host(h) == nested {
 			target_tH = h
 			break
@@ -2752,13 +2745,14 @@ test_variant_nested_in_variant_edit_round_trip :: proc(t: ^testing.T) {
 	rroot_tH := engine.Transform_Handle(reloaded.root.handle)
 	got_tH: engine.Transform_Handle = {}
 	want_scale := [3]f32{3, 3, 3}
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene != reloaded do continue
-		if strings.compare(slot.data.name, "TransformC_Variant") != 0 do continue
-		if slot.data.scale == want_scale {
-			got_tH = engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it_g := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, ih in engine.pool_next(&it_g) {
+		if tr.scene != reloaded do continue
+		if strings.compare(tr.name, "TransformC_Variant") != 0 do continue
+		if tr.scale == want_scale {
+			th := ih
+			th.type_key = .Transform
+			got_tH = engine.Transform_Handle(th)
 			break
 		}
 	}
@@ -2860,16 +2854,17 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 	// Find a SpriteRenderer on nested-owned (inherited) content and change color.
 	edited_lid: engine.Local_ID = 0
 	new_color := [4]f32{0.123, 0.456, 0.789, 1}
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene != loaded do continue
-		if !slot.data.nested_owned do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it_e := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, ih in engine.pool_next(&it_e) {
+		if tr.scene != loaded do continue
+		if !tr.nested_owned do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil {
 			sr.color = new_color
-			edited_lid = slot.data.local_id
+			edited_lid = tr.local_id
 			break
 		}
 	}
@@ -2885,11 +2880,12 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 
 	// (1) edited color survives reload.
 	found := false
-	for i in 0 ..< len(tc_mem.world.transforms.slots) {
-		slot := &tc_mem.world.transforms.slots[i]
-		if !slot.alive do continue
-		if slot.data.scene != reloaded do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it_f := engine.pool_iterator(&tc_mem.world.transforms)
+	for tr, ih in engine.pool_next(&it_f) {
+		if tr.scene != reloaded do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil && sr.color == new_color do found = true
 	}
@@ -3037,10 +3033,12 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 	w := &tc_mem.world
 
 	find_sprite :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
-		for i in 0 ..< len(w.transforms.slots) {
-			slot := &w.transforms.slots[i]
-			if !slot.alive || slot.data.scene != s do continue
-			h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+		it := engine.pool_iterator(&w.transforms)
+		for tr, ih in engine.pool_next(&it) {
+			if tr.scene != s do continue
+			th := ih
+			th.type_key = .Transform
+			h := engine.Transform_Handle(th)
 			_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 			if sr != nil do return sr
 		}
@@ -3816,8 +3814,9 @@ test_scratch_instantiate_destroy_cycles_clean :: proc(t: ^testing.T) {
 
 	alive_transforms :: proc(w: ^engine.World) -> int {
 		n := 0
-		for i in 0 ..< len(w.transforms.slots) {
-			if w.transforms.slots[i].alive do n += 1
+		it := engine.pool_iterator(&w.transforms)
+		for _, _ in engine.pool_next(&it) {
+			n += 1
 		}
 		return n
 	}

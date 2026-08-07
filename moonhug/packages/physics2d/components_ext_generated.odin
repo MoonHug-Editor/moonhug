@@ -19,10 +19,8 @@ register_physics2d_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(BoxCollider2D))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(BoxCollider2D))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(BoxCollider2D))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(BoxCollider2D))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_BoxCollider2D(cast(^BoxCollider2D)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_BoxCollider2D(cast(^BoxCollider2D)ptr) },
@@ -37,10 +35,8 @@ register_physics2d_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(CapsuleCollider2D))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(CapsuleCollider2D))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(CapsuleCollider2D))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(CapsuleCollider2D))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_CapsuleCollider2D(cast(^CapsuleCollider2D)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_CapsuleCollider2D(cast(^CapsuleCollider2D)ptr) },
@@ -55,10 +51,8 @@ register_physics2d_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(CircleCollider2D))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(CircleCollider2D))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(CircleCollider2D))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(CircleCollider2D))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_CircleCollider2D(cast(^CircleCollider2D)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_CircleCollider2D(cast(^CircleCollider2D)ptr) },
@@ -73,10 +67,8 @@ register_physics2d_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Rigidbody2D))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Rigidbody2D))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Rigidbody2D))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Rigidbody2D))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Rigidbody2D(cast(^Rigidbody2D)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_Rigidbody2D(cast(^Rigidbody2D)ptr) },

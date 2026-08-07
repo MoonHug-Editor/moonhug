@@ -19,10 +19,8 @@ register_plugin_example_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Spinner))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Spinner))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Spinner))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Spinner))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Spinner(cast(^Spinner)ptr) },
 		})

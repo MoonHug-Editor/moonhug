@@ -86,11 +86,13 @@ _find_host_path_for :: proc(t: ^testing.T, nested_path: string, dir := ASSETS) -
 
 @(private = "file")
 _find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.SpriteRenderer, engine.Transform_Handle) {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive || slot.data.scene != s do continue
-		if nested_only && !slot.data.nested_owned do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&w.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != s do continue
+		if nested_only && !tr.nested_owned do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil do return sr, h
 	}
@@ -238,10 +240,12 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 	if host == nil do return
 	tc.scene = host
 	found := false
-	for i in 0 ..< len(tc.world.transforms.slots) {
-		slot := &tc.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != host do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&tc.world.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != host do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, hsr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if hsr != nil && _color_close(hsr.color, new_color) do found = true
 	}
@@ -300,10 +304,12 @@ test_prefabs_example_deep_override_applies_when_nested :: proc(t: ^testing.T) {
 	if nested == {} do return
 
 	found := false
-	for i in 0 ..< len(tc.world.transforms.slots) {
-		slot := &tc.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != tc.scene do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&tc.world.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != tc.scene do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil && _color_close(sr.color, want) do found = true
 	}
@@ -358,10 +364,12 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 
 	// The live sprite the override is applied to.
 	target_h: engine.Transform_Handle
-	for i in 0 ..< len(tc.world.transforms.slots) {
-		slot := &tc.world.transforms.slots[i]
-		if !slot.alive || slot.data.scene != loaded do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&tc.world.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != loaded do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil && _color_close(sr.color, override_color) {
 			target_h = h

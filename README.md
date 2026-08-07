@@ -86,6 +86,7 @@ Everything under `Library/` is derived data — never a source of truth, safe to
 - union serialization (#no_nil unions only)
 
 - [Asset Pipeline](docs/AssetPipeline.md) - asset importer/loader
+- [Components](docs/Components.md) - component data layer: pools, handles, iteration contract
 - [Scenes](docs/Scenes.md)
 - [Tweens](docs/Tweens.md)
 - [Reference Handles](docs/ReferenceHandles.md)
@@ -148,6 +149,8 @@ Everything under `Library/` is derived data — never a source of truth, safe to
   - PhysicsMaterial asset
   - mesh/compound colliders
   - explicit mass
+
+- bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](docs/Components.md) "Two data regimes"
 
 - come up with more TODO and Considered features
 

@@ -1,8 +1,6 @@
 # Architecture Notes
 
-Key notes from Jonas Tyroller's (Islanders, Will You Snail, Thronefall)
-["Best Code Architectures For Indie Games"](https://www.youtube.com/watch?v=8WqYQ1OwxJ4)
-(Aug 2025, 16 min).
+Key notes from Jonas Tyroller's ["Best Code Architectures For Indie Games"](https://www.youtube.com/watch?v=8WqYQ1OwxJ4)
 
 Good architecture is an investment in speed, not a shipping requirement. Everything below is advice, not law.
 
@@ -32,6 +30,7 @@ Good architecture is an investment in speed, not a shipping requirement. Everyth
 ## Data
 
 - Each package defines and owns its data types.
+- Component storage is behind a narrow access contract (handles + iterator, pool internals private) so the layout can change without touching consumers — see [Components](Components.md).
 - Immutable data (balancing, translations, content) lives OUTSIDE code, in a database the packages read (assets, spreadsheets, scriptable objects).
 - If it is game-designed together, store it together — one place per concern, not values scattered across prefabs/scenes, when possible.
 - Database-first workflow: design data structures, then the packages that consume them, then the glue.

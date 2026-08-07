@@ -112,12 +112,8 @@ _world_z_angle :: proc(rotation: [4]f32) -> f32 {
 }
 
 _sync_bodies :: proc(w: ^engine.World, fixed_dt: f32) {
-	pool := rigidbody2_ds(w)
-	if pool == nil do return
-	for i in 0 ..< len(pool.slots) {
-		slot := &pool.slots[i]
-		if !slot.alive do continue
-		rb := &slot.data
+	it := engine.pool_iterator(rigidbody2_ds(w))
+	for rb, _ in engine.pool_next(&it) {
 		if !engine.pool_valid(&w.transforms, engine.Handle(rb.owner)) do continue
 
 		if !b2.Body_IsValid(rb.body) {
@@ -270,11 +266,9 @@ _register_shape :: proc(shape: b2.ShapeId, owner: engine.Transform_Handle) {
 }
 
 _sync_colliders :: proc(w: ^engine.World) {
-	if pool := box_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if !slot.alive do continue
-			c := &slot.data
+	{
+		it := engine.pool_iterator(box_collider2_ds(w))
+		for c, _ in engine.pool_next(&it) {
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			size, offset := box_scaled(c, collider_scale(c.owner))
@@ -286,11 +280,9 @@ _sync_colliders :: proc(w: ^engine.World) {
 			_register_shape(c.shape, c.owner)
 		}
 	}
-	if pool := circle_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if !slot.alive do continue
-			c := &slot.data
+	{
+		it := engine.pool_iterator(circle_collider2_ds(w))
+		for c, _ in engine.pool_next(&it) {
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			radius, offset := circle_scaled(c, collider_scale(c.owner))
@@ -302,11 +294,9 @@ _sync_colliders :: proc(w: ^engine.World) {
 			_register_shape(c.shape, c.owner)
 		}
 	}
-	if pool := capsule_collider2_ds(w); pool != nil {
-		for i in 0 ..< len(pool.slots) {
-			slot := &pool.slots[i]
-			if !slot.alive do continue
-			c := &slot.data
+	{
+		it := engine.pool_iterator(capsule_collider2_ds(w))
+		for c, _ in engine.pool_next(&it) {
 			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			size, offset := capsule_scaled(c, collider_scale(c.owner))
@@ -339,12 +329,8 @@ _sync_colliders :: proc(w: ^engine.World) {
 // --- Write back: box2d -> transforms --------------------------------------------
 
 _write_back :: proc(w: ^engine.World) {
-	pool := rigidbody2_ds(w)
-	if pool == nil do return
-	for i in 0 ..< len(pool.slots) {
-		slot := &pool.slots[i]
-		if !slot.alive do continue
-		rb := &slot.data
+	it := engine.pool_iterator(rigidbody2_ds(w))
+	for rb, _ in engine.pool_next(&it) {
 		if rb.body_type != .Dynamic || !rb.enabled || !b2.Body_IsValid(rb.body) do continue
 		if !engine.pool_valid(&w.transforms, engine.Handle(rb.owner)) do continue
 		pos := b2.Body_GetPosition(rb.body)

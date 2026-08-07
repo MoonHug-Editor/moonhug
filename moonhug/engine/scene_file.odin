@@ -788,17 +788,16 @@ _live_added_objects :: proc(s: ^Scene, ns: ^NestedScene) -> (added: [dynamic]Tra
 	for inst_lid in ns.source_of_inst do owned[inst_lid] = true
 	if ht := pool_get(&w.transforms, Handle(host_tH)); ht != nil do owned[ht.local_id] = true
 
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		t := &slot.data
+	it := pool_iterator(&w.transforms)
+	for t, h in pool_next(&it) {
 		if t.scene != s do continue
 		if t.nested_owned do continue // prefab content, not an addition
 		pt := pool_get(&w.transforms, t.parent.handle)
 		if pt == nil do continue
 		if !(pt.local_id in owned) do continue // parent isn't this instance's content
-		added_h := Transform_Handle(Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
-		append(&added, added_h)
+		h := h
+		h.type_key = .Transform
+		append(&added, Transform_Handle(h))
 	}
 	return
 }

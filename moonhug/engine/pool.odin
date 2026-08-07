@@ -10,23 +10,27 @@ Handle :: struct {
     type_key:   TypeKey,
 }
 
+// Pool internals (_-prefixed fields) are private: the slot layout is an
+// implementation detail that may change (e.g. SoA columns), so nothing
+// outside this file touches them. Consumers hold Handles and reach data
+// through pool_get / pool_iterator — see docs/Components.md for the contract.
 Pool :: struct($T: typeid, $N: int = MAX) {
-    slots:     [N]struct {
+    _slots:     [N]struct {
         generation: u16,
         alive:      bool,
         data:       T,
     },
-    freelist:  [N]u32,
-    free_head: int,
-    count:     int,
+    _freelist:  [N]u32,
+    _free_head: int,
+    count:      int,
 }
 
 pool_init :: proc(p: ^Pool($T, $N)) {
     for i in 0..<N {
-        p.freelist[i] = u32(i)
-        p.slots[i].generation = 1
+        p._freelist[i] = u32(i)
+        p._slots[i].generation = 1
     }
-    p.free_head = N - 1
+    p._free_head = N - 1
 }
 
 pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
@@ -36,10 +40,10 @@ pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
         }
         panic(fmt.tprintf("pool is full: type=%v count=%d max=%d", typeid_of(T), p.count, N))
     }
-    idx := p.freelist[p.free_head]
-    p.free_head -= 1
+    idx := p._freelist[p._free_head]
+    p._free_head -= 1
     p.count += 1
-    slot := &p.slots[idx]
+    slot := &p._slots[idx]
     slot.alive = true
     // A recycled slot keeps the destroyed instance's bytes. Hand out zeroed
     // memory: loaders unmarshal IN PLACE and json:"-" fields (nested_owned,
@@ -52,36 +56,59 @@ pool_create :: proc(p: ^Pool($T, $N)) -> (Handle, ^T) {
 
 pool_destroy :: proc(p: ^Pool($T, $N), h: Handle) {
     assert(pool_valid(p, h), "invalid handle")
-    slot := &p.slots[h.index]
+    slot := &p._slots[h.index]
     slot.alive      = false
     slot.generation += 1
-    p.free_head += 1
-    p.freelist[p.free_head] = h.index
+    p._free_head += 1
+    p._freelist[p._free_head] = h.index
     p.count -= 1
 }
 
 pool_get :: proc(pool: ^Pool($T, $N), handle: Handle) -> ^T {
     if !pool_valid(pool, handle) do return nil
-    return &pool.slots[handle.index].data
+    return &pool._slots[handle.index].data
 }
 pool_get_assert :: proc(pool: ^Pool($T, $N), handle: Handle) -> ^T {
     assert(pool_valid(pool, handle))
-    return &pool.slots[handle.index].data
+    return &pool._slots[handle.index].data
 }
 
 pool_valid :: proc(p: ^Pool($T, $N), h: Handle) -> bool {
     if h.index >= u32(N) do return false
-    slot := &p.slots[h.index]
+    slot := &p._slots[h.index]
     return slot.alive && slot.generation == h.generation
 }
 
-pool_iter :: proc(p: ^Pool($T, $N), body: proc(h: Handle, data: ^T)) {
-    for i in 0..<N {
-        slot := &p.slots[i]
+// Iteration over alive components:
+//
+//	it := pool_iterator(pool)
+//	for comp, h in pool_next(&it) { ... }
+//
+// A nil pool yields an empty iterator (no caller-side guard). The handle
+// carries INVALID_TYPE_KEY — pools don't know their TypeKey, callers stamp
+// it when they need a typed handle. Destroying any component (including the
+// current one) mid-iteration is safe; components created mid-iteration may
+// or may not be visited.
+Pool_Iterator :: struct($T: typeid, $N: int) {
+    pool:  ^Pool(T, N),
+    index: int,
+}
+
+pool_iterator :: proc(p: ^Pool($T, $N)) -> Pool_Iterator(T, N) {
+    return {pool = p}
+}
+
+pool_next :: proc(it: ^Pool_Iterator($T, $N)) -> (data: ^T, h: Handle, ok: bool) {
+    if it.pool == nil do return
+    for it.index < N {
+        i := it.index
+        it.index += 1
+        slot := &it.pool._slots[i]
         if slot.alive {
-            body(Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }, &slot.data)
+            return &slot.data, Handle{ index = u32(i), generation = slot.generation, type_key = INVALID_TYPE_KEY }, true
         }
     }
+    return
 }
 
 Pool_Entry :: struct {

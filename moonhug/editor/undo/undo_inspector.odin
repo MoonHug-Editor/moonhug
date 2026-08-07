@@ -37,7 +37,7 @@ Field_Snapshot :: struct {
 Pending_Edit :: struct {
 	active:   bool,
 	target:   Property_Target,
-	base_ptr: rawptr,
+	base_ptr: rawptr, // identity key only (pending_matches) — commit re-resolves via target
 	old_json: []byte,
 }
 
@@ -305,7 +305,14 @@ pending_commit :: proc() {
 	s := get()
 	if s == nil || !s.recording || s.applying do return
 
-	new_json := capture_json(_pending_edit.base_ptr, _pending_edit.target.type_id)
+	// A pending edit spans frames (drag), so the pointer captured at begin
+	// may be stale — re-resolve through the target (handle first, scene +
+	// local_id fallback). base_ptr is only an identity key (pending_matches);
+	// .Asset targets resolve to nil and keep the stored document pointer.
+	ptr := resolve_target_ptr(_pending_edit.target)
+	if ptr == nil do ptr = _pending_edit.base_ptr
+
+	new_json := capture_json(ptr, _pending_edit.target.type_id)
 	if new_json == nil do return
 
 	if slice.equal(_pending_edit.old_json, new_json) {

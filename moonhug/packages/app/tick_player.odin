@@ -9,12 +9,8 @@ import "core:math/rand"
 @(fixed_update={order=0})
 tick_player :: proc(dt: f32) {
     w := engine.ctx_world()
-    players_pool := players(w)
-    if players_pool == nil do return
-    for i in 0..<len(players_pool.slots) {
-        slot := &players_pool.slots[i]
-        if !slot.alive do continue
-        p := &slot.data
+    it := engine.pool_iterator(players(w))
+    for p, _ in engine.pool_next(&it) {
         if !p.enabled do continue
 
         t := engine.pool_get(&w.transforms, engine.Handle(p.owner))

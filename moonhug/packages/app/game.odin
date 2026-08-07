@@ -34,11 +34,9 @@ game_tick :: proc(dt: f32) {
 }
 
 scene_refs_get :: proc() -> ^SceneRefs {
-    pool := scene_refses(engine.ctx_world())
-    if pool == nil do return nil
-    for i in 0..<len(pool.slots) {
-        slot := &pool.slots[i]
-        if slot.alive do return &slot.data
+    it := engine.pool_iterator(scene_refses(engine.ctx_world()))
+    for refs, _ in engine.pool_next(&it) {
+        return refs
     }
     return nil
 }
@@ -105,12 +103,8 @@ fire :: proc(tank: ^Tank, spawn_parent: engine.Transform_Handle) {
 
 projectiles_tick :: proc(dt: f32) {
     w := engine.ctx_world()
-    pool := projectiles(w)
-    if pool == nil do return
-    for i in 0..<len(pool.slots) {
-        slot := &pool.slots[i]
-        if !slot.alive do continue
-        p := &slot.data
+    it := engine.pool_iterator(projectiles(w))
+    for p, _ in engine.pool_next(&it) {
         if !p.enabled do continue
 
         t := engine.pool_get(&w.transforms, engine.Handle(p.owner))

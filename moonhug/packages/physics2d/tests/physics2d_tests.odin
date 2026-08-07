@@ -219,11 +219,12 @@ physics2d_bodies_released_on_scene_restore :: proc(t: ^testing.T) {
 	// the objects are usable again.
 	physics2d.physics_step(1.0 / 60.0)
 	new_ball := engine.Transform_Handle{}
-	for &slot, i in tc.world.transforms.slots {
-		if !slot.alive || slot.data.name != "Ball" do continue
-		new_ball = engine.Transform_Handle(engine.Handle{
-			index = u32(i), generation = slot.generation, type_key = .Transform,
-		})
+	it := engine.pool_iterator(&tc.world.transforms)
+	for tr, h in engine.pool_next(&it) {
+		if tr.name != "Ball" do continue
+		th := h
+		th.type_key = .Transform
+		new_ball = engine.Transform_Handle(th)
 		break
 	}
 	testing.expect(t, new_ball != {}, "Ball is back after restore")

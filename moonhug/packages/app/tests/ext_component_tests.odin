@@ -108,10 +108,9 @@ test_ext_component_override_round_trip :: proc(t: ^testing.T) {
 
 	// Live app component exists with the authored value.
 	find_projectile :: proc(w: ^engine.World) -> ^app.Projectile {
-		pool := app.projectiles(w)
-		if pool == nil do return nil
-		for i in 0..<len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.projectiles(w))
+		for proj, _ in engine.pool_next(&it) {
+			return proj
 		}
 		return nil
 	}
@@ -227,10 +226,9 @@ test_ext_component_nested_intra_prefab_refs :: proc(t: ^testing.T) {
 
 	w := &tc_mem.world
 	find_tank :: proc(w: ^engine.World) -> ^app.Tank {
-		pool := app.tanks(w)
-		if pool == nil do return nil
-		for i in 0..<len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.tanks(w))
+		for tank, _ in engine.pool_next(&it) {
+			return tank
 		}
 		return nil
 	}
@@ -339,18 +337,19 @@ test_ext_component_ref_override_round_trip :: proc(t: ^testing.T) {
 
 	w := &tc_mem.world
 	find_tank :: proc(w: ^engine.World) -> ^app.Tank {
-		pool := app.tanks(w)
-		if pool == nil do return nil
-		for i in 0..<len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.tanks(w))
+		for tank, _ in engine.pool_next(&it) {
+			return tank
 		}
 		return nil
 	}
 	find_transform :: proc(w: ^engine.World, name: string) -> engine.Handle {
-		for i in 0..<len(w.transforms.slots) {
-			sl := &w.transforms.slots[i]
-			if sl.alive && sl.data.name == name {
-				return engine.Handle{index = u32(i), generation = sl.generation, type_key = .Transform}
+		it := engine.pool_iterator(&w.transforms)
+		for tr, h in engine.pool_next(&it) {
+			if tr.name == name {
+				th := h
+				th.type_key = .Transform
+				return th
 			}
 		}
 		return {}
@@ -487,19 +486,20 @@ test_host_ref_into_nested_instance_round_trip :: proc(t: ^testing.T) {
 
 	w := &tc_mem.world
 	find_transform :: proc(w: ^engine.World, name: string) -> engine.Handle {
-		for i in 0..<len(w.transforms.slots) {
-			sl := &w.transforms.slots[i]
-			if sl.alive && sl.data.name == name {
-				return engine.Handle{index = u32(i), generation = sl.generation, type_key = .Transform}
+		it := engine.pool_iterator(&w.transforms)
+		for tr, h in engine.pool_next(&it) {
+			if tr.name == name {
+				th := h
+				th.type_key = .Transform
+				return th
 			}
 		}
 		return {}
 	}
 	find_refs :: proc(w: ^engine.World) -> ^app.SceneRefs {
-		pool := app.scene_refses(w)
-		if pool == nil do return nil
-		for i in 0..<len(pool.slots) {
-			if pool.slots[i].alive do return &pool.slots[i].data
+		it := engine.pool_iterator(app.scene_refses(w))
+		for refs, _ in engine.pool_next(&it) {
+			return refs
 		}
 		return nil
 	}

@@ -19,10 +19,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(ButtonsExample))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(ButtonsExample))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(ButtonsExample))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(ButtonsExample))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_ButtonsExample(cast(^ButtonsExample)ptr) },
 		})
@@ -35,10 +33,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(DemoMenu, 1))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(DemoMenu, 1))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(DemoMenu, 1))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(DemoMenu, 1))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_DemoMenu(cast(^DemoMenu)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_DemoMenu(cast(^DemoMenu)ptr) },
@@ -53,10 +49,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Lifetime))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Lifetime))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Lifetime))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Lifetime))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Lifetime(cast(^Lifetime)ptr) },
 			on_validate = proc(ptr: rawptr) { on_validate_Lifetime(cast(^Lifetime)ptr) },
@@ -70,10 +64,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Player, 10))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Player, 10))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Player, 10))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Player, 10))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Player(cast(^Player)ptr) },
 			cleanup = proc(ptr: rawptr) { cleanup_Player(cast(^Player)ptr) },
@@ -88,10 +80,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Projectile))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Projectile))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Projectile))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Projectile))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Projectile(cast(^Projectile)ptr) },
 		})
@@ -104,10 +94,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(SceneRefs, 1))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(SceneRefs, 1))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(SceneRefs, 1))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(SceneRefs, 1))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_SceneRefs(cast(^SceneRefs)ptr) },
 		})
@@ -120,10 +108,8 @@ register_app_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(Tank))pool) },
 			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(Tank))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^engine.Pool(Tank))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := engine.pool_iterator(cast(^engine.Pool(Tank))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Tank(cast(^Tank)ptr) },
 		})

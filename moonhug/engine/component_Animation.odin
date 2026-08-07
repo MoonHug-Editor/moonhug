@@ -264,12 +264,8 @@ animation_stop :: proc(a: ^Animation) {
 // Per-frame advance + evaluate + apply for every enabled Animation component.
 animation_tick :: proc(dt: f32) {
 	w := ctx_world()
-	pool := animations(w)
-	if pool == nil do return
-	for i in 0 ..< len(pool.slots) {
-		slot := &pool.slots[i]
-		if !slot.alive do continue
-		a := &slot.data
+	it := pool_iterator(animations(w))
+	for a, _ in pool_next(&it) {
 		if !a.enabled do continue
 		if !pool_valid(&w.transforms, Handle(a.owner)) do continue
 		if !a.started {

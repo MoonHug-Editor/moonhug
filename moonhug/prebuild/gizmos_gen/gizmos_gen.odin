@@ -175,13 +175,15 @@ generate :: proc(w: ^db.World) -> bool {
 	for r in rows {
 		call := r.pkg == "" ? r.proc_name : fmt.tprintf("%s.%s", r.pkg, r.proc_name)
 		if r.comp_engine {
-			fmt.sbprintf(&b, "\tfor i in 0 ..< len(w.%s.slots) {{\n", r.comp_plural)
-			fmt.sbprintf(&b, "\t\tslot := &w.%s.slots[i]\n", r.comp_plural)
-			strings.write_string(&b, "\t\tif !slot.alive || !slot.data.enabled do continue\n")
+			strings.write_string(&b, "\t{\n")
+			fmt.sbprintf(&b, "\t\tit := engine.pool_iterator(&w.%s)\n", r.comp_plural)
+			strings.write_string(&b, "\t\tfor c, _ in engine.pool_next(&it) {\n")
+			strings.write_string(&b, "\t\t\tif !c.enabled do continue\n")
 			if r.selected {
-				strings.write_string(&b, "\t\tif !sel_scene_is(slot.data.owner) do continue\n")
+				strings.write_string(&b, "\t\t\tif !sel_scene_is(c.owner) do continue\n")
 			}
-			fmt.sbprintf(&b, "\t\t%s(&slot.data)\n", call)
+			fmt.sbprintf(&b, "\t\t\t%s(c)\n", call)
+			strings.write_string(&b, "\t\t}\n")
 			strings.write_string(&b, "\t}\n")
 		} else {
 			// Ext component (app or package): iterate via the runtime registry.

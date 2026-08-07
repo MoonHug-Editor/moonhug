@@ -61,11 +61,9 @@ demo_menu_draw :: proc() {
 _DIGITS := [9]string{"1", "2", "3", "4", "5", "6", "7", "8", "9"}
 
 demo_menu_get :: proc() -> ^DemoMenu {
-    pool := demo_menus(engine.ctx_world())
-    if pool == nil do return nil
-    for i in 0..<len(pool.slots) {
-        slot := &pool.slots[i]
-        if slot.alive && slot.data.enabled do return &slot.data
+    it := engine.pool_iterator(demo_menus(engine.ctx_world()))
+    for m, _ in engine.pool_next(&it) {
+        if m.enabled do return m
     }
     return nil
 }

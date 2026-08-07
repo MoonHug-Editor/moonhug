@@ -37,10 +37,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(Animation))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(Animation))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(Animation))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(Animation))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Animation(cast(^Animation)ptr) },
 			on_destroy = proc(ptr: rawptr) { on_destroy_Animation(cast(^Animation)ptr) },
@@ -54,10 +52,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(Camera, 32))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(Camera, 32))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(Camera, 32))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(Camera, 32))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Camera(cast(^Camera)ptr) },
 		})
@@ -70,10 +66,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(Light, 8))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(Light, 8))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(Light, 8))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(Light, 8))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Light(cast(^Light)ptr) },
 		})
@@ -86,10 +80,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(MeshFilter))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(MeshFilter))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(MeshFilter))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(MeshFilter))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_MeshFilter(cast(^MeshFilter)ptr) },
 		})
@@ -102,10 +94,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(MeshRenderer))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(MeshRenderer))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(MeshRenderer))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(MeshRenderer))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			cleanup = proc(ptr: rawptr) { cleanup_MeshRenderer(cast(^MeshRenderer)ptr) },
 			on_destroy = proc(ptr: rawptr) { on_destroy_MeshRenderer(cast(^MeshRenderer)ptr) },
@@ -119,10 +109,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(Script))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(Script))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(Script))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(Script))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 		})
 		component_register(Component_Desc{
@@ -134,10 +122,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(SpriteRenderer))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(SpriteRenderer))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(SpriteRenderer))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(SpriteRenderer))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_SpriteRenderer(cast(^SpriteRenderer)ptr) },
 		})
@@ -150,10 +136,8 @@ register_engine_components :: proc() {
 			pool_destroy = proc(pool: rawptr) { free(cast(^Pool(SpriteSortingGroup))pool) },
 			make_entry = proc(pool: rawptr) -> Pool_Entry { return pool_make_entry(cast(^Pool(SpriteSortingGroup))pool) },
 			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
-				p := cast(^Pool(SpriteSortingGroup))pool
-				for i in 0..<len(p.slots) {
-					if p.slots[i].alive do fn(&p.slots[i].data)
-				}
+				it := pool_iterator(cast(^Pool(SpriteSortingGroup))pool)
+				for data, _ in pool_next(&it) do fn(data)
 			},
 		})
 	})
@@ -344,10 +328,8 @@ world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
 
 world_destroy_all :: proc(w: ^World) {
 	_world_destroy_ext(w)
-	for i in 0..<len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		t := &slot.data
+	it := pool_iterator(&w.transforms)
+	for t, _ in pool_next(&it) {
 		delete(t.name)
 		delete(t.children)
 		delete(t.components)

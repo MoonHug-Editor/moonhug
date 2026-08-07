@@ -57,11 +57,13 @@ fixture_write_empty_scene :: proc(path: string, root_name: string) -> bool {
 // First SpriteRenderer in `s` (optionally only on nested-owned/inherited
 // content), with its owning transform.
 fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.SpriteRenderer, engine.Transform_Handle) {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive || slot.data.scene != s do continue
-		if nested_only && !slot.data.nested_owned do continue
-		h := engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+	it := engine.pool_iterator(&w.transforms)
+	for tr, ih in engine.pool_next(&it) {
+		if tr.scene != s do continue
+		if nested_only && !tr.nested_owned do continue
+		th := ih
+		th.type_key = .Transform
+		h := engine.Transform_Handle(th)
 		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
 		if sr != nil do return sr, h
 	}

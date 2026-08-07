@@ -298,7 +298,7 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		fmt.sbprintf(b, "\t\t\tpool_create = proc() -> rawptr {{ p := new(%s); %spool_init(p); return p }},\n", pool_t, qual)
 		fmt.sbprintf(b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
 		fmt.sbprintf(b, "\t\t\tmake_entry = proc(pool: rawptr) -> %sPool_Entry {{ return %spool_make_entry(cast(^%s)pool) }},\n", qual, qual, pool_t)
-		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {{\n\t\t\t\tp := cast(^%s)pool\n\t\t\t\tfor i in 0..<len(p.slots) {{\n\t\t\t\t\tif p.slots[i].alive do fn(&p.slots[i].data)\n\t\t\t\t}}\n\t\t\t}},\n", pool_t)
+		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(data)\n\t\t\t}},\n", qual, pool_t, qual)
 		if e.has_reset {
 			fmt.sbprintf(b, "\t\t\treset = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
@@ -445,10 +445,8 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
 	strings.write_string(&b, "\t_world_destroy_ext(w)\n")
-	strings.write_string(&b, "\tfor i in 0..<len(w.transforms.slots) {\n")
-	strings.write_string(&b, "\t\tslot := &w.transforms.slots[i]\n")
-	strings.write_string(&b, "\t\tif !slot.alive do continue\n")
-	strings.write_string(&b, "\t\tt := &slot.data\n")
+	strings.write_string(&b, "\tit := pool_iterator(&w.transforms)\n")
+	strings.write_string(&b, "\tfor t, _ in pool_next(&it) {\n")
 	strings.write_string(&b, "\t\tdelete(t.name)\n")
 	strings.write_string(&b, "\t\tdelete(t.children)\n")
 	strings.write_string(&b, "\t\tdelete(t.components)\n")

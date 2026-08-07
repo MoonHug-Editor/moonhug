@@ -926,10 +926,12 @@ _apply_rename :: proc(t: ^engine.Transform) {
 	if len(new_name) > 0 && new_name != t.name {
 		w := engine.ctx_world()
 		tH: engine.Transform_Handle
-		for i in 0 ..< len(w.transforms.slots) {
-			slot := &w.transforms.slots[i]
-			if slot.alive && &slot.data == t {
-				tH = engine.Transform_Handle(engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform})
+		it := engine.pool_iterator(&w.transforms)
+		for cand, h in engine.pool_next(&it) {
+			if cand == t {
+				h := h
+				h.type_key = .Transform
+				tH = engine.Transform_Handle(h)
 				break
 			}
 		}

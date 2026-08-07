@@ -125,13 +125,8 @@ app_init :: proc() {
 
 setup_player_animations :: proc()
 {
-    w := engine.ctx_world()
-    players_pool := players(w)
-    if players_pool == nil do return
-    for i in 0..<len(players_pool.slots) {
-        slot := &players_pool.slots[i]
-        if !slot.alive do continue
-        p: ^Player = &slot.data;
+    it := engine.pool_iterator(players(engine.ctx_world()))
+    for p, _ in engine.pool_next(&it) {
         for &ht, i in p.animations{
         	anim_key := fmt.tprintf("Anim%d", i)
          	engine.tween_register(anim_key, &ht)

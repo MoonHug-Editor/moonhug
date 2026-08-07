@@ -5,12 +5,8 @@ import "moonhug:engine"
 @(fixed_update={order=-50})
 tick_lifetime :: proc(dt: f32) {
     w := engine.ctx_world()
-    pool := lifetimes(w)
-    if pool == nil do return
-    for i in 0..<len(pool.slots) {
-        slot := &pool.slots[i]
-        if !slot.alive do continue
-        lt := &slot.data
+    it := engine.pool_iterator(lifetimes(w))
+    for lt, _ in engine.pool_next(&it) {
         if !lt.enabled do continue
         lt.time_spent += dt
         if lt.time_spent >= lt.duration {

@@ -77,10 +77,8 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 // here: "Transform" names three different rows at three nesting levels.
 @(private = "file")
 _find_by_path :: proc(w: ^engine.World, s: ^engine.Scene, path: string) -> engine.Transform_Handle {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it := engine.pool_iterator(&w.transforms)
+	for tr, h in engine.pool_next(&it) {
 		if tr.scene != s do continue
 
 		chain := tr.name
@@ -90,9 +88,9 @@ _find_by_path :: proc(w: ^engine.World, s: ^engine.Scene, path: string) -> engin
 			pt = engine.pool_get(&w.transforms, pt.parent.handle)
 		}
 		if strings.compare(chain, path) == 0 {
-			return engine.Transform_Handle(
-				engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform},
-			)
+			th := h
+			th.type_key = .Transform
+			return engine.Transform_Handle(th)
 		}
 	}
 	return {}
