@@ -19,7 +19,7 @@ TOOLBAR_HEIGHT :: 28
 
 // Live-state play snapshot lives in library/ (never assets/): the AssetDB
 // walk must not see it, or refresh would mint a guid for a transient file.
-_PLAY_SCENE_SNAPSHOT_PATH :: "library/play_scene_snapshot.scene"
+_PLAY_SCENE_SNAPSHOT_PATH :: "Library/StateCache/play_scene_snapshot.scene"
 
 _play_thread: ^thread.Thread
 
@@ -483,7 +483,8 @@ run_app_play :: proc(id: string, source: string) {
         play_path := scene.path
         if snapshot, sok := engine.scene_serialize(scene); sok {
             defer delete(snapshot)
-            os.make_directory("library") // library/ is gitignored; fresh clones lack it
+            os.make_directory("Library") // Library/ is gitignored; fresh clones lack it
+            os.make_directory("Library/StateCache")
             if os.write_entire_file(_PLAY_SCENE_SNAPSHOT_PATH, snapshot) == nil {
                 play_path = _PLAY_SCENE_SNAPSHOT_PATH
             }

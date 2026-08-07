@@ -54,7 +54,7 @@ For more details see [Contribution](docs/Contribution.md)
 - engine - core dependency for app and editor
 - builds folder - build results with runnable application
 - external - external dependencies folder
-- library - cached compiled resources files
+- Library - derived-data cache (Unity's Library model, see [Library](#library)). Safe to delete, rebuilt on the next run
 
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
@@ -64,6 +64,17 @@ For more details see [Contribution](docs/Contribution.md)
   - one-time: `sh "$(odin root)/vendor/box2d/build_box2d.sh"` - builds vendored box2d (physics2d package; needs cmake, WASM step may warn — harmless)
   - one-time: `cd "$(odin root)/vendor/box3d/src" && sh build.sh` - builds vendored box3d (physics3d package; bundled source, clang only)
   - optional, only to AUTHOR shaders (engine built-ins or .glsl assets): `brew install shaderc spirv-cross`
+
+## Library
+
+Everything under `Library/` is derived data — never a source of truth, safe to delete, rebuilt from assets + metas on the next run (Unity's Library contract).
+
+- `Library/Artifacts/<xx>/<key>.bin` - import artifacts, **content-addressed**: the 128-bit key hashes every input that shapes the importer's output — source bytes, import settings, the importer's version constant, the artifact format version. Invalidation is automatic (any changed input is a different key), toggling a setting back is a cache hit on the old artifact instead of a re-import, and keys are machine-independent (a shared team cache stays possible). `<xx>` is the key's first two hex chars (Unity's fan-out layout)
+- `Library/ArtifactDB.json` - the index: guid → current artifact key + source file stamp + settings hash, so an unchanged file costs one stat per scan, never a rehash
+- `Library/Thumbnails/<xx>/<guid>.thumb` - project view thumbnails (raw RGBA + a stamp header), guid-keyed so a changed asset overwrites its entry in place. Written asynchronously after generation (fence-polled GPU readback, no sync stalls), loaded instead of re-rendering on the next session. Deleted assets' entries are pruned at editor startup
+- `Library/StateCache/` - editor session state (the Play button's live-scene snapshot)
+- garbage collection runs with the import pass: artifact files no index entry references are deleted
+- importers carry a version constant (`_importer_version`) — bump it when an importer's output changes and exactly its artifacts re-import, nothing else
 
 ## Features
 - menu bar - customizable via @(menu_item=...) on proc
@@ -92,7 +103,7 @@ For more details see [Contribution](docs/Contribution.md)
   - inspector view - edit selected object in scene
   - project inspector - preview and edit selected asset in project
   - hierarchy view - shows scene tree
-  - project view - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp)
+  - project view - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp, persisted under Library/Thumbnails across sessions)
   - console view
   - scene view - view and edit scene contents
 
@@ -150,8 +161,6 @@ For more details see [Contribution](docs/Contribution.md)
 
 - undo follow-ups: asset doc Revert button, import settings onto the asset doc model
 - multiselection follow-ups: multiedit, multi-path drag-drop
-
-- rethink library folder
 
 ### Considered Features
 

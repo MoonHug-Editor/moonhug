@@ -207,6 +207,7 @@ rt_snapshot :: proc(rt: ^Render_Target) -> ^Texture {
 	tex.gpu = gpu_tex
 	tex.width = rt.width
 	tex.height = rt.height
+	tex.format = _gfx.swapchain_format
 	return tex
 }
 

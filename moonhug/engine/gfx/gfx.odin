@@ -19,6 +19,7 @@ Vertex :: struct {
 Texture :: struct {
 	gpu:           ^sdl.GPUTexture,
 	width, height: i32,
+	format:        sdl.GPUTextureFormat, // readback needs the channel order
 }
 
 Mesh :: struct {
@@ -311,7 +312,79 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 	tex.gpu = gpu_tex
 	tex.width = width
 	tex.height = height
+	tex.format = .R8G8B8A8_UNORM
 	return tex
+}
+
+// An in-flight GPU→CPU pixel readback. The copy runs on its own command
+// buffer, queued after everything already submitted — poll readiness each
+// frame instead of blocking on the fence.
+Texture_Download :: struct {
+	transfer:      ^sdl.GPUTransferBuffer,
+	fence:         ^sdl.GPUFence,
+	width, height: i32,
+	bgra:          bool,
+}
+
+// Starts an async readback of the texture's pixels. The pass that produced the
+// contents must already be SUBMITTED (frame_end) — queue order then guarantees
+// the copy sees the finished pixels. Follow with texture_download_ready polls,
+// then texture_download_take (or _cancel). nil on failure.
+texture_download_begin :: proc(tex: ^Texture) -> ^Texture_Download {
+	byte_count := u32(tex.width * tex.height * 4)
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .DOWNLOAD, size = byte_count})
+	if transfer == nil do return nil
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	if cmd == nil {
+		sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+		return nil
+	}
+	copy_pass := sdl.BeginGPUCopyPass(cmd)
+	sdl.DownloadFromGPUTexture(copy_pass,
+		{texture = tex.gpu, w = u32(tex.width), h = u32(tex.height), d = 1},
+		{transfer_buffer = transfer, pixels_per_row = u32(tex.width), rows_per_layer = u32(tex.height)})
+	sdl.EndGPUCopyPass(copy_pass)
+	fence := sdl.SubmitGPUCommandBufferAndAcquireFence(cmd)
+	if fence == nil {
+		sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+		return nil
+	}
+	d := new(Texture_Download, runtime.default_allocator())
+	d.transfer = transfer
+	d.fence = fence
+	d.width = tex.width
+	d.height = tex.height
+	d.bgra = tex.format == .B8G8R8A8_UNORM || tex.format == .B8G8R8A8_UNORM_SRGB
+	return d
+}
+
+texture_download_ready :: proc(d: ^Texture_Download) -> bool {
+	return sdl.QueryGPUFence(_gfx.device, d.fence)
+}
+
+// The pixels as RGBA8 rows top-down, allocated with `allocator`. Frees the
+// download — call once, after texture_download_ready. nil slice on map failure.
+texture_download_take :: proc(d: ^Texture_Download, allocator := context.allocator) -> []u8 {
+	defer texture_download_cancel(d)
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, d.transfer, false)
+	if mapped == nil do return nil
+	pixels := make([]u8, int(d.width * d.height * 4), allocator)
+	runtime.mem_copy_non_overlapping(raw_data(pixels), mapped, len(pixels))
+	sdl.UnmapGPUTransferBuffer(_gfx.device, d.transfer)
+	if d.bgra {
+		for i := 0; i < len(pixels); i += 4 {
+			pixels[i], pixels[i + 2] = pixels[i + 2], pixels[i]
+		}
+	}
+	return pixels
+}
+
+// Frees an in-flight download without taking the pixels (SDL defers the
+// actual GPU-side destruction past any pending work).
+texture_download_cancel :: proc(d: ^Texture_Download) {
+	sdl.ReleaseGPUFence(_gfx.device, d.fence)
+	sdl.ReleaseGPUTransferBuffer(_gfx.device, d.transfer)
+	free(d, runtime.default_allocator())
 }
 
 texture_destroy :: proc(tex: ^Texture) {
