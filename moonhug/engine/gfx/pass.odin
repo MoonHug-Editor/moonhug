@@ -211,6 +211,14 @@ rt_snapshot :: proc(rt: ^Render_Target) -> ^Texture {
 	return tex
 }
 
+// Async readback of the RT's color contents (texture_download_* protocol).
+// The contents must come from an already SUBMITTED frame — calling this at
+// the top of a frame reads what the previous frame drew.
+rt_download_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
+	tex := Texture{gpu = rt.color, width = rt.width, height = rt.height, format = _gfx.swapchain_format}
+	return texture_download_begin(&tex)
+}
+
 pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true

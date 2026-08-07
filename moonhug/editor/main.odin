@@ -127,6 +127,8 @@ main :: proc() {
     _register_project_settings() // @(project_settings) vars -> settings tabs
     defer settings_shutdown()
     defer thumbnails_shutdown()
+    mcp_bridge_init() // agent bridge on loopback TCP (docs/McpBridge.md)
+    defer mcp_bridge_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
         // Events feed both the editor input snapshot and imgui (the SDL3
@@ -151,6 +153,10 @@ main :: proc() {
         // destroy live content within this call, so nothing leaks into the
         // frame's visible rendering (thumbnails.odin).
         thumbnails_tick()
+
+        // Agent bridge: before views draw, so screenshot readbacks see the
+        // PREVIOUS frame's submitted render targets (mcp_bridge.odin).
+        mcp_bridge_tick()
 
         // Start ImGui frame
         im_sdlgpu.NewFrame()

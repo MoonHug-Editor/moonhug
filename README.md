@@ -97,6 +97,7 @@ Everything under `Library/` is derived data — never a source of truth, safe to
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
 - [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
+- [MCP Bridge](docs/McpBridge.md) - agent access to the running editor (scene dumps, menu invocation) over MCP, zero external dependencies
 - [Undo](docs/Undo.md) - editor undo feature
 - [Simulate](docs/Simulate.md) - play the open scene inside the editor with everything still inspectable: Simulate/Pause/Step controls, snapshot+restore on stop, sim-host dropdown picking which game's update code runs. Separate from the Play button, which builds and launches the game as its own process
 

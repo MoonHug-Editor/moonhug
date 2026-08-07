@@ -193,6 +193,45 @@ add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
 	append(&parent.children, sep)
 }
 
+// Finds an existing node without creating path segments (nil = no such path).
+find_path :: proc(path: string) -> ^MenuNode {
+	parts := strings.split(path, "/", context.temp_allocator)
+	node := _menu_root
+	for part in parts {
+		name := strings.trim_space(part)
+		if name == "" do continue
+		node = _find_child(node, name)
+		if node == nil do return nil
+	}
+	return node
+}
+
+// Invokes the Action registered at `path`, honoring its enabled predicate.
+// False when the path doesn't exist, isn't an action, or is disabled.
+invoke_path :: proc(path: string) -> bool {
+	node := find_path(path)
+	if node == nil || node.kind != .Action || node.action == nil do return false
+	if node.enabled != nil && !node.enabled() do return false
+	node.action()
+	return true
+}
+
+// Every invokable action path ("Edit/Undo", ...), temp-allocated.
+collect_action_paths :: proc(allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	walk :: proc(node: ^MenuNode, prefix: string, out: ^[dynamic]string, allocator: mem.Allocator) {
+		for child in node.children {
+			path := prefix == "" ? child.name : strings.concatenate({prefix, "/", child.name}, allocator)
+			if child.kind == .Action && child.action != nil {
+				append(out, path)
+			}
+			walk(child, path, out, allocator)
+		}
+	}
+	walk(_menu_root, "", &out, allocator)
+	return out[:]
+}
+
 _get_or_create_path :: proc(path: string) -> ^MenuNode {
 	parts := strings.split(path, "/")
 	defer delete(parts)
