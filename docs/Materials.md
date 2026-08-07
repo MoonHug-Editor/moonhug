@@ -192,7 +192,10 @@ Assign one via Material's `custom_shader` field (picker filters `.glsl`);
 it overrides the built-in `shader` enum when set, and falls back to it when
 the shader can't load (missing toolchain, compile error). Editing the
 `.glsl` **hot-reloads**: the AssetDB refresh (editor focus) reimports and
-swaps the pipelines live.
+swaps the pipelines live. A compile FAILURE is contained: the artifact index
+keeps the last good artifact, so the material keeps rendering with the
+previous pipelines, and the failed guid is memoized — no per-frame toolchain
+retries — until the next source edit earns one fresh attempt.
 
 ## The gfx seam
 

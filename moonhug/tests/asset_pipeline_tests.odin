@@ -109,3 +109,62 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 		testing.expect(t, p3 == p1, "the original key should be hit, not re-imported")
 	}
 }
+
+// A failed shader import must leave the index on the last GOOD artifact —
+// that is what keeps materials rendering with the previous pipelines while
+// the source has a compile error (shader.odin relies on it).
+@(test)
+test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
+	// The shader toolchain is an optional dependency (authoring only) — skip
+	// when it isn't installed.
+	state, _, _, exec_err := os.process_exec({command = []string{"glslc", "--version"}}, context.temp_allocator)
+	if exec_err != nil || !state.exited || state.exit_code != 0 do return
+
+	src_dir :: "moonhug/tests/fixtures/_pipeline_tmp"
+	glsl :: src_dir + "/probe.glsl"
+	os.make_directory(src_dir)
+	data, rerr := os.read_entire_file("moonhug/packages/app/assets/shaders/stripes.glsl", context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(glsl, data) == nil)
+	defer {
+		os.remove(glsl)
+		os.remove(glsl + ".meta")
+		os.remove(src_dir)
+		_remove_tree("Library")
+	}
+
+	engine.asset_pipeline_init()
+	engine.asset_pipeline_ensure_import_meta(glsl)
+
+	Meta :: struct {
+		guid: string,
+	}
+	meta: Meta
+	meta_data, mrerr := os.read_entire_file(glsl + ".meta", context.temp_allocator)
+	testing.expect(t, mrerr == nil)
+	if mrerr != nil do return
+	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
+	raw_guid, perr := uuid.read(meta.guid)
+	testing.expect(t, perr == nil)
+	if perr != nil do return
+	guid := engine.Asset_GUID(raw_guid)
+
+	testing.expect(t, engine.asset_pipeline_import_asset(glsl), "first import should run")
+	p1, ok1 := engine.asset_pipeline_artifact_path(guid)
+	testing.expect(t, ok1)
+	if !ok1 do return
+	p1 = strings.clone(p1, context.temp_allocator)
+	testing.expect(t, os.exists(p1))
+
+	// Break the source. The importer fails (glslc rejects it) and the index
+	// must still resolve to the good artifact.
+	testing.expect(t, os.write_entire_file(glsl, transmute([]u8)string("not valid glsl {")) == nil)
+	testing.expect(t, !engine.asset_pipeline_import_asset(glsl), "broken source should fail the importer")
+	p2, ok2 := engine.asset_pipeline_artifact_path(guid)
+	testing.expect(t, ok2, "guid should still resolve after a failed import")
+	if ok2 {
+		testing.expect(t, p2 == p1, "index should keep the last good artifact")
+		testing.expect(t, os.exists(p2))
+	}
+}
