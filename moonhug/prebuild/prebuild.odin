@@ -40,6 +40,7 @@ import _ "scene_overlay_gen"
 import _ "inspector_button_gen"
 import _ "packages_gen"
 import _ "gizmos_gen"
+import _ "mcp_tool_gen"
 
 PACKAGES := []string{
 	"moonhug/editor",

@@ -124,6 +124,16 @@ __decorator__Material__color :: proc(ctx: ^DrawContext) {
 
 __decorators__Material: []DecoratorProc
 
+__decorator__Mcp_Settings__enabled :: proc(ctx: ^DrawContext) {
+	if ctx.is_pre {
+		decorator_tooltip(ctx=ctx, desc="Let agent clients (Claude Code and other MCP clients) connect to this editor over a loopback socket: read scene state, take screenshots, and make undoable edits. Off stops the editor listening entirely. Takes effect on editor restart.")
+	} else {
+		decorator_tooltip(ctx=ctx, desc="Let agent clients (Claude Code and other MCP clients) connect to this editor over a loopback socket: read scene state, take screenshots, and make undoable edits. Off stops the editor listening entirely. Takes effect on editor restart.")
+	}
+}
+
+__decorators__Mcp_Settings: []DecoratorProc
+
 __decorator__SpriteRenderer__color :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		decorator_color(ctx)
@@ -204,6 +214,9 @@ init_decorators :: proc() {
 	__decorators__Material[4] = nil
 	__decorators__Material[5] = nil
 	decorator_registry[typeid_of(engine.Material)] = __decorators__Material
+	__decorators__Mcp_Settings = make([]DecoratorProc, 1)
+	__decorators__Mcp_Settings[0] = __decorator__Mcp_Settings__enabled
+	decorator_registry[typeid_of(engine.Mcp_Settings)] = __decorators__Mcp_Settings
 	__decorators__SpriteRenderer = make([]DecoratorProc, 6)
 	__decorators__SpriteRenderer[0] = nil
 	__decorators__SpriteRenderer[1] = nil

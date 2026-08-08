@@ -28,6 +28,7 @@ import engine "../engine"
 import gfx "../engine/gfx"
 import "../engine/log"
 import "menu"
+import "undo"
 import sim "./simulate"
 
 _MCP_PORT_FIRST :: 6600
@@ -55,6 +56,15 @@ _Mcp_Shot :: struct {
 }
 
 mcp_bridge_init :: proc() {
+	engine.project_settings_load("MCP", &engine.mcp_settings)
+	if !engine.mcp_settings.enabled {
+		// A file left by an earlier enabled run would send shims to a port
+		// nobody is listening on — remove it so they report "not running".
+		os.remove(mcp.BRIDGE_FILE_FROM_EDITOR)
+		log.info("[MCP] Bridge disabled (Edit > Project Settings > MCP)")
+		return
+	}
+
 	port := 0
 	for candidate in _MCP_PORT_FIRST ..< _MCP_PORT_FIRST + _MCP_PORT_COUNT {
 		listener, lerr := net.listen_tcp(net.Endpoint{address = net.IP4_Loopback, port = candidate})
@@ -234,52 +244,93 @@ _json_int :: proc(obj: json.Object, key: string, fallback: i64) -> i64 {
 	return fallback
 }
 
-// --- Tools ---------------------------------------------------------------------
-
-// Tool metadata served to the shim (which forwards it as MCP tools/list).
+// Optional float param: missing keys leave the caller's current value.
 @(private = "file")
-_MCP_DESCRIBE :: `[
-{"name":"editor_state","description":"Editor status: active scene, simulate state, selection. Call first to orient.","inputSchema":{"type":"object","properties":{}}},
-{"name":"read_log","description":"Recent editor console entries, newest last.","inputSchema":{"type":"object","properties":{"max":{"type":"integer","description":"max entries, default 30"}}}},
-{"name":"scene_dump","description":"Active scene contents. Default is a summary (roots, counts, selection); full=true returns the complete serialized scene JSON.","inputSchema":{"type":"object","properties":{"full":{"type":"boolean"}}}},
-{"name":"list_menus","description":"Every invokable editor menu path.","inputSchema":{"type":"object","properties":{}}},
-{"name":"invoke_menu","description":"Invoke an editor menu action by path, e.g. Edit/Undo (same as clicking it).","inputSchema":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}},
-{"name":"editor_setting","description":"Read editor settings (no args) or set ONE scalar field: name + value, value as JSON text, e.g. name=project_zoom value=0.5.","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"value":{"type":"string","description":"JSON-encoded scalar"}}}},
-{"name":"screenshot","description":"Capture a view's render target (previous frame). Full PNG saved to Library/Screenshots, downscaled copy returned inline as image content.","inputSchema":{"type":"object","properties":{"view":{"type":"string","enum":["scene","game"],"description":"default scene"},"max_size":{"type":"integer","description":"inline image longest edge, default 640"}}}}
-]`
+_json_f32 :: proc(obj: json.Object, key: string) -> (f32, bool) {
+	#partial switch v in obj[key] {
+	case json.Integer:
+		return f32(v), true
+	case json.Float:
+		return f32(v), true
+	}
+	return 0, false
+}
+
+// --- Tool table ------------------------------------------------------------------
+
+// Tools are DECLARED, not registered: @(mcp_tool={description=...,
+// param_x="type!:desc"}) on an `mcp_tool_<name>` proc, and mcp_tool_gen emits
+// _mcp_tool_table (mcp_tools_generated.odin). The schema the agent reads comes
+// from the same declaration as the handler, so the two cannot drift.
+//
+// A handler returns (result_json, error). Returning a zero Mcp_Error means the
+// result is sent as-is; screenshot-style tools that finish frames later return
+// MCP_DEFERRED and respond themselves. There is no read/write classification:
+// the bridge is on or off (engine.mcp_settings), so no tool needs to declare
+// what it touches and none can be mislabeled.
+Mcp_Error :: struct {
+	code:    string, // "" = success
+	message: string,
+}
+
+Mcp_Tool_Def :: struct {
+	name:        string,
+	description: string,
+	schema:      string,
+	handler:     proc(id: i64, params: json.Object) -> (string, Mcp_Error),
+}
+
+// A handler that answers on its own schedule (across frames).
+MCP_DEFERRED :: "\x00deferred"
 
 @(private = "file")
 _mcp_dispatch :: proc(id: i64, tool: string, params: json.Object) {
-	switch tool {
-	case "describe":
-		_mcp_respond(id, _MCP_DESCRIBE)
-	case "editor_state":
-		_mcp_tool_editor_state(id)
-	case "read_log":
-		_mcp_tool_read_log(id, params)
-	case "scene_dump":
-		_mcp_tool_scene_dump(id, params)
-	case "list_menus":
-		_mcp_tool_list_menus(id)
-	case "invoke_menu":
-		_mcp_tool_invoke_menu(id, params)
-	case "editor_setting":
-		_mcp_tool_editor_setting(id, params)
-	case "screenshot":
-		_mcp_tool_screenshot(id, params)
-	case:
-		_mcp_respond_error(id, "unknown_tool", fmt.tprintf("no tool named %q", tool))
+	if tool == "describe" {
+		_mcp_respond(id, _mcp_describe_json())
+		return
 	}
+	for def in _mcp_tool_table() {
+		if def.name != tool do continue
+		result, err := def.handler(id, params)
+		if err.code != "" {
+			_mcp_respond_error(id, err.code, err.message)
+			return
+		}
+		if result == MCP_DEFERRED do return // handler responds later
+		_mcp_respond(id, result)
+		return
+	}
+	_mcp_respond_error(id, "unknown_tool", fmt.tprintf("no tool named %q", tool))
+}
+
+// tools/list payload, built from the generated table.
+@(private = "file")
+_mcp_describe_json :: proc() -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[")
+	for def, i in _mcp_tool_table() {
+		if i > 0 do strings.write_string(&b, ",")
+		name, _ := json.marshal(def.name, {}, context.temp_allocator)
+		desc, _ := json.marshal(def.description, {}, context.temp_allocator)
+		fmt.sbprintf(&b, `{{"name":%s,"description":%s,"inputSchema":%s}}`,
+			string(name), string(desc), def.schema)
+	}
+	strings.write_string(&b, "]")
+	return strings.to_string(b)
+}
+
+// --- Tool helpers ----------------------------------------------------------------
+
+@(private = "file")
+_mcp_ok :: proc(v: any) -> (string, Mcp_Error) {
+	data, merr := json.marshal(v, {}, context.temp_allocator)
+	if merr != nil do return "", Mcp_Error{"marshal_failed", fmt.tprintf("%v", merr)}
+	return string(data), {}
 }
 
 @(private = "file")
-_mcp_marshal_respond :: proc(id: i64, v: any) {
-	data, merr := json.marshal(v, {}, context.temp_allocator)
-	if merr != nil {
-		_mcp_respond_error(id, "marshal_failed", fmt.tprintf("%v", merr))
-		return
-	}
-	_mcp_respond(id, string(data))
+_mcp_fail :: proc(code: string, format: string, args: ..any) -> (string, Mcp_Error) {
+	return "", Mcp_Error{code, fmt.tprintf(format, ..args)}
 }
 
 @(private = "file")
@@ -294,26 +345,28 @@ _mcp_selection_names :: proc() -> []string {
 	return names[:]
 }
 
-@(private = "file")
-_mcp_tool_editor_state :: proc(id: i64) {
-	scene_name, scene_path: string
-	if s := engine.sm_scene_get_active(); s != nil {
-		scene_path = s.path
-		scene_name = s.path
-	}
-	_mcp_marshal_respond(id, struct {
+// --- Read tools ------------------------------------------------------------------
+
+@(mcp_tool={description="Editor status: active scene, simulate state, selection. Call first to orient."})
+mcp_tool_editor_state :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	scene_path: string
+	if s := engine.sm_scene_get_active(); s != nil do scene_path = s.path
+	return _mcp_ok(struct {
 		scene:     string,
 		simulate:  string,
 		selection: []string,
 	}{
-		scene     = scene_name,
+		scene     = scene_path,
 		simulate  = fmt.tprintf("%v", sim.state()),
 		selection = _mcp_selection_names(),
 	})
 }
 
-@(private = "file")
-_mcp_tool_read_log :: proc(id: i64, params: json.Object) {
+@(mcp_tool={
+	description="Recent editor console entries, newest last.",
+	param_max="integer:How many entries to return (default 30)",
+})
+mcp_tool_read_log :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	max_entries := int(_json_int(params, "max", 30))
 	Entry :: struct {
 		level:   string,
@@ -324,29 +377,26 @@ _mcp_tool_read_log :: proc(id: i64, params: json.Object) {
 	for e in log.entries[first:] {
 		append(&out, Entry{level = fmt.tprintf("%v", e.level), message = e.message})
 	}
-	_mcp_marshal_respond(id, out[:])
+	return _mcp_ok(out[:])
 }
 
-@(private = "file")
-_mcp_tool_scene_dump :: proc(id: i64, params: json.Object) {
+@(mcp_tool={
+	description="Active scene contents: a summary (roots, transform count, selection) or the full serialized scene.",
+	param_full="boolean:Return the complete serialized scene JSON instead of the summary",
+})
+mcp_tool_scene_dump :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	s := engine.sm_scene_get_active()
-	if s == nil {
-		_mcp_respond_error(id, "no_scene", "no active scene")
-		return
-	}
+	if s == nil do return _mcp_fail("no_scene", "no active scene")
+
 	full, _ := params["full"].(json.Boolean)
 	if full {
 		data, ok := engine.scene_serialize(s)
-		if !ok {
-			_mcp_respond_error(id, "serialize_failed", "scene_serialize failed")
-			return
-		}
+		if !ok do return _mcp_fail("serialize_failed", "scene_serialize failed")
 		defer delete(data)
-		_mcp_marshal_respond(id, struct {
+		return _mcp_ok(struct {
 			path:  string,
 			scene: string,
 		}{path = s.path, scene = string(data)})
-		return
 	}
 
 	w := engine.ctx_world()
@@ -356,11 +406,9 @@ _mcp_tool_scene_dump :: proc(id: i64, params: json.Object) {
 	for t, _ in engine.pool_next(&it) {
 		if t.scene != s do continue
 		count += 1
-		if t.parent.handle == s.root.handle {
-			append(&roots, t.name)
-		}
+		if t.parent.handle == s.root.handle do append(&roots, t.name)
 	}
-	_mcp_marshal_respond(id, struct {
+	return _mcp_ok(struct {
 		path:            string,
 		transform_count: int,
 		roots:           []string,
@@ -368,51 +416,235 @@ _mcp_tool_scene_dump :: proc(id: i64, params: json.Object) {
 	}{path = s.path, transform_count = count, roots = roots[:], selection = _mcp_selection_names()})
 }
 
-@(private = "file")
-_mcp_tool_list_menus :: proc(id: i64) {
-	_mcp_marshal_respond(id, menu.collect_action_paths())
+@(mcp_tool={description="Every invokable editor menu path."})
+mcp_tool_list_menus :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	return _mcp_ok(menu.collect_action_paths())
 }
 
-@(private = "file")
-_mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) {
-	path, has := params["path"].(json.String)
-	if !has {
-		_mcp_respond_error(id, "bad_request", "missing path")
-		return
+@(mcp_tool={
+	description="Objects in the active scene with their transform and components. Names repeat, so use the returned local_id to address one.",
+	param_name="string:Only objects whose name contains this text",
+})
+mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	s := engine.sm_scene_get_active()
+	if s == nil do return _mcp_fail("no_scene", "no active scene")
+	filter, _ := params["name"].(json.String)
+
+	Obj :: struct {
+		local_id:   u64,
+		name:       string,
+		parent:     string,
+		position:   [3]f32,
+		components: []string,
 	}
-	if !menu.invoke_path(path) {
-		_mcp_respond_error(id, "menu_unavailable", fmt.tprintf("%q not found, not an action, or disabled — see list_menus", path))
-		return
+	w := engine.ctx_world()
+	out := make([dynamic]Obj, context.temp_allocator)
+	it := engine.pool_iterator(&w.transforms)
+	for t, h in engine.pool_next(&it) {
+		if t.scene != s do continue
+		if filter != "" && !strings.contains(t.name, filter) do continue
+		parent_name: string
+		if pt := engine.pool_get(&w.transforms, t.parent.handle); pt != nil do parent_name = pt.name
+		comps := make([dynamic]string, context.temp_allocator)
+		for c in t.components {
+			if tid := engine.get_typeid_by_type_key(c.handle.type_key); tid != nil {
+				append(&comps, fmt.tprintf("%v", tid))
+			}
+		}
+		h := h
+		h.type_key = .Transform
+		append(&out, Obj{
+			local_id   = u64(t.local_id),
+			name       = t.name,
+			parent     = parent_name,
+			position   = engine.transform_world(engine.Transform_Handle(h)).position,
+			components = comps[:],
+		})
 	}
-	_mcp_respond(id, `{"invoked":true}`)
+	return _mcp_ok(out[:])
 }
 
+// --- Write tools -----------------------------------------------------------------
+// Every mutation runs through the editor's own undo stack, so an agent edit is
+// Ctrl+Z-able and indistinguishable from a manual one.
+
+// Resolves an object by local_id (from list_objects), else by exact name.
 @(private = "file")
-_mcp_tool_editor_setting :: proc(id: i64, params: json.Object) {
+_mcp_find_object :: proc(params: json.Object) -> (engine.Transform_Handle, Mcp_Error) {
+	s := engine.sm_scene_get_active()
+	if s == nil do return {}, Mcp_Error{"no_scene", "no active scene"}
+
+	if lid := _json_int(params, "local_id", 0); lid != 0 {
+		if tH, ok := engine.scene_find_outer_transform_local_id(s, engine.Local_ID(lid)); ok {
+			return tH, {}
+		}
+		return {}, Mcp_Error{"not_found", fmt.tprintf("no object with local_id %d — see list_objects", lid)}
+	}
+
+	name, has := params["name"].(json.String)
+	if !has do return {}, Mcp_Error{"bad_request", "need local_id or name"}
+	w := engine.ctx_world()
+	found: engine.Transform_Handle
+	matches := 0
+	it := engine.pool_iterator(&w.transforms)
+	for t, h in engine.pool_next(&it) {
+		if t.scene != s || t.name != name do continue
+		matches += 1
+		h := h
+		h.type_key = .Transform
+		found = engine.Transform_Handle(h)
+	}
+	if matches == 0 do return {}, Mcp_Error{"not_found", fmt.tprintf("no object named %q — see list_objects", name)}
+	if matches > 1 {
+		return {}, Mcp_Error{"ambiguous", fmt.tprintf("%d objects named %q — use local_id from list_objects", matches, name)}
+	}
+	return found, {}
+}
+
+@(mcp_tool={
+	description="Select objects in the scene by name (exact). Empty name clears the selection.",
+	param_name="string:Object name to select; omit or empty to clear",
+})
+mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	name, has := params["name"].(json.String)
+	if !has || name == "" {
+		sel_scene_clear()
+		return _mcp_ok(struct{ selected: int }{0})
+	}
+	s := engine.sm_scene_get_active()
+	if s == nil do return _mcp_fail("no_scene", "no active scene")
+	w := engine.ctx_world()
+	sel_scene_clear()
+	count := 0
+	it := engine.pool_iterator(&w.transforms)
+	for t, h in engine.pool_next(&it) {
+		if t.scene != s || t.name != name do continue
+		h := h
+		h.type_key = .Transform
+		sel_scene_add(engine.Transform_Handle(h))
+		count += 1
+	}
+	if count == 0 do return _mcp_fail("not_found", "no object named %q — see list_objects", name)
+	return _mcp_ok(struct{ selected: int }{count})
+}
+
+@(mcp_tool={
+	description="Set a transform field on one object. Address it by local_id (preferred) or exact name. One undo step.",
+	param_local_id="integer:Object local_id from list_objects",
+	param_name="string:Exact object name (alternative to local_id)",
+	param_field="string!:position, rotation (euler degrees) or scale",
+	param_x="number:X component",
+	param_y="number:Y component",
+	param_z="number:Z component",
+})
+mcp_tool_set_transform :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	tH, ferr := _mcp_find_object(params)
+	if ferr.code != "" do return "", ferr
+	field, has := params["field"].(json.String)
+	if !has do return _mcp_fail("bad_request", "need field (position, rotation or scale)")
+
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return _mcp_fail("not_found", "object went away")
+
+	// Missing components keep their current value (partial edits).
+	current: [3]f32
+	switch field {
+	case "position": current = t.position
+	case "scale":    current = t.scale
+	case "rotation": current = engine.quat_to_euler_xyz(t.rotation)
+	case:
+		return _mcp_fail("bad_request", "field must be position, rotation or scale")
+	}
+	v := current
+	if f, ok := _json_f32(params, "x"); ok do v.x = f
+	if f, ok := _json_f32(params, "y"); ok do v.y = f
+	if f, ok := _json_f32(params, "z"); ok do v.z = f
+
+	switch field {
+	case "position":
+		e := undo.edit_begin(tH, &t.position, typeid_of([3]f32), "Set Position (MCP)")
+		defer undo.edit_end(&e)
+		t.position = v
+	case "scale":
+		e := undo.edit_begin(tH, &t.scale, typeid_of([3]f32), "Set Scale (MCP)")
+		defer undo.edit_end(&e)
+		t.scale = v
+	case "rotation":
+		e := undo.edit_begin(tH, &t.rotation, typeid_of([4]f32), "Set Rotation (MCP)")
+		defer undo.edit_end(&e)
+		t.rotation = engine.quat_from_euler_xyz(v.x, v.y, v.z)
+	}
+	return _mcp_ok(struct {
+		field: string,
+		value: [3]f32,
+	}{field = field, value = v})
+}
+
+@(mcp_tool={
+	description="Rename one object. Address it by local_id (preferred) or exact current name. One undo step.",
+	param_local_id="integer:Object local_id from list_objects",
+	param_name="string:Exact current name (alternative to local_id)",
+	param_new_name="string!:The new name",
+})
+mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	tH, ferr := _mcp_find_object(params)
+	if ferr.code != "" do return "", ferr
+	new_name, has := params["new_name"].(json.String)
+	if !has || new_name == "" do return _mcp_fail("bad_request", "need new_name")
+
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return _mcp_fail("not_found", "object went away")
+
+	e := undo.edit_begin(tH, &t.name, typeid_of(string), "Rename (MCP)")
+	defer undo.edit_end(&e)
+	delete(t.name)
+	t.name = strings.clone(new_name)
+	return _mcp_ok(struct{ name: string }{new_name})
+}
+
+@(mcp_tool={
+	description="Read editor settings (no args) or set ONE scalar field.",
+	param_name="string:Setting field name, e.g. project_zoom",
+	param_value="string:JSON-encoded scalar, e.g. 0.5 or true",
+})
+mcp_tool_editor_setting :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	name, has_name := params["name"].(json.String)
-	if !has_name {
-		_mcp_marshal_respond(id, editor_settings)
-		return
-	}
+	if !has_name do return _mcp_ok(editor_settings)
 	value, has_value := params["value"].(json.String)
-	if !has_value {
-		_mcp_respond_error(id, "bad_request", "set needs value (JSON-encoded scalar as string)")
-		return
-	}
+	if !has_value do return _mcp_fail("bad_request", "set needs value (JSON-encoded scalar as string)")
+
 	patch := fmt.tprintf(`{{"%s": %s}}`, name, value)
 	if json.unmarshal(transmute([]u8)patch, &editor_settings) != nil {
-		_mcp_respond_error(id, "bad_value", fmt.tprintf("could not apply %s = %s", name, value))
-		return
+		return _mcp_fail("bad_value", "could not apply %s = %s", name, value)
 	}
-	_mcp_respond(id, `{"applied":true}`)
+	return _mcp_ok(struct{ applied: bool }{true})
+}
+
+@(mcp_tool={
+	description="Invoke an editor menu action by path, e.g. Edit/Undo (same as clicking it).",
+	param_path="string!:Menu path from list_menus",
+})
+mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	path, has := params["path"].(json.String)
+	if !has do return _mcp_fail("bad_request", "missing path")
+	if !menu.invoke_path(path) {
+		return _mcp_fail("menu_unavailable", "%q not found, not an action, or disabled — see list_menus", path)
+	}
+	return _mcp_ok(struct{ invoked: bool }{true})
 }
 
 // --- Screenshot ------------------------------------------------------------------
 
-@(private = "file")
-_mcp_tool_screenshot :: proc(id: i64, params: json.Object) {
-	view := "scene"
-	if v, has := params["view"].(json.String); has do view = v
+@(mcp_tool={
+	description="Capture a view's render target (previous frame). Full PNG saved to Library/Screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
+	param_view="string:scene (default) or game",
+	param_max_size="integer:Inline image longest edge in pixels (default 640)",
+})
+mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	view, _ := params["view"].(json.String)
+	if view == "" do view = "scene"
 	max_size := int(_json_int(params, "max_size", _MCP_DEFAULT_IMAGE_MAX))
 
 	// The shot completes frames later, after this frame's temp allocations
@@ -426,19 +658,16 @@ _mcp_tool_screenshot :: proc(id: i64, params: json.Object) {
 		rt = game_rt
 		view = "game"
 	case:
-		_mcp_respond_error(id, "bad_request", "view must be scene or game")
-		return
+		return _mcp_fail("bad_request", "view must be scene or game")
 	}
 	if rt == nil || rt.width < 2 || rt.height < 2 {
-		_mcp_respond_error(id, "view_not_available", fmt.tprintf("%s view has not rendered yet", view))
-		return
+		return _mcp_fail("view_not_available", "%s view has not rendered yet", view)
 	}
 	dl := gfx.rt_download_begin(rt)
-	if dl == nil {
-		_mcp_respond_error(id, "readback_failed", "could not begin GPU readback")
-		return
-	}
+	if dl == nil do return _mcp_fail("readback_failed", "could not begin GPU readback")
+
 	append(&_mcp.shots, _Mcp_Shot{id = id, dl = dl, view = view, max_size = max(max_size, 16)})
+	return MCP_DEFERRED, {} // _mcp_poll_shots responds when the pixels land
 }
 
 @(private = "file")
@@ -521,7 +750,7 @@ _mcp_finish_shot :: proc(shot: _Mcp_Shot, pixels: []u8, w, h: int) {
 		return
 	}
 
-	_mcp_marshal_respond(shot.id, struct {
+	result, err := _mcp_ok(struct {
 		path:         string,
 		width:        int,
 		height:       int,
@@ -531,4 +760,9 @@ _mcp_finish_shot :: proc(shot: _Mcp_Shot, pixels: []u8, w, h: int) {
 		path = path, width = w, height = h,
 		image_base64 = b64, image_mime = "image/png",
 	})
+	if err.code != "" {
+		_mcp_respond_error(shot.id, err.code, err.message)
+		return
+	}
+	_mcp_respond(shot.id, result)
 }
