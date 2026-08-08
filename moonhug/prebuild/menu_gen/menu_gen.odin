@@ -174,13 +174,19 @@ generate :: proc(w: ^db.World) -> bool {
 		}
 	}
 
-	// Preserve previous collect_finalize ordering + dedupe.
+	// Preserve previous collect_finalize ordering + dedupe. The path/name
+	// tiebreak makes this a TOTAL order: entries tied on parent+order+kind
+	// (same-order siblings, e.g. one submenu's items) would otherwise sort
+	// by entity iteration order under an unstable sort, and the emitted file
+	// would churn between builds.
 	slice.sort_by(entries[:], proc(a, b: MenuEntry) -> bool {
 		pa, oa, ka := _sort_key_order(a)
 		pb, ob, kb := _sort_key_order(b)
 		if pa != pb do return pa < pb
 		if oa != ob do return oa < ob
-		return ka < kb
+		if ka != kb do return ka < kb
+		if a.path != b.path do return a.path < b.path
+		return a.name < b.name
 	})
 
 	i := 0

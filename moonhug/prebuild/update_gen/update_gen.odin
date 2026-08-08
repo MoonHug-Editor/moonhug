@@ -104,8 +104,13 @@ generate :: proc(w: ^db.World) -> bool {
 
 	// Preserve previous collect_finalize ordering: sort by order.
 	sort_rows :: proc(rows: []_UpdateRow) {
+		// Total order — same-order ticks (the common case: no explicit order)
+		// would otherwise emit in entity iteration order and churn between
+		// builds. Call order within a tie is arbitrary but now STABLE.
 		slice.sort_by(rows, proc(a, b: _UpdateRow) -> bool {
-			return a.order < b.order
+			if a.order != b.order do return a.order < b.order
+			if a.pkg != b.pkg do return a.pkg < b.pkg
+			return a.name < b.name
 		})
 	}
 	sort_rows(frame_rows[:])

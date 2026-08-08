@@ -14,8 +14,8 @@ __update :: proc(dt: f32) {
 __fixed_update :: proc(fixed_dt: f32) {
 	tick_lifetime(fixed_dt)
 	game_tick(fixed_dt)
-	plugin_example.spinner_tick(fixed_dt)
 	tick_player(fixed_dt)
+	plugin_example.spinner_tick(fixed_dt)
 	physics2d.physics_step(fixed_dt)
 	physics3d.physics_step(fixed_dt)
 	tick_destroy(fixed_dt)

@@ -146,8 +146,12 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 
 	// Preserve previous collect_finalize ordering: sort by priority (lower first, higher later).
+	// Total order — same-priority drawers must not depend on entity iteration
+	// order under an unstable sort, or the emitted file churns between builds.
 	slice.sort_by(entries[:], proc(a, b: _PropertyDrawerRow) -> bool {
-		return a.priority < b.priority
+		if a.priority != b.priority do return a.priority < b.priority
+		if a.type_name != b.type_name do return a.type_name < b.type_name
+		return a.proc_name < b.proc_name
 	})
 
 	b := strings.builder_make()

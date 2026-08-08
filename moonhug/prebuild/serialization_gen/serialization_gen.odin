@@ -151,9 +151,13 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 
 	// Preserve previous collect_finalize ordering: sort by (kind, priority).
+	// Total order — see property_drawer_gen: ties on (kind, priority) would
+	// otherwise emit in entity iteration order and churn between builds.
 	slice.sort_by(entries[:], proc(a, b: _SerializationRow) -> bool {
 		if a.kind != b.kind do return a.kind < b.kind
-		return a.priority < b.priority
+		if a.priority != b.priority do return a.priority < b.priority
+		if a.type_name != b.type_name do return a.type_name < b.type_name
+		return a.proc_name < b.proc_name
 	})
 
 	pkg_name := "serialization"
