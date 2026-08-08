@@ -1,3 +1,9 @@
+## [0.67.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.66.1...v0.67.0) (2026-08-08)
+
+### Features
+
+* crash_journal ([9ab7ebe](https://github.com/MoonHug-Editor/moonhug/commit/9ab7ebeb3a0403deedb867583054bdc882dea1c9))
+
 ## [0.66.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.66.0...v0.66.1) (2026-08-08)
 
 ### Bug Fixes
