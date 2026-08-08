@@ -1,3 +1,14 @@
+## [0.66.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.65.0...v0.66.0) (2026-08-08)
+
+### Features
+
+* mcp ([c7ccb26](https://github.com/MoonHug-Editor/moonhug/commit/c7ccb26c548a167b5ad42556b9f9699d1ed4ee83))
+* mcp improvements, settings.enabled, generator ([f8c7bbb](https://github.com/MoonHug-Editor/moonhug/commit/f8c7bbbb47d8be61b43ffcda779401d5fd9b39de))
+
+### Bug Fixes
+
+* generated sort order ([133e7e3](https://github.com/MoonHug-Editor/moonhug/commit/133e7e3ef1882e8908e02a7c137aaad49ed9b3cb))
+
 ## [0.65.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.64.0...v0.65.0) (2026-08-07)
 
 ### Features
