@@ -12,3 +12,4 @@ moonhug/library/
 .zed
 *.dSYM
 builds/
+moonhug/logs/

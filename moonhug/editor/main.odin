@@ -18,6 +18,7 @@ import "../engine/serialization"
 import "../engine/registration"
 import "core:os"
 import "../engine"
+import crash_journal "../engine/crash_journal"
 import "core:path/filepath"
 import "../engine/log"
 import "core:encoding/uuid"
@@ -43,6 +44,19 @@ main :: proc() {
     if !strings.has_suffix(cwd, "moonhug") {
         moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
         os.set_working_directory(moonhug_dir)
+    }
+
+    // Before anything that can fault: from here on a crash lands in
+    // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).
+    crash_journal.init()
+    // Must be set HERE, not inside init: assertion_failure_proc lives on the
+    // context, so it only persists in the scope that assigns it.
+    context.assertion_failure_proc = crash_journal.assertion_failure
+    for arg in os.args[1:] {
+        if arg == "--crash-test" {
+            fmt.eprintfln("crash journal self-test: writing %s and faulting", crash_journal.path())
+            crash_journal.test_crash()
+        }
     }
 
     win_w, win_h, win_x, win_y := load_editor_settings()
