@@ -1,3 +1,9 @@
+## [0.66.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.66.0...v0.66.1) (2026-08-08)
+
+### Bug Fixes
+
+* move, rename, docs ([00a39a4](https://github.com/MoonHug-Editor/moonhug/commit/00a39a4e1c543619b2ce7aacefe6037e0a528789))
+
 ## [0.66.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.65.0...v0.66.0) (2026-08-08)
 
 ### Features
