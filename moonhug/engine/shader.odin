@@ -84,7 +84,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		header, spv, msl, properties, textures, parse_ok = _shader_artifact_parse(blob)
 	}
 	if !parse_ok {
-		// Artifact missing (fresh clone, cleaned Library/) or stale (format
+		// Artifact missing (fresh clone, cleaned library/) or stale (format
 		// bump): import from source and retry once (needs the toolchain).
 		source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
 		if !path_ok do return nil, false

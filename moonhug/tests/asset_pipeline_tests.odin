@@ -1,11 +1,11 @@
 package tests
 
-// Content-addressed artifact pipeline (README "Library"): keys hash source
+// Content-addressed artifact pipeline (README "library"): keys hash source
 // bytes + settings + importer version, ArtifactDB.json maps guid -> key, and
 // a setting toggled back is a cache hit on the old artifact. Headless — the
 // texture importer decodes and writes blobs, no GPU.
 //
-// Tests run from the repo root where no Library exists (the binaries chdir
+// Tests run from the repo root where no library/ exists (the binaries chdir
 // into moonhug/), so the whole tree this creates is removed at the end.
 
 import "core:encoding/json"
@@ -46,7 +46,7 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 		os.remove(png)
 		os.remove(png + ".meta")
 		os.remove(src_dir)
-		_remove_tree("Library")
+		_remove_tree("library")
 	}
 
 	engine.asset_pipeline_init()
@@ -72,8 +72,8 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	testing.expect(t, ok1)
 	if !ok1 do return
 	p1 = strings.clone(p1, context.temp_allocator)
-	testing.expect(t, strings.has_prefix(p1, "Library/Artifacts/"), "artifact should live under Library/Artifacts")
-	rest := strings.trim_prefix(p1, "Library/Artifacts/")
+	testing.expect(t, strings.has_prefix(p1, "library/artifacts/"), "artifact should live under library/artifacts")
+	rest := strings.trim_prefix(p1, "library/artifacts/")
 	testing.expect(t, len(rest) > 3 && rest[2] == '/', "fan-out folder should be the key's first two hex chars")
 	testing.expect(t, strings.has_prefix(rest[3:], rest[:2]), "file name should start with its fan-out prefix")
 	testing.expect(t, os.exists(p1))
@@ -131,7 +131,7 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 		os.remove(glsl)
 		os.remove(glsl + ".meta")
 		os.remove(src_dir)
-		_remove_tree("Library")
+		_remove_tree("library")
 	}
 
 	engine.asset_pipeline_init()

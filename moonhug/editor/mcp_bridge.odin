@@ -4,14 +4,14 @@ package editor
 // that the mcp_shim binary translates to MCP for agent clients. Threadless —
 // mcp_bridge_tick polls a non-blocking socket once per frame, right after
 // gfx.frame_begin, so tools run on the main thread with every editor and
-// engine API available. Wire protocol lives in moonhug/mcp (length-prefixed
+// engine API available. Wire protocol lives in editor/mcp (length-prefixed
 // JSON envelope, token auth from the bridge file).
 //
 // Screenshots complete across frames: the tick runs BEFORE views draw, so a
 // view's render target still holds the PREVIOUS frame's submitted contents —
 // downloadable immediately (gfx.rt_download_begin), fence polled per tick,
 // response sent when the pixels land. Full-resolution PNG goes to
-// Library/Screenshots, a ≤max_size thumbnail rides the wire as base64.
+// library/screenshots, a ≤max_size thumbnail rides the wire as base64.
 
 import "base:runtime"
 import "core:c"
@@ -23,7 +23,7 @@ import "core:net"
 import "core:os"
 import "core:strings"
 import stbi "vendor:stb/image"
-import mcp "../mcp"
+import mcp "moonhug:editor/mcp"
 import engine "../engine"
 import gfx "../engine/gfx"
 import "../engine/log"
@@ -33,7 +33,7 @@ import sim "./simulate"
 
 _MCP_PORT_FIRST :: 6600
 _MCP_PORT_COUNT :: 100
-_MCP_SCREENSHOT_DIR :: "Library/Screenshots"
+_MCP_SCREENSHOT_DIR :: "library/screenshots"
 _MCP_DEFAULT_IMAGE_MAX :: 640
 
 _Mcp_Shot :: struct {
@@ -94,8 +94,8 @@ mcp_bridge_init :: proc() {
 		net.close(_mcp.listener)
 		return
 	}
-	os.make_directory("Library")
-	os.make_directory("Library/StateCache")
+	os.make_directory("library")
+	os.make_directory("library/state_cache")
 	if os.write_entire_file(mcp.BRIDGE_FILE_FROM_EDITOR, data) != nil {
 		log.error("[MCP] Bridge file write failed — bridge disabled")
 		net.close(_mcp.listener)
@@ -638,7 +638,7 @@ mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error
 // --- Screenshot ------------------------------------------------------------------
 
 @(mcp_tool={
-	description="Capture a view's render target (previous frame). Full PNG saved to Library/Screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
+	description="Capture a view's render target (previous frame). Full PNG saved to library/screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
 	param_view="string:scene (default) or game",
 	param_max_size="integer:Inline image longest edge in pixels (default 640)",
 })
@@ -710,7 +710,7 @@ _mcp_png_encode :: proc(pixels: []u8, w, h: int) -> []u8 {
 @(private = "file")
 _mcp_finish_shot :: proc(shot: _Mcp_Shot, pixels: []u8, w, h: int) {
 	// Full resolution to disk.
-	os.make_directory("Library")
+	os.make_directory("library")
 	os.make_directory(_MCP_SCREENSHOT_DIR)
 	_mcp.shot_counter += 1
 	path := fmt.tprintf("%s/%s_%03d.png", _MCP_SCREENSHOT_DIR, shot.view, _mcp.shot_counter)

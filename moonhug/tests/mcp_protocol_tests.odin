@@ -4,7 +4,7 @@ package tests
 // prefixed frames accumulated from arbitrary recv chunk boundaries.
 
 import "core:testing"
-import mcp "../mcp"
+import mcp "moonhug:editor/mcp"
 
 @(private = "file")
 _frame_bytes :: proc(payload: string, allocator := context.temp_allocator) -> []u8 {

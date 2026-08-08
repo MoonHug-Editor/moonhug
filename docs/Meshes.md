@@ -54,7 +54,8 @@ part):
 
 ## Artifact format
 
-`library/artifacts/<guid>.bin` (whole model) and `<guid>_m<i>.bin` (part =
+`library/artifacts/<xx>/<key>.bin` (whole model, content-addressed — see the
+README's library section) and a sibling `<key>_m<i>.bin` per part (part =
 glTF mesh i), little-endian, same layout (see `asset_importer_mesh.odin`):
 
 ```

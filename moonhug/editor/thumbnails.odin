@@ -2,7 +2,7 @@ package editor
 
 // Asset thumbnails for the project view's grid mode. GPU-resident cache keyed
 // by guid, invalidated by the asset db's file stamp, backed by a disk cache
-// under Library/Thumbnails so thumbnails survive sessions.
+// under library/thumbnails so thumbnails survive sessions.
 //
 // Generation is budgeted: the project view REQUESTS a thumbnail for each
 // visible cell (thumbnail_get), misses queue, and thumbnails_tick handles a
@@ -16,7 +16,7 @@ package editor
 // Rendered thumbnails persist asynchronously: the readback submits one frame
 // after the render (the frame command buffer must be submitted first) and the
 // fence is polled, never waited on — generation costs no GPU sync stalls.
-// Disk entries are guid-keyed (Library/Thumbnails/<xx>/<guid>.thumb, raw RGBA
+// Disk entries are guid-keyed (library/thumbnails/<xx>/<guid>.thumb, raw RGBA
 // + header), so a changed asset overwrites its entry in place — the only
 // stale files are deleted assets', pruned once at startup.
 //
@@ -41,7 +41,7 @@ _THUMB_JOBS_PER_FRAME :: 2
 // it — the open scene's content (layer 1) never bleeds into a preview.
 _THUMB_LAYER :: u32(1) << 31
 
-_THUMB_CACHE_DIR :: "Library/Thumbnails"
+_THUMB_CACHE_DIR :: "library/thumbnails"
 _THUMB_FILE_MAGIC :: u32(0x4254484D) // "MHTB"
 // Bump when the render style changes — every disk entry invalidates.
 _THUMB_FILE_VERSION :: u32(1)
@@ -223,7 +223,7 @@ _thumb_disk_path :: proc(guid: engine.Asset_GUID) -> string {
 
 @(private = "file")
 _thumb_disk_write :: proc(guid: engine.Asset_GUID, mtime: i64, pixels: []u8) {
-	os.make_directory("Library")
+	os.make_directory("library")
 	os.make_directory(_THUMB_CACHE_DIR)
 	id := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
 	os.make_directory(fmt.tprintf("%s/%s", _THUMB_CACHE_DIR, id[:2]))

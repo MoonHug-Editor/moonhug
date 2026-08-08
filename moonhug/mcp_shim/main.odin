@@ -4,7 +4,7 @@ package mcp_shim
 // editor's TCP bridge (docs/McpBridge.md). Speaks newline-delimited JSON-RPC
 // 2.0 on stdin/stdout — the small MCP surface an agent needs: initialize,
 // tools/list, tools/call, ping. The editor side is moonhug/editor/
-// mcp_bridge.odin, the shared wire protocol moonhug/mcp.
+// mcp_bridge.odin, the shared wire protocol moonhug/editor/mcp.
 //
 // The shim owns session stability: it discovers the editor through the
 // bridge file, reconnects with fresh state when the editor restarts, and
@@ -22,7 +22,7 @@ import "core:strings"
 import "core:sync"
 import "core:thread"
 import "core:time"
-import mcp "../mcp"
+import mcp "moonhug:editor/mcp"
 
 PROTOCOL_VERSION :: "2025-06-18"
 EDITOR_CALL_TIMEOUT :: 30 * time.Second

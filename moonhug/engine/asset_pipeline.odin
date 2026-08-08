@@ -9,7 +9,7 @@ import "core:encoding/uuid"
 import xxh "core:hash/xxhash"
 import "base:runtime"
 
-// Unity's Library model: everything under Library/ is derived data — safe to
+// Unity's Library model: everything under library/ is derived data — safe to
 // delete, rebuilt from assets + metas on the next run, never a source of
 // truth. Import artifacts are CONTENT-ADDRESSED: the artifact key hashes every
 // input that shapes the output (source bytes, import settings, importer
@@ -18,15 +18,15 @@ import "base:runtime"
 // the old artifact, not a re-import. ArtifactDB.json maps guid -> current
 // artifact key plus the file stamp and settings hash that make the per-scan
 // freshness check cheap (no rehash of unchanged files).
-LIBRARY_DIR      :: "Library"
-ARTIFACTS_DIR    :: "Library/Artifacts" // Artifacts/<first 2 hex>/<32-hex key>.bin
-ARTIFACT_DB_PATH :: "Library/ArtifactDB.json"
+LIBRARY_DIR      :: "library"
+ARTIFACTS_DIR    :: "library/artifacts" // Artifacts/<first 2 hex>/<32-hex key>.bin
+ARTIFACT_DB_PATH :: "library/artifact_db.json"
 
 // Bump to invalidate EVERY artifact (artifact container format changes).
 _ARTIFACT_FORMAT_VERSION :: 1
 
 // Bump an importer's version when its OUTPUT changes — its artifacts re-import
-// on the next run, nothing else does, and no one hand-deletes the Library.
+// on the next run, nothing else does, and no one hand-deletes library/.
 _importer_version :: proc(importer: string) -> int {
 	switch importer {
 	case "texture": return 1
@@ -218,7 +218,7 @@ _import_directory :: proc(dir_path: string) {
     }
 }
 
-// --- Artifact index (Library/ArtifactDB.json) --------------------------------
+// --- Artifact index (library/artifact_db.json) --------------------------------
 
 _Artifact_Entry :: struct {
     artifact: string, // 32-hex content key (owned)
@@ -333,7 +333,7 @@ _artifact_key :: proc(content: []byte, settings: ImportSettings, importer: strin
     return fmt.tprintf("%032x", xxh.XXH3_128_with_seed(content, seed))
 }
 
-// "Library/Artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
+// "library/artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
 @(private = "file")
 _artifact_key_path :: proc(key: string, allocator := context.allocator) -> string {
     return fmt.aprintf("%s/%s/%s.bin", ARTIFACTS_DIR, key[:2], key, allocator = allocator)

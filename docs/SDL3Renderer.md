@@ -229,7 +229,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       (one-time: `make -C "$(odin root)/vendor/cgltf/src"`); bakes node world
       matrices, merges triangle primitives into one blob (flat normal / zero
       uv fallbacks; winding flipped when node determinant < 0); AABB.
-      Artifact `library/artifacts/<guid>.bin`:
+      Artifact `library/artifacts/<xx>/<key>.bin` (content-addressed, see README):
       `"MHMESH1\0" | vertex_count u32 | index_count u32 | submesh_count u32 |
       aabb_min [3]f32 | aabb_max [3]f32 | vertices(gfx.Vertex) | indices(u32)`
       (submesh_count =1 reserved for the multi-material follow-up). Prefer
