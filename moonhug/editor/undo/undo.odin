@@ -1141,28 +1141,8 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		log.error(fmt.tprintf("undo: failed to resolve target for value command (tid=%v)", vc.target.type_id))
 		return
 	}
-	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(vc.target.type_id)
-	if !ok {
-		log.error(fmt.tprintf("undo: no pointer typeid registered for %v — call engine.register_pointer_type during init", vc.target.type_id))
+	if !write_json_value(ptr, vc.target.type_id, json_bytes, resolve_scene(vc.target.scene)) {
 		return
-	}
-
-	_cleanup_before_unmarshal(ptr, vc.target.type_id)
-
-	target_ptr := ptr
-	target_any := any{data = &target_ptr, id = ptr_tid}
-	if err := json.unmarshal_any(json_bytes, target_any, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
-		log.error(fmt.tprintf("undo: unmarshal failed (tid=%v): %v", vc.target.type_id, err))
-		return
-	}
-
-	// The payload carries only PPtr data — Handle fields are json:"-", so
-	// unmarshal leaves whatever handle the pre-apply value had (zero after a
-	// load, RESOLVED after a prior undo). Authoritative mode derives handles
-	// entirely from the payload: bound when the lid resolves, cleared when
-	// the payload says none.
-	if s := resolve_scene(vc.target.scene); s != nil {
-		engine._resolve_refs_in_value(ptr, type_info_of(vc.target.type_id), s, nil, false, true)
 	}
 
 	if vc.target.kind == .Pooled && vc.target.handle.type_key != .Transform {
@@ -1170,6 +1150,46 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 			engine.component_on_validate(h.type_key, base)
 		}
 	}
+}
+
+// Writes a captured value (capture_json output) into a live field, replacing
+// whatever it holds. THE way to assign a field of arbitrary type: it releases
+// the old value's heap memory, unmarshals a FRESH copy of the payload — so the
+// destination shares no backing storage with the source — and rebinds any
+// reference handles inside it.
+//
+// `s` is the scene the field lives in, for that rebinding. A nil scene skips it,
+// which is right for values that hold no references.
+//
+// Used by undo to apply a Value_Command, and by multi-edit to copy one committed
+// field onto the rest of a selection. Both need identical semantics, and having
+// one implementation is what stops them drifting.
+write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engine.Scene) -> bool {
+	if ptr == nil || tid == nil || json_bytes == nil do return false
+	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(tid)
+	if !ok {
+		log.error(fmt.tprintf("undo: no pointer typeid registered for %v — call engine.register_pointer_type during init", tid))
+		return false
+	}
+
+	_cleanup_before_unmarshal(ptr, tid)
+
+	target_ptr := ptr
+	target_any := any{data = &target_ptr, id = ptr_tid}
+	if err := json.unmarshal_any(json_bytes, target_any, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
+		log.error(fmt.tprintf("undo: unmarshal failed (tid=%v): %v", tid, err))
+		return false
+	}
+
+	// The payload carries only PPtr data — Handle fields are json:"-", so
+	// unmarshal leaves whatever handle the pre-apply value had (zero after a
+	// load, RESOLVED after a prior undo). Authoritative mode derives handles
+	// entirely from the payload: bound when the lid resolves, cleared when
+	// the payload says none.
+	if s != nil {
+		engine._resolve_refs_in_value(ptr, type_info_of(tid), s, nil, false, true)
+	}
+	return true
 }
 
 @(private)

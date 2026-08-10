@@ -175,18 +175,27 @@ _pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
 	return d, cast(^engine.AnimationClip)d.data.data
 }
 
-// One whole-document undo step: snapshot before the mutation, commit after.
-// Drags snapshot on press and commit on release, mutating in between.
+// The animation view edits a document across frames (dragging a keyframe), so
+// its edit is a session like any other — opened when the gesture starts, closed
+// when it ends. See docs/Undo.md.
+@(private = "file")
+_pv_session: undo.Edit_Session
+
+// One whole-document undo step: the session captures the document before the
+// mutation and records the result after. Drags open on press and close on
+// release, mutating in between.
 @(private = "file")
 _pv_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
-	undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
-	undo.comp_snapshot()
-	undo.pop_owner()
+	// Idempotent: the drag calls this on activation, and a second call while the
+	// same gesture is open would otherwise capture the already-edited value.
+	if undo.edit_session_active(&_pv_session) do return
+	_pv_session = undo.edit_session_begin(
+		{undo.edit_target_asset(doc.guid, doc.data.id)}, "Animation Edit")
 }
 
 @(private = "file")
 _pv_edit_commit :: proc(doc: ^inspector.Asset_Doc) {
-	undo.comp_commit()
+	undo.edit_session_end(&_pv_session)
 	_pv_mark_edited(doc)
 }
 
@@ -196,8 +205,8 @@ _pv_mark_edited :: proc(doc: ^inspector.Asset_Doc) {
 	_pv.sync = true
 }
 
-// Inspector field convention (_undo_finalize_widget): snapshot when the widget
-// activates, commit when it deactivates after an edit — one undo step per
+// The inspector's field convention: the session opens when the widget
+// activates and commits when it deactivates after an edit — one undo step per
 // drag/typing session. Rotation keys renormalize at commit so slerp sampling
 // stays valid without fighting the drag.
 @(private = "file")
@@ -504,8 +513,9 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
 	// Shared drag update/commit (a drag started in either mode).
 	if _pv.drag_key {
 		if !_pv_sel_valid(clip) {
+			// The key vanished mid-drag, so there is no edit to record.
 			_pv.drag_key = false
-			undo.pending_cancel()
+			undo.edit_session_abort(&_pv_session)
 		} else if im.IsMouseDown(.Left) {
 			ch := &clip.channels[_pv.sel_ch]
 			lo, hi := _pv_drag_time_bounds(ch, _pv.sel_key, clip.length)

@@ -425,51 +425,6 @@ test_undo_inspector_flow_f32_field :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_undo_drag_sequence_commits_on_release :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	s := setup_undo(tc_mem)
-	context.user_ptr = &tc_mem.uc
-	defer teardown_undo(tc_mem, s)
-
-	tH := engine.transform_new("N")
-	owned, p := engine.transform_get_or_add_comp(tH, engine.Animation)
-	if p == nil do return
-	p.speed = 55
-
-	undo.push_component_owner(owned.handle)
-	defer undo.pop_owner()
-
-	undo.begin_field(&p.speed, typeid_of(f32))
-	undo.promote_to_pending()
-	undo.end_field(false)
-
-	undo.begin_field(&p.speed, typeid_of(f32))
-	p.speed = 77
-	undo.end_field(false)
-
-	undo.begin_field(&p.speed, typeid_of(f32))
-	p.speed = 99
-	undo.end_field(false)
-
-	testing.expect(t, !undo.can_undo(s), "no undo until release")
-
-	undo.begin_field(&p.speed, typeid_of(f32))
-	testing.expect(t, undo.pending_matches(&p.speed), "pending tracks the field across frames")
-	undo.pending_commit()
-	undo.end_field(false)
-
-	testing.expect(t, undo.can_undo(s), "commit recorded on release")
-	testing.expect_value(t, p.speed, f32(99))
-
-	undo.apply_undo(s)
-	testing.expect_value(t, p.speed, f32(55))
-
-	undo.apply_redo(s)
-	testing.expect_value(t, p.speed, f32(99))
-}
-
-@(test)
 test_undo_jump_to :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)

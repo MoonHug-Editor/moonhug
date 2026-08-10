@@ -117,3 +117,11 @@ asset_docs_shutdown :: proc() {
     delete(_docs)
     _docs = nil
 }
+
+// The live document payload for a guid, for undo's asset targets. The undo
+// package cannot import this one, so it is installed as a hook at init.
+asset_doc_payload_ptr :: proc(guid: engine.Asset_GUID) -> rawptr {
+    doc, found := _docs[guid]
+    if !found || doc == nil do return nil
+    return doc.data.data
+}
