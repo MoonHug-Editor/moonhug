@@ -1,5 +1,6 @@
 package editor
 
+import app_editor "../packages/app/editor"
 import menu "menu"
 import physics3d_editor "../packages/physics3d/editor"
 import plugin_example_editor "../packages/plugin_example/editor"
@@ -53,6 +54,7 @@ _register_menu_items :: proc() {
 	menu.add_menu_item("Tools/Plugin Example/Log", "", plugin_example_editor.plugin_example_menu, 0)
 	menu.add_menu_separator("Window", -7)
 	menu.add_menu_item("Window/Plugin Example", "", plugin_example_editor.plugin_example_window, 0)
+	menu.add_menu_item("Window/Tween Graph", "", app_editor.tween_graph_window_open, 0)
 	menu.add_menu_item("Window/Reset Layout", "", view_reset_layout_menu, 20)
 	menu.add_menu_item("Window/Animation/Animation", "Ctrl+6", menu.window_menu_animation, 0)
 	menu.add_menu_item("Window/Animation/Playable Graph", "", menu.window_menu_playable_graph, 1)
