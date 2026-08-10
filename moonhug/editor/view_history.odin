@@ -157,42 +157,51 @@ draw_history_view :: proc() {
 }
 
 @(private="file")
+// The details pane, as ONE read-only text field so it can be selected and
+// copied — the same treatment the console's detail pane gets, and for the same
+// reason: these are values you want to paste into a bug report or diff against
+// what you expected.
 _draw_history_entry_details :: proc(entry: ^undo.Entry) {
-	im.Text("Label: %s", cstr(entry.label))
-	im.Separator()
-	_draw_command_details(&entry.cmd, 0)
+	b := strings.builder_make(context.temp_allocator)
+	fmt.sbprintf(&b, "Label: %s\n", entry.label)
+	_append_command_details(&b, &entry.cmd, 0)
+
+	text := strings.to_string(b)
+	buf := strings.clone_to_cstring(text, context.temp_allocator)
+	im.InputTextMultiline("##history_detail_text", buf, uint(len(text) + 1),
+		im.Vec2{-1, -1}, {.ReadOnly, .WordWrap})
 }
 
 @(private="file")
-_draw_command_details :: proc(cmd: ^undo.Command, depth: int) {
+_append_command_details :: proc(b: ^strings.Builder, cmd: ^undo.Command, depth: int) {
 	switch v in cmd {
 	case undo.Value_Command:
-		_draw_value_details(v, depth)
+		_append_value_details(b, v, depth)
 	case undo.Structural_Command:
-		_draw_structural_details(v, depth)
+		_append_structural_details(b, v, depth)
 	case undo.Group_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sGroup (%d sub-commands)", _indent(depth), len(v.subs))))
+		fmt.sbprintf(b, "%sGroup (%d sub-commands)\n", _indent(depth), len(v.subs))
 		for i in 0 ..< len(v.subs) {
 			sub := v.subs[i]
-			_draw_command_details(&sub, depth + 1)
+			_append_command_details(b, &sub, depth + 1)
 		}
 	case undo.Selection_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sSelection change", _indent(depth))))
-		_draw_selection_state("before", v.before, depth + 1)
-		_draw_selection_state("after", v.after, depth + 1)
+		fmt.sbprintf(b, "%sSelection change\n", _indent(depth))
+		_append_selection_state(b, "before", v.before, depth + 1)
+		_append_selection_state(b, "after", v.after, depth + 1)
 	case undo.Dropdown_Revert_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sOverride reverted (%v): %q",
-			_indent(depth), v.kind, v.property_path)))
+		fmt.sbprintf(b, "%sOverride reverted (%v): %q\n",
+			_indent(depth), v.kind, v.property_path)
 	case undo.Record_Override_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sPrefab override created: lid %v %q",
-			_indent(depth), v.target_lid, v.property_path)))
+		fmt.sbprintf(b, "%sPrefab override created: lid %v %q\n",
+			_indent(depth), v.target_lid, v.property_path)
 	}
 }
 
 @(private="file")
-_draw_selection_state :: proc(name: string, st: undo.Selection_State, depth: int) {
+_append_selection_state :: proc(b: ^strings.Builder, name: string, st: undo.Selection_State, depth: int) {
 	indent := _indent(depth)
-	im.TextUnformatted(cstr(fmt.tprintf("%s%s: %d scene, %d project", indent, name, len(st.scene), len(st.proj))))
+	fmt.sbprintf(b, "%s%s: %d scene, %d project\n", indent, name, len(st.scene), len(st.proj))
 	for it in st.scene {
 		resolved := "unresolved"
 		if sc := undo.resolve_scene(it.scene); sc != nil {
@@ -201,31 +210,24 @@ _draw_selection_state :: proc(name: string, st: undo.Selection_State, depth: int
 				if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil do resolved = t.name
 			}
 		}
-		im.TextUnformatted(cstr(fmt.tprintf("%s  local_id=%d  %s", indent, i64(it.local_id), resolved)))
+		fmt.sbprintf(b, "%s  local_id=%d  %s\n", indent, i64(it.local_id), resolved)
 	}
 	for p in st.proj {
-		im.TextUnformatted(cstr(fmt.tprintf("%s  %s", indent, p)))
+		fmt.sbprintf(b, "%s  %s\n", indent, p)
 	}
 }
 
 @(private="file")
-_draw_value_details :: proc(v: undo.Value_Command, depth: int) {
+_append_value_details :: proc(b: ^strings.Builder, v: undo.Value_Command, depth: int) {
 	indent := _indent(depth)
-	im.Text("%sValue edit", cstr(indent))
-	_draw_target(v.target, depth + 1)
-
-	old_s := string(v.old_json)
-	new_s := string(v.new_json)
-	im.Text("%s  old:", cstr(indent))
-	im.SameLine()
-	im.TextWrapped(cstr(_truncate(old_s, 512)))
-	im.Text("%s  new:", cstr(indent))
-	im.SameLine()
-	im.TextWrapped(cstr(_truncate(new_s, 512)))
+	fmt.sbprintf(b, "%sValue edit\n", indent)
+	_append_target(b, v.target, depth + 1)
+	fmt.sbprintf(b, "%s  old: %s\n", indent, _truncate(string(v.old_json), 512))
+	fmt.sbprintf(b, "%s  new: %s\n", indent, _truncate(string(v.new_json), 512))
 }
 
 @(private="file")
-_draw_target :: proc(t: undo.Property_Target, depth: int) {
+_append_target :: proc(b: ^strings.Builder, t: undo.Property_Target, depth: int) {
 	indent := _indent(depth)
 	kind_str: string
 	switch t.kind {
@@ -234,15 +236,10 @@ _draw_target :: proc(t: undo.Property_Target, depth: int) {
 	case .Raw:    kind_str = "Raw"
 	case .Asset:  kind_str = "Asset"
 	}
-	im.TextUnformatted(cstr(fmt.tprintf("%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v",
-		indent,
-		kind_str,
-		i64(t.local_id),
-		t.handle.index,
-		t.handle.generation,
-		t.handle.type_key,
-		t.offset,
-		t.type_id)))
+	fmt.sbprintf(b, "%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v\n",
+		indent, kind_str, i64(t.local_id),
+		t.handle.index, t.handle.generation, t.handle.type_key,
+		t.offset, t.type_id)
 
 	w := engine.ctx_world()
 	resolved := "unresolved"
@@ -272,64 +269,64 @@ _draw_target :: proc(t: undo.Property_Target, depth: int) {
 			}
 		}
 	}
-	im.Text("%s  resolved: %s", cstr(indent), cstr(resolved))
+	fmt.sbprintf(b, "%s  resolved: %s\n", indent, resolved)
 }
 
 @(private="file")
-_draw_structural_details :: proc(sc: undo.Structural_Command, depth: int) {
+_append_structural_details :: proc(b: ^strings.Builder, sc: undo.Structural_Command, depth: int) {
 	indent := _indent(depth)
 	switch v in sc {
 	case undo.Reparent_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)",
+		fmt.sbprintf(b, "%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)" + "\n",
 			indent,
 			i64(v.node_local_id),
 			i64(v.old_parent_local_id),
 			i64(v.new_parent_local_id),
 			v.old_index,
-			v.new_index)))
+			v.new_index)
 	case undo.Create_Subtree_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes",
+		fmt.sbprintf(b, "%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes" + "\n",
 			indent,
 			i64(v.parent_local_id),
 			i64(v.root_local_id),
 			v.sibling_index,
-			len(v.payload))))
+			len(v.payload))
 	case undo.Delete_Subtree_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes",
+		fmt.sbprintf(b, "%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes" + "\n",
 			indent,
 			i64(v.parent_local_id),
 			i64(v.root_local_id),
 			v.sibling_index,
-			len(v.payload))))
+			len(v.payload))
 	case undo.Add_Component_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
+		fmt.sbprintf(b, "%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
 			indent,
 			i64(v.owner_local_id),
 			v.type_key,
 			i64(v.comp_local_id),
 			v.list_index,
-			len(v.payload))))
+			len(v.payload))
 	case undo.Remove_Component_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes",
+		fmt.sbprintf(b, "%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
 			indent,
 			i64(v.owner_local_id),
 			v.type_key,
 			i64(v.comp_local_id),
 			v.list_index,
-			len(v.payload))))
+			len(v.payload))
 	case undo.Reorder_Components_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sReorder Components: owner=%d  %d -> %d",
+		fmt.sbprintf(b, "%sReorder Components: owner=%d  %d -> %d" + "\n",
 			indent,
 			i64(v.owner_local_id),
 			v.old_index,
-			v.new_index)))
+			v.new_index)
 	case undo.Remove_Unknown_Component_Command:
-		im.TextUnformatted(cstr(fmt.tprintf("%sRemove Missing Component: owner=%d  comp_local_id=%d  idx=%d  payload=%d bytes",
+		fmt.sbprintf(b, "%sRemove Missing Component: owner=%d  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
 			indent,
 			i64(v.owner_local_id),
 			i64(v.comp_local_id),
 			v.list_index,
-			len(v.payload))))
+			len(v.payload))
 	}
 }
 
