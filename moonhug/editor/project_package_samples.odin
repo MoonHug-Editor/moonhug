@@ -105,7 +105,7 @@ _sample_copy_recursive :: proc(src, dst: string) -> bool {
 _sample_after_change :: proc(verb, name: string) {
 	engine.asset_db_refresh()
 	project_dir_cache_invalidate()
-	fmt.printf("[Editor] %s sample %s — code changes need a prebuild + rebuild (run.sh)\n", verb, name)
+	fmt.printf("[Editor] %s sample %s - code changes need a prebuild + rebuild (run.sh)\n", verb, name)
 }
 
 // Installs never overwrite: anything already at the destination (a stale
@@ -113,7 +113,7 @@ _sample_after_change :: proc(verb, name: string) {
 @(private = "file")
 _sample_dst_taken :: proc(s: Package_Sample) -> bool {
 	if _, lerr := os.lstat(s.dst, context.temp_allocator); lerr == nil {
-		fmt.printf("[Editor] Install sample: %s already exists — remove it first\n", s.dst)
+		fmt.printf("[Editor] Install sample: %s already exists - remove it first\n", s.dst)
 		return true
 	}
 	return false
@@ -222,7 +222,7 @@ _sample_draw_confirm_popup :: proc() {
 	if im.BeginPopupModal("Remove Sample", nil, {.AlwaysAutoResize}) {
 		im.Text(strings.clone_to_cstring(fmt.tprintf("Remove sample '%s'?", _sample_confirm_name), context.temp_allocator))
 		if _sample_confirm_linked {
-			im.TextDisabled("The symlink is removed — the sample source stays.")
+			im.TextDisabled("The symlink is removed - the sample source stays.")
 		} else {
 			im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%s moves to the Trash.", _sample_confirm_dst), context.temp_allocator))
 		}
