@@ -32,8 +32,40 @@ quat_from_euler_xyz :: proc(x_deg, y_deg, z_deg: f32) -> [4]f32 {
 	return quat_from_native(q)
 }
 
+// Euler angles (degrees, XYZ) for display and authoring.
+//
+// A rotation has TWO XYZ spellings — (x, y, z) and (x±180, 180−y, z±180) name
+// the same orientation — and the closed-form solution returns whichever its
+// formula lands on. That is canonical but often not the one a person typed:
+// asking for (0, -150, 0) reads back as (180, -30, -180), which is correct and
+// unrecognisable.
+//
+// The spelling with the smallest secondary angles is preferred, because it is
+// the one a human would write. Turning an object about a single axis then shows
+// that axis moving and the other two at rest, however far it turns.
 quat_to_euler_xyz :: proc(q: [4]f32) -> [3]f32 {
 	nq := quat_to_native(q)
 	rx, ry, rz := linalg.euler_angles_from_quaternion(nq, .XYZ)
-	return {math.to_degrees(rx), math.to_degrees(ry), math.to_degrees(rz)}
+	a := [3]f32{math.to_degrees(rx), math.to_degrees(ry), math.to_degrees(rz)}
+	b := _euler_xyz_alternate(a)
+
+	// "Simplest" = smallest X and Z, the axes a single-axis turn leaves alone.
+	if abs(b.x) + abs(b.z) < abs(a.x) + abs(a.z) - 0.001 {
+		return b
+	}
+	return a
+}
+
+// The other XYZ solution for the same orientation.
+@(private = "file")
+_euler_xyz_alternate :: proc(e: [3]f32) -> [3]f32 {
+	return {_wrap_deg(e.x + 180), _wrap_deg(180 - e.y), _wrap_deg(e.z + 180)}
+}
+
+@(private = "file")
+_wrap_deg :: proc(a: f32) -> f32 {
+	r := a
+	for r > 180 do r -= 360
+	for r < -180 do r += 360
+	return r
 }
