@@ -96,7 +96,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Unity Conveniences](docs/UnityConveniences.md)
-- [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; inspector shows the active item (no multiedit yet)
+- [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
 - [Crash Journal](docs/CrashJournal.md) - signal-safe crash log with a symbolized stack and a breadcrumb of what the editor was doing (`logs/crash_<pid>.log`)
 - [MCP Bridge](docs/McpBridge.md) - agent access to the running editor (scene dumps, menu invocation) over MCP, zero external dependencies
 - [Undo](docs/Undo.md) - editor undo feature
@@ -154,6 +154,11 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](docs/Components.md) "Two data regimes"
 
+- modularize packages
+  - core (TypeKey, Ref, Handle, etc.)
+  - tweens
+  - etc.
+
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call
@@ -165,7 +170,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - VFX graph
 
 - undo follow-ups: asset doc Revert button, import settings onto the asset doc model
-- multiselection follow-ups: multiedit, multi-path drag-drop
+- multiselection follow-ups: multi-path drag-drop, multiedit for prefab-instance selections
 
 ### Considered Features
 
