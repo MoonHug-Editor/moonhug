@@ -1,0 +1,702 @@
+{
+  "root": 3042951162649368,
+  "transforms": [
+    {
+      "local_id": 3042951162649368,
+      "name": "InterpolationTest",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 2863153972343806,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 4351186668798704,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 4292548367770869,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 3529935887923769,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1501225102373295,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 3719474432613379,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1889294479860299,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1910688088908932,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 37910195781787,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2838059487657771,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 102285531326815
+        }
+      ]
+    },
+    {
+      "local_id": 2863153972343806,
+      "name": "Cube",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3813162882009639
+        },
+        {
+          "local_id": 4457386679339083
+        }
+      ]
+    },
+    {
+      "local_id": 4351186668798704,
+      "name": "Cube.001",
+      "is_active": true,
+      "position": [
+        -3.4000001,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3335211138695293
+        },
+        {
+          "local_id": 936952291050724
+        }
+      ]
+    },
+    {
+      "local_id": 4292548367770869,
+      "name": "Cube.002",
+      "is_active": true,
+      "position": [
+        3.4000001,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3915145289878213
+        },
+        {
+          "local_id": 2394795450920504
+        }
+      ]
+    },
+    {
+      "local_id": 3529935887923769,
+      "name": "Cube.003",
+      "is_active": true,
+      "position": [
+        0.0,
+        3.4000001,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2636991653202165
+        },
+        {
+          "local_id": 1216862941520697
+        }
+      ]
+    },
+    {
+      "local_id": 1501225102373295,
+      "name": "Cube.004",
+      "is_active": true,
+      "position": [
+        3.4000001,
+        3.4000001,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3512488591864084
+        },
+        {
+          "local_id": 2657358193151393
+        }
+      ]
+    },
+    {
+      "local_id": 3719474432613379,
+      "name": "Cube.005",
+      "is_active": true,
+      "position": [
+        -3.4000001,
+        3.4000001,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 155152164423821
+        },
+        {
+          "local_id": 155972786620429
+        }
+      ]
+    },
+    {
+      "local_id": 1889294479860299,
+      "name": "Cube.006",
+      "is_active": true,
+      "position": [
+        0.0,
+        6.80000019,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 996175131573604
+        },
+        {
+          "local_id": 1760090764004402
+        }
+      ]
+    },
+    {
+      "local_id": 1910688088908932,
+      "name": "Cube.008",
+      "is_active": true,
+      "position": [
+        3.4000001,
+        6.80000019,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3426478620599660
+        },
+        {
+          "local_id": 1742719121973129
+        }
+      ]
+    },
+    {
+      "local_id": 37910195781787,
+      "name": "Cube.009",
+      "is_active": true,
+      "position": [
+        -3.4000001,
+        6.80000019,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1227663065561816
+        },
+        {
+          "local_id": 3396719084009809
+        }
+      ]
+    },
+    {
+      "local_id": 2838059487657771,
+      "name": "Plane",
+      "is_active": true,
+      "position": [
+        0.0,
+        -1.79417872,
+        1.00367475
+      ],
+      "rotation": [
+        0.70710683,
+        0.0,
+        0.0,
+        0.70710683
+      ],
+      "scale": [
+        4.21864843,
+        1.0,
+        0.36528376
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 3042951162649368,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2074948771445937
+        },
+        {
+          "local_id": 2696816372905960
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+    {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
+      "base": {
+        "enabled": true,
+        "local_id": 102285531326815
+      },
+      "clip": "85d77042-c10c-46aa-8b4b-2e04c0b823c0",
+      "layers": [
+
+      ],
+      "play_automatically": true,
+      "speed": 1.0,
+      "wrap_mode": 0
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3813162882009639
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 4457386679339083
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3335211138695293
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 936952291050724
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3915145289878213
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 2394795450920504
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2636991653202165
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1216862941520697
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3512488591864084
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 2657358193151393
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 155152164423821
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 155972786620429
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 996175131573604
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1760090764004402
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3426478620599660
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1742719121973129
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 1227663065561816
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 1
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3396719084009809
+      },
+      "materials": [
+        "3e65acfa-01b3-4c48-b0eb-20bc0b50bb22"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2074948771445937
+      },
+      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+      "part": 2
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 2696816372905960
+      },
+      "materials": [
+        "031ed7a6-8970-4413-8fea-a70bbcd53602"
+      ]
+    }
+  ]
+}
