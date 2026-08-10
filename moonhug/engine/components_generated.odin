@@ -41,6 +41,7 @@ register_engine_components :: proc() {
 				for data, _ in pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_Animation(cast(^Animation)ptr) },
+			cleanup = proc(ptr: rawptr) { cleanup_Animation(cast(^Animation)ptr) },
 			on_destroy = proc(ptr: rawptr) { on_destroy_Animation(cast(^Animation)ptr) },
 		})
 		component_register(Component_Desc{

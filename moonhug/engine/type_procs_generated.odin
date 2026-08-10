@@ -11,6 +11,7 @@ __type_resets_init :: proc() {
 }
 
 __type_cleanups_init :: proc() {
+	type_cleanup_procs[.Animation] = proc(ptr: rawptr) { cleanup_Animation(cast(^Animation)ptr) }
 	type_cleanup_procs[.MeshRenderer] = proc(ptr: rawptr) { cleanup_MeshRenderer(cast(^MeshRenderer)ptr) }
 	type_cleanup_procs[.string] = proc(ptr: rawptr) { type_cleanup_string_field(cast(^string)ptr) }
 }

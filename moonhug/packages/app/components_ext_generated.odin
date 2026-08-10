@@ -23,6 +23,8 @@ register_app_components :: proc() {
 				for data, _ in engine.pool_next(&it) do fn(data)
 			},
 			reset = proc(ptr: rawptr) { reset_ButtonsExample(cast(^ButtonsExample)ptr) },
+			cleanup = proc(ptr: rawptr) { cleanup_ButtonsExample(cast(^ButtonsExample)ptr) },
+			on_destroy = proc(ptr: rawptr) { on_destroy_ButtonsExample(cast(^ButtonsExample)ptr) },
 		})
 		engine.component_register(engine.Component_Desc{
 			type_key  = .DemoMenu,

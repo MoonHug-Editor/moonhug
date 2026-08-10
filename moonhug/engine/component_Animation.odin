@@ -90,6 +90,22 @@ reset_Animation :: proc(comp: ^Animation) {
 }
 
 on_destroy_Animation :: proc(a: ^Animation) {
+	cleanup_Animation(a)
+}
+
+// Releases everything the component owns. Reached two ways, and BOTH matter:
+// component destruction (on_destroy_Animation), and a value being replaced
+// under it — undo calls type_cleanup before unmarshalling a restored value, and
+// type_cleanup dispatches on the `cleanup_<Type>` name. Without this proc the
+// undo path silently orphaned `layers` and every nested `clips` on each restore.
+//
+// The runtime side (`graph`, `binding`, `rt_layers`) is guarded by graph_ready:
+// it is built lazily by _anim_ensure_graph, so a component that never ticked has
+// none of it, and freeing unconditionally would delete arrays that were never
+// made. comp_zero at the end clears graph_ready along with every freed pointer,
+// which is what makes a second call safe — the guards all read false and the
+// nil checks all short-circuit.
+cleanup_Animation :: proc(a: ^Animation) {
 	if a.graph_ready {
 		playable_graph_destroy(&a.graph)
 		animation_binding_destroy(&a.binding)

@@ -45,6 +45,27 @@ Button_Item :: struct {
 reset_ButtonsExample :: proc(comp: ^ButtonsExample) {
 }
 
+on_destroy_ButtonsExample :: proc(b: ^ButtonsExample) {
+    cleanup_ButtonsExample(b)
+}
+
+// Frees what the component owns. Every component holding a [dynamic] or a
+// string needs this, and needs it under exactly this name: type_cleanup
+// dispatches on `cleanup_<Type>`, and undo calls type_cleanup before it
+// unmarshals a restored value. Without it each undo of an edit here orphans the
+// items array and every element's name string.
+//
+// The element strings are freed individually — deleting the array releases the
+// slots, not the allocations the strings inside them point at.
+cleanup_ButtonsExample :: proc(b: ^ButtonsExample) {
+    delete(b.item.name)
+    if b.items != nil {
+        for &it in b.items do delete(it.name)
+        delete(b.items)
+    }
+    engine.comp_zero(b)
+}
+
 // --- field buttons (decor:button on `target`) ------------------------------
 
 be_row2 :: proc(b: ^ButtonsExample) {
