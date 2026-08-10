@@ -43,6 +43,15 @@ _Mcp_Shot :: struct {
 	max_size: int,
 }
 
+// A pending full-window capture. Serviced at the END of the frame, because the
+// swapchain only holds the finished UI after the imgui pass has drawn and the
+// bridge tick runs before it.
+_Mcp_Window_Shot :: struct {
+	id:       i64,
+	max_size: int,
+	wanted:   bool,
+}
+
 @(private = "file") _mcp: struct {
 	active:       bool,
 	listener:     net.TCP_Socket,
@@ -53,6 +62,7 @@ _Mcp_Shot :: struct {
 	fb:           mcp.Frame_Buffer,
 	shots:        [dynamic]_Mcp_Shot,
 	shot_counter: int,
+	pending_window_shot: _Mcp_Window_Shot,
 }
 
 mcp_bridge_init :: proc() {
@@ -351,14 +361,27 @@ _mcp_selection_names :: proc() -> []string {
 mcp_tool_editor_state :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	scene_path: string
 	if s := engine.sm_scene_get_active(); s != nil do scene_path = s.path
+
+	// local_ids alongside names because names repeat — the ids are what select
+	// and set_transform address, and what makes a multi-selection reproducible.
+	w := engine.ctx_world()
+	ids := make([dynamic]engine.Local_ID, 0, len(_sel_scene), context.temp_allocator)
+	for tH in _sel_scene {
+		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
+			append(&ids, t.local_id)
+		}
+	}
+
 	return _mcp_ok(struct {
-		scene:     string,
-		simulate:  string,
-		selection: []string,
+		scene:              string,
+		simulate:           string,
+		selection:          []string,
+		selection_local_ids: []engine.Local_ID,
 	}{
-		scene     = scene_path,
-		simulate  = fmt.tprintf("%v", sim.state()),
-		selection = _mcp_selection_names(),
+		scene              = scene_path,
+		simulate           = fmt.tprintf("%v", sim.state()),
+		selection          = _mcp_selection_names(),
+		selection_local_ids = ids[:],
 	})
 }
 
@@ -502,10 +525,41 @@ _mcp_find_object :: proc(params: json.Object) -> (engine.Transform_Handle, Mcp_E
 }
 
 @(mcp_tool={
-	description="Select objects in the scene by name (exact). Empty name clears the selection.",
-	param_name="string:Object name to select; omit or empty to clear",
+	description="Select objects in the scene. Pass local_ids for an exact set (multi-selection, which is what the inspector multi-edits), or name to select every object with that name. Empty call clears the selection.",
+	param_local_ids="integer[]:Object local_ids from list_objects; selects exactly these, in order (last = active)",
+	param_name="string:Object name to select; selects ALL objects with this name",
+	param_add="boolean:Add to the current selection instead of replacing it",
 })
 mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	add, _ := params["add"].(json.Boolean)
+
+	// An explicit id list is the precise form: it can build any selection,
+	// including several objects that share a name.
+	if raw_ids, has_ids := params["local_ids"].(json.Array); has_ids {
+		s := engine.sm_scene_get_active()
+		if s == nil do return _mcp_fail("no_scene", "no active scene")
+		if !add do sel_scene_clear()
+
+		missing := make([dynamic]i64, 0, len(raw_ids), context.temp_allocator)
+		count := 0
+		for entry in raw_ids {
+			f, is_num := entry.(json.Float)
+			if !is_num do return _mcp_fail("bad_param", "local_ids must contain numbers")
+			lid := engine.Local_ID(i64(f))
+			tH, found := engine.scene_find_outer_transform_local_id(s, lid)
+			if !found {
+				append(&missing, i64(f))
+				continue
+			}
+			sel_scene_add(tH)
+			count += 1
+		}
+		if len(missing) > 0 {
+			return _mcp_fail("not_found", "local_ids not in the active scene: %v — see list_objects", missing[:])
+		}
+		return _mcp_ok(struct{ selected: int }{count})
+	}
+
 	name, has := params["name"].(json.String)
 	if !has || name == "" {
 		sel_scene_clear()
@@ -514,7 +568,7 @@ mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	s := engine.sm_scene_get_active()
 	if s == nil do return _mcp_fail("no_scene", "no active scene")
 	w := engine.ctx_world()
-	sel_scene_clear()
+	if !add do sel_scene_clear()
 	count := 0
 	it := engine.pool_iterator(&w.transforms)
 	for t, h in engine.pool_next(&it) {
@@ -561,18 +615,23 @@ mcp_tool_set_transform :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 	if f, ok := _json_f32(params, "y"); ok do v.y = f
 	if f, ok := _json_f32(params, "z"); ok do v.z = f
 
+	// One bracketed transaction per call (docs/Undo.md). A tool call
+	// is a complete gesture, so begin and end sit either side of the write.
 	switch field {
 	case "position":
-		e := undo.edit_begin(tH, &t.position, typeid_of([3]f32), "Set Position (MCP)")
-		defer undo.edit_end(&e)
+		sess := undo.edit_session_begin(
+			{undo.edit_target_transform(tH, &t.position, typeid_of([3]f32))}, "Set Position (MCP)")
+		defer undo.edit_session_end(&sess)
 		t.position = v
 	case "scale":
-		e := undo.edit_begin(tH, &t.scale, typeid_of([3]f32), "Set Scale (MCP)")
-		defer undo.edit_end(&e)
+		sess := undo.edit_session_begin(
+			{undo.edit_target_transform(tH, &t.scale, typeid_of([3]f32))}, "Set Scale (MCP)")
+		defer undo.edit_session_end(&sess)
 		t.scale = v
 	case "rotation":
-		e := undo.edit_begin(tH, &t.rotation, typeid_of([4]f32), "Set Rotation (MCP)")
-		defer undo.edit_end(&e)
+		sess := undo.edit_session_begin(
+			{undo.edit_target_transform(tH, &t.rotation, typeid_of([4]f32))}, "Set Rotation (MCP)")
+		defer undo.edit_session_end(&sess)
 		t.rotation = engine.quat_from_euler_xyz(v.x, v.y, v.z)
 	}
 	return _mcp_ok(struct {
@@ -597,8 +656,9 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return _mcp_fail("not_found", "object went away")
 
-	e := undo.edit_begin(tH, &t.name, typeid_of(string), "Rename (MCP)")
-	defer undo.edit_end(&e)
+	sess := undo.edit_session_begin(
+		{undo.edit_target_transform(tH, &t.name, typeid_of(string))}, "Rename (MCP)")
+	defer undo.edit_session_end(&sess)
 	delete(t.name)
 	t.name = strings.clone(new_name)
 	return _mcp_ok(struct{ name: string }{new_name})
@@ -639,7 +699,7 @@ mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error
 
 @(mcp_tool={
 	description="Capture a view's render target (previous frame). Full PNG saved to library/screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
-	param_view="string:scene (default) or game",
+	param_view="string:scene (default), game, or editor for the whole editor window including the inspector and other panels",
 	param_max_size="integer:Inline image longest edge in pixels (default 640)",
 })
 mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -649,6 +709,19 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 
 	// The shot completes frames later, after this frame's temp allocations
 	// are gone — store the STATIC literal, never the parsed param string.
+	// The whole editor window, imgui panels included. Those panels draw straight
+	// to the swapchain and never reach a render target, so this copies the
+	// swapchain itself — which is only legal AFTER the UI pass has drawn, and the
+	// bridge tick runs before it. So the request is queued and serviced at the
+	// end of this frame (mcp_bridge_capture_frame). Nothing outside the editor's
+	// own window exists in a swapchain image, so there is nothing else to leak.
+	if view == "editor" {
+		_mcp.pending_window_shot = _Mcp_Window_Shot{
+			id = id, max_size = max(max_size, 16), wanted = true,
+		}
+		return MCP_DEFERRED, {} // answered once the frame's image is copied
+	}
+
 	rt: ^gfx.Render_Target
 	switch view {
 	case "scene":
@@ -658,7 +731,7 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 		rt = game_rt
 		view = "game"
 	case:
-		return _mcp_fail("bad_request", "view must be scene or game")
+		return _mcp_fail("bad_request", "view must be scene, game or editor")
 	}
 	if rt == nil || rt.width < 2 || rt.height < 2 {
 		return _mcp_fail("view_not_available", "%s view has not rendered yet", view)
@@ -668,6 +741,26 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 
 	append(&_mcp.shots, _Mcp_Shot{id = id, dl = dl, view = view, max_size = max(max_size, 16)})
 	return MCP_DEFERRED, {} // _mcp_poll_shots responds when the pixels land
+}
+
+// Services a queued full-window capture. Called at the END of the frame, after
+// the imgui pass has drawn into the swapchain and while the command buffer is
+// still open — the only moment the swapchain holds the finished UI and can
+// still be copied from.
+mcp_bridge_capture_frame :: proc() {
+	if !_mcp.active || !_mcp.pending_window_shot.wanted do return
+	req := _mcp.pending_window_shot
+	_mcp.pending_window_shot = {}
+
+	// Copy AND download are encoded into this frame's command buffer, so they
+	// land in queue order behind the UI draw. Starting a separate download here
+	// would submit ahead of the copy and read an untouched texture.
+	dl := gfx.swapchain_capture_begin()
+	if dl == nil {
+		_mcp_respond_error(req.id, "capture_failed", "no swapchain image this frame (window minimized?)")
+		return
+	}
+	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, view = "editor", max_size = req.max_size})
 }
 
 @(private = "file")

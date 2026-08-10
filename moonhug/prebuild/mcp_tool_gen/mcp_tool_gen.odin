@@ -74,6 +74,10 @@ _parse_param_spec :: proc(spec: string) -> (type_name: string, required: bool, d
 	switch type_name {
 	case "string", "integer", "number", "boolean":
 		return type_name, required, description, true
+	// Arrays carry their element type in the spec ("integer[]"), because JSON
+	// Schema needs an `items` sub-object to say what the array holds.
+	case "string[]", "integer[]", "number[]", "boolean[]":
+		return type_name, required, description, true
 	}
 	return "", false, "", false
 }
@@ -151,6 +155,12 @@ _schema_json :: proc(e: ToolEntry) -> string {
 	strings.write_string(&b, `{"type":"object","properties":{`)
 	for p, i in e.params {
 		if i > 0 do strings.write_string(&b, ",")
+		if strings.has_suffix(p.type_name, "[]") {
+			elem := p.type_name[:len(p.type_name) - 2]
+			fmt.sbprintf(&b, `"%s":{{"type":"array","items":{{"type":"%s"}},"description":"%s"}}`,
+				p.name, elem, p.description)
+			continue
+		}
 		fmt.sbprintf(&b, `"%s":{{"type":"%s","description":"%s"}}`, p.name, p.type_name, p.description)
 	}
 	strings.write_string(&b, "}")

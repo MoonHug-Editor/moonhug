@@ -144,9 +144,18 @@ frame_begin :: proc() -> bool {
 
 frame_end :: proc() {
 	if _gfx.cmd != nil {
-		_ = sdl.SubmitGPUCommandBuffer(_gfx.cmd)
+		// A pending swapchain capture rides THIS buffer, so it needs the fence
+		// this submit produces — the ordinary path takes the cheaper submit.
+		if d := _swapchain_take_pending(); d != nil {
+			d.fence = sdl.SubmitGPUCommandBufferAndAcquireFence(_gfx.cmd)
+		} else {
+			_ = sdl.SubmitGPUCommandBuffer(_gfx.cmd)
+		}
 		_gfx.cmd = nil
 	}
+	// The swapchain image belongs to this frame only — a capture must not reach
+	// for it after submit.
+	_swapchain_frame_clear()
 }
 
 command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
@@ -324,6 +333,10 @@ Texture_Download :: struct {
 	fence:         ^sdl.GPUFence,
 	width, height: i32,
 	bgra:          bool,
+	// Intermediate texture a swapchain capture copies through, freed with the
+	// download. nil for the ordinary render-target path, which reads the RT
+	// texture directly.
+	scratch_texture: ^sdl.GPUTexture,
 }
 
 // Starts an async readback of the texture's pixels. The pass that produced the
@@ -359,6 +372,8 @@ texture_download_begin :: proc(tex: ^Texture) -> ^Texture_Download {
 }
 
 texture_download_ready :: proc(d: ^Texture_Download) -> bool {
+	// A swapchain capture has no fence until the frame it rides is submitted.
+	if d.fence == nil do return false
 	return sdl.QueryGPUFence(_gfx.device, d.fence)
 }
 
@@ -382,8 +397,9 @@ texture_download_take :: proc(d: ^Texture_Download, allocator := context.allocat
 // Frees an in-flight download without taking the pixels (SDL defers the
 // actual GPU-side destruction past any pending work).
 texture_download_cancel :: proc(d: ^Texture_Download) {
-	sdl.ReleaseGPUFence(_gfx.device, d.fence)
+	if d.fence != nil do sdl.ReleaseGPUFence(_gfx.device, d.fence)
 	sdl.ReleaseGPUTransferBuffer(_gfx.device, d.transfer)
+	if d.scratch_texture != nil do sdl.ReleaseGPUTexture(_gfx.device, d.scratch_texture)
 	free(d, runtime.default_allocator())
 }
 

@@ -23,24 +23,26 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 ```
 
 - `mcp_tool_<name>` — the tool name is the proc name minus prefix
-- `param_<name>` — field is `"<string|integer|number|boolean>[!]:<description>"`, where `!` marks it required.
+- `param_<name>` — field is `"<string|integer|number|boolean>[!]:<description>"`, where `!` marks it required. Append `[]` to the type for an array (`"integer[]:..."`), which emits the JSON Schema `items` sub-object.
 - handler returns marshaled JSON (`_mcp_ok`) or an error (`_mcp_fail`).
 - returning `MCP_DEFERRED` means the handler answers later itself (screenshots do this while the GPU readback fence settles).
 
 ## Tools
 
-- `editor_state` — active scene, simulate state, selection
+- `editor_state` — active scene, simulate state, selection (names and `local_id`s, since names repeat)
 - `read_log` — recent console entries
 - `scene_dump` — scene summary (roots, counts, selection), `full=true` for the complete serialized scene
 - `list_objects` — every object in the scene: name, parent, world position, components, and the `local_id` used to address one
 - `list_menus` / `invoke_menu` — enumerate and invoke menu actions by path (same code path as clicking)
-- `select` — select objects by name, or clear the selection
-- `set_transform` — position, rotation (euler degrees) or scale on one object; omitted components keep their value
+- `select` — build a selection: `local_ids` for an exact set (this is how a multi-selection is made, which is what the inspector multi-edits), `name` for every object with that name, `add=true` to extend the current one, empty to clear
+- `set_transform` — position, rotation (euler degrees) or scale on one object. Omitted components keep their value
 - `rename_object` — rename one object
 - `editor_setting` — read all editor settings, or set one scalar field
-- `screenshot` — a view's render target (scene or game). The tick runs before views draw, so the RT holds the previous frame's submitted contents and is read back asynchronously (fence polled per tick, response sent when pixels land). Full-resolution PNG goes to `library/screenshots/`, a downscaled copy (default ≤640px) returns inline as MCP image content.
+- `screenshot` — full-resolution PNG to `library/screenshots/`, plus a downscaled copy (default ≤640px) inline as MCP image content. Three views:
+  - `scene` (default) / `game` — that view's render target. The tick runs before views draw, so the RT holds the previous frame's submitted contents and is read back asynchronously (fence polled per tick, response sent when pixels land).
+  - `editor` — the whole editor window, imgui panels included (inspector, hierarchy, console). Those panels draw straight to the swapchain and never reach a render target, so this copies the swapchain image itself (`gfx.swapchain_capture`). The copy runs **only on frames a screenshot was asked for**, after the UI pass has drawn and while the command buffer is still open — so there is no per-frame cost for a feature used occasionally, and no OS screen-recording permission, since a swapchain image contains nothing but the editor's own window. The request is queued by the tool and serviced at end of frame, because the bridge tick runs before the UI draws.
 
-Objects are addressed by `local_id` (from `list_objects`) or exact name; an ambiguous name is an error naming the count, and lookups are outer-transform only, so nested-scene contents are never mutated through the bridge.
+Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambiguous name is an error naming the count, and lookups are outer-transform only, so nested-scene contents are never mutated through the bridge.
 
 ## Enabling
 
@@ -50,6 +52,6 @@ Editing tools go through the editor's own undo stack, so an agent edit is Ctrl+Z
 
 ## TODO
 
-- component property writes (needs the reflection-driven path the inspector uses; shares its foundation with multiedit)
+- component property writes (needs the reflection-driven path the inspector uses, shared with multiedit)
 - argv mode on the shim binary (`moonhug` CLI front-end over the same socket)
 - pending/poll envelope for operations spanning many seconds

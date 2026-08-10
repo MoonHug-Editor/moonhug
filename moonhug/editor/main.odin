@@ -269,6 +269,10 @@ main :: proc() {
             gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
                 im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
             })
+            // A queued full-window screenshot copies the swapchain HERE: the UI
+            // has drawn into it and the command buffer is still open. Costs
+            // nothing on frames nobody asked for one.
+            mcp_bridge_capture_frame()
         }
         gfx.frame_end()
 

@@ -219,6 +219,96 @@ rt_download_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
 	return texture_download_begin(&tex)
 }
 
+// The swapchain image this frame is drawing into, and its size. Valid between
+// pass_begin_swapchain and frame_end. nil outside that window, or on a frame the
+// acquire failed (minimized window).
+//
+// This is what makes an on-demand full-window capture possible: the swapchain
+// holds EVERYTHING, imgui panels included, so a copy taken after the UI pass is
+// a picture of the whole editor. See swapchain_capture.
+@(private = "file")
+_swapchain_this_frame: struct {
+	tex:  ^sdl.GPUTexture,
+	w, h: u32,
+}
+
+// Starts a readback of the current swapchain image — the finished frame,
+// including every imgui panel.
+//
+// ONLY runs when someone asks for a screenshot: the cost is one full-screen copy
+// plus a download on that single frame, and nothing at all otherwise. That is
+// why the frame still renders straight to the swapchain, rather than through an
+// offscreen target that would need blitting every frame forever just to keep a
+// capture possible.
+//
+// Both the copy AND the download are encoded into the FRAME's command buffer,
+// which is what makes this correct. texture_download_begin would otherwise
+// acquire its own buffer and submit it immediately — running the download ahead
+// of a copy that is still sitting unsubmitted in the frame buffer, and reading
+// an untouched texture. (That produced a solid magenta image: uninitialized
+// texture memory, not a broken capture path.)
+//
+// Call while the frame's command buffer is open and after the UI pass has ended.
+// Returns nil when there is no swapchain image this frame.
+swapchain_capture_begin :: proc() -> ^Texture_Download {
+	if _swapchain_this_frame.tex == nil do return nil
+	if _gfx.cmd == nil do return nil
+	w := _swapchain_this_frame.w
+	h := _swapchain_this_frame.h
+	if w < 2 || h < 2 do return nil
+
+	// A swapchain image cannot be downloaded from directly — it belongs to the
+	// presentation engine. Copy into a texture that can be, then read that.
+	dst := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _gfx.swapchain_format,
+		usage                = {.SAMPLER},
+		width                = w,
+		height               = h,
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	if dst == nil do return nil
+
+	byte_count := w * h * 4
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .DOWNLOAD, size = byte_count})
+	if transfer == nil {
+		sdl.ReleaseGPUTexture(_gfx.device, dst)
+		return nil
+	}
+
+	// One copy pass on the frame buffer: swapchain -> dst -> transfer buffer.
+	copy_pass := sdl.BeginGPUCopyPass(_gfx.cmd)
+	if copy_pass == nil {
+		sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+		sdl.ReleaseGPUTexture(_gfx.device, dst)
+		return nil
+	}
+	sdl.CopyGPUTextureToTexture(copy_pass,
+		sdl.GPUTextureLocation{texture = _swapchain_this_frame.tex},
+		sdl.GPUTextureLocation{texture = dst}, w, h, 1, false)
+	sdl.DownloadFromGPUTexture(copy_pass,
+		{texture = dst, w = w, h = h, d = 1},
+		{transfer_buffer = transfer, pixels_per_row = w, rows_per_layer = h})
+	sdl.EndGPUCopyPass(copy_pass)
+
+	// The frame's own submit carries this, so the fence comes from frame_end.
+	d := new(Texture_Download, runtime.default_allocator())
+	d.transfer = transfer
+	d.fence = nil // set by frame_end
+	d.width = i32(w)
+	d.height = i32(h)
+	d.bgra = _gfx.swapchain_format == .B8G8R8A8_UNORM || _gfx.swapchain_format == .B8G8R8A8_UNORM_SRGB
+	d.scratch_texture = dst
+	_swapchain_pending_download = d
+	return d
+}
+
+// A capture whose copy rides this frame's command buffer, waiting for the
+// submit in frame_end to give it a fence.
+@(private = "file")
+_swapchain_pending_download: ^Texture_Download
+
 pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true
@@ -240,6 +330,9 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 		return false
 	}
 	if swap_tex == nil do return false
+
+	// Remembered for an on-demand capture later this frame (swapchain_capture).
+	_swapchain_this_frame = {tex = swap_tex, w = w, h = h}
 
 	if !depth {
 		_pass.active = true
@@ -573,4 +666,16 @@ _upload_batch :: proc() {
 	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = _pass.transfer},
 		{buffer = _pass.vbuf, size = u32(byte_count)}, true)
 	sdl.EndGPUCopyPass(copy_pass)
+}
+
+// Frame teardown: the swapchain image is only valid until submit.
+_swapchain_frame_clear :: proc() {
+	_swapchain_this_frame = {}
+}
+
+// Hands the frame's pending capture to frame_end, which submits with a fence.
+_swapchain_take_pending :: proc() -> ^Texture_Download {
+	d := _swapchain_pending_download
+	_swapchain_pending_download = nil
+	return d
 }
