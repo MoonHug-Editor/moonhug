@@ -75,7 +75,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 			if im.BeginTabBar("##picker_tabs") {
 				if im.BeginTabItem("Scene") {
 					if !allow_scene {
-						im.TextDisabled("pick:\"project\" — this field takes assets only")
+						im.TextDisabled("pick:\"project\" - this field takes assets only")
 					} else {
 						objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
 						shown := 0
@@ -111,7 +111,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 				}
 				if im.BeginTabItem("Project", nil, proj_flags) {
 					if !allow_project {
-						im.TextDisabled("pick:\"scene\" — this field takes scene objects only")
+						im.TextDisabled("pick:\"scene\" - this field takes scene objects only")
 					} else {
 						picked: engine.PPtr
 						if _picker_asset_rows(target_key, search, &picked) {

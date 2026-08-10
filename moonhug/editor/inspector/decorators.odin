@@ -233,7 +233,7 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 
 	id := fmt.ctprintf("%s##btn_%d_%d", label, row, st.accum_n)
 	if im.Button(id, im.Vec2{width, 0}) {
-		undo.comp_snapshot()
+		sess := structural_edit_begin(string(label))
 		when intrinsics.type_proc_parameter_count(P) == 2 {
 			CompPtr :: intrinsics.type_proc_parameter_type(P, 0)
 			FieldPtr :: intrinsics.type_proc_parameter_type(P, 1)
@@ -246,7 +246,6 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 		} else {
 			action()
 		}
-		undo.comp_commit()
-		mark_inspector_changed()
+		structural_edit_end(&sess)
 	}
 }

@@ -48,6 +48,76 @@ import im "moonhug:external/odin-imgui"
 // constant alone decides the look.
 DRAG_TEXT_ALIGN :: im.Vec2{0, 0.5}
 
+// What a value reads as when the selected objects disagree on it (Unity's
+// mixed-value dash). Drawn in place of the number — the underlying value is
+// untouched, and typing or dragging still writes to the whole selection.
+//
+// ASCII on purpose. An em dash (U+2014) is the typographically right character
+// and is what Unity uses, but the editor's font atlas is built from a limited
+// glyph range and renders anything outside it as a "?" box — which reads as an
+// error rather than as "these differ".
+MIXED_VALUE_TEXT :: "-"
+
+// Component index for the next _drag_scalar call, so a vector row can dash only
+// the axes that actually differ. -1 means "not a component of a vector", and
+// the whole-field flag decides.
+@(private = "file")
+_drag_component_index: int = -1
+
+// Set when ANY component of a multi-component row just finished an edit.
+// imgui's item state describes only the LAST component once the row returns, so
+// a release on X or Y is otherwise invisible to the caller.
+@(private = "file")
+_drag_row_deactivated: bool
+
+// The mirror of the above for the START of an edit: a drag begun on X or Y is
+// equally invisible to a caller reading imgui's item state afterwards.
+@(private = "file")
+_drag_row_activated: bool
+
+// Whether the row drawn by the last drag_floatN just ended an edit (drag
+// released, or a typed value applied). Consumes the flag, so it answers once.
+//
+// Callers that close an undo entry on release must use this rather than
+// im.IsItemDeactivatedAfterEdit, which reports the last component only —
+// dragging any other axis would never close the entry, and the object being
+// edited would get no undo record at all.
+drag_row_deactivated :: proc() -> bool {
+	v := _drag_row_deactivated
+	_drag_row_deactivated = false
+	return v
+}
+
+// Whether the row drawn by the last drag_floatN just BEGAN an edit, from
+// whichever component was clicked. Consumes the flag. Callers that open an undo
+// entry on activation must use this rather than im.IsItemActivated, for the
+// same reason as drag_row_deactivated.
+drag_row_activated :: proc() -> bool {
+	v := _drag_row_activated
+	_drag_row_activated = false
+	return v
+}
+
+// Whether the value this call is about to draw should read as mixed.
+@(private = "file")
+_drag_is_mixed :: proc() -> bool {
+	if !current_field_mixed do return false
+	if _drag_component_index < 0 do return true
+	if _drag_component_index >= len(current_field_mixed_comps) do return true
+	// A vector whose per-component flags are all clear disagrees on something
+	// the component pass could not attribute (a non-scalar element type), so the
+	// whole row reads as mixed rather than none of it.
+	any_comp := false
+	for c in current_field_mixed_comps {
+		if c {
+			any_comp = true
+			break
+		}
+	}
+	if !any_comp do return true
+	return current_field_mixed_comps[_drag_component_index]
+}
+
 // One scalar drag with a left-aligned value. `format` must be non-nil, which
 // the wrappers guarantee by passing imgui's own defaults.
 @(private = "file")
@@ -89,13 +159,26 @@ _drag_scalar :: proc(
 
 	// Redraw the value we just hid, inset by FramePadding.x on both sides — the
 	// same inset InputText uses — so a left-aligned value clears the border.
+	//
+	// A mixed multi-selection draws the dash here instead. Substituting at the
+	// TEXT is what keeps the widget itself honest: the drag still holds the
+	// active object's real value, so a drag from a mixed field moves by the
+	// gesture's delta rather than from some invented zero.
 	buf: [64]byte
-	n := im.DataTypeFormatString(cstring(raw_data(buf[:])), i32(len(buf)), data_type, p_data, format)
+	text_begin, text_end: cstring
+	if _drag_is_mixed() {
+		text_begin = MIXED_VALUE_TEXT
+		text_end = nil
+	} else {
+		n := im.DataTypeFormatString(cstring(raw_data(buf[:])), i32(len(buf)), data_type, p_data, format)
+		text_begin = cstring(raw_data(buf[:]))
+		text_end = cstring(rawptr(uintptr(raw_data(buf[:])) + uintptr(n)))
+	}
 	im.RenderTextClipped(
 		im.Vec2{frame_min.x + style.FramePadding.x, frame_min.y},
 		im.Vec2{frame_max.x - style.FramePadding.x, frame_max.y},
-		cstring(raw_data(buf[:])),
-		cstring(rawptr(uintptr(raw_data(buf[:])) + uintptr(n))),
+		text_begin,
+		text_end,
 		nil,
 		DRAG_TEXT_ALIGN,
 		nil,
@@ -168,7 +251,29 @@ _drag_scalar_n :: proc(
 	for i in 0 ..< components {
 		im.PushIDInt(i)
 		if i > 0 do im.SameLine(0, style.ItemInnerSpacing.x)
+		// Each component reports its own mixed state, so a selection agreeing on
+		// X and Y but not Z dashes Z alone.
+		_drag_component_index = int(i)
 		if _drag_scalar("", data_type, p, v_speed, p_min, p_max, format, flags) do changed = true
+		// Each component is its OWN imgui item, so the caller's post-drawer
+		// IsItemActive() would only ever describe the last one (Z). Dragging Y
+		// would then look inactive, the multi-edit pre-image would be recaptured
+		// every frame, and the fieldwise diff would come back empty — writing
+		// the whole vector and flattening X and Z across the selection. Asking
+		// here, inside the loop, is the only place each component's own state is
+		// the current item.
+		// Latched per component: imgui's item state describes only the LAST
+		// component once the row returns, so a gesture begun or ended on X or Y
+		// is otherwise invisible to the caller. See drag_row_activated.
+		if im.IsItemActivated() do _drag_row_activated = true
+		// Same trap for the RELEASE. A caller asking IsItemDeactivatedAfterEdit
+		// after this proc returns only ever describes the last component, so
+		// releasing a drag on X or Y looks like no release at all — and a caller
+		// that ends its undo entry there (the rotation row) never records the
+		// object being edited. Latched here, where each component is the current
+		// item, and read once via drag_row_deactivated.
+		if im.IsItemDeactivatedAfterEdit() do _drag_row_deactivated = true
+		_drag_component_index = -1
 		im.PopID()
 		im.PopItemWidth()
 		p = rawptr(uintptr(p) + type_size)

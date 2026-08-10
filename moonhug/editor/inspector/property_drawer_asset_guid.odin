@@ -14,6 +14,8 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     guid_val := uuid.Identifier(guid_ptr^)
     has_value := guid_val != (uuid.Identifier{})
 
+    // Mixed multi-selections are substituted inside _picker_field_row, so every
+    // reference drawer gets the dash without repeating the check.
     display: string
     if !has_value {
         display = "None"

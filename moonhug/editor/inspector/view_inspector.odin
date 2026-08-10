@@ -4,6 +4,7 @@ import "base:runtime"
 import "core:fmt"
 import "core:mem"
 import "core:reflect"
+import "core:slice"
 import "core:path/filepath"
 import "core:encoding/uuid"
 import strings "core:strings"
@@ -59,9 +60,11 @@ init :: proc() {
     inspector_buttons = make(map[typeid][]Inspector_Button)
     _register_inspector_buttons()
     undo.set_asset_apply(asset_doc_apply_json)
+    undo.set_asset_doc_lookup(asset_doc_payload_ptr)
 }
 
 shutdown_registries :: proc() {
+    multi_shutdown()
     delete(mapPropertyDrawer)
     for _, v in decorator_registry {
         delete(v)
@@ -171,7 +174,7 @@ _draw_package_inspector :: proc() {
     im.Separator()
     im.Text(strings.clone_to_cstring(fmt.tprintf("Content root: %s", inspectorData.filePath), context.temp_allocator))
     im.Text(strings.clone_to_cstring(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount), context.temp_allocator))
-    im.TextDisabled("Installed package (moonhug/packages) — remove the folder to uninstall.")
+    im.TextDisabled("Installed package (moonhug/packages) - remove the folder to uninstall.")
     if package_samples_draw != nil {
         package_samples_draw(inspectorData.packageName)
     }
@@ -289,18 +292,12 @@ is_changed_flag_set :: proc() -> bool {
     return inspector_changed
 }
 
-// Whole-document / component snapshot-commit boundary. Both commit kinds go
-// through the same call here, so the switch is on presence only.
+
 @(private)
-_undo_finalize_widget :: proc() -> Field_Commit {
-    if im.IsItemActivated() {
-        undo.comp_snapshot()
-    }
-    state := field_commit_state()
-    if state != .None {
-        undo.comp_commit()
-    }
-    return state
+_is_picker_type :: proc(tid: typeid) -> bool {
+    return tid == typeid_of(engine.Asset_GUID) ||
+           tid == typeid_of(engine.Ref) ||
+           tid == typeid_of(engine.Ref_Local)
 }
 
 // Records a prefab-instance override for a field whose edit just committed, so
@@ -339,12 +336,12 @@ record_nested_override :: proc(field_ptr: rawptr, field_tid: typeid, property_pa
 //   Field_Commit.Value_Applied — the value changed without the widget holding
 //     focus (typed digits applied inline, drawer wrote through immediately).
 //
-// The two are NOT interchangeable to callers: the undo wrappers commit through
-// different APIs per case (pending_commit vs end_field(changed), or
-// field_drag_end for the euler cache). Returning WHICH event happened, rather
-// than a bare bool, is what lets every wrapper share this detection while
-// keeping its own commit strategy — the duplication that previously let one
-// wrapper consume the changed flag another wrapper needed to read.
+// The two are NOT interchangeable to callers: the rotation wrapper ends its
+// euler cache on a released drag and not on an inline write. Returning WHICH
+// event happened, rather than a bare bool, is what lets every wrapper share this
+// detection while keeping its own commit strategy — the duplication that
+// previously let one wrapper consume the changed flag another wrapper needed to
+// read.
 Field_Commit :: enum {
     None,
     Drag_Released,
@@ -380,37 +377,42 @@ draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 
 @(private)
 _FieldMenuUndo :: struct {
-    comp:  bool,
-    field: bool,
-    scope: undo.Edit_Scope,
+    active: bool,
+    sess:   undo.Edit_Session,
 }
 
+// Reset / Paste from the field's context menu. These write from a popup rather
+// than a drag, so the whole write is bracketed here in one call - the session
+// picks field or whole-owner granularity from where field_ptr lands.
 @(private)
 _field_menu_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) -> _FieldMenuUndo {
-    o, ok := undo.current_owner()
-    if ok && (o.kind == .Asset || (o.kind == .Pooled && o.handle.type_key != .Transform)) {
-        if undo.pending_is_active() {
-            undo.comp_commit()
-        }
-        undo.comp_snapshot()
-        if undo.pending_is_active() {
-            return _FieldMenuUndo{comp = true}
+    targets := make([dynamic]undo.Edit_Target, 0, multi_peer_count() + 1, context.temp_allocator)
+    if o, ok := undo.current_owner(); ok {
+        switch o.kind {
+        case .None:
+        case .Pooled:
+            append(&targets, undo.edit_target_pooled(o.handle, field_ptr, field_tid))
+        case .Asset:
+            append(&targets, undo.Edit_Target{
+                kind = .Asset, asset_guid = o.asset_guid, asset_tid = o.asset_tid,
+                field_ptr = field_ptr, field_tid = field_tid,
+            })
+        case .Raw:
+            append(&targets, undo.Edit_Target{
+                kind = .Raw, raw_ptr = o.base_ptr, raw_tid = o.raw_tid,
+                field_ptr = field_ptr, field_tid = field_tid,
+            })
         }
     }
-    e := undo.edit_inspector_field_begin(field_ptr, field_tid, label)
-    return _FieldMenuUndo{field = e.active, scope = e}
+    if len(targets) == 0 do return {}
+    return _FieldMenuUndo{active = true, sess = undo.edit_session_begin(targets[:], label)}
 }
 
 @(private)
 _field_menu_undo_end :: proc(u: _FieldMenuUndo) {
-    if u.comp {
-        undo.comp_commit()
-        return
-    }
-    if u.field {
-        s := u.scope
-        undo.edit_end(&s)
-    }
+    if !u.active do return
+    s := u.sess
+    undo.edit_session_end(&s)
 }
 
 @(private)
@@ -662,26 +664,62 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
             }
 
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
+                // Mixed-value display for the selection. Read by the drawer.
+                multi_offset := multi_offset_of(field_ptr, ptr)
+                multi_probe_field(field_ptr, field_type.id, multi_offset)
+
                 // Group the drawer's widgets so the field context menu below
                 // binds to the WHOLE row. A drawer can emit several items (e.g.
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
                 // only tests the last one — right-click would then work only on
                 // the tiny X (or only when no value meant no X).
                 im.BeginGroup()
-                drawer(field_ptr, field_type.id, c_field_name)
+                // The whole transaction, shared with the array-element path so
+                // the two cannot drift — see field_edit_row.
+                // Peers record their overrides against their own instances, and
+                // the path names which field — see field_edit.odin.
+                prev_path := field_edit_set_path(full_path)
+                finished := field_edit_row(field_ptr, field_type.id, multi_offset,
+                                           field_name, drawer, c_field_name)
+                field_edit_set_path(prev_path)
                 im.EndGroup()
-                record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
+                record_nested_override(field_ptr, field_type.id, full_path, finished)
             } else if is_array_type(field_type.id) {
-                draw_inspector_array(field_ptr, field_type.id, c_field_name)
+                // Elements multi-edit through their own rebased peer list —
+                // draw_inspector_array does that itself, since only it knows
+                // where the element storage is.
+                draw_inspector_array_multi(field_ptr, field_type.id, c_field_name, multi_offset_of(field_ptr, ptr))
                 row_popup_done = true
             } else if is_union_type(field_type.id) {
+                // A union's payload type can differ per object, so the same
+                // bytes would mean different things — see multi_suspend.
+                mprev := multi_suspend()
                 draw_inspector_union(field_ptr, field_type.id, c_field_name)
+                multi_resume(mprev)
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
+                // An enum row is a combo: the value lands from a popup, so the
+                // gesture opens before the draw like the pickers.
+                multi_offset := multi_offset_of(field_ptr, ptr)
+                multi_probe_field(field_ptr, field_type.id, multi_offset)
+                field_edit_begin(field_ptr, field_type.id, multi_offset, field_name)
                 draw_inspector_enum(field_ptr, field_type.id, c_field_name)
-                record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
+                multi_clear_mixed()
+                changed := is_changed_flag_set()
+                if changed {
+                    field_edit_apply_to_peers(field_ptr, field_type.id, multi_offset)
+                }
+                record_nested_override(field_ptr, field_type.id, full_path, changed)
+                if changed || !im.IsItemActive() {
+                    field_edit_end()
+                }
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
+                // Descending into a nested struct: the peers' matching fields
+                // sit at the same offset inside THEIR copy, so the recursion
+                // carries the accumulated offset rather than the raw pointer.
+                prev_off := multi_push_offset(uintptr(field_ptr) - uintptr(ptr))
+                defer multi_pop_offset(prev_off)
                 _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
                 if is_inline {
                     draw_inspector(field_val, "", full_path)
@@ -707,7 +745,15 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
                 draw_field_context_menu(field_ptr, field_type.id, full_path)
             }
         } else if ctx.handled_draw {
-            record_nested_override(field_ptr, field_type.id, full_path, _undo_finalize_widget() != .None)
+            // A decorator drew this field itself. It is still a VALUE edit, so
+            // it gets the same transaction every other row does — the drawer
+            // already ran, so the row is driven with a nil drawer.
+            multi_offset := multi_offset_of(field_ptr, ptr)
+            prev_path := field_edit_set_path(full_path)
+            finished := field_edit_row(field_ptr, field_type.id, multi_offset,
+                                       field_name, nil, c_field_name)
+            field_edit_set_path(prev_path)
+            record_nested_override(field_ptr, field_type.id, full_path, finished)
             draw_field_context_menu(field_ptr, field_type.id, full_path)
         }
 

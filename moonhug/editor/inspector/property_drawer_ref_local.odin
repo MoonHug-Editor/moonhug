@@ -41,6 +41,20 @@ _picker_search_bar :: proc() -> string {
 // as the pick button — clicking anywhere on the row opens the picker instead of
 // hitting a dead zone.
 _picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
+	display, has_value := display, has_value
+	// Every reference drawer routes its value text through here, so the mixed
+	// substitution lives here too rather than in each drawer. Showing the active
+	// object's asset name would read as if the whole selection pointed at it.
+	//
+	// `has_value` goes false with it: the ping / open / clear affordances act on
+	// one specific reference, and a mixed row names none. The row then behaves
+	// like an empty one — clicking it opens the picker, which assigns to the
+	// whole selection and resolves the mixed state.
+	if current_field_mixed {
+		display = MIXED_VALUE_TEXT
+		has_value = false
+	}
+
 	field_row(label)
 
 	BTN_W :: f32(24)

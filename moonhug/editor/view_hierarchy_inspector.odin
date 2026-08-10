@@ -24,6 +24,17 @@ _inspector_transform_open: bool = true
 _inspector_comp_open: map[engine.TypeKey]bool
 
 draw_hierarchy_inspector :: proc() {
+	// Drop a multi-edit pre-image left behind by a drag that never committed
+	// (Escape, selection change). Must run before any field draws, and outside
+	// the Begin early-out so a hidden panel still releases it.
+	// Also drops any pre-drag rotation values a drag left behind without
+	// committing (Escape, selection change).
+	editing := im.IsAnyItemActive()
+	// Closes a row edit whose gesture ended without the row noticing (panel
+	// closed, selection changed mid-drag) — see field_edit.odin.
+	inspector.field_edit_frame_begin(editing)
+	if !editing do _rotation_peer_start_clear()
+
 	if !im.Begin("Inspector", &menu.show_inspector, {.NoCollapse}) {
 		im.End()
 		return
@@ -36,9 +47,19 @@ draw_hierarchy_inspector :: proc() {
 		return
 	}
 
-	// Multi-selection shows the ACTIVE object only (no multiedit yet).
+	// Multi-selection edits the whole set. The header states the count and
+	// nothing more, as Unity's does: every field is editable across the
+	// selection, and the ones that disagree say so themselves with a dash.
+	//
+	// It used to add "editing all" to distinguish the multiedit case from a
+	// fallback to the active object. That fallback covered prefab instances,
+	// which now multi-edit like anything else, so the only case left is a
+	// destroyed handle — a transient frame that prunes itself. A qualifier that
+	// is always true is noise.
+	sel := sel_scene_items()
+	multi := multi_selection_editable(sel)
 	if n := sel_scene_count(); n > 1 {
-		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected — editing the active object", n), context.temp_allocator))
+		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
 		im.Separator()
 	}
 
@@ -69,8 +90,20 @@ draw_hierarchy_inspector :: proc() {
 
 		_draw_header(t, tH)
 		im.Separator()
-		_draw_transform_section(t, tH)
-		_draw_components_section_nested(t, tH, host_tH)
+
+		// Prefab-instance content multi-edits like anything else. Each peer
+		// carries its own instance identity (Multi_Peer.nested_host/lid), so an
+		// edit records an override against the instance it belongs to rather
+		// than the active object's — which is what previously made this path
+		// single-object.
+		nested_transform_peers: []inspector.Multi_Peer
+		nested_common: []Multi_Component
+		if multi {
+			nested_transform_peers = multi_transform_peers(tH, sel)
+			nested_common = multi_common_components(tH, sel)
+		}
+		_draw_transform_section(t, tH, nested_transform_peers)
+		_draw_components_section_nested(t, tH, host_tH, nested_common, multi)
 		return
 	}
 
@@ -79,8 +112,19 @@ draw_hierarchy_inspector :: proc() {
 
 	_draw_header(t, tH)
 	im.Separator()
-	_draw_transform_section(t, tH)
-	_draw_components_section(t, tH)
+
+	// Peers for the rest of the selection, in scope for the whole draw below.
+	// Empty when this is a single selection, which makes every multi-edit path a
+	// no-op without a second code path to maintain.
+	transform_peers: []inspector.Multi_Peer
+	common_comps: []Multi_Component
+	if multi {
+		transform_peers = multi_transform_peers(tH, sel)
+		common_comps = multi_common_components(tH, sel)
+	}
+
+	_draw_transform_section(t, tH, transform_peers)
+	_draw_components_section(t, tH, common_comps, multi)
 	_draw_missing_components(t, tH)
 	_draw_add_component_button(t, tH)
 }
@@ -515,15 +559,28 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 @(private)
 _inspector_euler_cache: [3]f32
 
+// WHICH object the euler cache describes. Without it the cache is keyed only by
+// "the quaternion changed", so it survives a selection change: after editing one
+// object the next selected object shows the previous one's angles until their
+// quaternions happen to differ. Two objects at the same orientation show each
+// other's numbers indefinitely.
+@(private)
+_inspector_euler_owner: engine.Transform_Handle
+
 @(private)
 _inspector_euler_quat_src: [4]f32
 
 @(private)
-_draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+_draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
 		drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))
+
+		// The peers are other TRANSFORMS, so field offsets are measured from the
+		// transform base for the whole section.
+		prev_peers := inspector.multi_set_peers(peers)
+		defer inspector.multi_set_peers(prev_peers)
 
 		_wrap_transform_field_override(tH, t, &t.position, "position", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
 		_wrap_transform_rotation_override(tH, t, drawer)
@@ -584,9 +641,36 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 		is_overridden = engine.nested_scene_has_root_override(t.scene, host_tH, target_id, prop_path)
 	}
 
+	// Multi-edit, for the same reason override recording lives here: transform
+	// fields bypass the generic field loop, so the probe/propagate pair the loop
+	// does has to be repeated on this path.
+	multi_offset := uintptr(field_ptr) - uintptr(t)
+	inspector.multi_probe_field(field_ptr, field_tid, multi_offset)
+
 	pushed := _push_override_style(is_overridden)
 	committed := _wrap_transform_field(tH, field_ptr, 0, field_tid, drawer, drawer_tid, label)
 	_pop_override_style(pushed)
+
+	inspector.multi_clear_mixed()
+
+	// The gesture, stated rather than inferred (docs/Undo.md). The
+	// session covers the active object and every peer, so one drag is one undo
+	// step and peers track the drag live without any preview/rewind dance.
+	if inspector.field_edit_row_started() {
+		inspector.field_edit_begin(field_ptr, field_tid, multi_offset, prop_path)
+	}
+	editing := inspector.field_edit_in_flight(field_ptr)
+	if editing {
+		inspector.field_edit_apply_to_peers(field_ptr, field_tid, multi_offset)
+	}
+	// A released drag, or a typed value landing on blur (`committed`). Both end
+	// the gesture, and both are the moment an override is recorded. The row
+	// flags are latched and CONSUMED, so the answer is read exactly once here.
+	committed |= inspector.field_edit_row_finished()
+	if editing && committed {
+		inspector.field_edit_apply_to_peers(field_ptr, field_tid, multi_offset)
+		inspector.field_edit_end()
+	}
 
 	prev_nested_lid := engine.inspector_get_nested_local_id()
 	if is_in_nested_ctx {
@@ -613,9 +697,56 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 		is_overridden = engine.nested_scene_has_root_override(t.scene, host_tH, target_id, "rotation")
 	}
 
+	multi_offset := uintptr(uintptr(rawptr(&t.rotation)) - uintptr(t))
+
+	// Mixed state is computed in EULER space, not from the stored quaternion.
+	//
+	// The row is three euler boxes but the field is a quaternion, and the two do
+	// not correspond: peers that agree on the axis being edited still hold
+	// different quaternions, because they keep their own values on the other
+	// axes. Probing the quaternion marks all three boxes mixed the moment any
+	// axis is edited — the whole row shows dashes even for the axis just set.
+	_rotation_probe_mixed(t)
+
+	// Euler angles as they stand before this frame's edit. Which AXIS the user
+	// moved is only visible here: the quaternion is rebuilt from all three every
+	// frame, so by the time it exists the per-axis information is gone and any
+	// diff of it reports "everything changed".
+	//
+	// Through the SHARED sync, not a second copy of its rules. An open-coded
+	// re-derive here ignored the spelling preservation and handed the diff
+	// (0, -100, 0) as (180, -80, 180) — so X and Z counted as moved and the
+	// peers were rotated on axes the user never touched.
+	euler_before := _rotation_cache_sync(tH, t)
+
+	mgroup := inspector.multi_edit_group_begin("rotation")
+
 	pushed := _push_override_style(is_overridden)
 	committed := _wrap_transform_rotation(tH, t, drawer)
 	_pop_override_style(pushed)
+
+	inspector.multi_clear_mixed()
+	euler_after := _inspector_euler_cache
+
+	// Which axes moved, accumulated over the WHOLE drag rather than this frame.
+	//
+	// Per-frame is wrong at exactly the moment it matters: the commit fires on
+	// the release frame, when the pointer is no longer moving, so this frame's
+	// before and after are equal and nothing looks moved. The commit then writes
+	// only its rewind and the peers snap back to their pre-drag orientation —
+	// which is the "reverts after drag" symptom.
+	any_moved := false
+	for i in 0 ..< 3 {
+		if euler_before[i] != euler_after[i] {
+			_rotation_moved_axes[i] = true
+			any_moved = true
+		}
+	}
+	if committed || any_moved {
+		_rotation_apply_to_peers(t, multi_offset, euler_before, euler_after, _rotation_moved_axes, committed)
+	}
+	if committed do _rotation_moved_axes = {}
+	inspector.multi_edit_group_end(&mgroup)
 
 	prev_nested_lid := engine.inspector_get_nested_local_id()
 	if is_in_nested_ctx {
@@ -630,6 +761,235 @@ _wrap_transform_rotation_override :: proc(tH: engine.Transform_Handle, t: ^engin
 	}
 }
 
+// Mixed state for the rotation row, per euler axis.
+//
+// Compared in the terms the row DISPLAYS: two objects showing the same X are
+// not mixed on X, however different their quaternions are elsewhere. The
+// tolerance absorbs the round trip through quaternion and back, which does not
+// return bit-identical angles.
+@(private)
+_rotation_probe_mixed :: proc(t: ^engine.Transform) {
+	differs: [3]bool
+	peers := inspector.multi_peers()
+	if len(peers) == 0 {
+		inspector.multi_set_mixed_components(differs)
+		return
+	}
+
+	mine := engine.quat_to_euler_xyz(t.rotation)
+	EPS :: f32(0.001)
+	for peer in peers {
+		if peer.base == nil do continue
+		pt := cast(^engine.Transform)peer.base
+		pe := engine.quat_to_euler_xyz(pt.rotation)
+		for i in 0 ..< 3 {
+			if abs(pe[i] - mine[i]) > EPS do differs[i] = true
+		}
+	}
+	inspector.multi_set_mixed_components(differs)
+}
+
+// Applies a rotation edit to the rest of the selection, per EULER AXIS.
+//
+// Rotation cannot ride the generic fieldwise path. The widget edits euler
+// angles, but the stored value is a quaternion rebuilt from all three angles
+// every frame — so a diff of the quaternion always reports every component
+// changed, and copying it wholesale snaps every selected object to the active
+// object's orientation. Turning Y would flatten their X and Z, which is exactly
+// the reported bug.
+//
+// So the delta is applied where it is still meaningful: each peer is converted
+// to euler, given the active object's value on the axes the user actually
+// moved, and converted back. Its other axes keep its own values.
+//
+// `commit` distinguishes the two callers. During a drag this only writes values
+// (a live preview, no undo entry — one per frame would bury the stack). On the
+// commit frame it records, wrapped in the caller's group so the whole selection
+// is one undo step.
+// Each peer's rotation as it was BEFORE the drag started, so the commit can
+// record a real old→new pair.
+//
+// The live preview writes straight into pt.rotation every frame. Without this,
+// the commit's edit_begin captures the ALREADY-PREVIEWED value as "old", and
+// undo restores the selection to where the drag left it — reverting the active
+// object but apparently not the peers.
+@(private)
+_rotation_peer_start: map[engine.Transform_Handle][4]f32
+
+// Axes touched at any point during the current drag. Accumulated because the
+// commit frame itself shows no movement — see _wrap_transform_rotation_override.
+@(private)
+_rotation_moved_axes: [3]bool
+
+@(private)
+_rotation_peer_start_clear :: proc() {
+	if _rotation_peer_start != nil do clear(&_rotation_peer_start)
+	_rotation_moved_axes = {}
+}
+
+@(private)
+_rotation_apply_to_peers :: proc(
+	t: ^engine.Transform,
+	multi_offset: uintptr,
+	euler_before: [3]f32,
+	euler_after: [3]f32,
+	moved: [3]bool,
+	commit: bool,
+) {
+	peers := inspector.multi_peers()
+	if len(peers) == 0 do return
+	if _rotation_peer_start == nil {
+		_rotation_peer_start = make(map[engine.Transform_Handle][4]f32)
+	}
+
+	for peer in peers {
+		if peer.base == nil do continue
+		pt := cast(^engine.Transform)peer.base
+		ph := engine.Transform_Handle(peer.handle)
+
+		// Remember where this peer started, the first time the drag touches it.
+		if ph not_in _rotation_peer_start {
+			_rotation_peer_start[ph] = pt.rotation
+		}
+
+		// The peer's own orientation, in the same terms the user is editing —
+		// taken from its PRE-DRAG value so a running preview does not compound
+		// (each frame would otherwise re-read the angle the last frame wrote).
+		pe := engine.quat_to_euler_xyz(_rotation_peer_start[ph])
+		for i in 0 ..< 3 {
+			if moved[i] do pe[i] = euler_after[i]
+		}
+		new_rot := engine.quat_from_euler_xyz(pe.x, pe.y, pe.z)
+
+		// The "already there" early-out applies to the LIVE preview only.
+		//
+		// On the commit frame the preview has already written new_rot during the
+		// drag, so new_rot == pt.rotation is true for every peer — and skipping
+		// here meant the peer's undo entry was never created. The drag looked
+		// right and undo reverted the active object alone, with the History
+		// entry holding a single sub-command.
+		//
+		// What matters at commit is whether the peer moved SINCE THE DRAG BEGAN,
+		// which is the pre-drag value, not this frame's.
+		if !commit && new_rot == pt.rotation do continue
+		if commit && new_rot == _rotation_peer_start[ph] do continue
+
+		if commit {
+			// Rewind to the pre-drag value so edit_begin captures the real "old",
+			// then apply — otherwise undo restores where the preview left it.
+			start := _rotation_peer_start[ph]
+			pt.rotation = start
+			e := undo.edit_begin(peer.handle, &pt.rotation, typeid_of([4]f32), "Rotation")
+			pt.rotation = new_rot
+			undo.edit_end(&e)
+		} else {
+			pt.rotation = new_rot
+		}
+	}
+	// The commit ends the drag, so the next one starts from fresh values.
+	if commit do _rotation_peer_start_clear()
+	inspector.mark_inspector_changed()
+}
+
+// Drives the Rotation ROW the way the inspector does, for tests.
+//
+// Testing `field_edit_row` directly proves nothing about rotation: the row is
+// not what rotation uses. Its wrapper owns the euler cache, the per-axis peer
+// apply and the drag's undo entry, and a rewrite that broke single-object
+// editing still passed a row-level test. Anything asserting rotation behaviour
+// has to come through here.
+//
+// `write_euler` stands in for the drag widget: it receives the euler cache the
+// wrapper hands the drawer, exactly as draw_vec3_row would.
+rotation_row_drive_for_test :: proc(
+	tH: engine.Transform_Handle,
+	write_euler: proc(euler: ^[3]f32),
+	commit := false,
+) {
+	w := engine.ctx_world()
+	if w == nil do return
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return
+
+	// The wrapper's imgui drawing (override styling, the context menu, the
+	// commit predicate) needs a live frame, so a test drives the LOGIC around
+	// it: cache refresh, the edit, the write-through, and the peer apply — which
+	// is where every rotation bug has been.
+	euler_before := _rotation_cache_sync(tH, t)
+	write_euler(&_inspector_euler_cache)
+
+	if _inspector_euler_cache != euler_before {
+		t.rotation = engine.quat_from_euler_xyz(
+			_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
+		_inspector_euler_quat_src = t.rotation
+	}
+
+	moved := false
+	for i in 0 ..< 3 {
+		if euler_before[i] != _inspector_euler_cache[i] {
+			_rotation_moved_axes[i] = true
+			moved = true
+		}
+	}
+	if commit || moved {
+		multi_offset := uintptr(uintptr(rawptr(&t.rotation)) - uintptr(t))
+		_rotation_apply_to_peers(t, multi_offset, euler_before,
+			_inspector_euler_cache, _rotation_moved_axes, commit)
+	}
+	if commit do _rotation_moved_axes = {}
+}
+
+// Refreshes the euler cache for `tH` and returns the pre-edit angles. Shared by
+// the drawn row and the test driver so both see the same cache rules.
+@(private)
+_rotation_cache_sync :: proc(tH: engine.Transform_Handle, t: ^engine.Transform) -> [3]f32 {
+	// The cache holds ONE euler spelling for as long as it describes the live
+	// quaternion, because a quaternion has many: euler->quat->euler of
+	// (0, 100, 0) comes back as (-180, 80, -180). Re-deriving while the user is
+	// dragging Y past 90 makes X and Z jump from 0 to -180 — same orientation,
+	// unrecognisable numbers.
+	//
+	// Rebuilt only when the cache genuinely no longer describes the object: a
+	// different object, or a quaternion that does not match what the cache would
+	// produce. Comparing REBUILT-VS-STORED rather than raw quaternion equality
+	// is what makes this survive a write that produced an equivalent rotation
+	// through a different route (the multi-edit peer apply, normalization),
+	// which raw equality treats as "changed" and re-spells.
+	if _inspector_euler_owner != tH {
+		_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
+		_inspector_euler_quat_src = t.rotation
+		_inspector_euler_owner = tH
+		return _inspector_euler_cache
+	}
+	if _inspector_euler_quat_src != t.rotation {
+		// Does the cache still describe this rotation? If so, keep its spelling.
+		round := engine.quat_from_euler_xyz(
+			_inspector_euler_cache.x, _inspector_euler_cache.y, _inspector_euler_cache.z)
+		if _quat_approx_equal(round, t.rotation) {
+			_inspector_euler_quat_src = t.rotation
+		} else {
+			_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
+			_inspector_euler_quat_src = t.rotation
+		}
+	}
+	return _inspector_euler_cache
+}
+
+
+// The euler cache's current spelling, so a test can assert the boxes stay
+// continuous rather than flipping to a gimbal-equivalent representation.
+rotation_euler_cache_for_test :: proc() -> [3]f32 {
+	return _inspector_euler_cache
+}
+
+// Two quaternions naming the same orientation, within float tolerance. q and -q
+// are the same rotation, so the sign is normalized before comparing.
+@(private)
+_quat_approx_equal :: proc(a, b: [4]f32) -> bool {
+	dot := a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w
+	return abs(abs(dot) - 1) < 1e-5
+}
+
 @(private)
 _inspector_rot_drag: undo.Field_Drag
 
@@ -637,16 +997,14 @@ _inspector_rot_drag: undo.Field_Drag
 // t.rotation, so the commit point is the drag release.
 @(private)
 _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transform, drawer: proc(ptr: rawptr, tid: typeid, label: cstring)) -> (committed: bool) {
-	if _inspector_euler_quat_src != t.rotation {
-		_inspector_euler_cache = engine.quat_to_euler_xyz(t.rotation)
-		_inspector_euler_quat_src = t.rotation
-	}
-	prev_euler := _inspector_euler_cache
+	prev_euler := _rotation_cache_sync(tH, t)
 	prev_changed := inspector.consume_inspector_changed()
 
 	drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
 
-	if im.IsItemActivated() && !_inspector_rot_drag.active {
+	// From whichever component was clicked — see drag_row_activated. Reading
+	// imgui directly would only see a drag begun on Z.
+	if inspector.drag_row_activated() && !_inspector_rot_drag.active {
 		_inspector_rot_drag = undo.field_drag_begin(tH, &t.rotation, typeid_of([4]f32), "Rotation")
 	}
 
@@ -661,8 +1019,15 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	// a release only ends the undo entry when a drag actually opened one.
 	// Commit either way — inspector.Field_Commit's two events, with the drag
 	// close attached to the first.
+	// The row draws three separate imgui items, so imgui's own item state
+	// describes only the LAST one (Z) by the time the drawer returns. Releasing a
+	// drag on X or Y would look like no release, field_drag_end would never fire,
+	// and the edited object would get no undo entry — while its multi-edit peers
+	// still recorded theirs. drag_row_deactivated latches the release from
+	// whichever component actually had it.
 	euler_changed := _inspector_euler_cache != prev_euler
-	if im.IsItemDeactivatedAfterEdit() && _inspector_rot_drag.active {
+	row_released := inspector.drag_row_deactivated()
+	if row_released && _inspector_rot_drag.active {
 		undo.field_drag_end(&_inspector_rot_drag)
 		committed = true
 	} else if inspector.field_commit_state_of(euler_changed) != .None {
@@ -673,37 +1038,21 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	return
 }
 
-// `committed` reports that this frame closed an edit of the field — the moment
-// a prefab-instance override must be recorded. The caller can't re-derive it:
-// the changed flag is consumed here, so reading it afterwards would miss
-// typed-in edits. Commit DETECTION is inspector.field_commit_state (one
-// predicate for every field widget); this wrapper only chooses which undo API
-// each kind commits through.
+// Draws the widget and reports whether a value landed WITHOUT a gesture the row
+// can see — a typed-in number that is applied on Enter, where nothing activates
+// or deactivates. The caller can't re-derive it: the changed flag is consumed
+// here, so reading it afterwards would miss those edits.
+//
+// Drag gestures are NOT reported here. They are bracketed by the caller's
+// session (field_edit_row_started/finished), and reporting them twice would
+// record the override twice.
 @(private)
 _wrap_transform_field :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, offset: uintptr, field_tid: typeid, drawer: proc(ptr: rawptr, tid: typeid, label: cstring), drawer_tid: typeid, label: cstring) -> (committed: bool) {
 	prev_changed := inspector.consume_inspector_changed()
-	undo.begin_field(field_ptr, field_tid)
 
 	drawer(field_ptr, drawer_tid, label)
 
-	if im.IsItemActivated() {
-		undo.promote_to_pending()
-	}
-	// A released drag commits the pending entry it opened; otherwise a value
-	// that landed while the widget isn't holding focus ends the field as
-	// changed. `pending_matches` failing on release falls through to the
-	// value case, exactly as the original chained conditions did.
-	state := inspector.field_commit_state_of(inspector.is_changed_flag_set())
-	if state == .Drag_Released && undo.pending_matches(field_ptr) {
-		undo.pending_commit()
-		undo.end_field(false)
-		committed = true
-	} else if inspector.is_changed_flag_set() && !im.IsItemActive() && !undo.pending_is_active() {
-		undo.end_field(true)
-		committed = true
-	} else {
-		undo.end_field(false)
-	}
+	committed = inspector.is_changed_flag_set() && !im.IsItemActive()
 
 	if prev_changed do inspector.mark_inspector_changed()
 	return
@@ -822,8 +1171,17 @@ _draw_component_overflow_menu :: proc(
 	}
 }
 
+// `common`: for a multi-selection, the components the whole selection shares
+// and where their peer instances live. `multi` says a multi-selection is being
+// edited at all — with it set, components NOT in `common` are hidden, which is
+// how a multi-selection shows only what it can edit as a set.
 @(private)
-_draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+_draw_components_section :: proc(
+	t: ^engine.Transform,
+	tH: engine.Transform_Handle,
+	common: []Multi_Component,
+	multi: bool,
+) {
 	w := engine.ctx_world()
 	if len(t.components) == 0 do return
 
@@ -838,6 +1196,21 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 
 		comp_ptr := engine.world_pool_get(w, comp.handle)
 		if comp_ptr == nil do continue
+
+		// In a multi-selection, only components every selected object has are
+		// shown — the rest have no meaning for the set.
+		comp_peers: []inspector.Multi_Peer
+		if multi {
+			found := false
+			for mc in common {
+				if mc.comp_index == comp_idx {
+					comp_peers = mc.peers
+					found = true
+					break
+				}
+			}
+			if !found do continue
+		}
 
 		comp_tid := engine.get_typeid_by_type_key(comp.handle.type_key)
 		type_name := fmt.tprintf("%v", comp_tid)
@@ -859,11 +1232,32 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		comp_base := cast(^engine.CompData)comp_ptr
 		enabled := comp_base.enabled
 		enabled_id := strings.clone_to_cstring(fmt.tprintf("##enabled_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
+		enabled_offset := uintptr(rawptr(&comp_base.enabled)) - uintptr(comp_ptr)
+		// The enable toggle sits outside the drawer path, so it does its own
+		// mixed probe and propagation. One click enables or disables the
+		// component across the whole selection, as one undo step.
+		enabled_prev_peers := inspector.multi_set_peers(comp_peers)
+		inspector.multi_probe_field(&comp_base.enabled, typeid_of(bool), enabled_offset)
+		enabled_mixed := inspector.current_field_mixed
+		if enabled_mixed do enabled = false
 		if im.Checkbox(enabled_id, &enabled) {
-			e := undo.edit_begin(comp.handle, comp_tid)
-			comp_base.enabled = enabled
-			undo.edit_end(&e)
+			// A click is a complete gesture: open, write, close. The owner is
+			// pushed explicitly — this row draws ABOVE the component's own owner
+			// scope, so current_owner() would otherwise name the transform and
+			// the edit would be recorded against the wrong object.
+			undo.push_component_owner(comp.handle)
+			inspector.field_edit_begin(&comp_base.enabled, typeid_of(bool), enabled_offset, "Enabled")
+			comp_base.enabled = true if enabled_mixed else enabled
+			inspector.field_edit_apply_to_peers(&comp_base.enabled, typeid_of(bool), enabled_offset)
+			inspector.field_edit_end()
+			undo.pop_owner()
+		} else if enabled_mixed {
+			inspector.draw_mixed_check_mark()
 		}
+		inspector.multi_clear_mixed()
+		// Restored HERE rather than by defer: these peers are scoped to the
+		// checkbox, and the rest of this block draws with the outer list.
+		inspector.multi_set_peers(enabled_prev_peers)
 
 		_draw_component_overflow_menu(t, tH, &comp, comp_ptr, comp_tid, comp_idx, comp_count)
 
@@ -874,6 +1268,10 @@ _draw_components_section :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			}
 			undo.push_component_owner(comp.handle)
 			defer undo.pop_owner()
+			// Peers for THIS component: field offsets below are measured from the
+			// component base, so the peer list has to change with it.
+			prev_peers := inspector.multi_set_peers(comp_peers)
+			defer inspector.multi_set_peers(prev_peers)
 			// Scope widget IDs per component: different component types can
 			// share field names (SpriteRenderer.sorting_layer vs
 			// SpriteSortingGroup.sorting_layer) and would collide otherwise.
@@ -957,10 +1355,36 @@ _draw_missing_components :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 }
 
 @(private)
-_draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, host_tH: engine.Transform_Handle) {
+_draw_components_section_nested :: proc(
+	t: ^engine.Transform,
+	tH: engine.Transform_Handle,
+	host_tH: engine.Transform_Handle,
+	common: []Multi_Component = nil,
+	multi := false,
+) {
 	w := engine.ctx_world()
-	if len(t.components) == 0 do return
 
+	// A component-less object still gets the Add Component button at the bottom
+	// — it is how components get onto it in the first place. The button is the
+	// LAST statement here, so an early return on an empty list would leave the
+	// inspector ending abruptly after the Transform (glTF-expanded prefab nodes
+	// are the common case: node_0/node_1 carry no components of their own).
+	if len(t.components) > 0 {
+		_draw_components_section_nested_rows(t, tH, host_tH, w, common, multi)
+	}
+
+	_draw_add_component_button_nested(t, tH, host_tH)
+}
+
+@(private)
+_draw_components_section_nested_rows :: proc(
+	t: ^engine.Transform,
+	tH: engine.Transform_Handle,
+	host_tH: engine.Transform_Handle,
+	w: ^engine.World,
+	common: []Multi_Component,
+	multi: bool,
+) {
 	_comp_pending_remove = {}
 	_comp_pending_move_from = -1
 	_comp_pending_move_to = -1
@@ -971,6 +1395,20 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 
 		comp_ptr := engine.world_pool_get(w, comp.handle)
 		if comp_ptr == nil do continue
+
+		// Multi-selection: show only components the whole set has. Editing here
+		// is still single-object (prefab override context is per-object), but a
+		// row the other objects lack should not be presented as part of the set.
+		if multi {
+			found := false
+			for mc in common {
+				if mc.comp_index == comp_idx {
+					found = true
+					break
+				}
+			}
+			if !found do continue
+		}
 
 		comp_base := cast(^engine.CompData)comp_ptr
 		comp_tid := engine.get_typeid_by_type_key(comp.handle.type_key)
@@ -1034,6 +1472,20 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 			prev_lid := engine.inspector_set_nested_local_id(comp_base.local_id)
 			defer engine.inspector_set_nested_local_id(prev_lid)
 
+			// Peers for THIS component, so its rows multi-edit. Each peer knows
+			// its own instance, so overrides land where they belong.
+			nested_comp_peers: []inspector.Multi_Peer
+			if multi {
+				for mc in common {
+					if mc.comp_index == comp_idx {
+						nested_comp_peers = mc.peers
+						break
+					}
+				}
+			}
+			prev_peers := inspector.multi_set_peers(nested_comp_peers)
+			defer inspector.multi_set_peers(prev_peers)
+
 			// Per-component ID scope — same reason as _draw_components_section.
 			im.PushID(c_type_name)
 			defer im.PopID()
@@ -1064,8 +1516,6 @@ _draw_components_section_nested :: proc(t: ^engine.Transform, tH: engine.Transfo
 		inject_at(&t.components, _comp_pending_move_to, entry)
 		undo.record_reorder_components(tH, _comp_pending_move_from, _comp_pending_move_to)
 	}
-
-	_draw_add_component_button_nested(t, tH, host_tH)
 }
 
 // Add Component on prefab-instance content. The add itself is the shared path

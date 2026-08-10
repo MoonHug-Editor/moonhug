@@ -30,6 +30,25 @@ inspector_buttons: map[typeid][]Inspector_Button
 // still shows every button.
 _in_array_element: bool
 
+// What a click DOES, separated from the click itself so it can be driven
+// without a UI (the button's wiring is otherwise only reachable by a real mouse
+// press, which is where several multiedit bugs hid).
+//
+// The button runs on every selected object, not just the active one — a button
+// is an action on a component, and Unity applies component actions across the
+// selection. The whole sweep is one undo step.
+inspector_button_invoke :: proc(b: Inspector_Button, comp_ptr: rawptr) {
+	if b.invoke == nil || comp_ptr == nil do return
+
+	sess := structural_edit_begin(string(b.label))
+	b.invoke(comp_ptr)
+	for peer in multi_peers() {
+		if peer.base == nil || peer.base == comp_ptr do continue
+		b.invoke(peer.base)
+	}
+	structural_edit_end(&sess)
+}
+
 // `above` selects which half of the (row-descending) list draws: the top
 // block takes rows >= 0, the bottom block rows < 0. `element_ctx` marks a
 // nested draw (array element) — buttons with show_in_array=false skip there.
@@ -67,10 +86,7 @@ draw_inspector_buttons :: proc(tid: typeid, comp_ptr: rawptr, above: bool, eleme
 			width := row_w * max(b.weight, 0.01) / total_w
 			id := fmt.ctprintf("%s##ibtn_%d", b.label, k)
 			if im.Button(id, im.Vec2{width, 0}) {
-				undo.comp_snapshot()
-				b.invoke(comp_ptr)
-				undo.comp_commit()
-				mark_inspector_changed()
+				inspector_button_invoke(b, comp_ptr)
 			}
 		}
 		i = j

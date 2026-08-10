@@ -116,10 +116,15 @@ _Gizmo_Target :: struct {
 	start_pos:   [3]f32, // world
 	start_rot:   [4]f32, // world
 	start_scale: [3]f32, // local
-	edit_a:      undo.Edit_Scope, // mode's field: position / rotation / scale
-	edit_b:      undo.Edit_Scope, // position, for rotate/scale orbit offsets
 }
 _gizmo_targets: [dynamic]_Gizmo_Target
+
+// One transaction for the whole drag, however many objects it moves. Opened at
+// grab, closed at release — see docs/Undo.md. Replaces the pair of
+// per-target Edit_Scopes this used to carry: the session captures every target's
+// before-state at one instant and emits a single grouped action.
+@(private)
+_gizmo_edit: undo.Edit_Session
 
 _GIZMO_AXIS_DIRS :: [3][3]f32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
 // Unity's exact handle palette (UnityCsReference Handles.cs): axis colors
@@ -183,47 +188,58 @@ _gizmo_axes :: proc(tH: engine.Transform_Handle) -> [3][3]f32 {
 _gizmo_collect_targets :: proc() -> bool {
 	clear(&_gizmo_targets)
 	w := engine.ctx_world()
+
+	// One target list for the session, built alongside the gizmo's own. Rotate
+	// and scale each touch TWO fields per object (the field itself plus position,
+	// which moves as things orbit or scale about the pivot), so those objects
+	// contribute two entries.
+	edits := make([dynamic]undo.Edit_Target, 0, len(_gizmo_targets) * 2, context.temp_allocator)
+
 	for h in sel_scene_top_level() {
 		t := engine.pool_get(&w.transforms, engine.Handle(h))
 		if t == nil do continue
-		tgt := _Gizmo_Target{
+		append(&_gizmo_targets, _Gizmo_Target{
 			tH          = h,
 			start_pos   = engine.transform_world_position(h),
 			start_rot   = engine.transform_world_rotation(h),
 			start_scale = t.scale,
-		}
+		})
 		switch gizmo_mode {
 		case .Picker:
 		case .Translate:
-			tgt.edit_a = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Move")
+			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 		case .Rotate:
-			tgt.edit_a = undo.edit_begin(h, &t.rotation, typeid_of([4]f32), "Gizmo Rotate")
-			tgt.edit_b = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Rotate")
+			append(&edits, undo.edit_target_transform(h, &t.rotation, typeid_of([4]f32)))
+			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 		case .Scale:
-			tgt.edit_a = undo.edit_begin(h, &t.scale, typeid_of([3]f32), "Gizmo Scale")
-			tgt.edit_b = undo.edit_begin(h, &t.position, typeid_of([3]f32), "Gizmo Scale")
+			append(&edits, undo.edit_target_transform(h, &t.scale, typeid_of([3]f32)))
+			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 		}
-		append(&_gizmo_targets, tgt)
 	}
-	return len(_gizmo_targets) > 0
+
+	if len(_gizmo_targets) == 0 do return false
+	if len(edits) > 0 {
+		_gizmo_edit = undo.edit_session_begin(edits[:], _gizmo_label())
+	}
+	return true
+}
+
+@(private)
+_gizmo_label :: proc() -> string {
+	switch gizmo_mode {
+	case .Picker:    return "Gizmo"
+	case .Translate: return "Gizmo Move"
+	case .Rotate:    return "Gizmo Rotate"
+	case .Scale:     return "Gizmo Scale"
+	}
+	return "Gizmo"
 }
 
 @(private)
 _gizmo_end_drag :: proc() {
-	label: string
-	switch gizmo_mode {
-	case .Picker:    label = "Gizmo"
-	case .Translate: label = "Gizmo Move"
-	case .Rotate:    label = "Gizmo Rotate"
-	case .Scale:     label = "Gizmo Scale"
-	}
-	g := undo.group_begin(label)
-	for &tgt in _gizmo_targets {
-		undo.edit_end(&tgt.edit_a)
-		undo.edit_end(&tgt.edit_b)
-	}
-	undo.group_commit(&g)
-	undo.group_end(&g) // no-changes group is dropped by end_group_command
+	// The session is the group: it records one action for every target that
+	// moved, and nothing at all when the drag ended where it started.
+	undo.edit_session_end(&_gizmo_edit)
 	clear(&_gizmo_targets)
 }
 
