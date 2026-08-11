@@ -67,6 +67,7 @@ ICON_MD_SETTINGS      :: "\ue8b8"   // settings
 ICON_MD_PALETTE       :: "\ue40a"   // palette (.mat material asset)
 ICON_MD_CODE          :: "\ue86f"   // code (.glsl shader asset)
 ICON_MD_REFRESH       :: "\ue5d5"   // refresh
+ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in app_editor's tween view)
 
 // Scene view overlays (dock.odin)
 ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle)

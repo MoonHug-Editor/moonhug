@@ -5,12 +5,14 @@ package editor
 
 import "../engine"
 import app "moonhug:packages/app"
+import app_editor "moonhug:packages/app/editor"
 
 phase_editor_run :: proc(key: engine.Phase) {
 	sim_host_is_app := sim_host_is("app")
 	#partial switch key {
 	case .EditorInit:
 		editor_init()
+		app_editor.tween_view_install()
 	case .EditorShutdown:
 		editor_shutdown()
 	case .Init:

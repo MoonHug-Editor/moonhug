@@ -34,7 +34,7 @@ test_player_tween_chain :: proc(t: ^testing.T) {
 
 	// scene_loaded registers AnimN keys (via tprintf — temp allocator).
 	app.scene_loaded()
-	testing.expect(t, len(engine.tween_lib) > 0, "tween_lib should have AnimN entries")
+	testing.expect(t, engine.tween_lib_count() > 0, "tween lib should have AnimN entries")
 
 	// The app loop frees the temp allocator every frame and later frames
 	// reuse the bytes — simulate both so temp-allocated map keys would dangle.

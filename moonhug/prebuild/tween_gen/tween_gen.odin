@@ -120,15 +120,19 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "__tween_ticks_init :: proc()\n")
 	strings.write_string(&b, "{\n")
+	// The runner's own setup runs FIRST -- registrations write into state it
+	// creates, and generating the order here is what makes it impossible to
+	// get wrong by hand.
+	strings.write_string(&b, "\ttween_runner_setup()\n\n")
 	for e in rows {
 		if e.has_tick {
-			fmt.sbprintf(&b, "\ttween_tick_procs[.%s] = tick_%s\n", e.type_name, e.type_name)
+			fmt.sbprintf(&b, "\t_tween_runner.ticks[int(TypeKey.%s)] = tick_%s\n", e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "\n")
 	for e in rows {
 		if e.has_free {
-			fmt.sbprintf(&b, "\ttween_free_procs[.%s] = tween_free_%s\n", e.type_name, e.type_name)
+			fmt.sbprintf(&b, "\t_tween_runner.frees[int(TypeKey.%s)] = tween_free_%s\n", e.type_name, e.type_name)
 		}
 	}
 	strings.write_string(&b, "}\n")

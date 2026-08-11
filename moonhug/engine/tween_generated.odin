@@ -15,12 +15,14 @@ TweenUnion :: union #no_nil{
 
 __tween_ticks_init :: proc()
 {
-	tween_tick_procs[.Parallel] = tick_Parallel
-	tween_tick_procs[.Sequence] = tick_Sequence
-	tween_tick_procs[.TweenMoveToLocal] = tick_TweenMoveToLocal
-	tween_tick_procs[.TweenRotateToLocal] = tick_TweenRotateToLocal
-	tween_tick_procs[.TweenScaleToLocal] = tick_TweenScaleToLocal
+	tween_runner_setup()
 
-	tween_free_procs[.Parallel] = tween_free_Parallel
-	tween_free_procs[.Sequence] = tween_free_Sequence
+	_tween_runner.ticks[int(TypeKey.Parallel)] = tick_Parallel
+	_tween_runner.ticks[int(TypeKey.Sequence)] = tick_Sequence
+	_tween_runner.ticks[int(TypeKey.TweenMoveToLocal)] = tick_TweenMoveToLocal
+	_tween_runner.ticks[int(TypeKey.TweenRotateToLocal)] = tick_TweenRotateToLocal
+	_tween_runner.ticks[int(TypeKey.TweenScaleToLocal)] = tick_TweenScaleToLocal
+
+	_tween_runner.frees[int(TypeKey.Parallel)] = tween_free_Parallel
+	_tween_runner.frees[int(TypeKey.Sequence)] = tween_free_Sequence
 }

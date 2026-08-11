@@ -10,6 +10,7 @@ import physics2d "moonhug:packages/physics2d"
 import physics3d "moonhug:packages/physics3d"
 import plugin_example "moonhug:packages/plugin_example"
 import _ "moonhug:packages/prefabs_example"
+import _ "moonhug:packages/tween"
 
 register_packages :: proc() {
 	app.register_app_components()

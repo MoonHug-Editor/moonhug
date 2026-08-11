@@ -10,11 +10,15 @@ import im "moonhug:external/odin-imgui"
 import engine "../../engine"
 import "../undo"
 
-draw_inspector_union :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring) {
+// `record_undo=false` is for callers whose OWN transaction wraps this draw -- a
+// custom drawer under field_edit_row already records the whole owner on any
+// change, and the variant switch recording its own step there would produce two
+// undo entries for one click.
+draw_inspector_union :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring, record_undo := true) {
 	ti := runtime.type_info_base(type_info_of(field_tid))
 
 	if info, ok := ti.variant.(runtime.Type_Info_Union); ok {
-		draw_union_field(field_ptr, info, label, field_tid)
+		draw_union_field(field_ptr, info, label, field_tid, record_undo)
 	} else {
 		im.TextColored(im.Vec4{1, 0, 0, 1}, "Not a union type")
 	}
@@ -57,19 +61,24 @@ _union_index_for_tag :: proc(info: runtime.Type_Info_Union, tag: i64) -> int {
 // The session covers the ACTIVE object only. Unions are not multi-edited (see
 // docs/Multiselection.md) — the same bytes mean different things when peers hold
 // different variants — so there is no peer write to record.
-union_set_variant :: proc(ptr: rawptr, tag_ptr: rawptr, info: runtime.Type_Info_Union, variant_index: int) {
+union_set_variant :: proc(ptr: rawptr, tag_ptr: rawptr, info: runtime.Type_Info_Union, variant_index: int, record_undo := true) {
 	if ptr == nil || tag_ptr == nil do return
 
 	prev := multi_set_peers(nil)
 	defer multi_set_peers(prev)
 
-	sess := structural_edit_begin("Change Variant")
+	sess: undo.Edit_Session
+	if record_undo do sess = structural_edit_begin("Change Variant")
 	mem.zero(ptr, int(info.tag_offset))
 	(^i64)(tag_ptr)^ = _union_tag_for_index(info, variant_index)
-	structural_edit_end(&sess)
+	if record_undo {
+		structural_edit_end(&sess)
+	} else {
+		mark_inspector_changed()
+	}
 }
 
-draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstring, field_tid: typeid) {
+draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstring, field_tid: typeid, record_undo := true) {
 	tag_ptr := rawptr(uintptr(ptr) + uintptr(info.tag_offset))
 	current_tag := (^i64)(tag_ptr)^
 
@@ -110,7 +119,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 		im.BeginDisabled(true)
 	}
 	if im.ComboChar(type_id, &selected, ([^]cstring)(raw_data(variant_names[:])), c.int(len(variant_names))) && !readonly {
-		union_set_variant(ptr, tag_ptr, info, int(selected) - combo_base)
+		union_set_variant(ptr, tag_ptr, info, int(selected) - combo_base, record_undo)
 	}
 	if readonly {
 		im.EndDisabled()
