@@ -1,3 +1,23 @@
+## [0.68.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.67.0...v0.68.0) (2026-08-11)
+
+### Features
+
+* animation interpolation test assets ([89e8fb9](https://github.com/MoonHug-Editor/moonhug/commit/89e8fb935c6582eb9a5dabd913a07c87d8437bf1))
+* extract tween package ([36b433f](https://github.com/MoonHug-Editor/moonhug/commit/36b433ffb1dc48cf5d03b251009ea41ae2003c8f))
+* inspector multiedit over the whole selection ([66e9144](https://github.com/MoonHug-Editor/moonhug/commit/66e914497bdeb3f1f3a6266fd5da71045c571a7b))
+* MCP multiselect and whole-editor screenshots ([e56118d](https://github.com/MoonHug-Editor/moonhug/commit/e56118de9b0f6e3a00034a08044424a2f8d0abc6))
+* node graph package ([af95a75](https://github.com/MoonHug-Editor/moonhug/commit/af95a750881a59afb4ff27fd6f0f5088c2a52311))
+* selectable history detail pane ([a2dd3fe](https://github.com/MoonHug-Editor/moonhug/commit/a2dd3feaa7675d61e92f3b55df41ecfb40cf663f))
+* tween graph view ([033ae03](https://github.com/MoonHug-Editor/moonhug/commit/033ae0331477b0e675ab925355937235418ee69a))
+* undo edit sessions, one transaction for value edits ([43711ed](https://github.com/MoonHug-Editor/moonhug/commit/43711ed900b361face31430e1050df4cfc7c330b))
+
+### Bug Fixes
+
+* ASCII dashes in UI strings, the font atlas has no em dash ([b1681cc](https://github.com/MoonHug-Editor/moonhug/commit/b1681cc12500b018168b1cd14631099a73fa8b8f))
+* free Animation and ButtonsExample heap fields on destroy ([f169411](https://github.com/MoonHug-Editor/moonhug/commit/f169411437a0082807caa258e7120a87cfae8d54))
+* keep euler angles in the human-readable spelling through gimbal ([58ec861](https://github.com/MoonHug-Editor/moonhug/commit/58ec8616fd6fe0fb85759e64eae8332ac187eada))
+* skip re-import of meshes that already failed to import ([955b111](https://github.com/MoonHug-Editor/moonhug/commit/955b1110a6dd9a4a854c5b113f3f673142e8bff6))
+
 ## [0.67.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.66.1...v0.67.0) (2026-08-08)
 
 ### Features
