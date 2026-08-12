@@ -89,7 +89,7 @@ tween_runner_setup :: proc() {
 _tween_key_of :: proc(task: ^TweenUnion) -> (int, bool) {
 	tid := reflect.union_variant_typeid(task^)
 	if tid == nil do return 0, false
-	key, ok := engine.typeid_to_type_key_map[tid]
+	key, ok := engine.get_type_key_by_typeid(tid)
 	return int(key), ok
 }
 

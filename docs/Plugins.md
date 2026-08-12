@@ -159,6 +159,15 @@ An editor package may import its own runtime package, `engine`,
 `undo`, `window`). Never the editor root — that's a cycle, the root imports
 plugin editor packages. Editor integration goes through attributes.
 
+`moonhug:engine/core` holds the dependency-free vocabulary — `Handle`,
+`TypeKey`, `Pool`, `Ref`/`PPtr`, `CompData`, the type registries — and any
+package may import it without importing the engine. The engine aliases the
+core names it uses in `engine/core_exports.odin`, so `engine.Handle` and
+`core.Handle` are the same type. Prebuild discovers scan targets by walking
+`moonhug/editor`, `moonhug/engine` and the installed packages (symlinks
+followed, `tests/` skipped), so a new subpackage joins the attribute scan
+with no prebuild edit.
+
 ## Editor windows
 
 A plugin declares a dockable editor window with an attribute and opens it by

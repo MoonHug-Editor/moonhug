@@ -1,4 +1,4 @@
-package engine
+package core
 
 import "core:fmt"
 import "core:mem"

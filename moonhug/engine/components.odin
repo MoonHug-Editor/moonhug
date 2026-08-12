@@ -1,21 +1,5 @@
 package engine
 
-import "core:mem"
-
-CompData :: struct {
-    owner: Transform_Handle `json:"-"`,
-    local_id: Local_ID `inspect:"-"`,
-    enabled: bool,
-    nested_owned: bool `json:"-" inspect:"-"`,
-}
-
-comp_zero :: proc(p: ^$T) where
-    offset_of(T, base) == 0,
-    type_of(T{}.base) == CompData
-{
-    mem.zero(rawptr(uintptr(p) + size_of(CompData)), size_of(T) - size_of(CompData))
-}
-
 comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(owner))

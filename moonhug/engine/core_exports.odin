@@ -1,0 +1,70 @@
+package engine
+
+// Aliases for moonhug:engine/core. Core holds the dependency-free vocabulary
+// (handles, pools, type keys, refs) so packages can use it without importing
+// the engine.
+//
+// Rules:
+// - An alias makes engine.<name> and unqualified engine-internal references
+//   resolve to the core declaration. engine.Handle and core.Handle are the
+//   same type.
+// - Aliases cover the core names the engine uses. A core name the engine
+//   does not use gets no alias.
+// - Global variables have no aliases (Odin aliases types and procs only).
+//   Access the registry maps as core.<name> or through the accessor procs.
+
+import core "moonhug:engine/core"
+
+// Type keys and the type registry.
+TypeKey                      :: core.TypeKey
+INVALID_TYPE_KEY             :: core.INVALID_TYPE_KEY
+Factory                      :: core.Factory
+TypeMeta                     :: core.TypeMeta
+FieldInfo                    :: core.FieldInfo
+register_type                :: core.register_type
+register_pointer_type        :: core.register_pointer_type
+register_type_key            :: core.register_type_key
+get_typeid_by_type_key       :: core.get_typeid_by_type_key
+get_guid_by_type_key         :: core.get_guid_by_type_key
+get_factory_by_type_key      :: core.get_factory_by_type_key
+get_typeMeta_by_type_key     :: core.get_typeMeta_by_type_key
+get_pointerType_by_type_key  :: core.get_pointerType_by_type_key
+get_type_key_by_typeid       :: core.get_type_key_by_typeid
+get_guid_by_typeid           :: core.get_guid_by_typeid
+get_typeid_by_guid           :: core.get_typeid_by_guid
+get_pointer_typeid_by_typeid :: core.get_pointer_typeid_by_typeid
+create_instance_by_type_key  :: core.create_instance_by_type_key
+create_instance_by_guid      :: core.create_instance_by_guid
+create_instance              :: core.create_instance
+generate_type_info           :: core.generate_type_info
+typeid_to_u16                :: core.typeid_to_u16
+
+// Object references.
+Local_ID            :: core.Local_ID
+Asset_GUID          :: core.Asset_GUID
+PPtr                :: core.PPtr
+Ref_Local           :: core.Ref_Local
+Ref                 :: core.Ref
+Owned               :: core.Owned
+asset_guid_is_empty :: core.asset_guid_is_empty
+
+// Handles and pools.
+MAX              :: core.MAX
+Handle           :: core.Handle
+Transform_Handle :: core.Transform_Handle
+Pool             :: core.Pool
+Pool_Iterator    :: core.Pool_Iterator
+Pool_Entry       :: core.Pool_Entry
+pool_init        :: core.pool_init
+pool_create      :: core.pool_create
+pool_destroy     :: core.pool_destroy
+pool_get         :: core.pool_get
+pool_get_assert  :: core.pool_get_assert
+pool_valid       :: core.pool_valid
+pool_iterator    :: core.pool_iterator
+pool_next        :: core.pool_next
+pool_make_entry  :: core.pool_make_entry
+
+// Component base.
+CompData  :: core.CompData
+comp_zero :: core.comp_zero

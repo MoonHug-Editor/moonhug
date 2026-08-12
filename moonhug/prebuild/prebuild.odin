@@ -42,12 +42,14 @@ import _ "packages_gen"
 import _ "gizmos_gen"
 import _ "mcp_tool_gen"
 
-PACKAGES := []string{
+// Scan roots: every directory beneath these that contains .odin files joins
+// the attribute scan (recursively, symlinks followed), so extracting a new
+// subpackage never needs an edit here. Directories named "tests" are skipped —
+// test packages import the registration bundle, and scanning them would let
+// generators import test packages back, a cycle.
+SCAN_ROOTS := []string{
 	"moonhug/editor",
-	"moonhug/editor/menu",
-	"moonhug/editor/inspector",
 	"moonhug/engine",
-	"moonhug/engine/serialization",
 	"moonhug/engine_editor",
 }
 
@@ -109,9 +111,39 @@ _installed_packages :: proc(list: ^[dynamic]string) {
 	}
 }
 
+_discover :: proc(list: ^[dynamic]string, dir: string) {
+	if _dir_has_odin(dir) do append(list, dir)
+	handle, err := os.open(dir)
+	if err != nil do return
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return
+	defer os.file_info_slice_delete(entries, context.temp_allocator)
+
+	names: [dynamic]string
+	defer delete(names)
+	for entry in entries {
+		if strings.has_prefix(entry.name, ".") do continue
+		if entry.name == "tests" do continue
+		// A symlinked subpackage reads as .Symlink — follow it so its code
+		// compiles like any package (docs/Plugins.md).
+		if entry.type != .Directory {
+			full, _ := filepath.join({dir, entry.name}, context.temp_allocator)
+			if entry.type != .Symlink || !os.is_dir(full) do continue
+		}
+		append(&names, strings.clone(entry.name))
+	}
+	slice.sort(names[:]) // deterministic scan order regardless of readdir order
+	for name in names {
+		full, _ := filepath.join({dir, name})
+		_discover(list, full)
+		delete(name)
+	}
+}
+
 main :: proc() {
 	all: [dynamic]string
-	append(&all, ..PACKAGES)
+	for root in SCAN_ROOTS do _discover(&all, root)
 	_installed_packages(&all)
 	if !db.run_all(all[:]) do os.exit(1)
 }
