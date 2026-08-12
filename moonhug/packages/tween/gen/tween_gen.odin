@@ -16,10 +16,10 @@ package tween_gen
 import "core:fmt"
 import "core:strings"
 import "core:slice"
-import "../gen_core"
-import db "../gen_db"
-import "../gen_facts"
-import "../type_guid_gen"
+import "moonhug:prebuild/gen_core"
+import db "moonhug:prebuild/gen_db"
+import "moonhug:prebuild/gen_facts"
+import "moonhug:prebuild/type_guid_gen"
 
 // GUID baked into the generated TweenUnion type. tween_gen owns this fact.
 _TWEEN_UNION_GUID :: "a243efe5-6e34-4d1c-886c-83928685df48"

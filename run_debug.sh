@@ -1,7 +1,10 @@
 #!/usr/bin/env sh
 set -e
 
-odin run moonhug/prebuild || exit 1
+# See run.sh — removes imports of deleted package generators first.
+odin run moonhug/prebuild/prune_package_gens || exit 1
+
+odin run moonhug/prebuild -collection:moonhug=moonhug || exit 1
 
 mkdir -p builds
 # Build then exec the binary (NOT `odin run`): `odin run` keeps the ~1GB
