@@ -54,11 +54,12 @@ SCAN_ROOTS := []string{
 }
 
 // Installed packages (docs/Plugins.md): presence in moonhug/packages/ is the
-// install state. Each package root — and its editor/ subpackage when present —
-// joins the attribute scan. RUNNABLE packages (a root with `main`, 0..N of
-// them, the app included) each receive their own generated dispatcher set
-// (__update, phase_run, register_type_guids, register_packages); the shared
-// all-packages copy lands in moonhug/engine/registration for the editor and tests.
+// install state. Each package root and its subpackages (editor/, library
+// halves like tween/core) join the attribute scan. RUNNABLE packages (a root
+// with `main`, 0..N of them, the app included) each receive their own
+// generated dispatcher set (__update, phase_run, register_type_guids,
+// register_packages); the shared all-packages copy lands in
+// moonhug/engine/registration for the editor and tests.
 PACKAGES_DIR :: "moonhug/packages"
 
 _dir_has_odin :: proc(dir: string) -> bool {
@@ -101,13 +102,10 @@ _installed_packages :: proc(list: ^[dynamic]string) {
 
 	for name in names {
 		root, _ := filepath.join({PACKAGES_DIR, name})
-		if _dir_has_odin(root) {
-			append(list, root)
-		}
-		editor_dir, _ := filepath.join({root, "editor"})
-		if _dir_has_odin(editor_dir) {
-			append(list, editor_dir)
-		}
+		// Recursive: subpackages (editor/, tween/core-style library halves)
+		// join the scan like any engine subpackage. tests/samples/assets are
+		// skipped inside _discover.
+		_discover(list, root)
 	}
 }
 
@@ -124,7 +122,15 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 	defer delete(names)
 	for entry in entries {
 		if strings.has_prefix(entry.name, ".") do continue
-		if entry.name == "tests" do continue
+		// tests: scanning them would let generators import test packages back,
+		// a cycle. samples: their contents install as symlinked sibling
+		// packages, so scanning the source dir would scan the same files
+		// twice. assets: no Odin code. run_configs: one standalone file per
+		// configuration, not a package (docs/Plugins.md).
+		switch entry.name {
+		case "tests", "samples", "assets", "run_configs":
+			continue
+		}
 		// A symlinked subpackage reads as .Symlink — follow it so its code
 		// compiles like any package (docs/Plugins.md).
 		if entry.type != .Directory {

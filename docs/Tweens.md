@@ -15,23 +15,44 @@ tween_register :: proc(key: string, tween: ^TweenUnion) // JSON-marshals the twe
 tween_run      :: proc(key: string, ctx: TweenContext) -> bool // JSON-unmarshals a fresh copy into a new `TweenRunning` node, so the same tween can be fired multiple times concurrently without shared state
 ```
 
+## Package layout
+
+```
+packages/tween/core    tween_core: Tween base, Status, TweenContext
+packages/tween/nodes   tween_nodes: leaf variants (move/rotate/scale)
+packages/tween         the generated TweenUnion, composites, Runner + API
+```
+
+Variant packages import `moonhug:packages/tween/core` — never
+`moonhug:packages/tween`, because the generated union imports every variant
+package and that would cycle.
+
 ## Add New Tween Types
+
+In any package (leaf variants only — children fields need `TweenUnion`,
+which only `packages/tween` can name):
+
 ```odin
-TweenNew :: struct{
-    base:Tween, // important, generator will find tween types by searching for base:Tween
+import tween_core "moonhug:packages/tween/core"
+
+@(typ_guid={guid="..."})
+TweenNew :: struct {
+    using base: tween_core.Tween, // the generator finds variants by this field
     // custom data
 }
 
-// optional in same file as TweenNew, tween_free_* naming is picked up by generator
-tween_free_TweenNew :: proc (tween:^TweenUnion) {
-    // see other tween_free_* for examples
+// same file, tick_* naming is picked up by the generator; the concrete type
+// is the parameter — tween_gen emits the TweenUnion adapter
+tick_TweenNew :: proc(self: ^TweenNew, delta_time: f32, ctx: tween_core.TweenContext) -> tween_core.Status {
+    // see packages/tween/nodes for examples
 }
 
-// optional in same file as TweenNew, tick_* naming is picked up by generator
-tick_TweenNew :: proc (tween:^TweenUnion, delta_time:f32, ctx:TweenContext) -> TweenStatus {
-    // see other tick_* for examples
-}
+// optional, for variants owning heap
+tween_free_TweenNew :: proc(self: ^TweenNew) { }
 ```
+
+Inside `packages/tween` itself (composites), tick/free procs take
+`^TweenUnion` and wire directly — see composites.odin.
 
 ## Core concepts
 
@@ -43,19 +64,18 @@ TweenRunning    — linked-list node wrapping a live TweenUnion + TweenContext
 tween_lib       — named registry of serialized tweens (key → JSON bytes)
 ```
 
-A tween is a **node tree** — composites (`Parallel`, `Sequence`) own children `TweenUnion` colelctions, leaf nodes animate a single transform property. All variants share the `Tween` base via `using`.
+A tween is a **node tree** — composites (`Parallel`, `Sequence`) own children `TweenUnion` collections, leaf nodes animate a single transform property. All variants share the `Tween` base via `using`.
 
 ## Type system
 
 ```odin
-TweenStatus    :: enum { Pending, Running, Done }
+Status         :: enum { Pending, Running, Done }   // tween_core, TweenStatus aliases it
 TweenContext   :: struct { subject: Transform_Handle }
 
-TweenTickProc  :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus
-TweenFreeProc  :: proc(^TweenUnion)
-
-tween_tick_procs : [TypeKey]TweenTickProc   // dispatch table, filled by __tween_ticks_init
-tween_free_procs : [TypeKey]TweenFreeProc
+// the runner's dense dispatch tables, sized by the TypeKey enum,
+// filled by the generated __tween_ticks_init
+_tween_runner.ticks : [len(TypeKey)]proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> Status
+_tween_runner.frees : [len(TypeKey)]proc(task: ^TweenUnion)
 ```
 
 Each variant registers its tick/free procs by `TypeKey` at init time. `_tween_tick_child` dispatches through the table using `reflect.union_variant_typeid`.

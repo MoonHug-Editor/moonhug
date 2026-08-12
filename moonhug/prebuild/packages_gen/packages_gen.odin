@@ -44,14 +44,23 @@ _dir_has_odin :: proc(dir: string) -> bool {
 	return false
 }
 
-// "moonhug/packages/foo" -> "foo"; "moonhug/packages/foo/editor" -> "foo".
-package_name_of :: proc(pkg_path: string) -> (name: string, is_editor: bool, ok: bool) {
-	if !strings.has_prefix(pkg_path, PACKAGES_PREFIX) do return "", false, false
+// "moonhug/packages/foo" -> ("foo", ""). "moonhug/packages/foo/editor" ->
+// ("foo", "editor"). Any other sub ("foo/nodes") is a library subpackage.
+package_name_of :: proc(pkg_path: string) -> (name: string, sub: string, ok: bool) {
+	if !strings.has_prefix(pkg_path, PACKAGES_PREFIX) do return "", "", false
 	rest := pkg_path[len(PACKAGES_PREFIX):]
 	if i := strings.index(rest, "/"); i >= 0 {
-		return rest[:i], rest[i + 1:] == "editor", true
+		return rest[:i], rest[i + 1:], true
 	}
-	return rest, false, true
+	return rest, "", true
+}
+
+// Subpackages declare "<name>_<sub>" (tween/nodes -> tween_nodes), slashes
+// underscored — generated imports address them by path, the declaration
+// carries uniqueness.
+_expected_sub_pkg_name :: proc(name, sub: string) -> string {
+	flat, _ := strings.replace_all(sub, "/", "_", context.temp_allocator)
+	return fmt.tprintf("%s_%s", name, flat)
 }
 
 generate :: proc(w: ^db.World) -> bool {
@@ -71,31 +80,33 @@ generate :: proc(w: ^db.World) -> bool {
 	for i in 0 ..< db.comps_len(decls) {
 		entity := db.get_entity(decls, i)
 		decl := db.get(decls, entity)
-		name, is_editor, ok := package_name_of(decl.pkg_path)
+		name, sub, ok := package_name_of(decl.pkg_path)
 		if !ok do continue
 		// Lint: generated imports address packages by folder name, so the
 		// declared package name must match — <name> for the root,
-		// <name>_editor for editor/ (every plugin's is named "editor/", the
-		// declaration carries uniqueness).
-		if is_editor {
-			expect := fmt.tprintf("%s_editor", name)
+		// <name>_<sub> for subpackages (tween_editor, tween_nodes).
+		if sub != "" {
+			expect := _expected_sub_pkg_name(name, sub)
 			if decl.pkg.name != expect {
 				fmt.eprintf("packages_gen: %s declares 'package %s' — must be 'package %s'\n", decl.pkg_path, decl.pkg.name, expect)
 				return false
 			}
-		} else if decl.pkg.name != name {
+			if sub == "editor" {
+				_append_unique(&editor_pkgs, name)
+			}
+			// Library subpackages need no import lines of their own: the root
+			// package imports them (the generated union does, for tween).
+			continue
+		}
+		if decl.pkg.name != name {
 			fmt.eprintf("packages_gen: %s declares 'package %s' — must match the folder name ('package %s')\n", decl.pkg_path, decl.pkg.name, name)
 			return false
 		}
-		if is_editor {
-			_append_unique(&editor_pkgs, name)
-		} else {
-			_append_unique(&runtime_pkgs, name)
-			if comps != nil && db.has(comps, entity) {
-				comp := db.get(comps, entity)
-				if comp.kind == .Component {
-					_append_unique(&with_components, name)
-				}
+		_append_unique(&runtime_pkgs, name)
+		if comps != nil && db.has(comps, entity) {
+			comp := db.get(comps, entity)
+			if comp.kind == .Component {
+				_append_unique(&with_components, name)
 			}
 		}
 	}

@@ -31,6 +31,7 @@ FieldDecorators :: struct {
 
 TypeDecorators :: struct {
 	pkg_name:  string,
+	pkg_path:  string,
 	type_name: string,
 	fields:    [dynamic]FieldDecorators,
 }
@@ -40,6 +41,7 @@ TypeDecorators :: struct {
 // are owned by the world for the run and rebuilt into rows by generate.
 Decorator_GenComp :: struct {
 	pkg_name: string,
+	pkg_path: string,
 	fields:   [dynamic]FieldDecorators,
 }
 
@@ -193,7 +195,7 @@ provide :: proc(w: ^db.World) -> bool {
 			append(&fields, fd)
 		}
 		if has_any {
-			db.set(_decorators, entity, Decorator_GenComp{pkg_name = decl.pkg.name, fields = fields})
+			db.set(_decorators, entity, Decorator_GenComp{pkg_name = decl.pkg.name, pkg_path = decl.pkg_path, fields = fields})
 		} else {
 			for fd in fields do delete(fd.calls)
 			delete(fields)
@@ -220,6 +222,7 @@ generate :: proc(w: ^db.World) -> bool {
 		deco := db.get(_decorators, entity)
 		append(&entries, TypeDecorators{
 			pkg_name  = deco.pkg_name,
+			pkg_path  = deco.pkg_path,
 			type_name = decl.name,
 			fields    = deco.fields,
 		})
@@ -235,10 +238,10 @@ generate :: proc(w: ^db.World) -> bool {
 	defer strings.builder_destroy(&b)
 
 	strings.write_string(&b, "package inspector\n\n")
-	packages_used: map[string]bool
+	packages_used: map[string]string // declared name -> pkg_path
 	defer delete(packages_used)
 	for e in entries {
-		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = true
+		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = e.pkg_path
 	}
 	import_pkgs: [dynamic]string
 	defer delete(import_pkgs)
@@ -248,11 +251,12 @@ generate :: proc(w: ^db.World) -> bool {
 	slice.sort(import_pkgs[:])
 	for pkg in import_pkgs {
 		// Engine sits beside the editor; every other decorated type lives in
-		// an installed package (app included) reached via the collection.
+		// an installed package (app included) reached via the collection, at
+		// its pkg_path (subpackages live below their folder name).
 		if pkg == "engine" {
 			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
 		} else {
-			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
+			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
 		}
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")

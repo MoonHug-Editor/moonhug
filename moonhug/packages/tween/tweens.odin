@@ -18,25 +18,22 @@ import "core:encoding/json"
 import "core:reflect"
 import engine "moonhug:engine"
 import ser "moonhug:engine/serialization"
+import tween_core "moonhug:packages/tween/core"
+import tween_nodes "moonhug:packages/tween/nodes"
 
-TweenStatus :: Status
+// Base vocabulary lives in moonhug:packages/tween/core so variant packages
+// can embed Tween without importing this package (core.odin there explains
+// the cycle). Re-exports keep tween.<name> valid for callers.
+Status          :: tween_core.Status
+TweenStatus     :: tween_core.Status
+Tween           :: tween_core.Tween
+TweenContext    :: tween_core.TweenContext
+tween_has_delay :: tween_core.tween_has_delay
 
-TweenContext :: struct {
-	subject: engine.Transform_Handle `json:"-"`,
-}
-
-// Hierarchical Task
-@(typ_guid={guid="aecaf150-0418-4fed-81a3-708f68ccaa8b"})
-Tween :: struct {
-	skip:     bool,
-	is_await: bool,
-	delay:    f32,
-	subject:  engine.Ref `ref:"Transform"`,
-
-	// runtime only fields:
-	delay_elapsed: f32 `json:"-"`,
-	status:        TweenStatus `json:"-"`,
-}
+// The stock leaf variants live in moonhug:packages/tween/nodes.
+TweenMoveToLocal   :: tween_nodes.TweenMoveToLocal
+TweenRotateToLocal :: tween_nodes.TweenRotateToLocal
+TweenScaleToLocal  :: tween_nodes.TweenScaleToLocal
 
 tween_base :: proc(task: ^TweenUnion) -> ^Tween {
 	return cast(^Tween)task
@@ -44,14 +41,6 @@ tween_base :: proc(task: ^TweenUnion) -> ^Tween {
 
 tick_Tween :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus {
 	return .Done
-}
-
-tween_has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
-	if base.delay_elapsed < base.delay {
-		base.delay_elapsed += delta_time
-		return true
-	}
-	return false
 }
 
 // The package's own serializer registrations, on the SerializationInit phase --

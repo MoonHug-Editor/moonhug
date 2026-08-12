@@ -29,11 +29,6 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:strings"
 
-Status :: enum {
-	Pending,
-	Running,
-	Done,
-}
 
 // One live run: an instantiated prototype plus the context it runs against,
 // linked into the runner's running list.

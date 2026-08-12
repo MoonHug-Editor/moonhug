@@ -53,15 +53,21 @@ moonhug/packages/
   Compiled into the editor binary only, never the app. Declares
   `package <name>_editor` — every plugin's folder is named `editor/`, so the
   declaration carries uniqueness (prebuild lints it).
+- **Library subpackages** — any other subfolder with Odin code (`tween/core`,
+  `tween/nodes`) is scanned like the root and declares `package <name>_<sub>`
+  (prebuild lints it). The root reaches it via
+  `import "moonhug:packages/<name>/<sub>"`. Generated imports never target
+  subpackages directly except where a generator's output needs their types
+  (type registration, the tween union).
 - **`assets/`** — live content: mounted, browsable, editable, referenced by
   guid like any project asset. Content outside `assets/` doesn't exist to the
   editor — the rule is structural, no filters needed. The editor ENSURES this
   folder exists for every installed package (creates it on refresh if
   missing), so package roots always resolve — no corner cases.
 - **`samples/`** — one subfolder per sample, each shaped like a plugin.
-  Inert by construction: the asset db only reads `assets/`, and
-  prebuild only scans its explicit targets (package root and `editor/`), so
-  nothing ever looks inside `samples/` until a sample is installed.
+  Inert by construction: the asset db only reads `assets/`, and prebuild
+  skips `samples/`, `tests/`, `assets/` and `run_configs/` in its package
+  walk, so nothing ever looks inside `samples/` until a sample is installed.
 - **`tests/`** — the package's test suite (`package <name>_tests`), sharing
   the bootstrap in `moonhug/tests/common`. Prebuild imports every installed
   suite into `moonhug/tests/packages_tests_generated.odin`, so run_tests.sh
