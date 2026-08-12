@@ -47,6 +47,7 @@ PACKAGES := []string{
 	"moonhug/editor/menu",
 	"moonhug/editor/inspector",
 	"moonhug/engine",
+	"moonhug/engine/serialization",
 	"moonhug/engine_editor",
 }
 

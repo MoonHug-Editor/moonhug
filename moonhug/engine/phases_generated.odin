@@ -22,6 +22,10 @@ package engine
 // DebugDraw [App]
 //       0  debug_draw  packages:physics2d  [App]
 //       0  debug_draw  packages:physics3d  [App]
+// SerializationInit
+//    -200  init  serialization
+//       0  register_component_serializers  serialization
+//       1  tween_serialization_init  packages:tween
 // Test
 
 Phase :: enum {
@@ -34,5 +38,6 @@ Phase :: enum {
 	Init,
 	Shutdown,
 	DebugDraw,
+	SerializationInit,
 	Test,
 }

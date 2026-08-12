@@ -16,6 +16,7 @@ package tests_common
 
 import "core:os"
 import "../../engine"
+import app "moonhug:packages/app"
 import tween "moonhug:packages/tween"
 import "../../engine/serialization"
 import "../../engine/registration"
@@ -40,9 +41,7 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 		// all-packages generated bundle the editor uses), so tests never
 		// depend on a specific runnable package being installed.
 		registration.register_packages()
-		// User marshalers (Asset_GUID, unions) ride serialization.init —
-		// scene JSON round-trips fail without them.
-		serialization.init()
+		app.phase_run(.SerializationInit)
 		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 		// typeids for primitive field types (position, color, scale, …) so it
 		// can hand a properly-typed `any` to json.unmarshal_any.

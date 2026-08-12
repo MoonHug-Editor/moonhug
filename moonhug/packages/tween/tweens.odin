@@ -14,8 +14,10 @@ package tween
 // corrupt persisted data.
 
 import "base:runtime"
+import "core:encoding/json"
 import "core:reflect"
 import engine "moonhug:engine"
+import ser "moonhug:engine/serialization"
 
 TweenStatus :: Status
 
@@ -50,6 +52,20 @@ tween_has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
 		return true
 	}
 	return false
+}
+
+// The package's own serializer registrations, on the SerializationInit phase --
+// engine's serialization no longer names this package's types anywhere. The
+// order=0 subscriber (register_component_serializers) installs the registries
+// first.
+@(phase={key=SerializationInit, order=1})
+tween_serialization_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+	json.register_user_marshaler(TweenUnion, ser.union_marshal)
+	json.register_user_unmarshaler(TweenUnion, ser.union_unmarshal)
+	engine.register_pointer_type(TweenUnion)
 }
 
 // --- The runner instance ----------------------------------------------------

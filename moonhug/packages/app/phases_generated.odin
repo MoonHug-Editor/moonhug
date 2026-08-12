@@ -6,6 +6,8 @@ package app
 import "moonhug:engine"
 import physics2d "moonhug:packages/physics2d"
 import physics3d "moonhug:packages/physics3d"
+import serialization "moonhug:engine/serialization"
+import tween "moonhug:packages/tween"
 
 // The enum lives in engine so packages can name keys in code.
 Phase :: engine.Phase
@@ -20,5 +22,9 @@ phase_run :: proc(key: Phase) {
 	case .DebugDraw:
 		physics2d.debug_draw()
 		physics3d.debug_draw()
+	case .SerializationInit:
+		serialization.init()
+		serialization.register_component_serializers()
+		tween.tween_serialization_init()
 	}
 }

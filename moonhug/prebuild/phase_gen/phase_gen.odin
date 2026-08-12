@@ -202,10 +202,16 @@ _collect_entries :: proc(w: ^db.World, phase_names: []string) -> [dynamic]PhaseE
 		})
 	}
 
+	// Every field of the comparator matters: proc names collide across
+	// packages by convention (each physics package declares `debug_draw`), and
+	// slice.sort_by is unstable, so entries equal under the comparator land in
+	// ARBITRARY order -- different across runs, and different from the scan
+	// order. pkg_path is the unique final tiebreak.
 	slice.sort_by(entries[:], proc(a, b: PhaseEntry) -> bool {
 		if a.key_index != b.key_index do return a.key_index < b.key_index
 		if a.order != b.order do return a.order < b.order
-		return a.name < b.name
+		if a.name != b.name do return a.name < b.name
+		return a.pkg_path < b.pkg_path
 	})
 	return entries
 }
@@ -298,8 +304,10 @@ _import_path :: proc(pkg_path: string, from_editor: bool) -> string {
 			return pkg_path[len("moonhug/editor/"):]
 		}
 	}
+	// Collection form: valid from any dispatcher home, unlike a relative path
+	// (the app dispatcher lives two levels down, the editor's one).
 	if strings.has_prefix(pkg_path, "moonhug/") {
-		return fmt.tprintf("../%s", pkg_path[len("moonhug/"):])
+		return fmt.tprintf("moonhug:%s", pkg_path[len("moonhug/"):])
 	}
 	return pkg_path
 }

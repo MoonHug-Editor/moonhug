@@ -2,7 +2,6 @@ package serialization
 
 import "core:encoding/json"
 import engine ".."
-import tween "moonhug:packages/tween"
 import "base:runtime"
 
 component_marshalers:   map[typeid]json.User_Marshaler
@@ -16,6 +15,11 @@ _component_serializers_maps_init :: proc "contextless" () {
 	component_unmarshalers = make(map[typeid]json.User_Unmarshaler, alloc)
 }
 
+Phase_Extra :: enum {
+	SerializationInit,
+}
+
+@(phase={key=SerializationInit, order=0})
 register_component_serializers :: proc() {
     @(static) has_inited:= false
     if has_inited do return
@@ -32,9 +36,6 @@ register_component_serializers :: proc() {
 
     json.register_user_marshaler(engine.ImportSettings, union_marshal)
     json.register_user_unmarshaler(engine.ImportSettings, union_unmarshal)
-
-    json.register_user_marshaler(tween.TweenUnion, union_marshal)
-    json.register_user_unmarshaler(tween.TweenUnion, union_unmarshal)
 
     // Pointer typeids needed by nested-scene deep-override application
     // (`_nested_patch_live_field` calls `get_pointer_typeid_by_typeid` to
@@ -57,7 +58,6 @@ register_component_serializers :: proc() {
     engine.register_pointer_type(string)
     engine.register_pointer_type(engine.Asset_GUID)
     engine.register_pointer_type(engine.A)
-    engine.register_pointer_type(tween.TweenUnion)
     engine.register_pointer_type(engine.UnionTest)
     // Reference types: revert/deep-override of a Ref field unmarshals the
     // baseline back into the live field via these.
