@@ -2,6 +2,7 @@
 package app
 
 import "moonhug:engine"
+import tween "moonhug:packages/tween"
 import gfx "moonhug:engine/gfx"
 import input "moonhug:engine/input"
 import "moonhug:engine/serialization"
@@ -118,7 +119,7 @@ app_init :: proc() {
     engine.material_cache_init()
     engine.shader_cache_init()
     engine.animation_clip_cache_init()
-    engine.tween_init()
+    tween.tween_init()
 
     log.info("App Init done")
 }
@@ -129,7 +130,7 @@ setup_player_animations :: proc()
     for p, _ in engine.pool_next(&it) {
         for &ht, i in p.animations{
         	anim_key := fmt.tprintf("Anim%d", i)
-         	engine.tween_register(anim_key, &ht)
+         	tween.tween_register(anim_key, &ht)
         }
         break
     }
@@ -142,7 +143,7 @@ app_shutdown :: proc() {
 
 @(update={order=1})
 tween_tick :: proc(dt: f32) {
-    engine.tween_tick_running(dt, {})
+    tween.tween_tick_running(dt, {})
 }
 
 // Clip playback is per-frame like Unity's Update-driven animation (the

@@ -6,7 +6,6 @@ import "core:sync"
 
 World :: struct {
 	transforms: Pool(Transform),
-	tween_unions: Pool(TweenUnion),
 	ext_pools: [TypeKey]rawptr,
 	pool_table: [TypeKey]Pool_Entry,
 }
@@ -14,11 +13,9 @@ World :: struct {
 w_init :: proc(w:^World)
 {
 	pool_init(&w.transforms)
-	pool_init(&w.tween_unions)
 	__type_resets_init()
 	__type_cleanups_init()
 	w.pool_table[TypeKey.Transform] = pool_make_entry(&w.transforms)
-	w.pool_table[TypeKey.TweenUnion] = pool_make_entry(&w.tween_unions)
 	register_engine_components()
 	_w_init_ext_pools(w)
 }
@@ -320,9 +317,6 @@ transform_destroy_comp :: proc(tH: Transform_Handle, $T: typeid) {
 world_pool_get_typed :: proc(w: ^World, handle: Handle, $T: typeid) -> ^T {
 	when T == Transform {
 		return pool_get(&w.transforms, handle)
-	}
-	else when T == TweenUnion {
-		return pool_get(&w.tween_unions, handle)
 	}
 	return nil
 }

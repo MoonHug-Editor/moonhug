@@ -1,6 +1,11 @@
-package engine
+package tween
+
+// The transform-targeting tweens. Composites (Parallel, Sequence) know only
+// their children -- tween_gen finds any struct with `base: Tween`, so a new
+// tween type in this package needs no registration by hand.
 
 import "core:math/linalg"
+import engine "moonhug:engine"
 
 @(typ_guid={guid="916005b6-1c68-49e7-88be-0add6164d3a8"})
 Parallel :: struct {
@@ -71,8 +76,8 @@ tick_TweenScaleToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContex
     self := &task.(TweenScaleToLocal)
     if tween_has_delay(&self.base, delta_time) do return .Running
 
-    w := ctx_world()
-    transform := pool_get(&w.transforms, Handle(ctx.subject))
+    w := engine.ctx_world()
+    transform := engine.pool_get(&w.transforms, engine.Handle(ctx.subject))
     if transform == nil do return .Done
     if self.duration == 0 {
         transform.scale = self.scale
@@ -101,8 +106,8 @@ tick_TweenRotateToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenConte
     self := &task.(TweenRotateToLocal)
     if tween_has_delay(&self.base, delta_time) do return .Running
 
-    w := ctx_world()
-    transform := pool_get(&w.transforms, Handle(ctx.subject))
+    w := engine.ctx_world()
+    transform := engine.pool_get(&w.transforms, engine.Handle(ctx.subject))
     if transform == nil do return .Done
     if self.duration == 0 {
         transform.rotation = self.rotation
@@ -111,7 +116,7 @@ tick_TweenRotateToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenConte
     if self.elapsed == 0 do self.from = transform.rotation
     self.elapsed += delta_time
     t := clamp(self.elapsed / self.duration, 0, 1)
-    transform.rotation = quat_from_native(linalg.quaternion_slerp(quat_to_native(self.from), quat_to_native(self.rotation), t))
+    transform.rotation = engine.quat_from_native(linalg.quaternion_slerp(engine.quat_to_native(self.from), engine.quat_to_native(self.rotation), t))
     return .Done if t >= 1 else .Running
 }
 
@@ -131,8 +136,8 @@ tick_TweenMoveToLocal :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContext
     self := &task.(TweenMoveToLocal)
     if tween_has_delay(&self.base, delta_time) do return .Running
 
-    w := ctx_world()
-    transform := pool_get(&w.transforms, Handle(ctx.subject))
+    w := engine.ctx_world()
+    transform := engine.pool_get(&w.transforms, engine.Handle(ctx.subject))
     if transform == nil do return .Done
     if self.duration == 0 {
         transform.position = self.position

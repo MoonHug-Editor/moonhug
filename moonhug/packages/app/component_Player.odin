@@ -5,6 +5,7 @@ package app
 // in ext_components keyed by the type guid below — never change it.
 
 import "moonhug:engine"
+import tween "moonhug:packages/tween"
 
 @(component={max=10})
 @(typ_guid={guid = "d3f1a2b4-7e8c-4d5f-9a0b-1c2e3f4a5b6c"})
@@ -12,7 +13,7 @@ Player :: struct {
     using base: engine.CompData `inspect:"-"`,
     speed:  f32,
     colors: [dynamic][4]f32,
-    animations: [dynamic]engine.TweenUnion,
+    animations: [dynamic]tween.TweenUnion,
     sprite: engine.Ref_Local `ref:"SpriteRenderer"`,
 }
 
@@ -33,7 +34,7 @@ on_destroy_Player :: proc(p: ^Player) {
 cleanup_Player :: proc(p: ^Player) {
 	if p.colors != nil do delete(p.colors)
 	if p.animations != nil {
-		for &anim in p.animations do engine.tween_free(&anim)
+		for &anim in p.animations do tween.tween_free(&anim)
 		delete(p.animations)
 	}
 	engine.comp_zero(p)

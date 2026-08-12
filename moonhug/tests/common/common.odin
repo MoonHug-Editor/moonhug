@@ -16,6 +16,7 @@ package tests_common
 
 import "core:os"
 import "../../engine"
+import tween "moonhug:packages/tween"
 import "../../engine/serialization"
 import "../../engine/registration"
 
@@ -55,7 +56,7 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 		_serializers_registered = true
 	}
 	if !_tween_initialized {
-		engine.tween_init()
+		tween.tween_init()
 		_tween_initialized = true
 	}
 	engine.w_init(&tc.world)

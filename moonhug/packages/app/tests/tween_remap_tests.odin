@@ -6,6 +6,7 @@ package app_tests
 
 import app ".."
 import "moonhug:engine"
+import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"
 
@@ -30,16 +31,16 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	_, player := engine.transform_get_or_add_comp(parentH, app.Player)
 	if player == nil do return
 
-	move := engine.TweenMoveToLocal{ position = {10, 20, 30}, duration = 1.0 }
+	move := tween.TweenMoveToLocal{ position = {10, 20, 30}, duration = 1.0 }
 	move.subject = engine.Ref{ pptr = engine.PPtr{local_id = t1_lid}, handle = engine.Handle(target1H) }
 
-	scale := engine.TweenScaleToLocal{ scale = {2, 2, 2}, duration = 0.5 }
+	scale := tween.TweenScaleToLocal{ scale = {2, 2, 2}, duration = 0.5 }
 	scale.subject = engine.Ref{ pptr = engine.PPtr{local_id = t2_lid}, handle = engine.Handle(target2H) }
 
-	seq := engine.Sequence{}
-	append(&seq.children, engine.TweenUnion(move))
-	append(&seq.children, engine.TweenUnion(scale))
-	append(&player.animations, engine.TweenUnion(seq))
+	seq := tween.Sequence{}
+	append(&seq.children, tween.TweenUnion(move))
+	append(&seq.children, tween.TweenUnion(scale))
+	append(&player.animations, tween.TweenUnion(seq))
 	seq.children = {}
 
 	data := engine.scene_copy_subtree(parentH)
@@ -67,12 +68,12 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(inst_player.animations), 1)
 	if len(inst_player.animations) < 1 do return
 
-	inst_seq := &inst_player.animations[0].(engine.Sequence)
+	inst_seq := &inst_player.animations[0].(tween.Sequence)
 	testing.expect_value(t, len(inst_seq.children), 2)
 	if len(inst_seq.children) < 2 do return
 
-	child0 := engine.tween_base(&inst_seq.children[0])
-	child1 := engine.tween_base(&inst_seq.children[1])
+	child0 := tween.tween_base(&inst_seq.children[0])
+	child1 := tween.tween_base(&inst_seq.children[1])
 
 	testing.expect(t, child0.subject.pptr.local_id != t1_lid,
 		"child0 subject should differ from original")

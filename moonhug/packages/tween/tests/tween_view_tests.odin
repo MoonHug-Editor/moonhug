@@ -9,26 +9,26 @@ package tween_tests
 // no registration and no runner are involved -- a test-local struct exercises
 // every case, including a tween held in a different union's variant.
 
+import tw "moonhug:packages/tween"
 import tween_editor "moonhug:packages/tween/editor"
-import "moonhug:engine"
 
 import "core:testing"
 
 _View_Level :: struct {
 	name:  string,
-	intro: engine.TweenUnion,
+	intro: tw.TweenUnion,
 }
 
 _View_Holder :: union {
 	i64,
-	engine.TweenUnion,
+	tw.TweenUnion,
 }
 
 _View_Comp :: struct {
 	pad:    [3]f32,
 	levels: [dynamic]_View_Level,
 	held:   _View_Holder,
-	direct: engine.TweenUnion,
+	direct: tw.TweenUnion,
 }
 
 // Root discovery finds every TweenUnion at any depth, in deterministic walk
@@ -38,10 +38,10 @@ test_tween_roots_found_at_any_depth :: proc(t: ^testing.T) {
 	c: _View_Comp
 	c.levels = make([dynamic]_View_Level)
 	defer delete(c.levels)
-	append(&c.levels, _View_Level{intro = engine.TweenUnion(engine.TweenMoveToLocal{duration = 1})})
-	append(&c.levels, _View_Level{intro = engine.TweenUnion(engine.TweenScaleToLocal{duration = 2})})
-	c.held = engine.TweenUnion(engine.TweenRotateToLocal{duration = 3})
-	c.direct = engine.TweenUnion(engine.TweenMoveToLocal{duration = 4})
+	append(&c.levels, _View_Level{intro = tw.TweenUnion(tw.TweenMoveToLocal{duration = 1})})
+	append(&c.levels, _View_Level{intro = tw.TweenUnion(tw.TweenScaleToLocal{duration = 2})})
+	c.held = tw.TweenUnion(tw.TweenRotateToLocal{duration = 3})
+	c.direct = tw.TweenUnion(tw.TweenMoveToLocal{duration = 4})
 
 	roots := tween_editor.tween_roots_of(&c, typeid_of(_View_Comp))
 
@@ -58,7 +58,7 @@ test_tween_roots_found_at_any_depth :: proc(t: ^testing.T) {
 }
 
 _View_Anims :: struct {
-	animations: [dynamic]engine.TweenUnion,
+	animations: [dynamic]tw.TweenUnion,
 }
 
 // Locate names ANY node in a tree: (root ordinal, tree path). A nested child
@@ -68,22 +68,22 @@ _View_Anims :: struct {
 @(test)
 test_tween_graph_locate_finds_nested_node :: proc(t: ^testing.T) {
 	c: _View_Anims
-	c.animations = make([dynamic]engine.TweenUnion)
+	c.animations = make([dynamic]tw.TweenUnion)
 	defer delete(c.animations)
 
 	// animations[0]: a bare leaf. animations[1]: Sequence -> [Move, Scale].
-	append(&c.animations, engine.TweenUnion(engine.TweenMoveToLocal{duration = 1}))
-	seq: engine.Sequence
-	seq.children = make([dynamic]engine.TweenUnion)
-	append(&seq.children, engine.TweenUnion(engine.TweenMoveToLocal{duration = 2}))
-	append(&seq.children, engine.TweenUnion(engine.TweenScaleToLocal{duration = 3}))
-	append(&c.animations, engine.TweenUnion(seq))
+	append(&c.animations, tw.TweenUnion(tw.TweenMoveToLocal{duration = 1}))
+	seq: tw.Sequence
+	seq.children = make([dynamic]tw.TweenUnion)
+	append(&seq.children, tw.TweenUnion(tw.TweenMoveToLocal{duration = 2}))
+	append(&seq.children, tw.TweenUnion(tw.TweenScaleToLocal{duration = 3}))
+	append(&c.animations, tw.TweenUnion(seq))
 	defer {
-		root := &c.animations[1].(engine.Sequence)
+		root := &c.animations[1].(tw.Sequence)
 		delete(root.children)
 	}
 
-	root := &c.animations[1].(engine.Sequence)
+	root := &c.animations[1].(tw.Sequence)
 	target := &root.children[1]
 
 	root_idx, path, depth, ok := tween_editor.tween_graph_locate_in(&c, typeid_of(_View_Anims), target)
@@ -97,7 +97,7 @@ test_tween_graph_locate_finds_nested_node :: proc(t: ^testing.T) {
 	testing.expect_value(t, r_idx, 0)
 	testing.expect_value(t, r_depth, 0)
 
-	stray: engine.TweenUnion
+	stray: tw.TweenUnion
 	_, _, _, stray_ok := tween_editor.tween_graph_locate_in(&c, typeid_of(_View_Anims), &stray)
 	testing.expect(t, !stray_ok, "unknown pointer is not located")
 }

@@ -189,6 +189,21 @@ open_physics_debug :: proc() {
 - Declarations land in `editor/editor_windows_generated.odin`
   (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 
+## Editor startup hook
+
+`@(phase={key=Phase.EditorInit, order=N, mode=Editor})` on a no-argument proc
+in an editor half runs it once at editor startup. The editor's own init is the
+order=0 subscriber of that phase, so any order above 0 runs after the editor's
+registries exist. It is how a plugin registers what has no attribute of its
+own — a property drawer inserted into `inspector.mapPropertyDrawer` at
+runtime, a hook installed into an editor subpackage. The dispatch is generated
+into the editor root (`editor/phases_generated.odin`), so plugin code can
+reach inspector internals without an import cycle.
+
+The Tween Graph is the working example: `packages/app/editor/tween_view.odin`
+registers a `TweenUnion` drawer that frames every tween row with a Graph
+button.
+
 ## Project settings
 
 A plugin adds a section to the editor's Project Settings window

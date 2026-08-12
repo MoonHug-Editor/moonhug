@@ -15,6 +15,7 @@ import app ".."
 import inspector "moonhug:editor/inspector"
 import undo "moonhug:editor/undo"
 import "moonhug:engine"
+import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"
 
@@ -25,7 +26,7 @@ test_tween_field_edit_records_undo_under_player_owner :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	engine.tween_init()
+	tween.tween_init()
 
 	s := new(undo.Undo_Stack)
 	undo.init(s)
@@ -36,8 +37,8 @@ test_tween_field_edit_records_undo_under_player_owner :: proc(t: ^testing.T) {
 	_, p_ptr := engine.transform_add_comp(owner, .Player)
 	if p_ptr == nil do return
 	p := cast(^app.Player)p_ptr
-	if p.animations == nil do p.animations = make([dynamic]engine.TweenUnion)
-	append(&p.animations, engine.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
+	if p.animations == nil do p.animations = make([dynamic]tween.TweenUnion)
+	append(&p.animations, tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
 
 	// The Player's component handle -- what the panel pushes.
 	comp_handle: engine.Handle
@@ -52,7 +53,7 @@ test_tween_field_edit_records_undo_under_player_owner :: proc(t: ^testing.T) {
 
 	// The panel's exact flow: owner pushed, then a session over a field inside
 	// the tween -- which lives in the animations array's own allocation.
-	mv := &p.animations[0].(engine.TweenMoveToLocal)
+	mv := &p.animations[0].(tween.TweenMoveToLocal)
 	undo.push_component_owner(comp_handle)
 	before := s.top
 	inspector.field_edit_begin(&mv.duration, typeid_of(f32), 0, "duration")
@@ -65,6 +66,6 @@ test_tween_field_edit_records_undo_under_player_owner :: proc(t: ^testing.T) {
 	// Undo rebuilds the whole Player payload, so the array reallocates -- read
 	// the tween back through the component, never the old pointer.
 	testing.expect(t, undo.apply_undo(s), "undo applies")
-	restored := &p.animations[0].(engine.TweenMoveToLocal)
+	restored := &p.animations[0].(tween.TweenMoveToLocal)
 	testing.expect_value(t, restored.duration, f32(0.5))
 }

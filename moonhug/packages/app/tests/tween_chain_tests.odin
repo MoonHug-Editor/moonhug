@@ -9,6 +9,7 @@ package app_tests
 
 import app ".."
 import "moonhug:engine"
+import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:fmt"
 import "core:testing"
@@ -20,7 +21,7 @@ test_player_tween_chain :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	engine.tween_init()
+	tween.tween_init()
 
 	// Code-built Player with one position tween — no scene file, no assets.
 	owner := engine.transform_new("Player")
@@ -29,12 +30,12 @@ test_player_tween_chain :: proc(t: ^testing.T) {
 	if p_ptr == nil do return
 	p := cast(^app.Player)p_ptr
 	p.enabled = true
-	if p.animations == nil do p.animations = make([dynamic]engine.TweenUnion)
-	append(&p.animations, engine.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
+	if p.animations == nil do p.animations = make([dynamic]tween.TweenUnion)
+	append(&p.animations, tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
 
 	// scene_loaded registers AnimN keys (via tprintf — temp allocator).
 	app.scene_loaded()
-	testing.expect(t, engine.tween_lib_count() > 0, "tween lib should have AnimN entries")
+	testing.expect(t, tween.tween_lib_count() > 0, "tween lib should have AnimN entries")
 
 	// The app loop frees the temp allocator every frame and later frames
 	// reuse the bytes — simulate both so temp-allocated map keys would dangle.
@@ -46,10 +47,10 @@ test_player_tween_chain :: proc(t: ^testing.T) {
 	// Running Anim0 (a position tween) still resolves and moves the player.
 	w := engine.ctx_world()
 	before := engine.pool_get(&w.transforms, engine.Handle(owner)).position
-	ok := engine.tween_run("Anim0", engine.TweenContext{subject = engine.Transform_Handle(p.owner)})
+	ok := tween.tween_run("Anim0", tween.TweenContext{subject = engine.Transform_Handle(p.owner)})
 	testing.expect(t, ok, "tween_run(Anim0) should start after a temp free_all")
 	for _ in 0 ..< 60 {
-		engine.tween_tick_running(1.0 / 60.0, {})
+		tween.tween_tick_running(1.0 / 60.0, {})
 	}
 	after := engine.pool_get(&w.transforms, engine.Handle(owner)).position
 	testing.expect(t, before != after, "Anim0 should move the player")

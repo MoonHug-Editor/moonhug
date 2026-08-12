@@ -1,12 +1,12 @@
-package engine
+package tween
 
-// The engine's tween runtime, as a thin skin over packages/tween: the engine
-// owns the TYPES (the Tween base struct, TweenUnion, the transform-targeting
-// leaf tweens in tween_nodes.odin) and the runner instance, the package owns
-// the scheduling. Dispatch keys are TypeKeys cast to int -- the generated
-// __tween_ticks_init (tween_gen) writes the runner's dense arrays with
-// `int(TypeKey.X)`, so the table is exactly as large as the enum and dispatch
-// stays an array index.
+// MoonHug's tween types and their runner instance, bound to the generic
+// Runner in tween.odin. This file and nodes.odin import engine (tweens target
+// transforms) -- the Runner file does not, and stays reusable on its own.
+// Dispatch keys are TypeKeys cast to int: the generated __tween_ticks_init
+// (tween_gen) writes the runner's dense arrays with `int(engine.TypeKey.X)`,
+// so the table is exactly as large as the enum and dispatch stays an array
+// index.
 //
 // Nothing here is serialized by key or tag: tween payloads (scene files, the
 // runner's prototype library, undo) go through the GUID-keyed union
@@ -15,12 +15,12 @@ package engine
 
 import "base:runtime"
 import "core:reflect"
-import tw "moonhug:packages/tween"
+import engine "moonhug:engine"
 
-TweenStatus :: tw.Status
+TweenStatus :: Status
 
 TweenContext :: struct {
-	subject: Transform_Handle `json:"-"`,
+	subject: engine.Transform_Handle `json:"-"`,
 }
 
 // Hierarchical Task
@@ -29,7 +29,7 @@ Tween :: struct {
 	skip:     bool,
 	is_await: bool,
 	delay:    f32,
-	subject:  Ref `ref:"Transform"`,
+	subject:  engine.Ref `ref:"Transform"`,
 
 	// runtime only fields:
 	delay_elapsed: f32 `json:"-"`,
@@ -57,7 +57,7 @@ tween_has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
 // Sized by the TypeKey enum itself, so a new tween type grows the table with
 // no constant to maintain.
 @(private)
-_tween_runner: tw.Runner(TweenUnion, TweenContext, len(TypeKey))
+_tween_runner: Runner(TweenUnion, TweenContext, len(engine.TypeKey))
 
 // The runner's own setup, called FIRST by the generated __tween_ticks_init so
 // registration order cannot be gotten wrong by hand.
@@ -66,14 +66,14 @@ _tween_runner: tw.Runner(TweenUnion, TweenContext, len(TypeKey))
 // any caller frame), so the runner lives on the default allocator -- a
 // caller's temp or tracking allocator tears down while entries live on.
 tween_runner_setup :: proc() {
-	tw.init(&_tween_runner, _tween_key_of, _tween_skip_of, runtime.default_allocator())
+	init(&_tween_runner, _tween_key_of, _tween_skip_of, runtime.default_allocator())
 }
 
 @(private)
 _tween_key_of :: proc(task: ^TweenUnion) -> (int, bool) {
 	tid := reflect.union_variant_typeid(task^)
 	if tid == nil do return 0, false
-	key, ok := typeid_to_type_key_map[tid]
+	key, ok := engine.typeid_to_type_key_map[tid]
 	return int(key), ok
 }
 
@@ -89,11 +89,11 @@ tween_init :: proc() {
 }
 
 tween_register :: proc(key: string, tween: ^TweenUnion) {
-	tw.register(&_tween_runner, key, tween)
+	register(&_tween_runner, key, tween)
 }
 
 tween_lib_count :: proc() -> int {
-	return tw.lib_count(&_tween_runner)
+	return lib_count(&_tween_runner)
 }
 
 tween_run :: proc {
@@ -102,24 +102,24 @@ tween_run :: proc {
 }
 
 tween_run_key :: proc(key: string, ctx: TweenContext) -> bool {
-	return tw.run_key(&_tween_runner, key, ctx)
+	return run_key(&_tween_runner, key, ctx)
 }
 
 tween_run_tween :: proc(tween: ^TweenUnion, ctx: TweenContext) -> bool {
-	return tw.run_value(&_tween_runner, tween, ctx)
+	return run_value(&_tween_runner, tween, ctx)
 }
 
 tween_free :: proc(task: ^TweenUnion) {
-	tw.free_task(&_tween_runner, task)
+	free_task(&_tween_runner, task)
 }
 
 // `ctx` is accepted for call-site compatibility: each running tween carries
 // the context it was started with, which is what its ticks receive.
 tween_tick_running :: proc(delta_time: f32, ctx: TweenContext) {
-	tw.tick_running(&_tween_runner, delta_time)
+	tick_running(&_tween_runner, delta_time)
 }
 
 // Composite tweens (Sequence, Parallel) tick their children through this.
 _tween_tick_child :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus {
-	return tw.tick_task(&_tween_runner, task, delta_time, ctx)
+	return tick_task(&_tween_runner, task, delta_time, ctx)
 }

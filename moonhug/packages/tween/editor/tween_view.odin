@@ -27,6 +27,7 @@ import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
+import tween "moonhug:packages/tween"
 import ng "moonhug:packages/node_graph"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
@@ -74,7 +75,7 @@ tween_graph_window_draw :: proc() {
 
 	// The target is set by the Graph button on a tween row. Resolved fresh
 	// every frame: the handle survives undo, the pointers behind it do not.
-	roots: []^engine.TweenUnion
+	roots: []^tween.TweenUnion
 	base: rawptr
 	if _state.has_target {
 		base = engine.world_pool_get(w, _state.target)
@@ -157,7 +158,7 @@ tween_graph_window_draw :: proc() {
 }
 
 @(private = "file")
-_draw_toolbar :: proc(base: rawptr, roots: []^engine.TweenUnion) {
+_draw_toolbar :: proc(base: rawptr, roots: []^tween.TweenUnion) {
 	// The owning object's name says WHOSE tree this is. Every component embeds
 	// CompData at offset 0, so the owner is readable without knowing the type.
 	owner_name := "?"
@@ -193,7 +194,7 @@ _draw_toolbar :: proc(base: rawptr, roots: []^engine.TweenUnion) {
 }
 
 @(private = "file")
-_root_label :: proc(roots: []^engine.TweenUnion, i: int) -> cstring {
+_root_label :: proc(roots: []^tween.TweenUnion, i: int) -> cstring {
 	name := "?"
 	if tid := reflect.union_variant_typeid(roots[i]^); tid != nil {
 		name = _type_label(tid)
@@ -210,7 +211,7 @@ _root_label :: proc(roots: []^engine.TweenUnion, i: int) -> cstring {
 // rather than a compile error.
 @(private = "file")
 _walk :: proc(
-	tw: ^engine.TweenUnion,
+	tw: ^tween.TweenUnion,
 	parent: int,
 	walked: ^[dynamic]_Walked,
 	nodes: ^[dynamic]ng.Node,
@@ -221,7 +222,7 @@ _walk :: proc(
 	tid := reflect.union_variant_typeid(tw^)
 	if tid == nil do return
 
-	base := engine.tween_base(tw)
+	base := tween.tween_base(tw)
 	idx := len(walked)
 
 	append(walked, _Walked{ptr = rawptr(tw), tid = tid, parent = parent})
@@ -244,16 +245,16 @@ _walk :: proc(
 
 // The `children` field of a composite tween, or nil for a leaf.
 @(private = "file")
-_children_of :: proc(tw: ^engine.TweenUnion, tid: typeid) -> []engine.TweenUnion {
+_children_of :: proc(tw: ^tween.TweenUnion, tid: typeid) -> []tween.TweenUnion {
 	ti := runtime.type_info_base(type_info_of(tid))
 	st, is_struct := ti.variant.(runtime.Type_Info_Struct)
 	if !is_struct do return nil
 
 	for i in 0 ..< int(st.field_count) {
 		if st.names[i] != "children" do continue
-		if st.types[i].id != typeid_of([dynamic]engine.TweenUnion) do return nil
+		if st.types[i].id != typeid_of([dynamic]tween.TweenUnion) do return nil
 		// The variant's payload starts at the union's base pointer.
-		arr := (^[dynamic]engine.TweenUnion)(rawptr(uintptr(rawptr(tw)) + st.offsets[i]))
+		arr := (^[dynamic]tween.TweenUnion)(rawptr(uintptr(rawptr(tw)) + st.offsets[i]))
 		return arr[:]
 	}
 	return nil
@@ -279,7 +280,7 @@ _type_label :: proc(tid: typeid) -> string {
 
 // The base fields worth seeing without selecting the node.
 @(private = "file")
-_subtitle :: proc(base: ^engine.Tween) -> string {
+_subtitle :: proc(base: ^tween.Tween) -> string {
 	parts := make([dynamic]string, context.temp_allocator)
 	if base.delay > 0 do append(&parts, fmt.tprintf("delay %.2fs", base.delay))
 	if base.is_await do append(&parts, "await")
@@ -348,7 +349,7 @@ tween_graph_window_open :: proc() {
 // (order=0), which creates the map this writes into.
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 tween_view_install :: proc() {
-	inspector.mapPropertyDrawer[typeid_of(engine.TweenUnion)] = _draw_tween_union_row
+	inspector.mapPropertyDrawer[typeid_of(tween.TweenUnion)] = _draw_tween_union_row
 }
 
 // account_tree - the editor root owns the canonical list (material_icons.odin)
@@ -364,7 +365,7 @@ _ICON_GRAPH :: "\ue97a"
 @(private = "file")
 _draw_tween_union_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if im.SmallButton(fmt.ctprintf("%s##tg_%v", _ICON_GRAPH, ptr)) {
-		_open_graph_for(cast(^engine.TweenUnion)ptr)
+		_open_graph_for(cast(^tween.TweenUnion)ptr)
 	}
 	im.SetItemTooltip("Open in Tween Graph")
 	im.SameLine()
@@ -376,7 +377,7 @@ _draw_tween_union_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // the button lives inside a component's draw, so the owner is pushed. That is
 // what makes this generic: no scan, no component type named anywhere.
 @(private = "file")
-_open_graph_for :: proc(tw: ^engine.TweenUnion) {
+_open_graph_for :: proc(tw: ^tween.TweenUnion) {
 	o, o_ok := undo.current_owner()
 	if !o_ok || o.kind != .Pooled || o.base_ptr == nil do return
 	tid := engine.get_typeid_by_type_key(o.handle.type_key)
@@ -399,7 +400,7 @@ _open_graph_for :: proc(tw: ^engine.TweenUnion) {
 // pointer may be a root or any nested child -- the graph always shows the
 // whole containing tree, selection marks the node that was asked for. A
 // pointer matching nothing reports ok=false rather than guessing.
-tween_graph_locate_in :: proc(base: rawptr, base_tid: typeid, tw: ^engine.TweenUnion) -> (root_idx: int, path: [64]i32, depth: int, ok: bool) {
+tween_graph_locate_in :: proc(base: rawptr, base_tid: typeid, tw: ^tween.TweenUnion) -> (root_idx: int, path: [64]i32, depth: int, ok: bool) {
 	if base == nil || tw == nil do return
 
 	roots := tween_roots_of(base, base_tid)
@@ -430,18 +431,18 @@ tween_graph_locate_in :: proc(base: rawptr, base_tid: typeid, tw: ^engine.TweenU
 // variants and are reachable only through their root, so each tree is one
 // root, and a root's ordinal is stable for any edit that keeps the component's
 // shape (walk order is field order and array order).
-tween_roots_of :: proc(base: rawptr, tid: typeid) -> []^engine.TweenUnion {
-	roots := make([dynamic]^engine.TweenUnion, context.temp_allocator)
+tween_roots_of :: proc(base: rawptr, tid: typeid) -> []^tween.TweenUnion {
+	roots := make([dynamic]^tween.TweenUnion, context.temp_allocator)
 	_collect_tween_roots(base, type_info_of(tid), &roots, 0)
 	return roots[:]
 }
 
 @(private = "file")
-_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^engine.TweenUnion, depth: int) {
+_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^tween.TweenUnion, depth: int) {
 	if ptr == nil || ti == nil || depth > 16 do return
 
-	if ti.id == typeid_of(engine.TweenUnion) {
-		append(roots, cast(^engine.TweenUnion)ptr)
+	if ti.id == typeid_of(tween.TweenUnion) {
+		append(roots, cast(^tween.TweenUnion)ptr)
 		return
 	}
 
