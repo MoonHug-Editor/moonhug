@@ -168,6 +168,26 @@ core names it uses in `engine/core_exports.odin`, so `engine.Handle` and
 followed, `tests/` skipped), so a new subpackage joins the attribute scan
 with no prebuild edit.
 
+## Asset importers
+
+A package ships an asset importer by registering an `engine.Importer_Desc`
+on the `ImportersInit` phase (`moonhug/packages/audio` is the reference):
+
+```odin
+@(phase={key=ImportersInit, order=1})
+audio_importers_init :: proc() {
+    engine.importer_register({
+        name = "audio", version = 1, extensions = _AUDIO_EXTS,
+        default_settings = _default_settings, run = _import_audio,
+    })
+}
+```
+
+- `name` is stored in .meta files and seeds artifact keys — keep it stable.
+- Bump `version` when the importer's output changes.
+- Settings types live in the engine's `ImportSettings` union (closed union) —
+  reuse an existing settings type or add one to the union in the engine.
+
 ## Editor windows
 
 A plugin declares a dockable editor window with an attribute and opens it by

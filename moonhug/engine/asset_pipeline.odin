@@ -25,30 +25,15 @@ ARTIFACT_DB_PATH :: "library/artifact_db.json"
 // Bump to invalidate EVERY artifact (artifact container format changes).
 _ARTIFACT_FORMAT_VERSION :: 1
 
-// Bump an importer's version when its OUTPUT changes — its artifacts re-import
-// on the next run, nothing else does, and no one hand-deletes library/.
+// Importer dispatch goes through the registry (asset_importer_registry.odin).
+// Version bumps and extension ownership live in each Importer_Desc.
 _importer_version :: proc(importer: string) -> int {
-	switch importer {
-	case "texture": return 1
-	case "audio":   return 1
-	case "mesh":    return 1
-	case "shader":  return 1
-	}
+	if desc, ok := _importers[importer]; ok do return desc.version
 	return 0
 }
 
 _importer_for_extension :: proc(ext: string) -> string {
-	switch ext {
-	case ".png", ".jpg", ".jpeg", ".bmp":
-		return "texture"
-	case ".mp3", ".wav", ".ogg":
-		return "audio"
-	case ".glb", ".gltf":
-		return "mesh"
-	case ".glsl":
-		return "shader"
-	}
-	return ""
+	return _importer_by_ext[ext] or_else ""
 }
 
 ImportSettings :: union #no_nil{
@@ -65,29 +50,13 @@ ImportMeta :: struct {
 }
 
 is_importable_extension :: proc(ext: string) -> bool {
-    switch ext {
-    case ".png", ".jpg", ".jpeg", ".bmp":
-        return true
-    case ".mp3", ".wav", ".ogg":
-        return true
-    case ".glb", ".gltf":
-        return true
-    case ".glsl":
-        return true
-    }
-    return false
+    return ext in _importer_by_ext
 }
 
 settings_for_extension :: proc(ext: string) -> ImportSettings {
-    switch ext {
-    case ".png", ".jpg", ".jpeg", ".bmp":
-        return default_texture_settings()
-    case ".mp3", ".wav", ".ogg":
-        return default_audio_settings()
-    case ".glb", ".gltf":
-        return default_mesh_settings()
-    case ".glsl":
-        return default_shader_settings()
+    name := _importer_by_ext[ext] or_else ""
+    if desc, ok := _importers[name]; ok && desc.default_settings != nil {
+        return desc.default_settings()
     }
     return {}
 }
@@ -341,15 +310,9 @@ _artifact_key_path :: proc(key: string, allocator := context.allocator) -> strin
 
 _run_import :: proc(source_path: string, artifact_path: string, settings: ImportSettings) -> bool {
     ext := filepath.ext(source_path)
-    switch ext {
-    case ".png", ".jpg", ".jpeg", ".bmp":
-        return _import_texture(source_path, artifact_path, settings)
-    case ".mp3", ".wav", ".ogg":
-        return _import_audio(source_path, artifact_path, settings)
-    case ".glb", ".gltf":
-        return _import_mesh(source_path, artifact_path, settings)
-    case ".glsl":
-        return _import_shader(source_path, artifact_path, settings)
+    name := _importer_by_ext[ext] or_else ""
+    if desc, ok := _importers[name]; ok && desc.run != nil {
+        return desc.run(source_path, artifact_path, settings)
     }
     return false
 }

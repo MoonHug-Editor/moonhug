@@ -288,6 +288,7 @@ editor_init :: proc() {
     registration.register_packages()
     inspector.init()
     phase_editor_run(.SerializationInit)
+    phase_editor_run(.ImportersInit)
     clip.init()
     registration.register_type_guids()
     _init_context_menu_registry()

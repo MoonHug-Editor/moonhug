@@ -4,6 +4,7 @@ package app
 // Subscriber table: engine/core/phases_generated.odin (with the Phase enum).
 
 import "moonhug:engine"
+import audio "moonhug:packages/audio"
 import physics2d "moonhug:packages/physics2d"
 import physics3d "moonhug:packages/physics3d"
 import serialization "moonhug:engine/serialization"
@@ -22,6 +23,9 @@ phase_run :: proc(key: Phase) {
 	case .DebugDraw:
 		physics2d.debug_draw()
 		physics3d.debug_draw()
+	case .ImportersInit:
+		engine.register_builtin_importers()
+		audio.audio_importers_init()
 	case .SerializationInit:
 		serialization.init()
 		serialization.register_component_serializers()

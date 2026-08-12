@@ -5,6 +5,7 @@ package editor
 
 import "../engine"
 import app "moonhug:packages/app"
+import audio "moonhug:packages/audio"
 import serialization "moonhug:engine/serialization"
 import tween "moonhug:packages/tween"
 import tween_editor "moonhug:packages/tween/editor"
@@ -22,6 +23,9 @@ phase_editor_run :: proc(key: engine.Phase) {
 		if sim_host_is_app do app.game_bootstrap()
 	case .Shutdown:
 		if sim_host_is_app do app.app_shutdown()
+	case .ImportersInit:
+		engine.register_builtin_importers()
+		audio.audio_importers_init()
 	case .SerializationInit:
 		serialization.init()
 		serialization.register_component_serializers()

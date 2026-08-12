@@ -113,6 +113,7 @@ app_init :: proc() {
     register_packages()
     register_type_guids()
     phase_run(.SerializationInit)
+    phase_run(.ImportersInit)
     engine.asset_db_init("assets")
     engine.texture_cache_init()
     engine.mesh_cache_init()

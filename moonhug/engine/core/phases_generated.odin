@@ -22,6 +22,9 @@ package core
 // DebugDraw [App]
 //       0  debug_draw  packages:physics2d  [App]
 //       0  debug_draw  packages:physics3d  [App]
+// ImportersInit
+//       0  register_builtin_importers  engine
+//       1  audio_importers_init  packages:audio
 // SerializationInit
 //    -200  init  serialization
 //       0  register_component_serializers  serialization
@@ -38,6 +41,7 @@ Phase :: enum {
 	Init,
 	Shutdown,
 	DebugDraw,
+	ImportersInit,
 	SerializationInit,
 	Test,
 }
