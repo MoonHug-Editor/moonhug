@@ -46,6 +46,7 @@ TextureSettings__Guid := uuid.read("21d45bcf-2bd8-44db-b780-953c2f8b610f") or_el
 Transform__Guid := uuid.read("312927b7-3c4a-4929-9807-8216baf26a68") or_else UUID_NIL
 Tween__Guid := uuid.read("aecaf150-0418-4fed-81a3-708f68ccaa8b") or_else UUID_NIL
 TweenMoveToLocal__Guid := uuid.read("da9d301a-66a3-450c-8c0b-8c696ad60b0b") or_else UUID_NIL
+TweenPlayer__Guid := uuid.read("a66f5292-813a-493f-91c4-05eb5e4e4d97") or_else UUID_NIL
 TweenRotateToLocal__Guid := uuid.read("b72f3c1a-9e45-4b8d-a3f7-2d1e5c8f0b94") or_else UUID_NIL
 TweenScaleToLocal__Guid := uuid.read("aa1970c6-51d2-4d27-9dc8-718ad1e51160") or_else UUID_NIL
 TweenUnion__Guid := uuid.read("a243efe5-6e34-4d1c-886c-83928685df48") or_else UUID_NIL

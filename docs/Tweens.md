@@ -20,8 +20,13 @@ tween_run      :: proc(key: string, ctx: TweenContext) -> bool // JSON-unmarshal
 ```
 packages/tween/core    tween_core: Tween base, Status, TweenContext
 packages/tween/nodes   tween_nodes: leaf variants (move/rotate/scale)
-packages/tween         the generated TweenUnion, composites, Runner + API
+packages/tween         the generated TweenUnion, composites, Runner + API,
+                       TweenPlayer component, gen/ (tween_gen), tests/
 ```
+
+`TweenPlayer` is the package's own component holding authored tweens
+(`animations: [dynamic]TweenUnion`) — the tween tests run against it, so the
+suite never depends on another package's components.
 
 Variant packages import `moonhug:packages/tween/core` — never
 `moonhug:packages/tween`, because the generated union imports every variant

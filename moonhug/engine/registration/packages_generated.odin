@@ -13,11 +13,12 @@ import physics3d "moonhug:packages/physics3d"
 import _ "moonhug:packages/physics3d_sample"
 import plugin_example "moonhug:packages/plugin_example"
 import _ "moonhug:packages/prefabs_example"
-import _ "moonhug:packages/tween"
+import tween "moonhug:packages/tween"
 
 register_packages :: proc() {
 	app.register_app_components()
 	physics2d.register_physics2d_components()
 	physics3d.register_physics3d_components()
 	plugin_example.register_plugin_example_components()
+	tween.register_tween_components()
 }

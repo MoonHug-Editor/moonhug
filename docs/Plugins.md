@@ -61,16 +61,20 @@ moonhug/packages/
   subpackages directly except where a generator's output needs their types
   (type registration, the tween union).
 - **`gen/`** — a prebuild generator shipped by the package (`package
-  <name>_gen`, `packages/tween/gen` is the reference). It compiles into the
-  PREBUILD program, not the binaries: prebuild maintains
-  `prebuild/package_gens_generated.odin` with one blank import per installed
-  gen, and each gen registers its systems in `@(init)` via
-  `moonhug:prebuild/gen_db` like any built-in module. When a gen appears,
-  prebuild rewrites the import file and exits asking for a re-run (the next
-  compile includes it). When one disappears, the run scripts prune the stale
-  import before compiling (`odin run moonhug/prebuild/prune_package_gens` —
-  a standalone program, so it works on every platform). gen/ is excluded
-  from the attribute scan — it is prebuild-side code.
+  <name>_gen`, `packages/tween/gen` is the reference). ANY installed package
+  can ship one: prebuild discovers `packages/*/gen` itself, no prebuild
+  edits. A gen has the full generator toolkit — it imports
+  `moonhug:prebuild/gen_db` / `gen_facts` / `gen_core` (and other generators,
+  tween_gen uses type_guid_gen), registers providers and generators in
+  `@(init)`, queries the shared decl scan and emits files anywhere in the
+  tree. Mechanics: gens compile into the PREBUILD program, not the binaries —
+  prebuild maintains `prebuild/package_gens_generated.odin` with one blank
+  import per installed gen. When a gen appears, prebuild rewrites the import
+  file and exits asking for a re-run (the next compile includes it). When one
+  disappears, the run scripts prune the stale import before compiling
+  (`odin run moonhug/prebuild/prune_package_gens` — a standalone program, so
+  it works on every platform). gen/ is excluded from the attribute scan — it
+  is prebuild-side code.
 - **`assets/`** — live content: mounted, browsable, editable, referenced by
   guid like any project asset. Content outside `assets/` doesn't exist to the
   editor — the rule is structural, no filters needed. The editor ENSURES this

@@ -1,10 +1,8 @@
-package app_tests
+package tween_tests
 
 // Tween subject Refs must remap on subtree copy/paste (engine machinery,
-// exercised through Player — the demo's TweenUnion carrier, which is why the
-// test ships with the app package).
+// exercised through the package's own TweenPlayer carrier).
 
-import app ".."
 import "moonhug:engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
@@ -28,7 +26,7 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	t1_lid := t1.local_id
 	t2_lid := t2.local_id
 
-	_, player := engine.transform_get_or_add_comp(parentH, app.Player)
+	_, player := engine.transform_get_or_add_comp(parentH, tween.TweenPlayer)
 	if player == nil do return
 
 	move := tween.TweenMoveToLocal{ position = {10, 20, 30}, duration = 1.0 }
@@ -63,7 +61,7 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	inst_t1_lid := inst_t1.local_id
 	inst_t2_lid := inst_t2.local_id
 
-	_, inst_player := engine.transform_get_comp(inst, app.Player)
+	_, inst_player := engine.transform_get_comp(inst, tween.TweenPlayer)
 	if inst_player == nil do return
 	testing.expect_value(t, len(inst_player.animations), 1)
 	if len(inst_player.animations) < 1 do return

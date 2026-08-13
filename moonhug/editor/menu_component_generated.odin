@@ -29,6 +29,7 @@ register_component_menus :: proc() {
 	menu.add_menu_item("Component/SpriteRenderer", "", proc() { _component_menu_add(.SpriteRenderer) })
 	menu.add_menu_item("Component/SpriteSortingGroup", "", proc() { _component_menu_add(.SpriteSortingGroup) })
 	menu.add_menu_item("Component/Tank", "", proc() { _component_menu_add(.Tank) })
+	menu.add_menu_item("Component/TweenPlayer", "", proc() { _component_menu_add(.TweenPlayer) })
 }
 
 _component_menu_add :: proc(key: engine.TypeKey) {
