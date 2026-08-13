@@ -1,3 +1,16 @@
+## [0.69.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.68.0...v0.69.0) (2026-08-13)
+
+### Features
+
+* add Phase.SerializationInit to help decoupling ([510ef40](https://github.com/MoonHug-Editor/moonhug/commit/510ef404672f36e315396fb2df7a33fb1f7a4dc0))
+* amend extract tween package ([4ab8f32](https://github.com/MoonHug-Editor/moonhug/commit/4ab8f324941e3a4f893806f92ba76e9eab1d81fc))
+* extract audio importer ([ca88c7a](https://github.com/MoonHug-Editor/moonhug/commit/ca88c7a85bb6542b261f6d37230778fc509cbd17))
+* extract core package for easier decoupling ([b939298](https://github.com/MoonHug-Editor/moonhug/commit/b93929894d8050ea664968a736db1f427b0f6132))
+* gen folder for plugin packages ([081ca2b](https://github.com/MoonHug-Editor/moonhug/commit/081ca2b9314a597b0062b3befcbf0edc0b065bc2))
+* make gen special folder ([fac97f1](https://github.com/MoonHug-Editor/moonhug/commit/fac97f1663b5312fe9fa92818ef76848188f0415))
+* move Phases to core package ([2f3cfbe](https://github.com/MoonHug-Editor/moonhug/commit/2f3cfbeb47de5848046c551aba007ea8c14a0727))
+* tween core to allow extending ([9604faa](https://github.com/MoonHug-Editor/moonhug/commit/9604faa4aa410032fd989af50e10f99777eafbd7))
+
 ## [0.68.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.67.0...v0.68.0) (2026-08-11)
 
 ### Features
