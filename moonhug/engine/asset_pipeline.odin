@@ -23,7 +23,9 @@ ARTIFACTS_DIR    :: "library/artifacts" // Artifacts/<first 2 hex>/<32-hex key>.
 ARTIFACT_DB_PATH :: "library/artifact_db.json"
 
 // Bump to invalidate EVERY artifact (artifact container format changes).
-_ARTIFACT_FORMAT_VERSION :: 1
+// v2: settings hash covers the plain settings payload (typeid-driven blob,
+// no union tag in the hashed bytes).
+_ARTIFACT_FORMAT_VERSION :: 2
 
 // Importer dispatch goes through the registry (asset_importer_registry.odin).
 // Version bumps and extension ownership live in each Importer_Desc.
@@ -36,29 +38,42 @@ _importer_for_extension :: proc(ext: string) -> string {
 	return _importer_by_ext[ext] or_else ""
 }
 
-ImportSettings :: union #no_nil{
-    TextureSettings,
-    AudioSettings,
-    MeshSettings,
-    ShaderSettings,
-}
-
+// Settings are typed by the importer's desc (settings_tid), not by a union:
+// the meta's `importer` string names the desc, the desc names the type. On
+// disk a settings object carries "__type_guid" like every guid-tagged record
+// — redundant on read, kept for compatibility.
 ImportMeta :: struct {
     guid:     string,
     importer: string,
-    settings: ImportSettings,
+    settings: any, // instance of the desc's settings_tid (nil = none)
 }
 
 is_importable_extension :: proc(ext: string) -> bool {
     return ext in _importer_by_ext
 }
 
-settings_for_extension :: proc(ext: string) -> ImportSettings {
-    name := _importer_by_ext[ext] or_else ""
-    if desc, ok := _importers[name]; ok && desc.default_settings != nil {
-        return desc.default_settings()
-    }
-    return {}
+// Fresh default-valued settings instance for an importer, allocated on
+// `allocator`. Defaults come from the settings type's registered factory
+// (typ_guid makeProcName) — no factory = zeroed.
+_settings_new :: proc(importer: string, allocator := context.allocator) -> (settings: any, ok: bool) {
+    desc, has := _importers[importer]
+    if !has || desc.settings_tid == nil do return {}, false
+    key, kok := get_type_key_by_typeid(desc.settings_tid)
+    if !kok do return {}, false
+    context.allocator = allocator
+    return create_instance_by_type_key(key), true
+}
+
+// Overlays a parsed settings object onto a typed instance: present keys
+// overwrite, absent keys keep the instance's defaults (this is what lets old
+// metas pick up defaults for fields added later).
+_settings_overlay :: proc(settings: any, v: json.Value) -> bool {
+    bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false
+    ptr_tid, pok := get_pointer_typeid_by_typeid(settings.id)
+    if !pok do return false
+    pp := settings.data
+    return json.unmarshal_any(bytes, any{&pp, ptr_tid}) == nil
 }
 
 asset_pipeline_init :: proc() {
@@ -138,24 +153,30 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
     return true
 }
 
-asset_pipeline_get_settings :: proc(source_path: string) -> (ImportSettings, bool) {
-    meta_path := strings.concatenate({source_path, ".meta"})
-    defer delete(meta_path)
+// The typed settings instance for an asset, allocated on `allocator` (the
+// caller owns it — `free(result.data)` when done). Type-assert the result:
+// `ts := settings.(TextureSettings)`.
+asset_pipeline_get_settings :: proc(source_path: string, allocator := context.allocator) -> (any, bool) {
+    meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
 
-    import_meta := _read_import_meta(meta_path)
+    import_meta := _read_import_meta(meta_path, allocator)
     if import_meta.guid == "" do return {}, false
     delete(import_meta.guid)
 
-    return import_meta.settings, true
+    return import_meta.settings, import_meta.settings.data != nil
 }
 
-asset_pipeline_save_settings :: proc(source_path: string, settings: ImportSettings) -> bool {
-    meta_path := strings.concatenate({source_path, ".meta"})
-    defer delete(meta_path)
+asset_pipeline_save_settings :: proc(source_path: string, settings: any) -> bool {
+    meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
 
     import_meta := _read_import_meta(meta_path)
     if import_meta.guid == "" do return false
     defer delete(import_meta.guid)
+
+    // The value must be the meta's own settings type — the importer string
+    // in the meta decides the type, not the caller.
+    desc, ok := _importers[import_meta.importer]
+    if !ok || desc.settings_tid != settings.id do return false
 
     import_meta.settings = settings
     return _write_import_meta(meta_path, import_meta)
@@ -284,7 +305,8 @@ _artifact_index_prune :: proc() {
 // --- Content keys -------------------------------------------------------------
 
 @(private = "file")
-_settings_hash_hex :: proc(settings: ImportSettings) -> string {
+_settings_hash_hex :: proc(settings: any) -> string {
+    if settings.data == nil do return "0000000000000000"
     data, merr := json.marshal(settings, {spec = .JSON}, context.temp_allocator)
     if merr != nil do return "0000000000000000"
     return fmt.tprintf("%016x", xxh.XXH3_64(data))
@@ -294,7 +316,7 @@ _settings_hash_hex :: proc(settings: ImportSettings) -> string {
 // else that shapes the importer's output. Same inputs -> same key, on any
 // machine.
 @(private = "file")
-_artifact_key :: proc(content: []byte, settings: ImportSettings, importer: string) -> string {
+_artifact_key :: proc(content: []byte, settings: any, importer: string) -> string {
     header := fmt.tprintf("moonhug-artifact|%s|v%d|f%d|s%s",
         importer, _importer_version(importer), _ARTIFACT_FORMAT_VERSION,
         _settings_hash_hex(settings))
@@ -308,11 +330,14 @@ _artifact_key_path :: proc(key: string, allocator := context.allocator) -> strin
     return fmt.aprintf("%s/%s/%s.bin", ARTIFACTS_DIR, key[:2], key, allocator = allocator)
 }
 
-_run_import :: proc(source_path: string, artifact_path: string, settings: ImportSettings) -> bool {
+_run_import :: proc(source_path: string, artifact_path: string, settings: any) -> bool {
     ext := filepath.ext(source_path)
     name := _importer_by_ext[ext] or_else ""
     if desc, ok := _importers[name]; ok && desc.run != nil {
-        return desc.run(source_path, artifact_path, settings)
+        // Hand over the typed instance only when it IS the desc's type (a
+        // stale meta importer string can disagree with the extension).
+        ptr := settings.id == desc.settings_tid ? settings.data : nil
+        return desc.run(source_path, artifact_path, ptr)
     }
     return false
 }
@@ -391,42 +416,68 @@ asset_pipeline_artifact_path :: proc(guid: Asset_GUID) -> (path: string, ok: boo
     return "", false
 }
 
-_read_import_meta :: proc(meta_path: string) -> ImportMeta {
+// guid is cloned (caller deletes), importer is a temp-allocated view, the
+// settings instance lives on `allocator`.
+_read_import_meta :: proc(meta_path: string, allocator := context.temp_allocator) -> ImportMeta {
     data, read_err := os.read_entire_file(meta_path, context.temp_allocator)
     if read_err != nil do return {}
 
-    result: ImportMeta
-    unmarshal_err := json.unmarshal(data, &result, allocator=context.temp_allocator)
-    if unmarshal_err != nil do return {}
+    prev := context.allocator
+    context.allocator = context.temp_allocator
+    root, perr := json.parse(data, .JSON, true)
+    context.allocator = prev
+    if perr != nil do return {}
+    obj, is_obj := root.(json.Object)
+    if !is_obj do return {}
 
-    if result.guid == "" {
-        return {}
-    }
+    guid_v, g_ok := obj["guid"].(json.String)
+    if !g_ok || string(guid_v) == "" do return {}
+    importer := ""
+    if imp_v, i_ok := obj["importer"].(json.String); i_ok do importer = string(imp_v)
 
-    // Metas written before pixels_per_unit existed carry 0 — normalize to
-    // the default so old textures keep their size.
-    if ts, is_tex := result.settings.(TextureSettings); is_tex && ts.pixels_per_unit <= 0 {
-        ts.pixels_per_unit = PIXELS_PER_UNIT
-        result.settings = ts
+    meta := ImportMeta{
+        guid     = strings.clone(string(guid_v)),
+        importer = importer,
     }
-
-    return ImportMeta{
-        guid     = strings.clone(result.guid),
-        importer = result.importer,
-        settings = result.settings,
+    // Defaults first (factory), then overlay the file's keys — a field the
+    // meta predates keeps its default instead of reading as zero.
+    if settings, sok := _settings_new(importer, allocator); sok {
+        if sv, has := obj["settings"]; has do _settings_overlay(settings, sv)
+        meta.settings = settings
     }
+    return meta
 }
 
 _write_import_meta :: proc(meta_path: string, meta: ImportMeta) -> bool {
+    prev := context.allocator
+    context.allocator = context.temp_allocator
+    defer context.allocator = prev
+
+    obj := make(json.Object)
+    obj["guid"] = json.String(meta.guid)
+    obj["importer"] = json.String(meta.importer)
+    if meta.settings.data != nil {
+        bytes, merr := json.marshal(meta.settings, {spec = .JSON})
+        if merr != nil do return false
+        v, perr := json.parse(bytes, .JSON, true)
+        if perr != nil do return false
+        if sobj, is_obj := v.(json.Object); is_obj {
+            // Redundant on read (the importer string names the type) — kept
+            // so the record stays a regular guid-tagged object.
+            sobj["__type_guid"] = json.String(uuid.to_string(get_guid_by_typeid(meta.settings.id)))
+            obj["settings"] = sobj
+        }
+    }
+
     opts := json.Marshal_Options{
         spec       = .JSON,
         pretty     = true,
         use_spaces = true,
         spaces     = 2,
+        sort_maps_by_key = true, // json.Object is a map — deterministic files
     }
-    data, err := json.marshal(meta, opts)
+    data, err := json.marshal(json.Value(obj), opts)
     if err != nil do return false
-    defer delete(data)
 
     return os.write_entire_file(meta_path, data) == nil
 }
@@ -465,11 +516,12 @@ asset_pipeline_ensure_import_meta :: proc(asset_path: string) {
     defer delete(guid_str)
 
     importer_name := _importer_for_extension(ext)
+    settings, _ := _settings_new(importer_name, context.temp_allocator)
 
     new_meta := ImportMeta{
         guid     = guid_str,
         importer = importer_name,
-        settings = settings_for_extension(ext),
+        settings = settings,
     }
 
     _write_import_meta(meta_path, new_meta)

@@ -193,22 +193,32 @@ with no prebuild edit.
 ## Asset importers
 
 A package ships an asset importer by registering an `engine.Importer_Desc`
-on the `ImportersInit` phase (`moonhug/packages/audio` is the reference):
+on the `ImportersInit` phase (`moonhug/packages/audio` is the reference —
+settings type, defaults and logic all in the package):
 
 ```odin
+@(typ_guid={guid="...", makeProcName=make_pAudioSettings})
+AudioSettings :: struct { volume: f32 }
+
 @(phase={key=ImportersInit, order=1})
 audio_importers_init :: proc() {
     engine.importer_register({
         name = "audio", version = 1, extensions = _AUDIO_EXTS,
-        default_settings = _default_settings, run = _import_audio,
+        settings_tid = typeid_of(AudioSettings), run = _import_audio,
     })
+}
+
+_import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> bool {
+    s := cast(^AudioSettings)settings // instance of settings_tid, nil-check it
+    ...
 }
 ```
 
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings types live in the engine's `ImportSettings` union (closed union) —
-  reuse an existing settings type or add one to the union in the engine.
+- Settings defaults come from the type's `makeProcName` factory. The
+  pipeline creates a defaulted instance and overlays the meta's settings
+  object, so fields absent from old metas keep their defaults.
 
 ## Editor windows
 

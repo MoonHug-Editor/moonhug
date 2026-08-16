@@ -13,18 +13,21 @@ package engine
 //   library/.
 // - `extensions` are ".png"-style, lowercase. Desc strings and slices need
 //   process lifetime (package-level variables or literals).
-// - Settings types live in the engine's ImportSettings union (closed union).
-//   A new importer reuses an existing settings type or adds one to the union
-//   in the engine.
+// - `settings_tid` is the importer's settings struct, declared in the
+//   importer's own package with @(typ_guid={..., makeProcName=make_pX}).
+//   The factory provides defaults: the pipeline creates instances through
+//   create_instance_by_type_key and overlays the meta's settings object, so
+//   fields absent from old metas keep their defaults. `run` receives a
+//   pointer to that instance (nil when the meta's importer mismatches).
 
 import "base:runtime"
 
 Importer_Desc :: struct {
-	name:             string,
-	version:          int,
-	extensions:       []string,
-	default_settings: proc() -> ImportSettings,
-	run:              proc(source_path, artifact_path: string, settings: ImportSettings) -> bool,
+	name:         string,
+	version:      int,
+	extensions:   []string,
+	settings_tid: typeid,
+	run:          proc(source_path, artifact_path: string, settings: rawptr) -> bool,
 }
 
 Phase_Extra :: enum {
@@ -63,24 +66,24 @@ register_builtin_importers :: proc() {
 	done = true
 
 	importer_register({
-		name             = "texture",
-		version          = 1,
-		extensions       = _TEXTURE_EXTS,
-		default_settings = proc() -> ImportSettings { return default_texture_settings() },
-		run              = _import_texture,
+		name         = "texture",
+		version      = 1,
+		extensions   = _TEXTURE_EXTS,
+		settings_tid = typeid_of(TextureSettings),
+		run          = _import_texture,
 	})
 	importer_register({
-		name             = "mesh",
-		version          = 1,
-		extensions       = _MESH_EXTS,
-		default_settings = proc() -> ImportSettings { return default_mesh_settings() },
-		run              = _import_mesh,
+		name         = "mesh",
+		version      = 1,
+		extensions   = _MESH_EXTS,
+		settings_tid = typeid_of(MeshSettings),
+		run          = _import_mesh,
 	})
 	importer_register({
-		name             = "shader",
-		version          = 1,
-		extensions       = _SHADER_EXTS,
-		default_settings = proc() -> ImportSettings { return default_shader_settings() },
-		run              = _import_shader,
+		name         = "shader",
+		version      = 1,
+		extensions   = _SHADER_EXTS,
+		settings_tid = typeid_of(ShaderSettings),
+		run          = _import_shader,
 	})
 }

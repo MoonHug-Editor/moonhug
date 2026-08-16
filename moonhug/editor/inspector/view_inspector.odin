@@ -41,7 +41,7 @@ InspectorData :: struct {
     fileData: any,
     doc: ^Asset_Doc, // .Asset mode: the registry document backing fileData
     statusMessage: string,
-    importSettings: engine.ImportSettings,
+    importSettings: any, // typed settings instance, owned (default allocator)
     packageName: string, // .Package mode (owned)
     packageAssetCount: int,
 }
@@ -99,12 +99,14 @@ load_from_file :: proc(filepath: string){
 }
 
 load_import_settings :: proc(filepath: string) {
-    settings, ok := engine.asset_pipeline_get_settings(filepath)
+    settings, ok := engine.asset_pipeline_get_settings(filepath, runtime.default_allocator())
     if ok {
         delete(inspectorData.filePath)
         inspectorData.filePath = strings.clone(filepath)
         inspectorData.fileData = {}
         inspectorData.doc = nil
+        // The working copy survives frames — free the previous one.
+        if inspectorData.importSettings.data != nil do free(inspectorData.importSettings.data, runtime.default_allocator())
         inspectorData.importSettings = settings
         inspectorData.mode = .ImportSettings
         inspectorData.statusMessage = ""
@@ -270,11 +272,9 @@ _draw_import_settings_inspector :: proc() {
 
     im.Separator()
 
-    settings_any := reflect.union_variant_typeid(inspectorData.importSettings)
-    if settings_any != nil {
-        ptr := &inspectorData.importSettings
-        drawer := resolve_property_drawer(settings_any)
-        drawer(rawptr(ptr), settings_any, "Import Settings")
+    if inspectorData.importSettings.data != nil {
+        drawer := resolve_property_drawer(inspectorData.importSettings.id)
+        drawer(inspectorData.importSettings.data, inspectorData.importSettings.id, "Import Settings")
     }
 }
 

@@ -34,9 +34,6 @@ register_component_serializers :: proc() {
     json.register_user_marshaler(engine.UnionTest, union_marshal)
     json.register_user_unmarshaler(engine.UnionTest, union_unmarshal)
 
-    json.register_user_marshaler(engine.ImportSettings, union_marshal)
-    json.register_user_unmarshaler(engine.ImportSettings, union_unmarshal)
-
     // Pointer typeids needed by nested-scene deep-override application
     // (`_nested_patch_live_field` calls `get_pointer_typeid_by_typeid` to
     // build a typed `any` for `json.unmarshal_any`). Without these, deep

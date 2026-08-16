@@ -49,7 +49,7 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     if g == nil do return nil, false
 
     ppu := f32(PIXELS_PER_UNIT)
-    if settings, sok := asset_pipeline_get_settings(path); sok {
+    if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
         if ts, is_tex := settings.(TextureSettings); is_tex && ts.pixels_per_unit > 0 {
             ppu = ts.pixels_per_unit
         }

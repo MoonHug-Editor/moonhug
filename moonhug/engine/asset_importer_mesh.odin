@@ -22,13 +22,19 @@ import "core:os"
 import "core:strings"
 import "log"
 
-@(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631"})
+@(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631", makeProcName=make_pMeshSettings})
 MeshSettings :: struct {
     scale: f32, // uniform import scale
 }
 
 default_mesh_settings :: proc() -> MeshSettings {
     return MeshSettings{scale = 1}
+}
+
+make_pMeshSettings :: proc() -> any {
+    p := new(MeshSettings)
+    p^ = default_mesh_settings()
+    return p^
 }
 
 // Artifact layout (little-endian), see also _mesh_artifact_parse:
@@ -54,9 +60,8 @@ Mesh_Submesh :: struct #packed {
     index_count: u32,
 }
 
-_import_mesh :: proc(source_path: string, artifact_path: string, settings: ImportSettings) -> bool {
-    mesh_settings, is_mesh := settings.(MeshSettings)
-    if !is_mesh do mesh_settings = default_mesh_settings()
+_import_mesh :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
+    mesh_settings := settings != nil ? (cast(^MeshSettings)settings)^ : default_mesh_settings()
     scale := mesh_settings.scale > 0 ? mesh_settings.scale : 1
 
     path_c := strings.clone_to_cstring(source_path, context.temp_allocator)

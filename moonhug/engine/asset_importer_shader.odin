@@ -21,12 +21,13 @@ import "core:os"
 import "core:strings"
 import "log"
 
-@(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad"})
+@(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad", makeProcName=make_pShaderSettings})
 ShaderSettings :: struct {
 }
 
-default_shader_settings :: proc() -> ShaderSettings {
-    return ShaderSettings{}
+make_pShaderSettings :: proc() -> any {
+    p := new(ShaderSettings)
+    return p^
 }
 
 // Fragment UBO slot the property block binds to (slot 0 is the LightUBO).
@@ -72,7 +73,7 @@ Shader_Artifact_Header :: struct #packed {
     texture_count:       u32,
 }
 
-_import_shader :: proc(source_path: string, artifact_path: string, settings: ImportSettings) -> bool {
+_import_shader :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
     tmp_spv := strings.concatenate({artifact_path, ".spv.tmp"}, context.temp_allocator)
     tmp_msl := strings.concatenate({artifact_path, ".msl.tmp"}, context.temp_allocator)
     tmp_json := strings.concatenate({artifact_path, ".json.tmp"}, context.temp_allocator)

@@ -3,6 +3,7 @@ package app
 import "moonhug:packages/app"
 import "moonhug:engine"
 import "core:sync"
+import audio "moonhug:packages/audio"
 import physics2d "moonhug:packages/physics2d"
 import physics3d "moonhug:packages/physics3d"
 import plugin_example "moonhug:packages/plugin_example"
@@ -20,7 +21,7 @@ register_type_guids :: proc() {
 		engine.register_type(engine.A, engine.A__Guid)
 		engine.register_type(engine.Animation, engine.Animation__Guid)
 		engine.register_type(engine.AnimationClip, engine.AnimationClip__Guid, engine.make_pAnimationClip)
-		engine.register_type(engine.AudioSettings, engine.AudioSettings__Guid, engine.make_pAudioSettings)
+		engine.register_type(audio.AudioSettings, engine.AudioSettings__Guid, audio.make_pAudioSettings)
 		engine.register_type(engine.B, engine.B__Guid)
 		engine.register_type(physics3d.BoxCollider, engine.BoxCollider__Guid)
 		engine.register_type(physics2d.BoxCollider2D, engine.BoxCollider2D__Guid)
@@ -37,7 +38,7 @@ register_type_guids :: proc() {
 		engine.register_type(engine.Material, engine.Material__Guid, engine.make_pMaterial)
 		engine.register_type(engine.MeshFilter, engine.MeshFilter__Guid)
 		engine.register_type(engine.MeshRenderer, engine.MeshRenderer__Guid)
-		engine.register_type(engine.MeshSettings, engine.MeshSettings__Guid)
+		engine.register_type(engine.MeshSettings, engine.MeshSettings__Guid, engine.make_pMeshSettings)
 		engine.register_type(tween.Parallel, engine.Parallel__Guid)
 		engine.register_type(app.Player, engine.Player__Guid)
 		engine.register_type(app.PlayerSettings, engine.PlayerSettings__Guid, app.make_pPlayerSettings)
@@ -48,13 +49,13 @@ register_type_guids :: proc() {
 		engine.register_type(app.SceneRefs, engine.SceneRefs__Guid)
 		engine.register_type(engine.Script, engine.Script__Guid)
 		engine.register_type(tween.Sequence, engine.Sequence__Guid)
-		engine.register_type(engine.ShaderSettings, engine.ShaderSettings__Guid)
+		engine.register_type(engine.ShaderSettings, engine.ShaderSettings__Guid, engine.make_pShaderSettings)
 		engine.register_type(physics3d.SphereCollider, engine.SphereCollider__Guid)
 		engine.register_type(plugin_example.Spinner, engine.Spinner__Guid)
 		engine.register_type(engine.SpriteRenderer, engine.SpriteRenderer__Guid)
 		engine.register_type(engine.SpriteSortingGroup, engine.SpriteSortingGroup__Guid)
 		engine.register_type(app.Tank, engine.Tank__Guid)
-		engine.register_type(engine.TextureSettings, engine.TextureSettings__Guid)
+		engine.register_type(engine.TextureSettings, engine.TextureSettings__Guid, engine.make_pTextureSettings)
 		engine.register_type(engine.Transform, engine.Transform__Guid)
 		engine.register_type(tween_core.Tween, engine.Tween__Guid)
 		engine.register_type(tween_nodes.TweenMoveToLocal, engine.TweenMoveToLocal__Guid)
@@ -66,7 +67,7 @@ register_type_guids :: proc() {
 		engine.register_type_key(engine.A, engine.TypeKey.A)
 		engine.register_type_key(engine.Animation, engine.TypeKey.Animation)
 		engine.register_type_key(engine.AnimationClip, engine.TypeKey.AnimationClip)
-		engine.register_type_key(engine.AudioSettings, engine.TypeKey.AudioSettings)
+		engine.register_type_key(audio.AudioSettings, engine.TypeKey.AudioSettings)
 		engine.register_type_key(engine.B, engine.TypeKey.B)
 		engine.register_type_key(physics3d.BoxCollider, engine.TypeKey.BoxCollider)
 		engine.register_type_key(physics2d.BoxCollider2D, engine.TypeKey.BoxCollider2D)
