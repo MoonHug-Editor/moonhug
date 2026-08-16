@@ -47,6 +47,7 @@ TypeKey :: enum u16 {
 	TweenPlayer,
 	TweenRotateToLocal,
 	TweenScaleToLocal,
+	TweenSpinnerSpeed,
 	TweenUnion,
 	string,
 }
