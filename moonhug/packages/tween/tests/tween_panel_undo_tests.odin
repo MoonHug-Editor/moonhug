@@ -1,25 +1,30 @@
 package tween_tests
 
-// The Tween Graph panel's undo mechanism: an edit to a field INSIDE
-// TweenPlayer.animations, made under a component owner, is one undo step
-// that reverts.
-//
-// The panel shipped without pushing an owner, and the inspector's rows open no
-// session with the owner stack empty -- the edit wrote memory and recorded
-// NOTHING. The panel itself needs imgui to draw, so what is pinned here is the
-// mechanism it relies on: owner pushed, field in the array's heap storage,
-// whole-component granularity (the tween is outside the component's own bytes,
-// so the out-of-storage rule applies).
+// The Tween Graph panel's undo mechanism: an edit spliced into an authored
+// blob under a whole-component session is one undo step that reverts the
+// blob. The panel itself needs imgui to draw — what is pinned here is the
+// mechanism it relies on.
 
-import inspector "moonhug:editor/inspector"
+import "core:encoding/json"
 import undo "moonhug:editor/undo"
 import "moonhug:engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"
 
+@(private)
+_duration_of :: proc(a: ^tween.Authored) -> f64 {
+	obj, ok := a.value.(json.Object)
+	if !ok do return -1
+	#partial switch d in obj["duration"] {
+	case json.Float:   return f64(d)
+	case json.Integer: return f64(d)
+	}
+	return -1
+}
+
 @(test)
-test_tween_field_edit_records_undo_under_component_owner :: proc(t: ^testing.T) {
+test_blob_edit_records_undo_under_component_owner :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -36,10 +41,9 @@ test_tween_field_edit_records_undo_under_component_owner :: proc(t: ^testing.T) 
 	_, p_ptr := engine.transform_add_comp(owner, .TweenPlayer)
 	if p_ptr == nil do return
 	p := cast(^tween.TweenPlayer)p_ptr
-	if p.animations == nil do p.animations = make([dynamic]tween.TweenUnion)
-	append(&p.animations, tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
+	if p.animations == nil do p.animations = make([dynamic]tween.Authored)
+	append(&p.animations, tween.authored(tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5}))
 
-	// The component handle -- what the panel pushes.
 	comp_handle: engine.Handle
 	{
 		w := engine.ctx_world()
@@ -50,21 +54,19 @@ test_tween_field_edit_records_undo_under_component_owner :: proc(t: ^testing.T) 
 	}
 	testing.expect(t, comp_handle.type_key == .TweenPlayer, "TweenPlayer component handle found")
 
-	// The panel's exact flow: owner pushed, then a session over a field inside
-	// the tween -- which lives in the animations array's own allocation.
-	mv := &p.animations[0].(tween.TweenMoveToLocal)
-	undo.push_component_owner(comp_handle)
+	// The panel's exact flow: whole-component session around a blob splice.
 	before := s.top
-	inspector.field_edit_begin(&mv.duration, typeid_of(f32), 0, "duration")
-	mv.duration = 2.0
-	inspector.field_edit_end()
-	undo.pop_owner()
-
+	{
+		e := undo.edit_begin(comp_handle, typeid_of(tween.TweenPlayer))
+		obj := p.animations[0].value.(json.Object)
+		if old, has := obj["duration"]; has do json.destroy_value(old)
+		obj["duration"] = json.Float(2.0)
+		undo.edit_end(&e)
+	}
 	testing.expect_value(t, s.top, before + 1)
+	testing.expect_value(t, _duration_of(&p.animations[0]), 2.0)
 
-	// Undo rebuilds the whole component payload, so the array reallocates --
-	// read the tween back through the component, never the old pointer.
+	// Undo restores the whole component payload — the blob reverts.
 	testing.expect(t, undo.apply_undo(s), "undo applies")
-	restored := &p.animations[0].(tween.TweenMoveToLocal)
-	testing.expect_value(t, restored.duration, f32(0.5))
+	testing.expect_value(t, _duration_of(&p.animations[0]), 0.5)
 }

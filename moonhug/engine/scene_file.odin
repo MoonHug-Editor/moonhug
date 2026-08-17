@@ -51,6 +51,11 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, f
 	#partial switch info in base.variant {
 	case runtime.Type_Info_Struct:
 		tid := ti.id
+		if tid in _ref_remap_hooks {
+			// Hooked blob types hold no live handles — nothing to resolve,
+			// and the generic walk must not descend into their json.Value.
+			return
+		}
 		if tid == typeid_of(PPtr) {
 			pptr := cast(^PPtr)ptr
 			// PPtr has no handle field; nothing to resolve here.
@@ -136,6 +141,9 @@ _rewrite_handle_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, old_h
 	#partial switch info in base.variant {
 	case runtime.Type_Info_Struct:
 		tid := ti.id
+		if tid in _ref_remap_hooks {
+			return // hooked blob types hold no live handles
+		}
 		if tid == typeid_of(PPtr) {
 			return
 		}
@@ -195,6 +203,24 @@ _remap_new_id :: proc(s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Lo
 	return scene_new_lid(s)
 }
 
+// Types the typed walk cannot see into (json.Value blobs like tween's
+// Authored) register a remap hook — the walk calls it instead of recursing.
+// Registered at SerializationInit by the owning package.
+Ref_Remap_Hook :: proc(ptr: rawptr, remap: ^map[Local_ID]Local_ID)
+
+@(private) _ref_remap_hooks: map[typeid]Ref_Remap_Hook
+
+@(init)
+_ref_remap_hooks_init :: proc "contextless" () {
+	context = runtime.default_context()
+	_ref_remap_hooks = make(map[typeid]Ref_Remap_Hook, runtime.default_allocator())
+}
+
+register_ref_remap_hook :: proc(tid: typeid, hook: Ref_Remap_Hook) {
+	context.allocator = runtime.default_allocator()
+	_ref_remap_hooks[tid] = hook
+}
+
 _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
 	if ptr == nil || ti == nil do return
 	base := runtime.type_info_base(ti)
@@ -203,6 +229,10 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 	#partial switch info in base.variant {
 	case runtime.Type_Info_Struct:
 		tid := ti.id
+		if hook, hooked := _ref_remap_hooks[tid]; hooked {
+			hook(ptr, remap)
+			return
+		}
 		if tid == typeid_of(PPtr) {
 			pptr := cast(^PPtr)ptr
 			if pptr.local_id != 0 {

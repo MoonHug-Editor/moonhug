@@ -7,6 +7,7 @@ import "moonhug:engine"
 import audio "moonhug:packages/audio"
 import physics2d "moonhug:packages/physics2d"
 import physics3d "moonhug:packages/physics3d"
+import plugin_example "moonhug:packages/plugin_example"
 import serialization "moonhug:engine/serialization"
 import tween "moonhug:packages/tween"
 
@@ -30,5 +31,8 @@ phase_run :: proc(key: Phase) {
 		serialization.init()
 		serialization.register_component_serializers()
 		tween.tween_serialization_init()
+	case .TweenNodesInit:
+		tween.register_builtin_nodes()
+		plugin_example.spinner_tween_nodes_init()
 	}
 }

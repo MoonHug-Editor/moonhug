@@ -57,7 +57,7 @@ SCAN_ROOTS := []string{
 
 // Installed packages (docs/Plugins.md): presence in moonhug/packages/ is the
 // install state. Each package root and its subpackages (editor/, library
-// halves like tween/core) join the attribute scan. RUNNABLE packages (a root
+// halves) join the attribute scan. RUNNABLE packages (a root
 // with `main`, 0..N of them, the app included) each receive their own
 // generated dispatcher set (__update, phase_run, register_type_guids,
 // register_packages); the shared all-packages copy lands in
@@ -110,7 +110,7 @@ _installed_packages :: proc(list: ^[dynamic]string) {
 
 	for name in names {
 		root, _ := filepath.join({PACKAGES_DIR, name})
-		// Recursive: subpackages (editor/, tween/core-style library halves)
+		// Recursive: subpackages (editor/, library halves)
 		// join the scan like any engine subpackage. tests/samples/assets/gen
 		// are skipped inside _discover.
 		_discover(list, root)

@@ -43,6 +43,7 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 		registration.register_packages()
 		app.phase_run(.SerializationInit)
 		app.phase_run(.ImportersInit)
+		app.phase_run(.TweenNodesInit)
 		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 		// typeids for primitive field types (position, color, scale, …) so it
 		// can hand a properly-typed `any` to json.unmarshal_any.

@@ -55,7 +55,7 @@ package_name_of :: proc(pkg_path: string) -> (name: string, sub: string, ok: boo
 	return rest, "", true
 }
 
-// Subpackages declare "<name>_<sub>" (tween/nodes -> tween_nodes), slashes
+// Subpackages declare "<name>_<sub>" (foo/util -> foo_util), slashes
 // underscored — generated imports address them by path, the declaration
 // carries uniqueness.
 _expected_sub_pkg_name :: proc(name, sub: string) -> string {
@@ -84,7 +84,7 @@ generate :: proc(w: ^db.World) -> bool {
 		if !ok do continue
 		// Lint: generated imports address packages by folder name, so the
 		// declared package name must match — <name> for the root,
-		// <name>_<sub> for subpackages (tween_editor, tween_nodes).
+		// <name>_<sub> for subpackages (tween_editor, foo_util).
 		if sub != "" {
 			expect := _expected_sub_pkg_name(name, sub)
 			if decl.pkg.name != expect {
@@ -94,8 +94,8 @@ generate :: proc(w: ^db.World) -> bool {
 			if sub == "editor" {
 				_append_unique(&editor_pkgs, name)
 			}
-			// Library subpackages need no import lines of their own: the root
-			// package imports them (the generated union does, for tween).
+			// Library subpackages need no import lines of their own: their
+			// root package imports them.
 			continue
 		}
 		if decl.pkg.name != name {

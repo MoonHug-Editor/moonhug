@@ -85,6 +85,7 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	s, sok := engine.asset_pipeline_get_settings(png)
 	testing.expect(t, sok)
 	if !sok do return
+	defer free(s.data) // the caller owns the settings instance
 	ts := s.(engine.TextureSettings)
 	original_ppu := ts.pixels_per_unit
 	ts.pixels_per_unit = 50

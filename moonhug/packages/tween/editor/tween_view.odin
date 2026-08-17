@@ -1,28 +1,25 @@
 package tween_editor
 
-// Tween graph view: a component's tween trees as a node canvas, with the
-// selected node's fields in a panel beside it.
+// Tween graph view: a component's authored tween trees as a node canvas,
+// with the selected node's fields in a panel beside it.
 //
-// A tween tree is a BEHAVIOUR TREE, not a timeline -- Parallel and Sequence run
-// their children until each reports Done, and only leaf tweens carry a
-// duration. There is no fixed span to lay clips against, which is why this is a
-// graph rather than a track view.
+// An authored tween is a guid-tagged json.Value (tween.Authored) — children
+// nest inside the parent's "children" array. The view walks that JSON, so it
+// needs no union and no registration knowledge: any node type shows up by
+// its guid. The selected node is edited through a MATERIALIZED typed
+// instance (guid → typeid → unmarshal), and an edit marshals back into the
+// blob under a whole-component undo session.
 //
-// The view is generic over components: it names no component type. Roots are
-// found by REFLECTION -- every TweenUnion in the owning component's value
-// graph, at any depth (nested structs, arrays, union payloads). The window's
-// target is (component handle, root ordinal): the handle survives undo, and
-// the Nth root in walk order names the same tree across any edit that keeps
-// the component's shape, because walk order is field order and array order.
-// Nothing stores a pointer into the tree -- undo reallocates every node, so
-// pointers are resolved fresh from each frame's walk.
-//
-// The canvas (packages/node_graph) knows nothing about tweens. This file owns
-// the whole mapping: walk the union tree into flat nodes + links, hand them
-// over, and turn the clicked User_Handle back into a tween pointer.
-//
+// The window's target is (component handle, root ordinal): the handle
+// survives undo, and the Nth Authored field in the component's reflection
+// walk names the same tree across any edit that keeps the component's shape.
+// Selection is the node's PATH from the root (child ordinals) — undo
+// replaces the whole blob, so nothing stores pointers into it.
+
 import "base:runtime"
+import "core:encoding/json"
 import "core:fmt"
+import "core:mem"
 import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
@@ -37,19 +34,10 @@ import wnd "moonhug:editor/window"
 _state: struct {
 	view: ng.View,
 
-	// The tree being inspected, set by the Graph button on a tween row: the
-	// owning component (by handle) and which of its tween roots, by ordinal
-	// in the reflection walk. The window shows this ONE tree.
 	target:     engine.Handle,
 	root_idx:   int,
 	has_target: bool,
 
-	// The selected node, as its PATH from the tree root (child ordinals). A
-	// pointer is not a stable identity here: undo restores the whole component
-	// payload, which reallocates every node, so a pointer-keyed selection died
-	// on every undo -- deselecting the node the user had just edited and hiding
-	// its panel. The path survives any edit that keeps the tree's shape, and
-	// resolves to nothing (clearing the selection) only when the shape changes.
 	sel_path:   [64]i32,
 	sel_depth:  int,
 	sel_active: bool,
@@ -57,12 +45,14 @@ _state: struct {
 	framed: bool, // frame_all once, on first draw with content
 }
 
-// One node of the walk: where the tween lives and how deep it sits.
+// One node of the walk: the authored value (shares the blob's storage, so
+// mutations through it edit the component) and its resolved type.
 @(private = "file")
 _Walked :: struct {
-	ptr:    rawptr, // ^TweenUnion, as a raw pointer for User_Handle round-tripping
-	tid:    typeid, // the ACTIVE variant's typeid, for the inspector
-	parent: int,    // index into the walk, -1 for a root
+	value:     json.Value,
+	tid:       typeid,
+	parent:    int, // index into the walk, -1 for a root
+	child_ord: int, // ordinal in the parent's children array, -1 for a root
 }
 
 @(editor_window={id="tween_graph", title="Tween Graph", width=900, height=520})
@@ -73,9 +63,9 @@ tween_graph_window_draw :: proc() {
 		return
 	}
 
-	// The target is set by the Graph button on a tween row. Resolved fresh
-	// every frame: the handle survives undo, the pointers behind it do not.
-	roots: []^tween.TweenUnion
+	// Resolved fresh every frame: the handle survives undo, the blob values
+	// behind it do not.
+	roots: []^tween.Authored
 	base: rawptr
 	if _state.has_target {
 		base = engine.world_pool_get(w, _state.target)
@@ -98,10 +88,8 @@ tween_graph_window_draw :: proc() {
 	walked := make([dynamic]_Walked, context.temp_allocator)
 	nodes := make([dynamic]ng.Node, context.temp_allocator)
 	links := make([dynamic]ng.Link, context.temp_allocator)
-	_walk(roots[_state.root_idx], -1, &walked, &nodes, &links, 0)
+	_walk(roots[_state.root_idx].value, -1, -1, &walked, &nodes, &links, 0)
 
-	// Resolve the selection path against THIS frame's walk. The pointers below
-	// (walked[sel_idx].ptr) are only ever this frame's, never stored.
 	parents := make([]int, len(walked), context.temp_allocator)
 	for wk, i in walked do parents[i] = wk.parent
 
@@ -117,8 +105,6 @@ tween_graph_window_draw :: proc() {
 
 	ng.layout_tree(nodes[:], links[:])
 
-	// Canvas on the left, inspector on the right. The panel is fixed-width so
-	// the canvas takes whatever is left when the window resizes.
 	PANEL_W :: 280
 	avail := im.GetContentRegionAvail()
 	canvas_w := max(120, avail.x - PANEL_W - 8)
@@ -131,12 +117,13 @@ tween_graph_window_draw :: proc() {
 	if im.BeginChild("##tween_canvas", im.Vec2{canvas_w, avail.y}, {.Borders}) {
 		result := ng.draw(&_state.view, nodes[:], links[:])
 		if result.clicked_valid {
-			for wk, i in walked {
-				if ng.User_Handle(uintptr(wk.ptr)) != result.clicked do continue
+			// Node identity on the canvas is the walk index — stable within
+			// the frame, and the persisted selection is the path.
+			i := int(uintptr(result.clicked))
+			if i >= 0 && i < len(walked) {
 				_state.sel_depth = ng.tree_path_of(parents, i, _state.sel_path[:])
 				_state.sel_active = true
 				sel_idx = i
-				break
 			}
 		} else if result.clicked_empty {
 			_state.sel_active = false
@@ -149,7 +136,19 @@ tween_graph_window_draw :: proc() {
 
 	if im.BeginChild("##tween_props", im.Vec2{0, avail.y}, {.Borders}) {
 		if sel_idx >= 0 {
-			_draw_selected_panel(_state.target, walked[sel_idx].ptr, walked[sel_idx].tid)
+			// Type button + structural ops head the panel, fields below —
+			// the type names the node, so it reads as the panel's title.
+			parent_v: json.Value
+			if p := walked[sel_idx].parent; p >= 0 do parent_v = walked[p].value
+			_draw_structural_ops(
+				_state.target,
+				walked[sel_idx].value,
+				walked[sel_idx].tid,
+				parent_v,
+				walked[sel_idx].child_ord,
+			)
+			im.Separator()
+			_draw_selected_panel(_state.target, walked[sel_idx].value, walked[sel_idx].tid)
 		} else {
 			im.TextDisabled("Select a node.")
 		}
@@ -157,10 +156,81 @@ tween_graph_window_draw :: proc() {
 	im.EndChild()
 }
 
+// Add-child (composites) and Delete (non-root) for a node, each one undo
+// step on the owning component.
 @(private = "file")
-_draw_toolbar :: proc(base: rawptr, roots: []^tween.TweenUnion) {
-	// The owning object's name says WHOSE tree this is. Every component embeds
-	// CompData at offset 0, so the owner is readable without knowing the type.
+_draw_structural_ops :: proc(
+	owner: engine.Handle,
+	v: json.Value,
+	tid: typeid,
+	parent_v: json.Value,
+	child_ord: int,
+) {
+	comp_tid := engine.get_typeid_by_type_key(owner.type_key)
+	if comp_tid == nil do return
+
+	// The button IS the node's type name — it labels the node and opens the
+	// picker, so no separate "Change Type" affordance is needed.
+	type_name := tid != nil ? _type_label(tid) : "unknown type"
+	if im.Button(strings.clone_to_cstring(type_name, context.temp_allocator)) do im.OpenPopup("##tw_retype")
+	im.SetItemTooltip("Change node type")
+	if new_tid, picked := _node_type_popup("##tw_retype"); picked && new_tid != tid {
+		// The session is claimed by the field editors too — flush it so a
+		// pending field edit lands before the structural step.
+		_edit_finalize()
+		e := undo.edit_begin(owner, comp_tid)
+		tween.authored_retype(v, new_tid)
+		undo.edit_end(&e)
+	}
+
+	if tid != nil && tween.node_type_has_children(tid) {
+		im.SameLine()
+		if im.Button("Add Child") do im.OpenPopup("##tw_add_child")
+		if new_tid, picked := _node_type_popup("##tw_add_child"); picked {
+			if child, cok := tween.authored_make(new_tid); cok {
+				_edit_finalize()
+				e := undo.edit_begin(owner, comp_tid)
+				if !tween.authored_add_child(v, child) do tween.authored_destroy(&child)
+				undo.edit_end(&e)
+			}
+		}
+	}
+
+	if child_ord >= 0 {
+		im.SameLine()
+		if im.Button("Delete Node") {
+			_edit_finalize()
+			e := undo.edit_begin(owner, comp_tid)
+			tween.authored_remove_child(parent_v, child_ord)
+			undo.edit_end(&e)
+			_state.sel_active = false
+		}
+	}
+}
+
+// The node-type picker: every REGISTERED type, so a package's nodes appear
+// here the moment it is installed — nothing lists types by hand.
+@(private = "file")
+_node_type_popup :: proc(id: cstring) -> (tid: typeid, picked: bool) {
+	if !im.BeginPopup(id) do return nil, false
+	defer im.EndPopup()
+	im.TextDisabled("Node type")
+	im.Separator()
+	for t in tween.registered_node_types() {
+		label := _type_label(t)
+		if tween.node_type_has_children(t) {
+			label = fmt.tprintf("%s  (composite)", label)
+		}
+		if im.Selectable(strings.clone_to_cstring(label, context.temp_allocator)) {
+			im.CloseCurrentPopup()
+			return t, true
+		}
+	}
+	return nil, false
+}
+
+@(private = "file")
+_draw_toolbar :: proc(base: rawptr, roots: []^tween.Authored) {
 	owner_name := "?"
 	w := engine.ctx_world()
 	comp := cast(^engine.CompData)base
@@ -169,7 +239,6 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.TweenUnion) {
 	}
 	im.TextUnformatted(strings.clone_to_cstring(owner_name, context.temp_allocator))
 
-	// Which root, when the component carries more than one tree.
 	im.SameLine()
 	if len(roots) > 1 {
 		im.SetNextItemWidth(180)
@@ -194,74 +263,51 @@ _draw_toolbar :: proc(base: rawptr, roots: []^tween.TweenUnion) {
 }
 
 @(private = "file")
-_root_label :: proc(roots: []^tween.TweenUnion, i: int) -> cstring {
+_root_label :: proc(roots: []^tween.Authored, i: int) -> cstring {
 	name := "?"
-	if tid := reflect.union_variant_typeid(roots[i]^); tid != nil {
+	if tid, ok := tween.authored_typeid(roots[i].value); ok {
 		name = _type_label(tid)
 	}
 	return strings.clone_to_cstring(fmt.tprintf("%d: %s", i, name), context.temp_allocator)
 }
 
-// Flattens the tween tree into nodes + links.
-//
-// `children` is reached by REFLECTION rather than by naming Parallel and
-// Sequence: any composite tween declaring a `children: [dynamic]TweenUnion`
-// field shows its subtree here without this file being edited. A new composite
-// type is otherwise invisible in the graph, which is a silent wrong answer
-// rather than a compile error.
+// Flattens the authored JSON tree into nodes + links.
 @(private = "file")
 _walk :: proc(
-	tw: ^tween.TweenUnion,
+	v: json.Value,
 	parent: int,
+	child_ord: int,
 	walked: ^[dynamic]_Walked,
 	nodes: ^[dynamic]ng.Node,
 	links: ^[dynamic]ng.Link,
 	depth: int,
 ) {
-	if tw == nil || depth > 64 do return
-	tid := reflect.union_variant_typeid(tw^)
-	if tid == nil do return
-
-	base := tween.tween_base(tw)
+	if depth > 64 do return
+	tid, tok := tween.authored_typeid(v)
 	idx := len(walked)
 
-	append(walked, _Walked{ptr = rawptr(tw), tid = tid, parent = parent})
+	title := "?"
+	if tok do title = _type_label(tid)
+	skip, subtitle := _base_summary(v)
+
+	append(walked, _Walked{value = v, tid = tid, parent = parent, child_ord = child_ord})
 	append(nodes, ng.Node{
-		user_handle  = ng.User_Handle(uintptr(rawptr(tw))),
-		title        = _type_label(tid),
-		subtitle     = _subtitle(base),
+		user_handle  = ng.User_Handle(uintptr(idx)),
+		title        = title,
+		subtitle     = subtitle,
 		header_color = _color_for(tid),
-		dimmed       = base.skip,
+		dimmed       = skip,
 	})
 	if parent >= 0 do append(links, ng.Link{from = parent, to = idx})
 
-	// Composite children, found structurally.
-	if kids := _children_of(tw, tid); kids != nil {
-		for i in 0 ..< len(kids) {
-			_walk(&kids[i], idx, walked, nodes, links, depth + 1)
+	if kids, kok := tween.authored_children(v); kok {
+		for child, i in kids {
+			_walk(child, idx, i, walked, nodes, links, depth + 1)
 		}
 	}
 }
 
-// The `children` field of a composite tween, or nil for a leaf.
-@(private = "file")
-_children_of :: proc(tw: ^tween.TweenUnion, tid: typeid) -> []tween.TweenUnion {
-	ti := runtime.type_info_base(type_info_of(tid))
-	st, is_struct := ti.variant.(runtime.Type_Info_Struct)
-	if !is_struct do return nil
-
-	for i in 0 ..< int(st.field_count) {
-		if st.names[i] != "children" do continue
-		if st.types[i].id != typeid_of([dynamic]tween.TweenUnion) do return nil
-		// The variant's payload starts at the union's base pointer.
-		arr := (^[dynamic]tween.TweenUnion)(rawptr(uintptr(rawptr(tw)) + st.offsets[i]))
-		return arr[:]
-	}
-	return nil
-}
-
-// "TweenMoveToLocal" -> "Move To Local": the type name is the node's label, so
-// it reads as a title rather than as an identifier.
+// "TweenMoveToLocal" -> "Move To Local".
 @(private = "file")
 _type_label :: proc(tid: typeid) -> string {
 	name := fmt.tprintf("%v", tid)
@@ -278,19 +324,30 @@ _type_label :: proc(tid: typeid) -> string {
 	return strings.to_string(b)
 }
 
-// The base fields worth seeing without selecting the node.
+// The base fields worth seeing without selecting the node, read from the
+// node's "base" object.
 @(private = "file")
-_subtitle :: proc(base: ^tween.Tween) -> string {
+_base_summary :: proc(v: json.Value) -> (skip: bool, subtitle: string) {
+	obj, is_obj := v.(json.Object)
+	if !is_obj do return false, ""
+	base, has_base := obj["base"].(json.Object)
+	if !has_base do return false, ""
+
 	parts := make([dynamic]string, context.temp_allocator)
-	if base.delay > 0 do append(&parts, fmt.tprintf("delay %.2fs", base.delay))
-	if base.is_await do append(&parts, "await")
-	if base.skip do append(&parts, "skipped")
-	if len(parts) == 0 do return ""
-	return strings.join(parts[:], "  ", context.temp_allocator)
+	if d, ok := base["delay"].(json.Float); ok && d > 0 {
+		append(&parts, fmt.tprintf("delay %.2fs", d))
+	}
+	if a, ok := base["is_await"].(json.Boolean); ok && bool(a) {
+		append(&parts, "await")
+	}
+	if s, ok := base["skip"].(json.Boolean); ok && bool(s) {
+		skip = true
+		append(&parts, "skipped")
+	}
+	if len(parts) == 0 do return skip, ""
+	return skip, strings.join(parts[:], "  ", context.temp_allocator)
 }
 
-// Composites and leaves get different header colors, so the tree's structure
-// reads at a glance without following every link.
 @(private = "file")
 _color_for :: proc(tid: typeid) -> [4]f32 {
 	name := fmt.tprintf("%v", tid)
@@ -302,37 +359,189 @@ _color_for :: proc(tid: typeid) -> [4]f32 {
 	return {0.45, 0.36, 0.58, 1} // leaf tween
 }
 
-// The selected node's fields, through the ordinary inspector -- so property
-// drawers and decorators (the euler widget on TweenRotateToLocal) behave
-// exactly as they do in the main inspector.
-//
-// `owner_handle` is the undo owner for everything edited here. The tween lives
-// in heap storage outside the component itself, so the session records the
-// WHOLE component per edit (the out-of-storage granularity rule, docs/Undo.md).
-// Undo rebuilds that storage, which moves every node -- which is why the caller
-// resolves `sel_ptr` fresh from this frame's walk (selection is a tree path,
-// never a stored pointer), and the node stays selected across the undo.
-//
-// Without an owner the inspector's rows open no session at all -- the edit
-// writes memory and records NOTHING, which is how this panel first shipped.
+// The selected node's fields: the blob node MATERIALIZES into a typed temp
+// instance, the ordinary inspector draws it (drawers and decorators behave
+// as in the main inspector), and a change marshals back into the blob under
+// a whole-component undo step. Undo replaces the component's blob — the
+// caller re-walks every frame and selection is a path, so the node stays
+// selected across the undo.
 @(private = "file")
-_draw_selected_panel :: proc(owner_handle: engine.Handle, sel_ptr: rawptr, sel_tid: typeid) {
-	// The union's payload begins at the union base, so the variant is inspected
-	// by pointing the inspector at that address with the variant's typeid.
+_draw_selected_panel :: proc(owner_handle: engine.Handle, v: json.Value, sel_tid: typeid) {
+	if sel_tid == nil {
+		im.TextDisabled("Unknown tween type (package not installed?).")
+		return
+	}
 	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(sel_tid)
 	if !ok {
 		im.TextDisabled("This tween type is not registered for inspection.")
 		return
 	}
 
-	im.TextUnformatted(strings.clone_to_cstring(_type_label(sel_tid), context.temp_allocator))
-	im.Separator()
+	_node_editor(owner_handle, _state.root_idx, _state.sel_path[:_state.sel_depth], v, sel_tid)
+}
 
-	undo.push_component_owner(owner_handle)
-	defer undo.pop_owner()
+// --- The node field editor ----------------------------------------------------
 
-	target := sel_ptr
+// One edit session exists at a time: fields edit a MATERIALIZED typed
+// instance that persists across frames while its widget is active (drags
+// accumulate), and release splices the result into the blob as ONE
+// whole-component undo step. Idle editors materialize per frame — an f32
+// instance re-marshaled against itself is byte-stable, so no phantom edits.
+//
+// The persisted instance is a byte copy: node fields must be PLAIN data (no
+// strings, no arrays beyond the runtime-managed children) or the copy would
+// share frame-temporary heap.
+@(private = "file")
+_edit: struct {
+	key:      u64,
+	owner:    engine.Handle,
+	root_idx: int,
+	path:     [64]i32,
+	depth:    int,
+	tid:      typeid,
+	buf:      rawptr,
+	baseline: []byte, // the instance's marshal at claim time
+}
+
+@(private = "file")
+_edit_key :: proc(owner: engine.Handle, root_idx: int, path: []i32) -> u64 {
+	mix :: proc(h, x: u64) -> u64 { return (h ~ x) * 0x100000001b3 }
+	h: u64 = 0xcbf29ce484222325
+	h = mix(h, u64(owner.index))
+	h = mix(h, u64(owner.generation))
+	h = mix(h, u64(owner.type_key))
+	h = mix(h, u64(root_idx) + 1)
+	for p in path do h = mix(h, u64(p) + 0x9e37)
+	return h
+}
+
+@(private = "file")
+_edit_reset :: proc() {
+	if _edit.buf != nil do free(_edit.buf, runtime.default_allocator())
+	if _edit.baseline != nil do delete(_edit.baseline, runtime.default_allocator())
+	_edit = {}
+}
+
+// Splices the session's instance into its node (re-resolved fresh — blobs
+// move under undo) as one undo step, then clears the session.
+@(private = "file")
+_edit_finalize :: proc() {
+	defer _edit_reset()
+	if _edit.buf == nil do return
+	after, merr := json.marshal(any{_edit.buf, _edit.tid}, {spec = .JSON}, context.temp_allocator)
+	if merr != nil || string(after) == string(_edit.baseline) do return
+
+	w := engine.ctx_world()
+	if w == nil do return
+	base := engine.world_pool_get(w, _edit.owner)
+	if base == nil do return
+	comp_tid := engine.get_typeid_by_type_key(_edit.owner.type_key)
+	if comp_tid == nil do return
+	roots := tween_roots_of(base, comp_tid)
+	if _edit.root_idx >= len(roots) do return
+	v := roots[_edit.root_idx].value
+	for i in 0 ..< _edit.depth {
+		kids, kok := tween.authored_children(v)
+		if !kok || int(_edit.path[i]) >= len(kids) do return
+		v = kids[_edit.path[i]]
+	}
+	if tid, tok := tween.authored_typeid(v); !tok || tid != _edit.tid do return
+
+	e := undo.edit_begin(_edit.owner, comp_tid)
+	_splice_into_node(v, after)
+	undo.edit_end(&e)
+}
+
+@(private = "file")
+_node_editor :: proc(owner: engine.Handle, root_idx: int, path: []i32, v: json.Value, tid: typeid) {
+	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(tid)
+	if !ok {
+		im.TextDisabled("This tween type is not registered for inspection.")
+		return
+	}
+	key := _edit_key(owner, root_idx, path)
+	mine := _edit.buf != nil && _edit.key == key && _edit.tid == tid
+
+	instance: rawptr
+	pre: []byte
+	if mine {
+		instance = _edit.buf
+	} else {
+		ti := type_info_of(tid)
+		inst, aerr := mem.alloc(ti.size, ti.align, context.temp_allocator)
+		if aerr != nil do return
+		bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
+		if merr != nil do return
+		pp := inst
+		if json.unmarshal_any(bytes, any{&pp, ptr_tid}) != nil do return
+		instance = inst
+		pb, perr := json.marshal(any{instance, tid}, {spec = .JSON}, context.temp_allocator)
+		if perr != nil do return
+		pre = pb
+	}
+
+	// Two editors can show the same node (inline row + graph panel) — the id
+	// scope keeps their widgets distinct.
+	im.PushID(fmt.ctprintf("tw_node_%v", key))
+	target := instance
 	inspector.draw_inspector(any{data = &target, id = ptr_tid})
+	im.PopID()
+
+	if mine {
+		if !im.IsAnyItemActive() do _edit_finalize()
+		return
+	}
+
+	post, merr := json.marshal(any{instance, tid}, {spec = .JSON}, context.temp_allocator)
+	if merr != nil do return
+	if string(post) == string(pre) do return
+
+	// A change claims the session (finalizing another editor's first).
+	_edit_finalize()
+	ti := type_info_of(tid)
+	buf, aerr := mem.alloc(ti.size, ti.align, runtime.default_allocator())
+	if aerr != nil do return
+	mem.copy(buf, instance, ti.size)
+	baseline := make([]byte, len(pre), runtime.default_allocator())
+	copy(baseline, pre)
+	_edit.key = key
+	_edit.owner = owner
+	_edit.root_idx = root_idx
+	for p, i in path do _edit.path[i] = p
+	_edit.depth = len(path)
+	_edit.tid = tid
+	_edit.buf = buf
+	_edit.baseline = baseline
+	// Click-shaped widgets (checkbox, combo) are done within the frame.
+	if !im.IsAnyItemActive() do _edit_finalize()
+}
+
+// Writes the typed instance's fields into the node object in place —
+// "__type_guid" and "children" are never in the instance's marshal, so they
+// survive untouched.
+@(private = "file")
+_splice_into_node :: proc(v: json.Value, fields_json: []byte) {
+	obj, is_obj := v.(json.Object)
+	if !is_obj do return
+	prev := context.allocator
+	context.allocator = runtime.default_allocator()
+	defer context.allocator = prev
+	fresh, perr := json.parse(fields_json, .JSON, true)
+	if perr != nil do return
+	fobj, fok := fresh.(json.Object)
+	if !fok {
+		json.destroy_value(fresh)
+		return
+	}
+	for key, val in fobj {
+		if old, has := obj[key]; has {
+			json.destroy_value(old)
+			delete_key(&obj, key)
+		}
+		obj[strings.clone(key)] = val
+	}
+	// The map was consumed key-by-key; free only its own storage.
+	delete(fobj)
 }
 
 @(menu_item={path="Window/Animation/Tween Graph", shortcut=""})
@@ -342,107 +551,170 @@ tween_graph_window_open :: proc() {
 
 // --- Opening the graph from the inspector -----------------------------------
 
-// Registers the TweenUnion drawer at editor startup: every tween row in the
-// inspector gains a Graph button. Runtime registration because the drawer map
-// belongs to the inspector package, which this package imports -- a generated
-// entry there would be an import cycle. order=1 runs after editor_init
-// (order=0), which creates the map this writes into.
+// Registers the Authored drawer at editor startup: every authored-tween row
+// in the inspector shows a summary and a Graph button (the graph panel is
+// the field editor). order=1 runs after editor_init (order=0), which creates
+// the drawer map this writes into.
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 tween_view_install :: proc() {
-	inspector.mapPropertyDrawer[typeid_of(tween.TweenUnion)] = _draw_tween_union_row
+	inspector.mapPropertyDrawer[typeid_of(tween.Authored)] = _draw_authored_row
 }
 
-// account_tree - the editor root owns the canonical list (material_icons.odin)
-// and this package cannot import it, so the literal is duplicated, the way the
-// inspector package duplicates the search icon.
+// account_tree / swap_horiz \u2014 duplicated literals, the editor root owns the
+// canonical list and this package cannot import it.
 @(private = "file")
 _ICON_GRAPH :: "\ue97a"
 
-// The normal union row plus a Graph button. `record_undo=false` because this
-// drawer runs under field_edit_row, whose transaction already records the whole
-// owner on any change -- the variant switch recording its own step too would
-// make one click cost two Ctrl+Z.
 @(private = "file")
-_draw_tween_union_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+_draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	a := cast(^tween.Authored)ptr
 	if im.SmallButton(fmt.ctprintf("%s##tg_%v", _ICON_GRAPH, ptr)) {
-		_open_graph_for(cast(^tween.TweenUnion)ptr)
+		_open_graph_for(a)
 	}
 	im.SetItemTooltip("Open in Tween Graph")
 	im.SameLine()
-	inspector.draw_inspector_union(ptr, tid, label, record_undo = false)
+
+	ntid, nok := tween.authored_typeid(a.value)
+	if !nok {
+		// An empty slot (a fresh array element): pick its type here, since
+		// the graph has no tree to open yet.
+		popup_id := fmt.ctprintf("##tw_new_%v", ptr)
+		if im.Button(fmt.ctprintf("Set Type##tw_set_%v", ptr)) do im.OpenPopup(popup_id)
+		if new_tid, picked := _node_type_popup(popup_id); picked {
+			o, o_ok := undo.current_owner()
+			if made, mok := tween.authored_make(new_tid); mok {
+				if o_ok && o.kind == .Pooled {
+					comp_tid := engine.get_typeid_by_type_key(o.handle.type_key)
+					e := undo.edit_begin(o.handle, comp_tid)
+					tween.authored_destroy(a)
+					a^ = made
+					undo.edit_end(&e)
+				} else {
+					tween.authored_destroy(a)
+					a^ = made
+				}
+			}
+		}
+		im.SameLine()
+		im.TextUnformatted(strings.clone_to_cstring(fmt.tprintf("%s: empty", label), context.temp_allocator))
+		return
+	}
+
+	// Retype the root from the row itself — the button IS the type name, so
+	// it reads as the node's type and opens the picker. Nested nodes retype
+	// in the graph panel, where each is selectable.
+	root_popup := fmt.ctprintf("##tw_rt_%v", ptr)
+	if im.SmallButton(fmt.ctprintf("%s##tw_rtb_%v", _type_label(ntid), ptr)) do im.OpenPopup(root_popup)
+	im.SetItemTooltip("Change node type")
+	if new_tid, picked := _node_type_popup(root_popup); picked && new_tid != ntid {
+		o, o_ok := undo.current_owner()
+		if o_ok && o.kind == .Pooled {
+			comp_tid := engine.get_typeid_by_type_key(o.handle.type_key)
+			e := undo.edit_begin(o.handle, comp_tid)
+			tween.authored_retype(a.value, new_tid)
+			undo.edit_end(&e)
+		} else {
+			tween.authored_retype(a.value, new_tid)
+		}
+	}
+	im.SameLine()
+
+	// The editors need the owning component (undo target + node addressing).
+	// The inspector pushes it as the ambient owner during a component's draw.
+	o, o_ok := undo.current_owner()
+	root_idx := -1
+	if o_ok && o.kind == .Pooled && o.base_ptr != nil {
+		if comp_tid := engine.get_typeid_by_type_key(o.handle.type_key); comp_tid != nil {
+			for root, i in tween_roots_of(o.base_ptr, comp_tid) {
+				if root == a {
+					root_idx = i
+					break
+				}
+			}
+		}
+	}
+	if root_idx < 0 {
+		im.TextUnformatted(label)
+		return
+	}
+
+	if im.TreeNode(fmt.ctprintf("%s##tw_%v", label, ptr)) {
+		// The node editors record their own undo (one splice per released
+		// edit) — the ambient owner steps aside so the inspector's field
+		// sessions don't double-record the component.
+		undo.pop_owner()
+		path: [64]i32
+		_draw_node_inline(o.handle, root_idx, path[:], 0, a.value)
+		undo.push_component_owner(o.handle)
+		im.TreePop()
+	}
 }
 
-// Opens the window on the tree containing the clicked tween, with that node
-// selected. The owning component comes from the inspector's ambient owner --
-// the button lives inside a component's draw, so the owner is pushed. That is
-// what makes this generic: no scan, no component type named anywhere.
+// One node's fields plus its children as sub-trees — the same editor the
+// graph panel uses, addressed by (root ordinal, child path).
 @(private = "file")
-_open_graph_for :: proc(tw: ^tween.TweenUnion) {
+_draw_node_inline :: proc(owner: engine.Handle, root_idx: int, path: []i32, depth: int, v: json.Value) {
+	tid, tok := tween.authored_typeid(v)
+	if !tok {
+		im.TextDisabled("Unknown tween type (package not installed?).")
+		return
+	}
+	if depth >= 60 do return
+	_node_editor(owner, root_idx, path[:depth], v, tid)
+
+	if kids, kok := tween.authored_children(v); kok {
+		for child, i in kids {
+			clabel := "?"
+			if ctid, cok := tween.authored_typeid(child); cok do clabel = _type_label(ctid)
+			if im.TreeNode(fmt.ctprintf("%d: %s##twc_%d_%d", i, clabel, depth, i)) {
+				path[depth] = i32(i)
+				_draw_node_inline(owner, root_idx, path, depth + 1, child)
+				im.TreePop()
+			}
+		}
+	}
+}
+
+// Opens the window on the clicked tree. The owning component comes from the
+// inspector's ambient owner — the button lives inside a component's draw.
+@(private = "file")
+_open_graph_for :: proc(a: ^tween.Authored) {
 	o, o_ok := undo.current_owner()
 	if !o_ok || o.kind != .Pooled || o.base_ptr == nil do return
 	tid := engine.get_typeid_by_type_key(o.handle.type_key)
 	if tid == nil do return
 
-	root_idx, path, depth, ok := tween_graph_locate_in(o.base_ptr, tid, tw)
-	if !ok do return
-
-	_state.target = o.handle
-	_state.root_idx = root_idx
-	_state.has_target = true
-	_state.sel_path = path
-	_state.sel_depth = depth
-	_state.sel_active = true
-	_state.framed = false
-	wnd.open("tween_graph")
-}
-
-// Which of the component's tween trees contains `tw`, and where in it. The
-// pointer may be a root or any nested child -- the graph always shows the
-// whole containing tree, selection marks the node that was asked for. A
-// pointer matching nothing reports ok=false rather than guessing.
-tween_graph_locate_in :: proc(base: rawptr, base_tid: typeid, tw: ^tween.TweenUnion) -> (root_idx: int, path: [64]i32, depth: int, ok: bool) {
-	if base == nil || tw == nil do return
-
-	roots := tween_roots_of(base, base_tid)
+	roots := tween_roots_of(o.base_ptr, tid)
 	for root, i in roots {
-		walked := make([dynamic]_Walked, context.temp_allocator)
-		nodes := make([dynamic]ng.Node, context.temp_allocator)
-		links := make([dynamic]ng.Link, context.temp_allocator)
-		_walk(root, -1, &walked, &nodes, &links, 0)
-
-		for wk, j in walked {
-			if wk.ptr != rawptr(tw) do continue
-			parents := make([]int, len(walked), context.temp_allocator)
-			for wk2, k in walked do parents[k] = wk2.parent
-			depth = ng.tree_path_of(parents, j, path[:])
-			root_idx = i
-			ok = true
-			return
-		}
+		if root != a do continue
+		_state.target = o.handle
+		_state.root_idx = i
+		_state.has_target = true
+		_state.sel_depth = 0
+		_state.sel_active = true
+		_state.framed = false
+		wnd.open("tween_graph")
+		return
 	}
-	return
 }
 
-// Every TweenUnion in the value graph rooted at `base`, in walk order --
-// nested structs, fixed and dynamic arrays, slices and union payloads
-// included. Temp-allocated.
-//
-// The walk does NOT descend into a TweenUnion: nested children live inside its
-// variants and are reachable only through their root, so each tree is one
-// root, and a root's ordinal is stable for any edit that keeps the component's
-// shape (walk order is field order and array order).
-tween_roots_of :: proc(base: rawptr, tid: typeid) -> []^tween.TweenUnion {
-	roots := make([dynamic]^tween.TweenUnion, context.temp_allocator)
+// Every Authored field in the value graph rooted at `base`, in walk order —
+// nested structs, fixed and dynamic arrays and slices included.
+// Temp-allocated. A root's ordinal is stable for any edit that keeps the
+// component's shape (walk order is field order and array order).
+tween_roots_of :: proc(base: rawptr, tid: typeid) -> []^tween.Authored {
+	roots := make([dynamic]^tween.Authored, context.temp_allocator)
 	_collect_tween_roots(base, type_info_of(tid), &roots, 0)
 	return roots[:]
 }
 
 @(private = "file")
-_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^tween.TweenUnion, depth: int) {
+_collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynamic]^tween.Authored, depth: int) {
 	if ptr == nil || ti == nil || depth > 16 do return
 
-	if ti.id == typeid_of(tween.TweenUnion) {
-		append(roots, cast(^tween.TweenUnion)ptr)
+	if ti.id == typeid_of(tween.Authored) {
+		a := cast(^tween.Authored)ptr
+		if a.value != nil do append(roots, a)
 		return
 	}
 
@@ -457,8 +729,6 @@ _collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynam
 			_collect_tween_roots(rawptr(uintptr(ptr) + uintptr(i * v.elem_size)), v.elem, roots, depth + 1)
 		}
 	case runtime.Type_Info_Dynamic_Array:
-		// The data pointer is read HERE, at the moment of use -- an undo
-		// restore reallocates it, so it is never cached anywhere.
 		da := (^runtime.Raw_Dynamic_Array)(ptr)
 		if da.data == nil do return
 		for i in 0 ..< da.len {
@@ -471,12 +741,9 @@ _collect_tween_roots :: proc(ptr: rawptr, ti: ^runtime.Type_Info, roots: ^[dynam
 			_collect_tween_roots(rawptr(uintptr(s.data) + uintptr(i * v.elem_size)), v.elem, roots, depth + 1)
 		}
 	case runtime.Type_Info_Union:
-		// Some OTHER union carrying a tween in a variant: descend into the
-		// active payload only -- the inactive variants' bytes mean nothing.
 		if vtid := reflect.union_variant_typeid(any{ptr, ti.id}); vtid != nil {
 			_collect_tween_roots(ptr, type_info_of(vtid), roots, depth + 1)
 		}
 	}
-	// Pointers and maps are not walked: a tween behind a pointer has no stable
-	// ordinal, and nothing in the codebase stores tweens that way.
+	// Pointers and maps are not walked: nothing stores tweens that way.
 }

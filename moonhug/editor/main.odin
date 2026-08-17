@@ -289,6 +289,7 @@ editor_init :: proc() {
     inspector.init()
     phase_editor_run(.SerializationInit)
     phase_editor_run(.ImportersInit)
+    phase_editor_run(.TweenNodesInit)
     clip.init()
     registration.register_type_guids()
     _init_context_menu_registry()

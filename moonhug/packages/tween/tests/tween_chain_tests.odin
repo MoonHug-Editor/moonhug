@@ -1,7 +1,7 @@
 package tween_tests
 
 // The tween chain end to end through the package's own carrier: a code-built
-// TweenPlayer with animations -> tween_register(tprintf key) ->
+// TweenPlayer with authored animations -> tween_register(tprintf key) ->
 // tween_run("Anim0") -> tick moves the subject. The temp free_all + scribble
 // between register and run guards the regression where tween_lib stored
 // TEMP-allocated keys (tprintf) — a per-frame free_all dangled them and
@@ -22,15 +22,14 @@ test_tween_player_chain :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	tween.tween_init()
 
-	// Code-built TweenPlayer with one position tween — no scene file, no assets.
 	owner := engine.transform_new("TweenPlayer")
 	_, p_ptr := engine.transform_add_comp(owner, .TweenPlayer)
 	testing.expect(t, p_ptr != nil, "TweenPlayer component should be addable")
 	if p_ptr == nil do return
 	p := cast(^tween.TweenPlayer)p_ptr
 	p.enabled = true
-	if p.animations == nil do p.animations = make([dynamic]tween.TweenUnion)
-	append(&p.animations, tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5})
+	if p.animations == nil do p.animations = make([dynamic]tween.Authored)
+	append(&p.animations, tween.authored(tween.TweenMoveToLocal{position = {5, 0, 0}, duration = 0.5}))
 
 	// Register under a TEMP-allocated key, the way game code builds AnimN keys.
 	for &anim, i in p.animations {
@@ -45,7 +44,6 @@ test_tween_player_chain :: proc(t: ^testing.T) {
 		_ = fmt.tprintf("scribble over freed temp memory %d", i)
 	}
 
-	// Running Anim0 (a position tween) still resolves and moves the subject.
 	w := engine.ctx_world()
 	before := engine.pool_get(&w.transforms, engine.Handle(owner)).position
 	ok := tween.tween_run("Anim0", tween.TweenContext{subject = engine.Transform_Handle(p.owner)})

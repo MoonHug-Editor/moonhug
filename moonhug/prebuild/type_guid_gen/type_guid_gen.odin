@@ -102,8 +102,8 @@ provide :: proc(w: ^db.World) -> bool {
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		// The DECLARED package name: generated references are
-		// <pkg_name>.<type>, and subpackages declare tween_nodes-style names
-		// that differ from their folder ("nodes").
+		// <pkg_name>.<type>, and subpackages declare tween_editor-style names
+		// that differ from their folder ("editor").
 		pkg_name := decl.pkg.name
 		attr_set := db.get(attrs, entity)
 
@@ -336,7 +336,7 @@ _write_registration :: proc(entries: []_TypeGuidRow, w: ^db.World, pkg_name, out
 	strings.write_string(&b, "import \"core:sync\"\n")
 	// Types declared by installed packages are reached through the moonhug:
 	// collection (docs/Plugins.md). Import path comes from the pkg_path —
-	// subpackages (tween/nodes) live below their folder name — with the
+	// subpackages (foo/util) live below their folder name — with the
 	// declared package name as the alias.
 	_Pkg_Import :: struct {
 		name: string,

@@ -1,12 +1,29 @@
 package tween_tests
 
-// Tween subject Refs must remap on subtree copy/paste (engine machinery,
-// exercised through the package's own TweenPlayer carrier).
+// Tween subject Refs inside authored blobs must remap on subtree copy/paste.
+// The typed remap walk cannot see into json.Value — the registered ref-remap
+// hook handles it, and this test pins that path.
 
+import "core:encoding/json"
 import "moonhug:engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"
+
+@(private)
+_subject_lid :: proc(node: json.Value) -> i64 {
+	obj := node.(json.Object) or_else nil
+	if obj == nil do return 0
+	base, bok := obj["base"].(json.Object)
+	if !bok do return 0
+	subj, sok := base["subject"].(json.Object)
+	if !sok do return 0
+	pptr, pok := subj["pptr"].(json.Object)
+	if !pok do return 0
+	lid, lok := pptr["local_id"].(json.Integer)
+	if !lok do return 0
+	return i64(lid)
+}
 
 @(test)
 test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
@@ -35,11 +52,10 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	scale := tween.TweenScaleToLocal{ scale = {2, 2, 2}, duration = 0.5 }
 	scale.subject = engine.Ref{ pptr = engine.PPtr{local_id = t2_lid}, handle = engine.Handle(target2H) }
 
-	seq := tween.Sequence{}
-	append(&seq.children, tween.TweenUnion(move))
-	append(&seq.children, tween.TweenUnion(scale))
-	append(&player.animations, tween.TweenUnion(seq))
-	seq.children = {}
+	append(&player.animations, tween.authored(tween.Sequence{}, {
+		tween.authored(move),
+		tween.authored(scale),
+	}))
 
 	data := engine.scene_copy_subtree(parentH)
 	defer delete(data)
@@ -66,20 +82,22 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(inst_player.animations), 1)
 	if len(inst_player.animations) < 1 do return
 
-	inst_seq := &inst_player.animations[0].(tween.Sequence)
-	testing.expect_value(t, len(inst_seq.children), 2)
-	if len(inst_seq.children) < 2 do return
+	kids, kok := tween.authored_children(inst_player.animations[0].value)
+	testing.expect(t, kok, "pasted sequence should keep its children")
+	if !kok do return
+	testing.expect_value(t, len(kids), 2)
+	if len(kids) < 2 do return
 
-	child0 := tween.tween_base(&inst_seq.children[0])
-	child1 := tween.tween_base(&inst_seq.children[1])
+	child0_lid := _subject_lid(kids[0])
+	child1_lid := _subject_lid(kids[1])
 
-	testing.expect(t, child0.subject.pptr.local_id != t1_lid,
+	testing.expect(t, child0_lid != i64(t1_lid),
 		"child0 subject should differ from original")
-	testing.expect(t, child0.subject.pptr.local_id == inst_t1_lid,
+	testing.expect(t, child0_lid == i64(inst_t1_lid),
 		"child0 subject should be remapped to instantiated Target1")
 
-	testing.expect(t, child1.subject.pptr.local_id != t2_lid,
+	testing.expect(t, child1_lid != i64(t2_lid),
 		"child1 subject should differ from original")
-	testing.expect(t, child1.subject.pptr.local_id == inst_t2_lid,
+	testing.expect(t, child1_lid == i64(inst_t2_lid),
 		"child1 subject should be remapped to instantiated Target2")
 }

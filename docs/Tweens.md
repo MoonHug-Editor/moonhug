@@ -1,132 +1,134 @@
 # Tweens
 
+Two representations, one per concern:
+
+- **Authored**: a tween tree is one guid-tagged JSON value (`tween.Authored`).
+  It lives in component fields (`animations: [dynamic]tween.Authored`), so
+  component serialization, undo, prefab overrides and copy/paste treat it as
+  a plain value. Children nest inside the parent's `"children"` array.
+- **Live**: `tween_run` instantiates the blob into per-type pools. Nodes hold
+  children as `Node_Handle` arrays, dispatch is an index into the registered
+  desc table, and a finished run destroys its tree.
+
+Node types register at runtime, so ANY package adds tween nodes — including
+composites — with no codegen and no import restrictions.
+
 ## Usage
 
 ```odin
-// Initialization and loop
-tween_init()           // call during init
-tween_tick_running()   // call in main loop to tick tweens every frame
+// Initialization: stock nodes register on the TweenNodesInit phase (fired by
+// runnable binaries next to SerializationInit); tween_init() covers callers
+// outside that flow (tests).
+tween_init()
+tween_tick_running(dt, {})   // main loop
 
-// Tweens can run directly
-tween_run :: proc(tween: ^TweenUnion, ctx: TweenContext) -> bool
+// Build authored trees in code:
+a := tween.authored(tween.Sequence{}, {
+    tween.authored(tween.TweenMoveToLocal{position = {1, 0, 0}, duration = 0.5}),
+    tween.authored(tween.TweenScaleToLocal{scale = {2, 2, 2}, duration = 0.5}),
+})
 
-// Or via key:string
-tween_register :: proc(key: string, tween: ^TweenUnion) // JSON-marshals the tween and stores the raw bytes under `key`.
-tween_run      :: proc(key: string, ctx: TweenContext) -> bool // JSON-unmarshals a fresh copy into a new `TweenRunning` node, so the same tween can be fired multiple times concurrently without shared state
+// Run directly, or via a named prototype:
+tween_run(&a, TweenContext{subject = handle})
+tween_register("Anim0", &a)         // stores marshaled bytes
+tween_run("Anim0", ctx)             // fresh instance per run
+
+authored_destroy(&a)                // the value is owned
 ```
+
+## Add new tween node types — from any package
+
+```odin
+import tween "moonhug:packages/tween"
+
+@(typ_guid={guid="..."})
+MyShake :: struct {
+    using base: tween.Tween `inline:""`,
+    strength: f32,
+    // composites declare children — the runtime fills and frees the array:
+    // children: [dynamic]tween.Node_Handle `json:"-"`,
+}
+
+@(phase={key=TweenNodesInit, order=1})
+my_tween_nodes_init :: proc() {
+    tween.register_node(MyShake, tick_MyShake)
+}
+
+tick_MyShake :: proc(self: ^MyShake, dt: f32, ctx: tween.TweenContext) -> tween.Status {
+    // composites tick children via tween.tick_node(h, dt, ctx) and read
+    // their status via tween.node_base(h)
+    return .Done
+}
+```
+
+`packages/plugin_example/tween_spinner.odin` is the reference. Rules:
+
+- The struct embeds `tween.Tween` at offset 0 (the `using base` field).
+- Runtime-only fields carry `json:"-"` — authored blobs never store them.
+- `register_node` takes an optional `cleanup: proc(^T)` for node-owned heap
+  beyond the children array.
+- The type guid is the on-disk identity — never change it.
 
 ## Package layout
 
 ```
-packages/tween/core    tween_core: Tween base, Status, TweenContext
-packages/tween/nodes   tween_nodes: leaf variants (move/rotate/scale)
-packages/tween         the generated TweenUnion, composites, Runner + API,
-                       TweenPlayer component, gen/ (tween_gen), tests/
+packages/tween         base vocabulary, runtime (registry, pools, run list),
+                       stock leaves + composites, Authored + serialization,
+                       TweenPlayer component
+packages/tween/editor  the Tween Graph window
+packages/tween/tests   the suite
 ```
 
-`TweenPlayer` is the package's own component holding authored tweens
-(`animations: [dynamic]TweenUnion`) — the tween tests run against it, so the
-suite never depends on another package's components.
+The stock nodes register through the same public path foreign packages use
+(a TweenNodesInit phase subscriber calling register_node).
 
-Variant packages import `moonhug:packages/tween/core` — never
-`moonhug:packages/tween`, because the generated union imports every variant
-package and that would cycle.
+## Semantics
 
-## Add New Tween Types
+- `Status :: enum { Pending, Running, Done }`
+- `Sequence` ticks children in order and stops at the first not-Done child.
+  `Parallel` ticks all children every frame. Both consume `base.delay` first.
+- Leaf nodes capture `from` on the first tick (`elapsed == 0`). `duration == 0`
+  applies the value instantly.
+- `base.skip` prevents a root from starting and a child from ticking.
+- Unknown node types (package not installed) fail the whole run — a
+  half-instantiated sequence would misbehave silently. The authored blob is
+  preserved either way, like unknown components.
+- Subject refs inside blobs remap on copy/paste through the engine's
+  ref-remap hook (registered at SerializationInit) — the typed walk cannot
+  see into JSON.
 
-In any package (leaf variants only — children fields need `TweenUnion`,
-which only `packages/tween` can name):
+## Authoring in code
 
 ```odin
-import tween_core "moonhug:packages/tween/core"
+a, ok := tween.authored_make(typeid_of(tween.Sequence))  // by registered type
+child, _ := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
+tween.authored_add_child(a.value, child)                 // ownership moves in
+tween.authored_remove_child(a.value, 0)                  // frees the child
+tween.authored_retype(a.value, typeid_of(tween.Parallel))
 
-@(typ_guid={guid="..."})
-TweenNew :: struct {
-    using base: tween_core.Tween, // the generator finds variants by this field
-    // custom data
-}
-
-// same file, tick_* naming is picked up by the generator; the concrete type
-// is the parameter — tween_gen emits the TweenUnion adapter
-tick_TweenNew :: proc(self: ^TweenNew, delta_time: f32, ctx: tween_core.TweenContext) -> tween_core.Status {
-    // see packages/tween/nodes for examples
-}
-
-// optional, for variants owning heap
-tween_free_TweenNew :: proc(self: ^TweenNew) { }
+tween.registered_node_types()      // every registered type
+tween.node_type_has_children(tid)  // composite or leaf
 ```
 
-Inside `packages/tween` itself (composites), tick/free procs take
-`^TweenUnion` and wire directly — see composites.odin.
+`authored_make` fails for unregistered types, and `authored_add_child` fails
+on leaves. `authored_retype` resets every field to the new type's zero
+values and keeps the node's children when the new type is a composite (a
+leaf drops them).
 
-## Core concepts
+## The Tween Graph window
 
-```
-TweenUnion      — tagged union of all tween variants (no_nil)
-Tween           — base struct embedded in every variant (delay, await, status)
-TweenContext    — runtime context passed to each tick (subject transform handle)
-TweenRunning    — linked-list node wrapping a live TweenUnion + TweenContext
-tween_lib       — named registry of serialized tweens (key → JSON bytes)
-```
+The inspector row for an `Authored` field expands into the node's fields and
+its children, each editable in place. The Graph button opens the same tree
+on a canvas.
 
-A tween is a **node tree** — composites (`Parallel`, `Sequence`) own children `TweenUnion` collections, leaf nodes animate a single transform property. All variants share the `Tween` base via `using`.
+The selected node materializes into a typed instance by guid — the ordinary
+inspector draws it, and a released edit marshals back into the blob as ONE
+whole-component undo step. Selection is a path of child ordinals, so it
+survives undo.
 
-## Type system
-
-```odin
-Status         :: enum { Pending, Running, Done }   // tween_core, TweenStatus aliases it
-TweenContext   :: struct { subject: Transform_Handle }
-
-// the runner's dense dispatch tables, sized by the TypeKey enum,
-// filled by the generated __tween_ticks_init
-_tween_runner.ticks : [len(TypeKey)]proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> Status
-_tween_runner.frees : [len(TypeKey)]proc(task: ^TweenUnion)
-```
-
-Each variant registers its tick/free procs by `TypeKey` at init time. `_tween_tick_child` dispatches through the table using `reflect.union_variant_typeid`.
-
-## TweenUnion variants
-
-```odin
-TweenUnion :: union #no_nil {
-    Tween,
-    Parallel,
-    Sequence,
-    TweenMoveToLocal,
-    TweenRotateToLocal,
-    TweenScaleToLocal,
-}
-```
-
-### Base
-
-```odin
-Tween :: struct {
-    delay:         f32,
-    is_await:      bool,
-    delay_elapsed: f32 `json:"-"`,   // runtime only
-    status:        TweenStatus `json:"-"`,
-}
-```
-
-`delay` is consumed before the variant's own tick logic runs. `tween_has_delay` increments `delay_elapsed` and returns `true` while the delay is still pending.
-
-### Composites
-
-| Type | Behaviour |
-|---|---|
-| `Parallel` | Ticks all children every frame; done when **all** children are done |
-| `Sequence` | Ticks children in order; done when the **last** child is done |
-
-Both own a `[dynamic]TweenUnion` children slice freed by their `tween_free_*` proc.
-
-### Leaf nodes
-
-| Type | Fields | Interpolation |
-|---|---|---|
-| `TweenMoveToLocal` | `position [3]f32`, `duration f32` | Linear lerp on `transform.position` |
-| `TweenRotateToLocal` | `rotation [4]f32`, `duration f32` | `quaternion_slerp` on `transform.rotation` |
-| `TweenScaleToLocal` | `scale [3]f32`, `duration f32` | Linear lerp on `transform.scale` |
-
-All leaf nodes capture `from` on the first tick (when `elapsed == 0`). If `duration == 0` the value is set instantly and returns `.Done`.
-
+Structure is edited from the panel: `Change Type` on any node, `Add Child`
+on a composite, `Delete Node` on any non-root — each one undo step. The
+inspector row carries a swap button for retyping the root, and an empty
+`Authored` slot (a fresh array element) offers `Set Type`. Every picker
+lists the REGISTERED node types, so an installed package's nodes appear
+without the editor knowing them.

@@ -4,4 +4,3 @@ package main
 // Generators shipped by installed packages (docs/Plugins.md): blank
 // imports pull in their @(init) system registrations.
 
-import _ "moonhug:packages/tween/gen"

@@ -1,21 +1,20 @@
 package plugin_example
 
-// A tween variant declared OUTSIDE the tween package — the working example
-// of the variant triangle (docs/Tweens.md). This package imports ONLY
-// moonhug:packages/tween/core (never tween: the generated TweenUnion there
-// imports this package, so importing tween back is a cycle). tween_gen finds
-// the struct by its `base` field, adds it to the union and emits the
-// adapter for tick_TweenSpinnerSpeed.
+// A tween node declared outside the tween package — the working example of
+// open tween extension (docs/Tweens.md). A variant package imports tween
+// directly and registers its node type on the TweenNodesInit phase. No
+// codegen, no import restrictions — composites with children would work the
+// same way (`children: [dynamic]tween.Node_Handle` with json:"-").
 
 import engine "moonhug:engine"
 import log "moonhug:engine/log"
-import tween_core "moonhug:packages/tween/core"
+import tween "moonhug:packages/tween"
 
 // Eases the subject's Spinner `speed` toward `speed` over `duration` —
 // a tween targeting this package's own component.
 @(typ_guid={guid="e90cff1c-4f9d-4f0e-a727-08dbd42e43f2"})
 TweenSpinnerSpeed :: struct {
-	using base: tween_core.Tween `inline:""`,
+	using base: tween.Tween `inline:""`,
 	speed:    [3]f32,
 	duration: f32,
 
@@ -23,8 +22,13 @@ TweenSpinnerSpeed :: struct {
 	from:    [3]f32 `json:"-"`,
 }
 
-tick_TweenSpinnerSpeed :: proc(self: ^TweenSpinnerSpeed, delta_time: f32, ctx: tween_core.TweenContext) -> tween_core.Status {
-	if tween_core.tween_has_delay(&self.base, delta_time) do return .Running
+@(phase={key=TweenNodesInit, order=1})
+spinner_tween_nodes_init :: proc() {
+	tween.register_node(TweenSpinnerSpeed, tick_TweenSpinnerSpeed)
+}
+
+tick_TweenSpinnerSpeed :: proc(self: ^TweenSpinnerSpeed, delta_time: f32, ctx: tween.TweenContext) -> tween.Status {
+	if tween.tween_has_delay(&self.base, delta_time) do return .Running
 
 	_, spinner := get_comp(ctx.subject, Spinner)
 	if spinner == nil {

@@ -6,6 +6,7 @@ package editor
 import "../engine"
 import app "moonhug:packages/app"
 import audio "moonhug:packages/audio"
+import plugin_example "moonhug:packages/plugin_example"
 import serialization "moonhug:engine/serialization"
 import tween "moonhug:packages/tween"
 import tween_editor "moonhug:packages/tween/editor"
@@ -30,5 +31,8 @@ phase_editor_run :: proc(key: engine.Phase) {
 		serialization.init()
 		serialization.register_component_serializers()
 		tween.tween_serialization_init()
+	case .TweenNodesInit:
+		tween.register_builtin_nodes()
+		plugin_example.spinner_tween_nodes_init()
 	}
 }

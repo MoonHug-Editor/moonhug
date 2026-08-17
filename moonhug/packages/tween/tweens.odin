@@ -1,130 +1,119 @@
 package tween
 
-// MoonHug's tween types and their runner instance, bound to the generic
-// Runner in tween.odin. This file and nodes.odin import engine (tweens target
-// transforms) -- the Runner file does not, and stays reusable on its own.
-// Dispatch keys are TypeKeys cast to int: the generated __tween_ticks_init
-// (tween_gen) writes the runner's dense arrays with `int(engine.TypeKey.X)`,
-// so the table is exactly as large as the enum and dispatch stays an array
-// index.
+// MoonHug's tween surface: the base vocabulary every node embeds, blob
+// serialization, and registration of the stock node types. The runtime
+// (registry, pools, run list) lives in runtime.odin, leaf nodes in
+// leaves.odin, composites in composites.odin.
 //
-// Nothing here is serialized by key or tag: tween payloads (scene files, the
-// runner's prototype library, undo) go through the GUID-keyed union
-// marshaler, so tag values and TypeKey ints renumbering across builds cannot
-// corrupt persisted data.
+// Nothing here is serialized by table index: authored payloads (scene files,
+// the prototype library, undo) are guid-tagged JSON, so registration order
+// and pool layout cannot corrupt persisted data.
 
 import "base:runtime"
 import "core:encoding/json"
-import "core:reflect"
+import "core:io"
 import engine "moonhug:engine"
-import ser "moonhug:engine/serialization"
-import tween_core "moonhug:packages/tween/core"
-import tween_nodes "moonhug:packages/tween/nodes"
 
-// Base vocabulary lives in moonhug:packages/tween/core so variant packages
-// can embed Tween without importing this package (core.odin there explains
-// the cycle). Re-exports keep tween.<name> valid for callers.
-Status          :: tween_core.Status
-TweenStatus     :: tween_core.Status
-Tween           :: tween_core.Tween
-TweenContext    :: tween_core.TweenContext
-tween_has_delay :: tween_core.tween_has_delay
-
-// The stock leaf variants live in moonhug:packages/tween/nodes.
-TweenMoveToLocal   :: tween_nodes.TweenMoveToLocal
-TweenRotateToLocal :: tween_nodes.TweenRotateToLocal
-TweenScaleToLocal  :: tween_nodes.TweenScaleToLocal
-
-tween_base :: proc(task: ^TweenUnion) -> ^Tween {
-	return cast(^Tween)task
+Status :: enum {
+	Pending,
+	Running,
+	Done,
 }
 
-tick_Tween :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus {
-	return .Done
+TweenStatus :: Status
+
+// Hierarchical Task
+@(typ_guid={guid="aecaf150-0418-4fed-81a3-708f68ccaa8b"})
+Tween :: struct {
+	skip:     bool,
+	is_await: bool,
+	delay:    f32,
+	subject:  engine.Ref `ref:"Transform"`,
+
+	// runtime only fields:
+	delay_elapsed: f32 `json:"-"`,
+	status:        Status `json:"-"`,
 }
 
-// The package's own serializer registrations, on the SerializationInit phase --
-// engine's serialization no longer names this package's types anywhere. The
-// order=0 subscriber (register_component_serializers) installs the registries
-// first.
+TweenContext :: struct {
+	subject: engine.Transform_Handle `json:"-"`,
+}
+
+tween_has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
+	if base.delay_elapsed < base.delay {
+		base.delay_elapsed += delta_time
+		return true
+	}
+	return false
+}
+
+// Packages register their node types on this phase (fired by each runnable
+// binary next to .SerializationInit). The stock nodes below register through
+// the SAME public path at order=0, so foreign registrations may assume the
+// runtime is up.
+Phase_Extra :: enum {
+	TweenNodesInit,
+}
+
+@(phase={key=TweenNodesInit, order=0})
+register_builtin_nodes :: proc() {
+	register_node(Parallel, tick_Parallel)
+	register_node(Sequence, tick_Sequence)
+	register_node(TweenMoveToLocal, tick_TweenMoveToLocal)
+	register_node(TweenRotateToLocal, tick_TweenRotateToLocal)
+	register_node(TweenScaleToLocal, tick_TweenScaleToLocal)
+}
+
+// The package's own serializer registrations, on the SerializationInit phase.
 @(phase={key=SerializationInit, order=1})
 tween_serialization_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	json.register_user_marshaler(TweenUnion, ser.union_marshal)
-	json.register_user_unmarshaler(TweenUnion, ser.union_unmarshal)
-	engine.register_pointer_type(TweenUnion)
+	json.register_user_marshaler(Authored, _authored_marshal)
+	json.register_user_unmarshaler(Authored, _authored_unmarshal)
+	engine.register_pointer_type(Authored)
+	// Copy/paste and prefab instantiation remap Local_IDs through typed
+	// walks — Authored blobs are opaque to them, so the engine calls back.
+	engine.register_ref_remap_hook(typeid_of(Authored), _authored_remap)
 }
 
-// --- The runner instance ----------------------------------------------------
-
-// Sized by the TypeKey enum itself, so a new tween type grows the table with
-// no constant to maintain.
-@(private)
-_tween_runner: Runner(TweenUnion, TweenContext, len(engine.TypeKey))
-
-// The runner's own setup, called FIRST by the generated __tween_ticks_init so
-// registration order cannot be gotten wrong by hand.
-//
-// State is process-global (registered prototypes and running tweens outlive
-// any caller frame), so the runner lives on the default allocator -- a
-// caller's temp or tracking allocator tears down while entries live on.
-tween_runner_setup :: proc() {
-	init(&_tween_runner, _tween_key_of, _tween_skip_of, runtime.default_allocator())
+// An Authored field serializes as its value, verbatim — the scene file shape
+// is the nested guid-tagged object tree.
+_authored_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
+	a := cast(^Authored)v.data
+	if a.value == nil {
+		_, e := io.write_string(w, "null")
+		if e != .None do return .Unsupported_Type
+		return nil
+	}
+	bytes, err := json.marshal(a.value, opt^, context.temp_allocator)
+	if err != nil do return err
+	_, e := io.write(w, bytes)
+	if e != .None do return .Unsupported_Type
+	return nil
 }
 
-@(private)
-_tween_key_of :: proc(task: ^TweenUnion) -> (int, bool) {
-	tid := reflect.union_variant_typeid(task^)
-	if tid == nil do return 0, false
-	key, ok := engine.get_type_key_by_typeid(tid)
-	return int(key), ok
-}
+_authored_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
+	// Rules this proc lives by:
+	// - parse_value allocates from the PARSER's allocator. The stored value
+	//   is a deep clone on the default allocator (authored_destroy's
+	//   contract), and the parsed original is destroyed under the parser's.
+	// - The destination is never read: unmarshal targets can be freshly
+	//   allocated uninitialized memory (dynamic-array slots). Overwriting a
+	//   live component leaks the old value — the same semantic every other
+	//   heap field has on that path.
+	val, perr := json.parse_value(p)
+	if perr != nil do return perr
+	prev := context.allocator
+	defer context.allocator = prev
+	// LIFO: the destroy runs before the restore above.
+	defer {
+		context.allocator = p.allocator
+		json.destroy_value(val)
+	}
 
-@(private)
-_tween_skip_of :: proc(task: ^TweenUnion) -> bool {
-	return tween_base(task).skip
-}
-
-// --- The API the engine and app code call ------------------------------------
-
-tween_init :: proc() {
-	__tween_ticks_init()
-}
-
-tween_register :: proc(key: string, tween: ^TweenUnion) {
-	register(&_tween_runner, key, tween)
-}
-
-tween_lib_count :: proc() -> int {
-	return lib_count(&_tween_runner)
-}
-
-tween_run :: proc {
-	tween_run_key,
-	tween_run_tween,
-}
-
-tween_run_key :: proc(key: string, ctx: TweenContext) -> bool {
-	return run_key(&_tween_runner, key, ctx)
-}
-
-tween_run_tween :: proc(tween: ^TweenUnion, ctx: TweenContext) -> bool {
-	return run_value(&_tween_runner, tween, ctx)
-}
-
-tween_free :: proc(task: ^TweenUnion) {
-	free_task(&_tween_runner, task)
-}
-
-// `ctx` is accepted for call-site compatibility: each running tween carries
-// the context it was started with, which is what its ticks receive.
-tween_tick_running :: proc(delta_time: f32, ctx: TweenContext) {
-	tick_running(&_tween_runner, delta_time)
-}
-
-// Composite tweens (Sequence, Parallel) tick their children through this.
-_tween_tick_child :: proc(task: ^TweenUnion, delta_time: f32, ctx: TweenContext) -> TweenStatus {
-	return tick_task(&_tween_runner, task, delta_time, ctx)
+	context.allocator = runtime.default_allocator()
+	(cast(^Authored)v.data).value = json.clone_value(val)
+	return nil
 }

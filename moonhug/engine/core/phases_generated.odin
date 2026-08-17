@@ -30,6 +30,9 @@ package core
 //       0  register_component_serializers  serialization
 //       1  tween_serialization_init  packages:tween
 // Test
+// TweenNodesInit
+//       0  register_builtin_nodes  packages:tween
+//       1  spinner_tween_nodes_init  packages:plugin_example
 
 Phase :: enum {
 	EditorInit,
@@ -44,4 +47,5 @@ Phase :: enum {
 	ImportersInit,
 	SerializationInit,
 	Test,
+	TweenNodesInit,
 }

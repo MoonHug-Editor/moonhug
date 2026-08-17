@@ -1,33 +1,27 @@
 package tween
 
-// The composite tweens. They hold children of type TweenUnion, which only
-// this package can name — leaf variants live in moonhug:packages/tween/nodes
-// (or any other package embedding tween_core.Tween).
+// The composite tweens: children are live-node handles, filled by the
+// runtime at instantiation from the authored blob's "children" array (the
+// json:"-" field is found by reflection at registration). The children
+// array itself is freed by node_destroy — no cleanup procs needed.
 
 @(typ_guid={guid="916005b6-1c68-49e7-88be-0add6164d3a8"})
 Parallel :: struct {
     using base : Tween `inline:""`,
-    children: [dynamic]TweenUnion,
+    children: [dynamic]Node_Handle `json:"-" inspect:"-"`,
 }
 
-tick_Parallel :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContext) -> TweenStatus {
-    self := &task.(Parallel)
+tick_Parallel :: proc(self: ^Parallel, delta_time: f32, ctx: TweenContext) -> TweenStatus {
     if tween_has_delay(&self.base, delta_time) do return .Running
 
     all_done := true
-    for &child in self.children {
-        child_base := tween_base(&child)
-        if (child_base.status == .Done) do continue
-        child_base.status = _tween_tick_child(&child, delta_time, ctx)
-        if child_base.status != .Done do all_done = false
+    for h in self.children {
+        child := node_base(h)
+        if child == nil || child.status == .Done do continue
+        child.status = tick_node(h, delta_time, ctx)
+        if child.status != .Done do all_done = false
     }
     return .Done if all_done else .Running
-}
-
-tween_free_Parallel :: proc(tween : ^TweenUnion) {
-    task := &tween.(Parallel)
-    for &child in task.children do tween_free(&child)
-    delete(task.children)
 }
 
 // ---
@@ -35,24 +29,17 @@ tween_free_Parallel :: proc(tween : ^TweenUnion) {
 @(typ_guid={guid="24d46399-b3a0-44e7-abd1-6da5d759e935"})
 Sequence :: struct {
     using base : Tween `inline:""`,
-    children: [dynamic]TweenUnion,
+    children: [dynamic]Node_Handle `json:"-" inspect:"-"`,
 }
 
-tick_Sequence :: proc(task:^TweenUnion, delta_time:f32, ctx:TweenContext) -> TweenStatus {
-    self := &task.(Sequence)
+tick_Sequence :: proc(self: ^Sequence, delta_time: f32, ctx: TweenContext) -> TweenStatus {
     if tween_has_delay(&self.base, delta_time) do return .Running
 
-    for &child in self.children {
-        child_base := tween_base(&child)
-        if (child_base.status == .Done) do continue
-        child_base.status = _tween_tick_child(&child, delta_time, ctx)
-        if child_base.status != .Done do return child_base.status
+    for h in self.children {
+        child := node_base(h)
+        if child == nil || child.status == .Done do continue
+        child.status = tick_node(h, delta_time, ctx)
+        if child.status != .Done do return child.status
     }
     return .Done
-}
-
-tween_free_Sequence :: proc(tween : ^TweenUnion) {
-    task := &tween.(Sequence)
-    for &child in task.children do tween_free(&child)
-    delete(task.children)
 }

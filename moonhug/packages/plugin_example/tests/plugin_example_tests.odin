@@ -27,13 +27,14 @@ test_foreign_tween_variant_eases_spinner_speed :: proc(t: ^testing.T) {
 	spinner.enabled = true
 	spinner.speed = {0, 0, 0}
 
-	// The variant constructs as a union value like any stock tween.
-	u := tween.TweenUnion(plugin_example.TweenSpinnerSpeed{
+	// The foreign node authors like any stock tween: a guid-tagged blob.
+	u := tween.authored(plugin_example.TweenSpinnerSpeed{
 		speed    = {0, 0, 180},
 		duration = 0.5,
 	})
+	defer tween.authored_destroy(&u)
 	ok := tween.tween_run(&u, tween.TweenContext{subject = owner})
-	testing.expect(t, ok, "foreign variant should start")
+	testing.expect(t, ok, "foreign node should start")
 
 	for _ in 0 ..< 60 {
 		tween.tween_tick_running(1.0 / 60.0, {})

@@ -54,12 +54,12 @@ moonhug/packages/
   Compiled into the editor binary only, never the app. Declares
   `package <name>_editor` — every plugin's folder is named `editor/`, so the
   declaration carries uniqueness (prebuild lints it).
-- **Library subpackages** — any other subfolder with Odin code (`tween/core`,
-  `tween/nodes`) is scanned like the root and declares `package <name>_<sub>`
-  (prebuild lints it). The root reaches it via
+- **Library subpackages** — any other subfolder with Odin code is scanned
+  like the root and declares `package <name>_<sub>` (`foo/util` declares
+  `foo_util`, prebuild lints it). The root reaches it via
   `import "moonhug:packages/<name>/<sub>"`. Generated imports never target
   subpackages directly except where a generator's output needs their types
-  (type registration, the tween union).
+  (type registration).
 - **`gen/`** — a prebuild generator shipped by the package (`package
   <name>_gen`, `packages/tween/gen` is the reference). ANY installed package
   can ship one: prebuild discovers `packages/*/gen` itself, no prebuild
