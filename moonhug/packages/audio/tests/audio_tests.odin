@@ -77,6 +77,7 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	audio.mixer_init_headless()
 
 	src_dir :: "moonhug/tests/fixtures/_audio_tmp"
 	wav :: src_dir + "/probe.wav"

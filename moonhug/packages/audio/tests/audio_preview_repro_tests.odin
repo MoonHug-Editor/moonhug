@@ -21,6 +21,7 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	audio.mixer_init_headless()
 
 	src_dir :: "moonhug/tests/fixtures/_audio_prev_tmp"
 	wav :: src_dir + "/probe.wav"

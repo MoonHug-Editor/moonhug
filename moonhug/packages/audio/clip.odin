@@ -63,6 +63,7 @@ _clip_reimported :: proc(guid: engine.Asset_GUID) {
 		_ = mix.StopTrack(_preview_track, 0)
 		_ = mix.SetTrackAudio(_preview_track, nil)
 	}
+	_one_shots_clear() // transient tracks may hold the dying mix.Audio
 	if w := engine.ctx_world(); w != nil {
 		if pool := audio_sources(w); pool != nil {
 			it := engine.pool_iterator(pool)

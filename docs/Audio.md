@@ -38,7 +38,8 @@ baked gain), `pitch` (playback frequency ratio), `mute`, `loop`,
   volume changes. It runs in play mode (editor) and every frame (app).
 - Disabling a source stops it, re-enabling replays when `play_on_awake` is
   set.
-- `audio_play(src)` / `audio_stop(src)` / `audio_is_playing(src)` for code.
+- `audio_play(src, fade_in_ms := 0)` / `audio_stop(src, fade_out_ms := 0)` /
+  `audio_is_playing(src)` for code.
 - Exiting play mode stops all tracks.
 - The component inspector carries Play/Stop buttons (`@(inspector_button)`)
   for auditioning a source without entering play mode.
@@ -50,6 +51,18 @@ bottom Preview section — one shared preview track, independent of any
 component (`preview_play(guid)` / `preview_stop()`). Registered by the
 `packages/audio/editor` subpackage through `inspector.mapAssetPreview`
 (extension-keyed preview pane — open to any package).
+
+## One-shots
+
+Fire-and-forget sounds with no component to own them:
+
+- `play_clip(guid, volume := 1)` — 2D.
+- `play_clip_at_point(guid, position, volume := 1)` — spatialized at a
+  world position (full blend, 1/500 distances), tracking the listener
+  every frame.
+
+Each one-shot is a transient track, freed by the update sweep when its
+playback ends. Exiting play mode clears them all.
 
 ## Spatial
 
