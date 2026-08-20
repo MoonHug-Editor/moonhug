@@ -13,7 +13,7 @@ import crash_journal "../engine/crash_journal"
 
 @(test)
 test_crash_journal_writes_reason_and_breadcrumb :: proc(t: ^testing.T) {
-	crash_journal.init()
+	crash_journal.init("1.2.3-test\n")
 	path := crash_journal.path()
 	testing.expect(t, path != "", "journal path should be built at init")
 	if path == "" do return
@@ -28,6 +28,9 @@ test_crash_journal_writes_reason_and_breadcrumb :: proc(t: ^testing.T) {
 	text := string(data)
 
 	testing.expect(t, strings.contains(text, "MoonHug crash"), "header")
+	testing.expect(t, strings.contains(text, "version: 1.2.3-test\n"), "version line, newline trimmed")
+	testing.expect(t, strings.contains(text, "time: 20"), "crash time line")
+	testing.expect(t, strings.contains(text, " UTC\n"), "time is UTC-stamped")
 	testing.expect(t, strings.contains(text, "TEST (synthetic entry)"), "reason")
 	testing.expect(t, strings.contains(text, "unit test breadcrumb"), "breadcrumb")
 	testing.expect(t, strings.contains(text, "stack:"), "stack section")
