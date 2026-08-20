@@ -1,3 +1,10 @@
+## [0.71.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.70.0...v0.71.0) (2026-08-20)
+
+### Features
+
+* add audio, AudioSource, playback ([1aa7a14](https://github.com/MoonHug-Editor/moonhug/commit/1aa7a146828f666dbbecbac630582af2d89e13af))
+* add AudioListener, pitch, mute, normalize ([89b5f4c](https://github.com/MoonHug-Editor/moonhug/commit/89b5f4c9adbec4a320049216a3e6cee80ce07526))
+
 ## [0.70.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.69.0...v0.70.0) (2026-08-20)
 
 ### Features
