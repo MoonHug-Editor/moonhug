@@ -11,6 +11,6 @@ editor_window.json
 moonhug/library/
 .zed
 *.dSYM
-*_generated*
+*_generated.odin
 builds/
 moonhug/logs/

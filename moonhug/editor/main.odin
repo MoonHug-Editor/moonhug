@@ -40,8 +40,8 @@ main :: proc() {
         }
     }
 
-    cwd, _ := os.get_working_directory(context.temp_allocator)
-    if os.exists("moonhug") {
+    if os.is_dir("moonhug/engine") {
+        cwd, _ := os.get_working_directory(context.temp_allocator)
         moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
         os.set_working_directory(moonhug_dir)
     }
