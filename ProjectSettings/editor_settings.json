@@ -1,0 +1,60 @@
+{
+  "width": 3264,
+  "height": 1774,
+  "x": 757,
+  "y": 238,
+  "theme": 0,
+  "open_scene_guids": [
+
+  ],
+  "show_inspector": true,
+  "show_project_inspector": true,
+  "show_project": true,
+  "show_console": true,
+  "show_scene": true,
+  "show_game": true,
+  "show_output": true,
+  "show_hierarchy": true,
+  "show_history": false,
+  "show_animation": false,
+  "show_playable_graph": false,
+  "has_view_state": true,
+  "scene_overlays": [
+    {
+      "id": "Tools",
+      "anchor": 1,
+      "x": 0.00000000,
+      "y": 0.00000000
+    },
+    {
+      "id": "Pivot",
+      "anchor": 1,
+      "x": 0.00000000,
+      "y": 0.00000000
+    },
+    {
+      "id": "Grid",
+      "anchor": 1,
+      "x": 0.00000000,
+      "y": 0.00000000
+    }
+  ],
+  "grid": {
+    "show_xz": true,
+    "show_xy": false,
+    "show_yz": false,
+    "cell_size": 10.00000000,
+    "subdivide": 10,
+    "cells_count": 2
+  },
+  "snap": {
+    "enabled": false,
+    "angle": 15.00000000,
+    "mode": 1,
+    "units": 1.00000000
+  },
+  "run_config": "",
+  "sim_host": "",
+  "project_settings_tab": "",
+  "project_zoom": 0.00000000
+}
