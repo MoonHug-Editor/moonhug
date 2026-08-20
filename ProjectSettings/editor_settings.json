@@ -1,8 +1,8 @@
 {
   "width": 3264,
   "height": 1774,
-  "x": 757,
-  "y": 238,
+  "x": 288,
+  "y": 157,
   "theme": 0,
   "open_scene_guids": [
 
@@ -15,7 +15,7 @@
   "show_game": true,
   "show_output": true,
   "show_hierarchy": true,
-  "show_history": false,
+  "show_history": true,
   "show_animation": false,
   "show_playable_graph": false,
   "has_view_state": true,
@@ -55,6 +55,6 @@
   },
   "run_config": "",
   "sim_host": "",
-  "project_settings_tab": "",
+  "project_settings_tab": "MCP",
   "project_zoom": 0.00000000
 }

@@ -1,0 +1,134 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "mkdir-builds-windows",
+            "type": "shell",
+            "command": "cmd",
+            "args": ["/C", "if not exist builds mkdir builds"],
+            "problemMatcher": []
+        },
+        {
+            "label": "mkdir-builds-linux",
+            "type": "shell",
+            "command": "mkdir",
+            "args": ["-p", "builds"],
+            "problemMatcher": []
+        },
+        {
+            "label": "prune-package-gens",
+            "type": "shell",
+            "command": "odin",
+            "args": ["run", "moonhug/prebuild/prune_package_gens"],
+            "problemMatcher": []
+        },
+        {
+            "label": "prebuild",
+            "type": "shell",
+            "command": "odin",
+            "args": ["run", "moonhug/prebuild", "-collection:moonhug=moonhug"],
+            "dependsOn": ["prune-package-gens"],
+            "problemMatcher": []
+        },
+        {
+            "label": "build-editor-debug-windows",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "build", "moonhug/editor",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-debug",
+                "-out:builds/MoonHug.exe"
+            ],
+            "dependsOn": ["mkdir-builds-windows", "prebuild"],
+            "problemMatcher": [],
+            "group": { "kind": "build", "isDefault": true },
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "build-editor-release-windows",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "build", "moonhug/editor",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-out:builds/MoonHug.exe"
+            ],
+            "dependsOn": ["mkdir-builds-windows", "prebuild"],
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "build-tests-debug-windows",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "test", "moonhug/tests",
+                "-all-packages",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-define:ODIN_TEST_THREADS=1",
+                "-debug",
+                "-keep-executable",
+                "-out:builds/MoonHug_tests.exe"
+            ],
+            "dependsOn": ["mkdir-builds-windows", "prebuild"],
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "build-editor-debug-linux",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "build", "moonhug/editor",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-debug",
+                "-out:builds/MoonHug"
+            ],
+            "dependsOn": ["mkdir-builds-linux", "prebuild"],
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "build-editor-release-linux",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "build", "moonhug/editor",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-out:builds/MoonHug"
+            ],
+            "dependsOn": ["mkdir-builds-linux", "prebuild"],
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        },
+        {
+            "label": "build-tests-debug-linux",
+            "type": "shell",
+            "command": "odin",
+            "args": [
+                "test", "moonhug/tests",
+                "-all-packages",
+                "-ignore-unknown-attributes",
+                "-collection:moonhug=moonhug",
+                "-define:ODIN_TEST_THREADS=1",
+                "-debug",
+                "-keep-executable",
+                "-out:builds/MoonHug_tests"
+            ],
+            "dependsOn": ["mkdir-builds-linux", "prebuild"],
+            "problemMatcher": [],
+            "group": "build",
+            "presentation": { "reveal": "always", "panel": "shared" }
+        }
+    ]
+}
