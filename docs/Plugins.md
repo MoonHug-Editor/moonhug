@@ -244,6 +244,60 @@ The engine contributes only generated glue (type registration, pool
 accessors, update dispatch). No engine or editor source knows the asset
 type exists.
 
+## Inspector funnel
+
+Registered wrappers stack around the default drawing of a value. The chain
+runs outermost to innermost and ends at the default drawing:
+
+```
+inspector ──▶ wrapper A ──▶ wrapper B ──▶ default drawing
+              draw(ctx)     draw(ctx)
+```
+
+`draw(ctx)` draws everything beneath the wrapper. One rule: rows drawn
+before the call appear above the default drawing, rows drawn after appear
+below it, and skipping the call replaces it entirely.
+
+Two funnels share the mechanics:
+
+- **Component/value funnel** — keyed by typeid, wraps every struct the
+  inspector draws. The default drawing is the type's custom drawer
+  (`mapPropertyDrawer`) or the reflected field loop.
+  `packages/plugin_example/editor` is the reference (a hint row under
+  Spinner's fields).
+- **Asset funnel** — keyed by IMPORTER NAME (`""` wraps every asset),
+  wraps the import-settings body. The default drawing is Apply + the
+  reflected settings. `packages/audio/editor` is the reference (clip stats
+  under AudioSettings).
+
+```odin
+@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+my_install :: proc() {
+    inspector.add_component_wrapper(typeid_of(MyComp), _my_wrapper)
+    inspector.add_asset_wrapper("audio", _my_asset_rows)
+}
+
+_my_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
+    inspector.draw(ctx)          // the default fields
+    im.TextDisabled("extra row") // appended below them
+}
+```
+
+Rules:
+
+- Call `draw(ctx)` at most once. Never call `draw_inspector` on the same
+  value from inside a wrapper — that re-enters the funnel.
+- Wrappers sort by (`order`, registration sequence), lower = outer. Use the
+  bands so independent packages compose without coordinating numbers:
+  `ORDER_OUTER` (outermost frames), `ORDER_MIDDLE` (ordinary rows),
+  `ORDER_INNER` (closest to the default drawing).
+- A wrapper that calls `draw` inherits undo, multiedit and prefab-override
+  behavior — the default drawing owns that machinery. Skipping `draw`
+  (replace) takes over that responsibility.
+- Declarative tags stay the front door for common cases (`inspect:`,
+  `ext:`, `decor:button()`, `@(inspector_button)`). Wrappers are for
+  structural changes those cannot express.
+
 ## Editor windows
 
 A plugin declares a dockable editor window with an attribute and opens it by

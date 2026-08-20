@@ -19,7 +19,18 @@ audio_editor_install :: proc() {
 	inspector.mapAssetPreview[".mp3"] = _draw_audio_preview
 	inspector.mapAssetPreview[".wav"] = _draw_audio_preview
 	inspector.mapAssetPreview[".ogg"] = _draw_audio_preview
+	inspector.add_asset_wrapper("audio", _audio_settings_extras)
 	engine.asset_pipeline_add_reimport_hook(_wave_evict)
+}
+
+// Asset-funnel wrapper: clip stats under the default import settings
+// (from the waveform cache — no decode on draw).
+_audio_settings_extras :: proc(ctx: ^inspector.Asset_Ctx) {
+	inspector.draw(ctx) // Apply + the reflected AudioSettings
+	if wf, ok := _wave_cache[ctx.guid]; ok && wf.rate > 0 {
+		im.Separator()
+		im.Text("%d Hz, %.2f s", wf.rate, f64(wf.frames) / f64(wf.rate))
+	}
 }
 
 // --- Waveform cache ----------------------------------------------------------

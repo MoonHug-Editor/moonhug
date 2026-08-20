@@ -296,6 +296,28 @@ _material_live_preview :: proc() {
 }
 
 _draw_import_settings_inspector :: proc() {
+    // Registered wrappers funnel the settings body (inspector_funnel.odin),
+    // keyed by the importer owning this asset's extension.
+    ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
+    if chain, has := _asset_chain(engine.importer_for_extension(ext)); has {
+        guid: engine.Asset_GUID
+        if g, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
+            guid = engine.Asset_GUID(g)
+        }
+        actx := Asset_Ctx{
+            path     = inspectorData.filePath,
+            guid     = guid,
+            settings = inspectorData.importSettings,
+            _chain   = chain,
+        }
+        _funnel_draw(&actx)
+        return
+    }
+    draw_default_import_settings()
+}
+
+// The asset funnel's base: Apply + file row + the reflected settings.
+draw_default_import_settings :: proc() {
     if im.Button("Apply", im.Vec2{60, 0}) {
         if engine.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
             // Reimport hooks evict every guid-keyed cache (textures, package
@@ -636,11 +658,26 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         return
     }
 
+    // Registered wrappers funnel this type's draw (inspector_funnel.odin).
+    // No registration: straight to the default drawing.
+    if chain, has := _component_chain(tid); has {
+        cctx := Component_Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = chain}
+        _funnel_draw(&cctx)
+        return
+    }
+    draw_inspector_default(ptr, tid, label, path_prefix)
+}
+
+// The funnel's end of chain: the type's custom drawer, or the reflected
+// field loop. Never re-enters the funnel — that is what makes wrapping
+// non-recursive.
+draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_prefix: string) {
     if drawer, ok := mapPropertyDrawer[tid]; ok {
         drawer(ptr, tid, label)
         return
     }
 
+    xAny := any{ptr, tid}
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
     count := len(names)
