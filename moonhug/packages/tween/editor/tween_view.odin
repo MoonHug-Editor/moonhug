@@ -138,13 +138,17 @@ tween_graph_window_draw :: proc() {
 		if sel_idx >= 0 {
 			// Type button + structural ops head the panel, fields below —
 			// the type names the node, so it reads as the panel's title.
-			parent_v: json.Value
-			if p := walked[sel_idx].parent; p >= 0 do parent_v = walked[p].value
+			// Pointers into the OWNING storage — the mutators write map
+			// headers back through them.
+			root := roots[_state.root_idx]
+			v_ptr := _walked_ptr(walked[:], sel_idx, root)
+			parent_ptr: ^json.Value
+			if p := walked[sel_idx].parent; p >= 0 do parent_ptr = _walked_ptr(walked[:], p, root)
 			_draw_structural_ops(
 				_state.target,
-				walked[sel_idx].value,
+				v_ptr,
 				walked[sel_idx].tid,
-				parent_v,
+				parent_ptr,
 				walked[sel_idx].child_ord,
 			)
 			im.Separator()
@@ -156,18 +160,32 @@ tween_graph_window_draw :: proc() {
 	im.EndChild()
 }
 
+// Resolves a walked node to a pointer INTO the owning storage (the root
+// Authored field or a children-array element) — the mutators need it, a
+// walked copy of the value is read-only.
+@(private = "file")
+_walked_ptr :: proc(walked: []_Walked, idx: int, root: ^tween.Authored) -> ^json.Value {
+	if walked[idx].parent < 0 do return &root.value
+	parent_ptr := _walked_ptr(walked, walked[idx].parent, root)
+	obj, is_obj := parent_ptr^.(json.Object)
+	if !is_obj do return nil
+	arr, has := obj["children"].(json.Array)
+	if !has || walked[idx].child_ord < 0 || walked[idx].child_ord >= len(arr) do return nil
+	return &arr[walked[idx].child_ord]
+}
+
 // Add-child (composites) and Delete (non-root) for a node, each one undo
 // step on the owning component.
 @(private = "file")
 _draw_structural_ops :: proc(
 	owner: engine.Handle,
-	v: json.Value,
+	v: ^json.Value,
 	tid: typeid,
-	parent_v: json.Value,
+	parent_v: ^json.Value,
 	child_ord: int,
 ) {
 	comp_tid := engine.get_typeid_by_type_key(owner.type_key)
-	if comp_tid == nil do return
+	if comp_tid == nil || v == nil do return
 
 	// The button IS the node's type name — it labels the node and opens the
 	// picker, so no separate "Change Type" affordance is needed.
@@ -196,7 +214,7 @@ _draw_structural_ops :: proc(
 		}
 	}
 
-	if child_ord >= 0 {
+	if child_ord >= 0 && parent_v != nil {
 		im.SameLine()
 		if im.Button("Delete Node") {
 			_edit_finalize()
@@ -439,13 +457,17 @@ _edit_finalize :: proc() {
 	if comp_tid == nil do return
 	roots := tween_roots_of(base, comp_tid)
 	if _edit.root_idx >= len(roots) do return
-	v := roots[_edit.root_idx].value
+	// A POINTER into the owning storage — the splice writes the map header
+	// back through it.
+	v := &roots[_edit.root_idx].value
 	for i in 0 ..< _edit.depth {
-		kids, kok := tween.authored_children(v)
+		obj, is_obj := v^.(json.Object)
+		if !is_obj do return
+		kids, kok := obj["children"].(json.Array)
 		if !kok || int(_edit.path[i]) >= len(kids) do return
-		v = kids[_edit.path[i]]
+		v = &kids[_edit.path[i]]
 	}
-	if tid, tok := tween.authored_typeid(v); !tok || tid != _edit.tid do return
+	if tid, tok := tween.authored_typeid(v^); !tok || tid != _edit.tid do return
 
 	e := undo.edit_begin(_edit.owner, comp_tid)
 	_splice_into_node(v, after)
@@ -520,12 +542,14 @@ _node_editor :: proc(owner: engine.Handle, root_idx: int, path: []i32, v: json.V
 // "__type_guid" and "children" are never in the instance's marshal, so they
 // survive untouched.
 @(private = "file")
-_splice_into_node :: proc(v: json.Value, fields_json: []byte) {
-	obj, is_obj := v.(json.Object)
+_splice_into_node :: proc(v: ^json.Value, fields_json: []byte) {
+	obj, is_obj := v^.(json.Object)
 	if !is_obj do return
 	prev := context.allocator
 	context.allocator = runtime.default_allocator()
 	defer context.allocator = prev
+	// Inserts can rehash — the header must land back in the caller's storage.
+	defer v^ = obj
 	fresh, perr := json.parse(fields_json, .JSON, true)
 	if perr != nil do return
 	fobj, fok := fresh.(json.Object)
@@ -533,15 +557,22 @@ _splice_into_node :: proc(v: json.Value, fields_json: []byte) {
 		json.destroy_value(fresh)
 		return
 	}
-	for key, val in fobj {
+	// Collect first (mutating a map while iterating it skips entries), and
+	// free the replaced/donor key strings — delete_key alone leaks them.
+	// Values move out and keys are freed per iteration — at the end only the
+	// map's own storage remains.
+	defer delete(fobj)
+	fresh_keys := make([dynamic]string, context.temp_allocator)
+	for key in fobj do append(&fresh_keys, key)
+	for key in fresh_keys {
+		defer delete(key)
 		if old, has := obj[key]; has {
 			json.destroy_value(old)
-			delete_key(&obj, key)
+			old_key, _ := delete_key(&obj, key)
+			delete(old_key)
 		}
-		obj[strings.clone(key)] = val
+		obj[strings.clone(key)] = fobj[key]
 	}
-	// The map was consumed key-by-key; free only its own storage.
-	delete(fobj)
 }
 
 @(menu_item={path="Window/Animation/Tween Graph", shortcut=""})
@@ -611,10 +642,10 @@ _draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		if o_ok && o.kind == .Pooled {
 			comp_tid := engine.get_typeid_by_type_key(o.handle.type_key)
 			e := undo.edit_begin(o.handle, comp_tid)
-			tween.authored_retype(a.value, new_tid)
+			tween.authored_retype(&a.value, new_tid)
 			undo.edit_end(&e)
 		} else {
-			tween.authored_retype(a.value, new_tid)
+			tween.authored_retype(&a.value, new_tid)
 		}
 	}
 	im.SameLine()

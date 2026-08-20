@@ -36,11 +36,11 @@ test_authored_make_and_child_ops :: proc(t: ^testing.T) {
 
 	move, mok := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
 	testing.expect(t, mok)
-	testing.expect(t, tween.authored_add_child(seq.value, move), "add child to a composite")
+	testing.expect(t, tween.authored_add_child(&seq.value, move), "add child to a composite")
 
 	scale, cok := tween.authored_make(typeid_of(tween.TweenScaleToLocal))
 	testing.expect(t, cok)
-	testing.expect(t, tween.authored_add_child(seq.value, scale))
+	testing.expect(t, tween.authored_add_child(&seq.value, scale))
 
 	kids, kok := tween.authored_children(seq.value)
 	testing.expect(t, kok && len(kids) == 2, "both children attached")
@@ -52,14 +52,14 @@ test_authored_make_and_child_ops :: proc(t: ^testing.T) {
 	orphan, ook := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
 	testing.expect(t, ook)
 	defer tween.authored_destroy(&orphan)
-	testing.expect(t, !tween.authored_add_child(leaf.value, orphan), "leaves take no children")
+	testing.expect(t, !tween.authored_add_child(&leaf.value, orphan), "leaves take no children")
 
 	// Unregistered types are not offerable.
 	_, bad := tween.authored_make(typeid_of(engine.Transform))
 	testing.expect(t, !bad, "unregistered types cannot be authored")
 
 	// Remove by ordinal, then confirm the survivor still runs.
-	testing.expect(t, tween.authored_remove_child(seq.value, 0), "remove by ordinal")
+	testing.expect(t, tween.authored_remove_child(&seq.value, 0), "remove by ordinal")
 	kids2, _ := tween.authored_children(seq.value)
 	testing.expect_value(t, len(kids2), 1)
 
@@ -82,16 +82,16 @@ test_authored_retype :: proc(t: ^testing.T) {
 	seq, _ := tween.authored_make(typeid_of(tween.Sequence))
 	defer tween.authored_destroy(&seq)
 	child, _ := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
-	testing.expect(t, tween.authored_add_child(seq.value, child))
+	testing.expect(t, tween.authored_add_child(&seq.value, child))
 
-	testing.expect(t, tween.authored_retype(seq.value, typeid_of(tween.Parallel)))
+	testing.expect(t, tween.authored_retype(&seq.value, typeid_of(tween.Parallel)))
 	tid, tok := tween.authored_typeid(seq.value)
 	testing.expect(t, tok && tid == typeid_of(tween.Parallel), "type tag switched")
 	kids, kok := tween.authored_children(seq.value)
 	testing.expect(t, kok && len(kids) == 1, "composite -> composite keeps children")
 
 	// Composite -> leaf drops them (a leaf has nowhere to put children).
-	testing.expect(t, tween.authored_retype(seq.value, typeid_of(tween.TweenScaleToLocal)))
+	testing.expect(t, tween.authored_retype(&seq.value, typeid_of(tween.TweenScaleToLocal)))
 	tid2, _ := tween.authored_typeid(seq.value)
 	testing.expect(t, tid2 == typeid_of(tween.TweenScaleToLocal))
 	_, still_has := tween.authored_children(seq.value)
@@ -104,7 +104,7 @@ test_authored_retype :: proc(t: ^testing.T) {
 	for _ in 0 ..< 10 do tween.tween_tick_running(1.0 / 60.0, {})
 
 	// Unregistered targets are refused, leaving the node intact.
-	testing.expect(t, !tween.authored_retype(seq.value, typeid_of(engine.Transform)))
+	testing.expect(t, !tween.authored_retype(&seq.value, typeid_of(engine.Transform)))
 	tid3, _ := tween.authored_typeid(seq.value)
 	testing.expect(t, tid3 == typeid_of(tween.TweenScaleToLocal), "failed retype changes nothing")
 }
