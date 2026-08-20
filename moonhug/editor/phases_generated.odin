@@ -19,6 +19,8 @@ phase_editor_run :: proc(key: engine.Phase) {
 		tween_editor.tween_view_install()
 	case .EditorShutdown:
 		editor_shutdown()
+	case .ExitingPlayMode:
+		audio.audio_exiting_play_mode()
 	case .Init:
 		if sim_host_is_app do app.app_init()
 		if sim_host_is_app do app.game_bootstrap()

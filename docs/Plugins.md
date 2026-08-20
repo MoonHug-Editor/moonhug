@@ -203,7 +203,7 @@ AudioSettings :: struct { volume: f32 }
 @(phase={key=ImportersInit, order=1})
 audio_importers_init :: proc() {
     engine.importer_register({
-        name = "audio", version = 1, extensions = _AUDIO_EXTS,
+        name = "audio", version = 2, extensions = _AUDIO_EXTS,
         settings_tid = typeid_of(AudioSettings), run = _import_audio,
     })
 }
@@ -219,6 +219,25 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 - Settings defaults come from the type's `makeProcName` factory. The
   pipeline creates a defaulted instance and overlays the meta's settings
   object, so fields absent from old metas keep their defaults.
+
+## Asset types
+
+A package can own an asset type end to end — the audio package is the
+reference (docs/Audio.md):
+
+- The importer above produces the artifact (audio bakes its settings into
+  float32 WAV PCM).
+- A guid-keyed runtime cache in the package loads the artifact
+  (`clip_load`), mirroring the engine's texture cache.
+- A component references the asset through a plain `engine.Asset_GUID`
+  field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector
+  picker and drag-drop, filtered to those extensions — no editor code.
+- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`),
+  cleaned up in the component's `cleanup_`/`on_destroy_` hooks.
+
+The engine contributes only generated glue (type registration, pool
+accessors, update dispatch). No engine or editor source knows the asset
+type exists.
 
 ## Editor windows
 

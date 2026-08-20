@@ -16,6 +16,8 @@ Phase :: engine.Phase
 
 phase_run :: proc(key: Phase) {
 	#partial switch key {
+	case .ExitingPlayMode:
+		audio.audio_exiting_play_mode()
 	case .Init:
 		app_init()
 		game_bootstrap()

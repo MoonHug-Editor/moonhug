@@ -13,6 +13,7 @@ package core
 // ExitingEditMode
 // EnteredPlayMode
 // ExitingPlayMode
+//       0  audio_exiting_play_mode  packages:audio
 // EnteredEditMode
 // Init
 //       0  app_init  packages:app

@@ -4,7 +4,7 @@ package registration
 // Installed packages (moonhug/packages/*) — see docs/Plugins.md.
 
 import app "moonhug:packages/app"
-import _ "moonhug:packages/audio"
+import audio "moonhug:packages/audio"
 import _ "moonhug:packages/essentials"
 import _ "moonhug:packages/node_graph"
 import physics2d "moonhug:packages/physics2d"
@@ -17,6 +17,7 @@ import tween "moonhug:packages/tween"
 
 register_packages :: proc() {
 	app.register_app_components()
+	audio.register_audio_components()
 	physics2d.register_physics2d_components()
 	physics3d.register_physics3d_components()
 	plugin_example.register_plugin_example_components()

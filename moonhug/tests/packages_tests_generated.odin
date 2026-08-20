@@ -5,6 +5,7 @@ package tests
 // -all-packages` (run_tests.sh); see docs/Plugins.md.
 
 import _ "moonhug:packages/app/tests"
+import _ "moonhug:packages/audio/tests"
 import _ "moonhug:packages/node_graph/tests"
 import _ "moonhug:packages/physics2d/tests"
 import _ "moonhug:packages/physics3d/tests"

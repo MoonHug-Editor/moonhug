@@ -7,6 +7,7 @@ TypeKey :: enum u16 {
 	Animation,
 	AnimationClip,
 	AudioSettings,
+	AudioSource,
 	B,
 	BoxCollider,
 	BoxCollider2D,
