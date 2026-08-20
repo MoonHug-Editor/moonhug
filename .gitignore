@@ -13,4 +13,5 @@ moonhug/library/
 *.dSYM
 *_generated.odin
 builds/
+/logs/
 moonhug/logs/
