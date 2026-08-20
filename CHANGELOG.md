@@ -1,3 +1,9 @@
+## [0.73.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.73.0...v0.73.1) (2026-08-20)
+
+### Bug Fixes
+
+* ignore /logs/ ([48e0f3b](https://github.com/MoonHug-Editor/moonhug/commit/48e0f3b9a2c8f29c483d74ae0f5c216ee7c7a646))
+
 ## [0.73.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.72.0...v0.73.0) (2026-08-20)
 
 ### Features
