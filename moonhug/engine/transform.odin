@@ -2,6 +2,7 @@ package engine
 
 import "core:math/linalg"
 import "core:strings"
+import "log"
 
 
 @(poolable)
@@ -33,7 +34,17 @@ make_transform_ref :: proc(tH: Transform_Handle) -> Ref {
 
 transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform_Handle {
     w := ctx_world()
+    if w == nil {
+        // Would fault on &w.transforms below; name the cause instead.
+        log.errorf("[transform_new] no world in the user context — %q not created", name)
+        return {}
+    }
     s := sm_scene_get_active()
+    if s == nil {
+        // Not fatal: the transform is created, but it belongs to no scene, so
+        // it never appears in the hierarchy and is never saved.
+        log.warningf("[transform_new] no active scene — %q will be created ORPHANED (not in any scene, invisible in the hierarchy)", name)
+    }
 
     tHandle, t := pool_create(&w.transforms)
     tHandle.type_key = .Transform
@@ -65,6 +76,14 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     }
 
     transform_set_parent(tH, actual_parentH)
+
+    if !pool_valid(&w.transforms, Handle(actual_parentH)) {
+        // No valid parent AND no scene root to fall back on: the node is live
+        // in the pool but unreachable from any hierarchy walk.
+        log.warningf("[transform_new] %q created as %v with NO valid parent (requested parent %v) — it will not show in the hierarchy", name, tH, parentH)
+    } else {
+        log.infof("[transform_new] created %q as %v under parent %v (lid=%d)", name, tH, actual_parentH, t.local_id)
+    }
 
     return tH
 }
