@@ -1,0 +1,200 @@
+package packages_gen
+
+// packages_gen: wires installed packages (moonhug/packages/*) into both
+// binaries — the ONLY centrally generated plugin glue (docs/Plugins.md).
+//
+//   generate - derive the installed package set from the scanned decls
+//              (pkg_paths under moonhug/packages/), then emit:
+//                moonhug/app/packages_generated.odin    — one import per
+//                  runtime package (reaches app AND editor, since the editor
+//                  imports app) + register_packages(), which calls each
+//                  package's generated register_<name>_components().
+//                moonhug/editor/packages_generated.odin — one blank import
+//                  per editor/ subpackage, editor binary only.
+//
+// Presence in packages/ = compiled + registered, independent of whether user
+// code imports the package (a component placed in a scene must load in the
+// app build even when nothing scripts against it).
+
+import "core:fmt"
+import "core:os"
+import "core:slice"
+import "core:strings"
+import db "../gen_db"
+import "../components_gen"
+import "../gen_facts"
+
+PACKAGES_PREFIX :: "moonhug/packages/"
+
+@(init)
+_register :: proc "contextless" () {
+	db.generator("packages/generate", generate)
+}
+
+_dir_has_odin :: proc(dir: string) -> bool {
+	handle, err := os.open(dir)
+	if err != nil do return false
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return false
+	defer os.file_info_slice_delete(entries, context.temp_allocator)
+	for entry in entries {
+		if entry.type != .Directory && strings.has_suffix(entry.name, ".odin") do return true
+	}
+	return false
+}
+
+// "moonhug/packages/foo" -> ("foo", ""). "moonhug/packages/foo/editor" ->
+// ("foo", "editor"). Any other sub ("foo/nodes") is a library subpackage.
+package_name_of :: proc(pkg_path: string) -> (name: string, sub: string, ok: bool) {
+	if !strings.has_prefix(pkg_path, PACKAGES_PREFIX) do return "", "", false
+	rest := pkg_path[len(PACKAGES_PREFIX):]
+	if i := strings.index(rest, "/"); i >= 0 {
+		return rest[:i], rest[i + 1:], true
+	}
+	return rest, "", true
+}
+
+// Subpackages declare "<name>_<sub>" (foo/util -> foo_util), slashes
+// underscored — generated imports address them by path, the declaration
+// carries uniqueness.
+_expected_sub_pkg_name :: proc(name, sub: string) -> string {
+	flat, _ := strings.replace_all(sub, "/", "_", context.temp_allocator)
+	return fmt.tprintf("%s_%s", name, flat)
+}
+
+generate :: proc(w: ^db.World) -> bool {
+	decls := db.get_comps_DeclInfo()
+	comps := db.get_comps(w, components_gen.Component_GenComp)
+
+	runtime_pkgs: [dynamic]string // package names, deduped
+	editor_pkgs: [dynamic]string
+	with_components: [dynamic]string
+	defer { delete(runtime_pkgs); delete(editor_pkgs); delete(with_components) }
+
+	_append_unique :: proc(list: ^[dynamic]string, name: string) {
+		for n in list^ do if n == name do return
+		append(list, name)
+	}
+
+	for i in 0 ..< db.comps_len(decls) {
+		entity := db.get_entity(decls, i)
+		decl := db.get(decls, entity)
+		name, sub, ok := package_name_of(decl.pkg_path)
+		if !ok do continue
+		// Lint: generated imports address packages by folder name, so the
+		// declared package name must match — <name> for the root,
+		// <name>_<sub> for subpackages (tween_editor, foo_util).
+		if sub != "" {
+			expect := _expected_sub_pkg_name(name, sub)
+			if decl.pkg.name != expect {
+				fmt.eprintf("packages_gen: %s declares 'package %s' — must be 'package %s'\n", decl.pkg_path, decl.pkg.name, expect)
+				return false
+			}
+			if sub == "editor" {
+				_append_unique(&editor_pkgs, name)
+			}
+			// Library subpackages need no import lines of their own: their
+			// root package imports them.
+			continue
+		}
+		if decl.pkg.name != name {
+			fmt.eprintf("packages_gen: %s declares 'package %s' — must match the folder name ('package %s')\n", decl.pkg_path, decl.pkg.name, name)
+			return false
+		}
+		_append_unique(&runtime_pkgs, name)
+		if comps != nil && db.has(comps, entity) {
+			comp := db.get(comps, entity)
+			if comp.kind == .Component {
+				_append_unique(&with_components, name)
+			}
+		}
+	}
+	slice.sort(runtime_pkgs[:])
+	slice.sort(editor_pkgs[:])
+
+	runnables := gen_facts.runnable_packages(w)
+	defer delete(runnables)
+
+	// register_packages copies: one in the shared `registration` package
+	// (every runtime package — the editor and the tests bootstrap use it and
+	// must work with zero runnable packages), and one INSIDE each runnable
+	// package (its own registration unqualified, library packages imported,
+	// other runnable packages excluded — they're separate programs).
+	_write_register :: proc(w: ^db.World, pkg_name, out_dir, host_name: string, runtime_pkgs, with_components: [dynamic]string, runnables: []gen_facts.Runnable_Pkg) {
+		_has :: proc(list: [dynamic]string, name: string) -> bool {
+			for n in list do if n == name do return true
+			return false
+		}
+		included :: proc(name, host_name: string, runnables: []gen_facts.Runnable_Pkg) -> bool {
+			if host_name == "" do return true
+			return name == host_name || !gen_facts.is_runnable(runnables, name)
+		}
+		b := strings.builder_make()
+		defer strings.builder_destroy(&b)
+		fmt.sbprintf(&b, "package %s\n\n", pkg_name)
+		strings.write_string(&b, "// Code generated by packages_gen. Do not edit.\n")
+		strings.write_string(&b, "// Installed packages (moonhug/packages/*) — see docs/Plugins.md.\n\n")
+		for name in runtime_pkgs {
+			if name == host_name || !included(name, host_name, runnables) do continue
+			if _has(with_components, name) {
+				fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", name, name)
+			} else {
+				fmt.sbprintf(&b, "import _ \"moonhug:packages/%s\"\n", name)
+			}
+		}
+		if len(runtime_pkgs) > 0 do strings.write_string(&b, "\n")
+		strings.write_string(&b, "register_packages :: proc() {\n")
+		for name in runtime_pkgs {
+			if !included(name, host_name, runnables) do continue
+			if _has(with_components, name) {
+				if name == host_name {
+					fmt.sbprintf(&b, "\tregister_%s_components()\n", name)
+				} else {
+					fmt.sbprintf(&b, "\t%s.register_%s_components()\n", name, name)
+				}
+			}
+		}
+		strings.write_string(&b, "}\n")
+		db.emit(w, fmt.tprintf("%s/packages_generated.odin", out_dir), strings.to_string(b))
+	}
+
+	_write_register(w, "registration", "moonhug/engine/registration", "", runtime_pkgs, with_components, runnables[:])
+	for host in runnables {
+		_write_register(w, host.name, host.path, host.name, runtime_pkgs, with_components, runnables[:])
+	}
+
+	// Tests side: each package's tests/ suite imports into the central suite,
+	// so ONE `odin test moonhug/tests -all-packages` run covers everything
+	// (blank imports; -all-packages collects their @(test)s). tests/ isn't
+	// scanned by prebuild — detect it on the filesystem.
+	{
+		b := strings.builder_make()
+		defer strings.builder_destroy(&b)
+		strings.write_string(&b, "package tests\n\n")
+		strings.write_string(&b, "// Code generated by packages_gen. Do not edit.\n")
+		strings.write_string(&b, "// Installed packages' test suites — run via `odin test moonhug/tests\n")
+		strings.write_string(&b, "// -all-packages` (run_tests.sh); see docs/Plugins.md.\n\n")
+		for name in runtime_pkgs {
+			tests_dir := fmt.tprintf("%s%s/tests", PACKAGES_PREFIX, name)
+			if _dir_has_odin(tests_dir) {
+				fmt.sbprintf(&b, "import _ \"moonhug:packages/%s/tests\"\n", name)
+			}
+		}
+		db.emit(w, "moonhug/tests/packages_tests_generated.odin", strings.to_string(b))
+	}
+
+	// Editor side: editor/ subpackages, editor binary only.
+	{
+		b := strings.builder_make()
+		defer strings.builder_destroy(&b)
+		strings.write_string(&b, "package editor\n\n")
+		strings.write_string(&b, "// Code generated by packages_gen. Do not edit.\n")
+		strings.write_string(&b, "// Editor halves of installed packages — see docs/Plugins.md.\n\n")
+		for name in editor_pkgs {
+			fmt.sbprintf(&b, "import _ \"moonhug:packages/%s/editor\"\n", name)
+		}
+		db.emit(w, "moonhug/editor/packages_generated.odin", strings.to_string(b))
+	}
+	return true
+}

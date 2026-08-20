@@ -1,14 +1,26 @@
 {
   "root": 10,
-  "next_local_id": 20,
   "transforms": [
     {
       "local_id": 10,
       "name": "HostRoot",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -24,15 +36,30 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 11,
       "name": "Slot",
       "is_active": true,
-      "position": [0, 0, 0],
-      "rotation": [0, 0, 0, 1],
-      "scale": [1, 1, 1],
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
       "render_layer": 1,
       "parent": {
         "pptr": {
@@ -40,18 +67,44 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
-      "components": []
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
     {
       "local_id": 12,
+      "local_id_in_parent": 12,
       "source_prefab": "a1000000-0000-4000-8000-000000000001",
       "transform_parent": 11,
       "host_breadcrumb_id": 13,
       "sibling_index": 0,
-      "overrides": []
+      "overrides": [
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "a1000000-0000-4000-8000-000000000001"
+          },
+          "property_path": "name",
+          "value": "Slot"
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
     }
   ],
   "breadcrumbs": [
@@ -64,9 +117,7 @@
       "scene_instance": 12
     }
   ],
-  "cameras": [],
-  "lifetimes": [],
-  "players": [],
-  "scripts": [],
-  "sprite_renderers": []
+  "components": [
+
+  ]
 }

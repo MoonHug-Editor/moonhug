@@ -2,10 +2,10 @@ package menu
 
 import "core:fmt"
 import "core:mem"
-import "core:sort"
+import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 
 MenuEntryKind :: enum {
 	Submenu,
@@ -16,6 +16,20 @@ MenuEntryKind :: enum {
 
 ORDER_DEFAULT :: 1 << 30
 
+// Menu section bands (Unity's priority bands): items register once into a
+// real menu, and popups mirror an order slice of it via draw_menu_sections.
+//
+// GameObject: the creation section is everything up to and including
+// ORDER_DEFAULT — a plain @(menu_item) with no order lands there, so it
+// mirrors into the hierarchy context menu for free.
+GO_SECTION_PARENTING :: ORDER_DEFAULT + 1_000_000
+GO_SECTION_VIEW      :: ORDER_DEFAULT + 2_000_000
+
+// Edit: the selection-ops band (Cut..Delete) — mirrored to the top of the
+// hierarchy context menu.
+EDIT_SECTION_SELECTION_MIN :: -50
+EDIT_SECTION_SELECTION_MAX :: -41
+
 MenuNode :: struct {
 	name:          string,
 	name_cstr:     cstring,
@@ -24,6 +38,7 @@ MenuNode :: struct {
 	kind:          MenuEntryKind,
 	action:        proc(),
 	value:         ^bool,
+	enabled:       proc() -> bool, // nil = always enabled
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 }
@@ -56,10 +71,11 @@ _sort_children_by_order :: proc(node: ^MenuNode, parent_path: string, top_order:
 		ord := path in top_order ? top_order[path] : c.order
 		pairs[i] = {c, ord}
 	}
-	sort.quick_sort_proc(pairs[:], proc(a, b: _NodeOrder) -> int {
-		if a.order < b.order do return -1
-		if a.order > b.order do return 1
-		return 0
+	// STABLE sort: equal orders keep registration order (an unstable sort
+	// scrambled ties — e.g. the Component menu, which prebuild already emits
+	// alphabetically and registers in one run).
+	slice.stable_sort_by(pairs[:], proc(a, b: _NodeOrder) -> bool {
+		return a.order < b.order
 	})
 	clear(children)
 	for p in pairs do append(children, p.node)
@@ -97,9 +113,48 @@ draw_menu_subtree :: proc(path: string) {
 	_draw_menu_children(node)
 }
 
+// Menu_Section selects a slice of one subtree's direct children by order band.
+// Build with section() — the struct's zero value filters everything out.
+Menu_Section :: struct {
+	path:      string,
+	min_order: int,
+	max_order: int,
+}
+
+section :: proc(path: string, min_order := min(int), max_order := max(int)) -> Menu_Section {
+	return {path, min_order, max_order}
+}
+
+// draw_menu_sections draws several subtree slices inline into the currently
+// open menu/popup, with one separator between non-empty sections. Context
+// menus compose registered items this way (e.g. the hierarchy popup = the
+// "Hierarchy" ops + the GameObject creation band) instead of hardcoding
+// entries, so plugins can extend every section.
+draw_menu_sections :: proc(sections: []Menu_Section) {
+	prev_drawn := false
+	for s in sections {
+		node := _get_or_create_path(s.path)
+		has_items := false
+		for child in node.children {
+			if child.kind != .Separator && child.order >= s.min_order && child.order <= s.max_order {
+				has_items = true
+				break
+			}
+		}
+		if !has_items do continue
+		if prev_drawn do im.Separator()
+		for child in node.children {
+			if child.order < s.min_order || child.order > s.max_order do continue
+			_draw_menu_child(child)
+		}
+		prev_drawn = true
+	}
+}
+
 // path format: "RootItem/NodeItem1/NodeItem2/LeafItem"
 // add_menu_item adds an action at the given path. When selected, action is called.
-add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT) {
+// enabled (optional) is polled at draw time; nil means always enabled.
+add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil) {
 	node := _get_or_create_path(path)
 	node.kind = .Action
 	node.order = order
@@ -109,14 +164,22 @@ add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int
 	node.shortcut, _ = strings.clone(shortcut)
 	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.action = action
+	node.enabled = enabled
 }
 
 // add_menu_toggle adds a checkbox at the given path that toggles the value.
-add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT) {
+// A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
+add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil) {
 	node := _get_or_create_path(path)
 	node.kind = .Toggle
 	node.order = order
+	if node.shortcut_cstr != nil {
+		mem.delete_cstring(node.shortcut_cstr)
+	}
+	node.shortcut, _ = strings.clone(shortcut)
+	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.value = value
+	node.enabled = enabled
 }
 
 // add_menu_separator adds a separator in the menu at the given path (path = parent menu, e.g. "File").
@@ -128,6 +191,45 @@ add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
 	sep.order = order
 	sep.children = make([dynamic]^MenuNode)
 	append(&parent.children, sep)
+}
+
+// Finds an existing node without creating path segments (nil = no such path).
+find_path :: proc(path: string) -> ^MenuNode {
+	parts := strings.split(path, "/", context.temp_allocator)
+	node := _menu_root
+	for part in parts {
+		name := strings.trim_space(part)
+		if name == "" do continue
+		node = _find_child(node, name)
+		if node == nil do return nil
+	}
+	return node
+}
+
+// Invokes the Action registered at `path`, honoring its enabled predicate.
+// False when the path doesn't exist, isn't an action, or is disabled.
+invoke_path :: proc(path: string) -> bool {
+	node := find_path(path)
+	if node == nil || node.kind != .Action || node.action == nil do return false
+	if node.enabled != nil && !node.enabled() do return false
+	node.action()
+	return true
+}
+
+// Every invokable action path ("Edit/Undo", ...), temp-allocated.
+collect_action_paths :: proc(allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	walk :: proc(node: ^MenuNode, prefix: string, out: ^[dynamic]string, allocator: mem.Allocator) {
+		for child in node.children {
+			path := prefix == "" ? child.name : strings.concatenate({prefix, "/", child.name}, allocator)
+			if child.kind == .Action && child.action != nil {
+				append(out, path)
+			}
+			walk(child, path, out, allocator)
+		}
+	}
+	walk(_menu_root, "", &out, allocator)
+	return out[:]
 }
 
 _get_or_create_path :: proc(path: string) -> ^MenuNode {
@@ -224,7 +326,7 @@ _process_menu_shortcuts :: proc(node: ^MenuNode) {
 		case .Action:
 			if child.shortcut != "" && child.action != nil {
 				if chord, ok := _parse_shortcut(child.shortcut); ok {
-					if im.Shortcut(chord, {.RouteGlobal}) {
+					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
 						child.action()
 					}
 				}
@@ -232,33 +334,48 @@ _process_menu_shortcuts :: proc(node: ^MenuNode) {
 			// recurse in case this node has children (shouldn't for Action, but safe)
 			_process_menu_shortcuts(child)
 		case .Toggle:
+			if child.shortcut != "" && child.value != nil {
+				if chord, ok := _parse_shortcut(child.shortcut); ok {
+					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
+						child.value^ = !child.value^
+					}
+				}
+			}
 			_process_menu_shortcuts(child)
 		}
 	}
 }
 
+_node_enabled :: proc(node: ^MenuNode) -> bool {
+	return node.enabled == nil || node.enabled()
+}
+
 _draw_menu_children :: proc(node: ^MenuNode) {
 	for child in node.children {
-		switch child.kind {
-		case .Separator:
-			im.Separator()
-		case .Submenu, .Action, .Toggle:
-			if child.kind == .Submenu || len(child.children) > 0 {
-				if im.BeginMenu(child.name_cstr, true) {
-					_draw_menu_children(child)
-					im.EndMenu()
+		_draw_menu_child(child)
+	}
+}
+
+_draw_menu_child :: proc(child: ^MenuNode) {
+	switch child.kind {
+	case .Separator:
+		im.Separator()
+	case .Submenu, .Action, .Toggle:
+		if child.kind == .Submenu || len(child.children) > 0 {
+			if im.BeginMenu(child.name_cstr, true) {
+				_draw_menu_children(child)
+				im.EndMenu()
+			}
+		} else {
+			#partial switch child.kind {
+			case .Action:
+				shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
+				if im.MenuItem(child.name_cstr, shortcut_label, false, _node_enabled(child)) {
+					if child.action != nil do child.action()
 				}
-			} else {
-				#partial switch child.kind {
-				case .Action:
-					shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
-					if im.MenuItem(child.name_cstr, shortcut_label, false, true) {
-						if child.action != nil do child.action()
-					}
-				case .Toggle:
-					if child.value != nil {
-						im.MenuItemBoolPtr(child.name_cstr, nil, child.value, true)
-					}
+			case .Toggle:
+				if child.value != nil {
+					im.MenuItemBoolPtr(child.name_cstr, child.shortcut_cstr, child.value, _node_enabled(child))
 				}
 			}
 		}

@@ -1,0 +1,681 @@
+// Render passes and the CPU draw batch. pass_begin_* only records the
+// target; pass_end encodes one copy pass (vertex upload) followed by one
+// render pass replaying the recorded draws — copy passes can't nest inside
+// render passes, and this keeps mid-pass texture_create legal.
+package gfx
+
+import "base:runtime"
+import "core:math"
+import sdl "vendor:sdl3"
+
+Render_Target :: struct {
+	color, depth:  ^sdl.GPUTexture,
+	width, height: i32,
+}
+
+_Draw :: struct {
+	kind:         _Pipeline_Kind,
+	is_mesh:      bool,
+	texture:      ^Texture, // nil = white
+	vp_index:     i32,
+	first_vertex: u32, // batch draws
+	vertex_count: u32,
+	mesh:         Mesh, // mesh draws
+	mesh_first:   u32, // index range within the mesh (submeshes)
+	mesh_count:   u32,
+	model:        matrix[4, 4]f32,
+	color:        [4]f32,
+	shader:       string, // "" = DEFAULT_SHADER (meshes and batched quads)
+	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
+	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
+}
+
+// Fragment sampler slots a single draw can bind (mirrors the importer's
+// SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
+MAX_FRAGMENT_SAMPLERS :: 8
+
+// Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
+// model = identity (vertices are pre-transformed to world space).
+_Uniform :: struct {
+	view_proj: matrix[4, 4]f32,
+	model:     matrix[4, 4]f32,
+	tint:      [4]f32,
+}
+
+// Up to MAX_LIGHTS lights reach the shader in one UBO. Matches the Light
+// component's pool max, so every enabled light in a scene fits.
+MAX_LIGHTS :: 8
+
+Light_Kind :: enum u32 {
+	Directional,
+	Point,
+	Spot,
+}
+
+// One light as the renderer takes it (set_lights). Angles arrive as cosines of
+// the HALF angle, so the shader compares dot products directly.
+Light :: struct {
+	kind:      Light_Kind,
+	position:  [3]f32, // point/spot
+	direction: [3]f32, // the way the light travels
+	color:     [3]f32,
+	intensity: f32,
+	range:     f32,    // point/spot falloff end
+	inner_cos: f32,    // spot: full brightness inside
+	outer_cos: f32,    // spot: zero outside
+}
+
+// Must match the lit shader's GpuLight (fragment set=3 binding=0), std140:
+// four vec4 per light.
+_Gpu_Light :: struct {
+	pos_type:    [4]f32, // xyz = position, w = kind (0 dir, 1 point, 2 spot)
+	dir_range:   [4]f32, // xyz = normalized travel direction, w = range
+	color_outer: [4]f32, // rgb premultiplied by intensity, w = cos outer half-angle
+	params:      [4]f32, // x = cos inner half-angle, yzw reserved
+}
+
+// Must match the lit shader's LightUBO. cam_pos comes from the draw's view
+// (set_view_proj), not set_lights — it's filled in at push time per view
+// switch.
+_Light_Uniform :: struct {
+	ambient_count: [4]f32, // x = ambient floor, y = light count
+	cam_pos:       [4]f32, // xyz = camera world position (specular shaders), w unused
+	lights:        [MAX_LIGHTS]_Gpu_Light,
+}
+
+// Matches the previously baked-in lit shader constants, so scenes without a
+// Light component keep looking the same: one white directional, 0.35 ambient.
+_LIGHT_DEFAULT :: _Light_Uniform{
+	ambient_count = {0.35, 1, 0, 0},
+	lights = {
+		0 = {
+			pos_type    = {0, 0, 0, 0},
+			dir_range   = {-0.42107597, -0.84215194, -0.33686078, 0}, // normalize({-0.5,-1,-0.4})
+			color_outer = {1, 1, 1, 0},
+			params      = {0, 0, 0, 0},
+		},
+	},
+}
+
+// One view entry per set_view_proj call: the matrix plus the camera world
+// position fragment shaders see as cam_pos.
+_View :: struct {
+	vp:      matrix[4, 4]f32,
+	cam_pos: [3]f32,
+}
+
+_pass: struct {
+	active:       bool,
+	target_color: ^sdl.GPUTexture,
+	target_depth: ^sdl.GPUTexture, // nil = depth-less pass (imgui-only)
+	clear:        Maybe([4]f32),
+	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
+	vps:          [dynamic]_View,
+	vtx:          [dynamic]Vertex,
+	draws:        [dynamic]_Draw,
+	// GPU-side batch storage, grown on demand, reused across passes/frames
+	vbuf:          ^sdl.GPUBuffer,
+	transfer:      ^sdl.GPUTransferBuffer,
+	vbuf_capacity: u32, // in vertices
+}
+
+_pass_shutdown :: proc() {
+	if _pass.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.vbuf)
+	if _pass.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.transfer)
+	delete(_pass.vps)
+	delete(_pass.vtx)
+	delete(_pass.draws)
+	_pass = {}
+}
+
+rt_create :: proc(width, height: i32) -> ^Render_Target {
+	rt := new(Render_Target, runtime.default_allocator())
+	rt.width = width
+	rt.height = height
+	rt.color = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _gfx.swapchain_format,
+		usage                = {.COLOR_TARGET, .SAMPLER},
+		width                = u32(width),
+		height               = u32(height),
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	rt.depth = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _DEPTH_FORMAT,
+		usage                = {.DEPTH_STENCIL_TARGET},
+		width                = u32(width),
+		height               = u32(height),
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	return rt
+}
+
+// No-op when the size is unchanged. Callers must re-fetch rt_imgui_id after
+// a resize (the color texture is recreated) — fetching it every frame is the
+// normal pattern.
+rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
+	if rt.width == width && rt.height == height do return
+	sdl.ReleaseGPUTexture(_gfx.device, rt.color)
+	sdl.ReleaseGPUTexture(_gfx.device, rt.depth)
+	tmp := rt_create(width, height)
+	rt.color = tmp.color
+	rt.depth = tmp.depth
+	rt.width = width
+	rt.height = height
+	free(tmp, runtime.default_allocator())
+}
+
+rt_destroy :: proc(rt: ^Render_Target) {
+	if rt == nil do return
+	if rt.color != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.color)
+	if rt.depth != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.depth)
+	free(rt, runtime.default_allocator())
+}
+
+// imgui 1.92.2+ SDLGPU3 convention: ImTextureID = raw ^sdl.GPUTexture.
+rt_imgui_id :: proc(rt: ^Render_Target) -> rawptr {
+	return rt.color
+}
+
+// Copies the RT's color into a new standalone sampled texture the caller owns
+// (texture_destroy frees it). The blit records on the FRAME command buffer, so
+// call it between passes, after the pass that filled the RT — ordering within
+// the frame makes the copy valid for any later sampling, imgui included.
+rt_snapshot :: proc(rt: ^Render_Target) -> ^Texture {
+	assert(!_pass.active, "rt_snapshot must run between passes")
+	if _gfx.cmd == nil do return nil
+	gpu_tex := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _gfx.swapchain_format,
+		usage                = {.SAMPLER, .COLOR_TARGET},
+		width                = u32(rt.width),
+		height               = u32(rt.height),
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	if gpu_tex == nil do return nil
+	sdl.BlitGPUTexture(_gfx.cmd, sdl.GPUBlitInfo{
+		source      = {texture = rt.color, w = u32(rt.width), h = u32(rt.height)},
+		destination = {texture = gpu_tex, w = u32(rt.width), h = u32(rt.height)},
+		load_op     = .DONT_CARE,
+		filter      = .LINEAR,
+	})
+	tex := new(Texture, runtime.default_allocator())
+	tex.gpu = gpu_tex
+	tex.width = rt.width
+	tex.height = rt.height
+	tex.format = _gfx.swapchain_format
+	return tex
+}
+
+// Async readback of the RT's color contents (texture_download_* protocol).
+// The contents must come from an already SUBMITTED frame — calling this at
+// the top of a frame reads what the previous frame drew.
+rt_download_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
+	tex := Texture{gpu = rt.color, width = rt.width, height = rt.height, format = _gfx.swapchain_format}
+	return texture_download_begin(&tex)
+}
+
+// The swapchain image this frame is drawing into, and its size. Valid between
+// pass_begin_swapchain and frame_end. nil outside that window, or on a frame the
+// acquire failed (minimized window).
+//
+// This is what makes an on-demand full-window capture possible: the swapchain
+// holds EVERYTHING, imgui panels included, so a copy taken after the UI pass is
+// a picture of the whole editor. See swapchain_capture.
+@(private = "file")
+_swapchain_this_frame: struct {
+	tex:  ^sdl.GPUTexture,
+	w, h: u32,
+}
+
+// Starts a readback of the current swapchain image — the finished frame,
+// including every imgui panel.
+//
+// ONLY runs when someone asks for a screenshot: the cost is one full-screen copy
+// plus a download on that single frame, and nothing at all otherwise. That is
+// why the frame still renders straight to the swapchain, rather than through an
+// offscreen target that would need blitting every frame forever just to keep a
+// capture possible.
+//
+// Both the copy AND the download are encoded into the FRAME's command buffer,
+// which is what makes this correct. texture_download_begin would otherwise
+// acquire its own buffer and submit it immediately — running the download ahead
+// of a copy that is still sitting unsubmitted in the frame buffer, and reading
+// an untouched texture. (That produced a solid magenta image: uninitialized
+// texture memory, not a broken capture path.)
+//
+// Call while the frame's command buffer is open and after the UI pass has ended.
+// Returns nil when there is no swapchain image this frame.
+swapchain_capture_begin :: proc() -> ^Texture_Download {
+	if _swapchain_this_frame.tex == nil do return nil
+	if _gfx.cmd == nil do return nil
+	w := _swapchain_this_frame.w
+	h := _swapchain_this_frame.h
+	if w < 2 || h < 2 do return nil
+
+	// A swapchain image cannot be downloaded from directly — it belongs to the
+	// presentation engine. Copy into a texture that can be, then read that.
+	dst := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _gfx.swapchain_format,
+		usage                = {.SAMPLER},
+		width                = w,
+		height               = h,
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	if dst == nil do return nil
+
+	byte_count := w * h * 4
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .DOWNLOAD, size = byte_count})
+	if transfer == nil {
+		sdl.ReleaseGPUTexture(_gfx.device, dst)
+		return nil
+	}
+
+	// One copy pass on the frame buffer: swapchain -> dst -> transfer buffer.
+	copy_pass := sdl.BeginGPUCopyPass(_gfx.cmd)
+	if copy_pass == nil {
+		sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+		sdl.ReleaseGPUTexture(_gfx.device, dst)
+		return nil
+	}
+	sdl.CopyGPUTextureToTexture(copy_pass,
+		sdl.GPUTextureLocation{texture = _swapchain_this_frame.tex},
+		sdl.GPUTextureLocation{texture = dst}, w, h, 1, false)
+	sdl.DownloadFromGPUTexture(copy_pass,
+		{texture = dst, w = w, h = h, d = 1},
+		{transfer_buffer = transfer, pixels_per_row = w, rows_per_layer = h})
+	sdl.EndGPUCopyPass(copy_pass)
+
+	// The frame's own submit carries this, so the fence comes from frame_end.
+	d := new(Texture_Download, runtime.default_allocator())
+	d.transfer = transfer
+	d.fence = nil // set by frame_end
+	d.width = i32(w)
+	d.height = i32(h)
+	d.bgra = _gfx.swapchain_format == .B8G8R8A8_UNORM || _gfx.swapchain_format == .B8G8R8A8_UNORM_SRGB
+	d.scratch_texture = dst
+	_swapchain_pending_download = d
+	return d
+}
+
+// A capture whose copy rides this frame's command buffer, waiting for the
+// submit in frame_end to give it a fence.
+@(private = "file")
+_swapchain_pending_download: ^Texture_Download
+
+pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32)) {
+	assert(!_pass.active, "gfx pass already active")
+	_pass.active = true
+	_pass.target_color = rt.color
+	_pass.target_depth = rt.depth
+	_pass.clear = clear
+}
+
+// Acquires the swapchain image; false when the window is minimized (skip
+// drawing this frame). The window depth buffer is lazily (re)sized.
+// depth=false makes a depth-less pass — REQUIRED when only external
+// pipelines without a depth attachment draw in it (the editor's imgui pass);
+// our own gfx pipelines must NOT draw in such a pass (they declare D32).
+pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
+	assert(!_pass.active, "gfx pass already active")
+	swap_tex: ^sdl.GPUTexture
+	w, h: u32
+	if !sdl.WaitAndAcquireGPUSwapchainTexture(_gfx.cmd, _platform.window, &swap_tex, &w, &h) {
+		return false
+	}
+	if swap_tex == nil do return false
+
+	// Remembered for an on-demand capture later this frame (swapchain_capture).
+	_swapchain_this_frame = {tex = swap_tex, w = w, h = h}
+
+	if !depth {
+		_pass.active = true
+		_pass.target_color = swap_tex
+		_pass.target_depth = nil
+		_pass.clear = clear
+		return true
+	}
+
+	if _gfx.window_depth == nil || _gfx.window_depth_w != w || _gfx.window_depth_h != h {
+		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
+		_gfx.window_depth = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+			type                 = .D2,
+			format               = _DEPTH_FORMAT,
+			usage                = {.DEPTH_STENCIL_TARGET},
+			width                = w,
+			height               = h,
+			layer_count_or_depth = 1,
+			num_levels           = 1,
+		})
+		_gfx.window_depth_w = w
+		_gfx.window_depth_h = h
+	}
+
+	_pass.active = true
+	_pass.target_color = swap_tex
+	_pass.target_depth = _gfx.window_depth
+	_pass.clear = clear
+	return true
+}
+
+// Directional light for the CURRENT pass's lit-shader draws (one light —
+// per-draw light lists are a later problem). Each direction is the way the
+// light travels (sun → scene); zero-length falls back to straight down. Not
+// calling this keeps the default (one white directional, 0.35 ambient).
+set_lights :: proc(ls: []Light, ambient: f32) {
+	u := _Light_Uniform{}
+	n := min(len(ls), MAX_LIGHTS)
+	u.ambient_count = {clamp(ambient, 0, 1), f32(n), 0, 0}
+	for i in 0 ..< n {
+		l := ls[i]
+		d := l.direction
+		len_sq := d.x * d.x + d.y * d.y + d.z * d.z
+		if len_sq < 1e-12 {
+			d = {0, -1, 0}
+		} else {
+			d /= math.sqrt(len_sq)
+		}
+		u.lights[i] = _Gpu_Light{
+			pos_type    = {l.position.x, l.position.y, l.position.z, f32(l.kind)},
+			dir_range   = {d.x, d.y, d.z, max(l.range, 0)},
+			color_outer = {l.color.r * l.intensity, l.color.g * l.intensity, l.color.b * l.intensity, l.outer_cos},
+			params      = {l.inner_cos, 0, 0, 0},
+		}
+	}
+	_pass.light = u
+}
+
+// May change mid-pass (multi-camera stacking, screen-space overlays).
+// cam_pos is the camera's world position, exposed to fragment shaders for
+// specular terms — screen-space/ortho callers can leave the zero default.
+set_view_proj :: proc(vp: matrix[4, 4]f32, cam_pos := [3]f32{0, 0, 0}) {
+	v := _View{vp = vp, cam_pos = cam_pos}
+	if len(_pass.vps) > 0 && _pass.vps[len(_pass.vps)-1] == v do return
+	append(&_pass.vps, v)
+}
+
+_MAT4_IDENTITY :: matrix[4, 4]f32{
+	1, 0, 0, 0,
+	0, 1, 0, 0,
+	0, 0, 1, 0,
+	0, 0, 0, 1,
+}
+
+_current_vp :: proc() -> i32 {
+	if len(_pass.vps) == 0 {
+		append(&_pass.vps, _View{vp = _MAT4_IDENTITY})
+	}
+	return i32(len(_pass.vps) - 1)
+}
+
+// corners in draw order: bottom-left, bottom-right, top-right, top-left
+// (two CCW triangles). tex=nil draws untextured white. shader/material work
+// like draw_mesh's (sprite materials); normal is the quad's facing, consumed
+// by lighting shaders. Same-state consecutive quads merge into one draw —
+// distinct material slices don't merge (compared by pointer).
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil) {
+	c := _color_u8(color)
+	first := u32(len(_pass.vtx))
+	n := normal
+	append(&_pass.vtx,
+		Vertex{corners[0], n, uvs[0], c},
+		Vertex{corners[1], n, uvs[1], c},
+		Vertex{corners[2], n, uvs[2], c},
+		Vertex{corners[0], n, uvs[0], c},
+		Vertex{corners[2], n, uvs[2], c},
+		Vertex{corners[3], n, uvs[3], c},
+	)
+	_batch_append(.Tris, tex, first, 6, shader, material, extra_tex)
+}
+
+// Untextured filled triangle (white 1x1 texture bound at draw). Winding is
+// irrelevant — the pipelines don't cull.
+draw_triangle :: proc(a, b, c: [3]f32, color: [4]f32, depth_test := true) {
+	col := _color_u8(color)
+	first := u32(len(_pass.vtx))
+	n := [3]f32{0, 0, 1}
+	append(&_pass.vtx, Vertex{a, n, {}, col}, Vertex{b, n, {}, col}, Vertex{c, n, {}, col})
+	_batch_append(depth_test ? .Tris : .Tris_Overlay, nil, first, 3)
+}
+
+// depth_write=true makes the line participate in occlusion both ways (editor
+// grid): later depth-tested draws can't paint over closer line pixels.
+draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write := false) {
+	c := _color_u8(color)
+	first := u32(len(_pass.vtx))
+	n := [3]f32{0, 0, 1}
+	kind: _Pipeline_Kind = depth_test ? (depth_write ? .Lines_Depth : .Lines) : .Lines_Overlay
+	append(&_pass.vtx, Vertex{a, n, {}, c}, Vertex{b, n, {}, c})
+	_batch_append(kind, nil, first, 2)
+}
+
+// shader picks a registered shader set (shader_register); ""/unknown names
+// fall back to DEFAULT_SHADER. The caller keeps `shader` alive through
+// pass_end (material cache / string literals — never temp per-frame builds);
+// `material` (property-block UBO bytes for fragment slot 1) may be
+// temp-allocated — it's read at pass_end within the same frame.
+// index_count=0 draws the whole mesh; a submesh passes its index range.
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil) {
+	if mesh.index_count == 0 do return
+	count := index_count == 0 ? mesh.index_count : index_count
+	if first_index >= mesh.index_count do return
+	count = min(count, mesh.index_count - first_index)
+	append(&_pass.draws, _Draw{
+		kind       = .Tris_Depth,
+		is_mesh    = true,
+		texture    = tex,
+		vp_index   = _current_vp(),
+		mesh       = mesh,
+		mesh_first = first_index,
+		mesh_count = count,
+		model      = model,
+		color      = color,
+		shader     = shader,
+		material   = material,
+		extra_tex  = extra_tex,
+	})
+}
+
+_color_u8 :: proc(c: [4]f32) -> [4]u8 {
+	return {
+		u8(clamp(c.r, 0, 1) * 255),
+		u8(clamp(c.g, 0, 1) * 255),
+		u8(clamp(c.b, 0, 1) * 255),
+		u8(clamp(c.a, 0, 1) * 255),
+	}
+}
+
+// Extends the previous draw when pipeline/texture/view/shader/material
+// match — the common case for sprite runs and grid lines. Material slices
+// compare by pointer: callers reuse one packed slice per material to merge.
+_batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil, extra_tex: []^Texture = nil) {
+	vp := _current_vp()
+	if len(_pass.draws) > 0 {
+		last := &_pass.draws[len(_pass.draws)-1]
+		if !last.is_mesh && last.kind == kind && last.texture == tex && last.vp_index == vp &&
+		   last.shader == shader &&
+		   raw_data(last.material) == raw_data(material) && len(last.material) == len(material) &&
+		   raw_data(last.extra_tex) == raw_data(extra_tex) && len(last.extra_tex) == len(extra_tex) &&
+		   last.first_vertex + last.vertex_count == first {
+			last.vertex_count += count
+			return
+		}
+	}
+	append(&_pass.draws, _Draw{
+		kind         = kind,
+		texture      = tex,
+		vp_index     = vp,
+		first_vertex = first,
+		vertex_count = count,
+		shader       = shader,
+		material     = material,
+		extra_tex    = extra_tex,
+	})
+}
+
+// Encodes the pass: batch upload (copy pass), then the render pass replaying
+// draws. before_end runs inside the render pass (the editor renders imgui
+// draw data there).
+pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) = nil) {
+	assert(_pass.active, "gfx pass not active")
+	_upload_batch()
+
+	color_info := sdl.GPUColorTargetInfo{
+		texture  = _pass.target_color,
+		load_op  = .LOAD,
+		store_op = .STORE,
+	}
+	if clear, ok := _pass.clear.?; ok {
+		color_info.load_op = .CLEAR
+		color_info.clear_color = {clear.r, clear.g, clear.b, clear.a}
+	}
+	rp: ^sdl.GPURenderPass
+	if _pass.target_depth != nil {
+		depth_info := sdl.GPUDepthStencilTargetInfo{
+			texture          = _pass.target_depth,
+			clear_depth      = 1,
+			load_op          = .CLEAR, // depth is always per-pass scratch
+			store_op         = .DONT_CARE,
+			stencil_load_op  = .DONT_CARE,
+			stencil_store_op = .DONT_CARE,
+		}
+		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, &depth_info)
+	} else {
+		assert(len(_pass.draws) == 0, "gfx draws recorded in a depth-less pass")
+		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
+	}
+
+	// Light + camera uniforms (fragment slot 0) are re-pushed on view switch —
+	// cam_pos is per-view (multi-camera passes). Only pipelines that declare
+	// the fragment UBO (lit, user shaders) consume them.
+	light := _pass.light.? or_else _LIGHT_DEFAULT
+
+	bound: ^sdl.GPUGraphicsPipeline
+	batch_bound := false
+	pushed_vp := i32(-1)
+	pushed_light_vp := i32(-1)
+	pushed_mesh := false
+	for &d in _pass.draws {
+		if pushed_light_vp != d.vp_index {
+			light.cam_pos.xyz = _pass.vps[d.vp_index].cam_pos
+			sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
+			pushed_light_vp = d.vp_index
+		}
+		pipeline := _gfx.pipelines[d.kind]
+		if d.shader != "" {
+			if set, ok := _gfx.shader_sets[d.shader]; ok do pipeline = set[d.kind]
+		}
+		if pipeline != bound {
+			sdl.BindGPUGraphicsPipeline(rp, pipeline)
+			bound = pipeline
+			batch_bound = false // vertex buffer binding survives, but re-bind cheaply per pipeline switch
+		}
+		tex := d.texture != nil ? d.texture : _gfx.white_tex
+		// Meshes wrap (glTF default REPEAT — UVs may live outside [0,1]);
+		// batch quads clamp (sprite edges must not bleed the opposite border).
+		smp := d.is_mesh ? _gfx.sampler_repeat : _gfx.sampler_linear
+		// Slot 0 = main texture; extra_tex fills 1..N (sized by the caller to
+		// the shader's declared sampler count, nil entries bind white).
+		bindings: [MAX_FRAGMENT_SAMPLERS]sdl.GPUTextureSamplerBinding
+		bindings[0] = {texture = tex.gpu, sampler = smp}
+		num_bindings := u32(1)
+		for et in d.extra_tex {
+			if num_bindings >= MAX_FRAGMENT_SAMPLERS do break
+			t := et != nil ? et : _gfx.white_tex
+			bindings[num_bindings] = {texture = t.gpu, sampler = smp}
+			num_bindings += 1
+		}
+		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
+
+		if d.is_mesh {
+			u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = d.model, tint = d.color}
+			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
+			if len(d.material) > 0 {
+				// Shader property block (custom shaders' MaterialUBO, slot 1).
+				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
+			}
+			pushed_vp = -1
+			pushed_mesh = true
+
+			vb := sdl.GPUBufferBinding{buffer = d.mesh.vbuf}
+			sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)
+			sdl.BindGPUIndexBuffer(rp, {buffer = d.mesh.ibuf}, ._32BIT)
+			sdl.DrawGPUIndexedPrimitives(rp, d.mesh_count, 1, d.mesh_first, 0, 0)
+			batch_bound = false
+		} else {
+			if pushed_vp != d.vp_index || pushed_mesh {
+				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
+				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
+				pushed_vp = d.vp_index
+				pushed_mesh = false
+			}
+			if len(d.material) > 0 {
+				// Sprite-material property block (fragment slot 1).
+				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
+			}
+			if !batch_bound {
+				vb := sdl.GPUBufferBinding{buffer = _pass.vbuf}
+				sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)
+				batch_bound = true
+			}
+			sdl.DrawGPUPrimitives(rp, d.vertex_count, 1, d.first_vertex, 0)
+		}
+	}
+
+	if before_end != nil do before_end(_gfx.cmd, rp)
+	sdl.EndGPURenderPass(rp)
+
+	clear(&_pass.vtx)
+	clear(&_pass.draws)
+	clear(&_pass.vps)
+	_pass.active = false
+	_pass.target_color = nil
+	_pass.target_depth = nil
+	_pass.light = nil
+}
+
+// One copy pass uploading this pass's vertices. cycle=true keeps earlier
+// encoded passes (and in-flight frames) reading their own allocation.
+_upload_batch :: proc() {
+	count := u32(len(_pass.vtx))
+	if count == 0 do return
+
+	if count > _pass.vbuf_capacity {
+		new_cap := max(u32(4096), _pass.vbuf_capacity)
+		for new_cap < count do new_cap *= 2
+		if _pass.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.vbuf)
+		if _pass.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.transfer)
+		size := new_cap * size_of(Vertex)
+		_pass.vbuf = sdl.CreateGPUBuffer(_gfx.device, {usage = {.VERTEX}, size = size})
+		_pass.transfer = sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .UPLOAD, size = size})
+		_pass.vbuf_capacity = new_cap
+	}
+
+	byte_count := int(count) * size_of(Vertex)
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, _pass.transfer, true)
+	runtime.mem_copy_non_overlapping(mapped, raw_data(_pass.vtx), byte_count)
+	sdl.UnmapGPUTransferBuffer(_gfx.device, _pass.transfer)
+
+	copy_pass := sdl.BeginGPUCopyPass(_gfx.cmd)
+	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = _pass.transfer},
+		{buffer = _pass.vbuf, size = u32(byte_count)}, true)
+	sdl.EndGPUCopyPass(copy_pass)
+}
+
+// Frame teardown: the swapchain image is only valid until submit.
+_swapchain_frame_clear :: proc() {
+	_swapchain_this_frame = {}
+}
+
+// Hands the frame's pending capture to frame_end, which submits with a fence.
+_swapchain_take_pending :: proc() -> ^Texture_Download {
+	d := _swapchain_pending_download
+	_swapchain_pending_download = nil
+	return d
+}

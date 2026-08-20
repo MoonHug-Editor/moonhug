@@ -1,104 +1,334 @@
 package engine
 
-import rl "vendor:raylib"
-import gl "vendor:raylib/rlgl"
+// Camera + render-command pipeline on the gfx package (docs/SDL3Renderer.md).
+// Cameras collect per-frame command lists (temp allocator) from the world's
+// renderer pools and execute them through gfx draws. The editor scene view
+// reuses the SAME collect/execute path with its own (non-component) camera,
+// so game view and scene view render identically by construction.
 
-render_world_cameras :: proc() -> bool {
+import gfx "gfx"
+import "core:math"
+import "core:math/linalg"
+import "core:slice"
+
+PIXELS_PER_UNIT :: 100.0
+
+Render_View :: struct {
+	view, proj:    matrix[4, 4]f32,
+	view_proj:     matrix[4, 4]f32,
+	inv_view_proj: matrix[4, 4]f32,
+	cam_pos:       [3]f32, // camera world position (specular shaders, LOD later)
+	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
+	layer_mask:    u32,
+}
+
+Draw_Sprite :: struct {
+	texture:  Asset_GUID,
+	material: Asset_GUID, // shader/tint/properties; texture stays the sprite's. empty = unlit
+	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
+	color:    [4]f32,
+}
+
+Draw_Mesh :: struct {
+	mesh:      Asset_GUID,
+	part:      i32, // MeshFilter.part: 0 = whole model, N = glTF mesh N-1
+	materials: []Asset_GUID, // per-submesh; view into the renderer's array (frame lifetime). missing/empty = white unlit
+	model:     matrix[4, 4]f32,
+}
+
+Render_Command :: struct {
+	key:     Sprite_Sort_Key, // sprites only (sprite_sort.odin); zero for meshes
+	variant: union #no_nil {
+		Draw_Mesh,
+		Draw_Sprite,
+	},
+}
+
+Ray :: struct {
+	origin, direction: [3]f32,
+}
+
+// Highest-order enabled camera — for game logic queries (mouse rays).
+// Rendering iterates ALL enabled cameras (render_world_cameras).
+camera_active :: proc() -> ^Camera {
 	world := ctx_world()
-
-	best_idx := -1
+	best: ^Camera
 	best_order: i32 = min(i32)
-	for i in 0 ..< len(world.cameras.slots) {
-		slot := &world.cameras.slots[i]
-		if !slot.alive do continue
-		cam := &slot.data
+	it := pool_iterator(cameras(world))
+	for cam, _ in pool_next(&it) {
 		if !cam.enabled do continue
 		if !transform_active_in_hierarchy(cam.owner) do continue
 		if cam.order > best_order {
 			best_order = cam.order
-			best_idx = i
+			best = cam
 		}
 	}
-
-	if best_idx < 0 do return false
-
-	cam := &world.cameras.slots[best_idx].data
-
-	cc := cam.clear_color
-	rl.ClearBackground({u8(cc[0] * 255), u8(cc[1] * 255), u8(cc[2] * 255), u8(cc[3] * 255)})
-
-	tw := transform_world(Transform_Handle(cam.owner))
-	rot := quat_to_matrix3(tw.rotation)
-	forward := rl.Vector3{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
-	up := rl.Vector3{rot[0, 1], rot[1, 1], rot[2, 1]}
-	pos := rl.Vector3{tw.position.x, tw.position.y, tw.position.z}
-
-	cam3d := rl.Camera3D{
-		position   = pos,
-		target     = pos + forward,
-		up         = up,
-		fovy       = cam.fov,
-		projection = .PERSPECTIVE,
-	}
-
-	rl.BeginMode3D(cam3d)
-	render_sprite_renderers(cam.render_layer_mask)
-	rl.EndMode3D()
-	return true
+	return best
 }
 
-render_sprite_renderers :: proc(layer_mask: u32) {
+render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_mask: u32) -> Render_View {
+	vp := proj * view
+	// Camera world position = translation column of the inverted view matrix
+	// — derived here so every caller (game cameras, editor scene view) gets it
+	// without extra plumbing.
+	inv_view := linalg.inverse(view)
+	return Render_View{
+		view          = view,
+		proj          = proj,
+		view_proj     = vp,
+		inv_view_proj = linalg.inverse(vp),
+		cam_pos       = {inv_view[0, 3], inv_view[1, 3], inv_view[2, 3]},
+		width         = width,
+		height        = height,
+		layer_mask    = layer_mask,
+	}
+}
+
+// View from the camera transform's world rotation (forward = -Z column,
+// up = +Y column); projection honors the component's fov/near/far — near and
+// far were previously ignored (raylib hardcoded them).
+camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
+	tw := transform_world(Transform_Handle(cam.owner))
+	rot := quat_to_matrix3(tw.rotation)
+	forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
+	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
+	view := linalg.matrix4_look_at_f32(tw.position, tw.position + forward, up)
+	aspect := width / max(height, 1)
+	proj := gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
+	return render_view_make(view, proj, width, height, cam.render_layer_mask)
+}
+
+// Unprojects a viewport pixel (origin top-left) into a world ray. Replaces
+// rl.GetScreenToWorldRay for game code (turret_aim) and feeds scene picking.
+render_view_screen_ray :: proc(view: Render_View, px, py: f32) -> Ray {
+	ndc_x := 2 * px / max(view.width, 1) - 1
+	ndc_y := 1 - 2 * py / max(view.height, 1)
+	near4 := view.inv_view_proj * [4]f32{ndc_x, ndc_y, 0, 1} // z01: near plane at 0
+	far4 := view.inv_view_proj * [4]f32{ndc_x, ndc_y, 1, 1}
+	near := near4.xyz / near4.w
+	far := far4.xyz / far4.w
+	return Ray{origin = near, direction = linalg.normalize(far - near)}
+}
+
+camera_screen_ray :: proc(cam: ^Camera, screen_pos: [2]f32, viewport: [2]f32) -> Ray {
+	view := camera_render_view(cam, viewport.x, viewport.y)
+	return render_view_screen_ray(view, screen_pos.x, screen_pos.y)
+}
+
+trs_matrix :: proc(position: [3]f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
+	q := quaternion(x = rotation.x, y = rotation.y, z = rotation.z, w = rotation.w)
+	return linalg.matrix4_from_trs_f32(position, q, scale)
+}
+
+// The world-space quad a SpriteRenderer covers: bl, br, tr, tl. Used by BOTH
+// command collection and scene picking so they can't diverge. Sprites are
+// transform-oriented (not billboards), sized tex_pixels/pixels_per_unit —
+// the texture's import setting (Unity's Pixels Per Unit, default 100).
+sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 {
+	ppu := max(tex.pixels_per_unit, 0.0001)
+	half_w := tw.scale.x * f32(tex.width) / (2.0 * ppu)
+	half_h := tw.scale.y * f32(tex.height) / (2.0 * ppu)
+	rot := quat_to_matrix3(tw.rotation)
+	right := [3]f32{rot[0, 0], rot[1, 0], rot[2, 0]}
+	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
+	pos := tw.position
+	return {
+		pos - right * half_w - up * half_h,
+		pos + right * half_w - up * half_h,
+		pos + right * half_w + up * half_h,
+		pos - right * half_w + up * half_h,
+	}
+}
+
+// Appends commands for every renderer visible to `view` (enabled, active in
+// hierarchy, layer mask intersecting). `out` should live on temp_allocator.
+render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	world := ctx_world()
-	for i in 0 ..< len(world.sprite_renderers.slots) {
-		slot := &world.sprite_renderers.slots[i]
-		if !slot.alive do continue
-		sr := &slot.data
+
+	mr_it := pool_iterator(mesh_renderers(world))
+	for mr, _ in pool_next(&mr_it) {
+		if !mr.enabled do continue
+
+		t := pool_get(&world.transforms, Handle(mr.owner))
+		if t == nil || !transform_active_in_hierarchy(mr.owner) do continue
+		if t.render_layer & view.layer_mask == 0 do continue
+
+		_, mf := transform_get_comp(Transform_Handle(mr.owner), MeshFilter)
+		if mf == nil || mf.mesh == {} do continue
+
+		tw := transform_world(Transform_Handle(mr.owner))
+		append(out, Render_Command{
+			variant = Draw_Mesh{
+				mesh      = mf.mesh,
+				part      = mf.part,
+				materials = mr.materials[:],
+				model     = trs_matrix(tw.position, tw.rotation, tw.scale),
+			},
+		})
+	}
+
+	// One tree pass resolves every sprite's sort key (groups folded in).
+	sort_keys := sprite_sort_build_keys(view)
+
+	sr_it := pool_iterator(sprite_renderers(world))
+	for sr, _ in pool_next(&sr_it) {
 		if !sr.enabled do continue
 		if sr.texture == {} do continue
 
 		t := pool_get(&world.transforms, Handle(sr.owner))
 		if t == nil || !transform_active_in_hierarchy(sr.owner) do continue
-		if t.render_layer & layer_mask == 0 do continue
+		if t.render_layer & view.layer_mask == 0 do continue
 
 		tex, ok := texture_load(sr.texture)
 		if !ok do continue
 
 		tw := transform_world(Transform_Handle(sr.owner))
-		pos := rl.Vector3{tw.position.x, tw.position.y, tw.position.z}
-		tint := rl.Color{
-			u8(sr.color[0] * 255),
-			u8(sr.color[1] * 255),
-			u8(sr.color[2] * 255),
-			u8(sr.color[3] * 255),
-		}
-
-		PIXELS_PER_UNIT :: 100.0
-		half_w := tw.scale.x * f32(tex.width) / (2.0 * PIXELS_PER_UNIT)
-		half_h := tw.scale.y * f32(tex.height) / (2.0 * PIXELS_PER_UNIT)
-
-		rot := quat_to_matrix3(tw.rotation)
-		right := rl.Vector3{rot[0, 0], rot[1, 0], rot[2, 0]}
-		up := rl.Vector3{rot[0, 1], rot[1, 1], rot[2, 1]}
-
-		p0 := pos - right * half_w - up * half_h
-		p1 := pos + right * half_w - up * half_h
-		p2 := pos + right * half_w + up * half_h
-		p3 := pos - right * half_w + up * half_h
-
-		gl.SetTexture(tex.rl_texture.id)
-		gl.Begin(gl.QUADS)
-		gl.Color4ub(tint.r, tint.g, tint.b, tint.a)
-
-		gl.TexCoord2f(0, 1)
-		gl.Vertex3f(p0.x, p0.y, p0.z)
-		gl.TexCoord2f(1, 1)
-		gl.Vertex3f(p1.x, p1.y, p1.z)
-		gl.TexCoord2f(1, 0)
-		gl.Vertex3f(p2.x, p2.y, p2.z)
-		gl.TexCoord2f(0, 0)
-		gl.Vertex3f(p3.x, p3.y, p3.z)
-
-		gl.End()
-		gl.SetTexture(0)
+		key, in_tree := sort_keys[Transform_Handle(sr.owner)]
+		if !in_tree do key = sprite_sort_orphan_key(view, sr)
+		append(out, Render_Command{
+			key     = key,
+			variant = Draw_Sprite{
+				texture  = sr.texture,
+				material = sr.material,
+				corners  = sprite_world_corners(tw, tex),
+				color    = sr.color,
+			},
+		})
 	}
+}
+
+// Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
+// (depth-write pipeline handles their ordering; grouped by material to batch
+// pipeline/texture binds), then alpha-blended sprites by their sort key —
+// layer, order in layer, view depth back-to-front, tree order
+// (sprite_sort.odin). Sprite keys are unique, so their order is total and
+// deterministic regardless of sort stability.
+// Every enabled Light (up to gfx.MAX_LIGHTS, the pool max) fills `buf` in pool
+// order. The ambient floor is the first enabled light's. Returns the count and
+// ambient; count 0 leaves the gfx default in effect.
+scene_collect_lights :: proc(buf: []gfx.Light) -> (n: int, ambient: f32) {
+	world := ctx_world()
+	it := pool_iterator(lights(world))
+	for l, _ in pool_next(&it) {
+		if n >= len(buf) do break
+		if !l.enabled do continue
+		if !transform_active_in_hierarchy(l.owner) do continue
+
+		tw := transform_world(Transform_Handle(l.owner))
+		if n == 0 do ambient = l.ambient
+		buf[n] = light_to_gfx(l, tw)
+		n += 1
+	}
+	return n, ambient
+}
+
+// Enabled Lights drive the pass's lit-shader uniforms; without any the gfx
+// default applies (one white directional — matches the pre-Light look).
+_apply_scene_light :: proc() {
+	buf: [gfx.MAX_LIGHTS]gfx.Light
+	n, ambient := scene_collect_lights(buf[:])
+	if n > 0 do gfx.set_lights(buf[:n], ambient)
+}
+
+render_execute :: proc(view: Render_View, commands: []Render_Command) {
+	_apply_scene_light()
+	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
+		am, a_mesh := a.variant.(Draw_Mesh)
+		bm, b_mesh := b.variant.(Draw_Mesh)
+		if a_mesh != b_mesh do return a_mesh // meshes first
+		if a_mesh {
+			// Group by first material so same-material runs share binds.
+			ak: u128 = len(am.materials) > 0 ? transmute(u128)am.materials[0] : 0
+			bk: u128 = len(bm.materials) > 0 ? transmute(u128)bm.materials[0] : 0
+			return ak < bk
+		}
+		return sprite_sort_key_less(a.key, b.key)
+	})
+
+	gfx.set_view_proj(view.view_proj, view.cam_pos)
+	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
+	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
+
+	// One resolve per material guid: equal-material sprites then share the
+	// SAME packed property slice, which is what lets their draws merge in
+	// the gfx batch (material compares by pointer).
+	Sprite_Mat :: struct {
+		shader: string,
+		color:  [4]f32,
+		data:   []u8,
+		extra:  []^gfx.Texture, // sampler bindings 1+ (binding 0 is the sprite's own texture)
+	}
+	sprite_mats := make(map[Asset_GUID]Sprite_Mat, context.temp_allocator)
+
+	for &cmd in commands {
+		switch d in cmd.variant {
+		case Draw_Sprite:
+			tex, ok := texture_load(d.texture)
+			if !ok do continue
+			sm, cached := sprite_mats[d.material]
+			if !cached {
+				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: sprites use their own
+				sm = Sprite_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
+				sprite_mats[d.material] = sm
+			}
+			// Quad facing for lighting shaders (sprites are transform-
+			// oriented, not billboards).
+			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
+			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+		case Draw_Mesh:
+			mesh, ok := mesh_load(d.mesh, d.part)
+			if !ok do continue
+			for sub, i in mesh.submeshes {
+				mat_guid: Asset_GUID
+				if i < len(d.materials) do mat_guid = d.materials[i]
+				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid)
+				gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
+			}
+		}
+	}
+}
+
+// In-app debug drawing (collider wireframes etc): when on, the app loop runs
+// the DebugDraw phase (@(phase={key=DebugDraw, mode=App}) subscribers) inside
+// the open world pass. Toggled with F3.
+debug_draw_enabled: bool
+
+// Renders ALL enabled cameras ascending by Camera.order into `target`
+// (nil = swapchain). Begins the pass — cleared by the lowest-order camera's
+// clear_color, black when no camera — and LEAVES IT OPEN so the caller can
+// draw overlays (demo menu, editor grid) before gfx.pass_end().
+// Returns false only when no pass could begin (window minimized).
+render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
+	world := ctx_world()
+	cams := make([dynamic]^Camera, 0, 8, context.temp_allocator)
+	it := pool_iterator(cameras(world))
+	for cam, _ in pool_next(&it) {
+		if !cam.enabled do continue
+		if !transform_active_in_hierarchy(cam.owner) do continue
+		append(&cams, cam)
+	}
+	slice.sort_by(cams[:], proc(a, b: ^Camera) -> bool {
+		return a.order < b.order
+	})
+
+	clear_color := [4]f32{0, 0, 0, 1}
+	if len(cams) > 0 do clear_color = cams[0].clear_color
+
+	width, height: f32
+	if target != nil {
+		gfx.pass_begin_target(target, clear_color)
+		width, height = f32(target.width), f32(target.height)
+	} else {
+		if !gfx.pass_begin_swapchain(clear_color) do return false
+		ws := gfx.window_size()
+		width, height = f32(ws.x), f32(ws.y)
+	}
+
+	for cam in cams {
+		view := camera_render_view(cam, width, height)
+		commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
+		render_collect_commands(view, &commands)
+		render_execute(view, commands[:])
+	}
+	return true
 }

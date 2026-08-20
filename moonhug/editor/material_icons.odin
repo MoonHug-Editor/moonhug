@@ -1,0 +1,82 @@
+package editor
+
+// Material Symbols Outlined icon codepoints, as UTF-8 string literals for use in
+// imgui text/labels (e.g. `im.Button(ICON_MD_FOLDER + " Assets")`).
+//
+// imgui does NOT do ligatures, so icons are addressed by their raw Private Use
+// Area codepoint (\uXXXX), NOT their ligature name. Values are generated from
+// external/fonts/material/MaterialSymbolsOutlined.codepoints; add more entries
+// from that file as needed. Font license: Apache-2.0 (see external/fonts/material).
+//
+// The merge range loaded by editor_fonts_init covers the PUA block these live
+// in, so any codepoint from the map works once added here.
+
+ICON_MD_MIN :: 0xe000   // Material Symbols PUA range (inclusive)
+ICON_MD_MAX :: 0xf8ff
+
+
+// Project / assets
+ICON_MD_FOLDER      :: "\ue2c7"   // folder
+ICON_MD_FOLDER_OPEN :: "\ue2c8"   // folder_open
+ICON_MD_DESCRIPTION :: "\ue873"   // description
+ICON_MD_IMAGE       :: "\ue3f4"   // image
+ICON_MD_MOVIE       :: "\ue684"   // movie
+ICON_MD_MUSIC_NOTE  :: "\ue405"   // music_note
+
+// Scene / hierarchy
+ICON_MD_LAYERS         :: "\ue53b"   // layers
+ICON_MD_STAT_0         :: "\ue697"   // stat_0 (plain object row in hierarchy)
+ICON_MD_STACKS         :: "\uf720"   // stacks (scene/prefab)
+ICON_MD_STACKS_VARIANT :: "\uf569"   // scene variant (AssetDB root_info.is_variant)
+ICON_MD_WIDGETS        :: "\ue1bd"   // widgets
+ICON_MD_DEPLOYED_CODE  :: "\uf720"   // deployed_code
+ICON_MD_VISIBILITY     :: "\ue8f4"   // visibility
+ICON_MD_VISIBILITY_OFF :: "\ue8f5"   // visibility_off
+
+// Disclosure / navigation
+ICON_MD_CHEVRON_RIGHT :: "\ue5cc"   // chevron_right
+ICON_MD_CHEVRON_LEFT  :: "\ue5cb"   // chevron_left
+ICON_MD_EXPAND_MORE   :: "\ue5cf"   // expand_more
+ICON_MD_EXPAND_LESS   :: "\ue5ce"   // expand_less
+ICON_MD_ARROW_RIGHT   :: "\ue5df"   // arrow_right
+
+// Log levels (console)
+ICON_MD_INFO          :: "\uf52b"   // info
+ICON_MD_WARNING       :: "\uf083"   // warning
+ICON_MD_ERROR         :: "\uf8b6"   // error
+
+// Actions
+ICON_MD_CLOSE         :: "\ue5cd"   // close (clear search)
+ICON_MD_FOLDER_CHECK  :: "\uf3d7"   // folder_check (sample installed by copy)
+ICON_MD_LINK          :: "\ue250"   // link (sample installed by symlink)
+ICON_MD_SEARCH        :: "\uef7a"   // search (object picker button; also in inspector package)
+ICON_MD_PLAY_ARROW    :: "\ue037"   // play_arrow (Simulate resume)
+ICON_MD_PLAY_CIRCLE   :: "\ue1c4"   // play_circle (toolbar Simulate button)
+ICON_MD_PAUSE         :: "\ue034"   // pause (Simulate pause)
+ICON_MD_STOP          :: "\ue047"   // stop (Simulate stop)
+ICON_MD_SKIP_NEXT     :: "\ue044"   // skip_next (Simulate step one frame)
+ICON_MD_RUN_CONFIG    :: "\ue869"   // run/build config (toolbar Play button)
+ICON_MD_SAVE          :: "\ue161"   // save
+ICON_MD_ADD           :: "\ue145"   // add
+ICON_MD_DELETE        :: "\ue92e"   // delete
+ICON_MD_CONTENT_COPY  :: "\ue14d"   // content_copy
+ICON_MD_CONTENT_PASTE :: "\ue14f"   // content_paste
+ICON_MD_MORE_HORIZ    :: "\ue5d3"   // more_horiz
+ICON_MD_MENU          :: "\ue5d4"   // menu ("..." dropdown / overflow menu)
+ICON_MD_SETTINGS      :: "\ue8b8"   // settings
+ICON_MD_PALETTE       :: "\ue40a"   // palette (.mat material asset)
+ICON_MD_CODE          :: "\ue86f"   // code (.glsl shader asset)
+ICON_MD_REFRESH       :: "\ue5d5"   // refresh
+ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in app_editor's tween view)
+
+// Scene view overlays (dock.odin)
+ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle)
+ICON_MD_OPEN_WITH      :: "\ue89f"   // open_with (move tool)
+ICON_MD_ROTATE_RIGHT   :: "\ue41a"   // rotate_right (rotate tool)
+ICON_MD_OPEN_IN_FULL   :: "\uf1ce"   // open_in_full (scale tool)
+ICON_MD_ARROW_SELECTOR :: "\uf82f"   // arrow_selector_tool (picker tool)
+ICON_MD_PUBLIC         :: "\ue80b"   // public/globe (global gizmo space)
+ICON_MD_GRID_ON        :: "\uf015"   // grid_on (grid settings overlay)
+ICON_MD_SNAP           :: "\uea49"   // square_foot (snap settings)
+ICON_MD_TRIP_ORIGIN    :: "\ue57b"   // trip_origin (gizmo at active pivot)
+ICON_MD_CENTER_FOCUS   :: "\ue3dc"   // filter_center_focus (gizmo at selection center)

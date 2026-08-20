@@ -1,11 +1,118 @@
 package inspector
 
 import "core:fmt"
+import "core:mem"
 import "core:reflect"
 import "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 import "../../engine"
 import "../undo"
+
+// Material icon codepoints, duplicated from editor/material_icons.odin — the
+// inspector package cannot import editor (editor imports inspector).
+ICON_MD_CLOSE  :: "\ue5cd"
+ICON_MD_SEARCH :: "\uef7a"
+
+// Shared picker-popup search state. One popup is open at a time, so a single
+// buffer serves all pickers; it resets when a popup (re)opens.
+@(private)
+_picker_search_buf: [128]byte
+
+// Draw the popup's search input (focused on open) and return the lowercase
+// query (temp-allocated).
+_picker_search_bar :: proc() -> string {
+	if im.IsWindowAppearing() {
+		mem.zero(&_picker_search_buf, len(_picker_search_buf))
+		im.SetKeyboardFocusHere()
+	}
+	im.SetNextItemWidth(220)
+	im.InputTextWithHint("##picker_search", "Search", cstring(raw_data(_picker_search_buf[:])), uint(len(_picker_search_buf)))
+	return strings.to_lower(strings.trim_space(string(cstring(raw_data(_picker_search_buf[:])))), context.temp_allocator)
+}
+
+// Unity-like reference field row: Label [value][x][pick]. Single click on the
+// value pings the target, double click opens/selects it (out params); [x]
+// clears (shown before [pick] only when set); [pick] opens the picker popup.
+// Returns true when the popup should open. When dropped_asset is non-nil, the
+// value button accepts ASSET_PATH drag-drops and writes the dropped path
+// (temp-allocated) there.
+//
+// An EMPTY field ("None") has nothing to ping or open, so its value area acts
+// as the pick button — clicking anywhere on the row opens the picker instead of
+// hitting a dead zone.
+_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
+	display, has_value := display, has_value
+	// Every reference drawer routes its value text through here, so the mixed
+	// substitution lives here too rather than in each drawer. Showing the active
+	// object's asset name would read as if the whole selection pointed at it.
+	//
+	// `has_value` goes false with it: the ping / open / clear affordances act on
+	// one specific reference, and a mixed row names none. The row then behaves
+	// like an empty one — clicking it opens the picker, which assigns to the
+	// whole selection and resolves the mixed state.
+	if current_field_mixed {
+		display = MIXED_VALUE_TEXT
+		has_value = false
+	}
+
+	field_row(label)
+
+	BTN_W :: f32(24)
+	// field_row left the cursor at the value column, so this is that column's
+	// width. The buttons size themselves, hence reading it rather than relying on
+	// the item width field_row also set.
+	avail := im.GetContentRegionAvail().x
+	value_w := avail - BTN_W
+	if has_value do value_w -= BTN_W
+
+	value_label := strings.clone_to_cstring(
+		fmt.tprintf("%s##val_%s", display, label), context.temp_allocator,
+	)
+	// This button shows a reference VALUE, so make it read as a FIELD, not a
+	// button: left-aligned text (like a text field) and the frame-bg fill (so
+	// it matches the other input boxes rather than the distinct button gray).
+	im.PushStyleVarImVec2(.ButtonTextAlign, im.Vec2{0, 0.5})
+	im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.FrameBg)^)
+	im.PushStyleColorImVec4(.ButtonHovered, im.GetStyleColorVec4(.FrameBgHovered)^)
+	im.PushStyleColorImVec4(.ButtonActive, im.GetStyleColorVec4(.FrameBgActive)^)
+	value_pressed := im.Button(value_label, {value_w, 0})
+	im.PopStyleColor(3)
+	im.PopStyleVar()
+	open_picker := false
+	if value_pressed {
+		if has_value {
+			value_clicked^ = true
+		} else {
+			open_picker = true
+		}
+	}
+	if has_value && value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+		value_double_clicked^ = true
+	}
+	if dropped_asset != nil && im.BeginDragDropTarget() {
+		if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
+			path := string((cast([^]u8)payload.Data)[:payload.DataSize])
+			dropped_asset^ = strings.clone(path, context.temp_allocator)
+		}
+		im.EndDragDropTarget()
+	}
+
+	if has_value {
+		im.SameLine(0, 0)
+		clear_label := strings.clone_to_cstring(
+			fmt.tprintf("%s##clear_%s", ICON_MD_CLOSE, label), context.temp_allocator,
+		)
+		if im.Button(clear_label, {BTN_W, 0}) {
+			cleared^ = true
+		}
+	}
+
+	im.SameLine(0, 0)
+	pick_label := strings.clone_to_cstring(
+		fmt.tprintf("%s##pick_%s", ICON_MD_SEARCH, label), context.temp_allocator,
+	)
+	return im.Button(pick_label, {BTN_W, 0}) || open_picker
+}
 
 @(property_drawer={type = engine.Ref_Local, priority = 0})
 draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -21,64 +128,86 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 
 	owner_root_scene := _ref_local_owner_root_scene()
 	display := _ref_local_display(ref_ptr^, target_key)
-
-	im.AlignTextToFramePadding()
-	im.Text(label)
-	im.SameLine(0, 8)
-
-	avail := im.GetContentRegionAvail().x
-	clear_w: f32 = 0
 	has_value := ref_ptr.local_id != 0 || ref_ptr.handle != {}
-	if has_value do clear_w = 24
 
 	popup_id := strings.clone_to_cstring(
 		fmt.tprintf("ref_local_picker##%s", label), context.temp_allocator,
 	)
-	btn_label := strings.clone_to_cstring(
-		fmt.tprintf("%s##%s", display, label), context.temp_allocator,
-	)
-	if im.Button(btn_label, {avail - clear_w, 0}) {
+
+	value_clicked, value_double, cleared: bool
+	if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
 		im.OpenPopup(popup_id)
 	}
-
-	if has_value {
-		im.SameLine(0, 0)
-		clear_label := strings.clone_to_cstring(
-			fmt.tprintf("X##clear_%s", label), context.temp_allocator,
-		)
-		if im.Button(clear_label, {clear_w, 0}) {
-			ref_ptr^ = {}
-			mark_inspector_changed()
+	// Single click: ping (reveal + flash, selection untouched). Double click:
+	// select in the hierarchy.
+	if value_double {
+		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
+			engine.inspector_request_select(tH)
 		}
+	} else if value_clicked {
+		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
+			engine.inspector_request_ping(tH)
+		}
+	}
+	if cleared {
+		ref_ptr^ = {}
+		mark_inspector_changed()
 	}
 
 	if im.BeginPopup(popup_id) {
 		if target_key == engine.INVALID_TYPE_KEY {
 			im.TextDisabled("Add `ref:\"TypeName\"` field tag to enable picker")
 		} else {
-			if im.Selectable("None") {
-				ref_ptr^ = {}
-				mark_inspector_changed()
-			}
-			im.Separator()
-			objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
-			if len(objects) == 0 {
-				im.TextDisabled("(no objects in loaded scenes)")
-			}
-			for obj in objects {
-				row := strings.clone_to_cstring(
-					fmt.tprintf("%s##%d_%d", obj.name, obj.handle.index, obj.handle.generation),
-					context.temp_allocator,
-				)
-				if im.Selectable(row) {
-					ref_ptr.handle = obj.handle
-					ref_ptr.local_id = engine.sm_local_id_get_or_mint(owner_root_scene, obj.handle)
-					mark_inspector_changed()
+			search := _picker_search_bar()
+			// Single Scene tab: a Ref_Local is a same-file local_id — fields
+			// that can also reference assets use engine.Ref (PPtr).
+			if im.BeginTabBar("##picker_tabs") {
+				if im.BeginTabItem("Scene") {
+					if im.Selectable("None") {
+						ref_ptr^ = {}
+						mark_inspector_changed()
+					}
+					im.Separator()
+					objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
+					shown := 0
+					for obj in objects {
+						if search != "" && !strings.contains(strings.to_lower(obj.name, context.temp_allocator), search) {
+							continue
+						}
+						shown += 1
+						row := strings.clone_to_cstring(
+							fmt.tprintf("%s##%d_%d", obj.name, obj.handle.index, obj.handle.generation),
+							context.temp_allocator,
+						)
+						if im.Selectable(row) {
+							ref_ptr.handle = obj.handle
+							ref_ptr.local_id = engine.sm_local_id_get_or_mint(owner_root_scene, obj.handle)
+							mark_inspector_changed()
+						}
+					}
+					if shown == 0 {
+						im.TextDisabled("(no matches in loaded scenes)")
+					}
+					im.EndTabItem()
 				}
+				im.EndTabBar()
 			}
 		}
 		im.EndPopup()
 	}
+}
+
+// The transform a ref points at (the component's owner for component refs).
+@(private)
+_ref_local_target_transform :: proc(r: engine.Ref_Local) -> (engine.Transform_Handle, bool) {
+	w := engine.ctx_world()
+	if !engine.world_pool_valid(w, r.handle) do return {}, false
+	if r.handle.type_key == .Transform {
+		return engine.Transform_Handle(r.handle), true
+	}
+	raw := engine.world_pool_get(w, r.handle)
+	if raw == nil do return {}, false
+	return (cast(^engine.CompData)raw).owner, true
 }
 
 @(private)
@@ -121,8 +250,58 @@ _ref_local_display :: proc(r: engine.Ref_Local, key: engine.TypeKey) -> string {
 			}
 		}
 	}
-	if r.local_id != 0 {
-		return fmt.tprintf("[unresolved local_id=%d]", r.local_id)
+	// Once-set reference whose target is gone (deleted object, dead handle) —
+	// Unity shows "Missing (Type)" here.
+	if key != engine.INVALID_TYPE_KEY {
+		return fmt.tprintf("Missing (%v)", key)
 	}
-	return "[invalid]"
+	return "Missing"
+}
+
+// A reference field with NO pick or clear buttons — the value is fixed by what
+// it describes, not chosen by the user (e.g. the Prefab Asset a Prefab Instance
+// came from). Click semantics match a normal Ref field: single click pings,
+// double click opens.
+//
+// Not `im.BeginDisabled` styling: the value is still interactive, just not
+// re-assignable, so it keeps the field look and hover feedback.
+// `inline_label`: draw "Label:" immediately before the value instead of at the
+// inspector's shared label column. A compact header row wants the two hugging
+// each other, not the wide label gutter a property row uses.
+picker_field_row_readonly :: proc(
+	label: cstring,
+	display: string,
+	clicked: ^bool,
+	double_clicked: ^bool = nil,
+	inline_label := false,
+) {
+	if inline_label {
+		if len(string(label)) > 0 {
+			im.AlignTextToFramePadding()
+			im.TextUnformatted(label)
+			im.SameLine()
+		}
+	} else {
+		field_row(label)
+	}
+
+	value_label := strings.clone_to_cstring(
+		fmt.tprintf("%s##ro_%s", display, label), context.temp_allocator,
+	)
+	im.PushStyleVarImVec2(.ButtonTextAlign, im.Vec2{0, 0.5})
+	im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.FrameBg)^)
+	im.PushStyleColorImVec4(.ButtonHovered, im.GetStyleColorVec4(.FrameBgHovered)^)
+	im.PushStyleColorImVec4(.ButtonActive, im.GetStyleColorVec4(.FrameBgActive)^)
+	// Fill the remaining width, but never wider than the text needs plus a
+	// little padding — a short path should not stretch a whole column.
+	avail := im.GetContentRegionAvail().x
+	want := im.CalcTextSize(value_label, nil, true).x + im.GetStyle().FramePadding.x * 4
+	pressed := im.Button(value_label, {min(avail, want), 0})
+	im.PopStyleColor(3)
+	im.PopStyleVar()
+
+	if pressed do clicked^ = true
+	if double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+		double_clicked^ = true
+	}
 }

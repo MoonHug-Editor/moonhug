@@ -1,15 +1,14 @@
 {
   "root": 10,
-  "next_local_id": 23,
   "transforms": [
     {
       "local_id": 10,
       "name": "RootA",
       "is_active": true,
       "position": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "rotation": [
         0.00880202,
@@ -18,9 +17,9 @@
         0.99988508
       ],
       "scale": [
-        5.00000000,
-        5.00000000,
-        5.00000000
+        5.0,
+        5.0,
+        5.0
       ],
       "render_layer": 1,
       "parent": {
@@ -58,20 +57,20 @@
       "name": "TestB",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -92,20 +91,20 @@
       "name": "TestB2",
       "is_active": true,
       "position": [
-        0.00000000,
-        0.00000000,
-        0.00000000
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -126,9 +125,9 @@
       "name": "TransformA",
       "is_active": true,
       "position": [
-        1.00000000,
-        2.00000000,
-        3.00000000
+        1.0,
+        2.0,
+        3.0
       ],
       "rotation": [
         0.03709997,
@@ -137,9 +136,9 @@
         0.99699163
       ],
       "scale": [
-        7.00000000,
-        8.00000000,
-        9.00000000
+        7.0,
+        8.0,
+        9.0
       ],
       "render_layer": 1,
       "parent": {
@@ -170,31 +169,6 @@
             "local_id": 10,
             "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
           },
-          "property_path": "rotation",
-          "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
-          "property_path": "scale",
-          "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
           "property_path": "name",
           "value": "TestB"
         },
@@ -205,9 +179,34 @@
           },
           "property_path": "position",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
           ]
         },
         {
@@ -225,11 +224,23 @@
           },
           "property_path": "position",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            0.0,
+            0.0,
+            0.0
           ]
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
       ]
     },
     {
@@ -253,12 +264,24 @@
             "local_id": 10,
             "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
           },
+          "property_path": "position",
+          "value": [
+            0.0,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 10,
+            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
+          },
           "property_path": "rotation",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000,
-            1.0000000000000000
+            0.0,
+            0.0,
+            0.0,
+            1.0
           ]
         },
         {
@@ -268,21 +291,9 @@
           },
           "property_path": "scale",
           "value": [
-            1.0000000000000000,
-            1.0000000000000000,
-            1.0000000000000000
-          ]
-        },
-        {
-          "target": {
-            "local_id": 10,
-            "guid": "2453d7fb-a433-4b0d-8a29-11fc0b491fe4"
-          },
-          "property_path": "position",
-          "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            1.0,
+            1.0,
+            1.0
           ]
         },
         {
@@ -300,23 +311,27 @@
           },
           "property_path": "position",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            0.0,
+            0.0,
+            0.0
           ]
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
       ]
     }
   ],
   "breadcrumbs": [
-    {
-      "local_id": 17,
-      "scene_source": {
-        "local_id": 15,
-        "guid": "00000000-0000-0000-0000-000000000000"
-      },
-      "scene_instance": 16
-    },
     {
       "local_id": 14,
       "scene_source": {
@@ -324,21 +339,17 @@
         "guid": "00000000-0000-0000-0000-000000000000"
       },
       "scene_instance": 13
+    },
+    {
+      "local_id": 17,
+      "scene_source": {
+        "local_id": 15,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 16
     }
   ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
+  "components": [
 
   ]
 }

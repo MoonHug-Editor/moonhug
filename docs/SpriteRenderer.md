@@ -95,6 +95,31 @@ Any serializable struct field of type `Asset_GUID` gets the asset reference draw
 
 ---
 
+## 6 — Sorting (sorting_layer / order_in_layer / SpriteSortingGroup)
+
+Unity semantics, resolved in `engine/sprite_sort.odin`:
+
+```
+sorting_layer  →  order_in_layer  →  view depth (back-to-front)  →  scene-tree order
+```
+
+- `SpriteRenderer.sorting_layer` and `.order_in_layer` are plain i32s (Unity's
+  Sorting Layer / Order in Layer). Defaults of 0 reproduce pure depth sorting.
+- When every explicit key ties, sprites draw in scene-tree order — so sibling
+  subtrees are atomic by default (Godot-style painter ordering as the tiebreak).
+- `SpriteSortingGroup` (component) makes its whole transform subtree sort as ONE
+  unit against outside sprites, using the group's layer/order and the group
+  root's depth; members keep sorting among themselves by their own keys. Groups
+  nest (up to 7 levels deep); a disabled group stops grouping.
+
+Implementation: one scene-tree pass per view packs each sprite's resolved key
+into `[8]u64` words (`layer:8 | order:16 | ~depth:24 | tree_seq:16` per
+hierarchy level) — O(n), no per-sprite ancestor walks, and keys are unique so
+draw order is total and deterministic. `render_execute` sorts meshes first,
+then sprites by key. Tests: `tests/sprite_sorting_tests.odin`.
+
+---
+
 ## Lifecycle
 
 | Phase | What happens |

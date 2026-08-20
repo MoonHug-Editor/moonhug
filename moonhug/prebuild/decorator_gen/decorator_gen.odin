@@ -1,13 +1,27 @@
 package decorator_gen
 
+// decorator_gen: ECS prebuild module for decorators_generated.odin.
+//
+//   provide  - walk the decls, recognise struct decls whose fields carry
+//              `decor:` struct tags, tag each with a Decorator_GenComp carrying the
+//              per-type FieldDecorators (a nested [dynamic] owned by the world
+//              for the run).
+//   generate - join {decls, Decorator_GenComp}, rebuild TypeDecorators rows,
+//              sort, build decorators_generated.odin, emit it (gen_db writes).
+//
+// String-building output is identical to the previous collect/generate version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:slice"
+import "core:strconv"
 import "core:strings"
-import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
 DecoratorCall :: struct {
 	call_with_ctx: string, // e.g. `header(ctx, text="Hello")`
+	is_button:     bool,   // buttons are position-sorted by row, not tag order
+	row:           int,    // button row: >= 0 above the field, < 0 below
 }
 
 FieldDecorators :: struct {
@@ -17,13 +31,27 @@ FieldDecorators :: struct {
 
 TypeDecorators :: struct {
 	pkg_name:  string,
+	pkg_path:  string,
 	type_name: string,
 	fields:    [dynamic]FieldDecorators,
 }
 
-DecoratorCollectData :: struct {
-	entries: [dynamic]TypeDecorators,
+// Decorator_GenComp marks a DeclInfo entity as a struct with decorator tags and
+// carries the per-type data the generator needs. The nested [dynamic] arrays
+// are owned by the world for the run and rebuilt into rows by generate.
+Decorator_GenComp :: struct {
+	pkg_name: string,
+	pkg_path: string,
+	fields:   [dynamic]FieldDecorators,
 }
+
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("decorator/provide", provide)
+	db.generator("decorator/generate", generate)
+}
+
 
 // Writes call line to builder; unescapes \" to " so generated Odin source is valid.
 _write_call_line :: proc(b: ^strings.Builder, call_with_ctx: string) {
@@ -39,7 +67,43 @@ _write_call_line :: proc(b: ^strings.Builder, call_with_ctx: string) {
 	strings.write_string(b, "\n")
 }
 
-_parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
+// `button(proc_name, args...)` references a PROC, not a literal — qualify it
+// with the component's package so the generated file compiles the reference
+// (a renamed proc then fails the build there), and default the label to the
+// proc name when the tag doesn't set one. Also extracts `row` so emission can
+// position-sort buttons (row >= 0 above the field, < 0 below).
+_rewrite_button_call :: proc(rest: string, pkg_name: string) -> (call: string, row: int) {
+	// rest is everything after "button(" e.g. `tank_fire, label="Fire", row=0)`
+	end := strings.index_rune(rest, ',')
+	tail: string
+	proc_name: string
+	if end < 0 {
+		close := strings.index_rune(rest, ')')
+		if close < 0 do return "", 0
+		proc_name = strings.trim_space(rest[:close])
+		tail = ")"
+	} else {
+		proc_name = strings.trim_space(rest[:end])
+		tail = rest[end:] // ", label=..., row=...)"
+	}
+	if proc_name == "" do return "", 0
+	if ri := strings.index(tail, "row="); ri >= 0 {
+		rv := tail[ri + len("row="):]
+		re := 0
+		for re < len(rv) && (rv[re] == '-' || (rv[re] >= '0' && rv[re] <= '9')) do re += 1
+		if v, rok := strconv.parse_int(rv[:re]); rok do row = v
+	}
+	qualified := proc_name
+	if pkg_name != "" {
+		qualified = fmt.tprintf("%s.%s", pkg_name, proc_name)
+	}
+	if !strings.contains(tail, "label=") {
+		tail = fmt.tprintf(", label=\"%s\"%s", proc_name, tail)
+	}
+	return fmt.tprintf("decorator_button(ctx, %s%s", qualified, tail), row
+}
+
+_parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> [dynamic]DecoratorCall {
 	calls: [dynamic]DecoratorCall
 	defer if len(calls) > 0 do delete(calls)
 
@@ -72,6 +136,12 @@ _parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
 		// val is e.g. "header(text=\"Hello\")" or "separator()"
 		// Prepend "decorator_" to proc name; insert "ctx, " after "(" (or just "ctx" if no args)
 		paren := strings.index_rune(val, '(')
+		if paren >= 0 && val[:paren] == "button" {
+			call, row := _rewrite_button_call(val[paren+1:], pkg_name)
+			if call != "" do append(&calls, DecoratorCall{call_with_ctx = call, is_button = true, row = row})
+			pos = end
+			continue
+		}
 		if paren >= 0 {
 			proc_name := fmt.tprintf("decorator_%s", val[:paren])
 			rest := val[paren+1:]
@@ -97,67 +167,81 @@ _parse_decor_calls_from_tag :: proc(tag: string) -> [dynamic]DecoratorCall {
 	return result
 }
 
-collect :: proc(pkg: ^ast.Package, data: ^DecoratorCollectData) -> bool {
-	if pkg == nil do return false
+provide :: proc(w: ^db.World) -> bool {
+	_decorators := db.get_or_create_comps(w, Decorator_GenComp)
+	decls       := db.get_comps_DeclInfo()
+	field_comps := db.get_comps(w, gen_facts.Fields_GenComp)
 
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 || len(v_decl.values) == 0 do continue
+	m := db.all_of(db.r(decls), db.r(field_comps)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		if decl.name == "" do continue
 
-			type_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				type_name = id.name
+		struct_fields := db.get(field_comps, entity).fields
+
+		fields: [dynamic]FieldDecorators
+		has_any := false
+		for sf in struct_fields {
+			if sf.name == "" do continue
+			calls := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
+			defer delete(calls)
+			if len(calls) == 0 {
+				append(&fields, FieldDecorators{field_name = sf.name})
+				continue
 			}
-			if type_name == "" do continue
-
-			st, is_struct := v_decl.values[0].derived.(^ast.Struct_Type)
-			if !is_struct || st == nil || st.fields == nil do continue
-
-			td: TypeDecorators = {pkg_name = pkg.name, type_name = type_name}
-			has_any := false
-			for field_expr in st.fields.list {
-				f, ok := field_expr.derived.(^ast.Field)
-				if !ok || len(f.names) == 0 do continue
-				field_name := ""
-				if id, ok_id := f.names[0].derived.(^ast.Ident); ok_id do field_name = id.name
-				if field_name == "" do continue
-
-				tag_str := gen_core.StructFieldTag(f)
-				calls := _parse_decor_calls_from_tag(tag_str)
-				defer delete(calls)
-				if len(calls) == 0 {
-					append(&td.fields, FieldDecorators{field_name = field_name})
-					continue
-				}
-				has_any = true
-				fd: FieldDecorators = {field_name = field_name}
-				for c in calls do append(&fd.calls, c)
-				append(&td.fields, fd)
-			}
-			if has_any do append(&data.entries, td)
+			has_any = true
+			fd: FieldDecorators = {field_name = sf.name}
+			for c in calls do append(&fd.calls, c)
+			append(&fields, fd)
+		}
+		if has_any {
+			db.set(_decorators, entity, Decorator_GenComp{pkg_name = decl.pkg.name, pkg_path = decl.pkg_path, fields = fields})
+		} else {
+			for fd in fields do delete(fd.calls)
+			delete(fields)
 		}
 	}
 	return true
 }
 
-collect_finalize :: proc(data: ^DecoratorCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: TypeDecorators) -> bool {
+generate :: proc(w: ^db.World) -> bool {
+	entries: [dynamic]TypeDecorators
+	defer {
+		for e in entries {
+			for fd in e.fields do delete(fd.calls)
+			delete(e.fields)
+		}
+		delete(entries)
+	}
+
+	decls := db.get_comps_DeclInfo()
+	_decorators := db.get_comps(w, Decorator_GenComp)
+	m := db.all_of(db.r(decls), db.r(_decorators)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		deco := db.get(_decorators, entity)
+		append(&entries, TypeDecorators{
+			pkg_name  = deco.pkg_name,
+			pkg_path  = deco.pkg_path,
+			type_name = decl.name,
+			fields    = deco.fields,
+		})
+	}
+
+	// Preserve previous collect_finalize ordering: sort by (pkg_name, type_name).
+	slice.sort_by(entries[:], proc(a, b: TypeDecorators) -> bool {
 		if a.pkg_name != b.pkg_name do return a.pkg_name < b.pkg_name
 		return a.type_name < b.type_name
 	})
-}
 
-generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
 	strings.write_string(&b, "package inspector\n\n")
-	packages_used: map[string]bool
+	packages_used: map[string]string // declared name -> pkg_path
 	defer delete(packages_used)
-	for e in data.entries {
-		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = true
+	for e in entries {
+		if e.pkg_name != "" && e.pkg_name != "editor" do packages_used[e.pkg_name] = e.pkg_path
 	}
 	import_pkgs: [dynamic]string
 	defer delete(import_pkgs)
@@ -166,12 +250,19 @@ generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
 	}
 	slice.sort(import_pkgs[:])
 	for pkg in import_pkgs {
-		fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		// Engine sits beside the editor; every other decorated type lives in
+		// an installed package (app included) reached via the collection, at
+		// its pkg_path (subpackages live below their folder name).
+		if pkg == "engine" {
+			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		} else {
+			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
+		}
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")
 	strings.write_string(&b, "// Code generated by decorator_gen. Do not edit.\n\n")
 
-	for e in data.entries {
+	for e in entries {
 		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
 		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
 		pkg_prefix := e.pkg_name
@@ -183,10 +274,42 @@ generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
 			proc_name := fmt.tprintf("%s%s", type_prefix, fd.field_name)
 			strings.write_string(&b, proc_name)
 			strings.write_string(&b, " :: proc(ctx: ^DrawContext) {\n")
+
+			// Buttons are position-sorted by row (HIGHER row renders HIGHER on
+			// screen): row >= 0 rows stack above the field in the pre pass,
+			// row < 0 rows below it in the post pass. Non-button decorators
+			// keep tag order; the above-field button block sits where the
+			// first button appeared in the tag. Ties (same row) keep tag order
+			// left-to-right on the shared line.
+			above: [dynamic]DecoratorCall
+			below: [dynamic]DecoratorCall
+			others: [dynamic]DecoratorCall
+			defer { delete(above); delete(below); delete(others) }
+			first_button := -1
+			for c in fd.calls {
+				if c.is_button {
+					if first_button < 0 do first_button = len(others)
+					if c.row >= 0 do append(&above, c)
+					else do append(&below, c)
+				} else {
+					append(&others, c)
+				}
+			}
+			slice.stable_sort_by(above[:], proc(a, b: DecoratorCall) -> bool { return a.row > b.row })
+			slice.stable_sort_by(below[:], proc(a, b: DecoratorCall) -> bool { return a.row > b.row })
+
 			strings.write_string(&b, "\tif ctx.is_pre {\n")
-			for c in fd.calls do _write_call_line(&b, c.call_with_ctx)
+			insert_at := first_button < 0 ? len(others) : first_button
+			for c, ci in others {
+				if ci == insert_at do for a in above do _write_call_line(&b, a.call_with_ctx)
+				_write_call_line(&b, c.call_with_ctx)
+			}
+			if insert_at == len(others) do for a in above do _write_call_line(&b, a.call_with_ctx)
 			strings.write_string(&b, "\t} else {\n")
-			for i := len(fd.calls) - 1; i >= 0; i -= 1 do _write_call_line(&b, fd.calls[i].call_with_ctx)
+			// Non-buttons run reversed (push/pop symmetry: readonly's End,
+			// tooltip against the just-drawn field), THEN the below-field rows.
+			for i := len(others) - 1; i >= 0; i -= 1 do _write_call_line(&b, others[i].call_with_ctx)
+			for c in below do _write_call_line(&b, c.call_with_ctx)
 			strings.write_string(&b, "\t}\n")
 			strings.write_string(&b, "}\n\n")
 		}
@@ -196,7 +319,7 @@ generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
 	}
 
 	strings.write_string(&b, "init_decorators :: proc() {\n")
-	for e in data.entries {
+	for e in entries {
 		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
 		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
 		qual := e.type_name
@@ -218,14 +341,6 @@ generate :: proc(data: ^DecoratorCollectData, out_dir: string) -> bool {
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/decorators_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^DecoratorCollectData) {
-	for e in data.entries {
-		for fd in e.fields do delete(fd.calls)
-		delete(e.fields)
-	}
-	delete(data.entries)
+	db.emit(w, "moonhug/editor/inspector/decorators_generated.odin", strings.to_string(b))
+	return true
 }

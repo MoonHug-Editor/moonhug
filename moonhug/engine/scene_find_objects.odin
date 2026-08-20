@@ -1,8 +1,41 @@
 package engine
 
+import "core:fmt"
+import "core:strings"
+import "base:runtime"
+
 Found_Object :: struct {
 	handle: Handle,
-	name: string,
+	name:   string,
+	// "Root/Foo/Bar" — slash-separated transform names from the scene root down
+	// to the owning transform. For component matches this is the owner
+	// transform's path. Allocator follows the `allocator` arg of
+	// `sm_find_objects_of_type`.
+	path:   string,
+}
+
+// Builds "A/B/C" from `tH` walking up to the root transform of its scene.
+// Allocator owns the returned string. Returns "" for an invalid handle.
+transform_hierarchy_path :: proc(tH: Transform_Handle, allocator := context.temp_allocator) -> string {
+	w := ctx_world()
+	if !pool_valid(&w.transforms, Handle(tH)) do return ""
+
+	names := make([dynamic]string, 0, 8, context.temp_allocator)
+	cur := tH
+	for {
+		t := pool_get(&w.transforms, Handle(cur))
+		if t == nil do break
+		append(&names, t.name)
+		if !pool_valid(&w.transforms, t.parent.handle) do break
+		cur = Transform_Handle(t.parent.handle)
+	}
+
+	// names is leaf-to-root; reverse and join with '/'.
+	n := len(names)
+	rev := make([dynamic]string, 0, n, context.temp_allocator)
+	for i := n - 1; i >= 0; i -= 1 do append(&rev, names[i])
+	joined := strings.join(rev[:], "/", context.temp_allocator)
+	return strings.clone(joined, allocator)
 }
 
 // Editor-facing equivalent of FindObjectsOfType, scoped to currently loaded scenes.
@@ -25,7 +58,7 @@ sm_find_objects_of_type :: proc(key: TypeKey, root_scene: ^Scene = nil, allocato
 		if !sm_scene_is_valid(s) do continue
 		if target_root != nil && s != target_root do continue
 		if !pool_valid(&ctx_world().transforms, s.root.handle) do continue
-		_collect_from_subtree(Transform_Handle(s.root.handle), key, &results)
+		_collect_from_subtree(Transform_Handle(s.root.handle), key, "", &results, allocator)
 	}
 	return results[:]
 }
@@ -46,22 +79,29 @@ sm_get_root_scene_of_transform :: proc(tH: Transform_Handle) -> ^Scene {
 }
 
 @(private)
-_collect_from_subtree :: proc(tH: Transform_Handle, key: TypeKey, out: ^[dynamic]Found_Object) {
+_collect_from_subtree :: proc(tH: Transform_Handle, key: TypeKey, parent_path: string, out: ^[dynamic]Found_Object, path_alloc: runtime.Allocator) {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return
 
+	my_path: string
+	if parent_path == "" {
+		my_path = strings.clone(t.name, path_alloc)
+	} else {
+		my_path = strings.concatenate({parent_path, "/", t.name}, path_alloc)
+	}
+
 	if key == .Transform {
-		append(out, Found_Object{handle = Handle(tH), name = t.name})
+		append(out, Found_Object{handle = Handle(tH), name = t.name, path = my_path})
 	} else {
 		for c in t.components {
 			if c.handle.type_key != key do continue
-			append(out, Found_Object{handle = c.handle, name = t.name})
+			append(out, Found_Object{handle = c.handle, name = t.name, path = my_path})
 		}
 	}
 
 	for child in t.children {
-		_collect_from_subtree(Transform_Handle(child.handle), key, out)
+		_collect_from_subtree(Transform_Handle(child.handle), key, my_path, out, path_alloc)
 	}
 }
 
@@ -79,10 +119,28 @@ sm_local_id_get_or_mint :: proc(s: ^Scene, h: Handle) -> Local_ID {
 		return bc_lid
 	}
 
+	// Nested-owned targets must be addressed through breadcrumbs — their own
+	// local_id belongs to the prefab's namespace, and registering it in the
+	// host bimap silently corrupts host lookups (it can collide with host lids,
+	// e.g. the NS host transform's own lid). If breadcrumb creation failed,
+	// fail the mint rather than poison the bimap.
+	w := ctx_world()
+	{
+		nested := false
+		if h.type_key == .Transform {
+			if t := pool_get(&w.transforms, h); t != nil do nested = t.nested_owned
+		} else if raw := world_pool_get(w, h); raw != nil {
+			nested = (cast(^CompData)raw).nested_owned
+		}
+		if nested {
+			fmt.printfln("[Scene] could not mint a breadcrumb for nested object %v — reference not recorded", h)
+			return 0
+		}
+	}
+
 	// Live, non-nested entity not yet registered in the bimap. Use its own
 	// local_id (assigned at creation time) and register it now so subsequent
 	// lookups dedupe and so save+reload round-trips correctly.
-	w := ctx_world()
 	existing_lid: Local_ID
 	if h.type_key == .Transform {
 		t := pool_get(&w.transforms, h)
@@ -99,7 +157,7 @@ sm_local_id_get_or_mint :: proc(s: ^Scene, h: Handle) -> Local_ID {
 		return existing_lid
 	}
 
-	new_lid := scene_next_id(s)
+	new_lid := scene_new_lid(s)
 	bimap_insert(&s.local_ids, new_lid, h)
 	return new_lid
 }

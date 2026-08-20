@@ -1,5 +1,6 @@
 package undo
 
+import "core:encoding/json"
 import engine "../../engine"
 
 transform_scene_and_local_id :: proc(tH: engine.Transform_Handle) -> (^engine.Scene, engine.Local_ID, bool) {
@@ -43,7 +44,7 @@ record_reparent :: proc(node: engine.Transform_Handle, old_parent, new_parent: e
 	}
 
 	cmd := Reparent_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		node_local_id = node_lid,
 		old_parent_local_id = old_parent_lid,
 		new_parent_local_id = new_parent_lid,
@@ -67,12 +68,14 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 		}
 	}
 
-	payload := engine.scene_copy_subtree(root)
+	// Prefab content must be captured too, or undo of a nested delete has
+	// nothing to restore.
+	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
 	if payload == nil do return
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	cmd := Create_Subtree_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
@@ -89,16 +92,25 @@ record_delete_pre :: proc(root: engine.Transform_Handle) -> (Delete_Subtree_Comm
 	if !ok do return {}, false
 	parent_lid := parent_local_id(root)
 
-	payload := engine.scene_copy_subtree(root)
+	// Prefab content must be captured too, or undo of a nested delete has
+	// nothing to restore.
+	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
 	if payload == nil do return {}, false
 
 	sibling_idx := engine.transform_get_sibling_index(root)
+	owned := false
+	if w := engine.ctx_world(); w != nil {
+		if rt := engine.pool_get(&w.transforms, engine.Handle(root)); rt != nil {
+			owned = rt.nested_owned
+		}
+	}
 	return Delete_Subtree_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		parent_local_id = parent_lid,
 		root_local_id = root_lid,
 		sibling_index = sibling_idx,
 		payload = payload,
+		nested_owned = owned,
 	}, true
 }
 
@@ -132,7 +144,7 @@ record_add_component :: proc(owner_tH: engine.Transform_Handle, comp_handle: eng
 
 	payload := capture_json(base, tid)
 	cmd := Add_Component_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
@@ -156,7 +168,7 @@ record_remove_component_pre :: proc(owner_tH: engine.Transform_Handle, comp_hand
 
 	payload := capture_json(base, tid)
 	return Remove_Component_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		type_key = comp_handle.type_key,
 		comp_local_id = cbase.local_id,
@@ -165,13 +177,50 @@ record_remove_component_pre :: proc(owner_tH: engine.Transform_Handle, comp_hand
 	}, true
 }
 
+// Removes a preserved unknown-component record (missing-component inspector
+// row) and records the step. Self-contained — no pre/commit split: the removal
+// itself lives in engine, nothing happens between capture and push.
+record_remove_unknown_component :: proc(owner_tH: engine.Transform_Handle, comp_local_id: engine.Local_ID) {
+	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
+	if !ok do return
+
+	// Capture the record BEFORE removal destroys it.
+	payload: []byte
+	for &uc in scene.unknown_components {
+		if uc.owner_lid != owner_lid || uc.local_id != comp_local_id do continue
+		data, merr := json.marshal(uc.value, {spec = .JSON})
+		if merr == nil do payload = data
+		break
+	}
+
+	list_index, removed := engine.transform_remove_unknown_comp(owner_tH, comp_local_id)
+	if !removed {
+		if payload != nil do delete(payload)
+		return
+	}
+
+	s := get()
+	if s == nil || !s.recording || s.applying || payload == nil {
+		if payload != nil do delete(payload)
+		return
+	}
+	cmd := Remove_Unknown_Component_Command{
+		scene          = scene_ref(scene),
+		owner_local_id = owner_lid,
+		comp_local_id  = comp_local_id,
+		payload        = payload,
+		list_index     = list_index,
+	}
+	push(s, Command(Structural_Command(cmd)))
+}
+
 record_reorder_components :: proc(owner_tH: engine.Transform_Handle, from, to: int) {
 	s := get()
 	if s == nil || !s.recording || s.applying do return
 	scene, owner_lid, ok := transform_scene_and_local_id(owner_tH)
 	if !ok do return
 	cmd := Reorder_Components_Command{
-		scene = scene,
+		scene = scene_ref(scene),
 		owner_local_id = owner_lid,
 		old_index = from,
 		new_index = to,

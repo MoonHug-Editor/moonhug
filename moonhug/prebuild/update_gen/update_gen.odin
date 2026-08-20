@@ -1,102 +1,190 @@
 package update_gen
 
+// update_gen: ECS prebuild module.
+//
+//   provide  - iterate the decls, recognise proc decls in package "app" (or an
+//              installed package's runtime package) carrying an `@update` or
+//              `@fixed_update` attribute, add Update_GenComp.
+//   generate - iterate the {decls, updates} join view, sort by order, build
+//              update_generated.odin with BOTH dispatchers, emit it.
+//
+// __update runs per frame (view-side work). __fixed_update runs per fixed
+// tick, driven by the app loop's accumulator (engine/fixed_tick.odin); a
+// subscriber's divisor=N runs it every Nth tick at fixed_dt * N.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:strings"
 import "core:slice"
-import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
-UpdateEntry :: struct {
-	name:  string,
-	order: int,
+Update_Kind :: enum {
+	Frame, // @(update)
+	Fixed, // @(fixed_update)
 }
 
-UpdateCollectData :: struct {
-	entries:  [dynamic]UpdateEntry,
-	pkg_name: string,
+// Update_GenComp marks a DeclInfo entity as an @update / @fixed_update proc.
+// The proc's name lives on the entity's DeclInfo.
+Update_GenComp :: struct {
+	kind:    Update_Kind,
+	order:   int,
+	divisor: int, // fixed only; run every Nth tick (>= 1)
 }
 
-_has_update_attr :: proc(attr: ^ast.Attribute) -> (order: int, found: bool) {
-	if attr == nil do return 0, false
-	if val, ok := gen_core.AttrFindFieldValue(attr, "update"); ok {
-		if comp, comp_ok := val.derived.(^ast.Comp_Lit); comp_ok {
-			if order_ex, ok := gen_core.CompLitGetField(comp, "order"); ok {
-				order = gen_core.ExtractInt(order_ex)
-			}
-			return order, true
-		}
-		return 0, true
-	}
-	for elem in attr.elems {
-		if id, ok := elem.derived.(^ast.Ident); ok && id.name == "update" {
-			return 0, true
-		}
-	}
-	return 0, false
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("update/provide", provide)
+	db.generator("update/generate", generate)
 }
 
-collect :: proc(pkg: ^ast.Package, data: ^UpdateCollectData) -> bool {
-	if pkg == nil do return false
-	if pkg.name != data.pkg_name do return true
 
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 do continue
+provide :: proc(w: ^db.World) -> bool {
+	_updates := db.get_or_create_comps(w, Update_GenComp)
+	decls   := db.get_comps_DeclInfo()
+	procs   := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs   := db.get_comps(w, gen_facts.Attrs_GenComp)
 
-			ident_name := ""
-			if id, ok := v_decl.names[0].derived.(^ast.Ident); ok {
-				ident_name = id.name
-			}
-			if ident_name == "" do continue
-
-			is_proc := false
-			if len(v_decl.values) > 0 {
-				if _, ok := v_decl.values[0].derived.(^ast.Proc_Lit); ok {
-					is_proc = true
-				}
-			}
-			if !is_proc do continue
-
-			for attr in v_decl.attributes {
-				order, found := _has_update_attr(attr)
-				if found {
-					append(&data.entries, UpdateEntry{name = ident_name, order = order})
-					break
-				}
-			}
+	// @update / @fixed_update procs in package "app" or in an installed
+	// package's runtime package (moonhug/packages/<name>, never its editor/
+	// subpackage — the dispatchers are compiled into the app binary).
+	m := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		if decl.name == "" do continue
+		is_package := strings.has_prefix(decl.pkg_path, _PACKAGES_PREFIX) && !strings.has_suffix(decl.pkg_path, "/editor")
+		if !is_package do continue
+		attr_set := db.get(attrs, entity)
+		if args, found := gen_facts.attr_find(attr_set, "update"); found {
+			db.set(_updates, entity, Update_GenComp{kind = .Frame, order = gen_facts.attr_int(args, "order")})
+		} else if args, ffound := gen_facts.attr_find(attr_set, "fixed_update"); ffound {
+			divisor := gen_facts.attr_int(args, "divisor")
+			if divisor < 1 do divisor = 1
+			db.set(_updates, entity, Update_GenComp{kind = .Fixed, order = gen_facts.attr_int(args, "order"), divisor = divisor})
 		}
 	}
-
 	return true
 }
 
-collect_finalize :: proc(data: ^UpdateCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: UpdateEntry) -> bool {
-		return a.order < b.order
-	})
+_PACKAGES_PREFIX :: "moonhug/packages/"
+
+_UpdateRow :: struct {
+	name:    string,
+	pkg:     string, // "" for app procs; package name for packages: imports
+	order:   int,
+	divisor: int,
 }
 
-generate :: proc(data: ^UpdateCollectData, out_dir: string) -> bool {
+// One dispatcher file PER RUNNABLE PACKAGE (a package with `main`, 0..N of
+// them — docs/Plugins.md): the host's own ticks call unqualified, library
+// package ticks go through collection imports, OTHER runnable packages are
+// excluded (they're separate programs).
+generate :: proc(w: ^db.World) -> bool {
+	frame_rows: [dynamic]_UpdateRow
+	fixed_rows: [dynamic]_UpdateRow
+	defer { delete(frame_rows); delete(fixed_rows) }
+
+	decls := db.get_comps_DeclInfo()
+	_updates := db.get_comps(w, Update_GenComp)
+	m := db.all_of(db.r(decls), db.r(_updates)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		update := db.get(_updates, entity)
+		row := _UpdateRow{
+			name    = decl.name,
+			pkg     = decl.pkg.name,
+			order   = update.order,
+			divisor = update.divisor,
+		}
+		switch update.kind {
+		case .Frame: append(&frame_rows, row)
+		case .Fixed: append(&fixed_rows, row)
+		}
+	}
+
+	// Preserve previous collect_finalize ordering: sort by order.
+	sort_rows :: proc(rows: []_UpdateRow) {
+		// Total order — same-order ticks (the common case: no explicit order)
+		// would otherwise emit in entity iteration order and churn between
+		// builds. Call order within a tie is arbitrary but now STABLE.
+		slice.sort_by(rows, proc(a, b: _UpdateRow) -> bool {
+			if a.order != b.order do return a.order < b.order
+			if a.pkg != b.pkg do return a.pkg < b.pkg
+			return a.name < b.name
+		})
+	}
+	sort_rows(frame_rows[:])
+	sort_rows(fixed_rows[:])
+
+	runnables := gen_facts.runnable_packages(w)
+	defer delete(runnables)
+	for host in runnables {
+		_generate_host(w, host, frame_rows[:], fixed_rows[:], runnables[:])
+	}
+	return true
+}
+
+_generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, fixed_rows: []_UpdateRow, runnables: []gen_facts.Runnable_Pkg) {
+	// The host's slice of the rows: own entries + library packages.
+	_included :: proc(e: _UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) -> bool {
+		return e.pkg == host || !gen_facts.is_runnable(runnables, e.pkg)
+	}
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
-	strings.write_string(&b, "package ")
-	strings.write_string(&b, data.pkg_name)
-	strings.write_string(&b, "\n\n")
+	fmt.sbprintf(&b, "package %s\n\n", host.name)
 	strings.write_string(&b, "// Code generated by update_gen. Do not edit.\n\n")
 
+	// Package ticks call through aliased collection imports, interleaved with
+	// the host's own ticks by order (docs/Plugins.md).
+	imports: [dynamic]string
+	defer delete(imports)
+	_collect_imports :: proc(imports: ^[dynamic]string, rows: []_UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) {
+		for e in rows {
+			if e.pkg == host || !_included(e, host, runnables) do continue
+			found := false
+			for p in imports^ do if p == e.pkg { found = true; break }
+			if !found do append(imports, e.pkg)
+		}
+	}
+	_collect_imports(&imports, frame_rows, host.name, runnables)
+	_collect_imports(&imports, fixed_rows, host.name, runnables)
+	slice.sort(imports[:])
+	for p in imports {
+		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p, p)
+	}
+	// Divisor guards read the engine tick counter.
+	needs_engine := false
+	for e in fixed_rows do if _included(e, host.name, runnables) && e.divisor > 1 { needs_engine = true; break }
+	if needs_engine do strings.write_string(&b, "import \"moonhug:engine\"\n")
+	if len(imports) > 0 || needs_engine do strings.write_string(&b, "\n")
+
+	_call_name :: proc(e: _UpdateRow, host: string) -> string {
+		if e.pkg != host do return fmt.tprintf("%s.%s", e.pkg, e.name)
+		return e.name
+	}
+
 	strings.write_string(&b, "__update :: proc(dt: f32) {\n")
-	for e in data.entries {
-		fmt.sbprintf(&b, "\t%s(dt)\n", e.name)
+	for e in frame_rows {
+		if !_included(e, host.name, runnables) do continue
+		fmt.sbprintf(&b, "\t%s(dt)\n", _call_name(e, host.name))
+	}
+	strings.write_string(&b, "}\n\n")
+
+	// Fixed-tick dispatcher (docs/FixedTick.md): the app loop's accumulator
+	// calls this 0..k times per frame with the constant fixed_dt. divisor=N
+	// subscribers run every Nth tick at fixed_dt * N.
+	strings.write_string(&b, "__fixed_update :: proc(fixed_dt: f32) {\n")
+	for e in fixed_rows {
+		if !_included(e, host.name, runnables) do continue
+		if e.divisor > 1 {
+			fmt.sbprintf(&b, "\tif engine.fixed_tick_index() %% %d == 0 do %s(fixed_dt * %d)\n", e.divisor, _call_name(e, host.name), e.divisor)
+		} else {
+			fmt.sbprintf(&b, "\t%s(fixed_dt)\n", _call_name(e, host.name))
+		}
 	}
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/update_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^UpdateCollectData) {
-	delete(data.entries)
+	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))
 }

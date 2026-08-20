@@ -14,15 +14,13 @@ find_transform_named :: proc(
 	name: string,
 	nested_owned: bool,
 ) -> engine.Transform_Handle {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it := engine.pool_iterator(&w.transforms)
+	for tr, h in engine.pool_next(&it) {
 		if tr.scene != s || tr.nested_owned != nested_owned do continue
 		if strings.compare(tr.name, name) != 0 do continue
-		return engine.Transform_Handle(
-			engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform},
-		)
+		th := h
+		th.type_key = .Transform
+		return engine.Transform_Handle(th)
 	}
 	return {}
 }
@@ -33,15 +31,13 @@ find_nested_named_under_host :: proc(
 	host: engine.Transform_Handle,
 	name: string,
 ) -> engine.Transform_Handle {
-	for i in 0 ..< len(w.transforms.slots) {
-		slot := &w.transforms.slots[i]
-		if !slot.alive do continue
-		tr := &slot.data
+	it := engine.pool_iterator(&w.transforms)
+	for tr, h in engine.pool_next(&it) {
 		if tr.scene != s || !tr.nested_owned do continue
 		if strings.compare(tr.name, name) != 0 do continue
-		tH := engine.Transform_Handle(
-			engine.Handle{index = u32(i), generation = slot.generation, type_key = .Transform},
-		)
+		th := h
+		th.type_key = .Transform
+		tH := engine.Transform_Handle(th)
 		if engine.transform_find_nested_host(tH) == host {
 			return tH
 		}

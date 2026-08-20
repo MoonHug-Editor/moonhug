@@ -1,0 +1,160 @@
+{
+  "root": 10,
+  "transforms": [
+    {
+      "local_id": 10,
+      "name": "HostRoot",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 12,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 12,
+      "name": "VariantHost",
+      "is_active": true,
+      "position": [
+        5.0,
+        5.0,
+        5.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 10,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 13,
+      "local_id_in_parent": 13,
+      "source_prefab": "ba583c80-c557-4eae-8a6e-fa440602cef2",
+      "transform_parent": 12,
+      "host_breadcrumb_id": 14,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "name",
+          "value": "VariantHost"
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "position",
+          "value": [
+            5.0,
+            5.0,
+            5.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            0.0,
+            0.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 1,
+            "guid": "ba583c80-c557-4eae-8a6e-fa440602cef2"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 14,
+      "scene_source": {
+        "local_id": 12,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 13
+    }
+  ],
+  "components": [
+
+  ]
+}

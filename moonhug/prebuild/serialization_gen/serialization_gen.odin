@@ -1,117 +1,52 @@
 package serialization_gen
 
+// serialization_gen: ECS prebuild module.
+//
+//   provide  - iterate the decls, recognise proc decls with a
+//              @before_serialize or @after_deserialize attribute, add a
+//              Serialization_GenComp (carrying kind / type_name / priority /
+//              proc_name / source_pkg).
+//   generate - iterate the {decls, serializations} join view, sort, build
+//              serialization_generated.odin, emit it (gen_db writes it).
+//
+// String-building output is identical to the previous collect/generate version.
+
 import "core:fmt"
-import "core:odin/ast"
 import "core:slice"
 import "core:strings"
-import "../gen_core"
+import db "../gen_db"
+import "../gen_facts"
 
 SerializationCallbackKind :: enum {
 	BeforeSerialize,
 	AfterDeserialize,
 }
 
-SerializationEntry :: struct {
+// Serialization_GenComp marks a DeclInfo entity as a serialization callback proc and
+// carries the facts the generator needs.
+Serialization_GenComp :: struct {
 	kind:       SerializationCallbackKind,
 	type_name:  string,
 	priority:   int,
 	proc_name:  string,
-	source_pkg: string,
+	source_pkg:  string,
+	source_path: string, // that package's scan path, for the import
 }
 
-SerializationCollectData :: struct {
-	entries:  [dynamic]SerializationEntry,
-	pkg_name: string,
+
+@(init)
+_register :: proc "contextless" () {
+	db.provider("serialization/provide", provide)
+	db.generator("serialization/generate", generate)
 }
 
-_type_expr_string :: proc(expr: ^ast.Expr) -> string {
-	if expr == nil do return ""
-	#partial switch ex in expr.derived {
-	case ^ast.Ident:
-		return ex.name
-	case ^ast.Selector_Expr:
-		base := _type_expr_string(ex.expr)
-		if ex.field != nil {
-			if id, ok := ex.field.derived.(^ast.Ident); ok {
-				if base != "" do return fmt.tprintf("%s.%s", base, id.name)
-				return id.name
-			}
-		}
-		return base
-	case:
-		return gen_core.ExtractStringExtended(expr)
-	}
-}
 
-_attr_field :: proc(attr: ^ast.Attribute, key: string) -> (type_name: string, priority: int, found: bool) {
-	if attr == nil do return "", 0, false
-	val, ok := gen_core.AttrFindFieldValue(attr, key)
+_attr_field :: proc(attr_set: ^gen_facts.Attrs_GenComp, key: string) -> (type_name: string, priority: int, found: bool) {
+	args, ok := gen_facts.attr_find(attr_set, key)
 	if !ok do return "", 0, false
-	comp, comp_ok := val.derived.(^ast.Comp_Lit)
-	if !comp_ok do return "", 0, false
-
-	if type_ex, ok := gen_core.CompLitGetField(comp, "type"); ok do type_name = _type_expr_string(type_ex)
-	if priority_ex, ok := gen_core.CompLitGetField(comp, "priority"); ok do priority = gen_core.ExtractInt(priority_ex)
+	type_name = args.fields["type"]
+	priority = gen_facts.attr_int(args, "priority")
 	return type_name, priority, type_name != ""
-}
-
-collect :: proc(pkg: ^ast.Package, data: ^SerializationCollectData) -> bool {
-	if pkg == nil do return false
-	if data.pkg_name == "" do data.pkg_name = pkg.name
-
-	for _, file in pkg.files {
-		for decl in file.decls {
-			v_decl, is_value := decl.derived.(^ast.Value_Decl)
-			if !is_value do continue
-			if len(v_decl.names) == 0 do continue
-
-			ident_name := ""
-			if id, ok_id := v_decl.names[0].derived.(^ast.Ident); ok_id {
-				ident_name = id.name
-			}
-			if ident_name == "" do continue
-
-			is_proc := false
-			if len(v_decl.values) > 0 {
-				if _, ok_lit := v_decl.values[0].derived.(^ast.Proc_Lit); ok_lit {
-					is_proc = true
-				}
-			}
-			if !is_proc do continue
-
-			for attr in v_decl.attributes {
-				if type_name, priority, found := _attr_field(attr, "before_serialize"); found {
-					append(&data.entries, SerializationEntry{
-						kind       = .BeforeSerialize,
-						type_name  = type_name,
-						priority   = priority,
-						proc_name  = ident_name,
-						source_pkg = pkg.name,
-					})
-					break
-				}
-				if type_name, priority, found := _attr_field(attr, "after_deserialize"); found {
-					append(&data.entries, SerializationEntry{
-						kind       = .AfterDeserialize,
-						type_name  = type_name,
-						priority   = priority,
-						proc_name  = ident_name,
-						source_pkg = pkg.name,
-					})
-					break
-				}
-			}
-		}
-	}
-
-	return true
-}
-
-collect_finalize :: proc(data: ^SerializationCollectData) {
-	slice.sort_by(data.entries[:], proc(a, b: SerializationEntry) -> bool {
-		if a.kind != b.kind do return a.kind < b.kind
-		return a.priority < b.priority
-	})
 }
 
 _package_from_type_name :: proc(type_name: string) -> string {
@@ -121,18 +56,126 @@ _package_from_type_name :: proc(type_name: string) -> string {
 	return ""
 }
 
-generate :: proc(data: ^SerializationCollectData, out_dir: string) -> bool {
+provide :: proc(w: ^db.World) -> bool {
+	_serializations := db.get_or_create_comps(w, Serialization_GenComp)
+	decls := db.get_comps_DeclInfo()
+	procs := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
+
+	m := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		if decl.name == "" do continue
+		attr_set := db.get(attrs, entity)
+
+		if type_name, priority, found := _attr_field(attr_set, "before_serialize"); found {
+			db.set(_serializations, entity, Serialization_GenComp{
+				kind       = .BeforeSerialize,
+				type_name  = type_name,
+				priority   = priority,
+				proc_name  = decl.name,
+				source_pkg = decl.pkg.name,
+				source_path = decl.pkg_path,
+			})
+			continue
+		}
+		if type_name, priority, found := _attr_field(attr_set, "after_deserialize"); found {
+			db.set(_serializations, entity, Serialization_GenComp{
+				kind       = .AfterDeserialize,
+				type_name  = type_name,
+				priority   = priority,
+				proc_name  = decl.name,
+				source_pkg = decl.pkg.name,
+				source_path = decl.pkg_path,
+			})
+		}
+	}
+	return true
+}
+
+// Import path for a package reached from `out_dir`. A package NAME cannot be
+// turned into a path (an editor subpackage is <pkg>/editor but declares
+// <pkg>_editor), so proc-side packages carry their scan path; type-side ones
+// only have the name.
+_relative_import_path :: proc(out_dir: string, source_path: string) -> string {
+	out_dir_slash := strings.concatenate({out_dir, "/"})
+	if strings.has_prefix(source_path, out_dir_slash) {
+		return source_path[len(out_dir_slash):]
+	}
+	out_parts := strings.split(out_dir, "/")
+	src_parts := strings.split(source_path, "/")
+	common := 0
+	for common < len(out_parts) && common < len(src_parts) && out_parts[common] == src_parts[common] {
+		common += 1
+	}
+	ups := len(out_parts) - common
+	b := strings.builder_make()
+	for _ in 0 ..< ups {
+		strings.write_string(&b, "../")
+	}
+	for i in common ..< len(src_parts) {
+		if i > common do strings.write_string(&b, "/")
+		strings.write_string(&b, src_parts[i])
+	}
+	return strings.to_string(b)
+}
+
+_OUT_DIR :: "moonhug/engine/serialization"
+
+_SerializationRow :: struct {
+	kind:        SerializationCallbackKind,
+	type_name:   string,
+	priority:    int,
+	proc_name:   string,
+	source_pkg:  string,
+	source_path: string,
+}
+
+generate :: proc(w: ^db.World) -> bool {
+	entries: [dynamic]_SerializationRow
+	defer delete(entries)
+
+	decls := db.get_comps_DeclInfo()
+	_serializations := db.get_comps(w, Serialization_GenComp)
+	m := db.all_of(db.r(decls), db.r(_serializations)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		ser := db.get(_serializations, entity)
+		append(&entries, _SerializationRow{
+			kind       = ser.kind,
+			type_name  = ser.type_name,
+			priority   = ser.priority,
+			proc_name  = ser.proc_name,
+			source_pkg = ser.source_pkg,
+			source_path = ser.source_path,
+		})
+	}
+
+	// Preserve previous collect_finalize ordering: sort by (kind, priority).
+	// Total order — see property_drawer_gen: ties on (kind, priority) would
+	// otherwise emit in entity iteration order and churn between builds.
+	slice.sort_by(entries[:], proc(a, b: _SerializationRow) -> bool {
+		if a.kind != b.kind do return a.kind < b.kind
+		if a.priority != b.priority do return a.priority < b.priority
+		if a.type_name != b.type_name do return a.type_name < b.type_name
+		return a.proc_name < b.proc_name
+	})
+
+	pkg_name := "serialization"
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
-	packages_used: map[string]bool
+	packages_used: map[string]string // package name -> import path ("" = derive from name)
 	defer delete(packages_used)
-	for e in data.entries {
-		if pkg := _package_from_type_name(e.type_name); pkg != "" && pkg != data.pkg_name {
-			packages_used[pkg] = true
+	for e in entries {
+		if pkg := _package_from_type_name(e.type_name); pkg != "" && pkg != pkg_name {
+			if pkg not_in packages_used do packages_used[pkg] = ""
 		}
-		if e.source_pkg != "" && e.source_pkg != data.pkg_name {
-			packages_used[e.source_pkg] = true
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
+			path := e.source_path != "" ? _relative_import_path(_OUT_DIR, e.source_path) : ""
+			if existing, ok := packages_used[e.source_pkg]; !ok || existing == "" {
+				packages_used[e.source_pkg] = path
+			}
 		}
 	}
 	import_pkgs: [dynamic]string
@@ -143,22 +186,24 @@ generate :: proc(data: ^SerializationCollectData, out_dir: string) -> bool {
 	slice.sort(import_pkgs[:])
 
 	strings.write_string(&b, "package ")
-	strings.write_string(&b, data.pkg_name)
+	strings.write_string(&b, pkg_name)
 	strings.write_string(&b, "\n\n")
-	import_prefix := "../"
-	if data.pkg_name == "serialization" {
-		import_prefix = "../../"
-	}
 	for pkg in import_pkgs {
-		fmt.sbprintf(&b, "import \"%s%s\"\n", import_prefix, pkg)
+		if path := packages_used[pkg]; path != "" {
+			fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, path)
+		} else if pkg == "engine" || pkg == "editor" {
+			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		} else {
+			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
+		}
 	}
 	if len(packages_used) > 0 do strings.write_string(&b, "\n")
 	strings.write_string(&b, "// Code generated by serialization_gen. Do not edit.\n\n")
 	strings.write_string(&b, "init_serialization_callbacks :: proc() {\n")
 
-	for e in data.entries {
+	for e in entries {
 		rhs: string
-		if e.source_pkg != "" && e.source_pkg != data.pkg_name {
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
 			rhs = fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		} else {
 			rhs = e.proc_name
@@ -173,10 +218,6 @@ generate :: proc(data: ^SerializationCollectData, out_dir: string) -> bool {
 
 	strings.write_string(&b, "}\n")
 
-	gen_path := strings.concatenate({out_dir, "/serialization_generated.odin"})
-	return gen_core.WriteGeneratedFile(gen_path, strings.to_string(b))
-}
-
-cleanup :: proc(data: ^SerializationCollectData) {
-	delete(data.entries)
+	db.emit(w, "moonhug/engine/serialization/serialization_generated.odin", strings.to_string(b))
+	return true
 }

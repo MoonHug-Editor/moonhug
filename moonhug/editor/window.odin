@@ -1,6 +1,6 @@
 package editor
 
-import rl "vendor:raylib"
+import gfx "../engine/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
@@ -29,7 +29,16 @@ EditorSettings :: struct {
     show_output:              bool,
     show_hierarchy:           bool,
     show_history:             bool,
+    show_animation:           bool,
+    show_playable_graph:      bool,
     has_view_state:           bool,
+    scene_overlays:           [dynamic]Overlay_Setting, // dockable overlay placement (dock.odin)
+    grid:                     Grid_Settings,            // scene grid (view_scene.odin)
+    snap:                     Snap_Settings,            // gizmo snapping (view_scene.odin)
+    run_config:               string,                   // Play button's selected run config (view_toolbar.odin), "pkg/name"
+    sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
+    project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
+    project_zoom:             f32,                      // project view zoom: 0 = list, >0 = thumbnail grid (view_project.odin)
 }
 
 editor_settings: EditorSettings
@@ -39,6 +48,13 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
     if read_err == nil {
         err := json.unmarshal(data, &editor_settings)
         if err == nil {
+            // Zero grid/snap = settings file predates the field; keep code defaults.
+            if editor_settings.grid.cells_count > 0 && editor_settings.grid.cell_size > 0 {
+                grid_settings = editor_settings.grid
+            }
+            if editor_settings.snap.angle > 0 {
+                snap_settings = editor_settings.snap
+            }
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
                 menu.show_project_inspector = editor_settings.show_project_inspector
@@ -49,6 +65,8 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
                 menu.show_output            = editor_settings.show_output
                 menu.show_hierarchy         = editor_settings.show_hierarchy
                 menu.show_history           = editor_settings.show_history
+                menu.show_animation         = editor_settings.show_animation
+                menu.show_playable_graph    = editor_settings.show_playable_graph
             }
             if editor_settings.width > 0 && editor_settings.height > 0 {
                 return editor_settings.width, editor_settings.height, editor_settings.x, editor_settings.y
@@ -64,22 +82,20 @@ apply_editor_theme :: proc() {
 }
 
 apply_default_window_size :: proc() {
-    monitor := rl.GetCurrentMonitor()
-    mw := rl.GetMonitorWidth(monitor)
-    mh := rl.GetMonitorHeight(monitor)
-    w := i32(f32(mw) * 0.85)
-    h := i32(f32(mh) * 0.85)
-    rl.SetWindowSize(w, h)
-    rl.SetWindowPosition((mw - w) / 2, (mh - h) / 2)
+    dx, dy, dw, dh := gfx.display_usable_bounds()
+    w := i32(f32(dw) * 0.85)
+    h := i32(f32(dh) * 0.85)
+    gfx.set_window_geometry(dx + (dw - w) / 2, dy + (dh - h) / 2, w, h)
 }
 
 save_editor_settings :: proc() {
     os.make_directory(PROJECT_SETTINGS_DIR)
-    pos := rl.GetWindowPosition()
-    editor_settings.width  = i32(rl.GetScreenWidth())
-    editor_settings.height = i32(rl.GetScreenHeight())
-    editor_settings.x      = i32(pos.x)
-    editor_settings.y      = i32(pos.y)
+    pos := gfx.window_position()
+    size := gfx.window_size()
+    editor_settings.width  = size.x
+    editor_settings.height = size.y
+    editor_settings.x      = pos.x
+    editor_settings.y      = pos.y
     editor_settings.theme  = menu.active_theme
 
     editor_settings.show_inspector         = menu.show_inspector
@@ -91,7 +107,13 @@ save_editor_settings :: proc() {
     editor_settings.show_output            = menu.show_output
     editor_settings.show_hierarchy         = menu.show_hierarchy
     editor_settings.show_history           = menu.show_history
+    editor_settings.show_animation         = menu.show_animation
+    editor_settings.show_playable_graph    = menu.show_playable_graph
     editor_settings.has_view_state         = true
+
+    overlays_capture_settings()
+    editor_settings.grid = grid_settings
+    editor_settings.snap = snap_settings
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

@@ -1,0 +1,66 @@
+{
+  "root": 1,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "SpriteRoot",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 50
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+    {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+      "base": {
+        "enabled": true,
+        "local_id": 50
+      },
+      "color": [
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "texture": "00000000-0000-0000-0000-000000000000"
+    }
+  ]
+}

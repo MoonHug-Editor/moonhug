@@ -4,11 +4,14 @@ import "core:slice"
 import engine "../../engine"
 
 Inspector_Owner :: struct {
-	kind:     Owner_Kind,
-	scene:    ^engine.Scene,
-	local_id: engine.Local_ID,
-	handle:   engine.Handle,
-	base_ptr: rawptr,
+	kind:       Owner_Kind,
+	scene:      Scene_Ref,
+	local_id:   engine.Local_ID,
+	handle:     engine.Handle,
+	base_ptr:   rawptr,
+	asset_guid: engine.Asset_GUID, // .Asset only
+	asset_tid:  typeid,            // .Asset only: the document's typeid
+	raw_tid:    typeid,            // .Raw only: enables whole-owner snapshots
 }
 
 @(private)
@@ -16,9 +19,6 @@ _owner_stack: [dynamic]Inspector_Owner
 
 @(private)
 _field_snapshot: Field_Snapshot
-
-@(private)
-_pending_edit: Pending_Edit
 
 @(private)
 _nested_depth: int
@@ -29,13 +29,6 @@ Field_Snapshot :: struct {
 	old_json: []byte,
 	base_ptr: rawptr,
 	prev_txn_depth: int,
-}
-
-Pending_Edit :: struct {
-	active:   bool,
-	target:   Property_Target,
-	base_ptr: rawptr,
-	old_json: []byte,
 }
 
 push_owner :: proc(o: Inspector_Owner) {
@@ -59,10 +52,6 @@ inspector_shutdown :: proc() {
 		delete(_field_snapshot.old_json)
 	}
 	_field_snapshot = {}
-	if _pending_edit.active && _pending_edit.old_json != nil {
-		delete(_pending_edit.old_json)
-	}
-	_pending_edit = {}
 	_nested_depth = 0
 }
 
@@ -97,7 +86,7 @@ push_pooled_owner :: proc(h: engine.Handle) {
 	}
 	push_owner(Inspector_Owner{
 		kind = .Pooled,
-		scene = scene,
+		scene = scene_ref(scene),
 		local_id = lid,
 		handle = h,
 		base_ptr = base,
@@ -112,10 +101,25 @@ push_component_owner :: proc(comp_handle: engine.Handle) {
 	push_pooled_owner(comp_handle)
 }
 
-push_raw_owner :: proc(base_ptr: rawptr) {
+// A stable non-pooled struct (a project-settings var). `tid` may be nil:
+// field edits still undo (target_for_field), but whole-owner snapshots
+// (comp_snapshot — array ops, decorators, buttons) need the type.
+push_raw_owner :: proc(base_ptr: rawptr, tid: typeid) {
 	push_owner(Inspector_Owner{
 		kind = .Raw,
 		base_ptr = base_ptr,
+		raw_tid = tid,
+	})
+}
+
+// Asset document (project inspector): whole-document snapshots, applied back
+// through the asset hook by guid — the doc pointer may be swapped by undo.
+push_asset_owner :: proc(guid: engine.Asset_GUID, base_ptr: rawptr, tid: typeid) {
+	push_owner(Inspector_Owner{
+		kind = .Asset,
+		base_ptr = base_ptr,
+		asset_guid = guid,
+		asset_tid = tid,
 	})
 }
 
@@ -127,6 +131,10 @@ edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label :
 	if o.kind == .Raw {
 		if o.base_ptr == nil do return {}
 		return edit_raw_begin(o.base_ptr, field_ptr, field_tid, label)
+	}
+
+	if o.kind == .Asset {
+		return edit_asset_begin(o, label)
 	}
 
 	w := engine.ctx_world()
@@ -147,9 +155,26 @@ edit_inspector_field_begin :: proc(field_ptr: rawptr, field_tid: typeid, label :
 	return edit_pooled_begin(o.handle, base_pool, owner_tid, label)
 }
 
+// Whole-document edit scope for an .Asset owner (field context menus etc.):
+// old/new payloads are the full document, applied back via the asset hook.
+edit_asset_begin :: proc(o: Inspector_Owner, label := "") -> Edit_Scope {
+	s := get()
+	if s == nil || !s.recording || s.applying do return {}
+	if o.base_ptr == nil || o.asset_tid == nil do return {}
+	old_json := capture_json(o.base_ptr, o.asset_tid)
+	if old_json == nil do return {}
+	return Edit_Scope{
+		active = true,
+		target = make_asset_target(o.asset_guid, o.asset_tid),
+		field_ptr = o.base_ptr,
+		old_json = old_json,
+		label = label,
+	}
+}
+
 target_for_field :: proc(field_ptr: rawptr, field_tid: typeid) -> (Property_Target, bool) {
 	o, ok := current_owner()
-	if !ok || o.kind == .None do return {}, false
+	if !ok || o.kind == .None || o.kind == .Asset do return {}, false
 	if o.base_ptr == nil do return {}, false
 	offset := uintptr(field_ptr) - uintptr(o.base_ptr)
 	return Property_Target{
@@ -217,106 +242,3 @@ end_field :: proc(changed: bool) {
 	push(s, Command(cmd))
 }
 
-promote_to_pending :: proc() {
-	if !_field_snapshot.active do return
-	if _pending_edit.active {
-		delete(_pending_edit.old_json)
-		_pending_edit = {}
-	}
-
-	old_copy := make([]byte, len(_field_snapshot.old_json))
-	copy(old_copy, _field_snapshot.old_json)
-	_pending_edit = Pending_Edit{
-		active   = true,
-		target   = _field_snapshot.target,
-		base_ptr = _field_snapshot.base_ptr,
-		old_json = old_copy,
-	}
-}
-
-pending_begin :: proc(field_ptr: rawptr, field_tid: typeid) {
-	if _pending_edit.active {
-		delete(_pending_edit.old_json)
-		_pending_edit = {}
-	}
-	s := get()
-	if s == nil || !s.recording || s.applying do return
-	if field_ptr == nil do return
-
-	target, ok := target_for_field(field_ptr, field_tid)
-	if !ok do return
-
-	old_json := capture_json(field_ptr, field_tid)
-	if old_json == nil do return
-
-	_pending_edit = Pending_Edit{
-		active   = true,
-		target   = target,
-		base_ptr = field_ptr,
-		old_json = old_json,
-	}
-}
-
-pending_commit :: proc() {
-	if !_pending_edit.active do return
-	defer {
-		delete(_pending_edit.old_json)
-		_pending_edit = {}
-	}
-	s := get()
-	if s == nil || !s.recording || s.applying do return
-
-	new_json := capture_json(_pending_edit.base_ptr, _pending_edit.target.type_id)
-	if new_json == nil do return
-
-	if slice.equal(_pending_edit.old_json, new_json) {
-		delete(new_json)
-		return
-	}
-
-	old_copy := make([]byte, len(_pending_edit.old_json))
-	copy(old_copy, _pending_edit.old_json)
-
-	cmd: Value_Command = {target = _pending_edit.target, old_json = old_copy, new_json = new_json}
-	push(s, Command(cmd))
-}
-
-pending_cancel :: proc() {
-	if !_pending_edit.active do return
-	delete(_pending_edit.old_json)
-	_pending_edit = {}
-}
-
-pending_is_active :: proc() -> bool {
-	return _pending_edit.active
-}
-
-pending_matches :: proc(field_ptr: rawptr) -> bool {
-	return _pending_edit.active && _pending_edit.base_ptr == field_ptr
-}
-
-comp_snapshot :: proc() {
-	o, ok := current_owner()
-	if !ok || o.kind == .None || o.base_ptr == nil do return
-	owner_tid := engine.get_typeid_by_type_key(o.handle.type_key)
-	if owner_tid == nil do return
-	if _pending_edit.active && _pending_edit.base_ptr == o.base_ptr do return
-	s := get()
-	if s == nil || !s.recording || s.applying do return
-	target := make_pooled_target(o.handle, 0, owner_tid)
-	old_json := capture_json(o.base_ptr, owner_tid)
-	if old_json == nil do return
-	if _pending_edit.active {
-		delete(_pending_edit.old_json)
-	}
-	_pending_edit = Pending_Edit{
-		active   = true,
-		target   = target,
-		base_ptr = o.base_ptr,
-		old_json = old_json,
-	}
-}
-
-comp_commit :: proc() {
-	pending_commit()
-}

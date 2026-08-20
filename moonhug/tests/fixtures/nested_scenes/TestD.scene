@@ -7,20 +7,20 @@
       "name": "RootD",
       "is_active": true,
       "position": [
-        4.00000000,
-        4.00000000,
-        4.00000000
+        4.0,
+        4.0,
+        4.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -37,29 +37,27 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 2,
       "name": "TransformD",
       "is_active": true,
       "position": [
-        100.00000000,
-        200.00000000,
-        300.00000000
+        100.0,
+        200.0,
+        300.0
       ],
       "rotation": [
-        0.00000000,
-        0.00000000,
-        0.00000000,
-        1.00000000
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
-        1.00000000,
-        1.00000000,
-        1.00000000
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
@@ -68,33 +66,11 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     }
   ],
-  "nested_scenes": [
-
-  ],
-  "breadcrumbs": [
-
-  ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
-
-  ]
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": []
 }

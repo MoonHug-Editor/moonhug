@@ -12,4 +12,5 @@ moonhug/library/
 .zed
 *.dSYM
 *_generated*
-ProjectSettings/
+builds/
+moonhug/logs/

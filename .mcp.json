@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "moonhug": {
+      "command": "sh",
+      "args": ["run_mcp_shim.sh"]
+    }
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "root": 15,
+  "transforms": [
+
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 1015,
+      "local_id_in_parent": 1015,
+      "source_prefab": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1",
+      "transform_parent": 0,
+      "host_breadcrumb_id": 0,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"
+          },
+          "property_path": "color",
+          "value": [
+            0.77254903,
+            0.8588235400000001,
+            0.6156863,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "7c9a0c19-2803-4e37-960a-0cc5538ea0c1"
+          },
+          "property_path": "color",
+          "value": [
+            1.0,
+            0.25098041,
+            0.68627453,
+            1.0
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+
+  ]
+}

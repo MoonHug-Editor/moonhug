@@ -1,16 +1,49 @@
 package engine
 
 import "core:encoding/json"
+import "core:math/rand"
 import "core:os"
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 import "base:runtime"
 
 // Walks `ptr` of type `ti` and, for every PPtr / Ref / Ref_Local / Owned found,
-// resolves its `handle` from `local_id` via the scene's local_ids bimap.
+// resolves its `handle` from `local_id`.
+//
+// `file_local` is the id->handle table of the SceneFile the value was loaded
+// from, when resolving happens at load time. Intra-file references MUST resolve
+// against it, not the scene bimap: a nested prefab keeps its own local_id
+// namespace (Unity resolves intra-prefab fileIDs the same way), and its ids are
+// never registered in the host scene's bimap — a bimap lookup would either miss
+// or, worse, silently bind to an unrelated host object with the same id. The
+// bimap is the fallback for ids not present in the file (breadcrumb pegs).
 // PPtr entries with a non-empty guid (cross-asset) are skipped — those are
 // resolved separately at asset-resolve time.
-_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
+_resolve_lid :: proc(s: ^Scene, file_local: ^map[Local_ID]Handle, lid: Local_ID) -> (Handle, bool) {
+	if file_local != nil {
+		if h, ok := file_local^[lid]; ok do return h, true
+	}
+	return bimap_get(&s.local_ids, lid)
+}
+
+// `only_unbound` restricts resolution to refs whose handle is not currently a
+// live pool handle (zero, dead, or a synthetic breadcrumb placeholder). This is
+// how the post-migration sweep stays namespace-safe: a ref that already holds a
+// real handle was bound in its own file's namespace and must not be rebound via
+// the host bimap (same-numbered lids across namespaces would mis-bind); a ref
+// holding a placeholder is by definition breadcrumb-mediated and needs the
+// migrated binding — regardless of which component owns it or how deep it sits.
+//
+// `authoritative` makes the serialized identity the single source of truth for
+// the runtime handle: a local ref's handle is OVERWRITTEN — bound when the lid
+// resolves, zeroed when the lid is 0 or unresolvable. Undo/redo applies need
+// this: json.unmarshal writes only the fields present in the payload, so a
+// stale handle from the pre-apply value survives underneath a cleared pptr
+// (redo of "clear ref" left the field looking assigned). Load paths keep the
+// default — freshly unmarshaled values have zero handles, and guid-bearing
+// (cross-asset) refs are bound by asset resolution, not here.
+_resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, file_local: ^map[Local_ID]Handle = nil, only_unbound := false, authoritative := false) {
 	if ptr == nil || ti == nil || s == nil do return
 	base := runtime.type_info_base(ti)
 	if base == nil do return
@@ -18,6 +51,11 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 	#partial switch info in base.variant {
 	case runtime.Type_Info_Struct:
 		tid := ti.id
+		if tid in _ref_remap_hooks {
+			// Hooked blob types hold no live handles — nothing to resolve,
+			// and the generic walk must not descend into their json.Value.
+			return
+		}
 		if tid == typeid_of(PPtr) {
 			pptr := cast(^PPtr)ptr
 			// PPtr has no handle field; nothing to resolve here.
@@ -27,18 +65,28 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		if tid == typeid_of(Ref) {
 			ref := cast(^Ref)ptr
 			if ref.pptr.local_id != 0 && pptr_guid_is_empty(ref.pptr.guid) {
-				if h, ok := bimap_get(&s.local_ids, ref.pptr.local_id); ok {
+				if only_unbound && world_pool_valid(ctx_world(), ref.handle) do return
+				if h, ok := _resolve_lid(s, file_local, ref.pptr.local_id); ok {
 					ref.handle = h
+				} else if authoritative {
+					ref.handle = {}
 				}
+			} else if authoritative && pptr_guid_is_empty(ref.pptr.guid) {
+				ref.handle = {} // cleared ref: serialized state says none
 			}
 			return
 		}
 		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
 			rl := cast(^Ref_Local)ptr
 			if rl.local_id != 0 {
-				if h, ok := bimap_get(&s.local_ids, rl.local_id); ok {
+				if only_unbound && world_pool_valid(ctx_world(), rl.handle) do return
+				if h, ok := _resolve_lid(s, file_local, rl.local_id); ok {
 					rl.handle = h
+				} else if authoritative {
+					rl.handle = {}
 				}
+			} else if authoritative {
+				rl.handle = {}
 			}
 			return
 		}
@@ -46,7 +94,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		count := int(info.field_count)
 		for i in 0..<count {
 			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
-			_resolve_refs_in_value(field_ptr, info.types[i], s)
+			_resolve_refs_in_value(field_ptr, info.types[i], s, file_local, only_unbound, authoritative)
 		}
 
 	case runtime.Type_Info_Union:
@@ -61,7 +109,7 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		idx := tag if info.no_nil else tag - 1
 		if idx < 0 || int(idx) >= len(info.variants) do return
 		variant_ti := info.variants[idx]
-		_resolve_refs_in_value(ptr, variant_ti, s)
+		_resolve_refs_in_value(ptr, variant_ti, s, file_local, only_unbound, authoritative)
 
 	case runtime.Type_Info_Dynamic_Array:
 		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
@@ -69,16 +117,108 @@ _resolve_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene) {
 		elem_size := info.elem_size
 		for i in 0..<dyn.len {
 			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound, authoritative)
 		}
 
 	case runtime.Type_Info_Array:
 		elem_size := info.elem_size
 		for i in 0..<info.count {
 			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
-			_resolve_refs_in_value(elem_ptr, info.elem, s)
+			_resolve_refs_in_value(elem_ptr, info.elem, s, file_local, only_unbound, authoritative)
 		}
 	}
+}
+
+// Walks `ptr` and rewrites every Ref/Ref_Local/Owned whose resolved handle is
+// `old_h` to `new_h`. Used when nested-scene absorption destroys the prefab's
+// root transform and the host transform takes its place — refs bound to the
+// prefab root must follow.
+_rewrite_handle_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, old_h: Handle, new_h: Handle) {
+	if ptr == nil || ti == nil do return
+	base := runtime.type_info_base(ti)
+	if base == nil do return
+
+	#partial switch info in base.variant {
+	case runtime.Type_Info_Struct:
+		tid := ti.id
+		if tid in _ref_remap_hooks {
+			return // hooked blob types hold no live handles
+		}
+		if tid == typeid_of(PPtr) {
+			return
+		}
+		if tid == typeid_of(Ref) {
+			ref := cast(^Ref)ptr
+			if ref.handle == old_h do ref.handle = new_h
+			return
+		}
+		if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+			rl := cast(^Ref_Local)ptr
+			if rl.handle == old_h do rl.handle = new_h
+			return
+		}
+
+		count := int(info.field_count)
+		for i in 0..<count {
+			field_ptr := rawptr(uintptr(ptr) + info.offsets[i])
+			_rewrite_handle_refs_in_value(field_ptr, info.types[i], old_h, new_h)
+		}
+
+	case runtime.Type_Info_Union:
+		tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+		tag: i64
+		switch info.tag_type.size {
+		case 1: tag = i64((cast(^u8)tag_ptr)^)
+		case 2: tag = i64((cast(^u16)tag_ptr)^)
+		case 4: tag = i64((cast(^u32)tag_ptr)^)
+		case 8: tag = i64((cast(^u64)tag_ptr)^)
+		}
+		idx := tag if info.no_nil else tag - 1
+		if idx < 0 || int(idx) >= len(info.variants) do return
+		variant_ti := info.variants[idx]
+		_rewrite_handle_refs_in_value(ptr, variant_ti, old_h, new_h)
+
+	case runtime.Type_Info_Dynamic_Array:
+		dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+		if dyn.data == nil || dyn.len == 0 do return
+		elem_size := info.elem_size
+		for i in 0..<dyn.len {
+			elem_ptr := rawptr(uintptr(dyn.data) + uintptr(i * elem_size))
+			_rewrite_handle_refs_in_value(elem_ptr, info.elem, old_h, new_h)
+		}
+
+	case runtime.Type_Info_Array:
+		elem_size := info.elem_size
+		for i in 0..<info.count {
+			elem_ptr := rawptr(uintptr(ptr) + uintptr(i * elem_size))
+			_rewrite_handle_refs_in_value(elem_ptr, info.elem, old_h, new_h)
+		}
+	}
+}
+
+// New lid for a record during a SceneFile remap: the mapper decides (projection
+// into / out of an instance namespace), or the scene counter mints one (paste).
+_remap_new_id :: proc(s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID, user: rawptr, old: Local_ID) -> Local_ID {
+	if mapper != nil do return mapper(user, old)
+	return scene_new_lid(s)
+}
+
+// Types the typed walk cannot see into (json.Value blobs like tween's
+// Authored) register a remap hook — the walk calls it instead of recursing.
+// Registered at SerializationInit by the owning package.
+Ref_Remap_Hook :: proc(ptr: rawptr, remap: ^map[Local_ID]Local_ID)
+
+@(private) _ref_remap_hooks: map[typeid]Ref_Remap_Hook
+
+@(init)
+_ref_remap_hooks_init :: proc "contextless" () {
+	context = runtime.default_context()
+	_ref_remap_hooks = make(map[typeid]Ref_Remap_Hook, runtime.default_allocator())
+}
+
+register_ref_remap_hook :: proc(tid: typeid, hook: Ref_Remap_Hook) {
+	context.allocator = runtime.default_allocator()
+	_ref_remap_hooks[tid] = hook
 }
 
 _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Local_ID]Local_ID) {
@@ -89,6 +229,10 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 	#partial switch info in base.variant {
 	case runtime.Type_Info_Struct:
 		tid := ti.id
+		if hook, hooked := _ref_remap_hooks[tid]; hooked {
+			hook(ptr, remap)
+			return
+		}
 		if tid == typeid_of(PPtr) {
 			pptr := cast(^PPtr)ptr
 			if pptr.local_id != 0 {
@@ -197,6 +341,42 @@ _collect_transform_tree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile)
 	}
 }
 
+// Walks a variant's resolved root subtree and collects only the variant's OWN
+// added content — non-nested-owned transforms grafted under the (nested-owned)
+// base content. Each such transform's serialized parent lid is rewritten to its
+// nearest nested-owned ancestor's lid (the base namespace lid), so that on
+// reload the addition grafts back under the materialized base.
+// `root_subst` remaps the synthesized placeholder root's runtime lid to the
+// base root SOURCE lid that is written as sf.root, so additions parented at the
+// placeholder serialize with a parent lid that reload can graft against.
+_collect_variant_added_subtree :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile, root_tH: Transform_Handle, root_subst: Local_ID) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	// The parent lid additions should serialize with: the base-namespace source
+	// lid for the placeholder root, else the ancestor's own (base-namespace) lid.
+	parent_lid := tH == root_tH ? root_subst : t.local_id
+	for child in t.children {
+		ct := pool_get(&w.transforms, child.handle)
+		if ct == nil do continue
+		if ct.nested_owned {
+			// Stay within the base subtree looking for added (non-owned) content.
+			_collect_variant_added_subtree(w, Transform_Handle(child.handle), sf, root_tH, root_subst)
+			continue
+		}
+		// Non-nested-owned child of a nested-owned ancestor → variant addition.
+		// Collect its (non-owned) subtree, then pin its parent lid to the base
+		// ancestor so the graft is reconstructable on load.
+		before := len(sf.transforms)
+		_collect_transform_tree(w, Transform_Handle(child.handle), sf)
+		for i in before..<len(sf.transforms) {
+			if sf.transforms[i].local_id == ct.local_id {
+				sf.transforms[i].parent = Ref{ pptr = PPtr{local_id = parent_lid} }
+				break
+			}
+		}
+	}
+}
+
 // Walks the nested-owned subtree for override capture. `outer_ns` is the
 // NestedScene we're capturing for; `outer_host` is the live transform it
 // resolves to. Items belonging to a *different* NS (inner prefabs nested under
@@ -232,15 +412,17 @@ _collect_nested_owned_subtree :: proc(
 			if ct != nil do append(&t_copy.children, child)
 		}
 	}
+	// Nested-owned components are the instance's prefab content. NON-owned
+	// components on nested-owned content are host ADDITIONS — they are
+	// collected too, so override capture can see them and record them as
+	// added_components (docs/NestedPrefabs.md); without them the working copy
+	// would look identical to the prefab and the addition would be lost.
 	t_copy.components = make([dynamic]Owned, 0, len(t.components))
 	if !is_inner_boundary {
 		for c in t.components {
 			if c.handle.type_key == INVALID_TYPE_KEY do continue
 			raw := world_pool_get(w, c.handle)
-			if raw != nil {
-				base := cast(^CompData)raw
-				if base.nested_owned do append(&t_copy.components, c)
-			}
+			if raw != nil do append(&t_copy.components, c)
 		}
 	}
 	append(&sf.transforms, t_copy)
@@ -251,8 +433,7 @@ _collect_nested_owned_subtree :: proc(
 		if c.handle.type_key == INVALID_TYPE_KEY do continue
 		raw := world_pool_get(w, c.handle)
 		if raw == nil do continue
-		base := cast(^CompData)raw
-		if base.nested_owned do world_pool_collect(w, c.handle, sf)
+		world_pool_collect(w, c.handle, sf)
 	}
 
 	for child in t.children {
@@ -271,16 +452,23 @@ _collect_nested_owned_subtree :: proc(
 //
 // For native NS (expand_parent == {}) this is just the prefab raw — no chain.
 // For depth-N inner NS, walks N levels of outer prefab files.
+// Package-visible wrapper so nested_scene_revert_override can reuse this exact
+// baseline (capture and revert then agree on what "before overrides" means).
+chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) {
+	return _chain_baked_base_for_ns(s, ns)
+}
+
 @(private = "file")
 _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) {
 	if s == nil || ns == nil do return nil, false
 
-	prefab_raw, ok := scene_lib[ns.source_prefab]
-	if !ok {
-		if !scene_lib_register(ns.source_prefab) do return nil, false
-		prefab_raw, ok = scene_lib[ns.source_prefab]
-		if !ok do return nil, false
-	}
+	// Baseline = the prefab RESOLVED (variant inheritance flattened: base +
+	// the variant's own overrides + additions). For a flat prefab this is its
+	// raw bytes. Using raw here would diff against an unresolved variant file
+	// and lose overrides on nested-variant content.
+	prefab_raw, owned := _prefab_resolved_bytes(ns.source_prefab)
+	if prefab_raw == nil do return nil, false
+	defer if owned do delete(prefab_raw)
 
 	clone_raw :: proc(src: []byte) -> []byte {
 		out := make([]byte, len(src))
@@ -297,7 +485,11 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 	// each level apply that level's outer prefab's NS-for-(next inner)
 	// overrides to the next prefab raw. The final result is `ns.source_prefab`
 	// raw with every level's overrides on top.
-	Hop :: struct { outer_guid: Asset_GUID, child_guid: Asset_GUID, child_transform_parent: Local_ID }
+	// The hop identifies the child NS's RECORD IN THE OUTER FILE by its
+	// file-stable lid (local_id_in_parent) — runtime metadata like
+	// transform_parent is projected into the host namespace and no longer
+	// matches file values.
+	Hop :: struct { outer_guid: Asset_GUID, child_guid: Asset_GUID, child_ns_file_lid: Local_ID }
 	hops := make([dynamic]Hop, 0, 4, context.temp_allocator)
 
 	cur := ns
@@ -307,9 +499,9 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 		outer := scene_find_nested_scene_for_host(s, ep)
 		if outer == nil do return nil, false
 		append(&hops, Hop{
-			outer_guid             = outer.source_prefab,
-			child_guid             = cur.source_prefab,
-			child_transform_parent = cur.transform_parent,
+			outer_guid        = outer.source_prefab,
+			child_guid        = cur.source_prefab,
+			child_ns_file_lid = _ns_projection_key(cur),
 		})
 		cur = outer
 	}
@@ -322,38 +514,38 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 
 	for i := len(hops) - 1; i >= 0; i -= 1 {
 		hop := hops[i]
-		outer_raw, ohas := scene_lib[hop.outer_guid]
-		if !ohas {
-			if !scene_lib_register(hop.outer_guid) do return nil, false
-			outer_raw, ohas = scene_lib[hop.outer_guid]
-			if !ohas do return nil, false
-		}
+		// RESOLVED outer bytes, not raw: when the outer prefab is a VARIANT,
+		// its raw file has no NS records for the base's nested prefabs — those
+		// live in the base file, and the variant's own deep overrides reach
+		// them only in the flattened form (_prefab_resolved_bytes pushes them
+		// down onto the inner NS records). Reading raw here silently skipped
+		// that whole layer, so capture/revert baselines missed variant edits.
+		outer_raw, outer_owned := _prefab_resolved_bytes(hop.outer_guid)
+		if outer_raw == nil do return nil, false
 
 		outer_copy := make([]byte, len(outer_raw), context.temp_allocator)
 		copy(outer_copy, outer_raw)
+		if outer_owned do delete(outer_raw)
 		outer_sf: SceneFile
-		if json.unmarshal(outer_copy, &outer_sf) != nil do return nil, false
+		if scene_file_unmarshal(outer_copy, &outer_sf) != nil do return nil, false
 
 		matching: []Override
 		for &m in outer_sf.nested_scenes {
 			if m.source_prefab != hop.child_guid do continue
-			if m.transform_parent != hop.child_transform_parent do continue
+			if m.local_id != hop.child_ns_file_lid do continue
 			matching = m.overrides[:]
 			break
 		}
 
-		child_raw, chas := scene_lib[hop.child_guid]
-		if !chas {
-			if !scene_lib_register(hop.child_guid) {
-				scene_file_destroy(&outer_sf)
-				return nil, false
-			}
-			child_raw, chas = scene_lib[hop.child_guid]
-			if !chas {
-				scene_file_destroy(&outer_sf)
-				return nil, false
-			}
+		// Resolve the child prefab (flattening variant inheritance) before applying
+		// the outer overrides — same reasoning as the top-level baseline above. A
+		// flat prefab resolves to its own raw, so non-variant chains are unaffected.
+		child_raw, child_owns := _prefab_resolved_bytes(hop.child_guid)
+		if child_raw == nil {
+			scene_file_destroy(&outer_sf)
+			return nil, false
 		}
+		defer if child_owns do delete(child_raw)
 
 		baked := nested_scene_apply_overrides(child_raw, matching)
 		baked_owns := raw_data(baked) != raw_data(child_raw)
@@ -388,6 +580,34 @@ _chain_baked_base_for_ns :: proc(s: ^Scene, ns: ^NestedScene) -> ([]byte, bool) 
 // (the inner ones must end up empty so resolve and serialization see a
 // consistent picture).
 @(private = "file")
+// Rewrites every "local_id" number in a parsed JSON doc through `m` (misses
+// pass through). Record identities and Ref_Local/PPtr values all serialize
+// under that key, so one rule un-projects a collected live doc back to source
+// namespace for override capture (Unity: modifications target source fileIDs).
+// JSON-level on purpose: the collected SceneFile shallow-copies live components,
+// so struct-level remapping could write through shared dynamic arrays.
+_json_remap_lids :: proc(v: json.Value, m: ^map[Local_ID]Local_ID) {
+	#partial switch obj in v {
+	case json.Object:
+		for k, &val in obj {
+			if k == "local_id" {
+				#partial switch num in val {
+				case json.Integer:
+					if src, ok := m^[Local_ID(num)]; ok do val = json.Integer(src)
+				case json.Float:
+					if src, ok := m^[Local_ID(i64(num))]; ok do val = json.Float(f64(src))
+				}
+				continue
+			}
+			_json_remap_lids(val, m)
+		}
+	case json.Array:
+		for &elem in obj {
+			_json_remap_lids(elem, m)
+		}
+	}
+}
+
 _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	w := ctx_world()
 	if ns.source_prefab == (Asset_GUID{}) do return
@@ -397,19 +617,19 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	host_t := pool_get(&w.transforms, Handle(host_tH))
 	if host_t == nil do return
 
-	prefab_raw, has_prefab := scene_lib[ns.source_prefab]
-	if !has_prefab {
-		if !scene_lib_register(ns.source_prefab) do return
-		prefab_raw, has_prefab = scene_lib[ns.source_prefab]
-		if !has_prefab do return
-	}
+	// Resolved prefab bytes (variant inheritance flattened) — used for the base
+	// root id and the missing-target cleanup, both of which must see the
+	// variant's full resolved lid set, not the raw variant file.
+	prefab_raw, prefab_raw_owned := _prefab_resolved_bytes(ns.source_prefab)
+	if prefab_raw == nil do return
+	defer if prefab_raw_owned do delete(prefab_raw)
 
 	prefab_root_id: Local_ID
 	{
 		prefab_copy := make([]byte, len(prefab_raw), context.temp_allocator)
 		copy(prefab_copy, prefab_raw)
 		base_sf: SceneFile
-		if json.unmarshal(prefab_copy, &base_sf) == nil {
+		if scene_file_unmarshal(prefab_copy, &base_sf) == nil {
 			prefab_root_id = base_sf.root
 			scene_file_destroy(&base_sf)
 		}
@@ -420,18 +640,33 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 	_collect_nested_owned_subtree(w, host_tH, &work_sf, prefab_root_id, ns, host_tH)
 	defer scene_file_destroy_shallow(&work_sf)
 
-	work_raw, werr := json.marshal(work_sf, json.Marshal_Options{spec = .JSON, pretty = false})
+	work_marshaled, werr := json.marshal(work_sf, json.Marshal_Options{spec = .JSON, pretty = false}, context.temp_allocator)
 	if werr != nil {
 		fmt.printf("[Scene] Failed to marshal working copy for override capture: %v\n", werr)
 		return
 	}
+
+	// The live instance carries composed instance lids; the diff baseline is
+	// the prefab file — un-project the working doc to source namespace.
+	work_val: json.Value
+	if json.unmarshal(work_marshaled, &work_val, .JSON, context.temp_allocator) != nil do return
+	_json_remap_lids(work_val, &ns.source_of_inst)
+	work_raw, rerr := json.marshal(work_val, json.Marshal_Options{spec = .JSON, pretty = false})
+	if rerr != nil do return
 	defer delete(work_raw)
 
 	base_raw, ok := _chain_baked_base_for_ns(s, ns)
 	if !ok do return
 	defer delete(base_raw)
 
-	diff := nested_scene_diff_overrides(base_raw, work_raw, ns.source_prefab)
+	// Normalize the prefab base's component records to the live struct field
+	// set: a prefab authored before a component gained a field omits that key,
+	// but the live content always serializes it — without this, an unchanged
+	// save captures every such field as a spurious override.
+	diff_base := base_raw
+	if normalized, nok := _normalize_component_records(base_raw); nok do diff_base = normalized
+
+	diff := nested_scene_diff_overrides(diff_base, work_raw, ns.source_prefab)
 	defer {
 		// `diff` ownership is transferred into native_ns.overrides (or freed if
 		// any entries are skipped); destroy the dynamic-array shell at end.
@@ -505,6 +740,218 @@ _capture_overrides_to_native :: proc(s: ^Scene, ns: ^NestedScene) {
 			target        = final_target,
 			property_path = ov.property_path,
 			value         = ov.value,
+		})
+	}
+
+	// Structural component edits: components the instance lost or gained
+	// relative to its prefab. Same baseline and working copy the field diff
+	// used, so the two stay consistent by construction.
+	_capture_component_edits(s, ns, native_ns, diff_base, work_raw, chain_lids[:])
+	_capture_object_edits(s, ns, native_ns, chain_lids[:])
+}
+
+// The instance's component sets, read from the LIVE world rather than from
+// serialized text. Whether a component is prefab content is a live fact
+// (`CompData.nested_owned`); JSON lid matching cannot substitute, because a
+// component owned by a DEEPER nesting level un-projects with that level's
+// table, not the level being captured, and would read as an unmatched — i.e.
+// added — row. This is our equivalent of Unity answering the same question
+// from the object's own m_CorrespondingSourceObject.
+//
+// Temp-allocated.
+@(private = "file")
+_live_added_components :: proc(s: ^Scene, ns: ^NestedScene) -> map[Local_ID]bool {
+	added := make(map[Local_ID]bool, 0, context.temp_allocator)
+	w := ctx_world()
+	host_tH := nested_scene_resolve_host_handle(s, ns)
+	if host_tH == {} do return added
+
+	_walk :: proc(w: ^World, tH: Transform_Handle, out: ^map[Local_ID]bool, is_root: bool) {
+		t := pool_get(&w.transforms, Handle(tH))
+		if t == nil do return
+		if is_root || t.nested_owned {
+			for comp in t.components {
+				if comp.handle.type_key == INVALID_TYPE_KEY do continue
+				raw := world_pool_get(w, comp.handle)
+				if raw == nil do continue
+				base := cast(^CompData)raw
+				if !base.nested_owned do out^[base.local_id] = true
+			}
+		}
+		for child in t.children {
+			ct := pool_get(&w.transforms, child.handle)
+			if ct != nil && ct.nested_owned {
+				_walk(w, Transform_Handle(child.handle), out, false)
+			}
+		}
+	}
+	_walk(w, host_tH, &added, true)
+	return added
+}
+
+// Roots of host-added subtrees DIRECTLY owned by `ns` — a non-owned transform
+// whose parent is a transform in THIS instance's content.
+//
+// Ownership comes from `ns.source_of_inst`, which maps this instance's live
+// composed lids to the source lids in its own prefab file. That table is the
+// authoritative one-level oracle: a live transform's lid is a key in exactly
+// the NS that owns it, never an outer one. (scene_find_nested_scene_for_host
+// is NOT usable here — its own doc-comment notes it takes the first fuzzy lid
+// match and cross-matches look-alike lids across variant namespaces, which is
+// what attributed one added subtree to two levels.)
+//
+// Each NS reports only what IT directly owns, so an addition is attributed to
+// exactly one level and counted once. Depth is handled by the caller, which
+// projects the parent lid up the inner-NS chain onto the enclosing native NS —
+// Unity keeps the record in the file containing the instance and addresses a
+// deep parent by a composed fileID, rather than writing into the source prefab.
+@(private = "file")
+_live_added_objects :: proc(s: ^Scene, ns: ^NestedScene) -> (added: [dynamic]Transform_Handle) {
+	added = make([dynamic]Transform_Handle, context.temp_allocator)
+	w := ctx_world()
+	host_tH := nested_scene_resolve_host_handle(s, ns)
+	if host_tH == {} do return
+
+	// Every live transform this instance owns, plus the host itself (the
+	// absorbed prefab root, whose lid is the host's, not a composed one).
+	owned := make(map[Local_ID]bool, 0, context.temp_allocator)
+	for inst_lid in ns.source_of_inst do owned[inst_lid] = true
+	if ht := pool_get(&w.transforms, Handle(host_tH)); ht != nil do owned[ht.local_id] = true
+
+	it := pool_iterator(&w.transforms)
+	for t, h in pool_next(&it) {
+		if t.scene != s do continue
+		if t.nested_owned do continue // prefab content, not an addition
+		pt := pool_get(&w.transforms, t.parent.handle)
+		if pt == nil do continue
+		if !(pt.local_id in owned) do continue // parent isn't this instance's content
+		h := h
+		h.type_key = .Transform
+		append(&added, Transform_Handle(h))
+	}
+	return
+}
+
+// Records added objects for `ns` onto the enclosing NATIVE NS.
+//
+// Unity records an addition in the file that CONTAINS the instance — the scene
+// or outer prefab holding the PrefabInstance, never the source prefab. That
+// holds at any depth: a modification targeting an object inside a prefab nested
+// within the instance still lives in the outer file, addressed by a COMPOSED
+// fileID, (nested_PrefabInstance_fileID ^ object_fileID) & mask. Our
+// local_id_project is that same XOR fold, so a deep addition projects up the
+// inner-NS chain exactly as field overrides and component edits already do.
+//
+// Inner NS records are themselves never persisted, so an addition parented to
+// inner content is written to the native NS with a projected parent lid, and
+// _find_descendant_ns_by_projection decodes it back at resolve.
+@(private = "file")
+_capture_object_edits :: proc(s: ^Scene, ns: ^NestedScene, native_ns: ^NestedScene, chain_lids: []Local_ID) {
+	// A ROOT VARIANT's additions are written by the variant save path
+	// (_collect_variant_added_subtree); capturing here would double-record.
+	if nested_scene_is_root_variant(s, ns) do return
+	if native_ns == nil do return
+
+	w := ctx_world()
+	for root_tH in _live_added_objects(s, ns) {
+		rt := pool_get(&w.transforms, Handle(root_tH))
+		if rt == nil do continue
+		pt := pool_get(&w.transforms, rt.parent.handle)
+		if pt == nil do continue
+
+		// Live composed lid -> this prefab's own source lid. The host itself
+		// stands in for the absorbed prefab root, whose source lid is
+		// ns.source_root_id.
+		src_parent_lid, has_src := ns.source_of_inst[pt.local_id]
+		if !has_src {
+			host_tH := nested_scene_resolve_host_handle(s, ns)
+			if host_tH != {} && Handle(host_tH) == rt.parent.handle && ns.source_root_id != 0 {
+				src_parent_lid = ns.source_root_id
+			} else {
+				continue
+			}
+		}
+
+		// Fold through each enclosing inner NS so the address is meaningful in
+		// the native NS's file (empty chain for a native ns == unchanged).
+		parent_lid := src_parent_lid
+		for i := len(chain_lids) - 1; i >= 0; i -= 1 {
+			parent_lid = local_id_project(chain_lids[i], parent_lid)
+		}
+		parent_guid := len(chain_lids) > 0 ? native_ns.source_prefab : ns.source_prefab
+
+		frag := SceneFile{}
+		frag.root = rt.local_id
+		_collect_transform_tree(w, root_tH, &frag)
+		defer scene_file_destroy_shallow(&frag)
+		bytes, merr := json.marshal(frag, json.Marshal_Options{spec = .JSON, pretty = false}, context.temp_allocator)
+		if merr != nil do continue
+
+		dup := false
+		for existing in native_ns.added_objects {
+			if existing.local_id == rt.local_id { dup = true; break }
+		}
+		if dup do continue
+		append(&native_ns.added_objects, Added_Object{
+			parent   = PPtr{guid = parent_guid, local_id = parent_lid},
+			local_id = rt.local_id,
+			json     = strings.clone(string(bytes)),
+		})
+	}
+}
+
+// Records removed/added components onto `native_ns`, projecting targets up the
+// inner-NS chain exactly as field overrides are projected.
+@(private = "file")
+_capture_component_edits :: proc(
+	s: ^Scene,
+	ns: ^NestedScene,
+	native_ns: ^NestedScene,
+	base_raw, work_raw: []byte,
+	chain_lids: []Local_ID,
+) {
+	live_added := _live_added_components(s, ns)
+	removed, added, ok := nested_scene_diff_component_sets(base_raw, work_raw, ns.source_prefab, &live_added)
+	if !ok do return
+
+	project :: proc(lid: Local_ID, chain: []Local_ID) -> Local_ID {
+		out := lid
+		for i := len(chain) - 1; i >= 0; i -= 1 {
+			out = local_id_project(chain[i], out)
+		}
+		return out
+	}
+
+	for rc in removed {
+		target := rc.target
+		target.local_id = project(target.local_id, chain_lids)
+		dup := false
+		for existing in native_ns.removed_components {
+			if pptr_equals(existing.target, target) {
+				dup = true
+				break
+			}
+		}
+		if dup do continue
+		append(&native_ns.removed_components, Removed_Component{target = target})
+	}
+
+	for ac in added {
+		owner := ac.owner
+		owner.local_id = project(owner.local_id, chain_lids)
+		dup := false
+		for existing in native_ns.added_components {
+			if existing.local_id == ac.local_id {
+				dup = true
+				break
+			}
+		}
+		if dup do continue
+		append(&native_ns.added_components, Added_Component{
+			owner     = owner,
+			local_id  = ac.local_id,
+			type_guid = strings.clone(ac.type_guid),
+			json      = strings.clone(ac.json),
 		})
 	}
 }
@@ -608,7 +1055,7 @@ _inner_chain_lids_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynam
 	if inner_m == nil || inner_m.expand_parent == {} do return chain, nil, false
 	w := ctx_world()
 
-	append(&chain, inner_m.local_id_in_parent)
+	append(&chain, _ns_projection_key(inner_m))
 
 	cur := inner_m
 	for _ in 0 ..< 32 {
@@ -637,7 +1084,7 @@ _inner_chain_lids_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynam
 			}
 		}
 		if next == nil do return chain, nil, false
-		append(&chain, next.local_id_in_parent)
+		append(&chain, _ns_projection_key(next))
 		cur = next
 	}
 	return chain, nil, false
@@ -689,26 +1136,74 @@ _inner_chain_to_native :: proc(s: ^Scene, inner_m: ^NestedScene) -> ([dynamic]PP
 	return chain, nil, false
 }
 
-scene_save :: proc(s: ^Scene, path: string) -> bool {
-	if s == nil do return false
+// Serializes the scene's CURRENT in-memory state to scene-file bytes without
+// touching disk or any caches. Runs the same normalization a save does
+// (override recapture, orphan pruning). Caller owns the returned bytes. Used
+// by scene_save and by Play's live-state snapshot.
+scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
+	if s == nil do return nil, false
 	w := ctx_world()
 
-	// Per docs/NestedPrefabs.md, overrides live at the root scene level only.
+	// Per docs/PrefabsSpec.md §3.2, overrides live at the root scene level only.
 	// Capture writes directly onto each chain's native NS; inner-NS records
 	// keep the overrides they loaded from their inner-prefab files (those are
 	// runtime-only — used by per-level shallow bake during resolve, never
-	// persisted by save's filter). Clear native NS overrides so the diff
-	// repopulates from scratch.
+	// persisted by save's filter).
+	//
+	// The diff repopulates native NS overrides from scratch, so entries it
+	// cannot reproduce are SET ASIDE first and merged back after: a live-
+	// recorded override whose value now equals the prefab baseline diffs to
+	// nothing, and dropping it would silently un-stick what the user
+	// overrode (see nested_scene_record_override — overrides grow only).
+	kept := make([dynamic]Override, 0, 8, context.temp_allocator)
+	kept_owner := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
 	for &ns in s.nested_scenes {
 		if ns.expand_parent != {} do continue
 		for &ov in ns.overrides {
-			delete(ov.property_path)
-			json.destroy_value(ov.value)
+			append(&kept, ov)
+			append(&kept_owner, ns.local_id)
 		}
 		clear(&ns.overrides)
+		// Component edits are re-derived by the same capture pass, so they
+		// clear with the overrides. Unlike field overrides they need no
+		// set-aside: a removed/added component is a STRUCTURAL fact the diff
+		// always reproduces (the component is either there or not), never a
+		// value that can coincide with the baseline.
+		clear(&ns.removed_components)
+		for &ac in ns.added_components {
+			delete(ac.type_guid)
+			delete(ac.json)
+		}
+		clear(&ns.added_components)
+		// Added objects ARE re-derived (a non-owned child of prefab content is
+		// positively identifiable), so they clear like the rest. Removed
+		// objects are NOT: absence from the live walk doesn't imply deletion
+		// (see _capture_object_edits), so the record IS the only evidence the
+		// user deleted something — it must survive the rebuild.
+		for &ao in ns.added_objects {
+			delete(ao.json)
+		}
+		clear(&ns.added_objects)
 	}
 	for &ns in s.nested_scenes {
 		_capture_overrides_to_native(s, &ns)
+	}
+	// Merge: the diff's value wins for anything it found (it reflects the live
+	// world); set-aside entries it missed are restored, transferring ownership
+	// of their heap payloads. Everything else is freed.
+	for i in 0 ..< len(kept) {
+		ov := kept[i]
+		restored := false
+		if ns, ns_ok := _find_ns_by_local_id(s, kept_owner[i]); ns_ok && ns != nil {
+			if !nested_scene_has_override(ns, ov.target, ov.property_path) {
+				append(&ns.overrides, ov)
+				restored = true
+			}
+		}
+		if !restored {
+			delete(ov.property_path)
+			json.destroy_value(ov.value)
+		}
 	}
 
 	// Prune orphan breadcrumbs whose owning NS no longer references them as a
@@ -733,7 +1228,6 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	}
 
 	sf := SceneFile{}
-	sf.next_local_id = s.next_local_id
 
 	// Only persist NS records that belong to this scene file. Records with
 	// `expand_parent` set were pulled in from inner prefabs during resolve
@@ -742,12 +1236,36 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	// duplicate the inner prefab's metadata into this file and, on reload,
 	// turn the inner host transforms into ghost nested-scene hosts.
 	native_ns_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+	root_variant_ns_lid := Local_ID(0)
 	for &ns in s.nested_scenes {
 		if ns.expand_parent != {} do continue
-		append(&sf.nested_scenes, ns)
+		// Prune ORPHAN NS records: a native NS whose host transform no longer
+		// exists is leaked metadata (e.g. the host was deleted but the record
+		// wasn't). Persisting it produces a ghost host on reload — this is how
+		// bullet.scene accumulated a phantom bullet_Variant NS. Root variants
+		// (host == s.root) are always valid.
+		if !nested_scene_is_root_variant(s, &ns) {
+			if nested_scene_resolve_host_handle(s, &ns) == {} {
+				fmt.printf("[Scene] pruning orphan NS lid=%d src=%v (no host transform)\n", ns.local_id, ns.source_prefab)
+				continue
+			}
+		}
+		rec := ns
+		// A variant's root NS is hosted by a synthesized placeholder root that
+		// is NOT persisted. Write it back in its on-disk shape: transform_parent
+		// == 0 (the variant marker) and no host breadcrumb.
+		if nested_scene_is_root_variant(s, &ns) {
+			rec.transform_parent = 0
+			rec.host_breadcrumb_id = 0
+			root_variant_ns_lid = ns.local_id
+		}
+		append(&sf.nested_scenes, rec)
 		native_ns_lids[ns.local_id] = true
 	}
 	for _, bc in s.breadcrumb_data {
+		// The root-variant NS's host peg points at the synthesized placeholder,
+		// which isn't persisted — drop it (the on-disk record has no host).
+		if root_variant_ns_lid != 0 && bc.scene_instance == root_variant_ns_lid do continue
 		// Keep only breadcrumbs whose owning NestedScene is also native (or
 		// that aren't host pegs at all — cross-scene Handle pegs survive).
 		if native_ns_lids[bc.scene_instance] {
@@ -756,48 +1274,147 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 			append(&sf.breadcrumbs, bc)
 		}
 	}
+	// breadcrumb_data is a map — iteration order varies with world history, so
+	// an unchanged scene would serialize its breadcrumbs in a different order
+	// from one editor session to the next. Sort for byte-stable output.
+	slice.sort_by(sf.breadcrumbs[:], proc(a, b: Breadcrumb) -> bool { return a.local_id < b.local_id })
 
 	if s.root.handle != {} {
 		t := pool_get(&w.transforms, s.root.handle)
 		if t != nil {
-			sf.root = t.local_id
-			_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
+			// Variant case: the scene root is a synthesized placeholder hosting
+			// the root-variant NS. Don't write the placeholder or the base's
+			// transforms (they live in the base file) — only the variant's own
+			// ADDED content (non-nested-owned transforms under the base subtree).
+			// sf.root names the base root source lid so reload re-materializes
+			// the base via the (transform_parent: 0) root NS.
+			root_ns: ^NestedScene
+			for &ns in s.nested_scenes {
+				if nested_scene_is_root_variant(s, &ns) {
+					root_ns = &ns
+					break
+				}
+			}
+			if root_ns != nil {
+				sf.root = root_ns.source_root_id != 0 ? root_ns.source_root_id : t.local_id
+				_collect_variant_added_subtree(w, Transform_Handle(s.root.handle), &sf, Transform_Handle(s.root.handle), sf.root)
+			} else {
+				sf.root = t.local_id
+				_collect_transform_tree(w, Transform_Handle(s.root.handle), &sf)
+			}
 		}
 	}
 
-	// Repair next_local_id: any local_id present in the file must be strictly
-	// less than next_local_id. Otherwise a future scene_next_id() collides with
-	// an existing entity, which on reload can cause a regular transform to be
-	// matched as the host of a NestedScene record.
-	bump :: proc(m: ^Local_ID, v: Local_ID) { if v >= m^ do m^ = v + 1 }
-	for &tr in sf.transforms {
-		bump(&sf.next_local_id, tr.local_id)
-		for &c in tr.components do bump(&sf.next_local_id, c.local_id)
+	// Unknown components preserved from load:
+	// re-emit each record verbatim and restore the owning transform's
+	// components entry — a missing package must never wipe data. A record
+	// whose transform is gone from the file dies with it (deleted transform).
+	// The live transform usually still CARRIES the entry (its handle just
+	// never resolved, so the collect kept it) — append only when absent, or
+	// every save cycle grows the list by one duplicate.
+	for &uc in s.unknown_components {
+		for &tr in sf.transforms {
+			if tr.local_id != uc.owner_lid do continue
+			already := false
+			for c in tr.components {
+				if c.local_id == uc.local_id {
+					already = true
+					break
+				}
+			}
+			if !already do append(&tr.components, Owned{local_id = uc.local_id})
+			append(&sf.components, json.clone_value(uc.value))
+			break
+		}
 	}
-	for &c in sf.cameras          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.lifetimes        do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.players          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.scripts          do bump(&sf.next_local_id, c.local_id)
-	for &c in sf.sprite_renderers do bump(&sf.next_local_id, c.local_id)
-	for &ns in sf.nested_scenes   do bump(&sf.next_local_id, ns.local_id)
-	for &bc in sf.breadcrumbs     do bump(&sf.next_local_id, bc.local_id)
-	s.next_local_id = sf.next_local_id
 
 	opts := json.Marshal_Options{
 		spec       = .JSON,
 		pretty     = true,
 		use_spaces = true,
 		spaces     = 2,
+		// Deterministic key order for json.Object values (ext components):
+		// "__type" sorts before lowercase field names, so it leads each record.
+		sort_maps_by_key = true,
 	}
-	data, err := json.marshal(sf, opts)
+	raw, err := json.marshal(sf, opts)
 	if err != nil {
 		fmt.printf("[Scene] Failed to marshal scene: %v\n", err)
 		scene_file_destroy_shallow(&sf)
-		return false
+		return nil, false
 	}
-	defer delete(data)
 
 	scene_file_destroy_shallow(&sf)
+	data := json_canonicalize_floats(raw)
+	delete(raw)
+	return data, true
+}
+// Canonicalizes float text in marshaled JSON. Core's writer emits floats at
+// fixed width — f32 fields with 8 fraction digits, f64 (every json.Value
+// number) with 16 — so the same value serializes to different text depending
+// on whether it took the typed-struct or the json.Value path, and one scene
+// file mixes both. Trimming trailing fraction zeros converges the two forms.
+// One digit always stays after the '.' so the token reparses as Float, not
+// Integer (override diffs compare parsed values, and Integer(1) != Float(1.0)).
+// Numbers inside strings and exponent forms are untouched. Returns a new
+// allocation.
+json_canonicalize_floats :: proc(data: []byte, allocator := context.allocator) -> []byte {
+	out := make([dynamic]byte, 0, len(data), allocator)
+	in_string := false
+	i := 0
+	for i < len(data) {
+		c := data[i]
+		if in_string {
+			append(&out, c)
+			if c == '\\' && i + 1 < len(data) {
+				append(&out, data[i + 1])
+				i += 2
+				continue
+			}
+			if c == '"' do in_string = false
+			i += 1
+			continue
+		}
+		if c == '"' {
+			in_string = true
+			append(&out, c)
+			i += 1
+			continue
+		}
+		if c != '-' && (c < '0' || c > '9') {
+			append(&out, c)
+			i += 1
+			continue
+		}
+		start := i
+		dot := -1
+		exp := false
+		scan: for i < len(data) {
+			switch data[i] {
+			case '0' ..= '9', '-', '+':
+			case '.':
+				if dot < 0 do dot = i - start
+			case 'e', 'E':
+				exp = true
+			case:
+				break scan
+			}
+			i += 1
+		}
+		tok := data[start:i]
+		end := len(tok)
+		if dot >= 0 && !exp {
+			for end > dot + 2 && tok[end - 1] == '0' do end -= 1
+		}
+		append(&out, ..tok[:end])
+	}
+	return out[:]
+}
+
+scene_save :: proc(s: ^Scene, path: string) -> bool {
+	data, ok := scene_serialize(s)
+	if !ok do return false
+	defer delete(data)
 
 	if write_err := os.write_entire_file(path, data); write_err != nil {
 		fmt.printf("[Scene] Failed to write file: %s — %v\n", path, write_err)
@@ -817,17 +1434,103 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	// scene — including the scene we just saved (its own nested instances of
 	// itself, if any, plus any sibling NSs that depend on it via inner chain).
 	if guid, gok := asset_db_get_guid(path); gok {
-		asset_guid := Asset_GUID(guid)
-		if existing, has := scene_lib[asset_guid]; has do delete(existing)
-		fresh := make([]byte, len(data))
-		copy(fresh, data)
-		scene_lib[asset_guid] = fresh
-		scene_lib_unpacked_invalidate(asset_guid)
-		_propagate_prefab_save(asset_guid)
+		_prefab_bytes_committed(Asset_GUID(guid), data)
+	}
+
+	// Keep the AssetDB current: a save can change the root's components (picker
+	// index) or create the file (Save As). Incremental — unchanged assets cost
+	// nothing. Skipped when no db is initialized (headless scene tooling).
+	if asset_db.root_path != "" {
+		asset_db_refresh()
 	}
 
 	fmt.printf("[Scene] Saved scene to %s\n", path)
 	return true
+}
+
+// Authors a prefab-variant scene file at `out_path` whose root is a NestedScene
+// over the base scene at `base_path` (transform_parent == 0, no overrides, no
+// added content). Mirrors the on-disk shape produced by saving a variant. The
+// caller is responsible for refreshing AssetDB so the new file gets a .meta and
+// for loading it. Returns false if the base can't be read or has no GUID.
+scene_create_variant_file :: proc(base_path: string, out_path: string) -> bool {
+	base_guid, gok := asset_db_get_guid(base_path)
+	if !gok do return false
+
+	base_sf, lok := scene_file_load(base_path)
+	if !lok do return false
+	base_root_lid := base_sf.root
+	scene_file_destroy(&base_sf)
+	if base_root_lid == 0 do return false
+
+	// Build a minimal variant SceneFile: one root NS, no own transforms. `root`
+	// references the base root lid so reload re-materializes the base via the
+	// root-variant load path. No live Scene exists here, so mint the NS lid
+	// with a bare draw — the only lids it could collide with are the base's
+	// materialized ones, and a 52-bit draw repeats one of those with
+	// probability ~n/2^52 (retry only guards the known root lid and zero).
+	ns_lid := Local_ID(rand.uint64()) & AUTHORED_LID_MASK
+	for ns_lid == 0 || ns_lid == base_root_lid {
+		ns_lid = Local_ID(rand.uint64()) & AUTHORED_LID_MASK
+	}
+	vf := SceneFile{}
+	vf.root = base_root_lid
+	append(&vf.nested_scenes, NestedScene{
+		local_id           = ns_lid,
+		local_id_in_parent = ns_lid,
+		source_prefab      = Asset_GUID(base_guid),
+		transform_parent   = 0,
+		host_breadcrumb_id = 0,
+		sibling_index      = 0,
+		overrides          = make([dynamic]Override),
+	})
+	defer scene_file_destroy(&vf)
+
+	opts := json.Marshal_Options{spec = .JSON, pretty = true, use_spaces = true, spaces = 2}
+	raw, err := json.marshal(vf, opts)
+	if err != nil {
+		fmt.printf("[Scene] Failed to marshal variant: %v\n", err)
+		return false
+	}
+	data := json_canonicalize_floats(raw)
+	delete(raw)
+	defer delete(data)
+
+	if write_err := os.write_entire_file(out_path, data); write_err != nil {
+		fmt.printf("[Scene] Failed to write variant file: %s — %v\n", out_path, write_err)
+		return false
+	}
+	return true
+}
+
+// Refreshes the in-memory caches for a prefab GUID after its file bytes
+// changed on disk, then re-propagates to every loaded scene. Shared by
+// scene_save (saving a prefab) and nested_scene_apply_override (baking an
+// override into a parent prefab). `data` is copied — caller retains ownership.
+_prefab_bytes_committed :: proc(guid: Asset_GUID, data: []byte) {
+	_prefab_bytes_refresh(guid, data)
+	_propagate_prefab_save(guid)
+}
+
+// Cache-only half of `_prefab_bytes_committed`: refresh `scene_lib` bytes and
+// drop the unpacked snapshot WITHOUT re-propagating. Lets a caller mutate
+// several prefab files (and its own in-memory NS state) before triggering a
+// single propagation pass — avoids re-resolving against a half-updated world.
+_prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
+	// scene_lib is process-global — its bytes must not borrow the caller's
+	// allocator (see scene_lib_register).
+	context.allocator = runtime.default_allocator()
+	if existing, has := scene_lib[guid]; has do delete(existing)
+	fresh := make([]byte, len(data))
+	copy(fresh, data)
+	scene_lib[guid] = fresh
+	scene_lib_unpacked_invalidate(guid)
+}
+
+// Re-resolve pass for a saved/edited prefab guid. Exposed for Apply's deferred
+// propagation. (`_propagate_prefab_save` is file-private to scene_file.odin.)
+prefab_propagate :: proc(guid: Asset_GUID) {
+	_propagate_prefab_save(guid)
 }
 
 // Walks all loaded scenes and re-resolves every native NS whose chain
@@ -838,6 +1541,9 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 // up the freshly-saved prefab content.
 @(private = "file")
 _propagate_prefab_save :: proc(saved_guid: Asset_GUID) {
+	// No user context (e.g. asset_db_init before a world exists) means no
+	// loaded scenes to propagate into.
+	if ctx_get() == nil do return
 	sm := ctx_scene_manager()
 	for i in 0 ..< sm.count {
 		s := sm.loaded[i]
@@ -892,13 +1598,25 @@ scene_file_load :: proc(filepath: string) -> (SceneFile, bool) {
 	defer delete(data)
 
 	sf: SceneFile
-	unmarshal_err := json.unmarshal(data, &sf)
+	unmarshal_err := scene_file_unmarshal(data, &sf)
 	if unmarshal_err != nil {
 		fmt.printf("[Scene] Failed to unmarshal scene: %v\n", unmarshal_err)
 		return {}, false
 	}
 
 	return sf, true
+}
+
+// SceneFile unmarshal front door. On error, json.unmarshal leaves already-
+// populated fields allocated — free the partial result so callers can just
+// bail.
+scene_file_unmarshal :: proc(data: []byte, sf: ^SceneFile) -> json.Unmarshal_Error {
+	err := json.unmarshal(data, sf)
+	if err != nil {
+		scene_file_destroy(sf)
+		sf^ = {}
+	}
+	return err
 }
 
 resolve_handle :: proc(local_id: Local_ID, id_map: map[Local_ID]Handle) -> (Handle, bool) {
@@ -925,6 +1643,42 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 	return s
 }
 
+// Load a scene from BYTES in the on-disk scene format, replacing everything
+// loaded: the in-memory twin of scene_load_single_path. `path` and `guid` are
+// restated by the caller, since bytes carry neither.
+scene_load_single_bytes :: proc(data: []byte, guid: Asset_GUID = {}, path := "") -> ^Scene {
+	sf: SceneFile
+	if err := scene_file_unmarshal(data, &sf); err != nil {
+		fmt.printf("[Scene] Failed to unmarshal scene bytes: %v\n", err)
+		return nil
+	}
+	defer scene_file_destroy(&sf)
+
+	s := _scene_load_single(&sf, guid)
+	if s != nil && len(path) > 0 {
+		s.path = strings.clone(path)
+	}
+	return s
+}
+
+// Replace ONE loaded scene from bytes, leaving other loaded scenes alone: the
+// in-place counterpart of scene_load_single_bytes. Returns nil if the bytes do not
+// parse or the load fails, with the target already destroyed.
+scene_reload_in_place_bytes :: proc(target: ^Scene, data: []byte, guid: Asset_GUID = {}, path := "") -> ^Scene {
+	sf: SceneFile
+	if err := scene_file_unmarshal(data, &sf); err != nil {
+		fmt.printf("[Scene] Failed to unmarshal scene bytes: %v\n", err)
+		return nil
+	}
+	defer scene_file_destroy(&sf)
+
+	s := scene_reload_in_place(target, &sf, guid)
+	if s != nil && len(path) > 0 {
+		s.path = strings.clone(path)
+	}
+	return s
+}
+
 scene_load_additive_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
@@ -941,14 +1695,56 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	return s
 }
 
-scene_copy_subtree :: proc(tH: Transform_Handle) -> []byte {
+// `include_nested_owned` captures PREFAB CONTENT too. _collect_transform_tree
+// refuses nested-owned nodes because the host scene must never emit prefab
+// content into its own file — but undo capture is not a file write: deleting
+// prefab content needs the subtree preserved so undo can put it back.
+// Collects a transform subtree regardless of nested_owned, with every
+// component. Used by undo capture (see scene_copy_subtree) — never by a save.
+@(private)
+_collect_subtree_verbatim :: proc(w: ^World, tH: Transform_Handle, sf: ^SceneFile) {
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+
+	t_copy := t^
+	t_copy.name = strings.clone(t.name)
+	t_copy.children = make([dynamic]Ref, 0, len(t.children))
+	for child in t.children {
+		if ct := pool_get(&w.transforms, child.handle); ct != nil {
+			append(&t_copy.children, child)
+		}
+	}
+	t_copy.components = make([dynamic]Owned, 0, len(t.components))
+	for c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if world_pool_get(w, c.handle) != nil do append(&t_copy.components, c)
+	}
+	append(&sf.transforms, t_copy)
+
+	for &c in t.components {
+		if c.handle.type_key == INVALID_TYPE_KEY do continue
+		if world_pool_get(w, c.handle) == nil do continue
+		world_pool_collect(w, c.handle, sf)
+	}
+	for child in t.children {
+		if ct := pool_get(&w.transforms, child.handle); ct != nil {
+			_collect_subtree_verbatim(w, Transform_Handle(child.handle), sf)
+		}
+	}
+}
+
+scene_copy_subtree :: proc(tH: Transform_Handle, include_nested_owned := false) -> []byte {
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
 	if t == nil do return nil
 
 	sf := SceneFile{}
 	sf.root = t.local_id
-	_collect_transform_tree(w, tH, &sf)
+	if include_nested_owned {
+		_collect_subtree_verbatim(w, tH, &sf)
+	} else {
+		_collect_transform_tree(w, tH, &sf)
+	}
 	defer scene_file_destroy_shallow(&sf)
 
 	opts := json.Marshal_Options{spec = .JSON, pretty = false}
@@ -967,7 +1763,7 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 	if !pool_valid(&w.transforms, Handle(parent)) do return {}
 
 	sf: SceneFile
-	if err := json.unmarshal(data, &sf); err != nil {
+	if err := scene_file_unmarshal(data, &sf); err != nil {
 		fmt.printf("[Scene] Failed to unmarshal subtree: %v\n", err)
 		return {}
 	}
@@ -978,7 +1774,11 @@ scene_paste_subtree :: proc(data: []byte, parent: Transform_Handle) -> Transform
 
 	_scene_file_remap_local_ids(&sf, s)
 	root_tH := _scene_load_as_child(&sf, parent, s)
-	if root_tH != {} && !ctx_get().is_playmode {
+	// Resolve builds the AUTHORING structures (live prefab-content/override split
+	// the inspector edits through). The standalone app only needs the objects, so
+	// this is an editor-binary question, not a gameplay-state one - Simulate must
+	// keep resolving or prefabs break mid-run.
+	if root_tH != {} && application_is_editor() {
 		_scene_resolve_nested_in_subtree(root_tH)
 	}
 	return root_tH

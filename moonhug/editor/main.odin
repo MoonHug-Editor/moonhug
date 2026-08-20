@@ -2,19 +2,23 @@ package editor
 
 import "core:fmt"
 import "core:mem"
-import rl "vendor:raylib"
+import sdl "vendor:sdl3"
+import gfx "../engine/gfx"
+import input "../engine/input"
 import strings "core:strings"
-import im "../../external/odin-imgui"
-import im_gl "../../external/odin-imgui/imgui_impl_opengl3"
+import im "moonhug:external/odin-imgui"
+import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
+import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import "inspector"
 import "menu"
 import clip "clipboard"
 import "undo"
+import wnd "moonhug:editor/window"
 import "../engine/serialization"
-import "../app"
-import "../app_editor"
+import "../engine/registration"
 import "core:os"
 import "../engine"
+import crash_journal "../engine/crash_journal"
 import "core:path/filepath"
 import "../engine/log"
 import "core:encoding/uuid"
@@ -42,23 +46,40 @@ main :: proc() {
         os.set_working_directory(moonhug_dir)
     }
 
+    // Before anything that can fault: from here on a crash lands in
+    // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).
+    crash_journal.init(VERSION)
+    // Must be set HERE, not inside init: assertion_failure_proc lives on the
+    // context, so it only persists in the scope that assigns it.
+    context.assertion_failure_proc = crash_journal.assertion_failure
+    for arg in os.args[1:] {
+        if arg == "--crash-test" {
+            fmt.eprintfln("crash journal self-test: writing %s and faulting", crash_journal.path())
+            crash_journal.test_crash()
+        }
+    }
+
     win_w, win_h, win_x, win_y := load_editor_settings()
     has_saved_settings := win_w > 0 && win_h > 0
-    if has_saved_settings {
-        rl.InitWindow(win_w, win_h, WINDOW_TITLE)
-    } else {
-        rl.InitWindow(800, 600, WINDOW_TITLE)
+    // Window starts hidden so saved geometry applies before first present.
+    if !gfx.init(WINDOW_TITLE, has_saved_settings ? win_w : 800, has_saved_settings ? win_h : 600, show = false) {
+        fmt.eprintln("gfx init failed (is SDL3 installed? brew install sdl3)")
+        return
     }
-    defer rl.CloseWindow()
+    defer gfx.shutdown()
 
-    rl.SetWindowState({.WINDOW_RESIZABLE})
     if has_saved_settings && win_x >= 0 && win_y >= 0 {
-        rl.SetWindowPosition(win_x, win_y)
+        gfx.set_window_geometry(win_x, win_y, win_w, win_h)
     } else if !has_saved_settings {
         apply_default_window_size()
     }
-    rl.SetExitKey(.KEY_NULL)
-    rl.SetTargetFPS(60)
+    gfx.show_window()
+    // Dock icon is applied AFTER the first focus event (see the main loop),
+    // NOT here: setApplicationIconImage during the launch activation
+    // handshake could wedge key-window status when a click landed early —
+    // keyboard dead for the whole session, mouse fine, only an app switch
+    // repaired it (Help/Input Debug was built to diagnose this).
+    dock_icon_pending := true
 
     // Setup ImGui
     im.CHECKVERSION()
@@ -69,15 +90,28 @@ main :: proc() {
     io := im.GetIO()
     io.ConfigFlags += {.DockingEnable}
 
-    // Initialize OpenGL3 backend (Raylib uses OpenGL)
-    im_gl.Init("#version 330")
-    defer im_gl.Shutdown()
+    // Load UI fonts (default text font + merged Material Symbols icons). Must run
+    // before the backend builds the font atlas texture.
+    editor_fonts_init()
+
+    // SDL3 platform backend (input, DisplaySize, clipboard, text input) +
+    // SDLGPU3 renderer backend.
+    im_sdl.InitForSDLGPU(gfx.window())
+    defer im_sdl.Shutdown()
+    imgui_gpu_info := im_sdlgpu.InitInfo{
+        Device            = gfx.device(),
+        ColorTargetFormat = gfx.swapchain_format(),
+        MSAASamples       = ._1,
+    }
+    im_sdlgpu.Init(&imgui_gpu_info)
+    defer im_sdlgpu.Shutdown()
 
     apply_editor_theme()
 
     // Init user context and world
     uc := new(engine.UserContext)
     context.user_ptr = uc
+    uc.is_editor = true // engine.application_is_editor; never changes at runtime
 
     w := new(engine.World)
     engine.w_init(w)
@@ -86,6 +120,9 @@ main :: proc() {
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
     undo.install(undo_stack)
+    // Selection restore/record goes through hooks (undo can't import editor).
+    selection_undo_install()
+    defer selection_undo_shutdown()
     defer { undo.destroy(undo_stack); free(undo_stack) }
 
     defer { engine.world_destroy_all(w); free(w) }
@@ -94,41 +131,66 @@ main :: proc() {
     phase_editor_run(.EditorInit)
     defer phase_editor_run(.EditorShutdown)
 
-    for !menu.quit_requested && !rl.WindowShouldClose() {
-        // Update ImGui IO
-        io := im.GetIO()
-        sw := f32(rl.GetScreenWidth())
-        sh := f32(rl.GetScreenHeight())
-        io.DisplaySize = im.Vec2{sw, sh}
-        if menu.scale_ui_for_dpi {
-            rw := f32(rl.GetRenderWidth())
-            rh := f32(rl.GetRenderHeight())
-            io.DisplayFramebufferScale = im.Vec2{
-                rw / sw if sw > 0 else 1,
-                rh / sh if sh > 0 else 1,
+    // Resolve which host Simulate ticks, from the generated table
+    // (sim_hosts_generated.odin) and the persisted setting. Must follow
+    // load_editor_settings.
+    simulate_init()
+    defer simulate_shutdown()
+    _register_editor_windows() // plugin @(editor_window) declarations
+    defer wnd.shutdown()
+    _register_project_settings() // @(project_settings) vars -> settings tabs
+    defer settings_shutdown()
+    defer thumbnails_shutdown()
+    mcp_bridge_init() // agent bridge on loopback TCP (docs/McpBridge.md)
+    defer mcp_bridge_shutdown()
+
+    for !menu.quit_requested && !gfx.quit_requested() {
+        // Events feed both the editor input snapshot and imgui (the SDL3
+        // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
+        gfx.poll_events(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
+
+        // Unity-style Auto Refresh: re-scan assets when the editor window
+        // regains focus (git checkouts, external editors). Incremental
+        // mtime-diff — an unchanged tree costs one stat pass.
+        if input.focus_gained() {
+            engine.asset_db_refresh()
+            project_dir_cache_invalidate()
+            if dock_icon_pending {
+                dock_icon_pending = false
+                set_dock_icon("../EditorIcon.png") // cwd was normalized to moonhug/ at startup
             }
-        } else {
-            io.DisplayFramebufferScale = im.Vec2{1, 1}
         }
-        io.DeltaTime = rl.GetFrameTime()
 
-        // Update mouse
-        mouse_pos := rl.GetMousePosition()
-        io.MousePos = im.Vec2{mouse_pos.x, mouse_pos.y}
-        io.MouseDown[0] = rl.IsMouseButtonDown(.LEFT)
-        io.MouseDown[1] = rl.IsMouseButtonDown(.RIGHT)
-        io.MouseWheel = rl.GetMouseWheelMove()
+        if !gfx.frame_begin() do continue
 
-        update_imgui_keyboard_input()
+        // Thumbnail generation before ANY view draws: scene previews spawn and
+        // destroy live content within this call, so nothing leaks into the
+        // frame's visible rendering (thumbnails.odin).
+        thumbnails_tick()
+
+        // Agent bridge: before views draw, so screenshot readbacks see the
+        // PREVIOUS frame's submitted render targets (mcp_bridge.odin).
+        mcp_bridge_tick()
 
         // Start ImGui frame
-        im_gl.NewFrame()
+        im_sdlgpu.NewFrame()
+        im_sdl.NewFrame()
         im.NewFrame()
 
         menu.draw_menu_bar()
         draw_tool_bar()
+        // Dockspace host under the toolbar; must precede the dockable views'
+        // Begin() calls (dock.odin — builds the default layout on first run).
+        draw_dockspace()
 
         _process_undo_shortcuts()
+        _process_simulate_shortcuts()
+
+        // Advance the in-editor simulation before the views draw, so hierarchy,
+        // inspector and scene all show the same frame. Placed AFTER the toolbar
+        // so a Stop pressed this frame takes effect before the tick, never
+        // ticking a scene that is already being torn down.
+        sim_tick(gfx.delta_time())
 
         // ImGui UI
         if menu.show_inspector {
@@ -136,7 +198,7 @@ main :: proc() {
         }
 
         if menu.show_project_inspector {
-            inspector.view_inspector_draw()
+            inspector.view_inspector_draw(&menu.show_project_inspector)
         }
 
         if menu.show_project {
@@ -155,6 +217,20 @@ main :: proc() {
             draw_hierarchy_view()
         }
 
+        if menu.show_animation {
+            draw_animation_view()
+        } else {
+            animation_preview_stop()
+        }
+
+        if menu.show_playable_graph {
+            draw_playable_graph_view()
+        }
+
+        // The scrub preview poses the world ONLY for the scene/game render:
+        // apply here, restore right after, so every other consumer of the
+        // world this frame (saves, undo, inspector) sees authored values.
+        animation_preview_apply()
         if menu.show_scene {
             draw_scene_view()
         }
@@ -162,45 +238,70 @@ main :: proc() {
         if menu.show_game {
             draw_game_view()
         }
+        animation_preview_restore()
+
+        if menu.show_input_debug {
+            draw_input_debug()
+        }
 
         if menu.show_output {
             draw_output_view()
         }
 
+        // Plugin-opened windows (editor/window, docs/Plugins.md).
+        wnd.draw_all()
+
         draw_about_popup()
         draw_status_bar()
 
-        // Render
-        rl.BeginDrawing()
-        rl.ClearBackground(rl.RAYWHITE)
+        // Selection undo steps (Unity model): diff selection against the
+        // frame's baseline after all views handled input.
+        selection_undo_track()
 
-        // Let ImGui render
+        // Render. Scene/game views already encoded their offscreen passes
+        // into this frame's command buffer during the UI calls above; imgui's
+        // copy passes (PrepareDrawData) must come BEFORE the swapchain render
+        // pass, and its draw happens inside it (pass_end callback).
         im.Render()
-        im_gl.RenderDrawData(im.GetDrawData())
+        dd := im.GetDrawData()
+        im_sdlgpu.PrepareDrawData(dd, gfx.command_buffer())
+        if gfx.pass_begin_swapchain([4]f32{0.96, 0.96, 0.96, 1}, depth = false) {
+            gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
+                im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+            })
+            // A queued full-window screenshot copies the swapchain HERE: the UI
+            // has drawn into it and the command buffer is still open. Costs
+            // nothing on frames nobody asked for one.
+            mcp_bridge_capture_frame()
+        }
+        gfx.frame_end()
 
-        rl.EndDrawing()
+        free_all(context.temp_allocator)
     }
 
     save_editor_settings()
+    settings_save_all()
 }
 
-@(phase={key=app.Phase.EditorInit, order=0, mode=Editor})
+@(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
-
-	log.info("Editor Init")
-	log.error("test error")
-	log.warning("test warning")
-    app.register_component_serializers()
+    registration.register_packages()
     inspector.init()
-    serialization.init()
+    phase_editor_run(.SerializationInit)
+    phase_editor_run(.ImportersInit)
+    phase_editor_run(.TweenNodesInit)
     clip.init()
-    app.register_type_guids()
+    registration.register_type_guids()
     _init_context_menu_registry()
     init_project_view()
     engine.asset_pipeline_init()
     engine.asset_db_init("assets")
     engine.asset_pipeline_import_all()
     engine.texture_cache_init()
+    engine.mesh_cache_init()
+    engine.material_cache_init()
+    engine.shader_cache_init()
+    engine.animation_clip_cache_init()
     open_scenes_from_settings()
 
     init_scene_view()
@@ -218,11 +319,20 @@ editor_init :: proc() {
         defer delete(top_order)
 
         top_order["File"] = 0
-        top_order["View"] = 1
         top_order["Edit"] = 4
-        top_order["View/Theme"] = -10
         top_order["Assets"] = 8
+        // Create submenu pinned to the top of the Assets menu (Unity).
+        top_order["Assets/Create"] = -100
+        top_order["GameObject"] = 10 // creation band also mirrors into the hierarchy popup
         top_order["Component"] = 15
+        top_order["Tools"] = 20 // plugin/tooling menu items (e.g. packages)
+        // Window menu sits before Help (Unity). Submenus first: General,
+        // then domain groups (Animation), separator at -7, Theme, Reset
+        // Layout (item order 20).
+        top_order["Window"] = 25
+        top_order["Window/General"] = -20
+        top_order["Window/Animation"] = -15
+        top_order["Window/Theme"] = 10
         top_order["Help"] = 30
         menu.sort_top_menu(top_order)
     }
@@ -238,12 +348,17 @@ open_scenes_from_settings :: proc() {
     }
 }
 
-@(phase={key=app.Phase.EditorShutdown, order=0, mode=Editor})
+@(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
+    shutdown_playable_graph_view()
+    shutdown_animation_view()
     shutdown_game_view()
     shutdown_scene_view()
     engine.texture_cache_shutdown()
+    engine.mesh_cache_shutdown()
+    engine.material_cache_shutdown()
+    engine.shader_cache_shutdown()
     engine.asset_db_shutdown()
     engine.sm_shutdown()
     engine.scene_lib_shutdown()
@@ -251,7 +366,6 @@ editor_shutdown :: proc() {
     inspector.shutdown_registries()
     shutdown_hierarchy_views()
     shutdown_project_view()
-    delete(keys_down_prev)
     menu.shutdown_menu()
     log.info("Editor Shutdown")
     log.shutdown()
@@ -264,20 +378,33 @@ scene_create_menu :: proc() {
 	engine.scene_save(scene, save_path)
 }
 
+// Creates a prefab variant of the currently-selected scene asset, written
+// alongside it as "<name>_Variant.scene". Registered into the same menu system
+// as "Create/Scene", so it appears in the project panel's right-click menu and
+// the top Assets menu. Acts on projectViewData.selectedFile (the asset the user
+// last clicked); no-op with a console note if no .scene is selected.
+@(menu_item={path="Assets/Create/Scene Variant", order=-10, shortcut=""})
+scene_create_variant_menu :: proc() {
+	if !strings.has_suffix(projectViewData.selectedFile, ".scene") {
+		fmt.println("[Editor] Create Scene Variant: select a .scene asset first")
+		return
+	}
+	// selectedFile holds the FULL path (search results span folders).
+	create_scene_variant(projectViewData.selectedFile)
+}
+
+@(menu_separator={path="Assets/Create", order=-9})
+scene_create_variant_separator :: proc() {}
+
+// Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
+// (hierarchy_menu.odin) — only the Ctrl+Y redo alias is handled here.
 _process_undo_shortcuts :: proc() {
-	if engine.ctx_get().is_playmode do return
+	if engine.application_is_playing() do return
 	s := undo.get()
 	if s == nil do return
 
-	undo_chord  := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Z)
 	redo_chord_y := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.Y)
-	redo_chord_shift := im.KeyChord(im.Key.ImGuiMod_Ctrl) | im.KeyChord(im.Key.ImGuiMod_Shift) | im.KeyChord(im.Key.Z)
-
-	if im.Shortcut(redo_chord_shift, {.RouteGlobal}) {
-		undo.apply_redo(s)
-	} else if im.Shortcut(undo_chord, {.RouteGlobal}) {
-		undo.apply_undo(s)
-	} else if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
+	if im.Shortcut(redo_chord_y, {.RouteGlobal}) {
 		undo.apply_redo(s)
 	}
 }

@@ -1,0 +1,399 @@
+package tests
+
+import "core:encoding/json"
+import "core:os"
+import "core:fmt"
+import "core:strings"
+import "core:testing"
+import "../engine"
+import common "common"
+
+
+// A component whose registered type can't parse the record (corrupt/incompatible
+// field) must be PRESERVED verbatim, never silently dropped. Also covers the
+// unknown-type-guid case: both go through _stash_unknown_component.
+@(test)
+test_unparseable_component_preserved :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_test_unparseable"
+	os.make_directory(dir)
+	path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
+	defer { os.remove(path); os.remove(meta); os.remove(dir) }
+
+	// SpriteRenderer(10) with a MALFORMED texture (not a guid) — registered type,
+	// but the record won't parse. Plus a genuinely unknown type(11).
+	SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
+	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000042"
+	scene_json := fmt.tprintf(`{{
+  "root": 1, "next_local_id": 20,
+  "transforms": [
+    {{"local_id": 1, "name": "Root", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 10}}, {{"local_id": 11}}]}}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 10, "enabled": true}}, "texture": "not-a-guid", "color": [1,0,0,1]}},
+    {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "mystery": 7}}
+  ]
+}}`, SPRITE_GUID, FAKE_GUID)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000002"}`)) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	s := engine.scene_load_single_path(path)
+	testing.expect(t, s != nil, "load")
+	if s == nil do return
+	tc.scene = s
+
+	// Both records are unresolvable-into-type here → both stashed.
+	testing.expect_value(t, len(s.unknown_components), 2)
+
+	testing.expect(t, engine.scene_save(s, path), "save")
+	saved, _ := os.read_entire_file(path, context.temp_allocator)
+
+	testing.expect(t, strings.contains(string(saved), "not-a-guid"),
+		"unparseable-but-registered component must survive verbatim")
+	testing.expect(t, strings.contains(string(saved), "mystery"),
+		"unknown-type component must survive verbatim")
+}
+
+// EXACT editor repro: a host that NESTS a prefab is open first — the editor
+// auto-loads it from settings. The user then opens the prefab directly
+// (single load unloads the host, recycling its pool slots into the prefab's)
+// and saves. Every component must survive. The prefab carries THREE sprites
+// so a partial drop is distinguishable from a total one.
+@(test)
+test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_fx_host_prefab_save"
+	os.make_directory(dir)
+	p_path := strings.concatenate({dir, "/p.scene"}, context.temp_allocator)
+	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	tmp := strings.concatenate({dir, "/_p_copy.scene"}, context.temp_allocator)
+	defer {
+		for f in ([]string{p_path, host_path, tmp}) {
+			os.remove(f)
+			os.remove(strings.concatenate({f, ".meta"}, context.temp_allocator))
+		}
+		os.remove(dir)
+	}
+
+	// Prefab: root + three sprite children.
+	p_json := `{
+  "root": 1,
+  "next_local_id": 20,
+  "transforms": [
+    {
+      "local_id": 1, "name": "PRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [
+        {"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 3, "guid": "00000000-0000-0000-0000-000000000000"}},
+        {"pptr": {"local_id": 4, "guid": "00000000-0000-0000-0000-000000000000"}}
+      ],
+      "components": []
+    },
+    {
+      "local_id": 2, "name": "S1", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 12}]
+    },
+    {
+      "local_id": 3, "name": "S2", "is_active": true,
+      "position": [1,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 13}]
+    },
+    {
+      "local_id": 4, "name": "S3", "is_active": true,
+      "position": [2,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": [{"local_id": 14}]
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 12, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [1, 0, 0, 1]},
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 13, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 1, 0, 1]},
+    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "base": {"local_id": 14, "enabled": true},
+     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 0, 1, 1]}
+  ]
+}`
+	testing.expect(t, os.write_entire_file(p_path, transmute([]byte)p_json) == nil, "write prefab")
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	// Author the host: nests the prefab.
+	p_guid, gok := engine.asset_db_get_guid(p_path)
+	testing.expect(t, gok, "prefab registered")
+	if !gok do return
+	nested := engine.scene_instantiate_guid_nested(engine.Asset_GUID(p_guid), engine.Transform_Handle(tc.scene.root.handle))
+	testing.expect(t, nested != {}, "prefab nests into host")
+	testing.expect(t, engine.scene_save(tc.scene, host_path), "save host")
+	engine.asset_db_refresh()
+
+	// Step 1: open the host (as the editor auto-loads it from settings).
+	host := engine.scene_load_single_path(host_path)
+	testing.expect(t, host != nil, "host should load")
+	if host == nil do return
+	tc.scene = host
+	engine.sm_scene_set_active(host)
+
+	// Step 2: open the prefab directly (unloads the host), save a copy.
+	s := engine.scene_load_single_path(p_path)
+	testing.expect(t, s != nil, "prefab should load")
+	if s == nil do return
+	tc.scene = s
+	engine.sm_scene_set_active(s)
+
+	testing.expect(t, engine.scene_save(s, tmp), "save")
+	saved, _ := os.read_entire_file(tmp, context.temp_allocator)
+	n_sprites := strings.count(string(saved), FIXTURE_SPRITE_GUID)
+	fmt.printf("[REPRO] saved sprites=%d\n", n_sprites)
+	testing.expect_value(t, n_sprites, 3)
+}
+
+// Resaving a scene with preserved unknown records must not GROW the owning
+// transform's components list: the live transform still carries the file's
+// {local_id} entry (it just never resolved), so the save-time re-attach must
+// append only when absent. Without the guard every save cycle added one
+// duplicate entry.
+@(test)
+test_unknown_component_no_duplicate_entries :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_test_unknown_dup"
+	os.make_directory(dir)
+	path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
+	defer { os.remove(path); os.remove(meta); os.remove(dir) }
+
+	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000043"
+	scene_json := fmt.tprintf(`{{
+  "root": 1, "next_local_id": 20,
+  "transforms": [
+    {{"local_id": 1, "name": "Root", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 11}}]}}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "mystery": 7}}
+  ]
+}}`, FAKE_GUID)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000003"}`)) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	count_entries :: proc(t: ^testing.T, path: string) -> int {
+		data, rerr := os.read_entire_file(path, context.temp_allocator)
+		testing.expect(t, rerr == nil, "read saved")
+		sf: engine.SceneFile
+		testing.expect(t, engine.scene_file_unmarshal(data, &sf) == nil, "parse saved")
+		defer engine.scene_file_destroy(&sf)
+		n := 0
+		for &tr in sf.transforms {
+			if tr.local_id != 1 do continue
+			for c in tr.components do if c.local_id == 11 do n += 1
+		}
+		return n
+	}
+
+	// Save twice (load → save → reload → save): the entry count must stay 1.
+	s := engine.scene_load_single_path(path)
+	testing.expect(t, s != nil, "load")
+	if s == nil do return
+	tc.scene = s
+	testing.expect(t, engine.scene_save(s, path), "save 1")
+	testing.expect_value(t, count_entries(t, path), 1)
+
+	s2 := engine.scene_load_single_path(path)
+	testing.expect(t, s2 != nil, "reload")
+	if s2 == nil do return
+	tc.scene = s2
+	testing.expect(t, engine.scene_save(s2, path), "save 2")
+	testing.expect_value(t, count_entries(t, path), 1)
+}
+
+// The missing-component inspector row's data path: removing a preserved record
+// detaches both the stash AND the transform's dangling components entry, the
+// next save omits it, and restore (undo) brings both back.
+@(test)
+test_remove_and_restore_unknown_component :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_test_unknown_rm"
+	os.make_directory(dir)
+	path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
+	defer { os.remove(path); os.remove(meta); os.remove(dir) }
+
+	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000044"
+	scene_json := fmt.tprintf(`{{
+  "root": 1, "next_local_id": 20,
+  "transforms": [
+    {{"local_id": 1, "name": "Root", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 11}}]}}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "mystery": 7}}
+  ]
+}}`, FAKE_GUID)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000004"}`)) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	s := engine.scene_load_single_path(path)
+	testing.expect(t, s != nil, "load")
+	if s == nil do return
+	tc.scene = s
+	testing.expect_value(t, len(s.unknown_components), 1)
+
+	// Capture the record like the undo command does, then remove.
+	payload, merr := json.marshal(s.unknown_components[0].value, {spec = .JSON}, context.temp_allocator)
+	testing.expect(t, merr == nil, "capture payload")
+
+	rootH := engine.Transform_Handle(s.root.handle)
+	list_index, removed := engine.transform_remove_unknown_comp(rootH, 11)
+	testing.expect(t, removed, "remove should find the record")
+	testing.expect_value(t, list_index, 0)
+	testing.expect_value(t, len(s.unknown_components), 0)
+
+	w := engine.ctx_world()
+	root_t := engine.pool_get(&w.transforms, engine.Handle(rootH))
+	testing.expect_value(t, len(root_t.components), 0)
+
+	testing.expect(t, engine.scene_save(s, path), "save after remove")
+	saved, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, !strings.contains(string(saved), "mystery"), "removed record must not re-save")
+
+	// Restore (the undo path) and save again: the record and entry are back.
+	val, perr := json.parse(payload, .JSON, true, context.temp_allocator)
+	testing.expect(t, perr == nil, "parse payload")
+	engine.transform_restore_unknown_comp(rootH, 11, val, list_index)
+	testing.expect_value(t, len(s.unknown_components), 1)
+	root_t = engine.pool_get(&w.transforms, engine.Handle(rootH))
+	testing.expect_value(t, len(root_t.components), 1)
+
+	testing.expect(t, engine.scene_save(s, path), "save after restore")
+	saved2, _ := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, strings.contains(string(saved2), "mystery"), "restored record must re-save")
+}
+
+// Float text must be canonical regardless of serialization path: typed f32
+// fields print 8 fraction digits, json.Value floats (unknown components,
+// overrides) print 16 — canonicalization trims both to the shortest form with
+// at least one fraction digit, so one file never mixes widths.
+@(test)
+test_float_canonical_formatting :: proc(t: ^testing.T) {
+	// Unit-level: the trimmer itself.
+	cases := [][2]string{
+		{`{"a": 0.10000000}`, `{"a": 0.1}`},                    // f32 path
+		{`{"a": 0.1000000000000000}`, `{"a": 0.1}`},            // f64 path
+		{`{"a": 0.30000001}`, `{"a": 0.30000001}`},             // real digits stay
+		{`{"a": 1.00000000}`, `{"a": 1.0}`},                    // stays Float, not Integer
+		{`{"a": -2.50000000, "b": 42}`, `{"a": -2.5, "b": 42}`},// integers untouched
+		{`{"a": 1e-10, "b": 1.20000000e+5}`, `{"a": 1e-10, "b": 1.20000000e+5}`}, // exponents untouched
+		{`{"s": "v1.00000000", "a": 3.00000000}`, `{"s": "v1.00000000", "a": 3.0}`}, // strings untouched
+		{`{"s": "q\"0.10000000", "a": 0.0000000000000000}`, `{"s": "q\"0.10000000", "a": 0.0}`}, // escaped quote
+	}
+	for c in cases {
+		got := engine.json_canonicalize_floats(transmute([]byte)c[0], context.temp_allocator)
+		testing.expect_value(t, string(got), c[1])
+	}
+
+	// Save-path: a scene mixing a typed transform (f32) and an unknown
+	// component record (json.Value f64) serializes with no fixed-width padding.
+	dir := "moonhug/tests/_test_float_canon"
+	os.make_directory(dir)
+	path := strings.concatenate({dir, "/s.scene"}, context.temp_allocator)
+	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
+	defer { os.remove(path); os.remove(meta); os.remove(dir) }
+
+	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000044"
+	scene_json := fmt.tprintf(`{{
+  "root": 1, "next_local_id": 20,
+  "transforms": [
+    {{"local_id": 1, "name": "Root", "is_active": true,
+      "position": [0.1, 2.5, 0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 11}}]}}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "speed": 0.1}}
+  ]
+}}`, FAKE_GUID)
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000004"}`)) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	s := engine.scene_load_single_path(path)
+	testing.expect(t, s != nil, "load")
+	if s == nil do return
+	tc.scene = s
+	testing.expect(t, engine.scene_save(s, path), "save")
+
+	saved, rerr := os.read_entire_file(path, context.temp_allocator)
+	testing.expect(t, rerr == nil, "read saved")
+	text := string(saved)
+	testing.expect(t, !strings.contains(text, "0.10000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "2.50000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "0.00000000"), "f32 padding must be trimmed")
+	testing.expect(t, !strings.contains(text, "0.1000000000000000"), "f64 padding must be trimmed")
+	testing.expect(t, strings.contains(text, "0.1"), "transform float present")
+	testing.expect(t, strings.contains(text, "2.5"), "transform float present")
+	testing.expect(t, strings.contains(text, `"speed": 0.1`), "record float canonical")
+}

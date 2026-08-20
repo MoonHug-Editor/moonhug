@@ -6,26 +6,16 @@ import "core:strings"
 @(typ_guid={guid = "0d489fce-9c04-4e4d-be12-f3f590d60cea"})
 SceneFile :: struct {
 	root:          Local_ID,
-	next_local_id: Local_ID,
 	transforms:    [dynamic]Transform,
 	nested_scenes: [dynamic]NestedScene,
 	breadcrumbs:   [dynamic]Breadcrumb,
-	cameras: [dynamic]Camera,
-	lifetimes: [dynamic]Lifetime,
-	players: [dynamic]Player,
-	scripts: [dynamic]Script,
-	sprite_renderers: [dynamic]SpriteRenderer,
+	components:    [dynamic]json.Value, // guid-tagged records, every component type
 }
 
 _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^Scene = nil, transform_scope_guid: Asset_GUID = {}, skip_scene_local_id_registration := false) -> Transform_Handle {
 	w := ctx_world()
 
 	id_to_transform_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_camera_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_lifetime_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_player_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_script_handle := make(map[Local_ID]Handle, context.temp_allocator)
-	id_to_sprite_renderer_handle := make(map[Local_ID]Handle, context.temp_allocator)
 
 	if s != nil {
 		scene_file_remap_merge_metadata(sf, s)
@@ -40,49 +30,40 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 					value         = json.clone_value(src.value),
 				}
 			}
+			ns_copy.removed_components = make([dynamic]Removed_Component, len(ns_data.removed_components))
+			for i in 0..<len(ns_data.removed_components) {
+				ns_copy.removed_components[i] = ns_data.removed_components[i]
+			}
+			ns_copy.added_components = make([dynamic]Added_Component, len(ns_data.added_components))
+			for i in 0..<len(ns_data.added_components) {
+				src := &ns_data.added_components[i]
+				ns_copy.added_components[i] = Added_Component{
+					owner     = src.owner,
+					local_id  = src.local_id,
+					type_guid = strings.clone(src.type_guid),
+					json      = strings.clone(src.json),
+				}
+			}
+			ns_copy.removed_objects = make([dynamic]Removed_Object, len(ns_data.removed_objects))
+			for i in 0..<len(ns_data.removed_objects) {
+				ns_copy.removed_objects[i] = ns_data.removed_objects[i]
+			}
+			ns_copy.added_objects = make([dynamic]Added_Object, len(ns_data.added_objects))
+			for i in 0..<len(ns_data.added_objects) {
+				src := &ns_data.added_objects[i]
+				ns_copy.added_objects[i] = Added_Object{
+					parent   = src.parent,
+					local_id = src.local_id,
+					json     = strings.clone(src.json),
+				}
+			}
 			append(&s.nested_scenes, ns_copy)
 		}
 	}
 
-	for &camera_data in sf.cameras {
-		handle, camera := pool_create(&w.cameras)
-		handle.type_key = .Camera
-		camera^ = camera_data
-		id_to_camera_handle[camera_data.local_id] = handle
-		camera_data = {}
-	}
-
-	for &lifetime_data in sf.lifetimes {
-		handle, lifetime := pool_create(&w.lifetimes)
-		handle.type_key = .Lifetime
-		lifetime^ = lifetime_data
-		id_to_lifetime_handle[lifetime_data.local_id] = handle
-		lifetime_data = {}
-	}
-
-	for &player_data in sf.players {
-		handle, player := pool_create(&w.players)
-		handle.type_key = .Player
-		player^ = player_data
-		id_to_player_handle[player_data.local_id] = handle
-		player_data = {}
-	}
-
-	for &script_data in sf.scripts {
-		handle, script := pool_create(&w.scripts)
-		handle.type_key = .Script
-		script^ = script_data
-		id_to_script_handle[script_data.local_id] = handle
-		script_data = {}
-	}
-
-	for &sprite_renderer_data in sf.sprite_renderers {
-		handle, sprite_renderer := pool_create(&w.sprite_renderers)
-		handle.type_key = .SpriteRenderer
-		sprite_renderer^ = sprite_renderer_data
-		id_to_sprite_renderer_handle[sprite_renderer_data.local_id] = handle
-		sprite_renderer_data = {}
-	}
+	// Own-file loads stash unknown records on the scene; nested-prefab
+	// materializations (scoped guid) never do — their file owns them.
+	id_to_ext_handle := _scene_load_ext_components(sf, asset_guid_is_empty(transform_scope_guid) ? s : nil)
 
 	for &t_data in sf.transforms {
 		handle, t := pool_create(&w.transforms)
@@ -118,26 +99,9 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 		}
 
 		for &c in t.components {
-			if h, ok := resolve_handle(c.local_id, id_to_camera_handle); ok {
+			if h, ok := resolve_handle(c.local_id, id_to_ext_handle); ok {
 				c.handle = h
-				camera := pool_get(&w.cameras, h)
-				if camera != nil do camera.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_lifetime_handle); ok {
-				c.handle = h
-				lifetime := pool_get(&w.lifetimes, h)
-				if lifetime != nil do lifetime.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_player_handle); ok {
-				c.handle = h
-				player := pool_get(&w.players, h)
-				if player != nil do player.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_script_handle); ok {
-				c.handle = h
-				script := pool_get(&w.scripts, h)
-				if script != nil do script.owner = Transform_Handle(handle)
-			} else if h, ok := resolve_handle(c.local_id, id_to_sprite_renderer_handle); ok {
-				c.handle = h
-				sprite_renderer := pool_get(&w.sprite_renderers, h)
-				if sprite_renderer != nil do sprite_renderer.owner = Transform_Handle(handle)
+				_ext_set_owner(w, h, Transform_Handle(handle))
 			}
 		}
 	}
@@ -145,48 +109,26 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	if s != nil {
 		if !skip_scene_local_id_registration {
 			for lid, h in id_to_transform_handle {
-				if _, exists := bimap_get(&s.local_ids, lid); !exists {
+				// First-registered entry wins (inner-prefab namespace protection),
+				// but a DEAD transform entry is a leftover of a destroyed object
+				// (destroy never unregisters) — repair it so restored content
+				// resolves again. Synthetic breadcrumb entries are never touched.
+				if prev, exists := bimap_get(&s.local_ids, lid); !exists || (prev.type_key == .Transform && !pool_valid(&w.transforms, prev)) {
 					bimap_insert(&s.local_ids, lid, h)
 				}
 			}
-			for lid, h in id_to_camera_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_lifetime_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_player_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_script_handle {
-				bimap_insert(&s.local_ids, lid, h)
-			}
-			for lid, h in id_to_sprite_renderer_handle {
+			for lid, h in id_to_ext_handle {
 				bimap_insert(&s.local_ids, lid, h)
 			}
 		}
 		for bc in sf.breadcrumbs {
 			scene_breadcrumb_put(s, bc)
 		}
-		for _, h in id_to_camera_handle {
-			p := pool_get(&w.cameras, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Camera), s)
-		}
-		for _, h in id_to_lifetime_handle {
-			p := pool_get(&w.lifetimes, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Lifetime), s)
-		}
-		for _, h in id_to_player_handle {
-			p := pool_get(&w.players, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Player), s)
-		}
-		for _, h in id_to_script_handle {
-			p := pool_get(&w.scripts, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(Script), s)
-		}
-		for _, h in id_to_sprite_renderer_handle {
-			p := pool_get(&w.sprite_renderers, h)
-			if p != nil do _resolve_refs_in_value(p, type_info_of(SpriteRenderer), s)
+		_file_lookup := make(map[Local_ID]Handle, context.temp_allocator)
+		for lid, h in id_to_transform_handle do _file_lookup[lid] = h
+		for lid, h in id_to_ext_handle do _file_lookup[lid] = h
+		for _, h in id_to_ext_handle {
+			_ext_resolve_refs(w, h, s, &_file_lookup)
 		}
 	}
 
@@ -215,26 +157,22 @@ _scene_load_as_child :: proc(sf: ^SceneFile, parent: Transform_Handle = {}, s: ^
 	return Transform_Handle(root_handle)
 }
 
-_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
+_scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene, mapper: proc(user: rawptr, old: Local_ID) -> Local_ID = nil, user: rawptr = nil) {
 	if s == nil do return
 	remap := make(map[Local_ID]Local_ID)
 	defer delete(remap)
 
 	for &t in sf.transforms {
-		new_id := scene_next_id(s)
+		new_id := _remap_new_id(s, mapper, user, t.local_id)
 		remap[t.local_id] = new_id
 		t.local_id = new_id
 	}
 
-	for &c in sf.cameras { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.lifetimes { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.players { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.scripts { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &c in sf.sprite_renderers { new_id := scene_next_id(s); remap[c.local_id] = new_id; c.local_id = new_id }
-	for &ns in sf.nested_scenes { new_id := scene_next_id(s); remap[ns.local_id] = new_id; ns.local_id = new_id }
+	ext_temps := _scene_file_remap_ext_begin(sf, s, &remap, mapper, user)
+	for &ns in sf.nested_scenes { new_id := _remap_new_id(s, mapper, user, ns.local_id); remap[ns.local_id] = new_id; ns.local_id = new_id }
 	for &bc in sf.breadcrumbs {
 		old := bc.local_id
-		new_id := scene_next_id(s)
+		new_id := _remap_new_id(s, mapper, user, old)
 		remap[old] = new_id
 		bc.local_id = new_id
 	}
@@ -288,11 +226,7 @@ _scene_file_remap_local_ids :: proc(sf: ^SceneFile, s: ^Scene) {
 		sf.root = new_root
 	}
 
-	for &c in sf.cameras { _remap_refs_in_value(&c, type_info_of(Camera), &remap) }
-	for &c in sf.lifetimes { _remap_refs_in_value(&c, type_info_of(Lifetime), &remap) }
-	for &c in sf.players { _remap_refs_in_value(&c, type_info_of(Player), &remap) }
-	for &c in sf.scripts { _remap_refs_in_value(&c, type_info_of(Script), &remap) }
-	for &c in sf.sprite_renderers { _remap_refs_in_value(&c, type_info_of(SpriteRenderer), &remap) }
+	_scene_file_remap_ext_finish(ext_temps, &remap)
 }
 
 scene_file_destroy :: proc(sf: ^SceneFile) {
@@ -308,19 +242,21 @@ scene_file_destroy :: proc(sf: ^SceneFile) {
 			json.destroy_value(ov.value)
 		}
 		delete(ns.overrides)
+		delete(ns.removed_components)
+		for &ac in ns.added_components {
+			delete(ac.type_guid)
+			delete(ac.json)
+		}
+		delete(ns.added_components)
+		delete(ns.removed_objects)
+		for &ao in ns.added_objects {
+			delete(ao.json)
+		}
+		delete(ns.added_objects)
 	}
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
-	for &c in sf.cameras { type_cleanup(.Camera, &c) }
-	delete(sf.cameras)
-	for &c in sf.lifetimes { type_cleanup(.Lifetime, &c) }
-	delete(sf.lifetimes)
-	for &c in sf.players { type_cleanup(.Player, &c) }
-	delete(sf.players)
-	for &c in sf.scripts { type_cleanup(.Script, &c) }
-	delete(sf.scripts)
-	for &c in sf.sprite_renderers { type_cleanup(.SpriteRenderer, &c) }
-	delete(sf.sprite_renderers)
+	_scene_file_destroy_ext(sf)
 }
 
 scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
@@ -332,9 +268,5 @@ scene_file_destroy_shallow :: proc(sf: ^SceneFile) {
 	delete(sf.transforms)
 	delete(sf.nested_scenes)
 	delete(sf.breadcrumbs)
-	delete(sf.cameras)
-	delete(sf.lifetimes)
-	delete(sf.players)
-	delete(sf.scripts)
-	delete(sf.sprite_renderers)
+	_scene_file_destroy_ext(sf)
 }

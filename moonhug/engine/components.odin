@@ -1,21 +1,5 @@
 package engine
 
-import "core:mem"
-
-CompData :: struct {
-    owner: Transform_Handle `json:"-"`,
-    local_id: Local_ID `inspect:"-"`,
-    enabled: bool,
-    nested_owned: bool `json:"-" inspect:"-"`,
-}
-
-comp_zero :: proc(p: ^$T) where
-    offset_of(T, base) == 0,
-    type_of(T{}.base) == CompData
-{
-    mem.zero(rawptr(uintptr(p) + size_of(CompData)), size_of(T) - size_of(CompData))
-}
-
 comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(owner))
@@ -23,7 +7,7 @@ comp_init_base :: proc(comp: rawptr, owner: Transform_Handle) {
     base.owner = owner
     base.enabled = true
     if t != nil && t.scene != nil {
-        base.local_id = scene_next_id(t.scene)
+        base.local_id = scene_new_lid(t.scene)
     }
 }
 
@@ -40,6 +24,9 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
 
     base := cast(^CompData)pComp
     owned := Owned{handle = handle, local_id = base.local_id}
+    if t.scene != nil && base.local_id != 0 {
+        bimap_insert(&t.scene.local_ids, base.local_id, handle)
+    }
     append(&t.components, owned)
     return owned, pComp
 }

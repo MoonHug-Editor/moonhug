@@ -1,0 +1,415 @@
+{
+  "root": 15,
+  "transforms": [
+    {
+      "local_id": 15,
+      "name": "Root",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.1,
+        0.1,
+        0.1
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 5,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 29,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 16
+        },
+        {
+          "local_id": 1
+        }
+      ]
+    },
+    {
+      "local_id": 5,
+      "name": "c",
+      "is_active": true,
+      "position": [
+        -1.60000002,
+        0.0,
+        -0.1
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.29999995,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 15,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 2,
+      "name": "Transform",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.60686123,
+        -0.01
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.5,
+        0.5,
+        0.5
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 15,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3
+        }
+      ]
+    },
+    {
+      "local_id": 29,
+      "name": "c_Variant",
+      "is_active": true,
+      "position": [
+        3.0999999,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 15,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    }
+  ],
+  "nested_scenes": [
+    {
+      "local_id": 6,
+      "local_id_in_parent": 6,
+      "source_prefab": "55926728-93e5-4684-bf40-2f8c986a6f1b",
+      "transform_parent": 5,
+      "host_breadcrumb_id": 7,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "position",
+          "value": [
+            0.0,
+            0.56293339,
+            -0.31
+          ]
+        },
+        {
+          "target": {
+            "local_id": 2,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            0.11493715,
+            0.0,
+            0.99337274
+          ]
+        },
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "color",
+          "value": [
+            0.0,
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "name",
+          "value": "c"
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "position",
+          "value": [
+            -1.60000002,
+            0.0,
+            -0.1
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.2999999499999999,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "55926728-93e5-4684-bf40-2f8c986a6f1b"
+          },
+          "property_path": "color",
+          "value": [
+            1.0,
+            0.94901961,
+            1.0,
+            1.0
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    },
+    {
+      "local_id": 30,
+      "local_id_in_parent": 30,
+      "source_prefab": "3062313e-26b3-4cfb-a408-cdea7fc0b27f",
+      "transform_parent": 29,
+      "host_breadcrumb_id": 31,
+      "sibling_index": 2,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.99607843,
+            0.45882353,
+            0.0,
+            0.43529412
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "name",
+          "value": "c_Variant"
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "position",
+          "value": [
+            3.0999998999999998,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 15,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "scale",
+          "value": [
+            1.0,
+            1.0,
+            1.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 16,
+            "guid": "3062313e-26b3-4cfb-a408-cdea7fc0b27f"
+          },
+          "property_path": "color",
+          "value": [
+            0.50196081,
+            0.5411764999999999,
+            0.0,
+            0.68627453
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 7,
+      "scene_source": {
+        "local_id": 5,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 6
+    },
+    {
+      "local_id": 31,
+      "scene_source": {
+        "local_id": 29,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 30
+    }
+  ],
+  "components": [
+    {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+      "base": {
+        "enabled": true,
+        "local_id": 16
+      },
+      "color": [
+        1.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
+    },
+    {
+      "__type": "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c",
+      "base": {
+        "enabled": true,
+        "local_id": 1
+      },
+      "duration": 1.0,
+      "time_spent": 0.0
+    },
+    {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+      "base": {
+        "enabled": true,
+        "local_id": 3
+      },
+      "color": [
+        0.0,
+        0.60000002,
+        0.0,
+        1.0
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
+    }
+  ]
+}

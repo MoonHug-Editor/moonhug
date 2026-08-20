@@ -1,15 +1,14 @@
 {
   "root": 10,
-  "next_local_id": 15,
   "transforms": [
     {
       "local_id": 10,
       "name": "RootB",
       "is_active": true,
       "position": [
-        2.00000000,
-        2.00000000,
-        2.00000000
+        2.0,
+        2.0,
+        2.0
       ],
       "rotation": [
         0.01775163,
@@ -18,9 +17,9 @@
         0.99953789
       ],
       "scale": [
-        2.00000000,
-        2.00000000,
-        2.00000000
+        2.0,
+        2.0,
+        2.0
       ],
       "render_layer": 1,
       "parent": {
@@ -52,9 +51,9 @@
       "name": "TestC",
       "is_active": true,
       "position": [
-        3.00000000,
-        3.00000000,
-        3.00000000
+        3.0,
+        3.0,
+        3.0
       ],
       "rotation": [
         0.02684401,
@@ -63,9 +62,9 @@
         0.99895442
       ],
       "scale": [
-        3.00000000,
-        3.00000000,
-        3.00000000
+        3.0,
+        3.0,
+        3.0
       ],
       "render_layer": 1,
       "parent": {
@@ -86,9 +85,9 @@
       "name": "TransformB",
       "is_active": true,
       "position": [
-        3.00000000,
-        2.00000000,
-        1.00000000
+        3.0,
+        2.0,
+        1.0
       ],
       "rotation": [
         0.05377451,
@@ -97,9 +96,9 @@
         0.99699163
       ],
       "scale": [
-        9.00000000,
-        8.00000000,
-        7.00000000
+        9.0,
+        8.0,
+        7.0
       ],
       "render_layer": 1,
       "parent": {
@@ -140,9 +139,9 @@
           },
           "property_path": "position",
           "value": [
-            50.0000000000000000,
-            50.0000000000000000,
-            50.0000000000000000
+            50.0,
+            50.0,
+            50.0
           ]
         },
         {
@@ -152,9 +151,9 @@
           },
           "property_path": "position",
           "value": [
-            0.0000000000000000,
-            0.0000000000000000,
-            0.0000000000000000
+            0.0,
+            0.0,
+            0.0
           ]
         },
         {
@@ -165,6 +164,18 @@
           "property_path": "name",
           "value": "TestD"
         }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
       ]
     }
   ],
@@ -178,19 +189,7 @@
       "scene_instance": 13
     }
   ],
-  "cameras": [
-
-  ],
-  "lifetimes": [
-
-  ],
-  "players": [
-
-  ],
-  "scripts": [
-
-  ],
-  "sprite_renderers": [
+  "components": [
 
   ]
 }

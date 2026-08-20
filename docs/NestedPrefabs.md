@@ -1,6 +1,13 @@
-# Nested Prefabs WIP Plan
+# Nested Prefabs
 
-> MoonHug Editor uses scenes as prefabs so prefab is synonym to scene in thid document.
+> MoonHug Editor uses scenes as prefabs, so "prefab" and "scene" are synonyms in
+> this document.
+
+**Behaviour is specified separately** in
+[PrefabsSpec.md](PrefabsSpec.md) — what prefabs do, in implementation-independent
+terms. This document describes how that specification is implemented here: file
+layout, records, and the resolve/save pipeline. Section references like §4.7
+point into the spec.
 
 ## Links
 - [Technical deep dive into the new Prefab system - Unite LA](https://www.youtube.com/watch?v=HxbSJ-EIjXI)
@@ -21,7 +28,8 @@
   - [v] deep nested prefabs
   - [v] breadcrumbs — stripped-placeholder anchors for `Ref_Local` and NS hosts
 
-  - prefab variants
+  - [v] prefab variants — load/resolve/save of a top-level variant, nesting a variant as a child, Create-Variant UX, runtime instantiate-by-guid, and Apply/Revert from the inspector (incl. variant root) all done
+  - [v] scene edit stack — enter (`>`) / exit (`<`) nested scenes (Unity prefab mode). See "Scene edit stack" below.
 
 # Design
 
@@ -32,7 +40,6 @@ Following Unity's approach, `NestedScene` is **metadata** in the scene file — 
 ```
 SceneFile {
   root:              Local_ID
-  next_local_id:     Local_ID
   transforms:        []Transform         // only non-nested-owned nodes
   nested_scenes:     []NestedScene       // metadata, analogous to Unity PrefabInstance
   breadcrumbs:       []Breadcrumb        // stripped-placeholder anchors for intra-file
@@ -131,30 +138,85 @@ Resolution at load loads the target if needed, wires the real object handle into
 - Overrides targeting items deeper in the chain (e.g. root → A → B → leaf inside B) are still owned by the root scene's `NestedScene`. `target.guid` names the deepest prefab the field lives in, and `target.local_id` is the leaf-prefab lid XOR-projected through every inner NS's `local_id_in_parent` on the way up. Inner `NestedScene` records never store the root's overrides.
 - Inner `NestedScene` records loaded into memory at runtime carry their own prefab file's overrides (e.g. A.scene's overrides on B). Those exist as runtime state to drive each level's own-overrides bake during resolve, and are never persisted by the open scene's save.
 
-Serialization triggers baking base and working copy, diffs them to produce overrides written onto the **root** scene's `NestedScene` record.
-- UX: overrides grow only — if same value but override exists, keep it
+Overrides have **two producers**, both writing onto the root scene's `NestedScene` record:
+
+1. **Live recording** (`nested_scene_record_override`) — editing a field in the inspector records the override as the edit commits, so the override marker, Revert and Apply are available immediately, with no save in between. Undo of that edit takes the record away with the value, and redo restores both; editing a field that is already overridden leaves the existing override in place.
+2. **Save-time diff** (`_capture_overrides_to_native`) — bakes base and working copy and diffs them, catching everything not routed through an inspector field (engine-API mutations, drag-and-drop, batch tooling).
+
+Serialization reconciles the two: it sets existing entries aside, lets the diff repopulate from scratch, then restores any set-aside entry the diff did not reproduce. **The diff's value wins where it found one** (it reflects the live world); entries it cannot see survive.
+
+### Added / removed components
+
+A component added to or removed from a prefab instance is recorded on the instance's `NestedScene` as `added_components` / `removed_components` — separate lists, like Unity's `m_AddedComponents` / `m_RemovedComponents`, because an `Override` names a field to patch and cannot express "this component is not here".
+
+```
+Removed_Component { target: PPtr }                       // the prefab's component row
+Added_Component   { owner: PPtr, local_id, type_guid, json }
+```
+
+Both are baked into the prefab bytes at resolve, after the field overrides, so a materialized instance simply lacks its removed components and carries its added ones — the edit survives the next resolve, not just the save. Targets use `Override.target`'s encoding, so deep targets project up the chain the same way.
+
+- Removing an ADDED component retracts the addition rather than recording a removal — it was never prefab content.
+- Component ORDER is prefab content: reorder stays disabled on instances.
+- The inspector's Add Component on an instance adds to that instance only.
+
+### Added / removed objects
+
+An object added under a prefab instance is recorded the same way, as `added_objects` (Unity's `m_AddedGameObjects`), and grafted back at resolve.
+
+```
+Added_Object   { parent: PPtr, local_id, json }  // subtree as a SceneFile fragment
+Removed_Object { target: PPtr }                  // the prefab object this instance lacks
+```
+
+An added subtree has no row in any prefab file, so it carries its own content. Its lids are host-authored — minted by `scene_new_lid`, random in [1, 2^52) — and random identity is collision-free by construction, so added content needs no lid band of its own.
+
+Additions work at any depth. The record always lives in the file that CONTAINS the instance — the open scene or outer prefab, never the source prefab — so `parent` uses `Override.target`'s encoding: a parent inside the instance's own prefab is named directly, and a parent that lives inside a prefab nested WITHIN the instance is XOR-projected up the chain. A shallow parent is grafted into the prefab bytes at resolve. A deep one cannot be — that parent does not exist until the inner prefab expands — so it is grafted onto the live tree afterwards, alongside deep field overrides. Either way the object is host-authored, not prefab content, so the next save re-captures it.
+
+Removing an object takes its whole subtree with it: the rows, their components, and the parent's child link.
+
+**Additions are identified positively** at save time — a non-owned transform whose parent is prefab content — so they are re-derived on every save. **Removals are not inferrable**: the live walk skips the base root and inner-nested content, so "not in the walk" does not mean the user deleted anything. The record is written when the user deletes and is preserved across save (never rebuilt), because it is the only evidence the deletion happened.
+
+Deleting an ADDED object retracts the addition instead of recording a removal — it was never prefab content.
+
+A root VARIANT's base content and additions are owned by the variant save path, which writes them itself.
+
+- UX: overrides grow only — if same value but override exists, keep it. An override whose value is set back to the base value STAYS an override, in the file too.
 - Removing an override requires explicit UI action (revert)
+
+### Overrides dropdown
+
+The inspector shows an **Overrides (N)** button on a prefab instance's root, listing every override the instance carries — modified properties, added and removed components, added and removed objects — in one place, so divergence is visible without opening each field's context menu.
+
+Rows are selectable: click for one, ctrl/cmd for a set, shift for a range. **Revert All** and **Revert Selected** drop the chosen records. A field revert restores the base value as well as the record; the structural kinds only drop the record, and the instance rebuilds from its prefab on the next resolve.
+
+**Apply All** and **Apply Selected** each open a menu listing every prefab all the chosen overrides can go to, closest to base (`nested_scene_apply_targets_common`). Picking one runs the shared apply core — see "Apply" under Extras. Structural entries narrow the menu to the levels their record is expressible at, and Apply is not undoable (it rewrites prefab files).
+
+Per-field revert and Apply stay on the property context menu, listing the same target chain per field.
 - diff produces overrides between baked_base and working_copy
 - baked_base for a chain depth N walks all N prefab files in order, applying each file's NS-for-next-child overrides to the next prefab's raw — this is the "what this nested instance looks like before any root-scene overrides" baseline
 
-### Enter prefab (planned UX, not yet implemented)
+### Scene edit stack — enter/exit nested scene (planned UX)
 
-Enter prefab N:
-- baked_base    = bake(chain[0..N-1])
-- working_copy  = bake(chain[0..N]) <- user sees and edits this
+Unity-style "prefab mode": double-click / `>` a nested scene to **open its source `.scene` asset** for editing; a `<` in the scene header goes back up. Decided model:
 
-#### Examples
-Enter prefab 0(root):
-- baked_base    = bake(chain[0..-1]) <- nothing
-- working_copy  = bake(chain[0..0]) <- bakes root(self)
+- **Enter opens the source asset itself.** Clicking `>` on a nested-scene host resolves that host's `NestedScene.source_prefab` GUID → path (`asset_db_get_path`) and opens that `.scene` as the editing target. Edits there save to the prefab file and propagate to instances (existing `prefab_propagate`), exactly like editing the asset directly. (This is NOT instance-override isolation; it edits the shared prefab.)
+- **Single active scene, replace model.** Entering **unloads** the current scene and loads the source scene (`scene_load_single_path`). Going up reloads the parent. The hierarchy shows exactly one scene at a time. (Matches Unity leaving the main scene to enter prefab mode.)
+- **Editor-only stack.** A `[dynamic]Scene_Edit_Frame` lives in the editor (view_hierarchy/app state), not the engine. Each frame stores what's needed to restore the parent on pop: the parent scene's path/guid, and the selection to restore. The engine is unchanged except using the existing load-by-path helpers.
 
-Enter prefab 1(root+variant):
-- baked_base    = bake(chain[0..0]) <- baked root
-- working_copy  = bake(chain[0..1]) <- bakes root + variant
+Stack frame:
+```
+Scene_Edit_Frame { path: string, guid: Asset_GUID }   // the scene that was open before entering
+```
 
+- **`>` button** (per nested-scene host row, `_draw_hierarchy_node`, shown where the `[nested scene]` suffix is): push the *current* scene's frame, then `scene_load_single_path(source_path)`. Selection/undo cleared on enter (as double-click open already does).
+- **`<` button** (scene header, `_draw_scene_section`, left of the name; shown only when `len(stack) > 0`): pop the top frame and `scene_load_single_path(frame.path)` to restore the parent.
+- Depth is `len(stack)`; the spec's "stack > 1" = at least one entered level = `len(stack) >= 1` → show `<`.
+- Save/Discard on exit is deferred — for v1, edits are saved explicitly via the existing header **Save**, and `<` just navigates (the prefab file is the source of truth; unsaved live edits are lost on navigate, same as switching scenes today). A Save/Discard prompt on `<` is a later refinement.
 
-### Exit prefab (planned UX, not yet implemented)
-- Save/Discard/Cancel
+**Cycle guard — never push self/an ancestor.** If the scene being entered is already open or already present in the stack (its guid matches the current scene or any frame), do NOT push a frame — just `scene_load_single_path` to (re)load it. A prefab can't meaningfully contain itself, so this should not occur, but if it does the stack stays finite instead of looping. (Normal case — entering a *different* nested scene — pushes a frame as usual.)
+
+**Opening from the project panel clears the stack.** Double-clicking a `.scene` in the project view is a fresh navigation, so it resets the edit stack to empty (it's not a "child of" the previously-entered scene). Expose an editor proc (e.g. `hierarchy_edit_stack_clear()`) that `view_project`'s open path calls.
 
 ### Changes propagation
 On save, for the saved prefab's GUID:
@@ -163,22 +225,60 @@ On save, for the saved prefab's GUID:
 - Walk every loaded scene; for any chain that transitively contains the saved GUID (the saved prefab itself OR any inner NS whose `source_prefab` matches), find the native NS at the top of that chain and re-resolve it. The re-resolve rebuilds the subtree fresh with the new prefab content while preserving the open scene's overrides.
 
 ## Extras
-- Apply override — writes override back up the chain to the source asset, removes it from the `NestedScene` record.
-- todo (not yet implemented)
+Apply — pushes overrides into a prefab on their chain (mirror of revert), making the value a shared baseline. One core serves the per-field menu and the dropdown, for all five override kinds: `nested_scene_apply_entries(s, host_tH, target_guid, entries, which)`, with `nested_scene_apply_targets` / `nested_scene_apply_targets_common` producing the menu and `nested_scene_apply_override` as the one-field convenience.
+
+**Target chain** (closest → base, `Apply_Target{guid, is_owner}`):
+- Each **nesting ancestor** between the instance and the subject holds the value as a record on its NS-for-child, lids un-projected per hop. Editor label: **"Apply as Override in '<ancestor>'"**.
+- Each **variant** in the subject's inheritance chain holds it as a record on its ROOT NS — a variant file has no base rows to patch. The record names the direct base with the lid unchanged (the flatten preserves base lids), exactly what the variant's own override capture writes. Same editor label.
+- The **owner** — the file that physically contains the row, found by walking nesting hops then descending the variant base chain until a file contains the subject lid — gets the value **baked** onto its own rows. Editor label: **"Apply to Scene '<owner>'"**.
+- Field overrides can target every level. A structural record is expressible only where the resolve-time bake can apply it: the owner, a variant root NS, or the nesting record whose direct child is the subject's prefab — the menu omits the rest.
+
+Clear-above-target — precedence is **shallower-wins** (the root scene's deep override is applied last, on top of every inner-prefab bake; see `_nested_scene_apply_deep_overrides_live`), so the same field override is removed from every chain level strictly SHALLOWER than the chosen target (variant roots included) and from the root scene NS — otherwise a surviving shallower override would shadow the freshly-applied value.
+
+Mechanics — each touched file is RESAVED once, not patched textually:
+- Bake edits run the same procs the resolve-time bake uses (`nested_scene_apply_overrides`, `nested_scene_apply_component_edits`) over the file bytes; record merges and clears mutate the typed `SceneFile`; the result marshals with `scene_serialize`'s options. The file comes out exactly as if the edit had been made while editing that prefab.
+- Every destination is resolved and every file's new bytes are computed before anything is written, so a failing entry aborts the whole apply with files and records untouched (§4.8 atomicity).
+- Writes refresh `scene_lib` bytes only (`_prefab_bytes_refresh`); after the root records drop, a single propagation pass per touched prefab runs via `prefab_propagate`. Peers with their own explicit override keep it; peers without pick up the new baseline.
+- Caller caution: apply triggers propagation that re-resolves and may reallocate `s.nested_scenes`, so `ns` pointers must not be reused afterward.
 
 Revert override — discards a specific override on the `NestedScene` record, restoring the field to the value it would have without that override.
 - Removes the matching `(target, property_path)` entry from the root NS's overrides.
 - Recomputes the baseline by re-baking the prefab chain WITHOUT the entry being reverted (peer overrides on the same NS still apply). For depth ≥ 2 this composes every level's prefab file overrides correctly, not just the immediate outer.
 - Locates the live field via reflection over the materialized subtree, calls `cleanup_T` on it, then `json.unmarshal_any` writes the recomputed baseline value into the slot.
 
+### Prefab variants
+
+A **variant** is a scene asset that is a NestedScene over a base prefab — *base + my overrides + my added content*, an inheritance stack (Unity's Prefab Variant). On disk the marker is `transform_parent == 0`: the file names the base root as `sf.root` (a lid it doesn't itself contain) and carries one root NS plus only the variant's additions. `nested_scene_is_root(ns)` ⇔ `transform_parent == 0 && expand_parent == {}`.
+
+**The base prefab IS the scene root** — no wrapper transform (Unity model). Two cases, both reusing the existing bake machinery (`nested_scene_apply_overrides`); no synthesized placeholder.
+
+- **Top-level open** (`_variant_materialize_root`, from `_scene_load_additive`): resolve the base to flat bytes (`_prefab_resolved_bytes`, recursing if the base is itself a variant), bake THIS variant's own overrides onto it, load it so the **base root becomes the scene's native root**, its descendants nested-owned (the baked baseline), and the variant's additions graft under it. The root NS is rebound to be hosted by the base root, so its overrides are the editable set — exactly like any nested scene. Save writes `transform_parent` back to 0.
+- **Nested** (`nested_scene_resolve` → `_prefab_resolved_bytes`): a variant nested in another scene is loaded like ANY prefab — `_prefab_resolved_bytes(guid)` flattens it (base + its overrides + its additions, merging the additions into the base file and linking them under the base root), so `nested_scene_resolve` sees a normal flat prefab. The inner variant's own overrides are baked into the per-level baseline, so **only the host scene's overrides on the nested content are editable** (inner-variant overrides are not revertable from the owner — Unity's model). Works to arbitrary depth via the recursion.
+
+- **Save** (`scene_save` + `_collect_variant_added_subtree`): `nested_scene_is_root_variant(s, ns)` — a native NS hosted by `s.root` — is written with `transform_parent: 0` and no host breadcrumb; the base content (nested-owned descendants of the native root) is never emitted; only the variant's additions are written, parent-pinned to the base root source lid; `sf.root` = base root source lid. The base root's own COMPONENTS are marked nested-owned at resolve so overrides on them (e.g. `SpriteRenderer.color`) are captured like child overrides.
+- **Override capture** (`_capture_overrides_to_native`, `_chain_baked_base_for_ns`): the diff BASELINE is the prefab RESOLVED (`_prefab_resolved_bytes`), not its raw file — so editing a nested variant's content diffs against the variant's flattened (base+overrides+additions) form and captures the change as an override on the host NS. For a flat prefab the resolved bytes are the raw bytes, so regular nested prefabs are unaffected.
+- **Create Variant** (`scene_create_variant_file` + editor `create_scene_variant`): right-click a `.scene` in the project view → **Create ▸ Scene Variant** writes `<name>_Variant.scene` alongside the original (a root NS over the base, empty overrides, `root` = base root lid), refreshes AssetDB to mint its `.meta`, and opens it.
+
+**Status:** complete. Runtime instantiate of a variant by guid works (bakes root+overrides via `_prefab_resolved_bytes` into a single JSON, cached and instantiated). Apply/Revert from the inspector works on variant content including the variant root.
+
 ### Stale-reference cleanup divergence from Unity
 
 Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target.local_id` no longer exists in the prefab named by `target.guid`, and prunes orphan stripped-placeholder breadcrumbs that no NS host or live `Ref_Local` references. Trade-off: cleaner files, no recovery on accidental field removal.
 
-# Consider Later
-## Scene edit stack
-- enter inner prefab pushes to scene edit stack
-- exit inner prefab pops from scene edit stack
+# TODO
+- Apply is not undoable — it rewrites prefab files, and undo has no file-snapshot command. Unity's Apply is undoable; matching it needs before/after file bytes captured into an undo entry that rewrites the file and re-propagates on undo/redo.
 
-## Prefab isolation mode
-- show fully colored prefab in grayed out context
+- (done) prefab overrides — Apply matches Unity: flat menu items (no submenu), one per chain target ordered closest→base, variant bases included. The deepest item bakes into the owner file ("Apply to Scene '<owner>'"), every other target records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins. The Overrides dropdown applies in bulk through the same targets.
+
+- reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it. This is specified behaviour, not a gap (§4.6).
+
+- (done) revert on a variant ROOT's nested content restores the field value, not just the record (§4.7). A root variant loads its base with lid registration skipped, so the scene bimap can't resolve base lids — `nested_scene_find_source_handle` falls back to a live subtree walk for that case.
+
+# Consider Later
+## Prefab isolation mode (alternative to opening the source asset)
+- Instead of opening the source `.scene`, isolate the live nested INSTANCE subtree in place — edits become instance overrides, host scene shown grayed.
+- Show fully colored prefab in grayed-out context.
+- (The shipped enter/exit — see "Scene edit stack" above — opens the source asset; this isolation mode is a future alternative.)
+
+## Scene edit stack — Save/Discard on exit
+- Prompt Save / Discard / Cancel when leaving an entered scene with unsaved edits (v1 just navigates).

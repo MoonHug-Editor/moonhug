@@ -4,7 +4,7 @@ import "core:c"
 import "core:fmt"
 import "base:runtime"
 import strings "core:strings"
-import im "../../../external/odin-imgui"
+import im "moonhug:external/odin-imgui"
 
 is_enum_type :: proc(tid: typeid) -> bool {
 	ti := runtime.type_info_base(type_info_of(tid))
@@ -35,13 +35,8 @@ draw_inspector_enum :: proc(field_ptr: rawptr, field_tid: typeid, label: cstring
 		}
 	}
 
-	im.AlignTextToFramePadding()
-	im.Text(label)
-	im.SameLine(im.GetContentRegionAvail().x - 150)
-	im.SetNextItemWidth(150)
-
-	uid := fmt.tprintf("##%s", label)
-	if im.ComboChar(strings.clone_to_cstring(uid, context.temp_allocator), &current_index, ([^]cstring)(raw_data(names[:])), c.int(len(names))) {
+	uid := field_row(label)
+	if im.ComboChar(uid, &current_index, ([^]cstring)(raw_data(names[:])), c.int(len(names))) {
 		_write_enum_value(field_ptr, info.base, info.values[current_index])
 		mark_inspector_changed()
 	}

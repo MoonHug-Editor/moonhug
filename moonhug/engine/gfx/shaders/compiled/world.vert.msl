@@ -1,0 +1,41 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct UBO
+{
+    float4x4 view_proj;
+    float4x4 model;
+    float4 tint;
+};
+
+struct main0_out
+{
+    float2 frag_uv [[user(locn0)]];
+    float4 frag_color [[user(locn1)]];
+    float3 frag_normal [[user(locn2)]];
+    float3 frag_world_pos [[user(locn3)]];
+    float4 gl_Position [[position]];
+};
+
+struct main0_in
+{
+    float3 in_position [[attribute(0)]];
+    float3 in_normal [[attribute(1)]];
+    float2 in_uv [[attribute(2)]];
+    float4 in_color [[attribute(3)]];
+};
+
+vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _13 [[buffer(0)]])
+{
+    main0_out out = {};
+    float4 world = _13.model * float4(in.in_position, 1.0);
+    out.gl_Position = _13.view_proj * world;
+    out.frag_uv = in.in_uv;
+    out.frag_color = in.in_color * _13.tint;
+    out.frag_normal = float3x3(_13.model[0].xyz, _13.model[1].xyz, _13.model[2].xyz) * in.in_normal;
+    out.frag_world_pos = world.xyz;
+    return out;
+}
+

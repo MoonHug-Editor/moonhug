@@ -10,7 +10,7 @@ test_pool_init :: proc(t: ^testing.T) {
 	engine.pool_init(&pool)
 
 	testing.expect_value(t, pool.count, 0)
-	testing.expect_value(t, pool.free_head, engine.MAX - 1)
+	testing.expect_value(t, pool._free_head, engine.MAX - 1)
 }
 
 @(test)
@@ -117,28 +117,47 @@ test_pool_valid_out_of_range :: proc(t: ^testing.T) {
 	testing.expect(t, !engine.pool_valid(&pool, bad_handle), "out-of-range index should be invalid")
 }
 
-iter_count: int
-iter_sum: int
-
 @(test)
 test_pool_iter :: proc(t: ^testing.T) {
 	pool: engine.Pool(int)
 	engine.pool_init(&pool)
 
-	_, p1 := engine.pool_create(&pool)
+	h1, p1 := engine.pool_create(&pool)
 	p1^ = 1
-	_, p2 := engine.pool_create(&pool)
+	h2, p2 := engine.pool_create(&pool)
 	p2^ = 2
-	_, p3 := engine.pool_create(&pool)
+	h3, p3 := engine.pool_create(&pool)
 	p3^ = 3
 
-	iter_count = 0
-	iter_sum = 0
-	engine.pool_iter(&pool, proc(h: engine.Handle, data: ^int) {
+	// Destroy the middle element: iteration must visit exactly the alive ones.
+	engine.pool_destroy(&pool, h2)
+
+	iter_count := 0
+	iter_sum := 0
+	it := engine.pool_iterator(&pool)
+	for data, h in engine.pool_next(&it) {
 		iter_sum += data^
 		iter_count += 1
-	})
 
-	testing.expect_value(t, iter_count, 3)
-	testing.expect_value(t, iter_sum, 6)
+		testing.expect(t, engine.pool_valid(&pool, h), "iterator handle should be valid")
+		testing.expect_value(t, h.type_key, engine.INVALID_TYPE_KEY)
+		got := engine.pool_get(&pool, h)
+		testing.expect(t, got == data, "iterator handle should resolve to the yielded data")
+		switch data^ {
+		case 1: testing.expect_value(t, h, h1)
+		case 3: testing.expect_value(t, h, h3)
+		case:   testing.expect(t, false, "iterator visited an unexpected element")
+		}
+	}
+
+	testing.expect_value(t, iter_count, 2)
+	testing.expect_value(t, iter_sum, 4)
+
+	// A nil pool yields an empty iterator.
+	nil_it := engine.pool_iterator((^engine.Pool(int, engine.MAX))(nil))
+	nil_count := 0
+	for _, _ in engine.pool_next(&nil_it) {
+		nil_count += 1
+	}
+	testing.expect_value(t, nil_count, 0)
 }

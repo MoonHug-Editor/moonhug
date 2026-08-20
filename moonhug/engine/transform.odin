@@ -3,7 +3,6 @@ package engine
 import "core:math/linalg"
 import "core:strings"
 
-Transform_Handle :: distinct Handle
 
 @(poolable)
 @(typ_guid={guid = "312927b7-3c4a-4929-9807-8216baf26a68"})
@@ -46,9 +45,13 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     t.render_layer = 1
 
     if s != nil {
-        t.local_id = scene_next_id(s)
+        t.local_id = scene_new_lid(s)
         t.scene = s
         t.scene_asset_guid = s.asset_guid
+        // local_ids is the scene's LIVE lid index — created objects register
+        // immediately (not just at load), so lid-based resolution (undo
+        // payload rebinding, pickers) and the mint collision check see them.
+        bimap_insert(&s.local_ids, t.local_id, Handle(tH))
     }
     else {
         t.local_id = 1
@@ -90,6 +93,11 @@ transform_destroy :: proc(tH: Transform_Handle) {
     delete(t.children)
 
     transform_destroy_components(tH)
+    // The scene's local_ids entry is deliberately NOT removed here. The
+    // nested-resolve machinery is stale-tolerant by design — entries are
+    // re-pointed on the next resolve/registration, and eager removal breaks
+    // the peg-rebinding chain during instance teardown/rebuild. Dead entries
+    // are repaired at the next load-time registration (overwrite-if-dead).
     delete(t.name)
     t^ = {}
     pool_destroy(&w.transforms, Handle(tH))
@@ -115,15 +123,24 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return
+    old_scene := t.scene
     t.scene = s
     if s != nil && !t.nested_owned {
-        t.local_id = scene_next_id(s)
+        if old_scene != nil && t.local_id != 0 {
+            bimap_remove_by_key(&old_scene.local_ids, t.local_id)
+        }
+        t.local_id = scene_new_lid(s)
+        bimap_insert(&s.local_ids, t.local_id, Handle(tH))
         for &c in t.components {
             raw := world_pool_get(w, c.handle)
             if raw == nil do continue
             base := cast(^CompData)raw
-            base.local_id = scene_next_id(s)
+            if old_scene != nil && base.local_id != 0 {
+                bimap_remove_by_key(&old_scene.local_ids, base.local_id)
+            }
+            base.local_id = scene_new_lid(s)
             c.local_id = base.local_id
+            bimap_insert(&s.local_ids, base.local_id, c.handle)
         }
     }
     for child in t.children {
@@ -217,6 +234,48 @@ transform_world_position :: proc(tH: Transform_Handle) -> [3]f32 { return transf
 transform_world_rotation :: proc(tH: Transform_Handle) -> [4]f32 { return transform_world(tH).rotation }
 transform_world_scale    :: proc(tH: Transform_Handle) -> [3]f32 { return transform_world(tH).scale }
 
+// Writes a WORLD position into the parent-relative t.position (inverse of the
+// parent chain in transform_world). Gizmos drag in world space; this keeps
+// the drag correct for children of rotated/scaled parents.
+transform_set_world_position :: proc(tH: Transform_Handle, world_pos: [3]f32) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+
+    if !pool_valid(&w.transforms, t.parent.handle) {
+        t.position = world_pos
+        return
+    }
+
+    p := transform_world(Transform_Handle(t.parent.handle))
+    inv_rot := linalg.quaternion_inverse(quat_to_native(_quat_safe(p.rotation)))
+    local := linalg.quaternion128_mul_vector3(inv_rot, world_pos - p.position)
+    safe_scale := [3]f32{
+        p.scale.x != 0 ? p.scale.x : 1,
+        p.scale.y != 0 ? p.scale.y : 1,
+        p.scale.z != 0 ? p.scale.z : 1,
+    }
+    t.position = local / safe_scale
+}
+
+// Writes a WORLD rotation into the parent-relative t.rotation:
+// world = parent_world * local  =>  local = inverse(parent_world) * world.
+transform_set_world_rotation :: proc(tH: Transform_Handle, world_rot: [4]f32) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+
+    if !pool_valid(&w.transforms, t.parent.handle) {
+        t.rotation = _quat_safe(world_rot)
+        return
+    }
+
+    p := transform_world(Transform_Handle(t.parent.handle))
+    inv_parent := linalg.quaternion_inverse(quat_to_native(_quat_safe(p.rotation)))
+    local := inv_parent * quat_to_native(_quat_safe(world_rot))
+    t.rotation = quat_from_native(linalg.quaternion_normalize(local))
+}
+
 _transform_append_name_suffix :: proc(tH: Transform_Handle, suffix: string) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))
@@ -247,12 +306,12 @@ transform_tick_destroy :: proc() {
     w := ctx_world()
     to_destroy: [dynamic]Transform_Handle
     defer delete(to_destroy)
-    for i in 0..<len(w.transforms.slots) {
-        slot := &w.transforms.slots[i]
-        if !slot.alive do continue
-        if slot.data.destroy {
-            handle := Handle{ index = u32(i), generation = slot.generation, type_key = .Transform }
-            append(&to_destroy, Transform_Handle(handle))
+    it := pool_iterator(&w.transforms)
+    for t, h in pool_next(&it) {
+        if t.destroy {
+            h := h
+            h.type_key = .Transform
+            append(&to_destroy, Transform_Handle(h))
         }
     }
     for tH in to_destroy {

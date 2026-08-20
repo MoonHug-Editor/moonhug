@@ -17,7 +17,11 @@ AfterDeserializeProc :: proc(ptr: rawptr, tid: typeid)
 mapBeforeSerialize: map[typeid]BeforeSerializeProc
 mapAfterDeserialize: map[typeid]AfterDeserializeProc
 
+@(phase={key=SerializationInit, order=-200})
 init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
 	mapBeforeSerialize = make(map[typeid]BeforeSerializeProc)
 	mapAfterDeserialize = make(map[typeid]AfterDeserializeProc)
 	init_serialization_callbacks()
@@ -117,11 +121,13 @@ write_asset_to_path :: proc(file_path: string, guid: uuid.Identifier, data: any)
         use_spaces = true,
         spaces  = 2,
     }
-    data_bytes, marshal_err := json.marshal(data, opts)
+    raw_bytes, marshal_err := json.marshal(data, opts)
     if marshal_err != nil {
         log.error(fmt.tprintf("write_asset_to_path: JSON marshal failed: %v", marshal_err))
         return false
     }
+    data_bytes := engine.json_canonicalize_floats(raw_bytes)
+    delete(raw_bytes)
     defer delete(data_bytes)
     if cb, ok_cb := mapBeforeSerialize[data.id]; ok_cb {
         cb(data.data, data.id, true)
@@ -164,11 +170,13 @@ save_to_file :: proc(filepath: string, file_data: any) -> bool {
         use_spaces = true,
         spaces  = 2,
     }
-    data_bytes, marshal_err := json.marshal(file_data, opts)
+    raw_bytes, marshal_err := json.marshal(file_data, opts)
     if marshal_err != nil {
         log.error(fmt.tprintf("JSON marshal failed: %v", marshal_err))
         return false
     }
+    data_bytes := engine.json_canonicalize_floats(raw_bytes)
+    delete(raw_bytes)
     defer delete(data_bytes)
     if cb, ok := mapBeforeSerialize[tid]; ok {
         cb(file_data.data, tid, true)
