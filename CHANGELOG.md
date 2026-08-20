@@ -1,3 +1,10 @@
+## [0.72.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.71.0...v0.72.0) (2026-08-20)
+
+### Features
+
+* improve crash log (time, version) ([87cf97a](https://github.com/MoonHug-Editor/moonhug/commit/87cf97ad9a46ca4df578b2741b9d541059f08968))
+* one-shot audio, fade ([7a14582](https://github.com/MoonHug-Editor/moonhug/commit/7a145825a609b326c54a0d1998562b229bb1eb73))
+
 ## [0.71.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.70.0...v0.71.0) (2026-08-20)
 
 ### Features
