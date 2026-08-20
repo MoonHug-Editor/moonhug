@@ -166,6 +166,20 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	// Unknown guids miss.
 	_, miss := audio.clip_load(engine.Asset_GUID{})
 	testing.expect(t, !miss)
+
+	// Normalize scales the peak to 1 before volume applies.
+	as.volume = 1
+	as.normalize = true
+	testing.expect(t, engine.asset_pipeline_save_settings(wav, as))
+	testing.expect(t, engine.asset_pipeline_import_asset(wav), "normalize change should import")
+	p3, ok3 := engine.asset_pipeline_artifact_path(guid)
+	testing.expect(t, ok3)
+	if !ok3 do return
+	pcm3, _, dok3 := audio.decode_file_f32(p3)
+	testing.expect(t, dok3)
+	if !dok3 do return
+	defer delete(pcm3)
+	testing.expect(t, abs(_peak(pcm3) - 1.0) < 0.02, "normalized peak hits 1")
 }
 
 @(test)

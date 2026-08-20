@@ -19,6 +19,8 @@ AudioSettings :: struct {
 	// Gain baked into the artifact's PCM at import (1 = unchanged). Mastering
 	// knob — per-instance mixing volume lives on AudioSource.
 	volume: f32,
+	// Scale the decoded PCM so its peak hits 1 BEFORE volume applies.
+	normalize: bool,
 }
 
 make_pAudioSettings :: proc() -> any {
@@ -47,7 +49,12 @@ audio_importers_init :: proc() {
 // The pipeline creates the artifact directory before calling run.
 _import_audio :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
 	volume: f32 = 1
-	if settings != nil do volume = (cast(^AudioSettings)settings).volume
+	normalize := false
+	if settings != nil {
+		s := cast(^AudioSettings)settings
+		volume = s.volume
+		normalize = s.normalize
+	}
 
 	pcm, spec, ok := decode_file_f32(source_path)
 	if !ok {
@@ -56,8 +63,16 @@ _import_audio :: proc(source_path: string, artifact_path: string, settings: rawp
 	}
 	defer delete(pcm)
 
-	if volume != 1 {
-		for &s in pcm do s *= volume
+	gain := volume
+	if normalize {
+		peak: f32
+		for s in pcm {
+			if abs(s) > peak do peak = abs(s)
+		}
+		if peak > 0 do gain = volume / peak
+	}
+	if gain != 1 {
+		for &s in pcm do s *= gain
 	}
 
 	if !_write_wav_f32(artifact_path, pcm, spec) {

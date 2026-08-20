@@ -117,6 +117,23 @@ audio_update :: proc(dt: f32) {
 	if w == nil do return
 	pool := audio_sources(w)
 	if pool == nil do return
+
+	// The ear: the first enabled AudioListener with a live transform.
+	listener_pos: [3]f32
+	listener_rot := engine.QUAT_IDENTITY
+	has_listener := false
+	if lpool := audio_listeners(w); lpool != nil {
+		lit := engine.pool_iterator(lpool)
+		for l, _ in engine.pool_next(&lit) {
+			if !l.enabled || !engine.pool_valid(&w.transforms, engine.Handle(l.owner)) do continue
+			lw := engine.transform_world(l.owner)
+			listener_pos = lw.position
+			listener_rot = lw.rotation
+			has_listener = true
+			break
+		}
+	}
+
 	it := engine.pool_iterator(pool)
 	for src, _ in engine.pool_next(&it) {
 		if !engine.pool_valid(&w.transforms, engine.Handle(src.owner)) do continue
@@ -133,7 +150,20 @@ audio_update :: proc(dt: f32) {
 			src.started = true
 			audio_play(src)
 		}
-		if src.track != nil do _ = mix.SetTrackGain(src.track, src.volume)
+		if src.track == nil do continue
+
+		// Live controls apply every frame — inspector edits are audible.
+		sp := Spatial_Gains{1, 1, 1}
+		if has_listener && src.spatial_blend > 0 {
+			sw := engine.transform_world(src.owner)
+			sp = spatial_gains(listener_pos, listener_rot, sw.position,
+				src.min_distance, src.max_distance, src.spatial_blend)
+		}
+		gain := src.mute ? 0 : src.volume * sp.gain
+		_ = mix.SetTrackGain(src.track, gain)
+		stereo := mix.StereoGains{sp.left, sp.right}
+		_ = mix.SetTrackStereo(src.track, &stereo)
+		_ = mix.SetTrackFrequencyRatio(src.track, max(src.pitch, 0.01))
 	}
 }
 

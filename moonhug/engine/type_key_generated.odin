@@ -8,6 +8,7 @@ UUID_NIL :: uuid.Identifier{};
 A__Guid := uuid.read("f49ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL
 Animation__Guid := uuid.read("5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13") or_else UUID_NIL
 AnimationClip__Guid := uuid.read("0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90") or_else UUID_NIL
+AudioListener__Guid := uuid.read("14a605d8-3796-467b-8f9f-76dadf3baa73") or_else UUID_NIL
 AudioSettings__Guid := uuid.read("ec017cc2-7267-45b4-ae80-d6861094d27a") or_else UUID_NIL
 AudioSource__Guid := uuid.read("6f7fb020-d764-4ce1-bc09-d8088356bd22") or_else UUID_NIL
 B__Guid := uuid.read("f50ac13b-63cc-4374-a567-0e02b2c3d479") or_else UUID_NIL

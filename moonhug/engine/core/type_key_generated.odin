@@ -6,6 +6,7 @@ TypeKey :: enum u16 {
 	A,
 	Animation,
 	AnimationClip,
+	AudioListener,
 	AudioSettings,
 	AudioSource,
 	B,

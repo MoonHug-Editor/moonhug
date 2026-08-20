@@ -12,8 +12,15 @@ AudioSource :: struct {
 	using base:    engine.CompData `inspect:"-"`,
 	clip:          engine.Asset_GUID `ext:"mp3,wav,ogg"`,
 	volume:        f32,
+	pitch:         f32, // playback frequency ratio (1 = as authored)
+	mute:          bool,
 	loop:          bool,
 	play_on_awake: bool,
+	// 0 = 2D (full volume, centered), 1 = 3D (attenuated + panned relative
+	// to the AudioListener). Unity's Spatial Blend.
+	spatial_blend: f32,
+	min_distance:  f32, // full volume inside this radius
+	max_distance:  f32, // attenuation stops falling past this radius
 
 	track:   ^mix.Track `json:"-" inspect:"-"`,
 	started: bool `json:"-" inspect:"-"`,
@@ -21,7 +28,10 @@ AudioSource :: struct {
 
 reset_AudioSource :: proc(comp: ^AudioSource) {
 	comp.volume = 1
+	comp.pitch = 1
 	comp.play_on_awake = true
+	comp.min_distance = 1
+	comp.max_distance = 500
 }
 
 cleanup_AudioSource :: proc(comp: ^AudioSource) {

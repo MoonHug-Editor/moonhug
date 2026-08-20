@@ -121,6 +121,9 @@
       "components": [
         {
           "local_id": 3
+        },
+        {
+          "local_id": 323904211935171
         }
       ]
     },
@@ -451,6 +454,9 @@
         },
         {
           "local_id": 14
+        },
+        {
+          "local_id": 2262422533977326
         }
       ]
     },
@@ -1252,6 +1258,13 @@
       "render_layer_mask": 4294967295
     },
     {
+      "__type": "14a605d8-3796-467b-8f9f-76dadf3baa73",
+      "base": {
+        "enabled": true,
+        "local_id": 323904211935171
+      }
+    },
+    {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
       "ambient": 0.1,
       "base": {
@@ -1264,7 +1277,11 @@
         1.0,
         1.0
       ],
-      "intensity": 1.0
+      "inner_spot_angle": 0.0,
+      "intensity": 1.0,
+      "range": 0.0,
+      "spot_angle": 0.0,
+      "type": 0
     },
     {
       "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
@@ -1524,6 +1541,22 @@
       "sprite": {
         "local_id": 153
       }
+    },
+    {
+      "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
+      "base": {
+        "enabled": true,
+        "local_id": 2262422533977326
+      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+      "loop": false,
+      "max_distance": 500.0,
+      "min_distance": 1.0,
+      "mute": false,
+      "pitch": 1.0,
+      "play_on_awake": true,
+      "spatial_blend": 1.0,
+      "volume": 1.0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",

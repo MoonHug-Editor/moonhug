@@ -11,6 +11,20 @@ _register_audio_components_once: sync.Once
 register_audio_components :: proc() {
 	sync.once_do(&_register_audio_components_once, proc() {
 		engine.component_register(engine.Component_Desc{
+			type_key  = .AudioListener,
+			type_guid = engine.AudioListener__Guid,
+			tid       = typeid_of(AudioListener),
+			ptr_tid   = typeid_of(^AudioListener),
+			pool_create = proc() -> rawptr { p := new(engine.Pool(AudioListener)); engine.pool_init(p); return p },
+			pool_destroy = proc(pool: rawptr) { free(cast(^engine.Pool(AudioListener))pool) },
+			make_entry = proc(pool: rawptr) -> engine.Pool_Entry { return engine.pool_make_entry(cast(^engine.Pool(AudioListener))pool) },
+			each_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {
+				it := engine.pool_iterator(cast(^engine.Pool(AudioListener))pool)
+				for data, _ in engine.pool_next(&it) do fn(data)
+			},
+			reset = proc(ptr: rawptr) { reset_AudioListener(cast(^AudioListener)ptr) },
+		})
+		engine.component_register(engine.Component_Desc{
 			type_key  = .AudioSource,
 			type_guid = engine.AudioSource__Guid,
 			tid       = typeid_of(AudioSource),
@@ -29,12 +43,26 @@ register_audio_components :: proc() {
 	})
 }
 
+audio_listeners :: proc(w: ^engine.World) -> ^engine.Pool(AudioListener) {
+	return cast(^engine.Pool(AudioListener)) w.ext_pools[engine.TypeKey.AudioListener]
+}
+
 audio_sources :: proc(w: ^engine.World) -> ^engine.Pool(AudioSource) {
 	return cast(^engine.Pool(AudioSource)) w.ext_pools[engine.TypeKey.AudioSource]
 }
 
 get_comp :: proc(tH: engine.Transform_Handle, $T: typeid) -> (engine.Owned, ^T) {
-	when T == AudioSource {
+	when T == AudioListener {
+		w := engine.ctx_world()
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}, nil
+		owned, _ := engine.transform_find_comp(t, .AudioListener)
+		if owned.handle.type_key == engine.INVALID_TYPE_KEY do return owned, nil
+		pool := audio_listeners(w)
+		if pool == nil do return owned, nil
+		return owned, engine.pool_get(pool, owned.handle)
+	}
+	else when T == AudioSource {
 		w := engine.ctx_world()
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do return {}, nil

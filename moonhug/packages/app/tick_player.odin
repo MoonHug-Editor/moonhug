@@ -1,6 +1,7 @@
 package app
 
 import "moonhug:engine"
+import audio "moonhug:packages/audio"
 import tween "moonhug:packages/tween"
 import gfx "moonhug:engine/gfx"
 import input "moonhug:engine/input"
@@ -41,6 +42,12 @@ tick_player :: proc(dt: f32) {
             if sr != nil {
                 idx := rand.int_max(len(p.colors))
                 sr.color = p.colors[idx]
+            }
+        }
+
+        if input.key_pressed_fixed(.SPACE) {
+            if _, src := audio.get_comp(p.owner, audio.AudioSource); src != nil {
+                audio.audio_play(src)
             }
         }
 

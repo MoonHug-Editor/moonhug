@@ -6,6 +6,7 @@ import "undo"
 
 register_component_menus :: proc() {
 	menu.add_menu_item("Component/Animation", "", proc() { _component_menu_add(.Animation) })
+	menu.add_menu_item("Component/Audio/AudioListener", "", proc() { _component_menu_add(.AudioListener) })
 	menu.add_menu_item("Component/Audio/AudioSource", "", proc() { _component_menu_add(.AudioSource) })
 	menu.add_menu_item("Component/Camera", "", proc() { _component_menu_add(.Camera) })
 	menu.add_menu_item("Component/DemoMenu", "", proc() { _component_menu_add(.DemoMenu) })
