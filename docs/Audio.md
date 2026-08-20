@@ -21,6 +21,9 @@ Backend: SDL3_mixer (`vendor:sdl3/mixer`, needs `brew install sdl3_mixer`).
 - The mixer device is created lazily on first use. Headless contexts
   (tests, tooling) fall back to a deviceless mixer — loading works, nothing
   is audible.
+- A reimport evicts the cached clip (pipeline reimport hook), so a settings
+  change takes effect on the next play without a restart. Playing tracks
+  detach first and play-on-awake sources restart with the new master.
 
 ## AudioSource
 
@@ -34,6 +37,16 @@ baked gain), `loop`, `play_on_awake`.
   set.
 - `audio_play(src)` / `audio_stop(src)` / `audio_is_playing(src)` for code.
 - Exiting play mode stops all tracks.
+- The component inspector carries Play/Stop buttons (`@(inspector_button)`)
+  for auditioning a source without entering play mode.
+
+## Preview
+
+Selecting an audio file shows Play/Stop buttons in the Project Inspector's
+bottom Preview section — one shared preview track, independent of any
+component (`preview_play(guid)` / `preview_stop()`). Registered by the
+`packages/audio/editor` subpackage through `inspector.mapAssetPreview`
+(extension-keyed preview pane — open to any package).
 
 ## Semantics
 

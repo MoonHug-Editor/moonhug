@@ -57,6 +57,59 @@ audio_is_playing :: proc(src: ^AudioSource) -> bool {
 	return src.track != nil && bool(mix.TrackPlaying(src.track))
 }
 
+// Inspector action buttons — auditioning a source without entering play
+// mode (the editor's generated registration wires these to the component).
+
+@(inspector_button={label="Play", row=0})
+audio_btn_play :: proc(src: ^AudioSource) {
+	_ = audio_play(src)
+}
+
+@(inspector_button={label="Stop", row=0})
+audio_btn_stop :: proc(src: ^AudioSource) {
+	audio_stop(src)
+}
+
+// --- Asset preview ---------------------------------------------------------
+
+// One shared preview track, independent of any component — the asset
+// inspector's Play button.
+
+_preview_track: ^mix.Track
+_preview_guid: engine.Asset_GUID
+
+preview_play :: proc(guid: engine.Asset_GUID) -> bool {
+	clip, ok := clip_load(guid)
+	if !ok do return false
+	if _preview_track == nil {
+		_preview_track = mix.CreateTrack(_audio_state.mixer)
+		if _preview_track == nil do return false
+	}
+	if !mix.SetTrackAudio(_preview_track, clip.audio) do return false
+	_preview_guid = guid
+	return mix.PlayTrack(_preview_track, 0)
+}
+
+preview_stop :: proc() {
+	if _preview_track != nil do _ = mix.StopTrack(_preview_track, 0)
+}
+
+// True only while THIS asset previews — the pane's playhead check.
+preview_playing :: proc(guid := engine.Asset_GUID{}) -> bool {
+	if _preview_track == nil || !mix.TrackPlaying(_preview_track) do return false
+	return guid == {} || guid == _preview_guid
+}
+
+// Playhead in sample frames of the previewed clip.
+preview_position :: proc() -> i64 {
+	if _preview_track == nil do return 0
+	return i64(mix.GetTrackPlaybackPosition(_preview_track))
+}
+
+preview_seek :: proc(frames: i64) {
+	if _preview_track != nil do _ = mix.SetTrackPlaybackPosition(_preview_track, frames)
+}
+
 @(update={order=3})
 audio_update :: proc(dt: f32) {
 	context.allocator = runtime.default_allocator()

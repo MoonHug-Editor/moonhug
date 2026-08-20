@@ -41,6 +41,7 @@ audio_importers_init :: proc() {
 		settings_tid = typeid_of(AudioSettings),
 		run          = _import_audio,
 	})
+	engine.asset_pipeline_add_reimport_hook(_clip_reimported)
 }
 
 // The pipeline creates the artifact directory before calling run.

@@ -174,6 +174,9 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 ### Considered Features
 
+- inspector funnel: wrapper chain around inspector drawing (ctx + cursor, `next(ctx)` draws the rest) — prepend/append/wrap/replace from one mechanism, N packages stack on one type, unifies asset + component inspector extension
+- preview section in hierarchy inspector (project inspector has one)
+
 - Task tracking with backlog, todo, etc.
 
 - some kind of type defaults fill only what json serialized data doesn't cover

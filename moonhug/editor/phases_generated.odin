@@ -6,6 +6,7 @@ package editor
 import "../engine"
 import app "moonhug:packages/app"
 import audio "moonhug:packages/audio"
+import audio_editor "moonhug:packages/audio/editor"
 import plugin_example "moonhug:packages/plugin_example"
 import serialization "moonhug:engine/serialization"
 import tween "moonhug:packages/tween"
@@ -16,6 +17,7 @@ phase_editor_run :: proc(key: engine.Phase) {
 	#partial switch key {
 	case .EditorInit:
 		editor_init()
+		audio_editor.audio_editor_install()
 		tween_editor.tween_view_install()
 	case .EditorShutdown:
 		editor_shutdown()

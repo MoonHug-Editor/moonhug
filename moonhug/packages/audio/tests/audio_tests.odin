@@ -123,6 +123,12 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(pcm1), _FRAMES)
 	testing.expect(t, abs(_peak(pcm1) - _AMPLITUDE) < 0.02, "peak matches the source amplitude")
 
+	// The clip cache serves the first artifact by guid.
+	clip1, cok1 := audio.clip_load(guid)
+	testing.expect(t, cok1, "clip_load resolves the guid")
+	if !cok1 do return
+	testing.expect_value(t, clip1.frames, i64(_FRAMES))
+
 	// Halving the settings volume bakes half the gain into a NEW artifact.
 	s, sok := engine.asset_pipeline_get_settings(wav)
 	testing.expect(t, sok)
@@ -143,9 +149,11 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	defer delete(pcm2)
 	testing.expect(t, abs(_peak(pcm2) - _AMPLITUDE * 0.5) < 0.02, "half volume baked into the PCM")
 
-	// The clip cache serves the artifact by guid.
+	// The reimport hook evicted the stale clip — the next load serves the
+	// new master.
+	testing.expect(t, guid not_in audio.clip_cache, "reimport evicts the cached clip")
 	clip, cok := audio.clip_load(guid)
-	testing.expect(t, cok, "clip_load resolves the guid")
+	testing.expect(t, cok, "clip_load reloads after eviction")
 	if !cok do return
 	testing.expect_value(t, clip.sample_rate, i32(_SAMPLE_RATE))
 	testing.expect_value(t, clip.channels, i32(1))

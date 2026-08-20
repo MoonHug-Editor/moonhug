@@ -228,7 +228,12 @@ reference (docs/Audio.md):
 - The importer above produces the artifact (audio bakes its settings into
   float32 WAV PCM).
 - A guid-keyed runtime cache in the package loads the artifact
-  (`clip_load`), mirroring the engine's texture cache.
+  (`clip_load`), mirroring the engine's texture cache. It registers an
+  `engine.asset_pipeline_add_reimport_hook` to evict on artifact change —
+  the same hook the texture cache uses, so settings edits apply live.
+- An editor subpackage can register `inspector.mapAssetPreview[".ext"]` on
+  the EditorInit phase — the drawer renders in the Preview section pinned
+  to the bottom of the Project Inspector when a matching asset is selected.
 - A component references the asset through a plain `engine.Asset_GUID`
   field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector
   picker and drag-drop, filtered to those extensions — no editor code.

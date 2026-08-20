@@ -7,6 +7,7 @@ package core
 //
 // EditorInit [Editor]
 //       0  editor_init  editor  [Editor]
+//       1  audio_editor_install  packages:audio/editor  [Editor]
 //       1  tween_view_install  packages:tween/editor  [Editor]
 // EditorShutdown [Editor]
 //       0  editor_shutdown  editor  [Editor]

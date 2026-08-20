@@ -150,7 +150,26 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 
     _artifact_index_set(guid, key, mtime, size, settings_hex)
     _artifact_index_save()
+    _notify_reimported(guid)
     return true
+}
+
+// Reimport hooks: guid-keyed caches (textures, package-owned asset caches)
+// register to evict their entry when an asset's artifact changes. Fired on
+// every import that did work (importer ran or the index re-pointed).
+Reimport_Hook :: proc(guid: Asset_GUID)
+
+_reimport_hooks: [dynamic]Reimport_Hook
+
+asset_pipeline_add_reimport_hook :: proc(hook: Reimport_Hook) {
+    // Registry state never borrows the caller's allocator (same rule as
+    // component_register — tests hand out scoped tracking allocators).
+    context.allocator = runtime.default_allocator()
+    append(&_reimport_hooks, hook)
+}
+
+_notify_reimported :: proc(guid: uuid.Identifier) {
+    for hook in _reimport_hooks do hook(Asset_GUID(guid))
 }
 
 // The typed settings instance for an asset, allocated on `allocator` (the

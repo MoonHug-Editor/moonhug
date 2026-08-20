@@ -4,6 +4,7 @@ package editor
 // Editor halves of installed packages — see docs/Plugins.md.
 
 import _ "moonhug:packages/app/editor"
+import _ "moonhug:packages/audio/editor"
 import _ "moonhug:packages/physics2d/editor"
 import _ "moonhug:packages/physics3d/editor"
 import _ "moonhug:packages/plugin_example/editor"

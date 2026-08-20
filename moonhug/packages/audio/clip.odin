@@ -55,6 +55,28 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 	return &clip_cache[guid], true
 }
 
+// Reimport hook: a changed artifact evicts its clip so the next play loads
+// the new master. Tracks may hold the dying mix.Audio — detach them first.
+_clip_reimported :: proc(guid: engine.Asset_GUID) {
+	if guid not_in clip_cache do return
+	if _preview_track != nil {
+		_ = mix.StopTrack(_preview_track, 0)
+		_ = mix.SetTrackAudio(_preview_track, nil)
+	}
+	if w := engine.ctx_world(); w != nil {
+		if pool := audio_sources(w); pool != nil {
+			it := engine.pool_iterator(pool)
+			for src, _ in engine.pool_next(&it) {
+				if src.track == nil do continue
+				_ = mix.StopTrack(src.track, 0)
+				_ = mix.SetTrackAudio(src.track, nil)
+				src.started = false // play-on-awake restarts with the new master
+			}
+		}
+	}
+	clip_unload(guid)
+}
+
 clip_unload :: proc(guid: engine.Asset_GUID) {
 	if clip, ok := &clip_cache[guid]; ok {
 		mix.DestroyAudio(clip.audio)
