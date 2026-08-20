@@ -1,3 +1,9 @@
+## [0.70.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.69.0...v0.70.0) (2026-08-20)
+
+### Features
+
+* tweens rewrite for modularity ([7cd20a7](https://github.com/MoonHug-Editor/moonhug/commit/7cd20a7cad3f46e88801d28487b3ab21816af77a))
+
 ## [0.69.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.68.0...v0.69.0) (2026-08-13)
 
 ### Features
