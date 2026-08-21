@@ -102,9 +102,9 @@ The stock nodes register through the same public path foreign packages use
 ```odin
 a, ok := tween.authored_make(typeid_of(tween.Sequence))  // by registered type
 child, _ := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
-tween.authored_add_child(a.value, child)                 // ownership moves in
-tween.authored_remove_child(a.value, 0)                  // frees the child
-tween.authored_retype(a.value, typeid_of(tween.Parallel))
+tween.authored_add_child(&a.value, child)                 // ownership moves in
+tween.authored_remove_child(&a.value, 0)                  // frees the child
+tween.authored_retype(&a.value, typeid_of(tween.Parallel))
 
 tween.registered_node_types()      // every registered type
 tween.node_type_has_children(tid)  // composite or leaf

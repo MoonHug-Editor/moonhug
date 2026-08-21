@@ -37,6 +37,12 @@ Phase_Extra :: enum {
 _importers:       map[string]Importer_Desc // by name
 _importer_by_ext: map[string]string        // extension -> importer name
 
+// The importer name owning an extension ("" when none). The inspector's
+// asset funnel keys wrappers by it.
+importer_for_extension :: proc(ext: string) -> string {
+	return _importer_by_ext[ext] or_else ""
+}
+
 @(init)
 _importer_registry_maps_init :: proc "contextless" () {
 	context = runtime.default_context()

@@ -51,6 +51,8 @@ foreign libc {
 	breadcrumb_len:   int,
 	path:             [256]byte, // logs/crash_<pid>.log, built once at init
 	path_len:         int,
+	version:          [64]byte, // handed to init, written in the header
+	version_len:      int,
 }
 
 // Installs signal handlers. Safe to call twice — the second call is a no-op.
@@ -61,7 +63,17 @@ foreign libc {
 //
 //	engine.init()
 //	context.assertion_failure_proc = engine.assertion_failure
-init :: proc() {
+init :: proc(version := "") {
+	// The version updates even on a repeat call — only the handler install
+	// is once-only.
+	v := version
+	for len(v) > 0 && (v[len(v) - 1] == '\n' || v[len(v) - 1] == '\r' || v[len(v) - 1] == ' ') {
+		v = v[:len(v) - 1]
+	}
+	n := min(len(v), len(_crash.version))
+	copy(_crash.version[:n], v[:n])
+	_crash.version_len = n
+
 	if _crash.installed do return
 	_crash.installed = true
 
@@ -159,7 +171,7 @@ _crash_write :: proc "contextless" (reason: string, addr: rawptr, fault_pc: rawp
 	if fd < 0 do return
 	defer posix.close(fd)
 
-	_w(fd, "=== MoonHug crash ===\n")
+	_crash_write_header(fd)
 	_w(fd, "reason: ")
 	_w(fd, reason)
 	_w(fd, "\n")
@@ -178,7 +190,7 @@ _crash_write_assert :: proc(prefix, message: string, loc: runtime.Source_Code_Lo
 	if fd < 0 do return
 	defer posix.close(fd)
 
-	_w(fd, "=== MoonHug crash ===\n")
+	_crash_write_header(fd)
 	_w(fd, "reason: ")
 	_w(fd, prefix)
 	if message != "" {
@@ -197,6 +209,63 @@ _crash_write_assert :: proc(prefix, message: string, loc: runtime.Source_Code_Lo
 	_w(fd, "\n")
 	_crash_write_breadcrumb(fd)
 	_crash_write_stack(fd, nil, nil)
+}
+
+// Title, editor version, crash time (UTC). clock_gettime is
+// async-signal-safe, the date math is our own — no localtime, no fmt.
+@(private = "file")
+_crash_write_header :: proc "contextless" (fd: posix.FD) {
+	_w(fd, "=== MoonHug crash ===\n")
+	if _crash.version_len > 0 {
+		_w(fd, "version: ")
+		_w(fd, string(_crash.version[:_crash.version_len]))
+		_w(fd, "\n")
+	}
+	ts: posix.timespec
+	if posix.clock_gettime(.REALTIME, &ts) == .OK {
+		_w(fd, "time: ")
+		_w_utc(fd, i64(ts.tv_sec))
+		_w(fd, " UTC\n")
+	}
+}
+
+// YYYY-MM-DD HH:MM:SS from unix seconds (Hinnant's civil_from_days).
+@(private = "file")
+_w_utc :: proc "contextless" (fd: posix.FD, epoch: i64) {
+	days := epoch / 86400
+	secs := epoch % 86400
+	if secs < 0 {
+		secs += 86400
+		days -= 1
+	}
+	z := days + 719468
+	era := (z >= 0 ? z : z - 146096) / 146097
+	doe := z - era * 146097
+	yoe := (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365
+	y := yoe + era * 400
+	doy := doe - (365 * yoe + yoe / 4 - yoe / 100)
+	mp := (5 * doy + 2) / 153
+	d := doy - (153 * mp + 2) / 5 + 1
+	m := mp + 3 if mp < 10 else mp - 9
+	if m <= 2 do y += 1
+
+	_w_int(fd, int(y))
+	_w(fd, "-")
+	_w_2d(fd, int(m))
+	_w(fd, "-")
+	_w_2d(fd, int(d))
+	_w(fd, " ")
+	_w_2d(fd, int(secs / 3600))
+	_w(fd, ":")
+	_w_2d(fd, int(secs / 60 % 60))
+	_w(fd, ":")
+	_w_2d(fd, int(secs % 60))
+}
+
+@(private = "file")
+_w_2d :: proc "contextless" (fd: posix.FD, v: int) {
+	buf := [2]byte{byte('0' + v / 10 % 10), byte('0' + v % 10)}
+	_ = posix.write(fd, raw_data(buf[:]), 2)
 }
 
 @(private = "file")

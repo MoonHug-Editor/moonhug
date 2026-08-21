@@ -174,6 +174,8 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 ### Considered Features
 
+- preview section in hierarchy inspector (project inspector has one)
+
 - Task tracking with backlog, todo, etc.
 
 - some kind of type defaults fill only what json serialized data doesn't cover

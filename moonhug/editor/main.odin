@@ -47,7 +47,7 @@ main :: proc() {
 
     // Before anything that can fault: from here on a crash lands in
     // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).
-    crash_journal.init()
+    crash_journal.init(VERSION)
     // Must be set HERE, not inside init: assertion_failure_proc lives on the
     // context, so it only persists in the scope that assigns it.
     context.assertion_failure_proc = crash_journal.assertion_failure

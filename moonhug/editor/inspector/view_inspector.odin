@@ -48,8 +48,15 @@ InspectorData :: struct {
 
 MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
 
+// Asset preview pane: package editor subpackages register a drawer per
+// source extension (lowercase, with dot). A matching drawer pins a Preview
+// section to the BOTTOM of the Project Inspector, below whatever the mode
+// draws (the audio Play/Stop buttons are the reference).
+mapAssetPreview: map[string]proc(path: string)
+
 init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
+    mapAssetPreview = make(map[string]proc(path: string))
     decorator_registry = make(DecoratorsMap)
     init_property_drawer_map()
     // Manual registration: the prebuild attribute parser takes plain type
@@ -66,6 +73,7 @@ init :: proc() {
 shutdown_registries :: proc() {
     multi_shutdown()
     delete(mapPropertyDrawer)
+    delete(mapAssetPreview)
     for _, v in decorator_registry {
         delete(v)
     }
@@ -151,8 +159,25 @@ save_to_file :: proc() {
 
 // p_open: the editor's show flag, so the dock tab's X can close the window
 // (the menu package imports this one, so the flag is passed in).
+// Preview pane's share of the window height, dragged via the splitter
+// (the console/history splitter pattern).
+_preview_split_ratio: f32 = 0.3
+
 view_inspector_draw :: proc(p_open: ^bool) {
     if im.Begin("Project Inspector", p_open, {.NoCollapse}) {
+        // A registered preview pins to the window's bottom — the mode content
+        // scrolls in a child above it.
+        preview := _asset_preview_drawer()
+        avail := im.GetContentRegionAvail()
+        splitter_h: f32 = 4
+        MIN_PANE :: 60
+        preview_h: f32
+        if preview != nil {
+            preview_h = (avail.y - splitter_h) * _preview_split_ratio
+            if preview_h < MIN_PANE do preview_h = MIN_PANE
+            if preview_h > avail.y - splitter_h - MIN_PANE do preview_h = avail.y - splitter_h - MIN_PANE
+            im.BeginChild("##inspector_body", {0, avail.y - splitter_h - preview_h})
+        }
         switch inspectorData.mode {
         case .Asset:
             _draw_asset_inspector()
@@ -161,8 +186,34 @@ view_inspector_draw :: proc(p_open: ^bool) {
         case .Package:
             _draw_package_inspector()
         }
+        if preview != nil {
+            im.EndChild()
+
+            splitter_pos := im.GetCursorScreenPos()
+            im.InvisibleButton("##preview_split", im.Vec2{-1, splitter_h})
+            if im.IsItemActive() {
+                delta := im.GetIO().MouseDelta.y
+                total := avail.y - splitter_h
+                _preview_split_ratio = clamp((preview_h - delta) / total, MIN_PANE / total, (total - MIN_PANE) / total)
+            }
+            if im.IsItemHovered() || im.IsItemActive() {
+                im.SetMouseCursor(.ResizeNS)
+            }
+            dl := im.GetWindowDrawList()
+            split_col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
+            im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, split_col, 1)
+
+            im.SeparatorText("Preview")
+            preview(inspectorData.filePath)
+        }
     }
     im.End()
+}
+
+_asset_preview_drawer :: proc() -> proc(path: string) {
+    if inspectorData.filePath == "" do return nil
+    ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
+    return mapAssetPreview[ext] or_else nil
 }
 
 // Samples section hook, injected by the editor root at startup (the file ops
@@ -245,14 +296,33 @@ _material_live_preview :: proc() {
 }
 
 _draw_import_settings_inspector :: proc() {
+    // Registered wrappers funnel the settings body (inspector_funnel.odin),
+    // keyed by the importer owning this asset's extension.
+    ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
+    if chain, has := _asset_chain(engine.importer_for_extension(ext)); has {
+        guid: engine.Asset_GUID
+        if g, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
+            guid = engine.Asset_GUID(g)
+        }
+        actx := Asset_Ctx{
+            path     = inspectorData.filePath,
+            guid     = guid,
+            settings = inspectorData.importSettings,
+            _chain   = chain,
+        }
+        _funnel_draw(&actx)
+        return
+    }
+    draw_default_import_settings()
+}
+
+// The asset funnel's base: Apply + file row + the reflected settings.
+draw_default_import_settings :: proc() {
     if im.Button("Apply", im.Vec2{60, 0}) {
         if engine.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
+            // Reimport hooks evict every guid-keyed cache (textures, package
+            // asset caches) so the new settings apply without a restart.
             engine.asset_pipeline_reimport(inspectorData.filePath)
-            // Cached textures bake pixels_per_unit at load — evict so the new
-            // settings apply without an editor restart.
-            if guid, gok := engine.asset_db_get_guid(inspectorData.filePath); gok {
-                engine.texture_unload(engine.Asset_GUID(guid))
-            }
             inspectorData.statusMessage = fmt.tprintf("Reimported %s", inspectorData.filePath)
         } else {
             inspectorData.statusMessage = fmt.tprintf("Failed to save settings for %s", inspectorData.filePath)
@@ -276,6 +346,7 @@ _draw_import_settings_inspector :: proc() {
         drawer := resolve_property_drawer(inspectorData.importSettings.id)
         drawer(inspectorData.importSettings.data, inspectorData.importSettings.id, "Import Settings")
     }
+
 }
 
 mark_inspector_changed :: proc() {
@@ -587,11 +658,26 @@ draw_inspector :: proc(a: any, label: cstring = "", path_prefix: string = "") {
         return
     }
 
+    // Registered wrappers funnel this type's draw (inspector_funnel.odin).
+    // No registration: straight to the default drawing.
+    if chain, has := _component_chain(tid); has {
+        cctx := Component_Ctx{ptr = ptr, tid = tid, label = label, path_prefix = path_prefix, _chain = chain}
+        _funnel_draw(&cctx)
+        return
+    }
+    draw_inspector_default(ptr, tid, label, path_prefix)
+}
+
+// The funnel's end of chain: the type's custom drawer, or the reflected
+// field loop. Never re-enters the funnel — that is what makes wrapping
+// non-recursive.
+draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_prefix: string) {
     if drawer, ok := mapPropertyDrawer[tid]; ok {
         drawer(ptr, tid, label)
         return
     }
 
+    xAny := any{ptr, tid}
     names := reflect.struct_field_names(tid)
     types := reflect.struct_field_types(tid)
     count := len(names)

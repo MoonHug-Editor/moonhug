@@ -1,3 +1,34 @@
+## [0.73.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.73.0...v0.73.1) (2026-08-20)
+
+### Bug Fixes
+
+* ignore /logs/ ([48e0f3b](https://github.com/MoonHug-Editor/moonhug/commit/48e0f3b9a2c8f29c483d74ae0f5c216ee7c7a646))
+
+## [0.73.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.72.0...v0.73.0) (2026-08-20)
+
+### Features
+
+* inspector drawers funnel ([cf47dc9](https://github.com/MoonHug-Editor/moonhug/commit/cf47dc9b923fded1e9cf52dff49920ee74ba9e5e))
+
+### Bug Fixes
+
+* remove _generated files, gitignore them ([305047b](https://github.com/MoonHug-Editor/moonhug/commit/305047b03f302b9a7e07d3f31624a94849f7b643))
+* tweens retype memory owner fix ([a98c880](https://github.com/MoonHug-Editor/moonhug/commit/a98c88075c1b47c78b15e817525b1069ad966035))
+
+## [0.72.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.71.0...v0.72.0) (2026-08-20)
+
+### Features
+
+* improve crash log (time, version) ([87cf97a](https://github.com/MoonHug-Editor/moonhug/commit/87cf97ad9a46ca4df578b2741b9d541059f08968))
+* one-shot audio, fade ([7a14582](https://github.com/MoonHug-Editor/moonhug/commit/7a145825a609b326c54a0d1998562b229bb1eb73))
+
+## [0.71.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.70.0...v0.71.0) (2026-08-20)
+
+### Features
+
+* add audio, AudioSource, playback ([1aa7a14](https://github.com/MoonHug-Editor/moonhug/commit/1aa7a146828f666dbbecbac630582af2d89e13af))
+* add AudioListener, pitch, mute, normalize ([89b5f4c](https://github.com/MoonHug-Editor/moonhug/commit/89b5f4c9adbec4a320049216a3e6cee80ce07526))
+
 ## [0.70.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.69.0...v0.70.0) (2026-08-20)
 
 ### Features

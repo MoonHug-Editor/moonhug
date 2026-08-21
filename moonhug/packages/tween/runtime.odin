@@ -241,14 +241,18 @@ authored_make :: proc(tid: typeid) -> (a: Authored, ok: bool) {
 
 // Appends a child to a composite node's blob. Ownership of `child` MOVES in.
 // Fails (child untouched) when the parent's type is unknown or a leaf.
-authored_add_child :: proc(parent: json.Value, child: Authored) -> bool {
-	ptid, tok := authored_typeid(parent)
+//
+// Mutators take ^json.Value: map inserts and deletes can rehash, and the
+// changed map header must land back in the caller's storage — mutating
+// through a copied header silently corrupts the blob.
+authored_add_child :: proc(parent: ^json.Value, child: Authored) -> bool {
+	ptid, tok := authored_typeid(parent^)
 	if !tok || !node_type_has_children(ptid) do return false
-	obj, is_obj := parent.(json.Object)
+	m, is_obj := parent^.(json.Object)
 	if !is_obj || child.value == nil do return false
 
 	context.allocator = runtime.default_allocator()
-	m := obj
+	defer parent^ = m
 	arr, has := m["children"].(json.Array)
 	if !has do arr = make(json.Array)
 	append(&arr, child.value)
@@ -266,10 +270,10 @@ authored_add_child :: proc(parent: json.Value, child: Authored) -> bool {
 //
 // The node keeps its identity (same json.Object), so tree position and
 // selection paths are unaffected.
-authored_retype :: proc(v: json.Value, tid: typeid) -> bool {
+authored_retype :: proc(v: ^json.Value, tid: typeid) -> bool {
 	fresh, ok := authored_make(tid)
 	if !ok do return false
-	obj, is_obj := v.(json.Object)
+	m, is_obj := v^.(json.Object)
 	fobj, fresh_is_obj := fresh.value.(json.Object)
 	if !is_obj || !fresh_is_obj {
 		authored_destroy(&fresh)
@@ -277,33 +281,49 @@ authored_retype :: proc(v: json.Value, tid: typeid) -> bool {
 	}
 
 	context.allocator = runtime.default_allocator()
-	m := obj
+	// Deletes and inserts can rehash — the header must land back in the
+	// caller's storage.
+	defer v^ = m
 	keep_children := node_type_has_children(tid)
-	for key, val in m {
+
+	// Mutating a map while iterating it skips entries — collect keys first.
+	// The key strings are freed after removal (json.destroy_value does the
+	// same for whole objects).
+	old_keys := make([dynamic]string, context.temp_allocator)
+	for key in m {
 		if keep_children && key == "children" do continue
-		json.destroy_value(val)
+		append(&old_keys, key)
+	}
+	for key in old_keys {
+		defer delete(key)
+		json.destroy_value(m[key])
 		delete_key(&m, key)
 	}
-	// authored_make already tagged fresh with the new guid.
-	for key, val in fobj {
-		m[strings.clone(key)] = val
-		delete_key(&fobj, key)
+
+	// Move the fresh fields in (authored_make already tagged the new guid),
+	// then free fresh's keys and map storage by hand — destroy_value would
+	// also free the values that just moved.
+	defer delete(fobj)
+	fresh_keys := make([dynamic]string, context.temp_allocator)
+	for key in fobj do append(&fresh_keys, key)
+	for key in fresh_keys {
+		defer delete(key)
+		m[strings.clone(key)] = fobj[key]
 	}
-	json.destroy_value(fresh.value) // now an empty object: frees the map
 	return true
 }
 
 // Removes (and frees) a composite node's child by index.
-authored_remove_child :: proc(parent: json.Value, idx: int) -> bool {
-	obj, is_obj := parent.(json.Object)
+authored_remove_child :: proc(parent: ^json.Value, idx: int) -> bool {
+	m, is_obj := parent^.(json.Object)
 	if !is_obj do return false
-	arr, has := obj["children"].(json.Array)
+	arr, has := m["children"].(json.Array)
 	if !has || idx < 0 || idx >= len(arr) do return false
 
 	context.allocator = runtime.default_allocator()
+	defer parent^ = m
 	json.destroy_value(arr[idx])
 	ordered_remove(&arr, idx)
-	m := obj
 	m["children"] = arr
 	return true
 }
