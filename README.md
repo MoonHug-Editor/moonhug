@@ -127,6 +127,8 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - if no menu path specified, type name is used
 
 ## TODO
+- move progress (engine/progress.odin) to editor's separate inner package — goes together with moving the asset pipeline editor-side once a build/export step exists (app then loads prebuilt artifacts instead of importing at runtime)
+
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
 - png - Texture2D with N Sprites

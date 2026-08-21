@@ -107,6 +107,9 @@ main :: proc() {
     defer im_sdlgpu.Shutdown()
 
     apply_editor_theme()
+    // From here reports draw pumped frames — startup shows progress instead
+    // of a black window (progress_overlay.odin).
+    progress_overlay_install()
 
     // Init user context and world
     uc := new(engine.UserContext)
@@ -128,8 +131,12 @@ main :: proc() {
     defer { engine.world_destroy_all(w); free(w) }
     defer free(uc)
 
+    engine.progress_begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
+    engine.progress_end()
     defer phase_editor_run(.EditorShutdown)
+    queue_scenes_from_settings()
+    frames_presented := 0
 
     // Resolve which host Simulate ticks, from the generated table
     // (sim_hosts_generated.odin) and the persisted setting. Must follow
@@ -145,6 +152,13 @@ main :: proc() {
     defer mcp_bridge_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
+        // Startup scenes load here, one per frame, once the dock layout has
+        // settled (imgui sizes docked windows over the first few frames) —
+        // the user sees the full layout, then scenes appear, instead of a
+        // blank window behind a blocking load.
+        SCENE_LOAD_WARMUP_FRAMES :: 3
+        if frames_presented >= SCENE_LOAD_WARMUP_FRAMES do load_next_pending_scene()
+
         // Events feed both the editor input snapshot and imgui (the SDL3
         // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
         gfx.poll_events(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
@@ -162,6 +176,7 @@ main :: proc() {
         }
 
         if !gfx.frame_begin() do continue
+        progress_overlay_frame_scope(true)
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
@@ -253,6 +268,7 @@ main :: proc() {
 
         draw_about_popup()
         draw_status_bar()
+        draw_pending_scene_overlay()
 
         // Selection undo steps (Unity model): diff selection against the
         // frame's baseline after all views handled input.
@@ -275,9 +291,12 @@ main :: proc() {
             mcp_bridge_capture_frame()
         }
         gfx.frame_end()
+        progress_overlay_frame_scope(false)
+        frames_presented += 1
 
         free_all(context.temp_allocator)
     }
+    delete(_pending_scene_loads)
 
     save_editor_settings()
     settings_save_all()
@@ -294,15 +313,16 @@ editor_init :: proc() {
     registration.register_type_guids()
     _init_context_menu_registry()
     init_project_view()
+    engine.progress_report("Scanning assets")
     engine.asset_pipeline_init()
     engine.asset_db_init("assets")
     engine.asset_pipeline_import_all()
+    engine.progress_report("Initializing caches")
     engine.texture_cache_init()
     engine.mesh_cache_init()
     engine.material_cache_init()
     engine.shader_cache_init()
     engine.animation_clip_cache_init()
-    open_scenes_from_settings()
 
     init_scene_view()
     init_game_view()
@@ -338,14 +358,53 @@ editor_init :: proc() {
     }
 }
 
-open_scenes_from_settings :: proc() {
+// The scenes to reopen, resolved once at startup. The main loop loads ONE
+// per frame after the first full frame presented — views and dock layout
+// are ready, each scene appears on the next frame, and the UI never blanks
+// behind a blocking load.
+_pending_scene_loads: [dynamic]string
+
+queue_scenes_from_settings :: proc() {
     for guid_str in editor_settings.open_scene_guids {
         guid, err := uuid.read(guid_str)
         if err != nil do continue
         path, ok := engine.asset_db_get_path(guid)
         if !ok do continue
-        engine.scene_load_additive_path(path)
+        append(&_pending_scene_loads, strings.clone(path))
     }
+}
+
+// One pending scene per call (the per-frame step). The frame presented just
+// before this call drew the loading overlay, so THAT is what the user sees
+// while the load blocks.
+load_next_pending_scene :: proc() {
+    if len(_pending_scene_loads) == 0 do return
+    path := _pending_scene_loads[0]
+    ordered_remove(&_pending_scene_loads, 0)
+    defer delete(path)
+    // No pumped frames here — an overlay-only frame would blank the views.
+    progress_overlay_frame_scope(true)
+    defer progress_overlay_frame_scope(false)
+    engine.scene_load_additive_path(path)
+}
+
+// Drawn as part of the NORMAL frame while scene loads are pending — the
+// views stay visible behind it.
+draw_pending_scene_overlay :: proc() {
+    if len(_pending_scene_loads) == 0 do return
+    vp := im.GetMainViewport()
+    im.SetNextWindowPos(
+        im.Vec2{vp.Pos.x + vp.Size.x * 0.5, vp.Pos.y + vp.Size.y * 0.5},
+        .Always, im.Vec2{0.5, 0.5},
+    )
+    im.SetNextWindowSize(im.Vec2{420, 0}, .Always)
+    if im.Begin("##scene_loading", nil,
+        {.NoTitleBar, .NoResize, .NoMove, .NoCollapse, .NoSavedSettings, .NoDocking}) {
+        im.TextUnformatted("Loading scene")
+        im.ProgressBar(-1 * f32(im.GetTime()), im.Vec2{-1, 0}, "")
+        im.TextDisabled("%s", fmt.ctprintf("%s", _pending_scene_loads[0]))
+    }
+    im.End()
 }
 
 @(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})

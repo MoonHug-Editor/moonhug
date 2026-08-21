@@ -219,6 +219,7 @@ _import_directory :: proc(dir_path: string) {
             _import_directory(full_path)
         } else {
             if strings.has_suffix(entry.name, ".meta") do continue
+            progress_report(full_path)
             ext := filepath.ext(entry.name)
             if is_importable_extension(ext) {
                 asset_pipeline_import_asset(full_path)

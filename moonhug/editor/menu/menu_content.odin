@@ -24,12 +24,22 @@ apply_theme :: proc() {
     switch active_theme {
     case .Spectrum_Dark:  style_colors_spectrum(dark = true)  // sets its own scalars
     case .Spectrum_Light: style_colors_spectrum(dark = false)
-    case .Dark:           im.StyleColorsDark()
-    case .Light:          im.StyleColorsLight()
-    case .Classic:        im.StyleColorsClassic()
+    case .Dark:           im.StyleColorsDark();    _fix_builtin_progress_color()
+    case .Light:          im.StyleColorsLight();   _fix_builtin_progress_color()
+    case .Classic:        im.StyleColorsClassic(); _fix_builtin_progress_color()
     }
     // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
     im.GetStyle().IndentSpacing = 14
+}
+
+// imgui's stock themes fill ProgressBar (PlotHistogram) with a bright
+// yellow that matches nothing else in them — use the theme's own accent
+// (CheckMark) instead. Spectrum sets its own.
+@(private = "file")
+_fix_builtin_progress_color :: proc() {
+    s := im.GetStyle()
+    s.Colors[im.Col.PlotHistogram] = s.Colors[im.Col.CheckMark]
+    s.Colors[im.Col.PlotHistogramHovered] = s.Colors[im.Col.SliderGrabActive]
 }
 
 // imgui's default (StyleColorsDark) scalar values for the vars Spectrum
