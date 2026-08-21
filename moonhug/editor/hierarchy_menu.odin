@@ -10,6 +10,7 @@ package editor
 
 import engine "../engine"
 import clip "clipboard"
+import "../engine/log"
 import "undo"
 
 @(private)
@@ -176,8 +177,42 @@ hierarchy_delete_menu :: proc() {
 @(menu_item={path="GameObject/Create Empty", order=-100})
 hierarchy_create_empty_menu :: proc() {
 	scene := engine.sm_scene_get_active()
-	if scene == nil do return
-	undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle))
+	if scene == nil {
+		// Every GameObject create targets the ACTIVE scene. No scene loaded =
+		// no target, so the item is a no-op with nothing on screen to explain
+		// it. sm_scene_get_active returns nil when the scene manager holds zero
+		// loaded scenes, which is what a failed startup restore looks like.
+		log.error("[GameObject/Create Empty] aborted: no active scene. Nothing was created.")
+		_log_scene_manager_state()
+		return
+	}
+	root := engine.Transform_Handle(scene.root.handle)
+	if !_hierarchy_handle_valid(root) {
+		log.errorf("[GameObject/Create Empty] aborted: active scene %q has an invalid root handle (%v). Nothing was created.", scene.path, root)
+		return
+	}
+	tH := undo.record_create_child("Transform", root)
+	if tH == _HANDLE_NONE {
+		log.error("[GameObject/Create Empty] transform_new returned a null handle. Nothing was created.")
+		return
+	}
+	log.infof("[GameObject/Create Empty] created transform %v under root %v of scene %q", tH, root, scene.path)
+}
+
+// Why sm_scene_get_active() said nil: it guards on `active_scene` against
+// `count`, so a zero count rejects even a valid index. Printing both separates
+// "nothing loaded" from "loaded but nothing marked active".
+@(private)
+_log_scene_manager_state :: proc() {
+	sm := engine.ctx_scene_manager()
+	if sm == nil {
+		log.error("[scene] scene manager is nil (user context not initialized)")
+		return
+	}
+	log.warningf("[scene] scene_manager: loaded_count=%d active_scene_index=%d", sm.count, sm.active_scene)
+	if sm.count == 0 {
+		log.warning("[scene] no scenes are loaded — the startup restore found none to open. Check the '[startup]' lines above for the working directory and asset db counts, then open a scene from the Project view or File ▸ New Scene.")
+	}
 }
 
 @(private)
