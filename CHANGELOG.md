@@ -1,3 +1,13 @@
+## [0.75.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.74.0...v0.75.0) (2026-08-22)
+
+### Features
+
+* extract animation ([7610e8a](https://github.com/MoonHug-Editor/moonhug/commit/7610e8af75c40ff66f6cec2c8d2d966a0251415a))
+
+### Bug Fixes
+
+* component lookup ([64a26a3](https://github.com/MoonHug-Editor/moonhug/commit/64a26a3dfcd08796f0d82887d880a491d60f4b05))
+
 ## [0.74.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.73.1...v0.74.0) (2026-08-22)
 
 ### Features
