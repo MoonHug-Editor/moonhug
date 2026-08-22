@@ -1,3 +1,9 @@
+## [0.74.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.73.1...v0.74.0) (2026-08-22)
+
+### Features
+
+* add progress overlay ([553e747](https://github.com/MoonHug-Editor/moonhug/commit/553e74751efd0f1dab3cf910e02e8334d96d68dd))
+
 ## [0.73.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.73.0...v0.73.1) (2026-08-20)
 
 ### Bug Fixes
