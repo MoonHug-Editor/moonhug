@@ -2,6 +2,7 @@ package undo
 
 import "core:encoding/json"
 import engine "../../engine"
+import "../../engine/log"
 
 transform_scene_and_local_id :: proc(tH: engine.Transform_Handle) -> (^engine.Scene, engine.Local_ID, bool) {
 	w := engine.ctx_world()
@@ -54,12 +55,27 @@ record_reparent :: proc(node: engine.Transform_Handle, old_parent, new_parent: e
 	push(s, Command(Structural_Command(cmd)))
 }
 
+// The object is already created by the time this runs — these early returns
+// only drop the UNDO step, never the object. Logged as warnings so "created but
+// Ctrl+Z can't take it back" is distinguishable from "nothing was created".
 record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Handle) {
 	s := get()
-	if s == nil || !s.recording || s.applying do return
+	if s == nil || !s.recording || s.applying {
+		log.warningf(
+			"[undo] create of %v not recorded (stack=%v recording=%v applying=%v) — the object exists but is not undoable",
+			root,
+			s != nil,
+			s != nil && s.recording,
+			s != nil && s.applying,
+		)
+		return
+	}
 
 	scene, root_lid, ok := transform_scene_and_local_id(root)
-	if !ok do return
+	if !ok {
+		log.warningf("[undo] create of %v not recorded: transform has no scene/local_id", root)
+		return
+	}
 	parent_lid: engine.Local_ID
 	w := engine.ctx_world()
 	if engine.pool_valid(&w.transforms, engine.Handle(parent)) {
@@ -71,7 +87,10 @@ record_create :: proc(root: engine.Transform_Handle, parent: engine.Transform_Ha
 	// Prefab content must be captured too, or undo of a nested delete has
 	// nothing to restore.
 	payload := engine.scene_copy_subtree(root, include_nested_owned = true)
-	if payload == nil do return
+	if payload == nil {
+		log.warningf("[undo] create of %v not recorded: subtree capture returned no payload", root)
+		return
+	}
 
 	sibling_idx := engine.transform_get_sibling_index(root)
 	cmd := Create_Subtree_Command{

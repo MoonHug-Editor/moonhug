@@ -1,0 +1,14 @@
+{
+    "files.exclude": {
+        "builds/": true,
+        "moonhug/library/": true
+    },
+    "files.watcherExclude": {
+        "builds/**": true,
+        "moonhug/library/**": true
+    },
+    "search.exclude": {
+        "builds/": true,
+        "moonhug/library/": true
+    }
+}

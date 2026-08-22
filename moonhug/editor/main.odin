@@ -40,11 +40,10 @@ main :: proc() {
         }
     }
 
-    if os.is_dir("moonhug/engine") {
-        cwd, _ := os.get_working_directory(context.temp_allocator)
-        moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
-        os.set_working_directory(moonhug_dir)
-    }
+    // Anchor at moonhug/ before anything reads a relative path. Detection is by
+    // directory content, not folder name — see engine/project_root.odin.
+    engine.project_chdir_root()
+    _log_startup_paths()
 
     // Before anything that can fault: from here on a crash lands in
     // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).
@@ -338,13 +337,54 @@ editor_init :: proc() {
     }
 }
 
+// Everything the editor reads is resolved RELATIVE to the working directory:
+// "assets" (asset db root), "library" (artifacts), "ProjectSettings"
+// (editor_settings.json). A cwd pointing one level too high finds none of them
+// and every failure downstream is silent — an empty asset db, zero restored
+// scenes, and GameObject menu items that do nothing. Log the resolved paths so
+// that shows up at startup instead of being inferred from a dead menu item.
+_log_startup_paths :: proc() {
+    cwd, _ := os.get_working_directory(context.temp_allocator)
+    assets_ok := os.is_dir("assets")
+    settings_ok := os.exists(EDITOR_SETTINGS_FILE)
+    log.infof("[startup] cwd=%q", cwd)
+    log.infof("[startup] assets dir %q present=%v | %q present=%v", "assets", assets_ok, EDITOR_SETTINGS_FILE, settings_ok)
+    if !assets_ok {
+        log.errorf(
+            "[startup] no %q directory under cwd %q — the asset db will be EMPTY, no scene can be restored or opened, and every GameObject create menu item will silently do nothing. The editor expects to run with cwd=<repo>/moonhug.",
+            "assets",
+            cwd,
+        )
+    }
+}
+
 open_scenes_from_settings :: proc() {
+    log.infof("[startup] restoring scenes: %d guid(s) in %q", len(editor_settings.open_scene_guids), EDITOR_SETTINGS_FILE)
+    opened := 0
     for guid_str in editor_settings.open_scene_guids {
         guid, err := uuid.read(guid_str)
-        if err != nil do continue
+        if err != nil {
+            log.warningf("[startup] scene guid %q is malformed (%v) — skipped", guid_str, err)
+            continue
+        }
         path, ok := engine.asset_db_get_path(guid)
-        if !ok do continue
-        engine.scene_load_additive_path(path)
+        if !ok {
+            log.warningf("[startup] scene guid %q is not in the asset db — skipped (the asset db is rooted at cwd-relative %q)", guid_str, "assets")
+            continue
+        }
+        if engine.scene_load_additive_path(path) == nil {
+            log.errorf("[startup] scene %q (guid %s) failed to load — skipped", path, guid_str)
+            continue
+        }
+        opened += 1
+        log.infof("[startup] opened scene %q (guid %s)", path, guid_str)
+    }
+    sm := engine.ctx_scene_manager()
+    log.infof("[startup] scenes opened=%d | scene_manager.count=%d active_scene=%d", opened, sm.count, sm.active_scene)
+    if sm.count == 0 {
+        // sm_scene_get_active() returns nil while count is 0, which is the
+        // single gate every "Create Empty"-style menu item returns on.
+        log.warning("[startup] no scenes loaded — GameObject creation is disabled until a scene is open (Project view double-click, or Assets ▸ Create ▸ Scene).")
     }
 }
 

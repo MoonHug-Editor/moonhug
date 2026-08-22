@@ -1,11 +1,11 @@
 {
-  "width": 2048,
-  "height": 1227,
-  "x": 1600,
-  "y": 0,
-  "theme": 3,
+  "width": 3264,
+  "height": 1774,
+  "x": 288,
+  "y": 157,
+  "theme": 0,
   "open_scene_guids": [
-    "bc79d83f-83da-4f50-8b38-34bfd33d7c65"
+
   ],
   "show_inspector": true,
   "show_project_inspector": true,
@@ -16,36 +16,36 @@
   "show_output": true,
   "show_hierarchy": true,
   "show_history": true,
-  "show_animation": true,
+  "show_animation": false,
   "show_playable_graph": false,
   "has_view_state": true,
   "scene_overlays": [
     {
       "id": "Tools",
       "anchor": 1,
-      "x": 1.00000000,
-      "y": 0.15325077
+      "x": 0.00000000,
+      "y": 0.00000000
     },
     {
       "id": "Pivot",
       "anchor": 1,
-      "x": 0.21881838,
-      "y": 0.10130719
+      "x": 0.00000000,
+      "y": 0.00000000
     },
     {
       "id": "Grid",
       "anchor": 1,
-      "x": 0.11853088,
-      "y": 0.09133127
+      "x": 0.00000000,
+      "y": 0.00000000
     }
   ],
   "grid": {
     "show_xz": true,
     "show_xy": false,
     "show_yz": false,
-    "cell_size": 1.00000000,
-    "subdivide": 2,
-    "cells_count": 6
+    "cell_size": 10.00000000,
+    "subdivide": 10,
+    "cells_count": 2
   },
   "snap": {
     "enabled": false,
@@ -53,7 +53,7 @@
     "mode": 1,
     "units": 1.00000000
   },
-  "run_config": "physics2d_sample/run",
+  "run_config": "",
   "sim_host": "",
   "project_settings_tab": "MCP",
   "project_zoom": 0.00000000

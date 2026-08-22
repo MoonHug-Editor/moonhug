@@ -5,6 +5,7 @@ import "core:mem"
 import "core:slice"
 import "core:strings"
 import "core:unicode/utf8"
+import "moonhug:engine/log"
 import im "moonhug:external/odin-imgui"
 
 MenuEntryKind :: enum {
@@ -33,6 +34,9 @@ EDIT_SECTION_SELECTION_MAX :: -41
 MenuNode :: struct {
 	name:          string,
 	name_cstr:     cstring,
+	// Full registration path ("GameObject/Create Empty"). Diagnostics only:
+	// `name` alone is ambiguous across submenus, so dispatch logs quote this.
+	path:          string,
 	shortcut:      string,
 	shortcut_cstr: cstring,
 	kind:          MenuEntryKind,
@@ -102,6 +106,7 @@ _destroy_node :: proc(node: ^MenuNode) {
 	}
 	delete(node.children)
 	if node.name != "" do delete(node.name)
+	if node.path != "" do delete(node.path)
 	if node.name_cstr != nil do delete(node.name_cstr)
 	if node.shortcut != "" do delete(node.shortcut)
 	if node.shortcut_cstr != nil do delete(node.shortcut_cstr)
@@ -237,6 +242,7 @@ _get_or_create_path :: proc(path: string) -> ^MenuNode {
 	defer delete(parts)
 	if len(parts) == 0 do return _menu_root
 	node := _menu_root
+	prefix := "" // path of `node`; borrowed from node.path, root's is ""
 	for i in 0 ..< len(parts) {
 		name := strings.trim_space(parts[i])
 		if name == "" do continue
@@ -245,12 +251,18 @@ _get_or_create_path :: proc(path: string) -> ^MenuNode {
 			child = new(MenuNode)
 			child.name, _ = strings.clone(name)
 			child.name_cstr = strings.clone_to_cstring(child.name)
+			if prefix == "" {
+				child.path, _ = strings.clone(child.name)
+			} else {
+				child.path, _ = strings.concatenate({prefix, "/", child.name})
+			}
 			child.kind = .Submenu
 			child.order = ORDER_DEFAULT
 			child.children = make([dynamic]^MenuNode)
 			append(&node.children, child)
 		}
 		node = child
+		prefix = node.path
 	}
 	return node
 }
@@ -327,6 +339,7 @@ _process_menu_shortcuts :: proc(node: ^MenuNode) {
 			if child.shortcut != "" && child.action != nil {
 				if chord, ok := _parse_shortcut(child.shortcut); ok {
 					if im.Shortcut(chord, {.RouteGlobal}) && _node_enabled(child) {
+						log.infof("[menu] invoked %q via shortcut %q", child.path, child.shortcut)
 						child.action()
 					}
 				}
@@ -370,8 +383,16 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 			#partial switch child.kind {
 			case .Action:
 				shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
-				if im.MenuItem(child.name_cstr, shortcut_label, false, _node_enabled(child)) {
-					if child.action != nil do child.action()
+				enabled := _node_enabled(child)
+				if im.MenuItem(child.name_cstr, shortcut_label, false, enabled) {
+					// Dispatch trace: an item that logs "invoked" but produces no
+					// visible change failed INSIDE its action, not in the menu layer.
+					log.infof("[menu] invoked %q (enabled=%v, action=%v)", child.path, enabled, child.action != nil)
+					if child.action != nil {
+						child.action()
+					} else {
+						log.warningf("[menu] %q has no action registered — click does nothing", child.path)
+					}
 				}
 			case .Toggle:
 				if child.value != nil {

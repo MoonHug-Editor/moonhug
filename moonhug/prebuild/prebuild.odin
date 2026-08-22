@@ -16,7 +16,6 @@ package main
 
 import "core:fmt"
 import "core:os"
-import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import db "gen_db"
@@ -64,6 +63,17 @@ SCAN_ROOTS := []string{
 // moonhug/engine/registration for the editor and tests.
 PACKAGES_DIR :: "moonhug/packages"
 
+// Joins path elements with "/" regardless of host OS. Every path built here
+// becomes (or feeds) a pkg_path stored on DeclInfo, which generators splice
+// directly into generated Odin `import "..."` strings — those are always
+// forward-slash, so this must NOT be filepath.join: that emits the OS-native
+// separator (backslash on Windows) and corrupts every generated relative
+// import. Forward slashes work fine for the os/parser calls these paths also
+// feed on every platform this project targets.
+_join :: proc(elems: []string, allocator := context.allocator) -> string {
+	return strings.join(elems, "/", allocator)
+}
+
 _dir_has_odin :: proc(dir: string) -> bool {
 	handle, err := os.open(dir)
 	if err != nil do return false
@@ -95,7 +105,7 @@ _package_dir_names :: proc(names: ^[dynamic]string) {
 		// A symlinked package (samples installed via symlink) reads as
 		// .Symlink — follow it so its code compiles like any package.
 		if entry.type != .Directory {
-			full, _ := filepath.join({PACKAGES_DIR, entry.name}, context.temp_allocator)
+			full := _join({PACKAGES_DIR, entry.name}, context.temp_allocator)
 			if entry.type != .Symlink || !os.is_dir(full) do continue
 		}
 		append(names, strings.clone(entry.name))
@@ -109,8 +119,8 @@ _installed_packages :: proc(list: ^[dynamic]string) {
 	_package_dir_names(&names)
 
 	for name in names {
-		root, _ := filepath.join({PACKAGES_DIR, name})
-		// Recursive: subpackages (editor/, library halves)
+		root := _join({PACKAGES_DIR, name})
+		// Recursive: subpackages (editor/, tween/core-style library halves)
 		// join the scan like any engine subpackage. tests/samples/assets/gen
 		// are skipped inside _discover.
 		_discover(list, root)
@@ -137,7 +147,7 @@ _package_gens_refresh :: proc() -> (changed: bool) {
 	strings.write_string(&b, "// Generators shipped by installed packages (docs/Plugins.md): blank\n")
 	strings.write_string(&b, "// imports pull in their @(init) system registrations.\n\n")
 	for name in names {
-		gen_dir, _ := filepath.join({PACKAGES_DIR, name, "gen"}, context.temp_allocator)
+		gen_dir := _join({PACKAGES_DIR, name, "gen"}, context.temp_allocator)
 		if !_dir_has_odin(gen_dir) do continue
 		fmt.sbprintf(&b, "import _ \"moonhug:packages/%s/gen\"\n", name)
 	}
@@ -186,14 +196,14 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 		// A symlinked subpackage reads as .Symlink — follow it so its code
 		// compiles like any package (docs/Plugins.md).
 		if entry.type != .Directory {
-			full, _ := filepath.join({dir, entry.name}, context.temp_allocator)
+			full := _join({dir, entry.name}, context.temp_allocator)
 			if entry.type != .Symlink || !os.is_dir(full) do continue
 		}
 		append(&names, strings.clone(entry.name))
 	}
 	slice.sort(names[:]) // deterministic scan order regardless of readdir order
 	for name in names {
-		full, _ := filepath.join({dir, name})
+		full := _join({dir, name})
 		_discover(list, full)
 		delete(name)
 	}

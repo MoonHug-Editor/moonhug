@@ -1,0 +1,113 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "build-editor-debug-windows",
+            "program": "${workspaceFolder}/builds/MoonHug.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Release (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "build-editor-release-windows",
+            "program": "${workspaceFolder}/builds/MoonHug.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug tests (Windows)",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "preLaunchTask": "build-tests-debug-windows",
+            "program": "${workspaceFolder}/builds/MoonHug_tests.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "name": "Debug (Linux)",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "build-editor-debug-linux",
+            "program": "${workspaceFolder}/builds/MoonHug",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Non-interactive sessions: avoid debuginfod y/n prompt",
+                    "text": "set debuginfod enabled off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "GDB in IDE: no ---Type <return> to continue---",
+                    "text": "set pagination off",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Release (Linux)",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "build-editor-release-linux",
+            "program": "${workspaceFolder}/builds/MoonHug",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Non-interactive sessions: avoid debuginfod y/n prompt",
+                    "text": "set debuginfod enabled off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "GDB in IDE: no ---Type <return> to continue---",
+                    "text": "set pagination off",
+                    "ignoreFailures": true
+                }
+            ]
+        },
+        {
+            "name": "Debug tests (Linux)",
+            "type": "cppdbg",
+            "request": "launch",
+            "preLaunchTask": "build-tests-debug-linux",
+            "program": "${workspaceFolder}/builds/MoonHug_tests",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+            "miDebuggerPath": "/usr/bin/gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "Non-interactive sessions: avoid debuginfod y/n prompt",
+                    "text": "set debuginfod enabled off",
+                    "ignoreFailures": true
+                },
+                {
+                    "description": "GDB in IDE: no ---Type <return> to continue---",
+                    "text": "set pagination off",
+                    "ignoreFailures": true
+                }
+            ]
+        }
+    ]
+}
