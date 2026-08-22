@@ -16,6 +16,12 @@ import "moonhug:engine/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
+// Catalog pipeline (docs/AssetPipeline.md "Asset catalog and builds"): --catalog[=path] makes
+// app_init load the exported catalog instead of scanning assets/ — no meta
+// reads, no runtime imports. Default boot scans and lazily imports (the dev
+// mode the editor's Play button uses).
+_catalog_path: string
+
 main :: proc() {
     // Machine-tagged log lines: the editor's play pipe parses them back into
     // its console (standalone runs just see the tagged text in the terminal).
@@ -28,6 +34,14 @@ main :: proc() {
     if !strings.has_suffix(cwd, "moonhug") {
         moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
         os.set_working_directory(moonhug_dir)
+    }
+
+    for arg in os.args[1:] {
+        if arg == "--catalog" {
+            _catalog_path = engine.ASSET_CATALOG_PATH
+        } else if strings.has_prefix(arg, "--catalog=") {
+            _catalog_path = arg[len("--catalog="):]
+        }
     }
 
     if !gfx.init("App", 800, 600) {
@@ -47,14 +61,23 @@ main :: proc() {
 
     phase_run(Phase.Init)
 
-    // Scene selection: explicit path via first program arg (the editor's Play
-    // button passes its active scene), falling back to the menu scene resolved
-    // by GUID so the asset can move freely.
+    // Scene selection, in order: explicit path via first non-flag program arg
+    // (the editor's Play button passes its active scene),     // catalog's exported boot scene, then the menu scene by GUID (the dev
+    // fallback so the asset can move freely).
     scene_path: string
-    if len(os.args) > 1 && len(os.args[1]) > 0 {
-        scene_path = os.args[1]
-    } else if guid, gerr := uuid.read(MENU_SCENE_GUID); gerr == nil {
-        scene_path, _ = engine.asset_db_get_path(guid)
+    for arg in os.args[1:] {
+        if strings.has_prefix(arg, "--") do continue
+        if len(arg) > 0 && scene_path == "" do scene_path = arg
+    }
+    if scene_path == "" {
+        if boot := engine.asset_db_boot_scene(); boot != {} {
+            scene_path, _ = engine.asset_db_get_path(uuid.Identifier(boot))
+        }
+    }
+    if scene_path == "" {
+        if guid, gerr := uuid.read(MENU_SCENE_GUID); gerr == nil {
+            scene_path, _ = engine.asset_db_get_path(guid)
+        }
     }
     if os.exists(scene_path) {
         engine.scene_load_single_path(scene_path)
@@ -115,7 +138,13 @@ app_init :: proc() {
     phase_run(.SerializationInit)
     phase_run(.ImportersInit)
     phase_run(.TweenNodesInit)
-    engine.asset_db_init("assets")
+    if _catalog_path != "" {
+        if !engine.asset_db_init_from_catalog(_catalog_path) {
+            log.errorf("catalog pipeline init failed — no catalog at the given path")
+        }
+    } else {
+        engine.asset_db_init("assets")
+    }
     engine.texture_cache_init()
     engine.mesh_cache_init()
     engine.material_cache_init()

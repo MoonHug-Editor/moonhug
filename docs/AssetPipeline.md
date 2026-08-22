@@ -123,6 +123,58 @@ asset_load :: proc(uuid: u128, $T: typeid) -> (^T, bool) {
     return asset, true
 }
 ```
+## Asset catalog and builds
+
+`library/catalog.json` is one dictionary file mapping every asset guid to its
+source path, current artifact key and baked import settings — Unity's
+Addressables catalog idea, reduced to what the catalog pipeline needs. Assets read
+straight from source (scenes, materials, clips) carry an empty artifact key.
+Nothing about it is user-facing:
+
+- the editor maintains it AUTOMATICALLY (`asset_catalog_auto`): every import
+  pass and refresh rewrites it, a byproduct like artifact_db.json
+- the app loads one with `--catalog[=path]` (`asset_db_init_from_catalog`): the
+  guid↔path maps, artifact index and import settings come from the file —
+  nothing scans `assets/`, no `.meta` is read
+- under the catalog pipeline the catalog is authoritative: refresh no-ops and
+  runtime imports are refused with an error — a missing artifact surfaces
+  instead of being repaired by importing
+
+**Builds run through run configs** (docs/Plugins.md "Run
+configurations") — a config is the build config, written as straight-line
+code:
+
+```odin
+main :: proc() {
+    rc.build({package_path = "moonhug/packages/app", out = "builds/app"})
+    rc.export_data("builds/app", scene = "packages/app/assets/demo_menu/menu.scene")
+    rc.run_build("builds/app")
+}
+```
+
+- `rc.export_data` stages `<out>_data` beside the binary — Unity's
+  `Game` + `Game_Data` layout — from the editor-maintained catalog
+  (`catalog.export_from`, moonhug:engine/catalog — a leaf package, so config
+  binaries stay small): every source, every artifact (mesh parts included),
+  and a RELOCATABLE catalog whose paths and `artifacts/` fan-out resolve
+  relative to its own directory. The data dir moves as one unit and is
+  self-contained — the round-trip test boots it with the working tree's
+  `assets/` and `library/` deleted
+- the config's `scene` pins the boot scene (stamped into the catalog as a
+  guid): every launch of a config produces the same build. An app on the catalog pipeline with
+  no scene argument boots the stamped scene
+- toolbar: two **Build & Run** buttons, both driving the selected config.
+  The right one (beside the config dropdown) runs it verbatim — its own
+  pinned scene. The middle one (beside the Simulate controls) forwards the
+  CURRENT scene state to the run — unsaved edits on the built binary, assets
+  still resolving through the catalog. On both, **Alt = build only** and
+  **Shift = run only** (skip the compile and the staging, run the last
+  build). The rc helpers own the protocol (`rc.scene_arg`, `rc.build_only`,
+  `rc.run_only`), config files never see it
+
+The default (no flag) is the import pipeline: scan + lazy import — what dev
+configs like run.odin use.
+
 ## UX
 
 Per ImporterSettings struct of each type:

@@ -128,6 +128,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 ## TODO
 - move progress (engine/progress.odin) to editor's separate inner package — goes together with moving the asset pipeline editor-side once a build/export step exists (app then loads prebuilt artifacts instead of importing at runtime)
+  - asset catalog + builds exist (docs/AssetPipeline.md "Asset catalog and builds": auto-maintained catalog, run configs stage <out>_data via rc.export_data, toolbar Build button, run_build config = the shipping shape) — remaining: importers move editor-side
 
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 

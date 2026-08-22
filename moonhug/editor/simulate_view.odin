@@ -142,9 +142,7 @@ _draw_simulate_controls :: proc() {
     }
     _pop_sim_button_bg()
     if im.IsItemHovered({}) {
-        im.SetTooltip(active \
-            ? "Stop simulating (Cmd/Ctrl+P) - restores the scene to its state at Simulate" \
-            : "Simulate this scene in the editor (Cmd/Ctrl+P) - everything stays inspectable")
+        im.SetTooltip(active ? "Stop (Cmd/Ctrl+P)" : "Play (Cmd/Ctrl+P)")
     }
 
     im.SameLine(0, style.ItemSpacing.x)
@@ -160,11 +158,7 @@ _draw_simulate_controls :: proc() {
     }
     _pop_sim_button_bg()
     if im.IsItemHovered({}) {
-        if !active {
-            im.SetTooltip("Simulate paused (Cmd/Ctrl+Shift+P)")
-        } else {
-            im.SetTooltip(paused ? "Resume (Cmd/Ctrl+Shift+P)" : "Pause (Cmd/Ctrl+Shift+P)")
-        }
+        im.SetTooltip(active && paused ? "Resume (Cmd/Ctrl+Shift+P)" : "Pause (Cmd/Ctrl+Shift+P)")
     }
 
     im.SameLine(0, style.ItemSpacing.x)
@@ -174,7 +168,7 @@ _draw_simulate_controls :: proc() {
     }
     _pop_sim_button_bg()
     if im.IsItemHovered({}) {
-        im.SetTooltip("Step one frame - pauses first if running")
+        im.SetTooltip("Step Frame")
     }
 }
 
@@ -204,10 +198,9 @@ _draw_sim_host_combo :: proc() {
         case 0:
             im.SetTooltip("No runnable package found (a game is a package with main at its root)")
         case 1:
-            im.SetTooltip(fmt.ctprintf(
-                "Simulate ticks %s - the only installed game", host.name))
+            im.SetTooltip(fmt.ctprintf("Sim host: %s (only game installed)", host.name))
         case:
-            im.SetTooltip("Sim host: the game whose update code Simulate runs")
+            im.SetTooltip("Sim host: which game's code Simulate runs")
         }
     }
 }

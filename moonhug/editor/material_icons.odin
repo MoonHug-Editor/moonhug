@@ -56,6 +56,7 @@ ICON_MD_PAUSE         :: "\ue034"   // pause (Simulate pause)
 ICON_MD_STOP          :: "\ue047"   // stop (Simulate stop)
 ICON_MD_SKIP_NEXT     :: "\ue044"   // skip_next (Simulate step one frame)
 ICON_MD_RUN_CONFIG    :: "\ue869"   // run/build config (toolbar Play button)
+ICON_MD_CONSTRUCTION  :: "\uea3c"   // construction (toolbar Build & Run with current scene)
 ICON_MD_SAVE          :: "\ue161"   // save
 ICON_MD_ADD           :: "\ue145"   // add
 ICON_MD_DELETE        :: "\ue92e"   // delete

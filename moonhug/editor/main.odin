@@ -314,6 +314,7 @@ editor_init :: proc() {
     _init_context_menu_registry()
     init_project_view()
     engine.progress_report("Scanning assets")
+    engine.asset_catalog_auto = true // editor maintains library/catalog.json
     engine.asset_pipeline_init()
     engine.asset_db_init("assets")
     engine.asset_pipeline_import_all()

@@ -24,6 +24,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "moonhug:engine/catalog"
 
 // Appended to every `out` path, so one config source names one binary on every
 // platform and nothing depends on whether the compiler adds a suffix itself.
@@ -69,6 +70,34 @@ chdir_repo_root :: proc() -> bool {
 	return true
 }
 
+// The editor's toolbar modifiers arrive as flags, honored inside the rc procs
+// so config files stay straight-line scripts: --build-only (Alt) builds and
+// stages data but skips every run step, --run-only (Shift) runs what the last
+// build produced, skipping the compile and the data staging.
+build_only :: proc() -> bool {
+	for arg in os.args[1:] {
+		if arg == "--build-only" do return true
+	}
+	return false
+}
+
+run_only :: proc() -> bool {
+	for arg in os.args[1:] {
+		if arg == "--run-only" do return true
+	}
+	return false
+}
+
+// The scene the invoker passed (the editor's Build button forwards its
+// live-scene snapshot). "" when launched bare or from the Play button — the
+// config's own pinned scene then applies.
+scene_arg :: proc() -> string {
+	for arg in os.args[1:] {
+		if !strings.has_prefix(arg, "--") do return arg
+	}
+	return ""
+}
+
 // Builds `cfg`, then runs the result and exits with ITS exit code, so the editor
 // reports what the game reported. Does not return.
 build_and_run :: proc(cfg: Config, extra: ..string) {
@@ -77,7 +106,57 @@ build_and_run :: proc(cfg: Config, extra: ..string) {
 		fmt.eprintf("run config: build failed for %s\n", cfg.package_path)
 		os.exit(1)
 	}
+	if build_only() do os.exit(0)
 	os.exit(run(exe, ..extra))
+}
+
+// Stage the build's data dir: <out>_data beside the binary (Unity's
+// Game + Game_Data layout), copied from the editor-maintained
+// library/catalog.json with a relocatable catalog written beside it. `scene`
+// is the config's pinned boot scene (moonhug-relative asset path) — the
+// staged data is ALWAYS the config's own build, so bare launches reproduce
+// it exactly. The editor's scene only ever affects the run (scene_arg,
+// forwarded by the run procs), never the build.
+export_data :: proc(out: string, scene := "") -> bool {
+	if !chdir_repo_root() do return false
+	data_dir := fmt.tprintf("%s_data", out)
+	// Run-only (Shift): keep the last build's staged data.
+	if run_only() {
+		if !os.exists(fmt.tprintf("%s/catalog.json", data_dir)) {
+			fmt.eprintf("run config: no staged data at %s — build first (run without Shift)\n", data_dir)
+			return false
+		}
+		return true
+	}
+	if !catalog.export_from("moonhug/library/catalog.json", data_dir, scene, root = "moonhug") {
+		fmt.eprintf("run config: data export failed for %s (is the editor's catalog current?)\n", out)
+		return false
+	}
+	return true
+}
+
+// A config's error exit with a uniform message. Does not return.
+exit_build_failed :: proc(what: string) {
+	fmt.eprintf("run config: build failed for %s\n", what)
+	os.exit(1)
+}
+
+// Runs a built binary under the catalog pipeline: --catalog against its own data dir. An invoker
+// scene (the editor Build button's live-scene snapshot) forwards to the game
+// and overrides the exported boot scene for THIS run only — assets still
+// resolve through the catalog. Honors --build-only. Does not return.
+run_build :: proc(out: string) {
+	if build_only() do os.exit(0)
+	if !chdir_repo_root() do os.exit(1)
+	rel := strings.concatenate({out, EXE_SUFFIX}, context.temp_allocator)
+	cwd, _ := os.get_working_directory(context.temp_allocator)
+	abs, _ := filepath.join({cwd, rel}, context.temp_allocator)
+	// The game normalizes its own cwd to moonhug/, so the catalog path is
+	// spelled from there.
+	cmd := make([dynamic]string, context.temp_allocator)
+	append(&cmd, abs, fmt.tprintf("--catalog=../%s_data/catalog.json", out))
+	if scene := scene_arg(); scene != "" do append(&cmd, scene)
+	os.exit(spawn(cmd[:]))
 }
 
 // Compiles `cfg` and returns the ABSOLUTE path to the binary. Creates the
@@ -93,6 +172,17 @@ build :: proc(cfg: Config) -> (exe: string, ok: bool) {
 	if !chdir_repo_root() do return "", false
 
 	rel := strings.concatenate({cfg.out, EXE_SUFFIX}, context.temp_allocator)
+
+	// Run-only (Shift): skip the compile, hand back the last build's binary.
+	if run_only() {
+		if !os.exists(rel) {
+			fmt.eprintf("run config: no binary at %s — build first (run without Shift)\n", rel)
+			return "", false
+		}
+		cwd, _ := os.get_working_directory(context.temp_allocator)
+		abs, _ := filepath.join({cwd, rel}, context.temp_allocator)
+		return abs, true
+	}
 
 	if dir := filepath.dir(cfg.out); dir != "" && dir != "." {
 		os.make_directory_all(dir)

@@ -128,6 +128,7 @@ draw_tool_bar :: proc() {
     // Explicit ### id: the label is icon-only, and imgui derives ids from labels
     // — so a Simulate button showing the same glyph would share this one's id.
     button_play_text: cstring = ICON_MD_RUN_CONFIG + "###RunConfigPlay"
+    button_scene_text: cstring = ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene"
     avail := im.GetContentRegionAvail()
     style := im.GetStyle()
     // hide_text_after_double_hash: the ### id suffix is not drawn, so it must
@@ -135,6 +136,10 @@ draw_tool_bar :: proc() {
     btn_size := im.CalcTextSize(button_play_text, nil, true, -1)
     btn_size.x += style.FramePadding.x * 2
     btn_size.y += style.FramePadding.y * 2
+    btn_scene_size := im.CalcTextSize(button_scene_text, nil, true, -1)
+    btn_scene_size.x += style.FramePadding.x * 2
+
+    MOD_HINT :: "\nAlt: build only, Shift: run only"
 
     NO_CONFIGS :: cstring("No run configs")
     preview := NO_CONFIGS
@@ -152,12 +157,26 @@ draw_tool_bar :: proc() {
     // its widest glyph), so the group never shifts when a run starts or pauses.
     sim_w := _simulate_controls_width()
     sim_host_w := _sim_host_combo_width()
-    sim_total := sim_w + style.ItemSpacing.x + sim_host_w
+    sim_total := sim_w + style.ItemSpacing.x + sim_host_w + style.ItemSpacing.x + btn_scene_size.x
     im.SetCursorPosX(max(0, (avail.x - sim_total) * 0.5))
 
     _draw_simulate_controls()
     im.SameLine(0, style.ItemSpacing.x)
     _draw_sim_host_combo()
+    im.SameLine(0, style.ItemSpacing.x)
+
+    // Build & Run with the CURRENT scene state (the live snapshot, forwarded
+    // to the run only — the staged data is always the config's own build).
+    if im.Button(button_scene_text) && sel != nil {
+        run_app_play(sel.id, sel.source, with_current_scene = true, mode = _run_mode_from_modifiers())
+    }
+    if im.IsItemHovered({}) {
+        if sel != nil {
+            im.SetTooltip(fmt.ctprintf("Build & Run with current scene state (%s)" + MOD_HINT, sel.label))
+        } else {
+            im.SetTooltip("No run configs found (packages/*/run_configs/*.odin)")
+        }
+    }
 
     // Right-pinned cluster. Measured from the right edge of the content region,
     // clamped so a narrow window degrades to "as far right as fits" instead of
@@ -186,12 +205,14 @@ draw_tool_bar :: proc() {
         im.SameLine(0, style.ItemSpacing.x)
     }
 
+    // The config verbatim — its own pinned scene, the same build a bare
+    // launch produces.
     if im.Button(button_play_text) && sel != nil {
-        run_app_play(sel.id, sel.source)
+        run_app_play(sel.id, sel.source, mode = _run_mode_from_modifiers())
     }
     if im.IsItemHovered({}) {
         if sel != nil {
-            im.SetTooltip(fmt.ctprintf("Run game with current scene state (%s)", sel.label))
+            im.SetTooltip(fmt.ctprintf("Build & Run (%s)" + MOD_HINT, sel.label))
         } else {
             im.SetTooltip("No run configs found (packages/*/run_configs/*.odin)")
         }
@@ -430,10 +451,26 @@ _play_dispatch_line :: proc(line: string) {
     output_view_append_line(l)
 }
 
-// Compiles the given run config (an Odin program, see Run_Config) and runs it
-// with the live-scene snapshot path as its argument. `id` only names the config
-// binary, so two packages can each ship a run.odin without colliding.
-run_app_play :: proc(id: string, source: string) {
+// Compiles the given run config (an Odin program, see Run_Config) and runs it —
+// bare for Play (the config's own scene), with the live-scene snapshot path for
+// the Build button. `id` only names the config binary, so two packages can each
+// ship a run.odin without colliding.
+// Toolbar modifier state at click time, forwarded to the config as flags the
+// rc procs honor: Alt = build only, Shift = run only (skip compile + staging).
+Run_Mode :: enum {
+	Build_And_Run,
+	Build_Only, // Alt
+	Run_Only,   // Shift
+}
+
+_run_mode_from_modifiers :: proc() -> Run_Mode {
+	io := im.GetIO()
+	if io.KeyAlt do return .Build_Only
+	if io.KeyShift do return .Run_Only
+	return .Build_And_Run
+}
+
+run_app_play :: proc(id: string, source: string, with_current_scene := false, mode := Run_Mode.Build_And_Run) {
     if _play_thread != nil && !thread.is_done(_play_thread) {
         return
     }
@@ -471,25 +508,32 @@ run_app_play :: proc(id: string, source: string) {
     // away with being relative, because PATH resolved them.
     config_exe_abs, _ := filepath.join({repo_root, config_exe}, context.temp_allocator)
 
-    // Pass the editor's active scene to the config, which forwards it to the
-    // game; without one the app falls back to its default scene. The app gets
-    // the LIVE scene state: a snapshot of the in-memory scene written outside
-    // assets/ (so refresh never mints a guid for it) — unsaved edits play as-is,
-    // like Unity entering play mode with a dirty scene. Nested prefabs still
-    // resolve by guid from their on-disk files.
+    // The Play button passes NOTHING: a run config works with its own pinned
+    // scene, so its build reproduces bare launches exactly. The Build button
+    // passes the LIVE scene state (a snapshot of the in-memory scene written
+    // outside assets/, so refresh never mints a guid for it) — unsaved edits
+    // run as-is, like Unity entering play mode with a dirty scene. The rc run
+    // procs forward it to the game; nested prefabs still resolve by guid.
     run_parts := make([dynamic]string, context.temp_allocator)
     append(&run_parts, config_exe_abs)
-    if scene := engine.sm_scene_get_active(); scene != nil {
-        play_path := scene.path
-        if snapshot, sok := engine.scene_serialize(scene); sok {
-            defer delete(snapshot)
-            os.make_directory("library") // library/ is gitignored; fresh clones lack it
-            os.make_directory("library/state_cache")
-            if os.write_entire_file(_PLAY_SCENE_SNAPSHOT_PATH, snapshot) == nil {
-                play_path = _PLAY_SCENE_SNAPSHOT_PATH
+    if with_current_scene {
+        if scene := engine.sm_scene_get_active(); scene != nil {
+            play_path := scene.path
+            if snapshot, sok := engine.scene_serialize(scene); sok {
+                defer delete(snapshot)
+                os.make_directory("library") // library/ is gitignored; fresh clones lack it
+                os.make_directory("library/state_cache")
+                if os.write_entire_file(_PLAY_SCENE_SNAPSHOT_PATH, snapshot) == nil {
+                    play_path = _PLAY_SCENE_SNAPSHOT_PATH
+                }
             }
+            if len(play_path) > 0 do append(&run_parts, play_path)
         }
-        if len(play_path) > 0 do append(&run_parts, play_path)
+    }
+    switch mode {
+    case .Build_Only: append(&run_parts, "--build-only")
+    case .Run_Only:   append(&run_parts, "--run-only")
+    case .Build_And_Run:
     }
 
     pa := runtime.default_allocator()

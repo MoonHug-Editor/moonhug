@@ -8,6 +8,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import xxh "core:hash/xxhash"
 import "base:runtime"
+import "log"
 
 // Unity's Library model: everything under library/ is derived data — safe to
 // delete, rebuilt from assets + metas on the next run, never a source of
@@ -92,6 +93,7 @@ asset_pipeline_import_all :: proc() {
     _artifact_index_prune()
     _cleanup_stale_artifacts()
     _artifact_index_save()
+    _asset_catalog_auto_write() // keep library/catalog.json current (editor)
     fmt.printf("[Pipeline] Import pass complete\n")
 }
 
@@ -110,6 +112,13 @@ asset_pipeline_reimport :: proc(source_path: string) -> bool {
 
 @(private = "file")
 _import_asset :: proc(source_path: string, force: bool) -> bool {
+    // Under the catalog pipeline (asset_db_init_from_catalog) content is fixed: content is
+    // whatever the export produced, a missing artifact is an error to surface,
+    // never something to repair by importing at runtime.
+    if asset_db.pipeline == .Catalog {
+        log.errorf("[Pipeline] import of %s refused: the catalog pipeline has no importers", source_path)
+        return false
+    }
     ext := filepath.ext(source_path)
     if !is_importable_extension(ext) do return false
 
@@ -176,6 +185,23 @@ _notify_reimported :: proc(guid: uuid.Identifier) {
 // caller owns it — `free(result.data)` when done). Type-assert the result:
 // `ts := settings.(TextureSettings)`.
 asset_pipeline_get_settings :: proc(source_path: string, allocator := context.allocator) -> (any, bool) {
+    // Catalog pipeline: settings are baked into the catalog — no .meta exists in
+    // an exported data dir. Defaults first, then overlay, same as the meta path.
+    if asset_db.pipeline == .Catalog {
+        guid, gok := asset_db.path_to_guid[source_path]
+        if !gok do return {}, false
+        blob, has := _catalog_settings[guid]
+        if !has do return {}, false
+        settings, sok := _settings_new(_importer_for_extension(filepath.ext(source_path)), allocator)
+        if !sok do return {}, false
+        prev := context.allocator
+        context.allocator = context.temp_allocator
+        root, perr := json.parse(transmute([]u8)blob, .JSON, true)
+        context.allocator = prev
+        if perr == nil do _settings_overlay(settings, root)
+        return settings, true
+    }
+
     meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
 
     import_meta := _read_import_meta(meta_path, allocator)
@@ -183,6 +209,16 @@ asset_pipeline_get_settings :: proc(source_path: string, allocator := context.al
     delete(import_meta.guid)
 
     return import_meta.settings, import_meta.settings.data != nil
+}
+
+// Per-guid settings JSON under the catalog pipeline (asset_db_init_from_catalog seeds it).
+_catalog_settings: map[uuid.Identifier]string
+
+_catalog_settings_set :: proc(guid: uuid.Identifier, blob: string) {
+    context.allocator = runtime.default_allocator()
+    if _catalog_settings == nil do _catalog_settings = make(map[uuid.Identifier]string)
+    if old, has := _catalog_settings[guid]; has do delete(old)
+    _catalog_settings[guid] = strings.clone(blob)
 }
 
 asset_pipeline_save_settings :: proc(source_path: string, settings: any) -> bool {
@@ -346,8 +382,37 @@ _artifact_key :: proc(content: []byte, settings: any, importer: string) -> strin
 
 // "library/artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
 @(private = "file")
+// Where artifact files live. The default is the working tree's library — an
+// relocatable-catalog boot retargets it at the export's artifacts dir
+// (asset_db_init_from_catalog), and every resolve below follows. asset_db_shutdown
+// resets it via _catalog_pipeline_reset.
+_artifact_dir := ARTIFACTS_DIR
+@(private = "file") _artifact_dir_owned: bool
+
+_artifact_dir_set :: proc(dir: string) {
+    context.allocator = runtime.default_allocator()
+    if _artifact_dir_owned do delete(_artifact_dir)
+    _artifact_dir = strings.clone(dir)
+    _artifact_dir_owned = true
+}
+
+// Drop every catalog-pipeline override: artifact resolution back to the working
+// tree, baked settings gone. Called from asset_db_shutdown so a later live
+// init (tests, editor after a catalog-pipeline tool run) starts clean.
+_catalog_pipeline_reset :: proc() {
+    context.allocator = runtime.default_allocator()
+    if _artifact_dir_owned {
+        delete(_artifact_dir)
+        _artifact_dir = ARTIFACTS_DIR
+        _artifact_dir_owned = false
+    }
+    for _, blob in _catalog_settings do delete(blob)
+    delete(_catalog_settings)
+    _catalog_settings = nil
+}
+
 _artifact_key_path :: proc(key: string, allocator := context.allocator) -> string {
-    return fmt.aprintf("%s/%s/%s.bin", ARTIFACTS_DIR, key[:2], key, allocator = allocator)
+    return fmt.aprintf("%s/%s/%s.bin", _artifact_dir, key[:2], key, allocator = allocator)
 }
 
 _run_import :: proc(source_path: string, artifact_path: string, settings: any) -> bool {
@@ -425,6 +490,30 @@ _artifact_path :: proc(guid: uuid.Identifier) -> string {
         return _artifact_key_path(e.artifact)
     }
     return strings.clone("")
+}
+
+// The raw content-address key for a guid (the catalog writer snapshots these).
+// Temp-allocated.
+asset_pipeline_artifact_key :: proc(guid: Asset_GUID) -> (key: string, ok: bool) {
+    _artifact_index_ensure()
+    if e, has := _artifact_index[uuid.Identifier(guid)]; has {
+        return strings.clone(e.artifact, context.temp_allocator), true
+    }
+    return "", false
+}
+
+// Catalog pipeline: the catalog is the artifact index — mark it loaded and fill it
+// directly, so _artifact_index_ensure never reads artifact_db.json over it.
+// Stamps stay zero: they only feed the import freshness check, and imports
+// are refused under the catalog pipeline.
+_artifact_index_seed :: proc(guid: uuid.Identifier, key: string) {
+    _artifact_index_loaded = true
+    if _artifact_index == nil {
+        context.allocator = runtime.default_allocator()
+        _artifact_index = make(map[uuid.Identifier]_Artifact_Entry)
+    }
+    _artifact_index_set(guid, key, 0, 0, "")
+    _artifact_index_dirty = false // seeded entries never write back to disk
 }
 
 // Public resolve for tooling (thumbnail/preview caches). Temp-allocated path.

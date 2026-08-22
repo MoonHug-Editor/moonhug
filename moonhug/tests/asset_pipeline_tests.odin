@@ -15,7 +15,7 @@ import "core:strings"
 import "core:testing"
 import "../engine"
 
-@(private = "file")
+// Shared with asset_catalog_tests (both sweep a fixture library/).
 _remove_tree :: proc(dir: string) {
 	handle, err := os.open(dir)
 	if err != nil do return

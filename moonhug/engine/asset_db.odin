@@ -12,10 +12,26 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "log"
 
+// Which pipeline feeds the AssetDB (docs/AssetPipeline.md "Asset catalog and
+// builds"). Both end at the same loaders — they differ in where content
+// comes from.
+Asset_Pipeline_Kind :: enum {
+    // Dev, the zero value: scan assets/, read metas, import lazily.
+    Import,
+    // Everything resolves from a catalog file (asset_db_init_from_catalog):
+    // refresh no-ops and runtime imports are refused — the catalog is
+    // authoritative, a miss is an error, never repair work.
+    Catalog,
+}
+
 AssetDB :: struct {
     guid_to_path: map[uuid.Identifier]string,
     path_to_guid: map[string]uuid.Identifier,
     root_path:    string,
+    pipeline:     Asset_Pipeline_Kind,
+    // The catalog's pinned boot scene ({} = none) — what the app loads under
+    // the catalog pipeline when no scene argument is given.
+    boot_scene:   Asset_GUID,
 
     // Root-info index for the object picker (docs/ObjectPicker.md): per scene
     // asset, its root transform; assets_by_type answers "scene assets whose
@@ -103,6 +119,7 @@ asset_db_init :: proc(root: string) {
 }
 
 asset_db_shutdown :: proc() {
+    _catalog_pipeline_reset()
     _free_maps()
     _free_root_index()
     for path in asset_db.file_state {
@@ -162,6 +179,7 @@ asset_db_add_path_changed_hook :: proc(hook: Path_Changed_Hook) {
 }
 
 asset_db_refresh :: proc() {
+    if asset_db.pipeline == .Catalog do return
     walk: _Db_Walk
     walk.files = make(map[string]Asset_File_Stamp, context.temp_allocator)
     walk.metas = make([dynamic]string, context.temp_allocator)
@@ -227,6 +245,9 @@ asset_db_refresh :: proc() {
         // Through the log package: visible in the editor console/status bar,
         // not just the terminal.
         log.infof("[AssetDB] Refreshed: +%d ~%d -%d (%d assets)", created, modified, deleted, len(asset_db.path_to_guid))
+        // Keep the in-place catalog current (editor-only, asset_catalog_auto):
+        // run configs stage build data from it without a live AssetDB.
+        _asset_catalog_auto_write()
     }
 }
 
