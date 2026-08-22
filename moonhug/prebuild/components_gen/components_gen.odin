@@ -395,7 +395,9 @@ generate :: proc(w: ^db.World) -> bool {
 		}
 		fmt.sbprintf(&b, "{{\n\t\towned, _ := transform_find_comp(t, .%s)\n\t\tif owned.handle.type_key == INVALID_TYPE_KEY do return owned, nil\n\t\tpool := %s(w)\n\t\tif pool == nil do return owned, nil\n\t\treturn owned, pool_get(pool, owned.handle)\n\t}}\n", e.type_name, e.plural)
 	}
-	strings.write_string(&b, "\treturn {}, nil\n")
+	strings.write_string(&b, "\t// Types without a fast path above (package components) resolve through\n")
+	strings.write_string(&b, "\t// the runtime type-key registry — any registered component works.\n")
+	strings.write_string(&b, "\treturn _transform_get_comp_registered(tH, T)\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "transform_destroy_components :: proc(tH: Transform_Handle) {\n")
@@ -425,8 +427,10 @@ generate :: proc(w: ^db.World) -> bool {
 		} else {
 			fmt.sbprintf(&b, "\telse when T == %s ", e.type_name)
 		}
-		fmt.sbprintf(&b, "{{\n\t\towned, idx := transform_find_comp(t, .%s)\n\t\tif idx < 0 do return\n\t\tworld_pool_destroy(w, owned.handle)\n\t\tordered_remove(&t.components, idx)\n\t}}\n", e.type_name)
+		fmt.sbprintf(&b, "{{\n\t\towned, idx := transform_find_comp(t, .%s)\n\t\tif idx < 0 do return\n\t\tworld_pool_destroy(w, owned.handle)\n\t\tordered_remove(&t.components, idx)\n\t\treturn\n\t}}\n", e.type_name)
 	}
+	strings.write_string(&b, "\t// Registry fallback, same contract as transform_get_comp's.\n")
+	strings.write_string(&b, "\t_transform_destroy_comp_registered(tH, T)\n")
 	strings.write_string(&b, "}\n\n")
 
 	if len(data.poolable_entries) > 0 {

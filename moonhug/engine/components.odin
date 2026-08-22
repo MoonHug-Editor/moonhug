@@ -31,6 +31,48 @@ transform_add_comp :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr
     return owned, pComp
 }
 
+// Key-based get, the primitive under the typed accessors — for generic
+// machinery that works in (TypeKey, rawptr) space and callers that hoist
+// the key out of a hot loop. Symmetric with transform_add_comp.
+transform_get_comp_key :: proc(tH: Transform_Handle, key: TypeKey) -> (Owned, rawptr) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return {}, nil
+    owned, idx := transform_find_comp(t, key)
+    if idx < 0 do return {}, nil
+    return owned, world_pool_get(w, owned.handle)
+}
+
+// The generated transform_get_comp's fallback: types without a generated
+// fast path (package components) resolve through the type-key registry.
+// No map lookup — every Owned entry carries its TypeKey, and key -> typeid
+// is an array, so one pass over the (short) component list compares typeids.
+_transform_get_comp_registered :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return {}, nil
+    for c in t.components {
+        if !_type_key_valid(c.handle.type_key) do continue
+        if get_typeid_by_type_key(c.handle.type_key) != T do continue
+        return c, cast(^T)world_pool_get(w, c.handle)
+    }
+    return {}, nil
+}
+
+// The generated transform_destroy_comp's fallback, same registry contract.
+_transform_destroy_comp_registered :: proc(tH: Transform_Handle, $T: typeid) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+    for c, idx in t.components {
+        if !_type_key_valid(c.handle.type_key) do continue
+        if get_typeid_by_type_key(c.handle.type_key) != T do continue
+        world_pool_destroy(w, c.handle)
+        ordered_remove(&t.components, idx)
+        return
+    }
+}
+
 transform_get_or_add_comp :: proc(tH: Transform_Handle, $T: typeid) -> (Owned, ^T) {
     owned, pComp := transform_get_comp(tH, T)
     if pComp != nil do return owned, pComp

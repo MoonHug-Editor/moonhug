@@ -203,7 +203,7 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	testing.expect(t, mr != nil && len(mr.materials) == 1, "Cube should have one material slot")
 	_, root_mf := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.MeshFilter)
 	testing.expect(t, root_mf == nil, "root should not draw the whole model on top of the parts")
-	_, a := anim.get_comp(engine.Transform_Handle(s.root.handle), anim.Animation)
+	_, a := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), anim.Animation)
 	testing.expect(t, a != nil && a.clip == clip_guid, "Animation should reference the first clip")
 	if a != nil do testing.expect(t, a.play_automatically, "Animation should default to play automatically")
 }
@@ -232,4 +232,44 @@ test_animation_cleanup_is_idempotent :: proc(t: ^testing.T) {
 	engine.type_cleanup(.Animation, ptr)
 
 	testing.expect_value(t, len(a.layers), 0)
+}
+
+// The engine's typed component accessors work for PACKAGE components through
+// the registry fallback: get finds the live component (never a silent nil),
+// get_or_add returns the existing one instead of adding a duplicate, and
+// destroy removes it. Animation stands in for any registered package type.
+@(test)
+test_engine_accessors_cover_package_components :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	tH := engine.transform_new("A")
+	first_owned, first := engine.transform_get_or_add_comp(tH, anim.Animation)
+	testing.expect(t, first != nil, "get_or_add should add on first call")
+
+	// get finds it (the silent-nil regression).
+	got_owned, got := engine.transform_get_comp(tH, anim.Animation)
+	testing.expect(t, got == first, "get should return the live component")
+	testing.expect_value(t, got_owned.local_id, first_owned.local_id)
+
+	// get_or_add returns the existing one (the duplicate-add regression).
+	_, again := engine.transform_get_or_add_comp(tH, anim.Animation)
+	testing.expect(t, again == first, "get_or_add should not add a second component")
+	w := engine.ctx_world()
+	tr := engine.pool_get(&w.transforms, engine.Handle(tH))
+	testing.expect_value(t, len(tr.components), 1)
+
+	// The key-based primitive agrees with the typed accessor.
+	key_owned, raw := engine.transform_get_comp_key(tH, .Animation)
+	testing.expect(t, cast(^anim.Animation)raw == first, "key primitive should find the same component")
+	testing.expect_value(t, key_owned.local_id, first_owned.local_id)
+
+	// destroy removes it through the same fallback.
+	engine.transform_destroy_comp(tH, anim.Animation)
+	_, gone := engine.transform_get_comp(tH, anim.Animation)
+	testing.expect(t, gone == nil, "destroy should remove the component")
+	testing.expect_value(t, len(tr.components), 0)
 }

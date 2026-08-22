@@ -122,7 +122,7 @@ _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	w := engine.ctx_world()
 	tH := sel_scene_active()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
-		if _, comp := anim.get_comp(tH, anim.Animation); comp != nil {
+		if _, comp := engine.transform_get_comp(tH, anim.Animation); comp != nil {
 			return tH, comp
 		}
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
@@ -838,7 +838,7 @@ animation_preview_apply :: proc() {
 		_pv.active = false
 		return
 	}
-	_, a := anim.get_comp(_pv.owner, anim.Animation)
+	_, a := engine.transform_get_comp(_pv.owner, anim.Animation)
 	if a == nil {
 		_pv.active = false
 		return

@@ -53,7 +53,7 @@ world_pool_collect :: proc(w: ^World, handle: Handle, sf: ^SceneFile) {
     }
     // Registered external components (no generated collect_fn) serialize as
     // guid-tagged blob records.
-    if desc, ok := component_registry[handle.type_key]; ok {
+    if desc := component_registry[handle.type_key]; desc.tid != nil {
         _ext_collect_component(desc, ptr, sf)
     }
 }

@@ -188,7 +188,7 @@ generate :: proc(w: ^db.World) -> bool {
 		} else {
 			// Ext component (app or package): iterate via the runtime registry.
 			fmt.sbprintf(&b, "\tif pool := w.ext_pools[engine.TypeKey.%s]; pool != nil {{\n", r.component)
-			fmt.sbprintf(&b, "\t\tif desc, ok := engine.component_registry[engine.TypeKey.%s]; ok && desc.each_alive != nil {{\n", r.component)
+			fmt.sbprintf(&b, "\t\tif desc := engine.component_registry[engine.TypeKey.%s]; desc.each_alive != nil {{\n", r.component)
 			strings.write_string(&b, "\t\t\tdesc.each_alive(pool, proc(ptr: rawptr) {\n")
 			comp_ref := r.comp_pkg == "app" ? fmt.tprintf("app.%s", r.component) : fmt.tprintf("%s.%s", r.comp_pkg, r.component)
 			fmt.sbprintf(&b, "\t\t\t\tc := cast(^%s)ptr\n", comp_ref)

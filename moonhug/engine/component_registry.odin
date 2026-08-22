@@ -47,7 +47,10 @@ Component_Desc :: struct {
 // walker (override apply/diff/revert, lid collection) treats both the same.
 EXT_TYPE_KEY :: "__type"
 
-component_registry: map[TypeKey]Component_Desc
+// TypeKey is a dense generated enum, so the registry is an array — every
+// component lookup is an index, never a map hash. A slot with tid == nil is
+// unregistered. The guid index stays a map (guids are not dense).
+component_registry: [TypeKey]Component_Desc
 _component_registry_by_guid: map[uuid.Identifier]TypeKey
 
 component_register :: proc(desc: Component_Desc) {
@@ -90,14 +93,16 @@ _world_ensure_ext_pool :: proc(w: ^World, desc: Component_Desc) {
 
 // Called from generated w_init.
 _w_init_ext_pools :: proc(w: ^World) {
-	for _, desc in component_registry {
+	for desc in component_registry {
+		if desc.tid == nil do continue
 		_world_ensure_ext_pool(w, desc)
 	}
 }
 
 // Called from generated world_destroy_all.
 _world_destroy_ext :: proc(w: ^World) {
-	for key, desc in component_registry {
+	for desc, key in component_registry {
+		if desc.tid == nil do continue
 		pool := w.ext_pools[key]
 		if pool == nil do continue
 		if desc.on_destroy != nil && desc.each_alive != nil {
@@ -233,8 +238,9 @@ _ext_set_owner :: proc(w: ^World, h: Handle, owner: Transform_Handle) {
 }
 
 _ext_resolve_refs :: proc(w: ^World, h: Handle, s: ^Scene, file_local: ^map[Local_ID]Handle = nil) {
-	desc, ok := component_registry[h.type_key]
-	if !ok do return
+	if !_type_key_valid(h.type_key) do return
+	desc := component_registry[h.type_key]
+	if desc.tid == nil do return
 	ptr := world_pool_get(w, h)
 	if ptr != nil do _resolve_refs_in_value(ptr, type_info_of(desc.tid), s, file_local)
 }
