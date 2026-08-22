@@ -401,27 +401,27 @@ test_undo_inspector_flow_f32_field :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, p := engine.transform_get_or_add_comp(tH, engine.Animation)
+	owned, p := engine.transform_get_or_add_comp(tH, engine.Light)
 	if p == nil do return
-	p.speed = 55
+	p.intensity = 55
 
 	undo.push_component_owner(owned.handle)
 	defer undo.pop_owner()
 
-	undo.begin_field(&p.speed, typeid_of(f32))
-	p.speed = 123
+	undo.begin_field(&p.intensity, typeid_of(f32))
+	p.intensity = 123
 	undo.end_field(true)
 
 	testing.expect(t, undo.can_undo(s), "should have recorded f32 change")
-	testing.expect_value(t, p.speed, f32(123))
+	testing.expect_value(t, p.intensity, f32(123))
 
 	ok := undo.apply_undo(s)
 	testing.expect(t, ok, "undo succeeded")
-	testing.expect_value(t, p.speed, f32(55))
+	testing.expect_value(t, p.intensity, f32(55))
 
 	ok = undo.apply_redo(s)
 	testing.expect(t, ok, "redo succeeded")
-	testing.expect_value(t, p.speed, f32(123))
+	testing.expect_value(t, p.intensity, f32(123))
 }
 
 @(test)

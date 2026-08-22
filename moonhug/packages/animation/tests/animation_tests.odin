@@ -1,4 +1,4 @@
-package tests
+package animation_tests
 
 // AnimationClip sampling + the legacy-style Animation component tick:
 // clip JSON round-trip, keyframe interpolation (lerp/step/slerp), child-path
@@ -11,23 +11,24 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:math"
-import "../engine"
-import common "common"
+import "moonhug:engine"
+import anim "moonhug:packages/animation"
+import common "moonhug:tests/common"
 
 // A 1-second clip: owner position x 0→2, plus a child "Arm" scale snap
 // (STEP) from 1 to 3 at t=0.5.
-_make_test_clip :: proc(alloc := context.allocator) -> engine.AnimationClip {
-	clip := engine.AnimationClip{length = 1, wrap = .Once}
-	clip.channels = make([dynamic]engine.Animation_Channel, alloc)
+_make_test_clip :: proc(alloc := context.allocator) -> anim.AnimationClip {
+	clip := anim.AnimationClip{length = 1, wrap = .Once}
+	clip.channels = make([dynamic]anim.Animation_Channel, alloc)
 
-	pos := engine.Animation_Channel{path = .Position}
+	pos := anim.Animation_Channel{path = .Position}
 	pos.times = make([dynamic]f32, alloc)
 	pos.values = make([dynamic][4]f32, alloc)
 	append(&pos.times, 0, 1)
 	append(&pos.values, [4]f32{0, 0, 0, 0}, [4]f32{2, 0, 0, 0})
 	append(&clip.channels, pos)
 
-	arm := engine.Animation_Channel{path = .Scale, step = true}
+	arm := anim.Animation_Channel{path = .Scale, step = true}
 	// Cloned, not a literal: _animation_clip_destroy deletes channel targets.
 	arm.target = strings.clone("Arm", alloc)
 	arm.times = make([dynamic]f32, alloc)
@@ -44,7 +45,7 @@ test_animation_clip_marshal_roundtrip :: proc(t: ^testing.T) {
 	data, err := json.marshal(clip, {spec = .JSON}, context.temp_allocator)
 	testing.expect(t, err == nil, "clip should marshal")
 
-	loaded: engine.AnimationClip
+	loaded: anim.AnimationClip
 	uerr := json.unmarshal(data, &loaded, .JSON, context.temp_allocator)
 	testing.expect(t, uerr == nil, "clip should unmarshal")
 	testing.expect(t, loaded.length == 1 && loaded.wrap == .Once, "clip header should round-trip")
@@ -63,12 +64,12 @@ test_animation_component_tick :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	engine.animation_clip_cache_init()
-	defer engine.animation_clip_cache_shutdown()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
 
 	guid_id, _ := uuid.read("aaaaaaaa-1111-2222-3333-bbbbbbbbbbbb")
 	guid := engine.Asset_GUID(guid_id)
-	engine.animation_clip_cache[guid] = _make_test_clip()
+	anim.animation_clip_cache[guid] = _make_test_clip()
 
 	owner := engine.transform_new("Robot")
 	child := engine.transform_new("Arm", owner)
@@ -76,29 +77,29 @@ test_animation_component_tick :: proc(t: ^testing.T) {
 	ct.scale = {1, 1, 1}
 
 	_, a_ptr := engine.transform_add_comp(owner, .Animation)
-	a := cast(^engine.Animation)a_ptr
+	a := cast(^anim.Animation)a_ptr
 	a.enabled = true
 	a.clip = guid
 	a.play_automatically = true
 	a.speed = 1
 
 	// Half the clip: position lerps to x=1, the child's STEP scale snaps to 3.
-	engine.animation_tick(0.5)
+	anim.animation_tick(0.5)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	ct = engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	testing.expect(t, abs(ot.position.x - 1) < 0.001, "position should lerp to the midpoint")
 	testing.expect(t, ct.scale.x == 3, "STEP channel should hold the second key at t=0.5")
 
 	// Past the end with wrap Once: clamps to the last key and stops.
-	engine.animation_tick(1.0)
+	anim.animation_tick(1.0)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 2) < 0.001, "Once should clamp at the final key")
 	testing.expect(t, !a.playing, "Once should stop at the clip end")
 
 	// Loop override: restart, run 1.25s total → wrapped t=0.25 → x=0.5.
 	a.wrap_mode = .Loop
-	engine.animation_play(a)
-	engine.animation_tick(1.25)
+	anim.animation_play(a)
+	anim.animation_tick(1.25)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 0.5) < 0.001, "Loop should wrap the play time")
 	testing.expect(t, a.playing, "Loop should keep playing")
@@ -121,7 +122,7 @@ test_animation_clip_from_gltf :: proc(t: ^testing.T) {
 	testing.expect(t, len(data.animations) == 1, "fixture should have one animation")
 	if len(data.animations) != 1 do return
 
-	clip, ok := engine.animation_clip_from_gltf(data, &data.animations[0])
+	clip, ok := anim.animation_clip_from_gltf(data, &data.animations[0])
 	testing.expect(t, ok, "conversion should produce channels")
 	testing.expect(t, clip.length == 1, "length should come from the last key")
 	testing.expect(t, len(clip.channels) == 2, "both TRS channels should convert")
@@ -161,7 +162,14 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 
 	out :: "moonhug/tests/fixtures/_test_extracted_model.scene"
 	defer os.remove(out)
-	ok := engine.scene_from_gltf(data, "AnimatedCube", mesh_guid, {}, clip_guid, out)
+	// The same decorate_root wiring the editor's extraction uses: the engine
+	// authors the scene, the package puts the Animation component on the root.
+	add_animation := proc(root: engine.Transform_Handle, user: rawptr) {
+		_, a_raw := engine.transform_add_comp(root, .Animation)
+		a := cast(^anim.Animation)a_raw
+		a.clip = (cast(^engine.Asset_GUID)user)^
+	}
+	ok := engine.scene_from_gltf(data, "AnimatedCube", mesh_guid, {}, out, add_animation, &clip_guid)
 	testing.expect(t, ok, "scene_from_gltf should save")
 	if !ok do return
 
@@ -195,7 +203,33 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	testing.expect(t, mr != nil && len(mr.materials) == 1, "Cube should have one material slot")
 	_, root_mf := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.MeshFilter)
 	testing.expect(t, root_mf == nil, "root should not draw the whole model on top of the parts")
-	_, a := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.Animation)
+	_, a := anim.get_comp(engine.Transform_Handle(s.root.handle), anim.Animation)
 	testing.expect(t, a != nil && a.clip == clip_guid, "Animation should reference the first clip")
 	if a != nil do testing.expect(t, a.play_automatically, "Animation should default to play automatically")
+}
+
+// cleanup_Animation frees two levels of owned memory (layers, each layer's
+// clips) and must be idempotent: undo calls type_cleanup before restoring a
+// value, so a second call over already-freed state is a normal event.
+// comp_zero at the end of cleanup is what makes this safe — it clears the
+// pointers the first call released, so the nil checks short-circuit.
+@(test)
+test_animation_cleanup_is_idempotent :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	tH := engine.transform_new("A")
+	_, ptr := engine.transform_add_comp(tH, .Animation)
+	a := cast(^anim.Animation)ptr
+
+	a.layers = make([dynamic]anim.Animation_Layer)
+	append(&a.layers, anim.Animation_Layer{clips = make([dynamic]engine.Asset_GUID)})
+
+	engine.type_cleanup(.Animation, ptr)
+	engine.type_cleanup(.Animation, ptr)
+
+	testing.expect_value(t, len(a.layers), 0)
 }

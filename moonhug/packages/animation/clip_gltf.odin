@@ -1,10 +1,11 @@
-package engine
+package animation
 
 // glTF animation → AnimationClip conversion, used by the editor's
 // "Assets/Extract Assets" (asset_extract_gltf.odin). Lives in the engine next
 // to the mesh importer's cgltf use so it's testable without the editor.
 
 import cgltf "vendor:cgltf"
+import "moonhug:engine"
 import "core:strings"
 
 // AnimationClip (temp-allocated) from a glTF animation: every TRS channel
@@ -62,12 +63,12 @@ animation_clip_from_gltf :: proc(data: ^cgltf.data, an: ^cgltf.animation) -> (cl
 }
 
 // Node's name path from the hierarchy root down, "/"-joined (temp-allocated).
-// Names come from gltf_node_name (scene_gltf.odin), matching the transforms
+// Names come from engine.gltf_node_name (scene_gltf.odin), matching the transforms
 // scene_from_gltf creates.
 _gltf_node_path :: proc(data: ^cgltf.data, node: ^cgltf.node) -> string {
 	parts := make([dynamic]string, context.temp_allocator)
 	for n := node; n != nil; n = n.parent {
-		inject_at(&parts, 0, gltf_node_name(data, n))
+		inject_at(&parts, 0, engine.gltf_node_name(data, n))
 	}
 	return strings.join(parts[:], "/", context.temp_allocator)
 }

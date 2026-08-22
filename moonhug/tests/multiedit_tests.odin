@@ -250,26 +250,26 @@ test_multi_array_append_grows_every_peer :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .Animation)
-	_, b_ptr := engine.transform_add_comp(b, .Animation)
-	anim_a := cast(^engine.Animation)a_ptr
-	anim_b := cast(^engine.Animation)b_ptr
+	_, a_ptr := engine.transform_add_comp(a, .MeshRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .MeshRenderer)
+	mr_a := cast(^engine.MeshRenderer)a_ptr
+	mr_b := cast(^engine.MeshRenderer)b_ptr
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .Animation), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
-	elem_ti := type_info_of(engine.Animation_Layer)
-	offset := offset_of(engine.Animation, layers)
-	undo.push_component_owner(_comp_handle(a, .Animation))
-	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 0, peers, "Add Element")
+	elem_ti := type_info_of(engine.Asset_GUID)
+	offset := offset_of(engine.MeshRenderer, materials)
+	undo.push_component_owner(_comp_handle(a, .MeshRenderer))
+	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 0, peers, "Add Element")
 	undo.pop_owner()
 
 	// Active object AND peer both grew.
-	testing.expect_value(t, len(anim_a.layers), 1)
-	testing.expect_value(t, len(anim_b.layers), 1)
+	testing.expect_value(t, len(mr_a.materials), 1)
+	testing.expect_value(t, len(mr_b.materials), 1)
 }
 
 // One Add is one Ctrl-Z, however many objects are selected. Per-object
@@ -286,35 +286,35 @@ test_multi_array_append_is_one_undo_step :: proc(t: ^testing.T) {
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
 	c := engine.transform_new("C")
-	_, a_ptr := engine.transform_add_comp(a, .Animation)
-	_, b_ptr := engine.transform_add_comp(b, .Animation)
-	_, c_ptr := engine.transform_add_comp(c, .Animation)
-	anim_a := cast(^engine.Animation)a_ptr
-	anim_b := cast(^engine.Animation)b_ptr
-	anim_c := cast(^engine.Animation)c_ptr
+	_, a_ptr := engine.transform_add_comp(a, .MeshRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .MeshRenderer)
+	_, c_ptr := engine.transform_add_comp(c, .MeshRenderer)
+	mr_a := cast(^engine.MeshRenderer)a_ptr
+	mr_b := cast(^engine.MeshRenderer)b_ptr
+	mr_c := cast(^engine.MeshRenderer)c_ptr
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .Animation), scene = _scene_of(b)},
-		{base = c_ptr, handle = _comp_handle(c, .Animation), scene = _scene_of(c)},
+		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
+		{base = c_ptr, handle = _comp_handle(c, .MeshRenderer), scene = _scene_of(c)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
-	elem_ti := type_info_of(engine.Animation_Layer)
-	offset := offset_of(engine.Animation, layers)
-	undo.push_component_owner(_comp_handle(a, .Animation))
-	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 0, peers, "Add Element")
+	elem_ti := type_info_of(engine.Asset_GUID)
+	offset := offset_of(engine.MeshRenderer, materials)
+	undo.push_component_owner(_comp_handle(a, .MeshRenderer))
+	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 0, peers, "Add Element")
 	undo.pop_owner()
 
-	testing.expect_value(t, len(anim_a.layers), 1)
-	testing.expect_value(t, len(anim_b.layers), 1)
-	testing.expect_value(t, len(anim_c.layers), 1)
+	testing.expect_value(t, len(mr_a.materials), 1)
+	testing.expect_value(t, len(mr_b.materials), 1)
+	testing.expect_value(t, len(mr_c.materials), 1)
 
 	// ONE undo returns every object, not one object per press.
 	undo.apply_undo(s)
-	testing.expect_value(t, len(anim_a.layers), 0)
-	testing.expect_value(t, len(anim_b.layers), 0)
-	testing.expect_value(t, len(anim_c.layers), 0)
+	testing.expect_value(t, len(mr_a.materials), 0)
+	testing.expect_value(t, len(mr_b.materials), 0)
+	testing.expect_value(t, len(mr_c.materials), 0)
 }
 
 @(test)
@@ -327,38 +327,38 @@ test_multi_array_remove_skips_shorter_peers :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .Animation)
-	_, b_ptr := engine.transform_add_comp(b, .Animation)
-	anim_a := cast(^engine.Animation)a_ptr
-	anim_b := cast(^engine.Animation)b_ptr
+	_, a_ptr := engine.transform_add_comp(a, .MeshRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .MeshRenderer)
+	mr_a := cast(^engine.MeshRenderer)a_ptr
+	mr_b := cast(^engine.MeshRenderer)b_ptr
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .Animation), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle(b, .MeshRenderer), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
-	elem_ti := type_info_of(engine.Animation_Layer)
-	offset := offset_of(engine.Animation, layers)
+	elem_ti := type_info_of(engine.Asset_GUID)
+	offset := offset_of(engine.MeshRenderer, materials)
 
 	// Give the ACTIVE object two elements and the peer one, so a remove at
 	// index 1 has no counterpart on the peer.
-	undo.push_component_owner(_comp_handle(a, .Animation))
+	undo.push_component_owner(_comp_handle(a, .MeshRenderer))
 	defer undo.pop_owner()
-	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 0, peers, "Add")
-	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 0, nil, "Add")
-	testing.expect_value(t, len(anim_a.layers), 2)
-	testing.expect_value(t, len(anim_b.layers), 1)
+	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 0, peers, "Add")
+	inspector.multi_array_structural(.Append, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 0, nil, "Add")
+	testing.expect_value(t, len(mr_a.materials), 2)
+	testing.expect_value(t, len(mr_b.materials), 1)
 
 	// Index 1 exists on the active object only — the peer is left alone.
-	inspector.multi_array_structural(.Remove, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 1, peers, "Remove")
-	testing.expect_value(t, len(anim_a.layers), 1)
-	testing.expect_value(t, len(anim_b.layers), 1)
+	inspector.multi_array_structural(.Remove, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 1, peers, "Remove")
+	testing.expect_value(t, len(mr_a.materials), 1)
+	testing.expect_value(t, len(mr_b.materials), 1)
 
 	// Index 0 exists on both.
-	inspector.multi_array_structural(.Remove, (^runtime.Raw_Dynamic_Array)(&anim_a.layers), offset, elem_ti, 0, peers, "Remove")
-	testing.expect_value(t, len(anim_a.layers), 0)
-	testing.expect_value(t, len(anim_b.layers), 0)
+	inspector.multi_array_structural(.Remove, (^runtime.Raw_Dynamic_Array)(&mr_a.materials), offset, elem_ti, 0, peers, "Remove")
+	testing.expect_value(t, len(mr_a.materials), 0)
+	testing.expect_value(t, len(mr_b.materials), 0)
 }
 
 

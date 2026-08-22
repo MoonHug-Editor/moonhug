@@ -1,9 +1,9 @@
 # PlayableGraph
 
 > Implemented through the milestone (sequence steps 1-4): the graph core
-> (engine/playable_graph.odin), the Animation component driver
-> (engine/component_Animation.odin), and tests
-> (tests/playable_graph_tests.odin). Later sequence steps are design.
+> (packages/animation/playable_graph.odin), the Animation component driver
+> (packages/animation/component_Animation.odin), and tests
+> (packages/animation/tests/playable_graph_tests.odin). Later sequence steps are design.
 
 The animation evaluation layer. A PlayableGraph is a graph of nodes where
 leaves sample sources (animation clips, audio clips, script callbacks),
@@ -355,7 +355,7 @@ Done:
 1. This document reaches an accepted state.
 2. Engine core (playable_graph.odin): pose types, node pool, evaluator,
    script collection, animation output with binding cache and default-pose
-   blending. Headlessly tested (tests/playable_graph_tests.odin) — blend
+   blending. Headlessly tested (packages/animation/tests/playable_graph_tests.odin) — blend
    semantics, layer stacking, rotation nlerp, script deferral.
 3. `Animation` ported onto the graph. Existing scenes behave identically
    (the pre-graph component test passes unchanged).

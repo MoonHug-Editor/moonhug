@@ -1,4 +1,4 @@
-package engine
+package animation
 
 // PlayableGraph (docs/PlayableGraph.md): the animation evaluation layer.
 //
@@ -20,6 +20,7 @@ package engine
 // is applied, so callbacks never observe a half-evaluated frame.
 
 import "base:runtime"
+import "moonhug:engine"
 import "core:math/linalg"
 import "core:strings"
 
@@ -35,7 +36,7 @@ Playable_Input :: struct {
 
 // Leaf: samples an AnimationClip at the node's local time.
 Clip_Playable :: struct {
-	clip: Asset_GUID,
+	clip: engine.Asset_GUID,
 }
 
 // Blends its inputs by weight. Input weights sum to 1 in normal play — a sum
@@ -169,7 +170,7 @@ Pose_Value :: struct {
 // Defaults are CAPTURED AT BIND TIME (docs/PlayableGraph.md default pose rule).
 Binding_Slot :: struct {
 	path:        string, // owned copy of the channel target path
-	target:      Transform_Handle,
+	target:      engine.Transform_Handle,
 	resolved:    bool,
 	animated:    Pose_Props,
 	default_pos: [3]f32,
@@ -181,12 +182,12 @@ Binding_Slot :: struct {
 // per-frame name walk the pre-graph runtime did on every apply: paths resolve
 // once and re-resolve only when their handle dies (reparent/delete/reload).
 Animation_Binding :: struct {
-	owner:   Transform_Handle,
+	owner:   engine.Transform_Handle,
 	slots:   [dynamic]Binding_Slot,
 	by_path: map[string]i32,
 }
 
-animation_binding_init :: proc(b: ^Animation_Binding, owner: Transform_Handle) {
+animation_binding_init :: proc(b: ^Animation_Binding, owner: engine.Transform_Handle) {
 	b.owner = owner
 	b.slots = make([dynamic]Binding_Slot)
 	b.by_path = make(map[string]i32)
@@ -218,8 +219,8 @@ _binding_resolve :: proc(b: ^Animation_Binding, s: ^Binding_Slot) {
 	s.resolved = false
 	tH, ok := _animation_resolve_target(b.owner, s.path)
 	if !ok do return
-	w := ctx_world()
-	t := pool_get(&w.transforms, Handle(tH))
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
 	s.target = tH
 	s.resolved = true
@@ -234,13 +235,13 @@ _binding_resolve :: proc(b: ^Animation_Binding, s: ^Binding_Slot) {
 // rendering), so partial-weight blends resolve against the CURRENT authored
 // pose and edits made between scrubs are picked up.
 animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
-	w := ctx_world()
+	w := engine.ctx_world()
 	for &s in b.slots {
-		if !s.resolved || !pool_valid(&w.transforms, Handle(s.target)) {
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) {
 			_binding_resolve(b, &s)
 			continue
 		}
-		t := pool_get(&w.transforms, Handle(s.target))
+		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
 		s.default_pos = t.position
 		s.default_rot = t.rotation
@@ -251,10 +252,10 @@ animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
 // Write the defaults back to the bound transforms, animated properties only —
 // the scrub preview's restore: the world returns to its authored pose.
 animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
-	w := ctx_world()
+	w := engine.ctx_world()
 	for &s in b.slots {
-		if !s.resolved || !pool_valid(&w.transforms, Handle(s.target)) do continue
-		t := pool_get(&w.transforms, Handle(s.target))
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) do continue
+		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
 		if .Position in s.animated do t.position = s.default_pos
 		if .Rotation in s.animated do t.rotation = s.default_rot
@@ -443,14 +444,14 @@ _pose_blend_over :: proc(out, child: []Pose_Value, layer_w: f32) {
 // the default. Slots whose handle died re-resolve here — that covers
 // reparent/delete/reload of the target.
 animation_pose_apply :: proc(b: ^Animation_Binding, pose: []Pose_Value) {
-	w := ctx_world()
+	w := engine.ctx_world()
 	for i in 0 ..< len(pose) {
 		s := &b.slots[i]
-		if !s.resolved || !pool_valid(&w.transforms, Handle(s.target)) {
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) {
 			_binding_resolve(b, s)
 			if !s.resolved do continue
 		}
-		t := pool_get(&w.transforms, Handle(s.target))
+		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
 		p := &pose[i]
 		if .Position in s.animated do t.position = _finalize_vec(p.pos, p.pos_w, s.default_pos)

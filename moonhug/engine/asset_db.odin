@@ -142,6 +142,25 @@ _free_root_index :: proc() {
 // registration, changed scene assets re-index, deleted assets unregister and
 // their orphaned metas are removed. Renames arrive as delete+create; the meta
 // travels with the file (project view moves it), so the guid stays stable.
+// Fired by asset_db_refresh for every created or modified source path.
+// Packages register cache invalidation for their asset extensions here
+// (the animation package drops edited .anim clips), the way built-in
+// material/shader caches are called directly above.
+Path_Changed_Hook :: proc(path: string)
+
+_path_changed_hooks: [dynamic]Path_Changed_Hook
+
+asset_db_add_path_changed_hook :: proc(hook: Path_Changed_Hook) {
+    for h in _path_changed_hooks {
+        if h == hook do return
+    }
+    // Registry state never borrows the caller's allocator (same rule as
+    // asset_pipeline_add_reimport_hook — tests hand out scoped tracking
+    // allocators).
+    context.allocator = runtime.default_allocator()
+    append(&_path_changed_hooks, hook)
+}
+
 asset_db_refresh :: proc() {
     walk: _Db_Walk
     walk.files = make(map[string]Asset_File_Stamp, context.temp_allocator)
@@ -192,7 +211,7 @@ asset_db_refresh :: proc() {
         _reindex_if_scene(path)
         material_path_changed(path) // externally edited .mat: drop the cache entry
         shader_path_changed(path)   // edited .glsl: reimport + hot-reload pipelines
-        animation_clip_path_changed(path) // edited .anim: drop the cache entry
+        for hook in _path_changed_hooks do hook(path)
     }
 
     // Orphaned metas: a .meta whose asset (file or folder) is gone.

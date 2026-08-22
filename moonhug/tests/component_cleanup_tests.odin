@@ -114,17 +114,17 @@ test_cleanup_is_idempotent :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	tH := engine.transform_new("A")
-	_, ptr := engine.transform_add_comp(tH, .Animation)
-	anim := cast(^engine.Animation)ptr
+	_, ptr := engine.transform_add_comp(tH, .MeshRenderer)
+	mr := cast(^engine.MeshRenderer)ptr
 
-	anim.layers = make([dynamic]engine.Animation_Layer)
-	append(&anim.layers, engine.Animation_Layer{clips = make([dynamic]engine.Asset_GUID)})
+	mr.materials = make([dynamic]engine.Asset_GUID)
+	append(&mr.materials, engine.Asset_GUID{})
 
 	// Twice in a row: the second call must not double-free. comp_zero at the end
 	// of cleanup is what makes this safe — it clears the pointers the first call
 	// released, so the nil checks short-circuit.
-	engine.type_cleanup(.Animation, ptr)
-	engine.type_cleanup(.Animation, ptr)
+	engine.type_cleanup(.MeshRenderer, ptr)
+	engine.type_cleanup(.MeshRenderer, ptr)
 
-	testing.expect_value(t, len(anim.layers), 0)
+	testing.expect_value(t, len(mr.materials), 0)
 }

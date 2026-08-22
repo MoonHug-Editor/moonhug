@@ -29,6 +29,7 @@ import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
+import anim "moonhug:packages/animation"
 import ser "../engine/serialization"
 import "inspector"
 import "menu"
@@ -63,9 +64,9 @@ _pv: struct {
 	owner:   engine.Transform_Handle, // the Animation component's transform
 	clip:    engine.Asset_GUID,
 	time:    f32,
-	graph:     engine.Playable_Graph, // the component's FULL authored graph
-	binding:   engine.Animation_Binding,
-	node:      engine.Playable_Handle, // the scrubbed clip's node (weight 1)
+	graph:     anim.Playable_Graph, // the component's FULL authored graph
+	binding:   anim.Animation_Binding,
+	node:      anim.Playable_Handle, // the scrubbed clip's node (weight 1)
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
 
@@ -90,8 +91,8 @@ animation_preview_stop :: proc() {
 @(private = "file")
 _pv_teardown :: proc() {
 	if _pv.ready {
-		engine.playable_graph_destroy(&_pv.graph)
-		engine.animation_binding_destroy(&_pv.binding)
+		anim.playable_graph_destroy(&_pv.graph)
+		anim.animation_binding_destroy(&_pv.binding)
 	}
 	_pv.ready = false
 	_pv.node = {}
@@ -107,7 +108,7 @@ _pv_deselect :: proc() {
 // The scrub preview's live graph, for the Playable Graph visualizer — nil
 // unless the preview is on for `owner` and its graph exists.
 @(private)
-_pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^engine.Playable_Graph {
+_pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^anim.Playable_Graph {
 	if !_pv.active || !_pv.ready || _pv.owner != owner do return nil
 	return &_pv.graph
 }
@@ -117,11 +118,11 @@ _pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^engine.Playable_Gr
 // selecting a child bone keeps the window on the animated root. Shared with
 // the Playable Graph visualizer, which targets identically.
 @(private)
-_pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^engine.Animation) {
+_pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	w := engine.ctx_world()
 	tH := sel_scene_active()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
-		if _, comp := engine.transform_get_comp(tH, engine.Animation); comp != nil {
+		if _, comp := anim.get_comp(tH, anim.Animation); comp != nil {
 			return tH, comp
 		}
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
@@ -134,7 +135,7 @@ _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^engine.Animation) {
 // Every clip reachable from the component: the default clip plus the authored
 // layers' clips, deduplicated, temp-allocated.
 @(private = "file")
-_pv_clips :: proc(a: ^engine.Animation) -> []engine.Asset_GUID {
+_pv_clips :: proc(a: ^anim.Animation) -> []engine.Asset_GUID {
 	clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
 	_pv_clips_add(&clips, a.clip)
 	for &l in a.layers {
@@ -166,13 +167,13 @@ _pv_clip_name :: proc(g: engine.Asset_GUID) -> string {
 // The selected clip's asset document — the edit target. Refetched every frame:
 // undo/redo swaps the document payload, so pointers never survive a frame.
 @(private = "file")
-_pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
+_pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if _pv.clip == {} do return nil, nil
 	path, ok := engine.asset_db_get_path(uuid.Identifier(_pv.clip))
 	if !ok do return nil, nil
 	d := inspector.asset_doc_get(path)
-	if d == nil || d.data.id != typeid_of(engine.AnimationClip) do return nil, nil
-	return d, cast(^engine.AnimationClip)d.data.data
+	if d == nil || d.data.id != typeid_of(anim.AnimationClip) do return nil, nil
+	return d, cast(^anim.AnimationClip)d.data.data
 }
 
 // The animation view edits a document across frames (dragging a keyframe), so
@@ -210,7 +211,7 @@ _pv_mark_edited :: proc(doc: ^inspector.Asset_Doc) {
 // drag/typing session. Rotation keys renormalize at commit so slerp sampling
 // stays valid without fighting the drag.
 @(private = "file")
-_pv_field_undo :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip, changed: bool) {
+_pv_field_undo :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, changed: bool) {
 	if im.IsItemActivated() do _pv_edit_begin(doc)
 	if changed do _pv_mark_edited(doc)
 	if im.IsItemDeactivatedAfterEdit() {
@@ -223,13 +224,13 @@ _pv_field_undo :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip, c
 }
 
 @(private = "file")
-_pv_normalize_rot_key :: proc(ch: ^engine.Animation_Channel, k: int) {
+_pv_normalize_rot_key :: proc(ch: ^anim.Animation_Channel, k: int) {
 	v := ch.values[k]
 	if l := linalg.length(v); l > 0.0001 do ch.values[k] = (1.0 / l) * v
 }
 
 @(private = "file")
-_pv_sel_valid :: proc(clip: ^engine.AnimationClip) -> bool {
+_pv_sel_valid :: proc(clip: ^anim.AnimationClip) -> bool {
 	if _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels) do return false
 	return _pv.sel_key >= 0 && _pv.sel_key < len(clip.channels[_pv.sel_ch].times)
 }
@@ -239,14 +240,14 @@ _pv_sel_valid :: proc(clip: ^engine.AnimationClip) -> bool {
 // Insert a key at `t` sampling the curve's current value there, so adding a
 // key never changes the curve's shape (Unity's Add Key).
 @(private = "file")
-_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip, ch_idx: int, t: f32) {
+_pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32) {
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
 	ch := &clip.channels[ch_idx]
 	t := clamp(t, 0, clip.length)
 	for kt in ch.times {
 		if abs(kt - t) < 0.0005 do return
 	}
-	v := engine._animation_channel_sample(ch, t)
+	v := anim._animation_channel_sample(ch, t)
 	idx := len(ch.times)
 	for kt, i in ch.times {
 		if kt > t {
@@ -265,7 +266,7 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip, ch_i
 // The last key of a channel stays — an empty channel samples to zero, which
 // is never what a delete meant.
 @(private = "file")
-_pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
+_pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if !_pv_sel_valid(clip) do return
 	ch := &clip.channels[_pv.sel_ch]
 	if len(ch.times) <= 1 do return
@@ -279,7 +280,7 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
 // A dragged key stays between its neighbors (and inside the clip), so the
 // times array keeps its sort order without reindexing mid-drag.
 @(private = "file")
-_pv_drag_time_bounds :: proc(ch: ^engine.Animation_Channel, k: int, length: f32) -> (lo, hi: f32) {
+_pv_drag_time_bounds :: proc(ch: ^anim.Animation_Channel, k: int, length: f32) -> (lo, hi: f32) {
 	lo = k > 0 ? ch.times[k - 1] : 0
 	hi = k < len(ch.times) - 1 ? ch.times[k + 1] : length
 	return
@@ -360,13 +361,13 @@ draw_animation_view :: proc() {
 	if _pv.sync {
 		_pv.sync = false
 		if d2, c2 := _pv_doc(); c2 != nil {
-			engine.animation_clip_preview(d2.guid, c2^)
+			anim.animation_clip_preview(d2.guid, c2^)
 		}
 	}
 }
 
 @(private = "file")
-_pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip, clips: []engine.Asset_GUID, length: f32) {
+_pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID, length: f32) {
 	// Preview toggle (Unity's Animation window preview button). The pop must
 	// match the state at push time — the click flips _pv.active in between.
 	tinted := _pv.active
@@ -428,7 +429,7 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip,
 // The sheet: property rows on the left, the time canvas (ruler + dopesheet
 // keys or curves) on the right, one interaction surface each.
 @(private = "file")
-_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
+_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	dl := im.GetWindowDrawList()
 	origin := im.GetCursorScreenPos()
 	avail := im.GetContentRegionAvail()
@@ -544,7 +545,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
 // --- Dopesheet ------------------------------------------------------------------------
 
 @(private = "file")
-_pv_key_hit_x :: proc(ch: ^engine.Animation_Channel, mx, tx0, pps: f32) -> int {
+_pv_key_hit_x :: proc(ch: ^anim.Animation_Channel, mx, tx0, pps: f32) -> int {
 	best := -1
 	best_d := _ANIM_HIT
 	for t, k in ch.times {
@@ -560,7 +561,7 @@ _pv_key_hit_x :: proc(ch: ^engine.Animation_Channel, mx, tx0, pps: f32) -> int {
 @(private = "file")
 _pv_sheet_dopesheet :: proc(
 	doc: ^inspector.Asset_Doc,
-	clip: ^engine.AnimationClip,
+	clip: ^anim.AnimationClip,
 	dl: ^im.DrawList,
 	origin: im.Vec2,
 	rows_y, body_h, x0, x1, tx0, pps: f32,
@@ -637,7 +638,7 @@ _pv_curve_y_to_v :: proc(y, rows_y, body_h: f32) -> f32 {
 @(private = "file")
 _pv_sheet_curves :: proc(
 	doc: ^inspector.Asset_Doc,
-	clip: ^engine.AnimationClip,
+	clip: ^anim.AnimationClip,
 	dl: ^im.DrawList,
 	rows_y, body_h, x0, x1, tx0, pps: f32,
 	mp: im.Vec2,
@@ -694,7 +695,7 @@ _pv_sheet_curves :: proc(
 		col := im.GetColorU32ImVec4(comp_cols[c])
 		pts := make([dynamic]im.Vec2, context.temp_allocator)
 		for x := tx0; x <= x1 - _ANIM_PAD_X + 3; x += 3 {
-			v := engine._animation_channel_sample(ch, (x - tx0) / pps)
+			v := anim._animation_channel_sample(ch, (x - tx0) / pps)
 			append(&pts, im.Vec2{x, _pv_curve_v_to_y(v[c], rows_y, body_h)})
 		}
 		if len(pts) >= 2 {
@@ -743,7 +744,7 @@ _pv_sheet_curves :: proc(
 // --- Selected-key footer ----------------------------------------------------------------
 
 @(private = "file")
-_pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationClip) {
+_pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	ch := &clip.channels[_pv.sel_ch]
 	k := _pv.sel_key
 
@@ -775,7 +776,7 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^engine.AnimationCl
 // A fingerprint of the component's authored clip set, so the preview graph
 // rebuilds when layers/clips are edited while previewing.
 @(private = "file")
-_pv_authored_sig :: proc(a: ^engine.Animation) -> u64 {
+_pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 	sig := u64(0xcbf29ce484222325)
 	_pv_sig_mix(&sig, a.clip)
 	for &l in a.layers {
@@ -798,16 +799,16 @@ _pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
 // but the preview path is the graph the component actually plays, and the
 // Playable Graph visualizer shows the real topology with live weights.
 @(private = "file")
-_pv_build_graph :: proc(a: ^engine.Animation) {
-	engine.playable_graph_init(&_pv.graph)
-	engine.animation_binding_init(&_pv.binding, _pv.owner)
-	_pv.graph.root = engine.playable_add(&_pv.graph, engine.Layer_Mixer_Playable{})
+_pv_build_graph :: proc(a: ^anim.Animation) {
+	anim.playable_graph_init(&_pv.graph)
+	anim.animation_binding_init(&_pv.binding, _pv.owner)
+	_pv.graph.root = anim.playable_add(&_pv.graph, anim.Layer_Mixer_Playable{})
 	_pv.node = {}
 
 	n_layers := max(len(a.layers), 1)
 	for li in 0 ..< n_layers {
-		mixer := engine.playable_add(&_pv.graph, engine.Mixer_Playable{})
-		engine.playable_connect(&_pv.graph, _pv.graph.root, mixer, 1)
+		mixer := anim.playable_add(&_pv.graph, anim.Mixer_Playable{})
+		anim.playable_connect(&_pv.graph, _pv.graph.root, mixer, 1)
 
 		clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
 		if li == 0 do _pv_clips_add(&clips, a.clip)
@@ -815,13 +816,13 @@ _pv_build_graph :: proc(a: ^engine.Animation) {
 			for c in a.layers[li].clips do _pv_clips_add(&clips, c)
 		}
 		for c in clips {
-			node := engine.playable_add(&_pv.graph, engine.Clip_Playable{clip = c})
+			node := anim.playable_add(&_pv.graph, anim.Clip_Playable{clip = c})
 			w := f32(0)
 			if c == _pv.clip && _pv.node == {} {
 				_pv.node = node
 				w = 1
 			}
-			engine.playable_connect(&_pv.graph, mixer, node, w)
+			anim.playable_connect(&_pv.graph, mixer, node, w)
 		}
 	}
 	_pv.graph_sig = _pv_authored_sig(a)
@@ -837,23 +838,23 @@ animation_preview_apply :: proc() {
 		_pv.active = false
 		return
 	}
-	_, a := engine.transform_get_comp(_pv.owner, engine.Animation)
+	_, a := anim.get_comp(_pv.owner, anim.Animation)
 	if a == nil {
 		_pv.active = false
 		return
 	}
-	clip, ok := engine.animation_clip_load(_pv.clip)
+	clip, ok := anim.animation_clip_load(_pv.clip)
 	if !ok do return
 
 	if _pv.ready && _pv.graph_sig != _pv_authored_sig(a) do _pv_teardown()
 	if !_pv.ready do _pv_build_graph(a)
-	if n := engine.playable_node(&_pv.graph, _pv.node); n != nil {
+	if n := anim.playable_node(&_pv.graph, _pv.node); n != nil {
 		n.time = clamp(_pv.time, 0, clip.length)
 	}
 
-	engine.animation_binding_refresh_defaults(&_pv.binding)
-	pose := engine.playable_graph_evaluate(&_pv.graph, &_pv.binding)
-	engine.animation_pose_apply(&_pv.binding, pose)
+	anim.animation_binding_refresh_defaults(&_pv.binding)
+	pose := anim.playable_graph_evaluate(&_pv.graph, &_pv.binding)
+	anim.animation_pose_apply(&_pv.binding, pose)
 	_pv.applied = true
 }
 
@@ -862,5 +863,5 @@ animation_preview_apply :: proc() {
 animation_preview_restore :: proc() {
 	if !_pv.applied do return
 	_pv.applied = false
-	engine.animation_binding_write_defaults(&_pv.binding)
+	anim.animation_binding_write_defaults(&_pv.binding)
 }

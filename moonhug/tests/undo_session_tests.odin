@@ -355,25 +355,25 @@ test_structural_edit_covers_selection_in_one_step :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .Animation)
-	_, b_ptr := engine.transform_add_comp(b, .Animation)
-	anim_a := cast(^engine.Animation)a_ptr
-	anim_b := cast(^engine.Animation)b_ptr
-	anim_a.speed = 1
-	anim_b.speed = 1
+	_, a_ptr := engine.transform_add_comp(a, .Light)
+	_, b_ptr := engine.transform_add_comp(b, .Light)
+	light_a := cast(^engine.Light)a_ptr
+	light_b := cast(^engine.Light)b_ptr
+	light_a.intensity = 1
+	light_b.intensity = 1
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle_of(b, .Animation), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle_of(b, .Light), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
 	before := s.top
-	undo.push_component_owner(_comp_handle_of(a, .Animation))
+	undo.push_component_owner(_comp_handle_of(a, .Light))
 	sess := inspector.structural_edit_begin("Invoke")
 	// What a button's `invoke` does: mutate every selected object's component.
-	anim_a.speed = 4
-	anim_b.speed = 4
+	light_a.intensity = 4
+	light_b.intensity = 4
 	inspector.structural_edit_end(&sess)
 	undo.pop_owner()
 
@@ -381,8 +381,8 @@ test_structural_edit_covers_selection_in_one_step :: proc(t: ^testing.T) {
 
 	// One undo takes BOTH back, not just the active object.
 	undo.apply_undo(s)
-	testing.expect_value(t, anim_a.speed, f32(1))
-	testing.expect_value(t, anim_b.speed, f32(1))
+	testing.expect_value(t, light_a.intensity, f32(1))
+	testing.expect_value(t, light_b.intensity, f32(1))
 }
 
 // An inspector button runs on EVERY selected object, in one undo step.
@@ -401,40 +401,40 @@ test_inspector_button_invokes_across_selection :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .Animation)
-	_, b_ptr := engine.transform_add_comp(b, .Animation)
-	anim_a := cast(^engine.Animation)a_ptr
-	anim_b := cast(^engine.Animation)b_ptr
-	anim_a.speed = 1
-	anim_b.speed = 1
+	_, a_ptr := engine.transform_add_comp(a, .Light)
+	_, b_ptr := engine.transform_add_comp(b, .Light)
+	light_a := cast(^engine.Light)a_ptr
+	light_b := cast(^engine.Light)b_ptr
+	light_a.intensity = 1
+	light_b.intensity = 1
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle_of(b, .Animation), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle_of(b, .Light), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
 
-	btn := inspector.Inspector_Button{label = "Double Speed", invoke = _btn_double_speed}
+	btn := inspector.Inspector_Button{label = "Double Intensity", invoke = _btn_double_intensity}
 
 	before := s.top
-	undo.push_component_owner(_comp_handle_of(a, .Animation))
+	undo.push_component_owner(_comp_handle_of(a, .Light))
 	inspector.inspector_button_invoke(btn, a_ptr)
 	undo.pop_owner()
 
 	// Both ran, and it is ONE step.
-	testing.expect_value(t, anim_a.speed, f32(2))
-	testing.expect_value(t, anim_b.speed, f32(2))
+	testing.expect_value(t, light_a.intensity, f32(2))
+	testing.expect_value(t, light_b.intensity, f32(2))
 	testing.expect_value(t, s.top, before + 1)
 
 	undo.apply_undo(s)
-	testing.expect_value(t, anim_a.speed, f32(1))
-	testing.expect_value(t, anim_b.speed, f32(1))
+	testing.expect_value(t, light_a.intensity, f32(1))
+	testing.expect_value(t, light_b.intensity, f32(1))
 }
 
 @(private)
-_btn_double_speed :: proc(comp: rawptr) {
-	anim := cast(^engine.Animation)comp
-	anim.speed *= 2
+_btn_double_intensity :: proc(comp: rawptr) {
+	light := cast(^engine.Light)comp
+	light.intensity *= 2
 }
 
 // Switching a union variant zeroes the payload and records one undo step.

@@ -15,6 +15,7 @@ import "core:encoding/uuid"
 import "core:fmt"
 import strings "core:strings"
 import engine "../../engine"
+import anim "moonhug:packages/animation"
 import ser "../../engine/serialization"
 import "../../engine/log"
 
@@ -100,10 +101,10 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> boo
         engine.material_preview(doc.guid, mat^)
     }
     // Same live-preview contract for clips: an undone/redone clip document
-    // must reach the engine cache the scrub preview and runtime sample from.
-    if tid == typeid_of(engine.AnimationClip) {
-        anim := cast(^engine.AnimationClip)doc.data.data
-        engine.animation_clip_preview(doc.guid, anim^)
+    // must reach the clip cache the scrub preview and runtime sample from.
+    if tid == typeid_of(anim.AnimationClip) {
+        clip := cast(^anim.AnimationClip)doc.data.data
+        anim.animation_clip_preview(doc.guid, clip^)
     }
     return true
 }

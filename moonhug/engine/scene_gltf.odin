@@ -44,10 +44,13 @@ gltf_mesh_materials :: proc(mesh: ^cgltf.mesh, alloc := context.temp_allocator) 
 // Author a .scene at out_path: root named `name`, children mirroring the
 // glTF node tree, mesh-bearing nodes wired to their part of the model.
 // `material_guids` is indexed by glTF material index (data.materials order,
-// empty guids stay white); empty mesh/clip guids skip their components. The
-// scene is built in a TEMPORARY active scene and torn down after saving —
-// the caller's active scene and selection are untouched.
-scene_from_gltf :: proc(data: ^cgltf.data, name: string, mesh_guid: Asset_GUID, material_guids: []Asset_GUID, clip: Asset_GUID, out_path: string) -> bool {
+// empty guids stay white); an empty mesh guid skips the mesh components.
+// `decorate_root` runs on the root before saving — the caller adds root
+// components the engine doesn't know (the editor's extraction wires the
+// animation package's Animation component this way). The scene is built in
+// a TEMPORARY active scene and torn down after saving — the caller's active
+// scene and selection are untouched.
+scene_from_gltf :: proc(data: ^cgltf.data, name: string, mesh_guid: Asset_GUID, material_guids: []Asset_GUID, out_path: string, decorate_root: proc(root: Transform_Handle, user: rawptr) = nil, user: rawptr = nil) -> bool {
 	prev := sm_scene_get_active()
 	s := scene_new()
 	sm_scene_set_active(s)
@@ -58,10 +61,7 @@ scene_from_gltf :: proc(data: ^cgltf.data, name: string, mesh_guid: Asset_GUID, 
 	root := transform_new(name)
 	scene_set_root(s, root)
 
-	if clip != {} {
-		_, a_raw := transform_add_comp(root, .Animation)
-		(cast(^Animation)a_raw).clip = clip
-	}
+	if decorate_root != nil do decorate_root(root, user)
 
 	for &node in data.nodes {
 		if node.parent == nil do _scene_gltf_add_node(data, &node, root, mesh_guid, material_guids)

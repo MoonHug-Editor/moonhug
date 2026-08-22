@@ -18,6 +18,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import engine "../engine"
+import anim "moonhug:packages/animation"
 import "../engine/serialization"
 
 @(menu_separator={path="Assets", order=-45})
@@ -168,7 +169,7 @@ extract_gltf_assets :: proc(model_path: string) {
 			fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
 			continue
 		}
-		clip, ok := engine.animation_clip_from_gltf(data, &an)
+		clip, ok := anim.animation_clip_from_gltf(data, &an)
 		if !ok {
 			fmt.printf("[Editor] Extract: no usable channels in %s\n", out)
 			continue
@@ -204,12 +205,21 @@ extract_gltf_assets :: proc(model_path: string) {
 			append(&mats, path_guid(_gltf_mat_out_path(dir, stem, &m, mi)))
 		}
 
+		// The engine authors the scene; the Animation component comes from the
+		// animation package, wired onto the root here (scene_from_gltf's
+		// decorate_root seam).
 		clip_guid: engine.Asset_GUID
 		if len(data.animations) > 0 {
 			clip_guid = path_guid(_gltf_anim_out_path(dir, stem, &data.animations[0], 0))
 		}
+		add_animation := proc(root: engine.Transform_Handle, user: rawptr) {
+			clip := (cast(^engine.Asset_GUID)user)^
+			if clip == {} do return
+			_, a_raw := engine.transform_add_comp(root, .Animation)
+			(cast(^anim.Animation)a_raw).clip = clip
+		}
 
-		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], clip_guid, scene_out) {
+		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], scene_out, add_animation, &clip_guid) {
 			scenes_written += 1
 		} else {
 			fmt.printf("[Editor] Extract: failed to write %s\n", scene_out)

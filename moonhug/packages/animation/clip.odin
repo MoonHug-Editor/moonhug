@@ -1,4 +1,4 @@
-package engine
+package animation
 
 // Unity-style AnimationClip asset: keyframe curves that animate transform
 // position/rotation/scale over time. Clips are JSON files under assets/
@@ -12,6 +12,7 @@ package engine
 // files whose paths mirror the glTF node hierarchy.
 
 import "core:encoding/json"
+import "moonhug:engine"
 import "core:encoding/uuid"
 import "core:math"
 import "core:math/linalg"
@@ -57,11 +58,20 @@ make_pAnimationClip :: proc() -> any {
 
 // --- Cache (mirrors material.odin) ------------------------------------------------
 
-animation_clip_cache: map[Asset_GUID]AnimationClip
+animation_clip_cache: map[engine.Asset_GUID]AnimationClip
 _animation_clip_cache_ready: bool
 
+// ImportersInit is the asset-layer init phase both binaries run (the editor
+// via phase_editor_run, the app via app_init) — same slot the audio package
+// uses for its importer.
+@(phase={key=ImportersInit, order=2})
+animation_package_init :: proc() {
+	if !_animation_clip_cache_ready do animation_clip_cache_init()
+	engine.asset_db_add_path_changed_hook(animation_clip_path_changed)
+}
+
 animation_clip_cache_init :: proc() {
-	animation_clip_cache = make(map[Asset_GUID]AnimationClip)
+	animation_clip_cache = make(map[engine.Asset_GUID]AnimationClip)
 	_animation_clip_cache_ready = true
 }
 
@@ -76,13 +86,13 @@ animation_clip_cache_shutdown :: proc() {
 
 // Clips hold no GPU resources — loads work headless in contexts that
 // initialized the cache.
-animation_clip_load :: proc(guid: Asset_GUID) -> (^AnimationClip, bool) {
+animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 	if clip, ok := &animation_clip_cache[guid]; ok {
 		return clip, true
 	}
 	if !_animation_clip_cache_ready do return nil, false
 
-	path, path_ok := asset_db_get_path(uuid.Identifier(guid))
+	path, path_ok := engine.asset_db_get_path(uuid.Identifier(guid))
 	if !path_ok do return nil, false
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil, false
@@ -96,7 +106,7 @@ animation_clip_load :: proc(guid: Asset_GUID) -> (^AnimationClip, bool) {
 	return &animation_clip_cache[guid], true
 }
 
-animation_clip_unload :: proc(guid: Asset_GUID) {
+animation_clip_unload :: proc(guid: engine.Asset_GUID) {
 	if clip, ok := &animation_clip_cache[guid]; ok {
 		_animation_clip_destroy(clip)
 		delete_key(&animation_clip_cache, guid)
@@ -107,7 +117,7 @@ animation_clip_unload :: proc(guid: Asset_GUID) {
 // preview of unsaved asset-document edits (mirrors material_preview): the
 // scrub preview and any playing Animation component sample the edited values
 // immediately, while the file keeps the last saved state.
-animation_clip_preview :: proc(guid: Asset_GUID, clip: AnimationClip) {
+animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	if !_animation_clip_cache_ready do return
 	if old, ok := &animation_clip_cache[guid]; ok {
 		_animation_clip_destroy(old)
@@ -128,8 +138,8 @@ animation_clip_preview :: proc(guid: Asset_GUID, clip: AnimationClip) {
 // Cache invalidation for external file changes, called from asset_db_refresh.
 animation_clip_path_changed :: proc(path: string) {
 	if !strings.has_suffix(path, ".anim") do return
-	if guid, ok := asset_db_get_guid(path); ok {
-		animation_clip_unload(Asset_GUID(guid))
+	if guid, ok := engine.asset_db_get_guid(path); ok {
+		animation_clip_unload(engine.Asset_GUID(guid))
 	}
 }
 
@@ -147,12 +157,12 @@ _animation_clip_destroy :: proc(clip: ^AnimationClip) {
 
 // Write every channel's value at `time` into the owner's transform hierarchy.
 // Channels whose target path doesn't resolve are skipped.
-animation_clip_apply :: proc(clip: ^AnimationClip, owner: Transform_Handle, time: f32) {
-	w := ctx_world()
+animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handle, time: f32) {
+	w := engine.ctx_world()
 	for &ch in clip.channels {
 		tH, ok := _animation_resolve_target(owner, ch.target)
 		if !ok do continue
-		t := pool_get(&w.transforms, Handle(tH))
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do continue
 		v := _animation_channel_sample(&ch, time)
 		switch ch.path {
@@ -164,10 +174,10 @@ animation_clip_apply :: proc(clip: ^AnimationClip, owner: Transform_Handle, time
 }
 
 // Walk children by name along a "/"-separated path. Empty path = the owner.
-_animation_resolve_target :: proc(owner: Transform_Handle, path: string) -> (Transform_Handle, bool) {
-	w := ctx_world()
+_animation_resolve_target :: proc(owner: engine.Transform_Handle, path: string) -> (engine.Transform_Handle, bool) {
+	w := engine.ctx_world()
 	cur := owner
-	if len(path) == 0 do return cur, pool_valid(&w.transforms, Handle(cur))
+	if len(path) == 0 do return cur, engine.pool_valid(&w.transforms, engine.Handle(cur))
 	rest := path
 	for len(rest) > 0 {
 		name := rest
@@ -177,13 +187,13 @@ _animation_resolve_target :: proc(owner: Transform_Handle, path: string) -> (Tra
 		} else {
 			rest = ""
 		}
-		t := pool_get(&w.transforms, Handle(cur))
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
 		if t == nil do return {}, false
 		found := false
 		for child in t.children {
-			ct := pool_get(&w.transforms, child.handle)
+			ct := engine.pool_get(&w.transforms, child.handle)
 			if ct != nil && ct.name == name {
-				cur = Transform_Handle(child.handle)
+				cur = engine.Transform_Handle(child.handle)
 				found = true
 				break
 			}
@@ -213,9 +223,9 @@ _animation_channel_sample :: proc(ch: ^Animation_Channel, time: f32) -> [4]f32 {
 	span := ch.times[hi] - ch.times[lo]
 	k := span > 0 ? (time - ch.times[lo]) / span : 0
 	if ch.path == .Rotation {
-		a := quat_to_native(ch.values[lo])
-		b := quat_to_native(ch.values[hi])
-		return quat_from_native(linalg.quaternion_slerp(a, b, k))
+		a := engine.quat_to_native(ch.values[lo])
+		b := engine.quat_to_native(ch.values[hi])
+		return engine.quat_from_native(linalg.quaternion_slerp(a, b, k))
 	}
 	return linalg.lerp(ch.values[lo], ch.values[hi], k)
 }

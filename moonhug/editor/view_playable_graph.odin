@@ -20,6 +20,7 @@ import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import engine "../engine"
+import anim "moonhug:packages/animation"
 
 @(private = "file") _PG_COL_W :: f32(230) // one depth rank
 @(private = "file") _PG_ROW_H :: f32(95)
@@ -49,7 +50,7 @@ draw_playable_graph_view :: proc() {
 		return
 	}
 
-	g: ^engine.Playable_Graph
+	g: ^anim.Playable_Graph
 	source: cstring
 	live := false
 	if a.graph_ready {
@@ -66,7 +67,7 @@ draw_playable_graph_view :: proc() {
 	}
 
 	im.TextDisabled("Source: %s", source)
-	if g == nil || engine.playable_node(g, g.root) == nil {
+	if g == nil || anim.playable_node(g, g.root) == nil {
 		im.TextDisabled("The component produces an empty graph (no clips).")
 		return
 	}
@@ -85,16 +86,16 @@ draw_playable_graph_view :: proc() {
 // free_all reclaims it. Handles are deterministic (same build order every
 // frame), so layout and selection stay stable.
 @(private = "file")
-_pg_authored_shape :: proc(a: ^engine.Animation) -> ^engine.Playable_Graph {
+_pg_authored_shape :: proc(a: ^anim.Animation) -> ^anim.Playable_Graph {
 	context.allocator = context.temp_allocator
-	g := new(engine.Playable_Graph)
-	engine.playable_graph_init(g)
-	g.root = engine.playable_add(g, engine.Layer_Mixer_Playable{})
+	g := new(anim.Playable_Graph)
+	anim.playable_graph_init(g)
+	g.root = anim.playable_add(g, anim.Layer_Mixer_Playable{})
 
 	n_layers := max(len(a.layers), 1)
 	for li in 0 ..< n_layers {
-		mixer := engine.playable_add(g, engine.Mixer_Playable{})
-		engine.playable_connect(g, g.root, mixer, 1)
+		mixer := anim.playable_add(g, anim.Mixer_Playable{})
+		anim.playable_connect(g, g.root, mixer, 1)
 
 		clips := make([dynamic]engine.Asset_GUID)
 		if li == 0 && a.clip != {} do append(&clips, a.clip)
@@ -109,7 +110,7 @@ _pg_authored_shape :: proc(a: ^engine.Animation) -> ^engine.Playable_Graph {
 			}
 		}
 		for c in clips {
-			engine.playable_connect(g, mixer, engine.playable_add(g, engine.Clip_Playable{clip = c}), 1)
+			anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = c}), 1)
 		}
 	}
 	return g
@@ -120,16 +121,16 @@ _pg_authored_shape :: proc(a: ^engine.Animation) -> ^engine.Playable_Graph {
 // so user drags survive frames (and the per-frame authored-shape rebuild,
 // whose handles are deterministic).
 @(private = "file")
-_pg_layout :: proc(g: ^engine.Playable_Graph, salt: u64) {
+_pg_layout :: proc(g: ^anim.Playable_Graph, salt: u64) {
 	sig := salt
 	for &n, i in g.nodes {
 		if !n.alive do continue
 		tag := u64(0)
 		switch _ in n.variant {
-		case engine.Clip_Playable:        tag = 1
-		case engine.Mixer_Playable:       tag = 2
-		case engine.Layer_Mixer_Playable: tag = 3
-		case engine.Script_Playable:      tag = 4
+		case anim.Clip_Playable:        tag = 1
+		case anim.Mixer_Playable:       tag = 2
+		case anim.Layer_Mixer_Playable: tag = 3
+		case anim.Script_Playable:      tag = 4
 		}
 		sig = sig * 31 + u64(i) * 7 + tag
 		for inp in n.inputs {
@@ -142,15 +143,15 @@ _pg_layout :: proc(g: ^engine.Playable_Graph, salt: u64) {
 	n := len(g.nodes)
 	depth := make([]int, n, context.temp_allocator)
 	for i in 0 ..< n do depth[i] = -1
-	queue := make([dynamic]engine.Playable_Handle, context.temp_allocator)
+	queue := make([dynamic]anim.Playable_Handle, context.temp_allocator)
 	max_depth := 0
-	if engine.playable_node(g, g.root) != nil {
+	if anim.playable_node(g, g.root) != nil {
 		depth[int(g.root) - 1] = 0
 		append(&queue, g.root)
 	}
 	for qi := 0; qi < len(queue); qi += 1 {
 		h := queue[qi]
-		node := engine.playable_node(g, h)
+		node := anim.playable_node(g, h)
 		if node == nil do continue
 		d := depth[int(h) - 1]
 		for inp in node.inputs {
@@ -178,7 +179,7 @@ _pg_layout :: proc(g: ^engine.Playable_Graph, salt: u64) {
 }
 
 @(private = "file")
-_pg_draw :: proc(g: ^engine.Playable_Graph, live: bool) {
+_pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 	cv := &_pg.cv
 
 	// Per-node presentation, computed before edges need port positions.
@@ -193,26 +194,26 @@ _pg_draw :: proc(g: ^engine.Playable_Graph, live: bool) {
 		lines := make([dynamic]cstring, context.temp_allocator)
 		d: _Desc
 		switch v in n.variant {
-		case engine.Clip_Playable:
+		case anim.Clip_Playable:
 			d.title = "Clip"
 			d.color = {0.26, 0.42, 0.69, 1}
 			append(&lines, fmt.ctprintf("%s", _pv_clip_name(v.clip)))
-			if clip, ok := engine.animation_clip_load(v.clip); ok {
+			if clip, ok := anim.animation_clip_load(v.clip); ok {
 				if live {
 					append(&lines, fmt.ctprintf("t %.2f / %.2f s", n.time, clip.length))
 				} else {
 					append(&lines, fmt.ctprintf("len %.2f s, %v", clip.length, clip.wrap))
 				}
 			}
-		case engine.Mixer_Playable:
+		case anim.Mixer_Playable:
 			d.title = "Mixer"
 			d.color = {0.29, 0.55, 0.35, 1}
 			append(&lines, fmt.ctprintf("%d input%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
-		case engine.Layer_Mixer_Playable:
+		case anim.Layer_Mixer_Playable:
 			d.title = "Layer Mixer"
 			d.color = {0.52, 0.36, 0.64, 1}
 			append(&lines, fmt.ctprintf("%d layer%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
-		case engine.Script_Playable:
+		case anim.Script_Playable:
 			d.title = "Script"
 			d.color = {0.75, 0.52, 0.25, 1}
 			if live do append(&lines, fmt.ctprintf("t %.2f s", n.time))

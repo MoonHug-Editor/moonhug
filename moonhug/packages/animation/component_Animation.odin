@@ -1,4 +1,4 @@
-package engine
+package animation
 
 // Unity's LEGACY Animation component, complete: N layers of M clips playing on
 // this transform's hierarchy through a PlayableGraph (playable_graph.odin,
@@ -18,8 +18,9 @@ package engine
 // layer blends up from the default pose.
 //
 // The editor never simulates: clips advance only in the app, per-frame
-// (animation_tick, hooked as @(update) in app.odin — Unity animates in
-// Update, not FixedUpdate).
+// (animation_tick, the @(update) subscriber below).
+
+import "moonhug:engine"
 
 // Unity's component-level WrapMode: Default defers to the clip's own wrap.
 Animation_Wrap_Mode :: enum u8 {
@@ -33,7 +34,7 @@ Animation_Wrap_Mode :: enum u8 {
 // that). Listing a clip here lets the play/cross_fade API resolve its layer,
 // so call sites can omit the layer argument.
 Animation_Layer :: struct {
-	clips: [dynamic]Asset_GUID `ext:"anim"`,
+	clips: [dynamic]engine.Asset_GUID `ext:"anim"`,
 }
 
 // One playing clip on a layer. `weight` moves linearly from `fade_from` toward
@@ -41,7 +42,7 @@ Animation_Layer :: struct {
 // state speed). A Once clip that ran past its end holds its final pose
 // (`done`) until everything is done or something replaces it.
 Anim_State :: struct {
-	clip:        Asset_GUID,
+	clip:        engine.Asset_GUID,
 	node:        Playable_Handle,
 	time:        f32,
 	weight:      f32,
@@ -55,7 +56,7 @@ Anim_State :: struct {
 Anim_Layer :: struct {
 	mixer:      Playable_Handle,
 	states:     [dynamic]Anim_State,
-	queue_clip: Asset_GUID,
+	queue_clip: engine.Asset_GUID,
 	queue_fade: f32,
 	queued:     bool,
 }
@@ -63,8 +64,8 @@ Anim_Layer :: struct {
 @(component)
 @(typ_guid={guid = "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"})
 Animation :: struct {
-	using base:         CompData `inspect:"-"`,
-	clip:               Asset_GUID `ext:"anim"`,
+	using base:         engine.CompData `inspect:"-"`,
+	clip:               engine.Asset_GUID `ext:"anim"`,
 	play_automatically: bool,
 	wrap_mode:          Animation_Wrap_Mode,
 	speed:              f32,
@@ -102,7 +103,7 @@ on_destroy_Animation :: proc(a: ^Animation) {
 // The runtime side (`graph`, `binding`, `rt_layers`) is guarded by graph_ready:
 // it is built lazily by _anim_ensure_graph, so a component that never ticked has
 // none of it, and freeing unconditionally would delete arrays that were never
-// made. comp_zero at the end clears graph_ready along with every freed pointer,
+// made. engine.comp_zero at the end clears graph_ready along with every freed pointer,
 // which is what makes a second call safe — the guards all read false and the
 // nil checks all short-circuit.
 cleanup_Animation :: proc(a: ^Animation) {
@@ -116,12 +117,12 @@ cleanup_Animation :: proc(a: ^Animation) {
 		for &l in a.layers do delete(l.clips)
 		delete(a.layers)
 	}
-	comp_zero(a)
+	engine.comp_zero(a)
 }
 
 // The layer a clip is authored on, for calls that do not pass one explicitly.
 @(private = "file")
-_anim_layer_of :: proc(a: ^Animation, clip: Asset_GUID, layer: int) -> int {
+_anim_layer_of :: proc(a: ^Animation, clip: engine.Asset_GUID, layer: int) -> int {
 	if layer >= 0 do return layer
 	for &l, li in a.layers {
 		for c in l.clips {
@@ -155,7 +156,7 @@ _anim_layer :: proc(a: ^Animation, idx: int) -> ^Anim_Layer {
 }
 
 @(private = "file")
-_anim_state_find :: proc(l: ^Anim_Layer, clip: Asset_GUID) -> int {
+_anim_state_find :: proc(l: ^Anim_Layer, clip: engine.Asset_GUID) -> int {
 	for &st, i in l.states {
 		if st.clip == clip do return i
 	}
@@ -163,7 +164,7 @@ _anim_state_find :: proc(l: ^Anim_Layer, clip: Asset_GUID) -> int {
 }
 
 @(private = "file")
-_anim_state_add :: proc(a: ^Animation, l: ^Anim_Layer, clip: Asset_GUID, weight: f32) -> ^Anim_State {
+_anim_state_add :: proc(a: ^Animation, l: ^Anim_Layer, clip: engine.Asset_GUID, weight: f32) -> ^Anim_State {
 	node := playable_add(&a.graph, Clip_Playable{clip = clip})
 	playable_connect(&a.graph, l.mixer, node, weight)
 	append(&l.states, Anim_State{clip = clip, node = node, weight = weight})
@@ -198,7 +199,7 @@ animation_play :: proc(a: ^Animation) {
 
 // Play a clip immediately at full weight, stopping everything else on the
 // layer (Unity Play with the default StopSameLayer).
-animation_play_clip :: proc(a: ^Animation, clip: Asset_GUID, layer := -1) {
+animation_play_clip :: proc(a: ^Animation, clip: engine.Asset_GUID, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
 	l := _anim_layer(a, _anim_layer_of(a, clip, layer))
@@ -219,7 +220,7 @@ animation_play_clip :: proc(a: ^Animation, clip: Asset_GUID, layer := -1) {
 // Fade `clip` in over `duration` while everything else on the layer fades out
 // from its CURRENT weight (Unity Animation.CrossFade). Calling this mid-fade
 // is the interruption case and is smooth by construction.
-animation_cross_fade :: proc(a: ^Animation, clip: Asset_GUID, duration: f32 = 0.3, layer := -1) {
+animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
 	if duration <= 0 {
 		animation_play_clip(a, clip, layer)
@@ -248,7 +249,7 @@ animation_cross_fade :: proc(a: ^Animation, clip: Asset_GUID, duration: f32 = 0.
 // CrossFadeQueued with CompleteOthers). With nothing playing it fades in now.
 // A looping current clip never finishes, so the queue never fires — same as
 // Unity. One pending entry per layer, the newest wins.
-animation_cross_fade_queued :: proc(a: ^Animation, clip: Asset_GUID, duration: f32 = 0.3, layer := -1) {
+animation_cross_fade_queued :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
 	li := _anim_layer_of(a, clip, layer)
@@ -278,12 +279,14 @@ animation_stop :: proc(a: ^Animation) {
 // --- Tick ---------------------------------------------------------------------------
 
 // Per-frame advance + evaluate + apply for every enabled Animation component.
+// Unity animates in Update, not FixedUpdate.
+@(update={order=2})
 animation_tick :: proc(dt: f32) {
-	w := ctx_world()
-	it := pool_iterator(animations(w))
-	for a, _ in pool_next(&it) {
+	w := engine.ctx_world()
+	it := engine.pool_iterator(animations(w))
+	for a, _ in engine.pool_next(&it) {
 		if !a.enabled do continue
-		if !pool_valid(&w.transforms, Handle(a.owner)) do continue
+		if !engine.pool_valid(&w.transforms, engine.Handle(a.owner)) do continue
 		if !a.started {
 			a.started = true
 			a.playing = a.play_automatically
