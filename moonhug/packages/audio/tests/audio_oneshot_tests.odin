@@ -10,7 +10,9 @@ import "core:os"
 import "core:testing"
 import mix "vendor:sdl3/mixer"
 import "moonhug:engine"
+import "moonhug:engine_editor/asset_pipeline"
 import audio "moonhug:packages/audio"
+import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
 
 @(test)
@@ -18,6 +20,7 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
+	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -34,8 +37,8 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
-	engine.asset_pipeline_ensure_import_meta(wav)
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
 	Meta :: struct {
 		guid: string,
 	}
@@ -44,7 +47,7 @@ test_one_shot_lifecycle :: proc(t: ^testing.T) {
 	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
 	raw_guid, _ := uuid.read(meta.guid)
 	guid := engine.Asset_GUID(raw_guid)
-	testing.expect(t, engine.asset_pipeline_import_asset(wav))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
 
 	// Spawn a 2D one-shot and a spatial one (no listener: it plays centered).
 	testing.expect(t, audio.play_clip(guid, 0.8), "2D one-shot starts")

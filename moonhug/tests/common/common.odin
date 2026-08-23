@@ -16,6 +16,7 @@ package tests_common
 
 import "core:os"
 import "../../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import app "moonhug:packages/app"
 import tween "moonhug:packages/tween"
 import "../../engine/serialization"
@@ -44,6 +45,12 @@ setup :: proc(tc: ^TestCtx, path: string = "") {
 		app.phase_run(.SerializationInit)
 		app.phase_run(.ImportersInit)
 		app.phase_run(.TweenNodesInit)
+		// The import stack is editor-side (mode=Editor phases, absent from
+		// the app dispatcher above) — tests import like the editor does.
+		// Package importers register from the package's OWN tests (this
+		// package never imports moonhug:packages).
+		asset_pipeline.register_builtin_importers()
+		asset_pipeline.import_pipeline_install()
 		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 		// typeids for primitive field types (position, color, scale, …) so it
 		// can hand a properly-typed `any` to json.unmarshal_any.

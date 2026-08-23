@@ -16,6 +16,8 @@ import im "moonhug:external/odin-imgui"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/progress"
 import "core:fmt"
 
 @(private = "file")
@@ -28,7 +30,7 @@ _progress_last_pump: time.Tick
 _in_main_frame: bool
 
 progress_overlay_install :: proc() {
-	engine.progress_set_sink(_progress_pump)
+	progress.set_sink(_progress_pump)
 }
 
 progress_overlay_frame_scope :: proc(active: bool) {

@@ -13,6 +13,7 @@ import im "moonhug:external/odin-imgui"
 import "inspector"
 import "menu"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "undo"
 
 ProjectViewData :: struct {
@@ -273,7 +274,7 @@ _project_inspect_path :: proc(full_path: string) {
         inspector.load_from_file(full_path)
         return
     }
-    if engine.is_importable_extension(filepath.ext(full_path)) {
+    if asset_pipeline.is_importable_extension(filepath.ext(full_path)) {
         inspector.load_import_settings(full_path)
     }
 }
@@ -370,7 +371,7 @@ _project_apply_rename :: proc() {
     } else {
         _project_set_selected(new_path)
     }
-    engine.asset_db_refresh()
+    asset_pipeline.asset_db_refresh()
 }
 
 // Draws the rename InputText in place of the row/node whose full path is being
@@ -732,7 +733,7 @@ _project_handle_list_keys :: proc() {
 is_known_extension :: proc(filename: string) -> bool {
     ext := filepath.ext(filename)
     if ext == ".prefab" || ext == ".asset" || ext == ".mat" || ext == ".scene" do return true
-    return engine.is_importable_extension(ext)
+    return asset_pipeline.is_importable_extension(ext)
 }
 
 draw_file_list :: proc(path: string) {
@@ -1024,7 +1025,7 @@ create_scene_variant :: proc(base_path: string) {
         return
     }
     // Mint the variant's .meta and register it so it can be loaded by GUID.
-    engine.asset_db_refresh()
+    asset_pipeline.asset_db_refresh()
 
     undo.purge_scenes(undo.get())
     hierarchy_edit_stack_clear()

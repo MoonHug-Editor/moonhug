@@ -46,8 +46,21 @@ asset_catalog_write :: proc(path: string = ASSET_CATALOG_PATH) -> bool {
 			entry.artifact = key
 		}
 		if settings, sok := asset_pipeline_get_settings(asset_path, context.temp_allocator); sok {
+			// Tagged with the type guid — that is how the reader materializes
+			// the typed instance (_settings_from_value), registry-free.
 			if blob, merr := json.marshal(settings, {spec = .JSON}, context.temp_allocator); merr == nil {
-				entry.settings = string(blob)
+				prev := context.allocator
+				context.allocator = context.temp_allocator
+				v, perr := json.parse(blob, .JSON, true)
+				context.allocator = prev
+				if perr == nil {
+					if obj, is_obj := v.(json.Object); is_obj {
+						obj["__type_guid"] = json.String(uuid.to_string(get_guid_by_typeid(settings.id), context.temp_allocator))
+						if tagged, terr := json.marshal(json.Value(obj), {spec = .JSON}, context.temp_allocator); terr == nil {
+							entry.settings = string(tagged)
+						}
+					}
+				}
 			}
 		}
 		cf.assets[uuid.to_string(guid, context.temp_allocator)] = entry

@@ -49,6 +49,7 @@ For more details see [Contribution](docs/Contribution.md)
   - separate program that runs even before anything compiles
 - editor, *_editor - editor folders
   - editor is top level package with dependencies on everything else
+  - engine_editor is the engine's editor half — subpackages pairing with engine ones (engine_editor/asset_pipeline is the write side of engine/asset_pipeline.odin: importers, import drivers, AssetDB scanning, meta writing) — never linked into game binaries (the app runs the catalog pipeline only)
 - app folder - game code
   - app package should not have any editor dependencies
 - engine - core dependency for app and editor
@@ -127,8 +128,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - if no menu path specified, type name is used
 
 ## TODO
-- move progress (engine/progress.odin) to editor's separate inner package — goes together with moving the asset pipeline editor-side once a build/export step exists (app then loads prebuilt artifacts instead of importing at runtime)
-  - asset catalog + builds exist (docs/AssetPipeline.md "Asset catalog and builds": auto-maintained catalog, run configs stage <out>_data via rc.export_data, toolbar Build button, run_build config = the shipping shape) — remaining: importers move editor-side
+- export ships EVERY registered asset — trim it: dependency closure from the boot scene (guid harvest over serialized JSON, transitive, plus an explicit always-ship list for dynamically loaded assets), and ship one representation per asset instead of source + artifact both (needs importers to declare whether runtime reads source or artifact)
 
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 

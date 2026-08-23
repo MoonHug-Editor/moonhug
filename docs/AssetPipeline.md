@@ -172,8 +172,38 @@ main :: proc() {
   build). The rc helpers own the protocol (`rc.scene_arg`, `rc.build_only`,
   `rc.run_only`), config files never see it
 
-The default (no flag) is the import pipeline: scan + lazy import — what dev
-configs like run.odin use.
+The app has ONE pipeline: catalog. With no flag it boots the editor-maintained
+in-place `library/catalog.json` (dev runs, the Play button), with `--catalog`
+an export. No catalog = a clear error saying to run the editor once. The
+import pipeline exists only inside the editor.
+
+## Read/write split
+
+The pipeline's WRITE half lives in `moonhug:engine_editor/asset_pipeline`
+and never links
+into a game binary: importer registry + built-in importers (texture, mesh,
+shader), the import drivers (`asset_pipeline_import_all/import_asset/
+reimport`), the AssetDB scan (`asset_db_refresh` — tree walk, meta minting,
+orphan pruning), meta writing, import-settings saving. The progress API is
+its own editor subpackage (`moonhug:editor/progress` —
+`progress.begin/report/end`).
+Package importers follow the same split — the audio importer lives in
+`packages/audio/editor/`, its settings type stays in the runtime package so
+the catalog pipeline materializes settings in game binaries too (settings
+objects carry `__type_guid`, read registry-free via `_settings_from_value`).
+
+The engine keeps the READ half: the AssetDB storage and lookups (guid↔path
+maps, root-info index, meta primitives), the artifact index, artifact path
+resolution, meta/settings reading, catalog init. Three seams connect the
+halves, all installed at the editor's ImportersInit and nil in the app:
+
+- `asset_db_set_refresh_proc` — engine code requests a scan through it:
+  `asset_db_init` (storage init, paired with `asset_db_shutdown` in the
+  engine) and scene_save both do
+- `asset_pipeline_set_import_request` — loader self-heal: a missing or
+  stale artifact at load (fresh clone, format bump) reimports in the
+  editor and is a plain load error in the app
+- a path-changed hook reimports edited `.glsl` (shader hot reload)
 
 ## UX
 

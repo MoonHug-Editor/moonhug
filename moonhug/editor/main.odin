@@ -18,6 +18,8 @@ import "../engine/serialization"
 import "../engine/registration"
 import "core:os"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/progress"
 import crash_journal "../engine/crash_journal"
 import "core:path/filepath"
 import "../engine/log"
@@ -131,9 +133,9 @@ main :: proc() {
     defer { engine.world_destroy_all(w); free(w) }
     defer free(uc)
 
-    engine.progress_begin("Starting MoonHug")
+    progress.begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
-    engine.progress_end()
+    progress.end()
     defer phase_editor_run(.EditorShutdown)
     queue_scenes_from_settings()
     frames_presented := 0
@@ -167,7 +169,7 @@ main :: proc() {
         // regains focus (git checkouts, external editors). Incremental
         // mtime-diff — an unchanged tree costs one stat pass.
         if input.focus_gained() {
-            engine.asset_db_refresh()
+            asset_pipeline.asset_db_refresh()
             project_dir_cache_invalidate()
             if dock_icon_pending {
                 dock_icon_pending = false
@@ -313,12 +315,12 @@ editor_init :: proc() {
     registration.register_type_guids()
     _init_context_menu_registry()
     init_project_view()
-    engine.progress_report("Scanning assets")
+    progress.report("Scanning assets")
     engine.asset_catalog_auto = true // editor maintains library/catalog.json
-    engine.asset_pipeline_init()
+    asset_pipeline.asset_pipeline_init()
     engine.asset_db_init("assets")
-    engine.asset_pipeline_import_all()
-    engine.progress_report("Initializing caches")
+    asset_pipeline.asset_pipeline_import_all()
+    progress.report("Initializing caches")
     engine.texture_cache_init()
     engine.mesh_cache_init()
     engine.material_cache_init()

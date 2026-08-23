@@ -8,6 +8,7 @@ package tests
 import "core:os"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 CUBE_GLB :: "moonhug/tests/fixtures/meshes/cube.glb"
 
@@ -18,7 +19,7 @@ test_mesh_import_cube_glb :: proc(t: ^testing.T) {
 	part0 := engine.mesh_part_artifact_path(artifact, 0, context.temp_allocator)
 	defer os.remove(part0)
 
-	ok := engine._import_mesh(CUBE_GLB, artifact, nil)
+	ok := asset_pipeline._import_mesh(CUBE_GLB, artifact, nil)
 	testing.expect(t, ok, "cube.glb import failed")
 
 	// Import also writes one node-local PART artifact per glTF mesh
@@ -67,7 +68,7 @@ test_mesh_import_respects_scale_setting :: proc(t: ^testing.T) {
 	defer os.remove(artifact)
 
 	scaled := engine.MeshSettings{scale = 2}
-	ok := engine._import_mesh(CUBE_GLB, artifact, &scaled)
+	ok := asset_pipeline._import_mesh(CUBE_GLB, artifact, &scaled)
 	testing.expect(t, ok, "scaled import failed")
 
 	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
@@ -96,7 +97,7 @@ test_mesh_import_multimaterial_submeshes :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/meshes/_multimat_test_artifact.bin"
 	defer os.remove(artifact)
 
-	ok := engine._import_mesh("moonhug/tests/fixtures/meshes/multimat_cube.glb", artifact, nil)
+	ok := asset_pipeline._import_mesh("moonhug/tests/fixtures/meshes/multimat_cube.glb", artifact, nil)
 	testing.expect(t, ok, "multimat_cube.glb import failed")
 
 	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)

@@ -24,6 +24,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 FIXTURE_SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
 FIXTURE_COLOR_BASE :: [4]f32{0.5, 0, 0, 1}
@@ -126,7 +127,7 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 		testing.expect(t, false, "fixture: create c_Variant")
 		return fx, false
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	cv_guid, cvok := engine.asset_db_get_guid(fx.cv_path)
 	testing.expect(t, cvok, "fixture: c_Variant registered")
 	if !cvok do return fx, false
@@ -145,14 +146,14 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 		testing.expect(t, false, "fixture: save bullet")
 		return fx, false
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 
 	// bullet_Variant: variant of bullet.
 	if !engine.scene_create_variant_file(fx.bullet_path, fx.bv_path) {
 		testing.expect(t, false, "fixture: create bullet_Variant")
 		return fx, false
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	bv_guid, bvok := engine.asset_db_get_guid(fx.bv_path)
 	testing.expect(t, bvok, "fixture: bullet_Variant registered")
 	if !bvok do return fx, false
@@ -180,7 +181,7 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 		testing.expect(t, false, "fixture: write host")
 		return fx, false
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	host := engine.scene_load_single_path(fx.host_path)
 	testing.expect(t, host != nil, "fixture: host loads")
 	if host == nil do return fx, false

@@ -6,10 +6,13 @@ import "core:strings"
 import "core:path/filepath"
 import "core:encoding/json"
 import "core:encoding/uuid"
-import xxh "core:hash/xxhash"
 import "base:runtime"
-import "log"
 
+// The asset pipeline's READ half: the artifact index, meta/settings reading,
+// artifact path resolution. The WRITE half — scanning, importing, meta
+// writing — lives in moonhug:engine_editor/asset_pipeline and never links
+// into a game binary: the app consumes what the editor produced.
+//
 // Unity's Library model: everything under library/ is derived data — safe to
 // delete, rebuilt from assets + metas on the next run, never a source of
 // truth. Import artifacts are CONTENT-ADDRESSED: the artifact key hashes every
@@ -23,46 +26,13 @@ LIBRARY_DIR      :: "library"
 ARTIFACTS_DIR    :: "library/artifacts" // Artifacts/<first 2 hex>/<32-hex key>.bin
 ARTIFACT_DB_PATH :: "library/artifact_db.json"
 
-// Bump to invalidate EVERY artifact (artifact container format changes).
-// v2: settings hash covers the plain settings payload (typeid-driven blob,
-// no union tag in the hashed bytes).
-_ARTIFACT_FORMAT_VERSION :: 2
-
-// Importer dispatch goes through the registry (asset_importer_registry.odin).
-// Version bumps and extension ownership live in each Importer_Desc.
-_importer_version :: proc(importer: string) -> int {
-	if desc, ok := _importers[importer]; ok do return desc.version
-	return 0
-}
-
-_importer_for_extension :: proc(ext: string) -> string {
-	return _importer_by_ext[ext] or_else ""
-}
-
-// Settings are typed by the importer's desc (settings_tid), not by a union:
-// the meta's `importer` string names the desc, the desc names the type. On
-// disk a settings object carries "__type_guid" like every guid-tagged record
-// — redundant on read, kept for compatibility.
+// A meta file's identity + import half. Settings materialize from the
+// settings object's own __type_guid (every written meta carries one), so
+// reading needs no importer registry — the game binary has none.
 ImportMeta :: struct {
     guid:     string,
     importer: string,
-    settings: any, // instance of the desc's settings_tid (nil = none)
-}
-
-is_importable_extension :: proc(ext: string) -> bool {
-    return ext in _importer_by_ext
-}
-
-// Fresh default-valued settings instance for an importer, allocated on
-// `allocator`. Defaults come from the settings type's registered factory
-// (typ_guid makeProcName) — no factory = zeroed.
-_settings_new :: proc(importer: string, allocator := context.allocator) -> (settings: any, ok: bool) {
-    desc, has := _importers[importer]
-    if !has || desc.settings_tid == nil do return {}, false
-    key, kok := get_type_key_by_typeid(desc.settings_tid)
-    if !kok do return {}, false
-    context.allocator = allocator
-    return create_instance_by_type_key(key), true
+    settings: any, // typed settings instance (nil = none)
 }
 
 // Overlays a parsed settings object onto a typed instance: present keys
@@ -77,129 +47,42 @@ _settings_overlay :: proc(settings: any, v: json.Value) -> bool {
     return json.unmarshal_any(bytes, any{&pp, ptr_tid}) == nil
 }
 
-asset_pipeline_init :: proc() {
-    os.make_directory(LIBRARY_DIR)
-    os.make_directory(ARTIFACTS_DIR)
-    _artifact_index_ensure()
-}
-
-asset_pipeline_import_all :: proc() {
-    _artifact_index_batch = true // one index write for the whole pass
-    _import_directory(asset_db.root_path)
-    for root in asset_db_package_roots() {
-        _import_directory(root.assets_path)
-    }
-    _artifact_index_batch = false
-    _artifact_index_prune()
-    _cleanup_stale_artifacts()
-    _artifact_index_save()
-    _asset_catalog_auto_write() // keep library/catalog.json current (editor)
-    fmt.printf("[Pipeline] Import pass complete\n")
-}
-
-// Imports when needed: a source whose stamp AND settings match its index entry
-// (with the artifact file present) is fresh and costs one stat + one meta
-// read. Anything else computes the content key — a key whose artifact already
-// exists (a setting toggled back) just re-points the index, no importer runs.
-asset_pipeline_import_asset :: proc(source_path: string) -> bool {
-    return _import_asset(source_path, force = false)
-}
-
-// Forced: always re-runs the importer into the current key's artifact.
-asset_pipeline_reimport :: proc(source_path: string) -> bool {
-    return _import_asset(source_path, force = true)
-}
-
-@(private = "file")
-_import_asset :: proc(source_path: string, force: bool) -> bool {
-    // Under the catalog pipeline (asset_db_init_from_catalog) content is fixed: content is
-    // whatever the export produced, a missing artifact is an error to surface,
-    // never something to repair by importing at runtime.
-    if asset_db.pipeline == .Catalog {
-        log.errorf("[Pipeline] import of %s refused: the catalog pipeline has no importers", source_path)
-        return false
-    }
-    ext := filepath.ext(source_path)
-    if !is_importable_extension(ext) do return false
-
-    meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
-    import_meta := _read_import_meta(meta_path)
-    if import_meta.guid == "" do return false
-    defer delete(import_meta.guid)
-
-    guid, parse_err := uuid.read(import_meta.guid)
-    if parse_err != nil do return false
-
-    _artifact_index_ensure()
-
-    info, stat_err := os.stat(source_path, context.temp_allocator)
-    if stat_err != nil do return false
-    mtime := info.modification_time._nsec
-    size := info.size
-
-    settings_hex := _settings_hash_hex(import_meta.settings)
-    if !force {
-        if e, has := _artifact_index[guid]; has &&
-           e.mtime == mtime && e.size == size && e.settings == settings_hex {
-            if os.exists(_artifact_key_path(e.artifact, context.temp_allocator)) {
-                return false
-            }
-        }
-    }
-
-    data, read_err := os.read_entire_file(source_path, context.temp_allocator)
-    if read_err != nil do return false
-    key := _artifact_key(data, import_meta.settings, _importer_for_extension(ext))
-    artifact_path := _artifact_key_path(key, context.temp_allocator)
-
-    if force || !os.exists(artifact_path) {
-        _ensure_artifact_dir(artifact_path)
-        if !_run_import(source_path, artifact_path, import_meta.settings) do return false
-    }
-
-    _artifact_index_set(guid, key, mtime, size, settings_hex)
-    _artifact_index_save()
-    _notify_reimported(guid)
-    return true
-}
-
-// Reimport hooks: guid-keyed caches (textures, package-owned asset caches)
-// register to evict their entry when an asset's artifact changes. Fired on
-// every import that did work (importer ran or the index re-pointed).
-Reimport_Hook :: proc(guid: Asset_GUID)
-
-_reimport_hooks: [dynamic]Reimport_Hook
-
-asset_pipeline_add_reimport_hook :: proc(hook: Reimport_Hook) {
-    // Registry state never borrows the caller's allocator (same rule as
-    // component_register — tests hand out scoped tracking allocators).
-    context.allocator = runtime.default_allocator()
-    append(&_reimport_hooks, hook)
-}
-
-_notify_reimported :: proc(guid: uuid.Identifier) {
-    for hook in _reimport_hooks do hook(Asset_GUID(guid))
+// A typed settings instance from a guid-tagged settings JSON object:
+// defaults first (the type's registered factory), then overlay. Empty `any`
+// when the object carries no known __type_guid.
+_settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> any {
+    obj, is_obj := v.(json.Object)
+    if !is_obj do return {}
+    tg, tok := obj["__type_guid"].(json.String)
+    if !tok do return {}
+    guid, gerr := uuid.read(string(tg))
+    if gerr != nil do return {}
+    if get_typeid_by_guid(guid) == nil do return {}
+    context.allocator = allocator
+    settings := create_instance_by_guid(guid)
+    if settings.data == nil do return {}
+    _settings_overlay(settings, v)
+    return settings
 }
 
 // The typed settings instance for an asset, allocated on `allocator` (the
 // caller owns it — `free(result.data)` when done). Type-assert the result:
 // `ts := settings.(TextureSettings)`.
 asset_pipeline_get_settings :: proc(source_path: string, allocator := context.allocator) -> (any, bool) {
-    // Catalog pipeline: settings are baked into the catalog — no .meta exists in
-    // an exported data dir. Defaults first, then overlay, same as the meta path.
+    // Catalog pipeline: settings are baked into the catalog — no .meta exists
+    // in an exported data dir.
     if asset_db.pipeline == .Catalog {
         guid, gok := asset_db.path_to_guid[source_path]
         if !gok do return {}, false
         blob, has := _catalog_settings[guid]
         if !has do return {}, false
-        settings, sok := _settings_new(_importer_for_extension(filepath.ext(source_path)), allocator)
-        if !sok do return {}, false
         prev := context.allocator
         context.allocator = context.temp_allocator
         root, perr := json.parse(transmute([]u8)blob, .JSON, true)
         context.allocator = prev
-        if perr == nil do _settings_overlay(settings, root)
-        return settings, true
+        if perr != nil do return {}, false
+        settings := _settings_from_value(root, allocator)
+        return settings, settings.data != nil
     }
 
     meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
@@ -221,49 +104,6 @@ _catalog_settings_set :: proc(guid: uuid.Identifier, blob: string) {
     _catalog_settings[guid] = strings.clone(blob)
 }
 
-asset_pipeline_save_settings :: proc(source_path: string, settings: any) -> bool {
-    meta_path := strings.concatenate({source_path, ".meta"}, context.temp_allocator)
-
-    import_meta := _read_import_meta(meta_path)
-    if import_meta.guid == "" do return false
-    defer delete(import_meta.guid)
-
-    // The value must be the meta's own settings type — the importer string
-    // in the meta decides the type, not the caller.
-    desc, ok := _importers[import_meta.importer]
-    if !ok || desc.settings_tid != settings.id do return false
-
-    import_meta.settings = settings
-    return _write_import_meta(meta_path, import_meta)
-}
-
-_import_directory :: proc(dir_path: string) {
-    handle, err := os.open(dir_path)
-    if err != nil do return
-    defer os.close(handle)
-
-    entries, read_err := os.read_dir(handle, -1, context.temp_allocator)
-    if read_err != nil do return
-    defer os.file_info_slice_delete(entries, context.temp_allocator)
-
-    for entry in entries {
-        if strings.has_prefix(entry.name, ".") do continue
-
-        full_path, _ := filepath.join({dir_path, entry.name}, context.temp_allocator)
-
-        if entry.type == .Directory {
-            _import_directory(full_path)
-        } else {
-            if strings.has_suffix(entry.name, ".meta") do continue
-            progress_report(full_path)
-            ext := filepath.ext(entry.name)
-            if is_importable_extension(ext) {
-                asset_pipeline_import_asset(full_path)
-            }
-        }
-    }
-}
-
 // --- Artifact index (library/artifact_db.json) --------------------------------
 
 _Artifact_Entry :: struct {
@@ -280,7 +120,6 @@ _Artifact_Entry :: struct {
 
 // Lazy so every consumer works with no init wiring — the game binary loads
 // artifacts through the same index the editor wrote.
-@(private = "file")
 _artifact_index_ensure :: proc() {
     if _artifact_index_loaded do return
     _artifact_index_loaded = true
@@ -303,7 +142,18 @@ _artifact_index_ensure :: proc() {
     }
 }
 
-@(private = "file")
+// The current entry for a guid — strings are BORROWED views into the index
+// (valid until the entry is replaced). The import driver's freshness check.
+_artifact_index_lookup :: proc(guid: uuid.Identifier) -> (entry: _Artifact_Entry, ok: bool) {
+    _artifact_index_ensure()
+    e, has := _artifact_index[guid]
+    return e, has
+}
+
+_artifact_index_batch_set :: proc(on: bool) {
+    _artifact_index_batch = on
+}
+
 _artifact_index_set :: proc(guid: uuid.Identifier, key: string, mtime, size: i64, settings_hex: string) {
     context.allocator = runtime.default_allocator()
     if old, has := _artifact_index[guid]; has {
@@ -319,7 +169,6 @@ _artifact_index_set :: proc(guid: uuid.Identifier, key: string, mtime, size: i64
     _artifact_index_dirty = true
 }
 
-@(private = "file")
 _artifact_index_save :: proc() {
     if !_artifact_index_dirty || _artifact_index_batch do return
     _artifact_index_dirty = false
@@ -340,7 +189,6 @@ _artifact_index_save :: proc() {
 
 // Drops entries whose asset no longer exists, so the artifact sweep below can
 // collect their files. Editor-only in practice (the game has no full db walk).
-@(private = "file")
 _artifact_index_prune :: proc() {
     context.allocator = runtime.default_allocator() // index strings live there
     to_drop := make([dynamic]uuid.Identifier, context.temp_allocator)
@@ -358,34 +206,11 @@ _artifact_index_prune :: proc() {
     }
 }
 
-// --- Content keys -------------------------------------------------------------
-
 @(private = "file")
-_settings_hash_hex :: proc(settings: any) -> string {
-    if settings.data == nil do return "0000000000000000"
-    data, merr := json.marshal(settings, {spec = .JSON}, context.temp_allocator)
-    if merr != nil do return "0000000000000000"
-    return fmt.tprintf("%016x", xxh.XXH3_64(data))
-}
-
-// The artifact key: 128-bit hash of the source bytes, seeded by everything
-// else that shapes the importer's output. Same inputs -> same key, on any
-// machine.
-@(private = "file")
-_artifact_key :: proc(content: []byte, settings: any, importer: string) -> string {
-    header := fmt.tprintf("moonhug-artifact|%s|v%d|f%d|s%s",
-        importer, _importer_version(importer), _ARTIFACT_FORMAT_VERSION,
-        _settings_hash_hex(settings))
-    seed := xxh.XXH3_64(transmute([]u8)header)
-    return fmt.tprintf("%032x", xxh.XXH3_128_with_seed(content, seed))
-}
-
-// "library/artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
-@(private = "file")
-// Where artifact files live. The default is the working tree's library — an
+// Where artifact files live. The default is the working tree's library — a
 // relocatable-catalog boot retargets it at the export's artifacts dir
-// (asset_db_init_from_catalog), and every resolve below follows. asset_db_shutdown
-// resets it via _catalog_pipeline_reset.
+// (asset_db_init_from_catalog), and every resolve below follows.
+// asset_db_shutdown resets it via _catalog_pipeline_reset.
 _artifact_dir := ARTIFACTS_DIR
 @(private = "file") _artifact_dir_owned: bool
 
@@ -411,20 +236,9 @@ _catalog_pipeline_reset :: proc() {
     _catalog_settings = nil
 }
 
+// "library/artifacts/<first 2 hex>/<key>.bin" — Unity's fan-out layout.
 _artifact_key_path :: proc(key: string, allocator := context.allocator) -> string {
     return fmt.aprintf("%s/%s/%s.bin", _artifact_dir, key[:2], key, allocator = allocator)
-}
-
-_run_import :: proc(source_path: string, artifact_path: string, settings: any) -> bool {
-    ext := filepath.ext(source_path)
-    name := _importer_by_ext[ext] or_else ""
-    if desc, ok := _importers[name]; ok && desc.run != nil {
-        // Hand over the typed instance only when it IS the desc's type (a
-        // stale meta importer string can disagree with the extension).
-        ptr := settings.id == desc.settings_tid ? settings.data : nil
-        return desc.run(source_path, artifact_path, ptr)
-    }
-    return false
 }
 
 _ensure_artifact_dir :: proc(artifact_path: string) {
@@ -525,8 +339,42 @@ asset_pipeline_artifact_path :: proc(guid: Asset_GUID) -> (path: string, ok: boo
     return "", false
 }
 
-// guid is cloned (caller deletes), importer is a temp-allocated view, the
-// settings instance lives on `allocator`.
+// Reimport hooks: guid-keyed caches (textures, package-owned asset caches)
+// register to evict their entry when an asset's artifact changes. Fired on
+// every import that did work (importer ran or the index re-pointed).
+Reimport_Hook :: proc(guid: Asset_GUID)
+
+_reimport_hooks: [dynamic]Reimport_Hook
+
+asset_pipeline_add_reimport_hook :: proc(hook: Reimport_Hook) {
+    // Registry state never borrows the caller's allocator (same rule as
+    // component_register — tests hand out scoped tracking allocators).
+    context.allocator = runtime.default_allocator()
+    append(&_reimport_hooks, hook)
+}
+
+_notify_reimported :: proc(guid: uuid.Identifier) {
+    for hook in _reimport_hooks do hook(Asset_GUID(guid))
+}
+
+// Loader self-heal seam: a loader that finds its artifact missing or
+// unparseable (fresh clone, cleaned library/, artifact format bump — stamps
+// alone never catch a format bump) asks for an import through this. The
+// import driver installs it (engine_editor); nil in a game binary, where a
+// bad artifact is a load error, never repair work.
+_import_request: proc(source_path: string, force: bool) -> bool
+
+asset_pipeline_set_import_request :: proc(p: proc(source_path: string, force: bool) -> bool) {
+    _import_request = p
+}
+
+asset_pipeline_request_import :: proc(source_path: string, force: bool) -> bool {
+    if _import_request == nil do return false
+    return _import_request(source_path, force)
+}
+
+// guid is cloned (caller deletes), the settings instance lives on `allocator`
+// (materialized from the settings object's __type_guid — no importer registry).
 _read_import_meta :: proc(meta_path: string, allocator := context.temp_allocator) -> ImportMeta {
     data, read_err := os.read_entire_file(meta_path, context.temp_allocator)
     if read_err != nil do return {}
@@ -548,90 +396,8 @@ _read_import_meta :: proc(meta_path: string, allocator := context.temp_allocator
         guid     = strings.clone(string(guid_v)),
         importer = importer,
     }
-    // Defaults first (factory), then overlay the file's keys — a field the
-    // meta predates keeps its default instead of reading as zero.
-    if settings, sok := _settings_new(importer, allocator); sok {
-        if sv, has := obj["settings"]; has do _settings_overlay(settings, sv)
-        meta.settings = settings
+    if sv, has := obj["settings"]; has {
+        meta.settings = _settings_from_value(sv, allocator)
     }
     return meta
-}
-
-_write_import_meta :: proc(meta_path: string, meta: ImportMeta) -> bool {
-    prev := context.allocator
-    context.allocator = context.temp_allocator
-    defer context.allocator = prev
-
-    obj := make(json.Object)
-    obj["guid"] = json.String(meta.guid)
-    obj["importer"] = json.String(meta.importer)
-    if meta.settings.data != nil {
-        bytes, merr := json.marshal(meta.settings, {spec = .JSON})
-        if merr != nil do return false
-        v, perr := json.parse(bytes, .JSON, true)
-        if perr != nil do return false
-        if sobj, is_obj := v.(json.Object); is_obj {
-            // Redundant on read (the importer string names the type) — kept
-            // so the record stays a regular guid-tagged object.
-            sobj["__type_guid"] = json.String(uuid.to_string(get_guid_by_typeid(meta.settings.id)))
-            obj["settings"] = sobj
-        }
-    }
-
-    opts := json.Marshal_Options{
-        spec       = .JSON,
-        pretty     = true,
-        use_spaces = true,
-        spaces     = 2,
-        sort_maps_by_key = true, // json.Object is a map — deterministic files
-    }
-    data, err := json.marshal(json.Value(obj), opts)
-    if err != nil do return false
-
-    return os.write_entire_file(meta_path, data) == nil
-}
-
-asset_pipeline_ensure_import_meta :: proc(asset_path: string) {
-    ext := filepath.ext(asset_path)
-    if !is_importable_extension(ext) do return
-
-    meta_path := strings.concatenate({asset_path, ".meta"})
-    defer delete(meta_path)
-
-    existing := _read_import_meta(meta_path)
-    if existing.guid != "" && existing.importer != "" {
-        delete(existing.guid)
-        return
-    }
-
-    guid_id: uuid.Identifier
-    if existing.guid != "" {
-        parsed, parse_err := uuid.read(existing.guid)
-        if parse_err == nil {
-            guid_id = parsed
-        }
-        delete(existing.guid)
-    }
-
-    if guid_id == {} {
-        if g, ok := _read_meta(meta_path); ok {
-            guid_id = g
-        } else {
-            guid_id = _generate_guid()
-        }
-    }
-
-    guid_str := uuid.to_string(guid_id)
-    defer delete(guid_str)
-
-    importer_name := _importer_for_extension(ext)
-    settings, _ := _settings_new(importer_name, context.temp_allocator)
-
-    new_meta := ImportMeta{
-        guid     = guid_str,
-        importer = importer_name,
-        settings = settings,
-    }
-
-    _write_import_meta(meta_path, new_meta)
 }

@@ -1441,7 +1441,7 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	// index) or create the file (Save As). Incremental — unchanged assets cost
 	// nothing. Skipped when no db is initialized (headless scene tooling).
 	if asset_db.root_path != "" {
-		asset_db_refresh()
+		asset_db_request_refresh()
 	}
 
 	fmt.printf("[Scene] Saved scene to %s\n", path)

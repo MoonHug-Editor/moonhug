@@ -1,6 +1,7 @@
 package tests
 
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 import "core:fmt"
 import "core:testing"
@@ -2953,7 +2954,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		os.remove(fresh_path)
 		os.remove(strings.concatenate({fresh_path, ".meta"}, context.temp_allocator))
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	fresh := engine.scene_load_single_path(fresh_path)
 	testing.expect(t, fresh != nil, "fresh host loads")
 	if fresh == nil do return
@@ -3060,7 +3061,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 
 	// bullet_Variant.scene: variant of bullet.
 	testing.expect(t, engine.scene_create_variant_file(bullet_path, bv_path), "create variant file")
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	bv_guid, bvok := engine.asset_db_get_guid(bv_path)
 	testing.expect(t, bvok, "variant registered")
 
@@ -3080,7 +3081,7 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
   "nested_scenes": [], "breadcrumbs": [], "components": []
 }`
 	testing.expect(t, os.write_entire_file(host_path, transmute([]byte)host_json) == nil)
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	host := engine.scene_load_single_path(host_path)
 	testing.expect(t, host != nil, "empty host loads")
 	if host == nil do return

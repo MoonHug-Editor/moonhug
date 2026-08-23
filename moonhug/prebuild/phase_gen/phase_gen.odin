@@ -67,7 +67,7 @@ _PACKAGES_PREFIX :: "moonhug/packages/"
 // can never appear in the app dispatcher.
 _is_editor_side :: proc(pkg_path: string) -> bool {
 	return strings.has_prefix(pkg_path, "moonhug/editor") ||
-		pkg_path == "moonhug/engine_editor" ||
+		strings.has_prefix(pkg_path, "moonhug/engine_editor") ||
 		strings.has_suffix(pkg_path, "/editor")
 }
 

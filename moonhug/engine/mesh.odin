@@ -88,7 +88,7 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
             _mesh_failed[key] = true
             return nil, false
         }
-        if !asset_pipeline_reimport(source_path) {
+        if !asset_pipeline_request_import(source_path, force = true) {
             _mesh_failed[key] = true
             return nil, false
         }

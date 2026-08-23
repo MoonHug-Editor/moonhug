@@ -1,4 +1,4 @@
-package engine
+package asset_pipeline
 
 // Importer registry: the asset pipeline dispatches through these descs, so a
 // package can ship an importer without the engine knowing it. Engine's
@@ -21,6 +21,7 @@ package engine
 //   pointer to that instance (nil when the meta's importer mismatches).
 
 import "base:runtime"
+import "moonhug:engine"
 
 Importer_Desc :: struct {
 	name:         string,
@@ -65,7 +66,7 @@ _TEXTURE_EXTS := []string{".png", ".jpg", ".jpeg", ".bmp"}
 _MESH_EXTS    := []string{".glb", ".gltf"}
 _SHADER_EXTS  := []string{".glsl"}
 
-@(phase={key=ImportersInit, order=0})
+@(phase={key=ImportersInit, order=0, mode=Editor})
 register_builtin_importers :: proc() {
 	@(static) done := false
 	if done do return
@@ -75,21 +76,21 @@ register_builtin_importers :: proc() {
 		name         = "texture",
 		version      = 1,
 		extensions   = _TEXTURE_EXTS,
-		settings_tid = typeid_of(TextureSettings),
+		settings_tid = typeid_of(engine.TextureSettings),
 		run          = _import_texture,
 	})
 	importer_register({
 		name         = "mesh",
 		version      = 1,
 		extensions   = _MESH_EXTS,
-		settings_tid = typeid_of(MeshSettings),
+		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,
 	})
 	importer_register({
 		name         = "shader",
 		version      = 1,
 		extensions   = _SHADER_EXTS,
-		settings_tid = typeid_of(ShaderSettings),
+		settings_tid = typeid_of(engine.ShaderSettings),
 		run          = _import_shader,
 	})
 }

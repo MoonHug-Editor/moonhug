@@ -88,7 +88,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 		// bump): import from source and retry once (needs the toolchain).
 		source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
 		if !path_ok do return nil, false
-		if !asset_pipeline_reimport(source_path) {
+		if !asset_pipeline_request_import(source_path, force = true) {
 			_shader_failed[guid] = true
 			return nil, false
 		}
@@ -145,6 +145,8 @@ shader_path_changed :: proc(path: string) {
 	guid, ok := asset_db_get_guid(path)
 	if !ok do return
 	delete_key(&_shader_failed, Asset_GUID(guid))
-	_ = asset_pipeline_import_asset(path)
+	// The REIMPORT is editor-side (engine_editor's path-changed hook runs
+	// after this proc) — here only the eviction, so the next load re-registers
+	// from whatever artifact the index points at.
 	shader_unload(Asset_GUID(guid))
 }

@@ -12,7 +12,9 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
+import "moonhug:engine_editor/asset_pipeline"
 import audio "moonhug:packages/audio"
+import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
 
 _SAMPLE_RATE :: 22050
@@ -75,6 +77,7 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
+	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -91,8 +94,8 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
-	engine.asset_pipeline_ensure_import_meta(wav)
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
 
 	Meta :: struct {
 		guid: string,
@@ -109,7 +112,7 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 
 	// Import at volume 1: the artifact is a decodable float WAV with the
 	// source's peak.
-	testing.expect(t, engine.asset_pipeline_import_asset(wav), "first import should run")
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav), "first import should run")
 	p1, ok1 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok1)
 	if !ok1 do return
@@ -137,8 +140,8 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	defer free(s.data) // the caller owns the settings instance
 	as := s.(audio.AudioSettings)
 	as.volume = 0.5
-	testing.expect(t, engine.asset_pipeline_save_settings(wav, as))
-	testing.expect(t, engine.asset_pipeline_import_asset(wav), "volume change should import")
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(wav, as))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav), "volume change should import")
 	p2, ok2 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok2)
 	if !ok2 do return
@@ -171,8 +174,8 @@ test_import_bakes_volume_and_clip_loads :: proc(t: ^testing.T) {
 	// Normalize scales the peak to 1 before volume applies.
 	as.volume = 1
 	as.normalize = true
-	testing.expect(t, engine.asset_pipeline_save_settings(wav, as))
-	testing.expect(t, engine.asset_pipeline_import_asset(wav), "normalize change should import")
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(wav, as))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav), "normalize change should import")
 	p3, ok3 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok3)
 	if !ok3 do return
@@ -188,6 +191,7 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
+	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 

@@ -10,6 +10,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 
 @(private = "file")

@@ -17,6 +17,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
+import "moonhug:engine_editor/asset_pipeline"
 import common "moonhug:tests/common"
 
 ASSETS :: "moonhug/packages/prefabs_example/assets"

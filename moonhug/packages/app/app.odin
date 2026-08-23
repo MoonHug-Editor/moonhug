@@ -16,10 +16,9 @@ import "moonhug:engine/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
-// Catalog pipeline (docs/AssetPipeline.md "Asset catalog and builds"): --catalog[=path] makes
-// app_init load the exported catalog instead of scanning assets/ — no meta
-// reads, no runtime imports. Default boot scans and lazily imports (the dev
-// mode the editor's Play button uses).
+// The catalog to boot from (docs/AssetPipeline.md "Asset catalog and
+// builds"): --catalog[=path] overrides, default = the editor-maintained
+// in-place catalog. The app has no scan mode.
 _catalog_path: string
 
 main :: proc() {
@@ -62,8 +61,9 @@ main :: proc() {
     phase_run(Phase.Init)
 
     // Scene selection, in order: explicit path via first non-flag program arg
-    // (the editor's Play button passes its active scene),     // catalog's exported boot scene, then the menu scene by GUID (the dev
-    // fallback so the asset can move freely).
+    // (the editor's Play button passes its active scene), then the catalog's
+    // exported boot scene, then the menu scene by GUID (the dev fallback so
+    // the asset can move freely).
     scene_path: string
     for arg in os.args[1:] {
         if strings.has_prefix(arg, "--") do continue
@@ -138,12 +138,13 @@ app_init :: proc() {
     phase_run(.SerializationInit)
     phase_run(.ImportersInit)
     phase_run(.TweenNodesInit)
-    if _catalog_path != "" {
-        if !engine.asset_db_init_from_catalog(_catalog_path) {
-            log.errorf("catalog pipeline init failed — no catalog at the given path")
-        }
-    } else {
-        engine.asset_db_init("assets")
+    // The app ALWAYS runs the catalog pipeline — the editor maintains
+    // library/catalog.json (dev runs read it in place), exports carry their
+    // own. There is no scan mode: scanning and importing are editor machinery
+    // (engine_editor), not linked into this binary.
+    if _catalog_path == "" do _catalog_path = engine.ASSET_CATALOG_PATH
+    if !engine.asset_db_init_from_catalog(_catalog_path) {
+        log.errorf("no catalog at %s — run the editor once (it maintains library/catalog.json) or pass --catalog=<path>", _catalog_path)
     }
     engine.texture_cache_init()
     engine.mesh_cache_init()

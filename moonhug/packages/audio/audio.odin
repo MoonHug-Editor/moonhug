@@ -1,11 +1,10 @@
 package audio
 
-// Audio importer. Decodes the source (wav/mp3/ogg) to float32 PCM, applies
-// the import settings (volume gain), and writes a float32 WAV artifact.
-// Playback loads the ARTIFACT, so every consumer hears the mastered result.
-// Fully self-contained — the settings type, its defaults (factory) and the
-// importer logic all live here. Scene/meta records key on the type guid
-// below — never change it.
+// Audio import settings + PCM codec utilities (decode to float32, WAV
+// write). The importer registration and run proc live editor-side
+// (editor/audio_importer.odin); the settings type stays here so the catalog
+// pipeline materializes settings in game binaries too. Scene/meta records
+// key on the type guid below — never change it.
 
 import "core:fmt"
 import "core:os"
@@ -27,60 +26,6 @@ make_pAudioSettings :: proc() -> any {
 	p := new(AudioSettings)
 	p.volume = 1.0
 	return p^
-}
-
-_AUDIO_EXTS := []string{".mp3", ".wav", ".ogg"}
-
-@(phase={key=ImportersInit, order=1})
-audio_importers_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	engine.importer_register({
-		name         = "audio",
-		version      = 2,
-		extensions   = _AUDIO_EXTS,
-		settings_tid = typeid_of(AudioSettings),
-		run          = _import_audio,
-	})
-	engine.asset_pipeline_add_reimport_hook(_clip_reimported)
-}
-
-// The pipeline creates the artifact directory before calling run.
-_import_audio :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
-	volume: f32 = 1
-	normalize := false
-	if settings != nil {
-		s := cast(^AudioSettings)settings
-		volume = s.volume
-		normalize = s.normalize
-	}
-
-	pcm, spec, ok := decode_file_f32(source_path)
-	if !ok {
-		fmt.printf("[Pipeline] Failed to decode audio: %s\n", source_path)
-		return false
-	}
-	defer delete(pcm)
-
-	gain := volume
-	if normalize {
-		peak: f32
-		for s in pcm {
-			if abs(s) > peak do peak = abs(s)
-		}
-		if peak > 0 do gain = volume / peak
-	}
-	if gain != 1 {
-		for &s in pcm do s *= gain
-	}
-
-	if !_write_wav_f32(artifact_path, pcm, spec) {
-		fmt.printf("[Pipeline] Failed to write artifact: %s\n", artifact_path)
-		return false
-	}
-	fmt.printf("[Pipeline] Imported audio: %s -> %s\n", source_path, artifact_path)
-	return true
 }
 
 // Decode any supported source into interleaved float32 PCM at its native

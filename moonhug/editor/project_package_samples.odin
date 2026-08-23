@@ -21,6 +21,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "inspector"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 Sample_State :: enum {
 	Not_Installed,
@@ -103,7 +104,7 @@ _sample_copy_recursive :: proc(src, dst: string) -> bool {
 
 @(private = "file")
 _sample_after_change :: proc(verb, name: string) {
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	fmt.printf("[Editor] %s sample %s - code changes need a prebuild + rebuild (run.sh)\n", verb, name)
 }

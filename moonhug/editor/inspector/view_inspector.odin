@@ -11,6 +11,7 @@ import strings "core:strings"
 import im "moonhug:external/odin-imgui"
 import ser "../../engine/serialization"
 import engine "../../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import clip "../clipboard"
 import "../undo"
 
@@ -299,7 +300,7 @@ _draw_import_settings_inspector :: proc() {
     // Registered wrappers funnel the settings body (inspector_funnel.odin),
     // keyed by the importer owning this asset's extension.
     ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
-    if chain, has := _asset_chain(engine.importer_for_extension(ext)); has {
+    if chain, has := _asset_chain(asset_pipeline.importer_for_extension(ext)); has {
         guid: engine.Asset_GUID
         if g, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
             guid = engine.Asset_GUID(g)
@@ -319,10 +320,10 @@ _draw_import_settings_inspector :: proc() {
 // The asset funnel's base: Apply + file row + the reflected settings.
 draw_default_import_settings :: proc() {
     if im.Button("Apply", im.Vec2{60, 0}) {
-        if engine.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
+        if asset_pipeline.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
             // Reimport hooks evict every guid-keyed cache (textures, package
             // asset caches) so the new settings apply without a restart.
-            engine.asset_pipeline_reimport(inspectorData.filePath)
+            asset_pipeline.asset_pipeline_reimport(inspectorData.filePath)
             inspectorData.statusMessage = fmt.tprintf("Reimported %s", inspectorData.filePath)
         } else {
             inspectorData.statusMessage = fmt.tprintf("Failed to save settings for %s", inspectorData.filePath)

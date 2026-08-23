@@ -18,6 +18,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import engine "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import anim "moonhug:packages/animation"
 import "../engine/serialization"
 
@@ -85,7 +86,7 @@ extract_gltf_assets :: proc(model_path: string) {
 		written += 1
 	}
 	// Mint .meta files + guids for whatever was just written.
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 
 	tex_guid := proc(view: cgltf.texture_view, img_paths: ^map[^cgltf.image]string) -> engine.Asset_GUID {
 		if view.texture == nil || view.texture.image_ == nil do return {}
@@ -180,7 +181,7 @@ extract_gltf_assets :: proc(model_path: string) {
 		}
 		anims_written += 1
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 
 	// 4) <stem>.scene mirroring the glTF node hierarchy (the Unity
 	// model-prefab analog): mesh nodes wired to their part of the .glb and
@@ -225,7 +226,7 @@ extract_gltf_assets :: proc(model_path: string) {
 			fmt.printf("[Editor] Extract: failed to write %s\n", scene_out)
 		}
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 
 	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s), %d animation clip(s), %d scene(s) created\n",
 		model_path, written, skipped, mats_written, anims_written, scenes_written)

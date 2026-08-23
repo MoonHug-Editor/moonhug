@@ -108,6 +108,9 @@ asset_db_package_roots :: proc() -> []Asset_Package_Root {
     return roots[:]
 }
 
+// Storage init + a scan request through the refresh seam. The scan itself is
+// editor-side (engine_editor/pipeline) — with no refresh proc installed (a
+// binary without the pipeline) the maps just start empty.
 asset_db_init :: proc(root: string) {
     asset_db.root_path = strings.clone(root)
     asset_db.guid_to_path = make(map[uuid.Identifier]string)
@@ -115,7 +118,7 @@ asset_db_init :: proc(root: string) {
     asset_db.root_info = make(map[Asset_GUID]Asset_Root_Info)
     asset_db.assets_by_type = make(map[TypeKey][dynamic]PPtr)
     asset_db.file_state = make(map[string]Asset_File_Stamp)
-    asset_db_refresh()
+    asset_db_request_refresh()
 }
 
 asset_db_shutdown :: proc() {
@@ -163,6 +166,20 @@ _free_root_index :: proc() {
 // Packages register cache invalidation for their asset extensions here
 // (the animation package drops edited .anim clips), the way built-in
 // material/shader caches are called directly above.
+// The scan/refresh machinery is editor-side (engine_editor/asset_scan.odin):
+// game binaries run the catalog pipeline only and never scan. Engine code
+// that needs a refresh after writing an asset (scene_save) requests one
+// through this seam — installed by the editor, nil in the app.
+_refresh_proc: proc()
+
+asset_db_set_refresh_proc :: proc(p: proc()) {
+    _refresh_proc = p
+}
+
+asset_db_request_refresh :: proc() {
+    if _refresh_proc != nil do _refresh_proc()
+}
+
 Path_Changed_Hook :: proc(path: string)
 
 _path_changed_hooks: [dynamic]Path_Changed_Hook
@@ -176,107 +193,6 @@ asset_db_add_path_changed_hook :: proc(hook: Path_Changed_Hook) {
     // allocators).
     context.allocator = runtime.default_allocator()
     append(&_path_changed_hooks, hook)
-}
-
-asset_db_refresh :: proc() {
-    if asset_db.pipeline == .Catalog do return
-    walk: _Db_Walk
-    walk.files = make(map[string]Asset_File_Stamp, context.temp_allocator)
-    walk.metas = make([dynamic]string, context.temp_allocator)
-    _db_walk(asset_db.root_path, &walk)
-    // Installed packages: each packages/<name>/assets is a further root,
-    // scanned by the same machinery (docs/Plugins.md).
-    for root in asset_db_package_roots() {
-        _db_walk(root.assets_path, &walk)
-    }
-
-    created, modified, deleted: int
-
-    // Deletions. Collect first — removing while iterating is unsafe.
-    removed := make([dynamic]string, context.temp_allocator)
-    for path in asset_db.file_state {
-        if path not_in walk.files {
-            append(&removed, path)
-        }
-    }
-    for path in removed {
-        _asset_removed(path)
-        old_key, _ := delete_key(&asset_db.file_state, path)
-        delete(old_key)
-        deleted += 1
-    }
-
-    // Creations and modifications: REGISTER first, INDEX second. Indexing a
-    // variant flattens it, which resolves its BASE by guid->path — if the base
-    // hasn't been registered yet (map iteration order is random), the flatten
-    // fails and the variant silently drops from the index for that run.
-    changed := make([dynamic]string, context.temp_allocator)
-    for path, stamp in walk.files {
-        old, existed := asset_db.file_state[path]
-        if !existed {
-            _ensure_meta(path)
-            asset_db.file_state[strings.clone(path)] = stamp
-            append(&changed, path)
-            created += 1
-        } else if old != stamp {
-            _ensure_meta(path) // re-reads the meta; guid stays stable
-            asset_db.file_state[path] = stamp // key exists; stored key is reused
-            append(&changed, path)
-            modified += 1
-        }
-    }
-    for path in changed {
-        _reindex_if_scene(path)
-        material_path_changed(path) // externally edited .mat: drop the cache entry
-        shader_path_changed(path)   // edited .glsl: reimport + hot-reload pipelines
-        for hook in _path_changed_hooks do hook(path)
-    }
-
-    // Orphaned metas: a .meta whose asset (file or folder) is gone.
-    for meta in walk.metas {
-        asset_path := strings.trim_suffix(meta, ".meta")
-        if asset_path not_in walk.files {
-            os.remove(meta)
-            log.infof("[AssetDB] Removed orphaned meta: %s", meta)
-        }
-    }
-
-    if created + modified + deleted > 0 {
-        // Through the log package: visible in the editor console/status bar,
-        // not just the terminal.
-        log.infof("[AssetDB] Refreshed: +%d ~%d -%d (%d assets)", created, modified, deleted, len(asset_db.path_to_guid))
-        // Keep the in-place catalog current (editor-only, asset_catalog_auto):
-        // run configs stage build data from it without a live AssetDB.
-        _asset_catalog_auto_write()
-    }
-}
-
-_Db_Walk :: struct {
-    files: map[string]Asset_File_Stamp, // temp; folders carry a zero stamp
-    metas: [dynamic]string,             // temp
-}
-
-_db_walk :: proc(dir_path: string, walk: ^_Db_Walk) {
-    handle, err := os.open(dir_path)
-    if err != nil do return
-    defer os.close(handle)
-
-    entries, read_err := os.read_dir(handle, -1, context.temp_allocator)
-    if read_err != nil do return
-    defer os.file_info_slice_delete(entries, context.temp_allocator)
-
-    for entry in entries {
-        if strings.has_prefix(entry.name, ".") do continue
-        full_path, _ := filepath.join({dir_path, entry.name}, context.temp_allocator)
-        if entry.type == .Directory {
-            walk.files[full_path] = {}
-            _db_walk(full_path, walk)
-        } else if strings.has_suffix(entry.name, ".meta") {
-            append(&walk.metas, full_path)
-        } else {
-            walk.files[full_path] = {mtime = entry.modification_time, size = entry.size}
-        }
-    }
 }
 
 _asset_removed :: proc(path: string) {
@@ -468,21 +384,6 @@ asset_db_get_guid :: proc(path: string) -> (uuid.Identifier, bool) {
         return guid, true
     }
     return {}, false
-}
-
-_ensure_meta :: proc(asset_path: string) {
-    meta_path := strings.concatenate({asset_path, ".meta"})
-    defer delete(meta_path)
-
-    if guid, ok := _read_meta(meta_path); ok {
-        _register_asset(asset_path, guid)
-    } else {
-        guid := _generate_guid()
-        _write_meta(meta_path, guid)
-        _register_asset(asset_path, guid)
-    }
-
-    asset_pipeline_ensure_import_meta(asset_path)
 }
 
 _register_asset :: proc(path: string, guid: uuid.Identifier) {

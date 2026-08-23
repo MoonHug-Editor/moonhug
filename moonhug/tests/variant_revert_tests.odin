@@ -7,6 +7,7 @@ package tests
 // (§6.2), so the overridden object is the scene root itself rather than a child.
 
 import engine "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "../editor/undo"
 import "core:strings"
 import "core:testing"

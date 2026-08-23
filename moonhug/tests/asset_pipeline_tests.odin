@@ -14,6 +14,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 // Shared with asset_catalog_tests (both sweep a fixture library/).
 _remove_tree :: proc(dir: string) {
@@ -49,8 +50,8 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
-	engine.asset_pipeline_ensure_import_meta(png)
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(png)
 
 	// The minted guid, straight from the meta.
 	Meta :: struct {
@@ -67,7 +68,7 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	guid := engine.Asset_GUID(raw_guid)
 
 	// First import: artifact created under the fan-out layout, indexed by guid.
-	testing.expect(t, engine.asset_pipeline_import_asset(png), "first import should run")
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(png), "first import should run")
 	p1, ok1 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok1)
 	if !ok1 do return
@@ -79,7 +80,7 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	testing.expect(t, os.exists(p1))
 
 	// Unchanged source + settings: one stat, no re-import.
-	testing.expect(t, !engine.asset_pipeline_import_asset(png), "unchanged asset should be fresh")
+	testing.expect(t, !asset_pipeline.asset_pipeline_import_asset(png), "unchanged asset should be fresh")
 
 	// A settings change is a different key — the old artifact stays.
 	s, sok := engine.asset_pipeline_get_settings(png)
@@ -89,8 +90,8 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	ts := s.(engine.TextureSettings)
 	original_ppu := ts.pixels_per_unit
 	ts.pixels_per_unit = 50
-	testing.expect(t, engine.asset_pipeline_save_settings(png, ts))
-	testing.expect(t, engine.asset_pipeline_import_asset(png), "settings change should import")
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(png, ts))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(png), "settings change should import")
 	p2, ok2 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok2)
 	if !ok2 do return
@@ -102,8 +103,8 @@ test_artifact_content_addressing :: proc(t: ^testing.T) {
 	// Toggling the setting back is a cache HIT: the index re-points to the
 	// first artifact without running the importer.
 	ts.pixels_per_unit = original_ppu
-	testing.expect(t, engine.asset_pipeline_save_settings(png, ts))
-	testing.expect(t, engine.asset_pipeline_import_asset(png), "toggle back should re-point the index")
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(png, ts))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(png), "toggle back should re-point the index")
 	p3, ok3 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok3)
 	if ok3 {
@@ -135,8 +136,8 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
-	engine.asset_pipeline_ensure_import_meta(glsl)
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(glsl)
 
 	Meta :: struct {
 		guid: string,
@@ -151,7 +152,7 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 	if perr != nil do return
 	guid := engine.Asset_GUID(raw_guid)
 
-	testing.expect(t, engine.asset_pipeline_import_asset(glsl), "first import should run")
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(glsl), "first import should run")
 	p1, ok1 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok1)
 	if !ok1 do return
@@ -161,7 +162,7 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 	// Break the source. The importer fails (glslc rejects it) and the index
 	// must still resolve to the good artifact.
 	testing.expect(t, os.write_entire_file(glsl, transmute([]u8)string("not valid glsl {")) == nil)
-	testing.expect(t, !engine.asset_pipeline_import_asset(glsl), "broken source should fail the importer")
+	testing.expect(t, !asset_pipeline.asset_pipeline_import_asset(glsl), "broken source should fail the importer")
 	p2, ok2 := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, ok2, "guid should still resolve after a failed import")
 	if ok2 {

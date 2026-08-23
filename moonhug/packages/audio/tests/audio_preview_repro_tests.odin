@@ -10,6 +10,7 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:testing"
 import "moonhug:engine"
+import "moonhug:engine_editor/asset_pipeline"
 import audio "moonhug:packages/audio"
 import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
@@ -19,6 +20,7 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
+	audio_editor.audio_importers_init()
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 	audio.mixer_init_headless()
@@ -35,8 +37,8 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
-	engine.asset_pipeline_ensure_import_meta(wav)
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
 	Meta :: struct {
 		guid: string,
 	}
@@ -49,7 +51,7 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	// The editor-only hook the pane registers (EditorInit in the editor).
 	engine.asset_pipeline_add_reimport_hook(audio_editor._wave_evict)
 
-	testing.expect(t, engine.asset_pipeline_import_asset(wav))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
 
 	// Pane state: waveform cached + preview playing + clip cached.
 	_, wok := audio_editor._waveform_get(guid)
@@ -63,8 +65,8 @@ test_preview_apply_reimport :: proc(t: ^testing.T) {
 	defer free(s.data)
 	as := s.(audio.AudioSettings)
 	as.volume = 0.25
-	testing.expect(t, engine.asset_pipeline_save_settings(wav, as))
-	testing.expect(t, engine.asset_pipeline_import_asset(wav), "apply reimports")
+	testing.expect(t, asset_pipeline.asset_pipeline_save_settings(wav, as))
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav), "apply reimports")
 
 	// The frame after: the pane recomputes and playback can restart.
 	wf2, wok2 := audio_editor._waveform_get(guid)

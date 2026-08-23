@@ -6,6 +6,7 @@ import "core:fmt"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import common "common"
 
 
@@ -155,7 +156,7 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
 	nested := engine.scene_instantiate_guid_nested(engine.Asset_GUID(p_guid), engine.Transform_Handle(tc.scene.root.handle))
 	testing.expect(t, nested != {}, "prefab nests into host")
 	testing.expect(t, engine.scene_save(tc.scene, host_path), "save host")
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 
 	// Step 1: open the host (as the editor auto-loads it from settings).
 	host := engine.scene_load_single_path(host_path)

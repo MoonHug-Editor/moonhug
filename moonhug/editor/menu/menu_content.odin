@@ -3,6 +3,7 @@ import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "../inspector"
 import engine "../../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "core:path/filepath"
 
 Theme :: enum {
@@ -141,7 +142,7 @@ file_quit_menu :: proc() { quit_requested = true }
 
 @(menu_item={path="Assets/Refresh AssetDB", order=0, shortcut=""})
 refresh_asset_db_menu :: proc() {
-    engine.asset_db_refresh()
+    asset_pipeline.asset_db_refresh()
 }
 
 show_about := false

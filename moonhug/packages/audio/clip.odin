@@ -28,9 +28,11 @@ clip_load :: proc(guid: engine.Asset_GUID) -> (^Audio_Clip, bool) {
 
 	path, path_ok := engine.asset_pipeline_artifact_path(guid)
 	if !path_ok {
+		// Self-heal is editor-only (asset_pipeline_request_import is nil in a
+		// game binary — a missing artifact there is a load error).
 		src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
 		if !src_ok do return nil, false
-		engine.asset_pipeline_import_asset(src)
+		_ = engine.asset_pipeline_request_import(src, force = false)
 		path, path_ok = engine.asset_pipeline_artifact_path(guid)
 		if !path_ok do return nil, false
 	}

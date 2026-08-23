@@ -7,6 +7,7 @@ package tests
 import "core:os"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 _toolchain_available :: proc() -> bool {
 	state, _, _, err := os.process_exec({command = []string{"glslc", "--version"}}, context.temp_allocator)
@@ -26,7 +27,7 @@ test_shader_import_compiles_fixture :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/shaders/_test_shader_artifact.bin"
 	defer os.remove(artifact)
 
-	ok := engine._import_shader("moonhug/tests/fixtures/shaders/test.glsl", artifact, nil)
+	ok := asset_pipeline._import_shader("moonhug/tests/fixtures/shaders/test.glsl", artifact, nil)
 	testing.expect(t, ok, "test.glsl import failed")
 
 	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
@@ -59,7 +60,7 @@ test_shader_import_reflects_properties :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/shaders/_test_props_artifact.bin"
 	defer os.remove(artifact)
 
-	ok := engine._import_shader("moonhug/tests/fixtures/shaders/test_props.glsl", artifact, nil)
+	ok := asset_pipeline._import_shader("moonhug/tests/fixtures/shaders/test_props.glsl", artifact, nil)
 	testing.expect(t, ok, "test_props.glsl import failed")
 
 	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
@@ -86,7 +87,7 @@ test_shader_import_view_dependent_contract :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/shaders/_test_specular_artifact.bin"
 	defer os.remove(artifact)
 
-	ok := engine._import_shader("moonhug/tests/fixtures/shaders/test_specular.glsl", artifact, nil)
+	ok := asset_pipeline._import_shader("moonhug/tests/fixtures/shaders/test_specular.glsl", artifact, nil)
 	testing.expect(t, ok, "test_specular.glsl import failed")
 
 	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
@@ -111,7 +112,7 @@ test_shader_import_reflects_textures :: proc(t: ^testing.T) {
 	artifact := "moonhug/tests/fixtures/shaders/_test_multitex_artifact.bin"
 	defer os.remove(artifact)
 
-	ok := engine._import_shader("moonhug/tests/fixtures/shaders/test_multitex.glsl", artifact, nil)
+	ok := asset_pipeline._import_shader("moonhug/tests/fixtures/shaders/test_multitex.glsl", artifact, nil)
 	testing.expect(t, ok, "test_multitex.glsl import failed")
 
 	blob, _ := os.read_entire_file(artifact, context.temp_allocator)

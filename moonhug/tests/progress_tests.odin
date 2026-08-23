@@ -6,6 +6,8 @@ package tests
 
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/progress"
 
 @(private = "file")
 _calls: [dynamic]string
@@ -15,28 +17,28 @@ _recording_sink :: proc(title, info: string, fraction: f32) {
 	append(&_calls, title)
 	append(&_calls, info)
 	// A sink that reports (a redraw triggering asset work) must not recurse.
-	engine.progress_report("recursed", 1)
+	progress.report("recursed", 1)
 }
 
 @(test)
 test_progress_sink_and_nesting :: proc(t: ^testing.T) {
 	// Without a sink every call is a no-op — engine internals report
 	// unconditionally, so this is the headless/app safety property.
-	engine.progress_report("ignored", 0.5)
-	engine.progress_begin("ignored")
-	engine.progress_end()
+	progress.report("ignored", 0.5)
+	progress.begin("ignored")
+	progress.end()
 
-	engine.progress_set_sink(_recording_sink)
-	defer engine.progress_set_sink(nil)
+	progress.set_sink(_recording_sink)
+	defer progress.set_sink(nil)
 	defer delete(_calls)
 
-	engine.progress_begin("Outer")
-	engine.progress_report("step 1", 0.5)
-	engine.progress_begin("Inner")
-	engine.progress_report("inner step", -1)
-	engine.progress_end()
-	engine.progress_report("step 2", 0.9)
-	engine.progress_end()
+	progress.begin("Outer")
+	progress.report("step 1", 0.5)
+	progress.begin("Inner")
+	progress.report("inner step", -1)
+	progress.end()
+	progress.report("step 2", 0.9)
+	progress.end()
 
 	expected := []string{
 		"Outer", "",           // begin's initial report

@@ -24,6 +24,7 @@ import strings "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 
 // --- File clipboard -----------------------------------------------------------
 
@@ -142,7 +143,7 @@ project_ops_new_folder :: proc() {
 		fmt.printf("[Editor] New Folder: failed to create %s\n", dst)
 		return
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	_project_set_selected(dst)
 	_project_begin_rename(dst, false)
@@ -207,7 +208,7 @@ project_ops_paste :: proc() {
 		clear(&_file_clip)
 		_file_clip_cut = false
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	_project_select_paths(pasted[:])
 }
@@ -224,7 +225,7 @@ project_ops_duplicate :: proc() {
 		dst := _project_unique_dest(filepath.dir(src), filepath.base(src))
 		if _project_copy_recursive(src, dst) do append(&dups, dst)
 	}
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	_project_select_paths(dups[:])
 }
@@ -250,7 +251,7 @@ project_ops_delete :: proc() {
 	}
 	sel_proj_clear()
 	_project_set_active("")
-	engine.asset_db_refresh()
+	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 }
 

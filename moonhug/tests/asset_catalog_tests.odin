@@ -11,6 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "../engine/catalog"
 
 @(test)
@@ -32,9 +33,9 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 	}
 
 	// Live mode: scan the fixture dir and import (mints meta + artifact).
-	engine.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(src_dir)
-	_ = engine.asset_pipeline_import_asset(png)
+	_ = asset_pipeline.asset_pipeline_import_asset(png)
 
 	raw_guid, gok := engine.asset_db_get_guid(png)
 	testing.expect(t, gok, "scan should register the fixture")
@@ -57,8 +58,8 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, cok && catalog_artifact == live_artifact, "artifact key should survive the round trip")
 
 	// The catalog is authoritative: no repair imports, no rescans.
-	testing.expect(t, !engine.asset_pipeline_import_asset(png), "catalog pipeline should refuse imports")
-	engine.asset_db_refresh() // no-op by contract — must not scan or crash
+	testing.expect(t, !asset_pipeline.asset_pipeline_import_asset(png), "catalog pipeline should refuse imports")
+	asset_pipeline.asset_db_refresh() // no-op by contract — must not scan or crash
 	still, sok := engine.asset_db_get_path(raw_guid)
 	testing.expect(t, sok && still == png, "refresh under catalog pipeline should change nothing")
 }
@@ -87,9 +88,9 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(src_dir)
-	_ = engine.asset_pipeline_import_asset(png)
+	_ = asset_pipeline.asset_pipeline_import_asset(png)
 	raw_guid, gok := engine.asset_db_get_guid(png)
 	testing.expect(t, gok)
 	if !gok do return
@@ -130,7 +131,7 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 		testing.expect(t, false, "settings should materialize as TextureSettings")
 	}
 
-	testing.expect(t, !engine.asset_pipeline_import_asset(path), "catalog pipeline should refuse imports")
+	testing.expect(t, !asset_pipeline.asset_pipeline_import_asset(path), "catalog pipeline should refuse imports")
 }
 
 @(test)
@@ -151,9 +152,9 @@ test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 		_remove_tree("library")
 	}
 
-	engine.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init(src_dir)
-	_ = engine.asset_pipeline_import_asset(png)
+	_ = asset_pipeline.asset_pipeline_import_asset(png)
 	testing.expect(t, engine.asset_catalog_write())
 	engine.asset_db_shutdown()
 

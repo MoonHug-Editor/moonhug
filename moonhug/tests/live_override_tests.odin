@@ -5,6 +5,7 @@ package tests
 // only an explicit revert removes it.
 
 import "../engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "../editor/undo"
 
 import "core:testing"
