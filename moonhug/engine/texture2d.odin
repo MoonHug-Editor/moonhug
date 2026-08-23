@@ -2,6 +2,7 @@ package engine
 
 import gfx "gfx"
 import stbi "vendor:stb/image"
+import "base:runtime"
 import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
@@ -29,9 +30,13 @@ texture_sprite_rect :: proc(tex: ^Texture2D, name: string) -> (Sprite_Rect, bool
     return {}, false
 }
 
+// Cache-owned slice memory lives on the process heap: texture_load runs
+// under arbitrary context allocators (render-pass temp included), so the
+// clones and their frees pin the allocator explicitly.
 _texture_sprites_free :: proc(tex: ^Texture2D) {
-    for s in tex.sprites do delete(s.name)
-    delete(tex.sprites)
+    alloc := runtime.default_allocator()
+    for s in tex.sprites do delete(s.name, alloc)
+    delete(tex.sprites, alloc)
     tex.sprites = nil
 }
 
@@ -79,12 +84,14 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
         if ts, is_tex := settings.(TextureSettings); is_tex {
             if ts.pixels_per_unit > 0 do ppu = ts.pixels_per_unit
-            // Settings live on the temp allocator — the cache owns clones.
+            // Settings live on the temp allocator — the cache owns clones
+            // (_texture_sprites_free frees them, same pinned allocator).
             if ts.sprite_mode == .Multiple && len(ts.sprites) > 0 {
-                sprites = make([]Sprite_Rect, len(ts.sprites))
+                alloc := runtime.default_allocator()
+                sprites = make([]Sprite_Rect, len(ts.sprites), alloc)
                 for s, i in ts.sprites {
                     sprites[i] = s
-                    sprites[i].name = strings.clone(s.name)
+                    sprites[i].name = strings.clone(s.name, alloc)
                 }
             }
         }

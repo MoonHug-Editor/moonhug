@@ -14,6 +14,7 @@ import sprites "moonhug:packages/sprites"
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 sprites_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(sprites.SpriteRenderer), _sprite_renderer_inspector)
+	inspector.add_asset_wrapper("texture", _texture_slicer)
 }
 
 // Default fields, then a Sprite dropdown when the texture carries slices
@@ -53,4 +54,24 @@ _set_sprite :: proc(sr: ^sprites.SpriteRenderer, name: string) {
 	sr.sprite = strings.clone(name)
 	inspector.mark_inspector_changed()
 	inspector.record_nested_override(&sr.sprite, typeid_of(string), "sprite", true)
+}
+
+// --- Asset funnel: the Sprite Editor button ----------------------------------
+// Unity's shape: the texture importer inspector carries a Sprite Editor
+// button, the slicing itself happens in the dedicated window
+// (sprite_editor_window.odin) with its own Apply/Revert.
+_texture_slicer :: proc(ctx: ^inspector.Asset_Ctx) {
+	inspector.draw(ctx) // Apply + the reflected TextureSettings
+
+	if ctx.settings.id != typeid_of(engine.TextureSettings) do return
+	ts := cast(^engine.TextureSettings)ctx.settings.data
+
+	im.Separator()
+	if im.Button("Sprite Editor") {
+		sprite_editor_open(ctx.path, ctx.guid)
+	}
+	if ts.sprite_mode == .Multiple {
+		im.SameLine()
+		im.TextDisabled("%d slices", i32(len(ts.sprites)))
+	}
 }

@@ -172,7 +172,12 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   rect, pivot) live in the texture's meta and bake into the catalog with the
   rest of the settings. `Texture2D` caches the slices, `SpriteRenderer.sprite`
   references one by NAME (empty = whole texture). The package's editor half
-  draws the slice dropdown through the inspector funnel.
+  draws the slice dropdown through the inspector funnel and owns the Sprite
+  Editor window (`@(editor_window)`): zoom/pan canvas, Slice popup
+  (Automatic by transparency islands, Grid By Cell Count, Grid By Cell Size),
+  drag-create/move rects, per-slice name/rect/pivot panel, its own
+  Apply/Revert against the texture's meta. Opened from the importer
+  inspector's Sprite Editor button or Window/Sprite Editor.
 
 ## Roadmap
 
