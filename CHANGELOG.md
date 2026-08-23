@@ -1,3 +1,9 @@
+## [0.76.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.75.0...v0.76.0) (2026-08-23)
+
+### Features
+
+* asset catalog for build export ([9ab60fb](https://github.com/MoonHug-Editor/moonhug/commit/9ab60fb445297caa4c64eea807753b8e9532b613))
+
 ## [0.75.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.74.0...v0.75.0) (2026-08-22)
 
 ### Features
