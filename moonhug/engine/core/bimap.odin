@@ -1,4 +1,4 @@
-package engine
+package core
 
 Bimap :: struct($K, $V: typeid) {
     forward:  map[K]V,

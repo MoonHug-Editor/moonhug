@@ -31,9 +31,6 @@ register_component_serializers :: proc() {
     json.register_user_marshaler(engine.Asset_GUID, asset_guid_marshal)
     json.register_user_unmarshaler(engine.Asset_GUID, asset_guid_unmarshal)
 
-    json.register_user_marshaler(engine.UnionTest, union_marshal)
-    json.register_user_unmarshaler(engine.UnionTest, union_unmarshal)
-
     // Pointer typeids needed by nested-scene deep-override application
     // (`_nested_patch_live_field` calls `get_pointer_typeid_by_typeid` to
     // build a typed `any` for `json.unmarshal_any`). Without these, deep
@@ -54,8 +51,6 @@ register_component_serializers :: proc() {
     engine.register_pointer_type(f64)
     engine.register_pointer_type(string)
     engine.register_pointer_type(engine.Asset_GUID)
-    engine.register_pointer_type(engine.A)
-    engine.register_pointer_type(engine.UnionTest)
     // Reference types: revert/deep-override of a Ref field unmarshals the
     // baseline back into the live field via these.
     engine.register_pointer_type(engine.Ref_Local)

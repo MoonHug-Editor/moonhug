@@ -340,21 +340,37 @@ _write_imports :: proc(
 	}
 }
 
+// Lifecycle phases: a host package's entries on these run only while that
+// host is the active sim host. Every other phase is a registration phase
+// (SerializationInit, ImportersInit, Phase_Extra keys) and runs
+// unconditionally — the editor loads every game's types and serializers no
+// matter which host Simulate ticks.
+_HOST_GATED_PHASES :: [?]string{
+	"ExitingEditMode", "EnteredPlayMode", "ExitingPlayMode", "EnteredEditMode",
+	"Init", "Shutdown", "DebugDraw",
+}
+
+_is_host_gated_phase :: proc(key_name: string) -> bool {
+	for p in _HOST_GATED_PHASES do if p == key_name do return true
+	return false
+}
+
 _write_dispatcher :: proc(
 	b: ^strings.Builder,
 	proc_name: string,
 	key_type: string,
 	entries: []PhaseEntry,
 	home_pkg: string,
-	hosts: []gen_facts.Runnable_Pkg = nil, // editor dispatcher: host-owned entries run only for the active sim host
+	hosts: []gen_facts.Runnable_Pkg = nil, // editor dispatcher: host-owned lifecycle entries run only for the active sim host
 ) {
 	fmt.sbprintf(b, "%s :: proc(key: %s) {{\n", proc_name, key_type)
-	// One bool per host that owns entries, resolved once up front.
+	// One bool per host that owns gated entries, resolved once up front.
 	guarded: [dynamic]string
 	defer delete(guarded)
 	if hosts != nil {
 		for e in entries {
 			if !gen_facts.is_runnable(hosts, e.pkg_name) do continue
+			if !_is_host_gated_phase(e.key_name) do continue
 			found := false
 			for g in guarded do if g == e.pkg_name { found = true; break }
 			if !found do append(&guarded, e.pkg_name)
@@ -372,7 +388,9 @@ _write_dispatcher :: proc(
 		}
 		strings.write_string(b, "\t\t")
 		is_guarded := false
-		for g in guarded do if g == e.pkg_name { is_guarded = true; break }
+		if _is_host_gated_phase(e.key_name) {
+			for g in guarded do if g == e.pkg_name { is_guarded = true; break }
+		}
 		if is_guarded {
 			fmt.sbprintf(b, "if sim_host_is_%s do ", e.pkg_name)
 		}

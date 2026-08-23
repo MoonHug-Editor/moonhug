@@ -1,7 +1,5 @@
 package app
 
-import "moonhug:engine"
-
 @(typ_guid={guid = "f47ac10b-58cc-4372-a567-0e02b2c3d479", menu_assets_create = {menu_name = "Game Settings", order = 0}})
 GameSettings :: struct {
     playerSpeed: f32 `inspect:"" json:"-"
@@ -16,8 +14,8 @@ GameSettings :: struct {
         decor:readonly()
         `,
 
-    a: engine.A,
-    a2: engine.A,
+    a: A,
+    a2: A,
 
     gameNames:[dynamic]string `
         decor:header(text="Test Header")
@@ -25,10 +23,10 @@ GameSettings :: struct {
 
     dynamicInt:[dynamic]int `
         decor:separator()`,
-    dynamicA:[dynamic]engine.A,
-    a3:[3]engine.A,
+    dynamicA:[dynamic]A,
+    a3:[3]A,
     int3:[3]int,
 
-    comp: engine.UnionTest,
-    comps3: [3]engine.UnionTest,
+    comp: UnionTest,
+    comps3: [3]UnionTest,
 }

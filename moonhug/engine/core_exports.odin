@@ -71,3 +71,25 @@ pool_make_entry  :: core.pool_make_entry
 // Component base.
 CompData  :: core.CompData
 comp_zero :: core.comp_zero
+
+// Bidirectional map.
+Bimap               :: core.Bimap
+bimap_insert        :: core.bimap_insert
+bimap_remove        :: core.bimap_remove
+bimap_remove_by_key :: core.bimap_remove_by_key
+bimap_remove_by_val :: core.bimap_remove_by_val
+bimap_get           :: core.bimap_get
+bimap_has           :: core.bimap_has
+cleanup_Bimap       :: core.cleanup_Bimap
+
+// Quaternion helpers ([4]f32 xyzw <-> native, euler degrees).
+QUAT_IDENTITY       :: core.QUAT_IDENTITY
+quat_to_native      :: core.quat_to_native
+quat_from_native    :: core.quat_from_native
+quat_to_matrix3     :: core.quat_to_matrix3
+quat_from_euler_xyz :: core.quat_from_euler_xyz
+quat_to_euler_xyz   :: core.quat_to_euler_xyz
+quaternion128_x     :: core.quaternion128_x
+quaternion128_y     :: core.quaternion128_y
+quaternion128_z     :: core.quaternion128_z
+quaternion128_w     :: core.quaternion128_w
