@@ -14,6 +14,7 @@ import "inspector"
 import "menu"
 import "../engine"
 import "moonhug:engine_editor/asset_pipeline"
+import "subassets"
 import "undo"
 
 ProjectViewData :: struct {
@@ -789,8 +790,73 @@ _project_draw_grid :: proc(path: string, cell: f32) {
             entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
             _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell)
             col = (col + 1) % cols
+
+            // Unity's expander strip: an unfolded asset's sub-assets follow
+            // as their own cells.
+            if !entry.is_dir && _project_expanded[entry_path] {
+                sub, provider := _project_sub_assets(entry_path, false)
+                if len(sub) > 0 {
+                    if raw_guid, gok := engine.asset_db_get_guid(entry_path); gok {
+                        guid := engine.Asset_GUID(raw_guid)
+                        for s, si in sub {
+                            if col > 0 do im.SameLine()
+                            else do im.SetCursorPosX(im.GetCursorPosX() + lead)
+                            _project_draw_grid_sub_cell(entry_path, guid, s, si, provider, cell)
+                            col = (col + 1) % cols
+                        }
+                    }
+                }
+            }
         }
     }
+}
+
+_project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID, s: subassets.Sub_Asset, index: int, provider: subassets.Provider, cell: f32) {
+    label_h := im.GetTextLineHeightWithSpacing()
+    // ID scope by parent + INDEX — the sub-asset id is data (pre-heal metas
+    // carry id 0 on every slice).
+    im.PushIDStr(fmt.ctprintf("sub_%s_%d", parent_path, index), nil)
+    defer im.PopID()
+
+    is_selected := _project_active_pane == .List && sel_proj_is_sub(parent_path, s.id)
+    rect_min := im.GetCursorScreenPos()
+    if im.Selectable("##subcell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
+        _project_sub_asset_clicked(parent_path, guid, s, provider)
+    }
+    _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", ICON_MD_IMAGE, s.name))
+
+    dl := im.GetWindowDrawList()
+    if s.image != nil {
+        // The sub-asset's crop of the owning texture, aspect-fit in the cell.
+        inset := cell * 0.08
+        avail := cell - inset * 2
+        scale := min(avail / max(s.size.x, 1), avail / max(s.size.y, 1))
+        dw, dh := s.size.x * scale, s.size.y * scale
+        p0 := im.Vec2{rect_min.x + (cell - dw) * 0.5, rect_min.y + (cell - dh) * 0.5}
+        im.DrawList_AddImage(dl,
+            im.TextureRef{_TexID = im.TextureID(uintptr(s.image))},
+            p0, im.Vec2{p0.x + dw, p0.y + dh},
+            im.Vec2{s.uv0.x, s.uv0.y}, im.Vec2{s.uv1.x, s.uv1.y})
+    } else {
+        cglyph := strings.clone_to_cstring(ICON_MD_IMAGE, context.temp_allocator)
+        im.PushFontFloat(nil, cell * 0.55)
+        gsize := im.CalcTextSize(cglyph)
+        im.DrawList_AddText(dl,
+            im.Vec2{rect_min.x + (cell - gsize.x) * 0.5, rect_min.y + (cell - gsize.y) * 0.5},
+            im.GetColorU32(.Text), cglyph)
+        im.PopFont()
+    }
+
+    // Name centered under the art, clipped to the cell — the parent cell's
+    // label treatment.
+    cdisplay := strings.clone_to_cstring(s.name, context.temp_allocator)
+    tsize := im.CalcTextSize(cdisplay)
+    im.DrawList_PushClipRect(dl,
+        rect_min, im.Vec2{rect_min.x + cell, rect_min.y + cell + label_h}, true)
+    im.DrawList_AddText(dl,
+        im.Vec2{rect_min.x + max((cell - tsize.x) * 0.5, 0), rect_min.y + cell},
+        im.GetColorU32(.Text), cdisplay)
+    im.DrawList_PopClipRect(dl)
 }
 
 _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32) {
@@ -813,12 +879,35 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
     dim := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
 
+    // Sub-asset fold arrow (Unity's grid expander): drawn on the art's right
+    // edge via the draw list — an overlay ITEM would become the layout
+    // anchor and break the grid's SameLine flow — and resolved against the
+    // cell click below.
+    sub, _ := _project_sub_assets(full_path, is_dir)
+    open := len(sub) > 0 && _project_expanded[full_path]
+
     // The cell origin is the CURSOR, not the Selectable's item rect — imgui
     // expands a Selectable's rect by half the item spacing on both sides, so
     // anchoring content on GetItemRectMin draws everything left of center.
     rect_min := im.GetCursorScreenPos()
+    arrow_size := im.GetFontSize() + 6
+    arrow_min := im.Vec2{rect_min.x + cell - arrow_size, rect_min.y + (cell - arrow_size) * 0.5}
+    arrow_max := im.Vec2{arrow_min.x + arrow_size, arrow_min.y + arrow_size}
+    mouse := im.GetMousePos()
+    arrow_hovered := len(sub) > 0 &&
+        mouse.x >= arrow_min.x && mouse.x <= arrow_max.x &&
+        mouse.y >= arrow_min.y && mouse.y <= arrow_max.y
+
     if im.Selectable("##cell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
-        _project_item_clicked(full_path, is_dir)
+        if arrow_hovered {
+            if full_path in _project_expanded {
+                _project_expanded[full_path] = !open
+            } else {
+                _project_expanded[strings.clone(full_path)] = true
+            }
+        } else {
+            _project_item_clicked(full_path, is_dir)
+        }
     }
     if is_selected && _project_scroll_to_list_sel {
         im.SetScrollHereY()
@@ -830,6 +919,17 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
     _project_item_extras(full_path, is_dir, drag_label)
 
     _project_grid_cell_art(full_path, is_dir, rect_min, cell, dim)
+
+    if len(sub) > 0 {
+        dl_arrow := im.GetWindowDrawList()
+        im.DrawList_AddRectFilled(dl_arrow, arrow_min, arrow_max,
+            im.GetColorU32(.FrameBg, arrow_hovered ? 0.9 : 0.55), 3)
+        aglyph := strings.clone_to_cstring(open ? ICON_MD_EXPAND_MORE : ICON_MD_CHEVRON_RIGHT, context.temp_allocator)
+        asize := im.CalcTextSize(aglyph)
+        im.DrawList_AddText(dl_arrow,
+            im.Vec2{arrow_min.x + (arrow_size - asize.x) * 0.5, arrow_min.y + (arrow_size - asize.y) * 0.5},
+            im.GetColorU32(.Text), aglyph)
+    }
 
     // Name centered under the art, clipped to the cell.
     dl := im.GetWindowDrawList()
@@ -883,6 +983,31 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
 
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
 
+    // Sub-asset gutter: every row reserves the expander column so names align
+    // (Unity's layout); rows with sub-assets put the fold arrow in it.
+    sub, sub_provider := _project_sub_assets(full_path, is_dir)
+    arrow_w := im.GetFontSize() + 4
+    if len(sub) > 0 {
+        open := _project_expanded[full_path]
+        im.PushStyleColorImVec4(.Button, {})
+        im.PushStyleVarImVec2(.FramePadding, {0, 0})
+        arrow: cstring = open ? ICON_MD_EXPAND_MORE : ICON_MD_CHEVRON_RIGHT
+        if im.Button(fmt.ctprintf("%s##exp_%s", arrow, full_path), {arrow_w, 0}) {
+            // Keys are owned clones; collapsing keeps the entry (key reused on
+            // the next unfold) instead of freeing through delete_key.
+            if full_path in _project_expanded {
+                _project_expanded[full_path] = !open
+            } else {
+                _project_expanded[strings.clone(full_path)] = true
+            }
+        }
+        im.PopStyleVar()
+        im.PopStyleColor()
+    } else {
+        im.Dummy({arrow_w, 0})
+    }
+    im.SameLine(0, 0)
+
     dim_unknown := (!is_dir && !is_known_extension(full_path)) || project_file_is_cut(full_path)
     if dim_unknown {
         text_col := im.GetStyleColorVec4(im.Col.Text)
@@ -902,6 +1027,73 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     if dim_unknown {
         im.PopStyleColor()
     }
+
+    if len(sub) > 0 && _project_expanded[full_path] {
+        _project_draw_sub_asset_rows(full_path, sub, sub_provider, arrow_w)
+    }
+}
+
+// --- Sub-assets -----------------------------------------------------------------
+// Unity's project window: an asset with sub-assets folds open to show them as
+// child rows (a sliced texture's sprites). Providers come from the
+// editor/subassets registry — packages register theirs, the project view
+// never names a package. Rows are selectable (the owning asset's import
+// settings inspect), double click opens the provider's editor on the
+// sub-asset, and each row drags as an ASSET_PPTR payload
+// (PPtr{asset guid, sub-asset id}) into reference fields.
+
+_project_expanded: map[string]bool // asset path (owned clone) -> unfolded
+
+_project_sub_assets :: proc(path: string, is_dir: bool) -> ([]subassets.Sub_Asset, subassets.Provider) {
+    if is_dir do return nil, {}
+    ext := strings.to_lower(filepath.ext(path), context.temp_allocator)
+    provider, ok := subassets.find(ext)
+    if !ok do return nil, {}
+    return provider.list(path, context.temp_allocator), provider
+}
+
+// Sub-asset click: a REAL selection entry {path, sub_id} — one set, one undo
+// path with the rest of the selection. The active file stays the owning
+// asset (its import settings inspect).
+_project_sub_asset_clicked :: proc(parent_path: string, guid: engine.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider) {
+    sel_proj_only(parent_path, s.id)
+    _project_set_active(parent_path)
+    _project_inspect_path(parent_path)
+    if im.IsMouseDoubleClicked(.Left) && provider.open != nil {
+        provider.open(parent_path, guid, s.id)
+    }
+}
+
+_project_sub_asset_drag :: proc(guid: engine.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
+    if im.BeginDragDropSource({}) {
+        payload := engine.PPtr{guid = guid, local_id = s.id}
+        im.SetDragDropPayload("ASSET_PPTR", &payload, size_of(engine.PPtr))
+        im.Text(drag_label)
+        im.EndDragDropSource()
+    }
+}
+
+_project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_Asset, provider: subassets.Provider, indent: f32) {
+    raw_guid, gok := engine.asset_db_get_guid(parent_path)
+    if !gok do return
+    guid := engine.Asset_GUID(raw_guid)
+
+    im.Indent(indent * 2)
+    // ID scope by parent + list INDEX — never by the sub-asset id, which is
+    // data (pre-heal metas carry id 0 on every slice).
+    im.PushIDStr(strings.clone_to_cstring(parent_path, context.temp_allocator), nil)
+    for s, i in sub {
+        im.PushIDInt(c.int(i))
+        selected := sel_proj_is_sub(parent_path, s.id)
+        label := fmt.ctprintf("%s%s", ICON_MD_IMAGE, s.name)
+        if im.Selectable(label, selected, {.AllowDoubleClick}) {
+            _project_sub_asset_clicked(parent_path, guid, s, provider)
+        }
+        _project_sub_asset_drag(guid, s, label)
+        im.PopID()
+    }
+    im.PopID()
+    im.Unindent(indent * 2)
 }
 
 // Single click selects (and loads .asset/import settings for files); double

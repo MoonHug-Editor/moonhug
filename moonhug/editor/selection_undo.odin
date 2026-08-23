@@ -12,6 +12,7 @@ package editor
 // The undo package can't import this package, so capture/apply are installed
 // as hooks (selection_undo_install, called next to undo.install in main).
 
+import "core:encoding/uuid"
 import "core:fmt"
 import "core:path/filepath"
 import "core:strings"
@@ -49,9 +50,13 @@ selection_capture_state :: proc() -> undo.Selection_State {
 			})
 		}
 	}
-	proj := make([dynamic]string)
-	for p in sel_proj_items() {
-		append(&proj, strings.clone(p))
+	// Project items as PPtr{guid, sub_id} — the guid survives renames, sub_id
+	// carries a selected sub-asset (a sprite slice).
+	proj := make([dynamic]engine.PPtr)
+	for e in sel_proj_entries() {
+		if guid, ok := engine.asset_db_get_guid(e.path); ok {
+			append(&proj, engine.PPtr{guid = engine.Asset_GUID(guid), local_id = e.sub_id})
+		}
 	}
 	return undo.Selection_State{scene = items[:], proj = proj[:]}
 }
@@ -73,14 +78,17 @@ selection_apply_state :: proc(state: undo.Selection_State) {
 		_hierarchy_scroll_to_sel = true
 	}
 	sel_proj_clear()
-	for p in state.proj {
-		sel_proj_add(p)
+	active := ""
+	for r in state.proj {
+		path, ok := engine.asset_db_get_path(uuid.Identifier(r.guid))
+		if !ok do continue // deleted since the snapshot
+		sel_proj_add(path, r.local_id)
+		active = path
 	}
 	// Keep the active project path in sync (pre-multiselect code reads it)
 	// and navigate the project view to its folder so the restored selection
 	// is actually visible.
-	if len(state.proj) > 0 {
-		active := state.proj[len(state.proj) - 1]
+	if active != "" {
 		_project_set_active(active)
 		_project_reveal_keep_selection(active)
 	}
@@ -137,5 +145,8 @@ _selection_label :: proc(st: undo.Selection_State) -> string {
 		}
 		return "Select"
 	}
-	return strings.concatenate({"Select ", filepath.base(st.proj[0])}, context.temp_allocator)
+	if path, ok := engine.asset_db_get_path(uuid.Identifier(st.proj[0].guid)); ok {
+		return strings.concatenate({"Select ", filepath.base(path)}, context.temp_allocator)
+	}
+	return "Select"
 }

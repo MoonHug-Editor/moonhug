@@ -138,10 +138,12 @@ Selection_Scene_Item :: struct {
 }
 
 // Snapshot of the editor selection (both domains, ordered, last = active).
-// Slices and strings are owned by the command.
+// Slices are owned by the command. Project items are full sub-asset refs —
+// guid survives renames, local_id 0 = the asset itself, nonzero = a
+// sub-asset (a sprite slice).
 Selection_State :: struct {
 	scene: []Selection_Scene_Item,
-	proj:  []string,
+	proj:  []engine.PPtr,
 }
 
 // A selection change as its own undo step (Unity model): undo applies
@@ -1556,7 +1558,6 @@ make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid) -> Property_Targ
 
 selection_state_destroy :: proc(st: ^Selection_State) {
 	if st.scene != nil do delete(st.scene)
-	for p in st.proj do delete(p)
 	if st.proj != nil do delete(st.proj)
 	st^ = {}
 }

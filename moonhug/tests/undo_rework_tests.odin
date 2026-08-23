@@ -10,16 +10,16 @@ import "core:strings"
 import "core:testing"
 
 @(private="file")
-_sel_state_proj :: proc(paths: ..string) -> undo.Selection_State {
-	proj := make([]string, len(paths))
-	for p, i in paths {
-		proj[i] = strings.clone(p)
+_sel_state_proj :: proc(ids: ..engine.Local_ID) -> undo.Selection_State {
+	proj := make([]engine.PPtr, len(ids))
+	for id, i in ids {
+		proj[i] = engine.PPtr{local_id = id}
 	}
 	return undo.Selection_State{proj = proj}
 }
 
 @(private="file")
-_applied_sel: [dynamic]string
+_applied_sel: [dynamic]engine.PPtr
 
 @(private="file")
 _test_capture_hook :: proc() -> undo.Selection_State {
@@ -28,11 +28,8 @@ _test_capture_hook :: proc() -> undo.Selection_State {
 
 @(private="file")
 _test_apply_hook :: proc(state: undo.Selection_State) {
-	for p in _applied_sel do delete(p)
 	clear(&_applied_sel)
-	for p in state.proj {
-		append(&_applied_sel, strings.clone(p))
-	}
+	append(&_applied_sel, ..state.proj)
 }
 
 @(test)
@@ -46,21 +43,20 @@ test_undo_selection_command :: proc(t: ^testing.T) {
 	undo.set_selection_hooks(_test_capture_hook, _test_apply_hook)
 	defer undo.set_selection_hooks(nil, nil)
 	defer {
-		for p in _applied_sel do delete(p)
 		delete(_applied_sel)
 		_applied_sel = nil
 	}
 
-	undo.push_selection(s, _sel_state_proj("a.mat"), _sel_state_proj("b.mat"), "Select b.mat")
+	undo.push_selection(s, _sel_state_proj(1), _sel_state_proj(2), "Select b.mat")
 	testing.expect(t, undo.can_undo(s), "selection step recorded")
 
 	undo.apply_undo(s)
 	testing.expect_value(t, len(_applied_sel), 1)
-	if len(_applied_sel) == 1 do testing.expect_value(t, _applied_sel[0], "a.mat")
+	if len(_applied_sel) == 1 do testing.expect_value(t, _applied_sel[0].local_id, engine.Local_ID(1))
 
 	undo.apply_redo(s)
 	testing.expect_value(t, len(_applied_sel), 1)
-	if len(_applied_sel) == 1 do testing.expect_value(t, _applied_sel[0], "b.mat")
+	if len(_applied_sel) == 1 do testing.expect_value(t, _applied_sel[0].local_id, engine.Local_ID(2))
 }
 
 @(test)
@@ -71,7 +67,7 @@ test_undo_push_selection_skips_equal :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown_undo(tc_mem, s)
 
-	undo.push_selection(s, _sel_state_proj("same.mat"), _sel_state_proj("same.mat"))
+	undo.push_selection(s, _sel_state_proj(7), _sel_state_proj(7))
 	testing.expect(t, !undo.can_undo(s), "equal states must not record")
 }
 
@@ -94,7 +90,7 @@ test_undo_purge_scenes_keeps_non_scene_entries :: proc(t: ^testing.T) {
 	undo.push_value(s, target, old_json, new_json)
 
 	// Entry 2: project-only selection step (no scene references).
-	undo.push_selection(s, _sel_state_proj("a.mat"), _sel_state_proj("b.mat"))
+	undo.push_selection(s, _sel_state_proj(1), _sel_state_proj(2))
 
 	testing.expect_value(t, len(undo.entries(s)), 2)
 	testing.expect_value(t, undo.top_index(s), 2)

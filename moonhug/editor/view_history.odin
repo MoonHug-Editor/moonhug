@@ -212,8 +212,14 @@ _append_selection_state :: proc(b: ^strings.Builder, name: string, st: undo.Sele
 		}
 		fmt.sbprintf(b, "%s  local_id=%d  %s\n", indent, i64(it.local_id), resolved)
 	}
-	for p in st.proj {
-		fmt.sbprintf(b, "%s  %s\n", indent, p)
+	for r in st.proj {
+		path := "(deleted)"
+		if p, ok := engine.asset_db_get_path(uuid.Identifier(r.guid)); ok do path = p
+		if r.local_id != 0 {
+			fmt.sbprintf(b, "%s  %s : sub %d\n", indent, path, i64(r.local_id))
+		} else {
+			fmt.sbprintf(b, "%s  %s\n", indent, path)
+		}
 	}
 }
 

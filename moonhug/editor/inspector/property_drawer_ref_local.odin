@@ -35,12 +35,14 @@ _picker_search_bar :: proc() -> string {
 // clears (shown before [pick] only when set); [pick] opens the picker popup.
 // Returns true when the popup should open. When dropped_asset is non-nil, the
 // value button accepts ASSET_PATH drag-drops and writes the dropped path
-// (temp-allocated) there.
+// (temp-allocated) there. When dropped_pptr is non-nil it also accepts
+// ASSET_PPTR — a sub-asset dragged from the project window (a sprite slice,
+// later a mesh part) — and sets dropped_pptr_ok.
 //
 // An EMPTY field ("None") has nothing to ping or open, so its value area acts
 // as the pick button — clicking anywhere on the row opens the picker instead of
 // hitting a dead zone.
-_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil) -> bool {
+_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil, dropped_pptr: ^engine.PPtr = nil, dropped_pptr_ok: ^bool = nil) -> bool {
 	display, has_value := display, has_value
 	// Every reference drawer routes its value text through here, so the mixed
 	// substitution lives here too rather than in each drawer. Showing the active
@@ -89,10 +91,18 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	if has_value && value_double_clicked != nil && im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
 		value_double_clicked^ = true
 	}
-	if dropped_asset != nil && im.BeginDragDropTarget() {
-		if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
-			path := string((cast([^]u8)payload.Data)[:payload.DataSize])
-			dropped_asset^ = strings.clone(path, context.temp_allocator)
+	if (dropped_asset != nil || dropped_pptr != nil) && im.BeginDragDropTarget() {
+		if dropped_asset != nil {
+			if payload := im.AcceptDragDropPayload("ASSET_PATH"); payload != nil && payload.Data != nil {
+				path := string((cast([^]u8)payload.Data)[:payload.DataSize])
+				dropped_asset^ = strings.clone(path, context.temp_allocator)
+			}
+		}
+		if dropped_pptr != nil {
+			if payload := im.AcceptDragDropPayload("ASSET_PPTR"); payload != nil && payload.Data != nil && payload.DataSize == size_of(engine.PPtr) {
+				dropped_pptr^ = (cast(^engine.PPtr)payload.Data)^
+				if dropped_pptr_ok != nil do dropped_pptr_ok^ = true
+			}
 		}
 		im.EndDragDropTarget()
 	}

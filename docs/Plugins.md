@@ -275,6 +275,11 @@ Two funnels share the mechanics:
 my_install :: proc() {
     inspector.add_component_wrapper(typeid_of(MyComp), _my_wrapper)
     inspector.add_asset_wrapper("audio", _my_asset_rows)
+    // Project-window sub-assets (moonhug:editor/subassets): the asset row
+    // folds open to the provider's list, rows drag as PPtr{guid, id}
+    // (ASSET_PPTR payload), double click calls `open`. The sprites package
+    // is the reference (a sliced texture unfolds to its sprites).
+    subassets.register(".myext", subassets.Provider{list = _my_subs, open = _my_open})
 }
 
 _my_wrapper :: proc(ctx: ^inspector.Component_Ctx) {

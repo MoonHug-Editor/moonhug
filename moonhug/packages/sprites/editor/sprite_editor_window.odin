@@ -131,6 +131,17 @@ sprite_editor_open :: proc(path: string, guid: engine.Asset_GUID) {
 	wnd.open("sprite_editor")
 }
 
+// Opened on a specific slice (a sub-asset row in the project window).
+sprite_editor_open_at :: proc(path: string, guid: engine.Asset_GUID, slice_id: engine.Local_ID) {
+	sprite_editor_open(path, guid)
+	for s, i in _se.slices {
+		if s.id == slice_id {
+			_se_select(i)
+			break
+		}
+	}
+}
+
 _se_free_slices :: proc() {
 	context.allocator = runtime.default_allocator()
 	for s in _se.slices do delete(s.name)
@@ -164,6 +175,7 @@ _se_load_slices :: proc() {
 		if ts, is_tex := settings.(engine.TextureSettings); is_tex {
 			for s in ts.sprites {
 				append(&_se.slices, engine.Sprite_Rect{
+					id    = s.id,
 					name  = strings.clone(s.name),
 					rect  = s.rect,
 					pivot = s.pivot,
@@ -172,6 +184,15 @@ _se_load_slices :: proc() {
 		}
 	}
 	_se.dirty = false
+	// Heal pre-id metas: slices saved before ids existed carry 0 (= the
+	// whole texture, unreferenceable). Mint here and mark dirty — Apply
+	// stamps them into the meta.
+	for &s in _se.slices {
+		if s.id == 0 {
+			s.id = _se_mint_id()
+			_se.dirty = true
+		}
+	}
 }
 
 _se_apply :: proc() {
