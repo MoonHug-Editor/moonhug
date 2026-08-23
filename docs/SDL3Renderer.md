@@ -154,6 +154,13 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - The editor scene view builds a `Render_View` from its own plain-data camera
   and goes through the SAME collect/execute — game view and scene view render
   identically by construction.
+- Collection is a registry (`render_register_collector`): a collector is
+  `proc(view: Render_View, out: ^[dynamic]Render_Command)`, registered once at
+  an init phase. `render_collect_commands` runs the engine's built-in mesh and
+  sprite collectors, then every registered one. Collection order does not
+  matter — `render_execute` sorts the combined list. The registry is the seam
+  that lets renderer components live in packages: a package owns its component
+  pool and emits commands from the engine's vocabulary.
 
 ## Roadmap
 

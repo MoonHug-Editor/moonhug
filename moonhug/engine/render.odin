@@ -140,11 +140,30 @@ sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 
 	}
 }
 
-// Appends commands for every renderer visible to `view` (enabled, active in
-// hierarchy, layer mask intersecting). `out` should live on temp_allocator.
-render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
-	world := ctx_world()
+// A collector appends commands for the renderers it owns that are visible to
+// `view` (enabled, active in hierarchy, layer mask intersecting). `out` lives
+// on the temp allocator. Packages register theirs once at an init phase —
+// the registry is the seam that lets renderer components live outside the
+// engine. Collection order does not matter: render_execute sorts the
+// combined list.
+Render_Collector :: proc(view: Render_View, out: ^[dynamic]Render_Command)
 
+_render_collectors: [dynamic]Render_Collector
+
+render_register_collector :: proc(c: Render_Collector) {
+	append(&_render_collectors, c)
+}
+
+// Appends commands for every renderer visible to `view`: the engine's
+// built-in collectors, then every registered one.
+render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	_collect_mesh_renderers(view, out)
+	_collect_sprite_renderers(view, out)
+	for c in _render_collectors do c(view, out)
+}
+
+_collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	world := ctx_world()
 	mr_it := pool_iterator(mesh_renderers(world))
 	for mr, _ in pool_next(&mr_it) {
 		if !mr.enabled do continue
@@ -166,6 +185,10 @@ render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			},
 		})
 	}
+}
+
+_collect_sprite_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	world := ctx_world()
 
 	// One tree pass resolves every sprite's sort key (groups folded in).
 	sort_keys := sprite_sort_build_keys(view)
