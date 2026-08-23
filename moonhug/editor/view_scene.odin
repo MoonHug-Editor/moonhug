@@ -254,12 +254,13 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
 	if sr != nil && sr.texture != {} {
 		if tex, ok := engine.texture_load(sr.texture); ok {
-			c := sprites.sprite_world_corners(tw, tex)
-			cmin := vmin(vmin(c[0], c[1]), vmin(c[2], c[3]))
-			cmax := vmax(vmax(c[0], c[1]), vmax(c[2], c[3]))
-			center = (cmin + cmax) * 0.5
-			radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
-			return
+			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
+				cmin := vmin(vmin(c[0], c[1]), vmin(c[2], c[3]))
+				cmax := vmax(vmax(c[0], c[1]), vmax(c[2], c[3]))
+				center = (cmin + cmax) * 0.5
+				radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
+				return
+			}
 		}
 	}
 	return
@@ -347,12 +348,13 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
 	if sr != nil && sr.texture != {} {
 		if tex, ok := engine.texture_load(sr.texture); ok {
-			c := sprites.sprite_world_corners(tw, tex)
-			gfx.draw_line(c[0], c[1], ORANGE)
-			gfx.draw_line(c[1], c[2], ORANGE)
-			gfx.draw_line(c[2], c[3], ORANGE)
-			gfx.draw_line(c[3], c[0], ORANGE)
-			return
+			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
+				gfx.draw_line(c[0], c[1], ORANGE)
+				gfx.draw_line(c[1], c[2], ORANGE)
+				gfx.draw_line(c[2], c[3], ORANGE)
+				gfx.draw_line(c[3], c[0], ORANGE)
+				return
+			}
 		}
 	}
 

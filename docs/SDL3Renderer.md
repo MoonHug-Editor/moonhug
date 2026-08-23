@@ -164,8 +164,15 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   `Draw_Mesh`, plus a lexicographic `Sort_Key` for alpha-blended ordering).
 - Sprites are the first package consumer: `packages/sprites` owns
   SpriteRenderer, SpriteSortingGroup, the sort-key pass (sprite_sort.odin) and
-  the collector, registered at ImportersInit. `sprite_world_corners` lives
-  there too, shared by collection and the editor's scene picking.
+  the collector, registered at ImportersInit. `sprite_quad` (corners + uvs +
+  pivot, one resolve) is shared by collection, the editor's scene picking,
+  selection outlines and thumbnails.
+- Sprite slicing is importer data, Unity's TextureImporter model:
+  `TextureSettings.sprite_mode` + `sprites: [dynamic]Sprite_Rect` (name, pixel
+  rect, pivot) live in the texture's meta and bake into the catalog with the
+  rest of the settings. `Texture2D` caches the slices, `SpriteRenderer.sprite`
+  references one by NAME (empty = whole texture). The package's editor half
+  draws the slice dropdown through the inspector funnel.
 
 ## Roadmap
 

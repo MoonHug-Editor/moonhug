@@ -2,7 +2,7 @@ package editor
 
 // Scene-view click picking (docs/SDL3Renderer.md #7). CPU tests — sprites
 // against their exact world quads (the SAME corners the renderer draws, via
-// sprite_world_corners), meshes against their import-time AABB in local
+// sprites.sprite_quad), meshes against their import-time AABB in local
 // space. Nearest hit wins. Like Unity, the editor ignores render layer masks
 // — you can pick anything you can see.
 
@@ -27,7 +27,8 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if !ok do continue
 
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := sprites.sprite_world_corners(tw, tex)
+		c, _, cok := sprites.sprite_quad(sr, tw, tex)
+		if !cok do continue
 		if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
 			best_t = t
 			best = engine.Transform_Handle(sr.owner)
@@ -82,7 +83,8 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		tex, ok := engine.texture_load(sr.texture)
 		if !ok do continue
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := sprites.sprite_world_corners(tw, tex)
+		c, _, cok := sprites.sprite_quad(sr, tw, tex)
+		if !cok do continue
 		if _rect_hits_points(view, rmin, rmax, c[:]) {
 			append(&out, engine.Transform_Handle(sr.owner))
 		}

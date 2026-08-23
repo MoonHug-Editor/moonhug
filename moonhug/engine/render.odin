@@ -39,11 +39,16 @@ sort_key_less :: proc(a, b: Sort_Key) -> bool {
 	return false
 }
 
+// Full-texture uvs, bl br tr tl. uv origin is top-left (stb rows are
+// top-down), so bl/br carry v=1 and tr/tl v=0.
+QUAD_UVS_FULL :: [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
+
 // A textured quad with a transparent sort key — sprites, any 2D emitter.
 Draw_Quad :: struct {
 	texture:  Asset_GUID,
 	material: Asset_GUID, // shader/tint/properties; texture stays the quad's own. empty = unlit
 	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
+	uvs:      [4][2]f32, // per corner; QUAD_UVS_FULL for the whole texture, a sub-rect for slices
 	color:    [4]f32,
 }
 
@@ -241,8 +246,6 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	})
 
 	gfx.set_view_proj(view.view_proj, view.cam_pos)
-	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
-	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
 
 	// One resolve per material guid: equal-material quads then share the
 	// SAME packed property slice, which is what lets their draws merge in
@@ -269,7 +272,7 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			// Quad facing for lighting shaders (quads are transform-
 			// oriented, not billboards).
 			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
-			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
 		case Draw_Mesh:
 			mesh, ok := mesh_load(d.mesh, d.part)
 			if !ok do continue

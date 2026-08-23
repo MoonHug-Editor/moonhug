@@ -14,6 +14,20 @@ TextureWrapMode :: enum {
     Mirror,
 }
 
+// One slice of a texture (Unity's Sprite sub-asset, importer-owned): a pixel
+// rect plus a pivot. Renderers reference a slice by NAME — stable across
+// reslicing, Unity's fileID-from-name model.
+Sprite_Rect :: struct {
+    name:  string,
+    rect:  [4]f32, // x, y, w, h in pixels; origin top-left, y down (stb rows)
+    pivot: [2]f32, // normalized within the rect, {0, 0} = bottom-left, {0.5, 0.5} = center
+}
+
+Sprite_Import_Mode :: enum u8 {
+    Single,   // the whole texture is one sprite
+    Multiple, // `sprites` lists the slices
+}
+
 @(typ_guid={guid="21d45bcf-2bd8-44db-b780-953c2f8b610f", makeProcName=make_pTextureSettings})
 TextureSettings :: struct {
     filter:   TextureFilterMode,
@@ -25,6 +39,11 @@ TextureSettings :: struct {
     // convention (docs/FixedTick.md). Metas predating the field keep the
     // factory default — the pipeline overlays metas onto defaulted instances.
     pixels_per_unit: f32,
+    // Unity's TextureImporter.spriteImportMode: slicing is importer data, so
+    // it bakes into the catalog with the rest of the settings and reaches
+    // game builds with no extra pipeline.
+    sprite_mode: Sprite_Import_Mode,
+    sprites:     [dynamic]Sprite_Rect,
 }
 
 default_texture_settings :: proc() -> TextureSettings {

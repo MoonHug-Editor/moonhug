@@ -4,6 +4,7 @@ import gfx "gfx"
 import stbi "vendor:stb/image"
 import "core:encoding/uuid"
 import "core:os"
+import "core:strings"
 
 // GUID-keyed texture cache. The GPU side lives in ^gfx.Texture, which is
 // heap-allocated by gfx (its embedded imgui binding address must stay stable).
@@ -14,7 +15,24 @@ Texture2D :: struct {
     // From the texture's import settings (Unity's Pixels Per Unit): sprite
     // world size = pixel size / this. Always > 0.
     pixels_per_unit: f32,
+    // Slices from the import settings (sprite_mode = Multiple), cache-owned
+    // clones. Empty for Single-mode textures.
+    sprites: []Sprite_Rect,
     gfx:    ^gfx.Texture,
+}
+
+// Slice lookup by name; slice counts are small, linear scan.
+texture_sprite_rect :: proc(tex: ^Texture2D, name: string) -> (Sprite_Rect, bool) {
+    for s in tex.sprites {
+        if s.name == name do return s, true
+    }
+    return {}, false
+}
+
+_texture_sprites_free :: proc(tex: ^Texture2D) {
+    for s in tex.sprites do delete(s.name)
+    delete(tex.sprites)
+    tex.sprites = nil
 }
 
 texture_cache: map[Asset_GUID]Texture2D
@@ -32,6 +50,7 @@ texture_cache_init :: proc() {
 
 texture_cache_shutdown :: proc() {
     for _, &tex in texture_cache {
+        _texture_sprites_free(&tex)
         gfx.texture_destroy(tex.gfx)
     }
     delete(texture_cache)
@@ -56,9 +75,18 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     if g == nil do return nil, false
 
     ppu := f32(PIXELS_PER_UNIT)
+    sprites: []Sprite_Rect
     if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
-        if ts, is_tex := settings.(TextureSettings); is_tex && ts.pixels_per_unit > 0 {
-            ppu = ts.pixels_per_unit
+        if ts, is_tex := settings.(TextureSettings); is_tex {
+            if ts.pixels_per_unit > 0 do ppu = ts.pixels_per_unit
+            // Settings live on the temp allocator — the cache owns clones.
+            if ts.sprite_mode == .Multiple && len(ts.sprites) > 0 {
+                sprites = make([]Sprite_Rect, len(ts.sprites))
+                for s, i in ts.sprites {
+                    sprites[i] = s
+                    sprites[i].name = strings.clone(s.name)
+                }
+            }
         }
     }
 
@@ -67,6 +95,7 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
         width  = g.width,
         height = g.height,
         pixels_per_unit = ppu,
+        sprites = sprites,
         gfx    = g,
     }
     return &texture_cache[guid], true
@@ -74,6 +103,7 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
 
 texture_unload :: proc(guid: Asset_GUID) {
     if tex, ok := &texture_cache[guid]; ok {
+        _texture_sprites_free(tex)
         gfx.texture_destroy(tex.gfx)
         delete_key(&texture_cache, guid)
     }
