@@ -423,8 +423,8 @@ _thumb_bounds_walk :: proc(tH: engine.Transform_Handle, bmin, bmax: ^[3]f32, any
 			}
 		}
 	}
-	if _, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer); sr != nil && sr.texture != {} {
-		if tex, tok := engine.texture_load(sr.texture); tok {
+	if _, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer); sr != nil && !engine.asset_guid_is_empty(sr.sprite.guid) {
+		if tex, tok := engine.texture_load(sr.sprite.guid); tok {
 			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
 				for p in c {
 					grow(bmin, bmax, any_point, p)

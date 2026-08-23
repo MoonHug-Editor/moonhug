@@ -107,8 +107,10 @@
       "material": "00000000-0000-0000-0000-000000000000",
       "order_in_layer": 0,
       "sorting_layer": 0,
-      "sprite": "",
-      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
+      "sprite": {
+        "guid": "f763e80e-c7e4-4d58-9a39-50b64585018f",
+        "local_id": 0
+      }
     },
     {
       "__type": "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c",
@@ -143,8 +145,10 @@
       "material": "00000000-0000-0000-0000-000000000000",
       "order_in_layer": 0,
       "sorting_layer": 0,
-      "sprite": "",
-      "texture": "f763e80e-c7e4-4d58-9a39-50b64585018f"
+      "sprite": {
+        "guid": "f763e80e-c7e4-4d58-9a39-50b64585018f",
+        "local_id": 0
+      }
     }
   ]
 }

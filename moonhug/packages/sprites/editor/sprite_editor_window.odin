@@ -11,6 +11,7 @@ package sprites_editor
 import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:math/rand"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -134,6 +135,25 @@ _se_free_slices :: proc() {
 	context.allocator = runtime.default_allocator()
 	for s in _se.slices do delete(s.name)
 	clear(&_se.slices)
+}
+
+// Persistent slice id — Unity's fileID. Random nonzero, unique in the list.
+// Persisted in the meta, so references survive renames.
+_se_mint_id :: proc() -> engine.Local_ID {
+	for {
+		id := engine.Local_ID(rand.int63())
+		if id == 0 do continue
+		taken := false
+		for s in _se.slices do if s.id == id { taken = true; break }
+		if !taken do return id
+	}
+}
+
+// Reslicing keeps identities: a regenerated slice whose name already existed
+// carries the old id forward (the meta list is Unity's internalIDToNameTable).
+_se_carry_id :: proc(old: []engine.Sprite_Rect, name: string) -> engine.Local_ID {
+	for s in old do if s.name == name do return s.id
+	return 0
 }
 
 // Working copy from the CURRENT import settings.
@@ -290,8 +310,9 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 	}
 	if cw <= 0 || ch <= 0 do return
 
-	_se_free_slices()
 	context.allocator = runtime.default_allocator()
+	old := _se.slices
+	_se.slices = {}
 	base := filepath.stem(_se.path)
 	i := 0
 	for r in 0 ..< rows {
@@ -300,14 +321,20 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 		for c in 0 ..< cols {
 			x := _se.offset.x + c * (cw + _se.padding.x)
 			if x + cw > tex.width do break
+			name := fmt.aprintf("%s_%d", base, i)
+			id := _se_carry_id(old[:], name)
+			if id == 0 do id = _se_mint_id()
 			append(&_se.slices, engine.Sprite_Rect{
-				name  = fmt.aprintf("%s_%d", base, i),
+				id    = id,
+				name  = name,
 				rect  = {f32(x), f32(y), f32(cw), f32(ch)},
 				pivot = _se_pivot_vec[_se.pivot],
 			})
 			i += 1
 		}
 	}
+	for s in old do delete(s.name)
+	delete(old)
 	_se.sel = -1
 	_se.dirty = true
 }
@@ -327,8 +354,9 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 		solid[i] = i32(pixels[i * 4 + 3]) > _se.alpha_min
 	}
 
-	_se_free_slices()
 	context.allocator = runtime.default_allocator()
+	old := _se.slices
+	_se.slices = {}
 	base := filepath.stem(_se.path)
 	visited := make([]bool, int(w * h), context.temp_allocator)
 	queue := make([dynamic]i32, context.temp_allocator)
@@ -360,13 +388,19 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 		}
 		bw, bh := max_x - min_x + 1, max_y - min_y + 1
 		if bw < _se.min_size || bh < _se.min_size do continue
+		name := fmt.aprintf("%s_%d", base, n)
+		id := _se_carry_id(old[:], name)
+		if id == 0 do id = _se_mint_id()
 		append(&_se.slices, engine.Sprite_Rect{
-			name  = fmt.aprintf("%s_%d", base, n),
+			id    = id,
+			name  = name,
 			rect  = {f32(min_x), f32(min_y), f32(bw), f32(bh)},
 			pivot = _se_pivot_vec[_se.pivot],
 		})
 		n += 1
 	}
+	for s in old do delete(s.name)
+	delete(old)
 	_se.sel = -1
 	_se.dirty = true
 }
@@ -456,6 +490,7 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 		if _se.drag == .Create && _se.drag_rect.z >= 1 && _se.drag_rect.w >= 1 {
 			context.allocator = runtime.default_allocator()
 			append(&_se.slices, engine.Sprite_Rect{
+				id    = _se_mint_id(),
 				name  = fmt.aprintf("%s_%d", filepath.stem(_se.path), len(_se.slices)),
 				rect  = _se.drag_rect,
 				pivot = _se_pivot_vec[_se.pivot],

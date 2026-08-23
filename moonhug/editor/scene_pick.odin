@@ -21,9 +21,9 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 
 	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
 	for sr, _ in engine.pool_next(&sr_it) {
-		if !sr.enabled || sr.texture == {} do continue
+		if !sr.enabled || engine.asset_guid_is_empty(sr.sprite.guid) do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
-		tex, ok := engine.texture_load(sr.texture)
+		tex, ok := engine.texture_load(sr.sprite.guid)
 		if !ok do continue
 
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
@@ -78,9 +78,9 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 
 	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
 	for sr, _ in engine.pool_next(&sr_it) {
-		if !sr.enabled || sr.texture == {} do continue
+		if !sr.enabled || engine.asset_guid_is_empty(sr.sprite.guid) do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
-		tex, ok := engine.texture_load(sr.texture)
+		tex, ok := engine.texture_load(sr.sprite.guid)
 		if !ok do continue
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
 		c, _, cok := sprites.sprite_quad(sr, tw, tex)

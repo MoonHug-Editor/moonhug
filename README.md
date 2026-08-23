@@ -132,7 +132,8 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
-- png - Texture2D with N Sprites
+- sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
+- MeshFilter part -> PPtr{mesh guid, part local_id} like sprites (positional part index breaks on glTF reorder)
 
 - transform:
   - use bit set + procs, instead of direct bool change

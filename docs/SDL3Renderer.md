@@ -170,9 +170,13 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - Sprite slicing is importer data, Unity's TextureImporter model:
   `TextureSettings.sprite_mode` + `sprites: [dynamic]Sprite_Rect` (name, pixel
   rect, pivot) live in the texture's meta and bake into the catalog with the
-  rest of the settings. `Texture2D` caches the slices, `SpriteRenderer.sprite`
-  references one by NAME (empty = whole texture). The package's editor half
-  draws the slice dropdown through the inspector funnel and owns the Sprite
+  rest of the settings. `Texture2D` caches the slices. `SpriteRenderer.sprite`
+  is a `PPtr{guid, local_id}` — Unity's guid+fileID sub-asset reference: guid
+  names the texture, local_id the slice's persistent id (0 = whole texture).
+  Ids are minted by the slicer and survive renames and reslicing (the meta's
+  slice list is Unity's internalIDToNameTable — the name is a view detail).
+  The package's editor half draws the sprite picker (a flat list of every
+  pickable sprite) through the inspector funnel and owns the Sprite
   Editor window (`@(editor_window)`): zoom/pan canvas, Slice popup
   (Automatic by transparency islands, Grid By Cell Count, Grid By Cell Size),
   drag-create/move rects, per-slice name/rect/pivot panel, its own

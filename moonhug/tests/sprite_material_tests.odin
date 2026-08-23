@@ -26,7 +26,7 @@ test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
 	_, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "SpriteRenderer should be added")
 	if sr == nil do return
-	sr.texture = engine.Asset_GUID(tex_guid)
+	sr.sprite = engine.PPtr{guid = engine.Asset_GUID(tex_guid)}
 	sr.material = engine.Asset_GUID(mat_guid)
 	sr.enabled = true
 
@@ -42,6 +42,6 @@ test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
 	_, loaded_sr := engine.transform_get_comp(root_tH, sprites.SpriteRenderer)
 	testing.expect(t, loaded_sr != nil, "SpriteRenderer should survive reload")
 	if loaded_sr == nil do return
-	testing.expect(t, loaded_sr.texture == engine.Asset_GUID(tex_guid), "texture guid should round-trip")
+	testing.expect(t, loaded_sr.sprite.guid == engine.Asset_GUID(tex_guid), "sprite texture guid should round-trip")
 	testing.expect(t, loaded_sr.material == engine.Asset_GUID(mat_guid), "material guid should round-trip")
 }

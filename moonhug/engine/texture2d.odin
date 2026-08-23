@@ -22,10 +22,10 @@ Texture2D :: struct {
     gfx:    ^gfx.Texture,
 }
 
-// Slice lookup by name; slice counts are small, linear scan.
-texture_sprite_rect :: proc(tex: ^Texture2D, name: string) -> (Sprite_Rect, bool) {
+// Slice lookup by persistent id; slice counts are small, linear scan.
+texture_sprite_rect :: proc(tex: ^Texture2D, id: Local_ID) -> (Sprite_Rect, bool) {
     for s in tex.sprites {
-        if s.name == name do return s, true
+        if s.id == id do return s, true
     }
     return {}, false
 }

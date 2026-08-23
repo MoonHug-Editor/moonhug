@@ -15,9 +15,12 @@ TextureWrapMode :: enum {
 }
 
 // One slice of a texture (Unity's Sprite sub-asset, importer-owned): a pixel
-// rect plus a pivot. Renderers reference a slice by NAME — stable across
-// reslicing, Unity's fileID-from-name model.
+// rect plus a pivot. Renderers reference a slice as PPtr{texture guid,
+// slice id} — Unity's guid+fileID. The id is the persistent identity, minted
+// by the slicer and kept across renames and reslicing (the meta's slice list
+// doubles as Unity's internalIDToNameTable). The name is a view detail.
 Sprite_Rect :: struct {
+    id:    Local_ID,
     name:  string,
     rect:  [4]f32, // x, y, w, h in pixels; origin top-left, y down (stb rows)
     pivot: [2]f32, // normalized within the rect, {0, 0} = bottom-left, {0.5, 0.5} = center

@@ -6,11 +6,11 @@ import "moonhug:engine"
 @(typ_guid={guid = "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"})
 SpriteRenderer :: struct {
     using base: engine.CompData `inspect:"-"`,
-    texture: engine.Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
-    // Slice name from the texture's import settings (sprite_mode = Multiple).
-    // Empty = the whole texture (Unity's Single mode). Hidden from the
-    // default inspector — the package's editor wrapper draws a dropdown.
-    sprite: string `inspect:"-"`,
+    // Unity's guid+fileID sub-asset reference: guid = the texture,
+    // local_id = the slice's persistent id from the texture's import
+    // settings, 0 = the whole texture (Single mode). Hidden from the default
+    // inspector — the package's editor wrapper draws the sprite picker.
+    sprite: engine.PPtr `inspect:"-"`,
     // Unity model: the material's shader/tint/properties apply, but its
     // texture slot is REPLACED by the sprite's own texture. Empty = unlit
     // (the default sprite material).
@@ -24,8 +24,4 @@ SpriteRenderer :: struct {
 
 reset_SpriteRenderer :: proc(sr: ^SpriteRenderer) {
     sr.color = {1, 1, 1, 1}
-}
-
-cleanup_SpriteRenderer :: proc(sr: ^SpriteRenderer) {
-    delete(sr.sprite)
 }

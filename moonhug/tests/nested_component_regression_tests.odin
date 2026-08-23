@@ -21,7 +21,7 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
 	defer { os.remove(path); os.remove(meta); os.remove(dir) }
 
-	// SpriteRenderer(10) with a MALFORMED texture (not a guid) — registered type,
+	// SpriteRenderer(10) with a MALFORMED sprite guid — registered type,
 	// but the record won't parse. Plus a genuinely unknown type(11).
 	SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
 	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000042"
@@ -35,7 +35,7 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {{"__type": "%s", "base": {{"local_id": 10, "enabled": true}}, "texture": "not-a-guid", "color": [1,0,0,1]}},
+    {{"__type": "%s", "base": {{"local_id": 10, "enabled": true}}, "sprite": {{"guid": "not-a-guid", "local_id": 0}}, "color": [1,0,0,1]}},
     {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "mystery": 7}}
   ]
 }}`, SPRITE_GUID, FAKE_GUID)
