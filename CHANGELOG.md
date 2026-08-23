@@ -1,3 +1,14 @@
+## [0.77.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.76.0...v0.77.0) (2026-08-23)
+
+### Features
+
+* add sprite-editor window ([7a76087](https://github.com/MoonHug-Editor/moonhug/commit/7a76087de2d55abab659abb81aae3fd6c69dc99c))
+* extract sprites ([040513c](https://github.com/MoonHug-Editor/moonhug/commit/040513cc0774895df4031f4d5faae08eee7a61ae))
+* Render_Collector seam ([77b924d](https://github.com/MoonHug-Editor/moonhug/commit/77b924db009e79b8f5141531664803e9e2551014))
+* sub-assets preview in project and select in PPtr fields ([a1fa116](https://github.com/MoonHug-Editor/moonhug/commit/a1fa1168f635b46e7aec87274778a0e9a18a0e3d))
+* texture with N sprites ([3727310](https://github.com/MoonHug-Editor/moonhug/commit/37273107df659303080009bf7a1846aa41abc0d3))
+* use sub-asset ref for sprites ([42c5cca](https://github.com/MoonHug-Editor/moonhug/commit/42c5ccac58b7fe7160d9930e8160a0865395cd5b))
+
 ## [0.76.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.75.0...v0.76.0) (2026-08-23)
 
 ### Features
