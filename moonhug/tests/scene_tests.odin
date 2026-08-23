@@ -1,6 +1,7 @@
 package tests
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 
 import "core:fmt"
@@ -146,7 +147,7 @@ test_save_load_scene_with_sprite_renderer :: proc(t: ^testing.T) {
 	tH := engine.transform_new("Player")
 	engine.scene_set_root(tc_mem.scene, tH)
 
-	_, sr := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "SpriteRenderer should be added")
 	if sr == nil do return
 	sr.color = {1, 0, 0.5, 1}
@@ -168,7 +169,7 @@ test_save_load_scene_with_sprite_renderer :: proc(t: ^testing.T) {
 	testing.expect_value(t, loaded_t.name, "Player")
 	testing.expect_value(t, len(loaded_t.components), 1)
 
-	_, loaded_sr := engine.transform_get_comp(engine.Transform_Handle(loaded.root.handle), engine.SpriteRenderer)
+	_, loaded_sr := engine.transform_get_comp(engine.Transform_Handle(loaded.root.handle), sprites.SpriteRenderer)
 	testing.expect(t, loaded_sr != nil, "loaded SpriteRenderer should exist")
 	if loaded_sr == nil do return
 	testing.expect_value(t, loaded_sr.color, [4]f32{1, 0, 0.5, 1})
@@ -186,7 +187,7 @@ test_instantiate_twice_no_local_id_collision :: proc(t: ^testing.T) {
 
 	parentH := engine.transform_new("Parent")
 	childH := engine.transform_new("Child", parentH)
-	_, sr := engine.transform_get_or_add_comp(childH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(childH, sprites.SpriteRenderer)
 	if sr == nil do return
 	sr.color = {1, 0, 0, 1}
 	sr.enabled = true
@@ -245,7 +246,7 @@ test_instantiate_preserves_internal_cross_refs :: proc(t: ^testing.T) {
 	parentH := engine.transform_new("Parent")
 	c1H := engine.transform_new("Child1", parentH)
 	c2H := engine.transform_new("Child2", parentH)
-	_, sr := engine.transform_get_or_add_comp(c1H, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(c1H, sprites.SpriteRenderer)
 	if sr == nil do return
 	sr.enabled = true
 
@@ -280,7 +281,7 @@ test_instantiate_preserves_internal_cross_refs :: proc(t: ^testing.T) {
 	testing.expect_value(t, child1.parent.handle, engine.Handle(inst))
 	testing.expect_value(t, child2.parent.handle, engine.Handle(inst))
 
-	_, inst_sr := engine.transform_get_comp(engine.Transform_Handle(child1_h), engine.SpriteRenderer)
+	_, inst_sr := engine.transform_get_comp(engine.Transform_Handle(child1_h), sprites.SpriteRenderer)
 	testing.expect(t, inst_sr != nil, "instantiated SpriteRenderer should exist")
 	if inst_sr == nil do return
 	testing.expect_value(t, inst_sr.enabled, true)
@@ -297,7 +298,7 @@ test_scene_file_remap_produces_unique_ids :: proc(t: ^testing.T) {
 
 	parentH := engine.transform_new("A")
 	childH := engine.transform_new("B", parentH)
-	_, sr := engine.transform_get_or_add_comp(childH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(childH, sprites.SpriteRenderer)
 	if sr == nil do return
 
 	data := engine.scene_copy_subtree(parentH)
@@ -572,8 +573,8 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	testing.expect(t, slot_h != {} && a_h != {} && b_h != {})
 	if slot_h == {} || a_h == {} || b_h == {} do return
 
-	_, sr_a := engine.transform_get_comp(a_h, engine.SpriteRenderer)
-	_, sr_b := engine.transform_get_comp(b_h, engine.SpriteRenderer)
+	_, sr_a := engine.transform_get_comp(a_h, sprites.SpriteRenderer)
+	_, sr_b := engine.transform_get_comp(b_h, sprites.SpriteRenderer)
 	testing.expect(t, sr_a != nil && sr_b != nil)
 	if sr_a == nil || sr_b == nil do return
 
@@ -2413,7 +2414,7 @@ test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
 
 	// The variant overrides the root SpriteRenderer color to blue at load.
 	root_tH := engine.Transform_Handle(loaded.root.handle)
-	_, sr := engine.transform_get_comp(root_tH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_comp(root_tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "variant root should carry the inherited SpriteRenderer")
 	if sr == nil do return
 	testing.expect_value(t, sr.color, [4]f32{0, 0, 1, 1})
@@ -2426,7 +2427,7 @@ test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
-	_, sr2 := engine.transform_get_comp(engine.Transform_Handle(reloaded.root.handle), engine.SpriteRenderer)
+	_, sr2 := engine.transform_get_comp(engine.Transform_Handle(reloaded.root.handle), sprites.SpriteRenderer)
 	testing.expect(t, sr2 != nil)
 	if sr2 == nil do return
 	testing.expect_value(t, sr2.color, [4]f32{0, 1, 0, 1})
@@ -2862,7 +2863,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil {
 			sr.color = new_color
 			edited_lid = tr.local_id
@@ -2887,7 +2888,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil && sr.color == new_color do found = true
 	}
 	testing.expect(t, found, "edited inherited-c_Variant color must persist across save+reload")
@@ -2937,7 +2938,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		testing.expect(t, sr != nil, "live inherited sprite")
 		if sr == nil do return
 		engine.nested_scene_revert_override(reloaded, root_ns, target, "color")
-		_, sr2 := engine.transform_get_comp(sr_h, engine.SpriteRenderer)
+		_, sr2 := engine.transform_get_comp(sr_h, sprites.SpriteRenderer)
 		testing.expect(t, sr2 != nil)
 		if sr2 != nil {
 			testing.expect(t, fixture_color_close(sr2.color, FIXTURE_COLOR_BASE),
@@ -3033,14 +3034,14 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 
 	w := &tc_mem.world
 
-	find_sprite :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
+	find_sprite :: proc(w: ^engine.World, s: ^engine.Scene) -> ^sprites.SpriteRenderer {
 		it := engine.pool_iterator(&w.transforms)
 		for tr, ih in engine.pool_next(&it) {
 			if tr.scene != s do continue
 			th := ih
 			th.type_key = .Transform
 			h := engine.Transform_Handle(th)
-			_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+			_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 			if sr != nil do return sr
 		}
 		return nil

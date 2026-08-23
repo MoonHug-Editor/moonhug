@@ -1,6 +1,7 @@
 package app
 
 import "moonhug:engine"
+import sprites "moonhug:packages/sprites"
 import audio "moonhug:packages/audio"
 import tween "moonhug:packages/tween"
 import gfx "moonhug:engine/gfx"
@@ -38,7 +39,7 @@ tick_player :: proc(dt: f32) {
         if input.key_down_fixed(._0) do tween.tween_run("Anim9", tween.TweenContext{ subject = p.owner })
 
         if input.key_pressed_fixed(.SPACE) && len(p.colors) > 0 {
-            _, sr := engine.transform_get_comp(p.owner, engine.SpriteRenderer)
+            _, sr := engine.transform_get_comp(p.owner, sprites.SpriteRenderer)
             if sr != nil {
                 idx := rand.int_max(len(p.colors))
                 sr.color = p.colors[idx]

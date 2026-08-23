@@ -156,11 +156,16 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   identically by construction.
 - Collection is a registry (`render_register_collector`): a collector is
   `proc(view: Render_View, out: ^[dynamic]Render_Command)`, registered once at
-  an init phase. `render_collect_commands` runs the engine's built-in mesh and
-  sprite collectors, then every registered one. Collection order does not
+  an init phase. `render_collect_commands` runs the engine's built-in mesh
+  collector, then every registered one. Collection order does not
   matter — `render_execute` sorts the combined list. The registry is the seam
   that lets renderer components live in packages: a package owns its component
-  pool and emits commands from the engine's vocabulary.
+  pool and emits commands from the engine's vocabulary (`Draw_Quad`,
+  `Draw_Mesh`, plus a lexicographic `Sort_Key` for alpha-blended ordering).
+- Sprites are the first package consumer: `packages/sprites` owns
+  SpriteRenderer, SpriteSortingGroup, the sort-key pass (sprite_sort.odin) and
+  the collector, registered at ImportersInit. `sprite_world_corners` lives
+  there too, shared by collection and the editor's scene picking.
 
 ## Roadmap
 

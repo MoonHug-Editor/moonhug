@@ -7,6 +7,7 @@ import "menu"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "inspector"
 
 scene_rt: ^gfx.Render_Target
@@ -250,10 +251,10 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 		}
 	}
 
-	_, sr := engine.transform_get_comp(tH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
 	if sr != nil && sr.texture != {} {
 		if tex, ok := engine.texture_load(sr.texture); ok {
-			c := engine.sprite_world_corners(tw, tex)
+			c := sprites.sprite_world_corners(tw, tex)
 			cmin := vmin(vmin(c[0], c[1]), vmin(c[2], c[3]))
 			cmax := vmax(vmax(c[0], c[1]), vmax(c[2], c[3]))
 			center = (cmin + cmax) * 0.5
@@ -343,10 +344,10 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 		}
 	}
 
-	_, sr := engine.transform_get_comp(tH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
 	if sr != nil && sr.texture != {} {
 		if tex, ok := engine.texture_load(sr.texture); ok {
-			c := engine.sprite_world_corners(tw, tex)
+			c := sprites.sprite_world_corners(tw, tex)
 			gfx.draw_line(c[0], c[1], ORANGE)
 			gfx.draw_line(c[1], c[2], ORANGE)
 			gfx.draw_line(c[2], c[3], ORANGE)

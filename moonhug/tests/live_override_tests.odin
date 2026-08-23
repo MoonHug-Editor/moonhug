@@ -5,6 +5,7 @@ package tests
 // only an explicit revert removes it.
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 import "../editor/undo"
 
@@ -478,7 +479,7 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	testing.expect(t, host_tH != {})
 	if host_tH == {} do return
 
-	comp_h, sr := engine.transform_get_comp(sprite_tH, engine.SpriteRenderer)
+	comp_h, sr := engine.transform_get_comp(sprite_tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "the nested content should carry a SpriteRenderer")
 	if sr == nil do return
 	comp_lid := (cast(^engine.CompData)sr).local_id
@@ -518,7 +519,7 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 	testing.expect(t, sprite2 != {}, "SpriteA itself should still be there")
 	if sprite2 == {} do return
-	_, sr2 := engine.transform_get_comp(sprite2, engine.SpriteRenderer)
+	_, sr2 := engine.transform_get_comp(sprite2, sprites.SpriteRenderer)
 	testing.expect(t, sr2 == nil, "a REMOVED component must not reappear after reload")
 }
 
@@ -584,7 +585,7 @@ test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 
 	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 	if sprite2 == {} do return
-	_, spin := engine.transform_get_comp(sprite2, engine.SpriteSortingGroup)
+	_, spin := engine.transform_get_comp(sprite2, sprites.SpriteSortingGroup)
 	testing.expect(t, spin != nil, "an ADDED component must be present after reload")
 }
 
@@ -646,7 +647,7 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 			s2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 			if s2 != {} {
 				h2 := engine.transform_immediate_nested_host(s2)
-				ch, sr := engine.transform_get_comp(s2, engine.SpriteRenderer)
+				ch, sr := engine.transform_get_comp(s2, sprites.SpriteRenderer)
 				if sr != nil && h2 != {} {
 					lid2 := (cast(^engine.CompData)sr).local_id
 					engine.transform_remove_comp(s2, ch.handle)

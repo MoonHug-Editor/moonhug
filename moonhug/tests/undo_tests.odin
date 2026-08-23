@@ -1,6 +1,7 @@
 package tests
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "../editor/undo"
 
 import "core:os"
@@ -79,11 +80,11 @@ test_undo_value_component_field :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "sprite renderer exists")
 	if sr == nil do return
 
-	target := undo.make_component_target(owned.handle, offset_of(engine.SpriteRenderer, color), typeid_of([4]f32))
+	target := undo.make_component_target(owned.handle, offset_of(sprites.SpriteRenderer, color), typeid_of([4]f32))
 	old_json := undo.capture_json(&sr.color, typeid_of([4]f32))
 	sr.color = {1, 0.5, 0.25, 1}
 	new_json := undo.capture_json(&sr.color, typeid_of([4]f32))
@@ -254,7 +255,7 @@ test_undo_remove_component :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
 	if sr == nil do return
 	sr.color = {0.1, 0.2, 0.3, 1}
 	sr.enabled = true
@@ -274,7 +275,7 @@ test_undo_remove_component :: proc(t: ^testing.T) {
 	undo.apply_undo(s)
 	testing.expect_value(t, len(tr.components), 1)
 
-	_, restored := engine.transform_get_comp(tH, engine.SpriteRenderer)
+	_, restored := engine.transform_get_comp(tH, sprites.SpriteRenderer)
 	testing.expect(t, restored != nil, "component restored")
 	if restored == nil do return
 	testing.expect_value(t, restored.color, [4]f32{0.1, 0.2, 0.3, 1})

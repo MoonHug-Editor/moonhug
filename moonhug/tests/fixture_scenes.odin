@@ -24,6 +24,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 
 FIXTURE_SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
@@ -57,7 +58,7 @@ fixture_write_empty_scene :: proc(path: string, root_name: string) -> bool {
 
 // First SpriteRenderer in `s` (optionally only on nested-owned/inherited
 // content), with its owning transform.
-fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.SpriteRenderer, engine.Transform_Handle) {
+fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^sprites.SpriteRenderer, engine.Transform_Handle) {
 	it := engine.pool_iterator(&w.transforms)
 	for tr, ih in engine.pool_next(&it) {
 		if tr.scene != s do continue
@@ -65,7 +66,7 @@ fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := f
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil do return sr, h
 	}
 	return nil, {}

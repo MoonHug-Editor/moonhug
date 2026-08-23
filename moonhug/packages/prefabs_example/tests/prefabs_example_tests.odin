@@ -17,6 +17,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 import common "moonhug:tests/common"
 
@@ -86,7 +87,7 @@ _find_host_path_for :: proc(t: ^testing.T, nested_path: string, dir := ASSETS) -
 }
 
 @(private = "file")
-_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.SpriteRenderer, engine.Transform_Handle) {
+_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^sprites.SpriteRenderer, engine.Transform_Handle) {
 	it := engine.pool_iterator(&w.transforms)
 	for tr, ih in engine.pool_next(&it) {
 		if tr.scene != s do continue
@@ -94,7 +95,7 @@ _find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil do return sr, h
 	}
 	return nil, {}
@@ -247,7 +248,7 @@ test_prefabs_example_variant_edit_propagates :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, hsr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, hsr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if hsr != nil && _color_close(hsr.color, new_color) do found = true
 	}
 	testing.expect(t, found, "edited variant color must appear in the host's nested copy")
@@ -311,7 +312,7 @@ test_prefabs_example_deep_override_applies_when_nested :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil && _color_close(sr.color, want) do found = true
 	}
 	testing.expect(t, found, "the deep color override must apply to nested content")
@@ -371,7 +372,7 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil && _color_close(sr.color, override_color) {
 			target_h = h
 			break
@@ -381,7 +382,7 @@ test_prefabs_example_deep_override_revert :: proc(t: ^testing.T) {
 	if target_h == {} do return
 
 	engine.nested_scene_revert_override(loaded, root_ns, target, "color")
-	_, sr := engine.transform_get_comp(target_h, engine.SpriteRenderer)
+	_, sr := engine.transform_get_comp(target_h, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil)
 	if sr != nil {
 		testing.expect(t, !_color_close(sr.color, override_color),

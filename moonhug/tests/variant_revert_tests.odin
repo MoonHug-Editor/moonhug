@@ -7,6 +7,7 @@ package tests
 // (§6.2), so the overridden object is the scene root itself rather than a child.
 
 import engine "../engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 import "../editor/undo"
 import "core:strings"
@@ -45,7 +46,7 @@ test_variant_root_revert_restores_value :: proc(t: ^testing.T) {
 	if comp_h == {} do return
 	raw := engine.world_pool_get(&tc_mem.world, comp_h)
 	if raw == nil do return
-	sr := cast(^engine.SpriteRenderer)raw
+	sr := cast(^sprites.SpriteRenderer)raw
 
 	// The variant's override is in effect: blue, not the base's value.
 	overridden := sr.color
@@ -70,7 +71,7 @@ test_variant_root_revert_restores_value :: proc(t: ^testing.T) {
 	testing.expect(t, !engine.nested_scene_has_override(ns, target, "color"),
 		"revert must drop the override record")
 
-	sr_after := cast(^engine.SpriteRenderer)engine.world_pool_get(&tc_mem.world, comp_h)
+	sr_after := cast(^sprites.SpriteRenderer)engine.world_pool_get(&tc_mem.world, comp_h)
 	if sr_after == nil do return
 	testing.expectf(t, sr_after.color != overridden,
 		"revert must restore the base VALUE, still %v", sr_after.color)

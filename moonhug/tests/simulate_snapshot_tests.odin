@@ -1,6 +1,7 @@
 package tests
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 import "core:os"
 import "core:strings"
@@ -276,7 +277,7 @@ test_simulate_snapshot_preserves_nested_override :: proc(t: ^testing.T) {
 	testing.expect(t, found, "nested object found by lid after restore")
 	if !found do return
 
-	_, rsr := engine.transform_get_comp(rH, engine.SpriteRenderer)
+	_, rsr := engine.transform_get_comp(rH, sprites.SpriteRenderer)
 	testing.expect(t, rsr != nil, "sprite component present after restore")
 	if rsr == nil do return
 	testing.expectf(t, fixture_color_close(rsr.color, override_color),

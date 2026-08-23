@@ -6,6 +6,7 @@ package tests
 // Pure data tests: build a scene tree, run the key pass, assert key ordering.
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 import "core:math/linalg"
 import "core:testing"
@@ -23,7 +24,7 @@ _sprite_at :: proc(parent: engine.Transform_Handle, name: string, z: f32, layer:
 	h := engine.transform_new(name, parent)
 	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(h))
 	t.position = {0, 0, z}
-	_, sr := engine.transform_get_or_add_comp(h, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(h, sprites.SpriteRenderer)
 	sr.sorting_layer = layer
 	sr.order_in_layer = order
 	return h
@@ -34,7 +35,7 @@ _group_at :: proc(parent: engine.Transform_Handle, name: string, z: f32, layer: 
 	h := engine.transform_new(name, parent)
 	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(h))
 	t.position = {0, 0, z}
-	_, g := engine.transform_get_or_add_comp(h, engine.SpriteSortingGroup)
+	_, g := engine.transform_get_or_add_comp(h, sprites.SpriteSortingGroup)
 	g.sorting_layer = layer
 	g.order_in_layer = order
 	return h
@@ -42,11 +43,11 @@ _group_at :: proc(parent: engine.Transform_Handle, name: string, z: f32, layer: 
 
 // keys[a] sorts before keys[b] => a draws first (further back).
 @(private = "file")
-_draws_before :: proc(t: ^testing.T, keys: map[engine.Transform_Handle]engine.Sprite_Sort_Key, a, b: engine.Transform_Handle, msg: string) {
+_draws_before :: proc(t: ^testing.T, keys: map[engine.Transform_Handle]engine.Sort_Key, a, b: engine.Transform_Handle, msg: string) {
 	ka, a_ok := keys[a]
 	kb, b_ok := keys[b]
 	testing.expect(t, a_ok && b_ok, "both sprites must have keys")
-	testing.expectf(t, engine.sprite_sort_key_less(ka, kb), "expected draw order violated: %s", msg)
+	testing.expectf(t, engine.sort_key_less(ka, kb), "expected draw order violated: %s", msg)
 }
 
 @(test)
@@ -73,7 +74,7 @@ test_sprite_sort_layer_order_depth_tree :: proc(t: ^testing.T) {
 	twin_a := _sprite_at(rootH, "twin_a", 3, layer = 9)
 	twin_b := _sprite_at(rootH, "twin_b", 3, layer = 9)
 
-	keys := engine.sprite_sort_build_keys(_sort_test_view())
+	keys := sprites.sprite_sort_build_keys(_sort_test_view())
 	_draws_before(t, keys, near_l0, far_l1, "lower sorting_layer draws first")
 	_draws_before(t, keys, near_o0, far_o1, "lower order_in_layer draws first within a layer")
 	_draws_before(t, keys, far_plain, near_plain, "farther sprite draws first within same layer/order")
@@ -103,15 +104,15 @@ test_sprite_sorting_group_is_atomic :: proc(t: ^testing.T) {
 	// An outsider between the groups by order.
 	outsider := _sprite_at(rootH, "outsider", 0, order = 0)
 
-	keys := engine.sprite_sort_build_keys(_sort_test_view())
+	keys := sprites.sprite_sort_build_keys(_sort_test_view())
 	_draws_before(t, keys, a_top, b_bottom, "group A member (any order) draws before group B members")
 	_draws_before(t, keys, a_bottom, a_top, "members sort by their own order inside the group")
 	_draws_before(t, keys, outsider, b_bottom, "ungrouped order 0 draws before group with order 1")
 
 	// The group's own transform can carry a sprite: it sorts inside the group.
-	_, g_sr := engine.transform_get_or_add_comp(group_a, engine.SpriteRenderer)
+	_, g_sr := engine.transform_get_or_add_comp(group_a, sprites.SpriteRenderer)
 	g_sr.order_in_layer = 50
-	keys2 := engine.sprite_sort_build_keys(_sort_test_view())
+	keys2 := sprites.sprite_sort_build_keys(_sort_test_view())
 	_draws_before(t, keys2, a_bottom, group_a, "group-root sprite sorts within its own group")
 	_draws_before(t, keys2, group_a, a_top, "group-root sprite ordered by its own key inside")
 }
@@ -135,16 +136,16 @@ test_sprite_sorting_group_nesting_and_disable :: proc(t: ^testing.T) {
 	inner_lo := _group_at(outer, "inner_lo", 0, order = 0)
 	lo_member := _sprite_at(inner_lo, "lo_member", 0, order = 100)
 
-	keys := engine.sprite_sort_build_keys(_sort_test_view())
+	keys := sprites.sprite_sort_build_keys(_sort_test_view())
 	_draws_before(t, keys, lo_member, hi_member, "nested groups sort as units by group order")
 
 	// Disabled group stops grouping: hi_member falls back to the outer
 	// context, competing at inner_lo's level — orders tie (0 vs 0), so tree
 	// order decides and hi_member (earlier in the tree) now draws FIRST,
 	// flipping the grouped result above.
-	_, g := engine.transform_get_or_add_comp(inner_hi, engine.SpriteSortingGroup)
+	_, g := engine.transform_get_or_add_comp(inner_hi, sprites.SpriteSortingGroup)
 	g.enabled = false
-	keys2 := engine.sprite_sort_build_keys(_sort_test_view())
+	keys2 := sprites.sprite_sort_build_keys(_sort_test_view())
 	_draws_before(t, keys2, hi_member, lo_member, "disabled group's member falls back to outer context (tree order vs inner_lo unit)")
 }
 
@@ -173,7 +174,7 @@ test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
 	l_outsider := find_transform_named(w, loaded, "outsider", false)
 	testing.expect(t, l_member != {} && l_outsider != {} && l_group != {}, "loaded transforms found")
 
-	keys := engine.sprite_sort_build_keys(_sort_test_view())
+	keys := sprites.sprite_sort_build_keys(_sort_test_view())
 	k_member, m_ok := keys[l_member]
 	_, o_ok := keys[l_outsider]
 	testing.expect(t, m_ok && o_ok, "loaded sprites must be reached by the tree pass (not orphans)")
@@ -205,7 +206,7 @@ test_sprite_sort_group_reaches_children_with_stale_handles :: proc(t: ^testing.T
 	testing.expect(t, len(gt.children) == 1)
 	gt.children[0].handle = {}
 
-	keys := engine.sprite_sort_build_keys(_sort_test_view())
+	keys := sprites.sprite_sort_build_keys(_sort_test_view())
 	k_member, ok := keys[member]
 	testing.expect(t, ok, "member with stale child ref must still be reached by the tree pass")
 	testing.expect(t, ok && k_member[1] != 0, "member's key must carry the group level")

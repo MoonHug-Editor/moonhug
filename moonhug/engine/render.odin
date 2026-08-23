@@ -7,6 +7,7 @@ package engine
 // so game view and scene view render identically by construction.
 
 import gfx "gfx"
+import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
@@ -22,9 +23,26 @@ Render_View :: struct {
 	layer_mask:    u32,
 }
 
-Draw_Sprite :: struct {
+// Alpha-blended commands sort by a lexicographic multi-level key — collectors
+// build it (sprite layout: packages/sprites/sprite_sort.odin). 8 levels is
+// deep enough for sprite-rigged characters (character > torso > arm > hand >
+// item ...); each level costs 8 bytes per command and one compare, so raise
+// freely if content ever nests deeper.
+SORT_KEY_LEVELS :: 8
+
+Sort_Key :: [SORT_KEY_LEVELS]u64
+
+sort_key_less :: proc(a, b: Sort_Key) -> bool {
+	for i in 0 ..< SORT_KEY_LEVELS {
+		if a[i] != b[i] do return a[i] < b[i]
+	}
+	return false
+}
+
+// A textured quad with a transparent sort key — sprites, any 2D emitter.
+Draw_Quad :: struct {
 	texture:  Asset_GUID,
-	material: Asset_GUID, // shader/tint/properties; texture stays the sprite's. empty = unlit
+	material: Asset_GUID, // shader/tint/properties; texture stays the quad's own. empty = unlit
 	corners:  [4][3]f32, // world-space bl, br, tr, tl — shared with picking
 	color:    [4]f32,
 }
@@ -37,10 +55,10 @@ Draw_Mesh :: struct {
 }
 
 Render_Command :: struct {
-	key:     Sprite_Sort_Key, // sprites only (sprite_sort.odin); zero for meshes
+	key:     Sort_Key, // alpha-blended quads only; zero for meshes
 	variant: union #no_nil {
 		Draw_Mesh,
-		Draw_Sprite,
+		Draw_Quad,
 	},
 }
 
@@ -120,26 +138,6 @@ trs_matrix :: proc(position: [3]f32, rotation: [4]f32, scale: [3]f32) -> matrix[
 	return linalg.matrix4_from_trs_f32(position, q, scale)
 }
 
-// The world-space quad a SpriteRenderer covers: bl, br, tr, tl. Used by BOTH
-// command collection and scene picking so they can't diverge. Sprites are
-// transform-oriented (not billboards), sized tex_pixels/pixels_per_unit —
-// the texture's import setting (Unity's Pixels Per Unit, default 100).
-sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 {
-	ppu := max(tex.pixels_per_unit, 0.0001)
-	half_w := tw.scale.x * f32(tex.width) / (2.0 * ppu)
-	half_h := tw.scale.y * f32(tex.height) / (2.0 * ppu)
-	rot := quat_to_matrix3(tw.rotation)
-	right := [3]f32{rot[0, 0], rot[1, 0], rot[2, 0]}
-	up := [3]f32{rot[0, 1], rot[1, 1], rot[2, 1]}
-	pos := tw.position
-	return {
-		pos - right * half_w - up * half_h,
-		pos + right * half_w - up * half_h,
-		pos + right * half_w + up * half_h,
-		pos - right * half_w + up * half_h,
-	}
-}
-
 // A collector appends commands for the renderers it owns that are visible to
 // `view` (enabled, active in hierarchy, layer mask intersecting). `out` lives
 // on the temp allocator. Packages register theirs once at an init phase —
@@ -148,7 +146,16 @@ sprite_world_corners :: proc(tw: Transform_World, tex: ^Texture2D) -> [4][3]f32 
 // combined list.
 Render_Collector :: proc(view: Render_View, out: ^[dynamic]Render_Command)
 
+// Process-lifetime registry on the default allocator — registration must not
+// capture the caller's context allocator (a test-local or temp allocator
+// would free the backing array under the registry).
 _render_collectors: [dynamic]Render_Collector
+
+@(init)
+_render_collectors_init :: proc "contextless" () {
+	context = runtime.default_context()
+	_render_collectors = make([dynamic]Render_Collector, runtime.default_allocator())
+}
 
 render_register_collector :: proc(c: Render_Collector) {
 	append(&_render_collectors, c)
@@ -158,7 +165,6 @@ render_register_collector :: proc(c: Render_Collector) {
 // built-in collectors, then every registered one.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	_collect_mesh_renderers(view, out)
-	_collect_sprite_renderers(view, out)
 	for c in _render_collectors do c(view, out)
 }
 
@@ -187,45 +193,11 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 	}
 }
 
-_collect_sprite_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
-	world := ctx_world()
-
-	// One tree pass resolves every sprite's sort key (groups folded in).
-	sort_keys := sprite_sort_build_keys(view)
-
-	sr_it := pool_iterator(sprite_renderers(world))
-	for sr, _ in pool_next(&sr_it) {
-		if !sr.enabled do continue
-		if sr.texture == {} do continue
-
-		t := pool_get(&world.transforms, Handle(sr.owner))
-		if t == nil || !transform_active_in_hierarchy(sr.owner) do continue
-		if t.render_layer & view.layer_mask == 0 do continue
-
-		tex, ok := texture_load(sr.texture)
-		if !ok do continue
-
-		tw := transform_world(Transform_Handle(sr.owner))
-		key, in_tree := sort_keys[Transform_Handle(sr.owner)]
-		if !in_tree do key = sprite_sort_orphan_key(view, sr)
-		append(out, Render_Command{
-			key     = key,
-			variant = Draw_Sprite{
-				texture  = sr.texture,
-				material = sr.material,
-				corners  = sprite_world_corners(tw, tex),
-				color    = sr.color,
-			},
-		})
-	}
-}
-
 // Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
 // (depth-write pipeline handles their ordering; grouped by material to batch
-// pipeline/texture binds), then alpha-blended sprites by their sort key —
-// layer, order in layer, view depth back-to-front, tree order
-// (sprite_sort.odin). Sprite keys are unique, so their order is total and
-// deterministic regardless of sort stability.
+// pipeline/texture binds), then alpha-blended quads by their sort key
+// (lexicographic over levels — the sprite collector makes keys unique, so
+// their order is total and deterministic regardless of sort stability).
 // Every enabled Light (up to gfx.MAX_LIGHTS, the pool max) fills `buf` in pool
 // order. The ambient floor is the first enabled light's. Returns the count and
 // ambient; count 0 leaves the gfx default in effect.
@@ -265,36 +237,36 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			bk: u128 = len(bm.materials) > 0 ? transmute(u128)bm.materials[0] : 0
 			return ak < bk
 		}
-		return sprite_sort_key_less(a.key, b.key)
+		return sort_key_less(a.key, b.key)
 	})
 
 	gfx.set_view_proj(view.view_proj, view.cam_pos)
 	// uv origin top-left (stb rows are top-down): bl,br get v=1, tr,tl v=0.
 	uvs := [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}
 
-	// One resolve per material guid: equal-material sprites then share the
+	// One resolve per material guid: equal-material quads then share the
 	// SAME packed property slice, which is what lets their draws merge in
 	// the gfx batch (material compares by pointer).
-	Sprite_Mat :: struct {
+	Quad_Mat :: struct {
 		shader: string,
 		color:  [4]f32,
 		data:   []u8,
-		extra:  []^gfx.Texture, // sampler bindings 1+ (binding 0 is the sprite's own texture)
+		extra:  []^gfx.Texture, // sampler bindings 1+ (binding 0 is the quad's own texture)
 	}
-	sprite_mats := make(map[Asset_GUID]Sprite_Mat, context.temp_allocator)
+	quad_mats := make(map[Asset_GUID]Quad_Mat, context.temp_allocator)
 
 	for &cmd in commands {
 		switch d in cmd.variant {
-		case Draw_Sprite:
+		case Draw_Quad:
 			tex, ok := texture_load(d.texture)
 			if !ok do continue
-			sm, cached := sprite_mats[d.material]
+			sm, cached := quad_mats[d.material]
 			if !cached {
-				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: sprites use their own
-				sm = Sprite_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
-				sprite_mats[d.material] = sm
+				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: quads use their own
+				sm = Quad_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
+				quad_mats[d.material] = sm
 			}
-			// Quad facing for lighting shaders (sprites are transform-
+			// Quad facing for lighting shaders (quads are transform-
 			// oriented, not billboards).
 			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
 			gfx.draw_quad(d.corners, uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)

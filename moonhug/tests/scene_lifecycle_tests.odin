@@ -10,18 +10,19 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 
 
 @(private = "file")
-_find_sprite_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.SpriteRenderer {
+_find_sprite_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^sprites.SpriteRenderer {
 	it := engine.pool_iterator(&w.transforms)
 	for tr, ih in engine.pool_next(&it) {
 		if tr.scene != s do continue
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, engine.SpriteRenderer)
+		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
 		if sr != nil do return sr
 	}
 	return nil

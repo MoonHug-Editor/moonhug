@@ -7,6 +7,7 @@ package tests
 import "core:encoding/uuid"
 import "core:testing"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 @(test)
 test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
@@ -22,7 +23,7 @@ test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
 	tex_guid, _ := uuid.read("11111111-2222-3333-4444-555555555555")
 	mat_guid, _ := uuid.read("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
 
-	_, sr := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+	_, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
 	testing.expect(t, sr != nil, "SpriteRenderer should be added")
 	if sr == nil do return
 	sr.texture = engine.Asset_GUID(tex_guid)
@@ -38,7 +39,7 @@ test_save_load_scene_with_sprite_material :: proc(t: ^testing.T) {
 	tc_mem.scene = loaded
 
 	root_tH := engine.Transform_Handle(loaded.root.handle)
-	_, loaded_sr := engine.transform_get_comp(root_tH, engine.SpriteRenderer)
+	_, loaded_sr := engine.transform_get_comp(root_tH, sprites.SpriteRenderer)
 	testing.expect(t, loaded_sr != nil, "SpriteRenderer should survive reload")
 	if loaded_sr == nil do return
 	testing.expect(t, loaded_sr.texture == engine.Asset_GUID(tex_guid), "texture guid should round-trip")

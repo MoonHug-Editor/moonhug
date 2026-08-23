@@ -8,6 +8,7 @@ package editor
 
 import "core:math/linalg"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 // px, py in viewport pixels relative to the scene image's top-left.
 scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
@@ -18,7 +19,7 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 	best: engine.Transform_Handle
 	found := false
 
-	sr_it := engine.pool_iterator(engine.sprite_renderers(w))
+	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
 	for sr, _ in engine.pool_next(&sr_it) {
 		if !sr.enabled || sr.texture == {} do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
@@ -26,7 +27,7 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if !ok do continue
 
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := engine.sprite_world_corners(tw, tex)
+		c := sprites.sprite_world_corners(tw, tex)
 		if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
 			best_t = t
 			best = engine.Transform_Handle(sr.owner)
@@ -74,14 +75,14 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 
-	sr_it := engine.pool_iterator(engine.sprite_renderers(w))
+	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
 	for sr, _ in engine.pool_next(&sr_it) {
 		if !sr.enabled || sr.texture == {} do continue
 		if !engine.transform_active_in_hierarchy(sr.owner) do continue
 		tex, ok := engine.texture_load(sr.texture)
 		if !ok do continue
 		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c := engine.sprite_world_corners(tw, tex)
+		c := sprites.sprite_world_corners(tw, tex)
 		if _rect_hits_points(view, rmin, rmax, c[:]) {
 			append(&out, engine.Transform_Handle(sr.owner))
 		}

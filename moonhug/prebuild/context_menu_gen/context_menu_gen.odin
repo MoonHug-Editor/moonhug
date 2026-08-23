@@ -169,12 +169,17 @@ generate :: proc(w: ^db.World) -> bool {
 		if e.source_pkg != "" && e.source_pkg != pkg_name {
 			qualified = fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
 		}
+		// The annotation's type may be package-qualified (sprites.SpriteRenderer).
+		// TypeKey enumerators carry the bare type name, so resolve through the
+		// enum — compile-checked, and no import of the qualifier's package.
+		key_name := e.type_name
+		if dot := strings.last_index_byte(key_name, '.'); dot >= 0 {
+			key_name = key_name[dot + 1:]
+		}
 		fmt.sbprintf(&b, "\t{{\n")
-		fmt.sbprintf(&b, "\t\tkey, ok := engine.get_type_key_by_typeid(typeid_of(%s))\n", e.type_name)
-		fmt.sbprintf(&b, "\t\tif ok {{\n")
-		fmt.sbprintf(&b, "\t\t\tif key not_in _context_menu_registry do _context_menu_registry[key] = make([dynamic]ContextMenuEntry)\n")
-		fmt.sbprintf(&b, "\t\t\tappend(&_context_menu_registry[key], ContextMenuEntry{{label = \"%s\", action = %s}})\n", e.menu_label, qualified)
-		fmt.sbprintf(&b, "\t\t}}\n")
+		fmt.sbprintf(&b, "\t\tkey := engine.TypeKey.%s\n", key_name)
+		fmt.sbprintf(&b, "\t\tif key not_in _context_menu_registry do _context_menu_registry[key] = make([dynamic]ContextMenuEntry)\n")
+		fmt.sbprintf(&b, "\t\tappend(&_context_menu_registry[key], ContextMenuEntry{{label = \"%s\", action = %s}})\n", e.menu_label, qualified)
 		fmt.sbprintf(&b, "\t}}\n")
 	}
 

@@ -1,6 +1,7 @@
 package tests
 
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 import "core:testing"
 import "core:os"
@@ -168,7 +169,7 @@ test_transform_get_comp :: proc(t: ^testing.T) {
     tH := engine.transform_new("WithSpriteRenderer")
     engine.transform_add_comp(tH, .SpriteRenderer)
 
-    owned, spriteRenderer := engine.transform_get_comp(tH, engine.SpriteRenderer)
+    owned, spriteRenderer := engine.transform_get_comp(tH, sprites.SpriteRenderer)
     testing.expect(t, spriteRenderer != nil, "should find SpriteRenderer component")
     testing.expect(t, owned.handle.type_key == .SpriteRenderer, "owned type_key should be SpriteRenderer")
 
@@ -186,10 +187,10 @@ test_transform_get_or_add_comp :: proc(t: ^testing.T) {
 
     tH := engine.transform_new("Node")
 
-    _, spriteRenderer1 := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+    _, spriteRenderer1 := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
     testing.expect(t, spriteRenderer1 != nil, "should create SpriteRenderer")
 
-    _, spriteRenderer2 := engine.transform_get_or_add_comp(tH, engine.SpriteRenderer)
+    _, spriteRenderer2 := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
     testing.expect(t, spriteRenderer2 != nil, "should return existing SpriteRenderer")
     testing.expect(t, spriteRenderer1 == spriteRenderer2, "should return same pointer")
 
@@ -210,7 +211,7 @@ test_transform_destroy_comp :: proc(t: ^testing.T) {
     tH := engine.transform_new("Node")
     engine.transform_add_comp(tH, .SpriteRenderer)
 
-    engine.transform_destroy_comp(tH, engine.SpriteRenderer)
+    engine.transform_destroy_comp(tH, sprites.SpriteRenderer)
 
     tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
     testing.expect(t, tr != nil, "transform should exist")
