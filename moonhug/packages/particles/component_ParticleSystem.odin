@@ -48,6 +48,21 @@ Render_Mode :: enum u8 {
 	Stretched, // quad aligned to the particle's velocity
 }
 
+Sub_Emitter_Trigger :: enum u8 {
+	Birth, // fires when a particle spawns
+	Death, // fires when a particle dies
+}
+
+// One sub-emitter entry: when a particle hits the trigger, the target
+// ParticleSystem fires its authored BURSTS once at the particle's position
+// (`probability` gates each trigger, 1 = always). The target authors its
+// per-trigger emission as bursts. No heap fields.
+Sub_Emitter :: struct {
+	target:      engine.Ref_Local `ref:"ParticleSystem"`,
+	trigger:     Sub_Emitter_Trigger,
+	probability: f32,
+}
+
 // One emission burst: `count_min..count_max` particles at `time` seconds into
 // the cycle, repeated `cycles` times every `interval` seconds, each cycle
 // firing with `probability` (1 = always). Plain data — no heap fields.
@@ -155,6 +170,10 @@ ParticleSystem :: struct {
 	noise_frequency:    f32,
 	noise_scroll_speed: f32,
 
+	// Sub emitters: other ParticleSystems triggered by this system's
+	// particles. Empty = the module off.
+	sub_emitters: [dynamic]Sub_Emitter,
+
 	// Rotation by speed: additional angular velocity (degrees per second)
 	// from the curve evaluated at the particle's speed remapped from
 	// [min, max] to 0..1. Empty = the module off.
@@ -192,6 +211,12 @@ ParticleSystem :: struct {
 	prewarmed: bool `json:"-" inspect:"-"`,
 	rand_state: rand.Default_Random_State `json:"-" inspect:"-"`,
 	seeded:     bool `json:"-" inspect:"-"`,
+	// Referenced as a sub-emitter target: the system does not emit on its
+	// own timeline, triggers drive it. Recomputed by mark_sub_targets.
+	is_sub_target: bool `json:"-" inspect:"-"`,
+	// The editor's Self preview scope sets this: the system's own
+	// sub-emitters do not fire (their targets are not simulated).
+	suppress_sub_emitters: bool `json:"-" inspect:"-"`,
 }
 
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
@@ -222,6 +247,7 @@ on_destroy_ParticleSystem :: proc(ps: ^ParticleSystem) {
 
 cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.bursts)
+	delete(ps.sub_emitters)
 	delete(ps.velocity_x.keys)
 	delete(ps.velocity_y.keys)
 	delete(ps.velocity_z.keys)

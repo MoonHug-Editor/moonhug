@@ -469,11 +469,28 @@ test_particles_museum_nested_save :: proc(t: ^testing.T) {
 	// Simulate a while (the user played before saving).
 	it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
 	n := 0
+	particles.mark_sub_targets(&tc_mem.world)
+	rocket: ^particles.ParticleSystem
+	sparks: ^particles.ParticleSystem
 	for ps, _ in engine.pool_next(&it) {
 		n += 1
+		if len(ps.sub_emitters) > 0 do rocket = ps
+		if ps.is_sub_target do sparks = ps
 		for _ in 0 ..< 60 do particles.system_tick(ps, 1.0 / 60.0)
 	}
-	testing.expect_value(t, n, 4) // Fountain, Burst, Smoke, Snow
+	testing.expect_value(t, n, 6) // Fountain, Burst, Smoke, Snow, Fireworks, Sparks
+
+	// The Fireworks rocket's Death sub emitter resolved through scene load:
+	// a dying particle fires the Sparks bursts. A referenced sub-emitter
+	// target never emits on its own timeline, so Sparks stays silent even
+	// though it was ticked for a full second above.
+	testing.expect(t, rocket != nil && sparks != nil, "Fireworks systems should load")
+	if rocket != nil && sparks != nil {
+		testing.expect_value(t, len(sparks.particles), 0)
+		append(&rocket.particles, particles.Particle{position = {10, 3, 0}, lifetime = 0.001})
+		particles.system_tick(rocket, 1.0 / 60.0)
+		testing.expect(t, len(sparks.particles) >= 40, "rocket death must fire the sparks burst")
+	}
 
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
 
@@ -625,4 +642,64 @@ test_particles_random_seed :: proc(t: ^testing.T) {
 		if p.position != first[i] do replay = false
 	}
 	testing.expect(t, replay, "reset with a fixed seed must reproduce the effect")
+}
+
+@(test)
+test_particles_sub_emitters :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Parent emits one short-lived particle; its death fires the target's
+	// bursts at the death position.
+	parent := _make_system(tc_mem)
+	parent.rate = 0
+	parent.sim_space = .World
+	parent.gravity_modifier = 0
+
+	target := _make_system(tc_mem)
+	target.rate = 0
+	target.sim_space = .World
+	target.lifetime_min = 100
+	target.lifetime_max = 100
+	target.speed_min = 0
+	target.speed_max = 0
+	target.shape = .Point
+	append(&target.bursts, particles.Burst{count_min = 8, count_max = 8, probability = 1})
+
+	target_handle: engine.Handle
+	{
+		it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
+		for ps, h in engine.pool_next(&it) {
+			if ps == target do target_handle = h
+		}
+	}
+	target_handle.type_key = .ParticleSystem // pool iterators hand out untyped handles
+	append(&parent.sub_emitters, particles.Sub_Emitter{
+		target = {handle = target_handle}, trigger = .Death, probability = 1,
+	})
+
+	append(&parent.particles, particles.Particle{position = {3, 4, 5}, lifetime = 0.05})
+	particles.system_tick(parent, 0.1) // the particle dies this tick
+	testing.expect_value(t, len(parent.particles), 0)
+	testing.expect_value(t, len(target.particles), 8)
+	for p in target.particles {
+		testing.expect(t, p.position == [3]f32{3, 4, 5}, "sub emission must anchor at the death position")
+	}
+
+	// Birth trigger fires on spawn; probability 0 never fires.
+	clear(&target.particles)
+	parent.sub_emitters[0] = particles.Sub_Emitter{
+		target = {handle = target_handle}, trigger = .Birth, probability = 1,
+	}
+	parent.rate = 10
+	particles.system_tick(parent, 0.1) // one spawn
+	testing.expect_value(t, len(target.particles), 8)
+
+	clear(&target.particles)
+	parent.sub_emitters[0].probability = 0
+	particles.system_tick(parent, 0.1)
+	testing.expect_value(t, len(target.particles), 0)
 }

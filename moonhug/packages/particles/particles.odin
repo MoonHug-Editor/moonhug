@@ -19,8 +19,9 @@ particles_package_init :: proc() {
 	if done do return
 	done = true
 	engine.render_register_collector(_collect_particles)
-	// Prefab overrides on the bursts field patch through ^[dynamic]Burst.
+	// Prefab overrides on list fields patch through ^[dynamic]T.
 	engine.register_pointer_type(Burst)
+	engine.register_pointer_type(Sub_Emitter)
 }
 
 // --- Simulation ---------------------------------------------------------------
@@ -28,12 +29,33 @@ particles_package_init :: proc() {
 @(update={order=3})
 particles_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
+	mark_sub_targets(w)
 	it := engine.pool_iterator(particle_systems(w))
 	for ps, _ in engine.pool_next(&it) {
 		if !ps.enabled do continue
 		if !engine.pool_valid(&w.transforms, engine.Handle(ps.owner)) do continue
 		if !engine.transform_active_in_hierarchy(ps.owner) do continue
 		system_tick(ps, dt)
+	}
+}
+
+// A system referenced as a sub-emitter target does not emit on its own
+// timeline — triggers drive it (Unity's rule). Recomputed before every tick
+// pass; callers driving system_tick directly (the edit preview) call it too.
+mark_sub_targets :: proc(w: ^engine.World) {
+	it := engine.pool_iterator(particle_systems(w))
+	for ps, _ in engine.pool_next(&it) {
+		ps.is_sub_target = false
+		ps.suppress_sub_emitters = false // editor-preview leftover
+	}
+	it = engine.pool_iterator(particle_systems(w))
+	for ps, _ in engine.pool_next(&it) {
+		for &sub in ps.sub_emitters {
+			if !engine.world_pool_valid(w, sub.target.handle) do continue
+			if target := cast(^ParticleSystem)engine.world_pool_get(w, sub.target.handle); target != nil {
+				target.is_sub_target = true
+			}
+		}
 	}
 }
 
@@ -50,17 +72,20 @@ system_reset :: proc(ps: ^ParticleSystem) {
 	ps.seeded = false // reseeds on the next tick
 }
 
+// Every random draw in the sim runs on the system's OWN stream: a nonzero
+// random_seed replays the exact same effect after system_reset, seed 0 draws
+// fresh entropy each reset (Unity's auto random seed).
+_ensure_seeded :: proc(ps: ^ParticleSystem) {
+	if ps.seeded do return
+	ps.seeded = true
+	seed := u64(ps.random_seed)
+	if seed == 0 do seed = rand.uint64()
+	ps.rand_state = rand.create(seed)
+}
+
 // One system's advance — public so tests drive it without a frame loop.
 system_tick :: proc(ps: ^ParticleSystem, dt: f32) {
-	// Every random draw below runs on the system's OWN stream: a nonzero
-	// random_seed replays the exact same effect after system_reset, seed 0
-	// draws fresh entropy each reset (Unity's auto random seed).
-	if !ps.seeded {
-		ps.seeded = true
-		seed := u64(ps.random_seed)
-		if seed == 0 do seed = rand.uint64()
-		ps.rand_state = rand.create(seed)
-	}
+	_ensure_seeded(ps)
 	context.random_generator = rand.default_random_generator(&ps.rand_state)
 
 	tw := engine.transform_world(engine.Transform_Handle(ps.owner))
@@ -102,10 +127,20 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 	force_module := len(ps.force_x.keys) > 0 || len(ps.force_y.keys) > 0 || len(ps.force_z.keys) > 0
 	rot_by_speed := len(ps.rotation_by_speed.keys) > 0
 
+	sub_death := false
+	for &sub in ps.sub_emitters {
+		if sub.trigger == .Death do sub_death = true
+	}
+
 	for i := len(ps.particles) - 1; i >= 0; i -= 1 {
 		p := &ps.particles[i]
 		p.life += dt
 		if p.life >= p.lifetime {
+			if sub_death {
+				wp := p.position
+				if ps.sim_space == .Local do wp = tw.position + rot * p.position
+				_sub_emit(ps, .Death, wp) // may reallocate ps.particles — p is dead here
+			}
 			unordered_remove(&ps.particles, i)
 			continue
 		}
@@ -190,7 +225,7 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 		ps.prev_pos_valid = true
 		return
 	}
-	emitting := ps.looping || et1 <= ps.duration
+	emitting := (ps.looping || et1 <= ps.duration) && !ps.is_sub_target
 
 	if emitting && ps.rate > 0 {
 		ps.emit_acc += ps.rate * dt
@@ -335,6 +370,66 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		angular_velocity = ang,
 		lifetime         = max(lifetime, 0.01),
 	})
+
+	if len(ps.sub_emitters) > 0 {
+		wp := pos
+		if ps.sim_space == .Local {
+			rot := engine.quat_to_matrix3(tw.rotation)
+			wp = tw.position + rot * pos
+		}
+		_sub_emit(ps, .Birth, wp)
+	}
+}
+
+// Chained and self-targeting sub emitters recurse through _spawn — the
+// depth guard bounds them (Unity limits sub-emitter chains the same way).
+@(private = "file") _sub_depth: int
+
+_sub_emit :: proc(ps: ^ParticleSystem, trigger: Sub_Emitter_Trigger, world_pos: [3]f32) {
+	if len(ps.sub_emitters) == 0 || ps.suppress_sub_emitters do return
+	if _sub_depth >= 4 do return
+	_sub_depth += 1
+	defer _sub_depth -= 1
+
+	w := engine.ctx_world()
+	for &sub in ps.sub_emitters {
+		if sub.trigger != trigger do continue
+		if !engine.world_pool_valid(w, sub.target.handle) do continue
+		target := cast(^ParticleSystem)engine.world_pool_get(w, sub.target.handle)
+		if target == nil || !target.enabled do continue
+		if sub.probability < 1 && rand.float32() >= sub.probability do continue
+		system_emit_at(target, world_pos)
+	}
+}
+
+// Fires the system's authored bursts once, anchored at `world_pos` instead
+// of its emitter transform — the shape offset is kept. Draws on the system's
+// own random stream so its replay stays deterministic. Public: sub emitters
+// trigger through it, gameplay code and the editor's Emit button call it
+// directly (Unity's ParticleSystem.Emit).
+system_emit_at :: proc(ps: ^ParticleSystem, world_pos: [3]f32) {
+	_ensure_seeded(ps)
+	context.random_generator = rand.default_random_generator(&ps.rand_state)
+	tw := engine.transform_world(engine.Transform_Handle(ps.owner))
+
+	before := len(ps.particles)
+	for &b in ps.bursts {
+		if b.probability < 1 && rand.float32() >= b.probability do continue
+		n := int(_rand_range(f32(b.count_min), f32(b.count_max)) + 0.5)
+		for _ in 0 ..< n {
+			if !_try_spawn(ps, tw) do break
+		}
+	}
+
+	// Re-anchor the new particles from the emitter transform to the trigger.
+	if ps.sim_space == .World {
+		delta := world_pos - tw.position
+		for i in before ..< len(ps.particles) do ps.particles[i].position += delta
+	} else {
+		rot := engine.quat_to_matrix3(tw.rotation)
+		local := linalg.transpose(rot) * (world_pos - tw.position)
+		for i in before ..< len(ps.particles) do ps.particles[i].position += local
+	}
 }
 
 // Smooth value noise for the noise module: hashed lattice corners blended

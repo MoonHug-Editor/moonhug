@@ -58,6 +58,12 @@
             "local_id": 4358364337880224,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 771202508250001,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": [
@@ -241,6 +247,83 @@
       "components": [
         {
           "local_id": 1911725489712463
+        }
+      ]
+    },
+    {
+      "local_id": 771202508250001,
+      "name": "Fireworks",
+      "is_active": true,
+      "position": [
+        10.0,
+        -2.0,
+        0.0
+      ],
+      "rotation": [
+        -0.70710683,
+        0.0,
+        0.0,
+        0.70710683
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 771202508250002,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 771202508250011
+        }
+      ]
+    },
+    {
+      "local_id": 771202508250002,
+      "name": "Sparks",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 771202508250001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 771202508250012
         }
       ]
     }
@@ -944,6 +1027,140 @@
         "keys": [
 
         ]
+      }
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 771202508250011
+      },
+      "color_a": [
+        1.0,
+        0.9,
+        0.7,
+        1.0
+      ],
+      "color_b": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "duration": 5.0,
+      "gravity_modifier": 0.4,
+      "lifetime_max": 1.6,
+      "lifetime_min": 1.2,
+      "looping": true,
+      "max_particles": 100,
+      "rate": 0.8,
+      "shape": 0,
+      "shape_angle": 6.0,
+      "shape_radius": 0.1,
+      "sim_space": 1,
+      "simulation_speed": 1.0,
+      "size_max": 0.2,
+      "size_min": 0.15,
+      "speed_max": 10.0,
+      "speed_min": 8.0,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      },
+      "sub_emitters": [
+        {
+          "probability": 1.0,
+          "target": {
+            "local_id": 771202508250012
+          },
+          "trigger": 1
+        }
+      ]
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "angular_velocity_max": 240.0,
+      "angular_velocity_min": -240.0,
+      "base": {
+        "enabled": true,
+        "local_id": 771202508250012
+      },
+      "bursts": [
+        {
+          "count_max": 60,
+          "count_min": 40,
+          "cycles": 1,
+          "interval": 0.0,
+          "probability": 1.0,
+          "time": 0.0
+        }
+      ],
+      "color_a": [
+        1.0,
+        0.80000001,
+        0.30000001,
+        1.0
+      ],
+      "color_b": [
+        1.0,
+        0.40000001,
+        0.60000002,
+        1.0
+      ],
+      "color_over_life": {
+        "keys": [
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "t": 0.0
+          },
+          {
+            "color": [
+              1.0,
+              0.30000001,
+              0.1,
+              0.0
+            ],
+            "t": 1.0
+          }
+        ]
+      },
+      "duration": 5.0,
+      "gravity_modifier": 0.60000002,
+      "lifetime_max": 1.0,
+      "lifetime_min": 0.60000002,
+      "looping": true,
+      "max_particles": 1000,
+      "rate": 0.0,
+      "rotation_max": 360.0,
+      "rotation_min": 0.0,
+      "shape": 1,
+      "shape_radius": 0.05,
+      "sim_space": 1,
+      "simulation_speed": 1.0,
+      "size_max": 0.14,
+      "size_min": 0.08,
+      "size_over_life": {
+        "keys": [
+          {
+            "t": 0.0,
+            "value": 1.0
+          },
+          {
+            "t": 1.0,
+            "value": 0.2
+          }
+        ]
+      },
+      "speed_max": 4.0,
+      "speed_min": 2.5,
+      "sprite": {
+        "guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34",
+        "local_id": 0
       }
     }
   ]

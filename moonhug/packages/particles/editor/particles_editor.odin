@@ -102,17 +102,24 @@ _toggle_end :: proc(sess: ^undo.Edit_Session) {
 @(private = "file") _burst_sess: undo.Edit_Session
 @(private = "file") _burst_editing: bool
 
-_burst_widget :: proc(ps: ^particles.ParticleSystem, changed: bool) {
+// Shared drag session for widgets inside a LIST field (bursts, sub
+// emitters): opens on activation, commits whole-component on release,
+// records the list's override path.
+_list_widget :: proc(changed: bool, list_ptr: rawptr, list_tid: typeid, path: string) {
 	if im.IsItemActivated() && !_burst_editing {
-		_burst_sess = inspector.structural_edit_begin("Edit Burst")
+		_burst_sess = inspector.structural_edit_begin("Edit List")
 		_burst_editing = true
 	}
 	if changed do inspector.mark_inspector_changed()
 	if im.IsItemDeactivated() && _burst_editing {
 		inspector.structural_edit_end(&_burst_sess)
 		_burst_editing = false
-		inspector.record_nested_override(&ps.bursts, typeid_of([dynamic]particles.Burst), "bursts", true)
+		inspector.record_nested_override(list_ptr, list_tid, path, true)
 	}
+}
+
+_burst_widget :: proc(ps: ^particles.ParticleSystem, changed: bool) {
+	_list_widget(changed, &ps.bursts, typeid_of([dynamic]particles.Burst), "bursts")
 }
 
 _bursts_rows :: proc(ps: ^particles.ParticleSystem) {
@@ -170,17 +177,99 @@ _bursts_rows :: proc(ps: ^particles.ParticleSystem) {
 	}
 }
 
+// --- Sub emitters ---------------------------------------------------------------
+
+// A whole-component session for one-frame commits (the ref picker lands
+// from a popup, the trigger combo from a selectable): captured at row
+// start, edit_session_end diffs and records ONLY when something changed —
+// unlike structural_edit_end it never marks the inspector on quiet frames.
+@(private = "file")
+_sub_session_begin :: proc() -> undo.Edit_Session {
+	if o, ok := undo.current_owner(); ok && o.kind == .Pooled {
+		targets := [1]undo.Edit_Target{undo.edit_target_whole(o.handle)}
+		return undo.edit_session_begin(targets[:], "Sub Emitter")
+	}
+	return {}
+}
+
+_sub_emitters_rows :: proc(ps: ^particles.ParticleSystem) {
+	subs_tid := typeid_of([dynamic]particles.Sub_Emitter)
+	remove_at := -1
+	for &sub, i in ps.sub_emitters {
+		im.PushIDInt(i32(i))
+
+		sess := _sub_session_begin()
+		before_target := sub.target.local_id
+		before_trigger := sub.trigger
+
+		inspector.current_field_ref_target = "ParticleSystem"
+		if drawer := inspector.resolve_property_drawer(typeid_of(engine.Ref_Local)); drawer != nil {
+			drawer(&sub.target, typeid_of(engine.Ref_Local), "Target")
+		}
+		inspector.current_field_ref_target = ""
+
+		trigger_names := [?]cstring{"Birth", "Death"}
+		if im.BeginCombo(inspector.field_row("Trigger"), trigger_names[int(sub.trigger)]) {
+			for name, ti in trigger_names {
+				if im.Selectable(name, int(sub.trigger) == ti) {
+					sub.trigger = particles.Sub_Emitter_Trigger(ti)
+				}
+			}
+			im.EndCombo()
+		}
+
+		changed := sub.target.local_id != before_target || sub.trigger != before_trigger
+		undo.edit_session_end(&sess)
+		if changed {
+			inspector.mark_inspector_changed()
+			inspector.record_nested_override(&ps.sub_emitters, subs_tid, "sub_emitters", true)
+		}
+
+		_list_widget(im.DragFloat(inspector.field_row("Probability"), &sub.probability, 0.01, 0, 1, "%.2f"),
+			&ps.sub_emitters, subs_tid, "sub_emitters")
+
+		if im.Button("Remove") do remove_at = i
+		im.Separator()
+		im.PopID()
+	}
+	if remove_at >= 0 {
+		sess := inspector.structural_edit_begin("Remove Sub Emitter")
+		ordered_remove(&ps.sub_emitters, remove_at)
+		inspector.structural_edit_end(&sess)
+		inspector.record_nested_override(&ps.sub_emitters, subs_tid, "sub_emitters", true)
+	}
+	if im.Button("Add Sub Emitter") {
+		sess := inspector.structural_edit_begin("Add Sub Emitter")
+		append(&ps.sub_emitters, particles.Sub_Emitter{probability = 1})
+		inspector.structural_edit_end(&sess)
+		inspector.record_nested_override(&ps.sub_emitters, subs_tid, "sub_emitters", true)
+	}
+}
+
 // --- Edit-mode playback --------------------------------------------------------
 //
-// Unity's scene-view particle preview: the inspected system plays in edit
-// mode. The wrapper ticks it while it draws (selection change restarts the
-// effect), the scene-view overlay shows the Particle Effect panel and clears
-// the preview when the inspector stops drawing the system. Play/simulate
-// owns playback — the preview stands down entirely while playing.
+// Unity's scene-view particle preview: the inspected EFFECT plays in edit
+// mode — the whole ParticleSystem hierarchy from its root, so child systems
+// and sub-emitter targets simulate too, and selecting a child previews the
+// effect it belongs to. The wrapper ticks it while it draws (selection
+// change restarts the effect), the scene-view overlay shows the Particle
+// Effect panel and clears the preview when the inspector stops drawing the
+// system. Play/simulate owns playback — the preview stands down while
+// playing.
+
+// What the preview simulates: the whole effect from its root (Unity's
+// default), the inspected system's subtree, or the inspected system alone.
+@(private = "file")
+_Preview_Scope :: enum {
+	Root,
+	Self_And_Children,
+	Self,
+}
 
 @(private = "file") _ep_current: ^particles.ParticleSystem
 @(private = "file") _ep_frame: i32
 @(private = "file") _ep_paused: bool
+@(private = "file") _ep_scope: _Preview_Scope
 
 @(private = "file")
 _ep_alive :: proc(ps: ^particles.ParticleSystem) -> bool {
@@ -189,6 +278,85 @@ _ep_alive :: proc(ps: ^particles.ParticleSystem) -> bool {
 		if p == ps do return true
 	}
 	return false
+}
+
+// The effect a system belongs to (Unity's model): walk up while the parent
+// transform also carries a ParticleSystem, then gather every system in that
+// root's subtree. `out` is temp-allocated by the callers.
+@(private = "file")
+_effect_systems :: proc(ps: ^particles.ParticleSystem, out: ^[dynamic]^particles.ParticleSystem) {
+	w := engine.ctx_world()
+	root_tH := engine.Transform_Handle(ps.owner)
+	for {
+		t := engine.pool_get(&w.transforms, engine.Handle(root_tH))
+		if t == nil || !engine.pool_valid(&w.transforms, t.parent.handle) do break
+		parentH := engine.Transform_Handle(t.parent.handle)
+		if _, praw := engine.transform_get_comp_key(parentH, .ParticleSystem); praw == nil do break
+		root_tH = parentH
+	}
+	_effect_gather(root_tH, out)
+}
+
+@(private = "file")
+_effect_gather :: proc(tH: engine.Transform_Handle, out: ^[dynamic]^particles.ParticleSystem) {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return
+	if _, raw := engine.transform_get_comp_key(tH, .ParticleSystem); raw != nil {
+		append(out, cast(^particles.ParticleSystem)raw)
+	}
+	for child in t.children {
+		_effect_gather(engine.Transform_Handle(child.handle), out)
+	}
+}
+
+// The systems the preview simulates, per the scope dropdown.
+@(private = "file")
+_ep_systems :: proc(ps: ^particles.ParticleSystem, out: ^[dynamic]^particles.ParticleSystem) {
+	switch _ep_scope {
+	case .Root:
+		_effect_systems(ps, out)
+	case .Self_And_Children:
+		_effect_gather(engine.Transform_Handle(ps.owner), out)
+	case .Self:
+		append(out, ps)
+	}
+}
+
+// Scope-aware sub-target marking: a target only stands down when the system
+// REFERENCING it is simulated too. In Self scope a sub-emitter target plays
+// its own timeline — that is the isolation test.
+@(private = "file")
+_ep_mark_sub_targets :: proc(list: []^particles.ParticleSystem) {
+	w := engine.ctx_world()
+	for e in list {
+		e.is_sub_target = false
+		// Self scope isolates fully: the system's own sub-emitters stay
+		// quiet too (their targets are not simulated).
+		e.suppress_sub_emitters = _ep_scope == .Self
+	}
+	for e in list {
+		for &sub in e.sub_emitters {
+			if !engine.world_pool_valid(w, sub.target.handle) do continue
+			target := cast(^particles.ParticleSystem)engine.world_pool_get(w, sub.target.handle)
+			if target == nil do continue
+			for other in list {
+				if other == target {
+					target.is_sub_target = true
+					break
+				}
+			}
+		}
+	}
+}
+
+// Resets the ROOT scope (the superset), so narrowing the scope never leaves
+// frozen particles from the wider one behind.
+@(private = "file")
+_ep_reset_effect :: proc(ps: ^particles.ParticleSystem) {
+	list := make([dynamic]^particles.ParticleSystem, context.temp_allocator)
+	_effect_systems(ps, &list)
+	for e in list do particles.system_reset(e)
 }
 
 @(scene_overlay={id="Particles", order=300})
@@ -206,7 +374,7 @@ particles_effect_overlay :: proc(vertical: bool) {
 	// The inspector stopped drawing it — selection moved on: clear the
 	// preview so no frozen particles linger in the scene view.
 	if im.GetFrameCount() - _ep_frame > 1 {
-		particles.system_reset(ps)
+		_ep_reset_effect(ps)
 		_ep_current = nil
 		return
 	}
@@ -215,33 +383,64 @@ particles_effect_overlay :: proc(vertical: bool) {
 	if im.SmallButton("Pause" if !_ep_paused else "Play") do _ep_paused = !_ep_paused
 	im.SameLine()
 	if im.SmallButton("Restart") {
-		particles.system_reset(ps)
+		_ep_reset_effect(ps)
 		_ep_paused = false
 	}
 	im.SameLine()
 	if im.SmallButton("Stop") {
-		particles.system_reset(ps)
+		_ep_reset_effect(ps)
 		_ep_paused = true
 	}
+	im.SameLine()
+	// Simulation scope: the effect from its root, the inspected system's
+	// subtree, or the system alone (a sub-emitter target plays its own
+	// timeline in Self scope — the isolation test).
+	scope_names := [?]cstring{"Root", "Self & Children", "Self"}
+	im.SetNextItemWidth(120)
+	if im.BeginCombo("##ep_scope", scope_names[int(_ep_scope)]) {
+		for name, si in scope_names {
+			if im.Selectable(name, int(_ep_scope) == si) {
+				if _ep_scope != _Preview_Scope(si) {
+					_ep_scope = _Preview_Scope(si)
+					_ep_reset_effect(ps)
+					_ep_paused = false
+				}
+			}
+		}
+		im.EndCombo()
+	}
 	// Numbers on their own row (padded), so the ticking text never resizes
-	// the overlay.
-	im.Text("%7.2fs %5d", ps.time, i32(len(ps.particles)))
+	// the overlay. Count sums the simulated scope.
+	count := 0
+	{
+		list := make([dynamic]^particles.ParticleSystem, context.temp_allocator)
+		_ep_systems(ps, &list)
+		for e in list do count += len(e.particles)
+	}
+	im.Text("%7.2fs %5d", ps.time, i32(count))
 	im.EndGroup()
 }
 
 _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	ps := cast(^particles.ParticleSystem)ctx.ptr
 
-	// Edit-mode preview: tick while inspected (play/simulate ticks it itself).
+	// Edit-mode preview: tick the whole effect while inspected
+	// (play/simulate ticks it itself).
 	if !engine.application_is_playing() {
 		if _ep_current != ps {
-			if _ep_current != nil && _ep_alive(_ep_current) do particles.system_reset(_ep_current)
+			if _ep_current != nil && _ep_alive(_ep_current) do _ep_reset_effect(_ep_current)
 			_ep_current = ps
 			_ep_paused = false
-			particles.system_reset(ps)
+			_ep_reset_effect(ps)
 		}
 		_ep_frame = im.GetFrameCount()
-		if !_ep_paused do particles.system_tick(ps, min(im.GetIO().DeltaTime, 0.1))
+		if !_ep_paused {
+			dt := min(im.GetIO().DeltaTime, 0.1)
+			list := make([dynamic]^particles.ParticleSystem, context.temp_allocator)
+			_ep_systems(ps, &list)
+			_ep_mark_sub_targets(list[:])
+			for e in list do particles.system_tick(e, dt)
+		}
 	}
 
 	// Main module (Unity: always visible, no header).
@@ -519,6 +718,10 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 			_ps_field(ps, &ps.rotation_by_speed_min, typeid_of(f32), "Speed Min", "rotation_by_speed_min")
 			_ps_field(ps, &ps.rotation_by_speed_max, typeid_of(f32), "Speed Max", "rotation_by_speed_max")
 		}
+	}
+
+	if open, _ := _module("Sub Emitters"); open {
+		_sub_emitters_rows(ps)
 	}
 
 	if open, _ := _module("Renderer"); open {

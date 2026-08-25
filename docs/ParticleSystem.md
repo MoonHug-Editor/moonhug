@@ -74,6 +74,15 @@ from `[*_min, *_max]` to 0..1.
 `noise_strength` (world units per second, 0 = off), `noise_frequency`
 (0 behaves as 1), `noise_scroll_speed` (moves the field over time).
 
+**Sub emitters**: `sub_emitters` entries reference another ParticleSystem
+(`Ref_Local`) with a trigger (Birth or Death) and a probability. A trigger
+fires the target's authored BURSTS once, anchored at the particle's position
+— the target authors its per-trigger emission as bursts. A referenced target
+never emits on its own timeline (`mark_sub_targets`, Unity's rule) — only
+triggers, `system_emit_at`, or the panel's Emit button fire it. Chains and
+self-targets are depth-limited. Emission draws on the target's own random
+stream, so seeded replay stays deterministic.
+
 **Rotation by speed**: `rotation_by_speed` curve adds angular velocity
 (degrees per second), evaluated at the particle's speed remapped from
 `[*_min, *_max]` to 0..1.
@@ -112,7 +121,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 | Noise | yes — strength/frequency/scroll; no octaves, damping, per-axis, quality |
 | Collision | no |
 | Triggers | no |
-| Sub Emitters | no |
+| Sub Emitters | partial — Birth + Death triggers fire the target's bursts at the particle; no Collision/Trigger/Manual, no inherit, no attached (following) sub systems |
 | Texture Sheet Animation | no |
 | Lights | no |
 | Trails | no |
@@ -139,11 +148,17 @@ sprites in the shared transparent pass.
 
 ## Edit-mode preview
 
-The inspected system plays in edit mode, like Unity's scene-view particle
-preview: the inspector wrapper ticks it every frame it draws, selecting a
-different system restarts the effect, and deselecting clears it. The scene
-view's Particle Effect overlay shows Play/Pause, Restart, Stop and the
-playback time + particle count. Play/simulate owns playback — the preview
+The inspected EFFECT plays in edit mode, like Unity's scene-view particle
+preview: the whole ParticleSystem hierarchy from its root ticks every frame
+the inspector draws — child systems and sub-emitter targets simulate too,
+and selecting a child previews the effect it belongs to. Selecting a
+different system restarts the effect, deselecting clears it. The scene
+view's Particle Effect overlay shows Play/Pause, Restart, Stop, a scope
+dropdown (Root plays the whole effect, Self & Children the inspected
+subtree, Self the system alone — in Self scope a sub-emitter target plays
+its own timeline and the system's own sub-emitters stay quiet, full
+isolation) and the playback time + scoped
+particle count. Play/simulate owns playback — the preview
 stands down while playing. `system_reset` clears live state for the restart.
 The preview renders in every view, game view included — with several scenes
 open, every enabled camera renders a pass (camera stacking), so a second
