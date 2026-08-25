@@ -47,10 +47,22 @@ system_reset :: proc(ps: ^ParticleSystem) {
 	ps.dist_acc = 0
 	ps.prev_pos_valid = false
 	ps.prewarmed = false
+	ps.seeded = false // reseeds on the next tick
 }
 
 // One system's advance — public so tests drive it without a frame loop.
 system_tick :: proc(ps: ^ParticleSystem, dt: f32) {
+	// Every random draw below runs on the system's OWN stream: a nonzero
+	// random_seed replays the exact same effect after system_reset, seed 0
+	// draws fresh entropy each reset (Unity's auto random seed).
+	if !ps.seeded {
+		ps.seeded = true
+		seed := u64(ps.random_seed)
+		if seed == 0 do seed = rand.uint64()
+		ps.rand_state = rand.create(seed)
+	}
+	context.random_generator = rand.default_random_generator(&ps.rand_state)
+
 	tw := engine.transform_world(engine.Transform_Handle(ps.owner))
 
 	// Prewarm: a looping system starts as if one full cycle already ran.

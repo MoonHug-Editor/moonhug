@@ -583,3 +583,46 @@ test_particles_system_reset :: proc(t: ^testing.T) {
 	particles.system_tick(ps, 0.5)
 	testing.expect(t, len(ps.particles) >= 40, "replay after reset must prewarm again")
 }
+
+@(test)
+test_particles_random_seed :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Two systems with the same seed produce identical particles.
+	ps1 := _make_system(tc_mem)
+	ps2 := _make_system(tc_mem)
+	for ps in ([]^particles.ParticleSystem{ps1, ps2}) {
+		ps.random_seed = 7
+		ps.rate = 50
+		ps.lifetime_min = 100
+		ps.lifetime_max = 100
+		ps.speed_min = 1
+		ps.speed_max = 9
+	}
+	for _ in 0 ..< 5 {
+		particles.system_tick(ps1, 0.1)
+		particles.system_tick(ps2, 0.1)
+	}
+	testing.expect_value(t, len(ps1.particles), len(ps2.particles))
+	same := true
+	for p, i in ps1.particles {
+		if p.position != ps2.particles[i].position || p.velocity != ps2.particles[i].velocity do same = false
+	}
+	testing.expect(t, same, "same seed must replay the same effect")
+
+	// Reset replays the seeded system identically.
+	first := make([dynamic][3]f32, context.temp_allocator)
+	for p in ps1.particles do append(&first, p.position)
+	particles.system_reset(ps1)
+	for _ in 0 ..< 5 do particles.system_tick(ps1, 0.1)
+	testing.expect_value(t, len(ps1.particles), len(first))
+	replay := true
+	for p, i in ps1.particles {
+		if p.position != first[i] do replay = false
+	}
+	testing.expect(t, replay, "reset with a fixed seed must reproduce the effect")
+}

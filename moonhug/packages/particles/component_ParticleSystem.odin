@@ -10,6 +10,7 @@ package particles
 // loads it as zero, so zero must mean "off" or "no change" for every field
 // (simulation_speed is the one exception — zero falls back to 1).
 
+import "core:math/rand"
 import "moonhug:engine"
 
 // One live particle. Positions are in the system's simulation space,
@@ -84,6 +85,9 @@ ParticleSystem :: struct {
 	sim_space:    Sim_Space,
 	simulation_speed: f32, // playback speed scale, 0 runs at 1
 	max_particles: i32,
+	// 0 draws a fresh seed each reset (Unity's auto random seed); any other
+	// value replays the exact same effect — restart-to-time depends on it.
+	random_seed: u32,
 
 	// Emission
 	rate:               f32, // particles per second
@@ -186,6 +190,8 @@ ParticleSystem :: struct {
 	prev_pos:  [3]f32 `json:"-" inspect:"-"`,
 	prev_pos_valid: bool `json:"-" inspect:"-"`,
 	prewarmed: bool `json:"-" inspect:"-"`,
+	rand_state: rand.Default_Random_State `json:"-" inspect:"-"`,
+	seeded:     bool `json:"-" inspect:"-"`,
 }
 
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {

@@ -40,7 +40,9 @@ substeps on a looping system's first tick. `start_delay` holds emission back.
 `speed_min/max`, `size_min/max`, `rotation_min/max` (start roll, degrees),
 `flip_rotation` (0..1 fraction spinning the other way), `color_a/b`,
 `gravity_modifier`, `sim_space` (Local follows the emitter, World leaves
-particles behind), `simulation_speed`, `max_particles`.
+particles behind), `simulation_speed`, `max_particles`, `random_seed`
+(0 draws a fresh seed each reset — auto; any other value replays the exact
+same effect after `system_reset`).
 
 **Emission**: `rate` (per second), `rate_over_distance` (per world unit
 moved), `bursts` — each burst is `{time, count_min/max, cycles, interval,
@@ -92,7 +94,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 
 | Unity module | MoonHug |
 |---|---|
-| Main | yes — no 3D size/rotation, delta time, scaling mode, play on awake, emitter velocity, random seeds, stop action, culling mode, ring buffer |
+| Main | yes — no 3D size/rotation, delta time, scaling mode, play on awake, emitter velocity, stop action, culling mode, ring buffer |
 | Emission | yes |
 | Shape | partial — Cone, Sphere, Hemisphere, Circle, Edge, Box, Point; no mesh/sprite shapes, arc, radius thickness, emission texture |
 | Velocity over Lifetime | yes — linear + orbital x/y/z; no offset, speed modifier |
@@ -122,8 +124,8 @@ speed remapped from `[*_min, *_max]` to 0..1.
 Fields absent from a scene file load as zero, so zero means "off" for every
 setting: empty curves and gradients disable their module (`curve_eval` empty
 value, `gradient_eval` white), `limit_speed` 0 disables limiting, angular
-velocity 0 disables rotation. The one exception is `simulation_speed`, where
-0 runs at 1. The inspector's module checkboxes read and write this state
+velocity 0 disables rotation. Two exceptions: `simulation_speed` 0 runs at
+1, `random_seed` 0 means auto (a fresh seed each reset). The inspector's module checkboxes read and write this state
 directly — enabling seeds default values, disabling clears them. There are no
 separate enabled flags on the component.
 
