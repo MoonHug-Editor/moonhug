@@ -270,7 +270,7 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 scene_render_view :: proc(w, h: f32) -> engine.Render_View {
 	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
 	proj := gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), w / max(h, 1), SCENE_CAM_NEAR, SCENE_CAM_FAR)
-	return engine.render_view_make(view, proj, w, h, ~u32(0)) // editor sees all layers
+	return engine.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
 }
 
 render_scene_rt :: proc(w, h: i32) {
@@ -450,7 +450,11 @@ draw_scene_view :: proc() {
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
 	defer im.PopStyleVar()
 
-	if im.Begin("Scene", &menu.show_scene, {.NoCollapse}) {
+	// NoScrollbar: overlays draw ON the image with last-frame sizes, so a
+	// freshly appearing or resizing overlay can momentarily extend past the
+	// window edge — a scrollbar would shrink the content region, resize the
+	// RT and shift the image, oscillating for frames.
+	if im.Begin("Scene", &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
 		_update_frame_tween(im.GetIO().DeltaTime)
 
 		avail := im.GetContentRegionAvail()

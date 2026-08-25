@@ -28,16 +28,10 @@ _register_asset_previews :: proc() {
 	inspector.mapAssetPreview[".mat"] = _preview_thumb
 }
 
-_pv_scene: ^engine.Scene // scratch for prefab previews, content spawn/destroy per draw
-
 asset_previews_shutdown :: proc() {
 	if _mesh_pv_rt != nil {
 		gfx.rt_destroy(_mesh_pv_rt)
 		_mesh_pv_rt = nil
-	}
-	if _pv_scene != nil {
-		engine.scene_destroy(_pv_scene)
-		_pv_scene = nil
 	}
 }
 
@@ -154,7 +148,7 @@ _pv_view :: proc(center: [3]f32, radius: f32, avail: im.Vec2) -> (engine.Render_
 	eye := center - forward * dist
 	view := linalg.matrix4_look_at_f32(eye, center, [3]f32{0, 1, 0})
 	proj := gfx.matrix4_perspective_z01(fov, avail.x / avail.y, max(dist - radius * 2, 0.01), dist + radius * 2)
-	return engine.render_view_make(view, proj, avail.x, avail.y, _THUMB_LAYER), forward
+	return engine.render_view_make(view, proj, avail.x, avail.y, _THUMB_LAYER, .Preview), forward
 }
 
 // The RT drawn over an InvisibleButton (the button captures the drag even
@@ -192,12 +186,9 @@ _preview_scene :: proc(path: string) {
 	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
 	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
 
-	if _pv_scene == nil {
-		_pv_scene = engine.scene_new()
-		engine.scene_ensure_root(_pv_scene)
-	}
-	root := engine.Transform_Handle(_pv_scene.root.handle)
-	spawned := engine.scene_instantiate_guid(guid, root)
+	prev := preview_world_begin()
+	defer preview_world_end(prev)
+	spawned := engine.scene_instantiate_guid(guid, preview_world_root())
 	if spawned == {} {
 		im.TextDisabled("prefab not loadable")
 		return

@@ -14,6 +14,15 @@ import "core:slice"
 
 PIXELS_PER_UNIT :: 100.0
 
+// Unity's CameraType: which surface a view renders. Collectors differentiate
+// — the particles edit preview draws in scene views but never in an
+// edit-mode game view.
+View_Kind :: enum u8 {
+	Game,      // a scene Camera component
+	SceneView, // the editor's scene view
+	Preview,   // thumbnails and inspector previews
+}
+
 Render_View :: struct {
 	view, proj:    matrix[4, 4]f32,
 	view_proj:     matrix[4, 4]f32,
@@ -21,6 +30,7 @@ Render_View :: struct {
 	cam_pos:       [3]f32, // camera world position (specular shaders, LOD later)
 	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
 	layer_mask:    u32,
+	kind:          View_Kind,
 }
 
 // Alpha-blended commands sort by a lexicographic multi-level key — collectors
@@ -111,7 +121,7 @@ camera_active :: proc() -> ^Camera {
 	return best
 }
 
-render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_mask: u32) -> Render_View {
+render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_mask: u32, kind: View_Kind = .Game) -> Render_View {
 	vp := proj * view
 	// Camera world position = translation column of the inverted view matrix
 	// — derived here so every caller (game cameras, editor scene view) gets it
@@ -126,6 +136,7 @@ render_view_make :: proc(view, proj: matrix[4, 4]f32, width, height: f32, layer_
 		width         = width,
 		height        = height,
 		layer_mask    = layer_mask,
+		kind          = kind,
 	}
 }
 

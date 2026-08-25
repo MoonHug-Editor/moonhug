@@ -37,6 +37,18 @@ particles_tick :: proc(dt: f32) {
 	}
 }
 
+// Clears live state so the next tick starts the effect from time zero —
+// the editor's edit-mode preview restarts through this, and a future
+// timeline scrub is this plus a fixed-step advance to the target time.
+system_reset :: proc(ps: ^ParticleSystem) {
+	clear(&ps.particles)
+	ps.time = 0
+	ps.emit_acc = 0
+	ps.dist_acc = 0
+	ps.prev_pos_valid = false
+	ps.prewarmed = false
+}
+
 // One system's advance — public so tests drive it without a frame loop.
 system_tick :: proc(ps: ^ParticleSystem, dt: f32) {
 	tw := engine.transform_world(engine.Transform_Handle(ps.owner))
@@ -124,6 +136,15 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 			vel += extra
 		}
 		p.position += vel * dt
+
+		// Noise: deterministic smooth jitter — same field for every run, so
+		// a future restart-to-time replay stays possible.
+		if ps.noise_strength > 0 {
+			freq := ps.noise_frequency if ps.noise_frequency > 0 else 1
+			sp := p.position * freq
+			sp.z += ps.time * ps.noise_scroll_speed
+			p.position += _noise3(sp) * ps.noise_strength * dt
+		}
 
 		// Orbital velocity: rotate the position around the emitter's axes.
 		if orbital_module {
@@ -302,6 +323,52 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		angular_velocity = ang,
 		lifetime         = max(lifetime, 0.01),
 	})
+}
+
+// Smooth value noise for the noise module: hashed lattice corners blended
+// with smoothstep weights, one independent channel per axis. Deterministic —
+// the same position always samples the same value.
+@(private = "file")
+_noise_hash :: proc(x, y, z: i32, seed: u32) -> f32 {
+	h := u32(x) * 0x8da6b343 + u32(y) * 0xd8163841 + u32(z) * 0xcb1ab31f + seed * 0x9e3779b9
+	h ~= h >> 13
+	h *= 0x85ebca6b
+	h ~= h >> 16
+	return f32(h & 0xffffff) / f32(0xffffff) * 2 - 1
+}
+
+@(private = "file")
+_value_noise :: proc(p: [3]f32, seed: u32) -> f32 {
+	fx := math.floor(p.x)
+	fy := math.floor(p.y)
+	fz := math.floor(p.z)
+	x, y, z := i32(fx), i32(fy), i32(fz)
+	sm :: proc(t: f32) -> f32 { return t * t * (3 - 2 * t) }
+	tx, ty, tz := sm(p.x - fx), sm(p.y - fy), sm(p.z - fz)
+
+	c000 := _noise_hash(x, y, z, seed)
+	c100 := _noise_hash(x + 1, y, z, seed)
+	c010 := _noise_hash(x, y + 1, z, seed)
+	c110 := _noise_hash(x + 1, y + 1, z, seed)
+	c001 := _noise_hash(x, y, z + 1, seed)
+	c101 := _noise_hash(x + 1, y, z + 1, seed)
+	c011 := _noise_hash(x, y + 1, z + 1, seed)
+	c111 := _noise_hash(x + 1, y + 1, z + 1, seed)
+
+	x00 := math.lerp(c000, c100, tx)
+	x10 := math.lerp(c010, c110, tx)
+	x01 := math.lerp(c001, c101, tx)
+	x11 := math.lerp(c011, c111, tx)
+	return math.lerp(math.lerp(x00, x10, ty), math.lerp(x01, x11, ty), tz)
+}
+
+@(private = "file")
+_noise3 :: proc(p: [3]f32) -> [3]f32 {
+	return {
+		_value_noise(p, 0x51ed270b),
+		_value_noise(p, 0x9f2d3481),
+		_value_noise(p, 0x3c6ef372),
+	}
 }
 
 // Rotates around x, then y, then z.

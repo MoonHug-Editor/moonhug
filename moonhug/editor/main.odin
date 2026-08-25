@@ -151,6 +151,7 @@ main :: proc() {
     defer settings_shutdown()
     defer thumbnails_shutdown()
     defer asset_previews_shutdown()
+    defer preview_world_shutdown()
     mcp_bridge_init() // agent bridge on loopback TCP (docs/McpBridge.md)
     defer mcp_bridge_shutdown()
 

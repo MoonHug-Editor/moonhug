@@ -175,8 +175,10 @@ generate :: proc(w: ^db.World) -> bool {
 	for r in rows {
 		call := r.pkg == "" ? r.proc_name : fmt.tprintf("%s.%s", r.pkg, r.proc_name)
 		if r.comp_engine {
+			// Engine components live in ext_pools like everything else
+			// (unified components) — go through the typed plural accessor.
 			strings.write_string(&b, "\t{\n")
-			fmt.sbprintf(&b, "\t\tit := engine.pool_iterator(&w.%s)\n", r.comp_plural)
+			fmt.sbprintf(&b, "\t\tit := engine.pool_iterator(engine.%s(w))\n", r.comp_plural)
 			strings.write_string(&b, "\t\tfor c, _ in engine.pool_next(&it) {\n")
 			strings.write_string(&b, "\t\t\tif !c.enabled do continue\n")
 			if r.selected {

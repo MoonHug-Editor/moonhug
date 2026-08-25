@@ -8,10 +8,11 @@ package editor
 // visible cell (thumbnail_get), misses queue, and thumbnails_tick handles a
 // few per frame — a valid disk entry uploads straight to a texture, everything
 // else renders. The tick runs at the top of the frame, BEFORE any view draws:
-// scene previews spawn real content into a scratch scene (never registered
-// with the scene manager, so no view lists it), render it through the normal
-// collect/execute pipeline into a small RT with a reserved render layer, and
-// destroy it again — nothing survives into the frame's visible rendering.
+// scene previews spawn real content into the preview World (preview_world.odin
+// — its own pools, so preview copies never collide with the open scene's
+// components), render it through the normal collect/execute pipeline into a
+// small RT, and destroy it again — nothing survives into the frame's visible
+// rendering.
 //
 // Rendered thumbnails persist asynchronously: the readback submits one frame
 // after the render (the frame command buffer must be submitted first) and the
@@ -90,7 +91,6 @@ _Thumb_File_Header :: struct #packed {
 @(private = "file") _thumb_downloads: [dynamic]_Thumb_Download
 @(private = "file") _thumb_pruned: bool
 @(private = "file") _thumb_rt: ^gfx.Render_Target
-@(private = "file") _thumb_scene: ^engine.Scene
 
 _thumb_supported :: proc(path: string) -> bool {
 	switch filepath.ext(path) {
@@ -222,10 +222,6 @@ thumbnails_shutdown :: proc() {
 	if _thumb_rt != nil {
 		gfx.rt_destroy(_thumb_rt)
 		_thumb_rt = nil
-	}
-	if _thumb_scene != nil {
-		engine.scene_destroy(_thumb_scene)
-		_thumb_scene = nil
 	}
 }
 
@@ -380,9 +376,9 @@ _thumb_render_material :: proc(guid: engine.Asset_GUID) -> ^gfx.Texture {
 // renders through the normal pipeline, and destroys the content again.
 @(private = "file")
 _thumb_render_scene :: proc(guid: engine.Asset_GUID) -> ^gfx.Texture {
-	root, rok := _thumb_scratch_root()
-	if !rok do return nil
-	spawned := engine.scene_instantiate_guid(guid, root)
+	prev := preview_world_begin()
+	defer preview_world_end(prev)
+	spawned := engine.scene_instantiate_guid(guid, preview_world_root())
 	if spawned == {} do return nil
 	defer engine.transform_destroy(spawned)
 	return _thumb_render_framed(spawned)
@@ -405,7 +401,7 @@ _thumb_render_mesh_part :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID) -
 	eye := center - forward * dist
 	view := linalg.matrix4_look_at_f32(eye, center, [3]f32{0, 1, 0})
 	proj := gfx.matrix4_perspective_z01(fov, 1, max(dist - radius * 2, 0.01), dist + radius * 2)
-	rv := engine.render_view_make(view, proj, _THUMB_SIZE, _THUMB_SIZE, _THUMB_LAYER)
+	rv := engine.render_view_make(view, proj, _THUMB_SIZE, _THUMB_SIZE, _THUMB_LAYER, .Preview)
 
 	gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
 	gfx.pass_begin_target(_thumb_rt, [4]f32{0.16, 0.16, 0.18, 1})
@@ -416,15 +412,6 @@ _thumb_render_mesh_part :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID) -
 	gfx.pass_end()
 	gfx.set_lights_default()
 	return gfx.rt_snapshot(_thumb_rt)
-}
-
-@(private = "file")
-_thumb_scratch_root :: proc() -> (engine.Transform_Handle, bool) {
-	if _thumb_scene == nil {
-		_thumb_scene = engine.scene_new()
-		engine.scene_ensure_root(_thumb_scene)
-	}
-	return engine.Transform_Handle(_thumb_scene.root.handle), _thumb_scene != nil
 }
 
 // Frames `tH`'s bounds with a perspective camera (front-on when the content
@@ -450,7 +437,7 @@ _thumb_render_framed :: proc(tH: engine.Transform_Handle) -> ^gfx.Texture {
 	eye := center - forward * dist
 	view := linalg.matrix4_look_at_f32(eye, center, up)
 	proj := gfx.matrix4_perspective_z01(fov, 1, max(dist - radius * 2, 0.01), dist + radius * 2)
-	rv := engine.render_view_make(view, proj, _THUMB_SIZE, _THUMB_SIZE, _THUMB_LAYER)
+	rv := engine.render_view_make(view, proj, _THUMB_SIZE, _THUMB_SIZE, _THUMB_LAYER, .Preview)
 
 	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
 	engine.render_collect_commands(rv, &cmds)

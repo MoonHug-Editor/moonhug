@@ -66,12 +66,18 @@ _ps_color :: proc(ps: ^particles.ParticleSystem, ptr: ^[4]f32, label: cstring, p
 
 // A Unity module header: enable checkbox + collapsing header on one row.
 // nil toggle = an always-on module. Returns whether the body draws.
+// Headers use the theme's FrameBg greys so modules read as a tier below the
+// component header (which keeps the theme's Header color).
 _module :: proc(label: cstring, enabled: ^bool = nil) -> (open: bool, toggled: bool) {
 	if enabled != nil {
 		toggled = im.Checkbox(fmt.ctprintf("##%s_on", label), enabled)
 		im.SameLine(0, 4)
 	}
+	im.PushStyleColorImVec4(.Header, im.GetStyleColorVec4(.FrameBg)^)
+	im.PushStyleColorImVec4(.HeaderHovered, im.GetStyleColorVec4(.FrameBgHovered)^)
+	im.PushStyleColorImVec4(.HeaderActive, im.GetStyleColorVec4(.FrameBgActive)^)
 	open = im.CollapsingHeader(label, {.DefaultOpen})
+	im.PopStyleColor(3)
 	return
 }
 
@@ -164,8 +170,79 @@ _bursts_rows :: proc(ps: ^particles.ParticleSystem) {
 	}
 }
 
+// --- Edit-mode playback --------------------------------------------------------
+//
+// Unity's scene-view particle preview: the inspected system plays in edit
+// mode. The wrapper ticks it while it draws (selection change restarts the
+// effect), the scene-view overlay shows the Particle Effect panel and clears
+// the preview when the inspector stops drawing the system. Play/simulate
+// owns playback — the preview stands down entirely while playing.
+
+@(private = "file") _ep_current: ^particles.ParticleSystem
+@(private = "file") _ep_frame: i32
+@(private = "file") _ep_paused: bool
+
+@(private = "file")
+_ep_alive :: proc(ps: ^particles.ParticleSystem) -> bool {
+	it := engine.pool_iterator(particles.particle_systems(engine.ctx_world()))
+	for p, _ in engine.pool_next(&it) {
+		if p == ps do return true
+	}
+	return false
+}
+
+@(scene_overlay={id="Particles", order=300})
+particles_effect_overlay :: proc(vertical: bool) {
+	if engine.application_is_playing() {
+		_ep_current = nil
+		return
+	}
+	ps := _ep_current
+	if ps == nil do return
+	if !_ep_alive(ps) {
+		_ep_current = nil
+		return
+	}
+	// The inspector stopped drawing it — selection moved on: clear the
+	// preview so no frozen particles linger in the scene view.
+	if im.GetFrameCount() - _ep_frame > 1 {
+		particles.system_reset(ps)
+		_ep_current = nil
+		return
+	}
+
+	im.BeginGroup()
+	if im.SmallButton("Pause" if !_ep_paused else "Play") do _ep_paused = !_ep_paused
+	im.SameLine()
+	if im.SmallButton("Restart") {
+		particles.system_reset(ps)
+		_ep_paused = false
+	}
+	im.SameLine()
+	if im.SmallButton("Stop") {
+		particles.system_reset(ps)
+		_ep_paused = true
+	}
+	// Numbers on their own row (padded), so the ticking text never resizes
+	// the overlay.
+	im.Text("%7.2fs %5d", ps.time, i32(len(ps.particles)))
+	im.EndGroup()
+}
+
 _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	ps := cast(^particles.ParticleSystem)ctx.ptr
+
+	// Edit-mode preview: tick while inspected (play/simulate ticks it itself).
+	if !engine.application_is_playing() {
+		if _ep_current != ps {
+			if _ep_current != nil && _ep_alive(_ep_current) do particles.system_reset(_ep_current)
+			_ep_current = ps
+			_ep_paused = false
+			particles.system_reset(ps)
+		}
+		_ep_frame = im.GetFrameCount()
+		if !_ep_paused do particles.system_tick(ps, min(im.GetIO().DeltaTime, 0.1))
+	}
 
 	// Main module (Unity: always visible, no header).
 	_ps_field(ps, &ps.duration, typeid_of(f32), "Duration", "duration")
@@ -401,6 +478,23 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		if open {
 			_ps_field(ps, &ps.angular_velocity_min, typeid_of(f32), "Angular Velocity Min", "angular_velocity_min")
 			_ps_field(ps, &ps.angular_velocity_max, typeid_of(f32), "Angular Velocity Max", "angular_velocity_max")
+		}
+	}
+	{
+		on := ps.noise_strength > 0
+		open, toggled := _module("Noise", &on)
+		if toggled {
+			sess := _toggle_begin()
+			ps.noise_strength = 1 if on else 0
+			if on && ps.noise_frequency == 0 do ps.noise_frequency = 0.5
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.noise_strength, typeid_of(f32), "noise_strength", true)
+			inspector.record_nested_override(&ps.noise_frequency, typeid_of(f32), "noise_frequency", true)
+		}
+		if open {
+			_ps_field(ps, &ps.noise_strength, typeid_of(f32), "Strength", "noise_strength")
+			_ps_field(ps, &ps.noise_frequency, typeid_of(f32), "Frequency", "noise_frequency")
+			_ps_field(ps, &ps.noise_scroll_speed, typeid_of(f32), "Scroll Speed", "noise_scroll_speed")
 		}
 	}
 	{

@@ -124,15 +124,17 @@ Overlay_Item :: struct {
 }
 
 Overlay :: struct {
-	id:        cstring,
-	items:     [dynamic]Overlay_Item, // kept sorted by order
-	anchor:    Overlay_Anchor,
-	float_pos: [2]f32,  // 0..1 inside the view rect, top-left of content
-	size:      im.Vec2, // content size measured last frame ({0,0} first frame)
-	bg_min:    im.Vec2, // background rect this frame (hover test)
-	bg_max:    im.Vec2,
-	dragging:  bool,
-	drag_off:  im.Vec2, // grab offset from content top-left, px
+	id:         cstring,
+	items:      [dynamic]Overlay_Item, // kept sorted by order
+	anchor:     Overlay_Anchor,
+	float_pos:  [2]f32,  // 0..1 inside the view rect, top-left of content
+	size:       im.Vec2, // content size measured last frame ({0,0} first frame)
+	items_size: im.Vec2, // the items alone, measured last frame — zero WIDTH
+	                     // (all items empty) hides the overlay's chrome entirely
+	bg_min:     im.Vec2, // background rect this frame (hover test)
+	bg_max:     im.Vec2,
+	dragging:   bool,
+	drag_off:   im.Vec2, // grab offset from content top-left, px
 }
 
 _overlays: [dynamic]Overlay
@@ -317,9 +319,17 @@ overlays_draw :: proc(view_min, view_max: im.Vec2) {
 _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	dl := im.GetWindowDrawList()
 
+	// An overlay whose items drew NOTHING last frame shows no chrome at all
+	// (no background, no grip, no hover) — a conditional overlay like the
+	// particles Particle Effect panel vanishes with its content. The items
+	// still run every frame, so it reappears the moment one draws. Width
+	// alone decides: an EMPTY imgui group still measures a line height, but
+	// its width is zero.
+	empty := ov.items_size.x < 0.5
+
 	ov.bg_min = pos - {OVERLAY_PAD, OVERLAY_PAD}
-	ov.bg_max = pos + ov.size + {OVERLAY_PAD, OVERLAY_PAD}
-	if ov.size.x > 0 { // size is unknown on the very first frame
+	ov.bg_max = empty ? ov.bg_min : pos + ov.size + {OVERLAY_PAD, OVERLAY_PAD}
+	if ov.size.x > 0 && !empty { // size is unknown on the very first frame
 		bg := im.GetStyleColorVec4(.WindowBg)^
 		bg.w = 0.85
 		im.DrawList_AddRectFilled(dl, ov.bg_min, ov.bg_max, im.GetColorU32ImVec4(bg), 4)
@@ -334,27 +344,34 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	im.SetCursorScreenPos(pos)
 	im.BeginGroup()
 
-	// Grip: invisible button with drag_indicator dots; dragging it moves the
-	// overlay (drop handling in overlays_draw).
-	grip_size := vertical ? im.Vec2{OVERLAY_BUTTON_SIZE, OVERLAY_GRIP_THICK} : im.Vec2{OVERLAY_GRIP_THICK, OVERLAY_BUTTON_SIZE}
-	grip_min := im.GetCursorScreenPos()
-	im.InvisibleButton("##grip", grip_size)
-	if im.IsItemActive() && im.IsMouseDragging(.Left, 2) && !ov.dragging {
-		ov.dragging = true
-		ov.drag_off = im.GetMousePos() - pos
-	}
-	grip_col := im.GetColorU32(im.IsItemHovered({}) || ov.dragging ? .Text : .TextDisabled)
-	icon_size := im.CalcTextSize(ICON_MD_DRAG_INDICATOR, nil, false, -1)
-	im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, ICON_MD_DRAG_INDICATOR)
-
-	// Items in order; the ctx lets their widgets' tooltips show where the
-	// hovered item lives (see _overlay_item_tooltip).
-	for &it in ov.items {
+	if !empty {
+		// Grip: invisible button with drag_indicator dots; dragging it moves
+		// the overlay (drop handling in overlays_draw).
+		grip_size := vertical ? im.Vec2{OVERLAY_BUTTON_SIZE, OVERLAY_GRIP_THICK} : im.Vec2{OVERLAY_GRIP_THICK, OVERLAY_BUTTON_SIZE}
+		grip_min := im.GetCursorScreenPos()
+		im.InvisibleButton("##grip", grip_size)
+		if im.IsItemActive() && im.IsMouseDragging(.Left, 2) && !ov.dragging {
+			ov.dragging = true
+			ov.drag_off = im.GetMousePos() - pos
+		}
+		grip_col := im.GetColorU32(im.IsItemHovered({}) || ov.dragging ? .Text : .TextDisabled)
+		icon_size := im.CalcTextSize(ICON_MD_DRAG_INDICATOR, nil, false, -1)
+		im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, ICON_MD_DRAG_INDICATOR)
 		if !vertical do im.SameLine()
+	}
+
+	// Items in order, measured as their own group; the ctx lets their
+	// widgets' tooltips show where the hovered item lives
+	// (see _overlay_item_tooltip).
+	im.BeginGroup()
+	for &it, idx in ov.items {
+		if !vertical && idx > 0 do im.SameLine()
 		_overlay_item_ctx = {overlay_id = ov.id, order = it.order, active = true}
 		it.draw(vertical)
 	}
 	_overlay_item_ctx = {}
+	im.EndGroup()
+	ov.items_size = im.GetItemRectSize()
 
 	im.EndGroup()
 	ov.size = im.GetItemRectSize()

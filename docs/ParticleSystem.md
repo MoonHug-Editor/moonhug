@@ -68,6 +68,10 @@ from `[*_min, *_max]` to 0..1.
 
 **Rotation over lifetime**: `angular_velocity_min/max` in degrees per second.
 
+**Noise**: deterministic smooth value noise jitters positions —
+`noise_strength` (world units per second, 0 = off), `noise_frequency`
+(0 behaves as 1), `noise_scroll_speed` (moves the field over time).
+
 **Rotation by speed**: `rotation_by_speed` curve adds angular velocity
 (degrees per second), evaluated at the particle's speed remapped from
 `[*_min, *_max]` to 0..1.
@@ -103,7 +107,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 | Rotation over Lifetime | yes — angular velocity min/max |
 | Rotation by Speed | yes |
 | External Forces | no |
-| Noise | no |
+| Noise | yes — strength/frequency/scroll; no octaves, damping, per-axis, quality |
 | Collision | no |
 | Triggers | no |
 | Sub Emitters | no |
@@ -130,6 +134,18 @@ come from the view matrix rows, the particle's roll rotates that basis. Sliced
 sprites resolve UVs through `texture_sprite_rect`. Sort keys use
 `engine.sort_key_word(layer, order, depth, seq)`, so particles interleave with
 sprites in the shared transparent pass.
+
+## Edit-mode preview
+
+The inspected system plays in edit mode, like Unity's scene-view particle
+preview: the inspector wrapper ticks it every frame it draws, selecting a
+different system restarts the effect, and deselecting clears it. The scene
+view's Particle Effect overlay shows Play/Pause, Restart, Stop and the
+playback time + particle count. Play/simulate owns playback — the preview
+stands down while playing. `system_reset` clears live state for the restart.
+The preview renders in every view, game view included — with several scenes
+open, every enabled camera renders a pass (camera stacking), so a second
+scene's camera shows the preview too.
 
 ## Inspector
 

@@ -143,6 +143,14 @@ ParticleSystem :: struct {
 	angular_velocity_min: f32,
 	angular_velocity_max: f32,
 
+	// Noise: position jitter from smooth value noise sampled at the
+	// particle's position — deterministic, no randomness. strength is world
+	// units per second and 0 = the module off, frequency 0 behaves as 1,
+	// scroll moves the noise field over time.
+	noise_strength:     f32,
+	noise_frequency:    f32,
+	noise_scroll_speed: f32,
+
 	// Rotation by speed: additional angular velocity (degrees per second)
 	// from the curve evaluated at the particle's speed remapped from
 	// [min, max] to 0..1. Empty = the module off.

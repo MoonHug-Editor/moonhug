@@ -521,3 +521,65 @@ test_particles_lifetime_by_emitter_speed :: proc(t: ^testing.T) {
 	testing.expect(t, len(ps.particles) >= 1, "moving emitter should spawn")
 	testing.expect(t, abs(ps.particles[0].lifetime - 10) < 0.01, "fast emitter keeps full lifetime")
 }
+
+@(test)
+test_particles_noise :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Noise moves the particle, bounded by strength, and is deterministic:
+	// two identical systems produce the same displacement.
+	ps1 := _make_system(tc_mem)
+	ps2 := _make_system(tc_mem)
+	for ps in ([]^particles.ParticleSystem{ps1, ps2}) {
+		ps.rate = 0
+		ps.noise_strength = 2
+		ps.noise_frequency = 0.5
+		append(&ps.particles, particles.Particle{lifetime = 100, position = {3, 1, 2}})
+	}
+	for _ in 0 ..< 10 {
+		particles.system_tick(ps1, 0.1)
+		particles.system_tick(ps2, 0.1)
+	}
+	p1 := ps1.particles[0]
+	moved := p1.position - [3]f32{3, 1, 2}
+	testing.expect(t, abs(moved.x) + abs(moved.y) + abs(moved.z) > 0.001, "noise must move the particle")
+	testing.expect(t, abs(moved.x) <= 2 && abs(moved.y) <= 2 && abs(moved.z) <= 2, "displacement bounded by strength")
+	testing.expect(t, p1.position == ps2.particles[0].position, "noise must be deterministic")
+
+	// Strength 0 = off.
+	ps3 := _make_system(tc_mem)
+	ps3.rate = 0
+	append(&ps3.particles, particles.Particle{lifetime = 100, position = {3, 1, 2}})
+	particles.system_tick(ps3, 0.1)
+	testing.expect(t, ps3.particles[0].position == [3]f32{3, 1, 2}, "no noise when strength is 0")
+}
+
+@(test)
+test_particles_system_reset :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	ps := _make_system(tc_mem)
+	ps.rate = 10
+	ps.prewarm = true
+	ps.lifetime_min = 100
+	ps.lifetime_max = 100
+	particles.system_tick(ps, 0.5)
+	testing.expect(t, len(ps.particles) > 0 && ps.time > 0)
+
+	particles.system_reset(ps)
+	testing.expect_value(t, len(ps.particles), 0)
+	testing.expect_value(t, ps.time, 0)
+	testing.expect(t, !ps.prewarmed, "reset must re-arm prewarm")
+
+	// The effect replays identically in shape: prewarm fills again.
+	particles.system_tick(ps, 0.5)
+	testing.expect(t, len(ps.particles) >= 40, "replay after reset must prewarm again")
+}
