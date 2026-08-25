@@ -42,7 +42,13 @@ substeps on a looping system's first tick. `start_delay` holds emission back.
 `gravity_modifier`, `sim_space` (Local follows the emitter, World leaves
 particles behind), `simulation_speed`, `max_particles`, `random_seed`
 (0 draws a fresh seed each reset — auto; any other value replays the exact
-same effect after `system_reset`).
+same effect after `system_reset`), `manual_start` (the inverse of Unity's
+Play On Awake, zero-neutral: true = the system waits for `system_play`).
+
+**Playback control**: `system_play` (starts, or restarts a stopped system),
+`system_pause` (freezes everything), `system_stop` (ends emission, live
+particles play out — `clear_particles = true` drops them, Unity's
+StopEmittingAndClear).
 
 **Emission**: `rate` (per second), `rate_over_distance` (per world unit
 moved), `bursts` — each burst is `{time, count_min/max, cycles, interval,
@@ -79,7 +85,8 @@ from `[*_min, *_max]` to 0..1.
 fires the target's authored BURSTS once, anchored at the particle's position
 — the target authors its per-trigger emission as bursts. A referenced target
 never emits on its own timeline (`mark_sub_targets`, Unity's rule) — only
-triggers, `system_emit_at`, or the panel's Emit button fire it. Chains and
+triggers or `system_emit_at` fire it (the preview's Self scope lifts the
+rule for isolation testing). Chains and
 self-targets are depth-limited. Emission draws on the target's own random
 stream, so seeded replay stays deterministic.
 
@@ -103,7 +110,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 
 | Unity module | MoonHug |
 |---|---|
-| Main | yes — no 3D size/rotation, delta time, scaling mode, play on awake, emitter velocity, stop action, culling mode, ring buffer |
+| Main | yes — no 3D size/rotation, delta time, scaling mode, emitter velocity, stop action, culling mode, ring buffer |
 | Emission | yes |
 | Shape | partial — Cone, Sphere, Hemisphere, Circle, Edge, Box, Point; no mesh/sprite shapes, arc, radius thickness, emission texture |
 | Velocity over Lifetime | yes — linear + orbital x/y/z; no offset, speed modifier |
@@ -145,6 +152,13 @@ come from the view matrix rows, the particle's roll rotates that basis. Sliced
 sprites resolve UVs through `texture_sprite_rect`. Sort keys use
 `engine.sort_key_word(layer, order, depth, seq)`, so particles interleave with
 sprites in the shared transparent pass.
+
+## Gizmos
+
+The selected system draws its emission shape as wireframe lines in the scene
+view — cone base + spread silhouette, sphere/hemisphere circles, circle,
+edge line, box, point cross (`editor/particles_gizmos.odin`, the
+`@(on_draw_gizmos_selected)` hook).
 
 ## Edit-mode preview
 

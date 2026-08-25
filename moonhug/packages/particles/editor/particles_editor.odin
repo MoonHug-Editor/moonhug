@@ -464,6 +464,7 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	_ps_field(ps, &ps.simulation_speed, typeid_of(f32), "Simulation Speed", "simulation_speed")
 	_ps_field(ps, &ps.max_particles, typeid_of(i32), "Max Particles", "max_particles")
 	_ps_field(ps, &ps.random_seed, typeid_of(u32), "Random Seed", "random_seed")
+	_ps_field(ps, &ps.manual_start, typeid_of(bool), "Manual Start", "manual_start")
 
 	if open, _ := _module("Emission"); open {
 		_ps_field(ps, &ps.rate, typeid_of(f32), "Rate over Time", "rate")

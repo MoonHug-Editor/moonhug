@@ -703,3 +703,52 @@ test_particles_sub_emitters :: proc(t: ^testing.T) {
 	particles.system_tick(parent, 0.1)
 	testing.expect_value(t, len(target.particles), 0)
 }
+
+@(test)
+test_particles_playback_control :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Manual start: nothing plays until system_play.
+	ps := _make_system(tc_mem)
+	ps.manual_start = true
+	ps.rate = 10
+	ps.lifetime_min = 100
+	ps.lifetime_max = 100
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 0)
+	particles.system_play(ps)
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 5)
+
+	// Pause freezes aging and emission entirely.
+	particles.system_pause(ps)
+	frozen_time := ps.time
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 5)
+	testing.expect_value(t, ps.time, frozen_time)
+
+	// Stop ends emission, live particles keep aging.
+	particles.system_play(ps)
+	particles.system_stop(ps)
+	ps.lifetime_min = 0.3
+	ps.lifetime_max = 0.3
+	for &p in ps.particles do p.lifetime = 0.3
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 0) // aged out, nothing new
+
+	// Play after stop restarts from time zero.
+	particles.system_play(ps)
+	testing.expect_value(t, ps.time, 0)
+	ps.lifetime_min = 100
+	ps.lifetime_max = 100
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 5)
+
+	// Stop with clear drops live particles immediately.
+	particles.system_stop(ps, clear_particles = true)
+	testing.expect_value(t, len(ps.particles), 0)
+}

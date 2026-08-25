@@ -103,6 +103,10 @@ ParticleSystem :: struct {
 	// 0 draws a fresh seed each reset (Unity's auto random seed); any other
 	// value replays the exact same effect — restart-to-time depends on it.
 	random_seed: u32,
+	// Inverse of Unity's Play On Awake, so absent-field-loads-as-zero keeps
+	// every existing system playing: true = the system waits for
+	// system_play.
+	manual_start: bool,
 
 	// Emission
 	rate:               f32, // particles per second
@@ -217,6 +221,12 @@ ParticleSystem :: struct {
 	// The editor's Self preview scope sets this: the system's own
 	// sub-emitters do not fire (their targets are not simulated).
 	suppress_sub_emitters: bool `json:"-" inspect:"-"`,
+	// Playback state (system_play/pause/stop). `started` applies
+	// manual_start on the first tick; reset clears it so the next play
+	// re-applies it.
+	started: bool `json:"-" inspect:"-"`,
+	paused:  bool `json:"-" inspect:"-"`,
+	stopped: bool `json:"-" inspect:"-"`,
 }
 
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {

@@ -69,7 +69,33 @@ system_reset :: proc(ps: ^ParticleSystem) {
 	ps.dist_acc = 0
 	ps.prev_pos_valid = false
 	ps.prewarmed = false
-	ps.seeded = false // reseeds on the next tick
+	ps.seeded = false  // reseeds on the next tick
+	ps.started = false // manual_start re-applies on the next tick
+	ps.paused = false
+	ps.stopped = false
+}
+
+// --- Playback control (Unity's Play/Pause/Stop) --------------------------------
+
+// Starts or resumes. A stopped system restarts from time zero.
+system_play :: proc(ps: ^ParticleSystem) {
+	if ps.stopped do system_reset(ps)
+	ps.started = true
+	ps.paused = false
+	ps.stopped = false
+}
+
+// Freezes the whole system — no aging, no emission — until system_play.
+system_pause :: proc(ps: ^ParticleSystem) {
+	ps.paused = true
+}
+
+// Stops emitting. Live particles play out, or clear immediately with
+// `clear_particles` (Unity's StopEmittingAndClear).
+system_stop :: proc(ps: ^ParticleSystem, clear_particles := false) {
+	ps.started = true // a stop overrides a pending manual_start decision
+	ps.stopped = true
+	if clear_particles do clear(&ps.particles)
 }
 
 // Every random draw in the sim runs on the system's OWN stream: a nonzero
@@ -85,6 +111,13 @@ _ensure_seeded :: proc(ps: ^ParticleSystem) {
 
 // One system's advance — public so tests drive it without a frame loop.
 system_tick :: proc(ps: ^ParticleSystem, dt: f32) {
+	// The first tick applies manual_start; pause freezes everything.
+	if !ps.started {
+		ps.started = true
+		ps.stopped = ps.manual_start
+	}
+	if ps.paused do return
+
 	_ensure_seeded(ps)
 	context.random_generator = rand.default_random_generator(&ps.rand_state)
 
@@ -225,7 +258,7 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 		ps.prev_pos_valid = true
 		return
 	}
-	emitting := (ps.looping || et1 <= ps.duration) && !ps.is_sub_target
+	emitting := (ps.looping || et1 <= ps.duration) && !ps.is_sub_target && !ps.stopped
 
 	if emitting && ps.rate > 0 {
 		ps.emit_acc += ps.rate * dt
