@@ -1,0 +1,14 @@
+{
+  "guid": "59b4d8ef-26bb-46ac-b718-77f64dc96ec2",
+  "importer": "texture",
+  "settings": {
+    "__type_guid": "21d45bcf-2bd8-44db-b780-953c2f8b610f",
+    "filter": 0,
+    "max_size": 0,
+    "pixels_per_unit": 256.0,
+    "sprite_mode": 0,
+    "sprites": [],
+    "srgb": false,
+    "wrap": 1
+  }
+}

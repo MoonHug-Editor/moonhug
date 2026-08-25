@@ -768,3 +768,52 @@ test_particles_minmax_curve_start_values :: proc(t: ^testing.T) {
 		testing.expect(t, p.size >= 2 && p.size <= 3, "sizes stay inside the range")
 	}
 }
+
+@(test)
+test_particles_trails :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// A moving particle records points at the min-distance spacing.
+	ps := _make_system(tc_mem)
+	ps.rate = 0
+	ps.sim_space = .World
+	ps.gravity_modifier = 0
+	ps.trail_ratio = 1
+	ps.trail_lifetime = 1
+	ps.trail_min_distance = 0.1
+	append(&ps.particles, particles.Particle{
+		velocity = {5, 0, 0}, lifetime = 100, has_trail = true,
+	})
+	for _ in 0 ..< 10 do particles.system_tick(ps, 0.1)
+	p := &ps.particles[0]
+	testing.expect(t, int(p.trail_len) >= 8, "moving particle must record trail points")
+	newest := p.trail[(int(p.trail_head) + int(p.trail_len) - 1) % particles.TRAIL_MAX]
+	testing.expect(t, newest.position.x > 3, "points follow the particle")
+
+	// Expiry: a short trail lifetime drops old points as time passes.
+	ps2 := _make_system(tc_mem)
+	ps2.rate = 0
+	ps2.sim_space = .World
+	ps2.gravity_modifier = 0
+	ps2.trail_ratio = 1
+	ps2.trail_lifetime = 0.005 // x lifetime 100 = 0.5s of trail
+	ps2.trail_min_distance = 0.1
+	append(&ps2.particles, particles.Particle{
+		velocity = {5, 0, 0}, lifetime = 100, has_trail = true,
+	})
+	for _ in 0 ..< 20 do particles.system_tick(ps2, 0.1) // 2s at 0.5s trail life
+	p2 := &ps2.particles[0]
+	testing.expect(t, int(p2.trail_len) <= 6, "old trail points must expire")
+	testing.expect(t, int(p2.trail_len) >= 3, "recent points survive")
+
+	// Ratio 0 spawns no trails.
+	ps3 := _make_system(tc_mem)
+	ps3.rate = 10
+	ps3.start_lifetime = engine.minmax_constant(100)
+	particles.system_tick(ps3, 0.5)
+	for p3 in ps3.particles do testing.expect(t, !p3.has_trail, "ratio 0 must not trail")
+}

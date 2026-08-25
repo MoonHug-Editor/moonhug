@@ -13,6 +13,16 @@ package particles
 import "core:math/rand"
 import "moonhug:engine"
 
+// Trail points are recorded in WORLD space (a trail stays behind in the
+// world even for local-space sims). A fixed ring per particle: the oldest
+// point drops when full.
+TRAIL_MAX :: 16
+
+Trail_Point :: struct {
+	position: [3]f32,
+	time:     f32, // system time at recording, for expiry
+}
+
 // One live particle. Positions are in the system's simulation space,
 // rotation is the billboard roll in radians.
 Particle :: struct {
@@ -24,6 +34,10 @@ Particle :: struct {
 	angular_velocity: f32, // radians per second
 	life:             f32, // seconds lived
 	lifetime:         f32,
+	has_trail:        bool,
+	trail_head:       u8,
+	trail_len:        u8,
+	trail:            [TRAIL_MAX]Trail_Point,
 }
 
 // Emission volume, oriented along local +Z (Unity's shape axis).
@@ -177,6 +191,19 @@ ParticleSystem :: struct {
 	// particles. Empty = the module off.
 	sub_emitters: [dynamic]Sub_Emitter,
 
+	// Trails: world-space ribbons behind particles, dying with them.
+	// trail_ratio 0 = the module off.
+	trail_ratio:        f32, // fraction of particles that trail (0..1)
+	trail_lifetime:     f32, // point life as a multiplier of the particle's lifetime
+	trail_min_distance: f32, // min world distance between recorded points
+	trail_width_over:   engine.Curve,    // width × particle size along the trail (empty = 1)
+	trail_color_over:   engine.Gradient, // color × particle color along the trail (empty = white)
+	// The ribbon's own texture/material (Unity's trail material slot) — the
+	// texture is stretched ONCE along the whole trail. Empty = the
+	// particle's sprite/material.
+	trail_sprite:   engine.PPtr `inspect:"-"`,
+	trail_material: engine.Asset_GUID `ext:"mat"`,
+
 	// Rotation by speed: additional angular velocity (degrees per second)
 	// from the curve evaluated at the particle's speed remapped from
 	// [min, max] to 0..1. Empty = the module off.
@@ -274,6 +301,8 @@ cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.size_by_speed.keys)
 	delete(ps.color_over_life.keys)
 	delete(ps.size_over_life.keys)
+	delete(ps.trail_width_over.keys)
+	delete(ps.trail_color_over.keys)
 	delete(ps.particles)
 	engine.comp_zero(ps)
 }

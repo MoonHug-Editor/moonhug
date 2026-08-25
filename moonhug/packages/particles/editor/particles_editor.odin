@@ -720,6 +720,37 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	if open, _ := _module("Sub Emitters"); open {
 		_sub_emitters_rows(ps)
 	}
+	{
+		on := ps.trail_ratio > 0
+		open, toggled := _module("Trails", &on)
+		if toggled {
+			sess := _toggle_begin()
+			ps.trail_ratio = 1 if on else 0
+			if on {
+				if ps.trail_lifetime == 0 do ps.trail_lifetime = 1
+				if ps.trail_min_distance == 0 do ps.trail_min_distance = 0.2
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.trail_ratio, typeid_of(f32), "trail_ratio", true)
+			inspector.record_nested_override(&ps.trail_lifetime, typeid_of(f32), "trail_lifetime", true)
+			inspector.record_nested_override(&ps.trail_min_distance, typeid_of(f32), "trail_min_distance", true)
+		}
+		if open {
+			_ps_field(ps, &ps.trail_ratio, typeid_of(f32), "Ratio", "trail_ratio")
+			_ps_field(ps, &ps.trail_lifetime, typeid_of(f32), "Lifetime", "trail_lifetime")
+			_ps_field(ps, &ps.trail_min_distance, typeid_of(f32), "Min Vertex Distance", "trail_min_distance")
+			_ps_field(ps, &ps.trail_width_over, typeid_of(engine.Curve), "Width over Trail", "trail_width_over")
+			_ps_field(ps, &ps.trail_color_over, typeid_of(engine.Gradient), "Color over Trail", "trail_color_over")
+			// The ribbon's own look (empty = the particle's sprite/material).
+			if inspector.sprite_ref_row("Trail Sprite", &ps.trail_sprite) {
+				inspector.mark_inspector_changed()
+				inspector.record_nested_override(&ps.trail_sprite, typeid_of(engine.PPtr), "trail_sprite", true)
+			}
+			inspector.current_field_ext_filter = "mat"
+			_ps_field(ps, &ps.trail_material, typeid_of(engine.Asset_GUID), "Trail Material", "trail_material")
+			inspector.current_field_ext_filter = ""
+		}
+	}
 
 	if open, _ := _module("Renderer"); open {
 		if inspector.sprite_ref_row("Sprite", &ps.sprite) {

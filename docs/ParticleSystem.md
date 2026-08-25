@@ -93,6 +93,18 @@ rule for isolation testing). Chains and
 self-targets are depth-limited. Emission draws on the target's own random
 stream, so seeded replay stays deterministic.
 
+**Trails**: world-space ribbons behind particles, dying with them.
+`trail_ratio` (fraction of particles trailing, 0 = off), `trail_lifetime`
+(point life as a multiplier of the particle's lifetime), `trail_min_distance`
+(spacing between recorded points, a fixed ring of TRAIL_MAX points per
+particle drops the oldest), `trail_width_over` (Curve × particle size along
+the trail), `trail_color_over` (Gradient × particle color), `trail_sprite` +
+`trail_material` (the ribbon's own look — Unity's trail material slot, empty
+= the particle's; essentials ships textures/trail.png, a soft white band).
+Rendering is a connected camera-facing strip through the points plus the
+particle's head — edge vectors shared per point, the texture stretched once
+along the ribbon.
+
 **Rotation by speed**: `rotation_by_speed` curve adds angular velocity
 (degrees per second), evaluated at the particle's speed remapped from
 `[*_min, *_max]` to 0..1.
@@ -134,7 +146,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 | Sub Emitters | partial — Birth + Death triggers fire the target's bursts at the particle; no Collision/Trigger/Manual, no inherit, no attached (following) sub systems |
 | Texture Sheet Animation | no |
 | Lights | no |
-| Trails | no |
+| Trails | partial — per-particle ribbons (ratio, lifetime, min distance, width/color over trail); no Ribbon mode, trail material, texture modes, detached fade-out |
 | Custom Data | no |
 | Renderer | partial — billboard + stretched billboard; no mesh render mode, trails material, pivots |
 

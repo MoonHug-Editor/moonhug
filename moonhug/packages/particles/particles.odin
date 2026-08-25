@@ -248,6 +248,32 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 			p.rotation += math.to_radians(engine.curve_eval(&ps.rotation_by_speed,
 				speed_t(spd, ps.rotation_by_speed_min, ps.rotation_by_speed_max), 0)) * dt
 		}
+
+		// Trails: expire old points, record a new one when the particle has
+		// moved far enough (world space).
+		if ps.trail_ratio > 0 && p.has_trail {
+			wp := p.position
+			if ps.sim_space == .Local do wp = tw.position + rot * p.position
+			life := ps.trail_lifetime * p.lifetime
+			for p.trail_len > 0 && ps.time - p.trail[p.trail_head].time > life {
+				p.trail_head = (p.trail_head + 1) % TRAIL_MAX
+				p.trail_len -= 1
+			}
+			record := p.trail_len == 0
+			if !record {
+				newest := p.trail[(p.trail_head + p.trail_len - 1) % TRAIL_MAX]
+				record = linalg.length2(wp - newest.position) >=
+					ps.trail_min_distance * ps.trail_min_distance
+			}
+			if record {
+				if p.trail_len == TRAIL_MAX {
+					p.trail_head = (p.trail_head + 1) % TRAIL_MAX
+					p.trail_len -= 1
+				}
+				p.trail[(p.trail_head + p.trail_len) % TRAIL_MAX] = {wp, ps.time}
+				p.trail_len += 1
+			}
+		}
 	}
 
 	// Emission starts after start_delay; et is time into the first cycle.
@@ -412,6 +438,8 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		rotation         = rot0,
 		angular_velocity = ang,
 		lifetime         = max(lifetime, 0.01),
+		has_trail        = ps.trail_ratio > 0 &&
+			(ps.trail_ratio >= 1 || rand.float32() < ps.trail_ratio),
 	})
 
 	if len(ps.sub_emitters) > 0 {
@@ -579,6 +607,34 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 		tw := engine.transform_world(engine.Transform_Handle(ps.owner))
 		rot := engine.quat_to_matrix3(tw.rotation)
 
+		// Trail texture/material: own slots, falling back to the particle's.
+		// The texture is stretched ONCE along the whole ribbon.
+		trails_on := ps.trail_ratio > 0
+		t_guid := ps.sprite.guid
+		t_lid := ps.sprite.local_id
+		if !engine.asset_guid_is_empty(ps.trail_sprite.guid) {
+			t_guid = ps.trail_sprite.guid
+			t_lid = ps.trail_sprite.local_id
+		}
+		t_mat := ps.material
+		if !engine.asset_guid_is_empty(ps.trail_material) do t_mat = ps.trail_material
+		tu0, tv0, tu1, tv1: f32 = 0, 0, 1, 1
+		if trails_on {
+			ttex, ttok := engine.texture_load(t_guid)
+			if !ttok {
+				trails_on = false
+			} else if t_lid != 0 {
+				if s, found := engine.texture_sprite_rect(ttex, t_lid); found {
+					tu0 = s.rect.x / f32(ttex.width)
+					tu1 = (s.rect.x + s.rect.z) / f32(ttex.width)
+					tv0 = (s.rect.y + s.rect.w) / f32(ttex.height) // bottom
+					tv1 = s.rect.y / f32(ttex.height)              // top
+				} else {
+					trails_on = false
+				}
+			}
+		}
+
 		forward := [3]f32{view.view[2, 0], view.view[2, 1], view.view[2, 2]}
 		color_by_speed := len(ps.color_by_speed.keys) > 0
 		size_by_speed := len(ps.size_by_speed.keys) > 0
@@ -642,6 +698,66 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 					color = color,
 				},
 			})
+
+			// Trail ribbon: a connected camera-facing strip through the
+			// recorded points plus the particle's head. Edge vectors are
+			// shared per point (averaged adjacent directions), so segments
+			// meet without cracks; the texture stretches once along the
+			// ribbon (u: 0 at the tail, 1 at the particle).
+			if trails_on && p.has_trail && p.trail_len > 0 {
+				n := int(p.trail_len)
+				count := n + 1
+				pts: [TRAIL_MAX + 1][3]f32
+				for j in 0 ..< n {
+					pts[j] = p.trail[(int(p.trail_head) + j) % TRAIL_MAX].position
+				}
+				pts[n] = wp
+
+				sides: [TRAIL_MAX + 1][3]f32
+				for j in 0 ..< count {
+					d: [3]f32
+					if j > 0 do d += pts[j] - pts[j - 1]
+					if j < count - 1 do d += pts[j + 1] - pts[j]
+					if linalg.length2(d) < 1e-10 do d = {0, 0, 1}
+					sd := linalg.cross(linalg.normalize(d), forward)
+					if linalg.length2(sd) < 1e-6 do sd = right
+					sides[j] = linalg.normalize(sd)
+				}
+
+				span := f32(max(count - 1, 1))
+				for j in 1 ..< count {
+					a, b := pts[j - 1], pts[j]
+					if linalg.length2(b - a) < 1e-10 do continue
+					// along the trail: 1 at the tail end, 0 at the particle
+					ta := 1 - f32(j - 1) / span
+					tb := 1 - f32(j) / span
+					half_a := size * engine.curve_eval(&ps.trail_width_over, ta) * 0.5
+					half_b := size * engine.curve_eval(&ps.trail_width_over, tb) * 0.5
+					col := color * engine.gradient_eval(&ps.trail_color_over, (ta + tb) * 0.5)
+					ua := tu0 + (tu1 - tu0) * (1 - ta)
+					ub := tu0 + (tu1 - tu0) * (1 - tb)
+
+					seq += 1
+					tkey: engine.Sort_Key
+					tkey[0] = engine.sort_key_word(ps.sorting_layer, ps.order_in_layer,
+						engine.sort_key_depth(view, (a + b) * 0.5), seq)
+					append(out, engine.Render_Command{
+						key     = tkey,
+						variant = engine.Draw_Quad{
+							texture  = t_guid,
+							material = t_mat,
+							corners  = {
+								a - sides[j - 1] * half_a,
+								a + sides[j - 1] * half_a,
+								b + sides[j] * half_b,
+								b - sides[j] * half_b,
+							},
+							uvs   = {{ua, tv0}, {ua, tv1}, {ub, tv1}, {ub, tv0}},
+							color = col,
+						},
+					})
+				}
+			}
 		}
 	}
 }
