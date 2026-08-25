@@ -181,9 +181,31 @@ record_reparent_to :: proc(node: engine.Transform_Handle, new_parent: engine.Tra
 	if t == nil do return
 	old_parent := engine.Transform_Handle(t.parent.handle)
 	old_index := engine.transform_get_sibling_index(node)
-	engine.transform_set_parent(node, new_parent, new_index)
+
+	// A sibling reorder keeps its locals untouched; a real parent change
+	// keeps the WORLD transform (Unity's worldPositionStays), so the
+	// rewritten locals land in the same undo step as the reparent.
+	if new_parent == old_parent {
+		engine.transform_set_parent(node, new_parent, new_index)
+		final_index := engine.transform_get_sibling_index(node)
+		record_reparent(node, old_parent, new_parent, old_index, final_index)
+		return
+	}
+
+	g := group_begin("Reparent")
+	defer group_end(&g)
+	pos_d := field_drag_begin_transform(node, &t.position, typeid_of([3]f32), "position")
+	rot_d := field_drag_begin_transform(node, &t.rotation, typeid_of([4]f32), "rotation")
+	scl_d := field_drag_begin_transform(node, &t.scale, typeid_of([3]f32), "scale")
+
+	engine.transform_set_parent(node, new_parent, new_index, keep_world = true)
 	final_index := engine.transform_get_sibling_index(node)
 	record_reparent(node, old_parent, new_parent, old_index, final_index)
+
+	field_drag_end(&pos_d)
+	field_drag_end(&rot_d)
+	field_drag_end(&scl_d)
+	group_commit(&g)
 }
 
 Field_Drag :: struct {

@@ -148,10 +148,18 @@ _transform_remap_scene :: proc(tH: Transform_Handle, s: ^Scene) {
     }
 }
 
-transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle, index: int = -1) {
+// `keep_world` is Unity's SetParent worldPositionStays: locals are recomputed
+// against the new parent so the object does not move. Default false — scene
+// loading and instantiate set parents with AUTHORED locals. Non-uniform
+// parent scale is approximated componentwise, like the TRS chain in
+// transform_world.
+transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle, index: int = -1, keep_world := false) {
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return
+
+    tw: Transform_World
+    if keep_world do tw = transform_world(tH)
 
     if pool_valid(&w.transforms, t.parent.handle) {
         transform_unlink_from_parent(tH)
@@ -184,6 +192,25 @@ transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle,
     } else {
         if new_scene != nil {
             new_scene.root = make_transform_ref(tH)
+        }
+    }
+
+    if keep_world {
+        if pool_valid(&w.transforms, Handle(new_parent)) {
+            p := transform_world(new_parent)
+            safe := [3]f32{
+                p.scale.x != 0 ? p.scale.x : 1,
+                p.scale.y != 0 ? p.scale.y : 1,
+                p.scale.z != 0 ? p.scale.z : 1,
+            }
+            inv_rot := linalg.quaternion_inverse(quat_to_native(p.rotation))
+            t.position = linalg.quaternion128_mul_vector3(inv_rot, tw.position - p.position) / safe
+            t.rotation = quat_from_native(inv_rot * quat_to_native(tw.rotation))
+            t.scale = tw.scale / safe
+        } else {
+            t.position = tw.position
+            t.rotation = tw.rotation
+            t.scale = tw.scale
         }
     }
 }

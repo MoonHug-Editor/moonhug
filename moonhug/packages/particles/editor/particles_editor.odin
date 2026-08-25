@@ -26,7 +26,7 @@ particles_inspector_install :: proc() {
 // One field through the generic row machinery (drawer + undo edit session +
 // peers + override recording), like the generic struct loop drives it.
 _ps_field :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label: cstring, path: string) {
-	im.PushIDStr(label, nil)
+	im.PushIDStr(fmt.ctprintf("%s", path), nil) // labels repeat across modules, paths are unique
 	offset := uintptr(ptr) - uintptr(ps)
 	drawer := inspector.resolve_property_drawer(tid)
 	finished := inspector.field_edit_row(ptr, tid, offset, path, drawer, label)
@@ -36,7 +36,7 @@ _ps_field :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label
 
 // Enums land from a combo popup — the generic loop's enum protocol.
 _ps_enum :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label: cstring, path: string) {
-	im.PushIDStr(label, nil)
+	im.PushIDStr(fmt.ctprintf("%s", path), nil)
 	offset := uintptr(ptr) - uintptr(ps)
 	inspector.multi_probe_field(ptr, tid, offset)
 	inspector.field_edit_begin(ptr, tid, offset, path)
@@ -51,7 +51,7 @@ _ps_enum :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label:
 
 // Color fields keep their picker (the [4]f32 drawer is four drags).
 _ps_color :: proc(ps: ^particles.ParticleSystem, ptr: ^[4]f32, label: cstring, path: string) {
-	im.PushIDStr(label, nil)
+	im.PushIDStr(fmt.ctprintf("%s", path), nil)
 	offset := uintptr(ptr) - uintptr(ps)
 	inspector.field_edit_begin(ptr, typeid_of([4]f32), offset, path)
 	changed := im.ColorEdit4(inspector.field_row(label), ptr, {.AlphaBar})
