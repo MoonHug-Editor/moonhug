@@ -1,3 +1,21 @@
+## [0.79.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.78.0...v0.79.0) (2026-08-25)
+
+### Features
+
+* initial particles. preview fixes ([cfd1703](https://github.com/MoonHug-Editor/moonhug/commit/cfd1703b3c9e1c287c0e92a3ac91d2719344abd4))
+* minMaxCurve ([c7cdd93](https://github.com/MoonHug-Editor/moonhug/commit/c7cdd93c850047b1269e126c49e0f582c24d0ff6))
+* particle system random seed ([6082e82](https://github.com/MoonHug-Editor/moonhug/commit/6082e82db0f6d09e5278cebcdcac23c208e13915))
+* particle trails ([ec0928b](https://github.com/MoonHug-Editor/moonhug/commit/ec0928b1edb7461f82d4b01eb5e5a7a2de15fabc))
+* particles gizmo ([c998dea](https://github.com/MoonHug-Editor/moonhug/commit/c998dea202fedc79d012a6749cc711eb849a8e02))
+* particles preview world, particle related improvements ([2770a39](https://github.com/MoonHug-Editor/moonhug/commit/2770a3940626b6c87757a53ab2056c1960b6d19b))
+* particles_samples.scene ([f743517](https://github.com/MoonHug-Editor/moonhug/commit/f743517df6d0a2198a7ec2dd6bddfceef1accc5a))
+* particleSystem types and inspector improvement ([f2c24c3](https://github.com/MoonHug-Editor/moonhug/commit/f2c24c310e218067bc1a58d5dc8ea15e747eef4c))
+* sub-emitters ([1c6ef0b](https://github.com/MoonHug-Editor/moonhug/commit/1c6ef0b1c094db450ab074ea4c18a25a7e073158))
+
+### Bug Fixes
+
+* memory fixes ([02ca39e](https://github.com/MoonHug-Editor/moonhug/commit/02ca39e09ad1f06769c1689d664b94a37a0bbf5d))
+
 ## [0.78.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.77.0...v0.78.0) (2026-08-25)
 
 ### Features
