@@ -128,9 +128,13 @@ _draw_audio_preview :: proc(path: string) {
 	wave_col := im.GetColorU32ImVec4(im.Vec4{0.55, 0.75, 0.4, 1})
 	for col in 0 ..< _WAVE_COLUMNS {
 		x := r_min.x + w * f32(col) / _WAVE_COLUMNS
+		// The mastered artifact can exceed full scale (gain/normalize above
+		// 1) — the display clips to the rect like any DAW.
+		hi := clamp(wf.maxs[col], -1, 1)
+		lo := clamp(wf.mins[col], -1, 1)
 		im.DrawList_AddLine(dl,
-			im.Vec2{x, mid - wf.maxs[col] * half},
-			im.Vec2{x, mid - wf.mins[col] * half},
+			im.Vec2{x, mid - hi * half},
+			im.Vec2{x, mid - lo * half},
 			wave_col, 1)
 	}
 	if playing && wf.frames > 0 {

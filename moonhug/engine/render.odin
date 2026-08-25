@@ -39,6 +39,28 @@ sort_key_less :: proc(a, b: Sort_Key) -> bool {
 	return false
 }
 
+// One transparent-sort word — the packing convention every alpha-blended
+// collector shares, so sprites and particles interleave correctly:
+//   layer:8 (biased) | order:16 (biased) | ~depth:24 | seq:16
+// Depth quantization: positive f32 bit patterns are monotonic as integers,
+// so the top 24 bits of the view-space distance's bit pattern order
+// correctly without knowing near/far; inverted so a larger distance
+// (farther) yields a smaller word (drawn first, back-to-front).
+sort_key_word :: proc(layer, order: i32, view_depth: f32, seq: u16) -> u64 {
+	l := u64(u32(clamp(layer, -128, 127) + 128))
+	o := u64(u32(clamp(order, -32768, 32767) + 32768))
+	d := u64(transmute(u32)max(view_depth, 0) >> 8) & 0xFFFFFF
+	d = 0xFFFFFF - d
+	return l << 56 | o << 40 | d << 16 | u64(seq)
+}
+
+// View-space distance of a world position (right-handed view looks down -Z,
+// larger = farther) — the depth every collector feeds sort_key_word.
+sort_key_depth :: proc(view: Render_View, world_pos: [3]f32) -> f32 {
+	pos4 := view.view * [4]f32{world_pos.x, world_pos.y, world_pos.z, 1}
+	return -pos4.z
+}
+
 // Full-texture uvs, bl br tr tl. uv origin is top-left (stb rows are
 // top-down), so bl/br carry v=1 and tr/tl v=0.
 QUAD_UVS_FULL :: [4][2]f32{{0, 1}, {1, 1}, {1, 0}, {0, 0}}

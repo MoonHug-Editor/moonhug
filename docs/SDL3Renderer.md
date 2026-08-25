@@ -167,6 +167,10 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   the collector, registered at ImportersInit. `sprite_quad` (corners + uvs +
   pivot, one resolve) is shared by collection, the editor's scene picking,
   selection outlines and thumbnails.
+- `packages/particles` is the second collector: ParticleSystem simulates on
+  the CPU (@(update)) and emits billboarded Draw_Quad commands keyed with
+  `engine.sort_key_word`, so particles interleave with sprites by
+  layer/order/depth.
 - Sprite slicing is importer data, Unity's TextureImporter model:
   `TextureSettings.sprite_mode` + `sprites: [dynamic]Sprite_Rect` (name, pixel
   rect, pivot) live in the texture's meta and bake into the catalog with the

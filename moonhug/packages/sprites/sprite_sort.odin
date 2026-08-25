@@ -17,31 +17,17 @@ package sprites
 
 import "moonhug:engine"
 
-// One level word. Depth quantization: positive f32 bit patterns are monotonic
-// as integers, so the top 24 bits of the view-space distance's bit pattern
-// order correctly without knowing near/far; inverted so a larger distance
-// (farther) yields a smaller word (drawn first, back-to-front).
-_sprite_sort_word :: proc(layer, order: i32, view_depth: f32, seq: u16) -> u64 {
-	l := u64(u32(clamp(layer, -128, 127) + 128))
-	o := u64(u32(clamp(order, -32768, 32767) + 32768))
-	d := u64(transmute(u32)max(view_depth, 0) >> 8) & 0xFFFFFF
-	d = 0xFFFFFF - d
-	return l << 56 | o << 40 | d << 16 | u64(seq)
-}
-
-// View-space distance of a transform's world position (same convention as the
-// old per-sprite depth: right-handed view looks down -Z, larger = farther).
+// Level words pack with the shared transparent-sort convention
+// (engine.sort_key_word).
 _sprite_view_depth :: proc(view: engine.Render_View, tH: engine.Transform_Handle) -> f32 {
-	tw := engine.transform_world(tH)
-	pos4 := view.view * [4]f32{tw.position.x, tw.position.y, tw.position.z, 1}
-	return -pos4.z
+	return engine.sort_key_depth(view, engine.transform_world(tH).position)
 }
 
 // Fallback for sprites not reached by the tree pass (owner outside any loaded
 // scene): own word only, ordered after tree-reached peers with equal keys.
 sprite_sort_orphan_key :: proc(view: engine.Render_View, sr: ^SpriteRenderer) -> engine.Sort_Key {
 	key: engine.Sort_Key
-	key[0] = _sprite_sort_word(sr.sorting_layer, sr.order_in_layer,
+	key[0] = engine.sort_key_word(sr.sorting_layer, sr.order_in_layer,
 		_sprite_view_depth(view, engine.Transform_Handle(sr.owner)), max(u16))
 	return key
 }
@@ -82,13 +68,13 @@ _sprite_sort_visit :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, vi
 	// A group claims this level for its whole subtree; deeper groups beyond
 	// capacity are ignored (outermost ones win the remaining levels).
 	if _, group := get_comp(tH, SpriteSortingGroup); group != nil && group.enabled && level < engine.SORT_KEY_LEVELS - 1 {
-		chain[level] = _sprite_sort_word(group.sorting_layer, group.order_in_layer, _sprite_view_depth(view, tH), node_seq)
+		chain[level] = engine.sort_key_word(group.sorting_layer, group.order_in_layer, _sprite_view_depth(view, tH), node_seq)
 		level += 1
 	}
 
 	if _, sr := get_comp(tH, SpriteRenderer); sr != nil {
 		key := chain
-		key[level] = _sprite_sort_word(sr.sorting_layer, sr.order_in_layer, _sprite_view_depth(view, tH), node_seq)
+		key[level] = engine.sort_key_word(sr.sorting_layer, sr.order_in_layer, _sprite_view_depth(view, tH), node_seq)
 		keys[tH] = key
 	}
 
