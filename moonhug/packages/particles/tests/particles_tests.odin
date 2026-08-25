@@ -477,7 +477,47 @@ test_particles_museum_nested_save :: proc(t: ^testing.T) {
 
 	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
 
+	// Tear the instance down like the editor does (delete / scene close):
+	// recursive transform destroy over the whole nested subtree.
+	engine.transform_destroy(hostH)
+
+	// Add it again and save again — slot reuse after the destroy.
+	hostH2 := engine.scene_instantiate_guid_nested(engine.Asset_GUID(museum_guid), root)
+	testing.expect(t, hostH2 != {}, "museum should instantiate a second time")
+	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "second save should succeed")
+
 	loaded := engine.scene_load_single_path(host_path)
 	testing.expect(t, loaded != nil, "host should reload")
 	if loaded != nil do tc_mem.scene = loaded
+}
+
+@(test)
+test_particles_lifetime_by_emitter_speed :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Still emitter: speed 0 maps to the curve at t=0 (multiplier 0.5).
+	ps := _make_system(tc_mem)
+	ps.rate = 10
+	ps.lifetime_min = 10
+	ps.lifetime_max = 10
+	ps.lifetime_by_speed_min = 0
+	ps.lifetime_by_speed_max = 1
+	append(&ps.lifetime_by_speed.keys, engine.Curve_Key{t = 0, value = 0.5}, engine.Curve_Key{t = 1, value = 1})
+	particles.system_tick(ps, 0.1)
+	particles.system_tick(ps, 0.1)
+	testing.expect(t, len(ps.particles) >= 1, "emitter should spawn")
+	testing.expect(t, abs(ps.particles[0].lifetime - 5) < 0.01, "still emitter halves lifetime")
+
+	// Fast emitter: speed past the range maps to the curve at t=1 (full).
+	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(ps.owner)); tr != nil {
+		tr.position = {10, 0, 0}
+	}
+	clear(&ps.particles)
+	particles.system_tick(ps, 0.1)
+	testing.expect(t, len(ps.particles) >= 1, "moving emitter should spawn")
+	testing.expect(t, abs(ps.particles[0].lifetime - 10) < 0.01, "fast emitter keeps full lifetime")
 }

@@ -121,6 +121,13 @@ ParticleSystem :: struct {
 	force_y: engine.Curve,
 	force_z: engine.Curve,
 
+	// Lifetime by emitter speed: multiplies a new particle's lifetime by the
+	// curve evaluated at the EMITTER's speed remapped from [min, max] to
+	// 0..1. Empty = the module off.
+	lifetime_by_speed:     engine.Curve,
+	lifetime_by_speed_min: f32,
+	lifetime_by_speed_max: f32,
+
 	// By speed: the gradient/curve is evaluated at the particle's speed
 	// remapped from [min, max] to 0..1, and multiplies color/size like the
 	// over-lifetime modules. Empty = the module off.
@@ -167,6 +174,7 @@ ParticleSystem :: struct {
 	time:      f32 `json:"-" inspect:"-"`,
 	emit_acc:  f32 `json:"-" inspect:"-"`,
 	dist_acc:  f32 `json:"-" inspect:"-"`,
+	emitter_speed: f32 `json:"-" inspect:"-"`,
 	prev_pos:  [3]f32 `json:"-" inspect:"-"`,
 	prev_pos_valid: bool `json:"-" inspect:"-"`,
 	prewarmed: bool `json:"-" inspect:"-"`,
@@ -192,6 +200,12 @@ reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	ps.shape_box = {1, 1, 1}
 }
 
+// The destroy path runs on_destroy (component removal, scene close, play-stop
+// teardown) — without this, every destroyed system leaks its arrays.
+on_destroy_ParticleSystem :: proc(ps: ^ParticleSystem) {
+	cleanup_ParticleSystem(ps)
+}
+
 cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.bursts)
 	delete(ps.velocity_x.keys)
@@ -201,6 +215,7 @@ cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.orbital_y.keys)
 	delete(ps.orbital_z.keys)
 	delete(ps.rotation_by_speed.keys)
+	delete(ps.lifetime_by_speed.keys)
 	delete(ps.force_x.keys)
 	delete(ps.force_y.keys)
 	delete(ps.force_z.keys)
@@ -209,4 +224,5 @@ cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.color_over_life.keys)
 	delete(ps.size_over_life.keys)
 	delete(ps.particles)
+	engine.comp_zero(ps)
 }

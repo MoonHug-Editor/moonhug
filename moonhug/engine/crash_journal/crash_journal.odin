@@ -94,10 +94,17 @@ init :: proc(version := "") {
 	act.sa_sigaction = _crash_signal_handler
 	act.sa_flags = {.SIGINFO, .ONSTACK}
 	posix.sigemptyset(&act.sa_mask)
-	for sig in ([?]posix.Signal{.SIGSEGV, .SIGBUS, .SIGILL, .SIGFPE, .SIGABRT}) {
+	for sig in ([?]posix.Signal{.SIGSEGV, .SIGBUS, .SIGILL, .SIGFPE, .SIGABRT, SIGTRAP}) {
 		posix.sigaction(sig, &act, nil)
 	}
 }
+
+// Odin's assert/panic ends in runtime.trap(), which raises SIGTRAP. Catching
+// it journals asserts from ANY context — assertion_failure below only covers
+// contexts it was installed on. Not in posix.Signal's members, value 5
+// everywhere the editor runs. Debuggers intercept breakpoint traps before
+// delivery, so this never fires under lldb.
+SIGTRAP :: posix.Signal(5)
 
 // Records what the process is currently doing. Overwrites the previous one —
 // this is the "last known activity", not a trail. Cheap enough to call per
@@ -177,6 +184,7 @@ _crash_signal_handler :: proc "c" (sig: posix.Signal, info: ^posix.siginfo_t, ct
 	case .SIGILL:  reason = "SIGILL (illegal instruction)"
 	case .SIGFPE:  reason = "SIGFPE (arithmetic error)"
 	case .SIGABRT: reason = "SIGABRT (abort)"
+	case SIGTRAP:  reason = "SIGTRAP (failed assert or panic — message is on stderr)"
 	case:          reason = "unknown signal"
 	}
 	addr: rawptr = info != nil ? info.si_addr : nil

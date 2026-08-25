@@ -263,6 +263,28 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		}
 	}
 	{
+		on := len(ps.lifetime_by_speed.keys) > 0
+		open, toggled := _module("Lifetime by Emitter Speed", &on)
+		if toggled {
+			sess := _toggle_begin()
+			clear(&ps.lifetime_by_speed.keys)
+			ps.lifetime_by_speed_min = 0
+			ps.lifetime_by_speed_max = 1 if on else 0
+			if on {
+				append(&ps.lifetime_by_speed.keys, engine.Curve_Key{t = 0, value = 1}, engine.Curve_Key{t = 1, value = 1})
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.lifetime_by_speed, typeid_of(engine.Curve), "lifetime_by_speed", true)
+			inspector.record_nested_override(&ps.lifetime_by_speed_min, typeid_of(f32), "lifetime_by_speed_min", true)
+			inspector.record_nested_override(&ps.lifetime_by_speed_max, typeid_of(f32), "lifetime_by_speed_max", true)
+		}
+		if open {
+			_ps_field(ps, &ps.lifetime_by_speed, typeid_of(engine.Curve), "Multiplier", "lifetime_by_speed")
+			_ps_field(ps, &ps.lifetime_by_speed_min, typeid_of(f32), "Speed Min", "lifetime_by_speed_min")
+			_ps_field(ps, &ps.lifetime_by_speed_max, typeid_of(f32), "Speed Max", "lifetime_by_speed_max")
+		}
+	}
+	{
 		on := len(ps.force_x.keys) > 0 || len(ps.force_y.keys) > 0 || len(ps.force_z.keys) > 0
 		open, toggled := _module("Force over Lifetime", &on)
 		if toggled {

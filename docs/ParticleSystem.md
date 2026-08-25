@@ -62,6 +62,10 @@ by `limit_dampen` (0..1, per frame at 60 Hz, frame-rate normalized).
 **Force over lifetime**: `force_x/y/z` curves accelerate (add to velocity) in
 the emitter frame, evaluated at life/lifetime.
 
+**Lifetime by emitter speed**: `lifetime_by_speed` multiplies a new
+particle's lifetime by the curve evaluated at the emitter's speed remapped
+from `[*_min, *_max]` to 0..1.
+
 **Rotation over lifetime**: `angular_velocity_min/max` in degrees per second.
 
 **Rotation by speed**: `rotation_by_speed` curve adds angular velocity
@@ -90,7 +94,7 @@ speed remapped from `[*_min, *_max]` to 0..1.
 | Velocity over Lifetime | yes — linear + orbital x/y/z; no offset, speed modifier |
 | Limit Velocity over Lifetime | yes — speed + dampen; no per-axis limit, no drag |
 | Inherit Velocity | no |
-| Lifetime by Emitter Speed | no |
+| Lifetime by Emitter Speed | yes |
 | Force over Lifetime | yes — x/y/z curves |
 | Color over Lifetime | yes |
 | Color by Speed | yes |

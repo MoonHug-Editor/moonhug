@@ -582,7 +582,14 @@ nested_override_baseline :: proc(
         if ti == nil do return {}
         block, aerr := mem.alloc(ti.size, ti.align, context.temp_allocator)
         if aerr != nil || block == nil do return {}
-        if !_ext_value_into(desc, rec, block) do return {}
+        // The scratch is temp — unmarshal under temp too, so heap fields the
+        // decode allocates (dynamic arrays, strings) die with the frame
+        // instead of leaking (nobody runs cleanup on a baseline scratch).
+        prev_alloc := context.allocator
+        context.allocator = context.temp_allocator
+        into_ok := _ext_value_into(desc, rec, block)
+        context.allocator = prev_alloc
+        if !into_ok do return {}
         return {
             ptr   = block,
             tid   = desc.tid,

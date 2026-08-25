@@ -58,6 +58,12 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 	prev_time := ps.time
 	ps.time += dt
 
+	// Emitter speed feeds lifetime-by-speed at spawn.
+	ps.emitter_speed = 0
+	if ps.prev_pos_valid && dt > 0 {
+		ps.emitter_speed = linalg.length(tw.position - ps.prev_pos) / dt
+	}
+
 	rot := engine.quat_to_matrix3(tw.rotation)
 
 	// Gravity is a WORLD force: local-space sims rotate it into the
@@ -280,6 +286,12 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		ang = -ang
 	}
 
+	lifetime := _rand_range(ps.lifetime_min, ps.lifetime_max)
+	if len(ps.lifetime_by_speed.keys) > 0 {
+		lifetime *= engine.curve_eval(&ps.lifetime_by_speed,
+			speed_t(ps.emitter_speed, ps.lifetime_by_speed_min, ps.lifetime_by_speed_max))
+	}
+
 	t := rand.float32()
 	append(&ps.particles, Particle{
 		position         = pos,
@@ -288,7 +300,7 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		size             = _rand_range(ps.size_min, ps.size_max),
 		rotation         = rot0,
 		angular_velocity = ang,
-		lifetime         = max(_rand_range(ps.lifetime_min, ps.lifetime_max), 0.01),
+		lifetime         = max(lifetime, 0.01),
 	})
 }
 
