@@ -288,12 +288,28 @@
         1.0,
         1.0
       ],
-      "color_over_life": [
-        1.0,
-        1.0,
-        1.0,
-        0.0
-      ],
+      "color_over_life": {
+        "keys": [
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "t": 0.0
+          },
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "t": 1.0
+          }
+        ]
+      },
       "duration": 5.0,
       "gravity_modifier": 1.0,
       "lifetime_max": 2.2000000499999999,
@@ -309,7 +325,11 @@
       "sim_space": 0,
       "size_max": 0.40000001,
       "size_min": 0.25,
-      "size_over_life": 1.0,
+      "size_over_life": {
+        "keys": [
+
+        ]
+      },
       "sorting_layer": 0,
       "speed_max": 9.0,
       "speed_min": 7.0,
@@ -336,12 +356,28 @@
         0.1,
         1.0
       ],
-      "color_over_life": [
-        1.0,
-        0.2,
-        0.0,
-        0.0
-      ],
+      "color_over_life": {
+        "keys": [
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "t": 0.0
+          },
+          {
+            "color": [
+              1.0,
+              0.2,
+              0.0,
+              0.0
+            ],
+            "t": 1.0
+          }
+        ]
+      },
       "duration": 5.0,
       "gravity_modifier": 0.0,
       "lifetime_max": 0.89999998,
@@ -357,7 +393,18 @@
       "sim_space": 0,
       "size_max": 0.5,
       "size_min": 0.30000001,
-      "size_over_life": 0.1,
+      "size_over_life": {
+        "keys": [
+          {
+            "t": 0.0,
+            "value": 1.0
+          },
+          {
+            "t": 1.0,
+            "value": 0.1
+          }
+        ]
+      },
       "sorting_layer": 0,
       "speed_max": 5.0,
       "speed_min": 3.0,
@@ -384,12 +431,28 @@
         0.34999999,
         0.80000001
       ],
-      "color_over_life": [
-        1.0,
-        1.0,
-        1.0,
-        0.0
-      ],
+      "color_over_life": {
+        "keys": [
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              1.0
+            ],
+            "t": 0.0
+          },
+          {
+            "color": [
+              1.0,
+              1.0,
+              1.0,
+              0.0
+            ],
+            "t": 1.0
+          }
+        ]
+      },
       "duration": 5.0,
       "gravity_modifier": 0.0,
       "lifetime_max": 3.5,
@@ -405,7 +468,18 @@
       "sim_space": 0,
       "size_max": 0.60000002,
       "size_min": 0.40000001,
-      "size_over_life": 3.0,
+      "size_over_life": {
+        "keys": [
+          {
+            "t": 0.0,
+            "value": 1.0
+          },
+          {
+            "t": 1.0,
+            "value": 3.0
+          }
+        ]
+      },
       "sorting_layer": 0,
       "speed_max": 1.39999998,
       "speed_min": 0.80000001,
@@ -432,12 +506,11 @@
         1.0,
         1.0
       ],
-      "color_over_life": [
-        1.0,
-        1.0,
-        1.0,
-        1.0
-      ],
+      "color_over_life": {
+        "keys": [
+
+        ]
+      },
       "duration": 5.0,
       "gravity_modifier": 0.05,
       "lifetime_max": 7.0,
@@ -453,7 +526,11 @@
       "sim_space": 1,
       "size_max": 0.15000001,
       "size_min": 0.08,
-      "size_over_life": 1.0,
+      "size_over_life": {
+        "keys": [
+
+        ]
+      },
       "sorting_layer": 0,
       "speed_max": 1.0,
       "speed_min": 0.5,

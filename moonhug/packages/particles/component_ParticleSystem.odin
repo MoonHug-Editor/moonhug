@@ -1,33 +1,57 @@
 package particles
 
-// Unity's Shuriken, range-based core: every "random between two constants"
-// module field is a min/max (or color a/b) pair — curves and gradients come
-// later with the curve editor. Simulation runs on the CPU per frame
+// Unity's ParticleSystem, range-based: every "random between two constants"
+// start value is a min/max (or color a/b) pair, over-lifetime modules are
+// engine.Curve / engine.Gradient. Simulation runs on the CPU per frame
 // (@(update) in particles.odin), rendering goes through the renderer seam as
-// billboarded Draw_Quad commands.
+// billboarded Draw_Quad commands. docs/ParticleSystem.md describes the modules.
+//
+// Serialized fields are ZERO-NEUTRAL: a scene saved before a field existed
+// loads it as zero, so zero must mean "off" or "no change" for every field
+// (simulation_speed is the one exception — zero falls back to 1).
 
 import "moonhug:engine"
 
-// One live particle. Positions are in the system's simulation space.
+// One live particle. Positions are in the system's simulation space,
+// rotation is the billboard roll in radians.
 Particle :: struct {
-	position: [3]f32,
-	velocity: [3]f32,
-	color:    [4]f32,
-	size:     f32,
-	life:     f32, // seconds lived
-	lifetime: f32,
+	position:         [3]f32,
+	velocity:         [3]f32,
+	color:            [4]f32,
+	size:             f32,
+	rotation:         f32, // radians
+	angular_velocity: f32, // radians per second
+	life:             f32, // seconds lived
+	lifetime:         f32,
 }
 
 // Emission volume, oriented along local +Z (Unity's shape axis).
+// New shapes append at the end — the value is the serialized identity.
 Emit_Shape :: enum u8 {
-	Cone,   // Unity's default: base disc of `shape_radius`, spread `shape_angle`
-	Sphere, // outward from a random point inside `shape_radius`
-	Point,  // straight +Z
+	Cone,       // Unity's default: base disc of `shape_radius`, spread `shape_angle`
+	Sphere,     // outward from a random point inside `shape_radius`
+	Point,      // straight +Z
+	Hemisphere, // sphere half on the +Z side
+	Circle,     // disc in the XY plane, particles move radially outward
+	Edge,       // line along local X of half-length `shape_radius`, particles move +Z
+	Box,        // volume of size `shape_box`, particles move +Z
 }
 
 Sim_Space :: enum u8 {
 	Local, // particles follow the emitter (Unity's default)
 	World, // particles are left behind in the world
+}
+
+// One emission burst: `count_min..count_max` particles at `time` seconds into
+// the cycle, repeated `cycles` times every `interval` seconds, each cycle
+// firing with `probability` (1 = always). Plain data — no heap fields.
+Burst :: struct {
+	time:        f32,
+	count_min:   i32,
+	count_max:   i32,
+	cycles:      i32, // < 1 plays once
+	interval:    f32,
+	probability: f32,
 }
 
 @(component)
@@ -38,30 +62,59 @@ ParticleSystem :: struct {
 	// Main
 	duration:     f32, // emission window in seconds (looping restarts it)
 	looping:      bool,
+	prewarm:      bool, // looping systems start as if one cycle already ran
+	start_delay:  f32,  // seconds before the first cycle starts
 	lifetime_min: f32,
 	lifetime_max: f32,
 	speed_min:    f32,
 	speed_max:    f32,
 	size_min:     f32, // world units (Unity's start size)
 	size_max:     f32,
+	rotation_min: f32, // start rotation, degrees
+	rotation_max: f32,
+	flip_rotation: f32, // 0..1 fraction of particles spinning the other way
 	color_a:      [4]f32 `decor:color()`, // start color: random between a and b
 	color_b:      [4]f32 `decor:color()`,
 	gravity_modifier: f32,
 	sim_space:    Sim_Space,
+	simulation_speed: f32, // playback speed scale, 0 runs at 1
 	max_particles: i32,
 
 	// Emission
-	rate: f32, // particles per second
+	rate:               f32, // particles per second
+	rate_over_distance: f32, // particles per world unit the emitter moves
+	bursts:             [dynamic]Burst,
 
 	// Shape
 	shape:        Emit_Shape,
 	shape_radius: f32,
-	shape_angle:  f32, // cone spread, degrees from the axis
+	shape_angle:  f32,    // cone spread, degrees from the axis
+	shape_box:    [3]f32, // box size (Box shape)
+	randomize_direction: f32, // 0..1 blend toward a random direction
+	spherize_direction:  f32, // 0..1 blend toward outward-from-center
 
-	// Over lifetime: linear lerp from 1 (birth) to these at death.
-	// {1,1,1,1} / 1 = the module off.
-	color_over_life: [4]f32 `decor:color()`,
-	size_over_life:  f32,
+	// Velocity over lifetime: additive velocity in the emitter's local frame,
+	// each axis a curve over life/lifetime evaluated with empty_value 0 —
+	// all empty = the module off.
+	velocity_x: engine.Curve,
+	velocity_y: engine.Curve,
+	velocity_z: engine.Curve,
+
+	// Limit velocity over lifetime: speed above `limit_speed` decays toward it
+	// by `limit_dampen` (0..1) per frame at 60 Hz. limit_speed 0 = module off.
+	limit_speed:  f32,
+	limit_dampen: f32,
+
+	// Rotation over lifetime: angular velocity in degrees per second, random
+	// between min and max. Both 0 = module off.
+	angular_velocity_min: f32,
+	angular_velocity_max: f32,
+
+	// Over lifetime, evaluated at life/lifetime: the gradient MULTIPLIES the
+	// particle's start color, the curve scales its start size. Empty = the
+	// module off (gradient evaluates white, curve evaluates 1).
+	color_over_life: engine.Gradient,
+	size_over_life:  engine.Curve,
 
 	// Renderer: billboarded quads. The sprite is PPtr{texture guid, slice id}
 	// like SpriteRenderer (the editor wrapper draws the picker), material's
@@ -75,6 +128,10 @@ ParticleSystem :: struct {
 	particles: [dynamic]Particle `json:"-" inspect:"-"`,
 	time:      f32 `json:"-" inspect:"-"`,
 	emit_acc:  f32 `json:"-" inspect:"-"`,
+	dist_acc:  f32 `json:"-" inspect:"-"`,
+	prev_pos:  [3]f32 `json:"-" inspect:"-"`,
+	prev_pos_valid: bool `json:"-" inspect:"-"`,
+	prewarmed: bool `json:"-" inspect:"-"`,
 }
 
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
@@ -88,15 +145,21 @@ reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	ps.size_max = 1
 	ps.color_a = {1, 1, 1, 1}
 	ps.color_b = {1, 1, 1, 1}
+	ps.simulation_speed = 1
 	ps.max_particles = 1000
 	ps.rate = 10
 	ps.shape = .Cone
 	ps.shape_radius = 1
 	ps.shape_angle = 25
-	ps.color_over_life = {1, 1, 1, 1}
-	ps.size_over_life = 1
+	ps.shape_box = {1, 1, 1}
 }
 
 cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
+	delete(ps.bursts)
+	delete(ps.velocity_x.keys)
+	delete(ps.velocity_y.keys)
+	delete(ps.velocity_z.keys)
+	delete(ps.color_over_life.keys)
+	delete(ps.size_over_life.keys)
 	delete(ps.particles)
 }

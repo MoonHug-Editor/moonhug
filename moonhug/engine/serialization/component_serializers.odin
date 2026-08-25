@@ -51,6 +51,8 @@ register_component_serializers :: proc() {
     engine.register_pointer_type(f64)
     engine.register_pointer_type(string)
     engine.register_pointer_type(engine.Asset_GUID)
+    engine.register_pointer_type(engine.Curve)
+    engine.register_pointer_type(engine.Gradient)
     // Reference types: revert/deep-override of a Ref field unmarshals the
     // baseline back into the live field via these.
     engine.register_pointer_type(engine.Ref_Local)
