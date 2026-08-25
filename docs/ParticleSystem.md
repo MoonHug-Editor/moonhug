@@ -53,18 +53,32 @@ volume, direction +Z), Point. `randomize_direction` and `spherize_direction`
 (0..1) blend the direction toward random / outward-from-center.
 
 **Velocity over lifetime**: `velocity_x/y/z` curves add velocity in the
-emitter frame, evaluated at life/lifetime.
+emitter frame, evaluated at life/lifetime. `orbital_x/y/z` curves (degrees
+per second) rotate particle positions around the emitter's axes.
 
 **Limit velocity over lifetime**: speed above `limit_speed` decays toward it
 by `limit_dampen` (0..1, per frame at 60 Hz, frame-rate normalized).
 
+**Force over lifetime**: `force_x/y/z` curves accelerate (add to velocity) in
+the emitter frame, evaluated at life/lifetime.
+
 **Rotation over lifetime**: `angular_velocity_min/max` in degrees per second.
+
+**Rotation by speed**: `rotation_by_speed` curve adds angular velocity
+(degrees per second), evaluated at the particle's speed remapped from
+`[*_min, *_max]` to 0..1.
 
 **Color / Size over lifetime**: `color_over_life` (Gradient) multiplies the
 start color, `size_over_life` (Curve) scales the start size.
 
+**Color / Size by speed**: `color_by_speed` (Gradient) and `size_by_speed`
+(Curve) multiply like the over-lifetime modules, evaluated at the particle's
+speed remapped from `[*_min, *_max]` to 0..1.
+
 **Renderer**: `sprite` (PPtr — texture guid + optional slice id), `material`,
-`sorting_layer`, `order_in_layer`.
+`render_mode` (Billboard, or Stretched — the quad aligns to velocity, length
+= size * `stretch_length_scale` + speed * `stretch_speed_scale`, length scale
+0 behaves as 1), `sorting_layer`, `order_in_layer`.
 
 ## Unity module coverage
 
@@ -73,17 +87,17 @@ start color, `size_over_life` (Curve) scales the start size.
 | Main | yes — no 3D size/rotation, delta time, scaling mode, play on awake, emitter velocity, random seeds, stop action, culling mode, ring buffer |
 | Emission | yes |
 | Shape | partial — Cone, Sphere, Hemisphere, Circle, Edge, Box, Point; no mesh/sprite shapes, arc, radius thickness, emission texture |
-| Velocity over Lifetime | yes — linear x/y/z; no orbital, offset, speed modifier |
+| Velocity over Lifetime | yes — linear + orbital x/y/z; no offset, speed modifier |
 | Limit Velocity over Lifetime | yes — speed + dampen; no per-axis limit, no drag |
 | Inherit Velocity | no |
 | Lifetime by Emitter Speed | no |
-| Force over Lifetime | no |
+| Force over Lifetime | yes — x/y/z curves |
 | Color over Lifetime | yes |
-| Color by Speed | no |
+| Color by Speed | yes |
 | Size over Lifetime | yes |
-| Size by Speed | no |
+| Size by Speed | yes |
 | Rotation over Lifetime | yes — angular velocity min/max |
-| Rotation by Speed | no |
+| Rotation by Speed | yes |
 | External Forces | no |
 | Noise | no |
 | Collision | no |
@@ -93,7 +107,7 @@ start color, `size_over_life` (Curve) scales the start size.
 | Lights | no |
 | Trails | no |
 | Custom Data | no |
-| Renderer | partial — billboards only (sprite, material, sorting); no stretched/mesh render modes |
+| Renderer | partial — billboard + stretched billboard; no mesh render mode, trails material, pivots |
 
 ## Off-state conventions
 

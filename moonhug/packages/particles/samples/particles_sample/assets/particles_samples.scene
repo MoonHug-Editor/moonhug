@@ -340,6 +340,8 @@
     },
     {
       "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "angular_velocity_max": 180.0,
+      "angular_velocity_min": -180.0,
       "base": {
         "enabled": true,
         "local_id": 2727813416550033
@@ -397,6 +399,8 @@
       "max_particles": 1000,
       "order_in_layer": 0,
       "rate": 0.0,
+      "rotation_max": 360.0,
+      "rotation_min": 0.0,
       "shape": 1,
       "shape_angle": 25.0,
       "shape_radius": 0.1,
@@ -419,7 +423,7 @@
       "speed_max": 5.0,
       "speed_min": 3.0,
       "sprite": {
-        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34",
         "local_id": 0
       }
     },

@@ -4,6 +4,10 @@ package particles_tests
 // rate, lifetime death, the max-particles cap, non-looping duration cutoff.
 // Rendering is GPU-gated (texture loads) and stays untested here.
 
+import "core:encoding/uuid"
+import "core:fmt"
+import "core:os"
+import "core:strings"
 import "core:testing"
 import "moonhug:engine"
 import particles "moonhug:packages/particles"
@@ -201,6 +205,16 @@ test_particles_velocity_and_limit_modules :: proc(t: ^testing.T) {
 	testing.expect(t, abs(p.position.x - 2) < 0.01, "velocity_x must move the particle")
 	testing.expect_value(t, p.velocity.x, 0)
 
+	// Force over lifetime accelerates (velocity changes, unlike velocity_x).
+	psf := _make_system(tc_mem)
+	psf.rate = 0
+	psf.lifetime_min = 100
+	psf.lifetime_max = 100
+	append(&psf.force_y.keys, engine.Curve_Key{t = 0, value = 3}, engine.Curve_Key{t = 1, value = 3})
+	append(&psf.particles, particles.Particle{lifetime = 100})
+	for _ in 0 ..< 10 do particles.system_tick(psf, 0.1)
+	testing.expect(t, abs(psf.particles[0].velocity.y - 3) < 0.01, "force_y must accelerate")
+
 	// Limit velocity dampens speed above the limit.
 	ps2 := _make_system(tc_mem)
 	ps2.rate = 0
@@ -295,4 +309,175 @@ test_particles_shapes :: proc(t: ^testing.T) {
 		in_box := abs(p.position.x) <= 1 && abs(p.position.y) <= 2 && abs(p.position.z) <= 3
 		testing.expect(t, in_box, "box spawns inside shape_box")
 	}
+}
+
+@(test)
+test_particles_speed_t :: proc(t: ^testing.T) {
+	testing.expect_value(t, particles.speed_t(0.5, 0, 1), 0.5)
+	testing.expect_value(t, particles.speed_t(-1, 0, 1), 0)
+	testing.expect_value(t, particles.speed_t(5, 0, 1), 1)
+	// Degenerate range: a step at lo.
+	testing.expect_value(t, particles.speed_t(0.5, 1, 1), 0)
+	testing.expect_value(t, particles.speed_t(2, 1, 1), 1)
+}
+
+@(test)
+test_particles_orbital_and_rotation_by_speed :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	// Orbital Z at 90 deg/s carries a particle at {1,0,0} to {0,1,0} in 1s.
+	ps := _make_system(tc_mem)
+	ps.rate = 0
+	append(&ps.orbital_z.keys, engine.Curve_Key{t = 0, value = 90}, engine.Curve_Key{t = 1, value = 90})
+	append(&ps.particles, particles.Particle{lifetime = 100, position = {1, 0, 0}})
+	for _ in 0 ..< 10 do particles.system_tick(ps, 0.1)
+	p := ps.particles[0]
+	testing.expect(t, abs(p.position.x) < 0.01 && abs(p.position.y - 1) < 0.01, "orbital_z must rotate the position")
+
+	// Rotation by speed: speed 1 in range [0,2] evaluates the curve at 0.5.
+	ps2 := _make_system(tc_mem)
+	ps2.rate = 0
+	ps2.rotation_by_speed_min = 0
+	ps2.rotation_by_speed_max = 2
+	append(&ps2.rotation_by_speed.keys, engine.Curve_Key{t = 0, value = 90}, engine.Curve_Key{t = 1, value = 90})
+	append(&ps2.particles, particles.Particle{lifetime = 100, velocity = {1, 0, 0}})
+	for _ in 0 ..< 10 do particles.system_tick(ps2, 0.1)
+	testing.expect(t, abs(ps2.particles[0].rotation - 1.5708) < 0.01, "rotation_by_speed must integrate")
+}
+
+// Repro for the editor flow: add particles_samples.scene into another scene
+// as a nested instance, then save the host.
+@(test)
+test_particles_nested_scene_save :: proc(t: ^testing.T) {
+	PREFAB_GUID :: "aaaaaaa1-bbb2-4cc3-8dd4-eeeeeeeeeef7"
+	PS_TYPE_GUID :: "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3"
+
+	dir := "moonhug/tests/_tmp_particles_nested"
+	mkerr := os.make_directory(dir)
+	testing.expect(t, mkerr == nil || os.exists(dir), fmt.tprintf("temp dir: %v", mkerr))
+
+	prefab_path := strings.concatenate({dir, "/emitters.scene"}, context.temp_allocator)
+	prefab_meta := strings.concatenate({dir, "/emitters.scene.meta"}, context.temp_allocator)
+	host_path := strings.concatenate({dir, "/host.scene"}, context.temp_allocator)
+	host_meta := strings.concatenate({dir, "/host.scene.meta"}, context.temp_allocator)
+	defer {
+		os.remove(prefab_path)
+		os.remove(prefab_meta)
+		os.remove(host_path)
+		os.remove(host_meta)
+		os.remove(dir)
+	}
+
+	prefab_json := fmt.tprintf(`{{
+  "root": 1,
+  "next_local_id": 10,
+  "transforms": [
+    {{
+      "local_id": 1, "name": "Burst", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {{"pptr": {{"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}}}},
+      "children": [], "components": [{{"local_id": 7}}]
+    }}
+  ],
+  "nested_scenes": [], "breadcrumbs": [],
+  "components": [
+    {{"__type": "%s", "base": {{"local_id": 7, "enabled": true}},
+      "duration": 2.0, "looping": true, "rate": 0.0,
+      "lifetime_min": 0.5, "lifetime_max": 0.9,
+      "speed_min": 3.0, "speed_max": 5.0,
+      "size_min": 0.3, "size_max": 0.5,
+      "rotation_min": 0.0, "rotation_max": 360.0,
+      "angular_velocity_min": -180.0, "angular_velocity_max": 180.0,
+      "color_a": [1,0.7,0.2,1], "color_b": [1,0.3,0.1,1],
+      "max_particles": 1000, "shape": 1, "shape_radius": 0.1,
+      "bursts": [{{"time": 0.3, "count_min": 40, "count_max": 60, "cycles": 2, "interval": 0.5, "probability": 1.0}}],
+      "color_over_life": {{"keys": [{{"t": 0, "color": [1,1,1,1]}}, {{"t": 1, "color": [1,0.2,0,0]}}]}},
+      "size_over_life": {{"keys": [{{"t": 0, "value": 1}}, {{"t": 1, "value": 0.1}}]}},
+      "sprite": {{"guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34", "local_id": 0}}
+    }}
+  ]
+}}`, PS_TYPE_GUID)
+	testing.expect(t, os.write_entire_file(prefab_path, transmute([]byte)prefab_json) == nil)
+	meta := fmt.tprintf(`{{"guid": "%s"}}`, PREFAB_GUID)
+	testing.expect(t, os.write_entire_file(prefab_meta, transmute([]byte)meta) == nil)
+
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	prefab_guid, gerr := uuid.read(PREFAB_GUID)
+	testing.expect(t, gerr == nil)
+
+	root := engine.Transform_Handle(tc_mem.scene.root.handle)
+	hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(prefab_guid), root)
+	testing.expect(t, hostH != {}, "particles scene should instantiate as nested")
+	if hostH == {} do return
+
+	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
+
+	// Reload: the bursts must survive the round trip.
+	loaded := engine.scene_load_single_path(host_path)
+	testing.expect(t, loaded != nil, "host should reload")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
+	found := false
+	for ps, _ in engine.pool_next(&it) {
+		found = true
+		testing.expect_value(t, len(ps.bursts), 1)
+		if len(ps.bursts) == 1 do testing.expect_value(t, ps.bursts[0].count_max, i32(60))
+	}
+	testing.expect(t, found, "ParticleSystem should exist after reload")
+}
+
+// The editor flow that crashed: simulate the museum, then nest the REAL
+// particles_samples.scene into a host scene and save it.
+@(test)
+test_particles_museum_nested_save :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	engine.asset_db_init("moonhug/packages/particles/samples/particles_sample/assets")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	host_path := "moonhug/tests/_tmp_museum_host.scene"
+	defer os.remove(host_path)
+
+	museum_guid, gerr := uuid.read("5d2e9c81-7a46-4f03-b1c8-92e05a4d7f36")
+	testing.expect(t, gerr == nil)
+
+	root := engine.Transform_Handle(tc_mem.scene.root.handle)
+	hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(museum_guid), root)
+	testing.expect(t, hostH != {}, "museum should instantiate as nested")
+	if hostH == {} do return
+
+	// Simulate a while (the user played before saving).
+	it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
+	n := 0
+	for ps, _ in engine.pool_next(&it) {
+		n += 1
+		for _ in 0 ..< 60 do particles.system_tick(ps, 1.0 / 60.0)
+	}
+	testing.expect_value(t, n, 4) // Fountain, Burst, Smoke, Snow
+
+	testing.expect(t, engine.scene_save(tc_mem.scene, host_path), "host save should succeed")
+
+	loaded := engine.scene_load_single_path(host_path)
+	testing.expect(t, loaded != nil, "host should reload")
+	if loaded != nil do tc_mem.scene = loaded
 }

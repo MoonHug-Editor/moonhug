@@ -215,13 +215,17 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	// Over-lifetime modules: the toggle IS the data — on seeds values, off
 	// clears them (zero/empty = module off at runtime).
 	{
-		on := len(ps.velocity_x.keys) > 0 || len(ps.velocity_y.keys) > 0 || len(ps.velocity_z.keys) > 0
+		on := len(ps.velocity_x.keys) > 0 || len(ps.velocity_y.keys) > 0 || len(ps.velocity_z.keys) > 0 ||
+			len(ps.orbital_x.keys) > 0 || len(ps.orbital_y.keys) > 0 || len(ps.orbital_z.keys) > 0
 		open, toggled := _module("Velocity over Lifetime", &on)
 		if toggled {
 			sess := _toggle_begin()
 			clear(&ps.velocity_x.keys)
 			clear(&ps.velocity_y.keys)
 			clear(&ps.velocity_z.keys)
+			clear(&ps.orbital_x.keys)
+			clear(&ps.orbital_y.keys)
+			clear(&ps.orbital_z.keys)
 			if on {
 				append(&ps.velocity_x.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 1, value = 0})
 				append(&ps.velocity_y.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 1, value = 0})
@@ -231,11 +235,17 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 			inspector.record_nested_override(&ps.velocity_x, typeid_of(engine.Curve), "velocity_x", true)
 			inspector.record_nested_override(&ps.velocity_y, typeid_of(engine.Curve), "velocity_y", true)
 			inspector.record_nested_override(&ps.velocity_z, typeid_of(engine.Curve), "velocity_z", true)
+			inspector.record_nested_override(&ps.orbital_x, typeid_of(engine.Curve), "orbital_x", true)
+			inspector.record_nested_override(&ps.orbital_y, typeid_of(engine.Curve), "orbital_y", true)
+			inspector.record_nested_override(&ps.orbital_z, typeid_of(engine.Curve), "orbital_z", true)
 		}
 		if open {
 			_ps_field(ps, &ps.velocity_x, typeid_of(engine.Curve), "X", "velocity_x")
 			_ps_field(ps, &ps.velocity_y, typeid_of(engine.Curve), "Y", "velocity_y")
 			_ps_field(ps, &ps.velocity_z, typeid_of(engine.Curve), "Z", "velocity_z")
+			_ps_field(ps, &ps.orbital_x, typeid_of(engine.Curve), "Orbital X", "orbital_x")
+			_ps_field(ps, &ps.orbital_y, typeid_of(engine.Curve), "Orbital Y", "orbital_y")
+			_ps_field(ps, &ps.orbital_z, typeid_of(engine.Curve), "Orbital Z", "orbital_z")
 		}
 	}
 	{
@@ -250,6 +260,30 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		if open {
 			_ps_field(ps, &ps.limit_speed, typeid_of(f32), "Speed", "limit_speed")
 			_ps_field(ps, &ps.limit_dampen, typeid_of(f32), "Dampen", "limit_dampen")
+		}
+	}
+	{
+		on := len(ps.force_x.keys) > 0 || len(ps.force_y.keys) > 0 || len(ps.force_z.keys) > 0
+		open, toggled := _module("Force over Lifetime", &on)
+		if toggled {
+			sess := _toggle_begin()
+			clear(&ps.force_x.keys)
+			clear(&ps.force_y.keys)
+			clear(&ps.force_z.keys)
+			if on {
+				append(&ps.force_x.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 1, value = 0})
+				append(&ps.force_y.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 1, value = 0})
+				append(&ps.force_z.keys, engine.Curve_Key{t = 0, value = 0}, engine.Curve_Key{t = 1, value = 0})
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.force_x, typeid_of(engine.Curve), "force_x", true)
+			inspector.record_nested_override(&ps.force_y, typeid_of(engine.Curve), "force_y", true)
+			inspector.record_nested_override(&ps.force_z, typeid_of(engine.Curve), "force_z", true)
+		}
+		if open {
+			_ps_field(ps, &ps.force_x, typeid_of(engine.Curve), "X", "force_x")
+			_ps_field(ps, &ps.force_y, typeid_of(engine.Curve), "Y", "force_y")
+			_ps_field(ps, &ps.force_z, typeid_of(engine.Curve), "Z", "force_z")
 		}
 	}
 	{
@@ -270,6 +304,29 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		}
 	}
 	{
+		on := len(ps.color_by_speed.keys) > 0
+		open, toggled := _module("Color by Speed", &on)
+		if toggled {
+			sess := _toggle_begin()
+			clear(&ps.color_by_speed.keys)
+			ps.color_by_speed_min = 0
+			ps.color_by_speed_max = 1 if on else 0
+			if on {
+				append(&ps.color_by_speed.keys, engine.Gradient_Key{t = 0, color = {1, 1, 1, 1}})
+				append(&ps.color_by_speed.keys, engine.Gradient_Key{t = 1, color = {1, 1, 1, 1}})
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.color_by_speed, typeid_of(engine.Gradient), "color_by_speed", true)
+			inspector.record_nested_override(&ps.color_by_speed_min, typeid_of(f32), "color_by_speed_min", true)
+			inspector.record_nested_override(&ps.color_by_speed_max, typeid_of(f32), "color_by_speed_max", true)
+		}
+		if open {
+			_ps_field(ps, &ps.color_by_speed, typeid_of(engine.Gradient), "Color", "color_by_speed")
+			_ps_field(ps, &ps.color_by_speed_min, typeid_of(f32), "Speed Min", "color_by_speed_min")
+			_ps_field(ps, &ps.color_by_speed_max, typeid_of(f32), "Speed Max", "color_by_speed_max")
+		}
+	}
+	{
 		on := len(ps.size_over_life.keys) > 0
 		open, toggled := _module("Size over Lifetime", &on)
 		if toggled {
@@ -284,6 +341,28 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		}
 		if open {
 			_ps_field(ps, &ps.size_over_life, typeid_of(engine.Curve), "Size", "size_over_life")
+		}
+	}
+	{
+		on := len(ps.size_by_speed.keys) > 0
+		open, toggled := _module("Size by Speed", &on)
+		if toggled {
+			sess := _toggle_begin()
+			clear(&ps.size_by_speed.keys)
+			ps.size_by_speed_min = 0
+			ps.size_by_speed_max = 1 if on else 0
+			if on {
+				append(&ps.size_by_speed.keys, engine.Curve_Key{t = 0, value = 1}, engine.Curve_Key{t = 1, value = 1})
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.size_by_speed, typeid_of(engine.Curve), "size_by_speed", true)
+			inspector.record_nested_override(&ps.size_by_speed_min, typeid_of(f32), "size_by_speed_min", true)
+			inspector.record_nested_override(&ps.size_by_speed_max, typeid_of(f32), "size_by_speed_max", true)
+		}
+		if open {
+			_ps_field(ps, &ps.size_by_speed, typeid_of(engine.Curve), "Size", "size_by_speed")
+			_ps_field(ps, &ps.size_by_speed_min, typeid_of(f32), "Speed Min", "size_by_speed_min")
+			_ps_field(ps, &ps.size_by_speed_max, typeid_of(f32), "Speed Max", "size_by_speed_max")
 		}
 	}
 	{
@@ -302,6 +381,28 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 			_ps_field(ps, &ps.angular_velocity_max, typeid_of(f32), "Angular Velocity Max", "angular_velocity_max")
 		}
 	}
+	{
+		on := len(ps.rotation_by_speed.keys) > 0
+		open, toggled := _module("Rotation by Speed", &on)
+		if toggled {
+			sess := _toggle_begin()
+			clear(&ps.rotation_by_speed.keys)
+			ps.rotation_by_speed_min = 0
+			ps.rotation_by_speed_max = 1 if on else 0
+			if on {
+				append(&ps.rotation_by_speed.keys, engine.Curve_Key{t = 0, value = 45}, engine.Curve_Key{t = 1, value = 45})
+			}
+			_toggle_end(&sess)
+			inspector.record_nested_override(&ps.rotation_by_speed, typeid_of(engine.Curve), "rotation_by_speed", true)
+			inspector.record_nested_override(&ps.rotation_by_speed_min, typeid_of(f32), "rotation_by_speed_min", true)
+			inspector.record_nested_override(&ps.rotation_by_speed_max, typeid_of(f32), "rotation_by_speed_max", true)
+		}
+		if open {
+			_ps_field(ps, &ps.rotation_by_speed, typeid_of(engine.Curve), "Angular Velocity", "rotation_by_speed")
+			_ps_field(ps, &ps.rotation_by_speed_min, typeid_of(f32), "Speed Min", "rotation_by_speed_min")
+			_ps_field(ps, &ps.rotation_by_speed_max, typeid_of(f32), "Speed Max", "rotation_by_speed_max")
+		}
+	}
 
 	if open, _ := _module("Renderer"); open {
 		if inspector.sprite_ref_row("Sprite", &ps.sprite) {
@@ -311,6 +412,11 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		inspector.current_field_ext_filter = "mat"
 		_ps_field(ps, &ps.material, typeid_of(engine.Asset_GUID), "Material", "material")
 		inspector.current_field_ext_filter = ""
+		_ps_enum(ps, &ps.render_mode, typeid_of(particles.Render_Mode), "Render Mode", "render_mode")
+		if ps.render_mode == .Stretched {
+			_ps_field(ps, &ps.stretch_length_scale, typeid_of(f32), "Length Scale", "stretch_length_scale")
+			_ps_field(ps, &ps.stretch_speed_scale, typeid_of(f32), "Speed Scale", "stretch_speed_scale")
+		}
 		_ps_field(ps, &ps.sorting_layer, typeid_of(i32), "Sorting Layer", "sorting_layer")
 		_ps_field(ps, &ps.order_in_layer, typeid_of(i32), "Order in Layer", "order_in_layer")
 	}

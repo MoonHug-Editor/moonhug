@@ -42,6 +42,11 @@ Sim_Space :: enum u8 {
 	World, // particles are left behind in the world
 }
 
+Render_Mode :: enum u8 {
+	Billboard, // camera-facing quad
+	Stretched, // quad aligned to the particle's velocity
+}
+
 // One emission burst: `count_min..count_max` particles at `time` seconds into
 // the cycle, repeated `cycles` times every `interval` seconds, each cycle
 // firing with `probability` (1 = always). Plain data — no heap fields.
@@ -95,20 +100,48 @@ ParticleSystem :: struct {
 
 	// Velocity over lifetime: additive velocity in the emitter's local frame,
 	// each axis a curve over life/lifetime evaluated with empty_value 0 —
-	// all empty = the module off.
+	// all empty = the module off. Orbital rotates particle positions around
+	// the emitter's axes, in degrees per second.
 	velocity_x: engine.Curve,
 	velocity_y: engine.Curve,
 	velocity_z: engine.Curve,
+	orbital_x:  engine.Curve,
+	orbital_y:  engine.Curve,
+	orbital_z:  engine.Curve,
 
 	// Limit velocity over lifetime: speed above `limit_speed` decays toward it
 	// by `limit_dampen` (0..1) per frame at 60 Hz. limit_speed 0 = module off.
 	limit_speed:  f32,
 	limit_dampen: f32,
 
+	// Force over lifetime: acceleration in the emitter's local frame, each
+	// axis a curve over life/lifetime evaluated with empty_value 0 — all
+	// empty = the module off.
+	force_x: engine.Curve,
+	force_y: engine.Curve,
+	force_z: engine.Curve,
+
+	// By speed: the gradient/curve is evaluated at the particle's speed
+	// remapped from [min, max] to 0..1, and multiplies color/size like the
+	// over-lifetime modules. Empty = the module off.
+	color_by_speed:     engine.Gradient,
+	color_by_speed_min: f32,
+	color_by_speed_max: f32,
+	size_by_speed:      engine.Curve,
+	size_by_speed_min:  f32,
+	size_by_speed_max:  f32,
+
 	// Rotation over lifetime: angular velocity in degrees per second, random
 	// between min and max. Both 0 = module off.
 	angular_velocity_min: f32,
 	angular_velocity_max: f32,
+
+	// Rotation by speed: additional angular velocity (degrees per second)
+	// from the curve evaluated at the particle's speed remapped from
+	// [min, max] to 0..1. Empty = the module off.
+	rotation_by_speed:     engine.Curve,
+	rotation_by_speed_min: f32,
+	rotation_by_speed_max: f32,
 
 	// Over lifetime, evaluated at life/lifetime: the gradient MULTIPLIES the
 	// particle's start color, the curve scales its start size. Empty = the
@@ -121,6 +154,11 @@ ParticleSystem :: struct {
 	// shader/tint applies with the sprite's own texture.
 	sprite:         engine.PPtr `inspect:"-"`,
 	material:       engine.Asset_GUID `ext:"mat"`,
+	render_mode:    Render_Mode,
+	// Stretched quad length = size * length_scale + speed * speed_scale.
+	// length_scale 0 behaves as 1 (absent fields load as zero).
+	stretch_length_scale: f32,
+	stretch_speed_scale:  f32,
 	sorting_layer:  i32,
 	order_in_layer: i32,
 
@@ -159,6 +197,15 @@ cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.velocity_x.keys)
 	delete(ps.velocity_y.keys)
 	delete(ps.velocity_z.keys)
+	delete(ps.orbital_x.keys)
+	delete(ps.orbital_y.keys)
+	delete(ps.orbital_z.keys)
+	delete(ps.rotation_by_speed.keys)
+	delete(ps.force_x.keys)
+	delete(ps.force_y.keys)
+	delete(ps.force_z.keys)
+	delete(ps.color_by_speed.keys)
+	delete(ps.size_by_speed.keys)
 	delete(ps.color_over_life.keys)
 	delete(ps.size_over_life.keys)
 	delete(ps.particles)

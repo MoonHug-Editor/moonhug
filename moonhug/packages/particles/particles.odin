@@ -68,6 +68,9 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 	}
 
 	vel_module := len(ps.velocity_x.keys) > 0 || len(ps.velocity_y.keys) > 0 || len(ps.velocity_z.keys) > 0
+	orbital_module := len(ps.orbital_x.keys) > 0 || len(ps.orbital_y.keys) > 0 || len(ps.orbital_z.keys) > 0
+	force_module := len(ps.force_x.keys) > 0 || len(ps.force_y.keys) > 0 || len(ps.force_z.keys) > 0
+	rot_by_speed := len(ps.rotation_by_speed.keys) > 0
 
 	for i := len(ps.particles) - 1; i >= 0; i -= 1 {
 		p := &ps.particles[i]
@@ -77,6 +80,18 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 			continue
 		}
 		p.velocity += gravity * dt
+
+		// Force over lifetime accelerates, in the emitter's frame.
+		if force_module {
+			lt := clamp(p.life / p.lifetime, 0, 1)
+			force := [3]f32{
+				engine.curve_eval(&ps.force_x, lt, 0),
+				engine.curve_eval(&ps.force_y, lt, 0),
+				engine.curve_eval(&ps.force_z, lt, 0),
+			}
+			if ps.sim_space == .World do force = rot * force
+			p.velocity += force * dt
+		}
 
 		// Limit velocity: speed above the limit decays toward it. dampen is
 		// the per-frame fraction at 60 Hz, normalized so the decay is
@@ -103,7 +118,29 @@ _advance :: proc(ps: ^ParticleSystem, dt: f32, tw: engine.Transform_World) {
 			vel += extra
 		}
 		p.position += vel * dt
+
+		// Orbital velocity: rotate the position around the emitter's axes.
+		if orbital_module {
+			lt := clamp(p.life / p.lifetime, 0, 1)
+			ang := [3]f32{
+				math.to_radians(engine.curve_eval(&ps.orbital_x, lt, 0)),
+				math.to_radians(engine.curve_eval(&ps.orbital_y, lt, 0)),
+				math.to_radians(engine.curve_eval(&ps.orbital_z, lt, 0)),
+			} * dt
+			if ps.sim_space == .World {
+				rel := linalg.transpose(rot) * (p.position - tw.position)
+				p.position = tw.position + rot * _rotate_euler(rel, ang)
+			} else {
+				p.position = _rotate_euler(p.position, ang)
+			}
+		}
+
 		p.rotation += p.angular_velocity * dt
+		if rot_by_speed {
+			spd := linalg.length(p.velocity)
+			p.rotation += math.to_radians(engine.curve_eval(&ps.rotation_by_speed,
+				speed_t(spd, ps.rotation_by_speed_min, ps.rotation_by_speed_max), 0)) * dt
+		}
 	}
 
 	// Emission starts after start_delay; et is time into the first cycle.
@@ -255,6 +292,29 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 	})
 }
 
+// Rotates around x, then y, then z.
+_rotate_euler :: proc(v: [3]f32, a: [3]f32) -> [3]f32 {
+	r := v
+	c := math.cos(a.x)
+	s := math.sin(a.x)
+	r = {r.x, r.y * c - r.z * s, r.y * s + r.z * c}
+	c = math.cos(a.y)
+	s = math.sin(a.y)
+	r = {r.x * c + r.z * s, r.y, -r.x * s + r.z * c}
+	c = math.cos(a.z)
+	s = math.sin(a.z)
+	r = {r.x * c - r.y * s, r.x * s + r.y * c, r.z}
+	return r
+}
+
+// Remaps a particle's speed from [lo, hi] to 0..1 for the by-speed modules.
+// Public so tests cover the mapping without a GPU.
+speed_t :: proc(spd, lo, hi: f32) -> f32 {
+	span := hi - lo
+	if span <= 1e-6 do return 0 if spd < lo else 1
+	return clamp((spd - lo) / span, 0, 1)
+}
+
 // --- Rendering ------------------------------------------------------------------
 
 _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
@@ -290,20 +350,45 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 		tw := engine.transform_world(engine.Transform_Handle(ps.owner))
 		rot := engine.quat_to_matrix3(tw.rotation)
 
+		forward := [3]f32{view.view[2, 0], view.view[2, 1], view.view[2, 2]}
+		color_by_speed := len(ps.color_by_speed.keys) > 0
+		size_by_speed := len(ps.size_by_speed.keys) > 0
+
 		for &p in ps.particles {
 			wp := p.position
+			vel := p.velocity
 			if ps.sim_space == .Local {
 				wp = tw.position + rot * p.position
+				vel = rot * vel
 			}
 			lt := clamp(p.life / p.lifetime, 0, 1)
 			size := p.size * engine.curve_eval(&ps.size_over_life, lt)
 			color := p.color * engine.gradient_eval(&ps.color_over_life, lt)
+			spd := linalg.length(vel)
+			if color_by_speed {
+				color *= engine.gradient_eval(&ps.color_by_speed,
+					speed_t(spd, ps.color_by_speed_min, ps.color_by_speed_max))
+			}
+			if size_by_speed {
+				size *= engine.curve_eval(&ps.size_by_speed,
+					speed_t(spd, ps.size_by_speed_min, ps.size_by_speed_max))
+			}
 			half := size * 0.5
 			seq += 1
 
-			// Billboard roll: rotate the camera axes by the particle's angle.
+			// Quad basis: camera-facing rolled by the particle's angle, or
+			// aligned to velocity for stretched billboards.
 			r, u := right, up
-			if p.rotation != 0 {
+			half_r, half_u := half, half
+			if ps.render_mode == .Stretched && spd > 1e-4 {
+				dir := vel / spd
+				side := linalg.cross(dir, forward)
+				if linalg.length2(side) < 1e-6 do side = right // velocity into the screen
+				r = dir
+				u = linalg.normalize(side)
+				length_scale := ps.stretch_length_scale if ps.stretch_length_scale > 0 else 1
+				half_r = (size * length_scale + spd * ps.stretch_speed_scale) * 0.5
+			} else if p.rotation != 0 {
 				c := math.cos(p.rotation)
 				s := math.sin(p.rotation)
 				r = right * c + up * s
@@ -319,10 +404,10 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 					texture  = ps.sprite.guid,
 					material = ps.material,
 					corners  = {
-						wp - r * half - u * half,
-						wp + r * half - u * half,
-						wp + r * half + u * half,
-						wp - r * half + u * half,
+						wp - r * half_r - u * half_u,
+						wp + r * half_r - u * half_u,
+						wp + r * half_r + u * half_u,
+						wp - r * half_r + u * half_u,
 					},
 					uvs   = uvs,
 					color = color,
