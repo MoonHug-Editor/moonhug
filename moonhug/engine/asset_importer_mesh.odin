@@ -18,9 +18,22 @@ import gfx "gfx"
 import "core:fmt"
 import "core:strings"
 
+// One glTF mesh of the model (Unity's Mesh sub-asset). MeshFilter references
+// a part as PPtr{model guid, part id} — the id is the persistent identity,
+// minted by the importer and preserved by NAME across reimports (the meta's
+// part list is Unity's internalIDToNameTable), so reordering meshes in the
+// DCC never retargets a MeshFilter. The name is a view detail.
+Mesh_Part :: struct {
+    id:   Local_ID,
+    name: string,
+}
+
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631", makeProcName=make_pMeshSettings})
 MeshSettings :: struct {
     scale: f32, // uniform import scale
+    // Importer-maintained id table, one entry per glTF mesh IN FILE ORDER
+    // (entry i names part artifact _m<i>.bin). First mint is index + 1.
+    parts: [dynamic]Mesh_Part,
 }
 
 default_mesh_settings :: proc() -> MeshSettings {

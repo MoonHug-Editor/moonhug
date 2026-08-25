@@ -197,8 +197,8 @@ test_scene_from_gltf :: proc(t: ^testing.T) {
 	// Mesh components live on the MESH NODE, wired to its part; the root only
 	// carries the Animation.
 	_, mf := engine.transform_get_comp(cube, engine.MeshFilter)
-	testing.expect(t, mf != nil && mf.mesh == mesh_guid, "Cube should reference the model")
-	if mf != nil do testing.expect_value(t, mf.part, i32(1))
+	testing.expect(t, mf != nil && mf.mesh.guid == mesh_guid, "Cube should reference the model")
+	if mf != nil do testing.expect_value(t, mf.mesh.local_id, engine.Local_ID(1))
 	_, mr := engine.transform_get_comp(cube, engine.MeshRenderer)
 	testing.expect(t, mr != nil && len(mr.materials) == 1, "Cube should have one material slot")
 	_, root_mf := engine.transform_get_comp(engine.Transform_Handle(s.root.handle), engine.MeshFilter)

@@ -54,7 +54,7 @@ Draw_Quad :: struct {
 
 Draw_Mesh :: struct {
 	mesh:      Asset_GUID,
-	part:      i32, // MeshFilter.part: 0 = whole model, N = glTF mesh N-1
+	part:      i32, // resolved FILE-ORDER part: 0 = whole model, N = glTF mesh N-1 (mesh_filter_part)
 	materials: []Asset_GUID, // per-submesh; view into the renderer's array (frame lifetime). missing/empty = white unlit
 	model:     matrix[4, 4]f32,
 }
@@ -184,13 +184,15 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		if t.render_layer & view.layer_mask == 0 do continue
 
 		_, mf := transform_get_comp(Transform_Handle(mr.owner), MeshFilter)
-		if mf == nil || mf.mesh == {} do continue
+		if mf == nil || asset_guid_is_empty(mf.mesh.guid) do continue
+		part, part_ok := mesh_filter_part(mf)
+		if !part_ok do continue
 
 		tw := transform_world(Transform_Handle(mr.owner))
 		append(out, Render_Command{
 			variant = Draw_Mesh{
-				mesh      = mf.mesh,
-				part      = mf.part,
+				mesh      = mf.mesh.guid,
+				part      = part,
 				materials = mr.materials[:],
 				model     = trs_matrix(tw.position, tw.rotation, tw.scale),
 			},

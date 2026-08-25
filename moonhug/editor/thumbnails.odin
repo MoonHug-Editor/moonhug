@@ -409,7 +409,7 @@ _thumb_bounds_walk :: proc(tH: engine.Transform_Handle, bmin, bmax: ^[3]f32, any
 	}
 
 	if _, mf := engine.transform_get_comp(tH, engine.MeshFilter); mf != nil && mf.mesh != {} {
-		if mesh, mok := engine.mesh_load(mf.mesh, mf.part); mok {
+		if mesh, mok := engine.mesh_load_filter(mf); mok {
 			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
 			for i in 0 ..< 8 {
 				c := [4]f32{

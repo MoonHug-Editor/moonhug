@@ -321,15 +321,15 @@ test_session_single_target_records_step :: proc(t: ^testing.T) {
 	a := engine.transform_new("A")
 	_, ptr := engine.transform_add_comp(a, .MeshFilter)
 	mf := cast(^engine.MeshFilter)ptr
-	original := engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
+	original := engine.PPtr{guid = engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
 	mf.mesh = original
 
 	before := s.top
 	targets := []undo.Edit_Target{
-		undo.edit_target_pooled(_comp_handle_of(a, .MeshFilter), &mf.mesh, typeid_of(engine.Asset_GUID)),
+		undo.edit_target_pooled(_comp_handle_of(a, .MeshFilter), &mf.mesh, typeid_of(engine.PPtr)),
 	}
 	sess := undo.edit_session_begin(targets, "mesh")
-	picked := engine.Asset_GUID{7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7}
+	picked := engine.PPtr{guid = engine.Asset_GUID{7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7}}
 	mf.mesh = picked
 	undo.edit_session_end(&sess)
 

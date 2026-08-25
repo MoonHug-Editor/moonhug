@@ -79,7 +79,7 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
         source_path, artifact_path, len(whole.vertices), len(whole.buckets))
 
     // Parts: one artifact per glTF mesh in NODE-LOCAL space (identity
-    // transform) — MeshFilter.part = mesh index + 1 draws it under its own
+    // transform) — a MeshFilter part reference draws it under its own
     // transform. Meshes several nodes share import once.
     for &mesh, mi in data.meshes {
         part := _Mesh_Build{
@@ -90,6 +90,31 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
         if len(part.vertices) == 0 do continue
         part_path := engine.mesh_part_artifact_path(artifact_path, mi, context.temp_allocator)
         if !_mesh_write_artifact(part_path, &part) do return false
+    }
+
+    // Maintain the part id table in the settings (the driver persists the
+    // refinement to the meta): file order, ids preserved by NAME across
+    // reimports so DCC reorders never retarget a MeshFilter. First mint is
+    // index + 1, new names continue past the highest id. The settings
+    // instance lives on the import call's temp allocator
+    // (_read_import_meta) — the refined table does too, and the driver
+    // marshals it to the meta right after the run.
+    if settings != nil {
+        ms := cast(^engine.MeshSettings)settings
+        old := ms.parts
+        ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
+        max_id := engine.Local_ID(0)
+        for p in old do max_id = max(max_id, p.id)
+        for &mesh, mi in data.meshes {
+            name := mesh.name != nil ? string(mesh.name) : fmt.tprintf("mesh_%d", mi)
+            id := engine.Local_ID(0)
+            for p in old do if p.name == name { id = p.id; break }
+            if id == 0 {
+                id = len(old) == 0 ? engine.Local_ID(mi + 1) : max_id + 1
+                max_id = max(max_id, id)
+            }
+            append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
+        }
     }
     return true
 }

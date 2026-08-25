@@ -514,8 +514,10 @@
         "enabled": true,
         "local_id": 3813162882009639
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -533,8 +535,10 @@
         "enabled": true,
         "local_id": 3335211138695293
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -552,8 +556,10 @@
         "enabled": true,
         "local_id": 3915145289878213
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -571,8 +577,10 @@
         "enabled": true,
         "local_id": 2636991653202165
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -590,8 +598,10 @@
         "enabled": true,
         "local_id": 3512488591864084
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -609,8 +619,10 @@
         "enabled": true,
         "local_id": 155152164423821
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -628,8 +640,10 @@
         "enabled": true,
         "local_id": 996175131573604
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -647,8 +661,10 @@
         "enabled": true,
         "local_id": 3426478620599660
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -666,8 +682,10 @@
         "enabled": true,
         "local_id": 1227663065561816
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 1
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 1
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -685,8 +703,10 @@
         "enabled": true,
         "local_id": 2074948771445937
       },
-      "mesh": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
-      "part": 2
+      "mesh": {
+        "guid": "4060b09e-fdcc-4b35-a7ea-df7584f467dd",
+        "local_id": 2
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",

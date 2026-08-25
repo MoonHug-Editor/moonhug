@@ -24,7 +24,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, mf := engine.transform_get_or_add_comp(tH, engine.MeshFilter)
 	testing.expect(t, mf != nil, "MeshFilter should be added")
 	if mf == nil do return
-	mf.mesh = engine.Asset_GUID(mesh_guid)
+	mf.mesh = engine.PPtr{guid = engine.Asset_GUID(mesh_guid)}
 	mf.enabled = true
 
 	_, mr := engine.transform_get_or_add_comp(tH, engine.MeshRenderer)
@@ -45,7 +45,7 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	_, loaded_mf := engine.transform_get_comp(root_tH, engine.MeshFilter)
 	testing.expect(t, loaded_mf != nil, "MeshFilter should survive reload")
 	if loaded_mf == nil do return
-	testing.expect(t, loaded_mf.mesh == engine.Asset_GUID(mesh_guid), "mesh guid should round-trip")
+	testing.expect(t, loaded_mf.mesh.guid == engine.Asset_GUID(mesh_guid), "mesh guid should round-trip")
 
 	_, loaded_mr := engine.transform_get_comp(root_tH, engine.MeshRenderer)
 	testing.expect(t, loaded_mr != nil, "MeshRenderer should survive reload")

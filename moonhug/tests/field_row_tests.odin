@@ -10,6 +10,7 @@ package tests
 import "../editor/inspector"
 import "../editor/undo"
 import "../engine"
+import sprites "moonhug:packages/sprites"
 
 import "core:testing"
 
@@ -30,30 +31,30 @@ test_row_idle_frames_change_nothing :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .MeshFilter)
-	_, b_ptr := engine.transform_add_comp(b, .MeshFilter)
-	mf_a := cast(^engine.MeshFilter)a_ptr
-	mf_b := cast(^engine.MeshFilter)b_ptr
+	_, a_ptr := engine.transform_add_comp(a, .SpriteRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .SpriteRenderer)
+	mf_a := cast(^sprites.SpriteRenderer)a_ptr
+	mf_b := cast(^sprites.SpriteRenderer)b_ptr
 
 	mesh_a := engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
 	mesh_b := engine.Asset_GUID{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
-	mf_a.mesh = mesh_a
-	mf_b.mesh = mesh_b
+	mf_a.material = mesh_a
+	mf_b.material = mesh_b
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle(b, .SpriteRenderer), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
-	undo.push_component_owner(_comp_handle(a, .MeshFilter))
+	undo.push_component_owner(_comp_handle(a, .SpriteRenderer))
 	defer undo.pop_owner()
 
 	before_steps := s.top
 	h := Row_Harness{
-		field_ptr = &mf_a.mesh,
+		field_ptr = &mf_a.material,
 		field_tid = typeid_of(engine.Asset_GUID),
-		offset    = offset_of(engine.MeshFilter, mesh),
-		label     = "mesh",
+		offset    = offset_of(sprites.SpriteRenderer, material),
+		label     = "material",
 	}
 	// Ten frames of the row simply being on screen.
 	frames := make([dynamic]Frame, 0, 10, context.temp_allocator)
@@ -61,8 +62,8 @@ test_row_idle_frames_change_nothing :: proc(t: ^testing.T) {
 	finishes := row_replay(&h, frames[:])
 
 	testing.expect_value(t, finishes, 0)
-	testing.expect_value(t, mf_a.mesh, mesh_a)
-	testing.expect_value(t, mf_b.mesh, mesh_b) // the peer is UNTOUCHED
+	testing.expect_value(t, mf_a.material, mesh_a)
+	testing.expect_value(t, mf_b.material, mesh_b) // the peer is UNTOUCHED
 	testing.expect_value(t, s.top, before_steps)
 }
 
@@ -80,33 +81,33 @@ test_row_button_click_is_not_an_edit :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .MeshFilter)
-	_, b_ptr := engine.transform_add_comp(b, .MeshFilter)
-	mf_a := cast(^engine.MeshFilter)a_ptr
-	mf_b := cast(^engine.MeshFilter)b_ptr
+	_, a_ptr := engine.transform_add_comp(a, .SpriteRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .SpriteRenderer)
+	mf_a := cast(^sprites.SpriteRenderer)a_ptr
+	mf_b := cast(^sprites.SpriteRenderer)b_ptr
 	mesh_a := engine.Asset_GUID{3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3}
 	mesh_b := engine.Asset_GUID{4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4}
-	mf_a.mesh = mesh_a
-	mf_b.mesh = mesh_b
+	mf_a.material = mesh_a
+	mf_b.material = mesh_b
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle(b, .SpriteRenderer), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
-	undo.push_component_owner(_comp_handle(a, .MeshFilter))
+	undo.push_component_owner(_comp_handle(a, .SpriteRenderer))
 	defer undo.pop_owner()
 
 	h := Row_Harness{
-		field_ptr = &mf_a.mesh,
+		field_ptr = &mf_a.material,
 		field_tid = typeid_of(engine.Asset_GUID),
-		offset    = offset_of(engine.MeshFilter, mesh),
-		label     = "mesh",
+		offset    = offset_of(sprites.SpriteRenderer, material),
+		label     = "material",
 	}
 	row_replay(&h, {frame_idle(), frame_button_click(), frame_idle()})
 
-	testing.expect_value(t, mf_a.mesh, mesh_a)
-	testing.expect_value(t, mf_b.mesh, mesh_b)
+	testing.expect_value(t, mf_a.material, mesh_a)
+	testing.expect_value(t, mf_b.material, mesh_b)
 }
 
 // A picker's value lands from a popup — no activation, no active widget. The row
@@ -122,28 +123,28 @@ test_row_picker_write_propagates_and_records :: proc(t: ^testing.T) {
 
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
-	_, a_ptr := engine.transform_add_comp(a, .MeshFilter)
-	_, b_ptr := engine.transform_add_comp(b, .MeshFilter)
-	mf_a := cast(^engine.MeshFilter)a_ptr
-	mf_b := cast(^engine.MeshFilter)b_ptr
+	_, a_ptr := engine.transform_add_comp(a, .SpriteRenderer)
+	_, b_ptr := engine.transform_add_comp(b, .SpriteRenderer)
+	mf_a := cast(^sprites.SpriteRenderer)a_ptr
+	mf_b := cast(^sprites.SpriteRenderer)b_ptr
 	mesh_a := engine.Asset_GUID{5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5}
 	mesh_b := engine.Asset_GUID{6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6}
-	mf_a.mesh = mesh_a
-	mf_b.mesh = mesh_b
+	mf_a.material = mesh_a
+	mf_b.material = mesh_b
 
 	peers := []inspector.Multi_Peer{
-		{base = b_ptr, handle = _comp_handle(b, .MeshFilter), scene = _scene_of(b)},
+		{base = b_ptr, handle = _comp_handle(b, .SpriteRenderer), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)
-	undo.push_component_owner(_comp_handle(a, .MeshFilter))
+	undo.push_component_owner(_comp_handle(a, .SpriteRenderer))
 	defer undo.pop_owner()
 
 	h := Row_Harness{
-		field_ptr = &mf_a.mesh,
+		field_ptr = &mf_a.material,
 		field_tid = typeid_of(engine.Asset_GUID),
-		offset    = offset_of(engine.MeshFilter, mesh),
-		label     = "mesh",
+		offset    = offset_of(sprites.SpriteRenderer, material),
+		label     = "material",
 	}
 	pick :: proc(p: rawptr) {
 		(cast(^engine.Asset_GUID)p)^ = engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
@@ -151,13 +152,13 @@ test_row_picker_write_propagates_and_records :: proc(t: ^testing.T) {
 	row_replay(&h, {frame_idle(), frame_popup_write(pick), frame_idle()})
 
 	picked := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
-	testing.expect_value(t, mf_a.mesh, picked)
-	testing.expect_value(t, mf_b.mesh, picked)
+	testing.expect_value(t, mf_a.material, picked)
+	testing.expect_value(t, mf_b.material, picked)
 
 	// One undo returns EACH object to its own value, not the active object's.
 	undo.apply_undo(s)
-	testing.expect_value(t, mf_a.mesh, mesh_a)
-	testing.expect_value(t, mf_b.mesh, mesh_b)
+	testing.expect_value(t, mf_a.material, mesh_a)
+	testing.expect_value(t, mf_b.material, mesh_b)
 }
 
 // A SINGLE selected object's picker change must still record an undo step. The
@@ -172,22 +173,22 @@ test_row_picker_single_object_records :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	a := engine.transform_new("A")
-	_, a_ptr := engine.transform_add_comp(a, .MeshFilter)
-	mf := cast(^engine.MeshFilter)a_ptr
+	_, a_ptr := engine.transform_add_comp(a, .SpriteRenderer)
+	mf := cast(^sprites.SpriteRenderer)a_ptr
 	original := engine.Asset_GUID{7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7, 7}
-	mf.mesh = original
+	mf.material = original
 
 	prev := inspector.multi_set_peers(nil) // no peers: single selection
 	defer inspector.multi_set_peers(prev)
-	undo.push_component_owner(_comp_handle(a, .MeshFilter))
+	undo.push_component_owner(_comp_handle(a, .SpriteRenderer))
 	defer undo.pop_owner()
 
 	before_steps := s.top
 	h := Row_Harness{
-		field_ptr = &mf.mesh,
+		field_ptr = &mf.material,
 		field_tid = typeid_of(engine.Asset_GUID),
-		offset    = offset_of(engine.MeshFilter, mesh),
-		label     = "mesh",
+		offset    = offset_of(sprites.SpriteRenderer, material),
+		label     = "material",
 	}
 	pick :: proc(p: rawptr) {
 		(cast(^engine.Asset_GUID)p)^ = engine.Asset_GUID{8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8}
@@ -196,7 +197,7 @@ test_row_picker_single_object_records :: proc(t: ^testing.T) {
 
 	testing.expect(t, s.top > before_steps, "a single-object picker change is recorded")
 	undo.apply_undo(s)
-	testing.expect_value(t, mf.mesh, original)
+	testing.expect_value(t, mf.material, original)
 }
 
 // A multi-frame DRAG of one vector axis. The peers follow live, keep their own

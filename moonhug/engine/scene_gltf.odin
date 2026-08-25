@@ -86,8 +86,14 @@ _scene_gltf_add_node :: proc(data: ^cgltf.data, node: ^cgltf.node, parent: Trans
 	if node.mesh != nil && mesh_guid != {} {
 		_, mf_raw := transform_add_comp(tH, .MeshFilter)
 		mf := cast(^MeshFilter)mf_raw
-		mf.mesh = mesh_guid
-		mf.part = i32(cgltf.mesh_index(data, node.mesh)) + 1
+		// The part reference is by persistent id from the model's imported
+		// part table. A not-yet-imported model falls back to index + 1 —
+		// exactly what the importer's first mint assigns, so the reference
+		// is already correct when the import lands.
+		mi := int(cgltf.mesh_index(data, node.mesh))
+		parts := mesh_parts(mesh_guid)
+		id := mi < len(parts) ? parts[mi].id : Local_ID(mi + 1)
+		mf.mesh = PPtr{guid = mesh_guid, local_id = id}
 		_, mr_raw := transform_add_comp(tH, .MeshRenderer)
 		mr := cast(^MeshRenderer)mr_raw
 		for m in gltf_mesh_materials(node.mesh) {

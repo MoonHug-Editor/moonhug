@@ -145,6 +145,27 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 	if force || !os.exists(artifact_path) {
 		engine._ensure_artifact_dir(artifact_path)
 		if !_run_import(source_path, artifact_path, import_meta.settings) do return false
+
+		// An importer may REFINE its settings during the run (the mesh
+		// importer maintains its part id table — Unity's
+		// internalIDToNameTable). Persist the refinement and move the
+		// artifacts under the refined content key, so the next refresh sees
+		// a fresh entry instead of importing a second time.
+		if refined_hex := _settings_hash_hex(import_meta.settings); refined_hex != settings_hex {
+			_write_import_meta(meta_path, import_meta)
+			refined_key := _artifact_key(data, import_meta.settings, importer_for_extension(ext))
+			refined_path := engine._artifact_key_path(refined_key, context.temp_allocator)
+			os.rename(artifact_path, refined_path)
+			// Part fan-out files move with the main artifact (the catalog
+			// export walks them the same way).
+			for i := 0; ; i += 1 {
+				old_part := engine.mesh_part_artifact_path(artifact_path, i, context.temp_allocator)
+				if !os.exists(old_part) do break
+				os.rename(old_part, engine.mesh_part_artifact_path(refined_path, i, context.temp_allocator))
+			}
+			key = refined_key
+			settings_hex = refined_hex
+		}
 	}
 
 	engine._artifact_index_set(guid, key, mtime, size, settings_hex)

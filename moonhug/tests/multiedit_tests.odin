@@ -438,8 +438,8 @@ test_multi_picker_row_does_not_write_on_draw :: proc(t: ^testing.T) {
 	mf_a := cast(^engine.MeshFilter)a_ptr
 	mf_b := cast(^engine.MeshFilter)b_ptr
 
-	mesh_a := engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
-	mesh_b := engine.Asset_GUID{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}
+	mesh_a := engine.PPtr{guid = engine.Asset_GUID{1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1}}
+	mesh_b := engine.PPtr{guid = engine.Asset_GUID{2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2}}
 	mf_a.mesh = mesh_a
 	mf_b.mesh = mesh_b
 

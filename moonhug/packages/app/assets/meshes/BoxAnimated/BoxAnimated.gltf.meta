@@ -1,7 +1,18 @@
 {
   "guid": "b106d05e-4d2c-471e-b185-c9f89335ae21",
   "importer": "mesh",
-  "settings": {"__type_guid":"fadd5659-ad40-4e00-95c7-908efc8e8631",
-    "scale": 1.00000000
+  "settings": {
+    "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "parts": [
+      {
+        "id": 1,
+        "name": "inner_box"
+      },
+      {
+        "id": 2,
+        "name": "outer_box"
+      }
+    ],
+    "scale": 1.0000000000000000
   }
 }

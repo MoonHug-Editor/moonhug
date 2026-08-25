@@ -1,7 +1,14 @@
 {
   "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
   "importer": "mesh",
-  "settings": {"__type_guid":"fadd5659-ad40-4e00-95c7-908efc8e8631",
-    "scale": 1.00000000
+  "settings": {
+    "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "parts": [
+      {
+        "id": 1,
+        "name": "Cube"
+      }
+    ],
+    "scale": 1.0000000000000000
   }
 }

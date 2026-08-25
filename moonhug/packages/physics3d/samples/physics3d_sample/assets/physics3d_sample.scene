@@ -513,8 +513,10 @@
         "enabled": true,
         "local_id": 1049373547051050
       },
-      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-      "part": 0
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -553,8 +555,10 @@
         "enabled": true,
         "local_id": 1044985140544836
       },
-      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-      "part": 0
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -593,8 +597,10 @@
         "enabled": true,
         "local_id": 2703091834016063
       },
-      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-      "part": 0
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -633,8 +639,10 @@
         "enabled": true,
         "local_id": 184221296441001
       },
-      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-      "part": 0
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -695,8 +703,10 @@
         "enabled": true,
         "local_id": 1502712613623716
       },
-      "mesh": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-      "part": 0
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -757,8 +767,10 @@
         "enabled": true,
         "local_id": 1736010401221477
       },
-      "mesh": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
-      "part": 0
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -815,8 +827,10 @@
         "enabled": true,
         "local_id": 3121611202642204
       },
-      "mesh": "6902c2a5-44a4-4a0e-b2f5-e2c65d22835f",
-      "part": 0
+      "mesh": {
+        "guid": "6902c2a5-44a4-4a0e-b2f5-e2c65d22835f",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",

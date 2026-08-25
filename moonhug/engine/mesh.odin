@@ -9,8 +9,10 @@ package engine
 
 import gfx "gfx"
 import "log"
+import "base:runtime"
 import "core:encoding/uuid"
 import "core:os"
+import "core:strings"
 
 Mesh :: struct {
     guid:      Asset_GUID,
@@ -41,6 +43,7 @@ mesh_cache: map[Mesh_Key]Mesh
 mesh_cache_init :: proc() {
     mesh_cache = make(map[Mesh_Key]Mesh)
     _mesh_failed = make(map[Mesh_Key]bool)
+    _mesh_parts = make(map[Asset_GUID][]Mesh_Part)
 }
 
 mesh_cache_shutdown :: proc() {
@@ -51,6 +54,73 @@ mesh_cache_shutdown :: proc() {
     delete(mesh_cache)
     delete(_mesh_failed)
     _mesh_failed = nil
+    for guid in _mesh_parts do _mesh_parts_free(guid)
+    delete(_mesh_parts)
+    _mesh_parts = nil
+}
+
+// Part id table per model, from the import settings (sprites' Texture2D
+// pattern: cache-owned clones on the process heap, evicted on reimport).
+@(private = "file") _mesh_parts: map[Asset_GUID][]Mesh_Part
+
+@(private = "file")
+_mesh_parts_free :: proc(guid: Asset_GUID) {
+    alloc := runtime.default_allocator()
+    if parts, ok := _mesh_parts[guid]; ok {
+        for p in parts do delete(p.name, alloc)
+        delete(parts, alloc)
+    }
+}
+
+// The model's part id table, cached from its import settings.
+mesh_parts :: proc(guid: Asset_GUID) -> []Mesh_Part {
+    if _mesh_parts != nil {
+        if parts, ok := _mesh_parts[guid]; ok do return parts
+    }
+
+    // Headless contexts (tests, scene tooling) run without the cache — read
+    // per call onto the temp allocator instead of caching.
+    cached := _mesh_parts != nil
+    alloc := cached ? runtime.default_allocator() : context.temp_allocator
+
+    out: []Mesh_Part
+    if path, pok := asset_db_get_path(uuid.Identifier(guid)); pok {
+        if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
+            if ms, is_mesh := settings.(MeshSettings); is_mesh && len(ms.parts) > 0 {
+                out = make([]Mesh_Part, len(ms.parts), alloc)
+                for p, i in ms.parts {
+                    out[i] = Mesh_Part{id = p.id, name = strings.clone(p.name, alloc)}
+                }
+            }
+        }
+    }
+    if cached do _mesh_parts[guid] = out // empty result caches too — no re-read per frame
+    return out
+}
+
+// Resolves a part id to its FILE-ORDER index (the _m<i>.bin artifact).
+mesh_part_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
+    for p, i in mesh_parts(guid) {
+        if p.id == id do return i32(i), true
+    }
+    return 0, false
+}
+
+// A MeshFilter's PPtr resolved for mesh_load: local_id 0 = the whole model
+// (part 0), otherwise the id's part. ok=false when the id no longer exists
+// in the model's table — the filter draws nothing, like a missing mesh.
+mesh_filter_part :: proc(mf: ^MeshFilter) -> (part: i32, ok: bool) {
+    if mf.mesh.local_id == 0 do return 0, true
+    idx, found := mesh_part_index(mf.mesh.guid, mf.mesh.local_id)
+    if !found do return 0, false
+    return idx + 1, true
+}
+
+// Loads what a MeshFilter references — the whole model or its part.
+mesh_load_filter :: proc(mf: ^MeshFilter) -> (^Mesh, bool) {
+    part, ok := mesh_filter_part(mf)
+    if !ok do return nil, false
+    return mesh_load(mf.mesh.guid, part)
 }
 
 mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
@@ -128,6 +198,8 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
 // Drops every cached part of the asset, and lets failed parts try again — this
 // is the call a re-import makes, and the new artifact deserves a fresh attempt.
 mesh_unload :: proc(guid: Asset_GUID) {
+    _mesh_parts_free(guid)
+    delete_key(&_mesh_parts, guid)
     keys := make([dynamic]Mesh_Key, context.temp_allocator)
     for key in mesh_cache {
         if key.guid == guid do append(&keys, key)

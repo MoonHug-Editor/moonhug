@@ -1567,8 +1567,10 @@
         "enabled": true,
         "local_id": 185
       },
-      "mesh": "91be828d-5f20-40ba-a18a-abdd2309e1e5",
-      "part": 0
+      "mesh": {
+        "guid": "91be828d-5f20-40ba-a18a-abdd2309e1e5",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -1586,8 +1588,10 @@
         "enabled": true,
         "local_id": 189
       },
-      "mesh": "849de0c4-a34d-4295-8d10-60cd2d6a5496",
-      "part": 0
+      "mesh": {
+        "guid": "849de0c4-a34d-4295-8d10-60cd2d6a5496",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -1606,8 +1610,10 @@
         "enabled": true,
         "local_id": 197
       },
-      "mesh": "eb28d9ed-803a-446b-bc76-1ff01e138527",
-      "part": 0
+      "mesh": {
+        "guid": "eb28d9ed-803a-446b-bc76-1ff01e138527",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
@@ -1625,8 +1631,10 @@
         "enabled": true,
         "local_id": 205
       },
-      "mesh": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292",
-      "part": 0
+      "mesh": {
+        "guid": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292",
+        "local_id": 0
+      }
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",

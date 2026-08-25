@@ -57,7 +57,7 @@ _create_primitive :: proc(name: string, mesh_guid: string, collider_key: engine.
 	mf_owned, mf_ptr := engine.transform_add_comp(tH, .MeshFilter)
 	if mf := cast(^engine.MeshFilter)mf_ptr; mf != nil {
 		if guid, err := uuid.read(mesh_guid); err == nil {
-			mf.mesh = engine.Asset_GUID(guid)
+			mf.mesh = engine.PPtr{guid = engine.Asset_GUID(guid)}
 		}
 		_record_added(tH, mf_owned.handle)
 	}
