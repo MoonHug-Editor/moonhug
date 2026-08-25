@@ -66,9 +66,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1993955009981708,
@@ -97,9 +95,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 2642583701696284
@@ -133,9 +129,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 1675758931629893
@@ -169,9 +163,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 2727813416550033
@@ -205,9 +197,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 201221560467666
@@ -241,9 +231,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 1911725489712463
@@ -318,9 +306,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 771202508250012
@@ -328,12 +314,8 @@
       ]
     }
   ],
-  "nested_scenes": [
-
-  ],
-  "breadcrumbs": [
-
-  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
   "components": [
     {
       "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
@@ -361,9 +343,7 @@
         "enabled": true,
         "local_id": 1675758931629893
       },
-      "bursts": [
-
-      ],
+      "bursts": [],
       "color_a": [
         0.60000002,
         0.80000001,
@@ -377,9 +357,7 @@
         1.0
       ],
       "color_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "color_by_speed_max": 0.0,
       "color_by_speed_min": 0.0,
@@ -408,30 +386,20 @@
       "duration": 5.0,
       "flip_rotation": 0.0,
       "force_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "gravity_modifier": 1.0,
       "lifetime_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "lifetime_by_speed_max": 0.0,
       "lifetime_by_speed_min": 0.0,
-      "lifetime_max": 2.2000000499999999,
-      "lifetime_min": 1.60000002,
       "limit_dampen": 0.0,
       "limit_speed": 0.0,
       "looping": true,
@@ -441,19 +409,13 @@
       "noise_scroll_speed": 0.0,
       "noise_strength": 0.0,
       "orbital_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "order_in_layer": 0,
       "prewarm": false,
@@ -462,14 +424,10 @@
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "rotation_by_speed_max": 0.0,
       "rotation_by_speed_min": 0.0,
-      "rotation_max": 0.0,
-      "rotation_min": 0.0,
       "shape": 0,
       "shape_angle": 12.0,
       "shape_box": [
@@ -481,44 +439,74 @@
       "sim_space": 0,
       "simulation_speed": 0.0,
       "size_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "size_by_speed_max": 0.0,
       "size_by_speed_min": 0.0,
-      "size_max": 0.40000001,
-      "size_min": 0.25,
       "size_over_life": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "sorting_layer": 0,
-      "speed_max": 9.0,
-      "speed_min": 7.0,
       "spherize_direction": 0.0,
       "sprite": {
         "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
         "local_id": 0
       },
       "start_delay": 0.0,
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 2.20000005,
+        "value_min": 1.60000002
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 0,
+        "value_max": 0.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.40000001,
+        "value_min": 0.25
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 9.0,
+        "value_min": 7.0
+      },
       "stretch_length_scale": 0.0,
       "stretch_speed_scale": 0.0,
       "velocity_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_z": {
-        "keys": [
-
-        ]
+        "keys": []
       }
     },
     {
@@ -552,9 +540,7 @@
         1.0
       ],
       "color_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "color_by_speed_max": 0.0,
       "color_by_speed_min": 0.0,
@@ -583,30 +569,20 @@
       "duration": 2.0,
       "flip_rotation": 0.0,
       "force_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "gravity_modifier": 0.0,
       "lifetime_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "lifetime_by_speed_max": 0.0,
       "lifetime_by_speed_min": 0.0,
-      "lifetime_max": 0.89999998,
-      "lifetime_min": 0.5,
       "limit_dampen": 0.0,
       "limit_speed": 0.0,
       "looping": true,
@@ -616,19 +592,13 @@
       "noise_scroll_speed": 0.0,
       "noise_strength": 0.0,
       "orbital_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "order_in_layer": 0,
       "prewarm": false,
@@ -637,14 +607,10 @@
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "rotation_by_speed_max": 0.0,
       "rotation_by_speed_min": 0.0,
-      "rotation_max": 360.0,
-      "rotation_min": 0.0,
       "shape": 1,
       "shape_angle": 25.0,
       "shape_box": [
@@ -656,14 +622,10 @@
       "sim_space": 0,
       "simulation_speed": 0.0,
       "size_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "size_by_speed_max": 0.0,
       "size_by_speed_min": 0.0,
-      "size_max": 0.5,
-      "size_min": 0.30000001,
       "size_over_life": {
         "keys": [
           {
@@ -677,30 +639,66 @@
         ]
       },
       "sorting_layer": 0,
-      "speed_max": 5.0,
-      "speed_min": 3.0,
       "spherize_direction": 0.0,
       "sprite": {
         "guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34",
         "local_id": 0
       },
       "start_delay": 0.0,
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.89999998,
+        "value_min": 0.5
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 360.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.5,
+        "value_min": 0.30000001
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 5.0,
+        "value_min": 3.0
+      },
       "stretch_length_scale": 0.0,
       "stretch_speed_scale": 0.0,
       "velocity_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_z": {
-        "keys": [
-
-        ]
+        "keys": []
       }
     },
     {
@@ -711,9 +709,7 @@
         "enabled": true,
         "local_id": 201221560467666
       },
-      "bursts": [
-
-      ],
+      "bursts": [],
       "color_a": [
         0.60000002,
         0.60000002,
@@ -727,9 +723,7 @@
         0.80000001
       ],
       "color_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "color_by_speed_max": 0.0,
       "color_by_speed_min": 0.0,
@@ -758,30 +752,20 @@
       "duration": 5.0,
       "flip_rotation": 0.0,
       "force_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "gravity_modifier": 0.0,
       "lifetime_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "lifetime_by_speed_max": 0.0,
       "lifetime_by_speed_min": 0.0,
-      "lifetime_max": 3.5,
-      "lifetime_min": 2.5,
       "limit_dampen": 0.0,
       "limit_speed": 0.0,
       "looping": true,
@@ -791,19 +775,13 @@
       "noise_scroll_speed": 0.0,
       "noise_strength": 0.0,
       "orbital_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "order_in_layer": 0,
       "prewarm": false,
@@ -812,14 +790,10 @@
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "rotation_by_speed_max": 0.0,
       "rotation_by_speed_min": 0.0,
-      "rotation_max": 0.0,
-      "rotation_min": 0.0,
       "shape": 0,
       "shape_angle": 8.0,
       "shape_box": [
@@ -831,14 +805,10 @@
       "sim_space": 0,
       "simulation_speed": 0.0,
       "size_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "size_by_speed_max": 0.0,
       "size_by_speed_min": 0.0,
-      "size_max": 0.60000002,
-      "size_min": 0.40000001,
       "size_over_life": {
         "keys": [
           {
@@ -852,30 +822,66 @@
         ]
       },
       "sorting_layer": 0,
-      "speed_max": 1.39999998,
-      "speed_min": 0.80000001,
       "spherize_direction": 0.0,
       "sprite": {
         "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
         "local_id": 0
       },
       "start_delay": 0.0,
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 3.5,
+        "value_min": 2.5
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 0,
+        "value_max": 0.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.60000002,
+        "value_min": 0.40000001
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 1.39999998,
+        "value_min": 0.80000001
+      },
       "stretch_length_scale": 0.0,
       "stretch_speed_scale": 0.0,
       "velocity_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_z": {
-        "keys": [
-
-        ]
+        "keys": []
       }
     },
     {
@@ -886,9 +892,7 @@
         "enabled": true,
         "local_id": 1911725489712463
       },
-      "bursts": [
-
-      ],
+      "bursts": [],
       "color_a": [
         1.0,
         1.0,
@@ -902,44 +906,30 @@
         1.0
       ],
       "color_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "color_by_speed_max": 0.0,
       "color_by_speed_min": 0.0,
       "color_over_life": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "duration": 5.0,
       "flip_rotation": 0.0,
       "force_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "force_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "gravity_modifier": 0.05,
       "lifetime_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "lifetime_by_speed_max": 0.0,
       "lifetime_by_speed_min": 0.0,
-      "lifetime_max": 7.0,
-      "lifetime_min": 5.0,
       "limit_dampen": 0.0,
       "limit_speed": 0.0,
       "looping": true,
@@ -949,19 +939,13 @@
       "noise_scroll_speed": 0.75,
       "noise_strength": 1.0,
       "orbital_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "orbital_z": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "order_in_layer": 0,
       "prewarm": false,
@@ -970,14 +954,10 @@
       "rate_over_distance": 0.0,
       "render_mode": 0,
       "rotation_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "rotation_by_speed_max": 0.0,
       "rotation_by_speed_min": 0.0,
-      "rotation_max": 0.0,
-      "rotation_min": 0.0,
       "shape": 0,
       "shape_angle": 25.0,
       "shape_box": [
@@ -989,44 +969,74 @@
       "sim_space": 1,
       "simulation_speed": 0.0,
       "size_by_speed": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "size_by_speed_max": 0.0,
       "size_by_speed_min": 0.0,
-      "size_max": 0.15000001,
-      "size_min": 0.08,
       "size_over_life": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "sorting_layer": 0,
-      "speed_max": 1.0,
-      "speed_min": 0.5,
       "spherize_direction": 0.0,
       "sprite": {
         "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
         "local_id": 0
       },
       "start_delay": 0.0,
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 7.0,
+        "value_min": 5.0
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 0,
+        "value_max": 0.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.15000001,
+        "value_min": 0.08
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 1.0,
+        "value_min": 0.5
+      },
       "stretch_length_scale": 0.0,
       "stretch_speed_scale": 0.0,
       "velocity_x": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_y": {
-        "keys": [
-
-        ]
+        "keys": []
       },
       "velocity_z": {
-        "keys": [
-
-        ]
+        "keys": []
       }
     },
     {
@@ -1049,8 +1059,6 @@
       ],
       "duration": 5.0,
       "gravity_modifier": 0.4,
-      "lifetime_max": 1.6,
-      "lifetime_min": 1.2,
       "looping": true,
       "max_particles": 100,
       "rate": 0.8,
@@ -1059,13 +1067,53 @@
       "shape_radius": 0.1,
       "sim_space": 1,
       "simulation_speed": 1.0,
-      "size_max": 0.2,
-      "size_min": 0.15,
-      "speed_max": 10.0,
-      "speed_min": 8.0,
       "sprite": {
         "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
         "local_id": 0
+      },
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 1.6,
+        "value_min": 1.2
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 0,
+        "value_max": 0.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.2,
+        "value_min": 0.15
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 10.0,
+        "value_min": 8.0
       },
       "sub_emitters": [
         {
@@ -1131,19 +1179,13 @@
       },
       "duration": 5.0,
       "gravity_modifier": 0.60000002,
-      "lifetime_max": 1.0,
-      "lifetime_min": 0.60000002,
       "looping": true,
       "max_particles": 1000,
       "rate": 0.0,
-      "rotation_max": 360.0,
-      "rotation_min": 0.0,
       "shape": 1,
       "shape_radius": 0.05,
       "sim_space": 1,
       "simulation_speed": 1.0,
-      "size_max": 0.14,
-      "size_min": 0.08,
       "size_over_life": {
         "keys": [
           {
@@ -1156,11 +1198,53 @@
           }
         ]
       },
-      "speed_max": 4.0,
-      "speed_min": 2.5,
       "sprite": {
         "guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34",
         "local_id": 0
+      },
+      "start_lifetime": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 1.0,
+        "value_min": 0.60000002
+      },
+      "start_rotation": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 360.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 0.14,
+        "value_min": 0.08
+      },
+      "start_speed": {
+        "curve_max": {
+          "keys": []
+        },
+        "curve_min": {
+          "keys": []
+        },
+        "mode": 1,
+        "value_max": 4.0,
+        "value_min": 2.5
       }
     }
   ]

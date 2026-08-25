@@ -69,11 +69,67 @@ gradient_eval :: proc(g: ^Gradient, t: f32) -> [4]f32 {
     return g.keys[n - 1].color
 }
 
+// Unity's MinMaxCurve: one value authored as a constant, a random range, a
+// curve over a normalized time, or a random range between two curves. The
+// zero value is Constant 0.
+MinMax_Mode :: enum u8 {
+    Constant,             // value_min
+    Random_Two_Constants, // between value_min and value_max
+    Curve,                // curve_min at t (empty curve falls back to value_min)
+    Random_Two_Curves,    // between curve_min and curve_max at t
+}
+
+@(typ_guid={guid="6b9e4d27-8c15-4f3a-b0d2-5a7c1e86f943"})
+MinMax_Curve :: struct {
+    mode:      MinMax_Mode,
+    value_min: f32,
+    value_max: f32,
+    curve_min: Curve,
+    curve_max: Curve,
+}
+
+minmax_constant :: proc(v: f32) -> MinMax_Curve {
+    return {mode = .Constant, value_min = v}
+}
+
+minmax_range :: proc(lo, hi: f32) -> MinMax_Curve {
+    return {mode = .Random_Two_Constants, value_min = lo, value_max = hi}
+}
+
+// `t` is the normalized curve time (a particle system passes cycle time /
+// duration), `r` the caller's 0..1 random sample — passed in so the caller
+// controls the random stream.
+minmax_eval :: proc(mm: ^MinMax_Curve, t, r: f32) -> f32 {
+    switch mm.mode {
+    case .Constant:
+        return mm.value_min
+    case .Random_Two_Constants:
+        return math.lerp(mm.value_min, mm.value_max, r)
+    case .Curve:
+        return curve_eval(&mm.curve_min, t, mm.value_min)
+    case .Random_Two_Curves:
+        return math.lerp(
+            curve_eval(&mm.curve_min, t, mm.value_min),
+            curve_eval(&mm.curve_max, t, mm.value_max), r)
+    }
+    return mm.value_min
+}
+
+minmax_cleanup :: proc(mm: ^MinMax_Curve) {
+    delete(mm.curve_min.keys)
+    delete(mm.curve_max.keys)
+}
+
 // Field cleanups for the override-revert walk (type_cleanup_by_typeid frees
 // the live field before unmarshaling the baseline back in).
 @(cleanup={type=Curve, priority=0})
 type_cleanup_curve_field :: proc(c: ^Curve) {
     delete(c.keys)
+}
+
+@(cleanup={type=MinMax_Curve, priority=0})
+type_cleanup_minmax_curve_field :: proc(mm: ^MinMax_Curve) {
+    minmax_cleanup(mm)
 }
 
 @(cleanup={type=Gradient, priority=0})

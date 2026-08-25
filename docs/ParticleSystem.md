@@ -11,10 +11,11 @@ packages/particles/
   editor/particles_editor.odin   ← inspector wrapper (module groups)
   samples/particles_sample/      ← showcase scene (installed as symlink)
 
-engine/curve.odin                ← Curve + Gradient (shared authored types)
+engine/curve.odin                ← Curve + Gradient + MinMax_Curve
 editor/inspector/
-  property_drawer_curve.odin     ← curve row + popup editor
-  property_drawer_gradient.odin  ← gradient row + popup editor
+  property_drawer_curve.odin        ← curve row + popup editor
+  property_drawer_gradient.odin     ← gradient row + popup editor
+  property_drawer_minmax_curve.odin ← mode dropdown + drags / curve plots
 ```
 ---
 
@@ -36,9 +37,11 @@ substeps on a looping system's first tick. `start_delay` holds emission back.
 
 ## Modules and fields
 
-**Main**: `duration`, `looping`, `prewarm`, `start_delay`, `lifetime_min/max`,
-`speed_min/max`, `size_min/max`, `rotation_min/max` (start roll, degrees),
-`flip_rotation` (0..1 fraction spinning the other way), `color_a/b`,
+**Main**: `duration`, `looping`, `prewarm`, `start_delay`,
+`start_lifetime/speed/size/rotation` (`engine.MinMax_Curve` — constant,
+random range, curve over the cycle, or random between two curves; rotation
+in degrees), `flip_rotation` (0..1 fraction spinning the other way),
+`color_a/b`,
 `gravity_modifier`, `sim_space` (Local follows the emitter, World leaves
 particles behind), `simulation_speed`, `max_particles`, `random_seed`
 (0 draws a fresh seed each reset — auto; any other value replays the exact

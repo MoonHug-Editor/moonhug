@@ -85,14 +85,13 @@ ParticleSystem :: struct {
 	looping:      bool,
 	prewarm:      bool, // looping systems start as if one cycle already ran
 	start_delay:  f32,  // seconds before the first cycle starts
-	lifetime_min: f32,
-	lifetime_max: f32,
-	speed_min:    f32,
-	speed_max:    f32,
-	size_min:     f32, // world units (Unity's start size)
-	size_max:     f32,
-	rotation_min: f32, // start rotation, degrees
-	rotation_max: f32,
+	// Start values are MinMax_Curves (Unity's): constant, random range,
+	// curve over the cycle (t = cycle time / duration), or random between
+	// two curves.
+	start_lifetime: engine.MinMax_Curve,
+	start_speed:    engine.MinMax_Curve,
+	start_size:     engine.MinMax_Curve, // world units
+	start_rotation: engine.MinMax_Curve, // degrees
 	flip_rotation: f32, // 0..1 fraction of particles spinning the other way
 	color_a:      [4]f32 `decor:color()`, // start color: random between a and b
 	color_b:      [4]f32 `decor:color()`,
@@ -232,12 +231,10 @@ ParticleSystem :: struct {
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	ps.duration = 5
 	ps.looping = true
-	ps.lifetime_min = 5
-	ps.lifetime_max = 5
-	ps.speed_min = 5
-	ps.speed_max = 5
-	ps.size_min = 1
-	ps.size_max = 1
+	ps.start_lifetime = engine.minmax_constant(5)
+	ps.start_speed = engine.minmax_constant(5)
+	ps.start_size = engine.minmax_constant(1)
+	ps.start_rotation = engine.minmax_constant(0)
 	ps.color_a = {1, 1, 1, 1}
 	ps.color_b = {1, 1, 1, 1}
 	ps.simulation_speed = 1
@@ -258,6 +255,10 @@ on_destroy_ParticleSystem :: proc(ps: ^ParticleSystem) {
 cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	delete(ps.bursts)
 	delete(ps.sub_emitters)
+	engine.minmax_cleanup(&ps.start_lifetime)
+	engine.minmax_cleanup(&ps.start_speed)
+	engine.minmax_cleanup(&ps.start_size)
+	engine.minmax_cleanup(&ps.start_rotation)
 	delete(ps.velocity_x.keys)
 	delete(ps.velocity_y.keys)
 	delete(ps.velocity_z.keys)

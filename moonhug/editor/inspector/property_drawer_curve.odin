@@ -25,7 +25,7 @@ _curve_range :: proc(c: ^engine.Curve) -> (lo, hi: f32) {
 	return lo - pad, hi + pad
 }
 
-@(private = "file")
+// Package-visible: the MinMax_Curve drawer reuses the plot and the editor.
 _curve_plot :: proc(c: ^engine.Curve, p0, p1: im.Vec2) {
 	dl := im.GetWindowDrawList()
 	im.DrawList_AddRectFilled(dl, p0, p1, im.GetColorU32(.FrameBg), 2)
@@ -69,7 +69,6 @@ draw_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 }
 
-@(private = "file")
 _curve_editor :: proc(c: ^engine.Curve) {
 	CW :: f32(340)
 	CH :: f32(160)

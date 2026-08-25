@@ -318,6 +318,14 @@ _try_spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) -> bool {
 	return true
 }
 
+// Normalized time into the current emission cycle, for start-value curves.
+_cycle_t :: proc(ps: ^ParticleSystem) -> f32 {
+	if ps.duration <= 0 do return 0
+	et := ps.time - ps.start_delay
+	if ps.looping do et = math.mod(et, ps.duration)
+	return clamp(et / ps.duration, 0, 1)
+}
+
 _rand_range :: proc(lo, hi: f32) -> f32 {
 	if hi <= lo do return lo
 	return lo + rand.float32() * (hi - lo)
@@ -380,14 +388,16 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 		dir = rot * dir
 	}
 
-	rot0 := math.to_radians(_rand_range(ps.rotation_min, ps.rotation_max))
+	// Start values sample their MinMax_Curves at the cycle time.
+	ct := _cycle_t(ps)
+	rot0 := math.to_radians(engine.minmax_eval(&ps.start_rotation, ct, rand.float32()))
 	ang := math.to_radians(_rand_range(ps.angular_velocity_min, ps.angular_velocity_max))
 	if ps.flip_rotation > 0 && rand.float32() < ps.flip_rotation {
 		rot0 = -rot0
 		ang = -ang
 	}
 
-	lifetime := _rand_range(ps.lifetime_min, ps.lifetime_max)
+	lifetime := engine.minmax_eval(&ps.start_lifetime, ct, rand.float32())
 	if len(ps.lifetime_by_speed.keys) > 0 {
 		lifetime *= engine.curve_eval(&ps.lifetime_by_speed,
 			speed_t(ps.emitter_speed, ps.lifetime_by_speed_min, ps.lifetime_by_speed_max))
@@ -396,9 +406,9 @@ _spawn :: proc(ps: ^ParticleSystem, tw: engine.Transform_World) {
 	t := rand.float32()
 	append(&ps.particles, Particle{
 		position         = pos,
-		velocity         = dir * _rand_range(ps.speed_min, ps.speed_max),
+		velocity         = dir * engine.minmax_eval(&ps.start_speed, ct, rand.float32()),
 		color            = linalg.lerp(ps.color_a, ps.color_b, t),
-		size             = _rand_range(ps.size_min, ps.size_max),
+		size             = engine.minmax_eval(&ps.start_size, ct, rand.float32()),
 		rotation         = rot0,
 		angular_velocity = ang,
 		lifetime         = max(lifetime, 0.01),
