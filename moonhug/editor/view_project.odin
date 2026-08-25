@@ -826,17 +826,19 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID
     _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", ICON_MD_IMAGE, s.name))
 
     dl := im.GetWindowDrawList()
-    if s.image != nil {
-        // The sub-asset's crop of the owning texture, aspect-fit in the cell.
+    if tid, uv0, uv1, tok := thumbnail_get_sub(parent_path, s); tok {
+        // Aspect-fit: crops know their pixel size, rendered thumbs are square.
+        w := s.size.x > 0 ? s.size.x : 1
+        h := s.size.y > 0 ? s.size.y : 1
         inset := cell * 0.08
         avail := cell - inset * 2
-        scale := min(avail / max(s.size.x, 1), avail / max(s.size.y, 1))
-        dw, dh := s.size.x * scale, s.size.y * scale
+        scale := min(avail / w, avail / h)
+        dw, dh := w * scale, h * scale
         p0 := im.Vec2{rect_min.x + (cell - dw) * 0.5, rect_min.y + (cell - dh) * 0.5}
         im.DrawList_AddImage(dl,
-            im.TextureRef{_TexID = im.TextureID(uintptr(s.image))},
+            im.TextureRef{_TexID = im.TextureID(uintptr(tid))},
             p0, im.Vec2{p0.x + dw, p0.y + dh},
-            im.Vec2{s.uv0.x, s.uv0.y}, im.Vec2{s.uv1.x, s.uv1.y})
+            im.Vec2{uv0.x, uv0.y}, im.Vec2{uv1.x, uv1.y})
     } else {
         cglyph := strings.clone_to_cstring(ICON_MD_IMAGE, context.temp_allocator)
         im.PushFontFloat(nil, cell * 0.55)
@@ -1024,6 +1026,11 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     }
     _project_item_ping_flash(full_path)
     _project_item_extras(full_path, is_dir, label)
+    if !is_dir {
+        if tid, tok := thumbnail_get(full_path); tok {
+            _project_row_preview(tid, {0, 0}, {1, 1}, 1, 1)
+        }
+    }
     if dim_unknown {
         im.PopStyleColor()
     }
@@ -1031,6 +1038,22 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     if len(sub) > 0 && _project_expanded[full_path] {
         _project_draw_sub_asset_rows(full_path, sub, sub_provider, arrow_w)
     }
+}
+
+// Small preview drawn over the LAST row item's icon glyph (Unity's list mini
+// thumbnails). The label keeps its glyph underneath, so a row's imgui ID is
+// the same whether or not the preview has arrived yet.
+_project_row_preview :: proc(id: rawptr, uv0, uv1: [2]f32, w, h: f32) {
+    rmin := im.GetItemRectMin()
+    box := im.GetTextLineHeight()
+    scale := min(box / max(w, 1), box / max(h, 1))
+    dw, dh := w * scale, h * scale
+    if w <= 1 && h <= 1 do dw, dh = box, box // square thumbs fill the box
+    p0 := im.Vec2{rmin.x + (box - dw) * 0.5, rmin.y + (box - dh) * 0.5}
+    p1 := im.Vec2{p0.x + dw, p0.y + dh}
+    dl := im.GetWindowDrawList()
+    im.DrawList_AddRectFilled(dl, im.Vec2{rmin.x, rmin.y}, im.Vec2{rmin.x + box, rmin.y + box}, im.GetColorU32(.WindowBg))
+    im.DrawList_AddImage(dl, im.TextureRef{_TexID = im.TextureID(uintptr(id))}, p0, p1, im.Vec2{uv0.x, uv0.y}, im.Vec2{uv1.x, uv1.y})
 }
 
 // --- Sub-assets -----------------------------------------------------------------
@@ -1090,6 +1113,9 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
             _project_sub_asset_clicked(parent_path, guid, s, provider)
         }
         _project_sub_asset_drag(guid, s, label)
+        if tid, uv0, uv1, tok := thumbnail_get_sub(parent_path, s); tok {
+            _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
+        }
         im.PopID()
     }
     im.PopID()

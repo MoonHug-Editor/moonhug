@@ -391,6 +391,13 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 	_pass.light = u
 }
 
+// Back to the built-in default (one white directional, 0.35 ambient) — for
+// callers that set temporary lights (the inspector's preview headlight) and
+// must not leak them into later passes of lightless scenes.
+set_lights_default :: proc() {
+	_pass.light = _LIGHT_DEFAULT
+}
+
 // May change mid-pass (multi-camera stacking, screen-space overlays).
 // cam_pos is the camera's world position, exposed to fragment shaders for
 // specular terms — screen-space/ortho callers can leave the zero default.

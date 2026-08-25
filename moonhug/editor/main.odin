@@ -150,6 +150,7 @@ main :: proc() {
     _register_project_settings() // @(project_settings) vars -> settings tabs
     defer settings_shutdown()
     defer thumbnails_shutdown()
+    defer asset_previews_shutdown()
     mcp_bridge_init() // agent bridge on loopback TCP (docs/McpBridge.md)
     defer mcp_bridge_shutdown()
 
@@ -314,6 +315,7 @@ editor_init :: proc() {
     clip.init()
     registration.register_type_guids()
     _init_context_menu_registry()
+    _register_asset_previews()
     init_project_view()
     progress.report("Scanning assets")
     engine.asset_catalog_auto = true // editor maintains library/catalog.json
