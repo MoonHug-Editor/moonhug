@@ -1,0 +1,466 @@
+{
+  "root": 2094312505282706,
+  "transforms": [
+    {
+      "local_id": 2094312505282706,
+      "name": "Museum",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1993955009981708,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1421033630146534,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 28128502987395,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1230539219275483,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 4358364337880224,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 1993955009981708,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.0,
+        2.0,
+        14.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2642583701696284
+        }
+      ]
+    },
+    {
+      "local_id": 1421033630146534,
+      "name": "Fountain",
+      "is_active": true,
+      "position": [
+        -6.0,
+        -2.0,
+        0.0
+      ],
+      "rotation": [
+        -0.70710683,
+        0.0,
+        0.0,
+        0.70710683
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1675758931629893
+        }
+      ]
+    },
+    {
+      "local_id": 28128502987395,
+      "name": "Burst",
+      "is_active": true,
+      "position": [
+        -2.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2727813416550033
+        }
+      ]
+    },
+    {
+      "local_id": 1230539219275483,
+      "name": "Smoke",
+      "is_active": true,
+      "position": [
+        2.0,
+        -1.5,
+        0.0
+      ],
+      "rotation": [
+        -0.70710683,
+        0.0,
+        0.0,
+        0.70710683
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 201221560467666
+        }
+      ]
+    },
+    {
+      "local_id": 4358364337880224,
+      "name": "Snow",
+      "is_active": true,
+      "position": [
+        6.0,
+        4.0,
+        0.0
+      ],
+      "rotation": [
+        0.70710683,
+        0.0,
+        0.0,
+        0.70710683
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2094312505282706,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1911725489712463
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "base": {
+        "enabled": true,
+        "local_id": 2642583701696284
+      },
+      "clear_color": [
+        0.08,
+        0.08,
+        0.1,
+        1.0
+      ],
+      "far_clip": 1000.0,
+      "fov": 60.0,
+      "near_clip": 0.30000001,
+      "order": 0,
+      "render_layer_mask": 4294967295
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 1675758931629893
+      },
+      "color_a": [
+        0.60000002,
+        0.80000001,
+        1.0,
+        1.0
+      ],
+      "color_b": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "color_over_life": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "duration": 5.0,
+      "gravity_modifier": 1.0,
+      "lifetime_max": 2.2000000499999999,
+      "lifetime_min": 1.60000002,
+      "looping": true,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "max_particles": 1000,
+      "order_in_layer": 0,
+      "rate": 40.0,
+      "shape": 0,
+      "shape_angle": 12.0,
+      "shape_radius": 0.15000001,
+      "sim_space": 0,
+      "size_max": 0.40000001,
+      "size_min": 0.25,
+      "size_over_life": 1.0,
+      "sorting_layer": 0,
+      "speed_max": 9.0,
+      "speed_min": 7.0,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 2727813416550033
+      },
+      "color_a": [
+        1.0,
+        0.69999999,
+        0.2,
+        1.0
+      ],
+      "color_b": [
+        1.0,
+        0.30000001,
+        0.1,
+        1.0
+      ],
+      "color_over_life": [
+        1.0,
+        0.2,
+        0.0,
+        0.0
+      ],
+      "duration": 5.0,
+      "gravity_modifier": 0.0,
+      "lifetime_max": 0.89999998,
+      "lifetime_min": 0.5,
+      "looping": true,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "max_particles": 1000,
+      "order_in_layer": 0,
+      "rate": 120.0,
+      "shape": 1,
+      "shape_angle": 25.0,
+      "shape_radius": 0.1,
+      "sim_space": 0,
+      "size_max": 0.5,
+      "size_min": 0.30000001,
+      "size_over_life": 0.1,
+      "sorting_layer": 0,
+      "speed_max": 5.0,
+      "speed_min": 3.0,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 201221560467666
+      },
+      "color_a": [
+        0.60000002,
+        0.60000002,
+        0.60000002,
+        0.80000001
+      ],
+      "color_b": [
+        0.34999999,
+        0.34999999,
+        0.34999999,
+        0.80000001
+      ],
+      "color_over_life": [
+        1.0,
+        1.0,
+        1.0,
+        0.0
+      ],
+      "duration": 5.0,
+      "gravity_modifier": 0.0,
+      "lifetime_max": 3.5,
+      "lifetime_min": 2.5,
+      "looping": true,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "max_particles": 1000,
+      "order_in_layer": 0,
+      "rate": 15.0,
+      "shape": 0,
+      "shape_angle": 8.0,
+      "shape_radius": 0.1,
+      "sim_space": 0,
+      "size_max": 0.60000002,
+      "size_min": 0.40000001,
+      "size_over_life": 3.0,
+      "sorting_layer": 0,
+      "speed_max": 1.39999998,
+      "speed_min": 0.80000001,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 1911725489712463
+      },
+      "color_a": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "color_b": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "color_over_life": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "duration": 5.0,
+      "gravity_modifier": 0.05,
+      "lifetime_max": 7.0,
+      "lifetime_min": 5.0,
+      "looping": true,
+      "material": "00000000-0000-0000-0000-000000000000",
+      "max_particles": 1000,
+      "order_in_layer": 0,
+      "rate": 20.0,
+      "shape": 0,
+      "shape_angle": 25.0,
+      "shape_radius": 1.5,
+      "sim_space": 1,
+      "size_max": 0.15000001,
+      "size_min": 0.08,
+      "size_over_life": 1.0,
+      "sorting_layer": 0,
+      "speed_max": 1.0,
+      "speed_min": 0.5,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      }
+    }
+  ]
+}

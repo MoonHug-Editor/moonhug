@@ -88,6 +88,20 @@ _sim_host_name_store :: proc(name: string) {
     editor_settings.sim_host = strings.clone(name)
 }
 
+@(menu_item={path="Edit/Play", order=30, shortcut="Ctrl+P"})
+simulate_menu_play :: proc() {
+    if sim.is_active() {
+        sim.stop()
+    } else {
+        sim.start()
+    }
+}
+
+@(menu_item={path="Edit/Pause", order=31, shortcut="Ctrl+Shift+P"})
+simulate_menu_pause :: proc() {
+    sim.toggle_pause()
+}
+
 // Cmd/Ctrl+P toggles Simulate, Cmd/Ctrl+Shift+P pauses. Routed globally so they
 // work regardless of which view has focus.
 _process_simulate_shortcuts :: proc() {
