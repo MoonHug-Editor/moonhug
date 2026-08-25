@@ -1,3 +1,10 @@
+## [0.78.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.77.0...v0.78.0) (2026-08-25)
+
+### Features
+
+* asset preview ([e8d464e](https://github.com/MoonHug-Editor/moonhug/commit/e8d464ef0d28994f243b10ab15bb94647e170557))
+* use PPtr for mesh in MeshFilter ([bec4572](https://github.com/MoonHug-Editor/moonhug/commit/bec4572e3477fec432eea2b5fb620f24a8a50cab))
+
 ## [0.77.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.76.0...v0.77.0) (2026-08-23)
 
 ### Features
