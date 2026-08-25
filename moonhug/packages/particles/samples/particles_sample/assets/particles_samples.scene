@@ -344,6 +344,16 @@
         "enabled": true,
         "local_id": 2727813416550033
       },
+      "bursts": [
+        {
+          "count_max": 60,
+          "count_min": 40,
+          "cycles": 2,
+          "interval": 0.5,
+          "probability": 1.0,
+          "time": 0.30000001
+        }
+      ],
       "color_a": [
         1.0,
         0.69999999,
@@ -378,7 +388,7 @@
           }
         ]
       },
-      "duration": 5.0,
+      "duration": 2.0,
       "gravity_modifier": 0.0,
       "lifetime_max": 0.89999998,
       "lifetime_min": 0.5,
@@ -386,7 +396,7 @@
       "material": "00000000-0000-0000-0000-000000000000",
       "max_particles": 1000,
       "order_in_layer": 0,
-      "rate": 120.0,
+      "rate": 0.0,
       "shape": 1,
       "shape_angle": 25.0,
       "shape_radius": 0.1,
