@@ -61,6 +61,39 @@ track file, the sequencer imports neither:
   set), leaving every span stops it, scrubbing is silent. Author
   track-driven sources with `play_on_awake` off.
 
+## Sequencer window
+
+`editor/view_sequencer.odin` (Window/Sequencer), laid out after ImGuizmo's
+ImSequencer. Targets the selection like the Animation window: the active
+transform or its nearest ancestor with a PlayableDirector.
+
+- Toolbar: Preview toggle, rewind, Play/Pause, time / duration, Save, Add
+  Track (registry kinds + animation).
+- Legend column per track: mute, kind, the BINDING picker (filtered by the
+  track's `binding_type`, edits the director with a diffing undo session),
+  add-clip-at-playhead, remove.
+- Canvas: seconds ruler (dragging scrubs), colored clip blocks per track —
+  body drags move, edge grips resize (0.1s snap), ease ramps draw as corner
+  lines, wheel zooms, the scrollbar pans. A selected clip edits start /
+  duration / ease in / ease out / speed / payload asset (ext-filtered per
+  kind) / delete in the strip below.
+- Edits target the timeline's asset document with whole-document undo
+  sessions, sync into the runtime cache (`timeline_preview`, which rebuilds
+  playing directors), and Save writes the file.
+- Preview: `sequencer_preview_apply/restore` bracket the scene/game render in
+  main.odin like the animation scrub preview — poses restore through the
+  director's binding defaults, activation flips are captured and restored per
+  frame, particles reset and audio stops when the preview ends.
+
+## Sample
+
+`packages/animation/samples/timeline_sample` (installed as the
+`packages/timeline_sample` symlink) ships `timeline_demo.scene` — a
+manual-start fireworks rocket (Death sub emitter into spinning star sparks,
+comet trails, seeded) driven by `fireworks.timeline`'s particles control
+track through a PlayableDirector on the root. Open the scene, select
+TimelineDemo, and scrub in the Sequencer window.
+
 ## Playables additions
 
 Node `speed` scales local time at evaluation (`playable_node_time`).

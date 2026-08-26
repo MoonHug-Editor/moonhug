@@ -164,3 +164,19 @@ _director_binding :: proc(d: ^PlayableDirector, track: i32) -> engine.Ref_Local 
 	}
 	return {}
 }
+
+// Tear down built graphs of every director playing `guid` — structural
+// timeline edits (tracks/clips added or removed) rebuild on the next tick.
+directors_invalidate :: proc(guid: engine.Asset_GUID) {
+	w := engine.ctx_world()
+	if w == nil do return
+	it := engine.pool_iterator(playable_directors(w))
+	for d, _ in engine.pool_next(&it) {
+		if engine.Asset_GUID(d.timeline.guid) != guid || !d.built do continue
+		for &tn in d.track_nodes do delete(tn.clips)
+		delete(d.track_nodes)
+		d.track_nodes = nil
+		playable_output_destroy(&d.output)
+		d.built = false
+	}
+}

@@ -250,6 +250,7 @@ main :: proc() {
         // apply here, restore right after, so every other consumer of the
         // world this frame (saves, undo, inspector) sees authored values.
         animation_preview_apply()
+        sequencer_preview_apply()
         if menu.show_scene {
             draw_scene_view()
         }
@@ -257,6 +258,7 @@ main :: proc() {
         if menu.show_game {
             draw_game_view()
         }
+        sequencer_preview_restore()
         animation_preview_restore()
 
         if menu.show_input_debug {

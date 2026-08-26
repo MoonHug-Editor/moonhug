@@ -885,3 +885,71 @@ test_particles_control_track :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(ps.particles), first)
 	testing.expect(t, ps.particles[0].position == pos0, "seeded scrub must be deterministic")
 }
+
+// The timeline_sample package end to end: the demo scene loads, the
+// director's binding resolves through the scene loader, the timeline loads
+// from its .timeline file, and the control track fires the rocket.
+@(test)
+test_timeline_sample_scene :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+
+	engine.asset_db_init("moonhug/packages/animation/samples/timeline_sample/assets")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.timeline_cache_init()
+	defer anim.timeline_cache_shutdown()
+	anim.register_builtin_tracks()
+	particles.particles_track_init()
+
+	loaded := engine.scene_load_single_path("moonhug/packages/animation/samples/timeline_sample/assets/timeline_demo.scene")
+	testing.expect(t, loaded != nil, "demo scene should load")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	d: ^anim.PlayableDirector
+	{
+		it := engine.pool_iterator(anim.playable_directors(&tc_mem.world))
+		for dd, _ in engine.pool_next(&it) do d = dd
+	}
+	rocket: ^particles.ParticleSystem
+	{
+		it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
+		for ps, _ in engine.pool_next(&it) {
+			if ps.manual_start do rocket = ps
+		}
+	}
+	testing.expect(t, d != nil && rocket != nil, "director and rocket should load")
+	if d == nil || rocket == nil do return
+
+	// Before the clip span the rocket holds (manual start).
+	for _ in 0 ..< 3 do anim.director_tick(d, 0.1) // t = 0.3
+	particles.system_tick(rocket, 0.1)
+	testing.expect_value(t, len(rocket.particles), 0)
+
+	// Inside the span [0.5, 3.5) the track plays it — the binding resolved.
+	for _ in 0 ..< 7 do anim.director_tick(d, 0.1) // t = 1.0
+	testing.expect(t, !rocket.stopped && rocket.started, "control clip must play the rocket")
+	for _ in 0 ..< 20 do particles.system_tick(rocket, 0.1)
+	testing.expect(t, len(rocket.particles) > 0, "rocket must emit inside the span")
+
+	// Scrub co-simulates the whole effect: the sparks system (a sub-emitter
+	// target, not bound to any track) replays alongside the rocket.
+	sparks: ^particles.ParticleSystem
+	{
+		it := engine.pool_iterator(particles.particle_systems(&tc_mem.world))
+		for ps, _ in engine.pool_next(&it) {
+			if !ps.manual_start do sparks = ps
+		}
+	}
+	testing.expect(t, sparks != nil)
+	if sparks != nil {
+		anim.director_set_time(d, 3.0) // clip-local 2.5s of replay
+		testing.expect(t, abs(sparks.time - 2.5) < 0.05, "sub-emitter target must co-simulate on scrub")
+	}
+}

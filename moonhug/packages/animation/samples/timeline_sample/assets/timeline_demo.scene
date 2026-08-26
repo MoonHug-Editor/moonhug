@@ -1,0 +1,306 @@
+{
+  "root": 881202600000001,
+  "transforms": [
+    {
+      "local_id": 881202600000001,
+      "name": "TimelineDemo",
+      "is_active": true,
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 881202600000002,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 881202600000003,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000012
+        }
+      ]
+    },
+    {
+      "local_id": 881202600000002,
+      "name": "Camera",
+      "is_active": true,
+      "position": [0.0, 2.0, 12.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 881202600000011
+        }
+      ]
+    },
+    {
+      "local_id": 881202600000003,
+      "name": "Fireworks",
+      "is_active": true,
+      "position": [0.0, -2.0, 0.0],
+      "rotation": [-0.70710683, 0.0, 0.0, 0.70710683],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 881202600000004,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000013
+        }
+      ]
+    },
+    {
+      "local_id": 881202600000004,
+      "name": "Sparks",
+      "is_active": true,
+      "position": [0.0, 0.0, 0.0],
+      "rotation": [0.0, 0.0, 0.0, 1.0],
+      "scale": [1.0, 1.0, 1.0],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000003,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 881202600000014
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000011
+      },
+      "clear_color": [0.06, 0.06, 0.09, 1.0],
+      "far_clip": 1000.0,
+      "fov": 60.0,
+      "near_clip": 0.30000001,
+      "order": 0,
+      "render_layer_mask": 4294967295
+    },
+    {
+      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000012
+      },
+      "bindings": [
+        {
+          "target": {
+            "local_id": 881202600000013
+          },
+          "track": 0
+        }
+      ],
+      "speed": 1.0,
+      "timeline": {
+        "guid": "68a5039b-003c-4a76-b4e4-25431af7aca0",
+        "local_id": 0
+      },
+      "wrap": 1
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000013
+      },
+      "color_a": [1.0, 0.9, 0.7, 1.0],
+      "color_b": [1.0, 1.0, 1.0, 1.0],
+      "duration": 5.0,
+      "gravity_modifier": 0.4,
+      "looping": true,
+      "manual_start": true,
+      "max_particles": 100,
+      "random_seed": 7,
+      "rate": 0.8,
+      "shape": 0,
+      "shape_angle": 6.0,
+      "shape_radius": 0.1,
+      "sim_space": 1,
+      "simulation_speed": 1.0,
+      "sprite": {
+        "guid": "c7f4a1e2-3b58-4d96-8a02-5e19d6b3c470",
+        "local_id": 0
+      },
+      "start_lifetime": {
+        "mode": 1,
+        "value_max": 1.6,
+        "value_min": 1.2
+      },
+      "start_size": {
+        "mode": 1,
+        "value_max": 0.2,
+        "value_min": 0.15
+      },
+      "start_speed": {
+        "mode": 1,
+        "value_max": 10.0,
+        "value_min": 8.0
+      },
+      "sub_emitters": [
+        {
+          "probability": 1.0,
+          "target": {
+            "local_id": 881202600000014
+          },
+          "trigger": 1
+        }
+      ],
+      "trail_color_over": {
+        "keys": [
+          {
+            "color": [1.0, 1.0, 1.0, 1.0],
+            "t": 0.0
+          },
+          {
+            "color": [1.0, 0.5, 0.2, 0.0],
+            "t": 1.0
+          }
+        ]
+      },
+      "trail_lifetime": 0.4,
+      "trail_min_distance": 0.1,
+      "trail_ratio": 1.0,
+      "trail_sprite": {
+        "guid": "59b4d8ef-26bb-46ac-b718-77f64dc96ec2",
+        "local_id": 0
+      },
+      "trail_width_over": {
+        "keys": [
+          {
+            "t": 0.0,
+            "value": 1.0
+          },
+          {
+            "t": 1.0,
+            "value": 0.15
+          }
+        ]
+      }
+    },
+    {
+      "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
+      "angular_velocity_max": 240.0,
+      "angular_velocity_min": -240.0,
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000014
+      },
+      "bursts": [
+        {
+          "count_max": 60,
+          "count_min": 40,
+          "cycles": 1,
+          "interval": 0.0,
+          "probability": 1.0,
+          "time": 0.0
+        }
+      ],
+      "color_a": [1.0, 0.80000001, 0.30000001, 1.0],
+      "color_b": [1.0, 0.40000001, 0.60000002, 1.0],
+      "color_over_life": {
+        "keys": [
+          {
+            "color": [1.0, 1.0, 1.0, 1.0],
+            "t": 0.0
+          },
+          {
+            "color": [1.0, 0.30000001, 0.1, 0.0],
+            "t": 1.0
+          }
+        ]
+      },
+      "duration": 5.0,
+      "gravity_modifier": 0.60000002,
+      "looping": true,
+      "max_particles": 1000,
+      "random_seed": 11,
+      "rate": 0.0,
+      "shape": 1,
+      "shape_radius": 0.05,
+      "sim_space": 1,
+      "simulation_speed": 1.0,
+      "size_over_life": {
+        "keys": [
+          {
+            "t": 0.0,
+            "value": 1.0
+          },
+          {
+            "t": 1.0,
+            "value": 0.2
+          }
+        ]
+      },
+      "sprite": {
+        "guid": "4c28be89-d6a9-4827-bf2c-44e8d7c6bc34",
+        "local_id": 0
+      },
+      "start_lifetime": {
+        "mode": 1,
+        "value_max": 1.0,
+        "value_min": 0.60000002
+      },
+      "start_rotation": {
+        "mode": 1,
+        "value_max": 360.0,
+        "value_min": 0.0
+      },
+      "start_size": {
+        "mode": 1,
+        "value_max": 0.14,
+        "value_min": 0.08
+      },
+      "start_speed": {
+        "mode": 1,
+        "value_max": 4.0,
+        "value_min": 2.5
+      }
+    }
+  ]
+}

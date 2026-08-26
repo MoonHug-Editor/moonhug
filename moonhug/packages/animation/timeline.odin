@@ -16,6 +16,7 @@ import "base:runtime"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import "moonhug:engine"
 
@@ -152,8 +153,9 @@ track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Timeline_Clip) -> bool {
 }
 
 Track_Desc :: struct {
-	kind: string,
-	tick: proc(ctx: ^Track_Ctx),
+	kind:         string,
+	binding_type: string, // component/transform type the track binds ("" = none)
+	tick:         proc(ctx: ^Track_Ctx),
 }
 
 _track_registry: map[string]Track_Desc
@@ -205,6 +207,44 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 register_builtin_tracks :: proc() {
 	if _builtin_tracks_registered do return
 	_builtin_tracks_registered = true
-	track_register(Track_Desc{kind = "activation", tick = _activation_track_tick})
-	track_register(Track_Desc{kind = "marker", tick = _marker_track_tick})
+	track_register(Track_Desc{kind = "activation", binding_type = "Transform", tick = _activation_track_tick})
+	track_register(Track_Desc{kind = "marker", binding_type = "Transform", tick = _marker_track_tick})
+}
+
+// Registered kinds for the sequencer window's add-track menu ("animation" is
+// director-built and not in the registry). Temp-allocated, sorted.
+track_kinds :: proc(allocator := context.temp_allocator) -> []string {
+	kinds := make([dynamic]string, allocator)
+	for kind in _track_registry do append(&kinds, kind)
+	slice.sort(kinds[:])
+	return kinds[:]
+}
+
+// Replace the cached timeline with a deep copy of `tl` — the sequencer
+// window's live preview of unsaved asset-document edits (mirrors
+// animation_clip_preview): playing directors read the edited values while
+// the file keeps the last saved state. Directors rebuild their graphs.
+timeline_preview :: proc(guid: engine.Asset_GUID, tl: Timeline) {
+	if !_timeline_cache_ready do return
+	if old, ok := &timeline_cache[guid]; ok {
+		_timeline_destroy(old)
+	}
+	cp := Timeline{duration = tl.duration}
+	cp.tracks = make([dynamic]Timeline_Track, 0, len(tl.tracks))
+	for &track in tl.tracks {
+		tc := Timeline_Track{
+			kind  = strings.clone(track.kind),
+			name  = strings.clone(track.name),
+			muted = track.muted,
+		}
+		tc.clips = make([dynamic]Timeline_Clip, 0, len(track.clips))
+		for &c in track.clips {
+			cc := c
+			cc.name = strings.clone(c.name)
+			append(&tc.clips, cc)
+		}
+		append(&cp.tracks, tc)
+	}
+	timeline_cache[guid] = cp
+	directors_invalidate(guid)
 }

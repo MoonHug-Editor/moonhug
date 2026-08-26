@@ -18,7 +18,7 @@ audio_track_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	anim.track_register(anim.Track_Desc{kind = "audio", tick = _audio_track_tick})
+	anim.track_register(anim.Track_Desc{kind = "audio", binding_type = "AudioSource", tick = _audio_track_tick})
 }
 
 _audio_track_tick :: proc(ctx: ^anim.Track_Ctx) {
