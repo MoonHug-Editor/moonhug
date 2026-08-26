@@ -83,14 +83,23 @@ transform or its nearest ancestor with a PlayableDirector.
 
 - Toolbar: Preview toggle, rewind, Play/Pause, time / duration, Save, Add
   Track (registry kinds + animation).
+Three resizable panes — legend | canvas | inspector — with draggable
+splitters between them (both sides keep a minimum width).
+
 - Legend column per track: mute, kind, the BINDING picker (filtered by the
   track's `binding_type`, edits the director with a diffing undo session),
   add-clip-at-playhead, remove.
 - Canvas: seconds ruler (dragging scrubs), colored clip blocks per track —
   body drags move, edge grips resize (0.1s snap), ease ramps draw as corner
-  lines, wheel zooms, the scrollbar pans. A selected clip edits start /
-  duration / ease in / ease out / speed / payload asset (ext-filtered per
-  kind) / delete in the strip below.
+  lines, wheel zooms, the scrollbar pans. Double-click empty row space adds
+  a clip there, right-click offers it from a menu, clicking empty space
+  deselects. Right-click a clip for Duplicate/Delete, Delete/Backspace
+  removes the selection. Track rows right-click for
+  Add Clip at Playhead / Rename / Remove Track.
+- Inspector pane: the selection's properties stacked one per row — the
+  track's name/kind/mute/clip count, then the clip's name (what markers
+  fire), start, duration, ease in/out, speed, payload asset (ext-filtered
+  per kind), and Duplicate/Delete buttons.
 - Edits target the timeline's asset document with whole-document undo
   sessions, sync into the runtime cache (`timeline_preview`, which rebuilds
   playing directors), and Save writes the file.

@@ -32,9 +32,28 @@ import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/preview"
 
-_SQ_LEGEND_W :: f32(230)
 _SQ_ROW_H :: f32(26)
 _SQ_RULER_H :: f32(22)
+_SQ_SPLIT_W :: f32(4) // splitter thickness / hit area
+_SQ_MIN_PANE :: f32(120)
+
+// A draggable splitter: `size` is the pane BEFORE it, clamped so both sides
+// keep _SQ_MIN_PANE. Returns after drawing; the caller lays out around it.
+@(private = "file")
+_sq_splitter :: proc(id: cstring, vertical: bool, size: ^f32, total: f32) {
+	thickness := _SQ_SPLIT_W
+	im.InvisibleButton(id, vertical ? im.Vec2{thickness, im.GetContentRegionAvail().y} : im.Vec2{-1, thickness})
+	if im.IsItemHovered({}) || im.IsItemActive() {
+		im.SetMouseCursor(vertical ? .ResizeEW : .ResizeNS)
+		p0 := im.GetItemRectMin()
+		p1 := im.GetItemRectMax()
+		im.DrawList_AddRectFilled(im.GetWindowDrawList(), p0, p1, im.GetColorU32(.SeparatorHovered))
+	}
+	if im.IsItemActive() {
+		delta := vertical ? im.GetIO().MouseDelta.x : im.GetIO().MouseDelta.y
+		size^ = clamp(size^ + delta, _SQ_MIN_PANE, max(total - _SQ_MIN_PANE, _SQ_MIN_PANE))
+	}
+}
 
 @(private = "file")
 _sq: struct {
@@ -51,6 +70,10 @@ _sq: struct {
 		Resize_R,
 	},
 	drag_off:  f32,
+	// pane sizes, dragged by the splitters (imgui.ini does not persist
+	// child sizes, so these live here for the session)
+	legend_w:    f32,
+	inspector_w: f32,
 	// preview identity + per-frame restore state
 	dir_owner:   engine.Transform_Handle,
 	applied:     bool,
@@ -60,6 +83,27 @@ _sq: struct {
 
 @(private = "file")
 _sq_session: undo.Edit_Session
+
+// Rename buffers: the clip strip's name field reloads when the selection
+// changes, the track popup's when it opens.
+@(private = "file") _sq_clip_name_buf: [128]u8
+@(private = "file") _sq_clip_name_for: [2]int = {-1, -1}
+@(private = "file") _sq_track_name_buf: [128]u8
+// Where the row's context menu was opened — the menu itself draws under the
+// moved mouse, so "Add Clip Here" must remember the click.
+@(private = "file") _sq_ctx_time: f32
+
+@(private = "file")
+_sq_buf_set :: proc(buf: []u8, text: string) {
+	n := min(len(text), len(buf) - 1)
+	copy(buf[:n], text[:n])
+	buf[n] = 0
+}
+
+@(private = "file")
+_sq_buf_get :: proc(buf: []u8) -> string {
+	return string(cstring(raw_data(buf)))
+}
 
 // The PlayableDirector the window targets: the active selection or its
 // nearest ancestor (the Animation window's rule).
@@ -119,6 +163,45 @@ _sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: 
 	if im.IsItemDeactivated() do _sq_edit_commit(doc, d, tl)
 }
 
+// Adds a clip at `at` seconds and selects it — the + button, the row's
+// context menu and double-click all land here.
+@(private = "file")
+_sq_add_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti: int, at: f32) {
+	track := &tl.tracks[ti]
+	_sq_edit_begin(doc)
+	append(&track.clips, seq.Timeline_Clip{
+		start    = max(math.round(at * 10) / 10, 0),
+		duration = track.kind == "marker" ? 0 : 1,
+		name     = strings.clone(track.kind == "marker" ? "marker" : "clip"),
+	})
+	_sq_edit_commit(doc, d, tl)
+	_sq.sel_track = ti
+	_sq.sel_clip = len(track.clips) - 1
+}
+
+@(private = "file")
+_sq_delete_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti, ci: int) {
+	track := &tl.tracks[ti]
+	_sq_edit_begin(doc)
+	delete(track.clips[ci].name)
+	ordered_remove(&track.clips, ci)
+	_sq_edit_commit(doc, d, tl)
+	_sq.sel_clip = -1
+}
+
+@(private = "file")
+_sq_duplicate_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti, ci: int) {
+	track := &tl.tracks[ti]
+	_sq_edit_begin(doc)
+	dup := track.clips[ci]
+	dup.name = strings.clone(track.clips[ci].name)
+	dup.start += max(dup.duration, 0.1)
+	append(&track.clips, dup)
+	_sq_edit_commit(doc, d, tl)
+	_sq.sel_track = ti
+	_sq.sel_clip = len(track.clips) - 1
+}
+
 @(private = "file")
 _sq_binding_type :: proc(kind: string) -> string {
 	if desc, ok := seq.track_desc(kind); ok do return desc.binding_type
@@ -138,6 +221,8 @@ sequencer_menu_open :: proc() {
 @(editor_window={id="sequencer", title="Sequencer", width=1100, height=420})
 sequencer_window_draw :: proc() {
 	if _sq.pps == 0 do _sq.pps = 120
+	if _sq.legend_w == 0 do _sq.legend_w = 230
+	if _sq.inspector_w == 0 do _sq.inspector_w = 260
 	owner, d := _sq_target()
 	if d == nil {
 		_sq.preview = false
@@ -216,12 +301,14 @@ sequencer_window_draw :: proc() {
 		im.EndPopup()
 	}
 
-	// --- Legend + canvas -----------------------------------------------------------
-	strip_h := f32(im.GetFrameHeightWithSpacing() + 8)
-	body_h := im.GetContentRegionAvail().y - strip_h
+	// --- Legend | canvas | inspector, splitters between --------------------------
+	body_h := im.GetContentRegionAvail().y
+	total_w := im.GetContentRegionAvail().x
 	rows_h := _SQ_RULER_H + f32(len(tl.tracks)) * _SQ_ROW_H
+	_sq.legend_w = clamp(_sq.legend_w, _SQ_MIN_PANE, max(total_w - 2 * _SQ_MIN_PANE, _SQ_MIN_PANE))
+	_sq.inspector_w = clamp(_sq.inspector_w, _SQ_MIN_PANE, max(total_w - _sq.legend_w - _SQ_MIN_PANE, _SQ_MIN_PANE))
 
-	if im.BeginChild("##sq_legend", im.Vec2{_SQ_LEGEND_W, body_h}) {
+	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, body_h}) {
 		im.Dummy(im.Vec2{1, _SQ_RULER_H - 4}) // align with the ruler
 		remove_track := -1
 		for &track, ti in tl.tracks {
@@ -234,7 +321,32 @@ sequencer_window_draw :: proc() {
 			}
 			im.SetItemTooltip("Mute")
 			im.SameLine()
-			im.TextUnformatted(fmt.ctprintf("%s", track.kind))
+			label := len(track.name) > 0 ? track.name : track.kind
+			im.TextUnformatted(fmt.ctprintf("%s", label))
+			im.SetItemTooltip("%s track — right-click for options", track.kind)
+			im.OpenPopupOnItemClick("track_ctx")
+			if im.BeginPopup("track_ctx") {
+				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(doc, d, tl, ti, _sq.time)
+				if im.Selectable("Rename...", false, {.NoAutoClosePopups}) {
+					_sq_buf_set(_sq_track_name_buf[:], track.name)
+					im.OpenPopup("track_rename")
+				}
+				if im.BeginPopup("track_rename") {
+					im.SetKeyboardFocusHere()
+					enter := im.InputText("##track_name", cstring(raw_data(_sq_track_name_buf[:])),
+						len(_sq_track_name_buf), {.EnterReturnsTrue})
+					if enter {
+						_sq_edit_begin(doc)
+						delete(track.name)
+						track.name = strings.clone(_sq_buf_get(_sq_track_name_buf[:]))
+						_sq_edit_commit(doc, d, tl)
+						im.CloseCurrentPopup()
+					}
+					im.EndPopup()
+				}
+				if im.Selectable("Remove Track") do remove_track = ti
+				im.EndPopup()
+			}
 			im.SameLine()
 			// Binding: which scene object this track drives. Lives on the
 			// DIRECTOR; the session diffs and records only real changes.
@@ -258,15 +370,7 @@ sequencer_window_draw :: proc() {
 				if changed do inspector.mark_inspector_changed()
 				im.SameLine()
 			}
-			if im.SmallButton("+") {
-				_sq_edit_begin(doc)
-				append(&track.clips, seq.Timeline_Clip{
-					start    = _sq.time,
-					duration = track.kind == "marker" ? 0 : 1,
-					name     = strings.clone("clip"),
-				})
-				_sq_edit_commit(doc, d, tl)
-			}
+			if im.SmallButton("+") do _sq_add_clip(doc, d, tl, ti, _sq.time)
 			im.SetItemTooltip("Add clip at the playhead")
 			im.SameLine()
 			if im.SmallButton("x") do remove_track = ti
@@ -289,8 +393,11 @@ sequencer_window_draw :: proc() {
 	}
 	im.EndChild()
 	im.SameLine(0, 0)
+	_sq_splitter("##sq_split_l", true, &_sq.legend_w, total_w - _sq.inspector_w)
+	im.SameLine(0, 0)
 
-	if im.BeginChild("##sq_canvas", im.Vec2{0, body_h}, {}, {.HorizontalScrollbar}) {
+	canvas_pane_w := max(total_w - _sq.legend_w - _sq.inspector_w - 2 * _SQ_SPLIT_W, _SQ_MIN_PANE)
+	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar}) {
 		dl := im.GetWindowDrawList()
 		origin := im.GetCursorScreenPos()
 		canvas_w := max(dur * _sq.pps + 120, im.GetContentRegionAvail().x)
@@ -323,10 +430,38 @@ sequencer_window_draw :: proc() {
 			_sq.playing = false
 		}
 
-		// Track rows + clips.
+		// Track rows + clips. Structural clip actions from the context menu
+		// defer to after the loops — mutating clips mid-iteration would
+		// invalidate the range.
+		act_dup := [2]int{-1, -1}
+		act_del := [2]int{-1, -1}
 		for &track, ti in tl.tracks {
 			row_y := origin.y + _SQ_RULER_H + f32(ti) * _SQ_ROW_H
 			im.DrawList_AddLine(dl, {origin.x, row_y + _SQ_ROW_H}, {origin.x + canvas_w, row_y + _SQ_ROW_H}, im.GetColorU32(.Border))
+
+			// Row background: click deselects, double-click creates a clip
+			// there, right-click offers the same from a menu. AllowOverlap is
+			// load-bearing — without it this full-width button swallows every
+			// click meant for the clip blocks submitted after it.
+			im.SetCursorScreenPos(im.Vec2{origin.x, row_y})
+			im.PushIDInt(i32(1000 + ti))
+			im.SetNextItemAllowOverlap()
+			im.InvisibleButton("##row", im.Vec2{canvas_w, _SQ_ROW_H})
+			row_t := from_x(origin, im.GetMousePos().x)
+			if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
+				_sq_add_clip(doc, d, tl, ti, row_t)
+			} else if im.IsItemActivated() {
+				_sq.sel_track = ti
+				_sq.sel_clip = -1
+			}
+			if im.IsItemHovered({}) && im.IsMouseReleased(.Right) do _sq_ctx_time = row_t
+			im.OpenPopupOnItemClick("row_ctx")
+			if im.BeginPopup("row_ctx") {
+				if im.Selectable("Add Clip Here") do _sq_add_clip(doc, d, tl, ti, _sq_ctx_time)
+				im.EndPopup()
+			}
+			im.PopID()
+
 			for &c, ci in track.clips {
 				x0 := to_x(origin, c.start)
 				x1 := to_x(origin, c.start + max(c.duration, 0.05))
@@ -363,6 +498,16 @@ sequencer_window_draw :: proc() {
 				near_l := hovered && mx < r0.x + 6 && c.duration > 0
 				near_r := hovered && mx > r1.x - 6 && c.duration > 0
 				if near_l || near_r do im.SetMouseCursor(.ResizeEW)
+				if im.IsItemHovered({}) && im.IsMouseReleased(.Right) {
+					_sq.sel_track = ti
+					_sq.sel_clip = ci
+				}
+				im.OpenPopupOnItemClick("clip_ctx")
+				if im.BeginPopup("clip_ctx") {
+					if im.Selectable("Duplicate") do act_dup = {ti, ci}
+					if im.Selectable("Delete") do act_del = {ti, ci}
+					im.EndPopup()
+				}
 				if im.IsItemActivated() {
 					_sq.sel_track = ti
 					_sq.sel_clip = ci
@@ -398,67 +543,118 @@ sequencer_window_draw :: proc() {
 			}
 		}
 
+		if act_dup[0] >= 0 do _sq_duplicate_clip(doc, d, tl, act_dup[0], act_dup[1])
+		if act_del[0] >= 0 do _sq_delete_clip(doc, d, tl, act_del[0], act_del[1])
+
 		// Playhead over everything.
 		px := to_x(origin, _sq.time)
 		im.DrawList_AddLine(dl, {px, origin.y}, {px, origin.y + rows_h}, im.GetColorU32ImVec4({1, 0.3, 0.25, 1}), 2)
 	}
 	im.EndChild()
 
-	// --- Selected clip strip ---------------------------------------------------------
-	if _sq.sel_track >= 0 && _sq.sel_track < len(tl.tracks) {
-		track := &tl.tracks[_sq.sel_track]
-		if _sq.sel_clip >= 0 && _sq.sel_clip < len(track.clips) {
-			c := &track.clips[_sq.sel_clip]
-			im.Separator()
-			im.SetNextItemWidth(80)
-			ch := im.DragFloat("##c_start", &c.start, 0.02, 0, 0, "at %.2f")
-			im.SetItemTooltip("Start")
-			_sq_field_undo(doc, d, tl, ch)
-			im.SameLine()
-			im.SetNextItemWidth(80)
-			ch = im.DragFloat("##c_dur", &c.duration, 0.02, 0, 0, "len %.2f")
-			im.SetItemTooltip("Duration")
-			_sq_field_undo(doc, d, tl, ch)
-			im.SameLine()
-			im.SetNextItemWidth(70)
-			ch = im.DragFloat("##c_ein", &c.ease_in, 0.01, 0, 0, "in %.2f")
-			im.SetItemTooltip("Ease In")
-			_sq_field_undo(doc, d, tl, ch)
-			im.SameLine()
-			im.SetNextItemWidth(70)
-			ch = im.DragFloat("##c_eout", &c.ease_out, 0.01, 0, 0, "out %.2f")
-			im.SetItemTooltip("Ease Out")
-			_sq_field_undo(doc, d, tl, ch)
-			im.SameLine()
-			im.SetNextItemWidth(70)
-			ch = im.DragFloat("##c_speed", &c.speed, 0.01, 0, 0, "x%.2f")
-			im.SetItemTooltip("Speed (0 = 1)")
-			_sq_field_undo(doc, d, tl, ch)
-			im.SameLine()
-			// The clip's payload asset, filtered per track kind.
-			ext := track.kind == "animation" ? "anim" : track.kind == "audio" ? "mp3,wav,ogg" : ""
-			if ext != "" {
-				sess := undo.edit_session_begin({undo.edit_target_asset(doc.guid, doc.data.id)}, "Clip Asset")
-				before := c.asset
-				inspector.current_field_ext_filter = ext
-				im.SetNextItemWidth(220)
-				if drawer := inspector.resolve_property_drawer(typeid_of(engine.Asset_GUID)); drawer != nil {
-					drawer(&c.asset, typeid_of(engine.Asset_GUID), "##c_asset")
-				}
-				inspector.current_field_ext_filter = ""
-				changed := c.asset != before
-				undo.edit_session_end(&sess)
-				if changed do _sq_mark_edited(doc, d, tl)
-				im.SameLine()
-			}
-			if im.SmallButton("Delete") {
-				_sq_edit_begin(doc)
-				delete(c.name)
-				ordered_remove(&track.clips, _sq.sel_clip)
-				_sq_edit_commit(doc, d, tl)
-				_sq.sel_clip = -1
+	// Keyboard: Delete/Backspace removes the selected clip — unless a text
+	// field owns the keyboard.
+	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !im.GetIO().WantTextInput {
+		if (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) &&
+		   _sq.sel_track >= 0 && _sq.sel_track < len(tl.tracks) {
+			if _sq.sel_clip >= 0 && _sq.sel_clip < len(tl.tracks[_sq.sel_track].clips) {
+				_sq_delete_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
 			}
 		}
+	}
+
+	// --- Inspector pane: the selected clip's fields, one per row -----------------
+	im.SameLine(0, 0)
+	_sq_splitter("##sq_split_r", true, &_sq.inspector_w, total_w - _sq.legend_w)
+	im.SameLine(0, 0)
+	if im.BeginChild("##sq_inspector", im.Vec2{0, body_h}, {.Borders}) {
+		_sq_inspector_pane(doc, d, tl)
+	}
+	im.EndChild()
+}
+
+// The selected clip's properties, stacked vertically like the object
+// inspector — the sequencer's own inspector pane.
+@(private = "file")
+_sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
+	if _sq.sel_track < 0 || _sq.sel_track >= len(tl.tracks) {
+		im.TextDisabled("No selection.")
+		im.TextWrapped("Click a track row or clip. Double-click empty row space to add a clip.")
+		return
+	}
+	track := &tl.tracks[_sq.sel_track]
+	{
+		im.SeparatorText("Track")
+		im.Text("%s", fmt.ctprintf("%s (%s)", len(track.name) > 0 ? track.name : track.kind, track.kind))
+		muted := track.muted
+		if im.Checkbox("Muted", &muted) {
+			_sq_edit_begin(doc)
+			track.muted = muted
+			_sq_edit_commit(doc, d, tl)
+		}
+		im.Text("%d clips", i32(len(track.clips)))
+	}
+	if _sq.sel_clip < 0 || _sq.sel_clip >= len(track.clips) {
+		im.SeparatorText("Clip")
+		im.TextDisabled("No clip selected.")
+		return
+	}
+	{
+		c := &track.clips[_sq.sel_clip]
+		im.SeparatorText("Clip")
+
+		// The clip's name — what the marker hook fires with, and the block's
+		// label. The buffer reloads when the selection changes, the document
+		// takes the value on commit (one undo step).
+		if _sq_clip_name_for != {_sq.sel_track, _sq.sel_clip} {
+			_sq_clip_name_for = {_sq.sel_track, _sq.sel_clip}
+			_sq_buf_set(_sq_clip_name_buf[:], c.name)
+		}
+		im.SetNextItemWidth(-1)
+		im.InputTextWithHint("##c_name", "Name", cstring(raw_data(_sq_clip_name_buf[:])), len(_sq_clip_name_buf))
+		if im.IsItemDeactivatedAfterEdit() {
+			_sq_edit_begin(doc)
+			delete(c.name)
+			c.name = strings.clone(_sq_buf_get(_sq_clip_name_buf[:]))
+			_sq_edit_commit(doc, d, tl)
+		}
+
+		row :: proc(label: cstring) {
+			im.TextUnformatted(label)
+			im.SameLine(90)
+			im.SetNextItemWidth(-1)
+		}
+		row("Start")
+		_sq_field_undo(doc, d, tl, im.DragFloat("##c_start", &c.start, 0.02, 0, 0, "%.2f s"))
+		row("Duration")
+		_sq_field_undo(doc, d, tl, im.DragFloat("##c_dur", &c.duration, 0.02, 0, 0, "%.2f s"))
+		row("Ease In")
+		_sq_field_undo(doc, d, tl, im.DragFloat("##c_ein", &c.ease_in, 0.01, 0, 0, "%.2f s"))
+		row("Ease Out")
+		_sq_field_undo(doc, d, tl, im.DragFloat("##c_eout", &c.ease_out, 0.01, 0, 0, "%.2f s"))
+		row("Speed")
+		_sq_field_undo(doc, d, tl, im.DragFloat("##c_speed", &c.speed, 0.01, 0, 0, "x%.2f"))
+		im.SetItemTooltip("0 behaves as 1")
+
+		// The clip's payload asset, filtered per track kind.
+		ext := track.kind == "animation" ? "anim" : track.kind == "audio" ? "mp3,wav,ogg" : ""
+		if ext != "" {
+			row("Asset")
+			sess := undo.edit_session_begin({undo.edit_target_asset(doc.guid, doc.data.id)}, "Clip Asset")
+			before := c.asset
+			inspector.current_field_ext_filter = ext
+			if drawer := inspector.resolve_property_drawer(typeid_of(engine.Asset_GUID)); drawer != nil {
+				drawer(&c.asset, typeid_of(engine.Asset_GUID), "##c_asset")
+			}
+			inspector.current_field_ext_filter = ""
+			changed := c.asset != before
+			undo.edit_session_end(&sess)
+			if changed do _sq_mark_edited(doc, d, tl)
+		}
+
+		im.Spacing()
+		if im.Button("Duplicate", {-1, 0}) do _sq_duplicate_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
+		if im.Button("Delete", {-1, 0}) do _sq_delete_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
 	}
 }
 
