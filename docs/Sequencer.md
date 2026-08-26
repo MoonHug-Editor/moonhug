@@ -14,7 +14,7 @@ packages/sequencer/                ← knows only the engine
 packages/animation/track_animation.odin  ← "animation" track (owns its graph)
 packages/audio/track_audio.odin          ← "audio" track
 packages/particles/track_particles.odin  ← "particles" track
-editor/view_sequencer.odin               ← the window (imports only sequencer)
+packages/sequencer/editor/view_sequencer.odin ← the window
 ```
 
 Every track kind — animation included — comes from the registry, so the
@@ -75,8 +75,10 @@ Feature-package kinds:
 
 ## Sequencer window
 
-`editor/view_sequencer.odin` (Window/Sequencer), laid out after ImGuizmo's
-ImSequencer. Targets the selection like the Animation window: the active
+`packages/sequencer/editor/view_sequencer.odin` (Window/Sequencer), laid out
+after ImGuizmo's ImSequencer — it lives in the package, reading the
+selection through `engine.inspector_active_selection()` and bracketing its
+preview through the `editor/preview` hooks (docs/Plugins.md). Targets the selection like the Animation window: the active
 transform or its nearest ancestor with a PlayableDirector.
 
 - Toolbar: Preview toggle, rewind, Play/Pause, time / duration, Save, Add
@@ -92,8 +94,9 @@ transform or its nearest ancestor with a PlayableDirector.
 - Edits target the timeline's asset document with whole-document undo
   sessions, sync into the runtime cache (`timeline_preview`, which rebuilds
   playing directors), and Save writes the file.
-- Preview: `sequencer_preview_apply/restore` bracket the scene/game render in
-  main.odin like the animation scrub preview — poses restore through the
+- Preview: `sequencer_preview_apply/restore` are registered as an
+  `editor/preview` hook pair, bracketing the scene/game render like the
+  animation scrub preview — poses restore through the
   director's binding defaults, activation flips are captured and restored per
   frame, particles reset and audio stops when the preview ends.
 

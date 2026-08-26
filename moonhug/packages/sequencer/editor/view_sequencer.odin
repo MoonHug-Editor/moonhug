@@ -1,4 +1,4 @@
-package editor
+package sequencer_editor
 
 // Sequencer window (docs/Sequencer.md) — Unity's Timeline window on the
 // director scrub path, laid out after ImGuizmo's ImSequencer: a legend
@@ -7,7 +7,8 @@ package editor
 // selected-clip strip below.
 //
 // TARGETS the selection like the Animation window: the active transform or
-// its nearest ancestor with a PlayableDirector. Edits go to the timeline's
+// its nearest ancestor with a PlayableDirector, read through the
+// UserContext inspector channel (the editor root publishes it per frame). Edits go to the timeline's
 // ASSET DOCUMENT (inspector.asset_doc_get) with whole-document undo
 // sessions, then sync into the runtime cache (timeline_preview) so playing
 // directors and the preview pick them up; Save writes the file.
@@ -23,12 +24,13 @@ import "core:math"
 import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "../engine"
-import ser "../engine/serialization"
+import engine "moonhug:engine"
+import ser "moonhug:engine/serialization"
 import seq "moonhug:packages/sequencer"
-import "inspector"
-import "undo"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/preview"
 
 _SQ_LEGEND_W :: f32(230)
 _SQ_ROW_H :: f32(26)
@@ -64,7 +66,7 @@ _sq_session: undo.Edit_Session
 @(private = "file")
 _sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^seq.PlayableDirector) {
 	w := engine.ctx_world()
-	tH := sel_scene_active()
+	tH := engine.inspector_active_selection()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if _, comp := engine.transform_get_comp(tH, seq.PlayableDirector); comp != nil {
 			return tH, comp
@@ -121,6 +123,11 @@ _sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: 
 _sq_binding_type :: proc(kind: string) -> string {
 	if desc, ok := seq.track_desc(kind); ok do return desc.binding_type
 	return ""
+}
+
+@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+sequencer_preview_install :: proc() {
+	preview.register({apply = sequencer_preview_apply, restore = sequencer_preview_restore})
 }
 
 @(menu_item={path="Window/Sequencer", shortcut=""})

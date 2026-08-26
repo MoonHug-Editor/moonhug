@@ -36,6 +36,12 @@ InspectorState :: struct {
     readonly_depth:        int,
     nested_host_tH:        Transform_Handle,
     nested_local_id:       Local_ID,
+    // The scene selection's active transform, published once per frame by
+    // the editor root. The READ side of the pending_select_tH channel below:
+    // package editor windows (sequencer, animation) target the selection
+    // without importing the editor root. {} means nothing selected; readers
+    // pool-validate, so a handle that died mid-frame is harmless.
+    active_scene_tH:       Transform_Handle,
     // Cross-package selection request: subpackages (e.g. inspector) post a
     // transform here; the editor's hierarchy view picks it up next frame and
     // applies it to its own selection state. {} means "no pending request".
@@ -108,6 +114,20 @@ inspector_get_nested_local_id :: proc() -> Local_ID {
     uc := ctx_get()
     if uc == nil do return 0
     return uc.inspector.nested_local_id
+}
+
+// Publishes the scene selection's active transform. The editor root calls
+// this once per frame; package editor windows read it.
+inspector_set_active_selection :: proc(tH: Transform_Handle) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.active_scene_tH = tH
+}
+
+inspector_active_selection :: proc() -> Transform_Handle {
+    uc := ctx_get()
+    if uc == nil do return {}
+    return uc.inspector.active_scene_tH
 }
 
 // Posts a cross-package "select this transform" request. The editor's

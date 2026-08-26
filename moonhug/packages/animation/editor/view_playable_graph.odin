@@ -1,4 +1,4 @@
-package editor
+package animation_editor
 
 // Playable Graph window — the node canvas's first client (docs/
 // PlayableGraph.md step 7): a READ-ONLY visualizer of the selected Animation
@@ -18,8 +18,9 @@ package editor
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "menu"
-import engine "../engine"
+import "moonhug:editor/menu"
+import nc "moonhug:editor/node_canvas"
+import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
 
 @(private = "file") _PG_COL_W :: f32(230) // one depth rank
@@ -27,7 +28,7 @@ import anim "moonhug:packages/animation"
 
 @(private = "file")
 _pg: struct {
-	cv:  Node_Canvas,
+	cv:  nc.Node_Canvas,
 	pos: map[int]im.Vec2, // node id -> canvas position (drag offsets live here)
 	sig: u64, // structure signature the current layout was computed for
 }
@@ -74,10 +75,10 @@ draw_playable_graph_view :: proc() {
 
 	_pg_layout(g, u64(uintptr(engine.Handle(owner).index)))
 
-	if canvas_begin(&_pg.cv, "##pg_canvas") {
+	if nc.canvas_begin(&_pg.cv, "##pg_canvas") {
 		_pg_draw(g, live)
 	}
-	canvas_end(&_pg.cv)
+	nc.canvas_end(&_pg.cv)
 }
 
 // The graph the component builds when it plays, from authored data alone:
@@ -230,12 +231,12 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		for inp, ii in n.inputs {
 			ci := int(inp.node) - 1
 			if ci < 0 || ci >= len(g.nodes) || !g.nodes[ci].alive do continue
-			from := canvas_port_out(cv, _pg.pos[ci + 1], len(descs[ci].lines))
-			to := canvas_port_in(cv, _pg.pos[id], len(descs[i].lines), ii, len(n.inputs))
+			from := nc.canvas_port_out(cv, _pg.pos[ci + 1], len(descs[ci].lines))
+			to := nc.canvas_port_in(cv, _pg.pos[id], len(descs[i].lines), ii, len(n.inputs))
 			alpha := live ? 0.25 + 0.75 * clamp(inp.weight, 0, 1) : 1
 			col := im.GetColorU32(.Text, alpha)
 			label := live ? fmt.ctprintf("%.2f", inp.weight) : nil
-			canvas_link(cv, from, to, col, 1 + (live ? clamp(inp.weight, 0, 1) : 0), label)
+			nc.canvas_link(cv, from, to, col, 1 + (live ? clamp(inp.weight, 0, 1) : 0), label)
 		}
 	}
 
@@ -243,7 +244,7 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		if !n.alive do continue
 		id := i + 1
 		pos := _pg.pos[id]
-		canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].lines, len(n.inputs), id != int(g.root))
+		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].lines, len(n.inputs), id != int(g.root))
 		_pg.pos[id] = pos
 	}
 }

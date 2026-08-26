@@ -23,6 +23,30 @@ per runnable package with its `__update` / `__fixed_update`. That is how the
 editor's Simulate (docs/Simulate.md) knows which game to tick, and what its Sim
 Host dropdown lists.
 
+## Editor window seams
+
+A package editor window needs three things the editor root used to own; each
+is a subpackage a package `editor/` may import:
+
+- **The selection** — `engine.inspector_active_selection()` returns the
+  scene selection's active transform. The editor root publishes it once per
+  frame (`inspector_set_active_selection`); it is the read side of the
+  `UserContext` inspector channel that already carried `pending_select_tH`
+  the other way. Readers pool-validate, so a handle that dies mid-frame is
+  harmless.
+- **Frame hooks** (`editor/preview`) — `register_view` for a docked view the
+  root draws each frame (the window owns its own `menu.show_*` flag), and
+  `register` for a SCRUB PREVIEW pair: `apply` poses the world right before
+  the scene/game render, `restore` puts it back right after, so saves, undo
+  and the inspector always see authored values. Restores run in reverse
+  registration order.
+- **Shared widgets** — `editor/node_canvas` (pan/zoom node graph),
+  `editor/inspector`, `editor/undo`, `editor/window`, `editor/menu`.
+
+With those, a window lives entirely in its package: the animation, playable
+graph and sequencer windows all moved out of the editor root this way, and
+`editor/main.odin` imports no feature package.
+
 ## Folder structure
 
 ```

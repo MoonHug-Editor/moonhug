@@ -1,4 +1,4 @@
-package editor
+package animation_editor
 
 // Animation window — Unity's Animation window on the PlayableGraph scrub path
 // (docs/PlayableGraph.md steps 5+6): scrub preview plus dopesheet and curve
@@ -28,12 +28,13 @@ import "core:math/linalg"
 import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "../engine"
+import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
-import ser "../engine/serialization"
-import "inspector"
-import "menu"
-import "undo"
+import ser "moonhug:engine/serialization"
+import "moonhug:editor/inspector"
+import "moonhug:editor/menu"
+import "moonhug:editor/undo"
+import "moonhug:editor/preview"
 
 @(private = "file") _ANIM_LEFT_W :: f32(200) // property column
 @(private = "file") _ANIM_RULER_H :: f32(22)
@@ -78,6 +79,32 @@ _pv: struct {
 	sync:      bool, // document edited this frame -> push to the clip cache
 }
 
+@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+animation_preview_install :: proc() {
+	preview.register({apply = animation_preview_apply, restore = animation_preview_restore})
+	preview.register_view({draw = _animation_views_draw})
+}
+
+// Both animation views in one entry: visibility is the menu's persisted
+// flags, and the window that is CLOSED must still stop its preview.
+@(private = "file")
+_animation_views_draw :: proc() {
+	if menu.show_animation {
+		draw_animation_view()
+	} else {
+		animation_preview_stop()
+	}
+	if menu.show_playable_graph {
+		draw_playable_graph_view()
+	}
+}
+
+@(phase={key=engine.Phase.EditorShutdown, order=1, mode=Editor})
+animation_views_shutdown :: proc() {
+	shutdown_playable_graph_view()
+	shutdown_animation_view()
+}
+
 shutdown_animation_view :: proc() {
 	_pv_teardown()
 }
@@ -120,7 +147,7 @@ _pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^anim.Playable_Grap
 @(private)
 _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	w := engine.ctx_world()
-	tH := sel_scene_active()
+	tH := engine.inspector_active_selection()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if _, comp := engine.transform_get_comp(tH, anim.Animation); comp != nil {
 			return tH, comp

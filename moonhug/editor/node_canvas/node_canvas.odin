@@ -1,6 +1,8 @@
-package editor
+package node_canvas
 
-// Shared node-graph canvas (docs/PlayableGraph.md, Graph UI): pan/zoom grid,
+// Shared node-graph canvas (docs/PlayableGraph.md, Graph UI) — an editor
+// subpackage like inspector/menu/undo, so package editors can draw with it:
+// pan/zoom grid,
 // node chrome with ports, bezier edge routing, node dragging and selection.
 // Strictly presentation and interaction — no document model. Each client
 // (the PlayableGraph visualizer today; Controller/ShaderGraph/VfxGraph

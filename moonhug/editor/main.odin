@@ -14,6 +14,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/preview"
 import "../engine/serialization"
 import "../engine/registration"
 import "core:os"
@@ -147,6 +148,7 @@ main :: proc() {
     defer simulate_shutdown()
     _register_editor_windows() // plugin @(editor_window) declarations
     defer wnd.shutdown()
+    defer preview.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs
     defer settings_shutdown()
     defer thumbnails_shutdown()
@@ -181,6 +183,12 @@ main :: proc() {
 
         if !gfx.frame_begin() do continue
         progress_overlay_frame_scope(true)
+
+        // Publish the selection for package editor windows (the read side of
+        // the UserContext inspector channel — engine/user_context.odin).
+        // Once per frame rather than at every mutation site: selection moves
+        // from clicks, picking, pending-select and undo restore alike.
+        engine.inspector_set_active_selection(sel_scene_active())
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
@@ -236,21 +244,14 @@ main :: proc() {
             draw_hierarchy_view()
         }
 
-        if menu.show_animation {
-            draw_animation_view()
-        } else {
-            animation_preview_stop()
-        }
-
-        if menu.show_playable_graph {
-            draw_playable_graph_view()
-        }
+        // Package editor views (animation, playable graph, ...) — each owns
+        // its own visibility flag (editor/preview).
+        preview.draw_views()
 
         // The scrub preview poses the world ONLY for the scene/game render:
         // apply here, restore right after, so every other consumer of the
         // world this frame (saves, undo, inspector) sees authored values.
-        animation_preview_apply()
-        sequencer_preview_apply()
+        preview.apply_all()
         if menu.show_scene {
             draw_scene_view()
         }
@@ -258,8 +259,7 @@ main :: proc() {
         if menu.show_game {
             draw_game_view()
         }
-        sequencer_preview_restore()
-        animation_preview_restore()
+        preview.restore_all()
 
         if menu.show_input_debug {
             draw_input_debug()
@@ -417,8 +417,6 @@ draw_pending_scene_overlay :: proc() {
 @(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
-    shutdown_playable_graph_view()
-    shutdown_animation_view()
     shutdown_game_view()
     shutdown_scene_view()
     engine.texture_cache_shutdown()
