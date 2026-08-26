@@ -6,32 +6,37 @@ package particles
 // seed + fixed-step advance to the clip-local time, so a seeded system shows
 // the exact same frame at the same playhead position every scrub.
 //
-// This file is the particles package's only animation-package dependency —
-// the track registers itself, the sequencer never imports particles. Author
+// This file is the particles package's only sequencer dependency — the
+// track registers itself, the sequencer never imports particles. Author
 // track-driven systems with manual_start (and a random_seed for stable
 // scrubbing): the span decides when they play.
 
 import "moonhug:engine"
-import anim "moonhug:packages/animation"
+import seq "moonhug:packages/sequencer"
 
 @(phase={key=ImportersInit, order=4})
 particles_track_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
-	anim.track_register(anim.Track_Desc{kind = "particles", binding_type = "ParticleSystem", tick = _particles_track_tick})
+	seq.track_register(seq.Track_Desc{
+		kind         = "particles",
+		binding_type = "ParticleSystem",
+		tick         = _particles_track_tick,
+		preview_end  = _particles_track_preview_end,
+	})
 }
 
-_particles_track_tick :: proc(ctx: ^anim.Track_Ctx) {
+_particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	if ctx.target.handle.type_key != .ParticleSystem do return
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, ctx.target.handle) do return
 	ps := cast(^ParticleSystem)engine.world_pool_get(w, ctx.target.handle)
 	if ps == nil do return
 
-	active: ^anim.Timeline_Clip
+	active: ^seq.Timeline_Clip
 	for &c in ctx.track.clips {
-		if anim.track_clip_active(ctx, &c) {
+		if seq.track_clip_active(ctx, &c) {
 			active = &c
 			break
 		}
@@ -85,4 +90,17 @@ _scrub_effect :: proc(ps: ^ParticleSystem, out: ^[dynamic]^ParticleSystem) {
 			_scrub_effect(target, out)
 		}
 	}
+}
+
+// The editor's preview stopped: clear the effect it was driving (the bound
+// system and its sub-emitter targets).
+_particles_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
+	if ctx.target.handle.type_key != .ParticleSystem do return
+	w := engine.ctx_world()
+	if !engine.world_pool_valid(w, ctx.target.handle) do return
+	ps := cast(^ParticleSystem)engine.world_pool_get(w, ctx.target.handle)
+	if ps == nil do return
+	list := make([dynamic]^ParticleSystem, context.temp_allocator)
+	_scrub_effect(ps, &list)
+	for e in list do system_reset(e)
 }

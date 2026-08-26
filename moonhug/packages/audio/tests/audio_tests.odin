@@ -14,6 +14,7 @@ import "core:testing"
 import "moonhug:engine"
 import "moonhug:engine_editor/asset_pipeline"
 import anim "moonhug:packages/animation"
+import seq "moonhug:packages/sequencer"
 import audio "moonhug:packages/audio"
 import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
@@ -222,8 +223,8 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	audio.mixer_init_headless()
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	anim.timeline_cache_init()
-	defer anim.timeline_cache_shutdown()
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
 	audio.audio_track_init()
 
 	src_dir :: "moonhug/tests/fixtures/_audio_track_tmp"
@@ -258,37 +259,37 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	src.pitch = 1
 	src.play_on_awake = false
 
-	tl := anim.Timeline{duration = 2}
-	tl.tracks = make([dynamic]anim.Timeline_Track)
-	track := anim.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
-	track.clips = make([dynamic]anim.Timeline_Clip)
-	append(&track.clips, anim.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
+	tl := seq.Timeline{duration = 2}
+	tl.tracks = make([dynamic]seq.Timeline_Track)
+	track := seq.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
+	track.clips = make([dynamic]seq.Timeline_Clip)
+	append(&track.clips, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
 	append(&tl.tracks, track)
 	tl_guid: engine.Asset_GUID
 	tl_guid[0] = 0xDD
-	anim.timeline_cache[tl_guid] = tl
+	seq.timeline_cache[tl_guid] = tl
 
 	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
-	d := cast(^anim.PlayableDirector)draw_
+	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 	d.wrap = .Once
 	d.timeline = {guid = tl_guid}
-	append(&d.bindings, anim.Track_Binding{track = 0, target = {handle = owned.handle}})
+	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = owned.handle}})
 
 	// Before the span: silent.
-	for _ in 0 ..< 3 do anim.director_tick(d, 0.1) // t = 0.3
+	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
 	testing.expect(t, !audio.audio_is_playing(src), "silent before the span")
 
 	// Crossing the start plays the clip's asset on the source.
-	for _ in 0 ..< 4 do anim.director_tick(d, 0.1) // t = 0.7
+	for _ in 0 ..< 4 do seq.director_tick(d, 0.1) // t = 0.7
 	testing.expect(t, audio.audio_is_playing(src), "span start must play")
 	testing.expect(t, src.clip == clip_guid, "the clip's asset lands on the source")
 
 	// Leaving the span stops it.
-	for _ in 0 ..< 10 do anim.director_tick(d, 0.1) // t = 1.7
+	for _ in 0 ..< 10 do seq.director_tick(d, 0.1) // t = 1.7
 	testing.expect(t, !audio.audio_is_playing(src), "leaving the span must stop")
 
 	// Scrubbing is silent.
-	anim.director_set_time(d, 0.7)
+	seq.director_set_time(d, 0.7)
 	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
 }

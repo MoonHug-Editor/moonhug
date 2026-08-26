@@ -1,4 +1,4 @@
-package animation
+package sequencer
 
 // PlayableDirector: plays a Timeline on scene objects — Unity's component of
 // the same name. The ASSET owns structure; the director owns the instance
@@ -11,9 +11,9 @@ package animation
 
 import "moonhug:engine"
 
-// One track's scene target. Animation tracks bind through the director's
-// OWNER transform (clip channel paths resolve under it); registry tracks
-// (activation, audio, ...) use this target.
+// One track's scene target. A track kind declares what it binds through its
+// Track_Desc.binding_type ("" = none — the animation track resolves channel
+// paths under the director's owner instead).
 Track_Binding :: struct {
 	track:  i32, // index into the timeline's tracks
 	target: engine.Ref_Local,
@@ -22,12 +22,6 @@ Track_Binding :: struct {
 Timeline_Wrap :: enum u8 {
 	Once,
 	Loop,
-}
-
-// Live per-animation-track graph nodes.
-Track_Nodes :: struct {
-	mixer: Playable_Handle,
-	clips: [dynamic]Playable_Handle,
 }
 
 @(component)
@@ -41,14 +35,15 @@ PlayableDirector :: struct {
 	manual_start: bool, // true = wait for director_play (inverse play-on-awake)
 	bindings:     [dynamic]Track_Binding,
 
-	// Live state — never serialized, never inspected.
-	time:        f32 `json:"-" inspect:"-"`,
-	prev_time:   f32 `json:"-" inspect:"-"`,
-	playing:     bool `json:"-" inspect:"-"`,
-	started:     bool `json:"-" inspect:"-"`,
-	built:       bool `json:"-" inspect:"-"`,
-	output:      Playable_Output `json:"-" inspect:"-"`,
-	track_nodes: [dynamic]Track_Nodes `json:"-" inspect:"-"`,
+	// Live state — never serialized, never inspected. `track_states` holds
+	// one registry-owned opaque state per track (built by Track_Desc.build,
+	// freed by Track_Desc.destroy).
+	time:         f32 `json:"-" inspect:"-"`,
+	prev_time:    f32 `json:"-" inspect:"-"`,
+	playing:      bool `json:"-" inspect:"-"`,
+	started:      bool `json:"-" inspect:"-"`,
+	built:        bool `json:"-" inspect:"-"`,
+	track_states: [dynamic]rawptr `json:"-" inspect:"-"`,
 }
 
 reset_PlayableDirector :: proc(d: ^PlayableDirector) {
@@ -58,7 +53,5 @@ reset_PlayableDirector :: proc(d: ^PlayableDirector) {
 
 cleanup_PlayableDirector :: proc(d: ^PlayableDirector) {
 	delete(d.bindings)
-	for &tn in d.track_nodes do delete(tn.clips)
-	delete(d.track_nodes)
-	playable_output_destroy(&d.output)
+	director_teardown(d)
 }

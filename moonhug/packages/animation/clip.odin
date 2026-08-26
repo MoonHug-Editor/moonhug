@@ -68,10 +68,6 @@ _animation_clip_cache_ready: bool
 animation_package_init :: proc() {
 	if !_animation_clip_cache_ready do animation_clip_cache_init()
 	engine.asset_db_add_path_changed_hook(animation_clip_path_changed)
-	if !_timeline_cache_ready do timeline_cache_init()
-	engine.asset_db_add_path_changed_hook(timeline_path_changed)
-	register_builtin_tracks()
-	engine.register_pointer_type(Track_Binding)
 }
 
 animation_clip_cache_init :: proc() {

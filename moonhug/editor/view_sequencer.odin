@@ -25,9 +25,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import ser "../engine/serialization"
-import anim "moonhug:packages/animation"
-import audio "moonhug:packages/audio"
-import particles "moonhug:packages/particles"
+import seq "moonhug:packages/sequencer"
 import "inspector"
 import "undo"
 import wnd "moonhug:editor/window"
@@ -64,11 +62,11 @@ _sq_session: undo.Edit_Session
 // The PlayableDirector the window targets: the active selection or its
 // nearest ancestor (the Animation window's rule).
 @(private = "file")
-_sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^anim.PlayableDirector) {
+_sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^seq.PlayableDirector) {
 	w := engine.ctx_world()
 	tH := sel_scene_active()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
-		if _, comp := engine.transform_get_comp(tH, anim.PlayableDirector); comp != nil {
+		if _, comp := engine.transform_get_comp(tH, seq.PlayableDirector); comp != nil {
 			return tH, comp
 		}
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
@@ -79,13 +77,13 @@ _sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^anim.PlayableDirect
 }
 
 @(private = "file")
-_sq_doc :: proc(d: ^anim.PlayableDirector) -> (doc: ^inspector.Asset_Doc, tl: ^anim.Timeline) {
+_sq_doc :: proc(d: ^seq.PlayableDirector) -> (doc: ^inspector.Asset_Doc, tl: ^seq.Timeline) {
 	if engine.asset_guid_is_empty(d.timeline.guid) do return nil, nil
 	path, ok := engine.asset_db_get_path(uuid.Identifier(d.timeline.guid))
 	if !ok do return nil, nil
 	dc := inspector.asset_doc_get(path)
-	if dc == nil || dc.data.id != typeid_of(anim.Timeline) do return nil, nil
-	return dc, cast(^anim.Timeline)dc.data.data
+	if dc == nil || dc.data.id != typeid_of(seq.Timeline) do return nil, nil
+	return dc, cast(^seq.Timeline)dc.data.data
 }
 
 // Whole-document undo session, opened on a gesture's start and committed on
@@ -98,7 +96,7 @@ _sq_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
 }
 
 @(private = "file")
-_sq_edit_commit :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl: ^anim.Timeline) {
+_sq_edit_commit :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
 	undo.edit_session_end(&_sq_session)
 	_sq_mark_edited(doc, d, tl)
 }
@@ -106,14 +104,14 @@ _sq_edit_commit :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl
 // Dirty + sync into the runtime cache so directors and the preview play the
 // edited values (the file keeps the last saved state until Save).
 @(private = "file")
-_sq_mark_edited :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl: ^anim.Timeline) {
+_sq_mark_edited :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
 	doc.dirty = true
-	anim.timeline_preview(engine.Asset_GUID(d.timeline.guid), tl^)
+	seq.timeline_preview(engine.Asset_GUID(d.timeline.guid), tl^)
 }
 
 // Drag-widget undo: session on activation, commit on release.
 @(private = "file")
-_sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl: ^anim.Timeline, changed: bool) {
+_sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, changed: bool) {
 	if im.IsItemActivated() do _sq_edit_begin(doc)
 	if changed do _sq_mark_edited(doc, d, tl)
 	if im.IsItemDeactivated() do _sq_edit_commit(doc, d, tl)
@@ -121,8 +119,7 @@ _sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl:
 
 @(private = "file")
 _sq_binding_type :: proc(kind: string) -> string {
-	if kind == "animation" do return ""
-	if desc, ok := anim.track_desc(kind); ok do return desc.binding_type
+	if desc, ok := seq.track_desc(kind); ok do return desc.binding_type
 	return ""
 }
 
@@ -176,7 +173,7 @@ sequencer_window_draw :: proc() {
 	}
 
 	// --- Toolbar -------------------------------------------------------------------
-	dur := max(anim.timeline_duration(tl), 0.001)
+	dur := max(seq.timeline_duration(tl), 0.001)
 	if im.Checkbox("Preview", &_sq.preview) {
 		if !_sq.preview do _sq.playing = false
 	}
@@ -206,8 +203,7 @@ sequencer_window_draw :: proc() {
 	im.SameLine()
 	if im.SmallButton("Add Track") do im.OpenPopup("sq_add_track")
 	if im.BeginPopup("sq_add_track") {
-		if im.Selectable("animation") do _sq_add_track(doc, d, tl, "animation")
-		for kind in anim.track_kinds() {
+		for kind in seq.track_kinds() {
 			if im.Selectable(fmt.ctprintf("%s", kind)) do _sq_add_track(doc, d, tl, kind)
 		}
 		im.EndPopup()
@@ -257,7 +253,7 @@ sequencer_window_draw :: proc() {
 			}
 			if im.SmallButton("+") {
 				_sq_edit_begin(doc)
-				append(&track.clips, anim.Timeline_Clip{
+				append(&track.clips, seq.Timeline_Clip{
 					start    = _sq.time,
 					duration = track.kind == "marker" ? 0 : 1,
 					name     = strings.clone("clip"),
@@ -460,19 +456,19 @@ sequencer_window_draw :: proc() {
 }
 
 @(private = "file")
-_sq_binding_slot :: proc(d: ^anim.PlayableDirector, track: i32) -> ^anim.Track_Binding {
+_sq_binding_slot :: proc(d: ^seq.PlayableDirector, track: i32) -> ^seq.Track_Binding {
 	for &b in d.bindings {
 		if b.track == track do return &b
 	}
-	append(&d.bindings, anim.Track_Binding{track = track})
+	append(&d.bindings, seq.Track_Binding{track = track})
 	return &d.bindings[len(d.bindings) - 1]
 }
 
 @(private = "file")
-_sq_add_track :: proc(doc: ^inspector.Asset_Doc, d: ^anim.PlayableDirector, tl: ^anim.Timeline, kind: string) {
+_sq_add_track :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, kind: string) {
 	_sq_edit_begin(doc)
-	track := anim.Timeline_Track{kind = strings.clone(kind), name = strings.clone(kind)}
-	track.clips = make([dynamic]anim.Timeline_Clip)
+	track := seq.Timeline_Track{kind = strings.clone(kind), name = strings.clone(kind)}
+	track.clips = make([dynamic]seq.Timeline_Clip)
 	append(&tl.tracks, track)
 	_sq_edit_commit(doc, d, tl)
 }
@@ -512,16 +508,16 @@ sequencer_preview_apply :: proc() {
 		_sq_preview_end()
 		return
 	}
-	_, d := engine.transform_get_comp(_sq.dir_owner, anim.PlayableDirector)
+	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	if d == nil {
 		_sq_preview_end()
 		return
 	}
-	tl, ok := anim.timeline_load(engine.Asset_GUID(d.timeline.guid))
+	tl, ok := seq.timeline_load(engine.Asset_GUID(d.timeline.guid))
 	if !ok do return
 
 	if _sq.playing {
-		dur := max(anim.timeline_duration(tl), 0.001)
+		dur := max(seq.timeline_duration(tl), 0.001)
 		_sq.time += im.GetIO().DeltaTime
 		if _sq.time >= dur do _sq.time = 0
 	}
@@ -538,8 +534,7 @@ sequencer_preview_apply :: proc() {
 			append(&_sq.act_values, t.is_active)
 		}
 	}
-	anim.animation_binding_refresh_defaults(&d.output.binding)
-	anim.director_set_time(d, _sq.time)
+	seq.director_set_time(d, _sq.time)
 	_sq.applied = true
 }
 
@@ -547,8 +542,10 @@ sequencer_preview_restore :: proc() {
 	if !_sq.applied do return
 	_sq.applied = false
 	w := engine.ctx_world()
-	_, d := engine.transform_get_comp(_sq.dir_owner, anim.PlayableDirector)
-	if d != nil do anim.animation_binding_write_defaults(&d.output.binding)
+	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
+	// Track kinds restore whatever they drove (poses, activation, audio,
+	// particles) — the window knows no kind by name.
+	if d != nil do seq.director_preview_end(d)
 	for h, i in _sq.act_targets {
 		if !engine.pool_valid(&w.transforms, h) do continue
 		if t := engine.pool_get(&w.transforms, h); t != nil {
@@ -557,35 +554,20 @@ sequencer_preview_restore :: proc() {
 	}
 }
 
-// The preview stops being valid (target gone, window retargeted): quiet the
-// stateful tracks it drove.
+// The preview stops being valid (target gone, window retargeted): let every
+// track quiet what it was driving.
 @(private = "file")
 _sq_preview_end :: proc() {
 	_sq.preview = false
 	_sq.playing = false
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, engine.Handle(_sq.dir_owner)) do return
-	_, d := engine.transform_get_comp(_sq.dir_owner, anim.PlayableDirector)
-	if d == nil do return
-	tl, ok := anim.timeline_load(engine.Asset_GUID(d.timeline.guid))
-	if !ok do return
-	for &track, ti in tl.tracks {
-		b := _sq_binding_of(d, i32(ti))
-		switch track.kind {
-		case "particles":
-			if b.handle.type_key == .ParticleSystem && engine.world_pool_valid(w, b.handle) {
-				particles.system_reset(cast(^particles.ParticleSystem)engine.world_pool_get(w, b.handle))
-			}
-		case "audio":
-			if b.handle.type_key == .AudioSource && engine.world_pool_valid(w, b.handle) {
-				audio.audio_stop(cast(^audio.AudioSource)engine.world_pool_get(w, b.handle))
-			}
-		}
-	}
+	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
+	if d != nil do seq.director_preview_end(d)
 }
 
 @(private = "file")
-_sq_binding_of :: proc(d: ^anim.PlayableDirector, track: i32) -> engine.Ref_Local {
+_sq_binding_of :: proc(d: ^seq.PlayableDirector, track: i32) -> engine.Ref_Local {
 	for &b in d.bindings {
 		if b.track == track do return b.target
 	}

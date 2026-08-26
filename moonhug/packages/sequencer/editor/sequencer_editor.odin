@@ -1,6 +1,6 @@
-package animation_editor
+package sequencer_editor
 
-// Editor-only half of the animation package. The PlayableDirector wrapper
+// Editor-only half of the sequencer package. The PlayableDirector wrapper
 // adds the Timeline picker row (PPtr has no generic drawer — the picker
 // edits the guid, ext-filtered to .timeline) above the default rows.
 // Never compiled into the app.
@@ -9,11 +9,11 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:engine"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
-import anim "moonhug:packages/animation"
+import seq "moonhug:packages/sequencer"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-animation_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(anim.PlayableDirector), _director_inspector)
+sequencer_inspector_install :: proc() {
+	inspector.add_component_wrapper(typeid_of(seq.PlayableDirector), _director_inspector)
 }
 
 // Whole-component diff session for the picker (it commits from a popup with
@@ -28,7 +28,7 @@ _session_begin :: proc() -> undo.Edit_Session {
 }
 
 _director_inspector :: proc(ctx: ^inspector.Component_Ctx) {
-	d := cast(^anim.PlayableDirector)ctx.ptr
+	d := cast(^seq.PlayableDirector)ctx.ptr
 
 	im.PushIDStr("timeline", nil)
 	sess := _session_begin()

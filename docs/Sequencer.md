@@ -5,12 +5,21 @@ Unity's Timeline: a Timeline asset holds tracks of clips on a shared time
 axis, a PlayableDirector component plays it on scene objects.
 
 ```
-packages/animation/
+packages/sequencer/                ← knows only the engine
   timeline.odin                    ← Timeline asset + Track_Desc registry
   component_PlayableDirector.odin  ← the player component
-  director.odin                    ← build + tick + scrub
-  playable_graph.odin              ← evaluation (Playable_Output owns a graph)
+  director.odin                    ← per-track build/tick/teardown
+  editor/sequencer_editor.odin     ← director inspector (Timeline picker)
+
+packages/animation/track_animation.odin  ← "animation" track (owns its graph)
+packages/audio/track_audio.odin          ← "audio" track
+packages/particles/track_particles.odin  ← "particles" track
+editor/view_sequencer.odin               ← the window (imports only sequencer)
 ```
+
+Every track kind — animation included — comes from the registry, so the
+sequencer package imports no feature package and each feature package's only
+sequencer dependency is its one track file.
 ---
 
 ## Timeline asset
@@ -33,30 +42,33 @@ sequencer window's preview and a future Control Track ride the same path.
 
 ## Tracks
 
-`animation` is built into the director: per-track mixer under a layer-mixer
-root, one clip node per timeline clip, weights from the ease ramps (overlaps
-crossfade through mixer normalization), source clips shorter than their
-timeline clip wrap by their own wrap mode. Channel paths resolve under the
-director's owner transform.
+Kinds register with `track_register`. A `Track_Desc` supplies `binding_type`
+(what the track binds — drives the window's picker) and four hooks: `build`
+(once per director+track, returns the kind's own state), `destroy`, `tick`,
+and `preview_end` (quiet whatever the track drove when the editor's preview
+stops). Hooks receive a `Track_Ctx`: the track, its binding, the director's
+owner, the kind's state, the frame's time window (`track_crossed` is the
+wrap-aware crossing test), and a `scrub` flag — stateful tracks reset on
+scrubs instead of firing crossings.
 
-Everything else goes through the Track_Desc registry (`track_register`), so
-packages add track kinds without this package importing them. A registered
-track's `tick` gets a `Track_Ctx`: the track, its binding, the frame's time
-window (`track_crossed` is the wrap-aware crossing test), and a `scrub` flag
-— stateful tracks reset on scrubs instead of firing crossings.
+`animation` (packages/animation/track_animation.odin) keeps its playable
+graph in the track state: a mixer with one clip node per timeline clip,
+weights from the ease ramps (overlaps crossfade through mixer
+normalization), source clips shorter than their timeline clip wrap by their
+own wrap mode. Channel paths resolve under the director's owner transform,
+so the track binds nothing.
 
-Built-in registry tracks: `activation` (the bound transform is active while
-any clip covers the time) and `marker` (zero-duration clips fire
-`timeline_marker_hook` on crossing).
+Built-in kinds (engine vocabulary, so they ship with the package):
+`activation` (the bound transform is active while any clip covers the time)
+and `marker` (zero-duration clips fire `timeline_marker_hook` on crossing).
 
-Package tracks — each package's single animation-package dependency is its
-track file, the sequencer imports neither:
-- `particles` (packages/particles/track_particles.odin): a clip span plays
+Feature-package kinds:
+- `particles`: a clip span plays
   the bound ParticleSystem, leaving it stops it (particles play out).
   Scrubbing replays deterministically — reset + fixed-step advance to the
   clip-local time, exact with a `random_seed`. Author track-driven systems
   with `manual_start`.
-- `audio` (packages/audio/track_audio.odin): crossing a clip's start plays
+- `audio`: crossing a clip's start plays
   the bound AudioSource (the clip's asset replaces the source's clip when
   set), leaving every span stops it, scrubbing is silent. Author
   track-driven sources with `play_on_awake` off.

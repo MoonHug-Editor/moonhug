@@ -1,4 +1,4 @@
-package animation
+package sequencer
 
 // Timeline (docs/Sequencer.md): the sequencer's asset. A timeline is tracks
 // of clips on a shared time axis — Unity's TimelineAsset. The asset owns
@@ -6,11 +6,11 @@ package animation
 // PlayableDirector component as bindings, so one timeline plays on any
 // number of instances.
 //
-// Track kinds cross package boundaries through the Track_Desc registry —
-// the audio and particles packages register their own tracks, this package
-// never imports them. "animation" tracks are built into the director (they
-// need the playable graph); registry tracks get a per-frame tick with the
-// time window and their binding.
+// EVERY track kind — animation included — comes from the Track_Desc
+// registry, so this package imports none of them: the animation, audio and
+// particles packages each register their own. A kind may keep per-director
+// state (the animation track holds its playable graph there), built on the
+// director's first tick and freed with it.
 
 import "base:runtime"
 import "core:encoding/json"
@@ -127,11 +127,13 @@ timeline_path_changed :: proc(path: string) {
 
 // --- Track registry -----------------------------------------------------------------
 
-// What a registered track's tick sees: the time window this frame moved
-// through, and the track's binding from the director.
+// What a registered track's hooks see: the time window this frame moved
+// through, the track's binding from the director, and the kind's own state.
 Track_Ctx :: struct {
 	track:     ^Timeline_Track,
 	target:    engine.Ref_Local, // handle pre-resolved by scene load
+	owner:     engine.Transform_Handle, // the director's transform
+	state:     rawptr, // whatever Track_Desc.build returned
 	prev_time: f32,
 	time:      f32,
 	wrapped:   bool, // the loop wrapped inside this tick
@@ -155,7 +157,16 @@ track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Timeline_Clip) -> bool {
 Track_Desc :: struct {
 	kind:         string,
 	binding_type: string, // component/transform type the track binds ("" = none)
-	tick:         proc(ctx: ^Track_Ctx),
+
+	// Per-director lifecycle. `build` runs once per (director, track) and
+	// returns the kind's own state — nil when it needs none; `destroy` frees
+	// it. `preview_end` quiets whatever the track was driving when the
+	// editor's preview stops (the registry's answer to "the window must not
+	// import every track's package").
+	build:       proc(ctx: ^Track_Ctx) -> rawptr,
+	destroy:     proc(state: rawptr),
+	tick:        proc(ctx: ^Track_Ctx),
+	preview_end: proc(ctx: ^Track_Ctx),
 }
 
 _track_registry: map[string]Track_Desc
@@ -204,15 +215,40 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 
 @(private = "file") _builtin_tracks_registered: bool
 
+// Activation restores the transform's authored state when the preview stops
+// — the editor never leaves an object hidden.
+@(private = "file")
+_activation_preview_end :: proc(ctx: ^Track_Ctx) {
+	w := engine.ctx_world()
+	if !engine.pool_valid(&w.transforms, ctx.target.handle) do return
+	if t := engine.pool_get(&w.transforms, ctx.target.handle); t != nil do t.is_active = true
+}
+
 register_builtin_tracks :: proc() {
 	if _builtin_tracks_registered do return
 	_builtin_tracks_registered = true
-	track_register(Track_Desc{kind = "activation", binding_type = "Transform", tick = _activation_track_tick})
+	track_register(Track_Desc{
+		kind         = "activation",
+		binding_type = "Transform",
+		tick         = _activation_track_tick,
+		preview_end  = _activation_preview_end,
+	})
 	track_register(Track_Desc{kind = "marker", binding_type = "Transform", tick = _marker_track_tick})
 }
 
-// Registered kinds for the sequencer window's add-track menu ("animation" is
-// director-built and not in the registry). Temp-allocated, sorted.
+// ImportersInit is the asset-layer init phase both binaries run — the same
+// slot the animation and audio packages use. Track-owning packages register
+// at a LATER order, so the registry exists when they do.
+@(phase={key=ImportersInit, order=3})
+sequencer_package_init :: proc() {
+	if !_timeline_cache_ready do timeline_cache_init()
+	engine.asset_db_add_path_changed_hook(timeline_path_changed)
+	register_builtin_tracks()
+	engine.register_pointer_type(Track_Binding)
+}
+
+// Every registered kind, for the sequencer window's add-track menu.
+// Temp-allocated, sorted.
 track_kinds :: proc(allocator := context.temp_allocator) -> []string {
 	kinds := make([dynamic]string, allocator)
 	for kind in _track_registry do append(&kinds, kind)
