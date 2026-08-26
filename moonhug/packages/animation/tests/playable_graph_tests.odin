@@ -490,3 +490,50 @@ test_animation_clip_preview_replaces_cache :: proc(t: ^testing.T) {
 	cached2, _ := anim.animation_clip_load(guid)
 	testing.expect(t, abs(cached2.channels[0].values[0].x - 7) < 0.001, "cache copy is deep")
 }
+
+// A two-key linear ramp clip: `prop` goes a -> b over `length`.
+_ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wrap: anim.Animation_Wrap = .Once) -> anim.AnimationClip {
+	clip := anim.AnimationClip{length = length, wrap = wrap}
+	clip.channels = make([dynamic]anim.Animation_Channel)
+	ch := anim.Animation_Channel{path = path}
+	ch.times = make([dynamic]f32)
+	ch.values = make([dynamic][4]f32)
+	append(&ch.times, 0, length)
+	append(&ch.values, a, b)
+	append(&clip.channels, ch)
+	return clip
+}
+
+@(test)
+test_playable_speed_and_done :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	guid := _clip_guid(3)
+	anim.animation_clip_cache[guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+
+	owner := engine.transform_new("Rig")
+	o: anim.Playable_Output
+	anim.playable_output_init(&o, owner)
+	defer anim.playable_output_destroy(&o)
+
+	// speed 2: local time 0.25 samples the clip at 0.5.
+	node := anim.playable_add(&o.graph, anim.Clip_Playable{clip = guid}, speed = 2)
+	o.graph.root = node
+	anim.playable_node(&o.graph, node).time = 0.25
+	anim.playable_output_tick(&o)
+	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expect(t, abs(ot.position.x - 5) < 0.001, "speed 2 must sample at time * 2")
+
+	// Duration and done detection at the scaled time.
+	length, lok := anim.playable_clip_length(&o.graph, node)
+	testing.expect(t, lok && length == 1, "clip length must report")
+	testing.expect(t, !anim.playable_node_done(&o.graph, node), "mid-clip is not done")
+	anim.playable_node(&o.graph, node).time = 0.6 // * speed 2 = 1.2 >= length
+	testing.expect(t, anim.playable_node_done(&o.graph, node), "Once clip past its end is done")
+}

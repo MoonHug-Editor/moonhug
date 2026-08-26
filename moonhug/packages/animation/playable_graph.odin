@@ -67,9 +67,15 @@ Playable_Variant :: union {
 Playable_Node :: struct {
 	alive:   bool,
 	time:    f32, // local time, written by the driver (already wrapped for clips)
-	speed:   f32,
+	speed:   f32, // scales the local time at evaluation: samples read time * speed
 	inputs:  [dynamic]Playable_Input,
 	variant: Playable_Variant,
+}
+
+// The node's local time as evaluation reads it. speed 0 is the zero value of
+// a node built without playable_add — treat it as 1 so such nodes still play.
+playable_node_time :: proc(n: ^Playable_Node) -> f32 {
+	return n.speed != 0 ? n.time * n.speed : n.time
 }
 
 Playable_Graph :: struct {
@@ -142,6 +148,32 @@ playable_set_input_weight :: proc(g: ^Playable_Graph, parent, child: Playable_Ha
 			return
 		}
 	}
+}
+
+// The clip node's clip length in seconds. false for non-clip nodes and
+// unloadable clips.
+playable_clip_length :: proc(g: ^Playable_Graph, h: Playable_Handle) -> (f32, bool) {
+	n := playable_node(g, h)
+	if n == nil do return 0, false
+	c, is_clip := n.variant.(Clip_Playable)
+	if !is_clip do return 0, false
+	clip, ok := animation_clip_load(c.clip)
+	if !ok do return 0, false
+	return clip.length, true
+}
+
+// Whether a Once-wrapped clip node has played past its end (at its scaled
+// local time). Drivers and the director poll this — evaluation stays pure,
+// so there is no callback.
+playable_node_done :: proc(g: ^Playable_Graph, h: Playable_Handle) -> bool {
+	n := playable_node(g, h)
+	if n == nil do return true
+	c, is_clip := n.variant.(Clip_Playable)
+	if !is_clip do return false
+	clip, ok := animation_clip_load(c.clip)
+	if !ok do return true
+	if clip.wrap != .Once do return false
+	return playable_node_time(n) >= clip.length
 }
 
 // --- Pose and binding ---------------------------------------------------------------
@@ -325,10 +357,11 @@ _eval_node :: proc(
 	case Clip_Playable:
 		clip, ok := animation_clip_load(v.clip)
 		if !ok do return
+		t := playable_node_time(n)
 		for &ch in clip.channels {
 			idx, found := b.by_path[ch.target]
 			if !found do continue
-			val := _animation_channel_sample(&ch, n.time)
+			val := _animation_channel_sample(&ch, t)
 			pv := &out[idx]
 			switch ch.path {
 			case .Position: pv.pos = val.xyz; pv.pos_w = 1
@@ -353,7 +386,7 @@ _eval_node :: proc(
 		}
 	case Script_Playable:
 		if scripts != nil {
-			append(scripts, Script_Invocation{script = v, time = n.time, weight = path_weight})
+			append(scripts, Script_Invocation{script = v, time = playable_node_time(n), weight = path_weight})
 		}
 	}
 }
@@ -434,6 +467,36 @@ _pose_blend_over :: proc(out, child: []Pose_Value, layer_w: f32) {
 			o.rot_w = 1
 		}
 	}
+}
+
+// --- Owning a graph outside component_Animation ---------------------------------------
+//
+// The graph + binding pair every driver needs, bundled: the director (and any
+// future owner) holds ONE Playable_Output instead of duplicating
+// component_Animation's init/destroy/evaluate/apply/fire plumbing.
+
+Playable_Output :: struct {
+	graph:   Playable_Graph,
+	binding: Animation_Binding,
+}
+
+playable_output_init :: proc(o: ^Playable_Output, owner: engine.Transform_Handle) {
+	playable_graph_init(&o.graph)
+	animation_binding_init(&o.binding, owner)
+}
+
+playable_output_destroy :: proc(o: ^Playable_Output) {
+	playable_graph_destroy(&o.graph)
+	animation_binding_destroy(&o.binding)
+}
+
+// One full frame: evaluate, apply the pose, fire the collected scripts (after
+// the apply, per the invariant at the top of this file).
+playable_output_tick :: proc(o: ^Playable_Output) {
+	scripts := make([dynamic]Script_Invocation, context.temp_allocator)
+	pose := playable_graph_evaluate(&o.graph, &o.binding, &scripts)
+	animation_pose_apply(&o.binding, pose)
+	playable_scripts_fire(scripts[:])
 }
 
 // --- Output -------------------------------------------------------------------------
