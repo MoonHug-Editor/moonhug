@@ -49,6 +49,18 @@ Built-in registry tracks: `activation` (the bound transform is active while
 any clip covers the time) and `marker` (zero-duration clips fire
 `timeline_marker_hook` on crossing).
 
+Package tracks — each package's single animation-package dependency is its
+track file, the sequencer imports neither:
+- `particles` (packages/particles/track_particles.odin): a clip span plays
+  the bound ParticleSystem, leaving it stops it (particles play out).
+  Scrubbing replays deterministically — reset + fixed-step advance to the
+  clip-local time, exact with a `random_seed`. Author track-driven systems
+  with `manual_start`.
+- `audio` (packages/audio/track_audio.odin): crossing a clip's start plays
+  the bound AudioSource (the clip's asset replaces the source's clip when
+  set), leaving every span stops it, scrubbing is silent. Author
+  track-driven sources with `play_on_awake` off.
+
 ## Playables additions
 
 Node `speed` scales local time at evaluation (`playable_node_time`).

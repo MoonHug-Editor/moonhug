@@ -13,6 +13,7 @@ import "core:strings"
 import "core:testing"
 import "moonhug:engine"
 import "moonhug:engine_editor/asset_pipeline"
+import anim "moonhug:packages/animation"
 import audio "moonhug:packages/audio"
 import audio_editor "moonhug:packages/audio/editor"
 import common "moonhug:tests/common"
@@ -206,4 +207,88 @@ test_audiosource_component :: proc(t: ^testing.T) {
 	testing.expect_value(t, src.play_on_awake, true)
 	testing.expect_value(t, src.loop, false)
 	testing.expect(t, src.clip == {}, "no clip by default")
+}
+
+// The audio timeline track: a clip span starts the bound AudioSource with
+// the clip's asset, leaving the span stops it, scrubbing is silent.
+@(test)
+test_audio_timeline_track :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	audio_editor.audio_importers_init()
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	audio.mixer_init_headless()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.timeline_cache_init()
+	defer anim.timeline_cache_shutdown()
+	audio.audio_track_init()
+
+	src_dir :: "moonhug/tests/fixtures/_audio_track_tmp"
+	wav :: src_dir + "/probe.wav"
+	os.make_directory(src_dir)
+	testing.expect(t, _write_test_wav(wav))
+	defer {
+		audio.clip_cache_shutdown()
+		os.remove(wav)
+		os.remove(wav + ".meta")
+		os.remove(src_dir)
+		_remove_tree("library")
+	}
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
+	Meta :: struct {
+		guid: string,
+	}
+	meta: Meta
+	meta_data, _ := os.read_entire_file(wav + ".meta", context.temp_allocator)
+	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
+	raw_guid, _ := uuid.read(meta.guid)
+	clip_guid := engine.Asset_GUID(raw_guid)
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	owned, raw := engine.transform_add_comp(root, .AudioSource)
+	src := cast(^audio.AudioSource)raw
+	src.enabled = true
+	src.volume = 1
+	src.pitch = 1
+	src.play_on_awake = false
+
+	tl := anim.Timeline{duration = 2}
+	tl.tracks = make([dynamic]anim.Timeline_Track)
+	track := anim.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
+	track.clips = make([dynamic]anim.Timeline_Clip)
+	append(&track.clips, anim.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
+	append(&tl.tracks, track)
+	tl_guid: engine.Asset_GUID
+	tl_guid[0] = 0xDD
+	anim.timeline_cache[tl_guid] = tl
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^anim.PlayableDirector)draw_
+	d.enabled = true
+	d.wrap = .Once
+	d.timeline = {guid = tl_guid}
+	append(&d.bindings, anim.Track_Binding{track = 0, target = {handle = owned.handle}})
+
+	// Before the span: silent.
+	for _ in 0 ..< 3 do anim.director_tick(d, 0.1) // t = 0.3
+	testing.expect(t, !audio.audio_is_playing(src), "silent before the span")
+
+	// Crossing the start plays the clip's asset on the source.
+	for _ in 0 ..< 4 do anim.director_tick(d, 0.1) // t = 0.7
+	testing.expect(t, audio.audio_is_playing(src), "span start must play")
+	testing.expect(t, src.clip == clip_guid, "the clip's asset lands on the source")
+
+	// Leaving the span stops it.
+	for _ in 0 ..< 10 do anim.director_tick(d, 0.1) // t = 1.7
+	testing.expect(t, !audio.audio_is_playing(src), "leaving the span must stop")
+
+	// Scrubbing is silent.
+	anim.director_set_time(d, 0.7)
+	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
 }

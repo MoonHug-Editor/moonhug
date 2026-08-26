@@ -11,6 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
+import anim "moonhug:packages/animation"
 import particles "moonhug:packages/particles"
 import common "moonhug:tests/common"
 
@@ -816,4 +817,71 @@ test_particles_trails :: proc(t: ^testing.T) {
 	ps3.start_lifetime = engine.minmax_constant(100)
 	particles.system_tick(ps3, 0.5)
 	for p3 in ps3.particles do testing.expect(t, !p3.has_trail, "ratio 0 must not trail")
+}
+
+@(test)
+test_particles_control_track :: proc(t: ^testing.T) {
+	tc_mem := new(common.TestCtx)
+	defer free(tc_mem)
+	common.setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer common.teardown(tc_mem)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.timeline_cache_init()
+	defer anim.timeline_cache_shutdown()
+	particles.particles_track_init()
+
+	// A manual-start seeded emitter, driven by a control clip on [0.5, 1.5).
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc_mem.scene, root)
+	owned, raw := engine.transform_add_comp(root, .ParticleSystem)
+	ps := cast(^particles.ParticleSystem)raw
+	ps.enabled = true
+	ps.manual_start = true
+	ps.random_seed = 7
+	ps.rate = 10
+	ps.start_lifetime = engine.minmax_constant(100)
+
+	tl := anim.Timeline{duration = 2}
+	tl.tracks = make([dynamic]anim.Timeline_Track)
+	track := anim.Timeline_Track{kind = strings.clone("particles"), name = strings.clone("fx")}
+	track.clips = make([dynamic]anim.Timeline_Clip)
+	append(&track.clips, anim.Timeline_Clip{start = 0.5, duration = 1})
+	append(&tl.tracks, track)
+	guid: engine.Asset_GUID
+	guid[0] = 0xCC
+	anim.timeline_cache[guid] = tl
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^anim.PlayableDirector)draw_
+	d.enabled = true
+	d.wrap = .Once
+	d.timeline = {guid = guid}
+	append(&d.bindings, anim.Track_Binding{track = 0, target = {handle = owned.handle}})
+
+	// Before the span: the system stays stopped (manual start).
+	for _ in 0 ..< 3 do anim.director_tick(d, 0.1) // t = 0.3
+	particles.system_tick(ps, 0.1)
+	testing.expect_value(t, len(ps.particles), 0)
+
+	// Inside the span the track plays it; the sim tick then emits.
+	for _ in 0 ..< 5 do anim.director_tick(d, 0.1) // t = 0.8
+	testing.expect(t, !ps.stopped, "control span must play the system")
+	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
+	testing.expect(t, len(ps.particles) > 0, "playing system must emit")
+
+	// After the span: stopped again.
+	for _ in 0 ..< 10 do anim.director_tick(d, 0.1) // t = 1.8
+	testing.expect(t, ps.stopped, "leaving the span must stop the system")
+
+	// Scrub to mid-span: deterministic restart-to-time.
+	anim.director_set_time(d, 1.0)
+	testing.expect(t, abs(ps.time - 0.5) < 0.001, "scrub must advance the system to the clip-local time")
+	first := len(ps.particles)
+	testing.expect(t, first >= 4 && first <= 6, "0.5s at rate 10 is ~5 particles")
+	pos0 := ps.particles[0].position
+	anim.director_set_time(d, 1.0) // same playhead — the seeded replay matches
+	testing.expect_value(t, len(ps.particles), first)
+	testing.expect(t, ps.particles[0].position == pos0, "seeded scrub must be deterministic")
 }
