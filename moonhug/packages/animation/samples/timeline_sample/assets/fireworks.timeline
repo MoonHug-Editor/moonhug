@@ -1,15 +1,19 @@
 {
   "__type_guid": "8433ef73-93dd-4ba4-a66e-9c5f09846922",
-  "duration": 4.0,
+  "duration": 5.0,
+  "exposed_names": [
+
+  ],
   "tracks": [
     {
       "kind": "particles",
       "name": "fireworks",
       "muted": false,
+      "exposed": "",
       "clips": [
         {
           "start": 0.5,
-          "duration": 3.0,
+          "duration": 4.4000001,
           "ease_in": 0.0,
           "ease_out": 0.0,
           "speed": 0.0,
@@ -22,6 +26,7 @@
       "kind": "audio",
       "name": "audio",
       "muted": false,
+      "exposed": "",
       "clips": [
         {
           "start": 2.9000001,

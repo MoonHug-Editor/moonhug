@@ -42,7 +42,7 @@ _particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		}
 	}
 
-	if ctx.scrub {
+	if ctx.mode != .Play {
 		// Deterministic restart-to-time: replay the clip-local window in
 		// fixed steps. Editor scrubs only — play mode never sets scrub.
 		// The whole effect co-simulates: sub-emitter targets must age the

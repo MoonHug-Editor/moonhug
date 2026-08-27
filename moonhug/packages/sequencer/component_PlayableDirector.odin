@@ -19,6 +19,15 @@ Track_Binding :: struct {
 	target: engine.Ref_Local,
 }
 
+// One filled exposed slot (Unity's ExposedReference table). The TIMELINE
+// declares slot names (Timeline.exposed_names); the director maps each name
+// to a scene object. A track whose `exposed` names a slot resolves through
+// this table instead of its Track_Binding.
+Exposed_Binding :: struct {
+	name:   string,
+	target: engine.Ref_Local,
+}
+
 Timeline_Wrap :: enum u8 {
 	Once,
 	Loop,
@@ -34,6 +43,7 @@ PlayableDirector :: struct {
 	speed:        f32,  // playback speed, 0 runs at 1
 	manual_start: bool, // true = wait for director_play (inverse play-on-awake)
 	bindings:     [dynamic]Track_Binding,
+	exposed:      [dynamic]Exposed_Binding,
 
 	// Live state — never serialized, never inspected. `track_states` holds
 	// one registry-owned opaque state per track (built by Track_Desc.build,
@@ -53,5 +63,7 @@ reset_PlayableDirector :: proc(d: ^PlayableDirector) {
 
 cleanup_PlayableDirector :: proc(d: ^PlayableDirector) {
 	delete(d.bindings)
+	for &e in d.exposed do delete(e.name)
+	delete(d.exposed)
 	director_teardown(d)
 }

@@ -73,23 +73,23 @@ director_tick :: proc(d: ^PlayableDirector, dt: f32) {
 			}
 		}
 	}
-	_director_evaluate(d, tl, wrapped, scrub = false)
+	_director_evaluate(d, tl, wrapped, .Play)
 }
 
-// Jump to a time and evaluate — the scrub path. Stateful tracks see
-// scrub=true and reset instead of firing crossings.
+// Jump to a time and evaluate — the scrub path (mode .Scrub). Stateful
+// tracks reset and replay instead of firing crossings.
 director_set_time :: proc(d: ^PlayableDirector, time: f32) {
 	tl, ok := timeline_load(engine.Asset_GUID(d.timeline.guid))
 	if !ok do return
 	_director_ensure_built(d, tl)
 	d.prev_time = time
 	d.time = time
-	_director_evaluate(d, tl, wrapped = false, scrub = true)
+	_director_evaluate(d, tl, wrapped = false, mode = .Scrub)
 }
 
 // The editor preview's PLAY advance: evaluation keeps scrub semantics (the
 // world stays a pure function of time — particles replay, poses restore per
-// frame) but crossings are real (ctx.playing), so audio plays live like
+// frame) but crossings are real (mode .Preview_Play), so audio plays live like
 // Unity's Timeline preview. `time` moving backwards is read as the preview
 // loop wrapping — jumps use director_set_time.
 director_preview_step :: proc(d: ^PlayableDirector, time: f32) {
@@ -99,7 +99,7 @@ director_preview_step :: proc(d: ^PlayableDirector, time: f32) {
 	d.prev_time = d.time
 	d.time = time
 	wrapped := time < d.prev_time
-	_director_evaluate(d, tl, wrapped, scrub = true, playing = true)
+	_director_evaluate(d, tl, wrapped, .Preview_Play)
 }
 
 // Quiet every track the director drives — the editor calls it when its
@@ -114,7 +114,7 @@ director_preview_end :: proc(d: ^PlayableDirector, playing := false) {
 	for &track, ti in tl.tracks {
 		desc, has := track_desc(track.kind)
 		if !has || desc.preview_end == nil do continue
-		ctx := _director_ctx(d, tl, &track, i32(ti), scrub = true, playing = playing)
+		ctx := _director_ctx(d, tl, &track, i32(ti), playing ? Track_Mode.Preview_Play : .Scrub)
 		desc.preview_end(&ctx)
 	}
 }
@@ -155,7 +155,7 @@ _director_ensure_built :: proc(d: ^PlayableDirector, tl: ^Timeline) {
 	for &track, ti in tl.tracks {
 		desc, has := track_desc(track.kind)
 		if !has || desc.build == nil do continue
-		ctx := _director_ctx(d, tl, &track, i32(ti), scrub = false)
+		ctx := _director_ctx(d, tl, &track, i32(ti), .Play)
 		d.track_states[ti] = desc.build(&ctx)
 	}
 }
@@ -166,33 +166,31 @@ _director_ctx :: proc(
 	tl: ^Timeline,
 	track: ^Timeline_Track,
 	ti: i32,
-	scrub: bool,
+	mode: Track_Mode,
 	wrapped := false,
-	playing := false,
 ) -> Track_Ctx {
 	state: rawptr
 	if int(ti) < len(d.track_states) do state = d.track_states[ti]
 	return Track_Ctx{
 		track     = track,
-		target    = director_binding(d, ti),
+		target    = director_track_target(d, track, ti),
 		owner     = engine.Transform_Handle(d.owner),
 		state     = state,
 		prev_time = d.prev_time,
 		time      = d.time,
 		wrapped   = wrapped,
 		duration  = timeline_duration(tl),
-		scrub     = scrub,
-		playing   = playing,
+		mode      = mode,
 	}
 }
 
 @(private = "file")
-_director_evaluate :: proc(d: ^PlayableDirector, tl: ^Timeline, wrapped: bool, scrub: bool, playing := false) {
+_director_evaluate :: proc(d: ^PlayableDirector, tl: ^Timeline, wrapped: bool, mode: Track_Mode) {
 	for &track, ti in tl.tracks {
 		if track.muted do continue
 		desc, has := track_desc(track.kind)
 		if !has || desc.tick == nil do continue
-		ctx := _director_ctx(d, tl, &track, i32(ti), scrub, wrapped, playing)
+		ctx := _director_ctx(d, tl, &track, i32(ti), mode, wrapped)
 		desc.tick(&ctx)
 	}
 }
@@ -203,4 +201,21 @@ director_binding :: proc(d: ^PlayableDirector, track: i32) -> engine.Ref_Local {
 		if b.track == track do return b.target
 	}
 	return {}
+}
+
+// The scene target filling an exposed slot, or the zero ref (unbound slot —
+// the track targets nothing, like an unbound Track_Binding).
+director_exposed :: proc(d: ^PlayableDirector, name: string) -> engine.Ref_Local {
+	if name == "" do return {}
+	for &e in d.exposed {
+		if e.name == name do return e.target
+	}
+	return {}
+}
+
+// A track's resolved target: through the exposed table when the track names
+// a slot, else its per-track binding.
+director_track_target :: proc(d: ^PlayableDirector, track: ^Timeline_Track, ti: i32) -> engine.Ref_Local {
+	if track.exposed != "" do return director_exposed(d, track.exposed)
+	return director_binding(d, ti)
 }

@@ -79,6 +79,30 @@ Feature-package kinds:
   preview, and the per-frame restore leaves the voice alone until the
   preview stops. Author track-driven sources with `play_on_awake` off.
 
+## Exposed references
+
+Unity's ExposedReference split: the TIMELINE declares named slots
+(`exposed_names` — the asset's tweak surface), the DIRECTOR fills them
+(`exposed: [{name, target: Ref_Local}]`). A track whose `exposed` field names
+a slot resolves its target through the table instead of its per-track
+binding (`director_track_target`), so several tracks share one slot and a
+nested timeline can bubble slots up later. An unbound slot targets nothing —
+the window paints it yellow. Zero-neutral: `exposed == ""` is the direct
+per-track binding.
+
+The window's inspector pane owns the UX: an Exposed References section
+(slot list, picker per slot editing the DIRECTOR, add/remove — removing a
+slot reverts tracks bound via it to direct), and the selected track's
+"Bind via" combo picks direct or a slot. A slot-bound track's legend row
+shows `→ name` instead of a picker.
+
+Track evaluation modes (`Track_Ctx.mode`): `Play` is the runtime, `Scrub` a
+time jump (stateful tracks reset and replay, silent), `Preview_Play` the
+window's Play button (crossings real, audio live, marker hooks still never
+fire from the editor). The activation track captures the pre-tick
+`is_active` outside Play mode and its `preview_end` writes it back, so the
+preview returns authored-inactive objects to inactive.
+
 ## Sequencer window
 
 `packages/sequencer/editor/view_sequencer.odin` (Window/Sequencer), laid out

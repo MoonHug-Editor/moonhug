@@ -4,6 +4,7 @@ package sequencer_tests
 // through the graph, activation spans, marker crossings (with loop wrap),
 // manual start, Once stop, and the scrub path.
 
+import "core:encoding/json"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -247,4 +248,200 @@ test_director_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, d2.bindings[0].target.local_id, want_lid)
 	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
 		"the binding handle must re-resolve after restore")
+}
+
+// The activation track owns its preview restore: outside Play mode the tick
+// captures the pre-tick is_active and preview_end writes it back — including
+// an authored-INACTIVE object, which the old force-to-true restore left
+// visible after the preview.
+@(test)
+test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	seq.register_builtin_tracks()
+
+	tl := seq.Timeline{duration = 2}
+	tl.tracks = make([dynamic]seq.Timeline_Track)
+	append(&tl.tracks, _track("activation", seq.Timeline_Clip{start = 0, duration = 1}))
+	guid := _tl_guid(7)
+	seq.timeline_cache[guid] = tl
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	child := engine.transform_new("Child", root)
+
+	_, raw := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)raw
+	d.enabled = true
+	d.timeline = {guid = guid}
+	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = engine.Handle(child)}})
+	defer seq.director_teardown(d)
+
+	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
+	ct.is_active = false // authored INACTIVE
+
+	// One preview frame: scrub inside the span activates, restore un-does it.
+	seq.director_set_time(d, 0.5)
+	testing.expect(t, ct.is_active, "the span activates the target during preview")
+	seq.director_preview_end(d)
+	testing.expect(t, !ct.is_active, "preview restore returns the AUTHORED state, not true")
+
+	// Same through the preview-play per-frame bracket.
+	seq.director_preview_step(d, 0.4)
+	seq.director_preview_end(d, playing = true)
+	testing.expect(t, !ct.is_active, "per-frame restore while playing also returns authored state")
+
+	// The runtime path never captures — play mode leaves the tick's result.
+	ct.is_active = true
+	seq.director_tick(d, 0.5)
+	testing.expect(t, ct.is_active, "runtime play drives activation directly")
+}
+
+// Exposed references (Unity's ExposedReference): the TIMELINE declares named
+// slots, the DIRECTOR fills them, and a track whose `exposed` names a slot
+// resolves its target through the table — several tracks can share one slot,
+// and an unbound slot targets nothing.
+@(test)
+test_exposed_slot_resolution :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	seq.register_builtin_tracks()
+
+	// Two activation tracks share the "hero" slot; a third stays direct.
+	tl := seq.Timeline{duration = 2}
+	tl.exposed_names = make([dynamic]string)
+	append(&tl.exposed_names, strings.clone("hero"))
+	tl.tracks = make([dynamic]seq.Timeline_Track)
+	t0 := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
+	t0.exposed = strings.clone("hero")
+	append(&tl.tracks, t0)
+	t1 := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
+	t1.exposed = strings.clone("hero")
+	append(&tl.tracks, t1)
+	append(&tl.tracks, _track("activation", seq.Timeline_Clip{start = 0, duration = 1}))
+	guid := _tl_guid(8)
+	seq.timeline_cache[guid] = tl
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	hero := engine.transform_new("Hero", root)
+	direct := engine.transform_new("Direct", root)
+
+	_, raw := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)raw
+	d.enabled = true
+	d.timeline = {guid = guid}
+	append(&d.exposed, seq.Exposed_Binding{name = strings.clone("hero"), target = {handle = engine.Handle(hero)}})
+	append(&d.bindings, seq.Track_Binding{track = 2, target = {handle = engine.Handle(direct)}})
+	defer seq.director_teardown(d)
+
+	ht := engine.pool_get(&tc.world.transforms, engine.Handle(hero))
+	dt := engine.pool_get(&tc.world.transforms, engine.Handle(direct))
+	ht.is_active = false
+	dt.is_active = false
+
+	// Inside the span both the slot-bound tracks and the direct one activate
+	// their targets — the slot resolves for BOTH sharing tracks.
+	seq.director_tick(d, 0.5)
+	testing.expect(t, ht.is_active, "slot-bound tracks drive the slot's target")
+	testing.expect(t, dt.is_active, "direct binding keeps working beside slots")
+
+	// An unbound slot targets nothing: clear the table, nothing crashes and
+	// the target stays untouched.
+	for &e in d.exposed do delete(e.name)
+	clear(&d.exposed)
+	ht.is_active = false
+	seq.director_tick(d, 0.1)
+	testing.expect(t, !ht.is_active, "an unbound slot drives nothing")
+}
+
+// The exposed table survives the scene round trip like track bindings do —
+// name and target re-resolve by local id.
+@(test)
+test_exposed_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	seq.register_builtin_tracks()
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	child := engine.transform_new("Target", root)
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+
+	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
+	append(&d.exposed, seq.Exposed_Binding{
+		name   = strings.clone("hero"),
+		target = {local_id = ct.local_id, handle = engine.Handle(child)},
+	})
+	want_lid := ct.local_id
+	testing.expect(t, want_lid != 0)
+
+	bytes, ok := engine.scene_serialize(tc.scene)
+	testing.expect(t, ok)
+	if !ok do return
+	defer delete(bytes)
+	reloaded := engine.scene_reload_in_place_bytes(tc.scene, bytes)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc.scene = reloaded
+
+	d2: ^seq.PlayableDirector
+	{
+		it := engine.pool_iterator(seq.playable_directors(&tc.world))
+		for dd, _ in engine.pool_next(&it) do d2 = dd
+	}
+	testing.expect(t, d2 != nil)
+	if d2 == nil do return
+	testing.expect_value(t, len(d2.exposed), 1)
+	if len(d2.exposed) != 1 do return
+	testing.expect(t, d2.exposed[0].name == "hero", "the slot name round-trips")
+	testing.expect_value(t, d2.exposed[0].target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, d2.exposed[0].target.handle),
+		"the slot's handle re-resolves after restore")
+}
+
+// exposed_names and Timeline_Track.exposed ride the .timeline JSON.
+@(test)
+test_timeline_exposed_json_roundtrip :: proc(t: ^testing.T) {
+	tl := seq.Timeline{duration = 2}
+	tl.exposed_names = make([dynamic]string)
+	append(&tl.exposed_names, strings.clone("hero"))
+	tl.tracks = make([dynamic]seq.Timeline_Track)
+	tr := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
+	tr.exposed = strings.clone("hero")
+	append(&tl.tracks, tr)
+	defer seq._timeline_destroy(&tl)
+
+	data, merr := json.marshal(tl, {}, context.temp_allocator)
+	testing.expect(t, merr == nil)
+
+	loaded: seq.Timeline
+	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
+	defer seq._timeline_destroy(&loaded)
+	testing.expect(t, uerr == nil)
+	testing.expect_value(t, len(loaded.exposed_names), 1)
+	testing.expect(t, len(loaded.exposed_names) == 1 && loaded.exposed_names[0] == "hero")
+	testing.expect(t, len(loaded.tracks) == 1 && loaded.tracks[0].exposed == "hero")
 }

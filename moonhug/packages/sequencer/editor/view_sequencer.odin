@@ -77,8 +77,6 @@ _sq: struct {
 	// preview identity + per-frame restore state
 	dir_owner:   engine.Transform_Handle,
 	applied:     bool,
-	act_targets: [dynamic]engine.Handle,
-	act_values:  [dynamic]bool,
 }
 
 @(private = "file")
@@ -353,6 +351,15 @@ sequencer_window_draw :: proc() {
 			bt := _sq_binding_type(track.kind)
 			if bt == "" {
 				im.TextDisabled(track.kind == "animation" ? "(owner)" : "-")
+			} else if track.exposed != "" {
+				// Bound through an exposed slot: the target lives on the slot
+				// (Exposed References section), not on this track.
+				unbound := seq.director_exposed(d, track.exposed).handle == {}
+				if unbound do im.PushStyleColorImVec4(.Text, im.Vec4{0.95, 0.83, 0.30, 1})
+				im.TextUnformatted(fmt.ctprintf("→ %s", track.exposed))
+				if unbound do im.PopStyleColor()
+				im.SetItemTooltip("Exposed slot — bind it in the inspector pane's Exposed References")
+				im.SameLine()
 			} else {
 				comp_owned, _ := engine.transform_get_comp_key(owner, .PlayableDirector)
 				sess := undo.edit_session_begin(
@@ -584,6 +591,8 @@ sequencer_window_draw :: proc() {
 // inspector — the sequencer's own inspector pane.
 @(private = "file")
 _sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
+	_sq_exposed_section(doc, d, tl)
+
 	if _sq.sel_track < 0 || _sq.sel_track >= len(tl.tracks) {
 		im.TextDisabled("No selection.")
 		im.TextWrapped("Click a track row or clip. Double-click empty row space to add a clip.")
@@ -600,6 +609,32 @@ _sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, 
 			_sq_edit_commit(doc, d, tl)
 		}
 		im.Text("%d clips", i32(len(track.clips)))
+
+		// Binding source: the track's own picker, or one of the timeline's
+		// exposed slots (several tracks can share a slot).
+		if _sq_binding_type(track.kind) != "" {
+			im.TextUnformatted("Bind via")
+			im.SameLine(90)
+			im.SetNextItemWidth(-1)
+			cur := track.exposed == "" ? "(direct)" : fmt.ctprintf("%s", track.exposed)
+			if im.BeginCombo("##t_exposed", cur) {
+				if im.Selectable("(direct)", track.exposed == "") && track.exposed != "" {
+					_sq_edit_begin(doc)
+					delete(track.exposed)
+					track.exposed = ""
+					_sq_edit_commit(doc, d, tl)
+				}
+				for name in tl.exposed_names {
+					if im.Selectable(fmt.ctprintf("%s", name), track.exposed == name) && track.exposed != name {
+						_sq_edit_begin(doc)
+						delete(track.exposed)
+						track.exposed = strings.clone(name)
+						_sq_edit_commit(doc, d, tl)
+					}
+				}
+				im.EndCombo()
+			}
+		}
 	}
 	if _sq.sel_clip < 0 || _sq.sel_clip >= len(track.clips) {
 		im.SeparatorText("Clip")
@@ -675,6 +710,91 @@ _sq_binding_slot :: proc(d: ^seq.PlayableDirector, track: i32) -> ^seq.Track_Bin
 }
 
 @(private = "file")
+_sq_exposed_find :: proc(d: ^seq.PlayableDirector, name: string) -> ^seq.Exposed_Binding {
+	for &e in d.exposed {
+		if e.name == name do return &e
+	}
+	return nil
+}
+
+// The timeline's declared tweak surface: slot names live on the ASSET (doc
+// edits), targets live on the DIRECTOR (component edits). Unbound slots show
+// yellow — a track bound via an unbound slot targets nothing.
+@(private = "file")
+_sq_exposed_section :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
+	im.SeparatorText("Exposed References")
+
+	remove_at := -1
+	for name, i in tl.exposed_names {
+		im.PushIDInt(i32(i))
+		unbound := seq.director_exposed(d, name).handle == {}
+		if unbound do im.PushStyleColorImVec4(.Text, im.Vec4{0.95, 0.83, 0.30, 1})
+		im.TextUnformatted(fmt.ctprintf("%s", name))
+		if unbound do im.PopStyleColor()
+		im.SameLine(90)
+
+		comp_owned, _ := engine.transform_get_comp_key(_sq.dir_owner, .PlayableDirector)
+		sess := undo.edit_session_begin(
+			{undo.edit_target_whole(comp_owned.handle)}, "Exposed Binding")
+		// Same contract as the track binding picker: the picker mints the
+		// target's local_id against the owner's root scene from the
+		// inspector owner stack.
+		undo.push_component_owner(comp_owned.handle)
+		defer undo.pop_owner()
+		// An unfilled slot draws against a temp: the director's table gains
+		// an entry only when the user actually picks (no per-frame appends).
+		slot := _sq_exposed_find(d, name)
+		tmp: seq.Exposed_Binding
+		target := slot != nil ? &slot.target : &tmp.target
+		before := target^
+		inspector.current_field_ref_target = "Transform"
+		im.SetNextItemWidth(-24)
+		if drawer := inspector.resolve_property_drawer(typeid_of(engine.Ref_Local)); drawer != nil {
+			drawer(target, typeid_of(engine.Ref_Local), "##exp_bind")
+		}
+		inspector.current_field_ref_target = ""
+		changed := target^ != before
+		if changed && slot == nil {
+			append(&d.exposed, seq.Exposed_Binding{name = strings.clone(name), target = tmp.target})
+		}
+		undo.edit_session_end(&sess)
+		if changed do inspector.mark_inspector_changed()
+
+		im.SameLine()
+		if im.SmallButton("x") do remove_at = i
+		im.SetItemTooltip("Remove the slot (tracks bound via it revert to direct)")
+		im.PopID()
+	}
+	if remove_at >= 0 {
+		_sq_edit_begin(doc)
+		// Tracks bound through the removed slot fall back to their direct
+		// binding rather than dangling on a name that no longer exists.
+		for &track in tl.tracks {
+			if track.exposed == tl.exposed_names[remove_at] {
+				delete(track.exposed)
+				track.exposed = ""
+			}
+		}
+		delete(tl.exposed_names[remove_at])
+		ordered_remove(&tl.exposed_names, remove_at)
+		_sq_edit_commit(doc, d, tl)
+	}
+
+	if im.SmallButton("Add Slot") {
+		_sq_edit_begin(doc)
+		name: string
+		for n := len(tl.exposed_names) + 1; ; n += 1 {
+			name = fmt.tprintf("slot %d", n)
+			taken := false
+			for existing in tl.exposed_names do if existing == name do taken = true
+			if !taken do break
+		}
+		append(&tl.exposed_names, strings.clone(name))
+		_sq_edit_commit(doc, d, tl)
+	}
+}
+
+@(private = "file")
 _sq_add_track :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, kind: string) {
 	_sq_edit_begin(doc)
 	track := seq.Timeline_Track{kind = strings.clone(kind), name = strings.clone(kind)}
@@ -733,18 +853,6 @@ sequencer_preview_apply :: proc() {
 		if _sq.time >= dur do _sq.time = 0
 	}
 
-	// Capture what the tracks will mutate, restore after the render.
-	clear(&_sq.act_targets)
-	clear(&_sq.act_values)
-	for &track, ti in tl.tracks {
-		if track.kind != "activation" do continue
-		b := _sq_binding_of(d, i32(ti))
-		if !engine.pool_valid(&w.transforms, b.handle) do continue
-		if t := engine.pool_get(&w.transforms, b.handle); t != nil {
-			append(&_sq.act_targets, b.handle)
-			append(&_sq.act_values, t.is_active)
-		}
-	}
 	// Play advances with real crossings (audio sounds, like Unity's Timeline
 	// preview); a paused or dragged playhead is a silent scrub.
 	if playing_step {
@@ -758,19 +866,12 @@ sequencer_preview_apply :: proc() {
 sequencer_preview_restore :: proc() {
 	if !_sq.applied do return
 	_sq.applied = false
-	w := engine.ctx_world()
-	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	// Track kinds restore whatever they drove (poses, activation, audio,
 	// particles) — the window knows no kind by name. While PLAYING this is
 	// the per-frame render restore: persistent preview effects (the audio
 	// voice) survive it, and quiet for real when playing stops.
+	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	if d != nil do seq.director_preview_end(d, _sq.playing)
-	for h, i in _sq.act_targets {
-		if !engine.pool_valid(&w.transforms, h) do continue
-		if t := engine.pool_get(&w.transforms, h); t != nil {
-			t.is_active = _sq.act_values[i]
-		}
-	}
 }
 
 // The preview stops being valid (target gone, window retargeted): let every
@@ -785,10 +886,3 @@ _sq_preview_end :: proc() {
 	if d != nil do seq.director_preview_end(d)
 }
 
-@(private = "file")
-_sq_binding_of :: proc(d: ^seq.PlayableDirector, track: i32) -> engine.Ref_Local {
-	for &b in d.bindings {
-		if b.track == track do return b.target
-	}
-	return {}
-}

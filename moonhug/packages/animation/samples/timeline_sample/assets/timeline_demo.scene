@@ -226,9 +226,17 @@
         },
         {
           "target": {
-            "local_id": 0
+            "local_id": 2396538970747311
           },
           "track": 1
+        }
+      ],
+      "exposed": [
+        {
+          "name": "sound",
+          "target": {
+            "local_id": 0
+          }
         }
       ],
       "manual_start": false,

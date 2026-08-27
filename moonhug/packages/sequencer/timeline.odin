@@ -34,16 +34,26 @@ Timeline_Clip :: struct {
 }
 
 Timeline_Track :: struct {
-	kind:  string, // Track_Desc registry key; "animation" is director-built
-	name:  string,
-	muted: bool,
-	clips: [dynamic]Timeline_Clip,
+	kind:    string, // Track_Desc registry key; "animation" is director-built
+	name:    string,
+	muted:   bool,
+	// Exposed-slot binding (Unity's ExposedReference): non-empty names one of
+	// the timeline's exposed_names, and the track's target resolves through
+	// the DIRECTOR's exposed table instead of its per-track binding — several
+	// tracks can share one slot, and a nested timeline can bubble slots up.
+	// "" = the direct per-track binding.
+	exposed: string,
+	clips:   [dynamic]Timeline_Clip,
 }
 
 @(typ_guid={guid = "8433ef73-93dd-4ba4-a66e-9c5f09846922", makeProcName=make_pTimeline, menu_assets_create = {menu_name = "Timeline", file_name = "New Timeline.timeline", order = -4}})
 Timeline :: struct {
-	duration: f32, // authored length; 0 = computed from the last clip end
-	tracks:   [dynamic]Timeline_Track,
+	duration:      f32, // authored length; 0 = computed from the last clip end
+	// The asset's declared tweak surface: named scene-object slots the
+	// DIRECTOR fills (Exposed_Binding). The asset owns structure, the
+	// director owns targets.
+	exposed_names: [dynamic]string,
+	tracks:        [dynamic]Timeline_Track,
 }
 
 make_pTimeline :: proc() -> any {
@@ -86,8 +96,11 @@ _timeline_destroy :: proc(tl: ^Timeline) {
 		delete(track.clips)
 		delete(track.kind)
 		delete(track.name)
+		delete(track.exposed)
 	}
 	delete(tl.tracks)
+	for n in tl.exposed_names do delete(n)
+	delete(tl.exposed_names)
 	tl^ = {}
 }
 
@@ -138,19 +151,27 @@ Track_Ctx :: struct {
 	time:      f32,
 	wrapped:   bool, // the loop wrapped inside this tick
 	duration:  f32,  // the timeline's playable length
-	scrub:     bool, // time jumped — stateful tracks reset instead of crossing
-	// The editor preview is AUTO-ADVANCING (its Play button): crossings are
-	// real and per-frame restore must not quiet persistent side effects.
-	// Audio plays live in preview-play (Unity's Timeline preview), particles
-	// keep their scrub replay (scrub stays true), and hooks into game code
-	// (markers) stay silent — each track decides what preview-play means.
-	playing:   bool,
+	mode:      Track_Mode,
+}
+
+// How the director's time advanced this evaluation. Each track kind decides
+// what a mode means for its target:
+// - Play: the runtime. Crossings fire, side effects are real.
+// - Scrub: time jumped (ruler drag, paused playhead). Stateful tracks reset
+//   and replay deterministically instead of crossing; nothing sounds.
+// - Preview_Play: the editor preview auto-advances. Crossings are real and
+//   audio plays live (Unity's Timeline preview), particles keep their
+//   deterministic replay, and hooks into game code (markers) stay silent.
+Track_Mode :: enum u8 {
+	Play,
+	Scrub,
+	Preview_Play,
 }
 
 // Wrap-aware "did playback cross `at` this tick" — the half-open [prev, time)
 // window, split in two when the loop wrapped (the burst-trigger pattern).
 track_crossed :: proc(ctx: ^Track_Ctx, at: f32) -> bool {
-	if ctx.scrub && !ctx.playing do return false
+	if ctx.mode == .Scrub do return false
 	if !ctx.wrapped do return at >= ctx.prev_time && at < ctx.time
 	return (at >= ctx.prev_time && at < ctx.duration) || (at >= 0 && at < ctx.time)
 }
@@ -194,11 +215,36 @@ track_desc :: proc(kind: string) -> (Track_Desc, bool) {
 
 // Activation: the bound transform is active while any clip covers the time
 // (Unity's activation track post-behavior "inactive outside clips").
+//
+// The track owns its preview restore: outside Play mode the tick captures
+// the pre-tick is_active, and preview_end (the editor's per-frame render
+// restore) writes it back — the world returns to whatever the user authored,
+// including authored-INACTIVE objects. The window needs no kind knowledge.
+@(private = "file")
+_Activation_State :: struct {
+	captured:   bool,
+	was_active: bool,
+}
+
+@(private = "file")
+_activation_track_build :: proc(ctx: ^Track_Ctx) -> rawptr {
+	return new(_Activation_State)
+}
+
+@(private = "file")
+_activation_track_destroy :: proc(state: rawptr) {
+	free(state)
+}
+
 _activation_track_tick :: proc(ctx: ^Track_Ctx) {
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, ctx.target.handle) do return
 	t := engine.pool_get(&w.transforms, ctx.target.handle)
 	if t == nil do return
+	if st := cast(^_Activation_State)ctx.state; st != nil && ctx.mode != .Play && !st.captured {
+		st.captured = true
+		st.was_active = t.is_active
+	}
 	active := false
 	for &c in ctx.track.clips {
 		if track_clip_active(ctx, &c) do active = true
@@ -214,7 +260,7 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 	if timeline_marker_hook == nil do return
 	// Never from the editor preview, playing or not — marker hooks are game
 	// code (Unity does not fire signals in preview either).
-	if ctx.scrub do return
+	if ctx.mode != .Play do return
 	for &c in ctx.track.clips {
 		if track_crossed(ctx, c.start) {
 			timeline_marker_hook(c.name, ctx.target)
@@ -224,13 +270,16 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 
 @(private = "file") _builtin_tracks_registered: bool
 
-// Activation restores the transform's authored state when the preview stops
-// — the editor never leaves an object hidden.
+// Write back the pre-tick state the tick captured — the editor never leaves
+// an object flipped, whichever way it was authored.
 @(private = "file")
 _activation_preview_end :: proc(ctx: ^Track_Ctx) {
+	st := cast(^_Activation_State)ctx.state
+	if st == nil || !st.captured do return
+	st.captured = false
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, ctx.target.handle) do return
-	if t := engine.pool_get(&w.transforms, ctx.target.handle); t != nil do t.is_active = true
+	if t := engine.pool_get(&w.transforms, ctx.target.handle); t != nil do t.is_active = st.was_active
 }
 
 register_builtin_tracks :: proc() {
@@ -239,6 +288,8 @@ register_builtin_tracks :: proc() {
 	track_register(Track_Desc{
 		kind         = "activation",
 		binding_type = "Transform",
+		build        = _activation_track_build,
+		destroy      = _activation_track_destroy,
 		tick         = _activation_track_tick,
 		preview_end  = _activation_preview_end,
 	})
@@ -254,6 +305,7 @@ sequencer_package_init :: proc() {
 	engine.asset_db_add_path_changed_hook(timeline_path_changed)
 	register_builtin_tracks()
 	engine.register_pointer_type(Track_Binding)
+	engine.register_pointer_type(Exposed_Binding)
 }
 
 // Every registered kind, for the sequencer window's add-track menu.
@@ -275,12 +327,15 @@ timeline_preview :: proc(guid: engine.Asset_GUID, tl: Timeline) {
 		_timeline_destroy(old)
 	}
 	cp := Timeline{duration = tl.duration}
+	cp.exposed_names = make([dynamic]string, 0, len(tl.exposed_names))
+	for n in tl.exposed_names do append(&cp.exposed_names, strings.clone(n))
 	cp.tracks = make([dynamic]Timeline_Track, 0, len(tl.tracks))
 	for &track in tl.tracks {
 		tc := Timeline_Track{
-			kind  = strings.clone(track.kind),
-			name  = strings.clone(track.name),
-			muted = track.muted,
+			kind    = strings.clone(track.kind),
+			name    = strings.clone(track.name),
+			muted   = track.muted,
+			exposed = strings.clone(track.exposed),
 		}
 		tc.clips = make([dynamic]Timeline_Clip, 0, len(track.clips))
 		for &c in track.clips {
