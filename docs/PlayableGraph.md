@@ -198,6 +198,34 @@ in the output, invalidated on hierarchy change (rename, reparent, delete under
 the bound root). Rebind on invalidation, report unresolved channels rather
 than silently skipping them.
 
+### Property channels
+
+A channel with a non-empty `component` animates a COMPONENT FIELD instead of
+the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
+`target` resolves the transform, `component` is the component's type guid,
+`field` a dotted path to a POD leaf on it (`"emission.rate.value_min"`).
+
+- The file stores untyped `[4]f32` keys. The LIVE field's typeid at bind time
+  is the single authority: how many lanes apply, discrete vs continuous, the
+  write conversion (clip_property.odin). Animatable kinds: f32, [2..4]f32,
+  bool, ints, enums. References, strings, and whole structs are not
+  animatable — same boundary as Unity.
+- Binding caches the location meta (type key, byte offset, kind) in a prop
+  slot and re-fetches only the component base pointer per apply — pools
+  relocate on growth, so pointers are never cached. Dead handles re-resolve,
+  unresolvable channels are skipped (the rule transform channels already
+  follow).
+- Continuous kinds blend exactly like transform channels, defaults included.
+  Discrete kinds (bool/int/enum) cannot lerp: the DOMINANT contributor wins
+  at every blend site — highest weight in a mixer, majority against the
+  default at apply, majority owner in a layer stack.
+- Defaults capture and restore ride the same slots, so the scrub preview and
+  `animation_binding_write_defaults` cover property channels with no extra
+  machinery.
+- Fields a component reads only at init do not visibly respond. Defold routes
+  such properties through a per-component setter callback — that is the shape
+  to copy when a component needs it.
+
 ## Script nodes
 
 Odin-shaped: no closures, no GC. A script node is a vtable plus user data:

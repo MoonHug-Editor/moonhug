@@ -35,6 +35,7 @@ get_pointerType_by_type_key  :: core.get_pointerType_by_type_key
 get_type_key_by_typeid       :: core.get_type_key_by_typeid
 get_guid_by_typeid           :: core.get_guid_by_typeid
 get_typeid_by_guid           :: core.get_typeid_by_guid
+get_typeid_by_guid_ok        :: core.get_typeid_by_guid_ok
 get_pointer_typeid_by_typeid :: core.get_pointer_typeid_by_typeid
 create_instance_by_type_key  :: core.create_instance_by_type_key
 create_instance_by_guid      :: core.create_instance_by_guid

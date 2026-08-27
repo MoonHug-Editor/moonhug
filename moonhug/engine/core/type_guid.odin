@@ -223,6 +223,13 @@ get_typeid_by_guid :: proc(guid: uuid.Identifier) -> typeid {
     panic(fmt.tprintf("Unknown GUID: %s", guid))
 }
 
+// Non-panicking variant for callers resolving guids from data files, where an
+// unknown guid is dangling data (a removed type), not an invariant violation.
+get_typeid_by_guid_ok :: proc(guid: uuid.Identifier) -> (typeid, bool) {
+    T, ok := guid_to_type[guid]
+    return T, ok
+}
+
 get_pointer_typeid_by_typeid :: proc(T: typeid) -> (result: typeid, ok: bool) {
     if key, key_ok := typeid_to_type_key_map[T]; key_ok {
         return type_key_to_pointerType_arr[key], true

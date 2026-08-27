@@ -1,7 +1,8 @@
 package animation
 
 // Unity-style AnimationClip asset: keyframe curves that animate transform
-// position/rotation/scale over time. Clips are JSON files under assets/
+// position/rotation/scale — or any POD component field via property channels
+// (clip_property.odin) — over time. Clips are JSON files under assets/
 // (".anim"), cached by guid like materials. The Animation component
 // (component_Animation.odin) plays one — Unity's LEGACY clip player, not
 // Mecanim: no state machines, no blending, script-level Play/Stop.
@@ -34,13 +35,28 @@ Animation_Path :: enum u8 {
 }
 
 // One curve: keyframe times plus values for a single target property.
-// Values pack into [4]f32 — xyz for position/scale, xyzw quat for rotation.
+// Values pack into [4]f32 — xyz for position/scale, xyzw quat for rotation,
+// x (or the leading lanes) for property channels.
+//
+// A channel with a non-empty `component` is a PROPERTY channel (Unity's
+// EditorCurveBinding model: path + type + propertyName): `component` is the
+// component's type guid, `field` a dotted path to a POD leaf on it
+// ("emission.rate.value_min"). The file stores untyped floats — the live
+// field's typeid at bind time is the single authority for how many lanes
+// apply, discrete vs continuous, and the write conversion (clip_property.odin).
 Animation_Channel :: struct {
-	target: string, // name path relative to the playing owner ("" = owner)
-	path:   Animation_Path,
-	step:   bool, // STEP interpolation: hold the previous key (else lerp/slerp)
-	times:  [dynamic]f32,
-	values: [dynamic][4]f32,
+	target:    string, // name path relative to the playing owner ("" = owner)
+	path:      Animation_Path,
+	component: string, // component type guid, "" = transform channel
+	field:     string, // dotted field path on the component
+	step:      bool, // STEP interpolation: hold the previous key (else lerp/slerp)
+	times:     [dynamic]f32,
+	values:    [dynamic][4]f32,
+}
+
+// Whether the channel animates a component field instead of the transform.
+animation_channel_is_property :: proc(ch: ^Animation_Channel) -> bool {
+	return len(ch.component) > 0
 }
 
 @(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", makeProcName=make_pAnimationClip, menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
@@ -125,7 +141,13 @@ animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	cp := AnimationClip{length = clip.length, wrap = clip.wrap}
 	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
 	for &ch in clip.channels {
-		c := Animation_Channel{target = strings.clone(ch.target), path = ch.path, step = ch.step}
+		c := Animation_Channel{
+			target    = strings.clone(ch.target),
+			path      = ch.path,
+			component = strings.clone(ch.component),
+			field     = strings.clone(ch.field),
+			step      = ch.step,
+		}
 		c.times = make([dynamic]f32, len(ch.times))
 		copy(c.times[:], ch.times[:])
 		c.values = make([dynamic][4]f32, len(ch.values))
@@ -146,6 +168,8 @@ animation_clip_path_changed :: proc(path: string) {
 _animation_clip_destroy :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {
 		delete(ch.target)
+		delete(ch.component)
+		delete(ch.field)
 		delete(ch.times)
 		delete(ch.values)
 	}
@@ -155,16 +179,23 @@ _animation_clip_destroy :: proc(clip: ^AnimationClip) {
 
 // --- Sampling ---------------------------------------------------------------------
 
-// Write every channel's value at `time` into the owner's transform hierarchy.
+// Write every channel's value at `time` into the owner's transform hierarchy
+// (and, for property channels, into the targeted component fields).
 // Channels whose target path doesn't resolve are skipped.
 animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handle, time: f32) {
 	w := engine.ctx_world()
 	for &ch in clip.channels {
 		tH, ok := _animation_resolve_target(owner, ch.target)
 		if !ok do continue
+		v := _animation_channel_sample(&ch, time)
+		if animation_channel_is_property(&ch) {
+			ptr, kind, leaf_tid, pok := _prop_locate(tH, ch.component, ch.field)
+			if !pok do continue
+			_prop_write(ptr, kind, leaf_tid, v)
+			continue
+		}
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do continue
-		v := _animation_channel_sample(&ch, time)
 		switch ch.path {
 		case .Position: t.position = v.xyz
 		case .Rotation: t.rotation = v

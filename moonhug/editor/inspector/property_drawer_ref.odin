@@ -31,7 +31,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	is_asset_ref := !engine.asset_guid_is_empty(ref_ptr.pptr.guid)
 	has_value := ref_ptr.pptr.local_id != 0 || ref_ptr.handle != {} || is_asset_ref
 
-	owner_root_scene := _ref_local_owner_root_scene()
+	owner_root_scene := ref_local_owner_root_scene()
 	display := _ref_display(ref_ptr^, target_key)
 
 	popup_id := strings.clone_to_cstring(

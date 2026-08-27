@@ -17,6 +17,22 @@
           "name": "show"
         }
       ]
+    },
+    {
+      "kind": "audio",
+      "name": "audio",
+      "muted": false,
+      "clips": [
+        {
+          "start": 2.9000001,
+          "duration": 1.0,
+          "ease_in": 0.0,
+          "ease_out": 0.0,
+          "speed": 0.0,
+          "asset": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+          "name": "clip"
+        }
+      ]
     }
   ]
 }

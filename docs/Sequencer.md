@@ -56,7 +56,10 @@ graph in the track state: a mixer with one clip node per timeline clip,
 weights from the ease ramps (overlaps crossfade through mixer
 normalization), source clips shorter than their timeline clip wrap by their
 own wrap mode. Channel paths resolve under the director's owner transform,
-so the track binds nothing.
+so the track binds nothing. Clips may carry PROPERTY channels — any POD
+component field by (component guid, dotted field path), see
+docs/PlayableGraph.md "Property channels" — so animating a field needs no
+new track kind.
 
 Built-in kinds (engine vocabulary, so they ship with the package):
 `activation` (the bound transform is active while any clip covers the time)
@@ -85,6 +88,12 @@ transform or its nearest ancestor with a PlayableDirector.
   Track (registry kinds + animation).
 Three resizable panes — legend | canvas | inspector — with draggable
 splitters between them (both sides keep a minimum width).
+
+The binding picker runs OUTSIDE the inspector, so the window pushes the
+director as the inspector owner (`undo.push_component_owner`) around it —
+that owner is what `ref_local_owner_root_scene` resolves the target's scene
+from, and a picked target with no scene records no `local_id`, leaving a
+binding that dies at the next scene reload (Play/Stop).
 
 - Legend column per track: mute, kind, the BINDING picker (filtered by the
   track's `binding_type`, edits the director with a diffing undo session),

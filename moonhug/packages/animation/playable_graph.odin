@@ -197,6 +197,36 @@ Pose_Value :: struct {
 	scl_w: f32,
 }
 
+// One accumulated property channel: value = sum(w_i * v_i), w = sum(w_i) for
+// continuous kinds. Discrete kinds carry the dominant contributor instead —
+// val is that contributor's raw value, w its effective weight.
+Prop_Value :: struct {
+	val: [4]f32,
+	w:   f32,
+}
+
+// One evaluation result: the transform pose plus the property channel values,
+// parallel to the binding's slots and prop_slots.
+Pose :: struct {
+	trs:   []Pose_Value,
+	props: []Prop_Value,
+}
+
+// One bound property channel target (clip_property.odin). The location meta
+// (type key, byte offset, kind) caches at resolve — only the component base
+// pointer is fetched per apply, since pools relocate. The default is captured
+// at bind time like transform slots.
+Prop_Slot :: struct {
+	key:         string, // owned "target\x1fcomponent\x1ffield" — the by_prop map key aliases it
+	target_path: string, // slices into key
+	component:   string, // slices into key
+	field:       string, // slices into key
+	target:      engine.Transform_Handle,
+	loc:         Prop_Location,
+	resolved:    bool,
+	default:     [4]f32,
+}
+
 // One bound channel target. `animated` records which properties any clip ever
 // bound — only those are ever written back, and only those default-fill.
 // Defaults are CAPTURED AT BIND TIME (docs/PlayableGraph.md default pose rule).
@@ -214,21 +244,28 @@ Binding_Slot :: struct {
 // per-frame name walk the pre-graph runtime did on every apply: paths resolve
 // once and re-resolve only when their handle dies (reparent/delete/reload).
 Animation_Binding :: struct {
-	owner:   engine.Transform_Handle,
-	slots:   [dynamic]Binding_Slot,
-	by_path: map[string]i32,
+	owner:      engine.Transform_Handle,
+	slots:      [dynamic]Binding_Slot,
+	by_path:    map[string]i32,
+	prop_slots: [dynamic]Prop_Slot,
+	by_prop:    map[string]i32,
 }
 
 animation_binding_init :: proc(b: ^Animation_Binding, owner: engine.Transform_Handle) {
 	b.owner = owner
 	b.slots = make([dynamic]Binding_Slot)
 	b.by_path = make(map[string]i32)
+	b.prop_slots = make([dynamic]Prop_Slot)
+	b.by_prop = make(map[string]i32)
 }
 
 animation_binding_destroy :: proc(b: ^Animation_Binding) {
 	for &s in b.slots do delete(s.path)
 	delete(b.slots)
 	delete(b.by_path)
+	for &s in b.prop_slots do delete(s.key)
+	delete(b.prop_slots)
+	delete(b.by_prop)
 	b^ = {}
 }
 
@@ -261,6 +298,58 @@ _binding_resolve :: proc(b: ^Animation_Binding, s: ^Binding_Slot) {
 	s.default_scl = t.scale
 }
 
+// The by_prop map key for a property channel. Unit separator — target paths
+// contain '/' and names are user text.
+@(private = "file")
+_prop_key :: proc(target, component, field: string, allocator := context.temp_allocator) -> string {
+	return strings.concatenate({target, "\x1f", component, "\x1f", field}, allocator)
+}
+
+@(private = "file")
+_prop_binding_slot :: proc(b: ^Animation_Binding, target, component, field: string) {
+	key := _prop_key(target, component, field)
+	if idx, ok := b.by_prop[key]; ok {
+		s := &b.prop_slots[idx]
+		if !s.resolved do _prop_resolve(b, s)
+		return
+	}
+	owned := strings.clone(key)
+	s := Prop_Slot{
+		key         = owned,
+		target_path = owned[:len(target)],
+		component   = owned[len(target) + 1:][:len(component)],
+		field       = owned[len(target) + len(component) + 2:],
+	}
+	append(&b.prop_slots, s)
+	sp := &b.prop_slots[len(b.prop_slots) - 1]
+	_prop_resolve(b, sp)
+	b.by_prop[sp.key] = i32(len(b.prop_slots) - 1)
+}
+
+@(private = "file")
+_prop_resolve :: proc(b: ^Animation_Binding, s: ^Prop_Slot) {
+	s.resolved = false
+	tH, ok := _animation_resolve_target(b.owner, s.target_path)
+	if !ok do return
+	loc, mok := _prop_meta(s.component, s.field)
+	if !mok do return
+	_, base := engine.transform_get_comp_key(tH, loc.type_key)
+	if base == nil do return
+	s.target = tH
+	s.loc = loc
+	s.resolved = true
+	s.default = _prop_read(rawptr(uintptr(base) + loc.offset), loc.kind, loc.leaf)
+}
+
+// The prop slot's live field pointer, or nil when the component is gone.
+// Valid only for the current frame.
+@(private = "file")
+_prop_slot_ptr :: proc(s: ^Prop_Slot) -> rawptr {
+	_, base := engine.transform_get_comp_key(s.target, s.loc.type_key)
+	if base == nil do return nil
+	return rawptr(uintptr(base) + s.loc.offset)
+}
+
 // Re-capture the defaults from the live transforms (dead slots re-resolve).
 // The editor's scrub preview calls this right before evaluating: at that point
 // the transforms hold their authored values (the preview restores them after
@@ -279,6 +368,18 @@ animation_binding_refresh_defaults :: proc(b: ^Animation_Binding) {
 		s.default_rot = t.rotation
 		s.default_scl = t.scale
 	}
+	for &s in b.prop_slots {
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) {
+			_prop_resolve(b, &s)
+			continue
+		}
+		ptr := _prop_slot_ptr(&s)
+		if ptr == nil {
+			s.resolved = false
+			continue
+		}
+		s.default = _prop_read(ptr, s.loc.kind, s.loc.leaf)
+	}
 }
 
 // Write the defaults back to the bound transforms, animated properties only —
@@ -292,6 +393,12 @@ animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
 		if .Position in s.animated do t.position = s.default_pos
 		if .Rotation in s.animated do t.rotation = s.default_rot
 		if .Scale in s.animated do t.scale = s.default_scl
+	}
+	for &s in b.prop_slots {
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) do continue
+		ptr := _prop_slot_ptr(&s)
+		if ptr == nil do continue
+		_prop_write(ptr, s.loc.kind, s.loc.leaf, s.default)
 	}
 }
 
@@ -314,6 +421,10 @@ _graph_bind :: proc(g: ^Playable_Graph, b: ^Animation_Binding) {
 		clip, ok := animation_clip_load(c.clip)
 		if !ok do continue
 		for &ch in clip.channels {
+			if animation_channel_is_property(&ch) {
+				_prop_binding_slot(b, ch.target, ch.component, ch.field)
+				continue
+			}
 			prop: Pose_Prop
 			switch ch.path {
 			case .Position: prop = .Position
@@ -332,9 +443,9 @@ playable_graph_evaluate :: proc(
 	b: ^Animation_Binding,
 	scripts: ^[dynamic]Script_Invocation = nil,
 	allocator := context.temp_allocator,
-) -> []Pose_Value {
+) -> Pose {
 	_graph_bind(g, b)
-	out := make([]Pose_Value, len(b.slots), allocator)
+	out := _pose_make(b, allocator)
 	if playable_node(g, g.root) != nil {
 		_eval_node(g, g.root, b, out, 1, scripts, allocator)
 	}
@@ -342,11 +453,19 @@ playable_graph_evaluate :: proc(
 }
 
 @(private = "file")
+_pose_make :: proc(b: ^Animation_Binding, allocator: runtime.Allocator) -> Pose {
+	return {
+		trs   = make([]Pose_Value, len(b.slots), allocator),
+		props = make([]Prop_Value, len(b.prop_slots), allocator),
+	}
+}
+
+@(private = "file")
 _eval_node :: proc(
 	g: ^Playable_Graph,
 	h: Playable_Handle,
 	b: ^Animation_Binding,
-	out: []Pose_Value,
+	out: Pose,
 	path_weight: f32,
 	scripts: ^[dynamic]Script_Invocation,
 	allocator: runtime.Allocator,
@@ -359,10 +478,16 @@ _eval_node :: proc(
 		if !ok do return
 		t := playable_node_time(n)
 		for &ch in clip.channels {
+			val := _animation_channel_sample(&ch, t)
+			if animation_channel_is_property(&ch) {
+				idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]
+				if !found do continue
+				out.props[idx] = {val, 1}
+				continue
+			}
 			idx, found := b.by_path[ch.target]
 			if !found do continue
-			val := _animation_channel_sample(&ch, t)
-			pv := &out[idx]
+			pv := &out.trs[idx]
 			switch ch.path {
 			case .Position: pv.pos = val.xyz; pv.pos_w = 1
 			case .Rotation: pv.rot = val; pv.rot_w = 1
@@ -372,17 +497,17 @@ _eval_node :: proc(
 	case Mixer_Playable:
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
-			child := make([]Pose_Value, len(b.slots), allocator)
+			child := _pose_make(b, allocator)
 			_eval_node(g, inp.node, b, child, path_weight * inp.weight, scripts, allocator)
-			_pose_accumulate(out, child, inp.weight)
+			_pose_accumulate(out, child, inp.weight, b)
 		}
 	case Layer_Mixer_Playable:
 		_pose_set_default(out, b)
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
-			child := make([]Pose_Value, len(b.slots), allocator)
+			child := _pose_make(b, allocator)
 			_eval_node(g, inp.node, b, child, path_weight * inp.weight, scripts, allocator)
-			_pose_blend_over(out, child, inp.weight)
+			_pose_blend_over(out, child, inp.weight, b)
 		}
 	case Script_Playable:
 		if scripts != nil {
@@ -393,11 +518,29 @@ _eval_node :: proc(
 
 // Mixer accumulation: children are normalized (their own weight sums clamped
 // to 1) before adding, so nested over-weighted mixers cannot amplify values.
+// Continuous property channels follow the same weighted-sum rule — discrete
+// ones (bool/int/enum) cannot lerp, so the DOMINANT contributor wins,
+// carrying its raw value and effective weight.
 @(private = "file")
-_pose_accumulate :: proc(out, child: []Pose_Value, w: f32) {
-	for i in 0 ..< len(out) {
-		c := &child[i]
-		o := &out[i]
+_pose_accumulate :: proc(out, child: Pose, w: f32, b: ^Animation_Binding) {
+	for i in 0 ..< len(out.props) {
+		c := &child.props[i]
+		o := &out.props[i]
+		if c.w <= PLAYABLE_WEIGHT_EPS do continue
+		cw := min(c.w, 1)
+		if prop_kind_discrete(b.prop_slots[i].loc.kind) {
+			if eff := w * cw; eff > o.w {
+				o.val = c.val
+				o.w = eff
+			}
+			continue
+		}
+		o.val += (w * cw / c.w) * c.val
+		o.w += w * cw
+	}
+	for i in 0 ..< len(out.trs) {
+		c := &child.trs[i]
+		o := &out.trs[i]
 		if c.pos_w > PLAYABLE_WEIGHT_EPS {
 			cw := min(c.pos_w, 1)
 			o.pos += (w * cw / c.pos_w) * c.pos
@@ -421,10 +564,14 @@ _pose_accumulate :: proc(out, child: []Pose_Value, w: f32) {
 // The layer stack's base: the default pose, fully weighted, for every property
 // any clip animates. Layers then blend over this.
 @(private = "file")
-_pose_set_default :: proc(out: []Pose_Value, b: ^Animation_Binding) {
-	for i in 0 ..< len(out) {
+_pose_set_default :: proc(out: Pose, b: ^Animation_Binding) {
+	for i in 0 ..< len(out.props) {
+		if !b.prop_slots[i].resolved do continue
+		out.props[i] = {b.prop_slots[i].default, 1}
+	}
+	for i in 0 ..< len(out.trs) {
 		s := &b.slots[i]
-		o := &out[i]
+		o := &out.trs[i]
 		if .Position in s.animated {
 			o.pos = s.default_pos
 			o.pos_w = 1
@@ -442,12 +589,25 @@ _pose_set_default :: proc(out: []Pose_Value, b: ^Animation_Binding) {
 
 // Blend a layer's pose over the running result. A layer covering a channel at
 // full weight replaces it, a partially-weighted layer (mid cross-fade, or a
-// deliberate layer weight below 1) lerps toward the layer's value.
+// deliberate layer weight below 1) lerps toward the layer's value. Discrete
+// property channels replace when the layer is the dominant contributor.
 @(private = "file")
-_pose_blend_over :: proc(out, child: []Pose_Value, layer_w: f32) {
-	for i in 0 ..< len(out) {
-		c := &child[i]
-		o := &out[i]
+_pose_blend_over :: proc(out, child: Pose, layer_w: f32, b: ^Animation_Binding) {
+	for i in 0 ..< len(out.props) {
+		c := &child.props[i]
+		o := &out.props[i]
+		if c.w <= PLAYABLE_WEIGHT_EPS do continue
+		eff := layer_w * min(c.w, 1)
+		if prop_kind_discrete(b.prop_slots[i].loc.kind) {
+			if eff >= 0.5 do o.val = c.val
+		} else {
+			o.val = linalg.lerp(o.val, (1.0 / c.w) * c.val, eff)
+		}
+		o.w = 1
+	}
+	for i in 0 ..< len(out.trs) {
+		c := &child.trs[i]
+		o := &out.trs[i]
 		if c.pos_w > PLAYABLE_WEIGHT_EPS {
 			eff := layer_w * min(c.pos_w, 1)
 			o.pos = linalg.lerp(o.pos, c.pos / c.pos_w, eff)
@@ -506,9 +666,9 @@ playable_output_tick :: proc(o: ^Playable_Output) {
 // property some clip animates but nothing covered this evaluation) rests AT
 // the default. Slots whose handle died re-resolve here — that covers
 // reparent/delete/reload of the target.
-animation_pose_apply :: proc(b: ^Animation_Binding, pose: []Pose_Value) {
+animation_pose_apply :: proc(b: ^Animation_Binding, pose: Pose) {
 	w := engine.ctx_world()
-	for i in 0 ..< len(pose) {
+	for i in 0 ..< len(pose.trs) {
 		s := &b.slots[i]
 		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) {
 			_binding_resolve(b, s)
@@ -516,10 +676,24 @@ animation_pose_apply :: proc(b: ^Animation_Binding, pose: []Pose_Value) {
 		}
 		t := engine.pool_get(&w.transforms, engine.Handle(s.target))
 		if t == nil do continue
-		p := &pose[i]
+		p := &pose.trs[i]
 		if .Position in s.animated do t.position = _finalize_vec(p.pos, p.pos_w, s.default_pos)
 		if .Rotation in s.animated do t.rotation = _finalize_quat(p.rot, p.rot_w, s.default_rot)
 		if .Scale in s.animated do t.scale = _finalize_vec(p.scl, p.scl_w, s.default_scl)
+	}
+	for i in 0 ..< len(pose.props) {
+		s := &b.prop_slots[i]
+		if !s.resolved || !engine.pool_valid(&w.transforms, engine.Handle(s.target)) {
+			_prop_resolve(b, s)
+			if !s.resolved do continue
+		}
+		ptr := _prop_slot_ptr(s)
+		if ptr == nil {
+			s.resolved = false
+			continue
+		}
+		p := &pose.props[i]
+		_prop_write(ptr, s.loc.kind, s.loc.leaf, _finalize_prop(p.val, p.w, s.default, prop_kind_discrete(s.loc.kind)))
 	}
 }
 
@@ -533,6 +707,17 @@ playable_scripts_fire :: proc(scripts: []Script_Invocation) {
 
 @(private = "file")
 _finalize_vec :: proc(acc: [3]f32, w: f32, def: [3]f32) -> [3]f32 {
+	if w <= PLAYABLE_WEIGHT_EPS do return def
+	if w >= 1 do return (1.0 / w) * acc
+	return acc + (1 - w) * def
+}
+
+// Property channel finalize: continuous follows _finalize_vec, discrete
+// writes the accumulated winner only when it is the dominant contributor
+// against the default (the winner's raw value rides in acc unscaled).
+@(private = "file")
+_finalize_prop :: proc(acc: [4]f32, w: f32, def: [4]f32, discrete: bool) -> [4]f32 {
+	if discrete do return w >= 0.5 ? acc : def
 	if w <= PLAYABLE_WEIGHT_EPS do return def
 	if w >= 1 do return (1.0 / w) * acc
 	return acc + (1 - w) * def

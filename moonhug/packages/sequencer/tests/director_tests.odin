@@ -189,3 +189,62 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	seq.director_set_time(d, 0.7)
 	testing.expect_value(t, _marker_hits, 0)
 }
+
+// A director binding must survive the Simulate round trip (serialize the
+// scene, reload it in place — what Play/Stop does).
+@(test)
+test_director_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	seq.register_builtin_tracks()
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	child := engine.transform_new("Target", root)
+	owned, _ := engine.transform_add_comp(child, .Transform)
+	_ = owned
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+
+	// Bind track 0 to the child transform (an activation-style binding).
+	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
+	testing.expect(t, ct != nil)
+	if ct == nil do return
+	append(&d.bindings, seq.Track_Binding{
+		track = 0,
+		target = {local_id = ct.local_id, handle = engine.Handle(child)},
+	})
+	want_lid := ct.local_id
+	testing.expect(t, want_lid != 0, "the target must have a local id")
+
+	// Serialize + reload in place, exactly like Simulate's snapshot/restore.
+	bytes, ok := engine.scene_serialize(tc.scene)
+	testing.expect(t, ok, "snapshot should capture")
+	if !ok do return
+	defer delete(bytes)
+	reloaded := engine.scene_reload_in_place_bytes(tc.scene, bytes)
+	testing.expect(t, reloaded != nil, "restore should load")
+	if reloaded == nil do return
+	tc.scene = reloaded
+
+	// The restored director must still name the target.
+	d2: ^seq.PlayableDirector
+	{
+		it := engine.pool_iterator(seq.playable_directors(&tc.world))
+		for dd, _ in engine.pool_next(&it) do d2 = dd
+	}
+	testing.expect(t, d2 != nil, "director survives the round trip")
+	if d2 == nil do return
+	testing.expect_value(t, len(d2.bindings), 1)
+	if len(d2.bindings) != 1 do return
+	testing.expect_value(t, d2.bindings[0].target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
+		"the binding handle must re-resolve after restore")
+}

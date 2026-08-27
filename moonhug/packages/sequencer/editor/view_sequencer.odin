@@ -357,6 +357,13 @@ sequencer_window_draw :: proc() {
 				comp_owned, _ := engine.transform_get_comp_key(owner, .PlayableDirector)
 				sess := undo.edit_session_begin(
 					{undo.edit_target_whole(comp_owned.handle)}, "Track Binding")
+				// The ref picker mints the target's local_id against the
+				// OWNER's root scene, which it reads from the inspector owner
+				// stack — without this push the scene is nil, no id is minted,
+				// and the binding holds only a runtime handle that dies with
+				// the next scene reload (Play/Stop lost the binding).
+				undo.push_component_owner(comp_owned.handle)
+				defer undo.pop_owner()
 				b := _sq_binding_slot(d, i32(ti))
 				before := b.target.local_id
 				inspector.current_field_ref_target = bt

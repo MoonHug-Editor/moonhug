@@ -136,7 +136,7 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		}
 	}
 
-	owner_root_scene := _ref_local_owner_root_scene()
+	owner_root_scene := ref_local_owner_root_scene()
 	display := _ref_local_display(ref_ptr^, target_key)
 	has_value := ref_ptr.local_id != 0 || ref_ptr.handle != {}
 
@@ -220,8 +220,11 @@ _ref_local_target_transform :: proc(r: engine.Ref_Local) -> (engine.Transform_Ha
 	return (cast(^engine.CompData)raw).owner, true
 }
 
-@(private)
-_ref_local_owner_root_scene :: proc() -> ^engine.Scene {
+// The scene a picked target's local_id is minted against: the owner's root
+// scene, from the inspector owner stack. A window drawing this picker OUTSIDE
+// the inspector must push its owner (undo.push_component_owner) or nothing is
+// minted and the reference survives only until the next scene reload.
+ref_local_owner_root_scene :: proc() -> ^engine.Scene {
 	o, ok := undo.current_owner()
 	if !ok || o.kind != .Pooled do return nil
 	w := engine.ctx_world()

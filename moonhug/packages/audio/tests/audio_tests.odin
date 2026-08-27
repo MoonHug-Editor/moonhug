@@ -17,6 +17,8 @@ import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import audio "moonhug:packages/audio"
 import audio_editor "moonhug:packages/audio/editor"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import common "moonhug:tests/common"
 
 _SAMPLE_RATE :: 22050
@@ -292,4 +294,71 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	// Scrubbing is silent.
 	seq.director_set_time(d, 0.7)
 	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
+}
+
+// A director binding to an AudioSource (an EXT-pool component) must survive
+// the Simulate round trip — serialize the scene, reload it in place.
+@(test)
+test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	seq.register_builtin_tracks()
+	audio.audio_track_init()
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	speaker := engine.transform_new("Speaker", root)
+	owned, raw := engine.transform_add_comp(speaker, .AudioSource)
+	src := cast(^audio.AudioSource)raw
+	src.enabled = true
+	want_lid := owned.local_id
+	testing.expect(t, want_lid != 0, "the AudioSource must have a local id")
+
+	comp_owned, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+
+	// Bind the way the window's ref picker does — the picker resolves the
+	// owner's ROOT SCENE from the inspector owner stack, so the window must
+	// push it: with an empty stack the scene comes back nil and the picker
+	// records no local_id at all (the binding then dies on scene reload).
+	undo.push_component_owner(comp_owned.handle)
+	picker_scene := inspector.ref_local_owner_root_scene()
+	undo.pop_owner()
+	testing.expect(t, picker_scene != nil, "the picker must resolve a scene from the owner stack")
+	empty_stack_scene := inspector.ref_local_owner_root_scene()
+	testing.expect(t, empty_stack_scene == nil, "no owner pushed = no scene = no local_id minted")
+	minted := engine.sm_local_id_get_or_mint(picker_scene, owned.handle)
+	testing.expect_value(t, minted, want_lid)
+	append(&d.bindings, seq.Track_Binding{
+		track = 0,
+		target = {local_id = minted, handle = owned.handle},
+	})
+
+	bytes, ok := engine.scene_serialize(tc.scene)
+	testing.expect(t, ok, "snapshot should capture")
+	if !ok do return
+	defer delete(bytes)
+	reloaded := engine.scene_reload_in_place_bytes(tc.scene, bytes)
+	testing.expect(t, reloaded != nil, "restore should load")
+	if reloaded == nil do return
+	tc.scene = reloaded
+
+	d2: ^seq.PlayableDirector
+	{
+		it := engine.pool_iterator(seq.playable_directors(&tc.world))
+		for dd, _ in engine.pool_next(&it) do d2 = dd
+	}
+	testing.expect(t, d2 != nil)
+	if d2 == nil do return
+	testing.expect_value(t, len(d2.bindings), 1)
+	if len(d2.bindings) != 1 do return
+	testing.expect_value(t, d2.bindings[0].target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
+		"the AudioSource binding must re-resolve after restore")
 }
