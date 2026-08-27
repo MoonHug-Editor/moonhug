@@ -954,3 +954,43 @@ test_timeline_sample_scene :: proc(t: ^testing.T) {
 		testing.expect(t, abs(sparks.time - 2.5) < 0.05, "sub-emitter target must co-simulate on scrub")
 	}
 }
+
+// The edit-mode preview (packages/particles/editor) remembers which system it
+// is previewing ACROSS FRAMES. It must hold the owner transform HANDLE, never
+// a ^ParticleSystem: pool slots are a fixed array with a freelist, so a
+// destroyed component's slot address is handed to the next component created.
+// A stale pointer therefore passes any "is this still alive" scan while
+// pointing at an unrelated system — which is how a preview ends up ticking
+// and resetting something the user never selected after a scene reload.
+//
+// This pins both halves: the address DOES alias, and the handle does NOT.
+@(test)
+test_component_pointer_aliases_after_recycle :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	a := engine.transform_new("A")
+	owned_a, raw_a := engine.transform_add_comp(a, .ParticleSystem)
+	testing.expect(t, raw_a != nil, "first system created")
+
+	// Scene reload equivalent: the component and its owner go away, then new
+	// ones are created into the freed slots.
+	engine.transform_destroy(a)
+	b := engine.transform_new("B")
+	owned_b, raw_b := engine.transform_add_comp(b, .ParticleSystem)
+	testing.expect(t, raw_b != nil, "second system created")
+
+	testing.expect(t, raw_a == raw_b,
+		"pool slots recycle by address — a cached ^ParticleSystem would now alias a different system")
+	testing.expect(t, owned_a.handle != owned_b.handle,
+		"handles carry a generation, so they stay distinct across recycling")
+
+	// Resolving through the handle is what the preview does: the dead one
+	// yields nothing, the live one yields exactly its own component.
+	w := engine.ctx_world()
+	testing.expect(t, !engine.world_pool_valid(w, owned_a.handle), "the recycled handle is dead")
+	testing.expect(t, engine.world_pool_valid(w, owned_b.handle), "the live handle resolves")
+}

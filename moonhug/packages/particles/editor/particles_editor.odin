@@ -266,18 +266,27 @@ _Preview_Scope :: enum {
 	Self,
 }
 
-@(private = "file") _ep_current: ^particles.ParticleSystem
+// The previewed system is held as its OWNER TRANSFORM HANDLE, never as a
+// pointer. Pool slots are a fixed array with a freelist: a destroyed
+// component's slot ADDRESS is handed to the next component created, so a
+// stale pointer silently aliases an unrelated system after a scene reload —
+// and the pointer carries no world, so it cannot tell the live world from
+// the preview world the thumbnails swap in. A handle carries a generation,
+// which is exactly the guard against reuse.
+@(private = "file") _ep_owner: engine.Transform_Handle
 @(private = "file") _ep_frame: i32
 @(private = "file") _ep_paused: bool
 @(private = "file") _ep_scope: _Preview_Scope
 
+// Re-resolves the previewed system in the CURRENT world, or nil when the
+// transform died, lost its ParticleSystem, or belongs to another world.
 @(private = "file")
-_ep_alive :: proc(ps: ^particles.ParticleSystem) -> bool {
-	it := engine.pool_iterator(particles.particle_systems(engine.ctx_world()))
-	for p, _ in engine.pool_next(&it) {
-		if p == ps do return true
-	}
-	return false
+_ep_get :: proc() -> ^particles.ParticleSystem {
+	if _ep_owner == {} do return nil
+	w := engine.ctx_world()
+	if !engine.pool_valid(&w.transforms, engine.Handle(_ep_owner)) do return nil
+	_, raw := engine.transform_get_comp_key(_ep_owner, .ParticleSystem)
+	return cast(^particles.ParticleSystem)raw
 }
 
 // The effect a system belongs to (Unity's model): walk up while the parent
@@ -362,20 +371,19 @@ _ep_reset_effect :: proc(ps: ^particles.ParticleSystem) {
 @(scene_overlay={id="Particles", order=300})
 particles_effect_overlay :: proc(vertical: bool) {
 	if engine.application_is_playing() {
-		_ep_current = nil
+		_ep_owner = {}
 		return
 	}
-	ps := _ep_current
-	if ps == nil do return
-	if !_ep_alive(ps) {
-		_ep_current = nil
+	ps := _ep_get()
+	if ps == nil {
+		_ep_owner = {}
 		return
 	}
 	// The inspector stopped drawing it — selection moved on: clear the
 	// preview so no frozen particles linger in the scene view.
 	if im.GetFrameCount() - _ep_frame > 1 {
 		_ep_reset_effect(ps)
-		_ep_current = nil
+		_ep_owner = {}
 		return
 	}
 
@@ -427,9 +435,10 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	// Edit-mode preview: tick the whole effect while inspected
 	// (play/simulate ticks it itself).
 	if !engine.application_is_playing() {
-		if _ep_current != ps {
-			if _ep_current != nil && _ep_alive(_ep_current) do _ep_reset_effect(_ep_current)
-			_ep_current = ps
+		owner := engine.Transform_Handle(ps.owner)
+		if _ep_owner != owner {
+			if prev := _ep_get(); prev != nil do _ep_reset_effect(prev)
+			_ep_owner = owner
 			_ep_paused = false
 			_ep_reset_effect(ps)
 		}
