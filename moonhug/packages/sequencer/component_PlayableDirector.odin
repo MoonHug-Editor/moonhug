@@ -37,7 +37,7 @@ PlayableDirector :: struct {
 	built:             bool `json:"-" inspect:"-"`,
 	tree_sig:          u64 `json:"-" inspect:"-"`,
 	track_states:      [dynamic]rawptr `json:"-" inspect:"-"`,
-	track_state_kinds: [dynamic]string `json:"-" inspect:"-"`,
+	track_state_kinds: [dynamic]engine.TypeKey `json:"-" inspect:"-"`,
 }
 
 reset_PlayableDirector :: proc(d: ^PlayableDirector) {

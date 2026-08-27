@@ -49,11 +49,11 @@ _ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wra
 
 // Build a track NODE with clip NODES under `owner` — what the window's Add
 // Track/Add Clip produce. Reuses the view struct as the clip parameter.
-_mk_track :: proc(owner: engine.Transform_Handle, kind: string, target: engine.Ref_Local = {}, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
-	node := engine.transform_new(kind, owner)
-	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
-	tc.kind = strings.clone(kind)
-	tc.target = target
+_mk_track :: proc(owner: engine.Transform_Handle, kind: engine.TypeKey, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+	desc, _ := seq.track_desc(kind)
+	node := engine.transform_new(desc.label, owner)
+	engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	engine.transform_add_comp(node, kind)
 	for c in clips {
 		cn := engine.transform_new(len(c.name) > 0 ? c.name : "clip", node)
 		_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
@@ -62,9 +62,23 @@ _mk_track :: proc(owner: engine.Transform_Handle, kind: string, target: engine.R
 		cc.ease_in = c.ease_in
 		cc.ease_out = c.ease_out
 		cc.speed = c.speed
-		cc.asset = c.asset
+		if desc.clip_key != engine.INVALID_TYPE_KEY do engine.transform_add_comp(cn, desc.clip_key)
 	}
 	return node
+}
+
+// Point an activation track at a transform.
+_set_activation_target :: proc(node: engine.Transform_Handle, target: engine.Ref_Local) {
+	if _, at := seq.get_comp(node, seq.ActivationTrack); at != nil do at.target = target
+}
+
+// Set an animation clip's .anim.
+_set_anim_clip :: proc(track_node: engine.Transform_Handle, index: int, guid: engine.Asset_GUID) {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(track_node))
+	if t == nil || index >= len(t.children) do return
+	cn := engine.Transform_Handle(t.children[index].handle)
+	if _, cr := anim.get_comp(cn, anim.AnimationClipRef); cr != nil do cr.clip = guid
 }
 
 _marker_hits: int
@@ -101,13 +115,16 @@ test_director_playback :: proc(t: ^testing.T) {
 
 	// Timeline subtree: anim clip A [0,1), anim clip B [1,2), an activation
 	// span [0.5, 1.5) on the child, a marker at 0.5. Loops at duration 2.
-	_mk_track(root, "animation", {},
-		seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid},
-		seq.Timeline_Clip{start = 1, duration = 1, asset = const_guid},
+	at := _mk_track(root, .AnimationTrack,
+		seq.Timeline_Clip{start = 0, duration = 1},
+		seq.Timeline_Clip{start = 1, duration = 1},
 	)
-	_mk_track(root, "activation", {handle = engine.Handle(child)},
-		seq.Timeline_Clip{start = 0.5, duration = 1})
-	_mk_track(root, "marker", {}, seq.Timeline_Clip{start = 0.5, name = "hit"})
+	_set_anim_clip(at, 0, ramp_guid)
+	_set_anim_clip(at, 1, const_guid)
+	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0.5, duration = 1})
+	_set_activation_target(act, {handle = engine.Handle(child)})
+	mk := _mk_track(root, .MarkerTrack, seq.Timeline_Clip{start = 0.5, name = "hit"})
+	if _, mt := seq.get_comp(mk, seq.MarkerTrack); mt != nil do mt.target = {handle = engine.Handle(child)}
 
 	_marker_hits = 0
 	seq.timeline_marker_hook = _count_marker
@@ -157,8 +174,9 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	d.manual_start = true
 	defer seq.director_teardown(d)
 
-	_mk_track(root, "animation", {}, seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid})
-	_mk_track(root, "marker", {}, seq.Timeline_Clip{start = 0.5, name = "hit"})
+	at := _mk_track(root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_set_anim_clip(at, 0, ramp_guid)
+	_mk_track(root, .MarkerTrack, seq.Timeline_Clip{start = 0.5, name = "hit"})
 
 	// Manual start holds playback until director_play.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1)
@@ -206,9 +224,8 @@ test_track_target_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	testing.expect(t, ct != nil)
 	if ct == nil do return
-	_mk_track(root, "activation",
-		{local_id = ct.local_id, handle = engine.Handle(child)},
-		seq.Timeline_Clip{start = 0, duration = 1})
+	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_set_activation_target(act, {local_id = ct.local_id, handle = engine.Handle(child)})
 	want_lid := ct.local_id
 	testing.expect(t, want_lid != 0, "the target must have a local id")
 
@@ -231,8 +248,11 @@ test_track_target_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	tracks := seq.director_tracks(d2)
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
-	testing.expect_value(t, tracks[0].target.local_id, want_lid)
-	testing.expect(t, engine.world_pool_valid(&tc.world, tracks[0].target.handle),
+	_, at2 := seq.get_comp(tracks[0].node, seq.ActivationTrack)
+	testing.expect(t, at2 != nil, "the kind component survives")
+	if at2 == nil do return
+	testing.expect_value(t, at2.target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, at2.target.handle),
 		"the target handle must re-resolve after restore")
 	testing.expect_value(t, len(tracks[0].clips), 1)
 }
@@ -259,8 +279,8 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	d.duration = 2
 	defer seq.director_teardown(d)
 
-	_mk_track(root, "activation", {handle = engine.Handle(child)},
-		seq.Timeline_Clip{start = 0, duration = 1})
+	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_set_activation_target(act, {handle = engine.Handle(child)})
 
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	ct.is_active = false // authored INACTIVE
@@ -312,7 +332,7 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 
 	// Control track with a clip [1, 2); under the clip node, a nested
 	// timeline: its own director + an animation track ramping x over 1s.
-	ctrl := _mk_track(root, "control", {}, seq.Timeline_Clip{start = 1, duration = 1})
+	ctrl := _mk_track(root, .ControlTrack, seq.Timeline_Clip{start = 1, duration = 1})
 	clip_node: engine.Transform_Handle
 	{
 		w := engine.ctx_world()
@@ -326,7 +346,8 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	nested.duration = 1
 	nested.manual_start = true
 	defer seq.director_teardown(nested)
-	_mk_track(nested_root, "animation", {}, seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid})
+	nat := _mk_track(nested_root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_set_anim_clip(nat, 0, ramp_guid)
 
 	nt := engine.pool_get(&tc.world.transforms, engine.Handle(nested_root))
 

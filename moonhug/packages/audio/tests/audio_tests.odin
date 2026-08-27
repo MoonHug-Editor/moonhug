@@ -265,7 +265,7 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
+	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Timeline_Clip{start = 0.5, duration = 1})
 
 	// Before the span: silent.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
@@ -322,7 +322,7 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, empty_stack_scene == nil, "no owner pushed = no scene = no local_id minted")
 	minted := engine.sm_local_id_get_or_mint(picker_scene, owned.handle)
 	testing.expect_value(t, minted, want_lid)
-	_mk_audio_track(root, {local_id = minted, handle = owned.handle},
+	_mk_audio_track(root, {local_id = minted, handle = owned.handle}, {},
 		seq.Timeline_Clip{start = 0, duration = 1})
 	_ = comp_owned
 
@@ -345,8 +345,11 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	tracks := seq.director_tracks(d2)
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
-	testing.expect_value(t, tracks[0].target.local_id, want_lid)
-	testing.expect(t, engine.world_pool_valid(&tc.world, tracks[0].target.handle),
+	_, at2 := audio.get_comp(tracks[0].node, audio.AudioTrack)
+	testing.expect(t, at2 != nil, "the AudioTrack component survives")
+	if at2 == nil do return
+	testing.expect_value(t, at2.source.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, at2.source.handle),
 		"the AudioSource binding must re-resolve after restore")
 }
 
@@ -405,7 +408,7 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
+	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Timeline_Clip{start = 0.5, duration = 1})
 
 	// The window's preview-play frame loop: step, render, per-frame restore.
 	step :: proc(d: ^seq.PlayableDirector, time: f32) {
@@ -439,17 +442,18 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 
 // Build a track NODE with clip NODES under `owner` (timeline-as-prefab).
 @(private = "file")
-_mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+_mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, asset: engine.Asset_GUID, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
 	node := engine.transform_new("audio", owner)
-	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
-	tc.kind = strings.clone("audio")
-	tc.target = target
+	engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	_, at := engine.transform_get_or_add_comp(node, audio.AudioTrack)
+	at.source = target
 	for c in clips {
 		cn := engine.transform_new("clip", node)
 		_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
 		cc.start = c.start
 		cc.duration = c.duration
-		cc.asset = c.asset
+		_, cr := engine.transform_get_or_add_comp(cn, audio.AudioClipRef)
+		cr.clip = asset
 	}
 	return node
 }

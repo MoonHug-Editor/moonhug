@@ -849,13 +849,14 @@ test_particles_control_track :: proc(t: ^testing.T) {
 	d.duration = 2
 	defer seq.director_teardown(d)
 	track_node := engine.transform_new("fx", root)
-	_, tcc := engine.transform_get_or_add_comp(track_node, seq.TimelineTrack)
-	tcc.kind = strings.clone("particles")
-	tcc.target = {handle = owned.handle}
+	engine.transform_get_or_add_comp(track_node, seq.TimelineTrack)
+	_, ptc := engine.transform_get_or_add_comp(track_node, particles.ParticlesTrack)
+	ptc.system = {handle = owned.handle}
 	clip_node := engine.transform_new("clip", track_node)
 	_, ccc := engine.transform_get_or_add_comp(clip_node, seq.TimelineClip)
 	ccc.start = 0.5
 	ccc.duration = 1
+	engine.transform_get_or_add_comp(clip_node, particles.ParticlesClip)
 
 	// Before the span: the system stays stopped (manual start).
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3

@@ -13,24 +13,51 @@ package audio
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
 
+// The kind's components: the track carries what it drives, the clip carries
+// its payload. `ref:`/`ext:` tags drive the inspector's pickers, so the
+// sequencer window needs no per-kind knowledge.
+@(component)
+@(typ_guid={guid = "b6ddf9c5-02a9-4ff9-8e6d-8a64e5e1edd6"})
+AudioTrack :: struct {
+	using base: engine.CompData `inspect:"-"`,
+
+	source: engine.Ref_Local `ref:"AudioSource"`,
+}
+
+@(component)
+@(typ_guid={guid = "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff"})
+AudioClipRef :: struct {
+	using base: engine.CompData `inspect:"-"`,
+
+	clip: engine.Asset_GUID `ext:"mp3,wav,ogg"`,
+}
+
 @(phase={key=ImportersInit, order=4})
 audio_track_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		kind         = "audio",
-		binding_type = "AudioSource",
-		tick         = _audio_track_tick,
-		preview_end  = _audio_track_preview_end,
+		track_key   = .AudioTrack,
+		clip_key    = .AudioClipRef,
+		label       = "audio",
+		tick        = _audio_track_tick,
+		preview_end = _audio_track_preview_end,
 	})
 }
 
-_audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
-	if ctx.target.handle.type_key != .AudioSource do return
+// The AudioSource this track drives, or nil.
+@(private = "file")
+_audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^AudioSource {
+	_, at := get_comp(ctx.track.node, AudioTrack)
+	if at == nil || at.source.handle.type_key != .AudioSource do return nil
 	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, ctx.target.handle) do return
-	src := cast(^AudioSource)engine.world_pool_get(w, ctx.target.handle)
+	if !engine.world_pool_valid(w, at.source.handle) do return nil
+	return cast(^AudioSource)engine.world_pool_get(w, at.source.handle)
+}
+
+_audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
+	src := _audio_track_source(ctx)
 	if src == nil do return
 
 	// A static scrub is silent. The preview's PLAY advance (.Preview_Play)
@@ -45,9 +72,11 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	for &c in ctx.track.clips {
 		if seq.track_clip_active(ctx, &c) do any_active = true
 		if seq.track_crossed(ctx, c.start) {
-			if !engine.asset_guid_is_empty(c.asset) && c.asset != src.clip {
+			asset: engine.Asset_GUID
+			if _, cr := get_comp(c.node, AudioClipRef); cr != nil do asset = cr.clip
+			if !engine.asset_guid_is_empty(asset) && asset != src.clip {
 				if audio_is_playing(src) do audio_stop(src)
-				src.clip = c.asset
+				src.clip = asset
 			}
 			audio_play(src)
 		}
@@ -62,9 +91,6 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 // voice alone — stopping it every frame is what made preview-play silent.
 _audio_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 	if ctx.mode == .Preview_Play do return
-	if ctx.target.handle.type_key != .AudioSource do return
-	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, ctx.target.handle) do return
-	src := cast(^AudioSource)engine.world_pool_get(w, ctx.target.handle)
+	src := _audio_track_source(ctx)
 	if src != nil && audio_is_playing(src) do audio_stop(src)
 }

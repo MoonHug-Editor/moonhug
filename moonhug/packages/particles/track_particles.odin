@@ -14,24 +14,48 @@ package particles
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
 
+// The kind's components: the track carries what it drives; the clip needs no
+// payload (the span itself is the instruction).
+@(component)
+@(typ_guid={guid = "e4302a74-3eae-4bce-93c0-b3cc8eba2661"})
+ParticlesTrack :: struct {
+	using base: engine.CompData `inspect:"-"`,
+
+	system: engine.Ref_Local `ref:"ParticleSystem"`,
+}
+
+@(component)
+@(typ_guid={guid = "8ab6c411-bcd5-4f71-8e0d-ff13b17dc52f"})
+ParticlesClip :: struct {
+	using base: engine.CompData `inspect:"-"`,
+}
+
 @(phase={key=ImportersInit, order=4})
 particles_track_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		kind         = "particles",
-		binding_type = "ParticleSystem",
-		tick         = _particles_track_tick,
-		preview_end  = _particles_track_preview_end,
+		track_key   = .ParticlesTrack,
+		clip_key    = .ParticlesClip,
+		label       = "particles",
+		tick        = _particles_track_tick,
+		preview_end = _particles_track_preview_end,
 	})
 }
 
-_particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
-	if ctx.target.handle.type_key != .ParticleSystem do return
+// The ParticleSystem this track drives, or nil.
+@(private = "file")
+_particles_track_system :: proc(ctx: ^seq.Track_Ctx) -> ^ParticleSystem {
+	_, pt := get_comp(ctx.track.node, ParticlesTrack)
+	if pt == nil || pt.system.handle.type_key != .ParticleSystem do return nil
 	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, ctx.target.handle) do return
-	ps := cast(^ParticleSystem)engine.world_pool_get(w, ctx.target.handle)
+	if !engine.world_pool_valid(w, pt.system.handle) do return nil
+	return cast(^ParticleSystem)engine.world_pool_get(w, pt.system.handle)
+}
+
+_particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
+	ps := _particles_track_system(ctx)
 	if ps == nil do return
 
 	active: ^seq.Timeline_Clip
@@ -95,10 +119,7 @@ _scrub_effect :: proc(ps: ^ParticleSystem, out: ^[dynamic]^ParticleSystem) {
 // The editor's preview stopped: clear the effect it was driving (the bound
 // system and its sub-emitter targets).
 _particles_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
-	if ctx.target.handle.type_key != .ParticleSystem do return
-	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, ctx.target.handle) do return
-	ps := cast(^ParticleSystem)engine.world_pool_get(w, ctx.target.handle)
+	ps := _particles_track_system(ctx)
 	if ps == nil do return
 	list := make([dynamic]^ParticleSystem, context.temp_allocator)
 	_scrub_effect(ps, &list)

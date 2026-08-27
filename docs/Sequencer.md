@@ -16,6 +16,7 @@ therefore a timeline feature:
 | Nested timeline    | nested prefab under a control clip               |
 | Embedded timeline  | plain scene content (guid-less, local ids)       |
 | Clip identity      | local ids — undo, overrides, multiedit all apply |
+| Track kind         | a component — the registry keys on its TypeKey    |
 
 ```
 packages/sequencer/                 ← knows only the engine
@@ -36,14 +37,25 @@ packages/particles/track_particles.odin  ← "particles" track
 - **PlayableDirector** (root node): `wrap` (Once/Loop), `speed` (0 runs at 1),
   `manual_start` (inverse of Unity's play-on-awake), `duration` (0 = last
   clip end). Zero-neutral throughout.
-- **TimelineTrack** (child node): `kind` (registry key), `muted`, `target`
-  (Ref_Local — what the track drives). The node's NAME is the track name;
-  sibling order is track order. Targets are authored in the prefab or set per
-  instance as prefab overrides — overrides ARE the exposure surface, there is
-  no separate binding or exposed-reference table.
-- **TimelineClip** (child of a track node): `start`, `duration`, `ease_in`,
-  `ease_out`, `speed`, `asset` (payload guid). The node's name is the clip
-  name (markers fire it). Clip order derives from start times.
+- **A track node** carries TWO components: `TimelineTrack` (`muted` — what
+  every track has) and its **kind component**, which IS the discriminator:
+  `AudioTrack`, `ParticlesTrack`, `AnimationTrack`, `ActivationTrack`,
+  `MarkerTrack`, `ControlTrack`. The registry keys on the kind component's
+  TypeKey — there is no `kind` string anywhere. The node's NAME is the track
+  name; sibling order is track order.
+- **The kind component owns the track's target**, with a `ref:` tag that
+  drives the picker: `AudioTrack.source \`ref:"AudioSource"\``,
+  `ParticlesTrack.system \`ref:"ParticleSystem"\``. A kind that needs no
+  target (animation, control) simply has no field, and one wanting two
+  targets just adds a second. Targets are authored in the prefab or set per
+  instance as prefab overrides — overrides ARE the exposure surface, there
+  is no binding table and no exposed-reference table.
+- **A clip node** likewise carries `TimelineClip` (`start`, `duration`,
+  `ease_in`, `ease_out`, `speed`) plus the kind's clip component holding its
+  payload: `AudioClipRef.clip \`ext:"mp3,wav,ogg"\``,
+  `AnimationClipRef.clip \`ext:"anim"\``, and empty markers for kinds with
+  no payload. The node's name is the clip name (markers fire it). Clip order
+  derives from start times.
 
 ## Evaluation
 
@@ -64,12 +76,14 @@ the parent timeline owns its time.
 
 ## Tracks
 
-Kinds register with `track_register`. A `Track_Desc` supplies `binding_type`
-(what the track's target picker offers) and four hooks: `build` (once per
+Kinds register with `track_register`. A `Track_Desc` supplies `track_key`
+and `clip_key` (the kind's two components), a `label` for menus, and four
+hooks: `build` (once per
 director+track, returns the kind's own state), `destroy`, `tick`, and
 `preview_end` (quiet whatever the track drove when the editor's preview
-stops). Hooks receive a `Track_Ctx`: the track view, its target, the
-director's owner, the kind's state, the frame's time window (`track_crossed`
+stops). Hooks receive a `Track_Ctx`: the track view (whose `node` is where
+the hook reads its OWN component for targets and options), the director's
+owner, the kind's state, the frame's time window (`track_crossed`
 is the wrap-aware crossing test), and the evaluation `mode`:
 
 - `Play` — the runtime. Crossings fire, side effects are real.
@@ -121,14 +135,15 @@ multieditable component like any other.
 - Toolbar: Preview toggle, rewind, Play/Pause, time/duration, Save Scene,
   Add Track (registry kinds).
 - Legend per track: mute, name (right-click: add clip / rename / remove),
-  target picker (filtered by `binding_type` — the picker pushes the director
-  as inspector owner so the target's local id mints against the right
-  scene), add-clip, remove.
+  add-clip, remove.
 - Canvas: seconds ruler (dragging scrubs), colored clip blocks — body drags
   move, edge grips resize (0.1s snap), ease ramps as corner lines, wheel
   zooms. Double-click empty row space adds a clip, right-click menus for
   clip Duplicate/Delete, Delete/Backspace removes the selection.
-- Inspector pane: the selected track and clip, one field per row.
+- Inspector pane: the selected track and clip, one field per row, plus each
+  one's KIND component drawn through the inspector's default drawing — the
+  `ref:`/`ext:` tags filter their own pickers, so the window contains no
+  per-kind knowledge at all.
 - Preview: `sequencer_preview_apply/restore` bracket the scene/game render.
   Play advances with `director_preview_step` (audio live), a paused or
   dragged playhead is a silent scrub, and the per-frame restore quiets

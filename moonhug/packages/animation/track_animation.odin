@@ -9,7 +9,31 @@ package animation
 // sequencer package holds no animation knowledge, exactly like audio and
 // particles.
 
+import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
+
+// The kind's components. The track needs no target — channel paths resolve
+// under the director's own transform — and the clip carries its .anim.
+@(component)
+@(typ_guid={guid = "89aaf6a3-5c2e-4af3-8893-81833e7f79b9"})
+AnimationTrack :: struct {
+	using base: engine.CompData `inspect:"-"`,
+}
+
+@(component)
+@(typ_guid={guid = "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d"})
+AnimationClipRef :: struct {
+	using base: engine.CompData `inspect:"-"`,
+
+	clip: engine.Asset_GUID `ext:"anim"`,
+}
+
+// The .anim a timeline clip plays, or the empty guid.
+@(private = "file")
+_anim_clip_asset :: proc(c: ^seq.Timeline_Clip) -> engine.Asset_GUID {
+	if _, cr := get_comp(c.node, AnimationClipRef); cr != nil do return cr.clip
+	return {}
+}
 
 @(phase={key=ImportersInit, order=4})
 animation_track_init :: proc() {
@@ -17,7 +41,9 @@ animation_track_init :: proc() {
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		kind        = "animation",
+		track_key   = .AnimationTrack,
+		clip_key    = .AnimationClipRef,
+		label       = "animation",
 		build       = _animation_track_build,
 		destroy     = _animation_track_destroy,
 		tick        = _animation_track_tick,
@@ -41,7 +67,7 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 	st.output.graph.root = st.mixer
 	st.clips = make([dynamic]Playable_Handle, 0, len(ctx.track.clips))
 	for &c in ctx.track.clips {
-		node := playable_add(&st.output.graph, Clip_Playable{clip = c.asset})
+		node := playable_add(&st.output.graph, Clip_Playable{clip = _anim_clip_asset(&c)})
 		playable_connect(&st.output.graph, st.mixer, node, 0)
 		append(&st.clips, node)
 	}
@@ -81,7 +107,7 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		local := (ctx.time - c.start) * (c.speed if c.speed > 0 else 1)
 		// A source clip shorter than the timeline clip wraps by its own wrap
 		// mode (Unity loops the source).
-		if src, sok := animation_clip_load(c.asset); sok {
+		if src, sok := animation_clip_load(_anim_clip_asset(&c)); sok {
 			local, _ = animation_wrap_time(local, src.length, src.wrap)
 		}
 		n.time = local

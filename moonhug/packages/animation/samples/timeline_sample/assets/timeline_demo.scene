@@ -134,6 +134,9 @@
       "components": [
         {
           "local_id": 881202600000022
+        },
+        {
+          "local_id": 881202600000031
         }
       ]
     },
@@ -175,6 +178,9 @@
       "components": [
         {
           "local_id": 881202600000024
+        },
+        {
+          "local_id": 881202600000032
         }
       ]
     },
@@ -293,6 +299,9 @@
       "components": [
         {
           "local_id": 881202600000026
+        },
+        {
+          "local_id": 881202600000033
         }
       ]
     },
@@ -334,6 +343,9 @@
       "components": [
         {
           "local_id": 881202600000028
+        },
+        {
+          "local_id": 881202600000034
         }
       ]
     },
@@ -417,6 +429,9 @@
       "components": [
         {
           "local_id": 3698358637994408
+        },
+        {
+          "local_id": 3418817352709647
         }
       ]
     },
@@ -576,15 +591,20 @@
         "enabled": true,
         "local_id": 881202600000022
       },
-      "kind": "particles",
-      "muted": false,
-      "target": {
+      "muted": false
+    },
+    {
+      "__type": "e4302a74-3eae-4bce-93c0-b3cc8eba2661",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000031
+      },
+      "system": {
         "local_id": 881202600000013
       }
     },
     {
       "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "asset": "00000000-0000-0000-0000-000000000000",
       "base": {
         "enabled": true,
         "local_id": 881202600000024
@@ -594,6 +614,13 @@
       "ease_out": 0.0,
       "speed": 0.0,
       "start": 0.5
+    },
+    {
+      "__type": "8ab6c411-bcd5-4f71-8e0d-ff13b17dc52f",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000032
+      }
     },
     {
       "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
@@ -1114,15 +1141,20 @@
         "enabled": true,
         "local_id": 881202600000026
       },
-      "kind": "audio",
-      "muted": false,
-      "target": {
+      "muted": false
+    },
+    {
+      "__type": "b6ddf9c5-02a9-4ff9-8e6d-8a64e5e1edd6",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000033
+      },
+      "source": {
         "local_id": 2396538970747311
       }
     },
     {
       "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "asset": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "base": {
         "enabled": true,
         "local_id": 881202600000028
@@ -1132,6 +1164,14 @@
       "ease_out": 0.0,
       "speed": 0.0,
       "start": 2.9000001000000002
+    },
+    {
+      "__type": "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000034
+      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa"
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1155,15 +1195,20 @@
         "enabled": true,
         "local_id": 3698358637994408
       },
-      "kind": "audio",
-      "muted": false,
-      "target": {
+      "muted": false
+    },
+    {
+      "__type": "b6ddf9c5-02a9-4ff9-8e6d-8a64e5e1edd6",
+      "base": {
+        "enabled": true,
+        "local_id": 3418817352709647
+      },
+      "source": {
         "local_id": 4412896662392672
       }
     },
     {
       "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "asset": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "base": {
         "enabled": true,
         "local_id": 3775708159831013
@@ -1192,7 +1237,6 @@
     },
     {
       "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "asset": "00000000-0000-0000-0000-000000000000",
       "base": {
         "enabled": true,
         "local_id": 3246846976901040

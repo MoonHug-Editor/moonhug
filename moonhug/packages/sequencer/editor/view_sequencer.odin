@@ -20,10 +20,8 @@ package sequencer_editor
 // sequencer_preview_apply/restore bracket the render in main.odin exactly
 // like the animation scrub preview.
 
-import "core:encoding/uuid"
 import "core:fmt"
 import "core:math"
-import "core:path/filepath"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
 import seq "moonhug:packages/sequencer"
@@ -159,11 +157,17 @@ _sq_clip_comp :: proc(c: ^seq.Timeline_Clip) -> (engine.Handle, ^seq.TimelineCli
 // context menu and double-click all land here.
 @(private = "file")
 _sq_add_clip :: proc(tv: ^seq.Timeline_Track, ti: int, at: f32) {
-	node := engine.transform_new(tv.kind == "marker" ? "marker" : "clip", tv.node)
+	desc, has := seq.track_desc(tv.kind)
+	is_marker := has && desc.track_key == .MarkerTrack
+	node := engine.transform_new(is_marker ? "marker" : "clip", tv.node)
 	_, cc := engine.transform_get_or_add_comp(node, seq.TimelineClip)
 	if cc != nil {
 		cc.start = max(math.round(at * 10) / 10, 0)
-		cc.duration = tv.kind == "marker" ? 0 : 1
+		cc.duration = is_marker ? 0 : 1
+	}
+	// The kind's clip component carries its payload (the .anim, the wav, ...).
+	if has && desc.clip_key != engine.INVALID_TYPE_KEY {
+		engine.transform_add_comp(node, desc.clip_key)
 	}
 	undo.record_create(node, tv.node)
 	_sq.sel_track = ti
@@ -190,13 +194,12 @@ _sq_duplicate_clip :: proc(tv: ^seq.Timeline_Track, c: ^seq.Timeline_Clip) {
 }
 
 @(private = "file")
-_sq_add_track :: proc(owner: engine.Transform_Handle, kind: string) {
-	node := engine.transform_new(kind, owner)
-	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
-	if tc != nil {
-		delete(tc.kind)
-		tc.kind = _sq_clone(kind)
-	}
+_sq_add_track :: proc(owner: engine.Transform_Handle, desc: seq.Track_Desc) {
+	node := engine.transform_new(desc.label, owner)
+	engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	// The kind component is the discriminator — the registry finds the hooks
+	// through its TypeKey.
+	engine.transform_add_comp(node, desc.track_key)
 	undo.record_create(node, owner)
 }
 
@@ -208,10 +211,31 @@ _sq_clone :: proc(s: string) -> string {
 	return string(buf)
 }
 
+// A kind label for UI, from the registry.
 @(private = "file")
-_sq_binding_type :: proc(kind: string) -> string {
-	if desc, ok := seq.track_desc(kind); ok do return desc.binding_type
-	return ""
+_sq_kind_label :: proc(kind: engine.TypeKey) -> string {
+	if desc, ok := seq.track_desc(kind); ok do return desc.label
+	return "?"
+}
+
+// Draw a node's kind component through the inspector's default drawing —
+// `ref:`/`ext:` tags on its fields drive the pickers, so the window needs no
+// per-kind knowledge. Edits record as a whole-component undo session.
+@(private = "file")
+_sq_draw_kind_component :: proc(node: engine.Transform_Handle, key: engine.TypeKey, label: string) {
+	if key == engine.INVALID_TYPE_KEY do return
+	owned, raw := engine.transform_get_comp_key(node, key)
+	if raw == nil do return
+	tid := engine.get_typeid_by_type_key(key)
+	if tid == nil do return
+
+	sess := undo.edit_session_begin({undo.edit_target_whole(owned.handle)}, label)
+	// Ref pickers mint local ids against the owner's root scene, which they
+	// read from the inspector owner stack.
+	undo.push_component_owner(owned.handle)
+	inspector.draw_inspector_default(raw, tid, "", "")
+	undo.pop_owner()
+	undo.edit_session_end(&sess)
 }
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
@@ -284,8 +308,8 @@ sequencer_window_draw :: proc() {
 	im.SameLine()
 	if im.SmallButton("Add Track") do im.OpenPopup("sq_add_track")
 	if im.BeginPopup("sq_add_track") {
-		for kind in seq.track_kinds() {
-			if im.Selectable(fmt.ctprintf("%s", kind)) do _sq_add_track(owner, kind)
+		for desc in seq.track_kinds() {
+			if im.Selectable(fmt.ctprintf("%s", desc.label)) do _sq_add_track(owner, desc)
 		}
 		im.EndPopup()
 	}
@@ -316,7 +340,7 @@ sequencer_window_draw :: proc() {
 			im.SetItemTooltip("Mute")
 			im.SameLine()
 			im.TextUnformatted(fmt.ctprintf("%s", tv.name))
-			im.SetItemTooltip("%s track — right-click for options", tv.kind)
+			im.SetItemTooltip("%s track — right-click for options", _sq_kind_label(tv.kind))
 			im.OpenPopupOnItemClick("track_ctx")
 			if im.BeginPopup("track_ctx") {
 				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(&tv, ti, _sq.time)
@@ -343,33 +367,6 @@ sequencer_window_draw :: proc() {
 				im.EndPopup()
 			}
 			im.SameLine()
-			// Target: which scene object this track drives. Lives on the
-			// TRACK COMPONENT — authored in the timeline prefab, overridden
-			// per instance by the prefab system.
-			bt := _sq_binding_type(tv.kind)
-			if bt == "" {
-				im.TextDisabled(tv.kind == "animation" ? "(owner)" : "-")
-			} else {
-				sess := undo.edit_session_begin({undo.edit_target_whole(comp)}, "Track Target")
-				// The ref picker mints the target's local_id against the
-				// OWNER's root scene, which it reads from the inspector owner
-				// stack — without this push the scene is nil, no id is minted,
-				// and the target holds only a runtime handle that dies with
-				// the next scene reload.
-				undo.push_component_owner(comp)
-				defer undo.pop_owner()
-				before := tc.target.local_id
-				inspector.current_field_ref_target = bt
-				im.SetNextItemWidth(-46)
-				if drawer := inspector.resolve_property_drawer(typeid_of(engine.Ref_Local)); drawer != nil {
-					drawer(&tc.target, typeid_of(engine.Ref_Local), "##bind")
-				}
-				inspector.current_field_ref_target = ""
-				changed := tc.target.local_id != before
-				undo.edit_session_end(&sess)
-				if changed do inspector.mark_inspector_changed()
-				im.SameLine()
-			}
 			if im.SmallButton("+") do _sq_add_clip(&tv, ti, _sq.time)
 			im.SetItemTooltip("Add clip at the playhead")
 			im.SameLine()
@@ -477,7 +474,7 @@ sequencer_window_draw :: proc() {
 					ex := to_x(origin, c.start + c.duration - min(c.ease_out, c.duration))
 					im.DrawList_AddLine(dl, {ex, r0.y}, {x1, r1.y}, im.GetColorU32ImVec4({1, 1, 1, 0.5}))
 				}
-				label := len(c.name) > 0 ? c.name : _sq_asset_label(c.asset)
+				label := c.name
 				im.DrawList_PushClipRect(dl, r0, r1, true)
 				im.DrawList_AddText(dl, {r0.x + 4, r0.y + 2}, im.GetColorU32(.Text), fmt.ctprintf("%s", label))
 				im.DrawList_PopClipRect(dl)
@@ -576,7 +573,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 	if tc == nil do return
 	{
 		im.SeparatorText("Track")
-		im.Text("%s", fmt.ctprintf("%s (%s)", tv.name, tv.kind))
+		im.Text("%s", fmt.ctprintf("%s (%s)", tv.name, _sq_kind_label(tv.kind)))
 		muted := tc.muted
 		if im.Checkbox("Muted", &muted) {
 			_sq_session_begin(tcomp, "Mute Track")
@@ -584,6 +581,9 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 			_sq_session_end()
 		}
 		im.Text("%d clips", i32(len(tv.clips)))
+		// The kind's own fields (its target, its options) — tags drive the
+		// pickers, so nothing here knows what a kind needs.
+		_sq_draw_kind_component(tv.node, tv.kind, "Track Target")
 	}
 	if _sq.sel_clip < 0 || _sq.sel_clip >= len(tv.clips) {
 		im.SeparatorText("Clip")
@@ -632,23 +632,13 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 		_sq_field_undo(comp, "Clip Speed", im.DragFloat("##c_speed", &cc.speed, 0.01, 0, 0, "x%.2f"))
 		im.SetItemTooltip("0 behaves as 1")
 
-		// The clip's payload asset, filtered per track kind.
-		ext := tv.kind == "animation" ? "anim" : tv.kind == "audio" ? "mp3,wav,ogg" : ""
-		if ext != "" {
-			row("Asset")
-			sess := undo.edit_session_begin({undo.edit_target_whole(comp)}, "Clip Asset")
-			before := cc.asset
-			inspector.current_field_ext_filter = ext
-			if drawer := inspector.resolve_property_drawer(typeid_of(engine.Asset_GUID)); drawer != nil {
-				drawer(&cc.asset, typeid_of(engine.Asset_GUID), "##c_asset")
+		// The clip's payload lives on the kind's clip component — its `ext:`
+		// tags filter the asset picker without the window naming any kind.
+		if desc, has := seq.track_desc(tv.kind); has {
+			_sq_draw_kind_component(c.node, desc.clip_key, "Clip Payload")
+			if desc.track_key == .ControlTrack {
+				im.TextWrapped("Nest a timeline prefab under this clip's node — the clip plays its director at the clip-local time.")
 			}
-			inspector.current_field_ext_filter = ""
-			changed := cc.asset != before
-			undo.edit_session_end(&sess)
-			if changed do inspector.mark_inspector_changed()
-		}
-		if tv.kind == "control" {
-			im.TextWrapped("Nest a timeline prefab under this clip's node — the clip plays its director at the clip-local time.")
 		}
 
 		im.Spacing()
@@ -658,25 +648,16 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 }
 
 @(private = "file")
-_sq_track_color :: proc(kind: string) -> im.Vec4 {
-	switch kind {
-	case "animation":  return {0.30, 0.50, 0.80, 0.9}
-	case "audio":      return {0.75, 0.55, 0.25, 0.9}
-	case "activation": return {0.40, 0.70, 0.40, 0.9}
-	case "particles":  return {0.65, 0.40, 0.75, 0.9}
-	case "marker":     return {0.80, 0.35, 0.35, 0.9}
-	case "control":    return {0.35, 0.65, 0.70, 0.9}
+_sq_track_color :: proc(kind: engine.TypeKey) -> im.Vec4 {
+	#partial switch kind {
+	case .AnimationTrack:  return {0.30, 0.50, 0.80, 0.9}
+	case .AudioTrack:      return {0.75, 0.55, 0.25, 0.9}
+	case .ActivationTrack: return {0.40, 0.70, 0.40, 0.9}
+	case .ParticlesTrack:  return {0.65, 0.40, 0.75, 0.9}
+	case .MarkerTrack:     return {0.80, 0.35, 0.35, 0.9}
+	case .ControlTrack:    return {0.35, 0.65, 0.70, 0.9}
 	}
 	return {0.5, 0.5, 0.5, 0.9}
-}
-
-@(private = "file")
-_sq_asset_label :: proc(g: engine.Asset_GUID) -> string {
-	if engine.asset_guid_is_empty(g) do return "(empty)"
-	if path, ok := engine.asset_db_get_path(uuid.Identifier(g)); ok {
-		return filepath.stem(path)
-	}
-	return "(missing)"
 }
 
 // --- Preview apply/restore (main loop hooks) --------------------------------------------

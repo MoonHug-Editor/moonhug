@@ -64,12 +64,21 @@ director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocato
 		if t == nil do continue
 		_, tc := get_comp(tH, TimelineTrack)
 		if tc == nil do continue
+		// The KIND is whichever registered component sits beside the shared
+		// TimelineTrack — the component is the discriminator.
+		kind := engine.INVALID_TYPE_KEY
+		for c in t.components {
+			if _, has := track_desc(c.handle.type_key); has {
+				kind = c.handle.type_key
+				break
+			}
+		}
+		if kind == engine.INVALID_TYPE_KEY do continue
 		tv := Timeline_Track{
-			kind   = tc.kind,
-			name   = t.name,
-			muted  = tc.muted,
-			target = tc.target,
-			node   = tH,
+			kind  = kind,
+			name  = t.name,
+			muted = tc.muted,
+			node  = tH,
 		}
 		clips := make([dynamic]Timeline_Clip, allocator)
 		for cn in t.children {
@@ -84,7 +93,6 @@ director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocato
 				ease_in  = cc.ease_in,
 				ease_out = cc.ease_out,
 				speed    = cc.speed,
-				asset    = cc.asset,
 				name     = ct.name,
 				node     = cH,
 			})
@@ -118,10 +126,9 @@ _director_tree_sig :: proc(tracks: []Timeline_Track) -> u64 {
 	}
 	for &tv in tracks {
 		mix(&sig, u64(engine.Handle(tv.node).index) | u64(engine.Handle(tv.node).generation) << 32)
-		for ch in tv.kind do mix(&sig, u64(ch))
+		mix(&sig, u64(tv.kind))
 		for &c in tv.clips {
 			mix(&sig, u64(engine.Handle(c.node).index) | u64(engine.Handle(c.node).generation) << 32)
-			for b in ([16]u8)(c.asset) do mix(&sig, u64(b))
 		}
 	}
 	return sig
@@ -237,7 +244,6 @@ director_teardown :: proc(d: ^PlayableDirector) {
 	}
 	delete(d.track_states)
 	d.track_states = nil
-	for k in d.track_state_kinds do delete(k)
 	delete(d.track_state_kinds)
 	d.track_state_kinds = nil
 	d.built = false
@@ -251,22 +257,14 @@ _director_ensure_built :: proc(d: ^PlayableDirector, tracks: []Timeline_Track) {
 	d.built = true
 	d.tree_sig = sig
 	d.track_states = make([dynamic]rawptr, len(tracks))
-	d.track_state_kinds = make([dynamic]string, 0, len(tracks))
+	d.track_state_kinds = make([dynamic]engine.TypeKey, 0, len(tracks))
 	for &tv, ti in tracks {
-		append(&d.track_state_kinds, _clone_default(tv.kind))
+		append(&d.track_state_kinds, tv.kind)
 		desc, has := track_desc(tv.kind)
 		if !has || desc.build == nil do continue
 		ctx := _director_ctx(d, tracks, &tv, i32(ti), .Play)
 		d.track_states[ti] = desc.build(&ctx)
 	}
-}
-
-// Track-state bookkeeping outlives the frame — never the temp allocator.
-@(private = "file")
-_clone_default :: proc(s: string) -> string {
-	buf := make([]u8, len(s))
-	copy(buf, s)
-	return string(buf)
 }
 
 @(private = "file")
@@ -282,7 +280,6 @@ _director_ctx :: proc(
 	if int(ti) < len(d.track_states) do state = d.track_states[ti]
 	return Track_Ctx{
 		track     = tv,
-		target    = tv.target,
 		owner     = engine.Transform_Handle(d.owner),
 		state     = state,
 		prev_time = d.prev_time,
