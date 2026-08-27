@@ -6,6 +6,7 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "menu"
+import wnd "window"
 import "../engine"
 
 WINDOW_TITLE :: "MoonHug Editor"
@@ -20,6 +21,7 @@ EditorSettings :: struct {
     y:                        i32,
     theme:                    menu.Theme,
     open_scene_guids:         [dynamic]string,
+    open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
     show_inspector:           bool,
     show_project_inspector:   bool,
     show_project:             bool,
@@ -110,6 +112,12 @@ save_editor_settings :: proc() {
     editor_settings.show_animation         = menu.show_animation
     editor_settings.show_playable_graph    = menu.show_playable_graph
     editor_settings.has_view_state         = true
+
+    // Plugin windows: imgui.ini keeps their dock and size, not whether they
+    // existed — the id list is what reopens them.
+    delete(editor_settings.open_window_ids)
+    editor_settings.open_window_ids = make([dynamic]string, context.temp_allocator)
+    for id in wnd.open_ids() do append(&editor_settings.open_window_ids, id)
 
     overlays_capture_settings()
     editor_settings.grid = grid_settings

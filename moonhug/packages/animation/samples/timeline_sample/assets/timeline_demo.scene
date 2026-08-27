@@ -609,7 +609,7 @@
         "enabled": true,
         "local_id": 881202600000024
       },
-      "duration": 4.4000000999999997,
+      "duration": 3.2999999500000001,
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
@@ -1163,7 +1163,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 2.9000001000000002
+      "start": 4.5999999000000003
     },
     {
       "__type": "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff",
@@ -1185,7 +1185,7 @@
       "min_distance": 1.0,
       "mute": false,
       "pitch": 1.0,
-      "play_on_awake": true,
+      "play_on_awake": false,
       "spatial_blend": 0.0,
       "volume": 1.0
     },
@@ -1213,7 +1213,7 @@
         "enabled": true,
         "local_id": 3775708159831013
       },
-      "duration": 1.0,
+      "duration": 1.4000001,
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
@@ -1231,7 +1231,7 @@
       "min_distance": 1.0,
       "mute": false,
       "pitch": 1.0,
-      "play_on_awake": true,
+      "play_on_awake": false,
       "spatial_blend": 0.0,
       "volume": 1.0
     },
@@ -1241,7 +1241,7 @@
         "enabled": true,
         "local_id": 3246846976901040
       },
-      "duration": 1.0,
+      "duration": 1.3999998600000001,
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,

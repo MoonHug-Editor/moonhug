@@ -147,6 +147,8 @@ main :: proc() {
     simulate_init()
     defer simulate_shutdown()
     _register_editor_windows() // plugin @(editor_window) declarations
+    // Reopen what was open last session — declarations must exist first.
+    wnd.open_saved(editor_settings.open_window_ids[:])
     defer wnd.shutdown()
     defer preview.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs

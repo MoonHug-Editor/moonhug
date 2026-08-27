@@ -39,7 +39,10 @@ is a subpackage a package `editor/` may import:
   `register` for a SCRUB PREVIEW pair: `apply` poses the world right before
   the scene/game render, `restore` puts it back right after, so saves, undo
   and the inspector always see authored values. Restores run in reverse
-  registration order.
+  registration order. A scrub preview must also END ITSELF when play mode
+  starts — subscribe `@(phase={key=engine.Phase.ExitingEditMode, mode=Editor})`
+  and guard `apply` with `engine.application_is_playing()`: play owns the
+  world, and a preview posing it every frame fights the simulation.
 - **Shared widgets** — `editor/node_canvas` (pan/zoom node graph),
   `editor/inspector`, `editor/undo`, `editor/window`, `editor/menu`.
 

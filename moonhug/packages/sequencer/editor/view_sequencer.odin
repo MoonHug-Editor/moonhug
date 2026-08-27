@@ -30,15 +30,24 @@ import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/preview"
 
+// Material icon codepoints, declared locally like the inspector package does
+// — editor/material_icons.odin lives in the editor ROOT, which packages do
+// not import.
+@(private = "file") _ICON_VOLUME_UP :: "\ue050"  // volume_up
+@(private = "file") _ICON_VOLUME_OFF :: "\ue04f" // volume_off
+
+_SQ_TAIL_S :: f32(2) // canvas room past the timeline end, seconds
 _SQ_ROW_H :: f32(26)
 _SQ_RULER_H :: f32(22)
 _SQ_SPLIT_W :: f32(4) // splitter thickness / hit area
 _SQ_MIN_PANE :: f32(120)
 
-// A draggable splitter: `size` is the pane BEFORE it, clamped so both sides
-// keep _SQ_MIN_PANE. Returns after drawing; the caller lays out around it.
+// A draggable splitter. `size` is the pane it resizes, clamped so both sides
+// keep _SQ_MIN_PANE. `after` says that pane lies AFTER the splitter, so
+// dragging toward it must GROW it — without the flip the right pane resizes
+// backwards. Returns after drawing; the caller lays out around it.
 @(private = "file")
-_sq_splitter :: proc(id: cstring, vertical: bool, size: ^f32, total: f32) {
+_sq_splitter :: proc(id: cstring, vertical: bool, size: ^f32, total: f32, after := false) {
 	thickness := _SQ_SPLIT_W
 	im.InvisibleButton(id, vertical ? im.Vec2{thickness, im.GetContentRegionAvail().y} : im.Vec2{-1, thickness})
 	if im.IsItemHovered({}) || im.IsItemActive() {
@@ -49,6 +58,7 @@ _sq_splitter :: proc(id: cstring, vertical: bool, size: ^f32, total: f32) {
 	}
 	if im.IsItemActive() {
 		delta := vertical ? im.GetIO().MouseDelta.x : im.GetIO().MouseDelta.y
+		if after do delta = -delta
 		size^ = clamp(size^ + delta, _SQ_MIN_PANE, max(total - _SQ_MIN_PANE, _SQ_MIN_PANE))
 	}
 }
@@ -243,7 +253,15 @@ sequencer_preview_install :: proc() {
 	preview.register({apply = sequencer_preview_apply, restore = sequencer_preview_restore})
 }
 
-@(menu_item={path="Window/Sequencer", shortcut=""})
+// Entering play mode ends the preview: play OWNS the world from here, and a
+// scrub posing it every frame would fight the simulation. Fires before the
+// state flips, so the tracks quiet against the still-authored world.
+@(phase={key=engine.Phase.ExitingEditMode, mode=Editor})
+sequencer_preview_exit_edit_mode :: proc() {
+	if _sq.preview do _sq_preview_end()
+}
+
+@(menu_item={path="Window/Animation/Sequencer", shortcut=""})
 sequencer_menu_open :: proc() {
 	wnd.open("sequencer")
 }
@@ -274,9 +292,14 @@ sequencer_window_draw :: proc() {
 
 	// --- Toolbar -------------------------------------------------------------------
 	dur := max(seq.director_duration(d, tracks), 0.001)
+	playing_mode := engine.application_is_playing()
+	// Preview controls only — play mode drives the director itself, so
+	// scrubbing it would fight the simulation. Editing stays available.
+	im.BeginDisabled(playing_mode)
 	if im.Checkbox("Preview", &_sq.preview) {
 		if !_sq.preview do _sq.playing = false
 	}
+	if playing_mode do im.SetItemTooltip("Play mode drives the director")
 	im.SameLine()
 	if im.SmallButton("|<") {
 		_sq.time = 0
@@ -287,12 +310,13 @@ sequencer_window_draw :: proc() {
 		_sq.playing = !_sq.playing
 		if _sq.playing do _sq.preview = true
 	}
+	im.EndDisabled()
 	im.SameLine()
 	im.Text("%6.2fs / %.2fs", _sq.time, dur)
 	im.SameLine()
 	im.SetNextItemWidth(90)
 	dur_changed := im.DragFloat("##sq_dur", &d.duration, 0.05, 0, 0, "len %.2f")
-	im.SetItemTooltip("Timeline duration (0 = last clip end)")
+	im.SetItemTooltip("Duration (0 = last clip end)")
 	_sq_field_undo(dcomp_owned.handle, "Timeline Duration", dur_changed)
 	im.SameLine()
 	{
@@ -331,16 +355,28 @@ sequencer_window_draw :: proc() {
 				im.PopID()
 				continue
 			}
-			muted := tc.muted
-			if im.Checkbox("##mute", &muted) {
+			// Mute: a speaker icon, lit when audible and dimmed when muted
+			// (the state reads at a glance, unlike a checkbox). The push/pop
+			// pair must test the SAME value — the click below flips
+			// tc.muted, so a re-read at pop time unbalances the style stack.
+			was_muted := tc.muted
+			if was_muted do im.PushStyleColorImVec4(.Text, im.GetStyleColorVec4(.TextDisabled)^)
+			if im.SmallButton(was_muted ? _ICON_VOLUME_OFF : _ICON_VOLUME_UP) {
 				_sq_session_begin(comp, "Mute Track")
-				tc.muted = muted
+				tc.muted = !was_muted
 				_sq_session_end()
 			}
-			im.SetItemTooltip("Mute")
+			if was_muted do im.PopStyleColor()
+			im.SetItemTooltip(was_muted ? "Unmute" : "Mute")
 			im.SameLine()
-			im.TextUnformatted(fmt.ctprintf("%s", tv.name))
-			im.SetItemTooltip("%s track — right-click for options", _sq_kind_label(tv.kind))
+			// The name row selects the track (and deselects any clip), so the
+			// inspector pane and Add Clip act on it without touching a clip.
+			if im.Selectable(fmt.ctprintf("%s##trk", tv.name), _sq.sel_track == ti && _sq.sel_clip < 0,
+				{}, im.Vec2{im.GetContentRegionAvail().x - 46, 0}) {
+				_sq.sel_track = ti
+				_sq.sel_clip = -1
+			}
+			im.SetItemTooltip("%s track", _sq_kind_label(tv.kind))
 			im.OpenPopupOnItemClick("track_ctx")
 			if im.BeginPopup("track_ctx") {
 				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(&tv, ti, _sq.time)
@@ -368,7 +404,7 @@ sequencer_window_draw :: proc() {
 			}
 			im.SameLine()
 			if im.SmallButton("+") do _sq_add_clip(&tv, ti, _sq.time)
-			im.SetItemTooltip("Add clip at the playhead")
+			im.SetItemTooltip("Add clip")
 			im.SameLine()
 			if im.SmallButton("x") do remove_track = tv.node
 			im.SetItemTooltip("Remove track")
@@ -390,7 +426,9 @@ sequencer_window_draw :: proc() {
 	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar}) {
 		dl := im.GetWindowDrawList()
 		origin := im.GetCursorScreenPos()
-		canvas_w := max(dur * _sq.pps + 120, im.GetContentRegionAvail().x)
+		// Room past the timeline end: clips may live beyond it (a computed
+		// duration then grows to include them, an authored one clips them).
+		canvas_w := max((dur + _SQ_TAIL_S) * _sq.pps + 120, im.GetContentRegionAvail().x)
 		im.Dummy(im.Vec2{canvas_w, rows_h}) // reserves the scrollable extent
 
 		// Zoom on wheel (the canvas is hovered; scrollbar still pans).
@@ -406,11 +444,26 @@ sequencer_window_draw :: proc() {
 		// Ruler: second ticks + labels; dragging scrubs.
 		ruler_max := im.Vec2{origin.x + canvas_w, origin.y + _SQ_RULER_H}
 		im.DrawList_AddRectFilled(dl, origin, ruler_max, im.GetColorU32(.FrameBg))
+
+		// The timeline END: past it the whole canvas dims and a line marks
+		// the boundary — clips can sit out here, they just never play.
+		end_x := to_x(origin, dur)
+		if end_x < origin.x + canvas_w {
+			im.DrawList_AddRectFilled(dl, im.Vec2{end_x, origin.y},
+				im.Vec2{origin.x + canvas_w, origin.y + rows_h},
+				im.GetColorU32ImVec4({0, 0, 0, 0.25}))
+		}
+		im.DrawList_AddLine(dl, im.Vec2{end_x, origin.y}, im.Vec2{end_x, origin.y + rows_h},
+			im.GetColorU32ImVec4({1, 0.85, 0.2, 0.7}), 1)
+
 		step := _sq.pps < 60 ? f32(5) : _sq.pps < 200 ? f32(1) : f32(0.5)
-		for t := f32(0); t <= dur + 0.0001; t += step {
+		for t := f32(0); t <= dur + _SQ_TAIL_S + 0.0001; t += step {
 			x := to_x(origin, t)
-			im.DrawList_AddLine(dl, {x, origin.y + 10}, {x, origin.y + _SQ_RULER_H}, im.GetColorU32(.Border))
-			im.DrawList_AddText(dl, {x + 3, origin.y}, im.GetColorU32(.TextDisabled), fmt.ctprintf("%g", t))
+			past := t > dur + 0.0001
+			tick_col := past ? im.GetColorU32(.Border, 0.4) : im.GetColorU32(.Border)
+			text_col := past ? im.GetColorU32(.TextDisabled, 0.5) : im.GetColorU32(.TextDisabled)
+			im.DrawList_AddLine(dl, {x, origin.y + 10}, {x, origin.y + _SQ_RULER_H}, tick_col)
+			im.DrawList_AddText(dl, {x + 3, origin.y}, text_col, fmt.ctprintf("%g", t))
 		}
 		im.SetCursorScreenPos(origin)
 		im.InvisibleButton("##sq_ruler", im.Vec2{canvas_w, _SQ_RULER_H})
@@ -511,7 +564,7 @@ sequencer_window_draw :: proc() {
 					snap :: proc(v: f32) -> f32 { return math.round(v * 10) / 10 }
 					switch _sq.drag {
 					case .Move:
-						cc.start = clamp(snap(t_mouse - _sq.drag_off), 0, dur - cc.duration)
+						cc.start = max(snap(t_mouse - _sq.drag_off), 0)
 					case .Resize_L:
 						end := cc.start + cc.duration
 						cc.start = clamp(snap(t_mouse), 0, end - 0.1)
@@ -551,7 +604,7 @@ sequencer_window_draw :: proc() {
 
 	// --- Inspector pane: the selected clip's fields, one per row -----------------
 	im.SameLine(0, 0)
-	_sq_splitter("##sq_split_r", true, &_sq.inspector_w, total_w - _sq.legend_w)
+	_sq_splitter("##sq_split_r", true, &_sq.inspector_w, total_w - _sq.legend_w, after = true)
 	im.SameLine(0, 0)
 	if im.BeginChild("##sq_inspector", im.Vec2{0, body_h}, {.Borders}) {
 		_sq_inspector_pane(tracks)
@@ -574,12 +627,15 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 	{
 		im.SeparatorText("Track")
 		im.Text("%s", fmt.ctprintf("%s (%s)", tv.name, _sq_kind_label(tv.kind)))
-		muted := tc.muted
-		if im.Checkbox("Muted", &muted) {
+		was_muted := tc.muted
+		if was_muted do im.PushStyleColorImVec4(.Text, im.GetStyleColorVec4(.TextDisabled)^)
+		if im.SmallButton(was_muted ? _ICON_VOLUME_OFF : _ICON_VOLUME_UP) {
 			_sq_session_begin(tcomp, "Mute Track")
-			tc.muted = muted
+			tc.muted = !was_muted
 			_sq_session_end()
 		}
+		if was_muted do im.PopStyleColor()
+		im.SetItemTooltip(was_muted ? "Unmute" : "Mute")
 		im.Text("%d clips", i32(len(tv.clips)))
 		// The kind's own fields (its target, its options) — tags drive the
 		// pickers, so nothing here knows what a kind needs.
@@ -667,6 +723,11 @@ _sq_track_color :: proc(kind: engine.TypeKey) -> im.Vec4 {
 // animation scrub preview.
 sequencer_preview_apply :: proc() {
 	if !_sq.preview do return
+	// Play owns the world — the director ticks itself there.
+	if engine.application_is_playing() {
+		_sq_preview_end()
+		return
+	}
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, engine.Handle(_sq.dir_owner)) {
 		_sq_preview_end()

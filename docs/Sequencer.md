@@ -145,6 +145,10 @@ multieditable component like any other.
   `ref:`/`ext:` tags filter their own pickers, so the window contains no
   per-kind knowledge at all.
 - Preview: `sequencer_preview_apply/restore` bracket the scene/game render.
+  Entering play mode ENDS the preview (an `ExitingEditMode` phase hook, plus
+  a guard in apply): play owns the world and the director ticks itself
+  there, so a scrub posing it every frame would fight the simulation. The
+  preview controls disable while playing; editing stays available.
   Play advances with `director_preview_step` (audio live), a paused or
   dragged playhead is a silent scrub, and the per-frame restore quiets
   everything the moment playing stops.

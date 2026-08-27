@@ -51,6 +51,31 @@ register :: proc(id: string, title: cstring, draw: Draw_Proc, width, height: f32
 	})
 }
 
+// The ids of every currently open window — the editor persists these in
+// editor_settings so a session reopens what was open (imgui.ini already
+// keeps position and size, but not whether the window existed).
+open_ids :: proc(allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, 0, len(_open_windows), allocator)
+	for &e in _open_windows {
+		if e.open do append(&out, _registry[e.reg].id)
+	}
+	return out[:]
+}
+
+// Reopen the windows named by a previous open_ids — unknown ids (a package
+// that is no longer installed) are skipped quietly, unlike `open`.
+open_saved :: proc(ids: []string) {
+	for id in ids {
+		for &r, ri in _registry {
+			if r.id != id do continue
+			already := false
+			for &e in _open_windows do if e.reg == ri do already = true
+			if !already do append(&_open_windows, _Open{reg = ri, open = true})
+			break
+		}
+	}
+}
+
 // Show the window declared under `id`, or focus it if already open.
 open :: proc(id: string) {
 	for &r, ri in _registry {
