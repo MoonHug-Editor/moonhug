@@ -220,3 +220,94 @@ test_additive_unload_slot_reuse_keeps_survivors_intact :: proc(t: ^testing.T) {
 	// The survivor still carries exactly its two component records.
 	testing.expect_value(t, strings.count(string(after), SPRITE_GUID), 2)
 }
+
+// The duplicate-scene-after-reopen bug, distilled. Preview/thumbnail worlds
+// destroy transforms every render, and pool handles are (index, generation)
+// VALUES with no world in them — two fresh pools hand out the SAME handles,
+// so a preview-world handle collides with the live scene's root handle.
+// Resolving "was this some scene's root?" through the GLOBAL active scene
+// then cleared the LIVE scene's root from a preview teardown: scene_destroy
+// found no root, leaked every transform, and the next load put a second copy
+// beside them — two scenes rendering, one in the hierarchy.
+@(test)
+test_foreign_world_destroy_keeps_live_root :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	live := tc.scene
+	engine.sm_scene_set_active(live)
+	target := live.root.handle
+	lids_before := len(live.local_ids.forward)
+
+	// A second world with its own scene — the preview world\'s shape. The
+	// engine must be safe even without the editor bracket\'s active-scene
+	// blinding, so the active scene deliberately stays the LIVE one.
+	pv := new(engine.World)
+	defer free(pv)
+	engine.w_init(pv)
+	defer engine.world_destroy_all(pv)
+	uc := engine.ctx_get()
+	prev := uc.world
+	uc.world = pv
+
+	pv_scene := engine.scene_new()
+	engine.scene_ensure_root(pv_scene)
+
+	// Both roots are their world\'s first pool slot: the handle VALUES
+	// collide. If pool internals ever change allocation order, this premise
+	// check fails loudly — reconstruct the collision, do not delete the test.
+	testing.expect(t, pv_scene.root.handle == target,
+		"premise: fresh worlds hand out colliding handles")
+
+	// The thumbnail teardown: a parentless destroy in the foreign world.
+	engine.transform_destroy(engine.Transform_Handle(pv_scene.root.handle))
+	engine.scene_destroy(pv_scene)
+	uc.world = prev
+
+	testing.expect(t, live.root.handle == target,
+		"a preview-world destroy must never clear the live scene\'s root")
+	testing.expect(t, engine.pool_valid(&tc.world.transforms, live.root.handle),
+		"the live root transform is untouched")
+	testing.expect_value(t, len(live.local_ids.forward), lids_before)
+}
+
+// scene_destroy must leave NOTHING of its scene in the world, root Ref or
+// not. A cleared root used to skip teardown entirely: the transforms kept
+// rendering with a dangling scene pointer, no hierarchy listed them, and
+// the next Scene allocation reusing the address adopted them as duplicates.
+@(test)
+test_scene_destroy_sweeps_rootless_content :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	engine.asset_db_init("moonhug/packages/app/assets")
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	baseline := 0
+	{
+		it := engine.pool_iterator(&tc.world.transforms)
+		for _ in engine.pool_next(&it) do baseline += 1
+	}
+
+	s := engine.scene_load_additive_path("moonhug/packages/app/assets/demo_prefabs/bullet.scene")
+	testing.expect(t, s != nil, "scene loads")
+	if s == nil do return
+
+	// The damage any root-clearing bug inflicts, applied directly.
+	engine.scene_clear_root(s)
+	engine.sm_scene_unload(s)
+
+	after := 0
+	{
+		it := engine.pool_iterator(&tc.world.transforms)
+		for _ in engine.pool_next(&it) do after += 1
+	}
+	testing.expect_value(t, after, baseline)
+}

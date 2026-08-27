@@ -18,6 +18,11 @@ Scene :: struct {
 	root:                 Ref,
 	path:                 string,
 	asset_guid:           Asset_GUID `json:"-"`,
+	// The world whose pools hold this scene's objects, captured at scene_new.
+	// The scene manager is global while worlds are not (preview/thumbnail
+	// worlds coexist with the live one), so identity stamping guards on this:
+	// a transform created in one world must never bind to a scene of another.
+	world:                ^World `json:"-"`,
 	local_ids:            Bimap(Local_ID, Handle) `json:"-"`,
 	breadcrumb_data:      map[Local_ID]Breadcrumb,
 	breadcrumb_synth_seq: u32,
@@ -28,6 +33,7 @@ Scene :: struct {
 scene_new :: proc() -> ^Scene {
 	s := new(Scene)
 	s.generation = 1 // FIX
+	s.world = ctx_world()
 	return s
 }
 
@@ -35,6 +41,25 @@ scene_destroy :: proc(s: ^Scene) {
 	if s == nil do return
 	if s.root.handle != {} {
 		transform_destroy(Transform_Handle(s.root.handle))
+	}
+	// Ownership sweep: destroy every transform still tagged with this scene.
+	// The root destroy covers the normal case — stragglers exist when the
+	// root Ref was cleared or content got detached, and leaving them puts
+	// live objects in the world under a soon-dangling scene pointer: they
+	// keep rendering while no hierarchy lists them, and the next scene
+	// reusing this allocation adopts them (a reopened scene showed twice).
+	w := ctx_world()
+	strays := make([dynamic]Handle, context.temp_allocator)
+	it := pool_iterator(&w.transforms)
+	for t, h in pool_next(&it) {
+		if t.scene != s do continue
+		h := h
+		h.type_key = .Transform
+		append(&strays, h)
+	}
+	for h in strays {
+		// A parent's destroy recurses into children — validate per entry.
+		if pool_valid(&w.transforms, h) do transform_destroy(Transform_Handle(h))
 	}
 	delete(s.path)
 	for &ns in s.nested_scenes {

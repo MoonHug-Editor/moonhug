@@ -35,6 +35,16 @@ sm_scene_get_active :: proc() -> ^Scene {
     return scene_manager.loaded[idx]
 }
 
+// The active scene only when it belongs to `w`, else nil. The scene manager
+// is global while worlds are not — identity stamping (transform_new, reparent
+// fallbacks) must use this so an object created in a preview world never
+// binds to the live world's scene.
+sm_scene_active_in_world :: proc(w: ^World) -> ^Scene {
+    s := sm_scene_get_active()
+    if s == nil || s.world != w do return nil
+    return s
+}
+
 sm_scene_set_active :: proc(s: ^Scene) {
     scene_manager := ctx_scene_manager()
     if s == nil {

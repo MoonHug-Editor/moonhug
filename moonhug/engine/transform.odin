@@ -33,7 +33,10 @@ make_transform_ref :: proc(tH: Transform_Handle) -> Ref {
 
 transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform_Handle {
     w := ctx_world()
-    s := sm_scene_get_active()
+    // World-guarded: in a preview world the (global) active scene is the
+    // LIVE one — stamping it would register this world's handle in the live
+    // scene's bimap and tag the transform with a scene it can never reach.
+    s := sm_scene_active_in_world(w)
 
     tHandle, t := pool_create(&w.transforms)
     tHandle.type_key = .Transform
@@ -77,8 +80,13 @@ transform_destroy :: proc(tH: Transform_Handle) {
     if pool_valid(&w.transforms, t.parent.handle) {
         transform_unlink_from_parent(tH)
     } else {
-        s := sm_scene_get_active()
-        if s != nil && s.root.handle == Handle(tH) do scene_clear_root(s)
+        // Un-root through the transform's OWN scene, never the active one:
+        // destroys run in preview/thumbnail worlds too, where a handle VALUE
+        // can coincide with a live-world handle. Resolving through the
+        // active scene let a preview teardown clear the LIVE scene's root on
+        // such a collision — scene_destroy then found no root, leaked every
+        // transform, and the next load showed the scene twice.
+        if t.scene != nil && t.scene.root.handle == Handle(tH) do scene_clear_root(t.scene)
     }
 
     children_copy := make([]Ref, len(t.children), context.temp_allocator)
@@ -164,8 +172,9 @@ transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle,
     if pool_valid(&w.transforms, t.parent.handle) {
         transform_unlink_from_parent(tH)
     } else {
-        s := sm_scene_get_active()
-        if s != nil && s.root.handle == Handle(tH) do scene_clear_root(s)
+        // The transform's OWN scene — same cross-world collision hazard as
+        // transform_destroy above.
+        if t.scene != nil && t.scene.root.handle == Handle(tH) do scene_clear_root(t.scene)
     }
 
     new_scene: ^Scene
@@ -173,7 +182,7 @@ transform_set_parent :: proc(tH: Transform_Handle, new_parent: Transform_Handle,
         np := pool_get(&w.transforms, Handle(new_parent))
         new_scene = np.scene
     } else {
-        new_scene = sm_scene_get_active()
+        new_scene = sm_scene_active_in_world(w)
     }
 
     if new_scene != t.scene {
@@ -323,8 +332,7 @@ transform_get_sibling_index :: proc(tH: Transform_Handle) -> int {
             if p.children[i].handle == Handle(tH) do return i
         }
     } else {
-        s := sm_scene_get_active()
-        if s != nil && s.root.handle == Handle(tH) do return 0
+        if t.scene != nil && t.scene.root.handle == Handle(tH) do return 0
     }
     return -1
 }

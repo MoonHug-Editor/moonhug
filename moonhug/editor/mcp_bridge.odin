@@ -445,6 +445,37 @@ mcp_tool_list_menus :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 @(mcp_tool={
+	description="Open a scene file as the active scene — same flow as double-clicking it in the project view (unloads every loaded scene first).",
+	param_path="string:Scene path relative to the project root, e.g. packages/app/assets/demo_prefabs/bullet.scene",
+})
+mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	path, ok := params["path"].(json.String)
+	if !ok || !strings.has_suffix(string(path), ".scene") {
+		return _mcp_fail("bad_path", "path must name a .scene file")
+	}
+	if _, gok := engine.asset_db_get_guid(string(path)); !gok {
+		return _mcp_fail("not_found", "no asset at %q", string(path))
+	}
+	_project_activate_file(string(path))
+	s := engine.sm_scene_get_active()
+	if s == nil do return _mcp_fail("load_failed", "scene did not load")
+	return _mcp_ok(struct{ path: string }{path = s.path})
+}
+
+@(mcp_tool={
+	description="Ping an asset in the project view — reveal its folder and flash it, the same as clicking a scene title or a Ref field value. Navigating the project view also renders thumbnails for the revealed folder.",
+	param_path="string:Asset path relative to the project root",
+})
+mcp_tool_ping_asset :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	path, ok := params["path"].(json.String)
+	if !ok do return _mcp_fail("bad_path", "path required")
+	guid, gok := engine.asset_db_get_guid(string(path))
+	if !gok do return _mcp_fail("not_found", "no asset at %q", string(path))
+	engine.inspector_request_ping_asset(engine.Asset_GUID(guid))
+	return _mcp_ok(struct{ pinged: string }{pinged = string(path)})
+}
+
+@(mcp_tool={
 	description="Objects in the active scene with their transform and components. Names repeat, so use the returned local_id to address one.",
 	param_name="string:Only objects whose name contains this text",
 })

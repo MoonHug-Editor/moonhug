@@ -20,8 +20,15 @@ import "moonhug:engine"
 
 @(private = "file") _pvw_world: ^engine.World
 @(private = "file") _pvw_scene: ^engine.Scene
+@(private = "file") _pvw_prev_active: ^engine.Scene
 
 // Swaps the preview world in. Returns the previous world for preview_world_end.
+//
+// The ACTIVE SCENE is blinded for the bracket: the scene manager is global,
+// not per-world, so anything inside that consults sm_scene_get_active() —
+// transform_new stamping t.scene and minting lids into the scene's bimap —
+// would reach the LIVE scene from preview code and cross-link the worlds.
+// Preview code addresses its scene explicitly, so nothing here needs it.
 preview_world_begin :: proc() -> ^engine.World {
 	uc := engine.ctx_get()
 	prev := uc.world
@@ -30,6 +37,8 @@ preview_world_begin :: proc() -> ^engine.World {
 		engine.w_init(_pvw_world)
 	}
 	uc.world = _pvw_world
+	_pvw_prev_active = engine.sm_scene_get_active()
+	engine.sm_scene_set_active(nil)
 	if _pvw_scene == nil {
 		_pvw_scene = engine.scene_new()
 		engine.scene_ensure_root(_pvw_scene)
@@ -38,6 +47,8 @@ preview_world_begin :: proc() -> ^engine.World {
 }
 
 preview_world_end :: proc(prev: ^engine.World) {
+	engine.sm_scene_set_active(_pvw_prev_active)
+	_pvw_prev_active = nil
 	engine.ctx_get().world = prev
 }
 
