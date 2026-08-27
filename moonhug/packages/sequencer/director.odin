@@ -87,15 +87,34 @@ director_set_time :: proc(d: ^PlayableDirector, time: f32) {
 	_director_evaluate(d, tl, wrapped = false, scrub = true)
 }
 
+// The editor preview's PLAY advance: evaluation keeps scrub semantics (the
+// world stays a pure function of time — particles replay, poses restore per
+// frame) but crossings are real (ctx.playing), so audio plays live like
+// Unity's Timeline preview. `time` moving backwards is read as the preview
+// loop wrapping — jumps use director_set_time.
+director_preview_step :: proc(d: ^PlayableDirector, time: f32) {
+	tl, ok := timeline_load(engine.Asset_GUID(d.timeline.guid))
+	if !ok do return
+	_director_ensure_built(d, tl)
+	d.prev_time = d.time
+	d.time = time
+	wrapped := time < d.prev_time
+	_director_evaluate(d, tl, wrapped, scrub = true, playing = true)
+}
+
 // Quiet every track the director drives — the editor calls it when its
 // preview stops (each kind knows what "quiet" means for its target).
-director_preview_end :: proc(d: ^PlayableDirector) {
+// `playing` marks the PER-FRAME restore of an auto-advancing preview:
+// world-state restores (poses, activation) still run, but tracks whose
+// preview effect must persist across frames (an audio voice) skip quieting
+// until the preview truly stops.
+director_preview_end :: proc(d: ^PlayableDirector, playing := false) {
 	tl, ok := timeline_load(engine.Asset_GUID(d.timeline.guid))
 	if !ok do return
 	for &track, ti in tl.tracks {
 		desc, has := track_desc(track.kind)
 		if !has || desc.preview_end == nil do continue
-		ctx := _director_ctx(d, tl, &track, i32(ti), scrub = true)
+		ctx := _director_ctx(d, tl, &track, i32(ti), scrub = true, playing = playing)
 		desc.preview_end(&ctx)
 	}
 }
@@ -149,6 +168,7 @@ _director_ctx :: proc(
 	ti: i32,
 	scrub: bool,
 	wrapped := false,
+	playing := false,
 ) -> Track_Ctx {
 	state: rawptr
 	if int(ti) < len(d.track_states) do state = d.track_states[ti]
@@ -162,16 +182,17 @@ _director_ctx :: proc(
 		wrapped   = wrapped,
 		duration  = timeline_duration(tl),
 		scrub     = scrub,
+		playing   = playing,
 	}
 }
 
 @(private = "file")
-_director_evaluate :: proc(d: ^PlayableDirector, tl: ^Timeline, wrapped: bool, scrub: bool) {
+_director_evaluate :: proc(d: ^PlayableDirector, tl: ^Timeline, wrapped: bool, scrub: bool, playing := false) {
 	for &track, ti in tl.tracks {
 		if track.muted do continue
 		desc, has := track_desc(track.kind)
 		if !has || desc.tick == nil do continue
-		ctx := _director_ctx(d, tl, &track, i32(ti), scrub, wrapped)
+		ctx := _director_ctx(d, tl, &track, i32(ti), scrub, wrapped, playing)
 		desc.tick(&ctx)
 	}
 }

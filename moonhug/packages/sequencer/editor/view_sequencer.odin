@@ -726,7 +726,8 @@ sequencer_preview_apply :: proc() {
 	tl, ok := seq.timeline_load(engine.Asset_GUID(d.timeline.guid))
 	if !ok do return
 
-	if _sq.playing {
+	playing_step := _sq.playing
+	if playing_step {
 		dur := max(seq.timeline_duration(tl), 0.001)
 		_sq.time += im.GetIO().DeltaTime
 		if _sq.time >= dur do _sq.time = 0
@@ -744,7 +745,13 @@ sequencer_preview_apply :: proc() {
 			append(&_sq.act_values, t.is_active)
 		}
 	}
-	seq.director_set_time(d, _sq.time)
+	// Play advances with real crossings (audio sounds, like Unity's Timeline
+	// preview); a paused or dragged playhead is a silent scrub.
+	if playing_step {
+		seq.director_preview_step(d, _sq.time)
+	} else {
+		seq.director_set_time(d, _sq.time)
+	}
 	_sq.applied = true
 }
 
@@ -754,8 +761,10 @@ sequencer_preview_restore :: proc() {
 	w := engine.ctx_world()
 	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	// Track kinds restore whatever they drove (poses, activation, audio,
-	// particles) — the window knows no kind by name.
-	if d != nil do seq.director_preview_end(d)
+	// particles) — the window knows no kind by name. While PLAYING this is
+	// the per-frame render restore: persistent preview effects (the audio
+	// voice) survive it, and quiet for real when playing stops.
+	if d != nil do seq.director_preview_end(d, _sq.playing)
 	for h, i in _sq.act_targets {
 		if !engine.pool_valid(&w.transforms, h) do continue
 		if t := engine.pool_get(&w.transforms, h); t != nil {

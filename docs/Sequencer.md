@@ -73,8 +73,11 @@ Feature-package kinds:
   with `manual_start`.
 - `audio`: crossing a clip's start plays
   the bound AudioSource (the clip's asset replaces the source's clip when
-  set), leaving every span stops it, scrubbing is silent. Author
-  track-driven sources with `play_on_awake` off.
+  set), leaving every span stops it, scrubbing is silent. The window's Play
+  advances through `director_preview_step` — crossings are real
+  (`Track_Ctx.playing`), so preview play SOUNDS like Unity's Timeline
+  preview, and the per-frame restore leaves the voice alone until the
+  preview stops. Author track-driven sources with `play_on_awake` off.
 
 ## Sequencer window
 

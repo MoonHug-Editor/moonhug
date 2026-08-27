@@ -139,12 +139,18 @@ Track_Ctx :: struct {
 	wrapped:   bool, // the loop wrapped inside this tick
 	duration:  f32,  // the timeline's playable length
 	scrub:     bool, // time jumped — stateful tracks reset instead of crossing
+	// The editor preview is AUTO-ADVANCING (its Play button): crossings are
+	// real and per-frame restore must not quiet persistent side effects.
+	// Audio plays live in preview-play (Unity's Timeline preview), particles
+	// keep their scrub replay (scrub stays true), and hooks into game code
+	// (markers) stay silent — each track decides what preview-play means.
+	playing:   bool,
 }
 
 // Wrap-aware "did playback cross `at` this tick" — the half-open [prev, time)
 // window, split in two when the loop wrapped (the burst-trigger pattern).
 track_crossed :: proc(ctx: ^Track_Ctx, at: f32) -> bool {
-	if ctx.scrub do return false
+	if ctx.scrub && !ctx.playing do return false
 	if !ctx.wrapped do return at >= ctx.prev_time && at < ctx.time
 	return (at >= ctx.prev_time && at < ctx.duration) || (at >= 0 && at < ctx.time)
 }
@@ -206,6 +212,9 @@ timeline_marker_hook: proc(name: string, target: engine.Ref_Local)
 
 _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 	if timeline_marker_hook == nil do return
+	// Never from the editor preview, playing or not — marker hooks are game
+	// code (Unity does not fire signals in preview either).
+	if ctx.scrub do return
 	for &c in ctx.track.clips {
 		if track_crossed(ctx, c.start) {
 			timeline_marker_hook(c.name, ctx.target)

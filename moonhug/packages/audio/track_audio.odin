@@ -33,7 +33,10 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	src := cast(^AudioSource)engine.world_pool_get(w, ctx.target.handle)
 	if src == nil do return
 
-	if ctx.scrub {
+	// A static scrub is silent. The preview's PLAY advance (ctx.playing) is
+	// live audio — Unity's Timeline preview — and falls through to the
+	// crossing logic below (track_crossed honors playing).
+	if ctx.scrub && !ctx.playing {
 		if audio_is_playing(src) do audio_stop(src)
 		return
 	}
@@ -54,8 +57,11 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	}
 }
 
-// The editor's preview stopped: silence the source it was driving.
+// The editor's preview stopped: silence the source it was driving. The
+// PER-FRAME restore of an auto-advancing preview (ctx.playing) leaves the
+// voice alone — stopping it every frame is what made preview-play silent.
 _audio_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
+	if ctx.playing do return
 	if ctx.target.handle.type_key != .AudioSource do return
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, ctx.target.handle) do return

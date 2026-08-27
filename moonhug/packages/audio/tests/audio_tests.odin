@@ -362,3 +362,103 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
 		"the AudioSource binding must re-resolve after restore")
 }
+
+// The editor preview's PLAY button: director_preview_step advances with real
+// crossings (audio sounds — Unity's Timeline preview), the per-frame restore
+// (preview_end with playing=true) leaves the voice alone, and the final
+// preview_end silences. A static scrub stays silent.
+@(test)
+test_audio_preview_play :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	audio_editor.audio_importers_init()
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	audio.mixer_init_headless()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	seq.timeline_cache_init()
+	defer seq.timeline_cache_shutdown()
+	audio.audio_track_init()
+
+	src_dir :: "moonhug/tests/fixtures/_audio_preview_tmp"
+	wav :: src_dir + "/probe.wav"
+	os.make_directory(src_dir)
+	testing.expect(t, _write_test_wav(wav))
+	defer {
+		audio.clip_cache_shutdown()
+		os.remove(wav)
+		os.remove(wav + ".meta")
+		os.remove(src_dir)
+		_remove_tree("library")
+	}
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
+	Meta :: struct {
+		guid: string,
+	}
+	meta: Meta
+	meta_data, _ := os.read_entire_file(wav + ".meta", context.temp_allocator)
+	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
+	raw_guid, _ := uuid.read(meta.guid)
+	clip_guid := engine.Asset_GUID(raw_guid)
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	owned, raw := engine.transform_add_comp(root, .AudioSource)
+	src := cast(^audio.AudioSource)raw
+	src.enabled = true
+	src.volume = 1
+	src.pitch = 1
+	src.play_on_awake = false
+
+	tl := seq.Timeline{duration = 2}
+	tl.tracks = make([dynamic]seq.Timeline_Track)
+	track := seq.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
+	track.clips = make([dynamic]seq.Timeline_Clip)
+	append(&track.clips, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
+	append(&tl.tracks, track)
+	tl_guid: engine.Asset_GUID
+	tl_guid[0] = 0xDE
+	seq.timeline_cache[tl_guid] = tl
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+	d.wrap = .Once
+	d.timeline = {guid = tl_guid}
+	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = owned.handle}})
+
+	// The window's preview-play frame loop: step, render, per-frame restore.
+	step :: proc(d: ^seq.PlayableDirector, time: f32) {
+		seq.director_preview_step(d, time)
+		seq.director_preview_end(d, playing = true)
+	}
+
+	step(d, 0.3)
+	testing.expect(t, !audio.audio_is_playing(src), "silent before the span")
+
+	step(d, 0.7) // crosses 0.5
+	testing.expect(t, audio.audio_is_playing(src), "preview play must sound at the clip start")
+	testing.expect(t, src.clip == clip_guid, "the clip's asset lands on the source")
+
+	step(d, 0.9) // the per-frame restore must not kill the voice
+	testing.expect(t, audio.audio_is_playing(src), "the voice survives per-frame restore while playing")
+
+	step(d, 1.7) // leaving the span stops through the track's own logic
+	testing.expect(t, !audio.audio_is_playing(src), "leaving the span must stop")
+
+	// Pause/stop: the real preview_end silences whatever still plays.
+	step(d, 0.7)
+	testing.expect(t, audio.audio_is_playing(src), "playing again inside the span")
+	seq.director_preview_end(d)
+	testing.expect(t, !audio.audio_is_playing(src), "preview end must silence")
+
+	// A static scrub stays silent, playing flag or not.
+	seq.director_set_time(d, 0.7)
+	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
+
+	seq.director_teardown(d)
+}
