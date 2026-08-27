@@ -1,3 +1,17 @@
+## [0.80.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.79.0...v0.80.0) (2026-08-27)
+
+### Features
+
+* animation properties ([e33f670](https://github.com/MoonHug-Editor/moonhug/commit/e33f6701bb1423d808943f7358e65745c838753e))
+* sequencer ([a40af4d](https://github.com/MoonHug-Editor/moonhug/commit/a40af4d0c421ab53e141c6da5a710029d9df745c))
+* view_sequencer and sample scene ([e6d90fd](https://github.com/MoonHug-Editor/moonhug/commit/e6d90fdb94bd4f835eddc3ae9b8dda8f39f4f3d5))
+
+### Bug Fixes
+
+* audio preview play ([3e42d3c](https://github.com/MoonHug-Editor/moonhug/commit/3e42d3ced8dd58383d7b87312e5490008ccf1ee3))
+* leftover transforms after ping current scene ([618ed04](https://github.com/MoonHug-Editor/moonhug/commit/618ed04436651d7333db70b184c908838319e601))
+* uaf ([111187e](https://github.com/MoonHug-Editor/moonhug/commit/111187ea8e3a007807edb4309e26eeca5af9b0ef))
+
 ## [0.79.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.78.0...v0.79.0) (2026-08-25)
 
 ### Features
