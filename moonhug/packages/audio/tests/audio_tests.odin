@@ -225,8 +225,6 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	audio.mixer_init_headless()
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	audio.audio_track_init()
 
 	src_dir :: "moonhug/tests/fixtures/_audio_track_tmp"
@@ -261,22 +259,13 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	src.pitch = 1
 	src.play_on_awake = false
 
-	tl := seq.Timeline{duration = 2}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	track := seq.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
-	track.clips = make([dynamic]seq.Timeline_Clip)
-	append(&track.clips, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
-	append(&tl.tracks, track)
-	tl_guid: engine.Asset_GUID
-	tl_guid[0] = 0xDD
-	seq.timeline_cache[tl_guid] = tl
-
 	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 	d.wrap = .Once
-	d.timeline = {guid = tl_guid}
-	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = owned.handle}})
+	d.duration = 2
+	defer seq.director_teardown(d)
+	_mk_audio_track(root, {handle = owned.handle}, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
 
 	// Before the span: silent.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
@@ -305,8 +294,6 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
 	audio.audio_track_init()
 
@@ -335,10 +322,9 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, empty_stack_scene == nil, "no owner pushed = no scene = no local_id minted")
 	minted := engine.sm_local_id_get_or_mint(picker_scene, owned.handle)
 	testing.expect_value(t, minted, want_lid)
-	append(&d.bindings, seq.Track_Binding{
-		track = 0,
-		target = {local_id = minted, handle = owned.handle},
-	})
+	_mk_audio_track(root, {local_id = minted, handle = owned.handle},
+		seq.Timeline_Clip{start = 0, duration = 1})
+	_ = comp_owned
 
 	bytes, ok := engine.scene_serialize(tc.scene)
 	testing.expect(t, ok, "snapshot should capture")
@@ -356,10 +342,11 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, d2 != nil)
 	if d2 == nil do return
-	testing.expect_value(t, len(d2.bindings), 1)
-	if len(d2.bindings) != 1 do return
-	testing.expect_value(t, d2.bindings[0].target.local_id, want_lid)
-	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
+	tracks := seq.director_tracks(d2)
+	testing.expect_value(t, len(tracks), 1)
+	if len(tracks) != 1 do return
+	testing.expect_value(t, tracks[0].target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, tracks[0].target.handle),
 		"the AudioSource binding must re-resolve after restore")
 }
 
@@ -378,8 +365,6 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	audio.mixer_init_headless()
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	audio.audio_track_init()
 
 	src_dir :: "moonhug/tests/fixtures/_audio_preview_tmp"
@@ -414,22 +399,13 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	src.pitch = 1
 	src.play_on_awake = false
 
-	tl := seq.Timeline{duration = 2}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	track := seq.Timeline_Track{kind = strings.clone("audio"), name = strings.clone("music")}
-	track.clips = make([dynamic]seq.Timeline_Clip)
-	append(&track.clips, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
-	append(&tl.tracks, track)
-	tl_guid: engine.Asset_GUID
-	tl_guid[0] = 0xDE
-	seq.timeline_cache[tl_guid] = tl
-
 	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 	d.wrap = .Once
-	d.timeline = {guid = tl_guid}
-	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = owned.handle}})
+	d.duration = 2
+	defer seq.director_teardown(d)
+	_mk_audio_track(root, {handle = owned.handle}, seq.Timeline_Clip{start = 0.5, duration = 1, asset = clip_guid})
 
 	// The window's preview-play frame loop: step, render, per-frame restore.
 	step :: proc(d: ^seq.PlayableDirector, time: f32) {
@@ -459,6 +435,21 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	// A static scrub stays silent, playing flag or not.
 	seq.director_set_time(d, 0.7)
 	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
+}
 
-	seq.director_teardown(d)
+// Build a track NODE with clip NODES under `owner` (timeline-as-prefab).
+@(private = "file")
+_mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+	node := engine.transform_new("audio", owner)
+	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	tc.kind = strings.clone("audio")
+	tc.target = target
+	for c in clips {
+		cn := engine.transform_new("clip", node)
+		_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
+		cc.start = c.start
+		cc.duration = c.duration
+		cc.asset = c.asset
+	}
+	return node
 }

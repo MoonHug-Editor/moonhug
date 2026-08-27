@@ -829,8 +829,6 @@ test_particles_control_track :: proc(t: ^testing.T) {
 	defer common.teardown(tc_mem)
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	particles.particles_track_init()
 
 	// A manual-start seeded emitter, driven by a control clip on [0.5, 1.5).
@@ -844,22 +842,20 @@ test_particles_control_track :: proc(t: ^testing.T) {
 	ps.rate = 10
 	ps.start_lifetime = engine.minmax_constant(100)
 
-	tl := seq.Timeline{duration = 2}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	track := seq.Timeline_Track{kind = strings.clone("particles"), name = strings.clone("fx")}
-	track.clips = make([dynamic]seq.Timeline_Clip)
-	append(&track.clips, seq.Timeline_Clip{start = 0.5, duration = 1})
-	append(&tl.tracks, track)
-	guid: engine.Asset_GUID
-	guid[0] = 0xCC
-	seq.timeline_cache[guid] = tl
-
 	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 	d.wrap = .Once
-	d.timeline = {guid = guid}
-	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = owned.handle}})
+	d.duration = 2
+	defer seq.director_teardown(d)
+	track_node := engine.transform_new("fx", root)
+	_, tcc := engine.transform_get_or_add_comp(track_node, seq.TimelineTrack)
+	tcc.kind = strings.clone("particles")
+	tcc.target = {handle = owned.handle}
+	clip_node := engine.transform_new("clip", track_node)
+	_, ccc := engine.transform_get_or_add_comp(clip_node, seq.TimelineClip)
+	ccc.start = 0.5
+	ccc.duration = 1
 
 	// Before the span: the system stays stopped (manual start).
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
@@ -903,8 +899,6 @@ test_timeline_sample_scene :: proc(t: ^testing.T) {
 	defer engine.scene_lib_shutdown()
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
 	particles.particles_track_init()
 

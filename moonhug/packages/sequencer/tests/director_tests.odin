@@ -1,10 +1,12 @@
 package sequencer_tests
 
-// PlayableDirector: timeline playback headless — animation track crossfades
-// through the graph, activation spans, marker crossings (with loop wrap),
-// manual start, Once stop, and the scrub path.
+// PlayableDirector on the timeline-as-prefab model: the timeline IS the
+// director's subtree — track nodes as children, clip nodes under them.
+// Headless coverage: playback across kinds, manual start, Once/Loop, scrub
+// silence, target round trip through Simulate's snapshot/restore, the
+// activation preview restore, and the control track driving a nested
+// director.
 
-import "core:encoding/json"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -45,30 +47,29 @@ _ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wra
 	return clip
 }
 
-_tl_guid :: proc(n: u8) -> engine.Asset_GUID {
-	id: engine.Asset_GUID
-	id[15] = n
-	id[0] = 0xBB
-	return id
-}
-
-@(private = "file")
-_track :: proc(kind: string, clips: ..seq.Timeline_Clip) -> seq.Timeline_Track {
-	t := seq.Timeline_Track{kind = strings.clone(kind), name = strings.clone(kind)}
-	t.clips = make([dynamic]seq.Timeline_Clip)
+// Build a track NODE with clip NODES under `owner` — what the window's Add
+// Track/Add Clip produce. Reuses the view struct as the clip parameter.
+_mk_track :: proc(owner: engine.Transform_Handle, kind: string, target: engine.Ref_Local = {}, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+	node := engine.transform_new(kind, owner)
+	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	tc.kind = strings.clone(kind)
+	tc.target = target
 	for c in clips {
-		cc := c
-		cc.name = strings.clone(c.name)
-		append(&t.clips, cc)
+		cn := engine.transform_new(len(c.name) > 0 ? c.name : "clip", node)
+		_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
+		cc.start = c.start
+		cc.duration = c.duration
+		cc.ease_in = c.ease_in
+		cc.ease_out = c.ease_out
+		cc.speed = c.speed
+		cc.asset = c.asset
 	}
-	return t
+	return node
 }
 
-@(private = "file") _marker_hits: int
-
-@(private = "file")
+_marker_hits: int
 _count_marker :: proc(name: string, target: engine.Ref_Local) {
-	_marker_hits += 1
+	if name == "hit" do _marker_hits += 1
 }
 
 @(test)
@@ -80,8 +81,6 @@ test_director_playback :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
 	anim.animation_track_init()
 
@@ -90,19 +89,6 @@ test_director_playback :: proc(t: ^testing.T) {
 	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 	anim.animation_clip_cache[const_guid] = _const_clip(.Position, {4, 0, 0, 0})
 
-	// Timeline: anim clip A [0,1), anim clip B [1,2), an activation span
-	// [0.5, 1.5) on a child, a marker at 0.5. Loops at duration 2.
-	tl := seq.Timeline{duration = 2}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	append(&tl.tracks, _track("animation",
-		seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid},
-		seq.Timeline_Clip{start = 1, duration = 1, asset = const_guid},
-	))
-	append(&tl.tracks, _track("activation", seq.Timeline_Clip{start = 0.5, duration = 1}))
-	append(&tl.tracks, _track("marker", seq.Timeline_Clip{start = 0.5, name = "hit"}))
-	guid := _tl_guid(1)
-	seq.timeline_cache[guid] = tl
-
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
 	child := engine.transform_new("Child", root)
@@ -110,8 +96,18 @@ test_director_playback :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)raw
 	d.enabled = true
-	d.timeline = {guid = guid}
-	append(&d.bindings, seq.Track_Binding{track = 1, target = {handle = engine.Handle(child)}})
+	d.duration = 2
+	defer seq.director_teardown(d)
+
+	// Timeline subtree: anim clip A [0,1), anim clip B [1,2), an activation
+	// span [0.5, 1.5) on the child, a marker at 0.5. Loops at duration 2.
+	_mk_track(root, "animation", {},
+		seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid},
+		seq.Timeline_Clip{start = 1, duration = 1, asset = const_guid},
+	)
+	_mk_track(root, "activation", {handle = engine.Handle(child)},
+		seq.Timeline_Clip{start = 0.5, duration = 1})
+	_mk_track(root, "marker", {}, seq.Timeline_Clip{start = 0.5, name = "hit"})
 
 	_marker_hits = 0
 	seq.timeline_marker_hook = _count_marker
@@ -145,28 +141,24 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
 	anim.animation_track_init()
 
 	ramp_guid := _clip_guid(12)
 	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
-	tl := seq.Timeline{duration = 1}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	append(&tl.tracks, _track("animation", seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid}))
-	append(&tl.tracks, _track("marker", seq.Timeline_Clip{start = 0.5, name = "hit"}))
-	guid := _tl_guid(2)
-	seq.timeline_cache[guid] = tl
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
 	_, raw := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)raw
 	d.enabled = true
-	d.timeline = {guid = guid}
+	d.duration = 1
 	d.wrap = .Once
 	d.manual_start = true
+	defer seq.director_teardown(d)
+
+	_mk_track(root, "animation", {}, seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid})
+	_mk_track(root, "marker", {}, seq.Timeline_Clip{start = 0.5, name = "hit"})
 
 	// Manual start holds playback until director_play.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1)
@@ -191,41 +183,35 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	testing.expect_value(t, _marker_hits, 0)
 }
 
-// A director binding must survive the Simulate round trip (serialize the
-// scene, reload it in place — what Play/Stop does).
+// A track's target must survive the Simulate round trip (serialize the
+// scene, reload it in place — what Play/Stop does). The target is an
+// ordinary component field now, so this covers the whole timeline subtree.
 @(test)
-test_director_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
+test_track_target_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
 
 	root := engine.transform_new("Stage")
 	engine.scene_set_root(tc.scene, root)
 	child := engine.transform_new("Target", root)
-	owned, _ := engine.transform_add_comp(child, .Transform)
-	_ = owned
 
 	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 
-	// Bind track 0 to the child transform (an activation-style binding).
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	testing.expect(t, ct != nil)
 	if ct == nil do return
-	append(&d.bindings, seq.Track_Binding{
-		track = 0,
-		target = {local_id = ct.local_id, handle = engine.Handle(child)},
-	})
+	_mk_track(root, "activation",
+		{local_id = ct.local_id, handle = engine.Handle(child)},
+		seq.Timeline_Clip{start = 0, duration = 1})
 	want_lid := ct.local_id
 	testing.expect(t, want_lid != 0, "the target must have a local id")
 
-	// Serialize + reload in place, exactly like Simulate's snapshot/restore.
 	bytes, ok := engine.scene_serialize(tc.scene)
 	testing.expect(t, ok, "snapshot should capture")
 	if !ok do return
@@ -235,7 +221,6 @@ test_director_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	if reloaded == nil do return
 	tc.scene = reloaded
 
-	// The restored director must still name the target.
 	d2: ^seq.PlayableDirector
 	{
 		it := engine.pool_iterator(seq.playable_directors(&tc.world))
@@ -243,17 +228,18 @@ test_director_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, d2 != nil, "director survives the round trip")
 	if d2 == nil do return
-	testing.expect_value(t, len(d2.bindings), 1)
-	if len(d2.bindings) != 1 do return
-	testing.expect_value(t, d2.bindings[0].target.local_id, want_lid)
-	testing.expect(t, engine.world_pool_valid(&tc.world, d2.bindings[0].target.handle),
-		"the binding handle must re-resolve after restore")
+	tracks := seq.director_tracks(d2)
+	testing.expect_value(t, len(tracks), 1)
+	if len(tracks) != 1 do return
+	testing.expect_value(t, tracks[0].target.local_id, want_lid)
+	testing.expect(t, engine.world_pool_valid(&tc.world, tracks[0].target.handle),
+		"the target handle must re-resolve after restore")
+	testing.expect_value(t, len(tracks[0].clips), 1)
 }
 
 // The activation track owns its preview restore: outside Play mode the tick
 // captures the pre-tick is_active and preview_end writes it back — including
-// an authored-INACTIVE object, which the old force-to-true restore left
-// visible after the preview.
+// an authored-INACTIVE object.
 @(test)
 test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
@@ -261,17 +247,7 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
-	anim.animation_clip_cache_init()
-	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
-
-	tl := seq.Timeline{duration = 2}
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	append(&tl.tracks, _track("activation", seq.Timeline_Clip{start = 0, duration = 1}))
-	guid := _tl_guid(7)
-	seq.timeline_cache[guid] = tl
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -280,9 +256,11 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)raw
 	d.enabled = true
-	d.timeline = {guid = guid}
-	append(&d.bindings, seq.Track_Binding{track = 0, target = {handle = engine.Handle(child)}})
+	d.duration = 2
 	defer seq.director_teardown(d)
+
+	_mk_track(root, "activation", {handle = engine.Handle(child)},
+		seq.Timeline_Clip{start = 0, duration = 1})
 
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	ct.is_active = false // authored INACTIVE
@@ -304,12 +282,12 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	testing.expect(t, ct.is_active, "runtime play drives activation directly")
 }
 
-// Exposed references (Unity's ExposedReference): the TIMELINE declares named
-// slots, the DIRECTOR fills them, and a track whose `exposed` names a slot
-// resolves its target through the table — several tracks can share one slot,
-// and an unbound slot targets nothing.
+// Control track: a clip node hosting a nested timeline (a child node with
+// its own PlayableDirector) plays it at the clip-local time with the
+// parent's mode. Outside the span the child rests at 0. The nested director
+// never self-ticks — the parent owns its time.
 @(test)
-test_exposed_slot_resolution :: proc(t: ^testing.T) {
+test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -317,131 +295,54 @@ test_exposed_slot_resolution :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 	anim.animation_clip_cache_init()
 	defer anim.animation_clip_cache_shutdown()
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
 	seq.register_builtin_tracks()
+	anim.animation_track_init()
 
-	// Two activation tracks share the "hero" slot; a third stays direct.
-	tl := seq.Timeline{duration = 2}
-	tl.exposed_names = make([dynamic]string)
-	append(&tl.exposed_names, strings.clone("hero"))
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	t0 := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
-	t0.exposed = strings.clone("hero")
-	append(&tl.tracks, t0)
-	t1 := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
-	t1.exposed = strings.clone("hero")
-	append(&tl.tracks, t1)
-	append(&tl.tracks, _track("activation", seq.Timeline_Clip{start = 0, duration = 1}))
-	guid := _tl_guid(8)
-	seq.timeline_cache[guid] = tl
+	ramp_guid := _clip_guid(13)
+	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
 
-	root := engine.transform_new("Rig")
+	root := engine.transform_new("Host")
 	engine.scene_set_root(tc.scene, root)
-	hero := engine.transform_new("Hero", root)
-	direct := engine.transform_new("Direct", root)
-
 	_, raw := engine.transform_add_comp(root, .PlayableDirector)
-	d := cast(^seq.PlayableDirector)raw
-	d.enabled = true
-	d.timeline = {guid = guid}
-	append(&d.exposed, seq.Exposed_Binding{name = strings.clone("hero"), target = {handle = engine.Handle(hero)}})
-	append(&d.bindings, seq.Track_Binding{track = 2, target = {handle = engine.Handle(direct)}})
-	defer seq.director_teardown(d)
+	host := cast(^seq.PlayableDirector)raw
+	host.enabled = true
+	host.duration = 3
+	host.wrap = .Once
+	defer seq.director_teardown(host)
 
-	ht := engine.pool_get(&tc.world.transforms, engine.Handle(hero))
-	dt := engine.pool_get(&tc.world.transforms, engine.Handle(direct))
-	ht.is_active = false
-	dt.is_active = false
-
-	// Inside the span both the slot-bound tracks and the direct one activate
-	// their targets — the slot resolves for BOTH sharing tracks.
-	seq.director_tick(d, 0.5)
-	testing.expect(t, ht.is_active, "slot-bound tracks drive the slot's target")
-	testing.expect(t, dt.is_active, "direct binding keeps working beside slots")
-
-	// An unbound slot targets nothing: clear the table, nothing crashes and
-	// the target stays untouched.
-	for &e in d.exposed do delete(e.name)
-	clear(&d.exposed)
-	ht.is_active = false
-	seq.director_tick(d, 0.1)
-	testing.expect(t, !ht.is_active, "an unbound slot drives nothing")
-}
-
-// The exposed table survives the scene round trip like track bindings do —
-// name and target re-resolve by local id.
-@(test)
-test_exposed_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
-	tc := new(common.TestCtx)
-	defer free(tc)
-	common.setup(tc)
-	context.user_ptr = &tc.uc
-	defer common.teardown(tc)
-	seq.timeline_cache_init()
-	defer seq.timeline_cache_shutdown()
-	seq.register_builtin_tracks()
-
-	root := engine.transform_new("Stage")
-	engine.scene_set_root(tc.scene, root)
-	child := engine.transform_new("Target", root)
-
-	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
-	d := cast(^seq.PlayableDirector)draw_
-	d.enabled = true
-
-	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
-	append(&d.exposed, seq.Exposed_Binding{
-		name   = strings.clone("hero"),
-		target = {local_id = ct.local_id, handle = engine.Handle(child)},
-	})
-	want_lid := ct.local_id
-	testing.expect(t, want_lid != 0)
-
-	bytes, ok := engine.scene_serialize(tc.scene)
-	testing.expect(t, ok)
-	if !ok do return
-	defer delete(bytes)
-	reloaded := engine.scene_reload_in_place_bytes(tc.scene, bytes)
-	testing.expect(t, reloaded != nil)
-	if reloaded == nil do return
-	tc.scene = reloaded
-
-	d2: ^seq.PlayableDirector
+	// Control track with a clip [1, 2); under the clip node, a nested
+	// timeline: its own director + an animation track ramping x over 1s.
+	ctrl := _mk_track(root, "control", {}, seq.Timeline_Clip{start = 1, duration = 1})
+	clip_node: engine.Transform_Handle
 	{
-		it := engine.pool_iterator(seq.playable_directors(&tc.world))
-		for dd, _ in engine.pool_next(&it) do d2 = dd
+		w := engine.ctx_world()
+		tn := engine.pool_get(&w.transforms, engine.Handle(ctrl))
+		clip_node = engine.Transform_Handle(tn.children[0].handle)
 	}
-	testing.expect(t, d2 != nil)
-	if d2 == nil do return
-	testing.expect_value(t, len(d2.exposed), 1)
-	if len(d2.exposed) != 1 do return
-	testing.expect(t, d2.exposed[0].name == "hero", "the slot name round-trips")
-	testing.expect_value(t, d2.exposed[0].target.local_id, want_lid)
-	testing.expect(t, engine.world_pool_valid(&tc.world, d2.exposed[0].target.handle),
-		"the slot's handle re-resolves after restore")
-}
+	nested_root := engine.transform_new("Nested", clip_node)
+	_, nraw := engine.transform_add_comp(nested_root, .PlayableDirector)
+	nested := cast(^seq.PlayableDirector)nraw
+	nested.enabled = true
+	nested.duration = 1
+	nested.manual_start = true
+	defer seq.director_teardown(nested)
+	_mk_track(nested_root, "animation", {}, seq.Timeline_Clip{start = 0, duration = 1, asset = ramp_guid})
 
-// exposed_names and Timeline_Track.exposed ride the .timeline JSON.
-@(test)
-test_timeline_exposed_json_roundtrip :: proc(t: ^testing.T) {
-	tl := seq.Timeline{duration = 2}
-	tl.exposed_names = make([dynamic]string)
-	append(&tl.exposed_names, strings.clone("hero"))
-	tl.tracks = make([dynamic]seq.Timeline_Track)
-	tr := _track("activation", seq.Timeline_Clip{start = 0, duration = 1})
-	tr.exposed = strings.clone("hero")
-	append(&tl.tracks, tr)
-	defer seq._timeline_destroy(&tl)
+	nt := engine.pool_get(&tc.world.transforms, engine.Handle(nested_root))
 
-	data, merr := json.marshal(tl, {}, context.temp_allocator)
-	testing.expect(t, merr == nil)
+	// Before the span: the nested timeline rests at 0.
+	for _ in 0 ..< 5 do seq.director_tick(host, 0.1) // t = 0.5
+	testing.expect(t, abs(nt.position.x - 0) < 0.001, "nested rests at 0 before the span")
 
-	loaded: seq.Timeline
-	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
-	defer seq._timeline_destroy(&loaded)
-	testing.expect(t, uerr == nil)
-	testing.expect_value(t, len(loaded.exposed_names), 1)
-	testing.expect(t, len(loaded.exposed_names) == 1 && loaded.exposed_names[0] == "hero")
-	testing.expect(t, len(loaded.tracks) == 1 && loaded.tracks[0].exposed == "hero")
+	// Inside the span: clip-local time drives the nested ramp.
+	for _ in 0 ..< 10 do seq.director_tick(host, 0.1) // t = 1.5 -> local 0.5
+	testing.expect(t, abs(nt.position.x - 5) < 0.11, "nested plays at the clip-local time")
+
+	// After the span: back to rest.
+	for _ in 0 ..< 10 do seq.director_tick(host, 0.1) // t = 2.5
+	testing.expect(t, abs(nt.position.x - 0) < 0.001, "nested rests after the span")
+
+	// Scrubbing the host scrubs the nested timeline the same way.
+	seq.director_set_time(host, 1.8)
+	testing.expect(t, abs(nt.position.x - 8) < 0.11, "host scrub reaches the nested timeline")
 }

@@ -1,158 +1,147 @@
 # Sequencer
 ---
 
-Unity's Timeline: a Timeline asset holds tracks of clips on a shared time
-axis, a PlayableDirector component plays it on scene objects.
+Unity's Timeline, on one structural decision Unity did not make: **a timeline
+is a prefab**. There is no timeline document format — a timeline is a
+transform subtree whose root carries a PlayableDirector, with TRACK NODES as
+children and CLIP NODES under them. Everything the prefab system does is
+therefore a timeline feature:
+
+| Concept            | Mechanism                                        |
+|--------------------|--------------------------------------------------|
+| Timeline asset     | a prefab (.scene) whose root has a director      |
+| Reuse in a scene   | prefab instance                                  |
+| Per-instance edits | prefab overrides (targets, times — anything)     |
+| Timeline variant   | prefab variant                                   |
+| Nested timeline    | nested prefab under a control clip               |
+| Embedded timeline  | plain scene content (guid-less, local ids)       |
+| Clip identity      | local ids — undo, overrides, multiedit all apply |
 
 ```
-packages/sequencer/                ← knows only the engine
-  timeline.odin                    ← Timeline asset + Track_Desc registry
-  component_PlayableDirector.odin  ← the player component
-  director.odin                    ← per-track build/tick/teardown
-  editor/sequencer_editor.odin     ← director inspector (Timeline picker)
+packages/sequencer/                 ← knows only the engine
+  timeline.odin                     ← view structs + Track_Desc registry + builtins
+  component_PlayableDirector.odin   ← playback state + duration
+  component_TimelineTrack.odin      ← TimelineTrack, TimelineClip
+  director.odin                     ← subtree walk, evaluation, modes
+  editor/view_sequencer.odin        ← the window
 
 packages/animation/track_animation.odin  ← "animation" track (owns its graph)
 packages/audio/track_audio.odin          ← "audio" track
 packages/particles/track_particles.odin  ← "particles" track
-packages/sequencer/editor/view_sequencer.odin ← the window
 ```
-
-Every track kind — animation included — comes from the registry, so the
-sequencer package imports no feature package and each feature package's only
-sequencer dependency is its one track file.
 ---
 
-## Timeline asset
+## Structure
 
-`.timeline` (JSON, guid asset): `duration` (0 = computed from the last clip
-end) + `tracks[]`. A track is a registry `kind`, a name, a mute flag and
-`clips[{start, duration, ease_in, ease_out, speed, asset, name}]`. The asset
-owns STRUCTURE only — scene identity lives on the director.
+- **PlayableDirector** (root node): `wrap` (Once/Loop), `speed` (0 runs at 1),
+  `manual_start` (inverse of Unity's play-on-awake), `duration` (0 = last
+  clip end). Zero-neutral throughout.
+- **TimelineTrack** (child node): `kind` (registry key), `muted`, `target`
+  (Ref_Local — what the track drives). The node's NAME is the track name;
+  sibling order is track order. Targets are authored in the prefab or set per
+  instance as prefab overrides — overrides ARE the exposure surface, there is
+  no separate binding or exposed-reference table.
+- **TimelineClip** (child of a track node): `start`, `duration`, `ease_in`,
+  `ease_out`, `speed`, `asset` (payload guid). The node's name is the clip
+  name (markers fire it). Clip order derives from start times.
 
-## PlayableDirector
+## Evaluation
 
-Component fields: `timeline` (a PPtr — a timeline can later live embedded in
-another asset as a sub-asset), `wrap` (Once/Loop), `speed` (0 runs at 1),
-`manual_start` (inverse of Unity's play-on-awake, zero-neutral), `bindings`
-(`[{track, target: Ref_Local}]` — which scene object each track drives).
+`director_tracks` materializes the subtree into per-tick views (temp
+allocated, strings borrowed from the live components), so track hooks see
+the same `Timeline_Track`/`Timeline_Clip` shapes as before. A structural
+FINGERPRINT (node handles + kinds + clip assets) rebuilds track state when
+the tree changes — live edits need no invalidation calls, and field edits
+(times, targets) apply on the next evaluation because the components ARE the
+data.
 
 Playback: `director_play/pause/stop`, ticked on `@(update)`. Evaluation is a
-pure function of director time, so scrubbing is `director_set_time` — the
-sequencer window's preview and a future Control Track ride the same path.
+pure function of director time: `director_set_time` scrubs,
+`director_preview_step` is the editor preview's Play advance, and
+`director_evaluate_at(d, time, mode)` is the raw form the control track
+forwards through. A director nested under a control clip never self-ticks —
+the parent timeline owns its time.
 
 ## Tracks
 
 Kinds register with `track_register`. A `Track_Desc` supplies `binding_type`
-(what the track binds — drives the window's picker) and four hooks: `build`
-(once per director+track, returns the kind's own state), `destroy`, `tick`,
-and `preview_end` (quiet whatever the track drove when the editor's preview
-stops). Hooks receive a `Track_Ctx`: the track, its binding, the director's
-owner, the kind's state, the frame's time window (`track_crossed` is the
-wrap-aware crossing test), and a `scrub` flag — stateful tracks reset on
-scrubs instead of firing crossings.
+(what the track's target picker offers) and four hooks: `build` (once per
+director+track, returns the kind's own state), `destroy`, `tick`, and
+`preview_end` (quiet whatever the track drove when the editor's preview
+stops). Hooks receive a `Track_Ctx`: the track view, its target, the
+director's owner, the kind's state, the frame's time window (`track_crossed`
+is the wrap-aware crossing test), and the evaluation `mode`:
 
-`animation` (packages/animation/track_animation.odin) keeps its playable
-graph in the track state: a mixer with one clip node per timeline clip,
-weights from the ease ramps (overlaps crossfade through mixer
-normalization), source clips shorter than their timeline clip wrap by their
-own wrap mode. Channel paths resolve under the director's owner transform,
-so the track binds nothing. Clips may carry PROPERTY channels — any POD
-component field by (component guid, dotted field path), see
-docs/PlayableGraph.md "Property channels" — so animating a field needs no
-new track kind.
+- `Play` — the runtime. Crossings fire, side effects are real.
+- `Scrub` — time jumped. Stateful tracks reset and replay deterministically;
+  nothing sounds.
+- `Preview_Play` — the editor preview auto-advances. Crossings are real and
+  audio plays live (Unity's Timeline preview), particles keep their replay,
+  marker hooks stay silent.
 
-Built-in kinds (engine vocabulary, so they ship with the package):
-`activation` (the bound transform is active while any clip covers the time)
-and `marker` (zero-duration clips fire `timeline_marker_hook` on crossing).
+Built-in kinds:
+- `activation`: the target is active while any clip covers the time. Outside
+  Play mode the tick captures the pre-tick state and `preview_end` restores
+  it — authored-inactive objects return to inactive.
+- `marker`: zero-duration clips fire `timeline_marker_hook` on crossing,
+  never from the editor.
+- `control`: each clip plays a NESTED TIMELINE — the clip node's child
+  subtree holding its own director (typically a nested timeline prefab
+  instance). Inside the span the child evaluates at the clip-local time with
+  the parent's mode; outside it rests at 0.
 
 Feature-package kinds:
-- `particles`: a clip span plays
-  the bound ParticleSystem, leaving it stops it (particles play out).
-  Scrubbing replays deterministically — reset + fixed-step advance to the
-  clip-local time, exact with a `random_seed`. Author track-driven systems
-  with `manual_start`.
-- `audio`: crossing a clip's start plays
-  the bound AudioSource (the clip's asset replaces the source's clip when
-  set), leaving every span stops it, scrubbing is silent. The window's Play
-  advances through `director_preview_step` — crossings are real
-  (`Track_Ctx.playing`), so preview play SOUNDS like Unity's Timeline
-  preview, and the per-frame restore leaves the voice alone until the
-  preview stops. Author track-driven sources with `play_on_awake` off.
-
-## Exposed references
-
-Unity's ExposedReference split: the TIMELINE declares named slots
-(`exposed_names` — the asset's tweak surface), the DIRECTOR fills them
-(`exposed: [{name, target: Ref_Local}]`). A track whose `exposed` field names
-a slot resolves its target through the table instead of its per-track
-binding (`director_track_target`), so several tracks share one slot and a
-nested timeline can bubble slots up later. An unbound slot targets nothing —
-the window paints it yellow. Zero-neutral: `exposed == ""` is the direct
-per-track binding.
-
-The window's inspector pane owns the UX: an Exposed References section
-(slot list, picker per slot editing the DIRECTOR, add/remove — removing a
-slot reverts tracks bound via it to direct), and the selected track's
-"Bind via" combo picks direct or a slot. A slot-bound track's legend row
-shows `→ name` instead of a picker.
-
-Track evaluation modes (`Track_Ctx.mode`): `Play` is the runtime, `Scrub` a
-time jump (stateful tracks reset and replay, silent), `Preview_Play` the
-window's Play button (crossings real, audio live, marker hooks still never
-fire from the editor). The activation track captures the pre-tick
-`is_active` outside Play mode and its `preview_end` writes it back, so the
-preview returns authored-inactive objects to inactive.
+- `particles`: a clip span plays the bound ParticleSystem, leaving it stops
+  it. Scrubbing replays deterministically — reset + fixed-step advance to
+  the clip-local time, exact with a `random_seed`. Author track-driven
+  systems with `manual_start`.
+- `audio`: crossing a clip's start plays the bound AudioSource (the clip's
+  asset replaces the source's clip when set), leaving every span stops it.
+  Scrub is silent, preview-play sounds. Author track-driven sources with
+  `play_on_awake` off.
+- `animation`: a mixer with one clip node per timeline clip, weights from
+  the ease ramps (overlaps crossfade through mixer normalization), source
+  clips shorter than their timeline clip wrap by their own mode. Channel
+  paths resolve under the director's owner, so the track needs no target.
+  Clips may carry PROPERTY channels (docs/PlayableGraph.md).
 
 ## Sequencer window
 
 `packages/sequencer/editor/view_sequencer.odin` (Window/Sequencer), laid out
-after ImGuizmo's ImSequencer — it lives in the package, reading the
-selection through `engine.inspector_active_selection()` and bracketing its
-preview through the `editor/preview` hooks (docs/Plugins.md). Targets the selection like the Animation window: the active
-transform or its nearest ancestor with a PlayableDirector.
+after ImGuizmo's ImSequencer. Targets the selection like the Animation
+window: the active transform or its nearest ancestor with a PlayableDirector.
 
-- Toolbar: Preview toggle, rewind, Play/Pause, time / duration, Save, Add
-  Track (registry kinds + animation).
-Three resizable panes — legend | canvas | inspector — with draggable
-splitters between them (both sides keep a minimum width).
+Because the timeline is scene content, every edit is an ordinary scene edit:
+field edits are component undo sessions, structural edits (add/remove/
+duplicate tracks and clips) are node create/delete/duplicate through the
+same undo the hierarchy uses, and Save saves the owner's scene. The
+hierarchy and inspector work on timeline nodes too — a clip is a selectable,
+multieditable component like any other.
 
-The binding picker runs OUTSIDE the inspector, so the window pushes the
-director as the inspector owner (`undo.push_component_owner`) around it —
-that owner is what `ref_local_owner_root_scene` resolves the target's scene
-from, and a picked target with no scene records no `local_id`, leaving a
-binding that dies at the next scene reload (Play/Stop).
-
-- Legend column per track: mute, kind, the BINDING picker (filtered by the
-  track's `binding_type`, edits the director with a diffing undo session),
-  add-clip-at-playhead, remove.
-- Canvas: seconds ruler (dragging scrubs), colored clip blocks per track —
-  body drags move, edge grips resize (0.1s snap), ease ramps draw as corner
-  lines, wheel zooms, the scrollbar pans. Double-click empty row space adds
-  a clip there, right-click offers it from a menu, clicking empty space
-  deselects. Right-click a clip for Duplicate/Delete, Delete/Backspace
-  removes the selection. Track rows right-click for
-  Add Clip at Playhead / Rename / Remove Track.
-- Inspector pane: the selection's properties stacked one per row — the
-  track's name/kind/mute/clip count, then the clip's name (what markers
-  fire), start, duration, ease in/out, speed, payload asset (ext-filtered
-  per kind), and Duplicate/Delete buttons.
-- Edits target the timeline's asset document with whole-document undo
-  sessions, sync into the runtime cache (`timeline_preview`, which rebuilds
-  playing directors), and Save writes the file.
-- Preview: `sequencer_preview_apply/restore` are registered as an
-  `editor/preview` hook pair, bracketing the scene/game render like the
-  animation scrub preview — poses restore through the
-  director's binding defaults, activation flips are captured and restored per
-  frame, particles reset and audio stops when the preview ends.
+- Toolbar: Preview toggle, rewind, Play/Pause, time/duration, Save Scene,
+  Add Track (registry kinds).
+- Legend per track: mute, name (right-click: add clip / rename / remove),
+  target picker (filtered by `binding_type` — the picker pushes the director
+  as inspector owner so the target's local id mints against the right
+  scene), add-clip, remove.
+- Canvas: seconds ruler (dragging scrubs), colored clip blocks — body drags
+  move, edge grips resize (0.1s snap), ease ramps as corner lines, wheel
+  zooms. Double-click empty row space adds a clip, right-click menus for
+  clip Duplicate/Delete, Delete/Backspace removes the selection.
+- Inspector pane: the selected track and clip, one field per row.
+- Preview: `sequencer_preview_apply/restore` bracket the scene/game render.
+  Play advances with `director_preview_step` (audio live), a paused or
+  dragged playhead is a silent scrub, and the per-frame restore quiets
+  everything the moment playing stops.
 
 ## Sample
 
 `packages/animation/samples/timeline_sample` (installed as the
 `packages/timeline_sample` symlink) ships `timeline_demo.scene` — a
 manual-start fireworks rocket (Death sub emitter into spinning star sparks,
-comet trails, seeded) driven by `fireworks.timeline`'s particles control
-track through a PlayableDirector on the root. Open the scene, select
-TimelineDemo, and scrub in the Sequencer window.
+comet trails, seeded) with track nodes for particles and audio directly
+under the TimelineDemo root. Open the scene, select TimelineDemo, and scrub
+in the Sequencer window.
 
 ## Playables additions
 

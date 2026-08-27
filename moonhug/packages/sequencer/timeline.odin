@@ -1,150 +1,51 @@
 package sequencer
 
-// Timeline (docs/Sequencer.md): the sequencer's asset. A timeline is tracks
-// of clips on a shared time axis — Unity's TimelineAsset. The asset owns
-// STRUCTURE only; scene identity (which objects tracks drive) lives on the
-// PlayableDirector component as bindings, so one timeline plays on any
-// number of instances.
-//
-// EVERY track kind — animation included — comes from the Track_Desc
-// registry, so this package imports none of them: the animation, audio and
-// particles packages each register their own. A kind may keep per-director
-// state (the animation track holds its playable graph there), built on the
-// director's first tick and freed with it.
+// The sequencer's vocabulary (docs/Sequencer.md). A timeline is a TRANSFORM
+// SUBTREE — a PlayableDirector node with TimelineTrack child nodes holding
+// TimelineClip nodes — so there is no timeline document format: prefabs are
+// the asset form, nesting is composition, variants and overrides are the
+// tweak surface. This file holds what track KINDS program against: the
+// per-tick view structs, the evaluation-mode vocabulary, and the Track_Desc
+// registry every kind (animation included) registers through, so this
+// package imports none of them.
 
 import "base:runtime"
-import "core:encoding/json"
-import "core:encoding/uuid"
-import "core:os"
-import "core:slice"
 import "core:strings"
 import "moonhug:engine"
 
-// One clip on a track. `asset` is the payload most tracks need (an .anim for
-// animation tracks, an audio clip for audio tracks); `name` labels markers
-// and the sequencer window's blocks.
+// A clip as track hooks see it, materialized from a clip NODE each tick.
+// `name` borrows the node's name (markers fire it), `node` addresses the
+// clip for editor selection and the control track's nested content.
 Timeline_Clip :: struct {
 	start:    f32,
 	duration: f32,
-	ease_in:  f32, // seconds of weight ramp at the clip's start
-	ease_out: f32, // seconds of weight ramp at the clip's end
+	ease_in:  f32,
+	ease_out: f32,
 	speed:    f32, // clip-local time scale, 0 behaves as 1
 	asset:    engine.Asset_GUID,
 	name:     string,
+	node:     engine.Transform_Handle,
 }
 
+// A track as hooks see it, materialized from a track NODE each tick. Clips
+// are sorted by start. Strings borrow the live components — the view lives
+// for one evaluation (temp-allocated by director_tracks).
 Timeline_Track :: struct {
-	kind:    string, // Track_Desc registry key; "animation" is director-built
-	name:    string,
-	muted:   bool,
-	// Exposed-slot binding (Unity's ExposedReference): non-empty names one of
-	// the timeline's exposed_names, and the track's target resolves through
-	// the DIRECTOR's exposed table instead of its per-track binding — several
-	// tracks can share one slot, and a nested timeline can bubble slots up.
-	// "" = the direct per-track binding.
-	exposed: string,
-	clips:   [dynamic]Timeline_Clip,
-}
-
-@(typ_guid={guid = "8433ef73-93dd-4ba4-a66e-9c5f09846922", makeProcName=make_pTimeline, menu_assets_create = {menu_name = "Timeline", file_name = "New Timeline.timeline", order = -4}})
-Timeline :: struct {
-	duration:      f32, // authored length; 0 = computed from the last clip end
-	// The asset's declared tweak surface: named scene-object slots the
-	// DIRECTOR fills (Exposed_Binding). The asset owns structure, the
-	// director owns targets.
-	exposed_names: [dynamic]string,
-	tracks:        [dynamic]Timeline_Track,
-}
-
-make_pTimeline :: proc() -> any {
-	t := new(Timeline)
-	t.duration = 5
-	return t^
-}
-
-// The playable length: authored, or the last clip end when unauthored.
-timeline_duration :: proc(tl: ^Timeline) -> f32 {
-	if tl.duration > 0 do return tl.duration
-	d := f32(0)
-	for &track in tl.tracks {
-		for &c in track.clips do d = max(d, c.start + c.duration)
-	}
-	return d
-}
-
-// --- Cache (mirrors clip.odin) ------------------------------------------------------
-
-timeline_cache: map[engine.Asset_GUID]Timeline
-_timeline_cache_ready: bool
-
-timeline_cache_init :: proc() {
-	timeline_cache = make(map[engine.Asset_GUID]Timeline)
-	_timeline_cache_ready = true
-}
-
-timeline_cache_shutdown :: proc() {
-	for _, &tl in timeline_cache {
-		_timeline_destroy(&tl)
-	}
-	delete(timeline_cache)
-	_timeline_cache_ready = false
-}
-
-_timeline_destroy :: proc(tl: ^Timeline) {
-	for &track in tl.tracks {
-		for &c in track.clips do delete(c.name)
-		delete(track.clips)
-		delete(track.kind)
-		delete(track.name)
-		delete(track.exposed)
-	}
-	delete(tl.tracks)
-	for n in tl.exposed_names do delete(n)
-	delete(tl.exposed_names)
-	tl^ = {}
-}
-
-timeline_load :: proc(guid: engine.Asset_GUID) -> (^Timeline, bool) {
-	if tl, ok := &timeline_cache[guid]; ok {
-		return tl, true
-	}
-	if !_timeline_cache_ready do return nil, false
-
-	path, path_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-	if !path_ok do return nil, false
-	data, read_err := os.read_entire_file(path, context.temp_allocator)
-	if read_err != nil do return nil, false
-
-	tl: Timeline
-	if json.unmarshal(data, &tl, .JSON, context.allocator) != nil {
-		_timeline_destroy(&tl)
-		return nil, false
-	}
-	timeline_cache[guid] = tl
-	return &timeline_cache[guid], true
-}
-
-timeline_unload :: proc(guid: engine.Asset_GUID) {
-	if tl, ok := &timeline_cache[guid]; ok {
-		_timeline_destroy(tl)
-		delete_key(&timeline_cache, guid)
-	}
-}
-
-timeline_path_changed :: proc(path: string) {
-	if !strings.has_suffix(path, ".timeline") do return
-	if guid, ok := engine.asset_db_get_guid(path); ok {
-		timeline_unload(engine.Asset_GUID(guid))
-	}
+	kind:   string,
+	name:   string,
+	muted:  bool,
+	target: engine.Ref_Local,
+	node:   engine.Transform_Handle,
+	clips:  []Timeline_Clip,
 }
 
 // --- Track registry -----------------------------------------------------------------
 
 // What a registered track's hooks see: the time window this frame moved
-// through, the track's binding from the director, and the kind's own state.
+// through, the track's target, and the kind's own state.
 Track_Ctx :: struct {
 	track:     ^Timeline_Track,
-	target:    engine.Ref_Local, // handle pre-resolved by scene load
+	target:    engine.Ref_Local, // the track component's target, pre-resolved
 	owner:     engine.Transform_Handle, // the director's transform
 	state:     rawptr, // whatever Track_Desc.build returned
 	prev_time: f32,
@@ -211,6 +112,23 @@ track_desc :: proc(kind: string) -> (Track_Desc, bool) {
 	return d, ok
 }
 
+// Registered kind names, sorted — the window's Add Track menu.
+track_kinds :: proc(allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, 0, len(_track_registry), allocator)
+	for kind in _track_registry do append(&out, kind)
+	_sort_strings(out[:])
+	return out[:]
+}
+
+@(private = "file")
+_sort_strings :: proc(s: []string) {
+	for i in 1 ..< len(s) {
+		for j := i; j > 0 && s[j] < s[j - 1]; j -= 1 {
+			s[j], s[j - 1] = s[j - 1], s[j]
+		}
+	}
+}
+
 // --- Built-in registry tracks ---------------------------------------------------------
 
 // Activation: the bound transform is active while any clip covers the time
@@ -219,7 +137,7 @@ track_desc :: proc(kind: string) -> (Track_Desc, bool) {
 // The track owns its preview restore: outside Play mode the tick captures
 // the pre-tick is_active, and preview_end (the editor's per-frame render
 // restore) writes it back — the world returns to whatever the user authored,
-// including authored-INACTIVE objects. The window needs no kind knowledge.
+// including authored-INACTIVE objects.
 @(private = "file")
 _Activation_State :: struct {
 	captured:   bool,
@@ -252,6 +170,18 @@ _activation_track_tick :: proc(ctx: ^Track_Ctx) {
 	t.is_active = active
 }
 
+// Write back the pre-tick state the tick captured — the editor never leaves
+// an object flipped, whichever way it was authored.
+@(private = "file")
+_activation_preview_end :: proc(ctx: ^Track_Ctx) {
+	st := cast(^_Activation_State)ctx.state
+	if st == nil || !st.captured do return
+	st.captured = false
+	w := engine.ctx_world()
+	if !engine.pool_valid(&w.transforms, ctx.target.handle) do return
+	if t := engine.pool_get(&w.transforms, ctx.target.handle); t != nil do t.is_active = st.was_active
+}
+
 // Markers: zero-duration clips fire the hook when playback crosses them.
 // The hook is game/editor code's to install.
 timeline_marker_hook: proc(name: string, target: engine.Ref_Local)
@@ -268,19 +198,48 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 	}
 }
 
-@(private = "file") _builtin_tracks_registered: bool
-
-// Write back the pre-tick state the tick captured — the editor never leaves
-// an object flipped, whichever way it was authored.
-@(private = "file")
-_activation_preview_end :: proc(ctx: ^Track_Ctx) {
-	st := cast(^_Activation_State)ctx.state
-	if st == nil || !st.captured do return
-	st.captured = false
-	w := engine.ctx_world()
-	if !engine.pool_valid(&w.transforms, ctx.target.handle) do return
-	if t := engine.pool_get(&w.transforms, ctx.target.handle); t != nil do t.is_active = st.was_active
+// Control: each clip plays a NESTED TIMELINE — the clip node's child subtree
+// holding its own PlayableDirector (a nested timeline prefab instance, per
+// the timeline-as-prefab model). Inside the span the child evaluates at the
+// clip-local time with the parent's mode; outside it rests at 0 with scrub
+// semantics (quiet, deterministic).
+_control_track_tick :: proc(ctx: ^Track_Ctx) {
+	for &c in ctx.track.clips {
+		child := _control_child_director(c.node)
+		if child == nil do continue
+		if track_clip_active(ctx, &c) {
+			speed := c.speed if c.speed > 0 else 1
+			director_evaluate_at(child, (ctx.time - c.start) * speed, ctx.mode)
+		} else {
+			director_evaluate_at(child, 0, .Scrub)
+		}
+	}
 }
+
+@(private = "file")
+_control_track_preview_end :: proc(ctx: ^Track_Ctx) {
+	for &c in ctx.track.clips {
+		if child := _control_child_director(c.node); child != nil {
+			director_preview_end(child, ctx.mode == .Preview_Play)
+		}
+	}
+}
+
+// The first PlayableDirector in the clip node's direct children — the root
+// of the nested timeline instance placed under the clip.
+@(private = "file")
+_control_child_director :: proc(clip_node: engine.Transform_Handle) -> ^PlayableDirector {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(clip_node))
+	if t == nil do return nil
+	for child in t.children {
+		_, d := get_comp(engine.Transform_Handle(child.handle), PlayableDirector)
+		if d != nil do return d
+	}
+	return nil
+}
+
+@(private = "file") _builtin_tracks_registered: bool
 
 register_builtin_tracks :: proc() {
 	if _builtin_tracks_registered do return
@@ -294,6 +253,11 @@ register_builtin_tracks :: proc() {
 		preview_end  = _activation_preview_end,
 	})
 	track_register(Track_Desc{kind = "marker", binding_type = "Transform", tick = _marker_track_tick})
+	track_register(Track_Desc{
+		kind        = "control",
+		tick        = _control_track_tick,
+		preview_end = _control_track_preview_end,
+	})
 }
 
 // ImportersInit is the asset-layer init phase both binaries run — the same
@@ -301,50 +265,5 @@ register_builtin_tracks :: proc() {
 // at a LATER order, so the registry exists when they do.
 @(phase={key=ImportersInit, order=3})
 sequencer_package_init :: proc() {
-	if !_timeline_cache_ready do timeline_cache_init()
-	engine.asset_db_add_path_changed_hook(timeline_path_changed)
 	register_builtin_tracks()
-	engine.register_pointer_type(Track_Binding)
-	engine.register_pointer_type(Exposed_Binding)
-}
-
-// Every registered kind, for the sequencer window's add-track menu.
-// Temp-allocated, sorted.
-track_kinds :: proc(allocator := context.temp_allocator) -> []string {
-	kinds := make([dynamic]string, allocator)
-	for kind in _track_registry do append(&kinds, kind)
-	slice.sort(kinds[:])
-	return kinds[:]
-}
-
-// Replace the cached timeline with a deep copy of `tl` — the sequencer
-// window's live preview of unsaved asset-document edits (mirrors
-// animation_clip_preview): playing directors read the edited values while
-// the file keeps the last saved state. Directors rebuild their graphs.
-timeline_preview :: proc(guid: engine.Asset_GUID, tl: Timeline) {
-	if !_timeline_cache_ready do return
-	if old, ok := &timeline_cache[guid]; ok {
-		_timeline_destroy(old)
-	}
-	cp := Timeline{duration = tl.duration}
-	cp.exposed_names = make([dynamic]string, 0, len(tl.exposed_names))
-	for n in tl.exposed_names do append(&cp.exposed_names, strings.clone(n))
-	cp.tracks = make([dynamic]Timeline_Track, 0, len(tl.tracks))
-	for &track in tl.tracks {
-		tc := Timeline_Track{
-			kind    = strings.clone(track.kind),
-			name    = strings.clone(track.name),
-			muted   = track.muted,
-			exposed = strings.clone(track.exposed),
-		}
-		tc.clips = make([dynamic]Timeline_Clip, 0, len(track.clips))
-		for &c in track.clips {
-			cc := c
-			cc.name = strings.clone(c.name)
-			append(&tc.clips, cc)
-		}
-		append(&cp.tracks, tc)
-	}
-	timeline_cache[guid] = cp
-	directors_invalidate(guid)
 }

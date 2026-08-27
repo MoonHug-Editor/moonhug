@@ -37,13 +37,19 @@
         },
         {
           "pptr": {
-            "local_id": 881202600000003,
+            "local_id": 881202600000021,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 1637759387484932,
+            "local_id": 881202600000025,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1500754478813595,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -91,6 +97,88 @@
       ]
     },
     {
+      "local_id": 881202600000021,
+      "name": "fireworks",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 881202600000023,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000022
+        }
+      ]
+    },
+    {
+      "local_id": 881202600000023,
+      "name": "show",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000021,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 881202600000003,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000024
+        }
+      ]
+    },
+    {
       "local_id": 881202600000003,
       "name": "Fireworks",
       "is_active": true,
@@ -113,7 +201,7 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 881202600000001,
+          "local_id": 881202600000023,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
@@ -168,8 +256,8 @@
       ]
     },
     {
-      "local_id": 1637759387484932,
-      "name": "Audio",
+      "local_id": 881202600000025,
+      "name": "audio",
       "is_active": true,
       "position": [
         0.0,
@@ -195,11 +283,253 @@
         }
       },
       "children": [
+        {
+          "pptr": {
+            "local_id": 881202600000027,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000026
+        }
+      ]
+    },
+    {
+      "local_id": 881202600000027,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000025,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1637759387484932,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 881202600000028
+        }
+      ]
+    },
+    {
+      "local_id": 1637759387484932,
+      "name": "Audio",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000027,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
 
       ],
       "components": [
         {
           "local_id": 2396538970747311
+        }
+      ]
+    },
+    {
+      "local_id": 1500754478813595,
+      "name": "audio_2",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1130340114813462,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1241932910653698,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 3698358637994408
+        }
+      ]
+    },
+    {
+      "local_id": 1130340114813462,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1500754478813595,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1750056360918875,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 3775708159831013
+        }
+      ]
+    },
+    {
+      "local_id": 1750056360918875,
+      "name": "Audio",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1130340114813462,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4412896662392672
+        }
+      ]
+    },
+    {
+      "local_id": 1241932910653698,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1500754478813595,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3246846976901040
         }
       ]
     }
@@ -217,34 +547,9 @@
         "enabled": true,
         "local_id": 881202600000012
       },
-      "bindings": [
-        {
-          "target": {
-            "local_id": 881202600000013
-          },
-          "track": 0
-        },
-        {
-          "target": {
-            "local_id": 2396538970747311
-          },
-          "track": 1
-        }
-      ],
-      "exposed": [
-        {
-          "name": "sound",
-          "target": {
-            "local_id": 0
-          }
-        }
-      ],
+      "duration": 5.0,
       "manual_start": false,
       "speed": 1.0,
-      "timeline": {
-        "guid": "68a5039b-003c-4a76-b4e4-25431af7aca0",
-        "local_id": 0
-      },
       "wrap": 1
     },
     {
@@ -264,6 +569,31 @@
       "near_clip": 0.30000001,
       "order": 0,
       "render_layer_mask": 4294967295
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000022
+      },
+      "kind": "particles",
+      "muted": false,
+      "target": {
+        "local_id": 881202600000013
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "asset": "00000000-0000-0000-0000-000000000000",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000024
+      },
+      "duration": 4.4000000999999997,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 0.5
     },
     {
       "__type": "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3",
@@ -779,12 +1109,37 @@
       }
     },
     {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000026
+      },
+      "kind": "audio",
+      "muted": false,
+      "target": {
+        "local_id": 2396538970747311
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "asset": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+      "base": {
+        "enabled": true,
+        "local_id": 881202600000028
+      },
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 2.9000001000000002
+    },
+    {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
       "base": {
         "enabled": true,
         "local_id": 2396538970747311
       },
-      "clip": "00000000-0000-0000-0000-000000000000",
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
       "loop": false,
       "max_distance": 500.0,
       "min_distance": 1.0,
@@ -793,6 +1148,60 @@
       "play_on_awake": true,
       "spatial_blend": 0.0,
       "volume": 1.0
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 3698358637994408
+      },
+      "kind": "audio",
+      "muted": false,
+      "target": {
+        "local_id": 4412896662392672
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "asset": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+      "base": {
+        "enabled": true,
+        "local_id": 3775708159831013
+      },
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 1.0
+    },
+    {
+      "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
+      "base": {
+        "enabled": true,
+        "local_id": 4412896662392672
+      },
+      "clip": "958c3f32-b6ed-4c0e-8c18-58433bca60fa",
+      "loop": false,
+      "max_distance": 500.0,
+      "min_distance": 1.0,
+      "mute": false,
+      "pitch": 1.0,
+      "play_on_awake": true,
+      "spatial_blend": 0.0,
+      "volume": 1.0
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "asset": "00000000-0000-0000-0000-000000000000",
+      "base": {
+        "enabled": true,
+        "local_id": 3246846976901040
+      },
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 2.4000001000000002
     }
   ]
 }

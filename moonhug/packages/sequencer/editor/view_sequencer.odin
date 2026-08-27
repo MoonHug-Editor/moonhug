@@ -2,30 +2,30 @@ package sequencer_editor
 
 // Sequencer window (docs/Sequencer.md) — Unity's Timeline window on the
 // director scrub path, laid out after ImGuizmo's ImSequencer: a legend
-// column (mute, track name, binding, add-clip) beside a scrollable canvas
-// (seconds ruler + playhead + clip blocks with move/resize grips), a
-// selected-clip strip below.
+// column (mute, track name, target, add-clip) beside a scrollable canvas
+// (seconds ruler + playhead + clip blocks with move/resize grips), an
+// inspector pane for the selection.
 //
 // TARGETS the selection like the Animation window: the active transform or
-// its nearest ancestor with a PlayableDirector, read through the
-// UserContext inspector channel (the editor root publishes it per frame). Edits go to the timeline's
-// ASSET DOCUMENT (inspector.asset_doc_get) with whole-document undo
-// sessions, then sync into the runtime cache (timeline_preview) so playing
-// directors and the preview pick them up; Save writes the file.
+// its nearest ancestor with a PlayableDirector, read through the UserContext
+// inspector channel (the editor root publishes it per frame).
+//
+// The timeline IS the director's subtree (timeline-as-prefab), so every edit
+// here is an ordinary scene edit: field edits are component undo sessions,
+// structural edits are node create/delete/duplicate through the same undo
+// the hierarchy uses, and the director picks changes up live (its structural
+// fingerprint rebuilds track state). Save saves the owner's scene.
 //
 // PREVIEW: the playhead poses the world only for the scene/game render —
 // sequencer_preview_apply/restore bracket the render in main.odin exactly
-// like the animation scrub preview. Activation flips are captured and
-// restored per frame; particle systems reset when the preview ends.
+// like the animation scrub preview.
 
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:math"
 import "core:path/filepath"
-import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
-import ser "moonhug:engine/serialization"
 import seq "moonhug:packages/sequencer"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
@@ -82,7 +82,7 @@ _sq: struct {
 @(private = "file")
 _sq_session: undo.Edit_Session
 
-// Rename buffers: the clip strip's name field reloads when the selection
+// Rename buffers: the clip pane's name field reloads when the selection
 // changes, the track popup's when it opens.
 @(private = "file") _sq_clip_name_buf: [128]u8
 @(private = "file") _sq_clip_name_for: [2]int = {-1, -1}
@@ -120,84 +120,92 @@ _sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^seq.PlayableDirecto
 	return {}, nil
 }
 
+// Whole-component undo session for a drag gesture: begin on activation,
+// mutate the live component in between, end on release (diffs, records only
+// real changes).
 @(private = "file")
-_sq_doc :: proc(d: ^seq.PlayableDirector) -> (doc: ^inspector.Asset_Doc, tl: ^seq.Timeline) {
-	if engine.asset_guid_is_empty(d.timeline.guid) do return nil, nil
-	path, ok := engine.asset_db_get_path(uuid.Identifier(d.timeline.guid))
-	if !ok do return nil, nil
-	dc := inspector.asset_doc_get(path)
-	if dc == nil || dc.data.id != typeid_of(seq.Timeline) do return nil, nil
-	return dc, cast(^seq.Timeline)dc.data.data
-}
-
-// Whole-document undo session, opened on a gesture's start and committed on
-// its end (the Animation window's convention).
-@(private = "file")
-_sq_edit_begin :: proc(doc: ^inspector.Asset_Doc) {
+_sq_session_begin :: proc(comp: engine.Handle, label: string) {
 	if undo.edit_session_active(&_sq_session) do return
-	_sq_session = undo.edit_session_begin(
-		{undo.edit_target_asset(doc.guid, doc.data.id)}, "Timeline Edit")
+	_sq_session = undo.edit_session_begin({undo.edit_target_whole(comp)}, label)
 }
 
 @(private = "file")
-_sq_edit_commit :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
+_sq_session_end :: proc() {
 	undo.edit_session_end(&_sq_session)
-	_sq_mark_edited(doc, d, tl)
 }
 
-// Dirty + sync into the runtime cache so directors and the preview play the
-// edited values (the file keeps the last saved state until Save).
+// Drag-widget undo on one component: session on activation, commit on release.
 @(private = "file")
-_sq_mark_edited :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
-	doc.dirty = true
-	seq.timeline_preview(engine.Asset_GUID(d.timeline.guid), tl^)
+_sq_field_undo :: proc(comp: engine.Handle, label: string, changed: bool) {
+	if im.IsItemActivated() do _sq_session_begin(comp, label)
+	if changed do inspector.mark_inspector_changed()
+	if im.IsItemDeactivated() do _sq_session_end()
 }
 
-// Drag-widget undo: session on activation, commit on release.
+// The track/clip components behind a view row.
 @(private = "file")
-_sq_field_undo :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, changed: bool) {
-	if im.IsItemActivated() do _sq_edit_begin(doc)
-	if changed do _sq_mark_edited(doc, d, tl)
-	if im.IsItemDeactivated() do _sq_edit_commit(doc, d, tl)
+_sq_track_comp :: proc(tv: ^seq.Timeline_Track) -> (engine.Handle, ^seq.TimelineTrack) {
+	owned, tc := seq.get_comp(tv.node, seq.TimelineTrack)
+	return owned.handle, tc
 }
 
-// Adds a clip at `at` seconds and selects it — the + button, the row's
+@(private = "file")
+_sq_clip_comp :: proc(c: ^seq.Timeline_Clip) -> (engine.Handle, ^seq.TimelineClip) {
+	owned, cc := seq.get_comp(c.node, seq.TimelineClip)
+	return owned.handle, cc
+}
+
+// Adds a clip NODE at `at` seconds and selects it — the + button, the row's
 // context menu and double-click all land here.
 @(private = "file")
-_sq_add_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti: int, at: f32) {
-	track := &tl.tracks[ti]
-	_sq_edit_begin(doc)
-	append(&track.clips, seq.Timeline_Clip{
-		start    = max(math.round(at * 10) / 10, 0),
-		duration = track.kind == "marker" ? 0 : 1,
-		name     = strings.clone(track.kind == "marker" ? "marker" : "clip"),
-	})
-	_sq_edit_commit(doc, d, tl)
+_sq_add_clip :: proc(tv: ^seq.Timeline_Track, ti: int, at: f32) {
+	node := engine.transform_new(tv.kind == "marker" ? "marker" : "clip", tv.node)
+	_, cc := engine.transform_get_or_add_comp(node, seq.TimelineClip)
+	if cc != nil {
+		cc.start = max(math.round(at * 10) / 10, 0)
+		cc.duration = tv.kind == "marker" ? 0 : 1
+	}
+	undo.record_create(node, tv.node)
 	_sq.sel_track = ti
-	_sq.sel_clip = len(track.clips) - 1
+	_sq.sel_clip = -2 // re-resolved next frame; -2 keeps "something selected"
 }
 
 @(private = "file")
-_sq_delete_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti, ci: int) {
-	track := &tl.tracks[ti]
-	_sq_edit_begin(doc)
-	delete(track.clips[ci].name)
-	ordered_remove(&track.clips, ci)
-	_sq_edit_commit(doc, d, tl)
+_sq_delete_clip :: proc(c: ^seq.Timeline_Clip) {
+	undo.record_delete(c.node)
 	_sq.sel_clip = -1
 }
 
 @(private = "file")
-_sq_duplicate_clip :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, ti, ci: int) {
-	track := &tl.tracks[ti]
-	_sq_edit_begin(doc)
-	dup := track.clips[ci]
-	dup.name = strings.clone(track.clips[ci].name)
-	dup.start += max(dup.duration, 0.1)
-	append(&track.clips, dup)
-	_sq_edit_commit(doc, d, tl)
-	_sq.sel_track = ti
-	_sq.sel_clip = len(track.clips) - 1
+_sq_duplicate_clip :: proc(tv: ^seq.Timeline_Track, c: ^seq.Timeline_Clip) {
+	g := undo.group_begin("Duplicate Clip")
+	defer undo.group_end(&g)
+	dup := engine.scene_duplicate_subtree(c.node)
+	if dup == {} do return
+	undo.record_create(dup, tv.node)
+	if _, cc := seq.get_comp(dup, seq.TimelineClip); cc != nil {
+		cc.start += max(cc.duration, 0.1)
+	}
+	undo.group_commit(&g)
+}
+
+@(private = "file")
+_sq_add_track :: proc(owner: engine.Transform_Handle, kind: string) {
+	node := engine.transform_new(kind, owner)
+	_, tc := engine.transform_get_or_add_comp(node, seq.TimelineTrack)
+	if tc != nil {
+		delete(tc.kind)
+		tc.kind = _sq_clone(kind)
+	}
+	undo.record_create(node, owner)
+}
+
+// Component-owned strings never borrow the temp allocator.
+@(private = "file")
+_sq_clone :: proc(s: string) -> string {
+	buf := make([]u8, len(s))
+	copy(buf, s)
+	return string(buf)
 }
 
 @(private = "file")
@@ -225,6 +233,7 @@ sequencer_window_draw :: proc() {
 	if d == nil {
 		_sq.preview = false
 		im.TextDisabled("Select an object with a PlayableDirector component.")
+		im.TextWrapped("A timeline is the director's subtree: track nodes as children, clip nodes under them. Add Track builds them for you.")
 		return
 	}
 	if owner != _sq.dir_owner {
@@ -235,35 +244,12 @@ sequencer_window_draw :: proc() {
 		_sq.sel_track = -1
 	}
 
-	// --- Timeline assignment row -------------------------------------------------
-	doc, tl := _sq_doc(d)
-	if tl == nil {
-		im.TextUnformatted("Timeline:")
-		im.SameLine()
-		if im.SmallButton("Assign...") do im.OpenPopup("sq_assign")
-		if im.BeginPopup("sq_assign") {
-			for path in engine.asset_db.path_to_guid {
-				if !strings.has_suffix(path, ".timeline") do continue
-				if im.Selectable(fmt.ctprintf("%s", path)) {
-					if raw_guid, gok := engine.asset_db_get_guid(path); gok {
-						comp_owned, _ := engine.transform_get_comp_key(owner, .PlayableDirector)
-						sess := undo.edit_session_begin(
-							{undo.edit_target_pooled(comp_owned.handle, &d.timeline, typeid_of(engine.PPtr))},
-							"Assign Timeline")
-						d.timeline = {guid = engine.Asset_GUID(raw_guid)}
-						undo.edit_session_end(&sess)
-					}
-				}
-			}
-			im.EndPopup()
-		}
-		im.TextDisabled("No timeline assigned (create one via Assets/Create/Timeline).")
-		_sq.preview = false
-		return
-	}
+	w := engine.ctx_world()
+	tracks := seq.director_tracks(d)
+	dcomp_owned, _ := engine.transform_get_comp_key(owner, .PlayableDirector)
 
 	// --- Toolbar -------------------------------------------------------------------
-	dur := max(seq.timeline_duration(tl), 0.001)
+	dur := max(seq.director_duration(d, tracks), 0.001)
 	if im.Checkbox("Preview", &_sq.preview) {
 		if !_sq.preview do _sq.playing = false
 	}
@@ -281,20 +267,25 @@ sequencer_window_draw :: proc() {
 	im.Text("%6.2fs / %.2fs", _sq.time, dur)
 	im.SameLine()
 	im.SetNextItemWidth(90)
-	dur_changed := im.DragFloat("##sq_dur", &tl.duration, 0.05, 0, 0, "len %.2f")
+	dur_changed := im.DragFloat("##sq_dur", &d.duration, 0.05, 0, 0, "len %.2f")
 	im.SetItemTooltip("Timeline duration (0 = last clip end)")
-	_sq_field_undo(doc, d, tl, dur_changed)
+	_sq_field_undo(dcomp_owned.handle, "Timeline Duration", dur_changed)
 	im.SameLine()
-	im.BeginDisabled(!doc.dirty)
-	if im.Button(doc.dirty ? "Save *" : "Save") {
-		if ser.save_to_file(doc.path, doc.data) do doc.dirty = false
+	{
+		// The timeline is scene content: Save saves the owner's scene.
+		scene: ^engine.Scene
+		if t := engine.pool_get(&w.transforms, engine.Handle(owner)); t != nil do scene = t.scene
+		im.BeginDisabled(scene == nil || len(scene.path) == 0)
+		if im.Button("Save Scene") {
+			if scene != nil do engine.scene_save(scene, scene.path)
+		}
+		im.EndDisabled()
 	}
-	im.EndDisabled()
 	im.SameLine()
 	if im.SmallButton("Add Track") do im.OpenPopup("sq_add_track")
 	if im.BeginPopup("sq_add_track") {
 		for kind in seq.track_kinds() {
-			if im.Selectable(fmt.ctprintf("%s", kind)) do _sq_add_track(doc, d, tl, kind)
+			if im.Selectable(fmt.ctprintf("%s", kind)) do _sq_add_track(owner, kind)
 		}
 		im.EndPopup()
 	}
@@ -302,31 +293,35 @@ sequencer_window_draw :: proc() {
 	// --- Legend | canvas | inspector, splitters between --------------------------
 	body_h := im.GetContentRegionAvail().y
 	total_w := im.GetContentRegionAvail().x
-	rows_h := _SQ_RULER_H + f32(len(tl.tracks)) * _SQ_ROW_H
+	rows_h := _SQ_RULER_H + f32(len(tracks)) * _SQ_ROW_H
 	_sq.legend_w = clamp(_sq.legend_w, _SQ_MIN_PANE, max(total_w - 2 * _SQ_MIN_PANE, _SQ_MIN_PANE))
 	_sq.inspector_w = clamp(_sq.inspector_w, _SQ_MIN_PANE, max(total_w - _sq.legend_w - _SQ_MIN_PANE, _SQ_MIN_PANE))
 
 	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, body_h}) {
 		im.Dummy(im.Vec2{1, _SQ_RULER_H - 4}) // align with the ruler
-		remove_track := -1
-		for &track, ti in tl.tracks {
+		remove_track := engine.Transform_Handle{}
+		for &tv, ti in tracks {
 			im.PushIDInt(i32(ti))
-			muted := track.muted
+			comp, tc := _sq_track_comp(&tv)
+			if tc == nil {
+				im.PopID()
+				continue
+			}
+			muted := tc.muted
 			if im.Checkbox("##mute", &muted) {
-				_sq_edit_begin(doc)
-				track.muted = muted
-				_sq_edit_commit(doc, d, tl)
+				_sq_session_begin(comp, "Mute Track")
+				tc.muted = muted
+				_sq_session_end()
 			}
 			im.SetItemTooltip("Mute")
 			im.SameLine()
-			label := len(track.name) > 0 ? track.name : track.kind
-			im.TextUnformatted(fmt.ctprintf("%s", label))
-			im.SetItemTooltip("%s track — right-click for options", track.kind)
+			im.TextUnformatted(fmt.ctprintf("%s", tv.name))
+			im.SetItemTooltip("%s track — right-click for options", tv.kind)
 			im.OpenPopupOnItemClick("track_ctx")
 			if im.BeginPopup("track_ctx") {
-				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(doc, d, tl, ti, _sq.time)
+				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(&tv, ti, _sq.time)
 				if im.Selectable("Rename...", false, {.NoAutoClosePopups}) {
-					_sq_buf_set(_sq_track_name_buf[:], track.name)
+					_sq_buf_set(_sq_track_name_buf[:], tv.name)
 					im.OpenPopup("track_rename")
 				}
 				if im.BeginPopup("track_rename") {
@@ -334,74 +329,58 @@ sequencer_window_draw :: proc() {
 					enter := im.InputText("##track_name", cstring(raw_data(_sq_track_name_buf[:])),
 						len(_sq_track_name_buf), {.EnterReturnsTrue})
 					if enter {
-						_sq_edit_begin(doc)
-						delete(track.name)
-						track.name = strings.clone(_sq_buf_get(_sq_track_name_buf[:]))
-						_sq_edit_commit(doc, d, tl)
+						if t := engine.pool_get(&w.transforms, engine.Handle(tv.node)); t != nil {
+							e := undo.edit_begin(tv.node, &t.name, typeid_of(string))
+							delete(t.name)
+							t.name = _sq_clone(_sq_buf_get(_sq_track_name_buf[:]))
+							undo.edit_end(&e)
+						}
 						im.CloseCurrentPopup()
 					}
 					im.EndPopup()
 				}
-				if im.Selectable("Remove Track") do remove_track = ti
+				if im.Selectable("Remove Track") do remove_track = tv.node
 				im.EndPopup()
 			}
 			im.SameLine()
-			// Binding: which scene object this track drives. Lives on the
-			// DIRECTOR; the session diffs and records only real changes.
-			bt := _sq_binding_type(track.kind)
+			// Target: which scene object this track drives. Lives on the
+			// TRACK COMPONENT — authored in the timeline prefab, overridden
+			// per instance by the prefab system.
+			bt := _sq_binding_type(tv.kind)
 			if bt == "" {
-				im.TextDisabled(track.kind == "animation" ? "(owner)" : "-")
-			} else if track.exposed != "" {
-				// Bound through an exposed slot: the target lives on the slot
-				// (Exposed References section), not on this track.
-				unbound := seq.director_exposed(d, track.exposed).handle == {}
-				if unbound do im.PushStyleColorImVec4(.Text, im.Vec4{0.95, 0.83, 0.30, 1})
-				im.TextUnformatted(fmt.ctprintf("→ %s", track.exposed))
-				if unbound do im.PopStyleColor()
-				im.SetItemTooltip("Exposed slot — bind it in the inspector pane's Exposed References")
-				im.SameLine()
+				im.TextDisabled(tv.kind == "animation" ? "(owner)" : "-")
 			} else {
-				comp_owned, _ := engine.transform_get_comp_key(owner, .PlayableDirector)
-				sess := undo.edit_session_begin(
-					{undo.edit_target_whole(comp_owned.handle)}, "Track Binding")
+				sess := undo.edit_session_begin({undo.edit_target_whole(comp)}, "Track Target")
 				// The ref picker mints the target's local_id against the
 				// OWNER's root scene, which it reads from the inspector owner
 				// stack — without this push the scene is nil, no id is minted,
-				// and the binding holds only a runtime handle that dies with
-				// the next scene reload (Play/Stop lost the binding).
-				undo.push_component_owner(comp_owned.handle)
+				// and the target holds only a runtime handle that dies with
+				// the next scene reload.
+				undo.push_component_owner(comp)
 				defer undo.pop_owner()
-				b := _sq_binding_slot(d, i32(ti))
-				before := b.target.local_id
+				before := tc.target.local_id
 				inspector.current_field_ref_target = bt
 				im.SetNextItemWidth(-46)
 				if drawer := inspector.resolve_property_drawer(typeid_of(engine.Ref_Local)); drawer != nil {
-					drawer(&b.target, typeid_of(engine.Ref_Local), "##bind")
+					drawer(&tc.target, typeid_of(engine.Ref_Local), "##bind")
 				}
 				inspector.current_field_ref_target = ""
-				changed := b.target.local_id != before
+				changed := tc.target.local_id != before
 				undo.edit_session_end(&sess)
 				if changed do inspector.mark_inspector_changed()
 				im.SameLine()
 			}
-			if im.SmallButton("+") do _sq_add_clip(doc, d, tl, ti, _sq.time)
+			if im.SmallButton("+") do _sq_add_clip(&tv, ti, _sq.time)
 			im.SetItemTooltip("Add clip at the playhead")
 			im.SameLine()
-			if im.SmallButton("x") do remove_track = ti
+			if im.SmallButton("x") do remove_track = tv.node
 			im.SetItemTooltip("Remove track")
 			// Pad the row to the canvas row height.
 			im.Dummy(im.Vec2{1, _SQ_ROW_H - im.GetFrameHeightWithSpacing()})
 			im.PopID()
 		}
-		if remove_track >= 0 {
-			_sq_edit_begin(doc)
-			track := &tl.tracks[remove_track]
-			for &c in track.clips do delete(c.name)
-			delete(track.clips)
-			delete(track.kind)
-			delete(track.name)
-			ordered_remove(&tl.tracks, remove_track)
-			_sq_edit_commit(doc, d, tl)
+		if remove_track != {} {
+			undo.record_delete(remove_track)
 			_sq.sel_track = -1
 		}
 	}
@@ -445,11 +424,11 @@ sequencer_window_draw :: proc() {
 		}
 
 		// Track rows + clips. Structural clip actions from the context menu
-		// defer to after the loops — mutating clips mid-iteration would
-		// invalidate the range.
+		// defer to after the loops — mutating nodes mid-iteration would
+		// invalidate the views.
 		act_dup := [2]int{-1, -1}
 		act_del := [2]int{-1, -1}
-		for &track, ti in tl.tracks {
+		for &tv, ti in tracks {
 			row_y := origin.y + _SQ_RULER_H + f32(ti) * _SQ_ROW_H
 			im.DrawList_AddLine(dl, {origin.x, row_y + _SQ_ROW_H}, {origin.x + canvas_w, row_y + _SQ_ROW_H}, im.GetColorU32(.Border))
 
@@ -463,7 +442,7 @@ sequencer_window_draw :: proc() {
 			im.InvisibleButton("##row", im.Vec2{canvas_w, _SQ_ROW_H})
 			row_t := from_x(origin, im.GetMousePos().x)
 			if im.IsItemHovered({}) && im.IsMouseDoubleClicked(.Left) {
-				_sq_add_clip(doc, d, tl, ti, row_t)
+				_sq_add_clip(&tv, ti, row_t)
 			} else if im.IsItemActivated() {
 				_sq.sel_track = ti
 				_sq.sel_clip = -1
@@ -471,19 +450,19 @@ sequencer_window_draw :: proc() {
 			if im.IsItemHovered({}) && im.IsMouseReleased(.Right) do _sq_ctx_time = row_t
 			im.OpenPopupOnItemClick("row_ctx")
 			if im.BeginPopup("row_ctx") {
-				if im.Selectable("Add Clip Here") do _sq_add_clip(doc, d, tl, ti, _sq_ctx_time)
+				if im.Selectable("Add Clip Here") do _sq_add_clip(&tv, ti, _sq_ctx_time)
 				im.EndPopup()
 			}
 			im.PopID()
 
-			for &c, ci in track.clips {
+			for &c, ci in tv.clips {
 				x0 := to_x(origin, c.start)
 				x1 := to_x(origin, c.start + max(c.duration, 0.05))
 				r0 := im.Vec2{x0, row_y + 3}
 				r1 := im.Vec2{x1, row_y + _SQ_ROW_H - 3}
 				selected := _sq.sel_track == ti && _sq.sel_clip == ci
-				col := _sq_track_color(track.kind)
-				if track.muted do col.w *= 0.35
+				col := _sq_track_color(tv.kind)
+				if tv.muted do col.w *= 0.35
 				im.DrawList_AddRectFilled(dl, r0, r1, im.GetColorU32ImVec4(col), 3)
 				if selected {
 					// Binding order is (rounding, thickness, flags) — unlike native imgui.
@@ -522,43 +501,39 @@ sequencer_window_draw :: proc() {
 					if im.Selectable("Delete") do act_del = {ti, ci}
 					im.EndPopup()
 				}
+				comp, cc := _sq_clip_comp(&c)
 				if im.IsItemActivated() {
 					_sq.sel_track = ti
 					_sq.sel_clip = ci
 					_sq.drag = near_l ? .Resize_L : near_r ? .Resize_R : .Move
 					_sq.drag_off = from_x(origin, mx) - c.start
-					_sq_edit_begin(doc)
+					_sq_session_begin(comp, "Clip Edit")
 				}
-				if im.IsItemActive() && _sq.sel_track == ti && _sq.sel_clip == ci {
+				if im.IsItemActive() && _sq.sel_track == ti && _sq.sel_clip == ci && cc != nil {
 					t_mouse := from_x(origin, mx)
 					snap :: proc(v: f32) -> f32 { return math.round(v * 10) / 10 }
 					switch _sq.drag {
 					case .Move:
-						end := c.start + c.duration
-						c.start = clamp(snap(t_mouse - _sq.drag_off), 0, dur - c.duration)
-						_ = end
-						_sq_mark_edited(doc, d, tl)
+						cc.start = clamp(snap(t_mouse - _sq.drag_off), 0, dur - cc.duration)
 					case .Resize_L:
-						end := c.start + c.duration
-						c.start = clamp(snap(t_mouse), 0, end - 0.1)
-						c.duration = end - c.start
-						_sq_mark_edited(doc, d, tl)
+						end := cc.start + cc.duration
+						cc.start = clamp(snap(t_mouse), 0, end - 0.1)
+						cc.duration = end - cc.start
 					case .Resize_R:
-						c.duration = max(snap(t_mouse) - c.start, 0.1)
-						_sq_mark_edited(doc, d, tl)
+						cc.duration = max(snap(t_mouse) - cc.start, 0.1)
 					case .None:
 					}
 				}
 				if im.IsItemDeactivated() {
 					_sq.drag = .None
-					_sq_edit_commit(doc, d, tl)
+					_sq_session_end()
 				}
 				im.PopID()
 			}
 		}
 
-		if act_dup[0] >= 0 do _sq_duplicate_clip(doc, d, tl, act_dup[0], act_dup[1])
-		if act_del[0] >= 0 do _sq_delete_clip(doc, d, tl, act_del[0], act_del[1])
+		if act_dup[0] >= 0 do _sq_duplicate_clip(&tracks[act_dup[0]], &tracks[act_dup[0]].clips[act_dup[1]])
+		if act_del[0] >= 0 do _sq_delete_clip(&tracks[act_del[0]].clips[act_del[1]])
 
 		// Playhead over everything.
 		px := to_x(origin, _sq.time)
@@ -570,9 +545,9 @@ sequencer_window_draw :: proc() {
 	// field owns the keyboard.
 	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !im.GetIO().WantTextInput {
 		if (im.IsKeyPressed(.Delete) || im.IsKeyPressed(.Backspace)) &&
-		   _sq.sel_track >= 0 && _sq.sel_track < len(tl.tracks) {
-			if _sq.sel_clip >= 0 && _sq.sel_clip < len(tl.tracks[_sq.sel_track].clips) {
-				_sq_delete_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
+		   _sq.sel_track >= 0 && _sq.sel_track < len(tracks) {
+			if _sq.sel_clip >= 0 && _sq.sel_clip < len(tracks[_sq.sel_track].clips) {
+				_sq_delete_clip(&tracks[_sq.sel_track].clips[_sq.sel_clip])
 			}
 		}
 	}
@@ -582,7 +557,7 @@ sequencer_window_draw :: proc() {
 	_sq_splitter("##sq_split_r", true, &_sq.inspector_w, total_w - _sq.legend_w)
 	im.SameLine(0, 0)
 	if im.BeginChild("##sq_inspector", im.Vec2{0, body_h}, {.Borders}) {
-		_sq_inspector_pane(doc, d, tl)
+		_sq_inspector_pane(tracks)
 	}
 	im.EndChild()
 }
@@ -590,64 +565,40 @@ sequencer_window_draw :: proc() {
 // The selected clip's properties, stacked vertically like the object
 // inspector — the sequencer's own inspector pane.
 @(private = "file")
-_sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
-	_sq_exposed_section(doc, d, tl)
-
-	if _sq.sel_track < 0 || _sq.sel_track >= len(tl.tracks) {
+_sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
+	if _sq.sel_track < 0 || _sq.sel_track >= len(tracks) {
 		im.TextDisabled("No selection.")
 		im.TextWrapped("Click a track row or clip. Double-click empty row space to add a clip.")
 		return
 	}
-	track := &tl.tracks[_sq.sel_track]
+	tv := &tracks[_sq.sel_track]
+	tcomp, tc := _sq_track_comp(tv)
+	if tc == nil do return
 	{
 		im.SeparatorText("Track")
-		im.Text("%s", fmt.ctprintf("%s (%s)", len(track.name) > 0 ? track.name : track.kind, track.kind))
-		muted := track.muted
+		im.Text("%s", fmt.ctprintf("%s (%s)", tv.name, tv.kind))
+		muted := tc.muted
 		if im.Checkbox("Muted", &muted) {
-			_sq_edit_begin(doc)
-			track.muted = muted
-			_sq_edit_commit(doc, d, tl)
+			_sq_session_begin(tcomp, "Mute Track")
+			tc.muted = muted
+			_sq_session_end()
 		}
-		im.Text("%d clips", i32(len(track.clips)))
-
-		// Binding source: the track's own picker, or one of the timeline's
-		// exposed slots (several tracks can share a slot).
-		if _sq_binding_type(track.kind) != "" {
-			im.TextUnformatted("Bind via")
-			im.SameLine(90)
-			im.SetNextItemWidth(-1)
-			cur := track.exposed == "" ? "(direct)" : fmt.ctprintf("%s", track.exposed)
-			if im.BeginCombo("##t_exposed", cur) {
-				if im.Selectable("(direct)", track.exposed == "") && track.exposed != "" {
-					_sq_edit_begin(doc)
-					delete(track.exposed)
-					track.exposed = ""
-					_sq_edit_commit(doc, d, tl)
-				}
-				for name in tl.exposed_names {
-					if im.Selectable(fmt.ctprintf("%s", name), track.exposed == name) && track.exposed != name {
-						_sq_edit_begin(doc)
-						delete(track.exposed)
-						track.exposed = strings.clone(name)
-						_sq_edit_commit(doc, d, tl)
-					}
-				}
-				im.EndCombo()
-			}
-		}
+		im.Text("%d clips", i32(len(tv.clips)))
 	}
-	if _sq.sel_clip < 0 || _sq.sel_clip >= len(track.clips) {
+	if _sq.sel_clip < 0 || _sq.sel_clip >= len(tv.clips) {
 		im.SeparatorText("Clip")
 		im.TextDisabled("No clip selected.")
 		return
 	}
 	{
-		c := &track.clips[_sq.sel_clip]
+		c := &tv.clips[_sq.sel_clip]
+		comp, cc := _sq_clip_comp(c)
+		if cc == nil do return
 		im.SeparatorText("Clip")
 
-		// The clip's name — what the marker hook fires with, and the block's
-		// label. The buffer reloads when the selection changes, the document
-		// takes the value on commit (one undo step).
+		// The clip's name is its NODE name — what the marker hook fires with,
+		// and the block's label. The buffer reloads when the selection
+		// changes, the node takes the value on commit (one undo step).
 		if _sq_clip_name_for != {_sq.sel_track, _sq.sel_clip} {
 			_sq_clip_name_for = {_sq.sel_track, _sq.sel_clip}
 			_sq_buf_set(_sq_clip_name_buf[:], c.name)
@@ -655,10 +606,13 @@ _sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, 
 		im.SetNextItemWidth(-1)
 		im.InputTextWithHint("##c_name", "Name", cstring(raw_data(_sq_clip_name_buf[:])), len(_sq_clip_name_buf))
 		if im.IsItemDeactivatedAfterEdit() {
-			_sq_edit_begin(doc)
-			delete(c.name)
-			c.name = strings.clone(_sq_buf_get(_sq_clip_name_buf[:]))
-			_sq_edit_commit(doc, d, tl)
+			w := engine.ctx_world()
+			if t := engine.pool_get(&w.transforms, engine.Handle(c.node)); t != nil {
+				e := undo.edit_begin(c.node, &t.name, typeid_of(string))
+				delete(t.name)
+				t.name = _sq_clone(_sq_buf_get(_sq_clip_name_buf[:]))
+				undo.edit_end(&e)
+			}
 		}
 
 		row :: proc(label: cstring) {
@@ -667,140 +621,40 @@ _sq_inspector_pane :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, 
 			im.SetNextItemWidth(-1)
 		}
 		row("Start")
-		_sq_field_undo(doc, d, tl, im.DragFloat("##c_start", &c.start, 0.02, 0, 0, "%.2f s"))
+		_sq_field_undo(comp, "Clip Start", im.DragFloat("##c_start", &cc.start, 0.02, 0, 0, "%.2f s"))
 		row("Duration")
-		_sq_field_undo(doc, d, tl, im.DragFloat("##c_dur", &c.duration, 0.02, 0, 0, "%.2f s"))
+		_sq_field_undo(comp, "Clip Duration", im.DragFloat("##c_dur", &cc.duration, 0.02, 0, 0, "%.2f s"))
 		row("Ease In")
-		_sq_field_undo(doc, d, tl, im.DragFloat("##c_ein", &c.ease_in, 0.01, 0, 0, "%.2f s"))
+		_sq_field_undo(comp, "Clip Ease", im.DragFloat("##c_ein", &cc.ease_in, 0.01, 0, 0, "%.2f s"))
 		row("Ease Out")
-		_sq_field_undo(doc, d, tl, im.DragFloat("##c_eout", &c.ease_out, 0.01, 0, 0, "%.2f s"))
+		_sq_field_undo(comp, "Clip Ease", im.DragFloat("##c_eout", &cc.ease_out, 0.01, 0, 0, "%.2f s"))
 		row("Speed")
-		_sq_field_undo(doc, d, tl, im.DragFloat("##c_speed", &c.speed, 0.01, 0, 0, "x%.2f"))
+		_sq_field_undo(comp, "Clip Speed", im.DragFloat("##c_speed", &cc.speed, 0.01, 0, 0, "x%.2f"))
 		im.SetItemTooltip("0 behaves as 1")
 
 		// The clip's payload asset, filtered per track kind.
-		ext := track.kind == "animation" ? "anim" : track.kind == "audio" ? "mp3,wav,ogg" : ""
+		ext := tv.kind == "animation" ? "anim" : tv.kind == "audio" ? "mp3,wav,ogg" : ""
 		if ext != "" {
 			row("Asset")
-			sess := undo.edit_session_begin({undo.edit_target_asset(doc.guid, doc.data.id)}, "Clip Asset")
-			before := c.asset
+			sess := undo.edit_session_begin({undo.edit_target_whole(comp)}, "Clip Asset")
+			before := cc.asset
 			inspector.current_field_ext_filter = ext
 			if drawer := inspector.resolve_property_drawer(typeid_of(engine.Asset_GUID)); drawer != nil {
-				drawer(&c.asset, typeid_of(engine.Asset_GUID), "##c_asset")
+				drawer(&cc.asset, typeid_of(engine.Asset_GUID), "##c_asset")
 			}
 			inspector.current_field_ext_filter = ""
-			changed := c.asset != before
+			changed := cc.asset != before
 			undo.edit_session_end(&sess)
-			if changed do _sq_mark_edited(doc, d, tl)
+			if changed do inspector.mark_inspector_changed()
+		}
+		if tv.kind == "control" {
+			im.TextWrapped("Nest a timeline prefab under this clip's node — the clip plays its director at the clip-local time.")
 		}
 
 		im.Spacing()
-		if im.Button("Duplicate", {-1, 0}) do _sq_duplicate_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
-		if im.Button("Delete", {-1, 0}) do _sq_delete_clip(doc, d, tl, _sq.sel_track, _sq.sel_clip)
+		if im.Button("Duplicate", {-1, 0}) do _sq_duplicate_clip(tv, c)
+		if im.Button("Delete", {-1, 0}) do _sq_delete_clip(c)
 	}
-}
-
-@(private = "file")
-_sq_binding_slot :: proc(d: ^seq.PlayableDirector, track: i32) -> ^seq.Track_Binding {
-	for &b in d.bindings {
-		if b.track == track do return &b
-	}
-	append(&d.bindings, seq.Track_Binding{track = track})
-	return &d.bindings[len(d.bindings) - 1]
-}
-
-@(private = "file")
-_sq_exposed_find :: proc(d: ^seq.PlayableDirector, name: string) -> ^seq.Exposed_Binding {
-	for &e in d.exposed {
-		if e.name == name do return &e
-	}
-	return nil
-}
-
-// The timeline's declared tweak surface: slot names live on the ASSET (doc
-// edits), targets live on the DIRECTOR (component edits). Unbound slots show
-// yellow — a track bound via an unbound slot targets nothing.
-@(private = "file")
-_sq_exposed_section :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline) {
-	im.SeparatorText("Exposed References")
-
-	remove_at := -1
-	for name, i in tl.exposed_names {
-		im.PushIDInt(i32(i))
-		unbound := seq.director_exposed(d, name).handle == {}
-		if unbound do im.PushStyleColorImVec4(.Text, im.Vec4{0.95, 0.83, 0.30, 1})
-		im.TextUnformatted(fmt.ctprintf("%s", name))
-		if unbound do im.PopStyleColor()
-		im.SameLine(90)
-
-		comp_owned, _ := engine.transform_get_comp_key(_sq.dir_owner, .PlayableDirector)
-		sess := undo.edit_session_begin(
-			{undo.edit_target_whole(comp_owned.handle)}, "Exposed Binding")
-		// Same contract as the track binding picker: the picker mints the
-		// target's local_id against the owner's root scene from the
-		// inspector owner stack.
-		undo.push_component_owner(comp_owned.handle)
-		defer undo.pop_owner()
-		// An unfilled slot draws against a temp: the director's table gains
-		// an entry only when the user actually picks (no per-frame appends).
-		slot := _sq_exposed_find(d, name)
-		tmp: seq.Exposed_Binding
-		target := slot != nil ? &slot.target : &tmp.target
-		before := target^
-		inspector.current_field_ref_target = "Transform"
-		im.SetNextItemWidth(-24)
-		if drawer := inspector.resolve_property_drawer(typeid_of(engine.Ref_Local)); drawer != nil {
-			drawer(target, typeid_of(engine.Ref_Local), "##exp_bind")
-		}
-		inspector.current_field_ref_target = ""
-		changed := target^ != before
-		if changed && slot == nil {
-			append(&d.exposed, seq.Exposed_Binding{name = strings.clone(name), target = tmp.target})
-		}
-		undo.edit_session_end(&sess)
-		if changed do inspector.mark_inspector_changed()
-
-		im.SameLine()
-		if im.SmallButton("x") do remove_at = i
-		im.SetItemTooltip("Remove the slot (tracks bound via it revert to direct)")
-		im.PopID()
-	}
-	if remove_at >= 0 {
-		_sq_edit_begin(doc)
-		// Tracks bound through the removed slot fall back to their direct
-		// binding rather than dangling on a name that no longer exists.
-		for &track in tl.tracks {
-			if track.exposed == tl.exposed_names[remove_at] {
-				delete(track.exposed)
-				track.exposed = ""
-			}
-		}
-		delete(tl.exposed_names[remove_at])
-		ordered_remove(&tl.exposed_names, remove_at)
-		_sq_edit_commit(doc, d, tl)
-	}
-
-	if im.SmallButton("Add Slot") {
-		_sq_edit_begin(doc)
-		name: string
-		for n := len(tl.exposed_names) + 1; ; n += 1 {
-			name = fmt.tprintf("slot %d", n)
-			taken := false
-			for existing in tl.exposed_names do if existing == name do taken = true
-			if !taken do break
-		}
-		append(&tl.exposed_names, strings.clone(name))
-		_sq_edit_commit(doc, d, tl)
-	}
-}
-
-@(private = "file")
-_sq_add_track :: proc(doc: ^inspector.Asset_Doc, d: ^seq.PlayableDirector, tl: ^seq.Timeline, kind: string) {
-	_sq_edit_begin(doc)
-	track := seq.Timeline_Track{kind = strings.clone(kind), name = strings.clone(kind)}
-	track.clips = make([dynamic]seq.Timeline_Clip)
-	append(&tl.tracks, track)
-	_sq_edit_commit(doc, d, tl)
 }
 
 @(private = "file")
@@ -811,6 +665,7 @@ _sq_track_color :: proc(kind: string) -> im.Vec4 {
 	case "activation": return {0.40, 0.70, 0.40, 0.9}
 	case "particles":  return {0.65, 0.40, 0.75, 0.9}
 	case "marker":     return {0.80, 0.35, 0.35, 0.9}
+	case "control":    return {0.35, 0.65, 0.70, 0.9}
 	}
 	return {0.5, 0.5, 0.5, 0.9}
 }
@@ -828,9 +683,7 @@ _sq_asset_label :: proc(g: engine.Asset_GUID) -> string {
 
 // Pose the world at the playhead for the scene/game render only — bracketed
 // with sequencer_preview_restore around the render in main.odin, like the
-// animation scrub preview. Registry tracks run with scrub semantics
-// (particles replay deterministically, audio stays silent); activation flips
-// are captured here and restored after the render.
+// animation scrub preview.
 sequencer_preview_apply :: proc() {
 	if !_sq.preview do return
 	w := engine.ctx_world()
@@ -843,12 +696,11 @@ sequencer_preview_apply :: proc() {
 		_sq_preview_end()
 		return
 	}
-	tl, ok := seq.timeline_load(engine.Asset_GUID(d.timeline.guid))
-	if !ok do return
 
 	playing_step := _sq.playing
 	if playing_step {
-		dur := max(seq.timeline_duration(tl), 0.001)
+		tracks := seq.director_tracks(d)
+		dur := max(seq.director_duration(d, tracks), 0.001)
 		_sq.time += im.GetIO().DeltaTime
 		if _sq.time >= dur do _sq.time = 0
 	}
@@ -885,4 +737,3 @@ _sq_preview_end :: proc() {
 	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)
 	if d != nil do seq.director_preview_end(d)
 }
-
