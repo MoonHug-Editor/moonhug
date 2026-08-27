@@ -233,9 +233,15 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 			hook(ptr, remap)
 			return
 		}
+		// Only SCENE-INTERNAL references remap (guid empty). A PPtr/Ref with a
+		// guid points into ANOTHER asset's namespace — a mesh part id, a
+		// sub-asset — and remapping that local_id through this scene's lid
+		// map corrupts it whenever the id collides with a source lid
+		// (BoxAnimated: part id 2 == the prefab root's lid 2, so nesting the
+		// prefab retargeted one MeshFilter at a nonexistent part).
 		if tid == typeid_of(PPtr) {
 			pptr := cast(^PPtr)ptr
-			if pptr.local_id != 0 {
+			if pptr.local_id != 0 && pptr_guid_is_empty(pptr.guid) {
 				if new_id, ok := remap[pptr.local_id]; ok {
 					pptr.local_id = new_id
 				}
@@ -244,7 +250,7 @@ _remap_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, remap: ^map[Lo
 		}
 		if tid == typeid_of(Ref) {
 			ref := cast(^Ref)ptr
-			if ref.pptr.local_id != 0 {
+			if ref.pptr.local_id != 0 && pptr_guid_is_empty(ref.pptr.guid) {
 				if new_id, ok := remap[ref.pptr.local_id]; ok {
 					ref.pptr.local_id = new_id
 				}

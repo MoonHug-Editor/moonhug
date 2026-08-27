@@ -225,6 +225,12 @@ the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
 - Fields a component reads only at init do not visibly respond. Defold routes
   such properties through a per-component setter callback — that is the shape
   to copy when a component needs it.
+- Authoring lives in the Animation window: Add Property walks the owner's
+  subtree as nested menus (transform channels plus each component's
+  animatable leaves via reflection), the first key holds the field's current
+  value, discrete kinds set step, rows show `target : Component.field` with
+  unresolved channels in yellow, and Remove Property is on the row's context
+  menu. Lane count in curves and the key footer follows the live field kind.
 
 ## Script nodes
 
