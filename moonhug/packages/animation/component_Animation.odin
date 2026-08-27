@@ -77,6 +77,11 @@ Animation :: struct {
 
 	time:    f32 `json:"-" inspect:"-"`, // layer 0's leading state, for inspection
 	playing: bool `json:"-" inspect:"-"`,
+	// A timeline's animation track is driving this component: its own
+	// playback stands down so the two never write the same transforms in one
+	// frame (Unity's Animator-under-Timeline rule). Set every tick by the
+	// track, cleared when it stops driving.
+	timeline_driven: bool `json:"-" inspect:"-"`,
 	started: bool `json:"-" inspect:"-"`, // play_automatically consumed on first tick
 
 	graph:       Playable_Graph `json:"-" inspect:"-"`,
@@ -286,6 +291,7 @@ animation_tick :: proc(dt: f32) {
 	it := engine.pool_iterator(animations(w))
 	for a, _ in engine.pool_next(&it) {
 		if !a.enabled do continue
+		if a.timeline_driven do continue // a timeline track owns this object
 		if !engine.pool_valid(&w.transforms, engine.Handle(a.owner)) do continue
 		if !a.started {
 			a.started = true

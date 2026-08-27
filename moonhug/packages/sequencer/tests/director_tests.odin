@@ -367,3 +367,123 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	seq.director_set_time(host, 1.8)
 	testing.expect(t, abs(nt.position.x - 8) < 0.11, "host scrub reaches the nested timeline")
 }
+
+// Overlap IS the blend (Unity's Timeline model): where two clips on a track
+// overlap, the earlier ramps out across the overlap while the later ramps
+// in, with no authoring. Explicit eases still apply at boundaries with no
+// neighbour. Derived from the spans, so it can never disagree with them.
+@(test)
+test_clip_weight_overlap_crossfades :: proc(t: ^testing.T) {
+	// A [0,2), B [1,3) — a 1s overlap in [1,2).
+	clips := []seq.Timeline_Clip{
+		{start = 0, duration = 2},
+		{start = 1, duration = 2},
+	}
+
+	// Outside the overlap both sit at full weight.
+	testing.expect(t, seq.track_clip_weight(clips, 0, 0.5) == 1, "A is full before the overlap")
+	testing.expect(t, seq.track_clip_weight(clips, 1, 2.5) == 1, "B is full after the overlap")
+
+	// Mid-overlap they meet at 0.5 — a symmetric crossfade.
+	a_mid := seq.track_clip_weight(clips, 0, 1.5)
+	b_mid := seq.track_clip_weight(clips, 1, 1.5)
+	testing.expect(t, abs(a_mid - 0.5) < 0.001, "A is half way out at the overlap centre")
+	testing.expect(t, abs(b_mid - 0.5) < 0.001, "B is half way in at the overlap centre")
+
+	// The pair sums to 1 across the whole overlap: no dip, no double.
+	for i in 0 ..= 10 {
+		time := 1 + f32(i) / 10 * 0.999
+		sum := seq.track_clip_weight(clips, 0, time) + seq.track_clip_weight(clips, 1, time)
+		testing.expectf(t, abs(sum - 1) < 0.001, "weights must sum to 1 at t=%.2f, got %.3f", time, sum)
+	}
+
+	// Outside every span: nothing.
+	testing.expect(t, seq.track_clip_weight(clips, 0, 2.5) == 0, "A is silent past its end")
+	testing.expect(t, seq.track_clip_weight(clips, 1, 0.5) == 0, "B is silent before its start")
+}
+
+// An explicit ease with no neighbour still ramps, and an overlap wider than
+// the authored ease wins (the clips actually overlap that much).
+@(test)
+test_clip_weight_explicit_ease :: proc(t: ^testing.T) {
+	solo := []seq.Timeline_Clip{{start = 0, duration = 2, ease_in = 1, ease_out = 0.5}}
+	testing.expect(t, abs(seq.track_clip_weight(solo, 0, 0.5) - 0.5) < 0.001, "ease_in ramps up")
+	testing.expect(t, seq.track_clip_weight(solo, 0, 1.2) == 1, "full weight between the ramps")
+	testing.expect(t, abs(seq.track_clip_weight(solo, 0, 1.75) - 0.5) < 0.001, "ease_out ramps down")
+
+	// A 1s overlap beats a 0.2s authored ease_in on the later clip.
+	pair := []seq.Timeline_Clip{
+		{start = 0, duration = 2},
+		{start = 1, duration = 2, ease_in = 0.2},
+	}
+	testing.expect(t, abs(seq.track_clip_weight(pair, 1, 1.5) - 0.5) < 0.001,
+		"the overlap drives the blend, not the smaller authored ease")
+}
+
+// An animation track drives an ANIMATION COMPONENT (Unity's model: the
+// timeline takes over the Animator). Its target names which one; unset, it
+// finds one on the director, and poses the director's transform directly
+// when there is none. The driven component's own playback stands down, so
+// the two never write the same transforms in one frame.
+@(test)
+test_animation_track_target :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	seq.register_builtin_tracks()
+	anim.animation_track_init()
+
+	ramp_guid := _clip_guid(20)
+	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	actor := engine.transform_new("Actor", root)
+
+	_, raw := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)raw
+	d.enabled = true
+	d.duration = 1
+	d.wrap = .Once
+	defer seq.director_teardown(d)
+
+	at := _mk_track(root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_set_anim_clip(at, 0, ramp_guid)
+
+	rt := engine.pool_get(&tc.world.transforms, engine.Handle(root))
+	act := engine.pool_get(&tc.world.transforms, engine.Handle(actor))
+
+	// No target: the director itself animates (the default).
+	seq.director_set_time(d, 0.5)
+	testing.expect(t, abs(rt.position.x - 5) < 0.001, "an untargeted track animates the director")
+	testing.expect(t, abs(act.position.x - 0) < 0.001, "the other object is untouched")
+
+	// Point it at an Animation ON the actor: the clip now plays there, and
+	// the director's pose is released rather than left frozen mid-animation.
+	a_owned, a_comp := engine.transform_add_comp(actor, .Animation)
+	acomp := cast(^anim.Animation)a_comp
+	acomp.enabled = true
+	acomp.play_automatically = true
+	acomp.clip = ramp_guid
+	if _, atc := anim.get_comp(at, anim.AnimationTrack); atc != nil {
+		atc.target = {handle = a_owned.handle}
+	}
+	seq.director_set_time(d, 0.5)
+	testing.expect(t, abs(act.position.x - 5) < 0.001, "the track animates its target's object")
+	testing.expect(t, abs(rt.position.x - 0) < 0.001, "retargeting releases the previous object")
+
+	// While driven, the component's own playback stands down — its tick must
+	// not also write the object (last-writer-wins was the whole hazard).
+	testing.expect(t, acomp.timeline_driven, "the driven component is suppressed")
+	anim.animation_tick(0.5)
+	testing.expect(t, abs(act.position.x - 5) < 0.001,
+		"the suppressed component does not fight the track")
+
+	// The preview ending hands the object back.
+	seq.director_preview_end(d)
+	testing.expect(t, !acomp.timeline_driven, "preview end releases the component")
+}

@@ -74,6 +74,21 @@ pure function of director time: `director_set_time` scrubs,
 forwards through. A director nested under a control clip never self-ticks —
 the parent timeline owns its time.
 
+## Clip blending
+
+`track_clip_weight(clips, index, t)` is the shared rule, Unity's model:
+**overlap is the blend.** Where two clips on a track overlap, the earlier
+ramps out across the overlap while the later ramps in, so dropping a clip on
+its neighbour's tail crossfades with nothing to author — and the pair sums to
+1 throughout, so there is no dip or double. Explicit `ease_in`/`ease_out`
+still apply at boundaries with no neighbour, and the wider ramp wins where
+both exist.
+
+The blend is DERIVED from the spans, never stored, so it cannot disagree with
+where the clips sit (moving a clip re-derives it). The canvas draws each
+clip's weight curve, which reads as an X across an overlap because both
+clips plot the same derived numbers.
+
 ## Tracks
 
 Kinds register with `track_register`. A `Track_Desc` supplies `track_key`
@@ -97,8 +112,10 @@ Built-in kinds:
 - `activation`: the target is active while any clip covers the time. Outside
   Play mode the tick captures the pre-tick state and `preview_end` restores
   it — authored-inactive objects return to inactive.
-- `marker`: zero-duration clips fire `timeline_marker_hook` on crossing,
-  never from the editor.
+- `marker`: clips are INSTANTS (`Track_Desc.instant` — the window creates
+  them with zero duration), firing `timeline_marker_hook` on crossing rather
+  than covering. Never fires from the editor preview, since the hook is game
+  code (Unity does not fire signals in preview either).
 - `control`: each clip plays a NESTED TIMELINE — the clip node's child
   subtree holding its own director (typically a nested timeline prefab
   instance). Inside the span the child evaluates at the clip-local time with
@@ -113,11 +130,16 @@ Feature-package kinds:
   asset replaces the source's clip when set), leaving every span stops it.
   Scrub is silent, preview-play sounds. Author track-driven sources with
   `play_on_awake` off.
-- `animation`: a mixer with one clip node per timeline clip, weights from
-  the ease ramps (overlaps crossfade through mixer normalization), source
-  clips shorter than their timeline clip wrap by their own mode. Channel
-  paths resolve under the director's owner, so the track needs no target.
-  Clips may carry PROPERTY channels (docs/PlayableGraph.md).
+- `animation`: drives an ANIMATION COMPONENT (Unity's model — the timeline
+  takes over the Animator). `AnimationTrack.target` names which one; unset,
+  it finds one on the director, and poses the director's transform directly
+  when there is none. The driven component's own playback STANDS DOWN
+  (`Animation.timeline_driven`) so the two never write the same transforms
+  in one frame, and the track hands it back on preview end or retarget.
+  Internally a mixer with one clip node per timeline clip, weights from
+  track_clip_weight, source clips shorter than their timeline clip wrapping
+  by their own mode. Clips may carry PROPERTY channels
+  (docs/PlayableGraph.md).
 
 ## Sequencer window
 
@@ -149,6 +171,15 @@ multieditable component like any other.
   a guard in apply): play owns the world and the director ticks itself
   there, so a scrub posing it every frame would fight the simulation. The
   preview controls disable while playing; editing stays available.
+
+  Two things make the transition land on ONE frame rather than several.
+  Play is deferred a frame (`sim.request_start`) so a preview's pending
+  restore renders before the scene is captured. And the director REWINDS
+  when the preview ends for play: `preview_end` leaves stateful tracks reset
+  (particles clear their systems), so resuming mid-timeline would restart
+  those effects from empty while instant tracks snap into place — which
+  reads as tracks starting on different frames. Waiting MORE frames makes
+  that worse, not better; starting from 0 is what syncs them.
   Play advances with `director_preview_step` (audio live), a paused or
   dragged playhead is a silent scrub, and the per-frame restore quiets
   everything the moment playing stops.

@@ -261,3 +261,48 @@ test_sim_host_selection :: proc(t: ^testing.T) {
 	h3, _ := sim.active_host()
 	testing.expect(t, h3.name == "game2", "out-of-range host index is ignored")
 }
+
+// Play is DEFERRED one frame (sim.request_start): editor previews pose the
+// world for the render and restore it after, so starting in the same call
+// would snapshot and swap the scene between a preview's apply and its
+// restore — tracks then release at visibly different moments. The queued
+// start runs on the next tick_pending.
+@(test)
+test_sim_request_start_defers_one_frame :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_defer.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	// Requesting does NOT start: the frame in between is what previews use
+	// to unwind, so nothing may transition yet.
+	sim.request_start()
+	testing.expect(t, sim.start_pending(), "the start is queued")
+	testing.expect(t, sim.state() == .Stopped, "still stopped in the requesting frame")
+	testing.expect(t, !engine.application_is_playing(), "not playing before the queued start runs")
+	testing.expect_value(t, len(_phases_seen()), 0)
+
+	// The next frame runs it.
+	sim.tick_pending()
+	testing.expect(t, !sim.start_pending(), "the queue is consumed")
+	testing.expect(t, sim.state() == .Running, "the queued start ran")
+	testing.expect(t, engine.application_is_playing())
+
+	// Idempotent: a second pending tick does nothing.
+	sim.tick_pending()
+	testing.expect(t, sim.state() == .Running)
+
+	sim.stop()
+	testing.expect(t, sim.state() == .Stopped)
+
+	// A stop cancels a queued start rather than letting it fire late.
+	sim.request_start()
+	testing.expect(t, sim.start_pending())
+	sim.stop()
+	testing.expect(t, !sim.start_pending(), "stop cancels the queued start")
+	sim.tick_pending()
+	testing.expect(t, sim.state() == .Stopped, "the cancelled start never runs")
+}

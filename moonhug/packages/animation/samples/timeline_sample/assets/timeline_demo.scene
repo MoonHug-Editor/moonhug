@@ -52,6 +52,18 @@
             "local_id": 1500754478813595,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 4130103792063416,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1293354471150642,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": [
@@ -547,13 +559,211 @@
           "local_id": 3246846976901040
         }
       ]
+    },
+    {
+      "local_id": 4130103792063416,
+      "name": "animation",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 3736691368672179,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1083788303555388,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 4168490807095615
+        },
+        {
+          "local_id": 2270202349457188
+        }
+      ]
+    },
+    {
+      "local_id": 3736691368672179,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 4130103792063416,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 162424682075694
+        },
+        {
+          "local_id": 435135048093852
+        }
+      ]
+    },
+    {
+      "local_id": 1083788303555388,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 4130103792063416,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1266090046095697
+        },
+        {
+          "local_id": 1560128649527024
+        }
+      ]
+    },
+    {
+      "local_id": 1293354471150642,
+      "name": "BoxAnimated",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
+    {
+      "local_id": 685522559646000,
+      "local_id_in_parent": 685522559646000,
+      "source_prefab": "7f3a6162-c0b2-4944-a153-c1971af3d3af",
+      "transform_parent": 1293354471150642,
+      "host_breadcrumb_id": 3710092037932274,
+      "sibling_index": 6,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 3,
+            "guid": "7f3a6162-c0b2-4944-a153-c1971af3d3af"
+          },
+          "property_path": "play_automatically",
+          "value": false
+        }
+      ],
+      "removed_components": [
 
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    }
   ],
   "breadcrumbs": [
-
+    {
+      "local_id": 3710092037932274,
+      "scene_source": {
+        "local_id": 1293354471150642,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 685522559646000
+    }
   ],
   "components": [
     {
@@ -1217,7 +1427,7 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 1.0
+      "start": 0.80000001
     },
     {
       "__type": "6f7fb020-d764-4ce1-bc09-d8088356bd22",
@@ -1245,7 +1455,65 @@
       "ease_in": 0.0,
       "ease_out": 0.0,
       "speed": 0.0,
-      "start": 2.4000001000000002
+      "start": 2.2000000499999999
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 4168490807095615
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 2270202349457188
+      },
+      "target": {
+        "local_id": 6991179099619540
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 162424682075694
+      },
+      "duration": 1.5,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 0.80000001
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 435135048093852
+      },
+      "clip": "14fec817-ce17-463f-a083-7616d69b8a5d"
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 1266090046095697
+      },
+      "duration": 1.4000001,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 1.7999999499999999
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 1560128649527024
+      },
+      "clip": "14fec817-ce17-463f-a083-7616d69b8a5d"
     }
   ]
 }

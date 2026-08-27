@@ -84,6 +84,53 @@ track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Timeline_Clip) -> bool {
 	return ctx.time >= c.start && ctx.time < c.start + c.duration
 }
 
+// A clip's blend weight at `t`, 0 outside its span (Unity's Timeline model).
+//
+// OVERLAP IS THE BLEND: where two clips on a track overlap, the earlier one
+// ramps out across the overlap and the later one ramps in, so dropping a clip
+// onto its neighbour's tail crossfades with no authoring. The blend is
+// DERIVED from the spans — nothing is stored, so it can never disagree with
+// where the clips actually sit.
+//
+// Explicit ease_in/ease_out still apply at boundaries with no neighbour (a
+// clip fading up from nothing), and the shorter ramp wins where both exist.
+// `clips` must be sorted by start, which director_tracks guarantees.
+track_clip_weight :: proc(clips: []Timeline_Clip, index: int, t: f32) -> f32 {
+	if index < 0 || index >= len(clips) do return 0
+	c := &clips[index]
+	end := c.start + c.duration
+	if t < c.start || t >= end do return 0
+
+	in_ramp := c.ease_in
+	out_ramp := c.ease_out
+
+	// A previous clip reaching into this one: the overlap IS the ease-in.
+	for i := index - 1; i >= 0; i -= 1 {
+		p := &clips[i]
+		p_end := p.start + p.duration
+		if p_end <= c.start do continue
+		if overlap := min(p_end, end) - c.start; overlap > 0 {
+			in_ramp = max(in_ramp, overlap)
+		}
+		break
+	}
+	// A following clip reaching back into this one: the overlap is the
+	// ease-out.
+	for i := index + 1; i < len(clips); i += 1 {
+		n := &clips[i]
+		if n.start >= end do break
+		if overlap := end - max(n.start, c.start); overlap > 0 {
+			out_ramp = max(out_ramp, overlap)
+		}
+		break
+	}
+
+	w := f32(1)
+	if in_ramp > 0 do w = min(w, (t - c.start) / in_ramp)
+	if out_ramp > 0 do w = min(w, (end - t) / out_ramp)
+	return clamp(w, 0, 1)
+}
+
 Track_Desc :: struct {
 	// The kind's TRACK component: its TypeKey is the registry key and the
 	// discriminator on a track node. `clip_key` is the kind's CLIP component,
@@ -91,6 +138,11 @@ Track_Desc :: struct {
 	track_key: engine.TypeKey,
 	clip_key:  engine.TypeKey,
 	label:     string, // menu/UI name
+
+	// Clips are INSTANTS, not spans: created with zero duration and fired by
+	// crossing rather than covering (markers). The window reads this instead
+	// of naming a kind.
+	instant: bool,
 
 	// Per-director lifecycle. `build` runs once per (director, track) and
 	// returns the kind's own state — nil when it needs none; `destroy` frees
@@ -263,6 +315,7 @@ register_builtin_tracks :: proc() {
 		track_key = .MarkerTrack,
 		clip_key  = .MarkerClip,
 		label     = "marker",
+		instant   = true,
 		tick      = _marker_track_tick,
 	})
 	track_register(Track_Desc{

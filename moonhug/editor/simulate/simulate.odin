@@ -102,6 +102,36 @@ is_ticking :: proc() -> bool {
     return _state == .Running
 }
 
+// Ask to start next frame: editor previews (the sequencer's scrub, the
+// animation window's) end on ExitingEditMode, and their per-frame restore
+// only lands when a frame actually renders. Starting in the same call would
+// snapshot and swap the scene between a preview's apply and its restore, so
+// tracks release at visibly different moments. `pending_start` gives every
+// preview one clean frame to unwind before start() runs.
+//
+// Callers use this instead of start(); start() stays the immediate form for
+// tests and anything that has already quiesced.
+request_start :: proc(paused := false) {
+    if _state != .Stopped do return
+    _pending_start = true
+    _pending_paused = paused
+}
+
+// Whether a start is queued for the next tick_pending call.
+start_pending :: proc() -> bool {
+    return _pending_start
+}
+
+// One call per editor frame, before the views draw: runs a queued start.
+tick_pending :: proc() {
+    if !_pending_start do return
+    _pending_start = false
+    start(_pending_paused)
+}
+
+@(private) _pending_start: bool
+@(private) _pending_paused: bool
+
 // Capture the open scene, then start ticking it. `paused` starts on frame zero
 // without advancing, so the transition phases fire in the state callers observe.
 start :: proc(paused := false) -> bool {
@@ -142,6 +172,7 @@ start :: proc(paused := false) -> bool {
 
 // Roll the scene back to its state at Start.
 stop :: proc() {
+    _pending_start = false
     if _state == .Stopped do return
 
     _fire(.ExitingPlayMode)

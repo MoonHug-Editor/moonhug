@@ -215,6 +215,12 @@ main :: proc() {
         _process_undo_shortcuts()
         _process_simulate_shortcuts()
 
+        // A Play requested LAST frame starts here: the frame in between let
+        // every editor preview restore the world it had posed, so the
+        // snapshot captures authored values and tracks release together
+        // (sim.request_start).
+        sim_start_pending()
+
         // Advance the in-editor simulation before the views draw, so hierarchy,
         // inspector and scene all show the same frame. Placed AFTER the toolbar
         // so a Stop pressed this frame takes effect before the tick, never

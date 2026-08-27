@@ -168,12 +168,12 @@ _sq_clip_comp :: proc(c: ^seq.Timeline_Clip) -> (engine.Handle, ^seq.TimelineCli
 @(private = "file")
 _sq_add_clip :: proc(tv: ^seq.Timeline_Track, ti: int, at: f32) {
 	desc, has := seq.track_desc(tv.kind)
-	is_marker := has && desc.track_key == .MarkerTrack
-	node := engine.transform_new(is_marker ? "marker" : "clip", tv.node)
+	instant := has && desc.instant
+	node := engine.transform_new(instant ? desc.label : "clip", tv.node)
 	_, cc := engine.transform_get_or_add_comp(node, seq.TimelineClip)
 	if cc != nil {
 		cc.start = max(math.round(at * 10) / 10, 0)
-		cc.duration = is_marker ? 0 : 1
+		cc.duration = instant ? 0 : 1
 	}
 	// The kind's clip component carries its payload (the .anim, the wav, ...).
 	if has && desc.clip_key != engine.INVALID_TYPE_KEY {
@@ -256,9 +256,23 @@ sequencer_preview_install :: proc() {
 // Entering play mode ends the preview: play OWNS the world from here, and a
 // scrub posing it every frame would fight the simulation. Fires before the
 // state flips, so the tracks quiet against the still-authored world.
+//
+// The director also REWINDS. preview_end leaves stateful tracks reset (the
+// particles track clears its systems), so leaving the playhead where the
+// scrub left it would start play mid-timeline against freshly emptied
+// effects — they rebuild from nothing while instant tracks snap into place,
+// which reads as tracks starting on different frames. From 0 everything
+// begins together.
 @(phase={key=engine.Phase.ExitingEditMode, mode=Editor})
 sequencer_preview_exit_edit_mode :: proc() {
-	if _sq.preview do _sq_preview_end()
+	if !_sq.preview do return
+	_sq_preview_end()
+	_sq.time = 0
+	w := engine.ctx_world()
+	if !engine.pool_valid(&w.transforms, engine.Handle(_sq.dir_owner)) do return
+	if _, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector); d != nil {
+		seq.director_stop(d)
+	}
 }
 
 @(menu_item={path="Window/Animation/Sequencer", shortcut=""})
@@ -346,10 +360,23 @@ sequencer_window_draw :: proc() {
 	_sq.inspector_w = clamp(_sq.inspector_w, _SQ_MIN_PANE, max(total_w - _sq.legend_w - _SQ_MIN_PANE, _SQ_MIN_PANE))
 
 	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, body_h}) {
-		im.Dummy(im.Vec2{1, _SQ_RULER_H - 4}) // align with the ruler
+		// Rows are pinned to the SAME grid the canvas draws: row i starts at
+		// ruler + i*_SQ_ROW_H from the pane top. Stacking widget heights and
+		// padding the remainder drifts, because a row's widgets do not add up
+		// to exactly _SQ_ROW_H.
+		legend_top := im.GetCursorScreenPos().y
 		remove_track := engine.Transform_Handle{}
 		for &tv, ti in tracks {
 			im.PushIDInt(i32(ti))
+			row_y := legend_top + _SQ_RULER_H + f32(ti) * _SQ_ROW_H
+			// Center the row's widgets in the band. SmallButton — what the
+			// row is built from — is text height plus FramePadding.y, NOT a
+			// full frame height, so centering on GetFrameHeight() sat the row
+			// high.
+			row_h := im.GetTextLineHeight() + im.GetStyle().FramePadding.y
+			pos := im.GetCursorScreenPos()
+			pos.y = row_y + (_SQ_ROW_H - row_h) * 0.5
+			im.SetCursorScreenPos(pos)
 			comp, tc := _sq_track_comp(&tv)
 			if tc == nil {
 				im.PopID()
@@ -408,8 +435,6 @@ sequencer_window_draw :: proc() {
 			im.SameLine()
 			if im.SmallButton("x") do remove_track = tv.node
 			im.SetItemTooltip("Remove track")
-			// Pad the row to the canvas row height.
-			im.Dummy(im.Vec2{1, _SQ_ROW_H - im.GetFrameHeightWithSpacing()})
 			im.PopID()
 		}
 		if remove_track != {} {
@@ -518,14 +543,22 @@ sequencer_window_draw :: proc() {
 					// Binding order is (rounding, thickness, flags) — unlike native imgui.
 					im.DrawList_AddRect(dl, r0, r1, im.GetColorU32ImVec4({1, 0.85, 0.2, 1}), 3, 2)
 				}
-				// Ease ramps read as corner triangles, Unity-style.
-				if c.ease_in > 0 {
-					ex := to_x(origin, c.start + min(c.ease_in, c.duration))
-					im.DrawList_AddLine(dl, {x0, r1.y}, {ex, r0.y}, im.GetColorU32ImVec4({1, 1, 1, 0.5}))
-				}
-				if c.ease_out > 0 {
-					ex := to_x(origin, c.start + c.duration - min(c.ease_out, c.duration))
-					im.DrawList_AddLine(dl, {ex, r0.y}, {x1, r1.y}, im.GetColorU32ImVec4({1, 1, 1, 0.5}))
+				// Blend ramps, Unity-style: the weight curve drawn as a line
+				// across the clip. Where clips OVERLAP this reads as an X —
+				// one ramping down while its neighbour ramps up — because
+				// both are drawing the same derived weights
+				// (seq.track_clip_weight).
+				if c.duration > 0 {
+					ramp_col := im.GetColorU32ImVec4({1, 1, 1, 0.5})
+					STEPS :: 12
+					prev: im.Vec2
+					for si in 0 ..= STEPS {
+						ct := c.start + c.duration * f32(si) / f32(STEPS)
+						cw := seq.track_clip_weight(tv.clips, ci, min(ct, c.start + c.duration - 0.0001))
+						pt := im.Vec2{to_x(origin, ct), r1.y - (r1.y - r0.y) * cw}
+						if si > 0 do im.DrawList_AddLine(dl, prev, pt, ramp_col)
+						prev = pt
+					}
 				}
 				label := c.name
 				im.DrawList_PushClipRect(dl, r0, r1, true)
@@ -774,6 +807,12 @@ sequencer_preview_restore :: proc() {
 _sq_preview_end :: proc() {
 	_sq.preview = false
 	_sq.playing = false
+	// Consume the pending per-frame restore: the tracks are being released
+	// HERE, and letting restore_all run again afterwards would write
+	// bind-time defaults into whatever world exists by then (entering play
+	// mode mid-frame is exactly that case — the restore landed in the
+	// simulated world and pinned the animation target's pose).
+	_sq.applied = false
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, engine.Handle(_sq.dir_owner)) do return
 	_, d := engine.transform_get_comp(_sq.dir_owner, seq.PlayableDirector)

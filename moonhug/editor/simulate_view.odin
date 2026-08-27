@@ -45,6 +45,11 @@ sim_host_is :: proc(name: string) -> bool {
     return sim.host_is(name)
 }
 
+// Runs a Play queued by request_start — one call per frame, before the views.
+sim_start_pending :: proc() {
+    sim.tick_pending()
+}
+
 sim_tick :: proc(dt: f32) {
     sim.tick(dt)
 }
@@ -93,8 +98,20 @@ simulate_menu_play :: proc() {
     if sim.is_active() {
         sim.stop()
     } else {
-        sim.start()
+        // Deferred by one frame so editor previews unwind first (see
+        // sim.request_start) — otherwise their restores land after the scene
+        // swap and tracks release at visibly different moments.
+        _leave_edit_mode_previews()
+        sim.request_start()
     }
+}
+
+// Editor previews pose the world for the render only. They end themselves on
+// ExitingEditMode, but that fires INSIDE start() — after the snapshot — so a
+// preview running when Play is pressed must be told here, a frame ahead.
+@(private = "file")
+_leave_edit_mode_previews :: proc() {
+    phase_editor_run(.ExitingEditMode)
 }
 
 @(menu_item={path="Edit/Pause", order=31, shortcut="Ctrl+Shift+P"})
@@ -117,7 +134,8 @@ _process_simulate_shortcuts :: proc() {
         if sim.is_active() {
             sim.stop()
         } else {
-            sim.start()
+            _leave_edit_mode_previews()
+            sim.request_start()
         }
     }
 }
@@ -151,7 +169,8 @@ _draw_simulate_controls :: proc() {
         if active {
             sim.stop()
         } else {
-            sim.start()
+            _leave_edit_mode_previews()
+            sim.request_start()
         }
     }
     _pop_sim_button_bg()
