@@ -381,6 +381,14 @@ texture_download_ready :: proc(d: ^Texture_Download) -> bool {
 // download — call once, after texture_download_ready. nil slice on map failure.
 texture_download_take :: proc(d: ^Texture_Download, allocator := context.allocator) -> []u8 {
 	defer texture_download_cancel(d)
+	// QueryGPUFence only reports that the fence signalled; block until the
+	// buffer's contents are actually visible to the host before mapping.
+	// Without this the map raced the GPU's writes and the tail of the image
+	// came back as untouched memory (alpha 0), a different row count each time.
+	if d.fence != nil {
+		fences := [1]^sdl.GPUFence{d.fence}
+		_ = sdl.WaitForGPUFences(_gfx.device, true, raw_data(fences[:]), 1)
+	}
 	mapped := sdl.MapGPUTransferBuffer(_gfx.device, d.transfer, false)
 	if mapped == nil do return nil
 	pixels := make([]u8, int(d.width * d.height * 4), allocator)
