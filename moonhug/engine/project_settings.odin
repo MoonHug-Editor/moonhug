@@ -14,12 +14,15 @@ import "core:encoding/json"
 import "core:os"
 import "core:strings"
 
-ENGINE_PROJECT_SETTINGS_DIR :: "ProjectSettings"
+// Settings about the PROJECT, committed: every developer on a checkout shares
+// them, and the game binary reads the same files. Per-developer editor state
+// lives in UserSettings (editor/window.odin).
+PROJECT_SETTINGS_DIR :: "ProjectSettings"
 
 // "Physics 2D" -> "ProjectSettings/physics_2d.json". Temp-allocated.
 project_settings_file :: proc(name: string) -> string {
     slug, _ := strings.replace_all(strings.to_lower(name, context.temp_allocator), " ", "_", context.temp_allocator)
-    return strings.concatenate({ENGINE_PROJECT_SETTINGS_DIR, "/", slug, ".json"}, context.temp_allocator)
+    return strings.concatenate({PROJECT_SETTINGS_DIR, "/", slug, ".json"}, context.temp_allocator)
 }
 
 // Reads the tab's file into the settings struct. A missing or unreadable file
@@ -36,7 +39,7 @@ project_settings_load :: proc(name: string, v: ^$T) -> bool {
 
 project_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
     if ptr == nil || tid == nil do return false
-    os.make_directory(ENGINE_PROJECT_SETTINGS_DIR)
+    os.make_directory(PROJECT_SETTINGS_DIR)
     opts := json.Marshal_Options{
         spec = .JSON, pretty = true, use_spaces = true, spaces = 2,
         sort_maps_by_key = true,

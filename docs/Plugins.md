@@ -156,7 +156,7 @@ server, an engine sample) ships configurations in `run_configs/`:
 - The editor's toolbar Play is a split button: the play half compiles and runs
   the selected configuration, the dropdown half lists every
   `packages/*/run_configs/*.odin` as `<package>: <name>`. The selection
-  persists in `ProjectSettings/editor_settings.json`; with no selection the
+  persists in `UserSettings/editor_settings.json`; with no selection the
   editor prefers a `run_debug` config (call-stack capture for console logs).
 - Configs are ALWAYS recompiled before running, into
   `builds/run_config_<package>_<name>`. No cache, so nothing goes stale. A

@@ -8,10 +8,10 @@ import "log"
 // Locating the moonhug/ source directory, and anchoring the process there.
 //
 // Every runtime path the engine resolves is relative to it: "assets" (asset db
-// root), "library" (artifact cache), "ProjectSettings" (editor_settings.json).
-// The editor also derives the repo root as this directory's parent when it
-// launches run configs, so the invariant "cwd == <repo>/moonhug" holds before
-// anything touches the filesystem.
+// root), "library" (artifact cache), "ProjectSettings" and "UserSettings"
+// (settings). The editor also derives the repo root as this directory's parent
+// when it launches run configs, so the invariant "cwd == <repo>/moonhug" holds
+// before anything touches the filesystem.
 //
 // Detection is by directory CONTENT, not by folder name. A name test —
 // `has_suffix(cwd, "moonhug")`, or probing for a "moonhug/engine" child — reads

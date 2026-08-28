@@ -8,11 +8,24 @@ import "core:strings"
 import "menu"
 import wnd "window"
 import "../engine"
+import "../engine/log"
 
 WINDOW_TITLE :: "MoonHug Editor"
 VERSION :: #load("../version", string)
-PROJECT_SETTINGS_DIR :: "ProjectSettings"
-EDITOR_SETTINGS_FILE :: "ProjectSettings/editor_settings.json"
+
+// Per-DEVELOPER editor state, never committed (Unity's UserSettings): window
+// geometry, which scenes and windows were open, panel visibility, theme, grid
+// and snap choices, the selected run config. All of it is one person's working
+// setup — sharing it means every developer's git status is dirty after a run
+// and someone else's window position lands in an unrelated commit.
+//
+// The other half is engine.PROJECT_SETTINGS_DIR: settings about the PROJECT,
+// committed, read by the game too (docs/Plugins.md "Project settings").
+USER_SETTINGS_DIR :: "UserSettings"
+EDITOR_SETTINGS_FILE :: USER_SETTINGS_DIR + "/editor_settings.json"
+
+// Read once at startup to migrate a pre-split checkout, then ignored.
+LEGACY_EDITOR_SETTINGS_FILE :: engine.PROJECT_SETTINGS_DIR + "/editor_settings.json"
 
 EditorSettings :: struct {
     width:                    i32,
@@ -47,6 +60,14 @@ editor_settings: EditorSettings
 
 load_editor_settings :: proc() -> (w, h, x, y: i32) {
     data, read_err := os.read_entire_file(EDITOR_SETTINGS_FILE, context.temp_allocator)
+    if read_err != nil {
+        // Pre-split checkout: adopt the committed file's values once. The next
+        // save writes UserSettings/ and this branch stops being taken.
+        data, read_err = os.read_entire_file(LEGACY_EDITOR_SETTINGS_FILE, context.temp_allocator)
+        if read_err == nil {
+            log.infof("[startup] migrating %q to %q", LEGACY_EDITOR_SETTINGS_FILE, EDITOR_SETTINGS_FILE)
+        }
+    }
     if read_err == nil {
         err := json.unmarshal(data, &editor_settings)
         if err == nil {
@@ -91,7 +112,7 @@ apply_default_window_size :: proc() {
 }
 
 save_editor_settings :: proc() {
-    os.make_directory(PROJECT_SETTINGS_DIR)
+    os.make_directory(USER_SETTINGS_DIR)
     pos := gfx.window_position()
     size := gfx.window_size()
     editor_settings.width  = size.x

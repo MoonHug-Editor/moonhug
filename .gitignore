@@ -17,3 +17,6 @@ builds/
 moonhug/logs/
 
 /mh
+
+moonhug/UserSettings/
+moonhug/ProjectSettings/editor_settings.json

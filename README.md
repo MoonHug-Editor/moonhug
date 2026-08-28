@@ -70,6 +70,8 @@ dependency and build step: [Install, Build and Run](docs/InstallBuildAndRun.md).
 - builds folder - build results with runnable application
 - external - external dependencies folder
 - library - derived-data cache (Unity's Library model, see [library](#library)). Safe to delete, rebuilt on the next run
+- ProjectSettings - settings about the PROJECT, committed: `mcp.json` and one `<slug>.json` per @(project_settings) tab
+- UserSettings - per-developer editor state, never committed (Unity's UserSettings): window geometry, open scenes and windows, panel visibility, theme, grid and snap, selected run config. Safe to delete, the editor writes defaults on the next run
 
 ## Dependencies
 - odin-imgui - for Editor's interface rendering

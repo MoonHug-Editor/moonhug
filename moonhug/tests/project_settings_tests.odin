@@ -24,8 +24,8 @@ test_project_settings_round_trip :: proc(t: ^testing.T) {
 	// Tests run from the repo root, where no ProjectSettings dir exists (the
 	// binaries chdir into moonhug/) — remove the file AND the created dir.
 	defer {
-		os.remove("ProjectSettings/test_probe_settings.json")
-		os.remove("ProjectSettings") // os.remove also removes an empty dir
+		os.remove(path)
+		os.remove(engine.PROJECT_SETTINGS_DIR) // os.remove also removes an empty dir
 	}
 
 	saved := Probe{rate = 120, gravity = {0, -3.5}, label = "probe"}
