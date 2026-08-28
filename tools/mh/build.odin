@@ -19,6 +19,7 @@ prebuild :: proc() -> bool {
 
 // Compiled shader blobs are committed, so this toolchain is optional and the
 // step is skipped when it is absent (only authoring shaders needs it).
+// Unchanged shaders are skipped too — see shaders_compile.
 shaders_if_available :: proc() -> bool {
 	if !have("glslc") || !have("spirv-cross") do return true
 	return shaders_compile()

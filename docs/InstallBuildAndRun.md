@@ -58,7 +58,8 @@ Commands run from the repo root whatever directory invoked them. `help` and
    its own program first.
 2. **prebuild** — run the code generators (docs/PrebuildGenerator.md). Skipping
    this does not error, it silently produces a stale binary.
-3. **shaders** — only when `glslc` and `spirv-cross` are both on PATH.
+3. **shaders** — only when `glslc` and `spirv-cross` are both on PATH, and
+   only for shaders whose source is newer than their compiled output.
 4. **compile** — `odin build moonhug/editor`, output `builds/MoonHug`.
 
 The editor is built and then run as a child process rather than with
@@ -83,6 +84,11 @@ the editor just to wait on it.
 `mh shaders` compiles the built-in GLSL to what SDL_GPU consumes: SPIR-V
 (Vulkan) via glslc, MSL (Metal) via spirv-cross. DXIL is added when Windows
 rendering support lands. Output under `compiled/` is committed.
+
+Builds compile only shaders whose `.glsl` is newer than both of its outputs, so
+an unchanged shader costs nothing. `mh shaders` always recompiles all of them.
+The check compares a shader against its own source only — if these ever gain
+`#include`s, it needs to learn about them.
 
 The `.glsl` ASSET importer runs the same two tools with different flags
 (`engine_editor/asset_pipeline/importer_shader.odin` adds `--reflect` for

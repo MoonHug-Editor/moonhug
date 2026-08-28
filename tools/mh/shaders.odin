@@ -35,10 +35,13 @@ cmd_shaders :: proc(args: []string) -> int {
 		fmt.eprintln("mh: shader authoring needs `brew install shaderc spirv-cross` (compiled output is committed, so this is only needed to CHANGE a shader)")
 		return 1
 	}
-	return 0 if shaders_compile() else 1
+	return 0 if shaders_compile(force = true) else 1
 }
 
-shaders_compile :: proc() -> bool {
+// force compiles every shader. Otherwise a shader whose outputs are both newer
+// than its source is skipped — builds call this on every run, and recompiling
+// three unchanged shaders each time is pure latency.
+shaders_compile :: proc(force := false) -> bool {
 	out_dir, _ := filepath.join({SHADER_DIR, "compiled"}, context.temp_allocator)
 	os.make_directory_all(out_dir)
 
@@ -47,6 +50,8 @@ shaders_compile :: proc() -> bool {
 		src, _ := filepath.join({SHADER_DIR, fmt.tprintf("%s.glsl", name)}, context.temp_allocator)
 		spv, _ := filepath.join({out_dir, fmt.tprintf("%s.spv", name)}, context.temp_allocator)
 		msl, _ := filepath.join({out_dir, fmt.tprintf("%s.msl", name)}, context.temp_allocator)
+
+		if !force && newer_than(spv, src) && newer_than(msl, src) do continue
 
 		if !step(fmt.tprintf("glslc %s", name), "glslc", fmt.tprintf("-fshader-stage=%s", stage), src, "-o", spv) {
 			return false

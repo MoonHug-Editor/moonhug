@@ -7,6 +7,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
+import "core:time"
 
 // Appended to every binary this tool produces, so one spelling names one file
 // on every platform. Windows `odin build` also refuses an extension-less -out.
@@ -74,6 +75,17 @@ have :: proc(tool: string) -> bool {
 		if err == nil && os.exists(p) do return true
 	}
 	return false
+}
+
+// newer_than reports whether `out` exists and was written after `src`. False
+// when either cannot be read, so an unreadable file rebuilds rather than
+// silently keeping stale output.
+newer_than :: proc(out, src: string) -> bool {
+	out_t, oerr := os.modification_time_by_path(out)
+	if oerr != nil do return false
+	src_t, serr := os.modification_time_by_path(src)
+	if serr != nil do return false
+	return time.diff(src_t, out_t) > 0
 }
 
 // The Odin installation's vendor/ tree, for the libraries setup builds.
