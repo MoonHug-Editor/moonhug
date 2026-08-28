@@ -64,6 +64,24 @@
             "local_id": 1293354471150642,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 1326688355408385,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 966889675401095,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1986816352860018,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": [
@@ -721,6 +739,159 @@
       "components": [
 
       ]
+    },
+    {
+      "local_id": 1326688355408385,
+      "name": "BlinkTarget",
+      "is_active": true,
+      "position": [
+        2.5,
+        1.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3771581065907799
+        }
+      ]
+    },
+    {
+      "local_id": 966889675401095,
+      "name": "control",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1528546099431873,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 683298876457831
+        },
+        {
+          "local_id": 1132373766719379
+        }
+      ]
+    },
+    {
+      "local_id": 1528546099431873,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 966889675401095,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4085634123854603
+        },
+        {
+          "local_id": 421891743936236
+        }
+      ]
+    },
+    {
+      "local_id": 1986816352860018,
+      "name": "blink",
+      "is_active": true,
+      "position": [
+        2.5,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
     }
   ],
   "nested_scenes": [
@@ -753,9 +924,67 @@
       "added_objects": [
 
       ]
+    },
+    {
+      "local_id": 1848859409813235,
+      "local_id_in_parent": 1848859409813235,
+      "source_prefab": "7e47216c-4367-4463-9558-4635f59af27d",
+      "transform_parent": 1986816352860018,
+      "host_breadcrumb_id": 2782881718719385,
+      "sibling_index": 7,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 5001,
+            "guid": "7e47216c-4367-4463-9558-4635f59af27d"
+          },
+          "property_path": "name",
+          "value": "blink"
+        },
+        {
+          "target": {
+            "local_id": 5001,
+            "guid": "7e47216c-4367-4463-9558-4635f59af27d"
+          },
+          "property_path": "position",
+          "value": [
+            2.5,
+            0.0,
+            0.0
+          ]
+        },
+        {
+          "target": {
+            "local_id": 5005,
+            "guid": "7e47216c-4367-4463-9558-4635f59af27d"
+          },
+          "property_path": "target.local_id",
+          "value": 1326688355408385
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
     }
   ],
   "breadcrumbs": [
+    {
+      "local_id": 2782881718719385,
+      "scene_source": {
+        "local_id": 1986816352860018,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 1848859409813235
+    },
     {
       "local_id": 3710092037932274,
       "scene_source": {
@@ -1514,6 +1743,60 @@
         "local_id": 1560128649527024
       },
       "clip": "14fec817-ce17-463f-a083-7616d69b8a5d"
+    },
+    {
+      "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+      "base": {
+        "enabled": true,
+        "local_id": 3771581065907799
+      },
+      "color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "material": "00000000-0000-0000-0000-000000000000",
+      "order_in_layer": 0,
+      "sorting_layer": 0,
+      "sprite": {
+        "guid": "a42ddfb5-859d-43cc-81ca-c51438ab63e9",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 683298876457831
+      },
+      "muted": false
+    },
+    {
+      "__type": "2edca93b-16a6-4c12-97ec-29e404886dab",
+      "base": {
+        "enabled": true,
+        "local_id": 1132373766719379
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 4085634123854603
+      },
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 0.2
+    },
+    {
+      "__type": "e33bf06b-054a-4cde-ad51-ec20cbfd9bae",
+      "base": {
+        "enabled": true,
+        "local_id": 421891743936236
+      }
     }
   ]
 }

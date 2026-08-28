@@ -557,6 +557,15 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// target. Record the row's right-click here and open the popup by name.
 	node_right_clicked := im.IsItemClicked(.Right)
 
+	// SAME HAZARD, third instance: BeginDragDropSource binds to the LAST
+	// submitted item, and a nested-scene host row submits the ">" enter
+	// button after this one — so a drag source down there attached to that
+	// few-pixel button and prefab instances could not be dragged at all.
+	// Bound here, against the row.
+	if !is_root && !is_nested {
+		_draw_drag_source(tH)
+	}
+
 	append(&_hierarchy_nav_list, tH)
 
 	node_toggled := has_children && im.IsItemToggledOpen()
@@ -728,9 +737,6 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	if node_right_clicked do im.OpenPopup("##NodeContext")
-	if !is_root && !is_nested {
-		_draw_drag_source(tH)
-	}
 
 	if im.BeginPopup("##NodeContext") {
 		// Right-click on an unselected row selects just it; on an already

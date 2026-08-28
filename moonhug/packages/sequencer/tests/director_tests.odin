@@ -7,6 +7,7 @@ package sequencer_tests
 // activation preview restore, and the control track driving a nested
 // director.
 
+import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -486,4 +487,119 @@ test_animation_track_target :: proc(t: ^testing.T) {
 	// The preview ending hands the object back.
 	seq.director_preview_end(d)
 	testing.expect(t, !acomp.timeline_driven, "preview end releases the component")
+}
+
+// CROSS-BOUNDARY TARGETS: a timeline PREFAB instanced into a host scene,
+// with its track bound to a HOST-SCENE object. This is what makes a timeline
+// reusable — the prefab knows nothing about the host, the instance binds it,
+// and the binding persists as an ordinary prefab OVERRIDE.
+//
+// The binding must be recorded, not just assigned: the inspector records at
+// every field commit, and a bare mutation on nested content is not saved.
+@(test)
+test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_test_tl_xboundary"
+	os.make_directory(dir)
+	tl_path := strings.concatenate({dir, "/tl.scene"}, context.temp_allocator)
+	defer {
+		os.remove(tl_path)
+		os.remove(strings.concatenate({tl_path, ".meta"}, context.temp_allocator))
+		os.remove(dir)
+	}
+
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	seq.register_builtin_tracks()
+
+	// Author a timeline prefab with an UNBOUND activation track.
+	root := engine.transform_new("TL")
+	engine.scene_set_root(tc.scene, root)
+	_, raw := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)raw
+	d.enabled = true
+	d.duration = 2
+	_mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	testing.expect(t, engine.scene_save(tc.scene, tl_path), "prefab saved")
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+	tl_guid, gok := engine.asset_db_get_guid(tl_path)
+	testing.expect(t, gok, "prefab registered")
+	if !gok do return
+
+	// Host scene with an actor and an instance of the prefab.
+	host := engine.scene_load_single_path(tl_path)
+	testing.expect(t, host != nil)
+	if host == nil do return
+	tc.scene = host
+	hroot := engine.Transform_Handle(host.root.handle)
+	actor := engine.transform_new("Actor", hroot)
+	aT := engine.pool_get(&tc.world.transforms, engine.Handle(actor))
+
+	inst := engine.scene_instantiate_guid_nested(engine.Asset_GUID(tl_guid), hroot)
+	testing.expect(t, inst != {}, "prefab instantiates")
+	if inst == {} do return
+
+	// The instance's track, bound to the HOST's actor and RECORDED.
+	track: engine.Transform_Handle
+	{
+		it := engine.pool_iterator(&tc.world.transforms)
+		for tr, h in engine.pool_next(&it) {
+			hh := h
+			hh.type_key = .Transform
+			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {
+				track = engine.Transform_Handle(hh)
+			}
+		}
+	}
+	testing.expect(t, track != {}, "the instance has the activation track")
+	if track == {} do return
+	owned, act := seq.get_comp(track, seq.ActivationTrack)
+	act.target = {local_id = aT.local_id, handle = engine.Handle(actor)}
+	_, rok := engine.nested_scene_record_override_for_host(
+		host, inst, owned.local_id, "target", &act.target, typeid_of(engine.Ref_Local))
+	testing.expect(t, rok, "the host binding records as a prefab override")
+
+	// It drives the host object.
+	di: ^seq.PlayableDirector
+	{
+		it := engine.pool_iterator(seq.playable_directors(&tc.world))
+		for dd, _ in engine.pool_next(&it) do di = dd
+	}
+	testing.expect(t, di != nil)
+	if di == nil do return
+	defer seq.director_teardown(di)
+	aT.is_active = false
+	seq.director_set_time(di, 0.5)
+	testing.expect(t, aT.is_active, "the instance's track drives the HOST object")
+
+	// And survives the Play/Stop round trip.
+	bytes, ok := engine.scene_serialize(tc.scene)
+	testing.expect(t, ok)
+	if !ok do return
+	defer delete(bytes)
+	reloaded := engine.scene_reload_in_place_bytes(tc.scene, bytes)
+	testing.expect(t, reloaded != nil)
+	if reloaded == nil do return
+	tc.scene = reloaded
+
+	found := false
+	{
+		it := engine.pool_iterator(&tc.world.transforms)
+		for tr, h in engine.pool_next(&it) {
+			hh := h
+			hh.type_key = .Transform
+			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {
+				found = true
+				testing.expect(t, a.target.local_id != 0, "the host binding survived reload")
+				testing.expect(t, engine.world_pool_valid(&tc.world, a.target.handle),
+					"and re-resolves to a live host object")
+			}
+		}
+	}
+	testing.expect(t, found, "the instance survives reload")
 }
