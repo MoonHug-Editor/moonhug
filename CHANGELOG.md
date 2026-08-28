@@ -1,3 +1,19 @@
+## [0.82.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.81.0...v0.82.0) (2026-08-28)
+
+### Features
+
+* locate the project root by directory content ([0bcbdd6](https://github.com/MoonHug-Editor/moonhug/commit/0bcbdd6396298680d093ffbec415940a54fb80c5))
+* move editor settings to UserSettings, gitignore ([0aa2b41](https://github.com/MoonHug-Editor/moonhug/commit/0aa2b4152c907eb8b04785c40ffae48205197188))
+* replace the build scripts with tools/mh ([07454e7](https://github.com/MoonHug-Editor/moonhug/commit/07454e786859f33c75e29546fd029ff2c517fbb4))
+
+### Bug Fixes
+
+* anchor the editor and app with project_chdir_root ([11c940c](https://github.com/MoonHug-Editor/moonhug/commit/11c940c4c8432de032ab6c607c360f8fe17ae113))
+* build prebuild scan paths with forward slashes ([ed31b25](https://github.com/MoonHug-Editor/moonhug/commit/ed31b25667c3f2d33d3e61f4a863169dfd622262))
+* scene fix ([1823bd5](https://github.com/MoonHug-Editor/moonhug/commit/1823bd5c3367b619a4c010af8a2e490403377f4f))
+* skip shaders whose source has not changed ([7d92b5c](https://github.com/MoonHug-Editor/moonhug/commit/7d92b5c419424ea7c4654c3d92d75daf7acd7934))
+* split the crash journal ucontext read per platform ([781d66f](https://github.com/MoonHug-Editor/moonhug/commit/781d66f2263b21b507653c18152fe8c8b271f993))
+
 ## [0.81.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.80.0...v0.81.0) (2026-08-28)
 
 ### Features
