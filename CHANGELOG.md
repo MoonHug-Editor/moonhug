@@ -1,3 +1,9 @@
+## [0.81.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.80.0...v0.81.0) (2026-08-28)
+
+### Features
+
+* nested timelines ([972e2c6](https://github.com/MoonHug-Editor/moonhug/commit/972e2c665c2fb2f7636fdbe0f03f165786af4d46))
+
 ## [0.80.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.79.0...v0.80.0) (2026-08-27)
 
 ### Features
