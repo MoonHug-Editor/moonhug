@@ -43,11 +43,9 @@ main :: proc() {
         }
     }
 
-    if os.is_dir("moonhug/engine") {
-        cwd, _ := os.get_working_directory(context.temp_allocator)
-        moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
-        os.set_working_directory(moonhug_dir)
-    }
+    // Anchor at moonhug/ before anything reads a relative path. Detection is
+    // by directory content, not folder name (engine/project_root.odin).
+    engine.project_chdir_root()
 
     // Before anything that can fault: from here on a crash lands in
     // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).

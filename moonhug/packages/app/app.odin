@@ -8,7 +8,6 @@ import input "moonhug:engine/input"
 import "moonhug:engine/serialization"
 import "core:os"
 import "core:fmt"
-import "core:path/filepath"
 import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
@@ -29,11 +28,7 @@ main :: proc() {
     // Normalize the runtime cwd to moonhug/ (same as the editor): asset paths
     // are moonhug-relative, and builds always run from the repo root so the
     // packages: collection flag is one canonical spelling everywhere.
-    cwd, _ := os.get_working_directory(context.temp_allocator)
-    if !strings.has_suffix(cwd, "moonhug") {
-        moonhug_dir, _ := filepath.join({cwd, "moonhug"}, context.temp_allocator)
-        os.set_working_directory(moonhug_dir)
-    }
+    engine.project_chdir_root()
 
     for arg in os.args[1:] {
         if arg == "--catalog" {
