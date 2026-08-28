@@ -195,8 +195,8 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       release binaries; glslc + spirv-cross is the same pipeline)
 - [x] `engine/gfx/shaders/world.vert.glsl` + `world.frag.glsl` (SDL_GPU SPIR-V
       convention: vertex UBO set=1, fragment sampler2D set=2)
-- [x] `compile.sh` → committed `compiled/*.{spv,msl}` (MSL entrypoint `main0`);
-      guarded hook in run.sh
+- [x] `mh shaders` → committed `compiled/*.{spv,msl}` (MSL entrypoint
+      `main0`); builds run it when the toolchain is present
 
 ### 1. gfx package: window + input (new code, unused yet)
 - [x] `engine/gfx/platform.odin` — init/window/event pump/frame timing; vsync

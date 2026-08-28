@@ -37,6 +37,20 @@ For more details see [Contribution](docs/Contribution.md)
 ## Community
 - [Discord](https://discord.gg/HTpBmhESwW)
 
+## Building
+
+Install [Odin](https://odin-lang.org/docs/install/) and SDL3 (`brew install sdl3`), then, in a fresh clone:
+
+```sh
+odin run tools/mh -- setup
+```
+```sh
+odin run tools/mh -- run
+```
+
+`make setup` and `make run` do the same when make is installed. Every command,
+dependency and build step: [Install, Build and Run](docs/InstallBuildAndRun.md).
+
 ## Build/run/workflow stages
 - PrebuildStage - generates code for other stages
 - DevStage - modifying app and editor code
@@ -60,11 +74,9 @@ For more details see [Contribution](docs/Contribution.md)
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
 - SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/SDL3Renderer.md))
-  - one-time: `make -C "$(odin root)/vendor/stb/src"` - builds vendored stb (image decoding)
-  - one-time: `make -C "$(odin root)/vendor/cgltf/src"` - builds vendored cgltf (glTF mesh import)
-  - one-time: `sh "$(odin root)/vendor/box2d/build_box2d.sh"` - builds vendored box2d (physics2d package; needs cmake, WASM step may warn — harmless)
-  - one-time: `cd "$(odin root)/vendor/box3d/src" && sh build.sh` - builds vendored box3d (physics3d package; bundled source, clang only)
-  - optional, only to AUTHOR shaders (engine built-ins or .glsl assets): `brew install shaderc spirv-cross`
+- vendored C libraries Odin ships as source (stb, cgltf, box2d, box3d), all built by `mh setup`
+
+Full list and what needs them: [Install, Build and Run](docs/InstallBuildAndRun.md#dependencies).
 
 ## library
 

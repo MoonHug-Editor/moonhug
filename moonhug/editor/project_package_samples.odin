@@ -8,7 +8,7 @@ package editor
 // - Symlink: packages/<sample> -> <pkg>/samples/<sample> (relative, so the
 //   repo stays relocatable) — live-editing mode, edits land in the source.
 // Assets mount immediately via refresh; CODE compiles on the next
-// prebuild + rebuild (run.sh), same as any package install.
+// prebuild + rebuild (`mh run`), same as any package install.
 //
 // Remove asks confirmation: a copied install may carry user edits, so the
 // folder goes to the OS Trash (project convention); a symlink is just
@@ -106,7 +106,7 @@ _sample_copy_recursive :: proc(src, dst: string) -> bool {
 _sample_after_change :: proc(verb, name: string) {
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
-	fmt.printf("[Editor] %s sample %s - code changes need a prebuild + rebuild (run.sh)\n", verb, name)
+	fmt.printf("[Editor] %s sample %s - code changes need a prebuild + rebuild (mh run)\n", verb, name)
 }
 
 // Installs never overwrite: anything already at the destination (a stale

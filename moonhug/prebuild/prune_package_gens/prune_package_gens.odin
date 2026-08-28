@@ -4,7 +4,7 @@ package main
 // longer exists — they would fail the prebuild compile before prebuild's own
 // refresh can run. Prune only: prebuild generates the full set itself.
 //
-// A separate program because it must run BEFORE prebuild compiles (run.sh
+// A separate program because it must run BEFORE prebuild compiles (mh
 // invokes it first) — it never imports prebuild code.
 
 import "core:os"

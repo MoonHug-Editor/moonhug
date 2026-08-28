@@ -3,7 +3,7 @@
 Agent access to the running editor over [MCP](https://modelcontextprotocol.io). Two processes, no external dependencies:
 
 - **Editor side** (`editor/mcp_bridge.odin`) — a loopback TCP endpoint inside the editor. Threadless: `mcp_bridge_tick` polls a non-blocking socket once per frame right after `gfx.frame_begin`, so every tool runs on the main thread with full editor/engine API access. Listens on the first free port from 6600, writes `library/state_cache/mcp_bridge.json` (port, pid, auth token) and removes it on shutdown.
-- **Shim** (`mcp_shim/`, built to `builds/mcp_shim`) — an MCP stdio server the client spawns (`.mcp.json` → `run_mcp_shim.sh`). It discovers the editor through the bridge file, authenticates with the token, and translates MCP JSON-RPC to the wire protocol. The shim owns session stability: when the editor is down or restarts, tool calls return a retry hint and the MCP session survives.
+- **Shim** (`mcp_shim/`, built to `builds/mcp_shim`) — an MCP stdio server the client spawns (`.mcp.json` → `mh mcp`). It discovers the editor through the bridge file, authenticates with the token, and translates MCP JSON-RPC to the wire protocol. The shim owns session stability: when the editor is down or restarts, tool calls return a retry hint and the MCP session survives.
 
 ## Wire protocol (`editor/mcp`)
 

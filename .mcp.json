@@ -1,8 +1,8 @@
 {
   "mcpServers": {
     "moonhug": {
-      "command": "sh",
-      "args": ["run_mcp_shim.sh"]
+      "command": "odin",
+      "args": ["run", "tools/mh", "--", "mcp"]
     }
   }
 }

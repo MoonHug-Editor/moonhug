@@ -2,7 +2,7 @@ package physics2d_tests
 
 // End-to-end physics2d package test: authored components -> box2d sync ->
 // step -> transform write-back, through the same path the app takes.
-// Ships WITH the package (docs/Plugins.md) — run_tests.sh runs every
+// Ships WITH the package (docs/Plugins.md) — `mh test` runs every
 // packages/*/tests suite after the central one.
 
 import "core:testing"

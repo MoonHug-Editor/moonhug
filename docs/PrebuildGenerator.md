@@ -5,7 +5,7 @@ The prebuild step (`moonhug/prebuild`) scans the Odin source for attribute marke
 files the engine/editor/app depend on. It runs once before a build:
 
 ```sh
-odin run moonhug/prebuild     # invoked by run.sh before the editor build
+odin run moonhug/prebuild     # invoked by `mh` before the editor build
 ```
 
 ## Architecture

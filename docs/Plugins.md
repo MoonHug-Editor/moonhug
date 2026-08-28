@@ -113,7 +113,7 @@ moonhug/packages/
   walk, so nothing ever looks inside `samples/` until a sample is installed.
 - **`tests/`** — the package's test suite (`package <name>_tests`), sharing
   the bootstrap in `moonhug/tests/common`. Prebuild imports every installed
-  suite into `moonhug/tests/packages_tests_generated.odin`, so run_tests.sh
+  suite into `moonhug/tests/packages_tests_generated.odin`, so `mh test`
   covers everything in one `odin test -all-packages` run. Tests ship with the
   package and die with it on uninstall — the central suite only reaches
   `moonhug:packages/` through that generated file.
@@ -172,7 +172,7 @@ directory. Packages committed with the repo are shared with the team
 automatically (Unity's *embedded packages* model).
 
 Install/remove changes what gets compiled, so it takes a prebuild + rebuild
-(run.sh). Static compilation is deliberate: Odin has no useful dylib story
+(`mh run`). Static compilation is deliberate: Odin has no useful dylib story
 (no stable ABI, `typeid` identity breaks across boundaries), and static keeps
 plugin code debuggable and optimizable like first-party code.
 
@@ -429,7 +429,7 @@ name, content root, asset count, and the Samples section.
 - Install = copy `packages/<pkg>/samples/<sample>/` → `packages/<sample>/`, `.meta` files included (sample guids are committed with the package). Or Symlink — a relative link `packages/<sample>` → the sample source, for live-editing sample files.
   - From that moment it's an ordinary package: code compiles, assets mount, user-owned (copy) or source-backed (symlink).
 - Remove asks confirmation: a copied install goes to the OS Trash (it may carry user edits), a symlink is just unlinked — the source stays.
-- Assets mount immediately on install; code takes a prebuild + rebuild (run.sh), like any package install.
+- Assets mount immediately on install; code takes a prebuild + rebuild (`mh run`), like any package install.
 - The package scans follow directory symlinks (prebuild discovery, asset-db package roots, project-view listings), so a linked sample behaves exactly like a copied one.
 
 ## Considered Later

@@ -179,7 +179,7 @@ stripes.glsl → black stripes appear immediately → `properties` fills with
 updates live; Save persists.
 
 Import (`asset_importer_shader.odin`) shells out to the same toolchain as
-compile.sh — glslc → SPIR-V, spirv-cross → MSL + reflection — and caches
+`mh shaders` — glslc → SPIR-V, spirv-cross → MSL + reflection — and caches
 both blobs plus the reflected resource counts and property layout in the
 artifact (`"MHSHDR2\0" | spv_len | msl_len | num_samplers | num_ubos |
 block_size | property_count | spv | msl | property table`).
