@@ -245,7 +245,7 @@ test_instantiate_preserves_internal_cross_refs :: proc(t: ^testing.T) {
 
 	parentH := engine.transform_new("Parent")
 	c1H := engine.transform_new("Child1", parentH)
-	c2H := engine.transform_new("Child2", parentH)
+	_ = engine.transform_new("Child2", parentH)
 	_, sr := engine.transform_get_or_add_comp(c1H, sprites.SpriteRenderer)
 	if sr == nil do return
 	sr.enabled = true

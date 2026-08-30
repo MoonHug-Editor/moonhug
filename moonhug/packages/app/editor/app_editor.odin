@@ -3,7 +3,6 @@ package app_editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "moonhug:engine"
 import sprites "moonhug:packages/sprites"
 import log "moonhug:engine/log"
 

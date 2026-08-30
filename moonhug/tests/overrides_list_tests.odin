@@ -5,7 +5,6 @@ package tests
 // removes whichever kind a row names.
 
 import engine "../engine"
-import "moonhug:engine_editor/asset_pipeline"
 import "../editor/undo"
 import "core:strings"
 import "core:testing"

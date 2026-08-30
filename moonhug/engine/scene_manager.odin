@@ -4,8 +4,6 @@ import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:slice"
-import "core:strings"
-import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:path/filepath"
 
@@ -413,7 +411,6 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
 @(private)
 _scene_resolve_breadcrumb_targets :: proc(s: ^Scene) {
     if s == nil do return
-    w := ctx_world()
     for lid, bc in s.breadcrumb_data {
         if pptr_guid_is_empty(bc.scene_source.guid) do continue
         real := nested_resolve_breadcrumb_to_handle(s, bc)

@@ -548,7 +548,7 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 	track: engine.Transform_Handle
 	{
 		it := engine.pool_iterator(&tc.world.transforms)
-		for tr, h in engine.pool_next(&it) {
+		for _, h in engine.pool_next(&it) {
 			hh := h
 			hh.type_key = .Transform
 			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {
@@ -590,7 +590,7 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 	found := false
 	{
 		it := engine.pool_iterator(&tc.world.transforms)
-		for tr, h in engine.pool_next(&it) {
+		for _, h in engine.pool_next(&it) {
 			hh := h
 			hh.type_key = .Transform
 			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {

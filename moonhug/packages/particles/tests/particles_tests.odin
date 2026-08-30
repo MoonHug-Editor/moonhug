@@ -869,9 +869,17 @@ test_particles_control_track :: proc(t: ^testing.T) {
 	for _ in 0 ..< 5 do particles.system_tick(ps, 0.1)
 	testing.expect(t, len(ps.particles) > 0, "playing system must emit")
 
-	// After the span: stopped again.
+	// After the span: stopped, and live particles CLEARED. start_lifetime is
+	// 100s here, so a plain stop would leave every particle emitted inside the
+	// span alive long past the clip end — visible in play mode only, while
+	// scrubbing past the same point shows nothing.
 	for _ in 0 ..< 10 do seq.director_tick(d, 0.1) // t = 1.8
 	testing.expect(t, ps.stopped, "leaving the span must stop the system")
+	testing.expect_value(t, len(ps.particles), 0)
+
+	// Play and scrub agree at the same playhead: both empty past the span.
+	seq.director_set_time(d, 1.8)
+	testing.expect_value(t, len(ps.particles), 0)
 
 	// Scrub to mid-span: deterministic restart-to-time.
 	seq.director_set_time(d, 1.0)

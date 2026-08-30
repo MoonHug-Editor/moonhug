@@ -1,7 +1,6 @@
 package tests
 
 import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
 import "core:testing"
 import "core:os"
 

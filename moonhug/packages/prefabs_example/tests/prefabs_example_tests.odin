@@ -18,7 +18,6 @@ import "core:strings"
 import "core:testing"
 import "moonhug:engine"
 import sprites "moonhug:packages/sprites"
-import "moonhug:engine_editor/asset_pipeline"
 import common "moonhug:tests/common"
 
 ASSETS :: "moonhug/packages/prefabs_example/assets"

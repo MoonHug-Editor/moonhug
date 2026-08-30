@@ -32,7 +32,7 @@ build_editor :: proc(debug: bool) -> bool {
 	if !shaders_if_available() do return false
 	os.make_directory_all("builds")
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION)
+	append(&cmd, "odin", "build", "moonhug/editor", IGNORE_ATTRS, COLLECTION, VET)
 	if debug do append(&cmd, "-debug")
 	append(&cmd, fmt.tprintf("-out:%s", EDITOR_BIN))
 	return step("editor build", ..cmd[:])
@@ -72,7 +72,7 @@ cmd_app :: proc(args: []string) -> int {
 // fixture files on disk.
 cmd_test :: proc(args: []string) -> int {
 	cmd := make([dynamic]string, context.temp_allocator)
-	append(&cmd, "odin", "test", "moonhug/tests", "-all-packages", IGNORE_ATTRS, COLLECTION, "-define:ODIN_TEST_THREADS=1")
+	append(&cmd, "odin", "test", "moonhug/tests", "-all-packages", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1")
 	if name := flag_value(args, "--name"); name != "" {
 		append(&cmd, fmt.tprintf("-define:ODIN_TEST_NAMES=%s", name))
 	}

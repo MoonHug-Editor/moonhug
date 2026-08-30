@@ -6,12 +6,10 @@ package audio
 // pipeline materializes settings in game binaries too. Scene/meta records
 // key on the type guid below — never change it.
 
-import "core:fmt"
 import "core:os"
 import "core:strings"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
-import engine "moonhug:engine"
 
 @(typ_guid={guid="ec017cc2-7267-45b4-ae80-d6861094d27a", makeProcName=make_pAudioSettings})
 AudioSettings :: struct {

@@ -15,8 +15,6 @@ import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:editor/progress"
 import "core:fmt"
 

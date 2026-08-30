@@ -389,7 +389,7 @@ _draw_selected_panel :: proc(owner_handle: engine.Handle, v: json.Value, sel_tid
 		im.TextDisabled("Unknown tween type (package not installed?).")
 		return
 	}
-	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(sel_tid)
+	_, ok := engine.get_pointer_typeid_by_typeid(sel_tid)
 	if !ok {
 		im.TextDisabled("This tween type is not registered for inspection.")
 		return

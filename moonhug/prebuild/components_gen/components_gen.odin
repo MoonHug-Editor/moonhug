@@ -242,8 +242,7 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "package editor\n\n")
 	strings.write_string(&b, "import engine \"../engine\"\n")
-	strings.write_string(&b, "import \"menu\"\n")
-	strings.write_string(&b, "import \"undo\"\n\n")
+	strings.write_string(&b, "import \"menu\"\n\n")
 
 	// Sorted by menu path (not type name) so the emitted registration mirrors
 	// the menu. Slashes in @(component={menu="Sub/Name"}) nest submenus like

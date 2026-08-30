@@ -1,10 +1,12 @@
 package particles
 
 // The particles Control Track (docs/Sequencer.md): a timeline clip span
-// plays the bound ParticleSystem, leaving the span stops it (particles play
-// out). Scrubbing rides the restart-to-time contract: system_reset + fixed
-// seed + fixed-step advance to the clip-local time, so a seeded system shows
-// the exact same frame at the same playhead position every scrub.
+// plays the bound ParticleSystem, leaving the span stops it and clears live
+// particles. Scrubbing rides the restart-to-time contract: system_reset +
+// fixed seed + fixed-step advance to the clip-local time, so a seeded system
+// shows the exact same frame at the same playhead position every scrub — and
+// play mode shows that same frame, which is why the span clears rather than
+// letting particles age out past the clip end.
 //
 // This file is the particles package's only sequencer dependency — the
 // track registers itself, the sequencer never imports particles. Author
@@ -93,7 +95,12 @@ _particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	if active != nil {
 		if ps.stopped || !ps.started do system_play(ps)
 	} else if ps.started && !ps.stopped {
-		system_stop(ps)
+		// Leaving the span CLEARS live particles, matching what scrubbing and
+		// the editor preview show at the same playhead position. The span is
+		// the effect's existence: a plain system_stop would let particles age
+		// out past the clip end in play mode only, so the same timeline looked
+		// different depending on how you watched it.
+		system_stop(ps, clear_particles = true)
 	}
 }
 

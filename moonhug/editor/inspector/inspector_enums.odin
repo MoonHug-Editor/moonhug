@@ -1,7 +1,6 @@
 package inspector
 
 import "core:c"
-import "core:fmt"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"

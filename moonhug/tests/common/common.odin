@@ -19,7 +19,6 @@ import "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
 import app "moonhug:packages/app"
 import tween "moonhug:packages/tween"
-import "../../engine/serialization"
 import "../../engine/registration"
 
 TestCtx :: struct {

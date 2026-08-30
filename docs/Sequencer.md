@@ -123,9 +123,11 @@ Built-in kinds:
 
 Feature-package kinds:
 - `particles`: a clip span plays the bound ParticleSystem, leaving it stops
-  it. Scrubbing replays deterministically — reset + fixed-step advance to
-  the clip-local time, exact with a `random_seed`. Author track-driven
-  systems with `manual_start`.
+  the system and CLEARS live particles — the span is the effect's existence,
+  so play shows what scrubbing to the same playhead shows. Scrubbing replays
+  deterministically — reset + fixed-step advance to the clip-local time,
+  exact with a `random_seed`. Author track-driven systems with
+  `manual_start`.
 - `audio`: crossing a clip's start plays the bound AudioSource (the clip's
   asset replaces the source's clip when set), leaving every span stops it.
   Scrub is silent, preview-play sounds. Author track-driven sources with

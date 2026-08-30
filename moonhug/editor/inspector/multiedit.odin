@@ -29,7 +29,6 @@ package inspector
 
 import "base:runtime"
 import "core:slice"
-import im "moonhug:external/odin-imgui"
 import engine "../../engine"
 import "../undo"
 

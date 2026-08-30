@@ -1028,6 +1028,8 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 
 @(private = "file")
 _pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
+	// Asset_GUID is a distinct [16]u8: transmute, not cast — an array type
+	// conversion is not a cast in Odin.
 	bytes := transmute([16]u8)g
 	for b in bytes do sig^ = (sig^ ~ u64(b)) * 0x100000001b3
 }

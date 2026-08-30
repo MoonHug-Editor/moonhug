@@ -2,11 +2,9 @@ package inspector
 
 import "base:intrinsics"
 import "core:fmt"
-import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "../../engine"
 import "../../engine/log"
-import "../undo"
 
 Min_Value :: union { int, f64 }
 

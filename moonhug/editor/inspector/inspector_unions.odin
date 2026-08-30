@@ -3,7 +3,6 @@ package inspector
 import "core:c"
 import "core:fmt"
 import "core:mem"
-import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"

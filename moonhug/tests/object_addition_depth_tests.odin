@@ -12,7 +12,6 @@ package tests
 // "Transform" rows) are exactly what mis-targeted the capture.
 
 import engine "../engine"
-import "moonhug:engine_editor/asset_pipeline"
 import "core:strings"
 import "core:testing"
 

@@ -1,10 +1,7 @@
 package menu
-import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "../inspector"
-import engine "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
-import "core:path/filepath"
 
 Theme :: enum {
     Spectrum_Dark,

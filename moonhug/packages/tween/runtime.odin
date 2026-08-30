@@ -93,7 +93,7 @@ register_node :: proc(
 		entry           = core.pool_make_entry(pool),
 		tick_raw        = rawptr(tick),
 		tick_thunk      = proc(tick_raw: rawptr, node: rawptr, dt: f32, ctx: TweenContext) -> Status {
-			t := transmute(proc(self: ^T, dt: f32, ctx: TweenContext) -> Status)tick_raw
+			t := cast(proc(self: ^T, dt: f32, ctx: TweenContext) -> Status)tick_raw
 			return t(cast(^T)node, dt, ctx)
 		},
 		children_offset = children_offset,
@@ -101,7 +101,7 @@ register_node :: proc(
 	if cleanup != nil {
 		desc.cleanup_raw = rawptr(cleanup)
 		desc.cleanup_thunk = proc(cleanup_raw: rawptr, node: rawptr) {
-			c := transmute(proc(self: ^T))cleanup_raw
+			c := cast(proc(self: ^T))cleanup_raw
 			c(cast(^T)node)
 		}
 	}

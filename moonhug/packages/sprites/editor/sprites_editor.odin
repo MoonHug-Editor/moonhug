@@ -5,10 +5,7 @@ package sprites_editor
 // never the editor root (docs/Plugins.md layering rule).
 
 import "base:runtime"
-import "core:encoding/uuid"
-import "core:fmt"
 import "core:path/filepath"
-import "core:slice"
 import "core:strings"
 import "moonhug:engine"
 import gfx "moonhug:engine/gfx"

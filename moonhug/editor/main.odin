@@ -1,7 +1,9 @@
 package editor
 
 import "core:fmt"
-import "core:mem"
+// Debug builds only (the tracking allocator below) — @(require) keeps -vet
+// from reading it as unused in a release build.
+@(require) import "core:mem"
 import sdl "vendor:sdl3"
 import gfx "../engine/gfx"
 import input "../engine/input"
@@ -15,7 +17,6 @@ import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/preview"
-import "../engine/serialization"
 import "../engine/registration"
 import "core:os"
 import "../engine"

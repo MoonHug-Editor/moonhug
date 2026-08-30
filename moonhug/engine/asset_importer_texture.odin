@@ -1,7 +1,5 @@
 package engine
 
-import "core:os"
-import "core:fmt"
 
 TextureFilterMode :: enum {
     Linear,

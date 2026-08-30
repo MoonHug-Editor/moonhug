@@ -20,7 +20,6 @@ import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "inspector"
-import "../engine"
 import "moonhug:engine_editor/asset_pipeline"
 
 Sample_State :: enum {

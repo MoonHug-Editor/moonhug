@@ -15,11 +15,7 @@ package engine
 // std140 layout (member names/offsets/block size) is stored in the artifact
 // and fed per-draw from Material.properties.
 
-import "core:encoding/json"
-import "core:fmt"
-import "core:os"
 import "core:strings"
-import "log"
 
 @(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad", makeProcName=make_pShaderSettings})
 ShaderSettings :: struct {

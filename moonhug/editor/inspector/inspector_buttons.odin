@@ -11,7 +11,6 @@ package inspector
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "../undo"
 
 Inspector_Button :: struct {
 	label:    cstring,

@@ -18,6 +18,17 @@ EXE :: ".exe" when ODIN_OS == .Windows else ""
 COLLECTION :: "-collection:moonhug=moonhug"
 IGNORE_ATTRS :: "-ignore-unknown-attributes"
 
+// Unused imports and variables are compile errors here. They accumulate
+// silently otherwise — a moved call leaves its import behind and nothing ever
+// says so.
+//
+// Only this check, not full -vet: -vet-shadowing fires on `if x, ok := v.(T)`
+// chains, where each branch reopens `ok` in its own scope, which is the
+// idiomatic spelling and appears throughout the inspector and scene code.
+// -vet-cast is also out — it reports the transmute in view_animation.odin as
+// unneeded, but Asset_GUID is a distinct [16]u8 and Odin has no cast for that.
+VET :: "-vet-unused"
+
 // run executes a command to completion with this process's stdio, so compiler
 // diagnostics and program output reach the terminal unbuffered and in order.
 // Returns its exit code, or -1 when it could not start.

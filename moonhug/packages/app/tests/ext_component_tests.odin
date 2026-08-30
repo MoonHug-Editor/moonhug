@@ -7,7 +7,6 @@ package app_tests
 
 import app ".."
 import "moonhug:engine"
-import "moonhug:engine_editor/asset_pipeline"
 import common "moonhug:tests/common"
 
 import "core:encoding/json"

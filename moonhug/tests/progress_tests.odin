@@ -5,8 +5,6 @@ package tests
 // a report issued from inside the sink.
 
 import "core:testing"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:editor/progress"
 
 @(private = "file")

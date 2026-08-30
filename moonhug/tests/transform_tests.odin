@@ -4,7 +4,6 @@ import "../engine"
 import sprites "moonhug:packages/sprites"
 
 import "core:testing"
-import "core:os"
 
 @(test)
 test_transform_new :: proc(t: ^testing.T) {
