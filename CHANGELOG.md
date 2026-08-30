@@ -1,3 +1,10 @@
+## [0.82.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.82.0...v0.82.1) (2026-08-30)
+
+### Bug Fixes
+
+* -vet-unused, timeline clear particle on clip end ([ba02037](https://github.com/MoonHug-Editor/moonhug/commit/ba02037704520afa49b21e6b03270f227874b50d))
+* editor frame capture ([97a9488](https://github.com/MoonHug-Editor/moonhug/commit/97a94881747ecc178db7ccc99e6b527a23065a5a))
+
 ## [0.82.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.81.0...v0.82.0) (2026-08-28)
 
 ### Features
