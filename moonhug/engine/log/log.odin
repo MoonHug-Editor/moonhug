@@ -85,7 +85,11 @@ _emit_stdout :: proc(level: Level, msg: string, loc: runtime.Source_Code_Locatio
 		joined := strings.join(stack, STACK_SEP, context.temp_allocator)
 		fmt.printfln("%s%d|%d|%s|%d|%s|%s|%s", STDOUT_TAG, int(level), time.now()._nsec, loc.file_path, loc.line, loc.procedure, joined, msg)
 	} else {
-		fmt.println(msg)
+		// Same "[hh:mm:ss]" prefix the editor console shows, so a terminal
+		// line and a console line for the same event read alike. The tagged
+		// form carries time_ns instead and the reader formats it there.
+		h, m, s := time.clock_from_time(time.now())
+		fmt.printfln("[%02d:%02d:%02d] %s", h, m, s, msg)
 	}
 }
 
