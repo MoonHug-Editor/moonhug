@@ -1,3 +1,16 @@
+## [0.83.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.82.1...v0.83.0) (2026-08-31)
+
+### Features
+
+* add script_gen and tween_gen for plugins ([d8ec840](https://github.com/MoonHug-Editor/moonhug/commit/d8ec840b9eaac2a8a29132c872cf35ec21d387fa))
+* log time into terminal too ([ff5cb43](https://github.com/MoonHug-Editor/moonhug/commit/ff5cb437a36ebaa931e4cb03b74139a742d2dece))
+* script track and clip ([b74905c](https://github.com/MoonHug-Editor/moonhug/commit/b74905ca7d5f2347c3d773fa61eb8184d36ce70a))
+* tween track ([b9ae230](https://github.com/MoonHug-Editor/moonhug/commit/b9ae230858b397a2f34066ded475f98e2a98868e))
+
+### Bug Fixes
+
+* rename ([9451be0](https://github.com/MoonHug-Editor/moonhug/commit/9451be0e55a6faa4b1f862559b8d71819cd418c2))
+
 ## [0.82.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.82.0...v0.82.1) (2026-08-30)
 
 ### Bug Fixes
