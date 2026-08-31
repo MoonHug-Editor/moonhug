@@ -177,9 +177,10 @@ scripts are structurally identical:
   active for the span: enter sets `active`, exit sets it back) and
   `ScriptLog` (enter/tick/exit messages to the log, empty skips the phase —
   the "did my timeline get here" probe).
-- `sequencer/script_union.odin` — the union, the lifecycle dispatch, and the
-  serialization registration. Hand-written today; the file is the shape a
-  future script_gen emits, and its header says how a plugin adds a variant.
+- `sequencer/gen/script_gen.odin` — GENERATES `script_union_generated.odin`
+  (the union, the three dispatch switches, the serialization registration).
+  It finds variants by the embedded `Clip_Script` base and probes each
+  lifecycle proc by name, so a variant missing a phase gets an empty case.
 
 Persistence is guid-keyed (`engine/serialization` union marshalers): union
 tags are positional and shift when a variant is added, so the wire format
@@ -194,6 +195,15 @@ A clip tween is a `@(typ_guid)` struct embedding `core.Clip_Tween` plus one
 clip-normalized t in [0..1]. `TweenUnion` (`sequencer/tween_union.odin`)
 names every variant and dispatches, hand-written today in the same
 generated-artifact shape as ScriptUnion.
+
+Adding a variant is the plugin contract, first-party and third-party alike:
+ship a package importing `moonhug:packages/sequencer/core`, declare a
+`@(typ_guid)` struct embedding the base, write the procs IN THE SAME FILE
+(prebuild is syntax-only — `FileHasProc` is file-scoped and the base is
+matched by written name), and run prebuild. `TweenFadeTo` in
+`packages/sprites` is the live proof: it poses a SpriteRenderer, so it lives
+in sprites, and it reaches `TweenUnion` without the sequencer importing
+sprites or naming the type.
 
 Naming: abstract first, concrete later — `Tween<Aspect><Space><Detail>`:
 `TweenMoveLocalFromTo` (explicit pair, fully stateless), `TweenMoveLocalTo`,

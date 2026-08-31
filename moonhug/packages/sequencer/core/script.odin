@@ -11,6 +11,12 @@ package sequencer_core
 
 import "moonhug:engine"
 
+// Embedded by every script variant: `using base: Clip_Script`. Empty — its
+// job is to MARK the struct as a script so script_gen finds it. Prebuild is
+// syntax-only (no type resolution), so a named base field is the signal a
+// generator can see, the same way Clip_Tween marks clip tweens.
+Clip_Script :: struct {}
+
 // What a script's lifecycle procs see. Deliberately small: a script that
 // needs more reads it off the world through these handles.
 Script_Ctx :: struct {

@@ -33,7 +33,7 @@ _subject :: proc(own: engine.Ref_Local, ctx: ^core.Tween_Ctx) -> ^engine.Transfo
 // Local position from an EXPLICIT pair — fully stateless, nothing captured.
 @(typ_guid={guid = "705f0b28-2818-41e7-938c-9404ad1fe238"})
 TweenMoveLocalFromTo :: struct {
-	using base: core.Clip_Tween,
+	using base: core.Clip_Tween `inline:""`,
 	target:     engine.Ref_Local `ref:"Transform"`,
 	from:       [3]f32,
 	to:         [3]f32,
@@ -67,7 +67,7 @@ evaluate_TweenMoveLocalTo :: proc(s: ^TweenMoveLocalTo, t: f32, ctx: ^core.Tween
 
 @(typ_guid={guid = "e0f71a0e-7048-4e60-be2f-4f7907c50348"})
 TweenScaleLocalTo :: struct {
-	using base: core.Clip_Tween,
+	using base: core.Clip_Tween `inline:""`,
 	target:     engine.Ref_Local `ref:"Transform"`,
 	to:         [3]f32,
 
@@ -86,7 +86,7 @@ evaluate_TweenScaleLocalTo :: proc(s: ^TweenScaleLocalTo, t: f32, ctx: ^core.Twe
 
 @(typ_guid={guid = "096bd099-97e3-45b7-a374-f0180d06d795"})
 TweenRotateLocalTo :: struct {
-	using base: core.Clip_Tween,
+	using base: core.Clip_Tween `inline:""`,
 	target:     engine.Ref_Local `ref:"Transform"`,
 	to:         [4]f32 `inspect:"" decor:euler()`,
 

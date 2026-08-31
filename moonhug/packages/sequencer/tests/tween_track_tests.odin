@@ -12,6 +12,7 @@ import "core:testing"
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
 import tweens "moonhug:packages/sequencer/tweens"
+import sprites "moonhug:packages/sprites"
 import common "moonhug:tests/common"
 
 @(private = "file")
@@ -307,4 +308,51 @@ test_tween_capture_enter_scrubs_stable :: proc(t: ^testing.T) {
 		"scrubbing back into the span keeps the first capture")
 	seq.director_set_time(d, 0.1)
 	testing.expect(t, _close(victim.position, {1, 2, 3}), "before the span restores the start pose")
+}
+
+// The PLUGIN path: TweenFadeTo lives in packages/sprites and reaches the
+// union only through tween_gen's scan — the sequencer never imports sprites.
+// If this compiles and runs, a package added a variant with no sequencer
+// edit, which is the whole contract.
+@(test)
+test_tween_plugin_variant_from_sprites :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	seq.register_builtin_tracks()
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	vH := engine.transform_new("Sprite", root)
+	_, raw := engine.transform_add_comp(vH, .SpriteRenderer)
+	sr := cast(^sprites.SpriteRenderer)raw
+	sr.color = {1, 1, 1, 1}
+	srh := engine.Handle{}
+	if tr := engine.pool_get(&tc.world.transforms, engine.Handle(vH)); tr != nil {
+		for c in tr.components do if c.handle.type_key == .SpriteRenderer do srh = c.handle
+	}
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+	d.duration = 2
+	defer seq.director_teardown(d)
+
+	track := _mk_track(root, .TrackTween, seq.Clip_View{start = 0, duration = 1})
+	clip := _first_clip_node(&tc.world, track)
+	_, tclip := seq.get_comp(clip, seq.ClipTween)
+	if tclip == nil do return
+	append(&tclip.tweens, seq.TweenUnion(sprites.TweenFadeTo{
+		target = {handle = srh},
+		to     = 0,
+	}))
+
+	seq.director_set_time(d, 0.5) // clip-local 0.5: alpha halfway to 0
+	testing.expect(t, abs(sr.color.a - 0.5) < 0.001, "the plugin variant poses through the union")
+	seq.director_set_time(d, 1.5) // past the span
+	testing.expect(t, abs(sr.color.a - 0) < 0.001)
+	seq.director_preview_end(d)
+	testing.expect(t, abs(sr.color.a - 1) < 0.001, "preview end restores through the generic base")
 }

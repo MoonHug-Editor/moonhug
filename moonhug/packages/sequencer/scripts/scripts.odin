@@ -20,6 +20,7 @@ import core "moonhug:packages/sequencer/core"
 // activation is one step among several.
 @(typ_guid={guid = "47ffdc20-4c80-45b6-b3ae-faee0e68d770"})
 ScriptSetActive :: struct {
+	using base: core.Clip_Script `inline:""`,
 	target: engine.Ref_Local `ref:"Transform"`,
 	active: bool,
 }
@@ -46,6 +47,7 @@ _set_active :: proc(s: ^ScriptSetActive, active: bool) {
 // lifecycle. The "did my timeline get here" probe.
 @(typ_guid={guid = "243d224a-cb62-4150-93bf-e5db61ecd6ce"})
 ScriptLog :: struct {
+	using base: core.Clip_Script `inline:""`,
 	enter: string,
 	tick:  string,
 	exit:  string,
