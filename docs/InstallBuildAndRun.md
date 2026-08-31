@@ -1,11 +1,8 @@
 # Install, Build and Run
 ---
 
-Everything the repo does from a terminal goes through `tools/mh`, one Odin
-program. It is a TOOL, not a script: shell scripts need a `.sh` and a `.bat` to
-cover every platform and the two drift. Odin is already a hard dependency here,
-so one program covers all of them — the same reasoning run configs use
-(docs/Plugins.md).
+Everything the repo does from a terminal goes through `tools/mh`.
+`make` is optional and forwards commands to `tools/mh` for less verbosity, e.g. `make setup` or `make run`
 
 ## First run
 
