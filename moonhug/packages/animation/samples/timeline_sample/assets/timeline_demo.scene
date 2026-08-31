@@ -82,6 +82,12 @@
             "local_id": 1764605313714914,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 2743085324261477,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": [
@@ -978,6 +984,89 @@
         },
         {
           "local_id": 1548627243730
+        }
+      ]
+    },
+    {
+      "local_id": 2743085324261477,
+      "name": "tween",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 3406517337393028,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 2498314846421097
+        },
+        {
+          "local_id": 898413889461367
+        }
+      ]
+    },
+    {
+      "local_id": 3406517337393028,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2743085324261477,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4125558626323823
+        },
+        {
+          "local_id": 116660187272852
         }
       ]
     }
@@ -1936,6 +2025,59 @@
           "enter": "Enter",
           "exit": "Exit",
           "tick": "Tick"
+        }
+      ]
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 2498314846421097
+      },
+      "muted": false
+    },
+    {
+      "__type": "e45dd366-bc5b-4bb8-81e7-67b339a55680",
+      "base": {
+        "enabled": true,
+        "local_id": 898413889461367
+      },
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 4125558626323823
+      },
+      "duration": 4.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 1.0
+    },
+    {
+      "__type": "0f1d4bcc-cf05-4958-8d73-775b9e28a18e",
+      "base": {
+        "enabled": true,
+        "local_id": 116660187272852
+      },
+      "tweens": [
+        {
+          "__type_guid": "39f6ed5d-4ba2-4673-a1a9-246668f2868a",
+          "base": {
+
+          },
+          "target": {
+            "local_id": 1326688355408385
+          },
+          "to": [
+            2.0,
+            2.0,
+            0.0
+          ]
         }
       ]
     }

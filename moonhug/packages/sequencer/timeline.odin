@@ -55,6 +55,7 @@ Track_Ctx :: struct {
 	wrapped:   bool, // the loop wrapped inside this tick
 	duration:  f32,  // the timeline's playable length
 	mode:      Track_Mode,
+	play_id:   u32,  // the director's play-session counter (PlayableDirector)
 }
 
 // How the director's time advanced this evaluation. Each track kind decides
@@ -266,6 +267,13 @@ _control_track_tick :: proc(ctx: ^Track_Ctx) {
 		child := _control_child_director(c.node)
 		if child == nil do continue
 		if track_clip_active(ctx, &c) {
+			// A nested director never sees director_play — the span IS its
+			// play. Entering it in Play mode starts a new session for the
+			// child's tracks (per-play tween captures refresh).
+			end := c.start + c.duration
+			if ctx.mode == .Play && !(ctx.prev_time >= c.start && ctx.prev_time < end) {
+				child.play_id += 1
+			}
 			speed := c.speed if c.speed > 0 else 1
 			director_evaluate_at(child, (ctx.time - c.start) * speed, ctx.mode)
 		} else {
@@ -326,6 +334,7 @@ register_builtin_tracks :: proc() {
 		preview_end = _control_track_preview_end,
 	})
 	track_register(_script_track_desc()) // component_script_track.odin
+	track_register(_tween_track_desc())  // component_tween_track.odin
 }
 
 // ImportersInit is the asset-layer init phase both binaries run — the same

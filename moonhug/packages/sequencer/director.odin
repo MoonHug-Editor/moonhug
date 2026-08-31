@@ -139,6 +139,7 @@ _director_tree_sig :: proc(tracks: []Timeline_Track) -> u64 {
 director_play :: proc(d: ^PlayableDirector) {
 	d.started = true
 	d.playing = true
+	d.play_id += 1
 }
 
 director_pause :: proc(d: ^PlayableDirector) {
@@ -156,6 +157,7 @@ director_tick :: proc(d: ^PlayableDirector, dt: f32) {
 	if !d.started {
 		d.started = true
 		d.playing = !d.manual_start
+		if d.playing do d.play_id += 1
 	}
 	if !d.playing do return
 
@@ -287,6 +289,7 @@ _director_ctx :: proc(
 		wrapped   = wrapped,
 		duration  = director_duration(d, tracks),
 		mode      = mode,
+		play_id   = d.play_id,
 	}
 }
 

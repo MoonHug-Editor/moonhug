@@ -28,8 +28,7 @@ _log_count :: proc(msg: string) -> int {
 }
 
 // The clip node of `track`'s first clip (the tests build one clip per track
-// unless stated).
-@(private = "file")
+// unless stated). Shared with the tween track tests.
 _first_clip_node :: proc(w: ^engine.World, track: engine.Transform_Handle) -> engine.Transform_Handle {
 	t := engine.pool_get(&w.transforms, engine.Handle(track))
 	if t == nil || len(t.children) == 0 do return {}

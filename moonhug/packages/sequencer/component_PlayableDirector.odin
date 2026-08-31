@@ -31,6 +31,10 @@ PlayableDirector :: struct {
 	// freed by Track_Desc.destroy); `track_state_kinds` remembers which kind
 	// owns each slot so teardown can find the destroy hook after edits.
 	time:              f32 `json:"-" inspect:"-"`,
+	// Increments every time a play SESSION starts (director_play, the
+	// auto-start, a control span entering in Play) — how tracks detect "this
+	// is a new performance" and refresh per-play state (tween captures).
+	play_id:           u32 `json:"-" inspect:"-"`,
 	prev_time:         f32 `json:"-" inspect:"-"`,
 	playing:           bool `json:"-" inspect:"-"`,
 	started:           bool `json:"-" inspect:"-"`,

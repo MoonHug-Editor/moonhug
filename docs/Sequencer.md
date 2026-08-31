@@ -120,6 +120,17 @@ Built-in kinds:
   subtree holding its own director (typically a nested timeline prefab
   instance). Inside the span the child evaluates at the clip-local time with
   the parent's mode; outside it rests at 0.
+- `tween`: a clip's span drives its tweens' `evaluate(t)` — pose as a pure
+  function of the playhead, so the same tween is exact under Play, scrubbing
+  and the edit-mode preview. In Scrub/Preview the timeline owns the pose
+  (before the span shows t=0, after it t=1); in Play the game owns objects
+  outside spans (the clip evaluates inside and lands on t=1 once on the way
+  out). To-style tweens capture their start pose on first evaluation and
+  refresh per their capture mode — `.Play` (default) once per play session,
+  surviving loop wraps so a loop replays the same motion, `.Enter` on every
+  span entry so each pass continues from the current pose. Preview end
+  restores the authored pose via evaluate(0) and clears every capture. See
+  "Tweens" below.
 - `script`: a clip WRAPS SCRIPTS. Each script on the clip gets its optional
   lifecycle procs — enter when playback crosses into the span, tick every
   tick inside it, exit when it leaves (a zero-duration clip fires enter and
@@ -175,6 +186,45 @@ tags are positional and shift when a variant is added, so the wire format
 carries the variant's type guid instead. `Ref_Local` fields inside a variant
 rebind on load like any component field — the resolve walk descends into
 unions.
+
+## Tweens
+
+A clip tween is a `@(typ_guid)` struct embedding `core.Clip_Tween` plus one
+`evaluate_<Name>(self, t, ctx)` proc — pose as a pure function of
+clip-normalized t in [0..1]. `TweenUnion` (`sequencer/tween_union.odin`)
+names every variant and dispatches, hand-written today in the same
+generated-artifact shape as ScriptUnion.
+
+Naming: abstract first, concrete later — `Tween<Aspect><Space><Detail>`:
+`TweenMoveLocalFromTo` (explicit pair, fully stateless), `TweenMoveLocalTo`,
+`TweenScaleLocalTo`, `TweenRotateLocalTo` (captured start). Names must not
+collide with `packages/tween`'s node types — the @(typ_guid) name space is
+global.
+
+- `sequencer/core` — the floor: `Tween_Ctx`, the `Clip_Tween` base
+  (`captured`). Variant packages import this, never the sequencer.
+- `sequencer/tweens` — the built-in variants. A variant that poses a
+  package-owned component lives in THAT package (`TweenFadeTo` belongs to
+  sprites — color is SpriteRenderer's) and joins the union once the
+  generator owns the import list.
+
+The visible difference between the modes at a loop's seam is AUTHORITY, not
+a bug: in edit mode the timeline owns the pose everywhere, so the object
+shows the start pose from the wrap onward (the reset reads as "at timeline
+start"); in Play the game owns objects outside spans, so the object holds
+the previous pass's end pose until the clip begins, then the tween takes
+over (the reset reads as "at clip start"). Both follow from the same rule.
+
+Play sessions: `PlayableDirector.play_id` increments at every session start
+(`director_play`, the auto-start, a control span entering in Play — a nested
+director never sees director_play, its parent's span IS its play), which is
+how `.Play` captures know a new performance began.
+
+This vocabulary is deliberately SEPARATE from `packages/tween` (the
+self-ticking graph tweens): both stay untouched by each other, and the union
++ dispatch is the seam if they unify later. Composites do not exist here —
+the timeline is the container (a clip holds parallel tweens, consecutive
+clips are a sequence).
 
 ## Sequencer window
 
