@@ -76,6 +76,12 @@
             "local_id": 966889675401095,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 1764605313714914,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": [
@@ -890,6 +896,89 @@
       ],
       "components": [
 
+      ]
+    },
+    {
+      "local_id": 1764605313714914,
+      "name": "script",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 881202600000001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 1185761875322718,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 2224028884861686
+        },
+        {
+          "local_id": 1017336673692288
+        }
+      ]
+    },
+    {
+      "local_id": 1185761875322718,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1764605313714914,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3286244882848239
+        },
+        {
+          "local_id": 1548627243730
+        }
       ]
     }
   ],
@@ -1804,6 +1893,51 @@
         "enabled": true,
         "local_id": 421891743936236
       }
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 2224028884861686
+      },
+      "muted": false
+    },
+    {
+      "__type": "06f39202-753c-4bc9-a7c1-cfc876559f72",
+      "base": {
+        "enabled": true,
+        "local_id": 1017336673692288
+      },
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 3286244882848239
+      },
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 0.0,
+      "start": 0.0
+    },
+    {
+      "__type": "bd5194a0-ff1c-4c4a-97de-512e26b7773b",
+      "base": {
+        "enabled": true,
+        "local_id": 1548627243730
+      },
+      "scripts": [
+        {
+          "__type_guid": "243d224a-cb62-4150-93bf-e5db61ecd6ce",
+          "enter": "Enter",
+          "exit": "Exit",
+          "tick": "Tick"
+        }
+      ]
     }
   ]
 }

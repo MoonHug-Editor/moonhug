@@ -325,6 +325,7 @@ register_builtin_tracks :: proc() {
 		tick        = _control_track_tick,
 		preview_end = _control_track_preview_end,
 	})
+	track_register(_script_track_desc()) // component_script_track.odin
 }
 
 // ImportersInit is the asset-layer init phase both binaries run — the same

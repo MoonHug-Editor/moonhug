@@ -22,6 +22,7 @@ package sequencer_editor
 
 import "core:fmt"
 import "core:math"
+import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
 import seq "moonhug:packages/sequencer"
@@ -228,9 +229,13 @@ _sq_kind_label :: proc(kind: engine.TypeKey) -> string {
 	return "?"
 }
 
-// Draw a node's kind component through the inspector's default drawing —
-// `ref:`/`ext:` tags on its fields drive the pickers, so the window needs no
-// per-kind knowledge. Edits record as a whole-component undo session.
+// Draw a node's kind component EXACTLY the way the Inspector window draws a
+// component (view_hierarchy_inspector's header-open block): the field rows'
+// own gesture transactions record undo — one record per drag or typing
+// gesture, opened on widget activation and closed on release. There is
+// deliberately NO session wrapped around the draw: a per-frame session diffs
+// the whole component every frame, which recorded one undo step per typed
+// character.
 @(private = "file")
 _sq_draw_kind_component :: proc(node: engine.Transform_Handle, key: engine.TypeKey, label: string) {
 	if key == engine.INVALID_TYPE_KEY do return
@@ -239,13 +244,20 @@ _sq_draw_kind_component :: proc(node: engine.Transform_Handle, key: engine.TypeK
 	tid := engine.get_typeid_by_type_key(key)
 	if tid == nil do return
 
-	sess := undo.edit_session_begin({undo.edit_target_whole(owned.handle)}, label)
+	inspector.consume_inspector_changed()
+	defer if inspector.consume_inspector_changed() {
+		engine.component_on_validate(key, raw)
+	}
 	// Ref pickers mint local ids against the owner's root scene, which they
-	// read from the inspector owner stack.
+	// read from the inspector owner stack — and the rows record their undo
+	// against this component.
 	undo.push_component_owner(owned.handle)
-	inspector.draw_inspector_default(raw, tid, "", "")
-	undo.pop_owner()
-	undo.edit_session_end(&sess)
+	defer undo.pop_owner()
+	c_label := strings.clone_to_cstring(label, context.temp_allocator)
+	im.PushID(c_label)
+	defer im.PopID()
+	drawer := inspector.resolve_property_drawer(tid)
+	drawer(raw, tid, c_label)
 }
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})

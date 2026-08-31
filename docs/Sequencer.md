@@ -120,6 +120,11 @@ Built-in kinds:
   subtree holding its own director (typically a nested timeline prefab
   instance). Inside the span the child evaluates at the clip-local time with
   the parent's mode; outside it rests at 0.
+- `script`: a clip WRAPS SCRIPTS. Each script on the clip gets its optional
+  lifecycle procs — enter when playback crosses into the span, tick every
+  tick inside it, exit when it leaves (a zero-duration clip fires enter and
+  exit together, once). Play mode only — scripts are side effects, and
+  posing the timeline must not perform them. See "Scripts" below.
 
 Feature-package kinds:
 - `particles`: a clip span plays the bound ParticleSystem, leaving it stops
@@ -142,6 +147,34 @@ Feature-package kinds:
   track_clip_weight, source clips shorter than their timeline clip wrapping
   by their own mode. Clips may carry PROPERTY channels
   (docs/PlayableGraph.md).
+
+## Scripts
+
+A script is a `@(typ_guid)` struct plus whichever lifecycle procs it
+implements — `enter_<Name>`, `tick_<Name>`, `exit_<Name>`, all optional, and
+a `destroy_<Name>` when it owns heap. `ScriptUnion`
+(`sequencer/script_union.odin`) names every variant and dispatches each
+phase with an exhaustive switch — a variant without its cases is a compile
+error, not a clip that silently does nothing.
+
+The layering keeps variants BELOW the union, so first-party and plugin
+scripts are structurally identical:
+
+- `sequencer/core` — the vocabulary floor: `Script_Ctx`. Variant packages
+  import this, never the sequencer.
+- `sequencer/scripts` — the built-ins: `SetActiveScript` (the target is
+  active for the span: enter sets `active`, exit sets it back) and
+  `LogScript` (enter/tick/exit messages to the log, empty skips the phase —
+  the "did my timeline get here" probe).
+- `sequencer/script_union.odin` — the union, the lifecycle dispatch, and the
+  serialization registration. Hand-written today; the file is the shape a
+  future script_gen emits, and its header says how a plugin adds a variant.
+
+Persistence is guid-keyed (`engine/serialization` union marshalers): union
+tags are positional and shift when a variant is added, so the wire format
+carries the variant's type guid instead. `Ref_Local` fields inside a variant
+rebind on load like any component field — the resolve walk descends into
+unions.
 
 ## Sequencer window
 

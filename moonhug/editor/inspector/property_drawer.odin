@@ -49,6 +49,13 @@ draw_string_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         for str_len < len(buf) && buf[str_len] != 0 {
             str_len += 1
         }
+        // Component strings live on context.allocator — scene load
+        // (_ext_value_into), the union unmarshaler and undo's apply all
+        // allocate with it, so the replacement does too. The old value is
+        // freed, or every keystroke leaks its predecessor.
+        if !current_field_mixed {
+            delete(str_ptr^)
+        }
         str_ptr^ = strings.clone(string(buf[:str_len]))
         mark_inspector_changed()
     }

@@ -5,7 +5,6 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:io"
 import "core:mem"
-import "base:runtime"
 import engine ".."
 
 asset_guid_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
@@ -83,27 +82,34 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     tid := engine.get_typeid_by_guid(guid)
     if tid == nil do return json.Unmarshal_Data_Error.Invalid_Data
 
-    heap := runtime.default_allocator()
-
     data_bytes, marshal_err := json.marshal(root, allocator = context.temp_allocator)
     if marshal_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
 
     ti := type_info_of(tid)
-    variant_ptr, alloc_err := mem.alloc(ti.size, ti.align, heap)
+    // The variant's OWNED allocations (strings, arrays) go to
+    // context.allocator — the same owner every other component field gets
+    // (_ext_value_into unmarshals with it, and so does undo's apply). A
+    // forced default allocator here made union strings the one untracked
+    // kind: undo's cleanup then freed them through the debug build's
+    // tracking allocator, which panics on the unknown pointer.
+    variant_ptr, alloc_err := mem.alloc(ti.size, ti.align, context.allocator)
     if alloc_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
     mem.zero(variant_ptr, ti.size)
 
     ptr_tid, ptr_tid_ok := engine.get_pointer_typeid_by_typeid(tid)
-    if !ptr_tid_ok do return json.Unmarshal_Data_Error.Invalid_Data
+    if !ptr_tid_ok {
+        mem.free(variant_ptr, context.allocator)
+        return json.Unmarshal_Data_Error.Invalid_Data
+    }
 
-    if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}, allocator = heap); uerr != nil {
-        mem.free(variant_ptr, heap)
+    if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}, allocator = context.allocator); uerr != nil {
+        mem.free(variant_ptr, context.allocator)
         return uerr
     }
 
     mem.copy(v.data, variant_ptr, ti.size)
     reflect.set_union_variant_typeid(v, tid)
-    mem.free(variant_ptr, heap)
+    mem.free(variant_ptr, context.allocator)
 
     return nil
 }
