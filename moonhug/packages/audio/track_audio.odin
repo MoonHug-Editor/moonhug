@@ -18,7 +18,7 @@ import seq "moonhug:packages/sequencer"
 // sequencer window needs no per-kind knowledge.
 @(component)
 @(typ_guid={guid = "b6ddf9c5-02a9-4ff9-8e6d-8a64e5e1edd6"})
-AudioTrack :: struct {
+TrackAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	source: engine.Ref_Local `ref:"AudioSource"`,
@@ -26,7 +26,7 @@ AudioTrack :: struct {
 
 @(component)
 @(typ_guid={guid = "889f7ce4-b7cc-4ad1-b669-540bfb5a27ff"})
-AudioClipRef :: struct {
+ClipAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	clip: engine.Asset_GUID `ext:"mp3,wav,ogg"`,
@@ -38,8 +38,8 @@ audio_track_init :: proc() {
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		track_key   = .AudioTrack,
-		clip_key    = .AudioClipRef,
+		track_key   = .TrackAudio,
+		clip_key    = .ClipAudio,
 		label       = "audio",
 		tick        = _audio_track_tick,
 		preview_end = _audio_track_preview_end,
@@ -49,7 +49,7 @@ audio_track_init :: proc() {
 // The AudioSource this track drives, or nil.
 @(private = "file")
 _audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^AudioSource {
-	_, at := get_comp(ctx.track.node, AudioTrack)
+	_, at := get_comp(ctx.track.node, TrackAudio)
 	if at == nil || at.source.handle.type_key != .AudioSource do return nil
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, at.source.handle) do return nil
@@ -73,7 +73,7 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		if seq.track_clip_active(ctx, &c) do any_active = true
 		if seq.track_crossed(ctx, c.start) {
 			asset: engine.Asset_GUID
-			if _, cr := get_comp(c.node, AudioClipRef); cr != nil do asset = cr.clip
+			if _, cr := get_comp(c.node, ClipAudio); cr != nil do asset = cr.clip
 			if !engine.asset_guid_is_empty(asset) && asset != src.clip {
 				if audio_is_playing(src) do audio_stop(src)
 				src.clip = asset

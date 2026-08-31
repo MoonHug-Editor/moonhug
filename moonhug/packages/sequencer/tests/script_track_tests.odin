@@ -8,7 +8,7 @@ package sequencer_tests
 // once and never ticks, and a clip's scripts survive the serialize round
 // trip with variant order, payloads and a re-resolved Ref_Local intact.
 //
-// LogScript is the observable: calls land in log.entries, counted by
+// ScriptLog is the observable: calls land in log.entries, counted by
 // message.
 
 import "core:strings"
@@ -36,7 +36,7 @@ _first_clip_node :: proc(w: ^engine.World, track: engine.Transform_Handle) -> en
 }
 
 // A context-allocator string: component strings are owned by the clip and
-// freed by destroy_LogScript with context.allocator — under the test runner
+// freed by destroy_ScriptLog with context.allocator — under the test runner
 // that is the tracking allocator, so a mismatch is a loud failure here, the
 // exact class the editor's debug build crashed on.
 @(private = "file")
@@ -65,17 +65,17 @@ test_script_track_enter_tick_exit :: proc(t: ^testing.T) {
 	d.duration = 2
 	defer seq.director_teardown(d)
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0.5, duration = 0.5})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0.5, duration = 0.5})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
-	testing.expect(t, sc != nil, "the window's clip shape carries a ScriptClip")
+	_, sc := seq.get_comp(clip, seq.ClipScript)
+	testing.expect(t, sc != nil, "the window's clip shape carries a ClipScript")
 	if sc == nil do return
 
 	vt := engine.pool_get(&tc.world.transforms, engine.Handle(victim))
 	target := engine.Ref_Local{local_id = vt.local_id, handle = engine.Handle(victim)}
 	// The span deactivates the victim: enter sets false, exit sets it back.
-	append(&sc.scripts, seq.ScriptUnion(scripts.SetActiveScript{target = target, active = false}))
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptSetActive{target = target, active = false}))
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{
 		enter = _own("enter"), tick = _own("tick"), exit = _own("exit"),
 	}))
 
@@ -128,11 +128,11 @@ test_script_exit_fires_at_once_completion :: proc(t: ^testing.T) {
 	d.duration = 1
 	defer seq.director_teardown(d)
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0.5, duration = 0.5})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0.5, duration = 0.5})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
+	_, sc := seq.get_comp(clip, seq.ClipScript)
 	if sc == nil do return
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{exit = _own("done")}))
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{exit = _own("done")}))
 
 	for _ in 0 ..< 20 do seq.director_tick(d, 0.1) // clamps at 1.0 and stops
 	testing.expect_value(t, _log_count("done"), 1)
@@ -160,11 +160,11 @@ test_script_zero_duration_clip_fires_once :: proc(t: ^testing.T) {
 	d.duration = 1
 	defer seq.director_teardown(d)
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0.75, duration = 0})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0.75, duration = 0})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
+	_, sc := seq.get_comp(clip, seq.ClipScript)
 	if sc == nil do return
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{
 		enter = _own("in"), tick = _own("during"), exit = _own("out"),
 	}))
 
@@ -195,14 +195,14 @@ test_script_silent_outside_play :: proc(t: ^testing.T) {
 	d.duration = 2
 	defer seq.director_teardown(d)
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0.5, duration = 0.5})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0.5, duration = 0.5})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
+	_, sc := seq.get_comp(clip, seq.ClipScript)
 	if sc == nil do return
 	vt := engine.pool_get(&tc.world.transforms, engine.Handle(victim))
 	target := engine.Ref_Local{local_id = vt.local_id, handle = engine.Handle(victim)}
-	append(&sc.scripts, seq.ScriptUnion(scripts.SetActiveScript{target = target, active = false}))
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{tick = _own("no")}))
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptSetActive{target = target, active = false}))
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{tick = _own("no")}))
 
 	// Scrub through and past the span, then preview-step across it.
 	seq.director_set_time(d, 0.7)
@@ -231,17 +231,17 @@ test_script_clip_serialize_roundtrip :: proc(t: ^testing.T) {
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0.25, duration = 1})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0.25, duration = 1})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
+	_, sc := seq.get_comp(clip, seq.ClipScript)
 	if sc == nil do return
 	vt := engine.pool_get(&tc.world.transforms, engine.Handle(victim))
 	want_lid := vt.local_id
-	append(&sc.scripts, seq.ScriptUnion(scripts.SetActiveScript{
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptSetActive{
 		target = {local_id = want_lid, handle = engine.Handle(victim)},
 		active = true,
 	}))
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{
 		enter = _own("boom"), tick = _own("beat"), exit = _own("bye"),
 	}))
 
@@ -265,23 +265,23 @@ test_script_clip_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
 	testing.expect_value(t, len(tracks[0].clips), 1)
-	_, sc2 := seq.get_comp(tracks[0].clips[0].node, seq.ScriptClip)
+	_, sc2 := seq.get_comp(tracks[0].clips[0].node, seq.ClipScript)
 	testing.expect(t, sc2 != nil, "the clip's kind component survives")
 	if sc2 == nil do return
 
 	testing.expect_value(t, len(sc2.scripts), 2)
 	if len(sc2.scripts) != 2 do return
 
-	sa, sa_ok := sc2.scripts[0].(scripts.SetActiveScript)
-	testing.expect(t, sa_ok, "variant order survives: SetActiveScript first")
+	sa, sa_ok := sc2.scripts[0].(scripts.ScriptSetActive)
+	testing.expect(t, sa_ok, "variant order survives: ScriptSetActive first")
 	if sa_ok {
 		testing.expect_value(t, sa.target.local_id, want_lid)
 		testing.expect(t, sa.active)
 		testing.expect(t, engine.world_pool_valid(&tc.world, sa.target.handle),
 			"the Ref_Local inside the union must re-resolve after restore")
 	}
-	lg, lg_ok := sc2.scripts[1].(scripts.LogScript)
-	testing.expect(t, lg_ok, "variant order survives: LogScript second")
+	lg, lg_ok := sc2.scripts[1].(scripts.ScriptLog)
+	testing.expect(t, lg_ok, "variant order survives: ScriptLog second")
 	if lg_ok {
 		testing.expect_value(t, lg.enter, "boom")
 		testing.expect_value(t, lg.tick, "beat")
@@ -290,8 +290,8 @@ test_script_clip_serialize_roundtrip :: proc(t: ^testing.T) {
 }
 
 // The crash class from the editor's debug build: undo applying a value
-// record over a ScriptClip frees the clip's CURRENT strings
-// (_cleanup_before_unmarshal -> cleanup_ScriptClip) and unmarshals the
+// record over a ClipScript frees the clip's CURRENT strings
+// (_cleanup_before_unmarshal -> cleanup_ClipScript) and unmarshals the
 // payload's replacements (union_unmarshal). Every allocation and free in
 // that chain must use context.allocator — under the test runner that is the
 // tracking allocator, so a path reverting to a forced default allocator
@@ -311,30 +311,30 @@ test_script_clip_undo_apply_roundtrip :: proc(t: ^testing.T) {
 	d := cast(^seq.PlayableDirector)draw_
 	d.enabled = true
 
-	track := _mk_track(root, .ScriptTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	track := _mk_track(root, .TrackScript, seq.Clip_View{start = 0, duration = 1})
 	clip := _first_clip_node(&tc.world, track)
-	_, sc := seq.get_comp(clip, seq.ScriptClip)
+	_, sc := seq.get_comp(clip, seq.ClipScript)
 	if sc == nil do return
-	append(&sc.scripts, seq.ScriptUnion(scripts.LogScript{enter = _own("before")}))
+	append(&sc.scripts, seq.ScriptUnion(scripts.ScriptLog{enter = _own("before")}))
 
 	// The undo record's before-image, as push_value stores it.
-	old_bytes := undo.capture_json(sc, typeid_of(seq.ScriptClip))
+	old_bytes := undo.capture_json(sc, typeid_of(seq.ClipScript))
 	testing.expect(t, old_bytes != nil, "capture should marshal the clip")
 	if old_bytes == nil do return
 	defer delete(old_bytes)
 
 	// The inspector's edit: free the old string, clone the replacement —
 	// exactly what draw_string_property does.
-	if lg, ok := &sc.scripts[0].(scripts.LogScript); ok {
+	if lg, ok := &sc.scripts[0].(scripts.ScriptLog); ok {
 		delete(lg.enter)
 		lg.enter = _own("after")
 	}
 
 	// Undo: apply the before-image over the live component. This is the call
 	// the editor crashed in.
-	testing.expect(t, undo.write_json_value(sc, typeid_of(seq.ScriptClip), old_bytes, tc.scene),
+	testing.expect(t, undo.write_json_value(sc, typeid_of(seq.ClipScript), old_bytes, tc.scene),
 		"undo apply must succeed")
-	lg2, ok2 := sc.scripts[0].(scripts.LogScript)
+	lg2, ok2 := sc.scripts[0].(scripts.ScriptLog)
 	testing.expect(t, ok2, "variant survives the apply")
 	if ok2 do testing.expect_value(t, lg2.enter, "before")
 }

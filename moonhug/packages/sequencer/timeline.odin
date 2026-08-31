@@ -20,7 +20,7 @@ import "moonhug:engine"
 // A clip as track hooks see it, materialized from a clip NODE each tick.
 // `name` borrows the node's name (markers fire it); `node` addresses the
 // clip so a hook can read its own kind component off it.
-Timeline_Clip :: struct {
+Clip_View :: struct {
 	start:    f32,
 	duration: f32,
 	ease_in:  f32,
@@ -33,12 +33,12 @@ Timeline_Clip :: struct {
 // A track as hooks see it, materialized from a track NODE each tick. Clips
 // are sorted by start. The view lives for one evaluation (temp-allocated by
 // director_tracks); `node` is where the kind component lives.
-Timeline_Track :: struct {
+Track_View :: struct {
 	kind:  engine.TypeKey, // the kind component's type key
 	name:  string,
 	muted: bool,
 	node:  engine.Transform_Handle,
-	clips: []Timeline_Clip,
+	clips: []Clip_View,
 }
 
 // --- Track registry -----------------------------------------------------------------
@@ -47,7 +47,7 @@ Timeline_Track :: struct {
 // through, the track node (read your own component off it), and the kind's
 // own state.
 Track_Ctx :: struct {
-	track:     ^Timeline_Track,
+	track:     ^Track_View,
 	owner:     engine.Transform_Handle, // the director's transform
 	state:     rawptr, // whatever Track_Desc.build returned
 	prev_time: f32,
@@ -81,7 +81,7 @@ track_crossed :: proc(ctx: ^Track_Ctx, at: f32) -> bool {
 }
 
 // Whether playback time sits inside the clip's span.
-track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Timeline_Clip) -> bool {
+track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Clip_View) -> bool {
 	return ctx.time >= c.start && ctx.time < c.start + c.duration
 }
 
@@ -96,7 +96,7 @@ track_clip_active :: proc(ctx: ^Track_Ctx, c: ^Timeline_Clip) -> bool {
 // Explicit ease_in/ease_out still apply at boundaries with no neighbour (a
 // clip fading up from nothing), and the shorter ramp wins where both exist.
 // `clips` must be sorted by start, which director_tracks guarantees.
-track_clip_weight :: proc(clips: []Timeline_Clip, index: int, t: f32) -> f32 {
+track_clip_weight :: proc(clips: []Clip_View, index: int, t: f32) -> f32 {
 	if index < 0 || index >= len(clips) do return 0
 	c := &clips[index]
 	end := c.start + c.duration
@@ -206,7 +206,7 @@ _activation_track_destroy :: proc(state: rawptr) {
 
 @(private = "file")
 _activation_track_tick :: proc(ctx: ^Track_Ctx) {
-	_, at := get_comp(ctx.track.node, ActivationTrack)
+	_, at := get_comp(ctx.track.node, TrackActivation)
 	if at == nil do return
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, at.target.handle) do return
@@ -230,7 +230,7 @@ _activation_preview_end :: proc(ctx: ^Track_Ctx) {
 	st := cast(^_Activation_State)ctx.state
 	if st == nil || !st.captured do return
 	st.captured = false
-	_, at := get_comp(ctx.track.node, ActivationTrack)
+	_, at := get_comp(ctx.track.node, TrackActivation)
 	if at == nil do return
 	w := engine.ctx_world()
 	if !engine.pool_valid(&w.transforms, at.target.handle) do return
@@ -247,7 +247,7 @@ _marker_track_tick :: proc(ctx: ^Track_Ctx) {
 	// Never from the editor preview, playing or not — marker hooks are game
 	// code (Unity does not fire signals in preview either).
 	if ctx.mode != .Play do return
-	_, mt := get_comp(ctx.track.node, MarkerTrack)
+	_, mt := get_comp(ctx.track.node, TrackMarker)
 	if mt == nil do return
 	for &c in ctx.track.clips {
 		if track_crossed(ctx, c.start) {
@@ -311,8 +311,8 @@ register_builtin_tracks :: proc() {
 	if _builtin_tracks_registered do return
 	_builtin_tracks_registered = true
 	track_register(Track_Desc{
-		track_key   = .ActivationTrack,
-		clip_key    = .ActivationClip,
+		track_key   = .TrackActivation,
+		clip_key    = .ClipActivation,
 		label       = "activation",
 		build       = _activation_track_build,
 		destroy     = _activation_track_destroy,
@@ -320,15 +320,15 @@ register_builtin_tracks :: proc() {
 		preview_end = _activation_preview_end,
 	})
 	track_register(Track_Desc{
-		track_key = .MarkerTrack,
-		clip_key  = .MarkerClip,
+		track_key = .TrackMarker,
+		clip_key  = .ClipMarker,
 		label     = "marker",
 		instant   = true,
 		tick      = _marker_track_tick,
 	})
 	track_register(Track_Desc{
-		track_key   = .ControlTrack,
-		clip_key    = .ControlClip,
+		track_key   = .TrackControl,
+		clip_key    = .ClipControl,
 		label       = "control",
 		tick        = _control_track_tick,
 		preview_end = _control_track_preview_end,

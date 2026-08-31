@@ -15,7 +15,7 @@ import "moonhug:engine"
 // needs more reads it off the world through these handles.
 Script_Ctx :: struct {
 	owner:  engine.Transform_Handle, // the director's transform
-	target: engine.Ref_Local,        // ScriptTrack.target — the track's default subject
+	target: engine.Ref_Local,        // TrackScript.target — the track's default subject
 	clip:   engine.Transform_Handle, // the clip node the script sits on
 	time:   f32,                     // director time at the call
 }

@@ -20,7 +20,7 @@ import seq "moonhug:packages/sequencer"
 // payload (the span itself is the instruction).
 @(component)
 @(typ_guid={guid = "e4302a74-3eae-4bce-93c0-b3cc8eba2661"})
-ParticlesTrack :: struct {
+TrackParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	system: engine.Ref_Local `ref:"ParticleSystem"`,
@@ -28,7 +28,7 @@ ParticlesTrack :: struct {
 
 @(component)
 @(typ_guid={guid = "8ab6c411-bcd5-4f71-8e0d-ff13b17dc52f"})
-ParticlesClip :: struct {
+ClipParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,
 }
 
@@ -38,8 +38,8 @@ particles_track_init :: proc() {
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		track_key   = .ParticlesTrack,
-		clip_key    = .ParticlesClip,
+		track_key   = .TrackParticles,
+		clip_key    = .ClipParticles,
 		label       = "particles",
 		tick        = _particles_track_tick,
 		preview_end = _particles_track_preview_end,
@@ -49,7 +49,7 @@ particles_track_init :: proc() {
 // The ParticleSystem this track drives, or nil.
 @(private = "file")
 _particles_track_system :: proc(ctx: ^seq.Track_Ctx) -> ^ParticleSystem {
-	_, pt := get_comp(ctx.track.node, ParticlesTrack)
+	_, pt := get_comp(ctx.track.node, TrackParticles)
 	if pt == nil || pt.system.handle.type_key != .ParticleSystem do return nil
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, pt.system.handle) do return nil
@@ -60,7 +60,7 @@ _particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	ps := _particles_track_system(ctx)
 	if ps == nil do return
 
-	active: ^seq.Timeline_Clip
+	active: ^seq.Clip_View
 	for &c in ctx.track.clips {
 		if seq.track_clip_active(ctx, &c) {
 			active = &c

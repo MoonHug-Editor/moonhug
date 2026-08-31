@@ -50,7 +50,7 @@ _ramp_clip :: proc(path: anim.Animation_Path, a, b: [4]f32, length: f32 = 1, wra
 
 // Build a track NODE with clip NODES under `owner` — what the window's Add
 // Track/Add Clip produce. Reuses the view struct as the clip parameter.
-_mk_track :: proc(owner: engine.Transform_Handle, kind: engine.TypeKey, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+_mk_track :: proc(owner: engine.Transform_Handle, kind: engine.TypeKey, clips: ..seq.Clip_View) -> engine.Transform_Handle {
 	desc, _ := seq.track_desc(kind)
 	node := engine.transform_new(desc.label, owner)
 	engine.transform_get_or_add_comp(node, seq.TimelineTrack)
@@ -70,7 +70,7 @@ _mk_track :: proc(owner: engine.Transform_Handle, kind: engine.TypeKey, clips: .
 
 // Point an activation track at a transform.
 _set_activation_target :: proc(node: engine.Transform_Handle, target: engine.Ref_Local) {
-	if _, at := seq.get_comp(node, seq.ActivationTrack); at != nil do at.target = target
+	if _, at := seq.get_comp(node, seq.TrackActivation); at != nil do at.target = target
 }
 
 // Set an animation clip's .anim.
@@ -79,7 +79,7 @@ _set_anim_clip :: proc(track_node: engine.Transform_Handle, index: int, guid: en
 	t := engine.pool_get(&w.transforms, engine.Handle(track_node))
 	if t == nil || index >= len(t.children) do return
 	cn := engine.Transform_Handle(t.children[index].handle)
-	if _, cr := anim.get_comp(cn, anim.AnimationClipRef); cr != nil do cr.clip = guid
+	if _, cr := anim.get_comp(cn, anim.ClipAnimation); cr != nil do cr.clip = guid
 }
 
 _marker_hits: int
@@ -116,16 +116,16 @@ test_director_playback :: proc(t: ^testing.T) {
 
 	// Timeline subtree: anim clip A [0,1), anim clip B [1,2), an activation
 	// span [0.5, 1.5) on the child, a marker at 0.5. Loops at duration 2.
-	at := _mk_track(root, .AnimationTrack,
-		seq.Timeline_Clip{start = 0, duration = 1},
-		seq.Timeline_Clip{start = 1, duration = 1},
+	at := _mk_track(root, .TrackAnimation,
+		seq.Clip_View{start = 0, duration = 1},
+		seq.Clip_View{start = 1, duration = 1},
 	)
 	_set_anim_clip(at, 0, ramp_guid)
 	_set_anim_clip(at, 1, const_guid)
-	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0.5, duration = 1})
+	act := _mk_track(root, .TrackActivation, seq.Clip_View{start = 0.5, duration = 1})
 	_set_activation_target(act, {handle = engine.Handle(child)})
-	mk := _mk_track(root, .MarkerTrack, seq.Timeline_Clip{start = 0.5, name = "hit"})
-	if _, mt := seq.get_comp(mk, seq.MarkerTrack); mt != nil do mt.target = {handle = engine.Handle(child)}
+	mk := _mk_track(root, .TrackMarker, seq.Clip_View{start = 0.5, name = "hit"})
+	if _, mt := seq.get_comp(mk, seq.TrackMarker); mt != nil do mt.target = {handle = engine.Handle(child)}
 
 	_marker_hits = 0
 	seq.timeline_marker_hook = _count_marker
@@ -175,9 +175,9 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	d.manual_start = true
 	defer seq.director_teardown(d)
 
-	at := _mk_track(root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	at := _mk_track(root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
 	_set_anim_clip(at, 0, ramp_guid)
-	_mk_track(root, .MarkerTrack, seq.Timeline_Clip{start = 0.5, name = "hit"})
+	_mk_track(root, .TrackMarker, seq.Clip_View{start = 0.5, name = "hit"})
 
 	// Manual start holds playback until director_play.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1)
@@ -225,7 +225,7 @@ test_track_target_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	testing.expect(t, ct != nil)
 	if ct == nil do return
-	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	act := _mk_track(root, .TrackActivation, seq.Clip_View{start = 0, duration = 1})
 	_set_activation_target(act, {local_id = ct.local_id, handle = engine.Handle(child)})
 	want_lid := ct.local_id
 	testing.expect(t, want_lid != 0, "the target must have a local id")
@@ -249,7 +249,7 @@ test_track_target_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	tracks := seq.director_tracks(d2)
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
-	_, at2 := seq.get_comp(tracks[0].node, seq.ActivationTrack)
+	_, at2 := seq.get_comp(tracks[0].node, seq.TrackActivation)
 	testing.expect(t, at2 != nil, "the kind component survives")
 	if at2 == nil do return
 	testing.expect_value(t, at2.target.local_id, want_lid)
@@ -280,7 +280,7 @@ test_activation_preview_restores_authored_state :: proc(t: ^testing.T) {
 	d.duration = 2
 	defer seq.director_teardown(d)
 
-	act := _mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	act := _mk_track(root, .TrackActivation, seq.Clip_View{start = 0, duration = 1})
 	_set_activation_target(act, {handle = engine.Handle(child)})
 
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
@@ -333,7 +333,7 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 
 	// Control track with a clip [1, 2); under the clip node, a nested
 	// timeline: its own director + an animation track ramping x over 1s.
-	ctrl := _mk_track(root, .ControlTrack, seq.Timeline_Clip{start = 1, duration = 1})
+	ctrl := _mk_track(root, .TrackControl, seq.Clip_View{start = 1, duration = 1})
 	clip_node: engine.Transform_Handle
 	{
 		w := engine.ctx_world()
@@ -347,7 +347,7 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 	nested.duration = 1
 	nested.manual_start = true
 	defer seq.director_teardown(nested)
-	nat := _mk_track(nested_root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	nat := _mk_track(nested_root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
 	_set_anim_clip(nat, 0, ramp_guid)
 
 	nt := engine.pool_get(&tc.world.transforms, engine.Handle(nested_root))
@@ -376,7 +376,7 @@ test_control_track_drives_nested_director :: proc(t: ^testing.T) {
 @(test)
 test_clip_weight_overlap_crossfades :: proc(t: ^testing.T) {
 	// A [0,2), B [1,3) — a 1s overlap in [1,2).
-	clips := []seq.Timeline_Clip{
+	clips := []seq.Clip_View{
 		{start = 0, duration = 2},
 		{start = 1, duration = 2},
 	}
@@ -407,13 +407,13 @@ test_clip_weight_overlap_crossfades :: proc(t: ^testing.T) {
 // the authored ease wins (the clips actually overlap that much).
 @(test)
 test_clip_weight_explicit_ease :: proc(t: ^testing.T) {
-	solo := []seq.Timeline_Clip{{start = 0, duration = 2, ease_in = 1, ease_out = 0.5}}
+	solo := []seq.Clip_View{{start = 0, duration = 2, ease_in = 1, ease_out = 0.5}}
 	testing.expect(t, abs(seq.track_clip_weight(solo, 0, 0.5) - 0.5) < 0.001, "ease_in ramps up")
 	testing.expect(t, seq.track_clip_weight(solo, 0, 1.2) == 1, "full weight between the ramps")
 	testing.expect(t, abs(seq.track_clip_weight(solo, 0, 1.75) - 0.5) < 0.001, "ease_out ramps down")
 
 	// A 1s overlap beats a 0.2s authored ease_in on the later clip.
-	pair := []seq.Timeline_Clip{
+	pair := []seq.Clip_View{
 		{start = 0, duration = 2},
 		{start = 1, duration = 2, ease_in = 0.2},
 	}
@@ -452,7 +452,7 @@ test_animation_track_target :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	defer seq.director_teardown(d)
 
-	at := _mk_track(root, .AnimationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	at := _mk_track(root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
 	_set_anim_clip(at, 0, ramp_guid)
 
 	rt := engine.pool_get(&tc.world.transforms, engine.Handle(root))
@@ -470,7 +470,7 @@ test_animation_track_target :: proc(t: ^testing.T) {
 	acomp.enabled = true
 	acomp.play_automatically = true
 	acomp.clip = ramp_guid
-	if _, atc := anim.get_comp(at, anim.AnimationTrack); atc != nil {
+	if _, atc := anim.get_comp(at, anim.TrackAnimation); atc != nil {
 		atc.target = {handle = a_owned.handle}
 	}
 	seq.director_set_time(d, 0.5)
@@ -521,7 +521,7 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 	d := cast(^seq.PlayableDirector)raw
 	d.enabled = true
 	d.duration = 2
-	_mk_track(root, .ActivationTrack, seq.Timeline_Clip{start = 0, duration = 1})
+	_mk_track(root, .TrackActivation, seq.Clip_View{start = 0, duration = 1})
 	testing.expect(t, engine.scene_save(tc.scene, tl_path), "prefab saved")
 
 	engine.asset_db_init(dir)
@@ -551,14 +551,14 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 		for _, h in engine.pool_next(&it) {
 			hh := h
 			hh.type_key = .Transform
-			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {
+			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.TrackActivation); a != nil {
 				track = engine.Transform_Handle(hh)
 			}
 		}
 	}
 	testing.expect(t, track != {}, "the instance has the activation track")
 	if track == {} do return
-	owned, act := seq.get_comp(track, seq.ActivationTrack)
+	owned, act := seq.get_comp(track, seq.TrackActivation)
 	act.target = {local_id = aT.local_id, handle = engine.Handle(actor)}
 	_, rok := engine.nested_scene_record_override_for_host(
 		host, inst, owned.local_id, "target", &act.target, typeid_of(engine.Ref_Local))
@@ -593,7 +593,7 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 		for _, h in engine.pool_next(&it) {
 			hh := h
 			hh.type_key = .Transform
-			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.ActivationTrack); a != nil {
+			if _, a := seq.get_comp(engine.Transform_Handle(hh), seq.TrackActivation); a != nil {
 				found = true
 				testing.expect(t, a.target.local_id != 0, "the host binding survived reload")
 				testing.expect(t, engine.world_pool_valid(&tc.world, a.target.handle),

@@ -265,7 +265,7 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Timeline_Clip{start = 0.5, duration = 1})
+	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
 
 	// Before the span: silent.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
@@ -323,7 +323,7 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	minted := engine.sm_local_id_get_or_mint(picker_scene, owned.handle)
 	testing.expect_value(t, minted, want_lid)
 	_mk_audio_track(root, {local_id = minted, handle = owned.handle}, {},
-		seq.Timeline_Clip{start = 0, duration = 1})
+		seq.Clip_View{start = 0, duration = 1})
 	_ = comp_owned
 
 	bytes, ok := engine.scene_serialize(tc.scene)
@@ -345,8 +345,8 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	tracks := seq.director_tracks(d2)
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
-	_, at2 := audio.get_comp(tracks[0].node, audio.AudioTrack)
-	testing.expect(t, at2 != nil, "the AudioTrack component survives")
+	_, at2 := audio.get_comp(tracks[0].node, audio.TrackAudio)
+	testing.expect(t, at2 != nil, "the TrackAudio component survives")
 	if at2 == nil do return
 	testing.expect_value(t, at2.source.local_id, want_lid)
 	testing.expect(t, engine.world_pool_valid(&tc.world, at2.source.handle),
@@ -408,7 +408,7 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Timeline_Clip{start = 0.5, duration = 1})
+	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
 
 	// The window's preview-play frame loop: step, render, per-frame restore.
 	step :: proc(d: ^seq.PlayableDirector, time: f32) {
@@ -442,17 +442,17 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 
 // Build a track NODE with clip NODES under `owner` (timeline-as-prefab).
 @(private = "file")
-_mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, asset: engine.Asset_GUID, clips: ..seq.Timeline_Clip) -> engine.Transform_Handle {
+_mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, asset: engine.Asset_GUID, clips: ..seq.Clip_View) -> engine.Transform_Handle {
 	node := engine.transform_new("audio", owner)
 	engine.transform_get_or_add_comp(node, seq.TimelineTrack)
-	_, at := engine.transform_get_or_add_comp(node, audio.AudioTrack)
+	_, at := engine.transform_get_or_add_comp(node, audio.TrackAudio)
 	at.source = target
 	for c in clips {
 		cn := engine.transform_new("clip", node)
 		_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
 		cc.start = c.start
 		cc.duration = c.duration
-		_, cr := engine.transform_get_or_add_comp(cn, audio.AudioClipRef)
+		_, cr := engine.transform_get_or_add_comp(cn, audio.ClipAudio)
 		cr.clip = asset
 	}
 	return node

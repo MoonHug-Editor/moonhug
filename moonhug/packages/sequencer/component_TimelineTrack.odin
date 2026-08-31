@@ -7,7 +7,7 @@ package sequencer
 // ordinary scene content.
 //
 // A track node carries TWO components: TimelineTrack (what every track has)
-// and its KIND component (AudioTrack, ParticlesTrack, ...), which is the
+// and its KIND component (TrackAudio, TrackParticles, ...), which is the
 // discriminator — the registry keys on its TypeKey. Kind components own
 // their own targets and options, so a `ref:` tag drives the picker and no
 // shared field has to mean different things per kind. Same split for clips:
@@ -29,7 +29,7 @@ TimelineTrack :: struct {
 }
 
 // The universal half of a clip: its span on the timeline. The kind's clip
-// component (AudioClipRef, AnimationClipRef, ...) carries the payload.
+// component (ClipAudio, ClipAnimation, ...) carries the payload.
 @(component)
 @(typ_guid={guid = "2f5aa77a-01a4-4265-80cd-1c5f136b9efd"})
 TimelineClip :: struct {

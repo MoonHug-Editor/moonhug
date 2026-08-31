@@ -39,21 +39,21 @@ packages/particles/track_particles.odin  ← "particles" track
   clip end). Zero-neutral throughout.
 - **A track node** carries TWO components: `TimelineTrack` (`muted` — what
   every track has) and its **kind component**, which IS the discriminator:
-  `AudioTrack`, `ParticlesTrack`, `AnimationTrack`, `ActivationTrack`,
-  `MarkerTrack`, `ControlTrack`. The registry keys on the kind component's
+  `TrackAudio`, `TrackParticles`, `TrackAnimation`, `TrackActivation`,
+  `TrackMarker`, `TrackControl`. The registry keys on the kind component's
   TypeKey — there is no `kind` string anywhere. The node's NAME is the track
   name; sibling order is track order.
 - **The kind component owns the track's target**, with a `ref:` tag that
-  drives the picker: `AudioTrack.source \`ref:"AudioSource"\``,
-  `ParticlesTrack.system \`ref:"ParticleSystem"\``. A kind that needs no
+  drives the picker: `TrackAudio.source \`ref:"AudioSource"\``,
+  `TrackParticles.system \`ref:"ParticleSystem"\``. A kind that needs no
   target (animation, control) simply has no field, and one wanting two
   targets just adds a second. Targets are authored in the prefab or set per
   instance as prefab overrides — overrides ARE the exposure surface, there
   is no binding table and no exposed-reference table.
 - **A clip node** likewise carries `TimelineClip` (`start`, `duration`,
   `ease_in`, `ease_out`, `speed`) plus the kind's clip component holding its
-  payload: `AudioClipRef.clip \`ext:"mp3,wav,ogg"\``,
-  `AnimationClipRef.clip \`ext:"anim"\``, and empty markers for kinds with
+  payload: `ClipAudio.clip \`ext:"mp3,wav,ogg"\``,
+  `ClipAnimation.clip \`ext:"anim"\``, and empty markers for kinds with
   no payload. The node's name is the clip name (markers fire it). Clip order
   derives from start times.
 
@@ -61,7 +61,7 @@ packages/particles/track_particles.odin  ← "particles" track
 
 `director_tracks` materializes the subtree into per-tick views (temp
 allocated, strings borrowed from the live components), so track hooks see
-the same `Timeline_Track`/`Timeline_Clip` shapes as before. A structural
+the same `Track_View`/`Clip_View` shapes as before. A structural
 FINGERPRINT (node handles + kinds + clip assets) rebuilds track state when
 the tree changes — live edits need no invalidation calls, and field edits
 (times, targets) apply on the next evaluation because the components ARE the
@@ -149,7 +149,7 @@ Feature-package kinds:
   Scrub is silent, preview-play sounds. Author track-driven sources with
   `play_on_awake` off.
 - `animation`: drives an ANIMATION COMPONENT (Unity's model — the timeline
-  takes over the Animator). `AnimationTrack.target` names which one; unset,
+  takes over the Animator). `TrackAnimation.target` names which one; unset,
   it finds one on the director, and poses the director's transform directly
   when there is none. The driven component's own playback STANDS DOWN
   (`Animation.timeline_driven`) so the two never write the same transforms
@@ -173,9 +173,9 @@ scripts are structurally identical:
 
 - `sequencer/core` — the vocabulary floor: `Script_Ctx`. Variant packages
   import this, never the sequencer.
-- `sequencer/scripts` — the built-ins: `SetActiveScript` (the target is
+- `sequencer/scripts` — the built-ins: `ScriptSetActive` (the target is
   active for the span: enter sets `active`, exit sets it back) and
-  `LogScript` (enter/tick/exit messages to the log, empty skips the phase —
+  `ScriptLog` (enter/tick/exit messages to the log, empty skips the phase —
   the "did my timeline get here" probe).
 - `sequencer/script_union.odin` — the union, the lifecycle dispatch, and the
   serialization registration. Hand-written today; the file is the shape a

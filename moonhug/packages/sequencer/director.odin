@@ -53,9 +53,9 @@ _director_is_control_driven :: proc(d: ^PlayableDirector) -> bool {
 // Materialize the director's subtree into per-tick track views: each child
 // node carrying a TimelineTrack, its clip-node children sorted by start.
 // Strings borrow the live components; the slice lives on `allocator`.
-director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocator) -> []Timeline_Track {
+director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocator) -> []Track_View {
 	w := engine.ctx_world()
-	out := make([dynamic]Timeline_Track, allocator)
+	out := make([dynamic]Track_View, allocator)
 	owner := engine.pool_get(&w.transforms, engine.Handle(d.owner))
 	if owner == nil do return out[:]
 	for child in owner.children {
@@ -74,20 +74,20 @@ director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocato
 			}
 		}
 		if kind == engine.INVALID_TYPE_KEY do continue
-		tv := Timeline_Track{
+		tv := Track_View{
 			kind  = kind,
 			name  = t.name,
 			muted = tc.muted,
 			node  = tH,
 		}
-		clips := make([dynamic]Timeline_Clip, allocator)
+		clips := make([dynamic]Clip_View, allocator)
 		for cn in t.children {
 			cH := engine.Transform_Handle(cn.handle)
 			ct := engine.pool_get(&w.transforms, cn.handle)
 			if ct == nil do continue
 			_, cc := get_comp(cH, TimelineClip)
 			if cc == nil do continue
-			append(&clips, Timeline_Clip{
+			append(&clips, Clip_View{
 				start    = cc.start,
 				duration = cc.duration,
 				ease_in  = cc.ease_in,
@@ -97,7 +97,7 @@ director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocato
 				node     = cH,
 			})
 		}
-		slice.sort_by(clips[:], proc(a, b: Timeline_Clip) -> bool { return a.start < b.start })
+		slice.sort_by(clips[:], proc(a, b: Clip_View) -> bool { return a.start < b.start })
 		tv.clips = clips[:]
 		append(&out, tv)
 	}
@@ -105,7 +105,7 @@ director_tracks :: proc(d: ^PlayableDirector, allocator := context.temp_allocato
 }
 
 // The playable length: authored on the director, or the last clip end.
-director_duration :: proc(d: ^PlayableDirector, tracks: []Timeline_Track) -> f32 {
+director_duration :: proc(d: ^PlayableDirector, tracks: []Track_View) -> f32 {
 	if d.duration > 0 do return d.duration
 	dur := f32(0)
 	for &tv in tracks {
@@ -119,7 +119,7 @@ director_duration :: proc(d: ^PlayableDirector, tracks: []Timeline_Track) -> f32
 // edits (window or hierarchy alike) rebuild without explicit invalidation.
 // Field-only edits (times, eases, targets) keep the built state.
 @(private = "file")
-_director_tree_sig :: proc(tracks: []Timeline_Track) -> u64 {
+_director_tree_sig :: proc(tracks: []Track_View) -> u64 {
 	sig := u64(0xcbf29ce484222325)
 	mix :: proc(sig: ^u64, v: u64) {
 		sig^ = (sig^ ~ v) * 0x100000001b3
@@ -252,7 +252,7 @@ director_teardown :: proc(d: ^PlayableDirector) {
 }
 
 @(private = "file")
-_director_ensure_built :: proc(d: ^PlayableDirector, tracks: []Timeline_Track) {
+_director_ensure_built :: proc(d: ^PlayableDirector, tracks: []Track_View) {
 	sig := _director_tree_sig(tracks)
 	if d.built && sig == d.tree_sig do return
 	if d.built do director_teardown(d)
@@ -272,8 +272,8 @@ _director_ensure_built :: proc(d: ^PlayableDirector, tracks: []Timeline_Track) {
 @(private = "file")
 _director_ctx :: proc(
 	d: ^PlayableDirector,
-	tracks: []Timeline_Track,
-	tv: ^Timeline_Track,
+	tracks: []Track_View,
+	tv: ^Track_View,
 	ti: i32,
 	mode: Track_Mode,
 	wrapped := false,
@@ -294,7 +294,7 @@ _director_ctx :: proc(
 }
 
 @(private = "file")
-_director_evaluate :: proc(d: ^PlayableDirector, tracks: []Timeline_Track, wrapped: bool, mode: Track_Mode) {
+_director_evaluate :: proc(d: ^PlayableDirector, tracks: []Track_View, wrapped: bool, mode: Track_Mode) {
 	for &tv, ti in tracks {
 		if tv.muted do continue
 		desc, has := track_desc(tv.kind)

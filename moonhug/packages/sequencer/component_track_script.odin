@@ -14,7 +14,7 @@ import core "moonhug:packages/sequencer/core"
 
 @(component)
 @(typ_guid={guid = "06f39202-753c-4bc9-a7c1-cfc876559f72"})
-ScriptTrack :: struct {
+TrackScript :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	// The track's default subject, handed to every script as ctx.target. A
@@ -24,17 +24,17 @@ ScriptTrack :: struct {
 
 @(component)
 @(typ_guid={guid = "bd5194a0-ff1c-4c4a-97de-512e26b7773b"})
-ScriptClip :: struct {
+ClipScript :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	scripts: [dynamic]ScriptUnion,
 }
 
-on_destroy_ScriptClip :: proc(c: ^ScriptClip) {
-	cleanup_ScriptClip(c)
+on_destroy_ClipScript :: proc(c: ^ClipScript) {
+	cleanup_ClipScript(c)
 }
 
-cleanup_ScriptClip :: proc(c: ^ScriptClip) {
+cleanup_ClipScript :: proc(c: ^ClipScript) {
 	for &s in c.scripts do script_destroy(&s)
 	delete(c.scripts)
 	engine.comp_zero(c)
@@ -45,7 +45,7 @@ _script_track_tick :: proc(ctx: ^Track_Ctx) {
 	// Play only. Never Scrub, never Preview_Play — a script is a side
 	// effect, and posing the timeline must not perform it.
 	if ctx.mode != .Play do return
-	_, st := get_comp(ctx.track.node, ScriptTrack)
+	_, st := get_comp(ctx.track.node, TrackScript)
 	if st == nil do return
 
 	sctx := core.Script_Ctx{
@@ -54,7 +54,7 @@ _script_track_tick :: proc(ctx: ^Track_Ctx) {
 		time   = ctx.time,
 	}
 	for &c in ctx.track.clips {
-		_, sc := get_comp(c.node, ScriptClip)
+		_, sc := get_comp(c.node, ClipScript)
 		if sc == nil do continue
 		sctx.clip = c.node
 
@@ -91,8 +91,8 @@ _script_track_tick :: proc(ctx: ^Track_Ctx) {
 // Called from register_builtin_tracks (timeline.odin).
 _script_track_desc :: proc() -> Track_Desc {
 	return Track_Desc{
-		track_key = .ScriptTrack,
-		clip_key  = .ScriptClip,
+		track_key = .TrackScript,
+		clip_key  = .ClipScript,
 		label     = "script",
 		tick      = _script_track_tick,
 	}

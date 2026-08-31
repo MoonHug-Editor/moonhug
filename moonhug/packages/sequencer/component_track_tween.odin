@@ -26,7 +26,7 @@ import core "moonhug:packages/sequencer/core"
 
 @(component)
 @(typ_guid={guid = "e45dd366-bc5b-4bb8-81e7-67b339a55680"})
-TweenTrack :: struct {
+TrackTween :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	// The track's default subject, handed to every tween as ctx.target. A
@@ -36,17 +36,17 @@ TweenTrack :: struct {
 
 @(component)
 @(typ_guid={guid = "0f1d4bcc-cf05-4958-8d73-775b9e28a18e"})
-TweenClip :: struct {
+ClipTween :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	tweens: [dynamic]TweenUnion,
 }
 
-on_destroy_TweenClip :: proc(c: ^TweenClip) {
-	cleanup_TweenClip(c)
+on_destroy_ClipTween :: proc(c: ^ClipTween) {
+	cleanup_ClipTween(c)
 }
 
-cleanup_TweenClip :: proc(c: ^TweenClip) {
+cleanup_ClipTween :: proc(c: ^ClipTween) {
 	for &tw in c.tweens do tween_destroy(&tw)
 	delete(c.tweens)
 	engine.comp_zero(c)
@@ -55,7 +55,7 @@ cleanup_TweenClip :: proc(c: ^TweenClip) {
 // Clip-normalized time. A zero-duration clip is a step: 0 before its start,
 // 1 from it on (the div-by-zero case, not a special semantics).
 @(private = "file")
-_tween_clip_t :: proc(c: ^Timeline_Clip, time: f32) -> f32 {
+_tween_clip_t :: proc(c: ^Clip_View, time: f32) -> f32 {
 	if c.duration <= 0 do return time >= c.start ? 1 : 0
 	return clamp((time - c.start) / c.duration, 0, 1)
 }
@@ -80,7 +80,7 @@ _tween_track_destroy :: proc(state: rawptr) {
 
 @(private = "file")
 _tween_track_tick :: proc(ctx: ^Track_Ctx) {
-	_, tt := get_comp(ctx.track.node, TweenTrack)
+	_, tt := get_comp(ctx.track.node, TrackTween)
 	if tt == nil do return
 	tctx := core.Tween_Ctx{owner = ctx.owner, target = tt.target}
 
@@ -95,7 +95,7 @@ _tween_track_tick :: proc(ctx: ^Track_Ctx) {
 	}
 
 	for &c in ctx.track.clips {
-		_, tc := get_comp(c.node, TweenClip)
+		_, tc := get_comp(c.node, ClipTween)
 		if tc == nil do continue
 		tctx.clip = c.node
 		t := _tween_clip_t(&c, ctx.time)
@@ -149,12 +149,12 @@ _tween_track_tick :: proc(ctx: ^Track_Ctx) {
 // would restore to mid-timeline instead of the authored state.
 @(private = "file")
 _tween_track_preview_end :: proc(ctx: ^Track_Ctx) {
-	_, tt := get_comp(ctx.track.node, TweenTrack)
+	_, tt := get_comp(ctx.track.node, TrackTween)
 	if tt == nil do return
 	tctx := core.Tween_Ctx{owner = ctx.owner, target = tt.target}
 
 	#reverse for &c in ctx.track.clips {
-		_, tc := get_comp(c.node, TweenClip)
+		_, tc := get_comp(c.node, ClipTween)
 		if tc == nil do continue
 		tctx.clip = c.node
 		#reverse for &tw in tc.tweens {
@@ -169,8 +169,8 @@ _tween_track_preview_end :: proc(ctx: ^Track_Ctx) {
 // Called from register_builtin_tracks (timeline.odin).
 _tween_track_desc :: proc() -> Track_Desc {
 	return Track_Desc{
-		track_key   = .TweenTrack,
-		clip_key    = .TweenClip,
+		track_key   = .TrackTween,
+		clip_key    = .ClipTween,
 		label       = "tween",
 		build       = _tween_track_build,
 		destroy     = _tween_track_destroy,

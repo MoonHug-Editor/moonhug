@@ -20,7 +20,7 @@ import seq "moonhug:packages/sequencer"
 // object those clips play on.
 @(component)
 @(typ_guid={guid = "89aaf6a3-5c2e-4af3-8893-81833e7f79b9"})
-AnimationTrack :: struct {
+TrackAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	// The Animation component this track drives — the object the clips play
@@ -32,7 +32,7 @@ AnimationTrack :: struct {
 
 @(component)
 @(typ_guid={guid = "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d"})
-AnimationClipRef :: struct {
+ClipAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	clip: engine.Asset_GUID `ext:"anim"`,
@@ -40,8 +40,8 @@ AnimationClipRef :: struct {
 
 // The .anim a timeline clip plays, or the empty guid.
 @(private = "file")
-_anim_clip_asset :: proc(c: ^seq.Timeline_Clip) -> engine.Asset_GUID {
-	if _, cr := get_comp(c.node, AnimationClipRef); cr != nil do return cr.clip
+_anim_clip_asset :: proc(c: ^seq.Clip_View) -> engine.Asset_GUID {
+	if _, cr := get_comp(c.node, ClipAnimation); cr != nil do return cr.clip
 	return {}
 }
 
@@ -51,8 +51,8 @@ animation_track_init :: proc() {
 	if done do return
 	done = true
 	seq.track_register(seq.Track_Desc{
-		track_key   = .AnimationTrack,
-		clip_key    = .AnimationClipRef,
+		track_key   = .TrackAnimation,
+		clip_key    = .ClipAnimation,
 		label       = "animation",
 		build       = _animation_track_build,
 		destroy     = _animation_track_destroy,
@@ -78,7 +78,7 @@ _Anim_Track :: struct {
 @(private = "file")
 _animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^Animation {
 	w := engine.ctx_world()
-	if _, at := get_comp(ctx.track.node, AnimationTrack); at != nil {
+	if _, at := get_comp(ctx.track.node, TrackAnimation); at != nil {
 		if engine.world_pool_valid(w, at.target.handle) && at.target.handle.type_key == .Animation {
 			return cast(^Animation)engine.world_pool_get(w, at.target.handle)
 		}

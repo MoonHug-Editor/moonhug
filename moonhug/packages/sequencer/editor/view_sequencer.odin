@@ -153,13 +153,13 @@ _sq_field_undo :: proc(comp: engine.Handle, label: string, changed: bool) {
 
 // The track/clip components behind a view row.
 @(private = "file")
-_sq_track_comp :: proc(tv: ^seq.Timeline_Track) -> (engine.Handle, ^seq.TimelineTrack) {
+_sq_track_comp :: proc(tv: ^seq.Track_View) -> (engine.Handle, ^seq.TimelineTrack) {
 	owned, tc := seq.get_comp(tv.node, seq.TimelineTrack)
 	return owned.handle, tc
 }
 
 @(private = "file")
-_sq_clip_comp :: proc(c: ^seq.Timeline_Clip) -> (engine.Handle, ^seq.TimelineClip) {
+_sq_clip_comp :: proc(c: ^seq.Clip_View) -> (engine.Handle, ^seq.TimelineClip) {
 	owned, cc := seq.get_comp(c.node, seq.TimelineClip)
 	return owned.handle, cc
 }
@@ -167,7 +167,7 @@ _sq_clip_comp :: proc(c: ^seq.Timeline_Clip) -> (engine.Handle, ^seq.TimelineCli
 // Adds a clip NODE at `at` seconds and selects it — the + button, the row's
 // context menu and double-click all land here.
 @(private = "file")
-_sq_add_clip :: proc(tv: ^seq.Timeline_Track, ti: int, at: f32) {
+_sq_add_clip :: proc(tv: ^seq.Track_View, ti: int, at: f32) {
 	desc, has := seq.track_desc(tv.kind)
 	instant := has && desc.instant
 	node := engine.transform_new(instant ? desc.label : "clip", tv.node)
@@ -186,13 +186,13 @@ _sq_add_clip :: proc(tv: ^seq.Timeline_Track, ti: int, at: f32) {
 }
 
 @(private = "file")
-_sq_delete_clip :: proc(c: ^seq.Timeline_Clip) {
+_sq_delete_clip :: proc(c: ^seq.Clip_View) {
 	undo.record_delete(c.node)
 	_sq.sel_clip = -1
 }
 
 @(private = "file")
-_sq_duplicate_clip :: proc(tv: ^seq.Timeline_Track, c: ^seq.Timeline_Clip) {
+_sq_duplicate_clip :: proc(tv: ^seq.Track_View, c: ^seq.Clip_View) {
 	g := undo.group_begin("Duplicate Clip")
 	defer undo.group_end(&g)
 	dup := engine.scene_duplicate_subtree(c.node)
@@ -660,7 +660,7 @@ sequencer_window_draw :: proc() {
 // The selected clip's properties, stacked vertically like the object
 // inspector — the sequencer's own inspector pane.
 @(private = "file")
-_sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
+_sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 	if _sq.sel_track < 0 || _sq.sel_track >= len(tracks) {
 		im.TextDisabled("No selection.")
 		im.TextWrapped("Click a track row or clip. Double-click empty row space to add a clip.")
@@ -737,7 +737,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 		// tags filter the asset picker without the window naming any kind.
 		if desc, has := seq.track_desc(tv.kind); has {
 			_sq_draw_kind_component(c.node, desc.clip_key, "Clip Payload")
-			if desc.track_key == .ControlTrack {
+			if desc.track_key == .TrackControl {
 				im.TextWrapped("Nest a timeline prefab under this clip's node — the clip plays its director at the clip-local time.")
 			}
 		}
@@ -751,12 +751,12 @@ _sq_inspector_pane :: proc(tracks: []seq.Timeline_Track) {
 @(private = "file")
 _sq_track_color :: proc(kind: engine.TypeKey) -> im.Vec4 {
 	#partial switch kind {
-	case .AnimationTrack:  return {0.30, 0.50, 0.80, 0.9}
-	case .AudioTrack:      return {0.75, 0.55, 0.25, 0.9}
-	case .ActivationTrack: return {0.40, 0.70, 0.40, 0.9}
-	case .ParticlesTrack:  return {0.65, 0.40, 0.75, 0.9}
-	case .MarkerTrack:     return {0.80, 0.35, 0.35, 0.9}
-	case .ControlTrack:    return {0.35, 0.65, 0.70, 0.9}
+	case .TrackAnimation:  return {0.30, 0.50, 0.80, 0.9}
+	case .TrackAudio:      return {0.75, 0.55, 0.25, 0.9}
+	case .TrackActivation: return {0.40, 0.70, 0.40, 0.9}
+	case .TrackParticles:  return {0.65, 0.40, 0.75, 0.9}
+	case .TrackMarker:     return {0.80, 0.35, 0.35, 0.9}
+	case .TrackControl:    return {0.35, 0.65, 0.70, 0.9}
 	}
 	return {0.5, 0.5, 0.5, 0.9}
 }

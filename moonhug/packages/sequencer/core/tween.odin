@@ -38,6 +38,6 @@ Clip_Tween :: struct {
 // reads it off the world through these handles.
 Tween_Ctx :: struct {
 	owner:  engine.Transform_Handle, // the director's transform
-	target: engine.Ref_Local,        // TweenTrack.target — the track's default subject
+	target: engine.Ref_Local,        // TrackTween.target — the track's default subject
 	clip:   engine.Transform_Handle, // the clip node the tween sits on
 }

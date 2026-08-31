@@ -36,12 +36,12 @@ _tween_stage :: proc(tc: ^common.TestCtx, wrap: seq.Timeline_Wrap) -> (d: ^seq.P
 	d.wrap = wrap
 	d.duration = 2
 
-	track := _mk_track(root, .TweenTrack, seq.Timeline_Clip{start = 0.5, duration = 1})
-	if _, tt := seq.get_comp(track, seq.TweenTrack); tt != nil {
+	track := _mk_track(root, .TrackTween, seq.Clip_View{start = 0.5, duration = 1})
+	if _, tt := seq.get_comp(track, seq.TrackTween); tt != nil {
 		tt.target = {local_id = victim.local_id, handle = engine.Handle(vH)}
 	}
 	clip := _first_clip_node(&tc.world, track)
-	_, tclip := seq.get_comp(clip, seq.TweenClip)
+	_, tclip := seq.get_comp(clip, seq.ClipTween)
 	if tclip == nil do return
 	append(&tclip.tweens, seq.TweenUnion(tweens.TweenMoveLocalTo{to = {10, 0, 0}}))
 	clip_tweens = &tclip.tweens
@@ -214,14 +214,14 @@ test_tween_clip_serialize_roundtrip :: proc(t: ^testing.T) {
 	tracks := seq.director_tracks(d2)
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
-	_, tt2 := seq.get_comp(tracks[0].node, seq.TweenTrack)
+	_, tt2 := seq.get_comp(tracks[0].node, seq.TrackTween)
 	testing.expect(t, tt2 != nil)
 	if tt2 != nil {
 		testing.expect_value(t, tt2.target.local_id, want_lid)
 		testing.expect(t, engine.world_pool_valid(&tc.world, tt2.target.handle),
 			"the track target must re-resolve after restore")
 	}
-	_, tc2 := seq.get_comp(tracks[0].clips[0].node, seq.TweenClip)
+	_, tc2 := seq.get_comp(tracks[0].clips[0].node, seq.ClipTween)
 	testing.expect(t, tc2 != nil)
 	if tc2 == nil do return
 	testing.expect_value(t, len(tc2.tweens), 1)

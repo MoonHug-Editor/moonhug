@@ -25,8 +25,8 @@ import core "moonhug:packages/sequencer/core"
 import scripts "moonhug:packages/sequencer/scripts"
 
 ScriptUnion :: union {
-	scripts.SetActiveScript,
-	scripts.LogScript,
+	scripts.ScriptSetActive,
+	scripts.ScriptLog,
 }
 
 // The lifecycle dispatchers. Exhaustive switches are the point: adding a
@@ -35,38 +35,38 @@ ScriptUnion :: union {
 // an empty case.
 script_enter :: proc(u: ^ScriptUnion, ctx: ^core.Script_Ctx) {
 	switch &v in u {
-	case scripts.SetActiveScript:
-		scripts.enter_SetActiveScript(&v, ctx)
-	case scripts.LogScript:
-		scripts.enter_LogScript(&v, ctx)
+	case scripts.ScriptSetActive:
+		scripts.enter_ScriptSetActive(&v, ctx)
+	case scripts.ScriptLog:
+		scripts.enter_ScriptLog(&v, ctx)
 	}
 }
 
 script_tick :: proc(u: ^ScriptUnion, ctx: ^core.Script_Ctx) {
 	switch &v in u {
-	case scripts.SetActiveScript:
+	case scripts.ScriptSetActive:
 		// no tick proc
-	case scripts.LogScript:
-		scripts.tick_LogScript(&v, ctx)
+	case scripts.ScriptLog:
+		scripts.tick_ScriptLog(&v, ctx)
 	}
 }
 
 script_exit :: proc(u: ^ScriptUnion, ctx: ^core.Script_Ctx) {
 	switch &v in u {
-	case scripts.SetActiveScript:
-		scripts.exit_SetActiveScript(&v, ctx)
-	case scripts.LogScript:
-		scripts.exit_LogScript(&v, ctx)
+	case scripts.ScriptSetActive:
+		scripts.exit_ScriptSetActive(&v, ctx)
+	case scripts.ScriptLog:
+		scripts.exit_ScriptLog(&v, ctx)
 	}
 }
 
 // Frees whatever heap the active variant owns and clears the union.
 script_destroy :: proc(u: ^ScriptUnion) {
 	switch &v in u {
-	case scripts.SetActiveScript:
+	case scripts.ScriptSetActive:
 		// no heap
-	case scripts.LogScript:
-		scripts.destroy_LogScript(&v)
+	case scripts.ScriptLog:
+		scripts.destroy_ScriptLog(&v)
 	}
 	u^ = nil
 }
