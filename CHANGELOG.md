@@ -1,3 +1,9 @@
+## [0.83.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.83.0...v0.83.1) (2026-09-01)
+
+### Bug Fixes
+
+* no_nil unions ([2d9abe6](https://github.com/MoonHug-Editor/moonhug/commit/2d9abe69e4eb3ac8cf8a365596cc2ece941680e5))
+
 ## [0.83.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.82.1...v0.83.0) (2026-08-31)
 
 ### Features
