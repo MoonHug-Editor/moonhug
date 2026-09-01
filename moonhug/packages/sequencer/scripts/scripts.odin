@@ -15,6 +15,11 @@ import "moonhug:engine"
 import "moonhug:engine/log"
 import core "moonhug:packages/sequencer/core"
 
+@(typ_guid={guid = "32417493-2d60-4e02-9551-8a28a9d17c8a"})
+ScriptNone :: struct {
+	using base: core.Clip_Script `inline:""`,
+}
+
 // The target transform is active for the clip's span: enter sets `active`,
 // exit sets it back. The scripted form of the activation track — use it when
 // activation is one step among several.

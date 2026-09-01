@@ -30,6 +30,11 @@ _subject :: proc(own: engine.Ref_Local, ctx: ^core.Tween_Ctx) -> ^engine.Transfo
 	return engine.pool_get(&w.transforms, h)
 }
 
+@(typ_guid={guid = "9c405478-1d6d-4b40-b90f-0b13a65dd8b9"})
+TweenNone :: struct {
+	using base: core.Clip_Tween `inline:""`,
+}
+
 // Local position from an EXPLICIT pair — fully stateless, nothing captured.
 @(typ_guid={guid = "705f0b28-2818-41e7-938c-9404ad1fe238"})
 TweenMoveLocalFromTo :: struct {

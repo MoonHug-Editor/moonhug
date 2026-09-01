@@ -18,6 +18,9 @@ import "moonhug:prebuild/gen_core"
 import db "moonhug:prebuild/gen_db"
 import "moonhug:prebuild/gen_facts"
 
+// The inert zero variant, sorted first into the #no_nil union.
+_TWEEN_NONE :: "TweenNone"
+
 Tween_GenComp :: struct {
 	has_evaluate: bool,
 	has_destroy:  bool,
@@ -77,7 +80,13 @@ tween_generate :: proc(w: ^db.World) -> bool {
 			gen       = db.get(tweens, entity)^,
 		})
 	}
+	// The zero variant sorts FIRST — #no_nil makes variant order semantic, and
+	// TweenNone must be the zero value so a freshly added element is inert.
+	// Alphabetical order alone does not do it (TweenFadeTo precedes it).
 	slice.sort_by(rows[:], proc(a, b: _Tween_Row) -> bool {
+		a_none := a.type_name == _TWEEN_NONE
+		b_none := b.type_name == _TWEEN_NONE
+		if a_none != b_none do return a_none
 		if a.type_name != b.type_name do return a.type_name < b.type_name
 		return a.pkg_path < b.pkg_path
 	})
@@ -106,7 +115,14 @@ tween_generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "// a package importing moonhug:packages/sequencer/core and it joins the\n")
 	strings.write_string(&b, "// union on the next prebuild.\n\n")
 
-	strings.write_string(&b, "TweenUnion :: union {\n")
+	// #no_nil, with TweenNone first so the zero value is inert: a nil union
+	// marshals to bare `null`, which the generic union serializers cannot
+	// read back — the owning component then fails to parse entirely. The
+	// zero variant must also CARRY A GUID (guid-keyed marshaling panics on a
+	// type without @(typ_guid)), which is why the shared base cannot serve.
+	// TweenNone sorts first among the variants by name, so no special-casing
+	// is needed beyond relying on that.
+	strings.write_string(&b, "TweenUnion :: union #no_nil {\n")
 	for e in rows do fmt.sbprintf(&b, "\t%s.%s,\n", e.pkg_name, e.type_name)
 	strings.write_string(&b, "}\n\n")
 
@@ -147,7 +163,8 @@ tween_generate :: proc(w: ^db.World) -> bool {
 		}
 		strings.write_string(&b, "\t}\n")
 	}
-	strings.write_string(&b, "\tu^ = nil\n")
+	// #no_nil has no nil state: reset to the zero variant instead.
+	strings.write_string(&b, "\tu^ = {}\n")
 	strings.write_string(&b, "}\n\n")
 
 	strings.write_string(&b, "@(phase={key=SerializationInit, order=2})\n")

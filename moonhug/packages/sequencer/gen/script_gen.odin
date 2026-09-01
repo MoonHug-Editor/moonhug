@@ -26,6 +26,9 @@ import "moonhug:prebuild/gen_facts"
 
 // Which lifecycle procs a script variant declares. The type name lives on the
 // entity's DeclInfo. Public + registry-owned so any generator may query it.
+// The inert zero variant, sorted first into the #no_nil union.
+_SCRIPT_NONE :: "ScriptNone"
+
 Script_GenComp :: struct {
 	has_enter:   bool,
 	has_tick:    bool,
@@ -102,7 +105,11 @@ script_generate :: proc(w: ^db.World) -> bool {
 			gen       = db.get(scripts, entity)^,
 		})
 	}
+	// The zero variant sorts FIRST — see tween_gen.
 	slice.sort_by(rows[:], proc(a, b: _Script_Row) -> bool {
+		a_none := a.type_name == _SCRIPT_NONE
+		b_none := b.type_name == _SCRIPT_NONE
+		if a_none != b_none do return a_none
 		if a.type_name != b.type_name do return a.type_name < b.type_name
 		return a.pkg_path < b.pkg_path
 	})
@@ -121,7 +128,10 @@ script_generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "// package importing moonhug:packages/sequencer/core and it joins the union\n")
 	strings.write_string(&b, "// on the next prebuild.\n\n")
 
-	strings.write_string(&b, "ScriptUnion :: union {\n")
+	// #no_nil, with ScriptNone first so the zero value is inert — see
+	// tween_gen for why the zero variant must be a real guid-carrying type
+	// rather than the shared base. ScriptNone sorts first by name.
+	strings.write_string(&b, "ScriptUnion :: union #no_nil {\n")
 	for e in rows do fmt.sbprintf(&b, "\t%s.%s,\n", e.pkg_name, e.type_name)
 	strings.write_string(&b, "}\n\n")
 
@@ -143,7 +153,8 @@ script_generate :: proc(w: ^db.World) -> bool {
 		}
 		strings.write_string(&b, "\t}\n")
 	}
-	strings.write_string(&b, "\tu^ = nil\n")
+	// #no_nil has no nil state: reset to the zero variant instead.
+	strings.write_string(&b, "\tu^ = {}\n")
 	strings.write_string(&b, "}\n\n")
 
 	// Guid-keyed union persistence + the union's pointer type for undo

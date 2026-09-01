@@ -67,6 +67,18 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     if parse_err != nil do return parse_err
     defer json.destroy_value(obj_val)
 
+    // A nil union marshals to `null` (see union_marshal), so read it back as
+    // nil rather than failing. Every union serialized through here should be
+    // #no_nil — a nilable one whose value is nil would otherwise fail to
+    // parse, and the loader preserves the whole OWNING COMPONENT verbatim as
+    // an unknown component: the object reads "Missing Component" and its
+    // fields vanish, because one union had no variant set. Prefer an inert
+    // first variant (TweenNone/ScriptNone) to nil; this branch is the guard.
+    if _, is_null := obj_val.(json.Null); is_null {
+        reflect.set_union_variant_typeid(v, nil)
+        return nil
+    }
+
     root, ok := obj_val.(json.Object)
     if !ok do return json.Unmarshal_Data_Error.Invalid_Data
 

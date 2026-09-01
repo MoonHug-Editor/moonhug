@@ -188,6 +188,16 @@ carries the variant's type guid instead. `Ref_Local` fields inside a variant
 rebind on load like any component field — the resolve walk descends into
 unions.
 
+Both unions are `#no_nil` with an inert `TweenNone` / `ScriptNone` sorted
+FIRST, so the zero value — what a freshly added list element holds before a
+variant is picked — does nothing and still marshals as a guid-tagged object.
+A nilable union writes bare `null`, which the marshalers do not read back:
+the whole owning component then fails to parse and the loader preserves it
+verbatim as an unknown component, so the object shows "Missing Component"
+and its list disappears. The zero variant also needs its own `@(typ_guid)` —
+guid-keyed marshaling panics on a type without one, which is why the shared
+base cannot serve as the zero value.
+
 ## Tweens
 
 A clip tween is a `@(typ_guid)` struct embedding `core.Clip_Tween` plus one
