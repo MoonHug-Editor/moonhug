@@ -1,3 +1,10 @@
+## [0.84.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.83.1...v0.84.0) (2026-09-02)
+
+### Features
+
+* audio mix fade in timeline ([f4c759f](https://github.com/MoonHug-Editor/moonhug/commit/f4c759f86a6d7ccfc97554fa5653bd88cbb59760))
+* undo API unification and cleanup ([8edfe6e](https://github.com/MoonHug-Editor/moonhug/commit/8edfe6eeb7a01866d4bb5baaa2bbc10cb70e3ddf))
+
 ## [0.83.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.83.0...v0.83.1) (2026-09-01)
 
 ### Bug Fixes
