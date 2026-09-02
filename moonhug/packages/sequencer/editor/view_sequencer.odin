@@ -34,8 +34,14 @@ import "moonhug:editor/preview"
 // Material icon codepoints, declared locally like the inspector package does
 // — editor/material_icons.odin lives in the editor ROOT, which packages do
 // not import.
-@(private = "file") _ICON_VOLUME_UP :: "\ue050"  // volume_up
-@(private = "file") _ICON_VOLUME_OFF :: "\ue04f" // volume_off
+@(private = "file") _ICON_VOLUME_UP :: "\ue050"     // volume_up
+@(private = "file") _ICON_VOLUME_OFF :: "\ue04f"    // volume_off
+@(private = "file") _ICON_SKIP_PREVIOUS :: "\ue045" // skip_previous — to start
+@(private = "file") _ICON_SKIP_NEXT :: "\ue044"     // skip_next — to end
+@(private = "file") _ICON_STEP_BACK :: "\ue5cb"     // chevron_left — one frame back
+@(private = "file") _ICON_STEP_FWD :: "\ue5cc"      // chevron_right — one frame forward
+@(private = "file") _ICON_PLAY :: "\ue037"          // play_arrow
+@(private = "file") _ICON_PAUSE :: "\ue034"         // pause
 
 _SQ_TAIL_S :: f32(2) // canvas room past the timeline end, seconds
 _SQ_ROW_H :: f32(26)
@@ -325,16 +331,35 @@ sequencer_window_draw :: proc() {
 		if !_sq.preview do _sq.playing = false
 	}
 	if playing_mode do im.SetItemTooltip("Play mode drives the director")
-	im.SameLine()
-	if im.SmallButton("|<") {
-		_sq.time = 0
+	// Transport: to start, one frame back, play/pause, one frame forward, to
+	// end. A frame is the engine's fixed tick (fixed_dt), the same step play
+	// mode takes, so stepping lands on the frames the runtime will hit. Every
+	// jump or step pauses and turns the preview on — the point of moving the
+	// playhead is to see it.
+	frame := engine.fixed_dt()
+	jump :: proc(to: f32) {
+		_sq.time = to
+		_sq.playing = false
 		_sq.preview = true
 	}
 	im.SameLine()
-	if im.SmallButton(_sq.playing ? "Pause" : "Play") {
+	if im.SmallButton(_ICON_SKIP_PREVIOUS) do jump(0)
+	im.SetItemTooltip("To Start")
+	im.SameLine()
+	if im.SmallButton(_ICON_STEP_BACK) do jump(max(_sq.time - frame, 0))
+	im.SetItemTooltip("Frame Backward")
+	im.SameLine()
+	if im.SmallButton(_sq.playing ? _ICON_PAUSE : _ICON_PLAY) {
 		_sq.playing = !_sq.playing
 		if _sq.playing do _sq.preview = true
 	}
+	im.SetItemTooltip(_sq.playing ? "Pause" : "Play")
+	im.SameLine()
+	if im.SmallButton(_ICON_STEP_FWD) do jump(min(_sq.time + frame, dur))
+	im.SetItemTooltip("Frame Forward")
+	im.SameLine()
+	if im.SmallButton(_ICON_SKIP_NEXT) do jump(dur)
+	im.SetItemTooltip("To End")
 	im.EndDisabled()
 	im.SameLine()
 	im.Text("%6.2fs / %.2fs", _sq.time, dur)
