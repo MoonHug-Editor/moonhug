@@ -323,17 +323,14 @@ the whole transform. `_wrap_transform_field_override`
 (`editor/view_hierarchy_inspector.odin`) is the bracket, because transform rows
 bypass the generic field loop and also record prefab-instance overrides.
 
-`Field_Snapshot` (`begin_field` / `end_field`) remains for scene-graph edits
-outside the inspector.
-
-For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` scopes which wrap the same mechanism.
+For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` — an `Edit_Scope` IS a one-target `Edit_Session`, so it is the same mechanism with a two-line spelling.
 
 ## Editor code usage
 
 Most editor code doesn't need to touch the undo API directly:
 
 - The **component field loop** brackets every registered property drawer, array element, union variant, and enum in a session, so **drawers written to the standard contract get undo for free** — one step per drag, one step per Add/Remove, one step per tag switch, covering every selected object.
-- The **transform field loop** brackets its three rows (`position`, `rotation`, `scale`) the same way. The `name` row uses `begin_field` / `end_field`.
+- The **transform field loop** brackets its three rows (`position`, `rotation`, `scale`) the same way. The `name` row uses `edit_begin` / `edit_end`.
 
 When writing editor UI outside these loops (hierarchy view, custom panels, component header checkbox/menus, viewport gizmos), use the ergonomic scope helpers. These collapse the capture → mutate → push flow into one call and handle JSON cleanup on every path.
 
@@ -362,12 +359,14 @@ undo.edit_end(&e)
 undo.edit_cancel(&e)
 
 // non-scene data (import settings, asset inspectors)
-e := undo.edit_begin(base_ptr, &settings.quality, typeid_of(int))
+e := undo.edit_begin(base_ptr, typeid_of(Settings), &settings.quality, typeid_of(int))
 settings.quality = 3
 undo.edit_end(&e)
 ```
 
-A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_end` / `edit_cancel`, they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit.
+A zero `Edit_Scope` (from begin-failure — e.g. invalid handle) is safe to pass to `edit_end` / `edit_cancel`, they no-op. The suffixed procs (`edit_transform_begin`, `edit_component_begin`, `edit_raw_begin`) remain callable directly when you want to be explicit; `edit_raw_begin` takes the struct's typeid as well as the field's, because the session decides field-vs-whole granularity by whether the field lies inside the struct.
+
+`edit_end` records nothing when the value did not change, and a field that lives outside its owner's storage (a dynamic-array element) is recorded as the whole owner — both are the session's rules, inherited rather than reimplemented.
 
 Multi-target and cross-frame edits use an `Edit_Session` directly — see "Edit
 sessions" above.
@@ -415,15 +414,17 @@ undo.group_commit(&g)       // only finalize if we made it here
 
 ### Cross-frame drag outside the inspector
 
-For a single-target drag outside the inspector's row path (the rotation row's
-euler cache is the remaining user), the `Field_Drag` scope still applies:
+A single-target drag outside the inspector's row path (the rotation row's euler
+cache is the remaining user) is the same `edit_begin` / `edit_end` pair held
+across frames — open on mouse-down, close on mouse-up, one undo step covering
+the whole drag:
 
 ```odin
 // on mouse-down
-d := undo.field_drag_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
+d := undo.edit_begin(tH, &t.position, typeid_of([3]f32), "Gizmo Move")
 // ... on each frame, mutate freely ...
 // on mouse-up
-undo.field_drag_end(&d)    // single undo step covering the whole drag
+undo.edit_end(&d)
 ```
 
 Multi-target drags (the gizmo) use an `Edit_Session` opened at grab and closed

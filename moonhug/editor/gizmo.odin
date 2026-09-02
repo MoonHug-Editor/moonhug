@@ -15,7 +15,7 @@ package editor
 //              with square tips + a center handle for uniform scale.
 // All drawn as overlay lines (no depth test) into the current scene pass;
 // hover is a screen-space point↔segment test; every drag is ONE undo step
-// (undo.field_drag_* on t.position / t.rotation / t.scale).
+// (undo.edit_begin/edit_end on t.position / t.rotation / t.scale).
 
 import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"

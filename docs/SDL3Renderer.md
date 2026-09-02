@@ -320,7 +320,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] `transform_set_world_position` in `engine/transform.odin`
       (inverse-parent TRS — world drags stay world-correct under rotated /
       scaled parents)
-- [x] Undo: `undo.field_drag_begin/end` around the drag — one undo step per drag
+- [x] Undo: `undo.edit_begin/edit_end` around the drag — one undo step per drag
 - [x] Scene-window overlay (Move/Rotate/Scale buttons, active
       highlighted) + W shortcut gated on !flythrough (E/R follow with their
       gizmos)

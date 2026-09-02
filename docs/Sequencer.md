@@ -261,8 +261,9 @@ same undo the hierarchy uses, and Save saves the owner's scene. The
 hierarchy and inspector work on timeline nodes too — a clip is a selectable,
 multieditable component like any other.
 
-- Toolbar: Preview toggle, rewind, Play/Pause, time/duration, Save Scene,
-  Add Track (registry kinds).
+- Toolbar: Preview toggle, transport (to start, one frame back, Play/Pause,
+  one frame forward, to end — a frame is the engine's fixed tick), time/
+  duration, Save Scene, Add Track (registry kinds).
 - Legend per track: mute, name (right-click: add clip / rename / remove),
   add-clip, remove.
 - Canvas: seconds ruler (dragging scrubs), colored clip blocks — body drags

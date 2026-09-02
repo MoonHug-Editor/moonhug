@@ -1,14 +1,24 @@
 package undo
 
+// The ergonomic edit: two lines around a change to ONE field or ONE whole
+// component/transform.
+//
+//   e := undo.edit_begin(tH, &t.name, typeid_of(string))
+//   t.name = ...
+//   undo.edit_end(&e)
+//
+// An Edit_Scope IS an Edit_Session with a single target — the same
+// transaction the inspector rows and multi-edit use (undo_session.odin), so
+// every call site shares one implementation: before-state captured at open,
+// the field-vs-whole granularity decided by the session (a dynamic-array
+// element is recorded as its whole component, never as an offset into an
+// allocation it does not live in), nothing recorded when the value did not
+// change. Reach for edit_session_begin directly when a gesture spans several
+// targets.
+
 import engine "../../engine"
 
-Edit_Scope :: struct {
-	active:    bool,
-	target:    Property_Target,
-	field_ptr: rawptr,
-	old_json:  []byte,
-	label:     string,
-}
+Edit_Scope :: Edit_Session
 
 edit_begin :: proc {
 	edit_transform_begin,
@@ -17,31 +27,13 @@ edit_begin :: proc {
 	edit_component_base,
 }
 
-field_drag_begin :: proc {
-	field_drag_begin_transform,
-	field_drag_begin_component,
-}
+edit_end :: edit_session_end
+edit_cancel :: edit_session_abort
 
+// A field of a pooled component or transform.
 edit_pooled_begin :: proc(h: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
-	s := get()
-	if s == nil || !s.recording || s.applying || field_ptr == nil {
-		return {}
-	}
-	w := engine.ctx_world()
-	if w == nil do return {}
-	base := engine.world_pool_get(w, h)
-	if base == nil do return {}
-	offset := uintptr(field_ptr) - uintptr(base)
-	target := make_pooled_target(h, offset, field_tid)
-	old_json := capture_json(field_ptr, field_tid)
-	if old_json == nil do return {}
-	return Edit_Scope{
-		active = true,
-		target = target,
-		field_ptr = field_ptr,
-		old_json = old_json,
-		label = label,
-	}
+	if field_ptr == nil do return {}
+	return edit_session_begin({edit_target_pooled(h, field_ptr, field_tid)}, label)
 }
 
 edit_transform_begin :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
@@ -52,48 +44,22 @@ edit_component_begin :: proc(comp_handle: engine.Handle, field_ptr: rawptr, fiel
 	return edit_pooled_begin(comp_handle, field_ptr, field_tid, label)
 }
 
+// The WHOLE component — structural edits (array add/remove, reorder) that no
+// field offset can name.
 edit_component_base :: proc(comp_handle: engine.Handle, comp_tid: typeid, label := "") -> Edit_Scope {
-	w := engine.ctx_world()
-	if w == nil do return {}
-	base := engine.world_pool_get(w, comp_handle)
-	if base == nil do return {}
-	return edit_pooled_begin(comp_handle, base, comp_tid, label)
+	return edit_session_begin({edit_target_whole(comp_handle)}, label)
 }
 
-edit_raw_begin :: proc(base_ptr: rawptr, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
-	s := get()
-	if s == nil || !s.recording || s.applying || field_ptr == nil || base_ptr == nil {
-		return {}
-	}
-	offset := uintptr(field_ptr) - uintptr(base_ptr)
-	target := make_raw_target(base_ptr, offset, field_tid)
-	old_json := capture_json(field_ptr, field_tid)
-	if old_json == nil do return {}
-	return Edit_Scope{
-		active = true,
-		target = target,
-		field_ptr = field_ptr,
-		old_json = old_json,
-		label = label,
-	}
-}
-
-edit_end :: proc(e: ^Edit_Scope) {
-	if e == nil || !e.active do return
-	defer e^ = {}
-	s := get()
-	if s == nil {
-		if e.old_json != nil do delete(e.old_json)
-		return
-	}
-	new_json := capture_json(e.field_ptr, e.target.type_id)
-	push_value(s, e.target, e.old_json, new_json, e.label)
-}
-
-edit_cancel :: proc(e: ^Edit_Scope) {
-	if e == nil || !e.active do return
-	if e.old_json != nil do delete(e.old_json)
-	e^ = {}
+// A field of a plain editor-owned struct (import settings, project settings).
+// `base_tid` is the struct's type: the session needs it to decide whether the
+// field lies inside the struct (recorded as an offset) or outside it (the
+// whole struct is recorded) — the same rule pooled targets get.
+edit_raw_begin :: proc(base_ptr: rawptr, base_tid: typeid, field_ptr: rawptr, field_tid: typeid, label := "") -> Edit_Scope {
+	if base_ptr == nil || base_tid == nil || field_ptr == nil do return {}
+	return edit_session_begin({Edit_Target{
+		kind = .Raw, raw_ptr = base_ptr, raw_tid = base_tid,
+		field_ptr = field_ptr, field_tid = field_tid,
+	}}, label)
 }
 
 Group_Scope :: struct {
@@ -194,55 +160,16 @@ record_reparent_to :: proc(node: engine.Transform_Handle, new_parent: engine.Tra
 
 	g := group_begin("Reparent")
 	defer group_end(&g)
-	pos_d := field_drag_begin_transform(node, &t.position, typeid_of([3]f32), "position")
-	rot_d := field_drag_begin_transform(node, &t.rotation, typeid_of([4]f32), "rotation")
-	scl_d := field_drag_begin_transform(node, &t.scale, typeid_of([3]f32), "scale")
+	locals := edit_session_begin({
+		edit_target_transform(node, &t.position, typeid_of([3]f32)),
+		edit_target_transform(node, &t.rotation, typeid_of([4]f32)),
+		edit_target_transform(node, &t.scale, typeid_of([3]f32)),
+	}, "Reparent")
 
 	engine.transform_set_parent(node, new_parent, new_index, keep_world = true)
 	final_index := engine.transform_get_sibling_index(node)
 	record_reparent(node, old_parent, new_parent, old_index, final_index)
 
-	field_drag_end(&pos_d)
-	field_drag_end(&rot_d)
-	field_drag_end(&scl_d)
+	edit_session_end(&locals)
 	group_commit(&g)
-}
-
-Field_Drag :: struct {
-	active:    bool,
-	target:    Property_Target,
-	field_ptr: rawptr,
-	old_json:  []byte,
-	label:     string,
-}
-
-field_drag_begin_pooled :: proc(h: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
-	e := edit_pooled_begin(h, field_ptr, field_tid, label)
-	return Field_Drag{active = e.active, target = e.target, field_ptr = e.field_ptr, old_json = e.old_json, label = e.label}
-}
-
-field_drag_begin_transform :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
-	return field_drag_begin_pooled(engine.Handle(tH), field_ptr, field_tid, label)
-}
-
-field_drag_begin_component :: proc(comp_handle: engine.Handle, field_ptr: rawptr, field_tid: typeid, label := "") -> Field_Drag {
-	return field_drag_begin_pooled(comp_handle, field_ptr, field_tid, label)
-}
-
-field_drag_end :: proc(d: ^Field_Drag) {
-	if d == nil || !d.active do return
-	defer d^ = {}
-	s := get()
-	if s == nil {
-		if d.old_json != nil do delete(d.old_json)
-		return
-	}
-	new_json := capture_json(d.field_ptr, d.target.type_id)
-	push_value(s, d.target, d.old_json, new_json, d.label)
-}
-
-field_drag_cancel :: proc(d: ^Field_Drag) {
-	if d == nil || !d.active do return
-	if d.old_json != nil do delete(d.old_json)
-	d^ = {}
 }

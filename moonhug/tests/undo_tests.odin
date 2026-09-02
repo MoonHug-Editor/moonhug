@@ -409,9 +409,9 @@ test_undo_inspector_flow_f32_field :: proc(t: ^testing.T) {
 	undo.push_component_owner(owned.handle)
 	defer undo.pop_owner()
 
-	undo.begin_field(&p.intensity, typeid_of(f32))
+	e := undo.edit_begin(owned.handle, &p.intensity, typeid_of(f32))
 	p.intensity = 123
-	undo.end_field(true)
+	undo.edit_end(&e)
 
 	testing.expect(t, undo.can_undo(s), "should have recorded f32 change")
 	testing.expect_value(t, p.intensity, f32(123))

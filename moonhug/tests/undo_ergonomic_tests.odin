@@ -276,11 +276,11 @@ test_undo_field_drag_external :: proc(t: ^testing.T) {
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
 
-	d := undo.field_drag_begin(tH, &tr.position, typeid_of([3]f32), "Viewport Move")
+	d := undo.edit_begin(tH, &tr.position, typeid_of([3]f32), "Viewport Move")
 	tr.position = {1, 0, 0}
 	tr.position = {2, 0, 0}
 	tr.position = {3, 0, 0}
-	undo.field_drag_end(&d)
+	undo.edit_end(&d)
 
 	testing.expect_value(t, undo.top_index(s), 1)
 	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})

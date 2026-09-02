@@ -991,7 +991,7 @@ _quat_approx_equal :: proc(a, b: [4]f32) -> bool {
 }
 
 @(private)
-_inspector_rot_drag: undo.Field_Drag
+_inspector_rot_drag: undo.Edit_Scope
 
 // `committed`: see _wrap_transform_field. The euler widget writes through to
 // t.rotation, so the commit point is the drag release.
@@ -1005,7 +1005,7 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	// From whichever component was clicked — see drag_row_activated. Reading
 	// imgui directly would only see a drag begun on Z.
 	if inspector.drag_row_activated() && !_inspector_rot_drag.active {
-		_inspector_rot_drag = undo.field_drag_begin(tH, &t.rotation, typeid_of([4]f32), "Rotation")
+		_inspector_rot_drag = undo.edit_begin(tH, &t.rotation, typeid_of([4]f32), "Rotation")
 	}
 
 	if _inspector_euler_cache != prev_euler {
@@ -1021,14 +1021,14 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	// close attached to the first.
 	// The row draws three separate imgui items, so imgui's own item state
 	// describes only the LAST one (Z) by the time the drawer returns. Releasing a
-	// drag on X or Y would look like no release, field_drag_end would never fire,
+	// drag on X or Y would look like no release, edit_end would never fire,
 	// and the edited object would get no undo entry — while its multi-edit peers
 	// still recorded theirs. drag_row_deactivated latches the release from
 	// whichever component actually had it.
 	euler_changed := _inspector_euler_cache != prev_euler
 	row_released := inspector.drag_row_deactivated()
 	if row_released && _inspector_rot_drag.active {
-		undo.field_drag_end(&_inspector_rot_drag)
+		undo.edit_end(&_inspector_rot_drag)
 		committed = true
 	} else if inspector.field_commit_state_of(euler_changed) != .None {
 		committed = true
