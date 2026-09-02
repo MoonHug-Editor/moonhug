@@ -82,11 +82,6 @@ _set_anim_clip :: proc(track_node: engine.Transform_Handle, index: int, guid: en
 	if _, cr := anim.get_comp(cn, anim.ClipAnimation); cr != nil do cr.clip = guid
 }
 
-_marker_hits: int
-_count_marker :: proc(name: string, target: engine.Ref_Local) {
-	if name == "hit" do _marker_hits += 1
-}
-
 @(test)
 test_director_playback :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
@@ -115,7 +110,7 @@ test_director_playback :: proc(t: ^testing.T) {
 	defer seq.director_teardown(d)
 
 	// Timeline subtree: anim clip A [0,1), anim clip B [1,2), an activation
-	// span [0.5, 1.5) on the child, a marker at 0.5. Loops at duration 2.
+	// span [0.5, 1.5) on the child. Loops at duration 2.
 	at := _mk_track(root, .TrackAnimation,
 		seq.Clip_View{start = 0, duration = 1},
 		seq.Clip_View{start = 1, duration = 1},
@@ -124,30 +119,17 @@ test_director_playback :: proc(t: ^testing.T) {
 	_set_anim_clip(at, 1, const_guid)
 	act := _mk_track(root, .TrackActivation, seq.Clip_View{start = 0.5, duration = 1})
 	_set_activation_target(act, {handle = engine.Handle(child)})
-	mk := _mk_track(root, .TrackMarker, seq.Clip_View{start = 0.5, name = "hit"})
-	if _, mt := seq.get_comp(mk, seq.TrackMarker); mt != nil do mt.target = {handle = engine.Handle(child)}
-
-	_marker_hits = 0
-	seq.timeline_marker_hook = _count_marker
-	defer seq.timeline_marker_hook = nil
-
-	// t = 0.5: ramp samples 5, activation just began, marker crossed once.
+	// t = 0.5: ramp samples 5, activation just began.
 	for _ in 0 ..< 5 do seq.director_tick(d, 0.1)
 	rt := engine.pool_get(&tc.world.transforms, engine.Handle(root))
 	ct := engine.pool_get(&tc.world.transforms, engine.Handle(child))
 	testing.expect(t, abs(rt.position.x - 5) < 0.11, "animation track must drive the pose")
 	testing.expect(t, ct.is_active, "activation span must activate the child")
 
-	// t = 1.5: clip B active (x = 4), activation span ended, the marker's
-	// [0.5, 0.6) window was crossed once on the way.
+	// t = 1.5: clip B active (x = 4), activation span ended.
 	for _ in 0 ..< 10 do seq.director_tick(d, 0.1)
 	testing.expect(t, abs(rt.position.x - 4) < 0.001, "second clip must take over")
 	testing.expect(t, !ct.is_active, "activation must end outside its span")
-	testing.expect_value(t, _marker_hits, 1)
-
-	// Loop wrap: after another full cycle the marker fired again.
-	for _ in 0 ..< 20 do seq.director_tick(d, 0.1)
-	testing.expect_value(t, _marker_hits, 2)
 }
 
 @(test)
@@ -177,7 +159,6 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 
 	at := _mk_track(root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
 	_set_anim_clip(at, 0, ramp_guid)
-	_mk_track(root, .TrackMarker, seq.Clip_View{start = 0.5, name = "hit"})
 
 	// Manual start holds playback until director_play.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1)
@@ -191,15 +172,10 @@ test_director_control_and_scrub :: proc(t: ^testing.T) {
 	testing.expect_value(t, d.time, 1)
 	testing.expect(t, !d.playing, "Once must stop at the end")
 
-	// Scrub: jump to 0.3 evaluates the pose, markers stay silent.
-	_marker_hits = 0
-	seq.timeline_marker_hook = _count_marker
-	defer seq.timeline_marker_hook = nil
+	// Scrub: jump to 0.3 evaluates the pose.
 	seq.director_set_time(d, 0.3)
 	rt := engine.pool_get(&tc.world.transforms, engine.Handle(root))
 	testing.expect(t, abs(rt.position.x - 3) < 0.001, "scrub must evaluate the pose at the set time")
-	seq.director_set_time(d, 0.7)
-	testing.expect_value(t, _marker_hits, 0)
 }
 
 // A track's target must survive the Simulate round trip (serialize the

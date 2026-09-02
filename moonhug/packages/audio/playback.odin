@@ -255,18 +255,54 @@ audio_update :: proc(dt: f32) {
 		if src.track == nil do continue
 
 		// Live controls apply every frame — inspector edits are audible.
-		sp := Spatial_Gains{1, 1, 1}
-		if _listener.ok && src.spatial_blend > 0 {
-			sw := engine.transform_world(src.owner)
-			sp = spatial_gains(_listener.pos, _listener.rot, sw.position,
-				src.min_distance, src.max_distance, src.spatial_blend)
-		}
-		gain := src.mute ? 0 : src.volume * sp.gain
-		_ = mix.SetTrackGain(src.track, gain)
-		stereo := mix.StereoGains{sp.left, sp.right}
-		_ = mix.SetTrackStereo(src.track, &stereo)
-		_ = mix.SetTrackFrequencyRatio(src.track, max(src.pitch, 0.01))
+		source_apply_gains(src.track, src, 1)
 	}
+}
+
+// Writes a source's live controls onto ONE mixer track: volume × `weight` ×
+// spatial attenuation (mute wins), stereo pan, pitch. The source's own track
+// passes weight 1; the timeline's per-clip voices pass the clip weight, which
+// is what makes an overlap a crossfade and an ease a fade.
+source_apply_gains :: proc(track: ^mix.Track, src: ^AudioSource, weight: f32) {
+	if track == nil do return
+	sp := Spatial_Gains{1, 1, 1}
+	if _listener.ok && src.spatial_blend > 0 {
+		sw := engine.transform_world(src.owner)
+		sp = spatial_gains(_listener.pos, _listener.rot, sw.position,
+			src.min_distance, src.max_distance, src.spatial_blend)
+	}
+	gain := src.mute ? 0 : src.volume * weight * sp.gain
+	_ = mix.SetTrackGain(track, gain)
+	stereo := mix.StereoGains{sp.left, sp.right}
+	_ = mix.SetTrackStereo(track, &stereo)
+	_ = mix.SetTrackFrequencyRatio(track, max(src.pitch, 0.01))
+}
+
+// A fresh mixer track playing `guid` from `seconds` in, or nil. The
+// timeline's clip voices are made here; the caller owns the track.
+voice_start :: proc(guid: engine.Asset_GUID, seconds: f32) -> ^mix.Track {
+	clip, ok := clip_load(guid)
+	if !ok do return nil
+	if !_mixer_ensure() do return nil
+	track := mix.CreateTrack(_audio_state.mixer)
+	if track == nil do return nil
+	if !mix.SetTrackAudio(track, clip.audio) || !mix.PlayTrack(track, 0) {
+		mix.DestroyTrack(track)
+		return nil
+	}
+	voice_seek(track, seconds)
+	return track
+}
+
+voice_seek :: proc(track: ^mix.Track, seconds: f32) {
+	frames := mix.TrackMSToFrames(track, sdl.Sint64(seconds * 1000))
+	_ = mix.SetTrackPlaybackPosition(track, frames)
+}
+
+// Playhead in seconds into the voice's clip.
+voice_position :: proc(track: ^mix.Track) -> f32 {
+	if track == nil do return 0
+	return f32(mix.TrackFramesToMS(track, mix.GetTrackPlaybackPosition(track))) / 1000
 }
 
 @(phase={key=ExitingPlayMode})

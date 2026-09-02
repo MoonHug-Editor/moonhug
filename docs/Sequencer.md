@@ -40,7 +40,7 @@ packages/particles/track_particles.odin  ← "particles" track
 - **A track node** carries TWO components: `TimelineTrack` (`muted` — what
   every track has) and its **kind component**, which IS the discriminator:
   `TrackAudio`, `TrackParticles`, `TrackAnimation`, `TrackActivation`,
-  `TrackMarker`, `TrackControl`. The registry keys on the kind component's
+  `TrackControl`, `TrackScript`, `TrackTween`. The registry keys on the kind component's
   TypeKey — there is no `kind` string anywhere. The node's NAME is the track
   name; sibling order is track order.
 - **The kind component owns the track's target**, with a `ref:` tag that
@@ -53,9 +53,9 @@ packages/particles/track_particles.odin  ← "particles" track
 - **A clip node** likewise carries `TimelineClip` (`start`, `duration`,
   `ease_in`, `ease_out`, `speed`) plus the kind's clip component holding its
   payload: `ClipAudio.clip \`ext:"mp3,wav,ogg"\``,
-  `ClipAnimation.clip \`ext:"anim"\``, and empty markers for kinds with
-  no payload. The node's name is the clip name (markers fire it). Clip order
-  derives from start times.
+  `ClipAnimation.clip \`ext:"anim"\``, and an empty component for kinds
+  whose span is the whole instruction. The node's name is the clip name. Clip
+  order derives from start times.
 
 ## Evaluation
 
@@ -106,16 +106,12 @@ is the wrap-aware crossing test), and the evaluation `mode`:
   nothing sounds.
 - `Preview_Play` — the editor preview auto-advances. Crossings are real and
   audio plays live (Unity's Timeline preview), particles keep their replay,
-  marker hooks stay silent.
+  scripts stay silent.
 
 Built-in kinds:
 - `activation`: the target is active while any clip covers the time. Outside
   Play mode the tick captures the pre-tick state and `preview_end` restores
   it — authored-inactive objects return to inactive.
-- `marker`: clips are INSTANTS (`Track_Desc.instant` — the window creates
-  them with zero duration), firing `timeline_marker_hook` on crossing rather
-  than covering. Never fires from the editor preview, since the hook is game
-  code (Unity does not fire signals in preview either).
 - `control`: each clip plays a NESTED TIMELINE — the clip node's child
   subtree holding its own director (typically a nested timeline prefab
   instance). Inside the span the child evaluates at the clip-local time with
@@ -144,10 +140,16 @@ Feature-package kinds:
   deterministically — reset + fixed-step advance to the clip-local time,
   exact with a `random_seed`. Author track-driven systems with
   `manual_start`.
-- `audio`: crossing a clip's start plays the bound AudioSource (the clip's
-  asset replaces the source's clip when set), leaving every span stops it.
-  Scrub is silent, preview-play sounds. Author track-driven sources with
-  `play_on_awake` off.
+- `audio`: a clip span plays its asset through the bound AudioSource's
+  settings (volume, pitch, spatial blend, mute) — on a VOICE OF ITS OWN, one
+  per active clip, never the source's own track, which game code keeps for
+  `audio_play`. The clip weight (`track_clip_weight`) is the volume
+  multiplier: two clips overlapping on one track CROSSFADE, and a clip's
+  `ease_in`/`ease_out` is a volume fade. The sound follows the PLAYHEAD:
+  entering a span mid-way — Play pressed inside it, a scrub-then-play, a
+  loop wrap landing in it — starts the voice at the clip-local offset, and
+  crossing a clip's start restarts it. Scrub is silent, preview-play sounds.
+  Author track-driven sources with `play_on_awake` off.
 - `animation`: drives an ANIMATION COMPONENT (Unity's model — the timeline
   takes over the Animator). `TrackAnimation.target` names which one; unset,
   it finds one on the director, and poses the director's transform directly

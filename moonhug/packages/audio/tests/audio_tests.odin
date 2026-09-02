@@ -6,6 +6,7 @@ package audio_tests
 // a deviceless instance, nothing is audible.
 
 import "core:encoding/json"
+import "core:fmt"
 import "core:encoding/uuid"
 import "core:math"
 import "core:os"
@@ -265,24 +266,173 @@ test_audio_timeline_track :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
+	track := _mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
+	clip := _audio_clip_node(&tc.world, track, 0)
 
 	// Before the span: silent.
 	for _ in 0 ..< 3 do seq.director_tick(d, 0.1) // t = 0.3
-	testing.expect(t, !audio.audio_is_playing(src), "silent before the span")
+	testing.expect(t, !audio.audio_track_voice_playing(_audio_state_of(d), clip), "silent before the span")
 
-	// Crossing the start plays the clip's asset on the source.
+	// Inside the span the clip plays through its OWN voice; the source's
+	// authored clip and track are left alone.
 	for _ in 0 ..< 4 do seq.director_tick(d, 0.1) // t = 0.7
-	testing.expect(t, audio.audio_is_playing(src), "span start must play")
-	testing.expect(t, src.clip == clip_guid, "the clip's asset lands on the source")
+	testing.expect(t, audio.audio_track_voice_playing(_audio_state_of(d), clip), "span must play")
+	testing.expect(t, src.clip == {}, "the source's own clip is never rewritten")
+	testing.expect(t, !audio.audio_is_playing(src), "the source's own track is never used")
 
 	// Leaving the span stops it.
 	for _ in 0 ..< 10 do seq.director_tick(d, 0.1) // t = 1.7
-	testing.expect(t, !audio.audio_is_playing(src), "leaving the span must stop")
+	testing.expect(t, !audio.audio_track_voice_playing(_audio_state_of(d), clip), "leaving the span must stop")
 
 	// Scrubbing is silent.
 	seq.director_set_time(d, 0.7)
-	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
+	testing.expect(t, !audio.audio_track_voice_playing(_audio_state_of(d), clip), "scrub must not play audio")
+}
+
+// Entering a span mid-way plays from the clip-local offset, not from the
+// clip's start: Play pressed inside a span, a scrub-then-play, a loop wrap
+// landing inside a clip. The probe WAV is 0.1 s, so a 0.05 s offset lands
+// inside it.
+@(test)
+test_audio_track_enters_span_at_offset :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	audio_editor.audio_importers_init()
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	audio.mixer_init_headless()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	audio.audio_track_init()
+
+	src_dir :: "moonhug/tests/fixtures/_audio_seek_tmp"
+	wav :: src_dir + "/probe.wav"
+	os.make_directory(src_dir)
+	testing.expect(t, _write_test_wav(wav))
+	defer {
+		audio.clip_cache_shutdown()
+		os.remove(wav)
+		os.remove(wav + ".meta")
+		os.remove(src_dir)
+		_remove_tree("library")
+	}
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
+	Meta :: struct {
+		guid: string,
+	}
+	meta: Meta
+	meta_data, _ := os.read_entire_file(wav + ".meta", context.temp_allocator)
+	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
+	raw_guid, _ := uuid.read(meta.guid)
+	clip_guid := engine.Asset_GUID(raw_guid)
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	owned, raw := engine.transform_add_comp(root, .AudioSource)
+	src := cast(^audio.AudioSource)raw
+	src.enabled = true
+	src.volume = 1
+	src.pitch = 1
+	src.play_on_awake = false
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+	d.wrap = .Once
+	d.duration = 2
+	defer seq.director_teardown(d)
+	track := _mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
+	clip := _audio_clip_node(&tc.world, track, 0)
+
+	// Park the playhead inside the span (scrub, silent), then Play from there:
+	// the voice must start at the clip-local offset, not at 0.
+	seq.director_set_time(d, 0.5)
+	testing.expect(t, !audio.audio_track_voice_playing(_audio_state_of(d), clip), "scrub is silent")
+	seq.director_tick(d, 0.05) // t = 0.55, clip-local 0.05
+	testing.expect(t, audio.audio_track_voice_playing(_audio_state_of(d), clip), "Play inside the span must sound")
+	pos := audio.audio_track_voice_position(_audio_state_of(d), clip)
+	testing.expect(t, abs(pos - 0.05) < 0.005, fmt.tprintf("position must be the clip-local offset, got %v", pos))
+}
+
+// Two clips overlapping on one track CROSSFADE: each plays through its own
+// voice at its clip weight (overlap is the blend — the earlier ramps out as
+// the later ramps in, summing to 1), so at the overlap's midpoint both sound
+// at half volume, and past it the survivor is back at full.
+@(test)
+test_audio_track_overlap_crossfades :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	audio_editor.audio_importers_init()
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	audio.mixer_init_headless()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	audio.audio_track_init()
+
+	src_dir :: "moonhug/tests/fixtures/_audio_xfade_tmp"
+	wav :: src_dir + "/probe.wav"
+	os.make_directory(src_dir)
+	testing.expect(t, _write_test_wav(wav))
+	defer {
+		audio.clip_cache_shutdown()
+		os.remove(wav)
+		os.remove(wav + ".meta")
+		os.remove(src_dir)
+		_remove_tree("library")
+	}
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.asset_pipeline_ensure_import_meta(wav)
+	Meta :: struct {
+		guid: string,
+	}
+	meta: Meta
+	meta_data, _ := os.read_entire_file(wav + ".meta", context.temp_allocator)
+	testing.expect(t, json.unmarshal(meta_data, &meta, allocator = context.temp_allocator) == nil)
+	raw_guid, _ := uuid.read(meta.guid)
+	clip_guid := engine.Asset_GUID(raw_guid)
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(wav))
+
+	root := engine.transform_new("Stage")
+	engine.scene_set_root(tc.scene, root)
+	owned, raw := engine.transform_add_comp(root, .AudioSource)
+	src := cast(^audio.AudioSource)raw
+	src.enabled = true
+	src.volume = 1
+	src.pitch = 1
+	src.play_on_awake = false
+
+	_, draw_ := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw_
+	d.enabled = true
+	d.wrap = .Once
+	d.duration = 2
+	defer seq.director_teardown(d)
+	// A [0,1) and B [0.5,1.5): the overlap is [0.5, 1.0).
+	track := _mk_audio_track(root, {handle = owned.handle}, clip_guid,
+		seq.Clip_View{start = 0, duration = 1},
+		seq.Clip_View{start = 0.5, duration = 1},
+	)
+	a := _audio_clip_node(&tc.world, track, 0)
+	b := _audio_clip_node(&tc.world, track, 1)
+
+	for _ in 0 ..< 3 do seq.director_tick(d, 0.25) // t = 0.75, overlap midpoint
+	st := _audio_state_of(d)
+	testing.expect(t, audio.audio_track_voice_playing(st, a), "the outgoing clip still sounds")
+	testing.expect(t, audio.audio_track_voice_playing(st, b), "the incoming clip already sounds")
+	ga := audio.audio_track_voice_gain(st, a)
+	gb := audio.audio_track_voice_gain(st, b)
+	testing.expect(t, abs(ga - 0.5) < 0.01, fmt.tprintf("outgoing at half volume, got %v", ga))
+	testing.expect(t, abs(gb - 0.5) < 0.01, fmt.tprintf("incoming at half volume, got %v", gb))
+
+	for _ in 0 ..< 2 do seq.director_tick(d, 0.25) // t = 1.25, past the overlap
+	testing.expect(t, !audio.audio_track_voice_playing(st, a), "the outgoing clip has stopped")
+	testing.expect(t, audio.audio_track_voice_playing(st, b), "the survivor keeps playing")
+	testing.expect(t, abs(audio.audio_track_voice_gain(st, b) - 1) < 0.01, "the survivor is back at full volume")
 }
 
 // A director binding to an AudioSource (an EXT-pool component) must survive
@@ -408,7 +558,11 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	d.wrap = .Once
 	d.duration = 2
 	defer seq.director_teardown(d)
-	_mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
+	track := _mk_audio_track(root, {handle = owned.handle}, clip_guid, seq.Clip_View{start = 0.5, duration = 1})
+	clip := _audio_clip_node(&tc.world, track, 0)
+	playing :: proc(d: ^seq.PlayableDirector, clip: engine.Transform_Handle) -> bool {
+		return audio.audio_track_voice_playing(_audio_state_of(d), clip)
+	}
 
 	// The window's preview-play frame loop: step, render, per-frame restore.
 	step :: proc(d: ^seq.PlayableDirector, time: f32) {
@@ -417,31 +571,44 @@ test_audio_preview_play :: proc(t: ^testing.T) {
 	}
 
 	step(d, 0.3)
-	testing.expect(t, !audio.audio_is_playing(src), "silent before the span")
+	testing.expect(t, !playing(d, clip), "silent before the span")
 
 	step(d, 0.7) // crosses 0.5
-	testing.expect(t, audio.audio_is_playing(src), "preview play must sound at the clip start")
-	testing.expect(t, src.clip == clip_guid, "the clip's asset lands on the source")
+	testing.expect(t, playing(d, clip), "preview play must sound at the clip start")
+	testing.expect(t, src.clip == {}, "the source's own clip is never rewritten")
 
 	step(d, 0.9) // the per-frame restore must not kill the voice
-	testing.expect(t, audio.audio_is_playing(src), "the voice survives per-frame restore while playing")
+	testing.expect(t, playing(d, clip), "the voice survives per-frame restore while playing")
 
 	step(d, 1.7) // leaving the span stops through the track's own logic
-	testing.expect(t, !audio.audio_is_playing(src), "leaving the span must stop")
+	testing.expect(t, !playing(d, clip), "leaving the span must stop")
 
 	// Pause/stop: the real preview_end silences whatever still plays.
 	step(d, 0.7)
-	testing.expect(t, audio.audio_is_playing(src), "playing again inside the span")
+	testing.expect(t, playing(d, clip), "playing again inside the span")
 	seq.director_preview_end(d)
-	testing.expect(t, !audio.audio_is_playing(src), "preview end must silence")
+	testing.expect(t, !playing(d, clip), "preview end must silence")
 
 	// A static scrub stays silent, playing flag or not.
 	seq.director_set_time(d, 0.7)
-	testing.expect(t, !audio.audio_is_playing(src), "scrub must not play audio")
+	testing.expect(t, !playing(d, clip), "scrub must not play audio")
 }
 
 // Build a track NODE with clip NODES under `owner` (timeline-as-prefab).
 @(private = "file")
+// The nth clip node under a track (they are created in call order).
+_audio_clip_node :: proc(w: ^engine.World, track: engine.Transform_Handle, n: int) -> engine.Transform_Handle {
+	tr := engine.pool_get(&w.transforms, engine.Handle(track))
+	if tr == nil || n >= len(tr.children) do return {}
+	return engine.Transform_Handle(tr.children[n].handle)
+}
+
+// The audio track's state on a single-track director (built on first tick).
+_audio_state_of :: proc(d: ^seq.PlayableDirector) -> rawptr {
+	if len(d.track_states) == 0 do return nil
+	return d.track_states[0]
+}
+
 _mk_audio_track :: proc(owner: engine.Transform_Handle, target: engine.Ref_Local, asset: engine.Asset_GUID, clips: ..seq.Clip_View) -> engine.Transform_Handle {
 	node := engine.transform_new("audio", owner)
 	engine.transform_get_or_add_comp(node, seq.TimelineTrack)

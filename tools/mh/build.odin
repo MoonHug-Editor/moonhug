@@ -69,8 +69,11 @@ cmd_app :: proc(args: []string) -> int {
 }
 
 // -define:ODIN_TEST_THREADS=1 keeps tests serial: they share the asset db and
-// fixture files on disk.
+// fixture files on disk. Codegen runs first: the test binary compiles the
+// generated registrations, and a stale one fails the compile against renamed
+// types.
 cmd_test :: proc(args: []string) -> int {
+	if !prebuild() do return 1
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, "odin", "test", "moonhug/tests", "-all-packages", IGNORE_ATTRS, COLLECTION, VET, "-define:ODIN_TEST_THREADS=1")
 	if name := flag_value(args, "--name"); name != "" {

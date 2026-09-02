@@ -22,21 +22,6 @@ ClipActivation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 }
 
-// Markers: zero-duration clips fire timeline_marker_hook on crossing.
-@(component)
-@(typ_guid={guid = "a73d7ccb-e92c-4dad-9a99-0b425d37d6a0"})
-TrackMarker :: struct {
-	using base: engine.CompData `inspect:"-"`,
-
-	target: engine.Ref_Local `ref:"Transform"`,
-}
-
-@(component)
-@(typ_guid={guid = "6f85f97f-fb31-48ca-9071-acce0827173a"})
-ClipMarker :: struct {
-	using base: engine.CompData `inspect:"-"`,
-}
-
 // Control: each clip plays the nested timeline under its node. The target
 // is the clip's own child subtree, so there is no target field.
 @(component)

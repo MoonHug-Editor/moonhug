@@ -169,12 +169,11 @@ _sq_clip_comp :: proc(c: ^seq.Clip_View) -> (engine.Handle, ^seq.TimelineClip) {
 @(private = "file")
 _sq_add_clip :: proc(tv: ^seq.Track_View, ti: int, at: f32) {
 	desc, has := seq.track_desc(tv.kind)
-	instant := has && desc.instant
-	node := engine.transform_new(instant ? desc.label : "clip", tv.node)
+	node := engine.transform_new("clip", tv.node)
 	_, cc := engine.transform_get_or_add_comp(node, seq.TimelineClip)
 	if cc != nil {
 		cc.start = max(math.round(at * 10) / 10, 0)
-		cc.duration = instant ? 0 : 1
+		cc.duration = 1
 	}
 	// The kind's clip component carries its payload (the .anim, the wav, ...).
 	if has && desc.clip_key != engine.INVALID_TYPE_KEY {
@@ -755,7 +754,6 @@ _sq_track_color :: proc(kind: engine.TypeKey) -> im.Vec4 {
 	case .TrackAudio:      return {0.75, 0.55, 0.25, 0.9}
 	case .TrackActivation: return {0.40, 0.70, 0.40, 0.9}
 	case .TrackParticles:  return {0.65, 0.40, 0.75, 0.9}
-	case .TrackMarker:     return {0.80, 0.35, 0.35, 0.9}
 	case .TrackControl:    return {0.35, 0.65, 0.70, 0.9}
 	}
 	return {0.5, 0.5, 0.5, 0.9}

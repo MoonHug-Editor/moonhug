@@ -65,7 +65,7 @@ Track_Ctx :: struct {
 //   and replay deterministically; nothing sounds.
 // - Preview_Play: the editor preview auto-advances. Crossings are real and
 //   audio plays live (Unity's Timeline preview), particles keep their
-//   deterministic replay, and hooks into game code (markers) stay silent.
+//   deterministic replay, and scripts (game code) stay silent.
 Track_Mode :: enum u8 {
 	Play,
 	Scrub,
@@ -139,11 +139,6 @@ Track_Desc :: struct {
 	track_key: engine.TypeKey,
 	clip_key:  engine.TypeKey,
 	label:     string, // menu/UI name
-
-	// Clips are INSTANTS, not spans: created with zero duration and fired by
-	// crossing rather than covering (markers). The window reads this instead
-	// of naming a kind.
-	instant: bool,
 
 	// Per-director lifecycle. `build` runs once per (director, track) and
 	// returns the kind's own state — nil when it needs none; `destroy` frees
@@ -237,25 +232,6 @@ _activation_preview_end :: proc(ctx: ^Track_Ctx) {
 	if t := engine.pool_get(&w.transforms, at.target.handle); t != nil do t.is_active = st.was_active
 }
 
-// Markers: zero-duration clips fire the hook when playback crosses them.
-// The hook is game/editor code's to install.
-timeline_marker_hook: proc(name: string, target: engine.Ref_Local)
-
-@(private = "file")
-_marker_track_tick :: proc(ctx: ^Track_Ctx) {
-	if timeline_marker_hook == nil do return
-	// Never from the editor preview, playing or not — marker hooks are game
-	// code (Unity does not fire signals in preview either).
-	if ctx.mode != .Play do return
-	_, mt := get_comp(ctx.track.node, TrackMarker)
-	if mt == nil do return
-	for &c in ctx.track.clips {
-		if track_crossed(ctx, c.start) {
-			timeline_marker_hook(c.name, mt.target)
-		}
-	}
-}
-
 // Control: each clip plays a NESTED TIMELINE — the clip node's child subtree
 // holding its own PlayableDirector (a nested timeline prefab instance, per
 // the timeline-as-prefab model). Inside the span the child evaluates at the
@@ -318,13 +294,6 @@ register_builtin_tracks :: proc() {
 		destroy     = _activation_track_destroy,
 		tick        = _activation_track_tick,
 		preview_end = _activation_preview_end,
-	})
-	track_register(Track_Desc{
-		track_key = .TrackMarker,
-		clip_key  = .ClipMarker,
-		label     = "marker",
-		instant   = true,
-		tick      = _marker_track_tick,
 	})
 	track_register(Track_Desc{
 		track_key   = .TrackControl,
