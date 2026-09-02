@@ -1,3 +1,9 @@
+## [0.85.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.84.0...v0.85.0) (2026-09-02)
+
+### Features
+
+* license ([d587724](https://github.com/MoonHug-Editor/moonhug/commit/d587724337d1ab4ed073eac47bb45f4e300d9f2c))
+
 ## [0.84.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.83.1...v0.84.0) (2026-09-02)
 
 ### Features
