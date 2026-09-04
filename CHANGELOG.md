@@ -1,3 +1,13 @@
+## [0.86.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.85.0...v0.86.0) (2026-09-04)
+
+### Features
+
+* up themes, use roboto-medium font ([05753d2](https://github.com/MoonHug-Editor/moonhug/commit/05753d291112f0aea4d8dda3ae5b81df3fdea9e8))
+
+### Bug Fixes
+
+* improve pane splitter visuals ([55f351f](https://github.com/MoonHug-Editor/moonhug/commit/55f351f4ae7ace7c31f099b0d8054ce881aeffc1))
+
 ## [0.85.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.84.0...v0.85.0) (2026-09-02)
 
 ### Features
