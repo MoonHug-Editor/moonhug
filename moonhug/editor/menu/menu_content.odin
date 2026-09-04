@@ -9,25 +9,41 @@ Theme :: enum {
     Dark,
     Light,
     Classic,
+    Photoshop, // theme_community.odin from here on
+    Unreal,
+    Deep_Dark,
+    Dracula,
+    Catppuccin_Mocha,
+    Paper_And_Ink,
 }
 
 active_theme: Theme = .Spectrum_Dark
 
 apply_theme :: proc() {
-    // StyleColors* only reset COLORS, not scalar style vars. Spectrum mutates
-    // scalars (rounding, borders) directly on the shared style struct, so
-    // switching Spectrum -> Dark/Light must reset those scalars back to imgui
-    // defaults or Spectrum's rounding leaks into the other themes.
-    _reset_style_scalars_to_imgui_default()
+    // StyleColors* only reset COLORS, not scalar style vars. Every theme here
+    // mutates scalars (rounding, borders, padding) on the shared style struct,
+    // so the whole struct goes back to imgui's defaults first or one theme's
+    // scalars leak into the next.
+    _reset_style_to_imgui_default()
     switch active_theme {
-    case .Spectrum_Dark:  style_colors_spectrum(dark = true)  // sets its own scalars
-    case .Spectrum_Light: style_colors_spectrum(dark = false)
-    case .Dark:           im.StyleColorsDark();    _fix_builtin_progress_color()
-    case .Light:          im.StyleColorsLight();   _fix_builtin_progress_color()
-    case .Classic:        im.StyleColorsClassic(); _fix_builtin_progress_color()
+    case .Spectrum_Dark:    style_colors_spectrum(dark = true)
+    case .Spectrum_Light:   style_colors_spectrum(dark = false)
+    case .Dark:             im.StyleColorsDark();    _fix_builtin_progress_color()
+    case .Light:            im.StyleColorsLight();   _fix_builtin_progress_color()
+    case .Classic:          im.StyleColorsClassic(); _fix_builtin_progress_color()
+    case .Photoshop:        style_colors_photoshop()
+    case .Unreal:           style_colors_unreal()
+    case .Deep_Dark:        style_colors_deep_dark()
+    case .Dracula:          style_colors_dracula()
+    case .Catppuccin_Mocha: style_colors_catppuccin_mocha()
+    case .Paper_And_Ink:    style_colors_paper_and_ink()
     }
+    s := im.GetStyle()
     // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
-    im.GetStyle().IndentSpacing = 14
+    s.IndentSpacing = 14
+    // No collapse triangle before a window's title or a dock node's tabs
+    // (Unity has none; tabs start at the panel edge).
+    s.WindowMenuButtonPosition = .None
 }
 
 // imgui's stock themes fill ProgressBar (PlotHistogram) with a bright
@@ -40,18 +56,20 @@ _fix_builtin_progress_color :: proc() {
     s.Colors[im.Col.PlotHistogramHovered] = s.Colors[im.Col.SliderGrabActive]
 }
 
-// imgui's default (StyleColorsDark) scalar values for the vars Spectrum
-// overrides — restored before applying any theme so themes don't inherit each
-// other's scalars.
+// imgui's default style, captured on the first apply (nothing touches the
+// style before the startup apply_theme) and written back before every theme
+// so themes never inherit each other's scalars.
+@(private = "file") _default_style: im.Style
+@(private = "file") _default_style_captured: bool
+
 @(private = "file")
-_reset_style_scalars_to_imgui_default :: proc() {
+_reset_style_to_imgui_default :: proc() {
     s := im.GetStyle()
-    s.FrameRounding   = 0
-    s.FrameBorderSize = 0
-    s.WindowRounding  = 0
-    s.PopupRounding   = 0
-    s.GrabRounding    = 0
-    s.TabRounding     = 4 // imgui default is non-zero (4)
+    if !_default_style_captured {
+        _default_style = s^
+        _default_style_captured = true
+    }
+    s^ = _default_style
 }
 
 set_theme :: proc(theme: Theme) {
@@ -177,4 +195,34 @@ menu_item_view_theme_light :: proc() {
 @(menu_item={path="Window/Theme/Classic", order=-10, shortcut=""})
 menu_item_view_theme_classic :: proc() {
     set_theme(.Classic)
+}
+
+@(menu_item={path="Window/Theme/Photoshop", order=-9, shortcut=""})
+menu_item_view_theme_photoshop :: proc() {
+    set_theme(.Photoshop)
+}
+
+@(menu_item={path="Window/Theme/Unreal", order=-8, shortcut=""})
+menu_item_view_theme_unreal :: proc() {
+    set_theme(.Unreal)
+}
+
+@(menu_item={path="Window/Theme/Deep Dark", order=-7, shortcut=""})
+menu_item_view_theme_deep_dark :: proc() {
+    set_theme(.Deep_Dark)
+}
+
+@(menu_item={path="Window/Theme/Dracula", order=-6, shortcut=""})
+menu_item_view_theme_dracula :: proc() {
+    set_theme(.Dracula)
+}
+
+@(menu_item={path="Window/Theme/Catppuccin Mocha", order=-5, shortcut=""})
+menu_item_view_theme_catppuccin_mocha :: proc() {
+    set_theme(.Catppuccin_Mocha)
+}
+
+@(menu_item={path="Window/Theme/Paper And Ink", order=-4, shortcut=""})
+menu_item_view_theme_paper_and_ink :: proc() {
+    set_theme(.Paper_And_Ink)
 }

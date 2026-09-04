@@ -22,8 +22,9 @@ _dock_layout_reset: bool
 // or a reset was requested. Must run before any dockable view's Begin().
 draw_dockspace :: proc() {
 	vp := im.GetMainViewport()
-	pos := im.Vec2{vp.WorkPos.x, vp.WorkPos.y + f32(TOOLBAR_HEIGHT)}
-	size := im.Vec2{vp.WorkSize.x, vp.WorkSize.y - f32(TOOLBAR_HEIGHT)}
+	toolbar_h := toolbar_height()
+	pos := im.Vec2{vp.WorkPos.x, vp.WorkPos.y + toolbar_h}
+	size := im.Vec2{vp.WorkSize.x, vp.WorkSize.y - toolbar_h}
 	im.SetNextWindowPos(pos, {}, {0, 0})
 	im.SetNextWindowSize(size, {})
 	flags := im.WindowFlags{.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoCollapse, .NoBringToFrontOnFocus, .NoNavFocus, .NoDocking}

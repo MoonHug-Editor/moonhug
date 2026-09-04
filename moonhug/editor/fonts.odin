@@ -3,9 +3,12 @@ package editor
 import im "moonhug:external/odin-imgui"
 import "core:math"
 
-// ProggyClean (imgui's built-in default) is a bitmap font designed for 13px.
-// Using its native size keeps the crisp original look.
-FONT_SIZE :: 13
+// Roboto Medium (shipped with imgui under misc/fonts, Apache-2.0) is the base
+// UI font. 15px is the size imgui's own font notes recommend for it on a 1x
+// display and matches the x-height of the old 13px ProggyClean rows.
+FONT_SIZE :: 15
+
+ROBOTO_FONT_DATA := #load("moonhug:external/odin-imgui/imgui/misc/fonts/Roboto-Medium.ttf")
 
 // Large Material-icon font size for spots that show an icon spanning ~2 text
 // rows (e.g. the console's per-entry icon column, Unity-style).
@@ -38,23 +41,29 @@ _font_config :: proc(size_px: f32 = FONT_SIZE) -> im.FontConfig {
 	return cfg
 }
 
-// Load editor UI fonts: imgui's built-in ProggyClean (the crisp original text
-// look) at its native 13px, with Material Symbols icons merged into it. Call
-// once after im.CreateContext() and before the first NewFrame / backend texture
-// build. The OpenGL3 backend advertises RendererHasTextures, so the atlas builds
-// lazily.
+// Load editor UI fonts: Roboto Medium at FONT_SIZE with Material Symbols icons
+// merged into it. Call once after im.CreateContext() and before the first
+// NewFrame / backend texture build. The backend advertises RendererHasTextures,
+// so the atlas builds lazily.
 editor_fonts_init :: proc() {
 	fonts := im.GetIO().Fonts
 
-	// Base text font: ProggyClean at an EXPLICIT 13px (config with SizePixels > 0
-	// keeps it explicit-size, so the icon merge below can use GlyphOffset). The
-	// config must be fully defaulted or text bakes invisible.
+	// Base text font at an EXPLICIT size (config with SizePixels > 0 keeps it
+	// explicit-size, so the icon merge below can use GlyphOffset). The config
+	// must be fully defaulted or text bakes invisible.
 	base_cfg := _font_config()
-	im.FontAtlas_AddFontDefault(fonts, &base_cfg)
+	base_cfg.FontDataOwnedByAtlas = false // static (#load) data; imgui must not free
+	im.FontAtlas_AddFontFromMemoryTTF(
+		fonts,
+		raw_data(ROBOTO_FONT_DATA),
+		i32(len(ROBOTO_FONT_DATA)),
+		FONT_SIZE,
+		&base_cfg,
+	)
 
-	// Merge Material icons into ProggyClean at the same explicit size. GlyphOffset
-	// nudges the icons down onto the text baseline (they sit a few px high
-	// otherwise, as Material's em box is taller than ProggyClean's).
+	// Merge Material icons into the base font at the same explicit size.
+	// GlyphOffset nudges the icons down onto the text baseline (Material's em
+	// box is taller than Roboto's).
 	icon_ranges := [?]im.Wchar{ ICON_MD_MIN, ICON_MD_MAX, 0 }
 	icon_cfg := _font_config()
 	icon_cfg.MergeMode = true

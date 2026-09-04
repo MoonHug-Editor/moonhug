@@ -15,7 +15,15 @@ import "moonhug:editor/runconfig"
 import "../engine"
 import "../engine/log"
 
-TOOLBAR_HEIGHT :: 28
+// The toolbar's own vertical padding. Tighter than WindowPadding so the bar
+// hugs its buttons (Unity's toolbar), and the same in every theme.
+TOOLBAR_PAD_Y :: 4
+
+// One row of framed widgets plus the toolbar padding, from the live style and
+// font so a theme's FramePadding or a font change never clips the buttons.
+toolbar_height :: proc() -> f32 {
+	return im.GetFrameHeight() + TOOLBAR_PAD_Y * 2
+}
 
 // Live-state play snapshot lives in library/ (never assets/): the AssetDB
 // walk must not see it, or refresh would mint a guid for a transient file.
@@ -113,8 +121,11 @@ _select_run_config :: proc(id: string) {
 draw_tool_bar :: proc() {
     vp := im.GetMainViewport()
     im.SetNextWindowPos(vp.WorkPos, {}, {0, 0})
-    im.SetNextWindowSize(im.Vec2{vp.WorkSize.x, f32(TOOLBAR_HEIGHT)}, {})
-    if !im.Begin("##ToolBar", nil, {.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoDocking}) do return
+    im.SetNextWindowSize(im.Vec2{vp.WorkSize.x, toolbar_height()}, {})
+    im.PushStyleVarImVec2(.WindowPadding, im.Vec2{im.GetStyle().WindowPadding.x, TOOLBAR_PAD_Y})
+    open := im.Begin("##ToolBar", nil, {.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoDocking})
+    im.PopStyleVar()
+    if !open do return
     defer im.End()
 
     if len(_run_configs) == 0 do _scan_run_configs()
