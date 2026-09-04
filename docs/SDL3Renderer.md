@@ -171,6 +171,10 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   the CPU (@(update)) and emits billboarded Draw_Quad commands keyed with
   `engine.sort_key_word`, so particles interleave with sprites by
   layer/order/depth.
+- `packages/mhgui` is the third collector: Canvas trees resolve RectTransform
+  rects in canvas pixels and emit `Draw_Quad` commands whose corners are the
+  rect's pixels unprojected onto a plane just inside the near plane, keyed at
+  layer 127 so the HUD draws over everything (docs/Gui.md).
 - Sprite slicing is importer data, Unity's TextureImporter model:
   `TextureSettings.sprite_mode` + `sprites: [dynamic]Sprite_Rect` (name, pixel
   rect, pivot) live in the texture's meta and bake into the catalog with the

@@ -146,6 +146,14 @@ draw_vec3_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
+@(property_drawer={type=[2]f32, priority = 0})
+draw_vec2_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+    v := cast(^[2]f32)(ptr)
+    if drag_float2(field_row(label), v, 0.1) {
+        mark_inspector_changed()
+    }
+}
+
 @(property_drawer={type=[4]f32, priority = 0})
 draw_vec4_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     v := cast(^[4]f32)(ptr)

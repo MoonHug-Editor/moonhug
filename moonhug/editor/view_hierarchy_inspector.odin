@@ -89,7 +89,6 @@ draw_hierarchy_inspector :: proc() {
 		defer undo.pop_owner()
 
 		_draw_header(t, tH)
-		im.Separator()
 
 		// Prefab-instance content multi-edits like anything else. Each peer
 		// carries its own instance identity (Multi_Peer.nested_host/lid), so an
@@ -111,7 +110,6 @@ draw_hierarchy_inspector :: proc() {
 	defer undo.pop_owner()
 
 	_draw_header(t, tH)
-	im.Separator()
 
 	// Peers for the rest of the selection, in scope for the whole draw below.
 	// Empty when this is a single selection, which makes every multi-edit path a
