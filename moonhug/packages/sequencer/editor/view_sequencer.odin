@@ -29,6 +29,7 @@ import seq "moonhug:packages/sequencer"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
 
 // Material icon codepoints, declared locally like the inspector package does
@@ -46,27 +47,19 @@ import "moonhug:editor/preview"
 _SQ_TAIL_S :: f32(2) // canvas room past the timeline end, seconds
 _SQ_ROW_H :: f32(26)
 _SQ_RULER_H :: f32(22)
-_SQ_SPLIT_W :: f32(4) // splitter thickness / hit area
 _SQ_MIN_PANE :: f32(120)
 
-// A draggable splitter. `size` is the pane it resizes, clamped so both sides
-// keep _SQ_MIN_PANE. `after` says that pane lies AFTER the splitter, so
-// dragging toward it must GROW it — without the flip the right pane resizes
-// backwards. Returns after drawing; the caller lays out around it.
+// The shared pane splitter (editor/widgets) over one stored pane size. `size`
+// is the pane it resizes, `total` the room it shares with its neighbour, so
+// both sides keep _SQ_MIN_PANE. `after` says the pane lies AFTER the
+// splitter.
 @(private = "file")
 _sq_splitter :: proc(id: cstring, vertical: bool, size: ^f32, total: f32, after := false) {
-	thickness := _SQ_SPLIT_W
-	im.InvisibleButton(id, vertical ? im.Vec2{thickness, im.GetContentRegionAvail().y} : im.Vec2{-1, thickness})
-	if im.IsItemHovered({}) || im.IsItemActive() {
-		im.SetMouseCursor(vertical ? .ResizeEW : .ResizeNS)
-		p0 := im.GetItemRectMin()
-		p1 := im.GetItemRectMax()
-		im.DrawList_AddRectFilled(im.GetWindowDrawList(), p0, p1, im.GetColorU32(.SeparatorHovered))
-	}
-	if im.IsItemActive() {
-		delta := vertical ? im.GetIO().MouseDelta.x : im.GetIO().MouseDelta.y
-		if after do delta = -delta
-		size^ = clamp(size^ + delta, _SQ_MIN_PANE, max(total - _SQ_MIN_PANE, _SQ_MIN_PANE))
+	other := max(total - size^, _SQ_MIN_PANE)
+	if after {
+		widgets.splitter(id, vertical, &other, size, _SQ_MIN_PANE, _SQ_MIN_PANE)
+	} else {
+		widgets.splitter(id, vertical, size, &other, _SQ_MIN_PANE, _SQ_MIN_PANE)
 	}
 }
 
@@ -483,7 +476,7 @@ sequencer_window_draw :: proc() {
 	_sq_splitter("##sq_split_l", true, &_sq.legend_w, total_w - _sq.inspector_w)
 	im.SameLine(0, 0)
 
-	canvas_pane_w := max(total_w - _sq.legend_w - _sq.inspector_w - 2 * _SQ_SPLIT_W, _SQ_MIN_PANE)
+	canvas_pane_w := max(total_w - _sq.legend_w - _sq.inspector_w - 2 * widgets.SPLITTER_SIZE, _SQ_MIN_PANE)
 	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar}) {
 		dl := im.GetWindowDrawList()
 		origin := im.GetCursorScreenPos()

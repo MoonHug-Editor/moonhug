@@ -7,6 +7,7 @@ import im "moonhug:external/odin-imgui"
 import "menu"
 import engine "../engine"
 import "undo"
+import "moonhug:editor/widgets"
 
 @(private="file")
 _history_selected: int = -1
@@ -49,13 +50,13 @@ draw_history_view :: proc() {
 	im.SameLine()
 	im.Text("top=%d  entries=%d", i32(top), i32(len(items)))
 
-	im.Separator()
-
 	avail := im.GetContentRegionAvail()
-	splitter_h: f32 = 4
-	list_h := (avail.y - splitter_h) * _history_split_ratio
-	if list_h < 60 do list_h = 60
-	if list_h > avail.y - splitter_h - 60 do list_h = avail.y - splitter_h - 60
+	split_total := avail.y - widgets.SPLITTER_SIZE
+	MIN_PANE :: f32(60)
+	list_h := split_total * _history_split_ratio
+	if list_h < MIN_PANE do list_h = MIN_PANE
+	if list_h > split_total - MIN_PANE do list_h = split_total - MIN_PANE
+	details_h := split_total - list_h
 
 	im.BeginChild("HistoryList", im.Vec2{0, list_h}, {.Borders})
 	{
@@ -121,19 +122,9 @@ draw_history_view :: proc() {
 	}
 	im.EndChild()
 
-	splitter_pos := im.GetCursorScreenPos()
-	im.InvisibleButton("##hsplit", im.Vec2{-1, splitter_h})
-	if im.IsItemActive() {
-		delta := im.GetIO().MouseDelta.y
-		total := avail.y - splitter_h
-		_history_split_ratio = clamp((list_h + delta) / total, 60 / total, (total - 60) / total)
+	if widgets.splitter("##hsplit", false, &list_h, &details_h, MIN_PANE, MIN_PANE) {
+		_history_split_ratio = list_h / split_total
 	}
-	if im.IsItemHovered() || im.IsItemActive() {
-		im.SetMouseCursor(.ResizeNS)
-	}
-	dl := im.GetWindowDrawList()
-	col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
-	im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, col, 1)
 
 	im.BeginChild("HistoryDetails", im.Vec2{0, 0}, {.Borders})
 	defer im.EndChild()

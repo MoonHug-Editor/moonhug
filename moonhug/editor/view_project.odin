@@ -16,6 +16,7 @@ import "../engine"
 import "moonhug:engine_editor/asset_pipeline"
 import "subassets"
 import "undo"
+import "moonhug:editor/widgets"
 
 ProjectViewData :: struct {
     currentPath: string,
@@ -1288,6 +1289,10 @@ _project_reveal_path :: proc(path: string, select: bool) {
     _project_active_pane = .List
 }
 
+// Tree pane's share of the window width, dragged via the pane splitter.
+_project_split_ratio: f32 = 0.5
+_PROJECT_MIN_PANE :: f32(120)
+
 draw_project_view :: proc() {
     // Drain cross-package asset requests (inspector value-button clicks):
     // ping = reveal + flash; open = reveal + select + activate (double click).
@@ -1304,15 +1309,20 @@ draw_project_view :: proc() {
     }
 
     if im.Begin("Project", &menu.show_project, {.NoCollapse}) {
-        // Create two columns
-        im.Columns(2, "ProjectColumns", true)
+        // Tree | files, split by a draggable splitter.
+        split_avail := im.GetContentRegionAvail()
+        split_total := split_avail.x - widgets.SPLITTER_SIZE
+        tree_w := split_total * _project_split_ratio
+        if tree_w < _PROJECT_MIN_PANE do tree_w = _PROJECT_MIN_PANE
+        if tree_w > split_total - _PROJECT_MIN_PANE do tree_w = split_total - _PROJECT_MIN_PANE
+        list_w := split_total - tree_w
 
         // Keyboard routes to a pane we track ourselves (imgui child focus is
         // unreliable), but only while the Project window as a whole is focused.
         window_focused := im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows)
 
         // Left pane: Tree view
-        im.BeginChild("TreeView", im.Vec2{0, 0}, {.Borders})
+        im.BeginChild("TreeView", im.Vec2{tree_w, 0}, {.Borders})
         // Clicking anywhere in the tree makes it the active pane.
         if im.IsWindowHovered({}) && im.IsMouseClicked(.Left) {
             _project_active_pane = .Tree
@@ -1332,7 +1342,11 @@ draw_project_view :: proc() {
 
         im.EndChild()
 
-        im.NextColumn()
+        im.SameLine(0, 0)
+        if widgets.splitter("##project_split", true, &tree_w, &list_w, _PROJECT_MIN_PANE, _PROJECT_MIN_PANE) {
+            _project_split_ratio = tree_w / split_total
+        }
+        im.SameLine(0, 0)
 
         // Right pane: File list
         im.BeginChild("FileList", im.Vec2{0, 0}, {.Borders})
@@ -1414,8 +1428,6 @@ draw_project_view :: proc() {
         im.DragFloat("##prj_zoom", &editor_settings.project_zoom, 0.01, 0, 1, "%.2f", {.ClampOnInput})
 
         im.EndChild()
-
-        im.Columns(1)
 
         // Esc cancels an active search from EITHER pane (a rename's Esc wins;
         // Esc in the search box itself reverts the input first, then this clears).

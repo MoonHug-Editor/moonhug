@@ -6,6 +6,7 @@ import "core:path/filepath"
 import "core:time"
 import im "moonhug:external/odin-imgui"
 import "menu"
+import "moonhug:editor/widgets"
 import "../engine/log"
 
 _console_last_count: int
@@ -119,14 +120,14 @@ draw_console_view :: proc() {
 		child_pad := im.GetStyle().WindowPadding
 		child_pad.x = 0
 		im.PushStyleVarImVec2(.WindowPadding, child_pad)
-		// Resizable split between the log rows and the detail pane below (same
-		// splitter pattern as the history view).
+		// Resizable split between the log rows and the detail pane below.
 		avail := im.GetContentRegionAvail()
-		splitter_h: f32 = 4
-		scroll_h := (avail.y - splitter_h) * _console_split_ratio
+		split_total := avail.y - widgets.SPLITTER_SIZE
+		scroll_h := split_total * _console_split_ratio
 		MIN_PANE :: f32(60)
 		if scroll_h < MIN_PANE do scroll_h = MIN_PANE
-		if scroll_h > avail.y - splitter_h - MIN_PANE do scroll_h = avail.y - splitter_h - MIN_PANE
+		if scroll_h > split_total - MIN_PANE do scroll_h = split_total - MIN_PANE
+		detail_h := split_total - scroll_h
 		im.BeginChild("ConsoleScroll", im.Vec2{0, scroll_h}, {.Borders})
 		im.PopStyleVar()
 
@@ -244,19 +245,9 @@ draw_console_view :: proc() {
 		im.EndChild()
 
 		// Draggable splitter between rows and detail.
-		splitter_pos := im.GetCursorScreenPos()
-		im.InvisibleButton("##console_split", im.Vec2{-1, splitter_h})
-		if im.IsItemActive() {
-			delta := im.GetIO().MouseDelta.y
-			total := avail.y - splitter_h
-			_console_split_ratio = clamp((scroll_h + delta) / total, MIN_PANE / total, (total - MIN_PANE) / total)
+		if widgets.splitter("##console_split", false, &scroll_h, &detail_h, MIN_PANE, MIN_PANE) {
+			_console_split_ratio = scroll_h / split_total
 		}
-		if im.IsItemHovered() || im.IsItemActive() {
-			im.SetMouseCursor(.ResizeNS)
-		}
-		dl := im.GetWindowDrawList()
-		split_col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
-		im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, split_col, 1)
 
 		// Up/Down select the previous/next visible row (nothing selected: both
 		// start at the newest). Not while a text input owns the keyboard.
@@ -290,13 +281,21 @@ draw_console_view :: proc() {
 		}
 
 		// Bottom detail pane: full message + source + call stack of the
-		// selected entry.
-		im.BeginChild("ConsoleDetail", im.Vec2{0, 0}, {.Borders})
+		// selected entry. No border and no child padding — the splitter gap
+		// separates it from the rows above. The text's own breathing room is
+		// the read-only input's FramePadding (_draw_console_detail).
+		im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
+		im.BeginChild("ConsoleDetail", im.Vec2{0, 0})
+		im.PopStyleVar()
 		_draw_console_detail()
 		im.EndChild()
 	}
 	im.End()
 }
+
+// Gap between the pane edge and the detail text. The pane itself has no
+// padding, so this is set on whatever draws the text.
+@(private = "file") DETAIL_TEXT_PAD :: im.Vec2{8, 8}
 
 _draw_console_detail :: proc() {
 	sel: ^log.Entry
@@ -307,6 +306,7 @@ _draw_console_detail :: proc() {
 		}
 	}
 	if sel == nil {
+		im.SetCursorPos(im.GetCursorPos() + DETAIL_TEXT_PAD)
 		im.TextDisabled("Select a log entry to see details")
 		return
 	}
@@ -331,10 +331,14 @@ _draw_console_detail :: proc() {
 	text := strings.to_string(b)
 	buf := strings.clone_to_cstring(text, context.temp_allocator)
 
+	// The pane has no padding of its own, so the gap around this text is
+	// this input's frame padding.
+	im.PushStyleVarImVec2(.FramePadding, DETAIL_TEXT_PAD)
 	im.PushStyleColorImVec4(.FrameBg, im.Vec4{0, 0, 0, 0})
 	im.PushStyleColorImVec4(.Text, _console_level_color(sel.level))
 	im.InputTextMultiline("##console_detail_text", buf, uint(len(text) + 1), im.Vec2{-1, -1}, {.ReadOnly, .WordWrap})
 	im.PopStyleColor(2)
+	im.PopStyleVar()
 }
 
 // A filter toggle. On: highlighted with on_color (or the theme's active-button

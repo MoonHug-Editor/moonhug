@@ -37,8 +37,13 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/menu"
 import "moonhug:editor/undo"
 import "moonhug:editor/preview"
+import "moonhug:editor/widgets"
 
-@(private = "file") _ANIM_LEFT_W :: f32(200) // property column
+// Property column width, dragged via the pane splitter between it and the
+// time canvas.
+@(private = "file") _anim_left_w: f32 = 200
+@(private = "file") _ANIM_MIN_LEFT_W :: f32(120)
+@(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
 @(private = "file") _ANIM_RULER_H :: f32(22)
 @(private = "file") _ANIM_ROW_H :: f32(20)
 @(private = "file") _ANIM_PAD_X :: f32(10) // time gutter inside the canvas
@@ -647,13 +652,16 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	dl := im.GetWindowDrawList()
 	origin := im.GetCursorScreenPos()
 	avail := im.GetContentRegionAvail()
-	if avail.x < _ANIM_LEFT_W + 80 {
+	if avail.x < _ANIM_MIN_LEFT_W + widgets.SPLITTER_SIZE + _ANIM_MIN_CANVAS_W {
 		im.TextDisabled("Window too narrow.")
 		return
 	}
 
 	length := max(clip.length, 0.0001)
-	x0 := origin.x + _ANIM_LEFT_W
+	// Property column | splitter gap | time canvas.
+	left_w := clamp(_anim_left_w, _ANIM_MIN_LEFT_W, avail.x - widgets.SPLITTER_SIZE - _ANIM_MIN_CANVAS_W)
+	left_x1 := origin.x + left_w
+	x0 := left_x1 + widgets.SPLITTER_SIZE
 	x1 := origin.x + avail.x
 	pps := (x1 - x0 - 2 * _ANIM_PAD_X) / length // pixels per second
 	tx0 := x0 + _ANIM_PAD_X                     // x of t=0
@@ -691,21 +699,24 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		im.DrawList_AddText(dl, im.Vec2{tx + 3, origin.y + 3}, tick_col, fmt.ctprintf("%.2f", t))
 	}
 
-	// --- Rows surface (left panel + canvas share it; hit-tested by x).
+	// --- Rows surface (left panel + canvas share it; hit-tested by x). It
+	// spans the splitter gap too: AllowOverlap lets the splitter, submitted
+	// last, take the pointer there.
 	im.SetCursorScreenPos(im.Vec2{origin.x, rows_y})
+	im.SetNextItemAllowOverlap()
 	im.InvisibleButton("##anim_sheet", im.Vec2{avail.x, body_h})
 	hovered := im.IsItemHovered()
 	mp := im.GetMousePos()
 	row_at := hovered ? int((mp.y - rows_y) / _ANIM_ROW_H) : -1
 
 	// Left panel rows (both modes: this is where curves pick their channel).
-	im.DrawList_PushClipRect(dl, im.Vec2{origin.x, rows_y}, im.Vec2{x0 - 2, rows_y + body_h}, true)
+	im.DrawList_PushClipRect(dl, im.Vec2{origin.x, rows_y}, im.Vec2{left_x1, rows_y + body_h}, true)
 	for &ch, i in clip.channels {
 		ry := rows_y + f32(i) * _ANIM_ROW_H
 		if i == _pv.sel_ch {
-			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{x0, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
+			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.Header, 0.7))
 		} else if i % 2 == 1 {
-			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{x0, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
+			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
 		label, resolved := _pv_ch_label(&ch)
 		// Unity's missing-binding yellow: the channel's component or field no
@@ -737,7 +748,6 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		}
 		im.EndPopup()
 	}
-	im.DrawList_AddLine(dl, im.Vec2{x0, origin.y}, im.Vec2{x0, rows_y + body_h}, im.GetColorU32(.Border), 1)
 
 	if _pv.mode == .Dopesheet {
 		_pv_sheet_dopesheet(doc, clip, dl, origin, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
@@ -779,6 +789,15 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		can_delete := _pv_sel_valid(clip) && len(clip.channels[_pv.sel_ch].times) > 1
 		if im.MenuItem("Delete Key", nil, false, can_delete) do _pv_delete_key(doc, clip)
 		im.EndPopup()
+	}
+
+	// Splitter between the property column and the canvas. Submitted LAST:
+	// the mode handlers above query the sheet button as the last item, and a
+	// later item is what wins the pointer over the AllowOverlap sheet.
+	canvas_w := x1 - x0
+	im.SetCursorScreenPos(im.Vec2{left_x1, origin.y})
+	if widgets.splitter("##anim_split", true, &left_w, &canvas_w, _ANIM_MIN_LEFT_W, _ANIM_MIN_CANVAS_W) {
+		_anim_left_w = left_w
 	}
 }
 

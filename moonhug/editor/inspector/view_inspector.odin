@@ -8,6 +8,7 @@ import "core:path/filepath"
 import "core:encoding/uuid"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 import ser "../../engine/serialization"
 import engine "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
@@ -169,14 +170,15 @@ view_inspector_draw :: proc(p_open: ^bool) {
         // scrolls in a child above it.
         preview := _asset_preview_drawer()
         avail := im.GetContentRegionAvail()
-        splitter_h: f32 = 4
-        MIN_PANE :: 60
-        preview_h: f32
+        split_total := avail.y - widgets.SPLITTER_SIZE
+        MIN_PANE :: f32(60)
+        preview_h, body_h: f32
         if preview != nil {
-            preview_h = (avail.y - splitter_h) * _preview_split_ratio
+            preview_h = split_total * _preview_split_ratio
             if preview_h < MIN_PANE do preview_h = MIN_PANE
-            if preview_h > avail.y - splitter_h - MIN_PANE do preview_h = avail.y - splitter_h - MIN_PANE
-            im.BeginChild("##inspector_body", {0, avail.y - splitter_h - preview_h})
+            if preview_h > split_total - MIN_PANE do preview_h = split_total - MIN_PANE
+            body_h = split_total - preview_h
+            im.BeginChild("##inspector_body", {0, body_h})
         }
         switch inspectorData.mode {
         case .Asset:
@@ -189,19 +191,9 @@ view_inspector_draw :: proc(p_open: ^bool) {
         if preview != nil {
             im.EndChild()
 
-            splitter_pos := im.GetCursorScreenPos()
-            im.InvisibleButton("##preview_split", im.Vec2{-1, splitter_h})
-            if im.IsItemActive() {
-                delta := im.GetIO().MouseDelta.y
-                total := avail.y - splitter_h
-                _preview_split_ratio = clamp((preview_h - delta) / total, MIN_PANE / total, (total - MIN_PANE) / total)
+            if widgets.splitter("##preview_split", false, &body_h, &preview_h, MIN_PANE, MIN_PANE) {
+                _preview_split_ratio = preview_h / split_total
             }
-            if im.IsItemHovered() || im.IsItemActive() {
-                im.SetMouseCursor(.ResizeNS)
-            }
-            dl := im.GetWindowDrawList()
-            split_col := im.IsItemActive() ? im.GetColorU32ImVec4(im.Vec4{0.8, 0.8, 0.8, 0.9}) : im.GetColorU32ImVec4(im.Vec4{0.5, 0.5, 0.5, 0.5})
-            im.DrawList_AddLine(dl, splitter_pos, im.Vec2{splitter_pos.x + avail.x, splitter_pos.y}, split_col, 1)
 
             im.SeparatorText("Preview")
             preview(inspectorData.filePath)
