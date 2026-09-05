@@ -9,6 +9,7 @@ import "core:math/linalg"
 import "../engine"
 import sprites "moonhug:packages/sprites"
 import "inspector"
+import "moonhug:editor/handles"
 
 scene_rt: ^gfx.Render_Target
 
@@ -286,6 +287,11 @@ render_scene_rt :: proc(w, h: i32) {
 	commands := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
+
+	// Interactive handles (editor/handles) read this frame: view, pointer in
+	// scene-image pixels, and whether the view is hovered.
+	hmp := im.GetMousePos()
+	handles.frame_begin(view, {hmp.x - _scene_img_min.x, hmp.y - _scene_img_min.y}, scene_view_hovered)
 
 	// @(on_draw_gizmos) / @(on_draw_gizmos_selected) hooks (generated dispatcher) —
 	// the pass is open, so procs draw with the gfx line API like the grid.
@@ -755,11 +761,11 @@ handle_scene_input :: proc() {
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
 	// not on an overlay — button clicks must not pick behind them).
-	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() && !overlay_wants_mouse() {
+	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() && !handles.consumes_mouse() && !overlay_wants_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true
 	}
-	if _scene_click_pending && (gizmo_consumes_mouse() || _gizmo_dragging) {
+	if _scene_click_pending && (gizmo_consumes_mouse() || _gizmo_dragging || handles.consumes_mouse()) {
 		_scene_click_pending = false
 	}
 	// An armed click that travels beyond the click threshold becomes a rubber

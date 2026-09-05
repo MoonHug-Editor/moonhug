@@ -301,7 +301,8 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       double-sided); engine-side because game code shares `camera_screen_ray`
 - [x] `editor/scene_pick.odin` — sprites via `sprite_world_corners` + 2 triangle
       tests; meshes via ray→local space + artifact AABB; nearest t wins; editor
-      ignores layer mask (Unity behavior). CPU picking, NOT GPU id-buffer
+      ignores layer mask (Unity behavior); packages add shapes through
+      `handles.pick_register` (docs/Handles.md). CPU picking, NOT GPU id-buffer
       (hundreds of objects; id-buffer = extra pipeline + readback for no gain)
 - [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
       threshold, no Alt) → `inspector_request_select`; miss clears selection

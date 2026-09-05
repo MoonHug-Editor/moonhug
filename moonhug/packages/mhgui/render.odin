@@ -2,7 +2,7 @@ package mhgui
 
 // The UI render collector (engine.render_register_collector,
 // docs/SDL3Renderer.md "Render collectors"). Each frame it resolves every
-// canvas's rects and emits one Draw_Quad per CanvasRenderer, placed on a
+// canvas's rects and emits one Draw_Quad per drawn graphic, placed on a
 // plane just inside the view's near plane so the quad lands on exactly its
 // canvas pixels and nothing in the scene can draw in front of it.
 
@@ -18,7 +18,7 @@ UI_SORTING_LAYER :: i32(127)
 _CANVAS_NDC_Z :: f32(0.0005)
 
 // The package's white texture (assets/white.png, meta committed with it):
-// what an untextured CanvasRenderer draws.
+// what an Image without a sprite draws.
 WHITE_TEXTURE_GUID :: "6ae7892c-14e2-4fc9-93ae-bf60599a235a"
 
 white_texture_guid :: proc() -> engine.Asset_GUID {
@@ -29,9 +29,27 @@ white_texture_guid :: proc() -> engine.Asset_GUID {
 	return guid
 }
 
-// The viewport as the canvas rect (Screen Space - Overlay).
+// The viewport as the canvas rect (screen-space overlay).
 canvas_rect :: proc(view: engine.Render_View) -> Rect {
 	return Rect{pos = {0, 0}, size = {view.width, view.height}}
+}
+
+// The Game view size the last Game collect saw. The scene view shows the
+// canvas at this size; before any Game view drew, a 1920x1080 stand-in.
+_last_game_size: [2]f32 = {1920, 1080}
+
+// The canvas in the SCENE view: a world rect with its bottom-left at the
+// origin in the XY plane, one world unit per canvas pixel, sized like the
+// Game view. The rect tool and picking work in this space.
+canvas_world_rect :: proc() -> Rect {
+	return Rect{pos = {0, 0}, size = _last_game_size}
+}
+
+// Scene-view world corners of a canvas rect: bl, br, tr, tl at z = 0.
+canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
+	x0, y0 := r.pos.x, r.pos.y
+	x1, y1 := x0 + r.size.x, y0 + r.size.y
+	return {{x0, y0, 0}, {x1, y0, 0}, {x1, y1, 0}, {x0, y1, 0}}
 }
 
 // One resolved node, in draw order (parents before children, siblings in
@@ -92,11 +110,21 @@ _canvas_to_world :: proc(view: engine.Render_View, p: [2]f32) -> [3]f32 {
 	return h.xyz / h.w
 }
 
-// Game views only: the scene view and previews show the world, not the HUD.
+// Game views draw the canvas over the viewport. The scene view draws it as
+// the world rect at the origin (canvas_world_rect), where the rect tool
+// lives. Previews show neither.
 collect_canvases :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
-	if view.kind != .Game do return
+	root: Rect
+	switch view.kind {
+	case .Game:
+		_last_game_size = {view.width, view.height}
+		root = canvas_rect(view)
+	case .SceneView:
+		root = canvas_world_rect()
+	case .Preview:
+		return
+	}
 	w := engine.ctx_world()
-	root := canvas_rect(view)
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
 
 	it := engine.pool_iterator(canvases(w))
@@ -112,8 +140,11 @@ collect_canvases :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_
 		for n in nodes {
 			_, cr := get_comp(n.tH, CanvasRenderer)
 			if cr == nil || !cr.enabled do continue
-			tex := cr.texture
-			if engine.asset_guid_is_empty(tex) do tex = white_texture_guid()
+			_, img := get_comp(n.tH, Image)
+			if img == nil || !img.enabled do continue
+			tex, px, tex_size, ok := image_source(img)
+			if !ok do continue
+			rect := image_fit(n.rect, {px.z, px.w}, img.preserve_aspect)
 			key: engine.Sort_Key
 			key[0] = engine.sort_key_word(UI_SORTING_LAYER, canvas.sort_order, 0, seq)
 			seq += 1
@@ -121,9 +152,9 @@ collect_canvases :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_
 				key     = key,
 				variant = engine.Draw_Quad{
 					texture = tex,
-					corners = canvas_quad_corners(view, n.rect),
-					uvs     = engine.QUAD_UVS_FULL,
-					color   = cr.color,
+					corners = canvas_quad_corners(view, rect) if view.kind == .Game else canvas_world_corners(rect),
+					uvs     = image_uvs(tex_size, px),
+					color   = img.color,
 				},
 			})
 		}

@@ -9,6 +9,7 @@ package editor
 import "core:math/linalg"
 import "../engine"
 import sprites "moonhug:packages/sprites"
+import "moonhug:editor/handles"
 
 // px, py in viewport pixels relative to the scene image's top-left.
 scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
@@ -61,6 +62,15 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if t, hit := engine.ray_hit_aabb(local_ray, mesh.aabb_min, mesh.aabb_max); hit && t < best_t {
 			best_t = t
 			best = engine.Transform_Handle(mr.owner)
+			found = true
+		}
+	}
+
+	// Package shapes (handles.pick_register): nearest wins across all sources.
+	for provider in handles.pick_providers() {
+		if tH, t, ok := provider(view, ray); ok && t < best_t {
+			best_t = t
+			best = tH
 			found = true
 		}
 	}

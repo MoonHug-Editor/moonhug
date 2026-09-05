@@ -45,3 +45,27 @@ rect_resolve :: proc(parent: Rect, rt: ^RectTransform) -> Rect {
 	pivot_pos := lo + (hi - lo) * rt.pivot + rt.anchored_position
 	return Rect{pos = pivot_pos - size * rt.pivot, size = size}
 }
+
+// --- Rect tool edits (the scene-view gizmo, tests) --------------------------------
+
+// Moves the rect by `delta` canvas pixels.
+rect_drag_move :: proc(rt: ^RectTransform, delta: [2]f32) {
+	rt.anchored_position += delta
+}
+
+// Drags edges by `delta` canvas pixels. `sides` picks the moving edge per
+// axis: -1 the low edge (left, bottom), +1 the high edge (right, top), 0
+// none. The opposite edge stays where it is, so the pivot-relative position
+// shifts by the pivot's share of the change.
+rect_drag_edges :: proc(rt: ^RectTransform, sides: [2]i8, delta: [2]f32) {
+	for axis in 0 ..< 2 {
+		switch sides[axis] {
+		case 1:
+			rt.size_delta[axis] += delta[axis]
+			rt.anchored_position[axis] += delta[axis] * rt.pivot[axis]
+		case -1:
+			rt.size_delta[axis] -= delta[axis]
+			rt.anchored_position[axis] += delta[axis] * (1 - rt.pivot[axis])
+		}
+	}
+}
