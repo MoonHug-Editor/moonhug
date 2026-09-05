@@ -123,7 +123,7 @@
         1.0
       ],
       "material": "00000000-0000-0000-0000-000000000000",
-      "order_in_layer": 0,
+      "order_in_layer": 6,
       "sorting_layer": 0,
       "sprite": {
         "guid": "f763e80e-c7e4-4d58-9a39-50b64585018f",
