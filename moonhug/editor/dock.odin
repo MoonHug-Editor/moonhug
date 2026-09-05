@@ -9,6 +9,7 @@ package editor
 // Overlay placement persists in editor_settings (anchor + normalized float pos).
 
 import "core:fmt"
+import "core:math"
 import im "moonhug:external/odin-imgui"
 import "menu"
 
@@ -299,9 +300,11 @@ overlays_draw :: proc(view_min, view_max: im.Vec2) {
 			pos += {OVERLAY_PAD, OVERLAY_PAD}
 		}
 
-		// Clamp inside the view (also keeps floaters visible after a resize).
-		pos.x = clamp(pos.x, view_min.x + OVERLAY_PAD, max(view_max.x - full.x + OVERLAY_PAD, view_min.x + OVERLAY_PAD))
-		pos.y = clamp(pos.y, view_min.y + OVERLAY_PAD, max(view_max.y - full.y + OVERLAY_PAD, view_min.y + OVERLAY_PAD))
+		// Clamp inside the view (also keeps floaters visible after a resize),
+		// on whole pixels: a floater's normalized position lands on fractions,
+		// and imgui text at a fractional x renders blurred.
+		pos.x = math.round(clamp(pos.x, view_min.x + OVERLAY_PAD, max(view_max.x - full.x + OVERLAY_PAD, view_min.x + OVERLAY_PAD)))
+		pos.y = math.round(clamp(pos.y, view_min.y + OVERLAY_PAD, max(view_max.y - full.y + OVERLAY_PAD, view_min.y + OVERLAY_PAD)))
 
 		_overlay_draw_one(&ov, pos, vertical)
 
@@ -341,9 +344,7 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	// An overlay whose items drew NOTHING last frame shows no chrome at all
 	// (no background, no grip, no hover) — a conditional overlay like the
 	// particles Particle Effect panel vanishes with its content. The items
-	// still run every frame, so it reappears the moment one draws. Width
-	// alone decides: an EMPTY imgui group still measures a line height, but
-	// its width is zero.
+	// still run every frame, so it reappears the moment one draws.
 	empty := ov.items_size.x < 0.5
 
 	ov.bg_min = pos - {OVERLAY_PAD, OVERLAY_PAD}
@@ -383,17 +384,23 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	// widgets' tooltips show where the hovered item lives
 	// (see _overlay_item_tooltip).
 	im.BeginGroup()
+	cursor_before := im.GetCursorScreenPos()
 	for &it, idx in ov.items {
 		if !vertical && idx > 0 do im.SameLine()
 		_overlay_item_ctx = {overlay_id = ov.id, order = it.order, active = true}
 		it.draw(vertical)
 	}
 	_overlay_item_ctx = {}
+	// Did the items submit anything? Any item advances the cursor. The group's
+	// own rect cannot tell: imgui's EndGroup folds the LAST item's rect into an
+	// empty group (its #7543 workaround), so an empty group measures the width
+	// out to whatever overlay drew before it — a phantom size that flickers.
+	drew := im.GetCursorScreenPos() != cursor_before
 	im.EndGroup()
-	ov.items_size = im.GetItemRectSize()
+	ov.items_size = drew ? im.GetItemRectSize() : {}
 
 	im.EndGroup()
-	ov.size = im.GetItemRectSize()
+	ov.size = drew ? im.GetItemRectSize() : {}
 }
 
 // Tooltip text + where the hovered item lives so anyone can see how to
