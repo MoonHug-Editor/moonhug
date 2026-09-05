@@ -211,19 +211,19 @@ _gizmo_collect_targets :: proc() -> bool {
 			// A UI node moves through its RectTransform (transform_set_world_position
 			// converts), so that is the field the drag must record.
 			if owned, rt := engine.transform_get_comp(h, engine.RectTransform); rt != nil {
-				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32)))
+				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([3]f32)))
 			}
 		case .Rotate:
 			append(&edits, undo.edit_target_transform(h, &t.rotation, typeid_of([4]f32)))
 			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 			if owned, rt := engine.transform_get_comp(h, engine.RectTransform); rt != nil {
-				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32)))
+				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([3]f32)))
 			}
 		case .Scale:
 			append(&edits, undo.edit_target_transform(h, &t.scale, typeid_of([3]f32)))
 			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 			if owned, rt := engine.transform_get_comp(h, engine.RectTransform); rt != nil {
-				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32)))
+				append(&edits, undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([3]f32)))
 			}
 		}
 	}

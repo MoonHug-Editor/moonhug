@@ -125,7 +125,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - hierarchy view - shows scene tree
   - project view - left pane is folder tree, right pane is selected folder contents. Unity-style zoom slider bottom right — minimum is the list, above it a thumbnail grid (image/material/scene previews rendered on demand, budgeted per frame, cached by guid + file stamp, persisted under library/thumbnails across sessions)
   - console view
-  - scene view - view and edit scene contents
+  - scene view - view and edit scene contents. Perspective/orthographic toggle and axis views from the scene gizmo (top-right), a 2D button for a fixed front view with pan-only navigation, F frames the selection (UI rects and canvases included)
 
 - custom drawers
   - custom property drawers - via @(property_drawer=...) on proc

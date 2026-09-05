@@ -222,7 +222,7 @@ _drag_begin :: proc(tH: engine.Transform_Handle, rt: ^engine.RectTransform) {
 	_drag_start = rt^
 	owned, _ := engine.transform_get_comp(tH, engine.RectTransform)
 	targets := [?]undo.Edit_Target{
-		undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32)),
+		undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([3]f32)),
 		undo.edit_target_pooled(owned.handle, &rt.size_delta, typeid_of([2]f32)),
 	}
 	_drag_edit = undo.edit_session_begin(targets[:], "Rect Tool")

@@ -42,7 +42,7 @@ test_rect_resolve_bottom_left_offset :: proc(t: ^testing.T) {
 	rt.anchor_min = {0, 0}
 	rt.anchor_max = {0, 0}
 	rt.pivot = {0, 0}
-	rt.anchored_position = {16, 8}
+	rt.anchored_position = {16, 8, 0}
 	rt.size_delta = {200, 50}
 	r := engine.rect_resolve(engine.Rect{{100, 100}, {800, 600}}, &rt)
 	testing.expect_value(t, r.pos, [2]f32{116, 108})
@@ -65,7 +65,7 @@ test_canvas_resolve_rects_walks_in_draw_order :: proc(t: ^testing.T) {
 	rt.anchor_min = {0, 0}
 	rt.anchor_max = {0, 0}
 	rt.pivot = {0, 0}
-	rt.anchored_position = {10, 20}
+	rt.anchored_position = {10, 20, 0}
 	rt.size_delta = {30, 40}
 	hidden := engine.transform_new("Hidden", canvas)
 	if ht := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(hidden)); ht != nil do ht.is_active = false
@@ -186,9 +186,9 @@ test_rect_drag_edges_with_corner_pivot :: proc(t: ^testing.T) {
 	rt: engine.RectTransform
 	rt.pivot = {0, 0}
 	rt.size_delta = {100, 100}
-	rt.anchored_position = {40, 40}
+	rt.anchored_position = {40, 40, 0}
 	mhgui.rect_drag_edges(&rt, {1, 1}, {25, 15})
-	testing.expect_value(t, rt.anchored_position, [2]f32{40, 40})
+	testing.expect_value(t, rt.anchored_position, [3]f32{40, 40, 0})
 	testing.expect_value(t, rt.size_delta, [2]f32{125, 115})
 	r := engine.rect_resolve(parent, &rt)
 	testing.expect_value(t, r.pos, [2]f32{40, 40})
@@ -327,7 +327,7 @@ test_canvas_resolve_rects_applies_layout_and_scaler :: proc(t: ^testing.T) {
 	rrt.anchor_min = {0, 0}
 	rrt.anchor_max = {0, 0}
 	rrt.pivot = {0, 0}
-	rrt.anchored_position = {100, 100}
+	rrt.anchored_position = {100, 100, 0}
 	rrt.size_delta = {300, 40}
 	g := cast(^mhgui.LayoutGroup)_add(row, .LayoutGroup)
 	g.direction = .Horizontal
@@ -337,7 +337,7 @@ test_canvas_resolve_rects_applies_layout_and_scaler :: proc(t: ^testing.T) {
 		item := engine.transform_new("Item", row)
 		rt := cast(^engine.RectTransform)_add(item, .RectTransform)
 		rt.size_delta = {50, 20}
-		rt.anchored_position = {999, 999} // ignored under a layout
+		rt.anchored_position = {999, 999, 0} // ignored under a layout
 		_ = i
 	}
 
@@ -375,21 +375,30 @@ test_position_api_converts_through_anchored_position :: proc(t: ^testing.T) {
 	// is also its anchor reference point, so local == anchored.
 	testing.expect_value(t, engine.transform_local_position(image), [3]f32{0, 0, 0})
 	engine.transform_set_local_position(image, {10, 20, 0})
-	testing.expect_value(t, rt.anchored_position, [2]f32{10, 20})
+	testing.expect_value(t, rt.anchored_position, [3]f32{10, 20, 0})
 	testing.expect_value(t, engine.transform_local_position(image), [3]f32{10, 20, 0})
 	// World position is the pivot on the canvas plane.
 	testing.expect_value(t, engine.transform_world_position(image), [3]f32{110, 70, 0})
 	engine.transform_set_world_position(image, {30, 40, 0})
-	testing.expect_value(t, rt.anchored_position, [2]f32{-70, -10})
+	testing.expect_value(t, rt.anchored_position, [3]f32{-70, -10, 0})
 
 	// Bottom-left anchored: the anchor reference is the canvas corner, so
 	// anchored and local differ by the parent pivot (the canvas center).
 	rt.anchor_min = {0, 0}
 	rt.anchor_max = {0, 0}
-	rt.anchored_position = {0, 0}
+	rt.anchored_position = {0, 0, 0}
 	testing.expect_value(t, engine.transform_local_position(image), [3]f32{-100, -50, 0})
 	engine.transform_set_local_position(image, {0, 0, 0})
-	testing.expect_value(t, rt.anchored_position, [2]f32{100, 50})
+	testing.expect_value(t, rt.anchored_position, [3]f32{100, 50, 0})
+
+	// Depth is the third component, kept through both doors.
+	engine.transform_set_local_position(image, {0, 0, 25})
+	testing.expect_value(t, rt.anchored_position.z, 25)
+	testing.expect_value(t, engine.transform_local_position(image).z, 25)
+	testing.expect_value(t, engine.transform_world_position(image).z, 25)
+	// Anchors sit at the canvas corner here, so the world point is the offset.
+	engine.transform_set_world_position(image, {100, 50, -7})
+	testing.expect_value(t, rt.anchored_position, [3]f32{100, 50, -7})
 
 	// The Transform's own position never took part.
 	tr := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(image))

@@ -7,7 +7,7 @@ import "moonhug:engine"
 
 // Moves the rect by `delta` canvas units.
 rect_drag_move :: proc(rt: ^engine.RectTransform, delta: [2]f32) {
-	rt.anchored_position += delta
+	rt.anchored_position.xy += delta
 }
 
 // Drags edges by `delta` canvas units. `sides` picks the moving edge per

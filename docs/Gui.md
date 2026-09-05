@@ -19,7 +19,10 @@ with `canvas_layout_register`.
   origin. `anchor_min` / `anchor_max` pick a sub-rect of the parent rect,
   `size_delta` adds to that span (equal anchors give a fixed size, spread
   anchors stretch and `size_delta` is the margin), `pivot` sits at the anchor
-  reference point plus `anchored_position`. The node's Transform rotation
+  reference point plus `anchored_position`. Its third component is depth off
+  the canvas plane, Unity's anchoredPosition3D: inert in the overlay, which
+  draws orthographically, meaningful once Screen Space - Camera and World
+  Space modes exist. The node's Transform rotation
   and scale apply around the pivot and compose down the hierarchy: a rotated
   panel rotates its children. A rotation around X or Y tilts the rect out of
   the canvas plane; the Game view draws the overlay orthographically, so the
@@ -58,6 +61,7 @@ a second door into it, so one call moves a bullet or a health bar:
   position into `anchored_position`; `transform_local_position` returns the
   value derived from it. Local positions are relative to the parent's pivot
   point, in the parent's space, like localPosition under a RectTransform.
+  Z passes through as depth.
 - `transform_world_position` and `transform_set_world_position` work on the
   canvas plane, the world space the scene view shows (one unit per canvas
   unit, canvas bottom-left at the origin).

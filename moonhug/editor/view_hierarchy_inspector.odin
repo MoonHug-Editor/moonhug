@@ -644,7 +644,7 @@ _draw_ui_position_row :: proc(tH: engine.Transform_Handle) {
 	if inspector.drag_float3(inspector.field_row("Position"), &pos, 0.1) {
 		if !_ui_pos_edit.active {
 			if owned, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil {
-				targets := [?]undo.Edit_Target{undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32))}
+				targets := [?]undo.Edit_Target{undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([3]f32))}
 				_ui_pos_edit = undo.edit_session_begin(targets[:], "Position")
 			}
 		}

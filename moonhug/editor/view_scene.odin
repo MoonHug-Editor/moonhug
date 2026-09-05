@@ -42,6 +42,36 @@ _orbit_pivot: [3]f32
 scene_view_hovered: bool
 scene_flythrough_active: bool
 
+// Projection and the 2D view (Unity's scene view toggles). Orthographic keeps
+// the framing of the perspective view: the ortho height derives from the
+// orbit distance and the FOV, so toggling does not jump and wheel zoom keeps
+// working. 2D fixes the view along -Z (X right, Y up), orthographic, with no
+// orbit: right and middle drag both pan. Leaving 2D restores the view that
+// was active before it.
+scene_cam_ortho: bool
+scene_2d_mode: bool
+_pre_2d_yaw: f32
+_pre_2d_pitch: f32
+_pre_2d_ortho: bool
+_scene_2d_pending: bool // settings asked for 2D before the camera existed
+
+scene_set_2d :: proc(on: bool) {
+	if on == scene_2d_mode do return
+	scene_2d_mode = on
+	if on {
+		_pre_2d_yaw, _pre_2d_pitch, _pre_2d_ortho = scene_cam_yaw, scene_cam_pitch, scene_cam_ortho
+		scene_cam_ortho = true
+		scene_cam_yaw = -math.PI / 2 // forward = -Z
+		scene_cam_pitch = 0
+	} else {
+		scene_cam_yaw, scene_cam_pitch, scene_cam_ortho = _pre_2d_yaw, _pre_2d_pitch, _pre_2d_ortho
+	}
+	_frame_tween_active = false
+	fwd, _, _ := _scene_cam_basis()
+	scene_cam_pos = scene_cam_target - fwd * scene_cam_dist
+	update_scene_camera()
+}
+
 // Click-to-pick state: a click is press+release under a small drag threshold
 // (so orbit/pan drags never select). Set in draw_scene_view / handle_scene_input.
 _scene_img_min: im.Vec2
@@ -80,7 +110,7 @@ ZOOM_DRAG_FACTOR :: 0.01
 
 SCENE_CAM_FOV_DEG :: f32(45)
 SCENE_CAM_NEAR :: f32(0.1)
-SCENE_CAM_FAR :: f32(1000)
+SCENE_CAM_FAR :: f32(20000) // far enough to frame a whole 4K canvas (one unit per canvas pixel)
 
 init_scene_view :: proc() {
 	scene_rt = gfx.rt_create(1, 1)
@@ -91,6 +121,8 @@ init_scene_view :: proc() {
 	// Unity-style dockable overlays (dock.odin): register every
 	// @(scene_overlay) item (generated), then restore persisted placement.
 	_register_scene_overlays()
+	overlay_set_default_anchor("Orientation", .Top_Right) // Unity's scene gizmo corner; settings override
+	overlay_set_transparent("Orientation")                // Unity's: no panel, only the grip
 	overlays_apply_settings()
 }
 
@@ -174,6 +206,12 @@ _frame_tween_t: f32
 _frame_tween_from_target, _frame_tween_to_target: [3]f32
 _frame_tween_from_dist, _frame_tween_to_dist: f32
 
+// Unity's Edit > Frame Selected (F in the scene view).
+@(menu_item={path="Edit/Frame Selected", order=-44, shortcut=""})
+edit_frame_selected_menu :: proc() {
+	scene_frame_selected()
+}
+
 scene_frame_selected :: proc() {
 	// Union over ALL selected objects (Unity frames the whole selection).
 	w := engine.ctx_world()
@@ -218,10 +256,43 @@ _update_frame_tween :: proc(dt: f32) {
 	if _frame_tween_t >= 1 do _frame_tween_active = false
 }
 
+// UI bounds: a Canvas frames its whole rect, a RectTransform its resolved
+// corners in canvas (world) space — the Transform position of a UI node means
+// nothing, so framing it would go to the origin.
+_ui_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool) {
+	corners: [4][3]f32
+	if _, cv := engine.transform_get_comp(tH, engine.Canvas); cv != nil {
+		corners = engine.canvas_world_corners(engine.canvas_world_rect(tH))
+	} else if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil {
+		canvas := engine.canvas_of(tH)
+		if canvas == {} do return {}, 0, false
+		nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+		engine.canvas_resolve_rects(canvas, engine.canvas_world_rect(canvas), &nodes)
+		found := false
+		for n in nodes {
+			if n.tH == tH {
+				corners = engine.rect_corners(n.rect, n.xform)
+				found = true
+				break
+			}
+		}
+		if !found do return {}, 0, false
+	} else {
+		return {}, 0, false
+	}
+	lo, hi := corners[0], corners[0]
+	for c in corners[1:] {
+		lo = {min(lo.x, c.x), min(lo.y, c.y), min(lo.z, c.z)}
+		hi = {max(hi.x, c.x), max(hi.y, c.y), max(hi.z, c.z)}
+	}
+	return (lo + hi) * 0.5, max(linalg.length(hi - lo) * 0.5, 0.1), true
+}
+
 // Bounding sphere of the selection: mesh AABB through the world transform,
 // sprite quad, or a default radius around the position (mirrors the shapes
 // draw_selection_outline draws).
 _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32) {
+	if c, r, ok := _ui_bounds(tH); ok do return c, r
 	tw := engine.transform_world(tH)
 	center = tw.position
 	radius = 1.5
@@ -267,10 +338,26 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 	return
 }
 
+// Half the visible height at the anchor: what the perspective view shows at
+// scene_cam_dist, and the orthographic view's half height.
+scene_cam_half_height :: proc() -> f32 {
+	return max(scene_cam_dist, 0.05) * math.tan(math.to_radians(SCENE_CAM_FOV_DEG) * 0.5)
+}
+
 // The scene view's Render_View — also the basis for picking rays later.
 scene_render_view :: proc(w, h: f32) -> engine.Render_View {
 	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
-	proj := gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), w / max(h, 1), SCENE_CAM_NEAR, SCENE_CAM_FAR)
+	aspect := w / max(h, 1)
+	proj: matrix[4, 4]f32
+	if scene_cam_ortho {
+		half_h := scene_cam_half_height()
+		half_w := half_h * aspect
+		// The eye sits scene_cam_dist before the anchor; the near plane goes
+		// far behind it so an ortho view never clips what a zoom-in passes.
+		proj = gfx.matrix4_ortho_z01(-half_w, half_w, -half_h, half_h, -SCENE_CAM_FAR, SCENE_CAM_FAR)
+	} else {
+		proj = gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
+	}
 	return engine.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
 }
 
@@ -425,6 +512,12 @@ _GRID_SUB_COL :: [4]f32{0.3, 0.3, 0.3, 1}     // subdivision lines
 draw_grid :: proc() {
 	gs := grid_settings
 	if gs.cells_count <= 0 || gs.cell_size <= 0 do return
+	if scene_2d_mode {
+		// The 2D view looks along -Z: only the XY grid reads, the others are
+		// edge-on lines.
+		_draw_grid_plane({1, 0, 0}, {0, 1, 0})
+		return
+	}
 	if gs.show_xz do _draw_grid_plane({1, 0, 0}, {0, 0, 1})
 	if gs.show_xy do _draw_grid_plane({1, 0, 0}, {0, 1, 0})
 	if gs.show_yz do _draw_grid_plane({0, 1, 0}, {0, 0, 1})
@@ -461,6 +554,10 @@ draw_scene_view :: proc() {
 	// window edge — a scrollbar would shrink the content region, resize the
 	// RT and shift the image, oscillating for frames.
 	if im.Begin("Scene", &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
+		if _scene_2d_pending {
+			_scene_2d_pending = false
+			scene_set_2d(true)
+		}
 		_update_frame_tween(im.GetIO().DeltaTime)
 
 		avail := im.GetContentRegionAvail()
@@ -531,6 +628,14 @@ draw_tools_overlay :: proc(vertical: bool) {
 	mode_button(ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
 	mode_button(ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
 	mode_button(ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
+}
+
+// View overlay: Unity's 2D toggle.
+@(scene_overlay={id="View", order=50})
+draw_view_overlay :: proc(vertical: bool) {
+	if overlay_tool_button("2D", "2D view: orthographic, looking along -Z, no orbit (right or middle drag pans)", scene_2d_mode, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
+		scene_set_2d(!scene_2d_mode)
+	}
 }
 
 // Pivot mini-overlay: Unity's Global/Local gizmo orientation switch — a single
@@ -661,7 +766,7 @@ handle_scene_input :: proc() {
 		scene_flythrough_active = false
 		input.set_mouse_relative(false)
 	}
-	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered {
+	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered && !scene_2d_mode {
 		scene_flythrough_active = true
 		input.set_mouse_relative(true)
 		// Smoothing state starts at rest so entry doesn't inherit stale lag.
@@ -809,7 +914,7 @@ handle_scene_input :: proc() {
 		}
 	}
 
-	if alt_down && lmb_dragging {
+	if alt_down && lmb_dragging && !scene_2d_mode {
 		// Orbit around the anchor captured when the drag started (Unity's
 		// pivot model: F/pan/zoom place it, orbit revolves around it).
 		if !_orbit_active {
@@ -839,13 +944,15 @@ handle_scene_input :: proc() {
 		return
 	}
 
-	if mmb_dragging {
+	// Pan: middle drag, and in 2D also right drag and alt-drag (no orbit there).
+	if mmb_dragging || (scene_2d_mode && scene_view_hovered && (rmb_dragging || (alt_down && lmb_dragging))) {
 		delta := io.MouseDelta
 		_, r, u := _scene_cam_basis()
 
 		// Distance/viewport scaling keeps the grabbed point under the cursor
-		// at any zoom level and window size.
+		// at any zoom level and window size; exact in orthographic.
 		units_per_px := scene_cam_dist / max(f32(scene_rt.height), 1)
+		if scene_cam_ortho do units_per_px = 2 * scene_cam_half_height() / max(f32(scene_rt.height), 1)
 		pan := r * (-delta.x * units_per_px) + u * (delta.y * units_per_px)
 		scene_cam_pos += pan
 		update_scene_camera()

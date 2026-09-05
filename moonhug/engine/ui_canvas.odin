@@ -32,7 +32,7 @@ RectTransform :: struct {
 	anchor_min:        [2]f32, // parent-relative 0..1, bottom-left anchor
 	anchor_max:        [2]f32, // parent-relative 0..1, top-right anchor
 	pivot:             [2]f32, // 0..1 inside the node's own rect
-	anchored_position: [2]f32, // pivot offset from the anchor reference point, canvas units
+	anchored_position: [3]f32, // pivot offset from the anchor reference point, canvas units; z is depth off the canvas plane (Unity's anchoredPosition3D)
 	size_delta:        [2]f32, // size added to the anchor span, canvas units
 }
 
@@ -50,7 +50,7 @@ rect_resolve :: proc(parent: Rect, rt: ^RectTransform) -> Rect {
 	lo := parent.pos + parent.size * rt.anchor_min
 	hi := parent.pos + parent.size * rt.anchor_max
 	size := (hi - lo) + rt.size_delta
-	pivot_pos := lo + (hi - lo) * rt.pivot + rt.anchored_position
+	pivot_pos := lo + (hi - lo) * rt.pivot + rt.anchored_position.xy
 	return Rect{pos = pivot_pos - size * rt.pivot, size = size}
 }
 
@@ -189,11 +189,12 @@ Node_Rect :: struct {
 	xform: matrix[4, 4]f32,
 }
 
-// The transform that rotates by `rotation` and scales by `scale` around
-// `pivot` (a canvas point on the plane).
-rect_affine :: proc(pivot: [2]f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
+// The transform that lifts a node `depth` off the canvas plane and rotates
+// by `rotation` and scales by `scale` around `pivot` (a canvas point on the
+// plane).
+rect_affine :: proc(pivot: [2]f32, depth: f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
 	p := [3]f32{pivot.x, pivot.y, 0}
-	return trs_matrix(p, _quat_safe(rotation), scale) * linalg.matrix4_translate_f32(-p)
+	return trs_matrix({p.x, p.y, depth}, _quat_safe(rotation), scale) * linalg.matrix4_translate_f32(-p)
 }
 
 // A canvas point through a node transform: the 3D point it lands on.
@@ -267,8 +268,8 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 		// space. The canvas node itself never rotates (overlay).
 		if rt != nil && e.tH != canvas_tH {
 			rot := _quat_safe(t.rotation)
-			if rot != QUAT_IDENTITY || t.scale != {1, 1, 1} {
-				xform = e.xform * rect_affine(rect.pos + rect.size * rt.pivot, rot, t.scale)
+			if rot != QUAT_IDENTITY || t.scale != {1, 1, 1} || rt.anchored_position.z != 0 {
+				xform = e.xform * rect_affine(rect.pos + rect.size * rt.pivot, rt.anchored_position.z, rot, t.scale)
 			}
 		}
 		append(out, Node_Rect{e.tH, rect, xform})
@@ -317,9 +318,9 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 // a second door into it: a set converts the given position into
 // anchored_position, a read derives the position from it. Local positions
 // are relative to the parent's pivot point, in the parent's space (its
-// rotation and scale included), like localPosition under a RectTransform.
-// World positions are canvas-space points on the canvas plane (z = 0), the
-// space the scene view shows.
+// rotation and scale included), like localPosition under a RectTransform;
+// z passes straight through as depth off the canvas plane. World positions
+// are canvas-space points, the space the scene view shows.
 
 // The canvas node above `tH`, or the zero handle.
 canvas_of :: proc(tH: Transform_Handle) -> Transform_Handle {
@@ -375,17 +376,18 @@ rect_frame :: proc(tH: Transform_Handle) -> (f: Rect_Frame, ok: bool) {
 	return {}, false
 }
 
-// The node's pivot point in the parent's space.
-rect_pivot_local :: proc(f: Rect_Frame) -> [2]f32 {
-	return f.anchor_ref + f.rt.anchored_position
+// The node's pivot point in the parent's space, depth included.
+rect_pivot_local :: proc(f: Rect_Frame) -> [3]f32 {
+	p := f.anchor_ref + f.rt.anchored_position.xy
+	return {p.x, p.y, f.rt.anchored_position.z}
 }
 
 // The node's position relative to the parent's pivot, in the parent's
 // space, or its Transform position for a non-UI node.
 transform_local_position :: proc(tH: Transform_Handle) -> [3]f32 {
 	if f, ok := rect_frame(tH); ok {
-		p := rect_pivot_local(f) - f.parent_pivot
-		return {p.x, p.y, 0}
+		p := rect_pivot_local(f)
+		return {p.x - f.parent_pivot.x, p.y - f.parent_pivot.y, p.z}
 	}
 	w := ctx_world()
 	t := pool_get(&w.transforms, Handle(tH))
@@ -397,7 +399,8 @@ transform_local_position :: proc(tH: Transform_Handle) -> [3]f32 {
 // anchored_position for a UI node, written to the Transform otherwise.
 transform_set_local_position :: proc(tH: Transform_Handle, local: [3]f32) {
 	if f, ok := rect_frame(tH); ok {
-		f.rt.anchored_position = f.parent_pivot + local.xy - f.anchor_ref
+		xy := f.parent_pivot + local.xy - f.anchor_ref
+		f.rt.anchored_position = {xy.x, xy.y, local.z}
 		return
 	}
 	w := ctx_world()
@@ -410,16 +413,17 @@ transform_set_local_position :: proc(tH: Transform_Handle, local: [3]f32) {
 rect_transform_world_position :: proc(tH: Transform_Handle) -> (pos: [3]f32, ok: bool) {
 	f, found := rect_frame(tH)
 	if !found do return {}, false
-	return rect_apply(f.parent_xform, rect_pivot_local(f)), true
+	p := rect_pivot_local(f)
+	return (f.parent_xform * [4]f32{p.x, p.y, p.z, 1}).xyz, true
 }
 
 // Places the UI node's pivot at a canvas (world) point. ok=false for non-UI nodes.
 rect_transform_set_world_position :: proc(tH: Transform_Handle, world: [3]f32) -> bool {
 	f, found := rect_frame(tH)
 	if !found do return false
-	// Back into the parent's space; a tilted parent projects the point onto
-	// its plane.
-	local := (linalg.inverse(f.parent_xform) * [4]f32{world.x, world.y, world.z, 1}).xy
-	f.rt.anchored_position = local - f.anchor_ref
+	// Back into the parent's space: x and y against the anchor reference, z
+	// as depth off the parent's plane.
+	local := (linalg.inverse(f.parent_xform) * [4]f32{world.x, world.y, world.z, 1}).xyz
+	f.rt.anchored_position = {local.x - f.anchor_ref.x, local.y - f.anchor_ref.y, local.z}
 	return true
 }

@@ -53,6 +53,8 @@ EditorSettings :: struct {
     sim_host:                 string,                   // Simulate's host package name (simulate.odin), e.g. "app"
     project_settings_tab:     string,                   // Project Settings window's selected section (project_settings.odin)
     project_zoom:             f32,                      // project view zoom: 0 = list, >0 = thumbnail grid (view_project.odin)
+    scene_ortho:              bool,                     // scene view projection (view_scene.odin)
+    scene_2d:                 bool,                     // scene view 2D mode (view_scene.odin)
 }
 
 editor_settings: EditorSettings
@@ -77,6 +79,8 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.snap.angle > 0 {
                 snap_settings = editor_settings.snap
             }
+            scene_cam_ortho = editor_settings.scene_ortho
+            if editor_settings.scene_2d do _scene_2d_pending = true
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
                 menu.show_project_inspector = editor_settings.show_project_inspector
@@ -142,6 +146,8 @@ save_editor_settings :: proc() {
     overlays_capture_settings()
     editor_settings.grid = grid_settings
     editor_settings.snap = snap_settings
+    editor_settings.scene_ortho = _pre_2d_ortho if scene_2d_mode else scene_cam_ortho
+    editor_settings.scene_2d = scene_2d_mode
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

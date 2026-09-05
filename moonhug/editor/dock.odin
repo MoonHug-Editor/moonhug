@@ -136,6 +136,9 @@ Overlay :: struct {
 	bg_max:     im.Vec2,
 	dragging:   bool,
 	drag_off:   im.Vec2, // grab offset from content top-left, px
+	// No background or border: only the grip and the items show (Unity's
+	// Orientation overlay). Hover and drag work the same.
+	transparent: bool,
 }
 
 _overlays: [dynamic]Overlay
@@ -147,6 +150,21 @@ _overlay_item_ctx: struct {
 	overlay_id: cstring,
 	order:      int,
 	active:     bool,
+}
+
+// Where an overlay docks before any saved placement exists (all start
+// Top_Left). Call after registration and before overlays_apply_settings.
+overlay_set_default_anchor :: proc(overlay_id: cstring, anchor: Overlay_Anchor) {
+	for &o in _overlays {
+		if o.id == overlay_id do o.anchor = anchor
+	}
+}
+
+// Draw the overlay without its background panel; the grip stays.
+overlay_set_transparent :: proc(overlay_id: cstring) {
+	for &o in _overlays {
+		if o.id == overlay_id do o.transparent = true
+	}
 }
 
 // Add an item to overlay `overlay_id`, creating the overlay on first use
@@ -330,7 +348,7 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 
 	ov.bg_min = pos - {OVERLAY_PAD, OVERLAY_PAD}
 	ov.bg_max = empty ? ov.bg_min : pos + ov.size + {OVERLAY_PAD, OVERLAY_PAD}
-	if ov.size.x > 0 && !empty { // size is unknown on the very first frame
+	if ov.size.x > 0 && !empty && !ov.transparent { // size is unknown on the very first frame
 		bg := im.GetStyleColorVec4(.WindowBg)^
 		bg.w = 0.85
 		im.DrawList_AddRectFilled(dl, ov.bg_min, ov.bg_max, im.GetColorU32ImVec4(bg), 4)
