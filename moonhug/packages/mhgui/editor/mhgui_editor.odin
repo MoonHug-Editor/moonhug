@@ -5,6 +5,7 @@ package mhgui_editor
 // editor/handles, docs/Handles.md). Each menu action and each drag is one
 // undo step.
 
+import "core:math/linalg"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine"
 import "moonhug:editor/handles"
@@ -43,7 +44,7 @@ _canvas_of :: proc(start: engine.Transform_Handle) -> engine.Transform_Handle {
 	w := engine.ctx_world()
 	tH := start
 	for tH != _NONE {
-		if _, c := mhgui.get_comp(tH, mhgui.Canvas); c != nil do return tH
+		if _, c := engine.transform_get_comp(tH, engine.Canvas); c != nil do return tH
 		t := engine.pool_get(&w.transforms, engine.Handle(tH))
 		if t == nil do return _NONE
 		tH = engine.Transform_Handle(t.parent.handle)
@@ -101,18 +102,18 @@ _pick_ui :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform
 	best_t := f32(1e30)
 	best := _NONE
 	found := false
-	nodes := make([dynamic]mhgui.Node_Rect, context.temp_allocator)
-	it := engine.pool_iterator(mhgui.canvases(w))
+	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+	it := engine.pool_iterator(engine.canvases(w))
 	for canvas, _ in engine.pool_next(&it) {
 		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
 		clear(&nodes)
-		mhgui.canvas_resolve_rects(canvas.owner, mhgui.canvas_world_rect(), &nodes)
+		engine.canvas_resolve_rects(canvas.owner, engine.canvas_world_rect(canvas.owner), &nodes)
 		for n in nodes {
-			_, cr := mhgui.get_comp(n.tH, mhgui.CanvasRenderer)
+			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
 			if cr == nil || !cr.enabled do continue
 			_, img := mhgui.get_comp(n.tH, mhgui.Image)
 			if img == nil || !img.enabled do continue
-			c := mhgui.canvas_world_corners(n.rect)
+			c := engine.rect_corners(n.rect, n.xform)
 			if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
 				best_t, best, found = t, n.tH, true
 			}
@@ -143,7 +144,7 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		inspector.mark_inspector_changed()
 		inspector.record_nested_override(&img.sprite, typeid_of(engine.PPtr), "sprite", true)
 	}
-	owned, rt := mhgui.get_comp(img.owner, mhgui.RectTransform)
+	owned, rt := engine.transform_get_comp(img.owner, engine.RectTransform)
 	if rt == nil do return
 	_, px, _, ok := mhgui.image_source(img)
 	im.BeginDisabled(!ok)
@@ -162,9 +163,9 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 // Every canvas shows its rect in the scene view, selected or not, so the UI
 // space is visible next to the world.
 @(on_draw_gizmos={component=Canvas})
-canvas_gizmos :: proc(c: ^mhgui.Canvas) {
+canvas_gizmos :: proc(c: ^engine.Canvas) {
 	if !engine.transform_active_in_hierarchy(c.owner) do return
-	handles.rect(mhgui.canvas_world_corners(mhgui.canvas_world_rect()), _COLOR_CANVAS)
+	handles.rect(engine.canvas_world_corners(engine.canvas_world_rect(c.owner)), _COLOR_CANVAS)
 }
 
 // --- Rect tool -----------------------------------------------------------------------
@@ -172,7 +173,7 @@ canvas_gizmos :: proc(c: ^mhgui.Canvas) {
 // The drag in flight: the RectTransform as it was at grab, restored and
 // re-edited from the total drag offset every frame so a drag is a pure
 // function of where the pointer is now, and the undo session around it.
-@(private = "file") _drag_start: mhgui.RectTransform
+@(private = "file") _drag_start: engine.RectTransform
 @(private = "file") _drag_edit: undo.Edit_Session
 
 // Handle ids: the node's pool index scoped by a handle slot, never 0.
@@ -196,28 +197,30 @@ _RECT_HANDLES := [8]_Rect_Handle{
 }
 
 @(private = "file")
-_rect_point :: proc(r: mhgui.Rect, at: [2]f32) -> [3]f32 {
-	return {r.pos.x + r.size.x * at.x, r.pos.y + r.size.y * at.y, 0}
+_rect_point :: proc(r: engine.Rect, m: matrix[4, 4]f32, at: [2]f32) -> [3]f32 {
+	return engine.rect_apply(m, {r.pos.x + r.size.x * at.x, r.pos.y + r.size.y * at.y})
 }
 
 // Apply a handle's drag: start from the grab-time values, then move or
-// resize by the total offset. The canvas plane is 1 unit per pixel, so the
-// world offset is the canvas offset.
+// resize by the total offset. The world offset is a canvas offset (one unit
+// per canvas unit), brought into the parent's space so a child of a rotated
+// or scaled parent drags along its own axes.
 @(private = "file")
-_apply_drag :: proc(rt: ^mhgui.RectTransform, h: ^_Rect_Handle, d: handles.Drag) {
+_apply_drag :: proc(rt: ^engine.RectTransform, h: ^_Rect_Handle, d: handles.Drag, parent_xform: matrix[4, 4]f32) {
 	rt.anchored_position = _drag_start.anchored_position
 	rt.size_delta = _drag_start.size_delta
+	delta := engine.rect_apply_dir(linalg.inverse(parent_xform), d.delta.xy)
 	if h == nil {
-		mhgui.rect_drag_move(rt, d.delta.xy)
+		mhgui.rect_drag_move(rt, delta)
 	} else {
-		mhgui.rect_drag_edges(rt, h.sides, d.delta.xy)
+		mhgui.rect_drag_edges(rt, h.sides, delta)
 	}
 }
 
 @(private = "file")
-_drag_begin :: proc(tH: engine.Transform_Handle, rt: ^mhgui.RectTransform) {
+_drag_begin :: proc(tH: engine.Transform_Handle, rt: ^engine.RectTransform) {
 	_drag_start = rt^
-	owned, _ := mhgui.get_comp(tH, mhgui.RectTransform)
+	owned, _ := engine.transform_get_comp(tH, engine.RectTransform)
 	targets := [?]undo.Edit_Target{
 		undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32)),
 		undo.edit_target_pooled(owned.handle, &rt.size_delta, typeid_of([2]f32)),
@@ -229,7 +232,7 @@ _drag_begin :: proc(tH: engine.Transform_Handle, rt: ^mhgui.RectTransform) {
 // edge handles that resize, the body that moves, the parent's anchor
 // markers and the pivot ring.
 @(on_draw_gizmos_selected={component=RectTransform})
-rect_transform_gizmos :: proc(rt: ^mhgui.RectTransform) {
+rect_transform_gizmos :: proc(rt: ^engine.RectTransform) {
 	tH := rt.owner
 	canvas := _canvas_of(tH)
 	if canvas == _NONE || canvas == tH do return
@@ -238,46 +241,52 @@ rect_transform_gizmos :: proc(rt: ^mhgui.RectTransform) {
 	if t == nil do return
 	parent_tH := engine.Transform_Handle(t.parent.handle)
 
-	nodes := make([dynamic]mhgui.Node_Rect, context.temp_allocator)
-	mhgui.canvas_resolve_rects(canvas, mhgui.canvas_world_rect(), &nodes)
-	rect, parent: mhgui.Rect
+	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+	engine.canvas_resolve_rects(canvas, engine.canvas_world_rect(canvas), &nodes)
+	rect, parent: engine.Rect
+	xform, parent_xform: matrix[4, 4]f32
 	have_rect, have_parent: bool
 	for n in nodes {
-		if n.tH == tH { rect = n.rect; have_rect = true }
-		if n.tH == parent_tH { parent = n.rect; have_parent = true }
+		if n.tH == tH { rect = n.rect; xform = n.xform; have_rect = true }
+		if n.tH == parent_tH { parent = n.rect; parent_xform = n.xform; have_parent = true }
 	}
 	if !have_rect || !have_parent do return
 
-	// Anchors on the parent rect: one marker when min == max, else four.
+	// Anchors on the parent rect (in the parent's space): one marker when
+	// min == max, else four.
 	a_lo := parent.pos + parent.size * rt.anchor_min
 	a_hi := parent.pos + parent.size * rt.anchor_max
-	anchor_size := handles.world_per_pixels(_rect_point(rect, {0.5, 0.5}), 10)
+	anchor_size := handles.world_per_pixels(_rect_point(rect, parent_xform, {0.5, 0.5}), 10)
+	anchor_at :: proc(m: matrix[4, 4]f32, p: [2]f32) -> [3]f32 {
+		return engine.rect_apply(m, p)
+	}
 	if rt.anchor_min == rt.anchor_max {
-		handles.triangle({a_lo.x, a_lo.y, 0}, {0, -1, 0}, anchor_size, _COLOR_ANCHOR)
+		handles.triangle(anchor_at(parent_xform, a_lo), {0, -1, 0}, anchor_size, _COLOR_ANCHOR)
 	} else {
-		handles.triangle({a_lo.x, a_lo.y, 0}, {1, 1, 0}, anchor_size, _COLOR_ANCHOR)
-		handles.triangle({a_hi.x, a_lo.y, 0}, {-1, 1, 0}, anchor_size, _COLOR_ANCHOR)
-		handles.triangle({a_hi.x, a_hi.y, 0}, {-1, -1, 0}, anchor_size, _COLOR_ANCHOR)
-		handles.triangle({a_lo.x, a_hi.y, 0}, {1, -1, 0}, anchor_size, _COLOR_ANCHOR)
+		handles.triangle(anchor_at(parent_xform, a_lo), {1, 1, 0}, anchor_size, _COLOR_ANCHOR)
+		handles.triangle(anchor_at(parent_xform, {a_hi.x, a_lo.y}), {-1, 1, 0}, anchor_size, _COLOR_ANCHOR)
+		handles.triangle(anchor_at(parent_xform, a_hi), {-1, -1, 0}, anchor_size, _COLOR_ANCHOR)
+		handles.triangle(anchor_at(parent_xform, {a_lo.x, a_hi.y}), {1, -1, 0}, anchor_size, _COLOR_ANCHOR)
 	}
 
-	// The rect, then the handles on it.
-	corners := mhgui.canvas_world_corners(rect)
+	// The rect with its own rotation and scale applied, then the handles on
+	// its corners and edge midpoints.
+	corners := engine.rect_corners(rect, xform)
 	handles.rect(corners, _COLOR_RECT)
 
 	body := handles.quad(_handle_id(tH, 9), corners, _PLANE_NORMAL)
 	if body.started do _drag_begin(tH, rt)
-	if body.dragging do _apply_drag(rt, nil, body)
+	if body.dragging do _apply_drag(rt, nil, body, parent_xform)
 	if body.released do undo.edit_session_end(&_drag_edit)
 
 	for &h, i in _RECT_HANDLES {
-		d := handles.dot(_handle_id(tH, u64(i) + 1), _rect_point(rect, h.at), _PLANE_NORMAL)
+		d := handles.dot(_handle_id(tH, u64(i) + 1), _rect_point(rect, xform, h.at), _PLANE_NORMAL)
 		if d.started do _drag_begin(tH, rt)
-		if d.dragging do _apply_drag(rt, &h, d)
+		if d.dragging do _apply_drag(rt, &h, d, parent_xform)
 		if d.released do undo.edit_session_end(&_drag_edit)
 	}
 
 	// Pivot ring, drawn last so it reads over the handles.
-	pivot := _rect_point(rect, rt.pivot)
+	pivot := _rect_point(rect, xform, rt.pivot)
 	handles.circle(pivot, _PLANE_NORMAL, handles.world_per_pixels(pivot, 5), _COLOR_PIVOT)
 }

@@ -266,7 +266,12 @@ transform_world :: proc(tH: Transform_Handle) -> Transform_World {
     return {world_pos, world_rot, world_scale}
 }
 
-transform_world_position :: proc(tH: Transform_Handle) -> [3]f32 { return transform_world(tH).position }
+// A UI node (RectTransform under a Canvas) answers with its pivot on the
+// canvas plane (ui_canvas.odin); everything else with its transform chain.
+transform_world_position :: proc(tH: Transform_Handle) -> [3]f32 {
+    if p, ok := rect_transform_world_position(tH); ok do return p
+    return transform_world(tH).position
+}
 transform_world_rotation :: proc(tH: Transform_Handle) -> [4]f32 { return transform_world(tH).rotation }
 transform_world_scale    :: proc(tH: Transform_Handle) -> [3]f32 { return transform_world(tH).scale }
 
@@ -274,6 +279,7 @@ transform_world_scale    :: proc(tH: Transform_Handle) -> [3]f32 { return transf
 // parent chain in transform_world). Gizmos drag in world space; this keeps
 // the drag correct for children of rotated/scaled parents.
 transform_set_world_position :: proc(tH: Transform_Handle, world_pos: [3]f32) {
+    if rect_transform_set_world_position(tH, world_pos) do return // UI: into anchored_position
     w := ctx_world()
     t := pool_get(&w.transforms, Handle(tH))
     if t == nil do return

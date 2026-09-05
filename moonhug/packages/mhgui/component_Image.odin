@@ -48,13 +48,13 @@ image_source :: proc(img: ^Image) -> (tex: engine.Asset_GUID, px: [4]f32, tex_si
 
 // The rect the image fills: `rect` itself, or with preserve_aspect the
 // largest sub-rect with the sprite's aspect, centered.
-image_fit :: proc(rect: Rect, sprite_size: [2]f32, preserve_aspect: bool) -> Rect {
+image_fit :: proc(rect: engine.Rect, sprite_size: [2]f32, preserve_aspect: bool) -> engine.Rect {
 	if !preserve_aspect || sprite_size.x <= 0 || sprite_size.y <= 0 || rect.size.x <= 0 || rect.size.y <= 0 {
 		return rect
 	}
 	scale := min(rect.size.x / sprite_size.x, rect.size.y / sprite_size.y)
 	size := sprite_size * scale
-	return Rect{pos = rect.pos + (rect.size - size) * 0.5, size = size}
+	return engine.Rect{pos = rect.pos + (rect.size - size) * 0.5, size = size}
 }
 
 // Normalized uvs, bl br tr tl, of a pixel rect (top-left origin, y down)

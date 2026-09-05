@@ -580,7 +580,11 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		prev_peers := inspector.multi_set_peers(peers)
 		defer inspector.multi_set_peers(prev_peers)
 
-		_wrap_transform_field_override(tH, t, &t.position, "position", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
+		if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil && engine.canvas_of(tH) != tH && engine.canvas_of(tH) != {} {
+			_draw_ui_position_row(tH)
+		} else {
+			_wrap_transform_field_override(tH, t, &t.position, "position", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Position")
+		}
 		_wrap_transform_rotation_override(tH, t, drawer)
 		_wrap_transform_field_override(tH, t, &t.scale, "scale", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
 	} else {
@@ -625,6 +629,31 @@ _resolve_override_target_id :: proc(tH: engine.Transform_Handle, t: ^engine.Tran
 		if ns != nil && ns.source_root_id != 0 do return ns.source_root_id
 	}
 	return t.local_id
+}
+
+// A UI node's Position row: the value derives from the RectTransform
+// (engine.transform_local_position) and an edit converts back into
+// anchored_position, so the row moves the rect like Unity's. One drag or
+// typed value is one undo step on that field. Multi-edit peers are not
+// propagated here.
+@(private = "file") _ui_pos_edit: undo.Edit_Session
+
+@(private)
+_draw_ui_position_row :: proc(tH: engine.Transform_Handle) {
+	pos := engine.transform_local_position(tH)
+	if inspector.drag_float3(inspector.field_row("Position"), &pos, 0.1) {
+		if !_ui_pos_edit.active {
+			if owned, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil {
+				targets := [?]undo.Edit_Target{undo.edit_target_pooled(owned.handle, &rt.anchored_position, typeid_of([2]f32))}
+				_ui_pos_edit = undo.edit_session_begin(targets[:], "Position")
+			}
+		}
+		engine.transform_set_local_position(tH, pos)
+		inspector.mark_inspector_changed()
+	}
+	if _ui_pos_edit.active && !im.IsAnyItemActive() {
+		undo.edit_session_end(&_ui_pos_edit)
+	}
 }
 
 @(private)

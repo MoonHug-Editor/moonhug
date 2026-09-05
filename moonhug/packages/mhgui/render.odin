@@ -1,10 +1,10 @@
 package mhgui
 
-// The UI render collector (engine.render_register_collector,
-// docs/SDL3Renderer.md "Render collectors"). Each frame it resolves every
-// canvas's rects and emits one Draw_Quad per drawn graphic, placed on a
-// plane just inside the view's near plane so the quad lands on exactly its
-// canvas pixels and nothing in the scene can draw in front of it.
+// mhgui — the drawing half of UI (docs/Gui.md). The canvas tree (Canvas,
+// RectTransform, CanvasRenderer, CanvasScaler and the rect walk) is engine
+// vocabulary (engine/ui_canvas.odin); this package owns the graphics (Image)
+// and the render collector (engine.render_register_collector) that turns a
+// canvas into Draw_Quad commands, plus the LayoutGroup container.
 
 import "core:encoding/uuid"
 import "moonhug:engine"
@@ -14,7 +14,8 @@ import "moonhug:engine"
 // tree order.
 UI_SORTING_LAYER :: i32(127)
 
-// z01 NDC depth of the canvas plane: just inside the near plane (0).
+// z01 NDC depth of the canvas plane in a Game view: just inside the near
+// plane (0), so nothing in the scene passes the depth test in front of it.
 _CANVAS_NDC_Z :: f32(0.0005)
 
 // The package's white texture (assets/white.png, meta committed with it):
@@ -29,80 +30,19 @@ white_texture_guid :: proc() -> engine.Asset_GUID {
 	return guid
 }
 
-// The viewport as the canvas rect (screen-space overlay).
-canvas_rect :: proc(view: engine.Render_View) -> Rect {
-	return Rect{pos = {0, 0}, size = {view.width, view.height}}
-}
-
-// The Game view size the last Game collect saw. The scene view shows the
-// canvas at this size; before any Game view drew, a 1920x1080 stand-in.
-_last_game_size: [2]f32 = {1920, 1080}
-
-// The canvas in the SCENE view: a world rect with its bottom-left at the
-// origin in the XY plane, one world unit per canvas pixel, sized like the
-// Game view. The rect tool and picking work in this space.
-canvas_world_rect :: proc() -> Rect {
-	return Rect{pos = {0, 0}, size = _last_game_size}
-}
-
-// Scene-view world corners of a canvas rect: bl, br, tr, tl at z = 0.
-canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
-	x0, y0 := r.pos.x, r.pos.y
-	x1, y1 := x0 + r.size.x, y0 + r.size.y
-	return {{x0, y0, 0}, {x1, y0, 0}, {x1, y1, 0}, {x0, y1, 0}}
-}
-
-// One resolved node, in draw order (parents before children, siblings in
-// hierarchy order — the canvas draw order).
-Node_Rect :: struct {
-	tH:   engine.Transform_Handle,
-	rect: Rect,
-}
-
-// Resolves the rect of the canvas node (always `root`, the canvas drives it)
-// and of every active node under it, appended to `out` in draw order. A node
-// without a RectTransform passes its parent's rect through, so plain grouping
-// nodes cost nothing. Inactive nodes and their subtrees are skipped.
-canvas_resolve_rects :: proc(canvas_tH: engine.Transform_Handle, root: Rect, out: ^[dynamic]Node_Rect) {
-	w := engine.ctx_world()
-	Entry :: struct {
-		tH:     engine.Transform_Handle,
-		parent: Rect,
-	}
-	stack := make([dynamic]Entry, context.temp_allocator)
-	append(&stack, Entry{canvas_tH, root})
-	for len(stack) > 0 {
-		e := pop(&stack)
-		t := engine.pool_get(&w.transforms, engine.Handle(e.tH))
-		if t == nil || !t.is_active do continue
-		rect := e.parent
-		if e.tH != canvas_tH {
-			if _, rt := get_comp(e.tH, RectTransform); rt != nil && rt.enabled {
-				rect = rect_resolve(e.parent, rt)
-			}
-		}
-		append(out, Node_Rect{e.tH, rect})
-		// Pushed in reverse so the pop order is hierarchy order.
-		#reverse for child in t.children {
-			append(&stack, Entry{engine.Transform_Handle(child.handle), rect})
-		}
-	}
-}
-
-// The world-space quad a canvas rect covers in `view`: the rect's pixel
-// corners unprojected onto the canvas plane. bl, br, tr, tl like Draw_Quad.
-canvas_quad_corners :: proc(view: engine.Render_View, r: Rect) -> [4][3]f32 {
-	x0, y0 := r.pos.x, r.pos.y
-	x1, y1 := x0 + r.size.x, y0 + r.size.y
+// The world-space quad screen-pixel corners cover in a Game view: each
+// unprojected onto the canvas plane, so the quad lands on exactly those
+// pixels whatever the camera does. bl, br, tr, tl.
+canvas_quad_corners :: proc(view: engine.Render_View, c: [4][2]f32) -> [4][3]f32 {
 	return {
-		_canvas_to_world(view, {x0, y0}),
-		_canvas_to_world(view, {x1, y0}),
-		_canvas_to_world(view, {x1, y1}),
-		_canvas_to_world(view, {x0, y1}),
+		_canvas_to_world(view, c[0]),
+		_canvas_to_world(view, c[1]),
+		_canvas_to_world(view, c[2]),
+		_canvas_to_world(view, c[3]),
 	}
 }
 
-// Canvas pixel -> world point on the canvas plane. Canvas y is up, like NDC.
+// Screen pixel -> world point on the canvas plane. Canvas y is up, like NDC.
 _canvas_to_world :: proc(view: engine.Render_View, p: [2]f32) -> [3]f32 {
 	ndc_x := 2 * p.x / max(view.width, 1) - 1
 	ndc_y := 2 * p.y / max(view.height, 1) - 1
@@ -110,41 +50,45 @@ _canvas_to_world :: proc(view: engine.Render_View, p: [2]f32) -> [3]f32 {
 	return h.xyz / h.w
 }
 
-// Game views draw the canvas over the viewport. The scene view draws it as
-// the world rect at the origin (canvas_world_rect), where the rect tool
-// lives. Previews show neither.
+// Game views draw each canvas over the viewport, canvas units mapped to
+// pixels through the canvas scale. The scene view draws it as the world rect
+// at the origin (engine.canvas_world_rect), where the rect tool lives.
+// Previews show neither.
 collect_canvases :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_Command) {
-	root: Rect
-	switch view.kind {
-	case .Game:
-		_last_game_size = {view.width, view.height}
-		root = canvas_rect(view)
-	case .SceneView:
-		root = canvas_world_rect()
-	case .Preview:
-		return
-	}
+	if view.kind == .Preview do return
 	w := engine.ctx_world()
-	nodes := make([dynamic]Node_Rect, context.temp_allocator)
+	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
 
-	it := engine.pool_iterator(canvases(w))
+	it := engine.pool_iterator(engine.canvases(w))
 	for canvas, _ in engine.pool_next(&it) {
 		if !canvas.enabled do continue
 		t := engine.pool_get(&w.transforms, engine.Handle(canvas.owner))
 		if t == nil || !engine.transform_active_in_hierarchy(canvas.owner) do continue
 		if t.render_layer & view.layer_mask == 0 do continue
 
+		root: engine.Rect
+		scale := f32(1)
+		if view.kind == .Game {
+			root = engine.canvas_rect(view, canvas.owner)
+			scale = engine.canvas_scale(canvas.owner, {view.width, view.height})
+		} else {
+			root = engine.canvas_world_rect(canvas.owner)
+		}
 		clear(&nodes)
-		canvas_resolve_rects(canvas.owner, root, &nodes)
+		engine.canvas_resolve_rects(canvas.owner, root, &nodes)
 		seq: u16
 		for n in nodes {
-			_, cr := get_comp(n.tH, CanvasRenderer)
+			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
 			if cr == nil || !cr.enabled do continue
 			_, img := get_comp(n.tH, Image)
 			if img == nil || !img.enabled do continue
 			tex, px, tex_size, ok := image_source(img)
 			if !ok do continue
 			rect := image_fit(n.rect, {px.z, px.w}, img.preserve_aspect)
+			corners := engine.rect_corners(rect, n.xform) // canvas units, rotation and scale applied
+			// Overlay draws orthographically: a tilt out of the plane foreshortens.
+			screen: [4][2]f32
+			for c, i in corners do screen[i] = c.xy * scale
 			key: engine.Sort_Key
 			key[0] = engine.sort_key_word(UI_SORTING_LAYER, canvas.sort_order, 0, seq)
 			seq += 1
@@ -152,7 +96,7 @@ collect_canvases :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_
 				key     = key,
 				variant = engine.Draw_Quad{
 					texture = tex,
-					corners = canvas_quad_corners(view, rect) if view.kind == .Game else canvas_world_corners(rect),
+					corners = canvas_quad_corners(view, screen) if view.kind == .Game else corners,
 					uvs     = image_uvs(tex_size, px),
 					color   = img.color,
 				},
@@ -169,4 +113,5 @@ mhgui_package_init :: proc() {
 	if done do return
 	done = true
 	engine.render_register_collector(collect_canvases)
+	engine.canvas_layout_register(layout_provider)
 }

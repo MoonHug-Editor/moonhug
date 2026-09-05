@@ -1,0 +1,425 @@
+package engine
+
+// The canvas tree: the layout half of UI (docs/Gui.md). RectTransform lays a
+// node out inside its parent's rect, Canvas roots a tree on the game
+// viewport, CanvasScaler sets how many screen pixels a canvas unit is, and
+// CanvasRenderer marks a node as drawing. What a node draws (Image, Text)
+// and the rendering itself live in packages (packages/mhgui) and reach the
+// tree through canvas_resolve_rects. Layout containers plug in through
+// canvas_layout_register.
+
+import "base:runtime"
+import "core:math"
+import "core:math/linalg"
+
+// A rectangle in canvas units: bottom-left origin, y up, the same
+// orientation as NDC.
+Rect :: struct {
+	pos:  [2]f32, // bottom-left corner
+	size: [2]f32,
+}
+
+// --- RectTransform ----------------------------------------------------------------------
+
+// Lays the node out inside the PARENT rect: the anchors pick a sub-rect of
+// it, size_delta grows that sub-rect, and the pivot lands on the anchor
+// reference point plus anchored_position. The node's Transform position
+// takes no part; rotation and scale apply around the pivot.
+@(component={menu="UI/Rect Transform"})
+@(typ_guid={guid = "36e133bb-7979-48ba-8b1b-57385558f37d"})
+RectTransform :: struct {
+	using base:        CompData `inspect:"-"`,
+	anchor_min:        [2]f32, // parent-relative 0..1, bottom-left anchor
+	anchor_max:        [2]f32, // parent-relative 0..1, top-right anchor
+	pivot:             [2]f32, // 0..1 inside the node's own rect
+	anchored_position: [2]f32, // pivot offset from the anchor reference point, canvas units
+	size_delta:        [2]f32, // size added to the anchor span, canvas units
+}
+
+reset_RectTransform :: proc(rt: ^RectTransform) {
+	rt.anchor_min = {0.5, 0.5}
+	rt.anchor_max = {0.5, 0.5}
+	rt.pivot = {0.5, 0.5}
+	rt.size_delta = {100, 100}
+}
+
+// The rect math. With both anchors equal the node has a fixed size
+// (size_delta) at a point; with anchors apart it stretches with the parent
+// and size_delta is the margin (negative shrinks).
+rect_resolve :: proc(parent: Rect, rt: ^RectTransform) -> Rect {
+	lo := parent.pos + parent.size * rt.anchor_min
+	hi := parent.pos + parent.size * rt.anchor_max
+	size := (hi - lo) + rt.size_delta
+	pivot_pos := lo + (hi - lo) * rt.pivot + rt.anchored_position
+	return Rect{pos = pivot_pos - size * rt.pivot, size = size}
+}
+
+// --- Canvas -----------------------------------------------------------------------------
+
+// The root of a UI tree, in screen-space overlay mode: its rect is the whole
+// game viewport in canvas units, and everything under it draws over the
+// scene. Canvases stack by sort_order.
+@(component={menu="UI/Canvas"})
+@(typ_guid={guid = "ba2db3cd-79be-4d26-9cab-be3fc317d685"})
+Canvas :: struct {
+	using base: CompData `inspect:"-"`,
+	sort_order: i32, // higher draws over lower canvases
+}
+
+reset_Canvas :: proc(c: ^Canvas) {
+}
+
+// Marks a node as drawing. What it draws comes from the node's graphic
+// (packages/mhgui Image); a CanvasRenderer without one draws nothing.
+// Disabling it hides the node's graphic without touching the graphic's
+// settings.
+@(component={menu="UI/Canvas Renderer"})
+@(typ_guid={guid = "56334c3e-5a5d-4a74-981f-3682e7c9dc9a"})
+CanvasRenderer :: struct {
+	using base: CompData `inspect:"-"`,
+}
+
+reset_CanvasRenderer :: proc(cr: ^CanvasRenderer) {
+}
+
+// --- CanvasScaler -----------------------------------------------------------------------
+
+// How the canvas resolution follows the screen. Sits on the Canvas node.
+Scale_Mode :: enum u8 {
+	Constant_Pixel_Size,    // one canvas unit is scale_factor screen pixels
+	Scale_With_Screen_Size, // the canvas is reference_resolution units wide/tall, scaled to fit the screen
+}
+
+// Scales the canvas as a whole so a layout authored once holds up across
+// window sizes. Without a CanvasScaler one canvas unit is one screen pixel.
+@(component={menu="UI/Canvas Scaler"})
+@(typ_guid={guid = "39805feb-6d86-481c-bb1a-f662b7309f64"})
+CanvasScaler :: struct {
+	using base:           CompData `inspect:"-"`,
+	mode:                 Scale_Mode,
+	scale_factor:         f32,    // Constant_Pixel_Size
+	reference_resolution: [2]f32, // Scale_With_Screen_Size: the authored canvas size
+	// Scale_With_Screen_Size: 0 fits the reference width, 1 the reference
+	// height, values between blend the two (logarithmically, so 0.5 is the
+	// geometric mean).
+	match:                f32,
+}
+
+reset_CanvasScaler :: proc(cs: ^CanvasScaler) {
+	cs.mode = .Scale_With_Screen_Size
+	cs.scale_factor = 1
+	cs.reference_resolution = {1920, 1080}
+	cs.match = 0.5
+}
+
+// Screen pixels per canvas unit for `screen`.
+scaler_factor :: proc(cs: ^CanvasScaler, screen: [2]f32) -> f32 {
+	switch cs.mode {
+	case .Constant_Pixel_Size:
+		return max(cs.scale_factor, 0.0001)
+	case .Scale_With_Screen_Size:
+		ref := cs.reference_resolution
+		if ref.x <= 0 || ref.y <= 0 || screen.x <= 0 || screen.y <= 0 do return 1
+		log_w := math.log2(screen.x / ref.x)
+		log_h := math.log2(screen.y / ref.y)
+		m := clamp(cs.match, 0, 1)
+		return math.pow(f32(2), log_w * (1 - m) + log_h * m)
+	}
+	return 1
+}
+
+// The canvas node's scale for `screen`: its CanvasScaler's, or 1.
+canvas_scale :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> f32 {
+	if _, cs := transform_get_comp(canvas_tH, CanvasScaler); cs != nil && cs.enabled {
+		return scaler_factor(cs, screen)
+	}
+	return 1
+}
+
+// --- Canvas space -------------------------------------------------------------------------
+
+// The game viewport in pixels as last rendered (render_world_cameras), the
+// size every canvas measures itself against outside a Game view: the scene
+// view, the rect tool, position conversion. 1920x1080 until a frame rendered.
+@(private = "file") _canvas_game_viewport: [2]f32 = {1920, 1080}
+
+canvas_set_game_viewport :: proc(size: [2]f32) {
+	if size.x > 0 && size.y > 0 do _canvas_game_viewport = size
+}
+
+canvas_game_viewport :: proc() -> [2]f32 {
+	return _canvas_game_viewport
+}
+
+// The canvas rect for a Game view: the viewport in canvas units.
+canvas_rect :: proc(view: Render_View, canvas_tH: Transform_Handle) -> Rect {
+	screen := [2]f32{view.width, view.height}
+	return Rect{pos = {0, 0}, size = screen / canvas_scale(canvas_tH, screen)}
+}
+
+// The canvas in WORLD space (the scene view): a rect with its bottom-left at
+// the origin in the XY plane, one world unit per canvas unit, sized like the
+// game viewport over the canvas scale. Editor tools work in this space.
+canvas_world_rect :: proc(canvas_tH: Transform_Handle) -> Rect {
+	vp := _canvas_game_viewport
+	return Rect{pos = {0, 0}, size = vp / canvas_scale(canvas_tH, vp)}
+}
+
+// World corners of a canvas rect: bl, br, tr, tl at z = 0.
+canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
+	x0, y0 := r.pos.x, r.pos.y
+	x1, y1 := x0 + r.size.x, y0 + r.size.y
+	return {{x0, y0, 0}, {x1, y0, 0}, {x1, y1, 0}, {x0, y1, 0}}
+}
+
+// --- Rect walk ------------------------------------------------------------------------------
+
+// One resolved node, in draw order (parents before children, siblings in
+// hierarchy order — the canvas draw order). `rect` is the node's rect in its
+// PARENT's unrotated space; `xform` maps that space, and the space the
+// node's own children resolve in, to canvas space: the parent chain, then
+// this node's Transform rotation and scale around its pivot. Canvas space is
+// 3D with the canvas in the XY plane: a rotation around X or Y tilts the
+// rect out of the plane, which the Game view draws orthographically (the
+// tilt shows as foreshortening) and the scene view shows in depth. Nodes
+// without a RectTransform add nothing to the chain.
+Node_Rect :: struct {
+	tH:    Transform_Handle,
+	rect:  Rect,
+	xform: matrix[4, 4]f32,
+}
+
+// The transform that rotates by `rotation` and scales by `scale` around
+// `pivot` (a canvas point on the plane).
+rect_affine :: proc(pivot: [2]f32, rotation: [4]f32, scale: [3]f32) -> matrix[4, 4]f32 {
+	p := [3]f32{pivot.x, pivot.y, 0}
+	return trs_matrix(p, _quat_safe(rotation), scale) * linalg.matrix4_translate_f32(-p)
+}
+
+// A canvas point through a node transform: the 3D point it lands on.
+rect_apply :: proc(m: matrix[4, 4]f32, p: [2]f32) -> [3]f32 {
+	r := m * [4]f32{p.x, p.y, 0, 1}
+	return r.xyz
+}
+
+// A canvas direction through a node transform (no translation), projected
+// back onto the plane.
+rect_apply_dir :: proc(m: matrix[4, 4]f32, v: [2]f32) -> [2]f32 {
+	r := m * [4]f32{v.x, v.y, 0, 0}
+	return r.xy
+}
+
+// The corners of `r` (bl, br, tr, tl) through `m`: 3D canvas-space points,
+// on the plane unless the chain tilts them.
+rect_corners :: proc(r: Rect, m: matrix[4, 4]f32) -> [4][3]f32 {
+	x0, y0 := r.pos.x, r.pos.y
+	x1, y1 := x0 + r.size.x, y0 + r.size.y
+	return {rect_apply(m, {x0, y0}), rect_apply(m, {x1, y0}), rect_apply(m, {x1, y1}), rect_apply(m, {x0, y1})}
+}
+
+// A layout container (packages/mhgui LayoutGroup): asked for every node in
+// the walk with the node's rect and its active RectTransform children in
+// order. A provider that lays the node out fills `out` (one rect per child)
+// and returns true; otherwise the children resolve from their own anchors.
+Canvas_Layout_Provider :: proc(tH: Transform_Handle, rect: Rect, children: []Transform_Handle, out: []Rect) -> bool
+
+_canvas_layout_providers: [dynamic]Canvas_Layout_Provider
+
+// Process-global registry: never borrows the caller's allocator.
+canvas_layout_register :: proc(p: Canvas_Layout_Provider) {
+	context.allocator = runtime.default_allocator()
+	if _canvas_layout_providers == nil do _canvas_layout_providers = make([dynamic]Canvas_Layout_Provider)
+	append(&_canvas_layout_providers, p)
+}
+
+// Resolves the rect of the canvas node (always `root`, the canvas drives it)
+// and of every active node under it, appended to `out` in draw order. A node
+// without a RectTransform passes its parent's rect through, so plain grouping
+// nodes cost nothing. A node a layout provider claims places its RectTransform
+// children itself. Inactive nodes and their subtrees are skipped.
+canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dynamic]Node_Rect) {
+	w := ctx_world()
+	Entry :: struct {
+		tH:     Transform_Handle,
+		parent: Rect,
+		xform:  matrix[4, 4]f32, // the parent's space -> canvas space
+		forced: Rect, // the rect a layout assigned
+		laid:   bool, // forced is set
+	}
+	stack := make([dynamic]Entry, context.temp_allocator)
+	append(&stack, Entry{tH = canvas_tH, parent = root, xform = linalg.MATRIX4F32_IDENTITY})
+	kids := make([dynamic]Transform_Handle, context.temp_allocator)
+	laid := make([dynamic]Rect, context.temp_allocator)
+	for len(stack) > 0 {
+		e := pop(&stack)
+		t := pool_get(&w.transforms, Handle(e.tH))
+		if t == nil || !t.is_active do continue
+		rect := e.parent
+		xform := e.xform
+		_, rt := transform_get_comp(e.tH, RectTransform)
+		if rt != nil && !rt.enabled do rt = nil
+		if e.laid {
+			rect = e.forced
+		} else if e.tH != canvas_tH && rt != nil {
+			rect = rect_resolve(e.parent, rt)
+		}
+		// The node's own rotation and scale, around its pivot, in the parent's
+		// space. The canvas node itself never rotates (overlay).
+		if rt != nil && e.tH != canvas_tH {
+			rot := _quat_safe(t.rotation)
+			if rot != QUAT_IDENTITY || t.scale != {1, 1, 1} {
+				xform = e.xform * rect_affine(rect.pos + rect.size * rt.pivot, rot, t.scale)
+			}
+		}
+		append(out, Node_Rect{e.tH, rect, xform})
+
+		// A layout container arranges the active RectTransform children; the
+		// rest pass the rect through as usual.
+		clear(&kids)
+		for child in t.children {
+			ch := Transform_Handle(child.handle)
+			ct := pool_get(&w.transforms, Handle(ch))
+			if ct == nil || !ct.is_active do continue
+			if _, rt := transform_get_comp(ch, RectTransform); rt != nil && rt.enabled do append(&kids, ch)
+		}
+		has_layout := false
+		if len(kids) > 0 {
+			resize(&laid, len(kids))
+			for p in _canvas_layout_providers {
+				if p(e.tH, rect, kids[:], laid[:]) {
+					has_layout = true
+					break
+				}
+			}
+		}
+
+		// Pushed in reverse so the pop order is hierarchy order; laid-out
+		// children take their slot in the order they were listed.
+		slot := len(kids) - 1
+		#reverse for child in t.children {
+			ch := Transform_Handle(child.handle)
+			entry := Entry{tH = ch, parent = rect, xform = xform}
+			if slot >= 0 && kids[slot] == ch {
+				if has_layout {
+					entry.forced = laid[slot]
+					entry.laid = true
+				}
+				slot -= 1
+			}
+			append(&stack, entry)
+		}
+	}
+}
+
+// --- Position through the Transform API -----------------------------------------------------
+//
+// anchored_position is the stored value, the only one. The procs below are
+// a second door into it: a set converts the given position into
+// anchored_position, a read derives the position from it. Local positions
+// are relative to the parent's pivot point, in the parent's space (its
+// rotation and scale included), like localPosition under a RectTransform.
+// World positions are canvas-space points on the canvas plane (z = 0), the
+// space the scene view shows.
+
+// The canvas node above `tH`, or the zero handle.
+canvas_of :: proc(tH: Transform_Handle) -> Transform_Handle {
+	w := ctx_world()
+	h := tH
+	for h != (Transform_Handle{}) {
+		if _, c := transform_get_comp(h, Canvas); c != nil do return h
+		t := pool_get(&w.transforms, Handle(h))
+		if t == nil do break
+		h = Transform_Handle(t.parent.handle)
+	}
+	return {}
+}
+
+// The frame a RectTransform node's position lives in: its parent's rect and
+// xform, the parent's pivot point in that rect (0.5 for a parent without a
+// RectTransform), and the node's own anchor reference point. ok=false when
+// the node has no RectTransform or no canvas above it.
+Rect_Frame :: struct {
+	parent:       Rect,
+	parent_xform: matrix[4, 4]f32,
+	parent_pivot: [2]f32, // canvas units, in the parent's space
+	anchor_ref:   [2]f32, // canvas units, in the parent's space
+	rt:           ^RectTransform,
+}
+
+rect_frame :: proc(tH: Transform_Handle) -> (f: Rect_Frame, ok: bool) {
+	_, rt := transform_get_comp(tH, RectTransform)
+	if rt == nil do return {}, false
+	canvas := canvas_of(tH)
+	if canvas == (Transform_Handle{}) || canvas == tH do return {}, false
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return {}, false
+	parent_tH := Transform_Handle(t.parent.handle)
+
+	nodes := make([dynamic]Node_Rect, context.temp_allocator)
+	canvas_resolve_rects(canvas, canvas_world_rect(canvas), &nodes)
+	for n in nodes {
+		if n.tH != parent_tH do continue
+		f.parent = n.rect
+		f.parent_xform = n.xform
+		f.parent_pivot = n.rect.pos + n.rect.size * 0.5
+		if _, prt := transform_get_comp(parent_tH, RectTransform); prt != nil && prt.enabled {
+			f.parent_pivot = n.rect.pos + n.rect.size * prt.pivot
+		}
+		lo := n.rect.pos + n.rect.size * rt.anchor_min
+		hi := n.rect.pos + n.rect.size * rt.anchor_max
+		f.anchor_ref = lo + (hi - lo) * rt.pivot
+		f.rt = rt
+		return f, true
+	}
+	return {}, false
+}
+
+// The node's pivot point in the parent's space.
+rect_pivot_local :: proc(f: Rect_Frame) -> [2]f32 {
+	return f.anchor_ref + f.rt.anchored_position
+}
+
+// The node's position relative to the parent's pivot, in the parent's
+// space, or its Transform position for a non-UI node.
+transform_local_position :: proc(tH: Transform_Handle) -> [3]f32 {
+	if f, ok := rect_frame(tH); ok {
+		p := rect_pivot_local(f) - f.parent_pivot
+		return {p.x, p.y, 0}
+	}
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return {}
+	return t.position
+}
+
+// Sets the node's position relative to the parent's pivot: converted into
+// anchored_position for a UI node, written to the Transform otherwise.
+transform_set_local_position :: proc(tH: Transform_Handle, local: [3]f32) {
+	if f, ok := rect_frame(tH); ok {
+		f.rt.anchored_position = f.parent_pivot + local.xy - f.anchor_ref
+		return
+	}
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	t.position = local
+}
+
+// The UI node's pivot point in canvas (world) space. ok=false for non-UI nodes.
+rect_transform_world_position :: proc(tH: Transform_Handle) -> (pos: [3]f32, ok: bool) {
+	f, found := rect_frame(tH)
+	if !found do return {}, false
+	return rect_apply(f.parent_xform, rect_pivot_local(f)), true
+}
+
+// Places the UI node's pivot at a canvas (world) point. ok=false for non-UI nodes.
+rect_transform_set_world_position :: proc(tH: Transform_Handle, world: [3]f32) -> bool {
+	f, found := rect_frame(tH)
+	if !found do return false
+	// Back into the parent's space; a tilted parent projects the point onto
+	// its plane.
+	local := (linalg.inverse(f.parent_xform) * [4]f32{world.x, world.y, world.z, 1}).xy
+	f.rt.anchored_position = local - f.anchor_ref
+	return true
+}

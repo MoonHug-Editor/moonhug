@@ -356,6 +356,7 @@ render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
 		ws := gfx.window_size()
 		width, height = f32(ws.x), f32(ws.y)
 	}
+	canvas_set_game_viewport({width, height}) // the canvas tree measures against the game viewport
 
 	for cam in cams {
 		view := camera_render_view(cam, width, height)
