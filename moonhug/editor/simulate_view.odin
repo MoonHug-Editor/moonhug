@@ -8,6 +8,7 @@ import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../engine"
+import "../engine/input"
 import sim "./simulate"
 
 // Simulate's accent, on every simulate button while a run is active. The rest of
@@ -54,6 +55,11 @@ sim_tick :: proc(dt: f32) {
     sim.tick(dt)
 }
 
+// A run is in progress (playing or paused).
+sim_is_active :: proc() -> bool {
+    return sim.is_active()
+}
+
 @(private="file")
 _sim_selection_ids :: proc() -> []engine.Local_ID {
     out := make([dynamic]engine.Local_ID, context.temp_allocator)
@@ -76,7 +82,10 @@ _sim_selection_add_id :: proc(s: ^engine.Scene, id: engine.Local_ID) {
 _sim_fire_phase :: proc(p: sim.Phase) {
     switch p {
     case .ExitingEditMode: phase_editor_run(.ExitingEditMode)
-    case .EnteredPlayMode: phase_editor_run(.EnteredPlayMode)
+    case .EnteredPlayMode:
+        game_view_focus()
+        input.reset_edges() // the Play click is not the game's
+        phase_editor_run(.EnteredPlayMode)
     case .ExitingPlayMode: phase_editor_run(.ExitingPlayMode)
     case .EnteredEditMode: phase_editor_run(.EnteredEditMode)
     }

@@ -4,8 +4,30 @@ import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import "../engine"
+import "../engine/input"
 
 game_rt: ^gfx.Render_Target
+
+// Whether the game receives input during a simulation (docs/Simulate.md):
+// Play focuses the view, a click on its image focuses it, a click anywhere
+// else unfocuses it. main.odin blocks the game's input reads while unfocused.
+game_view_focused: bool
+
+// The image was under the mouse when it last drew. The focus decision uses
+// it at the START of the next frame, before the simulation ticks, so the
+// click that unfocuses the view never reaches the game.
+@(private = "file") _game_view_hovered: bool
+
+game_view_focus :: proc() {
+	game_view_focused = true
+	im.SetWindowFocusStr("Game")
+}
+
+// Called once per frame before the simulation tick.
+game_view_frame_begin :: proc() {
+	clicked := im.IsMouseClicked(.Left) || im.IsMouseClicked(.Right) || im.IsMouseClicked(.Middle)
+	if clicked do game_view_focused = _game_view_hovered
+}
 
 init_game_view :: proc() {
 	game_rt = gfx.rt_create(1, 1)
@@ -39,6 +61,16 @@ draw_game_view :: proc() {
 			had_camera := render_game_rt(w, h)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(game_rt)))
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
+
+			// The image is the game's screen: mouse coordinates are relative
+			// to it and its size is what the game unprojects with. Window
+			// coordinates, like SDL's mouse events.
+			origin := im.GetMainViewport().Pos
+			img_min := im.GetItemRectMin()
+			img_max := im.GetItemRectMax()
+			input.set_viewport({img_min.x - origin.x, img_min.y - origin.y}, {img_max.x - img_min.x, img_max.y - img_min.y})
+
+			_game_view_hovered = im.IsItemHovered()
 
 			if !had_camera {
 				msg: cstring = "No cameras rendering"

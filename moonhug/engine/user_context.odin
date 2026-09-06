@@ -26,7 +26,8 @@ application_is_editor :: proc() -> bool {
 }
 
 // Unity's Application.isPlaying - see the field. This is the one component code
-// should ask.
+// should ask. Application.isFocused is core.application_is_focused
+// (re-exported here), owned by the input layer.
 application_is_playing :: proc() -> bool {
     uc := ctx_get()
     return uc != nil && uc.is_playing

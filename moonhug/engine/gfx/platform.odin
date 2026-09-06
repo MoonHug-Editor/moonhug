@@ -24,6 +24,9 @@ _platform_init :: proc(title: cstring, width, height: i32, show := true) -> bool
 	if !sdl.Init({.VIDEO}) {
 		return false
 	}
+	// The click that gives the window focus is delivered as a click too, as
+	// a game expects (macOS swallows it by default).
+	_ = sdl.SetHint(sdl.HINT_MOUSE_FOCUS_CLICKTHROUGH, "1")
 	flags := sdl.WindowFlags{.RESIZABLE, .HIGH_PIXEL_DENSITY}
 	if !show do flags += {.HIDDEN}
 	_platform.window = sdl.CreateWindow(title, width, height, flags)
@@ -62,6 +65,8 @@ show_window :: proc() {
 // forwards every event to event_cb (the editor passes imgui's ProcessEvent).
 poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil) {
 	input.frame_reset()
+	ws := window_size()
+	input.default_viewport({f32(ws.x), f32(ws.y)})
 	e: sdl.Event
 	for sdl.PollEvent(&e) {
 		if event_cb != nil do event_cb(&e)
@@ -72,6 +77,7 @@ poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil) {
 			input.apply_event(&e)
 		}
 	}
+	input.sync_global_mouse()
 }
 
 quit_requested :: proc() -> bool {

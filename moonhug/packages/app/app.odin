@@ -79,6 +79,8 @@ main :: proc() {
         log.errorf("scene not found: %s", scene_path)
     }
 
+    input.set_game_scope(true) // the whole frame is the game's; window focus gates it
+
     for !gfx.quit_requested() {
         gfx.poll_events()
         if !gfx.frame_begin() do continue

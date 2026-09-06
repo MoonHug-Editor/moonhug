@@ -225,7 +225,16 @@ main :: proc() {
         // inspector and scene all show the same frame. Placed AFTER the toolbar
         // so a Stop pressed this frame takes effect before the tick, never
         // ticking a scene that is already being torn down.
+        // The game reads input only while the Game view has focus
+        // (view_game.odin); editor views read it unblocked.
+        // Application focus for the game is the Game view's focus during a
+        // run (view_game.odin); the tick is the game scope, editor views
+        // read outside it.
+        game_view_frame_begin()
+        input.set_app_focused(!sim_is_active() || game_view_focused)
+        input.set_game_scope(true)
         sim_tick(gfx.delta_time())
+        input.set_game_scope(false)
 
         // ImGui UI
         if menu.show_inspector {

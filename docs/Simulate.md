@@ -154,6 +154,39 @@ Pause stops the ticking without leaving the simulation, so views keep drawing
 and the inspector keeps working on a frozen world. Step then advances that frozen
 world one tick at a time.
 
+## Input
+
+Application focus (`engine.application_is_focused`, Unity's
+Application.isFocused, stored in `engine/core` so every layer can ask) gates
+the game's input. Standalone it is the window's focus. In the editor it is
+the Game view's focus during a run: Play focuses the view (and brings its tab
+forward), a click on the view's image focuses it, a click anywhere else in
+the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame
+from that and opens `input.set_game_scope` around the simulation tick, so
+keys and mouse buttons read as released to the game while the editor's own
+views, reading outside the scope, are unaffected. A standalone app sets the
+scope once for the whole frame.
+
+Losing focus freezes the mouse position where it was, so nothing in the game
+follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining
+focus seeds the fixed-tick edges from the current frame, so the click that
+gives focus reaches the game like in Unity, while clicks from before it do
+not. Entering play mode drops every pending edge, so the Play click itself
+never reaches the first tick. The raw state keeps tracking underneath: a key
+held across the gap reads as down once focus returns. The focus decision is
+made at the start of the frame, before the tick.
+
+Standalone, the click that gives the window focus is delivered to the game
+as a click as well (SDL's focus click-through hint). While the window has
+focus the mouse position follows the cursor outside the window too (the platform reads the global cursor after the frame's events),
+as a windowed game expects when aiming. Relative mouse mode is exempt.
+
+The Game view's image is the game's screen. Every frame the view hands its
+window rectangle to `input.set_viewport`: `input.mouse_position` is relative
+to that rectangle and `input.viewport_size` is its size, which is also the
+render target's size. Games unproject with those two, never with the window
+size. Standalone, the platform sets the viewport to the window.
+
 ## Limits
 
 - **One scene.** Simulate captures and restores the ACTIVE scene. Additively
