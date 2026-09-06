@@ -59,6 +59,9 @@ _gfx: struct {
 	window_depth:     ^sdl.GPUTexture, // lazily sized to the swapchain
 	window_depth_w:   u32,
 	window_depth_h:   u32,
+	// SDL 3.4.14's Metal backend answers QueryGPUFence with the fence's BUSY
+	// state (3.4.16 answers signaled). Probed once at init, see _fence_probe.
+	fence_query_inverted: bool,
 }
 
 // Window + GPU device + pipelines. show=false lets the caller apply saved
@@ -71,6 +74,7 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	if !sdl.ClaimWindowForGPUDevice(_gfx.device, _platform.window) do return false
 	_gfx.swapchain_format = sdl.GetGPUSwapchainTextureFormat(_gfx.device, _platform.window)
 	_ = sdl.SetGPUSwapchainParameters(_gfx.device, _platform.window, .SDR, .VSYNC)
+	_fence_probe()
 
 	sampler_info := sdl.GPUSamplerCreateInfo{
 		min_filter     = .LINEAR,
@@ -374,7 +378,26 @@ texture_download_begin :: proc(tex: ^Texture) -> ^Texture_Download {
 texture_download_ready :: proc(d: ^Texture_Download) -> bool {
 	// A swapchain capture has no fence until the frame it rides is submitted.
 	if d.fence == nil do return false
-	return sdl.QueryGPUFence(_gfx.device, d.fence)
+	return _fence_signaled(d.fence)
+}
+
+// A fence that has been waited on is signaled by definition, so a false
+// answer from QueryGPUFence means this SDL build reports the inverse.
+@(private = "file")
+_fence_probe :: proc() {
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	if cmd == nil do return
+	fence := sdl.SubmitGPUCommandBufferAndAcquireFence(cmd)
+	if fence == nil do return
+	defer sdl.ReleaseGPUFence(_gfx.device, fence)
+	fences := [1]^sdl.GPUFence{fence}
+	_ = sdl.WaitForGPUFences(_gfx.device, true, raw_data(fences[:]), 1)
+	_gfx.fence_query_inverted = !sdl.QueryGPUFence(_gfx.device, fence)
+}
+
+@(private = "file")
+_fence_signaled :: proc(fence: ^sdl.GPUFence) -> bool {
+	return sdl.QueryGPUFence(_gfx.device, fence) != _gfx.fence_query_inverted
 }
 
 // The pixels as RGBA8 rows top-down, allocated with `allocator`. Frees the

@@ -8,7 +8,7 @@ the engine's canvas tree and `packages/mhgui` know nothing about it. Its Text
 component embeds `engine.Graphic` and registers as a graphic type, so the
 engine's canvas collector draws it in hierarchy order next to images.
 
-Layout (lines, wrapping, alignment) is backend-neutral and lives in
+Layout (lines, wrapping, alignment, styles, overflow) is backend-neutral and lives in
 `layout.odin`. The glyph source behind it is a `Backend` value; the SDF font
 is the default, and another package can supply its own.
 
@@ -33,22 +33,55 @@ before the font is cached as empty.
 
 ## Component
 
-**Text**: the shared Graphic fields (`color`, `material`, `raycast_target`),
-then `text`, `font`, `font_size`, `alignment` (nine anchors), `wrap` (break
-at spaces at the rect's width), `line_spacing`. The `material` must be an SDF
-material; `assets/materials/TextSDF.mat` ships with the package and
-GameObject > UI > Text assigns it along with the package's Roboto Medium.
-With the plain unlit shader the raw distance field would draw as blurred
-blobs.
+**Text** carries the shared Graphic fields (`color`, `material`,
+`raycast_target`) and TextMeshPro's settings:
+
+- `text`: a text area in the inspector.
+- `font`, `font_style`, `font_size`, `auto_size` with `auto_size_min` and
+  `auto_size_max`. Auto size picks the largest size in the range whose layout
+  does not overflow the rect, by bisection.
+- `font_style` flags: Bold (each glyph drawn twice, a small offset apart, with
+  bold spacing), Italic (quads sheared around the baseline), Underline and
+  Strikethrough (the font's `_` glyph stretched along the line), Lowercase,
+  Uppercase, Smallcaps (lowercase letters as capitals at 80% of the size).
+  The three case flags exclude each other.
+- `horizontal_alignment`: Left, Center, Right, Justified (a wrapped line's
+  slack goes into its spaces), Flush (the last line too).
+- `vertical_alignment`: Top, Middle, Bottom, Baseline, Midline, Capline (the
+  first line's baseline, midline or cap height on the rect's center).
+- `wrap` and `overflow`: Overflow (drawn past the rect), Ellipsis (cut at the
+  last line that fits, ending in `...`), Truncate, Masking (quads clipped to
+  the rect).
+- `character_spacing`, `word_spacing`, `line_spacing`, `paragraph_spacing`:
+  hundredths of the font size added to the font's own values.
+- `margins`: left, top, right, bottom, canvas units taken off the rect.
+- `kerning`, `parse_escape_characters` (`\n`, `\t`, `\\` typed into the
+  string become the characters).
+
+The `material` must be an SDF material; `assets/materials/TextSDF.mat` ships
+with the package and GameObject > UI > Text assigns it along with the
+package's Roboto Medium. With the plain unlit shader the raw distance field
+would draw as blurred blobs.
+
+The inspector wrapper (`editor/text_editor.odin`) draws the text area and the
+style toggle buttons through the inspector's row machinery, so undo,
+multiedit and prefab overrides work like generic rows. The other fields are
+generic rows.
 
 ## Layout
 
-`layout_text` is pure and backend-neutral: lines break at `\n` and, when
+`layout_text` is pure and backend-neutral. It takes a `Layout_Params` (font,
+size, style, alignments, wrap, overflow, spacings, kerning), the string and
+the rect, and returns whether the backend served the font and whether the
+text overflows the rect before any cut. Lines break at `\n` and, when
 wrapping, at spaces once a line would pass the rect; a word wider than the
-rect stays on its own line. The block is placed by the anchor's row, each
-line by its column. Kerning comes from the backend. Output is one quad per
-visible glyph in canvas units; `populate_text` hands them to the engine's
-canvas collector, which applies the node's transform like any rect.
+rect stays on its own line. A tab advances four spaces. The block is placed
+by the vertical alignment, each line by the horizontal one. Output is one
+quad per visible glyph in canvas units, plus the style extras (bold copies,
+underline and strikethrough slabs). A quad carries a `skew` for italics,
+which `engine.Graphic_Quad` passes to the collector. `populate_text` applies
+the margins, the escape parsing and auto size, then hands the quads to the
+engine's canvas collector, which applies the node's transform like any rect.
 
 ## Backend
 

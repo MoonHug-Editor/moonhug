@@ -465,8 +465,21 @@ Graphic :: struct {
 Graphic_Quad :: struct {
 	pos:     [2]f32,
 	size:    [2]f32,
+	skew:    [2]f32, // x shift of the bottom and the top edge (italic text); zero = a rect
 	uvs:     [4][2]f32, // bl, br, tr, tl
 	texture: Asset_GUID,
+}
+
+// The quad's corners through the node's transform, skew applied.
+graphic_quad_corners :: proc(q: Graphic_Quad, m: matrix[4, 4]f32) -> [4][3]f32 {
+	x0, y0 := q.pos.x, q.pos.y
+	x1, y1 := x0 + q.size.x, y0 + q.size.y
+	return {
+		rect_apply(m, {x0 + q.skew[0], y0}),
+		rect_apply(m, {x1 + q.skew[0], y0}),
+		rect_apply(m, {x1 + q.skew[1], y1}),
+		rect_apply(m, {x0 + q.skew[1], y1}),
+	}
 }
 
 // A registered graphic type. `populate` appends the quads a component draws
@@ -550,7 +563,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
-				corners := rect_corners(Rect{q.pos, q.size}, n.xform)
+				corners := graphic_quad_corners(q, n.xform)
 				if view.kind == .Game {
 					screen: [4][2]f32
 					for c, k in corners do screen[k] = c.xy * scale

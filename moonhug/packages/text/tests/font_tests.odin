@@ -83,7 +83,7 @@ test_sdf_backend_scales_metrics_and_lays_out :: proc(t: ^testing.T) {
 	quads := make([dynamic]text.Glyph_Quad)
 	defer delete(quads)
 	rect := engine.Rect{{0, 0}, {400, 100}}
-	lok := text.layout_text(&b, guid, 48, "Hi", rect, .Upper_Left, false, 1, &quads)
+	lok := text.layout_text(&b, text.Layout_Params{font = guid, size = 48}, "Hi", rect, &quads).ok
 	testing.expect(t, lok, "layout through the SDF backend")
 	testing.expect_value(t, len(quads), 2)
 	if len(quads) == 2 {

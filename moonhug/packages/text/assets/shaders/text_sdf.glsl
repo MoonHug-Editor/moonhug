@@ -1,4 +1,4 @@
-// SDF text shader (packages/text2, docs/Text2.md). The quad's texture is the
+// SDF text shader (packages/text, docs/Text.md). The quad's texture is the
 // font atlas: a signed distance field with 0.5 on the glyph edge, larger
 // inside. The shader thresholds it per pixel, which is what keeps text sharp
 // at any size, and outline, underlay shadow and dilation are further
