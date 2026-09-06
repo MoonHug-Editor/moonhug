@@ -1,3 +1,13 @@
+## [0.91.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.90.0...v0.91.0) (2026-09-06)
+
+### Features
+
+* 9-slice and tiled image sprites ([d221f1b](https://github.com/MoonHug-Editor/moonhug/commit/d221f1b72a2fbead493cd1f5394403e144984821))
+* add icons to views' tab labels ([b989cfc](https://github.com/MoonHug-Editor/moonhug/commit/b989cfccc121f99f1f31c50cb7a80d84ecea12c8))
+* box select mhgui, text support non-latin glyphs ([6a18160](https://github.com/MoonHug-Editor/moonhug/commit/6a181603cf42f5e98019a313d83225c14c0f50ab))
+* rect handles UX ([470eea1](https://github.com/MoonHug-Editor/moonhug/commit/470eea1acc142c089902be06618fdd339c7a8914))
+* search with spaces support ([4800e0f](https://github.com/MoonHug-Editor/moonhug/commit/4800e0f3d8c8062d9bcb18630b695094a1153fe4))
+
 ## [0.90.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.89.0...v0.90.0) (2026-09-06)
 
 ### Features
