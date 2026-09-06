@@ -100,14 +100,10 @@ main :: proc() {
             engine.debug_draw_enabled = !engine.debug_draw_enabled
         }
 
-        // World cameras render first (pass stays open, world view_proj still
-        // set — debug draw rides it), then the demo menu overlays in screen
-        // space within the same swapchain pass.
+        // World cameras render (the canvases with them); the pass stays open
+        // with the world view_proj set, so debug draw rides it.
         if engine.render_world_cameras() {
             if engine.debug_draw_enabled do phase_run(.DebugDraw)
-            ws := gfx.window_size()
-            gfx.set_view_proj(gfx.matrix4_ortho_pixels(f32(ws.x), f32(ws.y)))
-            demo_menu_draw()
             gfx.pass_end()
         }
         gfx.frame_end()

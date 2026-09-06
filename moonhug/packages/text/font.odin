@@ -228,6 +228,14 @@ default_font_guid :: proc() -> engine.Asset_GUID {
 	return {}
 }
 
+// The SDF material that ships with the package (assets/materials/TextSDF.mat).
+DEFAULT_MATERIAL_GUID :: "57209af0-8443-465e-ab7b-cd1deec09ec6"
+
+default_material_guid :: proc() -> engine.Asset_GUID {
+	if g, err := uuid.read(DEFAULT_MATERIAL_GUID); err == nil do return engine.Asset_GUID(g)
+	return {}
+}
+
 // --- Runtime cache ---------------------------------------------------------------------------
 
 _fonts: map[engine.Asset_GUID]Font

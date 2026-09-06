@@ -10,6 +10,7 @@ import "moonhug:engine"
 DemoMenu :: struct {
     using base: engine.CompData `inspect:"-"`,
     demos: [dynamic]engine.Asset_GUID,
+    list:  engine.Ref_Local `ref:"Transform"`, // the LayoutGroup node the scene rows are created under
 }
 
 reset_DemoMenu :: proc(comp: ^DemoMenu) {

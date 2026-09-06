@@ -4,7 +4,6 @@ package text_editor
 // GameObject > UI > Text menu, the Text inspector's text area and style
 // toggles, and scene-view picking of text rects.
 
-import "core:encoding/uuid"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine"
@@ -15,9 +14,6 @@ import "moonhug:editor/undo"
 import text "moonhug:packages/text"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}
-
-// The SDF material that ships with the package (assets/materials/TextSDF.mat).
-TEXT_SDF_MATERIAL_GUID :: "57209af0-8443-465e-ab7b-cd1deec09ec6"
 
 _FONT_EXTS := []string{".ttf", ".otf"}
 
@@ -80,7 +76,7 @@ ui_menu_text :: proc() {
 		tx := cast(^text.Text)ptr
 		tx.text = strings.clone("New Text") // the component owns its string (cleanup_Text)
 		tx.font = text.default_font_guid()
-		if m, err := uuid.read(TEXT_SDF_MATERIAL_GUID); err == nil do tx.material = engine.Asset_GUID(m)
+		tx.material = text.default_material_guid()
 	})
 	undo.group_commit(&g)
 	engine.inspector_request_select(tH)

@@ -104,6 +104,18 @@ quad the graphic populates, in the graphic's color and material.
 Sort keys use layer 127, the top of the transparent range, then the canvas
 `sort_order`, then the node's index in the walk.
 
+## Runtime use
+
+The app's demo menu is the first consumer. The static part is authored in
+`menu.scene`: a canvas, a List node with a vertical LayoutGroup and the title
+row, with the DemoMenu component pointing at the List through a `Ref_Local`.
+At play `packages/app/demo_menu.odin` creates one Text row per authored scene
+under the List, and gives the loaded demo a HUD canvas of its own in that
+scene. Building UI in code is plain node and component creation:
+`transform_new`, `transform_add_comp` for RectTransform, CanvasRenderer and
+the graphic, fields set directly. Text needs a font and the SDF material
+(`text.default_font_guid`, `text.default_material_guid`).
+
 ## Editor
 
 GameObject > UI > Canvas creates a canvas at the scene root. GameObject > UI >
