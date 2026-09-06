@@ -1,3 +1,14 @@
+## [0.89.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.88.0...v0.89.0) (2026-09-06)
+
+### Features
+
+* multi-edit rect transform inspector ([213ec16](https://github.com/MoonHug-Editor/moonhug/commit/213ec16f335bcdcb141a597f08b651fda1c8b9be))
+* multi-edit rect transform inspector, improve demo menu.scene ([8da1f81](https://github.com/MoonHug-Editor/moonhug/commit/8da1f81dd0343e75d08d1e04dc8465ee3107737d))
+
+### Bug Fixes
+
+* simulation and build input focusing and reacting ([e90c8f6](https://github.com/MoonHug-Editor/moonhug/commit/e90c8f68d0497f45dafaf7e68b5473548e2fa4c3))
+
 ## [0.88.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.87.0...v0.88.0) (2026-09-06)
 
 ### Features
