@@ -23,7 +23,7 @@ FontSettings :: struct {
 	sampling_size: f32, // glyph height the field is sampled at, px; the shader scales from here
 	padding:       i32, // px of distance field around each glyph: the reach of outlines and shadows
 	atlas_size:    i32, // atlas side, px; grows in powers of two until the glyphs fit
-	latin1:        bool, // bake U+00A0..U+00FF too (ASCII is always baked)
+	latin1:        bool, // bake U+00A0..U+00FF too (ASCII is always baked); anything else is added at runtime from the font file
 }
 
 make_pFontSettings :: proc() -> any {
@@ -38,7 +38,7 @@ make_pFontSettings :: proc() -> any {
 // --- Artifact ---------------------------------------------------------------------------------
 
 FONT_MAGIC :: "MHFT"
-FONT_VERSION :: u32(1)
+FONT_VERSION :: u32(2)
 
 Font_Header :: struct #packed {
 	magic:       [4]u8,
@@ -52,6 +52,7 @@ Font_Header :: struct #packed {
 	atlas_h:     u32,
 	glyph_count: u32,
 	kern_count:  u32,
+	ttf_size:    u32, // the font file follows the atlas, for glyphs baked at runtime
 }
 
 Font_Glyph :: struct #packed {
@@ -74,9 +75,11 @@ _bake_ranges :: proc(latin1: bool) -> [][2]rune {
 	return _RANGES_LATIN1[:] if latin1 else _RANGES_ASCII[:]
 }
 
-// Bakes a font file into the artifact bytes. Pure apart from stb: the tests
-// run it headless. Returns ok=false for an unreadable font or an atlas that
-// cannot fit even at 4096.
+// Bakes a font file into the artifact bytes: the baked ranges' glyphs, their
+// kerning, the atlas, then the font file itself so glyphs outside the baked
+// ranges can be added at runtime (dynamic page). Pure apart from stb: the
+// tests run it headless. Returns ok=false for an unreadable font or an atlas
+// that cannot fit even at 4096.
 font_bake :: proc(ttf: []u8, s: FontSettings, allocator := context.allocator) -> (artifact: []u8, ok: bool) {
 	info: stbtt.fontinfo
 	if !stbtt.InitFont(&info, raw_data(ttf), 0) do return nil, false
@@ -164,13 +167,15 @@ font_bake :: proc(ttf: []u8, s: FontSettings, allocator := context.allocator) ->
 		atlas_h     = u32(atlas_dim),
 		glyph_count = u32(len(glyphs)),
 		kern_count  = u32(len(kerns)),
+		ttf_size    = u32(len(ttf)),
 	}
 	copy(header.magic[:], FONT_MAGIC)
-	out := make([dynamic]u8, 0, size_of(Font_Header) + len(glyphs) * size_of(Font_Glyph) + len(kerns) * size_of(Font_Kern) + len(atlas), allocator)
+	out := make([dynamic]u8, 0, size_of(Font_Header) + len(glyphs) * size_of(Font_Glyph) + len(kerns) * size_of(Font_Kern) + len(atlas) + len(ttf), allocator)
 	append(&out, ..mem.ptr_to_bytes(&header))
 	append(&out, ..slice.to_bytes(glyphs))
 	append(&out, ..slice.to_bytes(kerns[:]))
 	append(&out, ..atlas)
+	append(&out, ..ttf)
 	return out[:], true
 }
 
@@ -182,7 +187,23 @@ Font :: struct {
 	kerns:   map[u64]f32,
 	atlas:   []u8, // view into data
 	texture: engine.Asset_GUID, // registered in engine.texture_cache; empty when headless
+
+	// The dynamic page (TextMeshPro's dynamic atlas population): glyphs the
+	// bake left out are rendered from the embedded font file on first use,
+	// packed into a second atlas and uploaded region by region. Absent
+	// when the artifact carries no font file.
+	ttf:         []u8, // view into data
+	info:        stbtt.fontinfo,
+	has_info:    bool,
+	dyn_glyphs:  map[rune]Font_Glyph,
+	dyn_pixels:  []u8, // the page's field, DYN_PAGE_DIM squared
+	dyn_nodes:   []stbrp.Node,
+	dyn_packer:  stbrp.Context,
+	dyn_texture: engine.Asset_GUID, // empty until the first dynamic glyph
+	dyn_full:    bool, // the page ran out of room: further misses draw '?'
 }
+
+DYN_PAGE_DIM :: 1024
 
 @(private = "file")
 _kern_key :: proc(a, b: rune) -> u64 {
@@ -206,6 +227,12 @@ font_parse :: proc(data: []u8, allocator := context.allocator) -> (f: Font, ok: 
 	kerns := slice.reinterpret([]Font_Kern, data[off:off + kn * size_of(Font_Kern)])
 	off += kn * size_of(Font_Kern)
 	f.atlas = data[off:off + an]
+	off += an
+	tn := int(f.header.ttf_size)
+	if off + tn <= len(data) && tn > 0 {
+		f.ttf = data[off:off + tn]
+		f.has_info = bool(stbtt.InitFont(&f.info, raw_data(f.ttf), 0))
+	}
 	f.glyphs = make(map[rune]Font_Glyph, gn, allocator)
 	for g in glyphs do f.glyphs[rune(g.codepoint)] = g
 	f.kerns = make(map[u64]f32, kn, allocator)
@@ -216,6 +243,15 @@ font_parse :: proc(data: []u8, allocator := context.allocator) -> (f: Font, ok: 
 font_destroy :: proc(f: ^Font) {
 	delete(f.glyphs)
 	delete(f.kerns)
+	delete(f.dyn_glyphs)
+	delete(f.dyn_pixels, runtime.default_allocator())
+	delete(f.dyn_nodes, runtime.default_allocator())
+	if f.dyn_texture != {} {
+		if old, had := engine.texture_cache[f.dyn_texture]; had {
+			gfx.texture_destroy(old.gfx)
+			delete_key(&engine.texture_cache, f.dyn_texture)
+		}
+	}
 	delete(f.data)
 	f^ = {}
 }
@@ -248,6 +284,78 @@ _atlas_guid :: proc(font: engine.Asset_GUID) -> engine.Asset_GUID {
 	g[14] ~= 0x5D
 	g[15] ~= 0xF2
 	return g
+}
+
+@(private = "file")
+_dyn_atlas_guid :: proc(font: engine.Asset_GUID) -> engine.Asset_GUID {
+	g := _atlas_guid(font)
+	g[13] ~= 0xA7
+	return g
+}
+
+// Renders `r` from the font file into the dynamic page and records it.
+// false when the font has no file, the glyph is missing or the page is full.
+@(private = "file")
+_font_add_glyph :: proc(guid: engine.Asset_GUID, f: ^Font, r: rune) -> (Font_Glyph, bool) {
+	if !f.has_info || f.dyn_full do return {}, false
+	if stbtt.FindGlyphIndex(&f.info, r) == 0 do return {}, false
+	// The page is process-global state: never the caller's allocator
+	// (font_destroy frees it with the same one).
+	if f.dyn_pixels == nil {
+		f.dyn_pixels = make([]u8, DYN_PAGE_DIM * DYN_PAGE_DIM, runtime.default_allocator())
+		f.dyn_nodes = make([]stbrp.Node, DYN_PAGE_DIM, runtime.default_allocator())
+		stbrp.init_target(&f.dyn_packer, DYN_PAGE_DIM, DYN_PAGE_DIM, raw_data(f.dyn_nodes), c.int(len(f.dyn_nodes)))
+		f.dyn_glyphs = make(map[rune]Font_Glyph, runtime.default_allocator())
+		f.dyn_texture = _dyn_atlas_guid(guid)
+		if gfx.device() != nil {
+			rgba := make([]u8, DYN_PAGE_DIM * DYN_PAGE_DIM * 4, context.temp_allocator)
+			for i in 0 ..< DYN_PAGE_DIM * DYN_PAGE_DIM {
+				rgba[i * 4 + 0] = 255
+				rgba[i * 4 + 1] = 255
+				rgba[i * 4 + 2] = 255
+			}
+			engine.texture_cache[f.dyn_texture] = engine.Texture2D{guid = f.dyn_texture, width = DYN_PAGE_DIM, height = DYN_PAGE_DIM, pixels_per_unit = engine.PIXELS_PER_UNIT, gfx = gfx.texture_create(rgba, DYN_PAGE_DIM, DYN_PAGE_DIM)}
+		}
+	}
+
+	scale := stbtt.ScaleForPixelHeight(&f.info, f.header.sampling)
+	padding := max(int(f.header.padding), 1)
+	adv, lsb: c.int
+	stbtt.GetCodepointHMetrics(&f.info, r, &adv, &lsb)
+	w, h, xo, yo: c.int
+	bmp := stbtt.GetCodepointSDF(&f.info, scale, c.int(r), c.int(padding), 128, 128.0 / f32(padding), &w, &h, &xo, &yo)
+	defer if bmp != nil do stbtt.FreeSDF(bmp, nil)
+
+	rect := stbrp.Rect{w = stbrp.Coord(w + 1), h = stbrp.Coord(h + 1)}
+	if w > 0 && h > 0 {
+		if stbrp.pack_rects(&f.dyn_packer, &rect, 1) == 0 {
+			f.dyn_full = true
+			return {}, false
+		}
+		for y in 0 ..< int(h) {
+			for x in 0 ..< int(w) {
+				f.dyn_pixels[(int(rect.y) + y) * DYN_PAGE_DIM + int(rect.x) + x] = bmp[y * int(w) + x]
+			}
+		}
+		if tex, has := engine.texture_cache[f.dyn_texture]; has && tex.gfx != nil {
+			rgba := make([]u8, int(w * h) * 4, context.temp_allocator)
+			for i in 0 ..< int(w * h) {
+				rgba[i * 4 + 0] = 255
+				rgba[i * 4 + 1] = 255
+				rgba[i * 4 + 2] = 255
+				rgba[i * 4 + 3] = bmp[i]
+			}
+			gfx.texture_upload_region(tex.gfx, i32(rect.x), i32(rect.y), w, h, rgba)
+		}
+	}
+	g := Font_Glyph{
+		codepoint = u32(r),
+		x0 = u16(rect.x), y0 = u16(rect.y), x1 = u16(int(rect.x) + int(w)), y1 = u16(int(rect.y) + int(h)),
+		xoff = f32(xo), yoff = f32(yo),
+		advance = f32(adv) * scale,
+	}
+	f.dyn_glyphs[r] = g
+	return g, true
 }
 
 // Registers the atlas as a texture (white with the field in alpha) when there
@@ -350,13 +458,23 @@ _sdf_metrics :: proc(font: engine.Asset_GUID, size_px: f32) -> (Line_Metrics, bo
 _sdf_glyph :: proc(font: engine.Asset_GUID, size_px: f32, r: rune) -> (Glyph, bool) {
 	f, ok := font_load(font)
 	if !ok do return {}, false
+	// Baked, then the dynamic page, then a new dynamic glyph, then '?'.
+	texture := f.texture
+	aw, ah := f32(f.header.atlas_w), f32(f.header.atlas_h)
 	g, found := f.glyphs[r]
+	if !found {
+		g, found = f.dyn_glyphs[r]
+		if !found do g, found = _font_add_glyph(font, f, r)
+		if found {
+			texture = f.dyn_texture
+			aw, ah = DYN_PAGE_DIM, DYN_PAGE_DIM
+		}
+	}
 	if !found do g, found = f.glyphs['?']
 	if !found do return {}, false
 	s := _sdf_scale(f, size_px)
 	w := f32(g.x1 - g.x0)
 	h := f32(g.y1 - g.y0)
-	aw, ah := f32(f.header.atlas_w), f32(f.header.atlas_h)
 	u0, u1 := f32(g.x0) / aw, f32(g.x1) / aw
 	v0, v1 := f32(g.y0) / ah, f32(g.y1) / ah
 	return Glyph{
@@ -364,7 +482,7 @@ _sdf_glyph :: proc(font: engine.Asset_GUID, size_px: f32, r: rune) -> (Glyph, bo
 		size    = {w * s, h * s},
 		offset  = {g.xoff * s, -(g.yoff + h) * s}, // stb: y down from the baseline; the quad's bottom is yoff + h
 		uvs     = { {u0, v1}, {u1, v1}, {u1, v0}, {u0, v0} },
-		texture = f.texture,
+		texture = texture,
 	}, true
 }
 
@@ -372,7 +490,19 @@ _sdf_glyph :: proc(font: engine.Asset_GUID, size_px: f32, r: rune) -> (Glyph, bo
 _sdf_kern :: proc(font: engine.Asset_GUID, size_px: f32, a, b: rune) -> f32 {
 	f, ok := font_load(font)
 	if !ok do return 0
-	return f.kerns[_kern_key(a, b)] * _sdf_scale(f, size_px)
+	key := _kern_key(a, b)
+	k, has := f.kerns[key]
+	if !has {
+		// Pairs the bake never saw (a dynamic glyph on either side): from
+		// the font file, remembered.
+		k = 0
+		if f.has_info {
+			scale := stbtt.ScaleForPixelHeight(&f.info, f.header.sampling)
+			k = f32(stbtt.GetCodepointKernAdvance(&f.info, a, b)) * scale
+		}
+		f.kerns[key] = k // the map keeps its own allocator
+	}
+	return k * _sdf_scale(f, size_px)
 }
 
 sdf_backend :: proc() -> Backend {

@@ -24,7 +24,7 @@ text_importers_init :: proc() {
 	done = true
 	asset_pipeline.importer_register({
 		name         = "font",
-		version      = 2,
+		version      = 3,
 		extensions   = _FONT_EXTS,
 		settings_tid = typeid_of(text.FontSettings),
 		run          = text.font_import,

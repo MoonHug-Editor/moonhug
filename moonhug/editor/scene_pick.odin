@@ -100,6 +100,22 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		}
 	}
 
+	// UI: every drawn graphic's rect, where the canvas sits (all render modes).
+	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+	cv_it := engine.pool_iterator(engine.canvases(w))
+	for canvas, _ in engine.pool_next(&cv_it) {
+		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
+		clear(&nodes)
+		engine.canvas_resolve_placed(canvas.owner, &nodes)
+		for n in nodes {
+			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
+			if cr == nil || !cr.enabled do continue
+			if _, _, _, ok := engine.node_graphic(n.tH); !ok do continue
+			c := engine.rect_corners(n.rect, n.xform)
+			if _rect_hits_points(view, rmin, rmax, c[:]) do append(&out, n.tH)
+		}
+	}
+
 	mr_it := engine.pool_iterator(engine.mesh_renderers(w))
 	for mr, _ in engine.pool_next(&mr_it) {
 		if !mr.enabled do continue

@@ -92,3 +92,38 @@ test_sdf_backend_scales_metrics_and_lays_out :: proc(t: ^testing.T) {
 	}
 	text.font_reimported(guid) // frees the cached font
 }
+
+// A glyph outside the baked ranges comes from the font file at first use,
+// on the dynamic page; a glyph the font does not have falls back to '?'.
+@(test)
+test_sdf_backend_adds_glyphs_outside_the_bake :: proc(t: ^testing.T) {
+	ttf := _roboto(t)
+	if len(ttf) == 0 do return
+	s := text.FontSettings{sampling_size = 32, padding = 4, atlas_size = 256, latin1 = false} // ASCII only
+	artifact, ok := text.font_bake(ttf, s)
+	testing.expect(t, ok)
+	if !ok do return
+	f, pok := text.font_parse(artifact)
+	testing.expect(t, pok)
+	if !pok do return
+	testing.expect(t, f.has_info, "the artifact carries the font file")
+	guid := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
+	text.font_cache_insert(guid, f)
+	defer text.font_reimported(guid)
+
+	b := text.sdf_backend()
+	e_acute, eok := b.glyph(guid, 32, 'é')
+	testing.expect(t, eok)
+	testing.expect(t, e_acute.size.x > 0 && e_acute.size.y > 0, "the dynamic glyph has a bitmap")
+	testing.expect(t, e_acute.texture != {}, "the dynamic glyph lives on the dynamic page")
+	plain_e, _ := b.glyph(guid, 32, 'e')
+	testing.expect(t, e_acute.texture != plain_e.texture, "the dynamic page is a second texture")
+	testing.expect(t, abs(e_acute.advance - plain_e.advance) < 2, "é advances about like e")
+	again, _ := b.glyph(guid, 32, 'é')
+	testing.expect_value(t, again.uvs, e_acute.uvs) // cached, not packed twice
+
+	snowman, sok := b.glyph(guid, 32, '☃')
+	question, _ := b.glyph(guid, 32, '?')
+	testing.expect(t, sok)
+	testing.expect_value(t, snowman.uvs, question.uvs) // not in Roboto: the fallback
+}

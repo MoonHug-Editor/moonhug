@@ -154,7 +154,8 @@ the selection sits in a canvas, else under a new canvas. Each is one undo
 step.
 
 Clicking a UI rect in the scene view selects it (a picking provider,
-docs/Handles.md). The selected RectTransform shows the rect tool, built on
+docs/Handles.md), and the rubber band selects every graphic whose rect it
+touches, in any canvas mode. The selected RectTransform shows the rect tool, built on
 `editor/handles`: the rect outline, four corner and four edge handles that
 resize with the opposite edge fixed, the body that moves, the parent's anchor
 markers, and the pivot ring. One drag is one undo step. Anchor and pivot
@@ -191,7 +192,5 @@ Ordered by what unblocks the most next.
    Animation transitions.
 3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
    LayoutGroup instead of snapping back.
-4. **Box select of UI rects** in the scene view (the pick provider covers
-   clicks only).
-5. **LayoutGroup extras** (low priority): content size fitting, child
+4. **LayoutGroup extras** (low priority): content size fitting, child
    expand, start corner and axis for grids.

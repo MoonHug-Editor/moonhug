@@ -31,6 +31,13 @@ under a guid derived from the font's, and serves metrics and glyphs scaled by
 An artifact that fails to parse triggers one forced reimport in the editor
 before the font is cached as empty.
 
+The artifact also carries the font file. A glyph outside the baked ranges is
+rendered from it on first use, packed into a second atlas (the dynamic page,
+1024 squared, uploaded region by region) and kept, TextMeshPro's dynamic
+atlas population. Kerning pairs the bake never saw come from the font file
+the same way. A glyph the font does not have draws as `?`, as does anything
+once the page is full.
+
 ## Component
 
 **Text** carries the shared Graphic fields (`color`, `material`,
@@ -115,6 +122,6 @@ presets.
 ## Not yet
 
 Rich text tags, per-character effects, gradients and glow, Page, Linked and
-ScrollRect overflow, glyphs outside Latin-1, shaping. MSDF (multi-channel) would
+ScrollRect overflow, shaping. MSDF (multi-channel) would
 sharpen corners at large scales; the artifact format has room for a channel
 count.

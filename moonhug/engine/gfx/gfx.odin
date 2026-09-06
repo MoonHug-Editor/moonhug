@@ -329,6 +329,29 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 	return tex
 }
 
+// Overwrites a region of a sampled RGBA8 texture (a dynamic font atlas adding
+// a glyph). Own command buffer, like texture_create.
+texture_upload_region :: proc(tex: ^Texture, x, y, width, height: i32, pixels: []u8) -> bool {
+	if tex == nil || tex.gpu == nil do return false
+	assert(len(pixels) == int(width * height * 4))
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, sdl.GPUTransferBufferCreateInfo{usage = .UPLOAD, size = u32(len(pixels))})
+	if transfer == nil do return false
+	defer sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, transfer, false)
+	runtime.mem_copy_non_overlapping(mapped, raw_data(pixels), len(pixels))
+	sdl.UnmapGPUTransferBuffer(_gfx.device, transfer)
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	if cmd == nil do return false
+	copy_pass := sdl.BeginGPUCopyPass(cmd)
+	sdl.UploadToGPUTexture(copy_pass,
+		{transfer_buffer = transfer, pixels_per_row = u32(width), rows_per_layer = u32(height)},
+		{texture = tex.gpu, x = u32(x), y = u32(y), w = u32(width), h = u32(height), d = 1},
+		false)
+	sdl.EndGPUCopyPass(copy_pass)
+	_ = sdl.SubmitGPUCommandBuffer(cmd)
+	return true
+}
+
 // An in-flight GPU→CPU pixel readback. The copy runs on its own command
 // buffer, queued after everything already submitted — poll readiness each
 // frame instead of blocking on the fence.
