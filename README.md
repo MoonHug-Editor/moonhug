@@ -110,7 +110,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - [Meshes](docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
 - [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
-- [Text](docs/Text.md) - text plugin for the canvas tree: backend-neutral layout (wrap, nine anchors, kerning) over a swappable font backend, stb_truetype atlas by default
+- [Text](docs/Text.md) - TextMeshPro-shaped text plugin for the canvas tree: font files import into a signed-distance-field atlas, an SDF material shader gives outline, underlay shadow, dilation and softness, sharp at any size, backend-neutral layout with a swappable glyph source
 - [Handles](docs/Handles.md) - scene-view interaction layer for editor and package editors: immediate-mode drag handles on a plane, overlay drawing, one drag = one undo step, picking providers
 - [GUI](docs/Gui.md) - canvas tree in the engine (Canvas, RectTransform anchors/pivot layout, CanvasRenderer, CanvasScaler, rect walk with layout providers), mhgui plugin package for the graphics (Image, sprite or solid color), LayoutGroup (row/column/grid), the render collector and the rect tool on editor/handles
 - [Unity Conveniences](docs/UnityConveniences.md)

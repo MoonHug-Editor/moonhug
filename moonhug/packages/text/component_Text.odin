@@ -1,43 +1,45 @@
 package text
 
-// Text for the canvas tree (docs/Text.md). A plugin: the engine's canvas
-// tree and packages/mhgui know nothing about it. A node with a
-// CanvasRenderer and a Text draws its string inside its rect. Layout (lines,
-// wrapping, alignment) lives here; glyph rasterization is a Backend
-// (backend.odin), stb_truetype by default, swappable by another package.
+// Text for the canvas tree (docs/Text.md), TextMeshPro-shaped: a graphic
+// whose font is an SDF artifact baked at import and whose glyphs go through
+// an SDF material (assets/materials/TextSDF.mat), so it stays sharp at any
+// size and gets outline, underlay shadow, dilation and softness from the
+// shader. Layout (layout.odin) is backend-neutral; the SDF font is the glyph
+// source behind the Backend seam (backend.odin), swappable by another package.
 
+import "base:runtime"
 import "moonhug:engine"
 
-// Where the text block sits inside the rect, and how lines align.
-Text_Anchor :: enum u8 {
-	Upper_Left, Upper_Center, Upper_Right,
-	Middle_Left, Middle_Center, Middle_Right,
-	Lower_Left, Lower_Center, Lower_Right,
-}
-
 @(component={menu="UI/Text"})
-@(typ_guid={guid = "2b6db0df-7473-4c2a-864d-8b0820b6b1a6"})
+@(typ_guid={guid = "32d4e528-8898-4fd3-9fc4-2ac0cc34609e"})
 Text :: struct {
 	using base:    engine.CompData `inspect:"-"`,
-	// The fields every graphic shares (color, material, raycast target).
+	// The fields every graphic shares. `material` must be an SDF material
+	// (TextSDF.mat ships with the package); the plain unlit shader would draw
+	// the raw distance field.
 	using graphic: engine.Graphic `inline:""`,
 	text:          string,
 	font:          engine.Asset_GUID `ext:"ttf,otf"`, // a font file in assets; empty draws nothing
 	font_size:     f32, // canvas units
 	alignment:     Text_Anchor,
-	wrap:         bool, // break lines at the rect's width
-	line_spacing: f32,  // multiplier on the font's line height
+	wrap:          bool, // break lines at the rect's width
+	line_spacing:  f32,  // multiplier on the font's line height
 }
 
 reset_Text :: proc(t: ^Text) {
-	t.font_size = 24
+	t.font_size = 36
 	t.color = {1, 1, 1, 1}
 	t.wrap = true
 	t.line_spacing = 1
 }
 
-// The Text's geometry: one quad per glyph from layout_text through the
-// current backend (engine.Graphic_Desc.populate).
+cleanup_Text :: proc(t: ^Text) {
+	if t.text != "" do delete(t.text)
+	t.text = ""
+}
+
+// The Text's geometry: one quad per glyph from the layout over the current
+// backend (engine.Graphic_Desc.populate).
 populate_text :: proc(comp: rawptr, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
 	tx := cast(^Text)comp
 	if engine.asset_guid_is_empty(tx.font) do return
@@ -48,7 +50,19 @@ populate_text :: proc(comp: rawptr, rect: engine.Rect, out: ^[dynamic]engine.Gra
 	}
 }
 
-cleanup_Text :: proc(t: ^Text) {
-	if t.text != "" do delete(t.text)
-	t.text = ""
+// ImportersInit is the asset-layer init phase both binaries run.
+@(phase={key=ImportersInit, order=2})
+text_package_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+	context.allocator = runtime.default_allocator()
+	_fonts = make(map[engine.Asset_GUID]Font)
+	backend_set(sdf_backend())
+	engine.asset_pipeline_add_reimport_hook(font_reimported)
+	engine.canvas_graphic_register(engine.Graphic_Desc{
+		key            = .Text,
+		graphic_offset = offset_of(Text, graphic),
+		populate       = populate_text,
+	})
 }

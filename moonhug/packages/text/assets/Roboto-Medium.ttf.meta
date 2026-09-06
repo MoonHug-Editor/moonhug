@@ -1,3 +1,11 @@
 {
-  "guid": "22073e17-4d3a-44ab-a230-03bea296e8b7"
+  "guid": "22073e17-4d3a-44ab-a230-03bea296e8b7",
+  "importer": "font",
+  "settings": {
+    "__type_guid": "33026060-aac7-4df7-a6d4-ae9f7b863264",
+    "atlas_size": 1024,
+    "latin1": true,
+    "padding": 8,
+    "sampling_size": 64.0000000000000000
+  }
 }

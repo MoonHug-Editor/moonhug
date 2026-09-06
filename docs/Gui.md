@@ -55,9 +55,10 @@ with `canvas_layout_register`.
   canvas once, finds the graphic on every CanvasRenderer node through that
   registry, and emits the quads in hierarchy order — so Image and Text draw
   through one path without the engine knowing either type.
-- **Text** lives in its own plugin, `packages/text` (docs/Text.md): a
-  swappable font backend under a backend-neutral layout. Neither the canvas
-  tree nor mhgui knows about it.
+- **Text** lives in its own plugin, `packages/text` (docs/Text.md):
+  TextMeshPro-shaped, SDF fonts baked at import and an SDF material shader,
+  a swappable glyph backend under a backend-neutral layout. Neither the
+  canvas tree nor mhgui knows about it.
 - **Image** — a graphic (embeds Graphic). `sprite` is a texture plus slice reference (the
   shared sprite picker in the inspector), empty draws the package's white
   texture so the rect is a solid `color`. `preserve_aspect` fits the largest

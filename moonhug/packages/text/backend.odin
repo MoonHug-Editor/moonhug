@@ -7,9 +7,10 @@ package text
 // texture the backend registers in engine.texture_cache under a guid of its
 // own making, so the renderer draws them like any other quad.
 //
-// The default is backend_stb.odin. Another package replaces it with
-// backend_set at an init phase that runs AFTER this package's (ImportersInit
-// order > 2), and the rest of the plugin is unchanged.
+// The default is the SDF font (font.odin, sdf_backend). Another package
+// replaces it with backend_set at an init phase that runs AFTER this
+// package's (ImportersInit order > 2), and the rest of the plugin is
+// unchanged: the tests drive layout through a fake monospace backend.
 
 import "moonhug:engine"
 

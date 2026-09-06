@@ -1,0 +1,76 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 0,
+  "custom_shader": "c599f479-ba0b-499b-a556-81e0263437eb",
+  "color": [
+    1.0,
+    1.0,
+    1.0,
+    1.0
+  ],
+  "properties": [
+    {
+      "name": "outline_color",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ]
+    },
+    {
+      "name": "outline_width",
+      "value": [
+        0.0,
+        0,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "underlay_color",
+      "value": [
+        0,
+        0,
+        0,
+        0.0
+      ]
+    },
+    {
+      "name": "underlay_offset",
+      "value": [
+        0.002,
+        -0.002,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "underlay_softness",
+      "value": [
+        0.05,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "softness",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    },
+    {
+      "name": "dilate",
+      "value": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

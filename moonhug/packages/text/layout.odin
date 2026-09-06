@@ -6,6 +6,13 @@ package text
 
 import "moonhug:engine"
 
+// Where the text block sits inside the rect, and how lines align.
+Text_Anchor :: enum u8 {
+	Upper_Left, Upper_Center, Upper_Right,
+	Middle_Left, Middle_Center, Middle_Right,
+	Lower_Left, Lower_Center, Lower_Right,
+}
+
 // One glyph placed in canvas units: `pos` is the quad's bottom-left.
 Glyph_Quad :: struct {
 	pos:     [2]f32,

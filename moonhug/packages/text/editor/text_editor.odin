@@ -1,30 +1,48 @@
 package text_editor
 
-// Editor half of the text plugin: GameObject > UI > Text, and scene-view
-// picking of text rects. Independent of packages/mhgui: it builds the same
-// node shape (RectTransform + CanvasRenderer + Text) with the engine's canvas
-// vocabulary alone.
+// Editor half of text: the font importer (editor-side, like audio's), the
+// GameObject > UI > Text menu, and scene-view picking of text rects.
 
+import "core:encoding/uuid"
+import "core:strings"
 import "moonhug:engine"
+import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import text "moonhug:packages/text"
-import "core:encoding/uuid"
-import "core:strings"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}
 
-// The font that ships with the package (assets/Roboto-Medium.ttf, Apache-2.0).
-DEFAULT_FONT_GUID :: "22073e17-4d3a-44ab-a230-03bea296e8b7"
+// The SDF material that ships with the package (assets/materials/TextSDF.mat).
+TEXT_SDF_MATERIAL_GUID :: "57209af0-8443-465e-ab7b-cd1deec09ec6"
 
+_FONT_EXTS := []string{".ttf", ".otf"}
+
+@(phase={key=ImportersInit, order=1, mode=Editor})
+text_importers_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+	asset_pipeline.importer_register({
+		name         = "font",
+		version      = 2,
+		extensions   = _FONT_EXTS,
+		settings_tid = typeid_of(text.FontSettings),
+		run          = text.font_import,
+	})
+}
+
+// `init` fills the new component before the step is recorded, so redo
+// rebuilds it with those values, not the reset defaults.
 @(private = "file")
-_add_comp :: proc(tH: engine.Transform_Handle, key: engine.TypeKey) -> rawptr {
+_add_comp :: proc(tH: engine.Transform_Handle, key: engine.TypeKey, init: proc(ptr: rawptr) = nil) -> rawptr {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return nil
 	if _, idx := engine.transform_find_comp(t, key); idx >= 0 do return nil
 	owned, ptr := engine.transform_add_comp(tH, key)
 	if ptr == nil do return nil
+	if init != nil do init(ptr)
 	undo.record_add_component(tH, owned.handle, len(t.components) - 1)
 	return ptr
 }
@@ -39,8 +57,8 @@ _create_canvas :: proc() -> engine.Transform_Handle {
 }
 
 // A Text node: under the selection when that sits in a canvas, else under a
-// new canvas. 160x30, the package font, "New Text".
-@(menu_item={path="GameObject/UI/Text", order=52})
+// new canvas. 200x50, the package's Roboto, the SDF material.
+@(menu_item={path="GameObject/UI/Text", order=53})
 ui_menu_text :: proc() {
 	g := undo.group_begin("Create Text")
 	defer undo.group_end(&g)
@@ -51,19 +69,20 @@ ui_menu_text :: proc() {
 	}
 	tH := undo.record_create_child("Text", parent)
 	if tH == _NONE do return
-	if rt := cast(^engine.RectTransform)_add_comp(tH, .RectTransform); rt != nil {
-		rt.size_delta = {160, 30}
-	}
+	_add_comp(tH, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {200, 50}
+	})
 	_add_comp(tH, .CanvasRenderer)
-	if tx := cast(^text.Text)_add_comp(tH, .Text); tx != nil {
+	_add_comp(tH, .Text, proc(ptr: rawptr) {
+		tx := cast(^text.Text)ptr
 		tx.text = strings.clone("New Text") // the component owns its string (cleanup_Text)
-		if guid, err := uuid.read(DEFAULT_FONT_GUID); err == nil do tx.font = engine.Asset_GUID(guid)
-	}
+		tx.font = text.default_font_guid()
+		if m, err := uuid.read(TEXT_SDF_MATERIAL_GUID); err == nil do tx.material = engine.Asset_GUID(m)
+	})
 	undo.group_commit(&g)
 	engine.inspector_request_select(tH)
 }
 
-// Text rects are clickable in the scene view like image rects.
 @(private = "file")
 _pick_text :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform_Handle, f32, bool) {
 	if view.kind != .SceneView do return _NONE, 0, false

@@ -3,7 +3,7 @@ package text_tests
 // Layout through a fake monospace backend: every glyph 10 wide and 12 tall,
 // advance 10, ascent 10, descent 2, no gap, no kerning. That is what makes
 // line breaks and alignment checkable to the pixel, and it is also the proof
-// that the backend seam holds: nothing here touches stb_truetype.
+// that the backend seam holds: nothing here touches the SDF font.
 
 import "core:testing"
 import "core:math/linalg"
@@ -92,7 +92,7 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	defer common.teardown(tc)
 
 	// The fake backend stands in for stb: the plugin's own seam, exercised.
-	defer text.backend_set(text.stb_backend())
+	defer text.backend_set(text.sdf_backend())
 
 	canvas := engine.transform_new("Canvas")
 	_, cv := engine.transform_add_comp(canvas, .Canvas)
@@ -106,12 +106,13 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	_, txp := engine.transform_add_comp(node, .Text)
 	tx := cast(^text.Text)txp
 	tx.enabled = true
-	tx.text = strings.clone("hi") // owned: cleanup_Text frees it with the world
+	tx.text = strings.clone("hi")
+	defer delete(tx.text) // world_destroy_all frees pools, not component-owned strings
 	tx.font = _font()
 	tx.font_size = 12
 	tx.color = {0, 1, 0, 1}
 
-	text.text_package_init() // registers Text as a graphic (and the stb backend, replaced above)
+	text.text_package_init() // registers Text as a graphic (and the SDF backend, replaced below)
 	text.backend_set(_fake_backend())
 	view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 200, 100, 0xFFFFFFFF)
 	out := make([dynamic]engine.Render_Command)

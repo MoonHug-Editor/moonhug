@@ -27,14 +27,17 @@ import mhgui "moonhug:packages/mhgui"
 // --- Menu ---------------------------------------------------------------------------
 
 // Adds `key` to `tH` as a recorded step; no-op when the node has one already.
+// `init` fills the new component before the step is recorded, so redo
+// rebuilds it with those values, not the reset defaults.
 @(private = "file")
-_add_comp :: proc(tH: engine.Transform_Handle, key: engine.TypeKey) {
+_add_comp :: proc(tH: engine.Transform_Handle, key: engine.TypeKey, init: proc(ptr: rawptr) = nil) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
 	if _, idx := engine.transform_find_comp(t, key); idx >= 0 do return
 	owned, ptr := engine.transform_add_comp(tH, key)
 	if ptr == nil do return
+	if init != nil do init(ptr)
 	undo.record_add_component(tH, owned.handle, len(t.components) - 1)
 }
 
