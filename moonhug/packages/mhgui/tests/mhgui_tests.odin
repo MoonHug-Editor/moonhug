@@ -626,3 +626,44 @@ test_image_sliced_and_tiled_cells :: proc(t: ^testing.T) {
 	testing.expect_value(t, out[4].size, [2]f32{32, 28})
 	testing.expect_value(t, out[4].uvs, mhgui.image_uvs(tex_size, {0, 4, 32, 28})) // the sprite's bottom 28 rows
 }
+
+// Keeping the rect while anchors change, and the driven flag a LayoutGroup
+// puts on its children's rects.
+@(test)
+test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	mhgui.mhgui_package_init()
+
+	parent := engine.Rect{{0, 0}, {800, 600}}
+	rt: engine.RectTransform
+	engine.reset_RectTransform(&rt) // centered 100x100
+	before := engine.rect_resolve(parent, &rt)
+	rt.anchor_min = {0, 0}
+	rt.anchor_max = {1, 1}
+	engine.rect_transform_keep_rect(&rt, parent, before)
+	after := engine.rect_resolve(parent, &rt)
+	testing.expect_value(t, after, before)
+	testing.expect_value(t, rt.size_delta, [2]f32{-700, -500})
+
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	group := engine.transform_new("Group", canvas)
+	grt := cast(^engine.RectTransform)_add(group, .RectTransform)
+	engine.reset_RectTransform(grt)
+	lg := cast(^mhgui.LayoutGroup)_add(group, .LayoutGroup)
+	mhgui.reset_LayoutGroup(lg)
+	child := engine.transform_new("Child", group)
+	crt := cast(^engine.RectTransform)_add(child, .RectTransform)
+	engine.reset_RectTransform(crt)
+	free_node := engine.transform_new("Free", canvas)
+	frt := cast(^engine.RectTransform)_add(free_node, .RectTransform)
+	engine.reset_RectTransform(frt)
+
+	testing.expect(t, engine.rect_transform_driven(child), "a LayoutGroup child is driven")
+	testing.expect(t, !engine.rect_transform_driven(free_node), "a plain node is not")
+	testing.expect(t, !engine.rect_transform_driven(group), "the group itself is not")
+}

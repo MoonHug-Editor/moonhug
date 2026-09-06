@@ -163,10 +163,24 @@ step.
 Clicking a UI rect in the scene view selects it (a picking provider,
 docs/Handles.md), and the rubber band selects every graphic whose rect it
 touches, in any canvas mode. The selected RectTransform shows the rect tool, built on
-`editor/handles`: the rect outline, four corner and four edge handles that
-resize with the opposite edge fixed, the body that moves, the parent's anchor
-markers, and the pivot ring. One drag is one undo step. Anchor and pivot
-dragging come later.
+`editor/handles`: the rect outline (white with a dark line just inside, so
+it reads on light images too), corner dots and the whole edges as resize
+handles that show a resize cursor and resize with the opposite edge fixed,
+the body that moves (move cursor), the parent's anchor markers (outlined
+triangles with a one pixel shadow), and the pivot ring. Pointer priority:
+the pivot over corners and anchors over edges over the body. The anchor markers and the pivot ring are
+handles too: dragging an anchor moves it along the parent rect (coinciding
+anchors overlap, dragging one pulls it out; Shift also moves the pivot, Alt
+also moves the rect onto the anchors), dragging the pivot moves it inside
+the rect (Ctrl snaps to the corners, edges and center). While an anchor
+drags, dashed lines through the anchors span the parent rect, and the lowest
+horizontal and leftmost vertical line carry the percentage each of the three
+sections takes. An anchor's hit area is its triangle, so coinciding anchors
+are told apart by the triangle under the mouse and only that one drags. Both keep the rect in place unless raw edit mode
+([R] in the inspector) is on, the same rule as the inspector. One drag is one
+undo step. A rect a LayoutGroup lays out shows a dimmer outline and no
+handles, and its inspector greys Pos X, Pos Y, Width and Height under the
+notice "Some values driven by LayoutGroup".
 
 The RectTransform inspector (`editor/view_rect_transform.odin`) has Unity's
 layout for a single UI node, and the Transform section is hidden for it:
@@ -195,7 +209,5 @@ Ordered by what unblocks the most next.
 1. **Input, next steps.** Toggle and Slider on the Selectable base, keyboard
    and gamepad navigation between selectables, drag events, Sprite_Swap and
    Animation transitions.
-2. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
-   LayoutGroup instead of snapping back.
-3. **LayoutGroup extras** (low priority): content size fitting, child
+2. **LayoutGroup extras** (low priority): content size fitting, child
    expand, start corner and axis for grids.

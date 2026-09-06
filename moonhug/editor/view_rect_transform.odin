@@ -27,6 +27,7 @@ import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
+import "handles"
 import "inspector"
 import "undo"
 
@@ -35,9 +36,6 @@ rect_transform_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(engine.RectTransform), _rect_transform_inspector)
 }
 
-// Raw edit mode: anchor and pivot changes leave anchored_position and
-// size_delta alone, so the rect moves.
-@(private = "file") _rt_raw_edit: bool
 
 // One selected RectTransform with what its rows need. The first entry is
 // the active object, the rows' displayed value.
@@ -66,7 +64,12 @@ _rect_transform_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	if _rt_edit.active && !im.IsAnyItemActive() do _rt_session_end()
 	_rt_path_prefix = ctx.path_prefix
 
-	_rt_draw_position_block()
+	// A LayoutGroup owns a laid-out child's position and size: Unity greys
+	// them and says so.
+	driven := false
+	for t in _rt_targets do if engine.rect_transform_driven(t.rt.owner) do driven = true
+	if driven do im.TextDisabled("Some values driven by LayoutGroup")
+	_rt_draw_position_block(driven)
 	_rt_draw_anchor_presets_popup()
 	_rt_draw_anchors()
 	_rt_draw_pivot()
@@ -171,16 +174,7 @@ _rt_set_offsets :: proc(rt: ^engine.RectTransform, axis: int, offset_min, offset
 	rt.anchored_position[axis] = offset_min + size * rt.pivot[axis]
 }
 
-// anchored_position and size_delta that resolve to `rect` with the current
-// anchors and pivot.
-@(private = "file")
-_rt_keep_rect :: proc(rt: ^engine.RectTransform, parent, rect: engine.Rect) {
-	lo := parent.pos + parent.size * rt.anchor_min
-	hi := parent.pos + parent.size * rt.anchor_max
-	rt.size_delta = rect.size - (hi - lo)
-	pivot_pos := rect.pos + rect.size * rt.pivot
-	rt.anchored_position.xy = pivot_pos - (lo + (hi - lo) * rt.pivot)
-}
+_rt_keep_rect :: engine.rect_transform_keep_rect
 
 @(private = "file")
 _rt_set_anchors :: proc(t: _Rt_Target, amin, amax: [2]f32, keep_rect: bool) {
@@ -241,7 +235,7 @@ _rt_mixed :: proc(a, b: f32) -> bool {
 }
 
 @(private = "file")
-_rt_draw_position_block :: proc() {
+_rt_draw_position_block :: proc(driven: bool) {
 	active := _rt_targets[0]
 	rt := active.rt
 	stretch_x := rt.anchor_min.x != rt.anchor_max.x
@@ -301,7 +295,10 @@ _rt_draw_position_block :: proc() {
 			}
 			im.SetNextItemWidth(col_w)
 			inspector.current_field_mixed = mixed[row][i]
+			cell_driven := driven && i < 2 // position and size; depth stays the node's
+			im.BeginDisabled(cell_driven)
 			inspector.drag_float(fmt.ctprintf("##rt_cell_%d_%d", row, i), &shown[row][i], 0.1)
+			im.EndDisabled()
 			inspector.multi_clear_mixed()
 		}
 	}
@@ -321,9 +318,9 @@ _rt_draw_position_block :: proc() {
 
 @(private = "file")
 _rt_draw_raw_toggle :: proc(size: f32) {
-	on := _rt_raw_edit // the click below flips the flag; the pop must match the push
+	on := handles.rect_raw_edit // the click below flips the flag; the pop must match the push
 	if on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-	if im.Button("R", {size, size}) do _rt_raw_edit = !_rt_raw_edit
+	if im.Button("R", {size, size}) do handles.rect_raw_edit = !handles.rect_raw_edit
 	if on do im.PopStyleColor()
 	if im.IsItemHovered() do im.SetTooltip("Raw edit mode: anchor and pivot edits leave position and size as they are, so the rect moves")
 }
@@ -380,7 +377,7 @@ _rt_draw_anchors :: proc() {
 				nmin[i] = min(nmin[i], nmax[i])
 			}
 		}
-		_rt_set_anchors(t, nmin, nmax, !_rt_raw_edit)
+		_rt_set_anchors(t, nmin, nmax, !handles.rect_raw_edit)
 	}
 	inspector.mark_inspector_changed()
 }
@@ -400,7 +397,7 @@ _rt_draw_pivot :: proc() {
 	for t in _rt_targets {
 		np := t.rt.pivot
 		for i in 0 ..< 2 do if moved[i] do np[i] = pivot[i]
-		_rt_set_pivot(t, np, !_rt_raw_edit)
+		_rt_set_pivot(t, np, !handles.rect_raw_edit)
 	}
 	inspector.mark_inspector_changed()
 }
@@ -491,7 +488,7 @@ _rt_draw_anchor_presets_popup :: proc() {
 @(private = "file")
 _rt_apply_preset :: proc(amin, amax: [2]f32, stretch_x, stretch_y, set_pivot, set_position: bool) {
 	_rt_session_begin("Anchor Preset")
-	keep := !_rt_raw_edit && !set_position
+	keep := !handles.rect_raw_edit && !set_position
 	for t in _rt_targets {
 		if set_pivot {
 			pivot := [2]f32{0.5 if stretch_x else amin.x, 0.5 if stretch_y else amin.y}

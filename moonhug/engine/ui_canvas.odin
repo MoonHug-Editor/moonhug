@@ -246,6 +246,28 @@ canvas_placement :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> (root: 
 	return
 }
 
+// anchored_position and size_delta that resolve to `rect` under the current
+// anchors and pivot: what keeps a rect in place while its anchors or pivot
+// change (the inspector and the rect tool, Unity's non-raw editing).
+rect_transform_keep_rect :: proc(rt: ^RectTransform, parent, rect: Rect) {
+	lo := parent.pos + parent.size * rt.anchor_min
+	hi := parent.pos + parent.size * rt.anchor_max
+	rt.size_delta = rect.size - (hi - lo)
+	pivot_pos := rect.pos + rect.size * rt.pivot
+	rt.anchored_position.xy = pivot_pos - (lo + (hi - lo) * rt.pivot)
+}
+
+// Whether a layout provider (a LayoutGroup) owns the node's rect: its
+// anchored position and size are not its own then.
+rect_transform_driven :: proc(tH: Transform_Handle) -> bool {
+	canvas := canvas_of(tH)
+	if canvas == (Transform_Handle{}) || canvas == tH do return false
+	nodes := make([dynamic]Node_Rect, context.temp_allocator)
+	canvas_resolve_rects(canvas, canvas_world_rect(canvas), &nodes)
+	for n in nodes do if n.tH == tH do return n.driven
+	return false
+}
+
 // The canvas's nodes with WORLD transforms (canvas_placement applied), for
 // gizmos, picking and framing in the scene view. Returns the placement too.
 canvas_resolve_placed :: proc(canvas_tH: Transform_Handle, out: ^[dynamic]Node_Rect) -> (root: Rect, xform: matrix[4, 4]f32) {
@@ -291,9 +313,10 @@ canvas_world_corners :: proc(r: Rect) -> [4][3]f32 {
 // tilt shows as foreshortening) and the scene view shows in depth. Nodes
 // without a RectTransform add nothing to the chain.
 Node_Rect :: struct {
-	tH:    Transform_Handle,
-	rect:  Rect,
-	xform: matrix[4, 4]f32,
+	tH:     Transform_Handle,
+	rect:   Rect,
+	xform:  matrix[4, 4]f32,
+	driven: bool, // the rect came from a layout provider, not the node's own anchors and size
 }
 
 // The transform that lifts a node `depth` off the canvas plane and rotates
@@ -379,7 +402,7 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 				xform = e.xform * rect_affine(rect.pos + rect.size * rt.pivot, rt.anchored_position.z, rot, t.scale)
 			}
 		}
-		append(out, Node_Rect{e.tH, rect, xform})
+		append(out, Node_Rect{e.tH, rect, xform, e.laid})
 
 		// A layout container arranges the active RectTransform children; the
 		// rest pass the rect through as usual.

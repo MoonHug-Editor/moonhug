@@ -10,6 +10,7 @@ import "../engine"
 import sprites "moonhug:packages/sprites"
 import "inspector"
 import "moonhug:editor/handles"
+import "core:strings"
 
 scene_rt: ^gfx.Render_Target
 
@@ -254,6 +255,46 @@ _update_frame_tween :: proc(dt: f32) {
 	scene_cam_pos = tgt - fwd * scene_cam_dist
 	update_scene_camera()
 	if _frame_tween_t >= 1 do _frame_tween_active = false
+}
+
+// A handle label at `p` (screen), shadowed. A rotated label is drawn glyph
+// by glyph from the font atlas, turned 90 degrees clockwise so it reads top
+// to bottom with the glyph tops facing right: imgui has no rotated text of
+// its own.
+@(private = "file")
+_draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: handles.Label) {
+	c := strings.clone_to_cstring(l.text, context.temp_allocator)
+	size := im.CalcTextSize(c)
+	if !l.rotated {
+		at := im.Vec2{p.x - size.x * l.align.x, p.y - size.y * l.align.y}
+		im.DrawList_AddText(dl, {at.x + 1, at.y + 1}, 0xB0000000, c)
+		im.DrawList_AddText(dl, at, 0xFFFFFFFF, c)
+		return
+	}
+	font := im.GetFont()
+	baked := im.Font_GetFontBaked(font, im.GetFontSize())
+	if baked == nil do return
+	// The turned box is size.y wide and size.x tall; text x runs down it,
+	// text y (down from the glyph tops) runs to the left.
+	box := im.Vec2{size.y, size.x}
+	origin := im.Vec2{p.x - box.x * l.align.x, p.y - box.y * l.align.y}
+	draw :: proc(dl: ^im.DrawList, font: ^im.Font, baked: ^im.FontBaked, origin: im.Vec2, text_h: f32, text: string, col: u32) {
+		pen := f32(0)
+		for r in text {
+			g := im.FontBaked_FindGlyph(baked, im.Wchar(r))
+			if g == nil do continue
+			if g.Visible != 0 {
+				map_pt :: proc(origin: im.Vec2, text_h, gx, gy: f32) -> im.Vec2 { return {origin.x + text_h - gy, origin.y + gx} }
+				im.DrawList_AddImageQuad(dl, font.OwnerAtlas.TexRef,
+					map_pt(origin, text_h, pen + g.X0, g.Y0), map_pt(origin, text_h, pen + g.X1, g.Y0),
+					map_pt(origin, text_h, pen + g.X1, g.Y1), map_pt(origin, text_h, pen + g.X0, g.Y1),
+					{g.U0, g.V0}, {g.U1, g.V0}, {g.U1, g.V1}, {g.U0, g.V1}, col)
+			}
+			pen += g.AdvanceX
+		}
+	}
+	draw(dl, font, baked, {origin.x + 1, origin.y + 1}, size.y, l.text, 0xB0000000)
+	draw(dl, font, baked, origin, size.y, l.text, 0xFFFFFFFF)
 }
 
 // UI bounds: a Canvas frames its whole rect, a RectTransform its resolved
@@ -570,6 +611,12 @@ draw_scene_view :: proc() {
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_scene_img_min = im.GetItemRectMin()
+			// Handle labels (anchor percentages) over the image, shadowed so
+			// they read on any background.
+			dl := im.GetWindowDrawList()
+			for l in handles.labels() {
+				_draw_handle_label(dl, im.Vec2{_scene_img_min.x + l.px.x, _scene_img_min.y + l.px.y}, l)
+			}
 			overlays_draw(_scene_img_min, im.GetItemRectMax())
 		}
 
