@@ -75,9 +75,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 4
@@ -122,6 +120,9 @@
       "components": [
         {
           "local_id": 1914205658478419
+        },
+        {
+          "local_id": 1914205658478420
         }
       ]
     },
@@ -196,9 +197,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 2254465242789678
@@ -212,12 +211,8 @@
       ]
     }
   ],
-  "nested_scenes": [
-
-  ],
-  "breadcrumbs": [
-
-  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
   "components": [
     {
       "__type": "7cbf2edf-0283-43b3-930e-ef9546d8eed9",
@@ -387,6 +382,14 @@
       "vertical_alignment": 0,
       "word_spacing": 0.0,
       "wrap": true
+    },
+    {
+      "__type": "b625f6b5-e1fd-4590-9757-ffa073e23bef",
+      "base": {
+        "enabled": true,
+        "local_id": 1914205658478420
+      },
+      "ignore_reversed_graphics": true
     }
   ]
 }

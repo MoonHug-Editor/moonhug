@@ -104,9 +104,32 @@ quad the graphic populates, in the graphic's color and material.
 Sort keys use layer 127, the top of the transparent range, then the canvas
 `sort_order`, then the node's index in the walk.
 
+## Input
+
+The pointer pass is the event system. Every frame, before any game update
+(mhgui's `ui_tick`, an `@(update)` at order -100), `engine.canvas_pointer_update`
+reads the mouse in viewport coordinates and raycasts the canvases that carry a
+`GraphicRaycaster` (GameObject > UI > Canvas adds one): the topmost graphic
+with `raycast_target` under the pointer is hovered, the left button's press
+remembers its node (pressed, and selected like Unity's EventSystem), and a
+release over that same node is a click for one frame. Nothing while the
+application has no focus (`engine.application_is_focused`). Components read
+`engine.ui_pointer()` rather than receiving events.
+
+**Button** (mhgui) is the first reader: Unity's Selectable transition with a
+`Color_Block` (normal, highlighted, pressed, selected, disabled, multiplier,
+fade). Its state comes from the pointer, and the matching color is written as
+a runtime tint on the target graphic's CanvasRenderer (the node's own unless
+`target_graphic` names another), faded over `fade_duration`. The tint is never
+saved. `button_clicked` is true on the frame of the click; game code polls
+it from an `@(update)` at order 0 or later. GameObject > UI > Button creates
+an Image with a Button. Image and Text default to `raycast_target` on, as in
+Unity.
+
 ## Runtime use
 
-The app's demo menu is the first consumer. The static part is authored in
+The app's demo menu is the first consumer, and its rows are the first
+Buttons: each row's Text is the button's graphic, a click loads the scene. The static part is authored in
 `menu.scene`: a canvas, a List node with a vertical LayoutGroup and the title
 row, with the DemoMenu component pointing at the List through a `Ref_Local`.
 At play `packages/app/demo_menu.odin` creates one Text row per authored scene
@@ -156,8 +179,9 @@ Ordered by what unblocks the most next.
 
 1. **Sliced and Tiled Image.** Needs sprite border data in the texture
    importer's Sprite_Rect; the Image then emits a 9-slice.
-2. **Input.** Raycast target on Image, a pointer event pass over the canvas
-   tree, Button as the first consumer.
+2. **Input, next steps.** Toggle and Slider on the Selectable base, keyboard
+   and gamepad navigation between selectables, drag events, Sprite_Swap and
+   Animation transitions.
 3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
    LayoutGroup instead of snapping back.
 4. **Box select of UI rects** in the scene view (the pick provider covers

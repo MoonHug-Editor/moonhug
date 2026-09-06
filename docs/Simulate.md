@@ -94,8 +94,11 @@ path a manual delete does: `transform_destroy` fires each component's
 runners). `physics2d/tests` covers this for physics.
 
 Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`).
-Additively loaded scenes are untouched, and the restored scene keeps its slot and
-its active-scene status, so the editor carries on editing what it was editing.
+The restored scene keeps its slot and its active-scene status, so the editor
+carries on editing what it was editing. The scene SET is restored as well:
+scenes the run loaded additively are unloaded, and scenes the run unloaded
+come back from disk. Only the simulated scene's contents are snapshotted;
+other scenes present at Start keep whatever the run did to them.
 
 It is not atomic: a snapshot that fails to load leaves the scene unrestored, and
 reports an error telling you to reopen it.
@@ -189,9 +192,10 @@ size. Standalone, the platform sets the viewport to the window.
 
 ## Limits
 
-- **One scene.** Simulate captures and restores the ACTIVE scene. Additively
-  loaded scenes keep ticking (they share the world) but are not captured, so
-  changes gameplay makes to them are not reverted by Stop.
+- **One scene.** Simulate captures and restores the ACTIVE scene. Scenes
+  loaded alongside it at Start keep ticking (they share the world) but are not
+  captured, so changes gameplay makes to them are not reverted by Stop. Scenes
+  the run loads are unloaded by Stop.
 - **Assets are not restored** — by design, as Unity does (see above).
 
 ## Asking "is gameplay running?" from component code

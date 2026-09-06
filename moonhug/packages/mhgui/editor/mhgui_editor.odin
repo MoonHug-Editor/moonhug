@@ -61,7 +61,10 @@ _create_canvas :: proc() -> engine.Transform_Handle {
 	scene := engine.sm_scene_get_active()
 	if scene == nil do return _NONE
 	tH := undo.record_create_child("Canvas", engine.Transform_Handle(scene.root.handle))
-	if tH != _NONE do _add_comp(tH, .Canvas)
+	if tH != _NONE {
+		_add_comp(tH, .Canvas)
+		_add_comp(tH, .GraphicRaycaster)
+	}
 	return tH
 }
 
@@ -132,6 +135,29 @@ _pick_ui :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform
 mhgui_editor_install :: proc() {
 	handles.pick_register(_pick_ui)
 	inspector.add_component_wrapper(typeid_of(mhgui.Image), _image_inspector)
+}
+
+// A Button node: an Image as the target graphic plus the Button. Like the
+// Image menu, under the selection when that sits in a canvas.
+@(menu_item={path="GameObject/UI/Button", order=52})
+ui_menu_button :: proc() {
+	g := undo.group_begin("Create Button")
+	defer undo.group_end(&g)
+	parent := engine.inspector_active_selection()
+	if _canvas_of(parent) == _NONE {
+		parent = _create_canvas()
+		if parent == _NONE do return
+	}
+	tH := undo.record_create_child("Button", parent)
+	if tH == _NONE do return
+	_add_comp(tH, .RectTransform, proc(ptr: rawptr) {
+		(cast(^engine.RectTransform)ptr).size_delta = {160, 30}
+	})
+	_add_comp(tH, .CanvasRenderer)
+	_add_comp(tH, .Image)
+	_add_comp(tH, .Button)
+	undo.group_commit(&g)
+	engine.inspector_request_select(tH)
 }
 
 // --- Image inspector -------------------------------------------------------------------

@@ -474,3 +474,47 @@ test_rotation_and_scale_apply_around_pivot :: proc(t: ^testing.T) {
 	// And its world position through the Transform API is that corner.
 	testing.expect(t, linalg.length(engine.transform_world_position(child) - [3]f32{0, -50, 0}) < 1e-3, "world position through the chain")
 }
+
+// The pointer pass: the topmost raycast-target graphic under a viewport point,
+// only on canvases with a GraphicRaycaster, viewport y down.
+@(test)
+test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	mhgui.mhgui_package_init()
+
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	viewport := [2]f32{200, 100}
+
+	// A 100x100 image centered in the 200x100 canvas: x 50..150, y 0..100.
+	node := engine.transform_new("Image", canvas)
+	rt := cast(^engine.RectTransform)_add(node, .RectTransform)
+	engine.reset_RectTransform(rt)
+	_add(node, .CanvasRenderer)
+	img := cast(^mhgui.Image)_add(node, .Image)
+	mhgui.reset_Image(img)
+
+	// No raycaster on the canvas: nothing is hit.
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), engine.Transform_Handle{})
+	rc := cast(^engine.GraphicRaycaster)_add(canvas, .GraphicRaycaster)
+	engine.reset_GraphicRaycaster(rc)
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
+	testing.expect_value(t, engine.canvas_raycast({20, 50}, viewport), engine.Transform_Handle{}) // left of the image
+	testing.expect_value(t, engine.canvas_raycast({100, 99}, viewport), node) // viewport y down, the image spans the full height
+
+	// A later node over the same spot wins; without raycast_target it takes no part.
+	top := engine.transform_new("Top", canvas)
+	trt := cast(^engine.RectTransform)_add(top, .RectTransform)
+	engine.reset_RectTransform(trt)
+	_add(top, .CanvasRenderer)
+	timg := cast(^mhgui.Image)_add(top, .Image)
+	mhgui.reset_Image(timg)
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), top)
+	timg.raycast_target = false
+	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
+}
+

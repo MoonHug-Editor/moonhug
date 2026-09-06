@@ -45,6 +45,7 @@ reset_Text :: proc(t: ^Text) {
 	t.auto_size_min = 18
 	t.auto_size_max = 72
 	t.color = {1, 1, 1, 1}
+	t.raycast_target = true
 	t.wrap = true
 	t.kerning = true
 }

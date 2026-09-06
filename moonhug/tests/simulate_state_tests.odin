@@ -2,6 +2,7 @@ package tests
 
 import "../engine"
 import sim "../editor/simulate"
+import "core:os"
 
 import "core:testing"
 
@@ -305,4 +306,56 @@ test_sim_request_start_defers_one_frame :: proc(t: ^testing.T) {
 	testing.expect(t, !sim.start_pending(), "stop cancels the queued start")
 	sim.tick_pending()
 	testing.expect(t, sim.state() == .Stopped, "the cancelled start never runs")
+}
+
+// Stop restores the scene SET of Start: a scene the run loaded additively is
+// gone, a scene present at Start that the run unloaded is back.
+@(test)
+test_sim_stop_restores_scene_set :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_set.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	loaded_count :: proc() -> int {
+		sm := engine.ctx_scene_manager()
+		n := 0
+		for i in 0 ..< sm.count do if sm.loaded[i] != nil do n += 1
+		return n
+	}
+
+	// A second scene present at Start.
+	kept_path := "moonhug/tests/fixtures/_test_sim_set_kept.scene"
+	testing.expect(t, fixture_write_empty_scene(kept_path, "KeptRoot"))
+	defer os.remove(kept_path)
+	kept := engine.scene_load_additive_path(kept_path)
+	testing.expect(t, kept != nil)
+	at_start := loaded_count()
+
+	testing.expect(t, sim.start(), "start succeeds")
+
+	// The run loads one more scene and unloads the kept one.
+	extra_path := "moonhug/tests/fixtures/_test_sim_set_extra.scene"
+	testing.expect(t, fixture_write_empty_scene(extra_path, "ExtraRoot"))
+	defer os.remove(extra_path)
+	extra := engine.scene_load_additive_path(extra_path)
+	testing.expect(t, extra != nil)
+	engine.sm_scene_unload(kept)
+	testing.expect_value(t, loaded_count(), at_start)
+
+	sim.stop()
+	testing.expect_value(t, loaded_count(), at_start)
+	// By path: the unloaded scene's memory may be reused by the reloaded one.
+	extra_again, kept_again := false, false
+	sm := engine.ctx_scene_manager()
+	for i in 0 ..< sm.count {
+		if sm.loaded[i] == nil do continue
+		if sm.loaded[i].path == extra_path do extra_again = true
+		if sm.loaded[i].path == kept_path do kept_again = true
+	}
+	testing.expect(t, !extra_again, "the run's additive scene is unloaded")
+	testing.expect(t, kept_again, "the scene the run unloaded is back")
 }

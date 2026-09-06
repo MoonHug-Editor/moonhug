@@ -51,7 +51,10 @@ _create_canvas :: proc() -> engine.Transform_Handle {
 	scene := engine.sm_scene_get_active()
 	if scene == nil do return _NONE
 	tH := undo.record_create_child("Canvas", engine.Transform_Handle(scene.root.handle))
-	if tH != _NONE do _add_comp(tH, .Canvas)
+	if tH != _NONE {
+		_add_comp(tH, .Canvas)
+		_add_comp(tH, .GraphicRaycaster)
+	}
 	return tH
 }
 

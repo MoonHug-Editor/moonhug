@@ -12,6 +12,8 @@ package engine
 import "base:runtime"
 import "core:math"
 import "core:math/linalg"
+import "core:slice"
+import "moonhug:engine/input"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
 // orientation as NDC.
@@ -70,6 +72,19 @@ Canvas :: struct {
 reset_Canvas :: proc(c: ^Canvas) {
 }
 
+// Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
+// only looks at canvases carrying one. GameObject > UI > Canvas adds it.
+@(component={menu="UI/Graphic Raycaster"})
+@(typ_guid={guid = "b625f6b5-e1fd-4590-9757-ffa073e23bef"})
+GraphicRaycaster :: struct {
+	using base:               CompData `inspect:"-"`,
+	ignore_reversed_graphics: bool, // a graphic whose rect faces away from the viewer (flipped by a transform) is not hit
+}
+
+reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
+	r.ignore_reversed_graphics = true
+}
+
 // Marks a node as drawing. What it draws comes from the node's graphic
 // (packages/mhgui Image); a CanvasRenderer without one draws nothing.
 // Disabling it hides the node's graphic without touching the graphic's
@@ -78,6 +93,16 @@ reset_Canvas :: proc(c: ^Canvas) {
 @(typ_guid={guid = "56334c3e-5a5d-4a74-981f-3682e7c9dc9a"})
 CanvasRenderer :: struct {
 	using base: CompData `inspect:"-"`,
+	// A runtime tint over the graphic's color (Unity's CanvasRenderer.SetColor):
+	// what a Selectable's transition writes. Never saved; `tinted` says the
+	// tint is set, so a loaded (zeroed) renderer draws untinted.
+	tint:   [4]f32 `json:"-" inspect:"-"`,
+	tinted: bool   `json:"-" inspect:"-"`,
+}
+
+canvas_renderer_set_tint :: proc(cr: ^CanvasRenderer, tint: [4]f32) {
+	cr.tint = tint
+	cr.tinted = true
 }
 
 reset_CanvasRenderer :: proc(cr: ^CanvasRenderer) {
@@ -576,10 +601,122 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 						material = g.material,
 						corners  = corners,
 						uvs      = q.uvs,
-						color    = g.color,
+						color    = g.color * cr.tint if cr.tinted else g.color,
 					},
 				})
 			}
 		}
 	}
 }
+
+// --- Pointer -----------------------------------------------------------------------------
+// The event system's pointer pass. Every frame canvas_pointer_update reads the
+// mouse (viewport coordinates, see engine/input) and raycasts the canvases
+// that carry a GraphicRaycaster: the topmost graphic with raycast_target under
+// the pointer is `hovered`. The left button's press remembers its target
+// (`pressed`, also `selected`, like Unity's EventSystem selecting on pointer
+// down), and a release over that same target is a `clicked`, for one frame.
+// Components read the state (ui_pointer) instead of receiving events; the
+// mhgui package's Button is the first reader. Nothing while the application
+// has no focus.
+
+UI_Pointer :: struct {
+	position: [2]f32, // viewport pixels, y down
+	hovered:  Transform_Handle,
+	pressed:  Transform_Handle, // where the left button went down, until it comes up
+	selected: Transform_Handle, // the last node pressed on; pressing on nothing clears it
+	clicked:  Transform_Handle, // released this frame over the node it was pressed on
+}
+
+@(private = "file") _ui_pointer: UI_Pointer
+
+ui_pointer :: proc() -> UI_Pointer {
+	return _ui_pointer
+}
+
+canvas_pointer_update :: proc() {
+	p := &_ui_pointer
+	p.clicked = {}
+	if !application_is_focused() {
+		p.hovered = {}
+		return
+	}
+	p.position = input.mouse_position()
+	p.hovered = canvas_raycast(p.position, input.viewport_size())
+	if input.mouse_pressed(.Left) {
+		p.pressed = p.hovered
+		p.selected = p.hovered
+	}
+	if input.mouse_released(.Left) {
+		if p.pressed != {} && p.pressed == p.hovered do p.clicked = p.pressed
+		p.pressed = {}
+	}
+}
+
+// The topmost raycast-target graphic under a viewport point (pixels, y
+// down), across the canvases with an enabled GraphicRaycaster, in draw
+// order: higher sort_order over lower, later nodes over earlier. {} when
+// nothing is hit.
+canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
+	w := ctx_world()
+	if w == nil || len(_canvas_graphics) == 0 do return {}
+
+	Hit_Canvas :: struct {
+		tH:         Transform_Handle,
+		sort_order: i32,
+		ignore_reversed: bool,
+	}
+	hit_canvases := make([dynamic]Hit_Canvas, context.temp_allocator)
+	it := pool_iterator(canvases(w))
+	for canvas, _ in pool_next(&it) {
+		if !canvas.enabled || !transform_active_in_hierarchy(canvas.owner) do continue
+		_, rc := transform_get_comp(canvas.owner, GraphicRaycaster)
+		if rc == nil || !rc.enabled do continue
+		append(&hit_canvases, Hit_Canvas{canvas.owner, canvas.sort_order, rc.ignore_reversed_graphics})
+	}
+	slice.stable_sort_by(hit_canvases[:], proc(a, b: Hit_Canvas) -> bool { return a.sort_order < b.sort_order })
+
+	hit: Transform_Handle
+	nodes := make([dynamic]Node_Rect, context.temp_allocator)
+	for c in hit_canvases {
+		scale := canvas_scale(c.tH, viewport)
+		root := Rect{pos = {0, 0}, size = viewport / scale}
+		// Viewport y is down, canvas y is up.
+		cp := [2]f32{point.x / scale, (viewport.y - point.y) / scale}
+		clear(&nodes)
+		canvas_resolve_rects(c.tH, root, &nodes)
+		for n in nodes {
+			_, cr := transform_get_comp(n.tH, CanvasRenderer)
+			if cr == nil || !cr.enabled do continue
+			_, g, _, ok := node_graphic(n.tH)
+			if !ok || !g.raycast_target do continue
+			corners := rect_corners(n.rect, n.xform)
+			if c.ignore_reversed && _quad_reversed(corners) do continue
+			if _point_in_quad(cp, corners) do hit = n.tH
+		}
+	}
+	return hit
+}
+
+// The quad's winding on the canvas plane: negative area means a transform
+// flipped it, so it faces away.
+@(private = "file")
+_quad_reversed :: proc(c: [4][3]f32) -> bool {
+	a := c[1].xy - c[0].xy
+	b := c[3].xy - c[0].xy
+	return a.x * b.y - a.y * b.x < 0
+}
+
+@(private = "file")
+_point_in_quad :: proc(p: [2]f32, c: [4][3]f32) -> bool {
+	in_tri :: proc(p, a, b, c: [2]f32) -> bool {
+		s1 := (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x)
+		s2 := (c.x - b.x) * (p.y - b.y) - (c.y - b.y) * (p.x - b.x)
+		s3 := (a.x - c.x) * (p.y - c.y) - (a.y - c.y) * (p.x - c.x)
+		neg := s1 < 0 || s2 < 0 || s3 < 0
+		pos := s1 > 0 || s2 > 0 || s3 > 0
+		return !(neg && pos)
+	}
+	return in_tri(p, c[0].xy, c[1].xy, c[2].xy) || in_tri(p, c[0].xy, c[2].xy, c[3].xy)
+}
+

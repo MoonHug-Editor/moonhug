@@ -61,6 +61,14 @@ _snapshot: []byte
 _scene: ^engine.Scene
 _scene_path: string
 
+// The scene set at Start: Stop unloads what the run loaded on top and reloads
+// from disk what the run unloaded, so the editor sees the same scenes again.
+_Loaded_Scene :: struct {
+    scene: ^engine.Scene,
+    path:  string,
+}
+_loaded_at_start: [dynamic]_Loaded_Scene
+
 // Ids of the objects selected at Start. Handles hold a pool slot + generation and
 // restore re-creates every object, so ids are what survives.
 _selection: [dynamic]engine.Local_ID
@@ -156,6 +164,7 @@ start :: proc(paused := false) -> bool {
     _snapshot = snapshot
     _scene = scene
     _scene_path = strings.clone(scene.path)
+    _record_loaded_scenes()
 
     clear(&_selection)
     if _hooks.selection_ids != nil {
@@ -188,6 +197,7 @@ stop :: proc() {
         undo.purge_scenes(us)
     }
 
+    _restore_scene_set()
     restored := false
     if _snapshot != nil && _scene != nil && engine.sm_scene_is_loaded(_scene) {
         restored = _restore()
@@ -298,6 +308,40 @@ set_host :: proc(idx: int) {
 available :: proc() -> bool {
     _, ok := active_host()
     return ok
+}
+
+_record_loaded_scenes :: proc() {
+    _clear_loaded_scenes()
+    sm := engine.ctx_scene_manager()
+    for i in 0 ..< sm.count {
+        sc := sm.loaded[i]
+        if sc == nil do continue
+        append(&_loaded_at_start, _Loaded_Scene{scene = sc, path = strings.clone(sc.path)})
+    }
+}
+
+_clear_loaded_scenes :: proc() {
+    for l in _loaded_at_start do delete(l.path)
+    clear(&_loaded_at_start)
+}
+
+// Back to the scene set of Start: scenes the run loaded additively go, scenes
+// it unloaded come back from disk (their in-memory state at Start is not
+// kept; the simulated scene's is, through the snapshot).
+_restore_scene_set :: proc() {
+    sm := engine.ctx_scene_manager()
+    for i := 0; i < sm.count; i += 1 {
+        sc := sm.loaded[i]
+        if sc == nil do continue
+        known := false
+        for l in _loaded_at_start do if l.scene == sc { known = true; break }
+        if !known do engine.sm_scene_unload(sc)
+    }
+    for l in _loaded_at_start {
+        if engine.sm_scene_is_loaded(l.scene) || l.path == "" do continue
+        engine.scene_load_additive_path(l.path)
+    }
+    _clear_loaded_scenes()
 }
 
 // Deserialize the snapshot back over the simulated scene, then re-resolve
