@@ -132,8 +132,11 @@ layout for a single UI node, and the Transform section is hidden for it:
 - Rotation and Scale are the Transform's rows.
 
 Every gesture is one undo step over the RectTransform fields that changed.
-With more than one object selected, or on a canvas root, the generic rows
-draw instead.
+With several objects selected the rows show the active object's values with
+a dash where the others disagree, and an edit writes the edited value into
+each object through its own anchors, pivot and parent, recording each
+object's prefab override. The labels follow the active object's anchors. A
+selection with a canvas root draws the generic rows instead.
 
 ## TODO
 
@@ -143,9 +146,8 @@ Ordered by what unblocks the most next.
    importer's Sprite_Rect; the Image then emits a 9-slice.
 2. **Input.** Raycast target on Image, a pointer event pass over the canvas
    tree, Button as the first consumer.
-3. **Rect tool: anchor and pivot dragging**, driven fields greyed under a
-   LayoutGroup instead of snapping back, and multi-object editing of the
-   RectTransform inspector's derived rows.
+3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
+   LayoutGroup instead of snapping back.
 4. **Box select of UI rects** in the scene view (the pick provider covers
    clicks only).
 5. **Screen Space - Camera and World Space** render modes.

@@ -419,6 +419,12 @@ _peer_record_override :: proc(peer: Multi_Peer, ptr: rawptr, tid: typeid, proper
 	engine.inspector_set_nested_host(prev_host)
 }
 
+// For rows that write their peers themselves (the RectTransform inspector's
+// derived rows): records the override on the peer's own instance.
+record_peer_override :: proc(peer: Multi_Peer, ptr: rawptr, tid: typeid, property_path: string) {
+	_peer_record_override(peer, ptr, tid, property_path)
+}
+
 // The property path of the row currently being applied, so peers can record
 // their overrides. Set by the field loop, which is the only place that knows it.
 @(private)
