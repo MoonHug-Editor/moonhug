@@ -196,7 +196,7 @@ _draw_structural_ops :: proc(
 		// The session is claimed by the field editors too — flush it so a
 		// pending field edit lands before the structural step.
 		_edit_finalize()
-		e := undo.edit_begin(owner, comp_tid)
+		e := undo.edit_begin(owner, comp_tid, "Change Node Type")
 		tween.authored_retype(v, new_tid)
 		undo.edit_end(&e)
 	}
@@ -207,7 +207,7 @@ _draw_structural_ops :: proc(
 		if new_tid, picked := _node_type_popup("##tw_add_child"); picked {
 			if child, cok := tween.authored_make(new_tid); cok {
 				_edit_finalize()
-				e := undo.edit_begin(owner, comp_tid)
+				e := undo.edit_begin(owner, comp_tid, "Add Child Node")
 				if !tween.authored_add_child(v, child) do tween.authored_destroy(&child)
 				undo.edit_end(&e)
 			}
@@ -218,7 +218,7 @@ _draw_structural_ops :: proc(
 		im.SameLine()
 		if im.Button("Delete Node") {
 			_edit_finalize()
-			e := undo.edit_begin(owner, comp_tid)
+			e := undo.edit_begin(owner, comp_tid, "Delete Node")
 			tween.authored_remove_child(parent_v, child_ord)
 			undo.edit_end(&e)
 			_state.sel_active = false
@@ -469,7 +469,7 @@ _edit_finalize :: proc() {
 	}
 	if tid, tok := tween.authored_typeid(v^); !tok || tid != _edit.tid do return
 
-	e := undo.edit_begin(_edit.owner, comp_tid)
+	e := undo.edit_begin(_edit.owner, comp_tid, "Edit Node")
 	_splice_into_node(v, after)
 	undo.edit_end(&e)
 }
@@ -616,7 +616,7 @@ _draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 			if made, mok := tween.authored_make(new_tid); mok {
 				if o_ok && o.kind == .Pooled {
 					comp_tid := engine.get_typeid_by_type_key(o.handle.type_key)
-					e := undo.edit_begin(o.handle, comp_tid)
+					e := undo.edit_begin(o.handle, comp_tid, "Set Node Type")
 					tween.authored_destroy(a)
 					a^ = made
 					undo.edit_end(&e)
@@ -641,7 +641,7 @@ _draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		o, o_ok := undo.current_owner()
 		if o_ok && o.kind == .Pooled {
 			comp_tid := engine.get_typeid_by_type_key(o.handle.type_key)
-			e := undo.edit_begin(o.handle, comp_tid)
+			e := undo.edit_begin(o.handle, comp_tid, "Set Root Type")
 			tween.authored_retype(&a.value, new_tid)
 			undo.edit_end(&e)
 		} else {

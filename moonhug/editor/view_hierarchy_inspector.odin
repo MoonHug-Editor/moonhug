@@ -529,7 +529,7 @@ _overrides_popup_host: engine.Transform_Handle
 _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	active := t.is_active
 	if im.Checkbox("##active", &active) {
-		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool))
+		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool), "Toggle Active")
 		t.is_active = active
 		undo.edit_end(&e)
 	}
@@ -546,7 +546,7 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 	if im.InputText("##name", buf_cstr, c.size_t(len(_inspector_name_buf)), {.EnterReturnsTrue}) {
 		new_name := string(buf_cstr)
 		if len(new_name) > 0 {
-			e := undo.edit_begin(tH, &t.name, typeid_of(string))
+			e := undo.edit_begin(tH, &t.name, typeid_of(string), "Rename")
 			delete(t.name)
 			t.name = strings.clone(new_name)
 			undo.edit_end(&e)
@@ -1118,7 +1118,7 @@ _draw_component_overflow_menu :: proc(
 	if im.BeginPopup(popup_id) {
 		if engine.type_reset_procs[comp.handle.type_key] != nil {
 			if im.MenuItem("Reset") {
-				e := undo.edit_begin(comp.handle, comp_tid)
+				e := undo.edit_begin(comp.handle, comp_tid, "Reset Component")
 				engine.type_reset(comp.handle.type_key, comp_ptr)
 				undo.edit_end(&e)
 			}
@@ -1149,7 +1149,7 @@ _draw_component_overflow_menu :: proc(
 
 		can_paste_values := clip.can_paste(comp_tid)
 		if im.MenuItem("Paste Component Values", nil, false, can_paste_values) {
-			e := undo.edit_begin(comp.handle, comp_tid)
+			e := undo.edit_begin(comp.handle, comp_tid, "Paste Component Values")
 			saved_base := (cast(^engine.CompData)comp_ptr)^
 			if clip.paste(any{comp_ptr, comp_tid}) {
 				base := cast(^engine.CompData)comp_ptr
@@ -1476,7 +1476,7 @@ _draw_components_section_nested_rows :: proc(
 		enabled_overridden := engine.nested_scene_has_root_override(t.scene, host_tH, comp_base.local_id, "base.enabled")
 		enabled_pushed := _push_override_style(enabled_overridden)
 		if im.Checkbox(enabled_id, &enabled) {
-			e := undo.edit_begin(comp.handle, comp_tid)
+			e := undo.edit_begin(comp.handle, comp_tid, "Enabled")
 			comp_base.enabled = enabled
 			undo.edit_end(&e)
 		}

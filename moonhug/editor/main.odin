@@ -204,6 +204,7 @@ main :: proc() {
         im_sdlgpu.NewFrame()
         im_sdl.NewFrame()
         im.NewFrame()
+        text_input_escape_frame() // Escape commits text fields (text_input.odin)
 
         menu.draw_menu_bar()
         draw_tool_bar()

@@ -446,7 +446,7 @@ sequencer_window_draw :: proc() {
 						len(_sq_track_name_buf), {.EnterReturnsTrue})
 					if enter {
 						if t := engine.pool_get(&w.transforms, engine.Handle(tv.node)); t != nil {
-							e := undo.edit_begin(tv.node, &t.name, typeid_of(string))
+							e := undo.edit_begin(tv.node, &t.name, typeid_of(string), "Rename Track")
 							delete(t.name)
 							t.name = _sq_clone(_sq_buf_get(_sq_track_name_buf[:]))
 							undo.edit_end(&e)
@@ -726,7 +726,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 		if im.IsItemDeactivatedAfterEdit() {
 			w := engine.ctx_world()
 			if t := engine.pool_get(&w.transforms, engine.Handle(c.node)); t != nil {
-				e := undo.edit_begin(c.node, &t.name, typeid_of(string))
+				e := undo.edit_begin(c.node, &t.name, typeid_of(string), "Rename Clip")
 				delete(t.name)
 				t.name = _sq_clone(_sq_buf_get(_sq_clip_name_buf[:]))
 				undo.edit_end(&e)
