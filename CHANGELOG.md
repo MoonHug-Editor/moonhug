@@ -1,3 +1,19 @@
+## [0.87.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.86.0...v0.87.0) (2026-09-06)
+
+### Features
+
+* add mhgui plugin ([53c6087](https://github.com/MoonHug-Editor/moonhug/commit/53c6087dc08b13cfa6a9ac6287b5bc40d0c92f9d))
+* mhgui Canvas, RectTransform, Image ([3152504](https://github.com/MoonHug-Editor/moonhug/commit/3152504ef582c191da66af4a4ab02d7e1c86447b))
+* more text settings ([74af28e](https://github.com/MoonHug-Editor/moonhug/commit/74af28e81e3a152c80bff2b16ba05d9a6be01e35))
+* orientation scene overlay, 2d scene camera mode for better mhgui UX ([b0bfbd4](https://github.com/MoonHug-Editor/moonhug/commit/b0bfbd41c740a7689dec10267a047aec3fbb9b9e))
+
+### Bug Fixes
+
+* enum undo fix ([1ac095a](https://github.com/MoonHug-Editor/moonhug/commit/1ac095aaeda4641abbdcc1b9fed971f0c56b6cae))
+* escape text input unfocus without revert, label unlabeled undo steps ([a3ad550](https://github.com/MoonHug-Editor/moonhug/commit/a3ad55028dfcd29de750e7fb1554561b00aab31a))
+* prevent scene overlay flickering ([5926837](https://github.com/MoonHug-Editor/moonhug/commit/59268370c3c5b0774b72520927b21196b561883e))
+* tank demo ([f133b0c](https://github.com/MoonHug-Editor/moonhug/commit/f133b0c448642702d3d6172770a00cf029581f35))
+
 ## [0.86.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.85.0...v0.86.0) (2026-09-04)
 
 ### Features
