@@ -12,7 +12,7 @@ package physics2d
 import b2 "vendor:box2d"
 import "moonhug:engine"
 
-@(component={menu="Physics2D/BoxCollider2D"})
+@(component={menu="Physics 2D/Box Collider 2D"})
 @(typ_guid={guid = "1e2d0da1-9df6-4668-9f86-f76351378394"})
 BoxCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -38,7 +38,7 @@ cleanup_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	engine.comp_zero(comp)
 }
 
-@(component={menu="Physics2D/CircleCollider2D"})
+@(component={menu="Physics 2D/Circle Collider 2D"})
 @(typ_guid={guid = "657711b4-6689-479e-9eec-da439658cadf"})
 CircleCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -69,7 +69,7 @@ Capsule_Direction :: enum {
 	Horizontal,
 }
 
-@(component={menu="Physics2D/CapsuleCollider2D"})
+@(component={menu="Physics 2D/Capsule Collider 2D"})
 @(typ_guid={guid = "11cbe045-afe7-413a-837e-167ca23b7ca1"})
 CapsuleCollider2D :: struct {
 	using base:  engine.CompData `inspect:"-"`,

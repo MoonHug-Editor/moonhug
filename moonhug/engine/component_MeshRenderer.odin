@@ -4,7 +4,7 @@ package engine
 // one per submesh (Unity model: submesh i uses materials[i]). Missing or
 // empty entries render plain white unlit.
 
-@(component)
+@(component={menu="Mesh/Mesh Renderer"})
 @(typ_guid={guid = "73e161a0-c599-4cfb-9826-447e05baa76c"})
 MeshRenderer :: struct {
     using base: CompData `inspect:"-"`,

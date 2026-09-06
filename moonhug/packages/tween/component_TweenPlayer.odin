@@ -8,7 +8,7 @@ package tween
 
 import engine "moonhug:engine"
 
-@(component={max=64})
+@(component={max=64, menu="Tween/Tween Player"})
 @(typ_guid={guid = "a66f5292-813a-493f-91c4-05eb5e4e4d97"})
 TweenPlayer :: struct {
     using base: engine.CompData `inspect:"-"`,

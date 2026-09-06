@@ -7,7 +7,7 @@ package app
 
 import "moonhug:engine"
 
-@(component)
+@(component={menu="Demo/Lifetime"})
 @(typ_guid={guid = "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c"})
 Lifetime :: struct {
     using base: engine.CompData `inspect:"-"`,

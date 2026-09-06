@@ -18,7 +18,7 @@ Light_Type :: enum u8 {
     Spot,
 }
 
-@(component={max=8})
+@(component={max=8, menu="Rendering/Light"})
 @(typ_guid={guid = "9f36ee91-34b6-4636-a360-ee872af0436b"})
 Light :: struct {
     using base: CompData `inspect:"-"`,

@@ -22,7 +22,7 @@ package app
 import "moonhug:engine"
 import "moonhug:engine/log"
 
-@(component={menu="Examples/Buttons Example"})
+@(component={menu="Demo/Buttons Example"})
 @(typ_guid={guid = "c9fc78b6-6022-4723-8dea-6b2544b6480d"})
 ButtonsExample :: struct {
     using base: engine.CompData `inspect:"-"`,

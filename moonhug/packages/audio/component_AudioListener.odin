@@ -6,7 +6,7 @@ package audio
 
 import engine "moonhug:engine"
 
-@(component={menu="Audio/AudioListener"})
+@(component={menu="Audio/Audio Listener"})
 @(typ_guid={guid="14a605d8-3796-467b-8f9f-76dadf3baa73"})
 AudioListener :: struct {
 	using base: engine.CompData `inspect:"-"`,

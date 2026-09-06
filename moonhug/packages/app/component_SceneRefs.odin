@@ -8,7 +8,7 @@ import "moonhug:engine"
 //
 // Points at the tank's transform (which carries the Tank component); the Tank
 // itself owns the gameplay refs (turret, shoot_from, projectile prefab).
-@(component={max=1})
+@(component={max=1, menu="Demo/Scene Refs"})
 @(typ_guid={guid = "b1d7c74d-4e52-4088-a118-85059cf80149"})
 SceneRefs :: struct {
     using base: engine.CompData `inspect:"-"`,

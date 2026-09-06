@@ -12,7 +12,7 @@ package sequencer
 import "moonhug:engine"
 import core "moonhug:packages/sequencer/core"
 
-@(component)
+@(component={menu="Sequencer/Tracks/Script"})
 @(typ_guid={guid = "06f39202-753c-4bc9-a7c1-cfc876559f72"})
 TrackScript :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -22,7 +22,7 @@ TrackScript :: struct {
 	target: engine.Ref_Local `ref:"Transform"`,
 }
 
-@(component)
+@(component={menu="Sequencer/Clips/Script"})
 @(typ_guid={guid = "bd5194a0-ff1c-4c4a-97de-512e26b7773b"})
 ClipScript :: struct {
 	using base: engine.CompData `inspect:"-"`,

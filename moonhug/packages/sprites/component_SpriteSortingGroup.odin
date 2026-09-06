@@ -9,7 +9,7 @@ import "moonhug:engine"
 // engine.SORT_KEY_LEVELS - 1 nesting levels; deeper groups are ignored with
 // the innermost ones winning). Resolution happens in the per-view scene-tree
 // pass in sprite_sort.odin.
-@(component)
+@(component={menu="Rendering/Sprite Sorting Group"})
 @(typ_guid={guid = "2291f857-d2ff-409d-96df-1d87713fdcc2"})
 SpriteSortingGroup :: struct {
 	using base: engine.CompData `inspect:"-"`,

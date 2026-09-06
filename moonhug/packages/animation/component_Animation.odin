@@ -61,7 +61,7 @@ Anim_Layer :: struct {
 	queued:     bool,
 }
 
-@(component)
+@(component={menu="Animation/Animation"})
 @(typ_guid={guid = "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"})
 Animation :: struct {
 	using base:         engine.CompData `inspect:"-"`,
