@@ -118,6 +118,23 @@ resize with the opposite edge fixed, the body that moves, the parent's anchor
 markers, and the pivot ring. One drag is one undo step. Anchor and pivot
 dragging come later.
 
+The RectTransform inspector (`editor/view_rect_transform.odin`) has Unity's
+layout for a single UI node, and the Transform section is hidden for it:
+
+- The anchor preset button opens the 4 by 4 grid (left, center, right,
+  stretch by top, middle, bottom, stretch). Shift also sets the pivot, Alt
+  also moves the rect onto the anchors. The icons draw the actual anchors.
+- Per axis the fields follow the anchors: Pos X and Width when the anchors
+  coincide, Left and Right when they are apart (Pos Y and Height, or Top and
+  Bottom). Pos Z is the depth.
+- Anchors (Min, Max) and Pivot edits keep the rect where it is. The [R]
+  toggle is raw edit mode: only the values change and the rect moves.
+- Rotation and Scale are the Transform's rows.
+
+Every gesture is one undo step over the RectTransform fields that changed.
+With more than one object selected, or on a canvas root, the generic rows
+draw instead.
+
 ## TODO
 
 Ordered by what unblocks the most next.
@@ -126,8 +143,9 @@ Ordered by what unblocks the most next.
    importer's Sprite_Rect; the Image then emits a 9-slice.
 2. **Input.** Raycast target on Image, a pointer event pass over the canvas
    tree, Button as the first consumer.
-3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
-   LayoutGroup instead of snapping back.
+3. **Rect tool: anchor and pivot dragging**, driven fields greyed under a
+   LayoutGroup instead of snapping back, and multi-object editing of the
+   RectTransform inspector's derived rows.
 4. **Box select of UI rects** in the scene view (the pick provider covers
    clicks only).
 5. **Screen Space - Camera and World Space** render modes.

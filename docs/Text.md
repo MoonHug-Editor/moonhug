@@ -114,7 +114,7 @@ presets.
 
 ## Not yet
 
-Rich text tags, per-character effects, gradients and glow, auto-size and
-overflow modes, glyphs outside Latin-1, shaping. MSDF (multi-channel) would
+Rich text tags, per-character effects, gradients and glow, Page, Linked and
+ScrollRect overflow, glyphs outside Latin-1, shaping. MSDF (multi-channel) would
 sharpen corners at large scales; the artifact format has room for a channel
 count.

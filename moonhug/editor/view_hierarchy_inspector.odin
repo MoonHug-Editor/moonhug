@@ -570,6 +570,11 @@ _inspector_euler_quat_src: [4]f32
 
 @(private)
 _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
+	// A single UI node shows one transform block: the RectTransform inspector
+	// draws position, rotation and scale (view_rect_transform.odin).
+	if len(peers) == 0 {
+		if _, ui := engine.rect_frame(tH); ui do return
+	}
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
