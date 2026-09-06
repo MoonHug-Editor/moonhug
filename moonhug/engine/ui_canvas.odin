@@ -3,10 +3,11 @@ package engine
 // The canvas tree: the layout half of UI (docs/Gui.md). RectTransform lays a
 // node out inside its parent's rect, Canvas roots a tree on the game
 // viewport, CanvasScaler sets how many screen pixels a canvas unit is, and
-// CanvasRenderer marks a node as drawing. What a node draws (Image, Text)
-// and the rendering itself live in packages (packages/mhgui) and reach the
-// tree through canvas_resolve_rects. Layout containers plug in through
-// canvas_layout_register.
+// CanvasRenderer marks a node as drawing. What a node draws is a graphic
+// component (Image in packages/mhgui, Text in packages/text) embedding
+// `Graphic` and registered through canvas_graphic_register; the one canvas
+// collector here walks the tree and asks each graphic for its quads. Layout
+// containers plug in through canvas_layout_register.
 
 import "base:runtime"
 import "core:math"
@@ -163,6 +164,23 @@ canvas_rect :: proc(view: Render_View, canvas_tH: Transform_Handle) -> Rect {
 canvas_world_rect :: proc(canvas_tH: Transform_Handle) -> Rect {
 	vp := _canvas_game_viewport
 	return Rect{pos = {0, 0}, size = vp / canvas_scale(canvas_tH, vp)}
+}
+
+// z01 NDC depth of the canvas plane in a Game view: just inside the near
+// plane (0), so nothing in the scene passes the depth test in front of it.
+CANVAS_NDC_Z :: f32(0.0005)
+
+// The world-space quad screen-pixel corners cover in a Game view: each
+// unprojected onto the canvas plane, so the quad lands on exactly those
+// pixels whatever the camera does. Screen y is up, like canvas space.
+canvas_view_corners :: proc(view: Render_View, screen: [4][2]f32) -> [4][3]f32 {
+	to_world :: proc(view: Render_View, p: [2]f32) -> [3]f32 {
+		ndc_x := 2 * p.x / max(view.width, 1) - 1
+		ndc_y := 2 * p.y / max(view.height, 1) - 1
+		h := view.inv_view_proj * [4]f32{ndc_x, ndc_y, CANVAS_NDC_Z, 1}
+		return h.xyz / h.w
+	}
+	return {to_world(view, screen[0]), to_world(view, screen[1]), to_world(view, screen[2]), to_world(view, screen[3])}
 }
 
 // World corners of a canvas rect: bl, br, tr, tl at z = 0.
@@ -426,4 +444,129 @@ rect_transform_set_world_position :: proc(tH: Transform_Handle, world: [3]f32) -
 	local := (linalg.inverse(f.parent_xform) * [4]f32{world.x, world.y, world.z, 1}).xyz
 	f.rt.anchored_position = {local.x - f.anchor_ref.x, local.y - f.anchor_ref.y, local.z}
 	return true
+}
+
+// --- Graphics -------------------------------------------------------------------------------
+//
+// Every drawable UI component embeds Graphic as `using graphic: engine.Graphic`
+// with the `inline:""` tag: the fields every graphic shares, serialized under
+// "graphic" and drawn flat in the inspector. The package then registers the
+// component type with the offset of that field and a populate proc, and the
+// canvas collector below can find the Graphic on any node and ask for its
+// geometry without knowing the type.
+
+Graphic :: struct {
+	color:          [4]f32 `decor:color()`,
+	material:       Asset_GUID `ext:"mat"`, // shader/tint/properties; the quad's texture stays its own. empty = unlit
+	raycast_target: bool, // takes pointer events (input)
+}
+
+// One quad in the node's rect space, canvas units, bottom-left origin.
+Graphic_Quad :: struct {
+	pos:     [2]f32,
+	size:    [2]f32,
+	uvs:     [4][2]f32, // bl, br, tr, tl
+	texture: Asset_GUID,
+}
+
+// A registered graphic type. `populate` appends the quads a component draws
+// inside `rect` (its resolved rect); the collector applies the node's
+// transform, the canvas scale and the view.
+Graphic_Desc :: struct {
+	key:            TypeKey,
+	graphic_offset: uintptr, // offset_of(T, graphic)
+	populate:       proc(comp: rawptr, rect: Rect, out: ^[dynamic]Graphic_Quad),
+}
+
+_canvas_graphics: [dynamic]Graphic_Desc
+
+// Process-global registry: never borrows the caller's allocator.
+canvas_graphic_register :: proc(desc: Graphic_Desc) {
+	context.allocator = runtime.default_allocator()
+	if _canvas_graphics == nil do _canvas_graphics = make([dynamic]Graphic_Desc)
+	for d in _canvas_graphics {
+		if d.key == desc.key do return
+	}
+	append(&_canvas_graphics, desc)
+}
+
+// The first enabled registered graphic on a node: its component, its
+// Graphic part and its descriptor. ok=false when the node draws nothing.
+node_graphic :: proc(tH: Transform_Handle) -> (comp: rawptr, graphic: ^Graphic, desc: ^Graphic_Desc, ok: bool) {
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(tH))
+	if t == nil do return
+	for &d in _canvas_graphics {
+		owned, idx := transform_find_comp(t, d.key)
+		if idx < 0 do continue
+		c := world_pool_get(w, owned.handle)
+		if c == nil || !(cast(^CompData)c).enabled do continue
+		return c, cast(^Graphic)(uintptr(c) + d.graphic_offset), &d, true
+	}
+	return
+}
+
+// The top of the transparent-sort range: every canvas draws after every
+// sprite and particle. Canvases order by sort_order inside it, nodes by
+// their index in the rect walk (hierarchy order).
+CANVAS_SORTING_LAYER :: i32(127)
+
+// The canvas collector (render_collect_commands): Game views draw each
+// canvas over the viewport, canvas units mapped to pixels through the canvas
+// scale and onto the near plane; the scene view draws it as the world rect
+// at the origin. Previews show neither. One Draw_Quad per graphic quad, in
+// the graphic's color and material.
+canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
+	if view.kind == .Preview || len(_canvas_graphics) == 0 do return
+	w := ctx_world()
+	nodes := make([dynamic]Node_Rect, context.temp_allocator)
+	quads := make([dynamic]Graphic_Quad, context.temp_allocator)
+
+	it := pool_iterator(canvases(w))
+	for canvas, _ in pool_next(&it) {
+		if !canvas.enabled do continue
+		ct := pool_get(&w.transforms, Handle(canvas.owner))
+		if ct == nil || !transform_active_in_hierarchy(canvas.owner) do continue
+		if ct.render_layer & view.layer_mask == 0 do continue
+
+		root: Rect
+		scale := f32(1)
+		if view.kind == .Game {
+			root = canvas_rect(view, canvas.owner)
+			scale = canvas_scale(canvas.owner, {view.width, view.height})
+		} else {
+			root = canvas_world_rect(canvas.owner)
+		}
+		clear(&nodes)
+		canvas_resolve_rects(canvas.owner, root, &nodes)
+		for n, i in nodes {
+			_, cr := transform_get_comp(n.tH, CanvasRenderer)
+			if cr == nil || !cr.enabled do continue
+			comp, g, desc, ok := node_graphic(n.tH)
+			if !ok do continue
+			clear(&quads)
+			desc.populate(comp, n.rect, &quads)
+			key: Sort_Key
+			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
+			for q in quads {
+				if asset_guid_is_empty(q.texture) do continue
+				corners := rect_corners(Rect{q.pos, q.size}, n.xform)
+				if view.kind == .Game {
+					screen: [4][2]f32
+					for c, k in corners do screen[k] = c.xy * scale
+					corners = canvas_view_corners(view, screen)
+				}
+				append(out, Render_Command{
+					key     = key,
+					variant = Draw_Quad{
+						texture  = q.texture,
+						material = g.material,
+						corners  = corners,
+						uvs      = q.uvs,
+						color    = g.color,
+					},
+				})
+			}
+		}
+	}
 }

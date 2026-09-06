@@ -93,7 +93,7 @@ test_canvas_quad_corners_land_on_pixels :: proc(t: ^testing.T) {
 	flat := engine.rect_corners(engine.Rect{{50, 25}, {100, 50}}, linalg.MATRIX4F32_IDENTITY)
 	flat2: [4][2]f32
 	for f, i in flat do flat2[i] = f.xy
-	c := mhgui.canvas_quad_corners(view, flat2)
+	c := engine.canvas_view_corners(view, flat2)
 	testing.expect_value(t, c[0].xy, [2]f32{-0.5, -0.5}) // bl
 	testing.expect_value(t, c[1].xy, [2]f32{0.5, -0.5})  // br
 	testing.expect_value(t, c[2].xy, [2]f32{0.5, 0.5})   // tr
@@ -118,10 +118,11 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 	img := cast(^mhgui.Image)_add(image, .Image)
 	img.color = {1, 0, 0, 1}
 
+	mhgui.mhgui_package_init() // registers Image as a graphic
 	view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 200, 100, 0xFFFFFFFF)
 	out := make([dynamic]engine.Render_Command)
 	defer delete(out)
-	mhgui.collect_canvases(view, &out)
+	engine.canvas_collect_graphics(view, &out)
 	testing.expect_value(t, len(out), 1)
 	if len(out) != 1 do return
 	q, is_quad := out[0].variant.(engine.Draw_Quad)
@@ -137,7 +138,7 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 	engine.canvas_set_game_viewport({200, 100})
 	scene_view := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 640, 480, 0xFFFFFFFF, .SceneView)
 	clear(&out)
-	mhgui.collect_canvases(scene_view, &out)
+	engine.canvas_collect_graphics(scene_view, &out)
 	testing.expect_value(t, len(out), 1)
 	if len(out) != 1 do return
 	sq := out[0].variant.(engine.Draw_Quad)
@@ -147,7 +148,7 @@ test_collect_emits_one_quad_per_renderer_in_game_views :: proc(t: ^testing.T) {
 	// Previews show neither.
 	preview := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 64, 64, 0xFFFFFFFF, .Preview)
 	clear(&out)
-	mhgui.collect_canvases(preview, &out)
+	engine.canvas_collect_graphics(preview, &out)
 	testing.expect_value(t, len(out), 0)
 }
 

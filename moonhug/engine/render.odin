@@ -203,6 +203,7 @@ render_register_collector :: proc(c: Render_Collector) {
 // built-in collectors, then every registered one.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	_collect_mesh_renderers(view, out)
+	canvas_collect_graphics(view, out) // the canvas tree (ui_canvas.odin)
 	for c in _render_collectors do c(view, out)
 }
 

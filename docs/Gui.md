@@ -45,7 +45,20 @@ with `canvas_layout_register`.
   run left to right, columns and grid rows top to bottom. Grid columns are
   as many as fit, or a fixed column or row count. Children without a
   RectTransform stay out of the layout.
-- **Image** — the graphic. `sprite` is a texture plus slice reference (the
+- **Graphic** — not a component but the struct every drawable UI component
+  embeds, as `using graphic: engine.Graphic` with the `inline:""` tag:
+  `color`, `material` and `raycast_target`, serialized under "graphic" and
+  drawn flat in the inspector. A package registers its graphic type with
+  `canvas_graphic_register`: the component's TypeKey, the offset of the
+  embedded Graphic, and a `populate` proc that returns the quads the
+  component draws inside its rect. The engine's canvas collector walks each
+  canvas once, finds the graphic on every CanvasRenderer node through that
+  registry, and emits the quads in hierarchy order — so Image and Text draw
+  through one path without the engine knowing either type.
+- **Text** lives in its own plugin, `packages/text` (docs/Text.md): a
+  swappable font backend under a backend-neutral layout. Neither the canvas
+  tree nor mhgui knows about it.
+- **Image** — a graphic (embeds Graphic). `sprite` is a texture plus slice reference (the
   shared sprite picker in the inspector), empty draws the package's white
   texture so the rect is a solid `color`. `preserve_aspect` fits the largest
   aspect-correct rect centered in the node's rect instead of stretching. The
@@ -72,22 +85,23 @@ a second door into it, so one call moves a bullet or a health bar:
 
 ## Drawing
 
-The collector runs for Game views and the scene view. Per enabled canvas it
-resolves every active node's rect in hierarchy order (parents before
-children, siblings in order) and emits one `Draw_Quad` per node with an enabled
-CanvasRenderer and Image.
+The engine's canvas collector runs for Game views and the scene view. Per
+enabled canvas it resolves every active node's rect in hierarchy order
+(parents before children, siblings in order) and, for each node with an
+enabled CanvasRenderer and a registered graphic, emits one `Draw_Quad` per
+quad the graphic populates, in the graphic's color and material.
 
 - **Game views**: quads sit on a plane just inside the view's near plane,
   with the rect's pixel corners unprojected through the view, so they land on
   exactly those pixels for any camera and nothing in the scene passes the
   depth test in front of them.
 - **Scene view**: the canvas is a world rect with its bottom-left at the
-  origin in the XY plane, one world unit per canvas pixel, sized like the
+  origin in the XY plane, one world unit per canvas unit, sized like the
   last Game view (1920x1080 before one has drawn). This is where the rect
   tool lives.
 
 Sort keys use layer 127, the top of the transparent range, then the canvas
-`sort_order`, then tree order.
+`sort_order`, then the node's index in the walk.
 
 ## Editor
 
@@ -107,17 +121,14 @@ dragging come later.
 
 Ordered by what unblocks the most next.
 
-1. **Text.** Route undecided: SDL3_ttf's GPU text engine (bindings in Odin's
-   vendor, one C dependency) or an stb_truetype SDF importer (no dependency,
-   more work). Needs the decision first.
-2. **Sliced and Tiled Image.** Needs sprite border data in the texture
+1. **Sliced and Tiled Image.** Needs sprite border data in the texture
    importer's Sprite_Rect; the Image then emits a 9-slice.
-3. **Input.** Raycast target on Image, a pointer event pass over the canvas
+2. **Input.** Raycast target on Image, a pointer event pass over the canvas
    tree, Button as the first consumer.
-4. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
+3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
    LayoutGroup instead of snapping back.
-5. **Box select of UI rects** in the scene view (the pick provider covers
+4. **Box select of UI rects** in the scene view (the pick provider covers
    clicks only).
-6. **Screen Space - Camera and World Space** render modes.
-7. **LayoutGroup extras** (low priority): content size fitting, child
+5. **Screen Space - Camera and World Space** render modes.
+6. **LayoutGroup extras** (low priority): content size fitting, child
    expand, start corner and axis for grids.

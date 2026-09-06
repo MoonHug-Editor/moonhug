@@ -9,11 +9,13 @@ import "moonhug:engine"
 @(typ_guid={guid = "0a7604a3-0097-4b7d-a565-7ebbdfcaa795"})
 Image :: struct {
 	using base:      engine.CompData `inspect:"-"`,
+	// The fields every graphic shares (color, material, raycast target),
+	// serialized under "graphic", drawn flat in the inspector.
+	using graphic:   engine.Graphic `inline:""`,
 	// guid = the texture, local_id = the slice's persistent id from the
 	// texture's import settings, 0 = the whole texture. Hidden from the default
 	// inspector — the package's editor wrapper draws the sprite picker.
 	sprite:          engine.PPtr `inspect:"-"`,
-	color:           [4]f32 `decor:color()`,
 	// Keep the sprite's aspect: the largest aspect-correct rect centered in
 	// the node's rect instead of stretching to fill it.
 	preserve_aspect: bool,
@@ -21,6 +23,17 @@ Image :: struct {
 
 reset_Image :: proc(img: ^Image) {
 	img.color = {1, 1, 1, 1}
+	img.raycast_target = true
+}
+
+// The Image's geometry: one quad, the sprite (or the white texture) fitted
+// into the rect (engine.Graphic_Desc.populate).
+populate_image :: proc(comp: rawptr, rect: engine.Rect, out: ^[dynamic]engine.Graphic_Quad) {
+	img := cast(^Image)comp
+	tex, px, tex_size, ok := image_source(img)
+	if !ok do return
+	fit := image_fit(rect, {px.z, px.w}, img.preserve_aspect)
+	append(out, engine.Graphic_Quad{pos = fit.pos, size = fit.size, uvs = image_uvs(tex_size, px), texture = tex})
 }
 
 // What the image draws: the texture, the source pixel rect inside it (x, y,
