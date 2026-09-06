@@ -73,7 +73,8 @@ ICON_MD_REFRESH       :: "\ue5d5"   // refresh
 ICON_MD_ACCOUNT_TREE  :: "\ue97a"   // account_tree (node graph; also in app_editor's tween view)
 
 // Scene view overlays (dock.odin)
-ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle)
+ICON_MD_DRAG_INDICATOR :: "\ue945"   // drag_indicator (overlay grip handle, vertical dots)
+ICON_MD_DRAG_HANDLE    :: "\ue25d"   // drag_handle (overlay grip handle, horizontal bars)
 ICON_MD_OPEN_WITH      :: "\ue89f"   // open_with (move tool)
 ICON_MD_ROTATE_RIGHT   :: "\ue41a"   // rotate_right (rotate tool)
 ICON_MD_OPEN_IN_FULL   :: "\uf1ce"   // open_in_full (scale tool)
@@ -98,6 +99,7 @@ ICON_MD_SHOW_CHART     :: "\ue6e1" // show_chart (Tween Graph)
 ICON_MD_EXTENSION      :: "\ue87b" // extension (plugin windows without an icon of their own)
 ICON_MD_CROP           :: "\ue3be" // crop (Sprite Editor)
 ICON_MD_KEYBOARD       :: "\ue312" // keyboard (Input Debug)
+ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game view size flip)
 
 // The built-in views' window titles: icon, name, and the name again after
 // ###. imgui hashes only the text after ### and saves settings under it, so

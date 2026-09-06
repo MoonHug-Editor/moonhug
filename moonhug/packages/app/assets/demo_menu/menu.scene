@@ -261,11 +261,11 @@
         "enabled": true,
         "local_id": 1914205658478419
       },
-      "plane_distance": 0.0,
+      "plane_distance": 5.0,
       "render_camera": {
-        "local_id": 0
+        "local_id": 3
       },
-      "render_mode": 0,
+      "render_mode": 1,
       "sort_order": 0
     },
     {
@@ -279,7 +279,7 @@
     {
       "__type": "36e133bb-7979-48ba-8b1b-57385558f37d",
       "anchor_max": [
-        0.0,
+        1.0,
         1.0
       ],
       "anchor_min": [
@@ -300,7 +300,7 @@
         1.0
       ],
       "size_delta": [
-        600.0,
+        -20.0,
         400.0
       ]
     },
@@ -311,7 +311,7 @@
         "local_id": 1611313303947019
       },
       "cell_size": [
-        100.0,
+        200.0,
         100.0
       ],
       "child_alignment": 0,

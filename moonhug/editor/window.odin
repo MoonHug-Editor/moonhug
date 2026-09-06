@@ -55,6 +55,9 @@ EditorSettings :: struct {
     project_zoom:             f32,                      // project view zoom: 0 = list, >0 = thumbnail grid (view_project.odin)
     scene_ortho:              bool,                     // scene view projection (view_scene.odin)
     scene_2d:                 bool,                     // scene view 2D mode (view_scene.odin)
+    game_size_index:          int,                      // game view size list entry (view_game.odin)
+    game_scale:               f32,                      // game view zoom (view_game.odin)
+    game_size_flipped:        bool,                     // game view size width/height swap (view_game.odin)
 }
 
 editor_settings: EditorSettings
@@ -80,6 +83,10 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
                 snap_settings = editor_settings.snap
             }
             scene_cam_ortho = editor_settings.scene_ortho
+            game_size_index = editor_settings.game_size_index
+            // Zero = the field predates this setting; keep the 1x default.
+            if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
+            game_size_flipped = editor_settings.game_size_flipped
             if editor_settings.scene_2d do _scene_2d_pending = true
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
@@ -148,6 +155,9 @@ save_editor_settings :: proc() {
     editor_settings.snap = snap_settings
     editor_settings.scene_ortho = _pre_2d_ortho if scene_2d_mode else scene_cam_ortho
     editor_settings.scene_2d = scene_2d_mode
+    editor_settings.game_size_index = game_size_index
+    editor_settings.game_scale = game_scale
+    editor_settings.game_size_flipped = game_size_flipped
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

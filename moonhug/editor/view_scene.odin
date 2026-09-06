@@ -123,6 +123,7 @@ init_scene_view :: proc() {
 	// Unity-style dockable overlays (dock.odin): register every
 	// @(scene_overlay) item (generated), then restore persisted placement.
 	_register_scene_overlays()
+	overlay_set_default_anchor("Tools", .Bar_Left)        // Unity's left toolbar strip
 	overlay_set_default_anchor("Orientation", .Top_Right) // Unity's scene gizmo corner; settings override
 	overlay_set_transparent("Orientation")                // Unity's: no panel, only the grip
 	overlays_apply_settings()
@@ -603,13 +604,22 @@ draw_scene_view :: proc() {
 		}
 		_update_frame_tween(im.GetIO().DeltaTime)
 
+		// Docked toolbar strips take their space first; the image gets what
+		// is left, so a strip sits beside the render instead of over it.
+		overlays_measure_bars()
+		bar_l, bar_r, bar_t, bar_b := overlay_bar_insets()
+		content_min := im.GetCursorScreenPos()
 		avail := im.GetContentRegionAvail()
+		content_max := content_min + avail
+		avail.x = max(avail.x - bar_l - bar_r, 0)
+		avail.y = max(avail.y - bar_t - bar_b, 0)
 		w := i32(avail.x)
 		h := i32(avail.y)
 
 		if w > 0 && h > 0 {
 			render_scene_rt(w, h)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(scene_rt)))
+			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_scene_img_min = im.GetItemRectMin()
 			// Handle labels (anchor percentages) over the image, shadowed so
@@ -618,7 +628,7 @@ draw_scene_view :: proc() {
 			for l in handles.labels() {
 				_draw_handle_label(dl, im.Vec2{_scene_img_min.x + l.px.x, _scene_img_min.y + l.px.y}, l)
 			}
-			overlays_draw(_scene_img_min, im.GetItemRectMax())
+			overlays_draw(_scene_img_min, _scene_img_min + avail, content_min, content_max)
 		}
 
 		scene_view_hovered = im.IsWindowHovered({})
