@@ -580,3 +580,49 @@ test_canvas_placement_modes :: proc(t: ^testing.T) {
 	_, _, in_world = engine.canvas_placement(camc, viewport)
 	testing.expect(t, !in_world)
 }
+
+// Sliced: the 3x3 cells with the borders at pixel size; Tiled: the center
+// tiled with the last tile cut, uvs cut the same way.
+@(test)
+test_image_sliced_and_tiled_cells :: proc(t: ^testing.T) {
+	tex: engine.Asset_GUID
+	tex[0] = 1
+	tex_size := [2]f32{64, 64}
+	px := [4]f32{0, 0, 32, 32}      // a 32x32 sprite at the texture's top-left
+	border := [4]f32{8, 8, 8, 8}    // 8 px each side
+	rect := engine.Rect{{0, 0}, {100, 60}}
+	out := make([dynamic]engine.Graphic_Quad)
+	defer delete(out)
+
+	mhgui.image_sliced(&out, tex, tex_size, px, border, rect, true, 1, tiled = false)
+	testing.expect_value(t, len(out), 9)
+	// Bottom-left corner: 8x8 at the rect's corner, source = the sprite's bottom-left 8x8.
+	testing.expect_value(t, out[0].pos, [2]f32{0, 0})
+	testing.expect_value(t, out[0].size, [2]f32{8, 8})
+	testing.expect_value(t, out[0].uvs, mhgui.image_uvs(tex_size, {0, 24, 8, 8}))
+	// Center: what is left between the borders.
+	testing.expect_value(t, out[4].pos, [2]f32{8, 8})
+	testing.expect_value(t, out[4].size, [2]f32{84, 44})
+	testing.expect_value(t, out[4].uvs, mhgui.image_uvs(tex_size, {8, 8, 16, 16}))
+	// Top-right corner.
+	testing.expect_value(t, out[8].pos, [2]f32{92, 52})
+	testing.expect_value(t, out[8].size, [2]f32{8, 8})
+
+	// Without the center: 8 cells. With a multiplier of 2 the borders halve.
+	clear(&out)
+	mhgui.image_sliced(&out, tex, tex_size, px, border, rect, false, 2, tiled = false)
+	testing.expect_value(t, len(out), 8)
+	testing.expect_value(t, out[0].size, [2]f32{4, 4})
+
+	// Tiled without borders: 32x32 tiles over 100x60 = 4 x 2 tiles, the last
+	// column 4 wide and the top row 28 high, with matching uv cuts.
+	clear(&out)
+	mhgui.image_sliced(&out, tex, tex_size, px, {}, rect, true, 1, tiled = true)
+	testing.expect_value(t, len(out), 8)
+	testing.expect_value(t, out[3].pos, [2]f32{96, 0})
+	testing.expect_value(t, out[3].size, [2]f32{4, 32})
+	testing.expect_value(t, out[3].uvs, mhgui.image_uvs(tex_size, {0, 0, 4, 32}))
+	testing.expect_value(t, out[4].pos, [2]f32{0, 32})
+	testing.expect_value(t, out[4].size, [2]f32{32, 28})
+	testing.expect_value(t, out[4].uvs, mhgui.image_uvs(tex_size, {0, 4, 32, 28})) // the sprite's bottom 28 rows
+}

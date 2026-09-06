@@ -68,10 +68,17 @@ with `canvas_layout_register`.
   canvas tree nor mhgui knows about it.
 - **Image** — a graphic (embeds Graphic). `sprite` is a texture plus slice reference (the
   shared sprite picker in the inspector), empty draws the package's white
-  texture so the rect is a solid `color`. `preserve_aspect` fits the largest
-  aspect-correct rect centered in the node's rect instead of stretching. The
-  inspector's Set Native Size button sizes the RectTransform to the sprite's
-  pixels, one undo step.
+  texture so the rect is a solid `color`. `image_type` is Unity's: Simple
+  stretches the sprite (`preserve_aspect` fits the largest aspect-correct
+  rect instead), Sliced keeps the sprite's 9-slice borders at pixel size and
+  stretches edges and center, Tiled keeps the corners and tiles edges and
+  center, partial tiles cut. `fill_center` drops the middle cell,
+  `pixels_per_unit_multiplier` scales the size borders and tiles draw at.
+  Borders live on the sprite and are authored in the Sprite Editor like
+  Unity's: drag the green border lines on the image or type L, T, R, B, for
+  the selected slice or, on a texture without slices, for the whole texture
+  (Single mode, stored as the import settings' `sprite_border`). The inspector's Set Native Size button sizes the
+  RectTransform to the sprite's pixels, one undo step.
 
 ## Position
 
@@ -185,12 +192,10 @@ selection with a canvas root draws the generic rows instead.
 
 Ordered by what unblocks the most next.
 
-1. **Sliced and Tiled Image.** Needs sprite border data in the texture
-   importer's Sprite_Rect; the Image then emits a 9-slice.
-2. **Input, next steps.** Toggle and Slider on the Selectable base, keyboard
+1. **Input, next steps.** Toggle and Slider on the Selectable base, keyboard
    and gamepad navigation between selectables, drag events, Sprite_Swap and
    Animation transitions.
-3. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
+2. **Rect tool: anchor and pivot dragging**, and driven fields greyed under a
    LayoutGroup instead of snapping back.
-4. **LayoutGroup extras** (low priority): content size fitting, child
+3. **LayoutGroup extras** (low priority): content size fitting, child
    expand, start corner and axis for grids.

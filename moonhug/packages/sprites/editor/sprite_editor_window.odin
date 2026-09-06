@@ -57,6 +57,7 @@ _SE_Drag :: enum {
 	None,
 	Move,
 	Create,
+	Border, // one of the selected sprite's 9-slice border lines
 }
 
 _SE_State :: struct {
@@ -69,9 +70,14 @@ _SE_State :: struct {
 	zoom: f32,
 	pan:  im.Vec2, // image px
 
-	drag:       _SE_Drag,
-	drag_from:  im.Vec2, // image px at press
-	drag_rect:  [4]f32,  // Create: the rect being rubber-banded
+	drag:        _SE_Drag,
+	drag_from:   im.Vec2, // image px at press
+	drag_rect:   [4]f32,  // Create: the rect being rubber-banded
+	drag_border: int,     // Border: 0 left, 1 bottom, 2 right, 3 top
+
+	// Single mode (no slices): the whole texture is the sprite, and these
+	// are its 9-slice borders (TextureSettings.sprite_border).
+	single_border: [4]f32,
 
 	name_buf: [128]u8,
 
@@ -106,6 +112,7 @@ _se := _SE_State{
 
 _SE_OUTLINE  :: u32(0xFF19A0FF) // ABGR orange
 _SE_SELECTED :: u32(0xFF00E5FF) // ABGR yellow
+_SE_BORDER   :: u32(0xFF40D040) // 9-slice border guides
 _SE_CREATE   :: u32(0xFF7DE59E) // ABGR green
 _SE_ZOOM_MIN :: f32(0.1)
 _SE_ZOOM_MAX :: f32(32)
@@ -171,14 +178,17 @@ _se_carry_id :: proc(old: []engine.Sprite_Rect, name: string) -> engine.Local_ID
 _se_load_slices :: proc() {
 	_se_free_slices()
 	context.allocator = runtime.default_allocator()
+	_se.single_border = {}
 	if settings, ok := engine.asset_pipeline_get_settings(_se.path, context.temp_allocator); ok {
 		if ts, is_tex := settings.(engine.TextureSettings); is_tex {
+			_se.single_border = ts.sprite_border
 			for s in ts.sprites {
 				append(&_se.slices, engine.Sprite_Rect{
-					id    = s.id,
-					name  = strings.clone(s.name),
-					rect  = s.rect,
-					pivot = s.pivot,
+					id     = s.id,
+					name   = strings.clone(s.name),
+					rect   = s.rect,
+					pivot  = s.pivot,
+					border = s.border,
 				})
 			}
 		}
@@ -203,6 +213,7 @@ _se_apply :: proc() {
 	ts.sprites = make([dynamic]engine.Sprite_Rect, context.temp_allocator)
 	append(&ts.sprites, .._se.slices[:])
 	if len(_se.slices) > 0 do ts.sprite_mode = .Multiple
+	ts.sprite_border = _se.single_border
 	if !asset_pipeline.asset_pipeline_save_settings(_se.path, settings) do return
 	asset_pipeline.asset_pipeline_reimport(_se.path)
 	// The import-settings inspector holds its own draft of the same meta.
@@ -465,6 +476,14 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 		r1 := _se_screen(origin, {s.rect.x + s.rect.z, s.rect.y + s.rect.w})
 		im.DrawList_AddRect(dl, r0, r1, i == _se.sel ? _SE_SELECTED : _SE_OUTLINE)
 	}
+	// The active sprite's 9-slice borders as draggable guide lines (Unity's
+	// green lines): the selected slice, or the whole texture in Single mode.
+	if rect, border, has := _se_active_sprite(tex); has {
+		for k in 0 ..< 4 {
+			a, b := _se_border_line(rect, border^, k)
+			im.DrawList_AddLine(dl, _se_screen(origin, a), _se_screen(origin, b), _SE_BORDER, 1.5)
+		}
+	}
 	if _se.drag == .Create {
 		r0 := _se_screen(origin, {_se.drag_rect.x, _se.drag_rect.y})
 		r1 := _se_screen(origin, {_se.drag_rect.x + _se.drag_rect.z, _se.drag_rect.y + _se.drag_rect.w})
@@ -477,17 +496,34 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 	mouse := im.GetMousePos()
 	img := (mouse - origin) / _se.zoom - _se.pan // mouse in image px
 
-	if im.IsItemActivated() { // left press: pick or start creating
+	if im.IsItemActivated() { // left press: a border line, a slice, or empty space
 		_se.drag_from = img
-		hit := _se_hit_slice(img)
-		_se_select(hit)
-		_se.drag = hit >= 0 ? .Move : .None
+		if k := _se_hit_border(tex, img); k >= 0 {
+			_se.drag = .Border
+			_se.drag_border = k
+		} else {
+			hit := _se_hit_slice(img)
+			_se_select(hit)
+			_se.drag = hit >= 0 ? .Move : .None
+		}
 	}
 	if im.IsItemActive() && im.IsMouseDragging(.Left, 2) {
 		if _se.drag == .None { // drag on empty space rubber-bands a new rect
 			_se.drag = .Create
 		}
 		switch _se.drag {
+		case .Border:
+			if rect, border, has := _se_active_sprite(tex); has {
+				// The dragged line follows the mouse, whole pixels, never past
+				// the opposite border.
+				switch _se.drag_border {
+				case 0: border.x = clamp(math.round(img.x - rect.x), 0, rect.z - border.z)
+				case 2: border.z = clamp(math.round(rect.x + rect.z - img.x), 0, rect.z - border.x)
+				case 3: border.w = clamp(math.round(img.y - rect.y), 0, rect.w - border.y)
+				case 1: border.y = clamp(math.round(rect.y + rect.w - img.y), 0, rect.w - border.w)
+				}
+				_se.dirty = true
+			}
 		case .Move:
 			if _se.sel >= 0 {
 				delta := im.GetIO().MouseDelta / _se.zoom
@@ -542,6 +578,56 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 	im.EndChild()
 }
 
+// The sprite whose borders the editor shows and drags: the selected slice's
+// rect and border, or the whole texture and its Single-mode border when the
+// texture has no slices.
+_se_active_sprite :: proc(tex: ^engine.Texture2D) -> (rect: [4]f32, border: ^[4]f32, ok: bool) {
+	if _se.sel >= 0 && _se.sel < len(_se.slices) {
+		s := &_se.slices[_se.sel]
+		return s.rect, &s.border, true
+	}
+	if len(_se.slices) == 0 {
+		return {0, 0, f32(tex.width), f32(tex.height)}, &_se.single_border, true
+	}
+	return {}, nil, false
+}
+
+// Border line k (0 left, 1 bottom, 2 right, 3 top) of a rect, in image px.
+_se_border_line :: proc(rect: [4]f32, b: [4]f32, k: int) -> (a, c: im.Vec2) {
+	switch k {
+	case 0: return {rect.x + b.x, rect.y}, {rect.x + b.x, rect.y + rect.w}
+	case 2: return {rect.x + rect.z - b.z, rect.y}, {rect.x + rect.z - b.z, rect.y + rect.w}
+	case 3: return {rect.x, rect.y + b.w}, {rect.x + rect.z, rect.y + b.w}
+	case:   return {rect.x, rect.y + rect.w - b.y}, {rect.x + rect.z, rect.y + rect.w - b.y}
+	}
+}
+
+// The border line under the mouse (image px), within a few screen pixels,
+// or -1.
+_se_hit_border :: proc(tex: ^engine.Texture2D, img: im.Vec2) -> int {
+	rect, border, has := _se_active_sprite(tex)
+	if !has do return -1
+	tol := 5 / _se.zoom
+	if img.x < rect.x - tol || img.x > rect.x + rect.z + tol || img.y < rect.y - tol || img.y > rect.y + rect.w + tol do return -1
+	for k in 0 ..< 4 {
+		a, _ := _se_border_line(rect, border^, k)
+		d := abs(img.x - a.x) if k == 0 || k == 2 else abs(img.y - a.y)
+		if d <= tol do return k
+	}
+	return -1
+}
+
+// The 9-slice border fields (Sliced and Tiled images), pixels from each
+// edge, Unity's L T R B order, each capped so the pair never crosses.
+_se_border_fields :: proc(b: ^[4]f32, size: [2]f32) -> (changed: bool) {
+	im.SeparatorText("Border")
+	changed |= inspector.drag_float("L", &b.x, 1, 0, size.x - b.z)
+	changed |= inspector.drag_float("T", &b.w, 1, 0, size.y - b.y)
+	changed |= inspector.drag_float("R", &b.z, 1, 0, size.x - b.x)
+	changed |= inspector.drag_float("B", &b.y, 1, 0, size.y - b.w)
+	return
+}
+
 // Smallest slice containing the point wins — selects nested rects correctly.
 _se_hit_slice :: proc(img: im.Vec2) -> int {
 	best := -1
@@ -584,6 +670,16 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	}
 	defer im.EndChild()
 
+	if len(_se.slices) == 0 {
+		// Single mode: the texture is the sprite. Its borders are the one
+		// thing to author here.
+		im.Text("Sprite (whole texture)")
+		im.TextDisabled("%d x %d", tex.width, tex.height)
+		if _se_border_fields(&_se.single_border, {f32(tex.width), f32(tex.height)}) do _se.dirty = true
+		im.Separator()
+		im.TextWrapped("Drag the green lines to set the 9-slice borders. Drag on the image to create slices (Multiple mode). Middle-drag pans, wheel zooms.")
+		return
+	}
 	if _se.sel < 0 || _se.sel >= len(_se.slices) {
 		im.TextDisabled("No slice selected.")
 		im.TextWrapped("Click a rect to select. Drag on empty space to create one. Middle-drag pans, wheel zooms.")
@@ -611,6 +707,7 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	changed |= inspector.drag_float("H", &s.rect.w, 1, 1, f32(tex.height))
 	changed |= inspector.drag_float("Pivot X", &s.pivot.x, 0.01, 0, 1)
 	changed |= inspector.drag_float("Pivot Y", &s.pivot.y, 0.01, 0, 1)
+	changed |= _se_border_fields(&s.border, {s.rect.z, s.rect.w})
 	if changed do _se.dirty = true
 
 	im.Separator()

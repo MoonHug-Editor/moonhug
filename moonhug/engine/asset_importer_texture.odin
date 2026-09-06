@@ -22,6 +22,7 @@ Sprite_Rect :: struct {
     name:  string,
     rect:  [4]f32, // x, y, w, h in pixels; origin top-left, y down (stb rows)
     pivot: [2]f32, // normalized within the rect, {0, 0} = bottom-left, {0.5, 0.5} = center
+    border: [4]f32, // 9-slice borders in pixels: left, bottom, right, top (Unity's Sprite.border)
 }
 
 Sprite_Import_Mode :: enum u8 {
@@ -45,6 +46,9 @@ TextureSettings :: struct {
     // game builds with no extra pipeline.
     sprite_mode: Sprite_Import_Mode,
     sprites:     [dynamic]Sprite_Rect,
+    // Single mode's 9-slice borders in pixels: left, bottom, right, top
+    // (Unity's spriteBorder). Multiple mode keeps them per slice.
+    sprite_border: [4]f32,
 }
 
 default_texture_settings :: proc() -> TextureSettings {

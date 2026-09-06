@@ -19,6 +19,8 @@ Texture2D :: struct {
     // Slices from the import settings (sprite_mode = Multiple), cache-owned
     // clones. Empty for Single-mode textures.
     sprites: []Sprite_Rect,
+    // Single mode's 9-slice borders (TextureSettings.sprite_border), pixels.
+    border: [4]f32,
     gfx:    ^gfx.Texture,
 }
 
@@ -81,9 +83,11 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
 
     ppu := f32(PIXELS_PER_UNIT)
     sprites: []Sprite_Rect
+    border: [4]f32
     if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
         if ts, is_tex := settings.(TextureSettings); is_tex {
             if ts.pixels_per_unit > 0 do ppu = ts.pixels_per_unit
+            border = ts.sprite_border
             // Settings live on the temp allocator — the cache owns clones
             // (_texture_sprites_free frees them, same pinned allocator).
             if ts.sprite_mode == .Multiple && len(ts.sprites) > 0 {
@@ -103,6 +107,7 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
         height = g.height,
         pixels_per_unit = ppu,
         sprites = sprites,
+        border = border,
         gfx    = g,
     }
     return &texture_cache[guid], true

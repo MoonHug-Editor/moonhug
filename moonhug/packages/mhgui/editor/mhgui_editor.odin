@@ -175,7 +175,7 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	}
 	owned, rt := engine.transform_get_comp(img.owner, engine.RectTransform)
 	if rt == nil do return
-	_, px, _, ok := mhgui.image_source(img)
+	_, px, _, _, ok := mhgui.image_source(img)
 	im.BeginDisabled(!ok)
 	if im.Button("Set Native Size") {
 		targets := [?]undo.Edit_Target{undo.edit_target_pooled(owned.handle, &rt.size_delta, typeid_of([2]f32))}
