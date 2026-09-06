@@ -1,5 +1,6 @@
 package undo
 
+import "base:runtime"
 import engine "../../engine"
 
 Inspector_Owner :: struct {
@@ -18,7 +19,8 @@ _owner_stack: [dynamic]Inspector_Owner
 
 push_owner :: proc(o: Inspector_Owner) {
 	if _owner_stack == nil {
-		_owner_stack = make([dynamic]Inspector_Owner)
+		// Process-global: never borrows the caller's allocator.
+		_owner_stack = make([dynamic]Inspector_Owner, runtime.default_allocator())
 	}
 	append(&_owner_stack, o)
 }

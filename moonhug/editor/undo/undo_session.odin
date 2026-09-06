@@ -197,6 +197,7 @@ edit_session_end :: proc(sess: ^Edit_Session) {
 	} else {
 		abort_group_command(s)
 	}
+
 }
 
 // Abandons the transaction without recording. Values the caller already wrote

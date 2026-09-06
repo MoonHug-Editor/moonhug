@@ -64,7 +64,7 @@ view_history focused:
 
 Fields can be any size or type (strings, `[dynamic]T`, `[4]f32`, components with nested unions). Instead of a fixed-size memcpy, `Value_Command` stores `old_json` and `new_json` byte slices. Apply unmarshals into the live pointer. This reuses the same JSON path as scene save/load and the inspector clipboard.
 
-Because of this, every field `T` that can be undone needs a pointer typeid registered via `engine.register_pointer_type(T)`. All generated component types register automatically. Primitives (`bool`, `int`, `i8..i64`, `u8..u64`, `f32`, `f64`, `string`) are registered in `editor/main.odin`. A type that is not registered records the command but the restore does nothing beyond a logged error — check this first when undo appears to record but not revert.
+Because of this, every field type `T` that can be undone needs a pointer typeid registered via `engine.register_pointer_type(T)`. The components generator registers every component's field types (enums, bit_sets, structs, arrays of them), following same-package struct fields recursively, in the package's `components_ext_generated.odin`, and the serializer setup registers the primitives (`bool`, `int`, `i8..i64`, `u8..u64`, `f32`, `f64`, `string`, `Asset_GUID`, `Curve`, `Gradient`, the reference types). Union variants and types from other packages still need a hand call. A type that is not registered records no field step: the pre-edit restore fails with a logged error and the session sees no change.
 
 ## Stack behavior
 
@@ -198,13 +198,16 @@ Two imgui facts shape the row helpers:
   takes a pre-drawer snapshot and hands it to the late-opened session as the
   before-state.
 
-### Pickers
+### Pickers and enum combos
 
-A picker (mesh, material, any reference) writes from inside a popup: no drag,
-no focus, so its gesture has no observable start. Its row snapshots the value
+A picker (mesh, material, any reference) or an enum combo writes from inside
+a popup: no drag, no focus, so its gesture has no observable start. Its row snapshots the value
 before the draw, compares after, and opens the session **retroactively** only
 if it moved — temporarily writing the old value back while the session
-captures, via `restore_before`/`restore_after`.
+captures, via `restore_before`/`restore_after`. A row must never open a
+session on a frame with no gesture: `field_edit_begin` ends any other row's
+session in flight, so a row that opened one every frame would cut every
+gesture above it in the same component short.
 
 Rolling back rather than handing the session a payload is what makes it
 correct at any granularity: an entry records a field or a whole component

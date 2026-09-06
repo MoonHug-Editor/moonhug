@@ -357,10 +357,13 @@ is_changed_flag_set :: proc() -> bool {
 
 
 @(private)
+// Rows whose value lands from a popup with no gesture on the row itself:
+// asset and reference pickers, and enum combos.
 _is_picker_type :: proc(tid: typeid) -> bool {
     return tid == typeid_of(engine.Asset_GUID) ||
            tid == typeid_of(engine.Ref) ||
-           tid == typeid_of(engine.Ref_Local)
+           tid == typeid_of(engine.Ref_Local) ||
+           is_enum_type(tid)
 }
 
 // Records a prefab-instance override for a field whose edit just committed, so
@@ -777,20 +780,16 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 row_popup_done = true
             } else if is_enum_type(field_type.id) {
                 // An enum row is a combo: the value lands from a popup, so the
-                // gesture opens before the draw like the pickers.
+                // row brackets the change retroactively like the pickers
+                // (_is_picker_type). Opening a session up front would end any
+                // other row's gesture in flight on every frame this row draws.
                 multi_offset := multi_offset_of(field_ptr, ptr)
                 multi_probe_field(field_ptr, field_type.id, multi_offset)
-                field_edit_begin(field_ptr, field_type.id, multi_offset, field_name)
-                draw_inspector_enum(field_ptr, field_type.id, c_field_name)
-                multi_clear_mixed()
-                changed := is_changed_flag_set()
-                if changed {
-                    field_edit_apply_to_peers(field_ptr, field_type.id, multi_offset)
-                }
-                record_nested_override(field_ptr, field_type.id, full_path, changed)
-                if changed || !im.IsItemActive() {
-                    field_edit_end()
-                }
+                prev_path := field_edit_set_path(full_path)
+                finished := field_edit_row(field_ptr, field_type.id, multi_offset,
+                                           field_name, draw_inspector_enum, c_field_name)
+                field_edit_set_path(prev_path)
+                record_nested_override(field_ptr, field_type.id, full_path, finished)
                 row_popup_done = true
             } else if reflect.is_struct(field_type) || reflect.is_union(field_type) {
                 // Descending into a nested struct: the peers' matching fields

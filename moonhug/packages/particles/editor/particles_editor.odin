@@ -34,18 +34,14 @@ _ps_field :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label
 	im.PopID()
 }
 
-// Enums land from a combo popup — the generic loop's enum protocol.
+// Enums land from a combo popup: the row brackets the change retroactively
+// (inspector._is_picker_type).
 _ps_enum :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label: cstring, path: string) {
 	im.PushIDStr(fmt.ctprintf("%s", path), nil)
 	offset := uintptr(ptr) - uintptr(ps)
 	inspector.multi_probe_field(ptr, tid, offset)
-	inspector.field_edit_begin(ptr, tid, offset, path)
-	inspector.draw_inspector_enum(ptr, tid, label)
-	inspector.multi_clear_mixed()
-	changed := inspector.is_changed_flag_set()
-	if changed do inspector.field_edit_apply_to_peers(ptr, tid, offset)
-	inspector.record_nested_override(ptr, tid, path, changed)
-	if changed || !im.IsItemActive() do inspector.field_edit_end()
+	finished := inspector.field_edit_row(ptr, tid, offset, path, inspector.draw_inspector_enum, label)
+	inspector.record_nested_override(ptr, tid, path, finished)
 	im.PopID()
 }
 
@@ -53,15 +49,14 @@ _ps_enum :: proc(ps: ^particles.ParticleSystem, ptr: rawptr, tid: typeid, label:
 _ps_color :: proc(ps: ^particles.ParticleSystem, ptr: ^[4]f32, label: cstring, path: string) {
 	im.PushIDStr(fmt.ctprintf("%s", path), nil)
 	offset := uintptr(ptr) - uintptr(ps)
-	inspector.field_edit_begin(ptr, typeid_of([4]f32), offset, path)
-	changed := im.ColorEdit4(inspector.field_row(label), ptr, {.AlphaBar})
-	if changed {
-		inspector.mark_inspector_changed()
-		inspector.field_edit_apply_to_peers(ptr, typeid_of([4]f32), offset)
-	}
-	inspector.record_nested_override(ptr, typeid_of([4]f32), path, inspector.field_commit_state_of(changed) != .None)
-	if changed || !im.IsItemActive() do inspector.field_edit_end()
+	finished := inspector.field_edit_row(ptr, typeid_of([4]f32), offset, path, _color_drawer, label)
+	inspector.record_nested_override(ptr, typeid_of([4]f32), path, finished)
 	im.PopID()
+}
+
+@(private = "file")
+_color_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	if im.ColorEdit4(inspector.field_row(label), cast(^[4]f32)ptr, {.AlphaBar}) do inspector.mark_inspector_changed()
 }
 
 // A Unity module header: enable checkbox + collapsing header on one row.
