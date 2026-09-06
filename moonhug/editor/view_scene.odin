@@ -262,12 +262,13 @@ _update_frame_tween :: proc(dt: f32) {
 _ui_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool) {
 	corners: [4][3]f32
 	if _, cv := engine.transform_get_comp(tH, engine.Canvas); cv != nil {
-		corners = engine.canvas_world_corners(engine.canvas_world_rect(tH))
+		root, xform, _ := engine.canvas_placement(tH, engine.canvas_game_viewport())
+		corners = engine.rect_corners(root, xform)
 	} else if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil {
 		canvas := engine.canvas_of(tH)
 		if canvas == {} do return {}, 0, false
 		nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
-		engine.canvas_resolve_rects(canvas, engine.canvas_world_rect(canvas), &nodes)
+		engine.canvas_resolve_placed(canvas, &nodes)
 		found := false
 		for n in nodes {
 			if n.tH == tH {

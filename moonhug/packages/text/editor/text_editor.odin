@@ -97,7 +97,7 @@ _pick_text :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transfo
 	for canvas, _ in engine.pool_next(&it) {
 		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
 		clear(&nodes)
-		engine.canvas_resolve_rects(canvas.owner, engine.canvas_world_rect(canvas.owner), &nodes)
+		engine.canvas_resolve_placed(canvas.owner, &nodes)
 		for n in nodes {
 			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
 			if cr == nil || !cr.enabled do continue

@@ -12,9 +12,16 @@ with `canvas_layout_register`.
 
 ## Components
 
-- **Canvas** — the root of a UI tree. Screen-space overlay: the canvas rect
-  is the game viewport in pixels and everything under it draws over the
-  scene. `sort_order` stacks canvases.
+- **Canvas** — the root of a UI tree, in one of Unity's three render modes
+  (`canvas_placement`). Screen Space Overlay: the canvas rect is the game
+  viewport in canvas units, drawn over everything, the node's transform
+  ignored. Screen Space Camera: the same rect placed `plane_distance` in front
+  of `render_camera`, facing it and scaled so its height spans the camera's
+  view there, drawn by that camera with depth so world objects can occlude it;
+  without a camera it behaves as overlay. World Space: the node's
+  RectTransform gives the size around its pivot, the node's transform places
+  it, one canvas unit per world unit, drawn by every camera. Canvases stack by
+  `sort_order`. The scene view shows all three where they sit in the world.
 - **RectTransform** — the layout component, in canvas pixels with a bottom-left
   origin. `anchor_min` / `anchor_max` pick a sub-rect of the parent rect,
   `size_delta` adds to that span (equal anchors give a fixed size, spread
@@ -186,6 +193,5 @@ Ordered by what unblocks the most next.
    LayoutGroup instead of snapping back.
 4. **Box select of UI rects** in the scene view (the pick provider covers
    clicks only).
-5. **Screen Space - Camera and World Space** render modes.
-6. **LayoutGroup extras** (low priority): content size fitting, child
+5. **LayoutGroup extras** (low priority): content size fitting, child
    expand, start corner and axis for grids.

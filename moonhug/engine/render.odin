@@ -31,6 +31,7 @@ Render_View :: struct {
 	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
 	layer_mask:    u32,
 	kind:          View_Kind,
+	camera:        Transform_Handle, // the Camera node a Game view renders for; {} for editor views
 }
 
 // Alpha-blended commands sort by a lexicographic multi-level key — collectors
@@ -151,7 +152,9 @@ camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
 	view := linalg.matrix4_look_at_f32(tw.position, tw.position + forward, up)
 	aspect := width / max(height, 1)
 	proj := gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
-	return render_view_make(view, proj, width, height, cam.render_layer_mask)
+	rv := render_view_make(view, proj, width, height, cam.render_layer_mask)
+	rv.camera = Transform_Handle(cam.owner)
+	return rv
 }
 
 // Unprojects a viewport pixel (origin top-left) into a world ray. Replaces

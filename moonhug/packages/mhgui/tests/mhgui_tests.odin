@@ -518,3 +518,65 @@ test_canvas_raycast_hits_topmost_raycast_target :: proc(t: ^testing.T) {
 	testing.expect_value(t, engine.canvas_raycast({100, 50}, viewport), node)
 }
 
+
+// Canvas placement per render mode: the root rect in canvas units and the
+// canvas-to-world matrix.
+@(test)
+test_canvas_placement_modes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	viewport := [2]f32{200, 100}
+
+	near :: proc(t: ^testing.T, got, want: [3]f32, what: string, loc := #caller_location) {
+		testing.expectf(t, linalg.length(got - want) < 1e-3, "%s: got %v, want %v", what, got, want, loc = loc)
+	}
+
+	// Overlay: the viewport at the origin, identity.
+	overlay := engine.transform_new("Overlay")
+	_add(overlay, .Canvas)
+	root, xform, in_world := engine.canvas_placement(overlay, viewport)
+	testing.expect(t, !in_world)
+	testing.expect_value(t, root.size, viewport)
+	near(t, engine.rect_corners(root, xform)[0], {0, 0, 0}, "overlay bottom-left")
+
+	// World space: the node's RectTransform around its pivot, through its transform.
+	world := engine.transform_new("World")
+	cv := cast(^engine.Canvas)_add(world, .Canvas)
+	engine.reset_Canvas(cv)
+	cv.render_mode = .WorldSpace
+	rt := cast(^engine.RectTransform)_add(world, .RectTransform)
+	engine.reset_RectTransform(rt)
+	rt.size_delta = {200, 100}
+	if tr := engine.pool_get(&tc.world.transforms, engine.Handle(world)); tr != nil do tr.position = {10, 5, 0}
+	root, xform, in_world = engine.canvas_placement(world, viewport)
+	testing.expect(t, in_world)
+	testing.expect_value(t, root.size, [2]f32{200, 100})
+	near(t, engine.rect_corners(root, xform)[0], {-90, -45, 0}, "world bottom-left")
+
+	// Screen space camera: the viewport rect on a plane in front of the
+	// camera, scaled to span its view there. Camera at the origin looking down
+	// -Z with a 90 degree fov: at distance 10 the view is 20 high.
+	cam_node := engine.transform_new("Camera")
+	cam := cast(^engine.Camera)_add(cam_node, .Camera)
+	engine.reset_Camera(cam)
+	cam.fov = 90
+	camc := engine.transform_new("CamCanvas")
+	ccv := cast(^engine.Canvas)_add(camc, .Canvas)
+	engine.reset_Canvas(ccv)
+	ccv.render_mode = .ScreenSpaceCamera
+	ccv.plane_distance = 10
+	ccv.render_camera.handle = engine.Handle(cam_node)
+	root, xform, in_world = engine.canvas_placement(camc, viewport)
+	testing.expect(t, in_world)
+	testing.expect_value(t, root.size, viewport)
+	near(t, engine.rect_corners(root, xform)[0], {-20, -10, -10}, "camera-space bottom-left")
+	near(t, engine.rect_corners(root, xform)[2], {20, 10, -10}, "camera-space top-right")
+
+	// Without a camera the mode falls back to overlay.
+	ccv.render_camera.handle = {}
+	_, _, in_world = engine.canvas_placement(camc, viewport)
+	testing.expect(t, !in_world)
+}

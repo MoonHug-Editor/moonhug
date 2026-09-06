@@ -59,17 +59,26 @@ rect_resolve :: proc(parent: Rect, rt: ^RectTransform) -> Rect {
 
 // --- Canvas -----------------------------------------------------------------------------
 
-// The root of a UI tree, in screen-space overlay mode: its rect is the whole
-// game viewport in canvas units, and everything under it draws over the
-// scene. Canvases stack by sort_order.
+// Where a canvas lives (Unity's Canvas.renderMode), see canvas_placement.
+Canvas_Render_Mode :: enum u8 {
+	ScreenSpaceOverlay, // the game viewport in canvas units, drawn over everything, the node's transform ignored
+	ScreenSpaceCamera,  // a plane plane_distance in front of render_camera, sized to fill its view, drawn by that camera with depth
+	WorldSpace,          // a world object: the node's RectTransform gives the size, its transform places it, one canvas unit per world unit
+}
+
+// The root of a UI tree. Canvases stack by sort_order.
 @(component={menu="UI/Canvas"})
 @(typ_guid={guid = "ba2db3cd-79be-4d26-9cab-be3fc317d685"})
 Canvas :: struct {
-	using base: CompData `inspect:"-"`,
-	sort_order: i32, // higher draws over lower canvases
+	using base:     CompData `inspect:"-"`,
+	render_mode:    Canvas_Render_Mode,
+	sort_order:     i32, // higher draws over lower canvases
+	render_camera:  Ref_Local `ref:"Transform"`, // ScreenSpaceCamera: the camera node; empty falls back to overlay
+	plane_distance: f32, // ScreenSpaceCamera: how far in front of the camera the canvas plane sits
 }
 
 reset_Canvas :: proc(c: ^Canvas) {
+	c.plane_distance = 100
 }
 
 // Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
@@ -189,6 +198,61 @@ canvas_rect :: proc(view: Render_View, canvas_tH: Transform_Handle) -> Rect {
 canvas_world_rect :: proc(canvas_tH: Transform_Handle) -> Rect {
 	vp := _canvas_game_viewport
 	return Rect{pos = {0, 0}, size = vp / canvas_scale(canvas_tH, vp)}
+}
+
+// Where a canvas sits: its root rect in canvas units and the matrix taking
+// canvas space to world. `screen` is the viewport the canvas measures against
+// (a Game view's size, else canvas_game_viewport).
+//
+// - Overlay: the viewport rect at the world origin, identity. `in_world` is
+//   false: a Game view maps it onto its pixels instead (canvas_view_corners).
+// - ScreenSpaceCamera: the viewport rect, placed plane_distance in front of
+//   the camera, facing it, scaled so its height spans the camera's view there
+//   (2 d tan(fov/2)). Without a resolvable camera it behaves as Overlay.
+// - WorldSpace: the node's RectTransform size around its pivot, through the
+//   node's world transform.
+canvas_placement :: proc(canvas_tH: Transform_Handle, screen: [2]f32) -> (root: Rect, xform: matrix[4, 4]f32, in_world: bool) {
+	_, canvas := transform_get_comp(canvas_tH, Canvas)
+	root = Rect{pos = {0, 0}, size = screen / canvas_scale(canvas_tH, screen)}
+	xform = linalg.MATRIX4F32_IDENTITY
+	if canvas == nil do return
+	switch canvas.render_mode {
+	case .ScreenSpaceOverlay:
+	case .ScreenSpaceCamera:
+		cam_tH := Transform_Handle(canvas.render_camera.handle)
+		_, cam := transform_get_comp(cam_tH, Camera)
+		if cam == nil do return
+		tw := transform_world(cam_tH)
+		rot := quat_to_matrix3(tw.rotation)
+		forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
+		d := max(canvas.plane_distance, cam.near_clip)
+		height := 2 * d * math.tan(math.to_radians(cam.fov) * 0.5)
+		k := height / max(root.size.y, 1)
+		center := tw.position + forward * d
+		xform = trs_matrix(center, tw.rotation, {k, k, k}) * linalg.matrix4_translate_f32({-root.size.x * 0.5, -root.size.y * 0.5, 0})
+		in_world = true
+	case .WorldSpace:
+		size := [2]f32{100, 100}
+		pivot := [2]f32{0.5, 0.5}
+		if _, rt := transform_get_comp(canvas_tH, RectTransform); rt != nil {
+			size = rt.size_delta
+			pivot = rt.pivot
+		}
+		root = Rect{pos = -size * pivot, size = size}
+		tw := transform_world(canvas_tH)
+		xform = trs_matrix(tw.position, tw.rotation, tw.scale)
+		in_world = true
+	}
+	return
+}
+
+// The canvas's nodes with WORLD transforms (canvas_placement applied), for
+// gizmos, picking and framing in the scene view. Returns the placement too.
+canvas_resolve_placed :: proc(canvas_tH: Transform_Handle, out: ^[dynamic]Node_Rect) -> (root: Rect, xform: matrix[4, 4]f32) {
+	root, xform, _ = canvas_placement(canvas_tH, _canvas_game_viewport)
+	canvas_resolve_rects(canvas_tH, root, out)
+	for &n in out do n.xform = xform * n.xform
+	return
 }
 
 // z01 NDC depth of the canvas plane in a Game view: just inside the near
@@ -401,7 +465,7 @@ rect_frame :: proc(tH: Transform_Handle) -> (f: Rect_Frame, ok: bool) {
 	parent_tH := Transform_Handle(t.parent.handle)
 
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
-	canvas_resolve_rects(canvas, canvas_world_rect(canvas), &nodes)
+	canvas_resolve_placed(canvas, &nodes)
 	for n in nodes {
 		if n.tH != parent_tH do continue
 		f.parent = n.rect
@@ -567,14 +631,13 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		if ct == nil || !transform_active_in_hierarchy(canvas.owner) do continue
 		if ct.render_layer & view.layer_mask == 0 do continue
 
-		root: Rect
-		scale := f32(1)
-		if view.kind == .Game {
-			root = canvas_rect(view, canvas.owner)
-			scale = canvas_scale(canvas.owner, {view.width, view.height})
-		} else {
-			root = canvas_world_rect(canvas.owner)
+		// A camera-space canvas is drawn by its camera only.
+		if canvas.render_mode == .ScreenSpaceCamera && view.kind == .Game {
+			if cam_tH := Transform_Handle(canvas.render_camera.handle); cam_tH != {} && cam_tH != view.camera do continue
 		}
+		screen := [2]f32{view.width, view.height} if view.kind == .Game else _canvas_game_viewport
+		root, canvas_xform, in_world := canvas_placement(canvas.owner, screen)
+		scale := canvas_scale(canvas.owner, screen)
 		clear(&nodes)
 		canvas_resolve_rects(canvas.owner, root, &nodes)
 		for n, i in nodes {
@@ -588,11 +651,16 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 			key[0] = sort_key_word(CANVAS_SORTING_LAYER, canvas.sort_order, 0, u16(i))
 			for q in quads {
 				if asset_guid_is_empty(q.texture) do continue
-				corners := graphic_quad_corners(q, n.xform)
-				if view.kind == .Game {
-					screen: [4][2]f32
-					for c, k in corners do screen[k] = c.xy * scale
-					corners = canvas_view_corners(view, screen)
+				corners: [4][3]f32
+				if in_world {
+					corners = graphic_quad_corners(q, canvas_xform * n.xform)
+				} else if view.kind == .Game {
+					corners = graphic_quad_corners(q, n.xform)
+					px: [4][2]f32
+					for c, k in corners do px[k] = c.xy * scale
+					corners = canvas_view_corners(view, px)
+				} else {
+					corners = graphic_quad_corners(q, n.xform)
 				}
 				append(out, Render_Command{
 					key     = key,
@@ -676,13 +744,43 @@ canvas_raycast :: proc(point: [2]f32, viewport: [2]f32) -> Transform_Handle {
 	}
 	slice.stable_sort_by(hit_canvases[:], proc(a, b: Hit_Canvas) -> bool { return a.sort_order < b.sort_order })
 
+	// Overlay canvases lie over the camera-space and world ones, so they are
+	// tested last and win.
+	slice.stable_sort_by(hit_canvases[:], proc(a, b: Hit_Canvas) -> bool {
+		_, ca := transform_get_comp(a.tH, Canvas)
+		_, cb := transform_get_comp(b.tH, Canvas)
+		oa := ca != nil && ca.render_mode == .ScreenSpaceOverlay
+		ob := cb != nil && cb.render_mode == .ScreenSpaceOverlay
+		return !oa && ob
+	})
+
 	hit: Transform_Handle
 	nodes := make([dynamic]Node_Rect, context.temp_allocator)
 	for c in hit_canvases {
-		scale := canvas_scale(c.tH, viewport)
-		root := Rect{pos = {0, 0}, size = viewport / scale}
-		// Viewport y is down, canvas y is up.
-		cp := [2]f32{point.x / scale, (viewport.y - point.y) / scale}
+		root, xform, in_world := canvas_placement(c.tH, viewport)
+		cp: [2]f32
+		if in_world {
+			// The pointer's camera ray against the canvas plane, in canvas units.
+			_, canvas := transform_get_comp(c.tH, Canvas)
+			cam := camera_active()
+			if canvas != nil && canvas.render_mode == .ScreenSpaceCamera {
+				if _, rc := transform_get_comp(Transform_Handle(canvas.render_camera.handle), Camera); rc != nil do cam = rc
+			}
+			if cam == nil do continue
+			ray := camera_screen_ray(cam, point, viewport)
+			origin := (xform * [4]f32{0, 0, 0, 1}).xyz
+			normal := linalg.normalize0((xform * [4]f32{0, 0, 1, 0}).xyz)
+			denom := linalg.dot(ray.direction, normal)
+			if math.abs(denom) < 1e-6 do continue
+			t := linalg.dot(origin - ray.origin, normal) / denom
+			if t < 0 do continue
+			local := linalg.inverse(xform) * [4]f32{ray.origin.x + ray.direction.x * t, ray.origin.y + ray.direction.y * t, ray.origin.z + ray.direction.z * t, 1}
+			cp = local.xy
+		} else {
+			scale := canvas_scale(c.tH, viewport)
+			// Viewport y is down, canvas y is up.
+			cp = {point.x / scale, (viewport.y - point.y) / scale}
+		}
 		clear(&nodes)
 		canvas_resolve_rects(c.tH, root, &nodes)
 		for n in nodes {

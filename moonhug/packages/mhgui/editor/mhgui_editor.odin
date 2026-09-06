@@ -113,7 +113,7 @@ _pick_ui :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform
 	for canvas, _ in engine.pool_next(&it) {
 		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
 		clear(&nodes)
-		engine.canvas_resolve_rects(canvas.owner, engine.canvas_world_rect(canvas.owner), &nodes)
+		engine.canvas_resolve_placed(canvas.owner, &nodes)
 		for n in nodes {
 			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
 			if cr == nil || !cr.enabled do continue
@@ -194,7 +194,8 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 @(on_draw_gizmos={component=Canvas})
 canvas_gizmos :: proc(c: ^engine.Canvas) {
 	if !engine.transform_active_in_hierarchy(c.owner) do return
-	handles.rect(engine.canvas_world_corners(engine.canvas_world_rect(c.owner)), _COLOR_CANVAS)
+	root, xform, _ := engine.canvas_placement(c.owner, engine.canvas_game_viewport())
+	handles.rect(engine.rect_corners(root, xform), _COLOR_CANVAS)
 }
 
 // --- Rect tool -----------------------------------------------------------------------
@@ -271,7 +272,7 @@ rect_transform_gizmos :: proc(rt: ^engine.RectTransform) {
 	parent_tH := engine.Transform_Handle(t.parent.handle)
 
 	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
-	engine.canvas_resolve_rects(canvas, engine.canvas_world_rect(canvas), &nodes)
+	engine.canvas_resolve_placed(canvas, &nodes)
 	rect, parent: engine.Rect
 	xform, parent_xform: matrix[4, 4]f32
 	have_rect, have_parent: bool
