@@ -1,3 +1,15 @@
+## [0.90.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.89.0...v0.90.0) (2026-09-06)
+
+### Features
+
+* canvas mode ScreenSpaceCamera, WorldSpace ([bed2778](https://github.com/MoonHug-Editor/moonhug/commit/bed2778b02bf65bede823682f411c2c57bbc9785))
+* component names match code, add component popup with search ([0b43bc8](https://github.com/MoonHug-Editor/moonhug/commit/0b43bc8e973aa80d9639d694c945b90f577fa11c))
+* organize add component menu ([4e46a4d](https://github.com/MoonHug-Editor/moonhug/commit/4e46a4dd1da84da8f59dc6e143e5d8b8562a3924))
+
+### Bug Fixes
+
+* remove additive scenes on stop simulate ([3a6ed6a](https://github.com/MoonHug-Editor/moonhug/commit/3a6ed6a89cab73bfcf47c147ac73a1ca05acf90d))
+
 ## [0.89.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.88.0...v0.89.0) (2026-09-06)
 
 ### Features
