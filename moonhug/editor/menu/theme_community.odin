@@ -450,9 +450,10 @@ style_colors_paper_and_ink :: proc() {
 	c[im.Col.FrameBg]                   = {1.000, 1.000, 1.000, 1.000}
 	c[im.Col.FrameBgHovered]            = {0.900, 0.920, 0.950, 1.000}
 	c[im.Col.FrameBgActive]             = {0.850, 0.880, 0.920, 1.000}
-	c[im.Col.TitleBg]                   = {0.920, 0.920, 0.900, 1.000}
+	// An unfocused bar sits one step darker than the focused one.
+	c[im.Col.TitleBg]                   = {0.840, 0.840, 0.820, 1.000}
 	c[im.Col.TitleBgActive]             = {0.880, 0.880, 0.860, 1.000}
-	c[im.Col.TitleBgCollapsed]          = {0.920, 0.920, 0.900, 0.750}
+	c[im.Col.TitleBgCollapsed]          = {0.840, 0.840, 0.820, 0.750}
 	c[im.Col.MenuBarBg]                 = {0.920, 0.920, 0.900, 1.000}
 	c[im.Col.ScrollbarBg]               = {0.960, 0.960, 0.940, 1.000}
 	c[im.Col.ScrollbarGrab]             = {0.800, 0.800, 0.780, 1.000}
@@ -471,10 +472,14 @@ style_colors_paper_and_ink :: proc() {
 	c[im.Col.TableBorderStrong]         = {0.750, 0.750, 0.720, 1.000}
 	c[im.Col.TableBorderLight]          = {0.850, 0.850, 0.820, 1.000}
 	c[im.Col.TableRowBgAlt]             = {0.000, 0.000, 0.000, 0.030}
-	c[im.Col.Tab]                       = {0.920, 0.920, 0.900, 1.000}
+	// Inactive tabs take the tab bar background so only the selected tab
+	// stands out. A dock node draws its bar with TitleBgActive when focused
+	// and TitleBg otherwise, and picks Tab / TabDimmed to match, so each
+	// inactive color mirrors the bar color of the same state.
+	c[im.Col.Tab]                       = {0.880, 0.880, 0.860, 1.000}
 	c[im.Col.TabHovered]                = {1.000, 1.000, 1.000, 1.000}
 	c[im.Col.TabSelected]               = {1.000, 1.000, 1.000, 1.000}
-	c[im.Col.TabDimmed]                 = {0.920, 0.920, 0.900, 1.000}
+	c[im.Col.TabDimmed]                 = {0.840, 0.840, 0.820, 1.000}
 	c[im.Col.TabDimmedSelected]         = {0.960, 0.960, 0.940, 1.000}
 	c[im.Col.PlotLines]                 = {0.170, 0.340, 0.590, 1.000}
 	c[im.Col.PlotHistogram]             = {0.170, 0.340, 0.590, 1.000}
