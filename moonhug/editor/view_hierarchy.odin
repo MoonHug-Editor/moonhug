@@ -11,6 +11,7 @@ import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import "menu"
 import "undo"
+import "moonhug:editor/widgets"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -238,7 +239,7 @@ draw_hierarchy_view :: proc() {
 			filter_query = ""
 		}
 	}
-	filter := strings.to_lower(filter_query, context.temp_allocator)
+	filter := widgets.search_terms(filter_query)
 
 	im.PushStyleVarY(im.StyleVar.ItemSpacing, 1)
 	im.PushStyleVarY(im.StyleVar.FramePadding, 1)
@@ -299,7 +300,7 @@ draw_hierarchy_view :: proc() {
 		active_sel := sel_scene_active()
 		// Not while a text input (filter box) owns the keyboard.
 		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
-			if filter != "" && im.IsKeyPressed(im.Key.Escape) {
+			if len(filter) > 0 && im.IsKeyPressed(im.Key.Escape) {
 				mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
 			}
 			if active_sel != _HANDLE_NONE {
@@ -313,7 +314,7 @@ draw_hierarchy_view :: proc() {
 }
 
 @(private)
-_draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter := "") {
+_draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []string = nil) {
 	scene_name := "Untitled"
 	if len(scene.path) > 0 {
 		scene_name = filepath.stem(scene.path)
@@ -462,7 +463,7 @@ _draw_save_as_popup :: proc(scene: ^engine.Scene) {
 }
 
 @(private)
-_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, host_ns: map[engine.Transform_Handle]^engine.NestedScene, is_root := false, parent_inactive := false, parent_nested := false, filter := "") {
+_draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, host_ns: map[engine.Transform_Handle]^engine.NestedScene, is_root := false, parent_inactive := false, parent_nested := false, filter: []string = nil) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -478,8 +479,8 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// Filtered mode: matching nodes draw as FLAT leaf rows (selection, rename,
 	// context menu and the ">" enter button all work as usual); non-matching
 	// nodes draw nothing and only recurse to find deeper matches.
-	filtered := filter != ""
-	if filtered && !strings.contains(strings.to_lower(t.name, context.temp_allocator), filter) {
+	filtered := len(filter) > 0
+	if filtered && !widgets.search_match(t.name, filter) {
 		children_copy := make([]engine.Ref, len(t.children), context.temp_allocator)
 		copy(children_copy, t.children[:])
 		for child in children_copy {

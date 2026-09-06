@@ -6,6 +6,7 @@ import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
+import "moonhug:editor/widgets"
 
 // engine.Ref (PPtr): local OR cross-asset reference — both picker tabs are
 // assignable. A Scene pick stores {local_id, guid: 0} + live handle; a Project
@@ -80,7 +81,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 						objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
 						shown := 0
 						for obj in objects {
-							if search != "" && !strings.contains(strings.to_lower(obj.name, context.temp_allocator), search) {
+							if !widgets.search_match(obj.name, search) {
 								continue
 							}
 							shown += 1

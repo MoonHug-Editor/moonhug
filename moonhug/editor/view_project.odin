@@ -1207,12 +1207,12 @@ _project_item_extras :: proc(full_path: string, is_dir: bool, drag_label: cstrin
 // it's both the cheapest and the freshest source — no directory re-walk.
 // Returns the match count for the status line.
 _project_draw_search_results :: proc(query: string) -> int {
-    q := strings.to_lower(query, context.temp_allocator)
+    terms := widgets.search_terms(query)
 
     matches := make([dynamic]string, context.temp_allocator)
     for path in engine.asset_db.path_to_guid {
         name := filepath.base(path)
-        if strings.contains(strings.to_lower(name, context.temp_allocator), q) {
+        if widgets.search_match(name, terms) {
             append(&matches, path)
         }
     }

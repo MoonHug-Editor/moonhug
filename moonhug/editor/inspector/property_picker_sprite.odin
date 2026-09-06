@@ -18,6 +18,7 @@ import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
+import "moonhug:editor/widgets"
 
 _SPRITE_REF_EXTS := [?]string{".png", ".jpg", ".jpeg", ".bmp"}
 
@@ -96,9 +97,9 @@ sprite_ref_row :: proc(label: cstring, ref: ^engine.PPtr) -> (changed: bool) {
 // id 0 on every slice, and an id-0 slice reference MEANS the whole texture,
 // so those are skipped rather than listed wrong.
 @(private = "file")
-_sprite_ref_rows :: proc(search: string, current: engine.PPtr) -> (picked: engine.PPtr, ok: bool) {
-	row :: proc(label: string, ref: engine.PPtr, current: engine.PPtr, search: string, shown: ^int, picked: ^engine.PPtr, ok: ^bool) {
-		if search != "" && !strings.contains(strings.to_lower(label, context.temp_allocator), search) do return
+_sprite_ref_rows :: proc(search: []string, current: engine.PPtr) -> (picked: engine.PPtr, ok: bool) {
+	row :: proc(label: string, ref: engine.PPtr, current: engine.PPtr, search: []string, shown: ^int, picked: ^engine.PPtr, ok: ^bool) {
+		if !widgets.search_match(label, search) do return
 		shown^ += 1
 		c_label := strings.clone_to_cstring(fmt.tprintf("%s##row_%d", label, shown^), context.temp_allocator)
 		if im.Selectable(c_label, ref == current) {

@@ -7,6 +7,7 @@ import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
+import "moonhug:editor/widgets"
 
 @(property_drawer={type = engine.Asset_GUID, priority = 0})
 draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -88,7 +89,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // Rows of scene assets whose root carries `key` (INVALID_TYPE_KEY: every
 // asset, pptr local_id 0), name-filtered by `search`. Returns true and writes
 // `picked` when a row is clicked (picked may be nil for display-only lists).
-_picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.PPtr) -> bool {
+_picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engine.PPtr) -> bool {
     Candidate :: struct {
         path:  string,
         entry: engine.PPtr,
@@ -112,7 +113,7 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: string, picked: ^engine.
     for cand in candidates {
         if !_ext_filter_matches(cand.path) do continue
         name := filepath_base(cand.path)
-        if search != "" && !strings.contains(strings.to_lower(name, context.temp_allocator), search) {
+        if !widgets.search_match(name, search) {
             continue
         }
         shown += 1

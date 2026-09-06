@@ -7,6 +7,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
 import "../undo"
+import "moonhug:editor/widgets"
 
 // Material icon codepoints, duplicated from editor/material_icons.odin — the
 // inspector package cannot import editor (editor imports inspector).
@@ -20,14 +21,14 @@ _picker_search_buf: [128]byte
 
 // Draw the popup's search input (focused on open) and return the lowercase
 // query (temp-allocated).
-_picker_search_bar :: proc() -> string {
+_picker_search_bar :: proc() -> []string {
 	if im.IsWindowAppearing() {
 		mem.zero(&_picker_search_buf, len(_picker_search_buf))
 		im.SetKeyboardFocusHere()
 	}
 	im.SetNextItemWidth(220)
 	im.InputTextWithHint("##picker_search", "Search", cstring(raw_data(_picker_search_buf[:])), uint(len(_picker_search_buf)))
-	return strings.to_lower(strings.trim_space(string(cstring(raw_data(_picker_search_buf[:])))), context.temp_allocator)
+	return widgets.search_terms(string(cstring(raw_data(_picker_search_buf[:]))))
 }
 
 // Unity-like reference field row: Label [value][x][pick]. Single click on the
@@ -181,7 +182,7 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 					objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
 					shown := 0
 					for obj in objects {
-						if search != "" && !strings.contains(strings.to_lower(obj.name, context.temp_allocator), search) {
+						if !widgets.search_match(obj.name, search) {
 							continue
 						}
 						shown += 1

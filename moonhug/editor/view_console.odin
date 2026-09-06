@@ -131,12 +131,7 @@ draw_console_view :: proc() {
 		im.BeginChild("ConsoleScroll", im.Vec2{0, scroll_h}, {.Borders})
 		im.PopStyleVar()
 
-		filter_str := string(cstring(raw_data(_console_filter[:])))
-		filter_terms := strings.fields(filter_str, context.temp_allocator)
-		filter_terms_lower := make([]string, len(filter_terms), context.temp_allocator)
-		for term, i in filter_terms {
-			filter_terms_lower[i] = strings.to_lower(term, context.temp_allocator)
-		}
+		filter_terms := widgets.search_terms(string(cstring(raw_data(_console_filter[:]))))
 
 		// Ids of rows drawn this frame, in draw order — the up/down keys walk
 		// this list so navigation follows the active level/text filters.
@@ -153,17 +148,7 @@ draw_console_view :: proc() {
 				if !_console_show_error do continue
 			}
 
-			if len(filter_terms_lower) > 0 {
-				msg_lower := strings.to_lower(entry.message, context.temp_allocator)
-				matched := true
-				for term in filter_terms_lower {
-					if !strings.contains(msg_lower, term) {
-						matched = false
-						break
-					}
-				}
-				if !matched do continue
-			}
+			if !widgets.search_match(entry.message, filter_terms) do continue
 
 			// Unity-style row: a large level icon spanning both text rows in a
 			// left column, then "[hh:mm:ss] message" and a dimmed source line.

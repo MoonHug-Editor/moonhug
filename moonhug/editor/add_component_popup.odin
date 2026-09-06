@@ -11,6 +11,7 @@ package editor
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "menu"
+import "moonhug:editor/widgets"
 
 @(private = "file") _AC_WIDTH :: f32(260)
 @(private = "file") _AC_LIST_HEIGHT :: f32(300)
@@ -45,7 +46,7 @@ add_component_popup_draw :: proc() {
 	if im.InputTextWithHint("##ac_search", "Search", cstring(raw_data(_ac_search[:])), len(_ac_search)) {
 		_ac_highlight = 0
 	}
-	query := strings.to_lower(string(cstring(raw_data(_ac_search[:]))), context.temp_allocator)
+	query := strings.trim_space(string(cstring(raw_data(_ac_search[:]))))
 
 	if query == "" {
 		_ac_draw_tree(root)
@@ -94,9 +95,8 @@ _ac_draw_tree :: proc(root: ^menu.MenuNode) {
 // follows the keyboard; Enter picks it.
 @(private = "file")
 _ac_draw_matches :: proc(root: ^menu.MenuNode, query: string) {
-	words := strings.fields(query, context.temp_allocator)
 	matches := make([dynamic]_Ac_Match, context.temp_allocator)
-	_ac_collect(root, "", words, &matches)
+	_ac_collect(root, "", widgets.search_terms(query), &matches)
 
 	if im.IsKeyPressed(.DownArrow) do _ac_highlight += 1
 	if im.IsKeyPressed(.UpArrow) do _ac_highlight -= 1
@@ -131,10 +131,9 @@ _ac_collect :: proc(node: ^menu.MenuNode, category: string, words: []string, out
 			sub := child.name if category == "" else strings.concatenate({category, "/", child.name}, context.temp_allocator)
 			_ac_collect(child, sub, words, out)
 		case .Action, .Toggle:
-			haystack := strings.to_lower(strings.concatenate({category, "/", child.name}, context.temp_allocator), context.temp_allocator)
-			all := true
-			for w in words do if !strings.contains(haystack, w) { all = false; break }
-			if all do append(out, _Ac_Match{node = child, category = category})
+			if widgets.search_match(strings.concatenate({category, "/", child.name}, context.temp_allocator), words) {
+				append(out, _Ac_Match{node = child, category = category})
+			}
 		case .Separator:
 		}
 	}

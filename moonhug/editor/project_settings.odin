@@ -108,11 +108,11 @@ project_settings_window_draw :: proc() {
 	im.BeginChild("##ps_sections", im.Vec2{left_w, 0}, {}, {})
 	im.SetNextItemWidth(-1)
 	im.InputTextWithHint("##ps_filter", "Filter", cstring(raw_data(_settings_filter[:])), c.size_t(len(_settings_filter)), {})
-	filter := strings.to_lower(string(cstring(raw_data(_settings_filter[:]))), context.temp_allocator)
+	filter := widgets.search_terms(string(cstring(raw_data(_settings_filter[:]))))
 
 	selected := _settings_selected_tab()
 	for &tab in _settings_tabs {
-		if filter != "" && !strings.contains(strings.to_lower(tab.name, context.temp_allocator), filter) {
+		if !widgets.search_match(tab.name, filter) {
 			continue
 		}
 		if im.Selectable(

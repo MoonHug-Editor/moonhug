@@ -14,6 +14,7 @@ import "moonhug:engine"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import "moonhug:editor/subassets"
+import "moonhug:editor/widgets"
 
 _MODEL_EXTS := [?]string{".glb", ".gltf"}
 
@@ -104,9 +105,9 @@ _mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 
 // Every model (whole) and every part, "model" or "model/part", name-filtered.
 // Row IDs scope by list order, never by the reference.
-_mesh_picker_rows :: proc(search: string, current: engine.PPtr) -> (picked: engine.PPtr, ok: bool) {
-	row :: proc(label: string, ref: engine.PPtr, current: engine.PPtr, search: string, shown: ^int, picked: ^engine.PPtr, ok: ^bool) {
-		if search != "" && !strings.contains(strings.to_lower(label, context.temp_allocator), search) do return
+_mesh_picker_rows :: proc(search: []string, current: engine.PPtr) -> (picked: engine.PPtr, ok: bool) {
+	row :: proc(label: string, ref: engine.PPtr, current: engine.PPtr, search: []string, shown: ^int, picked: ^engine.PPtr, ok: ^bool) {
+		if !widgets.search_match(label, search) do return
 		shown^ += 1
 		c_label := strings.clone_to_cstring(fmt.tprintf("%s##row_%d", label, shown^), context.temp_allocator)
 		if im.Selectable(c_label, ref == current) {
