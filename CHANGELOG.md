@@ -1,3 +1,9 @@
+## [0.88.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.87.0...v0.88.0) (2026-09-06)
+
+### Features
+
+* rect transform inspector UX ([4d69c93](https://github.com/MoonHug-Editor/moonhug/commit/4d69c93bd0da7dde510a67e270f4a76ac82d0756))
+
 ## [0.87.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.86.0...v0.87.0) (2026-09-06)
 
 ### Features
