@@ -1,3 +1,10 @@
+## [0.92.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.91.0...v0.92.0) (2026-09-06)
+
+### Features
+
+* draw tab menu button instead of close all tabs ([1dacf30](https://github.com/MoonHug-Editor/moonhug/commit/1dacf3075194585ff4e7f134af9099d69cd04c29))
+* scene view toolbars, game view toolbar ([0687b96](https://github.com/MoonHug-Editor/moonhug/commit/0687b9654154fc82385926c474667c77c1e2c5a6))
+
 ## [0.91.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.90.0...v0.91.0) (2026-09-06)
 
 ### Features
