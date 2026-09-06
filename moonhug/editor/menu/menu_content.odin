@@ -43,8 +43,11 @@ apply_theme :: proc() {
     // Tighter per-level tree indent (matches Unity's 14px) vs imgui's ~21px.
     s.IndentSpacing = 14
     // No collapse triangle before a window's title or a dock node's tabs
-    // (Unity has none; tabs start at the panel edge).
+    // (Unity has none; tabs start at the panel edge), and no close-all button
+    // on a dock node: closing every docked view at once is a click away from
+    // the tab bar and rarely wanted. Each tab keeps its own X.
     s.WindowMenuButtonPosition = .None
+    s.DockingNodeHasCloseButton = false
 }
 
 // imgui's stock themes fill ProgressBar (PlotHistogram) with a bright
@@ -107,6 +110,27 @@ _open_window :: proc(show: ^bool, title: cstring) {
 	show^ = true
 	im.SetWindowFocusStr(title)
 }
+
+// The open flag behind a built-in view's window title, so the tab menu can
+// close the tab it is opened on. Plugin windows keep their own list
+// (window/window.odin), so this returns nil for them.
+view_show_flag :: proc(title: cstring) -> ^bool {
+	switch title {
+	case icons.TITLE_SCENE:             return &show_scene
+	case icons.TITLE_GAME:              return &show_game
+	case icons.TITLE_INSPECTOR:         return &show_inspector
+	case icons.TITLE_PROJECT_INSPECTOR: return &show_project_inspector
+	case icons.TITLE_HIERARCHY:         return &show_hierarchy
+	case icons.TITLE_PROJECT:           return &show_project
+	case icons.TITLE_CONSOLE:           return &show_console
+	case icons.TITLE_OUTPUT:            return &show_output
+	case icons.TITLE_HISTORY:           return &show_history
+	case icons.TITLE_ANIMATION:         return &show_animation
+	case icons.TITLE_PLAYABLE_GRAPH:    return &show_playable_graph
+	}
+	return nil
+}
+
 
 @(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1"})
 window_menu_scene :: proc() { _open_window(&show_scene, icons.TITLE_SCENE) }

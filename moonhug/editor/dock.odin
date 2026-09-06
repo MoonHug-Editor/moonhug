@@ -37,6 +37,8 @@ draw_dockspace :: proc() {
 			_dock_build_default_layout(dockspace_id, size)
 		}
 		im.DockSpace(dockspace_id, im.Vec2{0, 0}, {}, nil)
+		// Unity's tab context menu button on every node's tab bar.
+		tab_menu_draw_all(im.DockBuilderGetNode(dockspace_id))
 	}
 	im.End()
 }

@@ -112,6 +112,25 @@ draw_menu_subtree :: proc(path: string) {
 	_draw_menu_children(node)
 }
 
+// Draw a subtree's children, leaving out the ones named in `skip`. The tab
+// menu shows the Window subtree without its Theme and Reset Layout entries,
+// which are editor-wide rather than per-tab.
+draw_menu_subtree_except :: proc(path: string, skip: []string) {
+	node := _get_or_create_path(path)
+	if node == nil do return
+	for child in node.children {
+		skipped := false
+		for name in skip {
+			if child.name == name {
+				skipped = true
+				break
+			}
+		}
+		if skipped do continue
+		_draw_menu_child(child)
+	}
+}
+
 // Menu_Section selects a slice of one subtree's direct children by order band.
 // Build with section() — the struct's zero value filters everything out.
 Menu_Section :: struct {
