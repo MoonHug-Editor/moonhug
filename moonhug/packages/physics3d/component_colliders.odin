@@ -12,7 +12,7 @@ package physics3d
 import b3 "vendor:box3d"
 import "moonhug:engine"
 
-@(component={menu="Physics/Box Collider"})
+@(component={menu="Physics/BoxCollider"})
 @(typ_guid={guid = "13101cd5-e0a6-49d4-a310-953001ebae6b"})
 BoxCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -38,7 +38,7 @@ cleanup_BoxCollider :: proc(comp: ^BoxCollider) {
 	engine.comp_zero(comp)
 }
 
-@(component={menu="Physics/Sphere Collider"})
+@(component={menu="Physics/SphereCollider"})
 @(typ_guid={guid = "8295fbf3-a792-4f02-9bea-b63fc056b99f"})
 SphereCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,
@@ -71,7 +71,7 @@ Capsule_Direction :: enum {
 	Z_Axis,
 }
 
-@(component={menu="Physics/Capsule Collider"})
+@(component={menu="Physics/CapsuleCollider"})
 @(typ_guid={guid = "91ddc047-6a91-4142-bc9c-d219570192b6"})
 CapsuleCollider :: struct {
 	using base:  engine.CompData `inspect:"-"`,

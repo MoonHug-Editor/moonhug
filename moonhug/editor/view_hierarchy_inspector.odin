@@ -1588,7 +1588,7 @@ _draw_add_component_button :: proc(t: ^engine.Transform, tH: engine.Transform_Ha
 	}
 
 	if im.BeginPopup("##AddComponentPopup") {
-		menu.draw_menu_subtree("Component")
+		add_component_popup_draw()
 		im.EndPopup()
 	}
 }

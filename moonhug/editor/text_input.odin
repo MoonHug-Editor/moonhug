@@ -25,12 +25,23 @@ _INPUT_FLAGS_LOCK_THIS_FRAME := transmute(im.InputFlags)i32(1 << 20)
 @(private = "file")
 _INPUT_TEXT_FLAGS_MULTILINE := transmute(im.InputTextFlags)i32(1 << 26)
 
+// True on a frame the hook took Escape from a text field: the key reads as
+// unpressed for everyone else that frame, so a widget that also wants to act
+// on that Escape (the Add Component popup closing) asks here.
+@(private = "file") _escape_consumed: bool
+
+text_input_escape_consumed :: proc() -> bool {
+	return _escape_consumed
+}
+
 text_input_escape_frame :: proc() {
+	_escape_consumed = false
 	if !im.IsKeyPressed(.Escape, false) do return
 	id := im.GetActiveID()
 	if id == 0 do return
 	state := im.GetInputTextState(id)
 	if state == nil || state.ID_ != id do return
+	_escape_consumed = true
 	im.SetKeyOwner(.Escape, 0, _INPUT_FLAGS_LOCK_THIS_FRAME)
 	if .EnterReturnsTrue in state.Flags && state.Flags & _INPUT_TEXT_FLAGS_MULTILINE == {} {
 		io := im.GetIO()

@@ -33,7 +33,7 @@ Rect_Offset :: struct {
 // cell_size, and its rect comes from the flow. Children without a
 // RectTransform stay out of the layout. Plugged into the engine's rect walk
 // as a layout provider (engine.canvas_layout_register).
-@(component={menu="UI/Layout Group"})
+@(component={menu="UI/LayoutGroup"})
 @(typ_guid={guid = "de2516a6-7a94-4f67-9c0b-fc2d4c78dbdd"})
 LayoutGroup :: struct {
 	using base:       engine.CompData `inspect:"-"`,

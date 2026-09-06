@@ -89,7 +89,7 @@ Burst :: struct {
 	probability: f32,
 }
 
-@(component={menu="Effects/Particle System"})
+@(component={menu="Effects/ParticleSystem"})
 @(typ_guid={guid = "e5a7c2d1-4b3f-4c89-9a16-7d02e8b5f4a3"})
 ParticleSystem :: struct {
 	using base: engine.CompData `inspect:"-"`,

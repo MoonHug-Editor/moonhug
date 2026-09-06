@@ -6,7 +6,7 @@ package audio
 import mix "vendor:sdl3/mixer"
 import engine "moonhug:engine"
 
-@(component={menu="Audio/Audio Source"})
+@(component={menu="Audio/AudioSource"})
 @(typ_guid={guid="6f7fb020-d764-4ce1-bc09-d8088356bd22"})
 AudioSource :: struct {
 	using base:    engine.CompData `inspect:"-"`,

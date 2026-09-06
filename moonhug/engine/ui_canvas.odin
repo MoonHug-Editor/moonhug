@@ -28,7 +28,7 @@ Rect :: struct {
 // it, size_delta grows that sub-rect, and the pivot lands on the anchor
 // reference point plus anchored_position. The node's Transform position
 // takes no part; rotation and scale apply around the pivot.
-@(component={menu="UI/Rect Transform"})
+@(component={menu="UI/RectTransform"})
 @(typ_guid={guid = "36e133bb-7979-48ba-8b1b-57385558f37d"})
 RectTransform :: struct {
 	using base:        CompData `inspect:"-"`,
@@ -83,7 +83,7 @@ reset_Canvas :: proc(c: ^Canvas) {
 
 // Makes a canvas receive pointer events: the pointer pass (canvas_raycast)
 // only looks at canvases carrying one. GameObject > UI > Canvas adds it.
-@(component={menu="UI/Graphic Raycaster"})
+@(component={menu="UI/GraphicRaycaster"})
 @(typ_guid={guid = "b625f6b5-e1fd-4590-9757-ffa073e23bef"})
 GraphicRaycaster :: struct {
 	using base:               CompData `inspect:"-"`,
@@ -98,7 +98,7 @@ reset_GraphicRaycaster :: proc(r: ^GraphicRaycaster) {
 // (packages/mhgui Image); a CanvasRenderer without one draws nothing.
 // Disabling it hides the node's graphic without touching the graphic's
 // settings.
-@(component={menu="UI/Canvas Renderer"})
+@(component={menu="UI/CanvasRenderer"})
 @(typ_guid={guid = "56334c3e-5a5d-4a74-981f-3682e7c9dc9a"})
 CanvasRenderer :: struct {
 	using base: CompData `inspect:"-"`,
@@ -127,7 +127,7 @@ Scale_Mode :: enum u8 {
 
 // Scales the canvas as a whole so a layout authored once holds up across
 // window sizes. Without a CanvasScaler one canvas unit is one screen pixel.
-@(component={menu="UI/Canvas Scaler"})
+@(component={menu="UI/CanvasScaler"})
 @(typ_guid={guid = "39805feb-6d86-481c-bb1a-f662b7309f64"})
 CanvasScaler :: struct {
 	using base:           CompData `inspect:"-"`,

@@ -231,6 +231,24 @@ collect_action_paths :: proc(allocator := context.temp_allocator) -> []string {
 	return out[:]
 }
 
+// The node at `path`, nil when no item registered under it. For widgets that
+// present a subtree their own way (the Add Component popup).
+node_at :: proc(path: string) -> ^MenuNode {
+	parts := strings.split(path, "/", context.temp_allocator)
+	node := _menu_root
+	for part in parts {
+		name := strings.trim_space(part)
+		if name == "" do continue
+		node = _find_child(node, name)
+		if node == nil do return nil
+	}
+	return node
+}
+
+node_enabled :: proc(node: ^MenuNode) -> bool {
+	return _node_enabled(node)
+}
+
 _get_or_create_path :: proc(path: string) -> ^MenuNode {
 	parts := strings.split(path, "/")
 	defer delete(parts)

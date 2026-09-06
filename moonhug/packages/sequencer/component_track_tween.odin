@@ -24,7 +24,7 @@ package sequencer
 import "moonhug:engine"
 import core "moonhug:packages/sequencer/core"
 
-@(component={menu="Sequencer/Tracks/Tween"})
+@(component={menu="Sequencer/Tracks/TrackTween"})
 @(typ_guid={guid = "e45dd366-bc5b-4bb8-81e7-67b339a55680"})
 TrackTween :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -34,7 +34,7 @@ TrackTween :: struct {
 	target: engine.Ref_Local `ref:"Transform"`,
 }
 
-@(component={menu="Sequencer/Clips/Tween"})
+@(component={menu="Sequencer/Clips/ClipTween"})
 @(typ_guid={guid = "0f1d4bcc-cf05-4958-8d73-775b9e28a18e"})
 ClipTween :: struct {
 	using base: engine.CompData `inspect:"-"`,
