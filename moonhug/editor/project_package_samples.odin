@@ -21,6 +21,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "inspector"
 import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/icons"
 
 Sample_State :: enum {
 	Not_Installed,
@@ -187,7 +188,7 @@ package_samples_draw :: proc(pkg: string) {
 		w: f32
 		switch s.state {
 		case .Copied, .Linked:
-			icon: cstring = s.state == .Linked ? ICON_MD_LINK : ICON_MD_FOLDER_CHECK
+			icon: cstring = s.state == .Linked ? icons.ICON_MD_LINK : icons.ICON_MD_FOLDER_CHECK
 			w = im.CalcTextSize(icon).x + style.ItemSpacing.x + btn_w("Remove")
 			im.SameLine()
 			im.SetCursorPosX(im.GetCursorPosX() + im.GetContentRegionAvail().x - w)

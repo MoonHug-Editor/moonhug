@@ -223,7 +223,7 @@ _se_apply :: proc() {
 	_se.dirty = false
 }
 
-@(editor_window={id="sprite_editor", title="Sprite Editor", width=940, height=640})
+@(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640})
 sprite_editor_window_draw :: proc() {
 	if _se.path == "" {
 		im.TextDisabled("Select a texture in the Project view and press Sprite Editor.")

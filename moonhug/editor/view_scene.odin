@@ -11,6 +11,7 @@ import sprites "moonhug:packages/sprites"
 import "inspector"
 import "moonhug:editor/handles"
 import "core:strings"
+import "moonhug:editor/icons"
 
 scene_rt: ^gfx.Render_Target
 
@@ -595,7 +596,7 @@ draw_scene_view :: proc() {
 	// freshly appearing or resizing overlay can momentarily extend past the
 	// window edge — a scrollbar would shrink the content region, resize the
 	// RT and shift the image, oscillating for frames.
-	if im.Begin("Scene", &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
+	if im.Begin(icons.TITLE_SCENE, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
 		if _scene_2d_pending {
 			_scene_2d_pending = false
 			scene_set_2d(true)
@@ -672,10 +673,10 @@ draw_tools_overlay :: proc(vertical: bool) {
 			gizmo_mode = mode
 		}
 	}
-	mode_button(ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical, first = true)
-	mode_button(ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
-	mode_button(ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
-	mode_button(ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
+	mode_button(icons.ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical, first = true)
+	mode_button(icons.ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
+	mode_button(icons.ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
+	mode_button(icons.ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
 }
 
 // View overlay: Unity's 2D toggle.
@@ -696,9 +697,9 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	// Vertical dock: icon-only square buttons (the words won't fit the column).
 	pivot_label: cstring
 	if vertical {
-		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN : ICON_MD_CENTER_FOCUS
+		pivot_label = gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN : icons.ICON_MD_CENTER_FOCUS
 	} else {
-		pivot_label = gizmo_pivot == .Pivot ? ICON_MD_TRIP_ORIGIN + " Pivot" : ICON_MD_CENTER_FOCUS + "Center"
+		pivot_label = gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN + " Pivot" : icons.ICON_MD_CENTER_FOCUS + "Center"
 	}
 	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		gizmo_pivot = gizmo_pivot == .Pivot ? .Center : .Pivot
@@ -707,9 +708,9 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	if !vertical do im.SameLine()
 	label: cstring
 	if vertical {
-		label = gizmo_space == .Global ? ICON_MD_PUBLIC : ICON_MD_DEPLOYED_CODE
+		label = gizmo_space == .Global ? icons.ICON_MD_PUBLIC : icons.ICON_MD_DEPLOYED_CODE
 	} else {
-		label = gizmo_space == .Global ? ICON_MD_PUBLIC + " World" : ICON_MD_DEPLOYED_CODE + " Local"
+		label = gizmo_space == .Global ? icons.ICON_MD_PUBLIC + " World" : icons.ICON_MD_DEPLOYED_CODE + " Local"
 	}
 	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		gizmo_space = gizmo_space == .Global ? .Local : .Global
@@ -727,7 +728,7 @@ _grid_last_planes := Grid_Settings{show_xz = true}
 draw_grid_overlay :: proc(vertical: bool) {
 	gs := &grid_settings
 	any_plane := gs.show_xz || gs.show_xy || gs.show_yz
-	toggled, arrow := overlay_split_button("grid", ICON_MD_GRID_ON, "Toggle grid", any_plane)
+	toggled, arrow := overlay_split_button("grid", icons.ICON_MD_GRID_ON, "Toggle grid", any_plane)
 	if toggled {
 		if any_plane {
 			_grid_last_planes = gs^ // remember which planes were showing
@@ -768,7 +769,7 @@ draw_grid_overlay :: proc(vertical: bool) {
 @(scene_overlay={id="Grid", order=210})
 draw_snap_overlay :: proc(vertical: bool) {
 	if !vertical do im.SameLine()
-	toggled, arrow := overlay_split_button("snap", ICON_MD_SNAP, "Toggle snap (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled)
+	toggled, arrow := overlay_split_button("snap", icons.ICON_MD_SNAP, "Toggle snap (hold Ctrl / Cmd on mac to invert while dragging)", snap_settings.enabled)
 	if toggled do snap_settings.enabled = !snap_settings.enabled
 	if arrow do im.OpenPopup("##snap_settings")
 	if im.BeginPopup("##snap_settings") {

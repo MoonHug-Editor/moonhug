@@ -16,6 +16,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import input "../engine/input"
 import "menu"
+import "moonhug:editor/icons"
 
 @(private="file")
 _dbg_text :: proc(format: string, args: ..any) {
@@ -23,7 +24,7 @@ _dbg_text :: proc(format: string, args: ..any) {
 }
 
 draw_input_debug :: proc() {
-	if !im.Begin("Input Debug", &menu.show_input_debug, {}) {
+	if !im.Begin(icons.TITLE_INPUT_DEBUG, &menu.show_input_debug, {}) {
 		im.End()
 		return
 	}

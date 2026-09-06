@@ -338,7 +338,7 @@ id, the way Unity's `[MenuItem]` calls `EditorWindow.GetWindow`:
 ```odin
 import wnd "moonhug:editor/window"
 
-@(editor_window={id="physics2d", title="Physics 2D", width=420, height=240})
+@(editor_window={id="physics2d", title="Physics 2D", icon="TUNE", width=420, height=240})
 draw_physics_debug :: proc() {
     // window CONTENT only — Begin/End, the close button and the open flag
     // belong to the host
@@ -350,13 +350,18 @@ open_physics_debug :: proc() {
 }
 ```
 
-- `title` defaults to the id. `width`/`height` are the first-shown size,
-  applied only while imgui.ini has no entry for the title (`FirstUseEver`) —
-  once the user resizes or docks it, imgui.ini wins.
+- `title` defaults to the id. `icon` names a Material Symbols glyph from
+  `editor/icons` without the `ICON_MD_` prefix and draws before the tab label
+  (default `EXTENSION`). `width`/`height` are the first-shown size, applied
+  only while imgui.ini has no entry for the id (`FirstUseEver`) — once the
+  user resizes or docks it, imgui.ini wins.
 - `open` focuses the window if it is already open. Any code path can call it —
   a button or context menu works as well as a menu item.
 - The open list is process-lifetime (reopen from the menu after a restart);
-  dock position and size persist in imgui.ini by title.
+  dock position and size persist in imgui.ini by id. The imgui title is
+  `"<icon> <title>###<id>"`, so icon and title changes never move a window.
+  `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the
+  id on startup for layouts saved with title-keyed windows.
 - Declarations land in `editor/editor_windows_generated.odin`
   (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 

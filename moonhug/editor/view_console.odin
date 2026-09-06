@@ -8,6 +8,7 @@ import im "moonhug:external/odin-imgui"
 import "menu"
 import "moonhug:editor/widgets"
 import "../engine/log"
+import "moonhug:editor/icons"
 
 _console_last_count: int
 _console_show_info:    bool = true
@@ -33,11 +34,11 @@ _console_level_color :: proc(level: log.Level) -> im.Vec4 {
 
 _console_level_icon :: proc(level: log.Level) -> string {
 	switch level {
-	case .Info:    return ICON_MD_INFO
-	case .Warning: return ICON_MD_WARNING
-	case .Error:   return ICON_MD_ERROR
+	case .Info:    return icons.ICON_MD_INFO
+	case .Warning: return icons.ICON_MD_WARNING
+	case .Error:   return icons.ICON_MD_ERROR
 	}
-	return ICON_MD_INFO
+	return icons.ICON_MD_INFO
 }
 
 // The raw codepoint of each level icon, for per-glyph metric lookups.
@@ -82,7 +83,7 @@ draw_status_bar :: proc() {
 }
 
 draw_console_view :: proc() {
-	if im.Begin("Console", &menu.show_console, {.NoCollapse}) {
+	if im.Begin(icons.TITLE_CONSOLE, &menu.show_console, {.NoCollapse}) {
 		if im.Button("Clear") {
 			log.clear()
 			_console_last_count = 0
@@ -91,7 +92,7 @@ draw_console_view :: proc() {
 		filter_toggle_button("Clear on Play", &_console_clear_on_play)
 
 		style := im.GetStyle()
-		btn_labels := [3]cstring{ICON_MD_INFO, ICON_MD_WARNING, ICON_MD_ERROR}
+		btn_labels := [3]cstring{icons.ICON_MD_INFO, icons.ICON_MD_WARNING, icons.ICON_MD_ERROR}
 		btn_width: f32
 		for lbl in btn_labels {
 			btn_width += im.CalcTextSize(lbl).x + style.FramePadding.x * 2
@@ -109,11 +110,11 @@ draw_console_view :: proc() {
 		im.SameLine()
 		im.SetCursorPosX(cursor_x + avail_x - btn_width)
 
-		filter_toggle_button(ICON_MD_INFO, &_console_show_info)
+		filter_toggle_button(icons.ICON_MD_INFO, &_console_show_info)
 		im.SameLine()
-		filter_toggle_button(ICON_MD_WARNING, &_console_show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
+		filter_toggle_button(icons.ICON_MD_WARNING, &_console_show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
 		im.SameLine()
-		filter_toggle_button(ICON_MD_ERROR, &_console_show_error, im.Vec4{0.827, 0.133, 0.133, 1})
+		filter_toggle_button(icons.ICON_MD_ERROR, &_console_show_error, im.Vec4{0.827, 0.133, 0.133, 1})
 
 		// Zero horizontal inner padding so rows sit flush against the left border
 		// (keep the default vertical padding for top/bottom breathing room).

@@ -86,6 +86,11 @@ main :: proc() {
     // Setup ImGui
     im.CHECKVERSION()
     ctx := im.CreateContext()
+    // Before imgui's first frame reads imgui.ini (the loading screen renders
+    // frames during startup): the plugin window declarations, then the saved
+    // window placement renamed onto the windows' current ids.
+    _register_editor_windows()
+    migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
     // Enable docking (drag window title bars to dock/undock)
@@ -145,7 +150,6 @@ main :: proc() {
     // load_editor_settings.
     simulate_init()
     defer simulate_shutdown()
-    _register_editor_windows() // plugin @(editor_window) declarations
     // Reopen what was open last session — declarations must exist first.
     wnd.open_saved(editor_settings.open_window_ids[:])
     defer wnd.shutdown()

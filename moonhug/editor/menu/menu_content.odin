@@ -2,6 +2,7 @@ package menu
 import im "moonhug:external/odin-imgui"
 import "../inspector"
 import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/icons"
 
 Theme :: enum {
     Spectrum_Dark,
@@ -108,37 +109,37 @@ _open_window :: proc(show: ^bool, title: cstring) {
 }
 
 @(menu_item={path="Window/General/Scene", order=0, shortcut="Ctrl+1"})
-window_menu_scene :: proc() { _open_window(&show_scene, "Scene") }
+window_menu_scene :: proc() { _open_window(&show_scene, icons.TITLE_SCENE) }
 
 @(menu_item={path="Window/General/Game", order=1, shortcut="Ctrl+2"})
-window_menu_game :: proc() { _open_window(&show_game, "Game") }
+window_menu_game :: proc() { _open_window(&show_game, icons.TITLE_GAME) }
 
 @(menu_item={path="Window/General/Inspector", order=2, shortcut="Ctrl+3"})
-window_menu_inspector :: proc() { _open_window(&show_inspector, "Inspector") }
+window_menu_inspector :: proc() { _open_window(&show_inspector, icons.TITLE_INSPECTOR) }
 
 @(menu_item={path="Window/General/Hierarchy", order=4, shortcut="Ctrl+4"})
-window_menu_hierarchy :: proc() { _open_window(&show_hierarchy, "Hierarchy") }
+window_menu_hierarchy :: proc() { _open_window(&show_hierarchy, icons.TITLE_HIERARCHY) }
 
 @(menu_item={path="Window/General/Project", order=5, shortcut="Ctrl+5"})
-window_menu_project :: proc() { _open_window(&show_project, "Project") }
+window_menu_project :: proc() { _open_window(&show_project, icons.TITLE_PROJECT) }
 
 @(menu_item={path="Window/General/Project Inspector", order=6, shortcut="Ctrl+Alt+5"})
-window_menu_project_inspector :: proc() { _open_window(&show_project_inspector, "Project Inspector") }
+window_menu_project_inspector :: proc() { _open_window(&show_project_inspector, icons.TITLE_PROJECT_INSPECTOR) }
 
 @(menu_item={path="Window/General/Console", order=7, shortcut="Ctrl+Shift+C"})
-window_menu_console :: proc() { _open_window(&show_console, "Console") }
+window_menu_console :: proc() { _open_window(&show_console, icons.TITLE_CONSOLE) }
 
 @(menu_item={path="Window/General/Output", order=8, shortcut=""})
-window_menu_output :: proc() { _open_window(&show_output, "Output") }
+window_menu_output :: proc() { _open_window(&show_output, icons.TITLE_OUTPUT) }
 
 @(menu_item={path="Edit/Undo History", order=-98, shortcut=""})
-window_menu_history :: proc() { _open_window(&show_history, "History") }
+window_menu_history :: proc() { _open_window(&show_history, icons.TITLE_HISTORY) }
 
 @(menu_item={path="Window/Animation/Animation", order=0, shortcut="Ctrl+6"})
-window_menu_animation :: proc() { _open_window(&show_animation, "Animation") }
+window_menu_animation :: proc() { _open_window(&show_animation, icons.TITLE_ANIMATION) }
 
 @(menu_item={path="Window/Animation/Playable Graph", order=1, shortcut=""})
-window_menu_playable_graph :: proc() { _open_window(&show_playable_graph, "Playable Graph") }
+window_menu_playable_graph :: proc() { _open_window(&show_playable_graph, icons.TITLE_PLAYABLE_GRAPH) }
 
 @(menu_item={path="File/Save", order=0, shortcut="Ctrl+S"})
 file_save_menu :: proc()

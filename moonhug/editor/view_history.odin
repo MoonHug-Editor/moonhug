@@ -8,6 +8,7 @@ import "menu"
 import engine "../engine"
 import "undo"
 import "moonhug:editor/widgets"
+import "moonhug:editor/icons"
 
 @(private="file")
 _history_selected: int = -1
@@ -19,7 +20,7 @@ _history_last_count: int
 _history_split_ratio: f32 = 0.6
 
 draw_history_view :: proc() {
-	if !im.Begin("History", &menu.show_history, {.NoCollapse}) {
+	if !im.Begin(icons.TITLE_HISTORY, &menu.show_history, {.NoCollapse}) {
 		im.End()
 		return
 	}

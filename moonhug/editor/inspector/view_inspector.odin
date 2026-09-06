@@ -14,6 +14,7 @@ import engine "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
 import clip "../clipboard"
 import "../undo"
+import "moonhug:editor/icons"
 
 InspectorMode :: enum {
     Asset,
@@ -165,7 +166,7 @@ save_to_file :: proc() {
 _preview_split_ratio: f32 = 0.3
 
 view_inspector_draw :: proc(p_open: ^bool) {
-    if im.Begin("Project Inspector", p_open, {.NoCollapse}) {
+    if im.Begin(icons.TITLE_PROJECT_INSPECTOR, p_open, {.NoCollapse}) {
         // A registered preview pins to the window's bottom — the mode content
         // scrolls in a child above it.
         preview := _asset_preview_drawer()

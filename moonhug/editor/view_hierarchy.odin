@@ -12,6 +12,7 @@ import engine "../engine"
 import "menu"
 import "undo"
 import "moonhug:editor/widgets"
+import "moonhug:editor/icons"
 
 HIERARCHY_DRAG_TYPE :: "HIERARCHY_TRANSFORM"
 
@@ -201,7 +202,7 @@ draw_hierarchy_view :: proc() {
 		_hierarchy_open_ancestors(pending)
 	}
 
-	open := im.Begin("Hierarchy", &menu.show_hierarchy, {.NoCollapse})
+	open := im.Begin(icons.TITLE_HIERARCHY, &menu.show_hierarchy, {.NoCollapse})
 
 	if im.BeginDragDropTarget() {
 		payload := im.AcceptDragDropPayload("ASSET_PATH", {})
@@ -234,7 +235,7 @@ draw_hierarchy_view :: proc() {
 	im.PopItemFlag()
 	if filter_query != "" {
 		im.SameLine()
-		if im.Button(ICON_MD_CLOSE + "###hier_filter_clear", im.Vec2{clear_btn_w, 0}) {
+		if im.Button(icons.ICON_MD_CLOSE + "###hier_filter_clear", im.Vec2{clear_btn_w, 0}) {
 			mem.zero(&_hierarchy_filter_buf, len(_hierarchy_filter_buf))
 			filter_query = ""
 		}
@@ -326,7 +327,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 	// "<" up button: when inside an entered nested scene, go back to the parent.
 	if len(_edit_stack) > 0 {
 		_push_transparent_button_bg()
-		if im.Button(ICON_MD_CHEVRON_LEFT, im.Vec2{20, 0}) {
+		if im.Button(icons.ICON_MD_CHEVRON_LEFT, im.Vec2{20, 0}) {
 			_hierarchy_exit_scene()
 		}
 		im.PopStyleColor(3)
@@ -348,7 +349,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 	im.PopStyleColor(3)
 	btn_size := im.Vec2{24, 0}
 	im.SameLine(im.GetContentRegionAvail().x + im.GetCursorPosX() - btn_size.x)
-	if im.Button(ICON_MD_MENU + "###SceneHeaderMenuBtn", btn_size) {
+	if im.Button(icons.ICON_MD_MENU + "###SceneHeaderMenuBtn", btn_size) {
 		im.OpenPopup("##SceneHeaderMenu")
 	}
 	if im.BeginPopup("##SceneHeaderMenu") {
@@ -649,16 +650,16 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		// Every row has an icon slot: stacks for nested-scene hosts (Unity's
 		// prefab icon equivalent), the variant glyph when the source asset is a
 		// variant (one AssetDB root-info lookup), stat_0 as the plain default.
-		row_icon: cstring = ICON_MD_STAT_0
+		row_icon: cstring = icons.ICON_MD_STAT_0
 		if is_ns_host && row_ns != nil {
-			row_icon = ICON_MD_STACKS
+			row_icon = icons.ICON_MD_STACKS
 			// Root-variant host: the OPEN SCENE is the variant — its NS points
 			// at the BASE, so checking source_prefab would say "not a variant".
 			// The row is the variant itself.
 			if engine.nested_scene_is_root_variant(sc, row_ns) {
-				row_icon = ICON_MD_STACKS_VARIANT
+				row_icon = icons.ICON_MD_STACKS_VARIANT
 			} else if info, ok := engine.asset_db_get_root_info(row_ns.source_prefab); ok && info.is_variant {
-				row_icon = ICON_MD_STACKS_VARIANT
+				row_icon = icons.ICON_MD_STACKS_VARIANT
 			}
 		}
 		// Icons draw from the LARGE icon font a couple px above text size —
@@ -666,7 +667,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		// become indistinguishable from plain stacks.
 		HIER_ICON_SIZE :: f32(FONT_SIZE + 3)
 		im.PushFontFloat(editor_icon_font_lg, HIER_ICON_SIZE)
-		icon_w := im.CalcTextSize(ICON_MD_STACKS).x
+		icon_w := im.CalcTextSize(icons.ICON_MD_STACKS).x
 		icon_pos := im.Vec2{label_pos.x, label_pos.y - (HIER_ICON_SIZE - FONT_SIZE) * 0.5}
 		im.DrawList_AddText(draw_list, icon_pos, text_color, row_icon)
 		im.PopFont()
@@ -682,14 +683,14 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 				if src_path, ok := engine.asset_db_get_path(uuid.Identifier(ns.source_prefab)); ok {
 					im.TableSetColumnIndex(_HIER_COL_ACTIONS_R)
 					// Right-align the button within its cell, against the edge.
-					btn_w := im.CalcTextSize(ICON_MD_CHEVRON_RIGHT).x + im.GetStyle().FramePadding.x * 2
+					btn_w := im.CalcTextSize(icons.ICON_MD_CHEVRON_RIGHT).x + im.GetStyle().FramePadding.x * 2
 					avail := im.GetContentRegionAvail().x
 					if avail > btn_w {
 						im.SetCursorPosX(im.GetCursorPosX() + avail - btn_w)
 					}
 					_push_transparent_button_bg()
 					defer im.PopStyleColor(3)
-					if im.SmallButton(ICON_MD_CHEVRON_RIGHT) {
+					if im.SmallButton(icons.ICON_MD_CHEVRON_RIGHT) {
 						// Enter replaces the open scene; this row's tH is now
 						// invalid — bail out of the rest of the node draw, undoing
 						// the same stack state the normal exit path would.

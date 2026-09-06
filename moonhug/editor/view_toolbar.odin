@@ -14,6 +14,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/runconfig"
 import "../engine"
 import "../engine/log"
+import "moonhug:editor/icons"
 
 // The toolbar's own vertical padding. Tighter than WindowPadding so the bar
 // hugs its buttons (Unity's toolbar), and the same in every theme.
@@ -138,8 +139,8 @@ draw_tool_bar :: proc() {
     //
     // Explicit ### id: the label is icon-only, and imgui derives ids from labels
     // — so a Simulate button showing the same glyph would share this one's id.
-    button_play_text: cstring = ICON_MD_RUN_CONFIG + "###RunConfigPlay"
-    button_scene_text: cstring = ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene"
+    button_play_text: cstring = icons.ICON_MD_RUN_CONFIG + "###RunConfigPlay"
+    button_scene_text: cstring = icons.ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene"
     avail := im.GetContentRegionAvail()
     style := im.GetStyle()
     // hide_text_after_double_hash: the ### id suffix is not drawn, so it must

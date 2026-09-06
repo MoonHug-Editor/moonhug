@@ -10,6 +10,7 @@ import im "moonhug:external/odin-imgui"
 import "../engine"
 import "../engine/input"
 import sim "./simulate"
+import "moonhug:editor/icons"
 
 // Simulate's accent, on every simulate button while a run is active. The rest of
 // the toolbar is theme-neutral.
@@ -161,20 +162,20 @@ _draw_simulate_controls :: proc() {
     // icon swaps and nothing to the right shifts.
     pad := style.FramePadding.x * 2
     sim_slot := im.Vec2{
-        max(im.CalcTextSize(ICON_MD_PLAY_ARROW, nil, false, -1).x,
-            im.CalcTextSize(ICON_MD_STOP, nil, false, -1).x) + pad,
+        max(im.CalcTextSize(icons.ICON_MD_PLAY_ARROW, nil, false, -1).x,
+            im.CalcTextSize(icons.ICON_MD_STOP, nil, false, -1).x) + pad,
         0,
     }
     pause_slot := im.Vec2{
-        max(im.CalcTextSize(ICON_MD_PAUSE, nil, false, -1).x,
-            im.CalcTextSize(ICON_MD_PLAY_CIRCLE, nil, false, -1).x) + pad,
+        max(im.CalcTextSize(icons.ICON_MD_PAUSE, nil, false, -1).x,
+            im.CalcTextSize(icons.ICON_MD_PLAY_CIRCLE, nil, false, -1).x) + pad,
         0,
     }
 
     _push_sim_button_bg(active)
     if im.ButtonWithFlags(active \
-        ? ICON_MD_STOP + "###SimToggle" \
-        : ICON_MD_PLAY_ARROW + "###SimToggle", sim_slot) {
+        ? icons.ICON_MD_STOP + "###SimToggle" \
+        : icons.ICON_MD_PLAY_ARROW + "###SimToggle", sim_slot) {
         if active {
             sim.stop()
         } else {
@@ -190,8 +191,8 @@ _draw_simulate_controls :: proc() {
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)
     if im.ButtonWithFlags(paused \
-        ? ICON_MD_PLAY_CIRCLE + "###SimPause" \
-        : ICON_MD_PAUSE + "###SimPause", pause_slot) {
+        ? icons.ICON_MD_PLAY_CIRCLE + "###SimPause" \
+        : icons.ICON_MD_PAUSE + "###SimPause", pause_slot) {
         if active {
             sim.toggle_pause()
         } else {
@@ -205,7 +206,7 @@ _draw_simulate_controls :: proc() {
 
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)
-    if im.Button(ICON_MD_SKIP_NEXT + "###SimStep") {
+    if im.Button(icons.ICON_MD_SKIP_NEXT + "###SimStep") {
         sim.step()
     }
     _pop_sim_button_bg()
@@ -282,11 +283,11 @@ _simulate_controls_width :: proc() -> f32 {
     style := im.GetStyle()
     pad := style.FramePadding.x * 2
 
-    sim_w := max(im.CalcTextSize(ICON_MD_PLAY_ARROW, nil, false, -1).x,
-                 im.CalcTextSize(ICON_MD_STOP, nil, false, -1).x)
-    pause_w := max(im.CalcTextSize(ICON_MD_PAUSE, nil, false, -1).x,
-                   im.CalcTextSize(ICON_MD_PLAY_CIRCLE, nil, false, -1).x)
-    step_w := im.CalcTextSize(ICON_MD_SKIP_NEXT, nil, false, -1).x
+    sim_w := max(im.CalcTextSize(icons.ICON_MD_PLAY_ARROW, nil, false, -1).x,
+                 im.CalcTextSize(icons.ICON_MD_STOP, nil, false, -1).x)
+    pause_w := max(im.CalcTextSize(icons.ICON_MD_PAUSE, nil, false, -1).x,
+                   im.CalcTextSize(icons.ICON_MD_PLAY_CIRCLE, nil, false, -1).x)
+    step_w := im.CalcTextSize(icons.ICON_MD_SKIP_NEXT, nil, false, -1).x
 
     return sim_w + pause_w + step_w + pad * 3 + style.ItemSpacing.x * 2
 }

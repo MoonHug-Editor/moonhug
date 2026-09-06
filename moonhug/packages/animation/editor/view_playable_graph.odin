@@ -22,6 +22,7 @@ import "moonhug:editor/menu"
 import nc "moonhug:editor/node_canvas"
 import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
+import "moonhug:editor/icons"
 
 @(private = "file") _PG_COL_W :: f32(230) // one depth rank
 @(private = "file") _PG_ROW_H :: f32(95)
@@ -39,7 +40,7 @@ shutdown_playable_graph_view :: proc() {
 }
 
 draw_playable_graph_view :: proc() {
-	if !im.Begin("Playable Graph", &menu.show_playable_graph, {.NoCollapse}) {
+	if !im.Begin(icons.TITLE_PLAYABLE_GRAPH, &menu.show_playable_graph, {.NoCollapse}) {
 		im.End()
 		return
 	}

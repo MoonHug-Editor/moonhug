@@ -12,6 +12,7 @@ import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
 import "menu"
+import "moonhug:editor/icons"
 
 // ---------------------------------------------------------------------------
 // Main dockspace
@@ -57,17 +58,17 @@ _dock_build_default_layout :: proc(dockspace_id: im.ID, size: im.Vec2) {
 	im.DockBuilderSplitNode(center, .Right, 0.26, &right, &center)
 	im.DockBuilderSplitNode(center, .Down, 0.28, &bottom, &center)
 
-	im.DockBuilderDockWindow("Hierarchy", left)
-	im.DockBuilderDockWindow("Inspector", right)
-	im.DockBuilderDockWindow("Project Inspector", right)
-	im.DockBuilderDockWindow("Scene", center)
-	im.DockBuilderDockWindow("Game", center)
-	im.DockBuilderDockWindow("Project", bottom)
-	im.DockBuilderDockWindow("Console", bottom)
-	im.DockBuilderDockWindow("Output", bottom)
-	im.DockBuilderDockWindow("History", bottom)
-	im.DockBuilderDockWindow("Animation", bottom)
-	im.DockBuilderDockWindow("Playable Graph", bottom)
+	im.DockBuilderDockWindow(icons.TITLE_HIERARCHY, left)
+	im.DockBuilderDockWindow(icons.TITLE_INSPECTOR, right)
+	im.DockBuilderDockWindow(icons.TITLE_PROJECT_INSPECTOR, right)
+	im.DockBuilderDockWindow(icons.TITLE_SCENE, center)
+	im.DockBuilderDockWindow(icons.TITLE_GAME, center)
+	im.DockBuilderDockWindow(icons.TITLE_PROJECT, bottom)
+	im.DockBuilderDockWindow(icons.TITLE_CONSOLE, bottom)
+	im.DockBuilderDockWindow(icons.TITLE_OUTPUT, bottom)
+	im.DockBuilderDockWindow(icons.TITLE_HISTORY, bottom)
+	im.DockBuilderDockWindow(icons.TITLE_ANIMATION, bottom)
+	im.DockBuilderDockWindow(icons.TITLE_PLAYABLE_GRAPH, bottom)
 	im.DockBuilderFinish(dockspace_id)
 }
 
@@ -375,8 +376,8 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 			ov.drag_off = im.GetMousePos() - pos
 		}
 		grip_col := im.GetColorU32(im.IsItemHovered({}) || ov.dragging ? .Text : .TextDisabled)
-		icon_size := im.CalcTextSize(ICON_MD_DRAG_INDICATOR, nil, false, -1)
-		im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, ICON_MD_DRAG_INDICATOR)
+		icon_size := im.CalcTextSize(icons.ICON_MD_DRAG_INDICATOR, nil, false, -1)
+		im.DrawList_AddText(dl, grip_min + (grip_size - icon_size) * 0.5, grip_col, icons.ICON_MD_DRAG_INDICATOR)
 		if !vertical do im.SameLine()
 	}
 
@@ -509,7 +510,7 @@ overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggl
 	// glyph (the EXPAND_MORE glyph has left bearing that offsets it in a narrow
 	// box). Draw the glyph ourselves, centered on the button rect.
 	arrow = im.Button("##arrow", im.Vec2{OVERLAY_ARROW_WIDTH, OVERLAY_BUTTON_SIZE})
-	_draw_centered_glyph(ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
+	_draw_centered_glyph(icons.ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
 	if active {
 		im.PopStyleColor()
 	}

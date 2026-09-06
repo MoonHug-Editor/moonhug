@@ -38,6 +38,7 @@ import "moonhug:editor/menu"
 import "moonhug:editor/undo"
 import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
+import "moonhug:editor/icons"
 
 // Property column width, dragged via the pane splitter between it and the
 // time canvas.
@@ -501,7 +502,7 @@ _pv_drag_time_bounds :: proc(ch: ^anim.Animation_Channel, k: int, length: f32) -
 // --- Window ---------------------------------------------------------------------------
 
 draw_animation_view :: proc() {
-	if !im.Begin("Animation", &menu.show_animation, {.NoCollapse}) {
+	if !im.Begin(icons.TITLE_ANIMATION, &menu.show_animation, {.NoCollapse}) {
 		// Tabbed-away, not closed: the preview keeps running.
 		im.End()
 		return

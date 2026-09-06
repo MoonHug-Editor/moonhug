@@ -4,6 +4,7 @@ import "core:strings"
 import "core:sync"
 import im "moonhug:external/odin-imgui"
 import "menu"
+import "moonhug:editor/icons"
 
 MAX_OUTPUT_LINES :: 2000
 
@@ -70,7 +71,7 @@ output_view_clear :: proc() {
 }
 
 draw_output_view :: proc() {
-	if !im.Begin("Output", &menu.show_output, {.NoCollapse}) {
+	if !im.Begin(icons.TITLE_OUTPUT, &menu.show_output, {.NoCollapse}) {
 		im.End()
 		return
 	}

@@ -5,6 +5,7 @@ import im "moonhug:external/odin-imgui"
 import "menu"
 import "../engine"
 import "../engine/input"
+import "moonhug:editor/icons"
 
 game_rt: ^gfx.Render_Target
 
@@ -20,7 +21,7 @@ game_view_focused: bool
 
 game_view_focus :: proc() {
 	game_view_focused = true
-	im.SetWindowFocusStr("Game")
+	im.SetWindowFocusStr(icons.TITLE_GAME)
 }
 
 // Called once per frame before the simulation tick.
@@ -52,7 +53,7 @@ draw_game_view :: proc() {
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
 	defer im.PopStyleVar()
 
-	if im.Begin("Game", &menu.show_game, {.NoCollapse}) {
+	if im.Begin(icons.TITLE_GAME, &menu.show_game, {.NoCollapse}) {
 		avail := im.GetContentRegionAvail()
 		w := i32(avail.x)
 		h := i32(avail.y)

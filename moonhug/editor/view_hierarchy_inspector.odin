@@ -13,6 +13,7 @@ import "inspector"
 import "menu"
 import clip "clipboard"
 import "undo"
+import "moonhug:editor/icons"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -35,7 +36,7 @@ draw_hierarchy_inspector :: proc() {
 	inspector.field_edit_frame_begin(editing)
 	if !editing do _rotation_peer_start_clear()
 
-	if !im.Begin("Inspector", &menu.show_inspector, {.NoCollapse}) {
+	if !im.Begin(icons.TITLE_INSPECTOR, &menu.show_inspector, {.NoCollapse}) {
 		im.End()
 		return
 	}
@@ -158,7 +159,7 @@ _draw_nested_banner :: proc(host_tH: engine.Transform_Handle) {
 	_draw_readonly_asset_ref("", source_guid, "scene")
 	if base_guid != (engine.Asset_GUID{}) {
 		im.SameLine()
-		_draw_readonly_asset_ref(ICON_MD_CHEVRON_LEFT, base_guid, "base")
+		_draw_readonly_asset_ref(icons.ICON_MD_CHEVRON_LEFT, base_guid, "base")
 	}
 	im.Separator()
 }
@@ -407,14 +408,14 @@ _overrides_apply_menu :: proc(
 // stat_0 for a plain object — so an object reads the same in both views.
 @(private)
 _overrides_object_icon :: proc(s: ^engine.Scene, tH: engine.Transform_Handle) -> cstring {
-	if tH == _HANDLE_NONE do return ICON_MD_STAT_0
+	if tH == _HANDLE_NONE do return icons.ICON_MD_STAT_0
 	ns := engine.scene_find_nested_scene_for_host(s, tH)
-	if ns == nil do return ICON_MD_STAT_0
-	if engine.nested_scene_is_root_variant(s, ns) do return ICON_MD_STACKS_VARIANT
+	if ns == nil do return icons.ICON_MD_STAT_0
+	if engine.nested_scene_is_root_variant(s, ns) do return icons.ICON_MD_STACKS_VARIANT
 	if info, ok := engine.asset_db_get_root_info(ns.source_prefab); ok && info.is_variant {
-		return ICON_MD_STACKS_VARIANT
+		return icons.ICON_MD_STACKS_VARIANT
 	}
-	return ICON_MD_STACKS
+	return icons.ICON_MD_STACKS
 }
 
 // Click handling: ctrl/cmd toggles, shift ranges from the anchor, plain click
@@ -1114,7 +1115,7 @@ _draw_component_overflow_menu :: proc(
 ) {
 	popup_id := strings.clone_to_cstring(fmt.tprintf("##CompCtx_%v_%v", comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
-	btn_label := strings.clone_to_cstring(fmt.tprintf("%s##btn_%v_%v", ICON_MD_MENU, comp.handle.type_key, comp.handle.index), context.temp_allocator)
+	btn_label := strings.clone_to_cstring(fmt.tprintf("%s##btn_%v_%v", icons.ICON_MD_MENU, comp.handle.type_key, comp.handle.index), context.temp_allocator)
 	if im.SmallButton(btn_label) {
 		im.OpenPopup(popup_id)
 	}
@@ -1346,7 +1347,7 @@ _draw_missing_components :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		}
 
 		header := strings.clone_to_cstring(
-			fmt.tprintf("%s Missing Component (%s)##missing_%d", ICON_MD_WARNING, guid_str, uc.local_id),
+			fmt.tprintf("%s Missing Component (%s)##missing_%d", icons.ICON_MD_WARNING, guid_str, uc.local_id),
 			context.temp_allocator,
 		)
 		header_open := im.CollapsingHeader(header, {.AllowOverlap})
@@ -1354,7 +1355,7 @@ _draw_missing_components :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 		// Overflow menu in the same spot as live components'.
 		popup_id := strings.clone_to_cstring(fmt.tprintf("##MissCtx_%d", uc.local_id), context.temp_allocator)
 		im.SameLine(im.GetCursorPosX() + im.GetContentRegionAvail().x - 20)
-		btn_label := strings.clone_to_cstring(fmt.tprintf("%s##mbtn_%d", ICON_MD_MENU, uc.local_id), context.temp_allocator)
+		btn_label := strings.clone_to_cstring(fmt.tprintf("%s##mbtn_%d", icons.ICON_MD_MENU, uc.local_id), context.temp_allocator)
 		if im.SmallButton(btn_label) {
 			im.OpenPopup(popup_id)
 		}

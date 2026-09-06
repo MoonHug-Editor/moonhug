@@ -17,6 +17,7 @@ import "moonhug:engine_editor/asset_pipeline"
 import "subassets"
 import "undo"
 import "moonhug:editor/widgets"
+import "moonhug:editor/icons"
 
 ProjectViewData :: struct {
     currentPath: string,
@@ -429,20 +430,20 @@ _project_file_icon :: proc(path: string) -> string {
         // AssetDB root-info lookup (file inherits a base), not a name check.
         if guid, ok := engine.asset_db_get_guid(path); ok {
             if info, iok := engine.asset_db_get_root_info(engine.Asset_GUID(guid)); iok && info.is_variant {
-                return ICON_MD_STACKS_VARIANT
+                return icons.ICON_MD_STACKS_VARIANT
             }
         }
-        return ICON_MD_STACKS // scene/prefab = stack group
+        return icons.ICON_MD_STACKS // scene/prefab = stack group
     case ".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif":
-        return ICON_MD_IMAGE
+        return icons.ICON_MD_IMAGE
     case ".asset":
-        return ICON_MD_SETTINGS
+        return icons.ICON_MD_SETTINGS
     case ".mat":
-        return ICON_MD_PALETTE
+        return icons.ICON_MD_PALETTE
     case ".glsl":
-        return ICON_MD_CODE
+        return icons.ICON_MD_CODE
     case:
-        return ICON_MD_DESCRIPTION
+        return icons.ICON_MD_DESCRIPTION
     }
 }
 
@@ -485,7 +486,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string) {
     // the node would strobe. Pin the ID explicitly with PushIDStr(full_path) and
     // give TreeNodeEx a constant display+id via "###" so the icon can vary freely.
     expanded := !is_leaf && _project_tree_open_state[full_path]
-    folder_icon := ICON_MD_FOLDER_OPEN if expanded else ICON_MD_FOLDER
+    folder_icon := icons.ICON_MD_FOLDER_OPEN if expanded else icons.ICON_MD_FOLDER
     node_label := strings.clone_to_cstring(fmt.tprintf("%s%s###node", folder_icon, name), context.temp_allocator)
 
     node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick}
@@ -824,7 +825,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID
     if im.Selectable("##subcell", is_selected, {.AllowDoubleClick}, im.Vec2{cell, cell + label_h}) {
         _project_sub_asset_clicked(parent_path, guid, s, provider)
     }
-    _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", ICON_MD_IMAGE, s.name))
+    _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
 
     dl := im.GetWindowDrawList()
     if tid, uv0, uv1, tok := thumbnail_get_sub(parent_path, s); tok {
@@ -841,7 +842,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID
             p0, im.Vec2{p0.x + dw, p0.y + dh},
             im.Vec2{uv0.x, uv0.y}, im.Vec2{uv1.x, uv1.y})
     } else {
-        cglyph := strings.clone_to_cstring(ICON_MD_IMAGE, context.temp_allocator)
+        cglyph := strings.clone_to_cstring(icons.ICON_MD_IMAGE, context.temp_allocator)
         im.PushFontFloat(nil, cell * 0.55)
         gsize := im.CalcTextSize(cglyph)
         im.DrawList_AddText(dl,
@@ -917,7 +918,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
         _project_scroll_to_list_sel = false
     }
     _project_item_ping_flash(full_path)
-    icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    icon := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
     drag_label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
     _project_item_extras(full_path, is_dir, drag_label)
 
@@ -927,7 +928,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
         dl_arrow := im.GetWindowDrawList()
         im.DrawList_AddRectFilled(dl_arrow, arrow_min, arrow_max,
             im.GetColorU32(.FrameBg, arrow_hovered ? 0.9 : 0.55), 3)
-        aglyph := strings.clone_to_cstring(open ? ICON_MD_EXPAND_MORE : ICON_MD_CHEVRON_RIGHT, context.temp_allocator)
+        aglyph := strings.clone_to_cstring(open ? icons.ICON_MD_EXPAND_MORE : icons.ICON_MD_CHEVRON_RIGHT, context.temp_allocator)
         asize := im.CalcTextSize(aglyph)
         im.DrawList_AddText(dl_arrow,
             im.Vec2{arrow_min.x + (arrow_size - asize.x) * 0.5, arrow_min.y + (arrow_size - asize.y) * 0.5},
@@ -962,7 +963,7 @@ _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec
             return
         }
     }
-    glyph := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    glyph := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
     cglyph := strings.clone_to_cstring(glyph, context.temp_allocator)
     text_col := im.GetStyleColorVec4(im.Col.Text)^
     if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
@@ -981,7 +982,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
     append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
     if !_project_rename_in_tree && _project_draw_rename_row(full_path) do return
 
-    icon := ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    icon := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
     label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
 
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)
@@ -994,7 +995,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool)
         open := _project_expanded[full_path]
         im.PushStyleColorImVec4(.Button, {})
         im.PushStyleVarImVec2(.FramePadding, {0, 0})
-        arrow: cstring = open ? ICON_MD_EXPAND_MORE : ICON_MD_CHEVRON_RIGHT
+        arrow: cstring = open ? icons.ICON_MD_EXPAND_MORE : icons.ICON_MD_CHEVRON_RIGHT
         if im.Button(fmt.ctprintf("%s##exp_%s", arrow, full_path), {arrow_w, 0}) {
             // Keys are owned clones; collapsing keeps the entry (key reused on
             // the next unfold) instead of freeing through delete_key.
@@ -1109,7 +1110,7 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
     for s, i in sub {
         im.PushIDInt(c.int(i))
         selected := sel_proj_is_sub(parent_path, s.id)
-        label := fmt.ctprintf("%s%s", ICON_MD_IMAGE, s.name)
+        label := fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name)
         if im.Selectable(label, selected, {.AllowDoubleClick}) {
             _project_sub_asset_clicked(parent_path, guid, s, provider)
         }
@@ -1308,7 +1309,7 @@ draw_project_view :: proc() {
         }
     }
 
-    if im.Begin("Project", &menu.show_project, {.NoCollapse}) {
+    if im.Begin(icons.TITLE_PROJECT, &menu.show_project, {.NoCollapse}) {
         // Tree | files, split by a draggable splitter.
         split_avail := im.GetContentRegionAvail()
         split_total := split_avail.x - widgets.SPLITTER_SIZE
@@ -1370,7 +1371,7 @@ draw_project_view :: proc() {
         im.PopItemFlag()
         if query != "" {
             im.SameLine()
-            if im.Button(ICON_MD_CLOSE + "###prj_search_clear", im.Vec2{clear_btn_w, 0}) {
+            if im.Button(icons.ICON_MD_CLOSE + "###prj_search_clear", im.Vec2{clear_btn_w, 0}) {
                 _project_cancel_search()
                 query = ""
             }

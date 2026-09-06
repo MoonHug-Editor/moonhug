@@ -13,6 +13,9 @@ package window
 // An editor subpackage like menu/inspector/undo: plugin editor/ packages import
 // it, the editor root draws it once per frame (draw_all).
 
+import "base:runtime"
+import "core:strings"
+import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine/log"
 
@@ -20,7 +23,8 @@ Draw_Proc :: proc()
 
 _Registered :: struct {
 	id:           string,  // stable handle from the attribute
-	title:        cstring, // window title, also the imgui id
+	plain_title:  string,  // the title as declared, without icon or id
+	title:        cstring, // the imgui window name: "<icon> <title>###<id>"
 	draw:         Draw_Proc,
 	default_size: im.Vec2, // {} = imgui's default
 }
@@ -34,9 +38,10 @@ _registry: [dynamic]_Registered
 _open_windows: [dynamic]_Open
 _focus_request: int = -1 // registry index to focus next frame
 
-// Called by the generated _register_editor_windows (editor_window_gen). All
-// strings are literals in generated code — nothing is cloned.
-register :: proc(id: string, title: cstring, draw: Draw_Proc, width, height: f32) {
+// Called by the generated _register_editor_windows (editor_window_gen). The
+// imgui window name is "<icon> <title>###<id>": the icon and title show, the
+// id stays the imgui id whatever they are.
+register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32) {
 	for &r in _registry {
 		if r.id == id {
 			log.errorf("editor_window: duplicate id %q (%s ignored)", id, title)
@@ -45,10 +50,24 @@ register :: proc(id: string, title: cstring, draw: Draw_Proc, width, height: f32
 	}
 	append(&_registry, _Registered{
 		id           = id,
-		title        = title,
+		plain_title  = title,
+		title        = strings.clone_to_cstring(fmt.tprintf("%s %s###%s", icon, title, id), runtime.default_allocator()),
 		draw         = draw,
 		default_size = {width, height},
 	})
+}
+
+// Every registered window's plain title and id, for imgui.ini migration
+// (the ini names a window "###<id>" now that titles carry icons).
+Title_Id :: struct {
+	title: string,
+	id:    string,
+}
+
+registered :: proc(allocator := context.temp_allocator) -> []Title_Id {
+	out := make([]Title_Id, len(_registry), allocator)
+	for r, i in _registry do out[i] = {r.plain_title, r.id}
+	return out
 }
 
 // The ids of every currently open window — the editor persists these in

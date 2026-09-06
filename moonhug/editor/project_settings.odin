@@ -88,7 +88,7 @@ _settings_persist :: proc(tab: ^_Settings_Tab) {
 	tab.last_json = cur
 }
 
-@(editor_window={id="project_settings", title="Project Settings", width=720, height=440})
+@(editor_window={id="project_settings", title="Project Settings", icon="SETTINGS", width=720, height=440})
 project_settings_window_draw :: proc() {
 	if len(_settings_tabs) == 0 {
 		im.TextDisabled("No project settings registered")

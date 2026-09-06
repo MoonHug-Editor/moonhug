@@ -55,7 +55,7 @@ _Walked :: struct {
 	child_ord: int, // ordinal in the parent's children array, -1 for a root
 }
 
-@(editor_window={id="tween_graph", title="Tween Graph", width=900, height=520})
+@(editor_window={id="tween_graph", title="Tween Graph", icon="SHOW_CHART", width=900, height=520})
 tween_graph_window_draw :: proc() {
 	w := engine.ctx_world()
 	if w == nil {

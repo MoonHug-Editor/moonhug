@@ -2,6 +2,7 @@ package editor
 
 import im "moonhug:external/odin-imgui"
 import "core:math"
+import "moonhug:editor/icons"
 
 // Roboto Medium (shipped with imgui under misc/fonts, Apache-2.0) is the base
 // UI font. 15px is the size imgui's own font notes recommend for it on a 1x
@@ -64,7 +65,7 @@ editor_fonts_init :: proc() {
 	// Merge Material icons into the base font at the same explicit size.
 	// GlyphOffset nudges the icons down onto the text baseline (Material's em
 	// box is taller than Roboto's).
-	icon_ranges := [?]im.Wchar{ ICON_MD_MIN, ICON_MD_MAX, 0 }
+	icon_ranges := [?]im.Wchar{ icons.ICON_MD_MIN, icons.ICON_MD_MAX, 0 }
 	icon_cfg := _font_config()
 	icon_cfg.MergeMode = true
 	icon_cfg.PixelSnapH = true

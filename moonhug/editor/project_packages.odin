@@ -11,6 +11,7 @@ import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../engine"
+import "moonhug:editor/icons"
 
 _PROJECT_PACKAGES_PATH :: "packages"
 
@@ -99,7 +100,7 @@ _project_draw_packages_tree :: proc() {
 	}
 
 	expanded := len(pkgs) > 0 && _project_tree_open_state[_PROJECT_PACKAGES_PATH]
-	icon := ICON_MD_FOLDER_OPEN if expanded else ICON_MD_FOLDER
+	icon := icons.ICON_MD_FOLDER_OPEN if expanded else icons.ICON_MD_FOLDER
 	label := strings.clone_to_cstring(fmt.tprintf("%spackages###node", icon), context.temp_allocator)
 
 	node_open := im.TreeNodeEx(label, node_flags)
@@ -130,7 +131,7 @@ _project_draw_packages_tree :: proc() {
 _project_draw_packages_list :: proc() {
 	for pkg in project_packages_list() {
 		append(&_project_list_rows, Project_Row{name = pkg.name, path = pkg.assets_path, is_dir = true})
-		label := strings.clone_to_cstring(fmt.tprintf("%s%s", ICON_MD_FOLDER, pkg.name), context.temp_allocator)
+		label := strings.clone_to_cstring(fmt.tprintf("%s%s", icons.ICON_MD_FOLDER, pkg.name), context.temp_allocator)
 		is_selected := _project_active_pane == .List && sel_proj_is(pkg.assets_path)
 		if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
 			_project_set_selected(pkg.assets_path)
