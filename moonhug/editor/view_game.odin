@@ -42,6 +42,9 @@ game_size_flipped: bool
 
 GAME_TOOLBAR_PAD :: f32(4)
 
+// Unity's Game view backdrop outside the rendered rect.
+GAME_BACKDROP :: im.Vec4{0.16, 0.16, 0.16, 1}
+
 // Last frame's zoom floor, so the toolbar can tell "the user parked the zoom
 // at the floor" (follow the view) from "the user picked this value".
 @(private = "file")
@@ -216,6 +219,10 @@ draw_game_view :: proc() {
 		// Area under the toolbar, and the rect the game renders into inside it.
 		area_min := im.Vec2{content_min.x, content_min.y + bar_h}
 		area := im.Vec2{full.x, max(full.y - bar_h, 0)}
+		// The area around the rendered rect (letterbox bars, zoomed-out
+		// margins) is a fixed dark gray, Unity's Game view backdrop, so the
+		// game's edges read against the same neutral in every theme.
+		im.DrawList_AddRectFilled(im.GetWindowDrawList(), area_min, area_min + area, im.GetColorU32ImVec4(GAME_BACKDROP))
 
 		im.SetCursorScreenPos(content_min + {GAME_TOOLBAR_PAD, GAME_TOOLBAR_PAD})
 		im.BeginGroup()

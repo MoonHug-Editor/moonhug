@@ -81,21 +81,35 @@ decorator_color :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
 	label := ctx.field_label
+	row := field_row(label)
 	switch ctx.field_type {
 	case typeid_of([4]f32):
-		if im.ColorEdit4(field_row(label), cast(^[4]f32)ctx.field_ptr) {
+		if im.ColorEdit4(row, cast(^[4]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
+		_color_popup_hold(row)
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case typeid_of([3]f32):
-		if im.ColorEdit3(field_row(label), cast(^[3]f32)ctx.field_ptr) {
+		if im.ColorEdit3(row, cast(^[3]f32)ctx.field_ptr) {
 			mark_inspector_changed()
 		}
+		_color_popup_hold(row)
 		ctx.is_visible = false
 		ctx.handled_draw = true
 	case:
 	}
+}
+
+// ColorEdit opens its picker as a popup named "picker" under PushID(label), so
+// the same id scope reads whether it is open. While it is, the row's undo
+// bracket follows the popup's drags instead of the swatch (field_edit_row).
+@(private = "file")
+_color_popup_hold :: proc(row_label: cstring) {
+	im.PushID(row_label)
+	open := im.IsPopupOpen("picker")
+	im.PopID()
+	if open do field_edit_row_hold()
 }
 
 decorator_euler :: proc(ctx: ^DrawContext) {

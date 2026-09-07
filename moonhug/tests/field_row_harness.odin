@@ -36,6 +36,12 @@ Frame :: struct {
 	// the value alone — which is the important case: a row that merely DRAWS
 	// must not change any object.
 	write: proc(field_ptr: rawptr),
+
+	// A popup owned by the row (the color picker) is open this frame. Writes
+	// then come from the popup, with no activation on the row. `active` on a
+	// held frame means the popup's own widget has the mouse; a held frame that
+	// is not active is a mouse release inside the popup.
+	held: bool,
 }
 
 Row_Harness :: struct {
@@ -73,7 +79,12 @@ row_replay :: proc(h: ^Row_Harness, frames: []Frame) -> (finish_count: int) {
 			activated              = f.activated,
 			active                 = f.active,
 			deactivated_after_edit = f.deactivated,
+			held                   = f.held,
 		}
+		// The editor's frame start: a session with no active item anywhere
+		// ends here. Modeled only for popup frames, where it is the mouse
+		// release inside the popup that closes each drag's undo step.
+		if f.held do inspector.field_edit_frame_begin(f.active)
 		_harness_pending_write = f.write
 		defer _harness_pending_write = nil
 
@@ -115,6 +126,22 @@ frame_release :: proc() -> Frame {
 // widget, because the click happened inside a popup rather than on the row.
 frame_popup_write :: proc(write: proc(field_ptr: rawptr)) -> Frame {
 	return Frame{write = write}
+}
+
+// The click on a color swatch: an activation on the row that opens the popup
+// and writes nothing.
+frame_popup_open :: proc() -> Frame {
+	return Frame{activated = true, deactivated = true, held = true}
+}
+
+// A frame dragging a widget inside the row's popup.
+frame_popup_drag :: proc(write: proc(field_ptr: rawptr)) -> Frame {
+	return Frame{held = true, active = true, write = write}
+}
+
+// A frame with the popup open and the mouse released.
+frame_popup_rest :: proc() -> Frame {
+	return Frame{held = true}
 }
 
 // A click on a button inside the row that is not the value widget — the picker's

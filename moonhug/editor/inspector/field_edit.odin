@@ -266,6 +266,27 @@ _widget_active :: proc() -> bool {
 	return im.IsItemActive()
 }
 
+// A row whose value widget opens a popup (the color swatch's picker) reports
+// the popup as open through this latch, from inside its drawer. Consumed by
+// the row, so it cannot leak into the next one.
+@(private = "file")
+_row_hold: bool
+
+field_edit_row_hold :: proc() {
+	_row_hold = true
+}
+
+@(private = "file")
+field_edit_row_held :: proc() -> bool {
+	if _widget_state_override != nil {
+		_row_hold = false
+		return _widget_state_override.held
+	}
+	v := _row_hold
+	_row_hold = false
+	return v
+}
+
 // The imgui item state a row would observe, substitutable so a row can be driven
 // without a UI.
 //
@@ -283,6 +304,7 @@ Widget_State :: struct {
 	activated:              bool, // the gesture began this frame
 	active:                 bool, // the widget owns input this frame
 	deactivated_after_edit: bool, // the gesture ended this frame
+	held:                   bool, // a popup owned by the row is open this frame
 }
 
 @(private)
@@ -307,6 +329,9 @@ field_edit_set_widget_state :: proc(ws: ^Widget_State) {
 // prefab overrides.
 // `drawer` and `draw_label` are passed rather than captured: Odin procs are not
 // closures, so the row's own values have to travel explicitly.
+// `pre_before` is the value from BEFORE a decorator already drew the row (the
+// loop captures it, since a decorator draws ahead of this call). nil means
+// the row captures its own snapshot before running `drawer`.
 field_edit_row :: proc(
 	field_ptr: rawptr,
 	field_tid: typeid,
@@ -314,6 +339,7 @@ field_edit_row :: proc(
 	label: string,
 	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
 	draw_label: cstring,
+	pre_before: []byte = nil,
 ) -> (finished: bool) {
 	// A picker writes from inside a popup: no drag, no focus, so its gesture has
 	// no observable start. Its value is snapshotted before the draw and compared
@@ -334,8 +360,9 @@ field_edit_row :: proc(
 	// Pickers need it for a related reason: their value lands from a popup with
 	// no gesture at all, so this is the only "before" that exists.
 	picker := _is_picker_type(field_tid)
-	before := undo.capture_json(field_ptr, field_tid)
-	defer if before != nil do delete(before)
+	owns_before := pre_before == nil
+	before := owns_before ? undo.capture_json(field_ptr, field_tid) : pre_before
+	defer if owns_before && before != nil do delete(before)
 
 	if drawer != nil do drawer(field_ptr, field_tid, draw_label)
 	multi_clear_mixed()
@@ -350,6 +377,7 @@ field_edit_row :: proc(
 	// would hand it to whichever row draws next.
 	started := field_edit_row_started()
 	finished = field_edit_row_finished()
+	held := field_edit_row_held()
 
 	// Opened with the pre-drawer snapshot, because the drawer has already
 	// written this frame's value by now.
@@ -359,6 +387,23 @@ field_edit_row :: proc(
 	editing := field_edit_in_flight(field_ptr)
 	if editing {
 		field_edit_apply_to_peers(field_ptr, field_tid, offset)
+	}
+
+	// A popup owned by the row is open (the color picker). Its writes come
+	// with no activation on the row, so a change opens the session
+	// retroactively with the pre-draw value, and the session then rides the
+	// popup's own drag: field_edit_frame_begin ends it on the frame no item
+	// is active any more, which is the mouse release inside the popup. Each
+	// drag in the popup is one undo step, as in Unity. The blur rule below
+	// must not see these frames: the row's own widget is never active while
+	// the popup has the mouse, and it would end the session every frame.
+	if held {
+		if !editing && _changed_since(field_ptr, field_tid, before) {
+			field_edit_begin(field_ptr, field_tid, offset, label, before)
+			editing = true
+		}
+		if editing do field_edit_apply_to_peers(field_ptr, field_tid, offset)
+		return false
 	}
 
 	// The picker's value changed: bracket the change that already happened,

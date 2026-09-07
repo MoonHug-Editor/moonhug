@@ -401,3 +401,104 @@ test_row_rotation_euler_is_fieldwise :: proc(t: ^testing.T) {
 	testing.expect(t, abs(euler_b[0] - 50) < 0.01, "peer X kept its own")
 	testing.expect(t, abs(euler_b[2] - 70) < 0.01, "peer Z kept its own")
 }
+
+// ---------------------------------------------------------------------------
+// Color rows: the value changes from inside the swatch's picker popup, with no
+// activation on the row. Each drag inside the popup is one undo step (ending
+// on the mouse release that leaves no item active), the swatch click itself
+// records nothing, and peers follow every write.
+
+@(private = "file")
+_write_red :: proc(p: rawptr) { (^[4]f32)(p).r = 0.1 }
+@(private = "file")
+_write_green :: proc(p: rawptr) { (^[4]f32)(p).g = 0.5 }
+
+@(test)
+test_row_color_popup_drags_are_undo_steps :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	_, a_ptr := engine.transform_add_comp(a, .Camera)
+	_, b_ptr := engine.transform_add_comp(b, .Camera)
+	cam_a := cast(^engine.Camera)a_ptr
+	cam_b := cast(^engine.Camera)b_ptr
+	start := [4]f32{0.19, 0.30, 0.47, 1}
+	cam_a.clear_color = start
+	cam_b.clear_color = start
+
+	peers := []inspector.Multi_Peer{
+		{base = b_ptr, handle = _comp_handle(b, .Camera), scene = _scene_of(b)},
+	}
+	prev := inspector.multi_set_peers(peers)
+	defer inspector.multi_set_peers(prev)
+	undo.push_component_owner(_comp_handle(a, .Camera))
+	defer undo.pop_owner()
+
+	before_steps := s.top
+	h := Row_Harness{
+		field_ptr = &cam_a.clear_color,
+		field_tid = typeid_of([4]f32),
+		offset    = offset_of(engine.Camera, clear_color),
+		label     = "clear_color",
+	}
+	frames := []Frame{
+		frame_popup_open(),             // click the swatch: nothing recorded
+		frame_popup_rest(),
+		frame_popup_drag(_write_red),   // drag 1
+		frame_popup_drag(_write_red),
+		frame_popup_rest(),             // release: step 1
+		frame_popup_rest(),
+		frame_popup_drag(_write_green), // drag 2
+		frame_popup_rest(),             // release: step 2
+		frame_idle(),                   // popup closed
+	}
+	row_replay(&h, frames)
+
+	after := [4]f32{0.1, 0.5, 0.47, 1}
+	testing.expect_value(t, cam_a.clear_color, after)
+	testing.expect_value(t, cam_b.clear_color, after) // the peer followed
+	testing.expect_value(t, s.top, before_steps + 2)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, cam_a.clear_color, [4]f32{0.1, 0.30, 0.47, 1})
+	testing.expect_value(t, cam_b.clear_color, [4]f32{0.1, 0.30, 0.47, 1})
+	undo.apply_undo(s)
+	testing.expect_value(t, cam_a.clear_color, start)
+	testing.expect_value(t, cam_b.clear_color, start)
+}
+
+// Opening the popup and closing it without touching anything is not an edit.
+@(test)
+test_row_color_popup_open_close_records_nothing :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	a := engine.transform_new("A")
+	_, a_ptr := engine.transform_add_comp(a, .Camera)
+	cam_a := cast(^engine.Camera)a_ptr
+	start := [4]f32{0.19, 0.30, 0.47, 1}
+	cam_a.clear_color = start
+	undo.push_component_owner(_comp_handle(a, .Camera))
+	defer undo.pop_owner()
+
+	before_steps := s.top
+	h := Row_Harness{
+		field_ptr = &cam_a.clear_color,
+		field_tid = typeid_of([4]f32),
+		offset    = offset_of(engine.Camera, clear_color),
+		label     = "clear_color",
+	}
+	frames := []Frame{frame_popup_open(), frame_popup_rest(), frame_popup_rest(), frame_idle(), frame_idle()}
+	row_replay(&h, frames)
+
+	testing.expect_value(t, cam_a.clear_color, start)
+	testing.expect_value(t, s.top, before_steps)
+}

@@ -725,6 +725,15 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             im.PushStyleColorImVec4(im.Col.Text, im.Vec4{0.4, 0.8, 1.0, 1.0})
         }
 
+        // A decorator that draws the row itself writes the value before the
+        // row's transaction can look at it, so the "before" is taken here.
+        // Only rows with a decorator pay for the snapshot.
+        pre_before: []byte
+        if decorators, has := decorator_registry[tid]; has && i < len(decorators) && decorators[i] != nil {
+            pre_before = undo.capture_json(field_ptr, field_type.id)
+        }
+        defer if pre_before != nil do delete(pre_before)
+
         run_field_decorators(tid, i, &ctx)
 
         row_popup_done := false
@@ -829,7 +838,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             multi_offset := multi_offset_of(field_ptr, ptr)
             prev_path := field_edit_set_path(full_path)
             finished := field_edit_row(field_ptr, field_type.id, multi_offset,
-                                       field_name, nil, c_field_name)
+                                       field_name, nil, c_field_name, pre_before)
             field_edit_set_path(prev_path)
             record_nested_override(field_ptr, field_type.id, full_path, finished)
             draw_field_context_menu(field_ptr, field_type.id, full_path)
