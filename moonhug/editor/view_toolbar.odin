@@ -206,7 +206,9 @@ draw_tool_bar :: proc() {
         phase_w = im.CalcTextSize(phase_text, nil, false, -1).x + style.ItemSpacing.x
     }
 
-    run_total := phase_w + btn_size.x + style.ItemSpacing.x + combo_w
+    // Relaunch sits at the far right, past a vertical separator.
+    relaunch_w := style.ItemSpacing.x * 2 + 1 + btn_size.x
+    run_total := phase_w + btn_size.x + style.ItemSpacing.x + combo_w + relaunch_w
     right_x := avail.x - run_total
     im.SameLine(0, 0)
     im.SetCursorPosX(max(im.GetCursorPosX() + style.ItemSpacing.x, right_x))
@@ -250,6 +252,23 @@ draw_tool_bar :: proc() {
         im.SetTooltip("Run configuration")
     }
 
+    // Relaunch: rebuild and restart the editor the way it was started
+    // (editor/relaunch.odin). The separator keeps it apart from the run
+    // configs, which build and run the GAME.
+    im.SameLine(0, style.ItemSpacing.x)
+    im.SeparatorEx({.Vertical})
+    im.SameLine(0, style.ItemSpacing.x)
+    pending := relaunch_pending()
+    im.BeginDisabled(pending)
+    if im.Button(icons.ICON_MD_REFRESH, btn_size) do relaunch_request()
+    im.EndDisabled()
+    if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
+        if pending {
+            im.SetTooltip(fmt.ctprintf("Relaunch Editor\nbuilding: %s", relaunch_command()))
+        } else {
+            im.SetTooltip(fmt.ctprintf("Relaunch Editor\n%s", relaunch_command()))
+        }
+    }
 }
 
 RunPlayData :: struct {

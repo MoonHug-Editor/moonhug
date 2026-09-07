@@ -46,6 +46,22 @@ run :: proc(command: ..string) -> int {
 	return state.exit_code
 }
 
+// run_env is `run` with an explicit environment, for launching the editor
+// with the variables it reads back (MH_LAUNCH, see launch_editor).
+run_env :: proc(env: []string, command: ..string) -> int {
+	p, err := os.process_start({command = command, env = env, stdout = os.stdout, stderr = os.stderr, stdin = os.stdin})
+	if err != nil {
+		fmt.eprintfln("mh: cannot start %s: %v", command[0], err)
+		return -1
+	}
+	state, werr := os.process_wait(p)
+	if werr != nil {
+		fmt.eprintfln("mh: wait failed for %s: %v", command[0], werr)
+		return -1
+	}
+	return state.exit_code
+}
+
 // run_in is `run` with a working directory, for the vendored library builds
 // that only work from their own source folder.
 run_in :: proc(dir: string, command: ..string) -> int {

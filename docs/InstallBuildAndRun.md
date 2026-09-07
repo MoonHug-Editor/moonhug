@@ -19,6 +19,25 @@ odin run tools/mh -- run
 `setup` builds the vendored C libraries Odin ships as source. `run` generates
 code, compiles the editor and launches it.
 
+## Relaunch
+
+The toolbar's rightmost button, past the separator after the run configs,
+rebuilds and restarts the editor the way it was started. `mh run` and
+`mh debug` launch the editor with `MH_LAUNCH=<mode>`, and Relaunch spawns
+`odin run tools/mh -- <mode>` again, so a `debug` editor comes back as a
+`debug` editor. `File/Relaunch` is the same action.
+
+The editor keeps running while the build goes. On success mh writes
+`builds/relaunch_ready`, the editor sees it, quits through the normal path
+with its settings saved, and mh launches the new binary once the old one is
+gone. A failed build writes no marker: the editor stays up and the compiler
+output is in the terminal mh runs in.
+
+An editor started as a bare binary has no `MH_LAUNCH`. Relaunch then picks
+the mode matching the binary's own build, `debug` for a `-debug` build and
+`run` otherwise, so it still rebuilds and runs the same way. The tooltip
+shows the exact command it runs. `odin` has to be on the editor's PATH.
+
 ## Commands
 
 `odin run tools/mh -- <command>` works anywhere Odin does and needs nothing

@@ -4,6 +4,9 @@ package mh
 
 import "core:fmt"
 import "core:os"
+import "core:strconv"
+import "core:strings"
+import "core:time"
 
 EDITOR_BIN :: "builds/MoonHug" + EXE
 MCP_BIN :: "builds/mcp_shim" + EXE
@@ -41,13 +44,52 @@ build_editor :: proc(debug: bool) -> bool {
 // Build then run as a CHILD process, not `odin run`: `odin run` keeps the
 // ~1GB compiler resident for the whole life of the editor just to wait on it.
 cmd_run :: proc(args: []string) -> int {
-	if !build_editor(false) do return 1
-	return run(EDITOR_BIN)
+	return launch_editor("run")
 }
 
 cmd_debug :: proc(args: []string) -> int {
-	if !build_editor(true) do return 1
-	return run(EDITOR_BIN)
+	return launch_editor("debug")
+}
+
+// The file that tells a running editor its replacement is built. Lives under
+// builds/ so `mh clean` removes a stale one.
+RELAUNCH_MARKER :: "builds/relaunch_ready"
+
+// Build and launch the editor for `mode` ("run" or "debug"). The editor gets
+// MH_LAUNCH=<mode> so its Relaunch button can rerun this exact command.
+//
+// Relaunch handshake (editor/relaunch.odin): the editor spawns `mh <mode>`
+// with MH_RELAUNCH_PID set to its own pid and keeps running while the build
+// goes. On a successful build this writes RELAUNCH_MARKER, waits for that
+// editor to exit, removes the marker and launches the new one. A failed build
+// writes no marker, so the old editor stays up with the compiler output in
+// its terminal.
+launch_editor :: proc(mode: string) -> int {
+	if !build_editor(mode == "debug") do return 1
+
+	if pid_str, relaunching := os.lookup_env("MH_RELAUNCH_PID", context.temp_allocator); relaunching {
+		if pid, ok := strconv.parse_int(pid_str); ok {
+			_ = os.write_entire_file(RELAUNCH_MARKER, "ready")
+			fmt.printfln("mh: built, waiting for editor %d to exit", pid)
+			// Poll instead of waiting: the old editor is not our child.
+			deadline := time.now()._nsec + i64(15 * time.Second)
+			for process_alive(pid) && time.now()._nsec < deadline {
+				time.sleep(50 * time.Millisecond)
+			}
+			_ = os.remove(RELAUNCH_MARKER)
+		}
+	}
+
+	env := make([dynamic]string, context.temp_allocator)
+	if cur, err := os.environ(context.temp_allocator); err == nil {
+		for kv in cur {
+			// Never inherit the handshake pid: the new editor is not relaunching.
+			if strings.has_prefix(kv, "MH_RELAUNCH_PID=") || strings.has_prefix(kv, "MH_LAUNCH=") do continue
+			append(&env, kv)
+		}
+	}
+	append(&env, fmt.tprintf("MH_LAUNCH=%s", mode))
+	return run_env(env[:], EDITOR_BIN)
 }
 
 cmd_build :: proc(args: []string) -> int {
