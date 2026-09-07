@@ -206,8 +206,21 @@ selection with a canvas root draws the generic rows instead.
 
 Ordered by what unblocks the most next.
 
-1. **Input, next steps.** Toggle and Slider on the Selectable base, keyboard
-   and gamepad navigation between selectables, drag events, Sprite_Swap and
-   Animation transitions.
-2. **LayoutGroup extras** (low priority): content size fitting, child
-   expand, start corner and axis for grids.
+1. **Toggle and Slider** on the Selectable base Button established, plus a
+   ToggleGroup for radio behavior.
+2. **ScrollRect with RectMask2D.** The first component that needs clipping in
+   the canvas collector. Open decisions: scissor rect per draw call or a
+   shader clip, and whether nested masks work from the start (Unity clips
+   per quad in the shader and stacks rect masks).
+3. **Keyboard and gamepad navigation** between selectables, Unity's explicit
+   and automatic modes.
+4. **Drag events and transitions.** Pointer drag on selectables, then Sprite
+   Swap and Animation transitions. Color Tint is the only one today.
+5. **Image Filled type.** Radial and horizontal fills.
+6. **InputField and Dropdown.** InputField needs caret and selection drawing
+   in the text plugin. Dropdown composes Button, ScrollRect and a template,
+   so it follows item 2.
+7. **Layout extras** (low priority): ContentSizeFitter, AspectRatioFitter,
+   child expand, start corner and axis for grids.
+8. **Effects.** Outline and Shadow as vertex modifiers on a Graphic, once the
+   populate path takes a modifier pass.
