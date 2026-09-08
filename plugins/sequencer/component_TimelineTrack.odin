@@ -20,7 +20,7 @@ import "moonhug:engine"
 
 // The universal half of a track: everything a timeline needs regardless of
 // what the track drives.
-@(component={menu="Sequencer/TimelineTrack"})
+@(component={menu="Playables/TimelineTrack"})
 @(typ_guid={guid = "9666aed8-e855-4a36-90fa-4adbbd5db3c0"})
 TimelineTrack :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -30,7 +30,7 @@ TimelineTrack :: struct {
 
 // The universal half of a clip: its span on the timeline. The kind's clip
 // component (ClipAudio, ClipAnimation, ...) carries the payload.
-@(component={menu="Sequencer/TimelineClip"})
+@(component={menu="Playables/TimelineClip"})
 @(typ_guid={guid = "2f5aa77a-01a4-4265-80cd-1c5f136b9efd"})
 TimelineClip :: struct {
 	using base: engine.CompData `inspect:"-"`,

@@ -96,12 +96,6 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
     }
 }
 
-@(component={menu="Miscellaneous/Script"})
-@(typ_guid={guid = "adaf3551-4704-4255-ad91-fde59441dc53"})
-Script :: struct {
-    using base: CompData `inspect:"-"`,
-}
-
 type_reset_procs: [TypeKey]proc(rawptr)
 
 type_reset :: proc(key: TypeKey, ptr: rawptr) {

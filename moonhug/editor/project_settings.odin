@@ -171,7 +171,7 @@ _settings_selected_tab :: proc() -> ^_Settings_Tab {
 }
 
 @(menu_separator={path="Edit", order=99})
-@(menu_item={path="Edit/Project Settings...", order=100, shortcut=""})
+@(menu_item={path="Edit/Project Settings...", order=100, shortcut="Ctrl+,"})
 open_project_settings :: proc() {
 	wnd.open("project_settings")
 }

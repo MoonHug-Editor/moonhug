@@ -330,6 +330,15 @@ _parse_shortcut :: proc(shortcut: string) -> (chord: im.KeyChord, ok: bool) {
                     key = im.Key(cast(int)im.Key.A + int(r - 'A'))
                 } else if r >= '0' && r <= '9' {
                     key = im.Key(cast(int)im.Key._0 + int(r - '0'))
+                } else {
+                    // Punctuation keys, spelled as the character itself.
+                    switch r {
+                    case ',': key = .Comma
+                    case '.': key = .Period
+                    case '-': key = .Minus
+                    case '=': key = .Equal
+                    case '/': key = .Slash
+                    }
                 }
             } // Handle F-Keys
             else if (tok[0] == 'F' || tok[0] == 'f') && len(tok) > 1 {

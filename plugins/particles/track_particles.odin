@@ -18,7 +18,7 @@ import seq "moonhug:packages/sequencer"
 
 // The kind's components: the track carries what it drives; the clip needs no
 // payload (the span itself is the instruction).
-@(component={menu="Sequencer/Tracks/TrackParticles"})
+@(component={menu="Playables/Tracks/TrackParticles"})
 @(typ_guid={guid = "e4302a74-3eae-4bce-93c0-b3cc8eba2661"})
 TrackParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,
@@ -26,7 +26,7 @@ TrackParticles :: struct {
 	system: engine.Ref_Local `ref:"ParticleSystem"`,
 }
 
-@(component={menu="Sequencer/Clips/ClipParticles"})
+@(component={menu="Playables/Clips/ClipParticles"})
 @(typ_guid={guid = "8ab6c411-bcd5-4f71-8e0d-ff13b17dc52f"})
 ClipParticles :: struct {
 	using base: engine.CompData `inspect:"-"`,

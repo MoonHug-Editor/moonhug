@@ -172,8 +172,9 @@ test_transform_get_comp :: proc(t: ^testing.T) {
     testing.expect(t, spriteRenderer != nil, "should find SpriteRenderer component")
     testing.expect(t, owned.handle.type_key == .SpriteRenderer, "owned type_key should be SpriteRenderer")
 
-    _, script := engine.transform_get_comp(tH, engine.Script)
-    testing.expect(t, script == nil, "should not find Script component")
+    // A type the object does not have.
+    _, camera := engine.transform_get_comp(tH, engine.Camera)
+    testing.expect(t, camera == nil, "should not find Camera component")
 }
 
 @(test)
