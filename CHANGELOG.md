@@ -1,3 +1,10 @@
+## [0.94.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.93.1...v0.94.0) (2026-09-08)
+
+### Features
+
+* path bar in project view ([246c62d](https://github.com/MoonHug-Editor/moonhug/commit/246c62dfdbf2e209f32eae3abfe43a3fdef511e3))
+* slider widget in editor ([095b1bd](https://github.com/MoonHug-Editor/moonhug/commit/095b1bd05883b23f89af62aacd867ea30d2dc3ee))
+
 ## [0.93.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.93.0...v0.93.1) (2026-09-08)
 
 ### Bug Fixes
