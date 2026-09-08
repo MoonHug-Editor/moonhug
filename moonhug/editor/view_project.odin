@@ -1297,6 +1297,12 @@ _project_reveal_path :: proc(path: string, select: bool) {
     _project_active_pane = .List
 }
 
+// Search hit count from the previous frame: the header line draws BEFORE the
+// rows that count them, so it reports the last completed draw. A search runs
+// over many frames, so the number is only stale on the first one.
+@(private = "file")
+_project_result_count: int
+
 // Tree pane's share of the window width, dragged via the pane splitter.
 _project_split_ratio: f32 = 0.5
 _PROJECT_MIN_PANE :: f32(120)
@@ -1317,7 +1323,26 @@ draw_project_view :: proc() {
     }
 
     if im.Begin(icons.TITLE_PROJECT, &menu.show_project, {.NoCollapse}) {
-        // Tree | files, split by a draggable splitter.
+        // Search toolbar across the whole window, above both panes. While the
+        // box has keyboard focus, list/tree key handling below is skipped
+        // (IsAnyItemActive guard). A non-empty query shows an "x" beside it.
+        query := strings.trim_space(string(cstring(raw_data(_project_search_buf[:]))))
+        clear_btn_w := im.GetFrameHeight()
+        im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
+        // NoTabStop: Tab must switch panes (handled below), never tab-focus the
+        // search box. Clicking into it still works.
+        im.PushItemFlag({.NoTabStop}, true)
+        im.InputTextWithHint("##prj_search", "Search", cstring(raw_data(_project_search_buf[:])), c.size_t(len(_project_search_buf)), {})
+        im.PopItemFlag()
+        if query != "" {
+            im.SameLine()
+            if im.Button(icons.ICON_MD_CLOSE + "###prj_search_clear", im.Vec2{clear_btn_w, 0}) {
+                _project_cancel_search()
+                query = ""
+            }
+        }
+
+        // Tree | files, split by a draggable splitter, under the toolbar.
         split_avail := im.GetContentRegionAvail()
         split_total := split_avail.x - widgets.SPLITTER_SIZE
         tree_w := split_total * _project_split_ratio
@@ -1365,23 +1390,15 @@ draw_project_view :: proc() {
 
         clear(&_project_list_rows)
 
-        // Search box above the list. While it has keyboard focus, list/tree key
-        // handling below is skipped (IsAnyItemActive guard). A non-empty query
-        // shows an "x" clear button beside the input.
-        query := strings.trim_space(string(cstring(raw_data(_project_search_buf[:]))))
-        clear_btn_w := im.GetFrameHeight()
-        im.SetNextItemWidth(-(clear_btn_w + im.GetStyle().ItemSpacing.x) if query != "" else -1)
-        // NoTabStop: Tab must switch panes (handled below), never tab-focus the
-        // search box. Clicking into it still works.
-        im.PushItemFlag({.NoTabStop}, true)
-        im.InputTextWithHint("##prj_search", "Search", cstring(raw_data(_project_search_buf[:])), c.size_t(len(_project_search_buf)), {})
-        im.PopItemFlag()
+        // Where the list is, or what the selection is: above the rows, where
+        // the search box used to sit.
+        im.AlignTextToFramePadding()
         if query != "" {
-            im.SameLine()
-            if im.Button(icons.ICON_MD_CLOSE + "###prj_search_clear", im.Vec2{clear_btn_w, 0}) {
-                _project_cancel_search()
-                query = ""
-            }
+            im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", _project_result_count), context.temp_allocator))
+        } else if sel_proj_count() > 1 {
+            im.Text(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
+        } else {
+            im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
         }
 
         // Rows scroll in their own child so the status line below stays fixed
@@ -1419,22 +1436,14 @@ draw_project_view :: proc() {
             _project_range_pending = ""
         }
 
-        // Status line at the bottom of the right pane, with Unity's zoom
-        // slider on the right: minimum = list view, above it a thumbnail grid.
+        // Bottom strip: the zoom slider, right-aligned. 0 = list view, above
+        // it a thumbnail grid whose cell scales with the value.
         im.Separator()
-        im.AlignTextToFramePadding() // center the text against the zoom widget
-        if query != "" {
-            im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", result_count), context.temp_allocator))
-        } else if sel_proj_count() > 1 {
-            im.Text(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
-        } else {
-            im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
-        }
-        // Unity's zoom slider: track + handle + value field (widgets.slider_float).
-        zoom_track: f32 = 90
-        zoom_w := widgets.slider_width_for_track(zoom_track)
-        im.SameLine(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
+        zoom_w := widgets.slider_width_for_track(90)
+        im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
         widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
+        // The row count the header shows, from THIS frame's draw.
+        _project_result_count = result_count
 
         im.EndChild()
 
