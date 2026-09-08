@@ -75,6 +75,42 @@ _project_parent_dir :: proc(path: string) -> (parent: string, ok: bool) {
 	return projectViewData.rootPath, true
 }
 
+// One segment of the project view's path bar: the label to show and the path
+// to go to. ("Path bar", not breadcrumb — engine's breadcrumb_* is the
+// nested-scene host anchor and unrelated.)
+Project_Path_Segment :: struct {
+	label: string, // temp
+	path:  string, // temp; "" for a segment that is not navigable
+}
+
+// The current path as path-bar segments, root first. Built by walking parents
+// with _project_parent_dir, so it inherits the package-root rules: a
+// package's assets folder shows as the package name under a Packages segment,
+// and the path inside a package continues from there. Temp-allocated.
+project_path_segments :: proc(path: string) -> []Project_Path_Segment {
+	// Walk up, then reverse: each step knows only its own parent.
+	rev := make([dynamic]Project_Path_Segment, context.temp_allocator)
+	cur := path
+	for {
+		append(&rev, Project_Path_Segment{label = _project_segment_label(cur), path = cur})
+		parent, ok := _project_parent_dir(cur)
+		if !ok do break
+		cur = parent
+	}
+	out := make([]Project_Path_Segment, len(rev), context.temp_allocator)
+	for c, i in rev do out[len(rev) - 1 - i] = c
+	return out
+}
+
+// A path's own name: the package name for a package root (its assets folder),
+// the last segment otherwise.
+@(private = "file")
+_project_segment_label :: proc(path: string) -> string {
+	if project_path_is_package_root(path) do return project_package_root_name(path)
+	if i := strings.last_index(path, "/"); i >= 0 do return path[i + 1:]
+	return path
+}
+
 // Tree: the Packages top node with one child node per package root. Reuses
 // the regular folder-node drawing for the roots — label is the package name,
 // path is the real assets dir, so everything below is ordinary.

@@ -544,6 +544,44 @@ _project_draw_tree_node :: proc(full_path: string, name: string, is_link := fals
     }
 }
 
+// The current folder as a clickable path bar: each segment navigates there,
+// the last one is the folder itself and is drawn plain. Separators are inert.
+@(private = "file")
+_project_draw_path_bar :: proc() {
+    segments := project_path_segments(projectViewData.currentPath)
+    style := im.GetStyle()
+    // No frame padding between the segments: the bar reads as one path, not
+    // as a row of buttons.
+    im.PushStyleVarImVec2(.ItemSpacing, im.Vec2{0, style.ItemSpacing.y})
+    defer im.PopStyleVar()
+
+    for c, i in segments {
+        if i > 0 {
+            im.TextDisabled(" " + icons.ICON_MD_CHEVRON_RIGHT + " ")
+            im.SameLine(0, 0)
+        }
+        label := strings.clone_to_cstring(c.label, context.temp_allocator)
+        if i == len(segments) - 1 {
+            im.TextUnformatted(label) // the current folder
+        } else {
+            // A link, not a button: no frame. Hover brightens the text to the
+            // normal color and shows the hand cursor.
+            hovered_last := _project_path_hovered == i
+            im.PushStyleColorImVec4(.Text, im.GetStyleColorVec4(hovered_last ? .Text : .TextDisabled)^)
+            im.TextUnformatted(label)
+            im.PopStyleColor()
+            if im.IsItemHovered({}) {
+                _project_path_hovered = i
+                im.SetMouseCursor(.Hand)
+                if im.IsMouseClicked(.Left) do _project_enter_dir(c.path)
+            } else if hovered_last {
+                _project_path_hovered = -1
+            }
+        }
+        if i < len(segments) - 1 do im.SameLine(0, 0)
+    }
+}
+
 // Draw the subfolders of `path` as tree nodes (sorted). Does not draw `path`
 // itself — the caller decides whether the parent gets a node.
 draw_directory_tree :: proc(path: string, level: int = 0) {
@@ -1303,6 +1341,12 @@ _project_reveal_path :: proc(path: string, select: bool) {
 @(private = "file")
 _project_result_count: int
 
+// Path-bar segment under the pointer, so it can be drawn in the bright text
+// color. The color is chosen BEFORE the item exists, so it uses last frame's
+// answer; a one-frame lag on a hover highlight is invisible.
+@(private = "file")
+_project_path_hovered: int = -1
+
 // Tree pane's share of the window width, dragged via the pane splitter.
 _project_split_ratio: f32 = 0.5
 _PROJECT_MIN_PANE :: f32(120)
@@ -1391,24 +1435,27 @@ draw_project_view :: proc() {
         clear(&_project_list_rows)
 
         // Where the list is, or what the selection is: above the rows, where
-        // the search box used to sit.
-        im.AlignTextToFramePadding()
+        // the search box used to sit. Text height, not frame height — nothing
+        // here is a widget, so the bar stays as thin as one line.
         if query != "" {
             im.Text(strings.clone_to_cstring(fmt.tprintf("%d found", _project_result_count), context.temp_allocator))
         } else if sel_proj_count() > 1 {
             im.Text(strings.clone_to_cstring(fmt.tprintf("%d selected", sel_proj_count()), context.temp_allocator))
         } else {
-            im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
+            _project_draw_path_bar()
         }
 
-        // Rows scroll in their own child so the status line below stays fixed
+        // Rows scroll in their own child so the zoom strip below stays fixed
         // at the bottom of the pane.
         result_count := 0
-        // Reserve the bottom strip exactly: spacing + separator + spacing +
-        // one FRAME-height line (the zoom widget makes the status line frame-
-        // sized — reserving only text height leaves the pane a few pixels
-        // short and grows a stray scrollbar).
-        im.BeginChild("FileRows", im.Vec2{0, -(im.GetFrameHeightWithSpacing() + im.GetStyle().ItemSpacing.y + 1)}, {})
+        // Reserve exactly the strip: the slider's own height (text plus the
+        // trimmed 1px frame padding, top and bottom) and one item spacing.
+        zoom_h := im.GetTextLineHeight() + 2 + im.GetStyle().ItemSpacing.y
+        im.BeginChild("FileRows", im.Vec2{0, -zoom_h}, {})
+        // The child insets its contents on the left by the window padding;
+        // match it above the first row, so the list does not touch the top
+        // edge (imgui applies no padding on the scrolling axis).
+        im.Dummy({0, im.GetStyle().WindowPadding.y - im.GetStyle().ItemSpacing.y})
         if query != "" {
             result_count = _project_draw_search_results(query)
         } else if projectViewData.currentPath == _PROJECT_PACKAGES_PATH {
@@ -1437,11 +1484,13 @@ draw_project_view :: proc() {
         }
 
         // Bottom strip: the zoom slider, right-aligned. 0 = list view, above
-        // it a thumbnail grid whose cell scales with the value.
-        im.Separator()
+        // it a thumbnail grid whose cell scales with the value. Trimmed frame
+        // padding keeps the strip close to the track's own height.
+        im.PushStyleVarImVec2(.FramePadding, im.Vec2{im.GetStyle().FramePadding.x, 1})
         zoom_w := widgets.slider_width_for_track(90)
         im.SetCursorPosX(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
         widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
+        im.PopStyleVar()
         // The row count the header shows, from THIS frame's draw.
         _project_result_count = result_count
 
