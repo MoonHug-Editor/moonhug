@@ -1,3 +1,9 @@
+## [0.93.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.93.0...v0.93.1) (2026-09-08)
+
+### Bug Fixes
+
+* add settings hotkey, move component menus, remove unused Script component ([1ab2f62](https://github.com/MoonHug-Editor/moonhug/commit/1ab2f625a5a2d53a3924848e915eeeacbdd24191))
+
 ## [0.93.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.92.0...v0.93.0) (2026-09-08)
 
 ### Features
