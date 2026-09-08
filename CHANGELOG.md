@@ -1,3 +1,13 @@
+## [0.93.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.92.0...v0.93.0) (2026-09-08)
+
+### Features
+
+* relaunch editor button ([0705a89](https://github.com/MoonHug-Editor/moonhug/commit/0705a89c18a6e7f44d4c2bd27f162561355fdebd))
+
+### Bug Fixes
+
+* color undo, minor game view bg color change ([1d81bc2](https://github.com/MoonHug-Editor/moonhug/commit/1d81bc23fba2418524b57b48e111ab58db31e473))
+
 ## [0.92.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.91.0...v0.92.0) (2026-09-06)
 
 ### Features
