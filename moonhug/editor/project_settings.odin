@@ -33,6 +33,9 @@ _Settings_Tab :: struct {
 	ptr:       rawptr,
 	tid:       typeid,
 	last_json: []byte, // last persisted state, so saves happen only on change
+	// A tab that draws itself instead of a settings struct (the Plugins tab,
+	// whose state is the filesystem). No undo owner, nothing persisted.
+	draw:      proc(),
 }
 
 @(private = "file")
@@ -58,6 +61,14 @@ settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid) {
 	})
 }
 
+// Registers a tab drawn by `draw`, for state that is not a settings struct.
+settings_add_custom_tab :: proc(name: string, draw: proc()) {
+	append(&_settings_tabs, _Settings_Tab{name = name, draw = draw})
+	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
+		return a.name < b.name
+	})
+}
+
 // Persists every tab that differs from its last saved state. Called at editor
 // shutdown, so changes made outside the window's diff-save (an undo after the
 // window closed) still land on disk.
@@ -77,6 +88,7 @@ settings_shutdown :: proc() {
 
 @(private = "file")
 _settings_persist :: proc(tab: ^_Settings_Tab) {
+	if tab.draw != nil do return
 	cur := undo.capture_json(tab.ptr, tab.tid)
 	if cur == nil do return
 	if slice.equal(cur, tab.last_json) {
@@ -133,12 +145,16 @@ project_settings_window_draw :: proc() {
 	im.BeginChild("##ps_section", im.Vec2{0, 0}, {}, {})
 	if selected != nil {
 		im.SeparatorText(strings.clone_to_cstring(selected.name, context.temp_allocator))
-		undo.push_raw_owner(selected.ptr, selected.tid)
-		inspector.draw_inspector(any{selected.ptr, selected.tid})
-		undo.pop_owner()
-		// Diff-save once the edit is over — not per keystroke or drag frame.
-		if !im.IsAnyItemActive() {
-			_settings_persist(selected)
+		if selected.draw != nil {
+			selected.draw()
+		} else {
+			undo.push_raw_owner(selected.ptr, selected.tid)
+			inspector.draw_inspector(any{selected.ptr, selected.tid})
+			undo.pop_owner()
+			// Diff-save once the edit is over — not per keystroke or drag frame.
+			if !im.IsAnyItemActive() {
+				_settings_persist(selected)
+			}
 		}
 	}
 	im.EndChild()

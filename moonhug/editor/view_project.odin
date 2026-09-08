@@ -423,6 +423,13 @@ _project_rename_input :: proc(width: f32) {
 
 // Material icon glyph for a file (full path). Icons are merged into the base
 // font, so the returned string is drawn inline as part of a label.
+// A folder's icon: a linked folder shows the link glyph in every state, so a
+// plugin link in packages/ reads as a link wherever it appears.
+_project_dir_icon :: proc(is_link: bool, expanded := false) -> string {
+	if is_link do return icons.ICON_MD_FOLDER_LINK
+	return icons.ICON_MD_FOLDER_OPEN if expanded else icons.ICON_MD_FOLDER
+}
+
 _project_file_icon :: proc(path: string) -> string {
     switch filepath.ext(path) {
     case ".scene":
@@ -449,7 +456,7 @@ _project_file_icon :: proc(path: string) -> string {
 
 // Draw one folder node (icon, selection, keyboard row, open-state) and, if
 // open, recurse into its subfolders. `name` is the label; `full_path` its path.
-_project_draw_tree_node :: proc(full_path: string, name: string) {
+_project_draw_tree_node :: proc(full_path: string, name: string, is_link := false) {
     // Scope the imgui ID to this path so the "###node" constant IDs below stay
     // unique per folder (and never shift with the display label / icon).
     im.PushID(strings.clone_to_cstring(full_path, context.temp_allocator))
@@ -486,7 +493,7 @@ _project_draw_tree_node :: proc(full_path: string, name: string) {
     // the node would strobe. Pin the ID explicitly with PushIDStr(full_path) and
     // give TreeNodeEx a constant display+id via "###" so the icon can vary freely.
     expanded := !is_leaf && _project_tree_open_state[full_path]
-    folder_icon := icons.ICON_MD_FOLDER_OPEN if expanded else icons.ICON_MD_FOLDER
+    folder_icon := _project_dir_icon(is_link, expanded)
     node_label := strings.clone_to_cstring(fmt.tprintf("%s%s###node", folder_icon, name), context.temp_allocator)
 
     node_flags: im.TreeNodeFlags = {.OpenOnArrow, .OpenOnDoubleClick}
@@ -545,7 +552,7 @@ draw_directory_tree :: proc(path: string, level: int = 0) {
     for entry in entries {
         if !entry.is_dir do continue
         full_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        _project_draw_tree_node(full_path, entry.name)
+        _project_draw_tree_node(full_path, entry.name, entry.is_link)
     }
 }
 
@@ -750,7 +757,7 @@ draw_file_list :: proc(path: string) {
     for entry in entries {
         if !entry.is_dir do continue
         entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-        _project_draw_list_row(entry.name, entry_path, is_dir = true)
+        _project_draw_list_row(entry.name, entry_path, is_dir = true, is_link = entry.is_link)
     }
 
     // Draw files below directories
@@ -790,7 +797,7 @@ _project_draw_grid :: proc(path: string, cell: f32) {
             if col > 0 do im.SameLine()
             else do im.SetCursorPosX(im.GetCursorPosX() + lead)
             entry_path, _ := filepath.join({path, entry.name}, context.temp_allocator)
-            _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell)
+            _project_draw_grid_cell(entry.name, entry_path, entry.is_dir, cell, entry.is_link)
             col = (col + 1) % cols
 
             // Unity's expander strip: an unfolded asset's sub-assets follow
@@ -863,7 +870,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID
     im.DrawList_PopClipRect(dl)
 }
 
-_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32) {
+_project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool, cell: f32, is_link := false) {
     append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
 
     label_h := im.GetTextLineHeightWithSpacing()
@@ -918,11 +925,11 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
         _project_scroll_to_list_sel = false
     }
     _project_item_ping_flash(full_path)
-    icon := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
     drag_label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
     _project_item_extras(full_path, is_dir, drag_label)
 
-    _project_grid_cell_art(full_path, is_dir, rect_min, cell, dim)
+    _project_grid_cell_art(full_path, is_dir, rect_min, cell, dim, is_link)
 
     if len(sub) > 0 {
         dl_arrow := im.GetWindowDrawList()
@@ -951,7 +958,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
 
 // The cell's art: the asset's thumbnail when the service has one, the type
 // glyph scaled to the cell otherwise.
-_project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec2, cell: f32, dim: bool) {
+_project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec2, cell: f32, dim: bool, is_link := false) {
     dl := im.GetWindowDrawList()
     if !is_dir {
         if id, ok := thumbnail_get(full_path); ok {
@@ -963,7 +970,7 @@ _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec
             return
         }
     }
-    glyph := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    glyph := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
     cglyph := strings.clone_to_cstring(glyph, context.temp_allocator)
     text_col := im.GetStyleColorVec4(im.Col.Text)^
     if dim do text_col = {text_col.x * 0.6, text_col.y * 0.6, text_col.z * 0.6, text_col.w}
@@ -978,11 +985,11 @@ _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec
 // One row of the right pane, shared by the folder listing and search results.
 // `display` is the shown text; `full_path` drives selection, rename,
 // activation, and the drag payload.
-_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool) {
+_project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool, is_link := false) {
     append(&_project_list_rows, Project_Row{name = display, path = full_path, is_dir = is_dir})
     if !_project_rename_in_tree && _project_draw_rename_row(full_path) do return
 
-    icon := icons.ICON_MD_FOLDER if is_dir else _project_file_icon(full_path)
+    icon := _project_dir_icon(is_link) if is_dir else _project_file_icon(full_path)
     label := strings.clone_to_cstring(fmt.tprintf("%s%s", icon, display), context.temp_allocator)
 
     is_selected := _project_active_pane == .List && sel_proj_is(full_path)

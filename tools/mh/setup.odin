@@ -73,6 +73,10 @@ cmd_setup :: proc(args: []string) -> int {
 	failed := 0
 	built := 0
 
+	// Plugin links first: a clone with broken links cannot build anything.
+	links_ok := repair_package_links()
+	fmt.println()
+
 	fmt.printfln("mh: vendored libraries under %s", odin_vendor())
 	for lib in vendor_libs() {
 		artifact := odin_vendor(lib.artifact)
@@ -101,6 +105,10 @@ cmd_setup :: proc(args: []string) -> int {
 	}
 	if failed > 0 {
 		fmt.eprintfln("mh: %d vendored librar%s failed to build", failed, "y" if failed == 1 else "ies")
+		return 1
+	}
+	if !links_ok {
+		fmt.eprintln("mh: plugin links are broken, see above")
 		return 1
 	}
 	fmt.printfln("mh: setup complete (%d built). Next: odin run tools/mh -- run", built)

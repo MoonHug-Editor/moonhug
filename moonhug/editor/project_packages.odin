@@ -18,6 +18,7 @@ _PROJECT_PACKAGES_PATH :: "packages"
 Project_Package :: struct {
 	name:        string, // temp
 	assets_path: string, // temp; "packages/<name>/assets"
+	is_link:     bool,   // packages/<name> is a symlink (a plugin link or a linked sample)
 }
 
 // Installed packages via the dir cache (500ms TTL — same freshness as the
@@ -32,6 +33,7 @@ project_packages_list :: proc() -> []Project_Package {
 		append(&out, Project_Package{
 			name        = strings.clone(entry.name, context.temp_allocator),
 			assets_path = fmt.tprintf("%s/%s/assets", _PROJECT_PACKAGES_PATH, entry.name),
+			is_link     = entry.is_link,
 		})
 	}
 	return out[:]
@@ -120,7 +122,7 @@ _project_draw_packages_tree :: proc() {
 	}
 	if node_open && len(pkgs) > 0 {
 		for pkg in pkgs {
-			_project_draw_tree_node(pkg.assets_path, pkg.name)
+			_project_draw_tree_node(pkg.assets_path, pkg.name, pkg.is_link)
 		}
 		im.TreePop()
 	}
@@ -131,7 +133,7 @@ _project_draw_packages_tree :: proc() {
 _project_draw_packages_list :: proc() {
 	for pkg in project_packages_list() {
 		append(&_project_list_rows, Project_Row{name = pkg.name, path = pkg.assets_path, is_dir = true})
-		label := strings.clone_to_cstring(fmt.tprintf("%s%s", icons.ICON_MD_FOLDER, pkg.name), context.temp_allocator)
+		label := strings.clone_to_cstring(fmt.tprintf("%s%s", _project_dir_icon(pkg.is_link), pkg.name), context.temp_allocator)
 		is_selected := _project_active_pane == .List && sel_proj_is(pkg.assets_path)
 		if im.Selectable(label, is_selected, {.AllowDoubleClick}) {
 			_project_set_selected(pkg.assets_path)

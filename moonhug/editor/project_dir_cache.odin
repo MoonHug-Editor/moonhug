@@ -20,8 +20,9 @@ import "core:time"
 import strings "core:strings"
 
 Project_Dir_Entry :: struct {
-	name:   string, // owned
-	is_dir: bool,
+	name:    string, // owned
+	is_dir:  bool,
+	is_link: bool, // a symlink (is_dir says what it points at); drawn with its own icon
 }
 
 @(private = "file")
@@ -88,9 +89,10 @@ _dir_scan :: proc(path: string) -> ([]Project_Dir_Entry, bool) {
 
 	// Case-insensitive sort with the lowercase key computed ONCE per entry.
 	Sort_Row :: struct {
-		lower:  string,
-		name:   string,
-		is_dir: bool,
+		lower:   string,
+		name:    string,
+		is_dir:  bool,
+		is_link: bool,
 	}
 	rows := make([dynamic]Sort_Row, 0, len(infos), context.temp_allocator)
 	for info in infos {
@@ -102,9 +104,10 @@ _dir_scan :: proc(path: string) -> ([]Project_Dir_Entry, bool) {
 			is_dir = os.is_dir(full)
 		}
 		append(&rows, Sort_Row{
-			lower  = strings.to_lower(info.name, context.temp_allocator),
-			name   = info.name,
-			is_dir = is_dir,
+			lower   = strings.to_lower(info.name, context.temp_allocator),
+			name    = info.name,
+			is_dir  = is_dir,
+			is_link = info.type == .Symlink,
 		})
 	}
 	slice.sort_by(rows[:], proc(a, b: Sort_Row) -> bool {
@@ -113,7 +116,7 @@ _dir_scan :: proc(path: string) -> ([]Project_Dir_Entry, bool) {
 
 	out := make([]Project_Dir_Entry, len(rows))
 	for r, i in rows {
-		out[i] = Project_Dir_Entry{name = strings.clone(r.name), is_dir = r.is_dir}
+		out[i] = Project_Dir_Entry{name = strings.clone(r.name), is_dir = r.is_dir, is_link = r.is_link}
 	}
 	return out, true
 }

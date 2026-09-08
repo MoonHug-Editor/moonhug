@@ -16,8 +16,14 @@ odin run tools/mh -- setup
 odin run tools/mh -- run
 ```
 
-`setup` builds the vendored C libraries Odin ships as source. `run` generates
+`setup` repairs the plugin links in `moonhug/packages/` when a clone produced
+plain files or dangling links instead (docs/Plugins.md, Folder structure),
+then builds the vendored C libraries Odin ships as source. `run` generates
 code, compiles the editor and launches it.
+
+On Windows, creating the links needs Developer Mode (Settings, For
+developers) or an elevated shell. `setup` says so when a link stays broken.
+Rerun it after enabling.
 
 ## Relaunch
 

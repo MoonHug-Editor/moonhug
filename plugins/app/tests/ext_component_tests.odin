@@ -5,7 +5,7 @@ package app_tests
 // component object in `ext_components` with an extra "__type" guid key, so
 // every JSON-level walker (diff/apply/lid-collect) sees the same shape.
 
-import app ".."
+import app "moonhug:packages/app"
 import "moonhug:engine"
 import common "moonhug:tests/common"
 

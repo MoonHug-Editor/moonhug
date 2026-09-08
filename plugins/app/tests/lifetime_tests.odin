@@ -5,7 +5,7 @@ package app_tests
 // guids are silently dropped on load, see the missing-component note in
 // docs/Plugins.md).
 
-import app ".."
+import app "moonhug:packages/app"
 import "moonhug:engine"
 import common "moonhug:tests/common"
 import "core:fmt"

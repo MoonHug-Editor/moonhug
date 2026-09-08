@@ -52,8 +52,41 @@ graph and sequencer windows all moved out of the editor root this way, and
 
 ## Folder structure
 
+Plugins live in `plugins/` at the repository root. A plugin is enabled by a
+symlink to it in `moonhug/packages/`, and presence in `packages/` is the
+whole switch: the generators scan `packages/`, Odin imports through
+`moonhug:packages/<name>`, and a plugin with no link there is not compiled,
+scanned or mounted. The link avoids a copy, so editing the plugin in
+`plugins/` is editing the enabled one. Samples install the same way, as a
+link in `packages/` to a folder under a plugin's `samples/`.
+
 ```
+plugins/
+  physics2d/                ← the plugin itself, edited here
 moonhug/packages/
+  physics2d -> ../../plugins/physics2d   ← enabled: a relative link, committed
+  platformer -> physics2d/samples/platformer   ← an installed sample
+```
+
+Project Settings has a Plugins section listing the folders in `plugins/`,
+each with a checkbox: on creates the link in `packages/`, off removes it. A
+real directory in `packages/` (a copy) shows disabled, since only links are
+toggled. Assets mount right away, code applies after Relaunch, which the
+section offers once something changed. In the project view a linked folder
+draws with a folder-and-arrow icon, so plugin links and linked samples read
+as links wherever they appear.
+
+Git stores the links. `mh setup` checks every tracked link and repairs a
+clone that produced a plain file or a dangling link instead, which Git for
+Windows does with `core.symlinks` off (its default without Developer Mode).
+It sets `core.symlinks` for that clone only, recreates the link from the
+index after the whole tree exists, and reports a real directory sitting where
+a link belongs without touching it. Removing a link is never setup's job.
+
+Inside a plugin:
+
+```
+plugins/
   physics2d/                ← runtime package:  import "moonhug:packages/physics2d"
     physics.odin
     component_Rigidbody2D.odin
@@ -75,8 +108,10 @@ moonhug/packages/
 ```
 
 - **Package root = the runtime Odin package.** Compiled into BOTH binaries
-  (editor imports app). Folder name is the package identity and the declared
-  `package` name.
+  (editor imports app). The folder name is the package identity and the
+  declared `package` name, and the link in `packages/` carries the same name.
+  Imports always go through `moonhug:packages/<name>`, never `plugins/`, so
+  the link is the one path a plugin is reached by.
 - **`editor/`** — editor-only code (gizmos, custom inspectors, menu items).
   Compiled into the editor binary only, never the app. Declares
   `package <name>_editor` — every plugin's folder is named `editor/`, so the

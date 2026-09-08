@@ -155,6 +155,7 @@ main :: proc() {
     defer wnd.shutdown()
     defer preview.shutdown()
     _register_project_settings() // @(project_settings) vars -> settings tabs
+    project_plugins_register()   // the Plugins tab: plugins/ with a link toggle each
     defer settings_shutdown()
     defer thumbnails_shutdown()
     defer asset_previews_shutdown()
