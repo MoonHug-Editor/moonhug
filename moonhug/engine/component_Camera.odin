@@ -5,7 +5,7 @@ package engine
 Camera :: struct {
     using base: CompData `inspect:"-"`,
     order:             i32,
-    fov:               f32,
+    fov:               f32 `decor:range(1, 179)`,
     near_clip:         f32,
     far_clip:          f32,
     clear_color:       [4]f32 `decor:color()`,

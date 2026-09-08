@@ -1031,11 +1031,16 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	prev_euler := _rotation_cache_sync(tH, t)
 	prev_changed := inspector.consume_inspector_changed()
 
+	// The three components are one gesture: imgui's EndGroup forwards the
+	// active component, its release and its edited flag to the group, so the
+	// two reads below see a drag begun or released on X or Y, not only Z.
+	im.BeginGroup()
 	drawer(&_inspector_euler_cache, typeid_of(^[3]f32), "Rotation")
+	im.EndGroup()
+	row_activated := im.IsItemActivated()
+	row_released := im.IsItemDeactivatedAfterEdit()
 
-	// From whichever component was clicked — see drag_row_activated. Reading
-	// imgui directly would only see a drag begun on Z.
-	if inspector.drag_row_activated() && !_inspector_rot_drag.active {
+	if row_activated && !_inspector_rot_drag.active {
 		_inspector_rot_drag = undo.edit_begin(tH, &t.rotation, typeid_of([4]f32), "Rotation")
 	}
 
@@ -1050,14 +1055,7 @@ _wrap_transform_rotation :: proc(tH: engine.Transform_Handle, t: ^engine.Transfo
 	// a release only ends the undo entry when a drag actually opened one.
 	// Commit either way — inspector.Field_Commit's two events, with the drag
 	// close attached to the first.
-	// The row draws three separate imgui items, so imgui's own item state
-	// describes only the LAST one (Z) by the time the drawer returns. Releasing a
-	// drag on X or Y would look like no release, edit_end would never fire,
-	// and the edited object would get no undo entry — while its multi-edit peers
-	// still recorded theirs. drag_row_deactivated latches the release from
-	// whichever component actually had it.
 	euler_changed := _inspector_euler_cache != prev_euler
-	row_released := inspector.drag_row_deactivated()
 	if row_released && _inspector_rot_drag.active {
 		undo.edit_end(&_inspector_rot_drag)
 		committed = true

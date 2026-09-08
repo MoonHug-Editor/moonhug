@@ -230,33 +230,20 @@ field_edit_frame_begin :: proc(any_item_active: bool) {
 	}
 }
 
-// Whether the row's widget is mid-gesture, from the row's own items rather than
-// imgui's global item state.
+// Whether the row's widget is mid-gesture. The drawer ran inside a group, so
+// imgui's item state here describes the whole row: a multi-component row
+// (drag_float3) draws N separate items, and EndGroup forwards whichever one
+// had the gesture.
 //
-// A multi-component row (drag_float3) draws N separate items, so asking imgui
-// after the drawer returns only ever describes the LAST component — a drag on X
-// or Y looks like nothing happened. drag_row_activated/deactivated latch the
-// real answer from inside the row.
-//
-// A substituted state is AUTHORITATIVE and checked first. Consulting the latched
-// flags before it meant a stale latch could both answer the question and be
-// consumed, so a harness could not reliably drive a row — the flags are set by
-// real drag widgets, which a substituted row never draws.
+// A substituted state is AUTHORITATIVE. Otherwise imgui's item state is read,
+// which after the drawer's group describes the whole row.
 field_edit_row_started :: proc() -> bool {
-	if _widget_state_override != nil {
-		drag_row_activated() // consumed, so it cannot leak into the next row
-		return _widget_state_override.activated
-	}
-	if drag_row_activated() do return true
+	if _widget_state_override != nil do return _widget_state_override.activated
 	return im.IsItemActivated()
 }
 
 field_edit_row_finished :: proc() -> bool {
-	if _widget_state_override != nil {
-		drag_row_deactivated()
-		return _widget_state_override.deactivated_after_edit
-	}
-	if drag_row_deactivated() do return true
+	if _widget_state_override != nil do return _widget_state_override.deactivated_after_edit
 	return im.IsItemDeactivatedAfterEdit()
 }
 
@@ -364,7 +351,22 @@ field_edit_row :: proc(
 	before := owns_before ? undo.capture_json(field_ptr, field_tid) : pre_before
 	defer if owns_before && before != nil do delete(before)
 
-	if drawer != nil do drawer(field_ptr, field_tid, draw_label)
+	// The drawer runs inside a group. imgui's EndGroup forwards the active
+	// item, its deactivation and its edited flag to the group, so the item
+	// state read below describes EVERY item the drawer emitted, not the last
+	// one. A row is one gesture no matter how many items draw it: a three-
+	// component drag, a slider's track plus value box, a picker's button and
+	// clear. Without this, a gesture on any item but the last was invisible
+	// here, and each such row needed its own patch.
+	//
+	// Under the widget-state override (the test harness) there is no imgui
+	// context and the override IS the row's item state, so no group.
+	if drawer != nil {
+		grouped := _widget_state_override == nil
+		if grouped do im.BeginGroup()
+		drawer(field_ptr, field_tid, draw_label)
+		if grouped do im.EndGroup()
+	}
 	multi_clear_mixed()
 
 	// Picker rows are excluded from the activation path: they are bracketed

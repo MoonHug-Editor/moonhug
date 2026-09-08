@@ -502,3 +502,68 @@ test_row_color_popup_open_close_records_nothing :: proc(t: ^testing.T) {
 	testing.expect_value(t, cam_a.clear_color, start)
 	testing.expect_value(t, s.top, before_steps)
 }
+
+// ---------------------------------------------------------------------------
+// Range slider rows (decor:range): the value changes while the TRACK is
+// dragged, and the track is not the row's last imgui item — the value box is.
+// field_edit_row groups the drawer so imgui forwards the track's gesture to
+// the whole row; the harness's widget state stands in for that forwarded
+// state, and the drag is one undo step like any drag field.
+
+@(private = "file")
+_write_fov :: proc(p: rawptr) { (^f32)(p)^ = 90 }
+@(private = "file")
+_write_fov_more :: proc(p: rawptr) { (^f32)(p)^ = 120 }
+
+@(test)
+test_row_slider_drag_is_one_undo_step :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	a := engine.transform_new("A")
+	b := engine.transform_new("B")
+	_, a_ptr := engine.transform_add_comp(a, .Camera)
+	_, b_ptr := engine.transform_add_comp(b, .Camera)
+	cam_a := cast(^engine.Camera)a_ptr
+	cam_b := cast(^engine.Camera)b_ptr
+	cam_a.fov = 60
+	cam_b.fov = 60
+
+	peers := []inspector.Multi_Peer{
+		{base = b_ptr, handle = _comp_handle(b, .Camera), scene = _scene_of(b)},
+	}
+	prev := inspector.multi_set_peers(peers)
+	defer inspector.multi_set_peers(prev)
+	undo.push_component_owner(_comp_handle(a, .Camera))
+	defer undo.pop_owner()
+
+	before_steps := s.top
+	h := Row_Harness{
+		field_ptr = &cam_a.fov,
+		field_tid = typeid_of(f32),
+		offset    = offset_of(engine.Camera, fov),
+		label     = "fov",
+	}
+	// A drag on the track: press, move, release — the same frames a drag
+	// field produces once the group forwards the track's gesture.
+	frames := []Frame{
+		frame_idle(),
+		frame_press(_write_fov),
+		frame_drag(_write_fov_more),
+		frame_release(),
+		frame_idle(),
+	}
+	finishes := row_replay(&h, frames)
+
+	testing.expect_value(t, finishes, 1)
+	testing.expect_value(t, cam_a.fov, f32(120))
+	testing.expect_value(t, cam_b.fov, f32(120)) // the peer followed
+	testing.expect_value(t, s.top, before_steps + 1)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, cam_a.fov, f32(60))
+	testing.expect_value(t, cam_b.fov, f32(60))
+}

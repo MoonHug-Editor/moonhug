@@ -2,11 +2,14 @@ package inspector
 
 import "base:intrinsics"
 import "core:fmt"
+import "core:math"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 import engine "../../engine"
 import "../../engine/log"
 
 Min_Value :: union { int, f64 }
+
 
 decorator_min :: proc(ctx: ^DrawContext, min_value: Min_Value) {
 	if !ctx.is_visible || ctx.is_pre do return
@@ -35,6 +38,44 @@ decorator_min :: proc(ctx: ^DrawContext, min_value: Min_Value) {
 		if ptr^ < val do ptr^ = val
 	case:
 	}
+}
+
+// `decor:range(min, max)` — Unity's [Range]: the field draws as a slider with
+// a value box (widgets.slider_float) instead of a drag field, and the value is
+// held inside the range. int and f32 fields; anything else is left alone.
+decorator_range :: proc(ctx: ^DrawContext, min_value: Min_Value, max_value: Min_Value) {
+	if !ctx.is_pre do return
+	if ctx.field_ptr == nil do return
+
+	as_f32 :: proc(v: Min_Value) -> f32 {
+		switch n in v {
+		case int: return f32(n)
+		case f64: return f32(n)
+		}
+		return 0
+	}
+	lo, hi := as_f32(min_value), as_f32(max_value)
+	if hi <= lo do return
+
+	label := ctx.field_label
+	switch ctx.field_type {
+	case typeid_of(f32):
+		ptr := cast(^f32)ctx.field_ptr
+		if widgets.slider_float(field_row(label), ptr, lo, hi) {
+			mark_inspector_changed()
+		}
+	case typeid_of(int):
+		ptr := cast(^int)ctx.field_ptr
+		v := f32(ptr^)
+		if widgets.slider_float(field_row(label), &v, lo, hi, "%.0f") {
+			ptr^ = int(math.round(v))
+			mark_inspector_changed()
+		}
+	case:
+		return // not a numeric field: leave the normal drawer alone
+	}
+	ctx.is_visible = false
+	ctx.handled_draw = true
 }
 
 decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {

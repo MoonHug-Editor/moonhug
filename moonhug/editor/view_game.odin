@@ -6,6 +6,7 @@ import "menu"
 import "../engine"
 import "../engine/input"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 game_rt: ^gfx.Render_Target
 
@@ -173,10 +174,6 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 		}
 		im.EndCombo()
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip("Game view size: Free Aspect fills the view, an aspect letterboxes, a resolution renders those pixels")
-	}
-
 	im.SameLine()
 	im.TextUnformatted("Scale")
 	im.SameLine()
@@ -193,18 +190,17 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	}
 	_game_scale_floor = lo
 	game_scale = clamp(game_scale, lo, GAME_SCALE_MAX)
-	im.SetNextItemWidth(140)
+	// The slider takes the rest of the toolbar, so a wider view gives a longer
+	// track (the inspector's range rows stretch the same way). The right pad
+	// keeps the value box off the window edge.
 	im.BeginDisabled(free_size)
-	im.SliderFloat("##game_scale", &game_scale, lo, GAME_SCALE_MAX, "%.2fx", {})
+	slider_w := max(im.GetContentRegionAvail().x - GAME_TOOLBAR_PAD, widgets.slider_width_for_track(40))
+	widgets.slider_float("##game_scale", &game_scale, lo, GAME_SCALE_MAX, "%.2f", slider_w)
 	if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
 		im.SetTooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels")
 	}
 	im.EndDisabled()
-	if game_scale != 1 && !free_size {
-		im.SameLine()
-		if im.SmallButton("1x") do game_scale = 1
-		if im.IsItemHovered({}) do im.SetTooltip("Back to actual pixels")
-	}
+
 }
 
 draw_game_view :: proc() {

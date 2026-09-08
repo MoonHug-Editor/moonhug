@@ -734,7 +734,12 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         }
         defer if pre_before != nil do delete(pre_before)
 
+        // Grouped for the same reason field_edit_row groups its drawer: a
+        // decorator that draws the row (color, range) may emit several items,
+        // and the row's transaction below must see them as one gesture.
+        im.BeginGroup()
         run_field_decorators(tid, i, &ctx)
+        im.EndGroup()
 
         row_popup_done := false
 

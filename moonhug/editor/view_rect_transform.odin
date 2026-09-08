@@ -145,14 +145,14 @@ _rt_record :: proc(t: _Rt_Target, ptr: rawptr, tid: typeid, name: string, change
 	}
 }
 
-// A block of drag fields drew: open the session on the frame a drag or a
-// typed edit began, close it on release. The latches come from the drag
-// widgets themselves (drag_row_activated), so a gesture on any field in the
-// block counts.
+// A block of drag fields drew inside an imgui group and the group just
+// ended: open the session on the frame a drag or a typed edit began, close it
+// on release. imgui forwards any field's gesture to the group, so a gesture
+// on any field in the block counts.
 @(private = "file")
 _rt_gesture :: proc(label: string) {
-	if inspector.drag_row_activated() do _rt_session_begin(label)
-	if inspector.drag_row_deactivated() do _rt_session_end()
+	if im.IsItemActivated() do _rt_session_begin(label)
+	if im.IsItemDeactivatedAfterEdit() do _rt_session_end()
 }
 
 // --- Rect math -----------------------------------------------------------------------
@@ -275,7 +275,9 @@ _rt_draw_position_block :: proc(driven: bool) {
 	_rt_anchor_icon(im.GetWindowDrawList(), btn_pos, btn, rt.anchor_min, rt.anchor_max, im.IsItemHovered() || im.IsItemActive(), false, anchors_mixed)
 	block_top := btn_pos.y - (block_h - btn) * 0.5
 
-	// Three columns of label-over-field, right of the label column.
+	// Three columns of label-over-field, right of the label column. Grouped so
+	// _rt_gesture below sees a drag on any cell as the block's gesture.
+	im.BeginGroup()
 	im.SetCursorPosX(field_x)
 	avail := im.GetContentRegionAvail().x
 	col_w := (avail - f32(_RT_COLUMNS - 1) * style.ItemSpacing.x) / f32(_RT_COLUMNS)
@@ -305,6 +307,7 @@ _rt_draw_position_block :: proc(driven: bool) {
 	// Leave the cursor below the block.
 	im.SetCursorScreenPos({window_x + x0, block_top + block_h})
 	im.Dummy({0, 0})
+	im.EndGroup()
 
 	_rt_gesture("Rect Transform")
 	if shown == cells do return
@@ -348,10 +351,12 @@ _rt_draw_anchors :: proc() {
 	rt := _rt_targets[0].rt
 	amin := rt.anchor_min
 	amax := rt.anchor_max
+	im.BeginGroup()
 	_rt_mixed2(proc(rt: ^engine.RectTransform) -> [2]f32 { return rt.anchor_min })
 	changed_min := inspector.drag_float2(inspector.field_row("Min"), &amin, 0.01, 0, 1)
 	_rt_mixed2(proc(rt: ^engine.RectTransform) -> [2]f32 { return rt.anchor_max })
 	changed_max := inspector.drag_float2(inspector.field_row("Max"), &amax, 0.01, 0, 1)
+	im.EndGroup()
 	inspector.multi_clear_mixed()
 	_rt_gesture("Anchors")
 	if !changed_min && !changed_max do return
@@ -386,8 +391,10 @@ _rt_draw_anchors :: proc() {
 _rt_draw_pivot :: proc() {
 	rt := _rt_targets[0].rt
 	pivot := rt.pivot
+	im.BeginGroup()
 	_rt_mixed2(proc(rt: ^engine.RectTransform) -> [2]f32 { return rt.pivot })
 	changed := inspector.drag_float2(inspector.field_row("Pivot"), &pivot, 0.01)
+	im.EndGroup()
 	inspector.multi_clear_mixed()
 	_rt_gesture("Pivot")
 	if !changed do return

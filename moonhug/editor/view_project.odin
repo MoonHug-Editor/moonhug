@@ -1430,10 +1430,11 @@ draw_project_view :: proc() {
         } else {
             im.Text(strings.clone_to_cstring(fmt.tprintf("Path: %s", projectViewData.currentPath), context.temp_allocator))
         }
-        zoom_w: f32 = 48
+        // Unity's zoom slider: track + handle + value field (widgets.slider_float).
+        zoom_track: f32 = 90
+        zoom_w := widgets.slider_width_for_track(zoom_track)
         im.SameLine(max(im.GetCursorPosX(), im.GetWindowWidth() - zoom_w - im.GetStyle().WindowPadding.x))
-        im.SetNextItemWidth(zoom_w)
-        im.DragFloat("##prj_zoom", &editor_settings.project_zoom, 0.01, 0, 1, "%.2f", {.ClampOnInput})
+        widgets.slider_float("##prj_zoom", &editor_settings.project_zoom, 0, 1, "%.2f", zoom_w)
 
         im.EndChild()
 
