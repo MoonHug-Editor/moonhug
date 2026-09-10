@@ -405,15 +405,27 @@ overlays_draw :: proc(view_min, view_max: im.Vec2, bar_min := im.Vec2{}, bar_max
 			}
 		}
 
-		// Clamp inside the view (also keeps floaters visible after a resize),
-		// on whole pixels: a floater's normalized position lands on fractions,
+		// Whole pixels: a floater's normalized position lands on fractions,
 		// and imgui text at a fractional x renders blurred.
-		// Strip overlays clamp to the whole content rect (their strip lies
-		// outside the image), everything else to the image.
+		//
+		// Only the near edges bound an ANCHORED overlay. Bounding the far
+		// edges too pushed a wide one back inward — a zone whose overlays
+		// outgrow the view then stacked them on top of each other, which
+		// reads as damage rather than as running out of room. Overflowing
+		// past the far edge is the honest picture, and imgui clips it to the
+		// window. A FLOATER still clamps both ways: its position is stored
+		// normalized, so a resize could otherwise strand it out of reach.
+		// Strip overlays measure against the whole content rect, since their
+		// strip lies outside the image.
 		cmin := overlay_anchor_is_bar(ov.anchor) && !ov.dragging ? bmin : view_min
 		cmax := overlay_anchor_is_bar(ov.anchor) && !ov.dragging ? bmax : view_max
-		pos.x = math.round(clamp(pos.x, cmin.x + OVERLAY_PAD, max(cmax.x - full.x + OVERLAY_PAD, cmin.x + OVERLAY_PAD)))
-		pos.y = math.round(clamp(pos.y, cmin.y + OVERLAY_PAD, max(cmax.y - full.y + OVERLAY_PAD, cmin.y + OVERLAY_PAD)))
+		if ov.anchor == .Float && !ov.dragging {
+			pos.x = math.round(clamp(pos.x, cmin.x + OVERLAY_PAD, max(cmax.x - full.x + OVERLAY_PAD, cmin.x + OVERLAY_PAD)))
+			pos.y = math.round(clamp(pos.y, cmin.y + OVERLAY_PAD, max(cmax.y - full.y + OVERLAY_PAD, cmin.y + OVERLAY_PAD)))
+		} else {
+			pos.x = math.round(max(pos.x, cmin.x + OVERLAY_PAD))
+			pos.y = math.round(max(pos.y, cmin.y + OVERLAY_PAD))
+		}
 
 		_overlay_draw_one(&ov, pos, vertical)
 
