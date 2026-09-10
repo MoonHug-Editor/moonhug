@@ -1,3 +1,15 @@
+## [0.95.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.94.0...v0.95.0) (2026-09-10)
+
+### Features
+
+* animation view box select ([ddeff5b](https://github.com/MoonHug-Editor/moonhug/commit/ddeff5b205150d7ef42337df17c2285a9e5cc711))
+* animation view UX ([2440859](https://github.com/MoonHug-Editor/moonhug/commit/24408597846e8488278da07cab0abe70310c8ad5))
+* improve animation view ([2bd310e](https://github.com/MoonHug-Editor/moonhug/commit/2bd310ede622e16ebd9df3bf338578f369d69353))
+
+### Bug Fixes
+
+* scene overlays allow overflow view's right side ([40c4b64](https://github.com/MoonHug-Editor/moonhug/commit/40c4b64896cddc7122d35332566bf89119554105))
+
 ## [0.94.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.93.1...v0.94.0) (2026-09-08)
 
 ### Features
