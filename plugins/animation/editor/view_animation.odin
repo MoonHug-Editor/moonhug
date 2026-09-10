@@ -29,6 +29,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:path/filepath"
 import "core:reflect"
+import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
@@ -62,6 +63,13 @@ _ANIM_COMP_COLS :: [4]im.Vec4{
 	{0.75, 0.75, 0.75, 1},
 }
 
+// One key in the sheet: which channel row, which key in it.
+@(private = "file")
+_Key_Ref :: struct {
+	ch:  int,
+	key: int,
+}
+
 @(private = "file")
 _Anim_Mode :: enum {
 	Dopesheet,
@@ -91,9 +99,18 @@ _pv: struct {
 
 	mode:      _Anim_Mode,
 	sel_ch:    int, // selected channel row, -1 = none
-	sel_key:   int, // selected key in sel_ch, -1 = none
+	sel_key:   int, // PRIMARY selected key in sel_ch, -1 = none
+	// Every selected key, primary included. A drag moves all of them and
+	// Delete removes all of them; the primary is what the value footer edits,
+	// so a single-key selection behaves exactly as before.
+	sel:       [dynamic]_Key_Ref,
 	drag_key:  bool, // canvas key drag in progress (undo snapshot open)
 	drag_comp: int,  // curves: value component the drag edits, -1 = time only
+	drag_from: f32,  // time under the cursor when the drag began
+	drag_t0:   [dynamic]f32, // each selected key's time then, parallel to sel
+	// Box select in progress, and where it started (screen space).
+	box:       bool,
+	box_from:  im.Vec2,
 	sync:      bool, // document edited this frame -> push to the clip cache
 }
 
@@ -147,7 +164,85 @@ _pv_teardown :: proc() {
 _pv_deselect :: proc() {
 	_pv.sel_ch = -1
 	_pv.sel_key = -1
+	clear(&_pv.sel)
 	_pv.drag_key = false
+	_pv.box = false
+}
+
+// --- Key selection ---------------------------------------------------------------------
+
+// Replace the selection with one key, which becomes primary.
+@(private = "file")
+_pv_sel_set :: proc(ch, key: int) {
+	clear(&_pv.sel)
+	append(&_pv.sel, _Key_Ref{ch, key})
+	_pv.sel_ch = ch
+	_pv.sel_key = key
+}
+
+// Add a key to the selection, or drop it when already there (additive click).
+// The clicked key becomes primary either way it stays selected.
+@(private = "file")
+_pv_sel_toggle :: proc(ch, key: int) {
+	for r, i in _pv.sel {
+		if r.ch == ch && r.key == key {
+			ordered_remove(&_pv.sel, i)
+			// The primary went with it: fall back to any remaining key.
+			if _pv.sel_ch == ch && _pv.sel_key == key {
+				if len(_pv.sel) > 0 {
+					_pv.sel_ch = _pv.sel[0].ch
+					_pv.sel_key = _pv.sel[0].key
+				} else {
+					_pv.sel_key = -1
+				}
+			}
+			return
+		}
+	}
+	append(&_pv.sel, _Key_Ref{ch, key})
+	_pv.sel_ch = ch
+	_pv.sel_key = key
+}
+
+@(private = "file")
+_pv_sel_has :: proc(ch, key: int) -> bool {
+	for r in _pv.sel {
+		if r.ch == ch && r.key == key do return true
+	}
+	return false
+}
+
+// Drop selection entries a document edit has invalidated (a channel or key
+// removed by undo, or by deleting keys).
+@(private = "file")
+_pv_sel_prune :: proc(clip: ^anim.AnimationClip) {
+	for i := len(_pv.sel) - 1; i >= 0; i -= 1 {
+		r := _pv.sel[i]
+		if r.ch < 0 || r.ch >= len(clip.channels) || r.key < 0 || r.key >= len(clip.channels[r.ch].times) {
+			ordered_remove(&_pv.sel, i)
+		}
+	}
+}
+
+// The additive-selection modifier: the platform command key, as elsewhere in
+// the editor.
+@(private = "file")
+_pv_additive :: proc() -> bool {
+	io := im.GetIO()
+	return io.KeyCtrl || io.KeySuper
+}
+
+// --- Frame snapping --------------------------------------------------------------------
+//
+// Keys and the playhead land on frame boundaries, so a clip authored here
+// plays the same at any sample rate. Imported keys are left where they are:
+// only what the user moves or creates snaps. Alt places freely, for matching
+// an imported time exactly.
+
+@(private = "file")
+_pv_snap_time :: proc(clip: ^anim.AnimationClip, t: f32) -> f32 {
+	if im.GetIO().KeyAlt do return t
+	return anim.animation_snap_to_frame(clip, t)
 }
 
 // The scrub preview's live graph, for the Playable Graph visualizer — nil
@@ -344,21 +439,41 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 	_pv_edit_begin(doc)
 	inject_at(&ch.times, idx, t)
 	inject_at(&ch.values, idx, v)
-	_pv.sel_ch = ch_idx
-	_pv.sel_key = idx
+	_pv_sel_set(ch_idx, idx)
 	_pv_edit_commit(doc)
 }
 
 // The last key of a channel stays — an empty channel samples to zero, which
 // is never what a delete meant.
 @(private = "file")
+// Deletes every selected key in one undo step. A channel always keeps at
+// least one key, so a selection covering a whole channel leaves its first.
 _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if !_pv_sel_valid(clip) do return
-	ch := &clip.channels[_pv.sel_ch]
-	if len(ch.times) <= 1 do return
+	_pv_sel_prune(clip)
+	if len(_pv.sel) == 0 do return
+
+	// Highest key index first, so each removal cannot shift the next one.
+	refs := make([dynamic]_Key_Ref, 0, len(_pv.sel), context.temp_allocator)
+	append(&refs, .._pv.sel[:])
+	slice.sort_by(refs[:], proc(a, b: _Key_Ref) -> bool {
+		return a.ch != b.ch ? a.ch > b.ch : a.key > b.key
+	})
+
+	removed := 0
 	_pv_edit_begin(doc)
-	ordered_remove(&ch.times, _pv.sel_key)
-	ordered_remove(&ch.values, _pv.sel_key)
+	for r in refs {
+		ch := &clip.channels[r.ch]
+		if len(ch.times) <= 1 do continue
+		ordered_remove(&ch.times, r.key)
+		ordered_remove(&ch.values, r.key)
+		removed += 1
+	}
+	if removed == 0 {
+		undo.edit_session_abort(&_pv_session)
+		return
+	}
+	clear(&_pv.sel)
 	_pv.sel_key = -1
 	_pv_edit_commit(doc)
 }
@@ -495,8 +610,7 @@ _pv_append_channel :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip,
 	append(&ch.times, 0)
 	append(&ch.values, v)
 	append(&clip.channels, ch)
-	_pv.sel_ch = len(clip.channels) - 1
-	_pv.sel_key = 0
+	_pv_sel_set(len(clip.channels) - 1, 0)
 	_pv_edit_commit(doc)
 }
 
@@ -507,6 +621,18 @@ _pv_drag_time_bounds :: proc(ch: ^anim.Animation_Channel, k: int, length: f32) -
 	lo = k > 0 ? ch.times[k - 1] : 0
 	hi = k < len(ch.times) - 1 ? ch.times[k + 1] : length
 	return
+}
+
+// Which keys of channel `ch_idx` are selected, as a mask parallel to its
+// times — the shape animation_key_bounds takes. Temp-allocated per query,
+// which only happens while a drag is live.
+@(private = "file")
+_pv_sel_mask :: proc(ch_idx, count: int) -> []bool {
+	mask := make([]bool, count, context.temp_allocator)
+	for r in _pv.sel {
+		if r.ch == ch_idx && r.key >= 0 && r.key < count do mask[r.key] = true
+	}
+	return mask
 }
 
 // --- Window ---------------------------------------------------------------------------
@@ -564,6 +690,7 @@ draw_animation_view :: proc() {
 	// Undo may have shrunk the clip since the selection was made.
 	if _pv.sel_ch >= len(clip.channels) do _pv_deselect()
 	if _pv.sel_ch >= 0 && _pv.sel_key >= len(clip.channels[_pv.sel_ch].times) do _pv.sel_key = -1
+	_pv_sel_prune(clip)
 
 	// The sheet, then the view tabs under it: the tabs belong to the sheet,
 	// not to the transport, so they sit at its bottom edge.
@@ -860,7 +987,9 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	rows_y := origin.y + _ANIM_RULER_H
 	body_h: f32
 	if _pv.mode == .Dopesheet {
-		body_h = max(f32(nrows) * _ANIM_ROW_H, _ANIM_ROW_H)
+		// Fills the pane rather than stopping at the last track: the empty
+		// area below the tracks is where a box selection often starts.
+		body_h = max(f32(nrows) * _ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, _ANIM_ROW_H))
 	} else {
 		body_h = max(f32(nrows)*_ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, 140))
 	}
@@ -869,7 +998,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	im.SetCursorScreenPos(im.Vec2{x0, origin.y})
 	im.InvisibleButton("##anim_ruler", im.Vec2{max(x1 - x0, 1), _ANIM_RULER_H})
 	if im.IsItemActive() {
-		_pv.time = clamp((im.GetMousePos().x - tx0) / pps, 0, clip.length)
+		_pv.time = clamp(_pv_snap_time(clip, (im.GetMousePos().x - tx0) / pps), 0, clip.length)
 		_pv.active = true
 	}
 	im.DrawList_AddRectFilled(dl, im.Vec2{x0, origin.y}, im.Vec2{x1, origin.y + _ANIM_RULER_H}, im.GetColorU32(.FrameBg, 0.6))
@@ -953,16 +1082,31 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 
 	// Shared drag update/commit (a drag started in either mode).
 	if _pv.drag_key {
-		if !_pv_sel_valid(clip) {
-			// The key vanished mid-drag, so there is no edit to record.
+		if !_pv_sel_valid(clip) || len(_pv.sel) != len(_pv.drag_t0) {
+			// A key vanished mid-drag, so there is no edit to record.
 			_pv.drag_key = false
 			undo.edit_session_abort(&_pv_session)
 		} else if im.IsMouseDown(.Left) {
-			ch := &clip.channels[_pv.sel_ch]
-			lo, hi := _pv_drag_time_bounds(ch, _pv.sel_key, clip.length)
-			ch.times[_pv.sel_key] = clamp((mp.x - tx0) / pps, lo, hi)
+			// One delta for the whole selection, snapped, then clamped by the
+			// tightest neighbour bound among the dragged keys so none of them
+			// can cross another and reorder the channel.
+			want := _pv_snap_time(clip, (mp.x - tx0) / pps) - _pv.drag_from
+			lo_d, hi_d := -max(f32), max(f32)
+			for r, i in _pv.sel {
+				ch := &clip.channels[r.ch]
+				mask := _pv_sel_mask(r.ch, len(ch.times))
+				lo, hi := anim.animation_key_bounds(ch.times[:], mask, r.key, clip.length)
+				lo_d = max(lo_d, lo - _pv.drag_t0[i])
+				hi_d = min(hi_d, hi - _pv.drag_t0[i])
+			}
+			d := clamp(want, lo_d, hi_d)
+			for r, i in _pv.sel {
+				clip.channels[r.ch].times[r.key] = _pv.drag_t0[i] + d
+			}
 			if _pv.drag_comp >= 0 {
-				// Curves: y edits the grabbed component's value.
+				// Curves: y edits the grabbed component's value on the primary
+				// key only — the others have their own values to keep.
+				ch := &clip.channels[_pv.sel_ch]
 				ch.values[_pv.sel_key][_pv.drag_comp] = _pv_curve_y_to_v(mp.y, rows_y, body_h)
 			}
 			_pv_mark_edited(doc)
@@ -977,7 +1121,8 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	// Key context menu (opened by the mode-specific right-click handling).
 	if im.BeginPopup("##anim_key_ctx") {
 		can_delete := _pv_sel_valid(clip) && len(clip.channels[_pv.sel_ch].times) > 1
-		if im.MenuItem("Delete Key", nil, false, can_delete) do _pv_delete_key(doc, clip)
+		label: cstring = len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key"
+		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
 		im.EndPopup()
 	}
 
@@ -1027,7 +1172,7 @@ _pv_sheet_dopesheet :: proc(
 		ky := ry + _ANIM_ROW_H * 0.5
 		for t, k in ch.times {
 			kx := tx0 + t * pps
-			sel := i == _pv.sel_ch && k == _pv.sel_key
+			sel := _pv_sel_has(i, k)
 			col := sel ? im.GetColorU32(.CheckMark) : im.GetColorU32(.Text)
 			r := sel ? _ANIM_KEY_R + 1 : _ANIM_KEY_R
 			im.DrawList_AddQuadFilled(dl,
@@ -1038,21 +1183,45 @@ _pv_sheet_dopesheet :: proc(
 
 	valid_row := row_at >= 0 && row_at < len(clip.channels)
 
-	if im.IsItemActivated() && valid_row {
-		_pv.sel_ch = row_at
-		_pv.sel_key = -1
-		if mp.x >= x0 {
-			if k := _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps); k >= 0 {
-				_pv.sel_key = k
-				_pv_edit_begin(doc)
-				_pv.drag_key = true
-				_pv.drag_comp = -1
-			}
+	if im.IsItemActivated() {
+		in_canvas := mp.x >= x0
+		k := -1
+		if in_canvas && valid_row do k = _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps)
+		switch {
+		case k >= 0 && _pv_additive():
+			// Add to or drop from the selection, no drag: a modifier click is
+			// for building a set, not moving it.
+			_pv_sel_toggle(row_at, k)
+		case k >= 0:
+			// Dragging a key that is already selected moves the whole
+			// selection; grabbing an unselected one selects just it.
+			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
+			_pv.sel_ch = row_at
+			_pv.sel_key = k
+			_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = -1)
+		case in_canvas:
+			// Empty canvas, on a track row or below the last one: rubber-band
+			// a new selection. The row under the press only sets the channel
+			// when there is one, so a band started below the tracks leaves
+			// the current channel alone.
+			if valid_row do _pv.sel_ch = row_at
+			_pv.sel_key = -1
+			clear(&_pv.sel)
+			_pv.box = true
+			_pv.box_from = mp
+		case valid_row:
+			// Left panel: pick the channel.
+			_pv.sel_ch = row_at
+			_pv.sel_key = -1
+			clear(&_pv.sel)
 		}
 	}
 	if im.IsItemClicked(.Right) && valid_row {
-		_pv.sel_ch = row_at
 		if k := _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps); k >= 0 && mp.x >= x0 {
+			// Right-clicking outside the selection retargets it, so the menu
+			// always acts on what is under the cursor.
+			if !_pv_sel_has(row_at, k) do _pv_sel_set(row_at, k)
+			_pv.sel_ch = row_at
 			_pv.sel_key = k
 			im.OpenPopup("##anim_key_ctx")
 		}
@@ -1060,9 +1229,50 @@ _pv_sheet_dopesheet :: proc(
 	// Double-click on empty canvas: add a key there (sampled, shape-preserving).
 	if hovered && valid_row && mp.x >= x0 && im.IsMouseDoubleClicked(.Left) {
 		if _pv_key_hit_x(&clip.channels[row_at], mp.x, tx0, pps) < 0 {
-			_pv_add_key(doc, clip, row_at, (mp.x - tx0) / pps)
+			_pv.box = false // the press that opened the band was this click
+			_pv_add_key(doc, clip, row_at, _pv_snap_time(clip, (mp.x - tx0) / pps))
 		}
 	}
+
+	// --- Box select: every key inside the band, across channels.
+	if _pv.box {
+		rmin := im.Vec2{min(_pv.box_from.x, mp.x), min(_pv.box_from.y, mp.y)}
+		rmax := im.Vec2{max(_pv.box_from.x, mp.x), max(_pv.box_from.y, mp.y)}
+		im.DrawList_AddRectFilled(dl, rmin, rmax, im.GetColorU32(.Header, 0.35))
+		im.DrawList_AddRect(dl, rmin, rmax, im.GetColorU32(.CheckMark))
+
+		clear(&_pv.sel)
+		for &ch, i in clip.channels {
+			ky := rows_y + f32(i) * _ANIM_ROW_H + _ANIM_ROW_H * 0.5
+			if ky < rmin.y || ky > rmax.y do continue
+			for t, k in ch.times {
+				kx := tx0 + t * pps
+				if kx < rmin.x || kx > rmax.x do continue
+				append(&_pv.sel, _Key_Ref{i, k})
+			}
+		}
+		// Primary is the first key the band caught, so the value footer has
+		// something to edit.
+		if len(_pv.sel) > 0 {
+			_pv.sel_ch = _pv.sel[0].ch
+			_pv.sel_key = _pv.sel[0].key
+		} else {
+			_pv.sel_key = -1
+		}
+		if !im.IsMouseDown(.Left) do _pv.box = false
+	}
+}
+
+// Opens the undo session for a key drag and records where every selected key
+// started, so the move is one delta applied to the group.
+@(private = "file")
+_pv_drag_begin :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, from: f32, comp: int) {
+	_pv_edit_begin(doc)
+	_pv.drag_key = true
+	_pv.drag_comp = comp
+	_pv.drag_from = _pv_snap_time(clip, from)
+	clear(&_pv.drag_t0)
+	for r in _pv.sel do append(&_pv.drag_t0, clip.channels[r.ch].times[r.key])
 }
 
 // --- Curves ---------------------------------------------------------------------------
@@ -1097,6 +1307,7 @@ _pv_sheet_curves :: proc(
 	if im.IsItemActivated() && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) {
 		_pv.sel_ch = row_at
 		_pv.sel_key = -1
+		clear(&_pv.sel)
 	}
 
 	if _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels) {
@@ -1175,15 +1386,24 @@ _pv_sheet_curves :: proc(
 				}
 			}
 		}
-		_pv.sel_key = best_k
 		if best_k >= 0 {
-			_pv.drag_comp = best_c
-			_pv_edit_begin(doc)
-			_pv.drag_key = true
+			if _pv_additive() {
+				_pv_sel_toggle(_pv.sel_ch, best_k)
+			} else {
+				// As in the dopesheet: dragging a selected key moves the
+				// group, an unselected one becomes the selection.
+				if !_pv_sel_has(_pv.sel_ch, best_k) do _pv_sel_set(_pv.sel_ch, best_k)
+				_pv.sel_key = best_k
+				_pv_drag_begin(doc, clip, (mp.x - tx0) / pps, comp = best_c)
+			}
+		} else {
+			_pv.sel_key = -1
+			clear(&_pv.sel)
 		}
 	}
 	if im.IsItemClicked(.Right) && mp.x >= x0 {
 		if k := _pv_key_hit_x(ch, mp.x, tx0, pps); k >= 0 {
+			if !_pv_sel_has(_pv.sel_ch, k) do _pv_sel_set(_pv.sel_ch, k)
 			_pv.sel_key = k
 			im.OpenPopup("##anim_key_ctx")
 		}
@@ -1216,7 +1436,9 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 
 	im.SameLine()
 	im.BeginDisabled(len(ch.times) <= 1)
-	if im.Button("Delete Key") do _pv_delete_key(doc, clip)
+	if im.Button(len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key") {
+		_pv_delete_key(doc, clip)
+	}
 	im.EndDisabled()
 }
 

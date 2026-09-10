@@ -79,6 +79,34 @@ animation_clip_frame_rate :: proc(c: ^AnimationClip) -> f32 {
 	return c.frame_rate
 }
 
+// `t` quantized to the clip's frame grid, so a key the editor places lands on
+// a frame boundary.
+animation_snap_to_frame :: proc(c: ^AnimationClip, t: f32) -> f32 {
+	fps := animation_clip_frame_rate(c)
+	if fps <= 0 do return t
+	return math.round(t * fps) / fps
+}
+
+// How far key `k` may move in time without passing a neighbour, which would
+// reorder the channel and corrupt it. A neighbour that is itself selected is
+// NOT a bound: it moves by the same delta, so a run of adjacent selected keys
+// slides as a block. `selected` is parallel to `times`.
+animation_key_bounds :: proc(times: []f32, selected: []bool, k: int, length: f32) -> (lo, hi: f32) {
+	lo, hi = 0, length
+	if k < 0 || k >= len(times) do return
+	for i := k - 1; i >= 0; i -= 1 {
+		if i < len(selected) && selected[i] do continue
+		lo = times[i]
+		break
+	}
+	for i := k + 1; i < len(times); i += 1 {
+		if i < len(selected) && selected[i] do continue
+		hi = times[i]
+		break
+	}
+	return
+}
+
 make_pAnimationClip :: proc() -> any {
 	c := new(AnimationClip)
 	c.length = 1
