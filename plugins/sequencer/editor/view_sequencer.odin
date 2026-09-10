@@ -35,8 +35,16 @@ import "moonhug:editor/preview"
 // Material icon codepoints, declared locally like the inspector package does
 // — editor/material_icons.odin lives in the editor ROOT, which packages do
 // not import.
-@(private = "file") _ICON_VOLUME_UP :: "\ue050"     // volume_up
-@(private = "file") _ICON_VOLUME_OFF :: "\ue04f"    // volume_off
+// What im.SmallButton lays out for `label`: the text plus horizontal frame
+// padding on both sides (SmallButton zeroes only the vertical padding).
+@(private = "file")
+_sq_small_button_w :: proc(label: cstring) -> f32 {
+	return im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2
+}
+
+@(private = "file") _ICON_TRACK_MENU :: "\ue5d4"    // more_vert: the track's menu
+@(private = "file") _ICON_TRACK_ON :: "\ue8f4"      // a track that plays
+@(private = "file") _ICON_TRACK_MUTED :: "\ue8f5"   // a muted track
 @(private = "file") _ICON_SKIP_PREVIOUS :: "\ue045" // skip_previous — to start
 @(private = "file") _ICON_SKIP_NEXT :: "\ue044"     // skip_next — to end
 @(private = "file") _ICON_STEP_BACK :: "\ue5cb"     // chevron_left — one frame back
@@ -412,29 +420,50 @@ sequencer_window_draw :: proc() {
 				im.PopID()
 				continue
 			}
-			// Mute: a speaker icon, lit when audible and dimmed when muted
-			// (the state reads at a glance, unlike a checkbox). The push/pop
-			// pair must test the SAME value — the click below flips
-			// tc.muted, so a re-read at pop time unbalances the style stack.
+			// The buttons sit at the right end of the row, so the name always
+			// starts at the same x however many buttons a row carries. Their
+			// width is measured rather than assumed: a fixed reservation
+			// silently stops fitting when a button is added or the theme's
+			// padding changes.
+			style := im.GetStyle()
 			was_muted := tc.muted
+			mute_icon: cstring = was_muted ? _ICON_TRACK_MUTED : _ICON_TRACK_ON
+			buttons_w := _sq_small_button_w(mute_icon) + _sq_small_button_w(_ICON_TRACK_MENU) +
+				style.ItemSpacing.x * 2
+			name_w := max(im.GetContentRegionAvail().x - buttons_w, 24)
+
+			// The name row selects the track (and deselects any clip), so the
+			// inspector pane and Add Clip act on it without touching a clip.
+			if im.Selectable(fmt.ctprintf("%s##trk", tv.name), _sq.sel_track == ti && _sq.sel_clip < 0,
+				{}, im.Vec2{name_w, 0}) {
+				_sq.sel_track = ti
+				_sq.sel_clip = -1
+			}
+			im.SetItemTooltip("%s track", _sq_kind_label(tv.kind))
+			im.OpenPopupOnItemClick("track_ctx")
+
+			// Mute: lit while the track plays, dimmed when muted (the state
+			// reads at a glance, unlike a checkbox). The push/pop pair must
+			// test the SAME value — the click below flips tc.muted, so a
+			// re-read at pop time unbalances the style stack.
+			im.SameLine()
 			if was_muted do im.PushStyleColorImVec4(.Text, im.GetStyleColorVec4(.TextDisabled)^)
-			if im.SmallButton(was_muted ? _ICON_VOLUME_OFF : _ICON_VOLUME_UP) {
+			if im.SmallButton(mute_icon) {
 				_sq_session_begin(comp, "Mute Track")
 				tc.muted = !was_muted
 				_sq_session_end()
 			}
 			if was_muted do im.PopStyleColor()
 			im.SetItemTooltip(was_muted ? "Unmute" : "Mute")
+
+			// Everything else the track can do is one menu, the same one the
+			// name's right-click opens, so a track operation is defined once.
 			im.SameLine()
-			// The name row selects the track (and deselects any clip), so the
-			// inspector pane and Add Clip act on it without touching a clip.
-			if im.Selectable(fmt.ctprintf("%s##trk", tv.name), _sq.sel_track == ti && _sq.sel_clip < 0,
-				{}, im.Vec2{im.GetContentRegionAvail().x - 46, 0}) {
-				_sq.sel_track = ti
-				_sq.sel_clip = -1
-			}
-			im.SetItemTooltip("%s track", _sq_kind_label(tv.kind))
-			im.OpenPopupOnItemClick("track_ctx")
+			if im.SmallButton(_ICON_TRACK_MENU) do im.OpenPopup("track_ctx")
+			im.SetItemTooltip("Track menu")
+
+			// Drawn after the buttons: BeginPopup must run after the
+			// OpenPopup that opened it, or the menu waits a frame.
 			if im.BeginPopup("track_ctx") {
 				if im.Selectable("Add Clip at Playhead") do _sq_add_clip(&tv, ti, _sq.time)
 				if im.Selectable("Rename...", false, {.NoAutoClosePopups}) {
@@ -456,15 +485,10 @@ sequencer_window_draw :: proc() {
 					}
 					im.EndPopup()
 				}
+				im.Separator()
 				if im.Selectable("Remove Track") do remove_track = tv.node
 				im.EndPopup()
 			}
-			im.SameLine()
-			if im.SmallButton("+") do _sq_add_clip(&tv, ti, _sq.time)
-			im.SetItemTooltip("Add clip")
-			im.SameLine()
-			if im.SmallButton("x") do remove_track = tv.node
-			im.SetItemTooltip("Remove track")
 			im.PopID()
 		}
 		if remove_track != {} {
@@ -702,7 +726,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 		im.Text("%s", fmt.ctprintf("%s (%s)", tv.name, _sq_kind_label(tv.kind)))
 		was_muted := tc.muted
 		if was_muted do im.PushStyleColorImVec4(.Text, im.GetStyleColorVec4(.TextDisabled)^)
-		if im.SmallButton(was_muted ? _ICON_VOLUME_OFF : _ICON_VOLUME_UP) {
+		if im.SmallButton(was_muted ? _ICON_TRACK_MUTED : _ICON_TRACK_ON) {
 			_sq_session_begin(tcomp, "Mute Track")
 			tc.muted = !was_muted
 			_sq_session_end()
