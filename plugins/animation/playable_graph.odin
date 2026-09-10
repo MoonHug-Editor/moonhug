@@ -478,6 +478,9 @@ _eval_node :: proc(
 		if !ok do return
 		t := playable_node_time(n)
 		for &ch in clip.channels {
+			// No keys, nothing to contribute: sampling would write zeros over
+			// the pose (see animation_clip_apply).
+			if len(ch.times) == 0 do continue
 			val := _animation_channel_sample(&ch, t)
 			if animation_channel_is_property(&ch) {
 				idx, found := b.by_prop[_prop_key(ch.target, ch.component, ch.field)]

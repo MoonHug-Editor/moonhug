@@ -69,6 +69,7 @@ _sq: struct {
 	playing:   bool, // auto-advance the playhead
 	time:      f32,
 	pps:       f32, // pixels per second (zoom)
+	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
 	sel_track: int,
 	sel_clip:  int,
 	drag:      enum {
@@ -477,7 +478,10 @@ sequencer_window_draw :: proc() {
 	im.SameLine(0, 0)
 
 	canvas_pane_w := max(total_w - _sq.legend_w - _sq.inspector_w - 2 * widgets.SPLITTER_SIZE, _SQ_MIN_PANE)
-	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar}) {
+	// NoScrollWithMouse: the wheel is the zoom here, so imgui must not also
+	// scroll the child with it. Horizontal panning is applied explicitly
+	// below, and the scrollbar still drags.
+	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar, .NoScrollWithMouse}) {
 		dl := im.GetWindowDrawList()
 		origin := im.GetCursorScreenPos()
 		// Room past the timeline end: clips may live beyond it (a computed
@@ -485,10 +489,17 @@ sequencer_window_draw :: proc() {
 		canvas_w := max((dur + _SQ_TAIL_S) * _sq.pps + 120, im.GetContentRegionAvail().x)
 		im.Dummy(im.Vec2{canvas_w, rows_h}) // reserves the scrollable extent
 
-		// Zoom on wheel (the canvas is hovered; scrollbar still pans).
+		// Wheel up/down zooms, wheel left/right pans — the same pair the
+		// animation window uses. The horizontal step and its sign follow
+		// imgui's own window scrolling, so panning here feels native.
+		wheel_v, wheel_h := widgets.wheel_dominant(&_sq.wheel)
 		if im.IsWindowHovered({}) {
-			if wheel := im.GetIO().MouseWheel; wheel != 0 {
-				_sq.pps = clamp(_sq.pps * math.pow(f32(1.15), wheel), 20, 2000)
+			if wheel_v != 0 {
+				_sq.pps = clamp(_sq.pps * math.pow(f32(1.15), wheel_v), 20, 2000)
+			}
+			if wheel_h != 0 {
+				step := min(2 * im.GetFontSize(), im.GetContentRegionAvail().x * 0.67)
+				im.SetScrollX(im.GetScrollX() - wheel_h * step)
 			}
 		}
 

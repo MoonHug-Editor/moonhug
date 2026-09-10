@@ -4,7 +4,9 @@ package animation_tests
 // and multi-key drag are built on.
 
 import "core:testing"
+import "moonhug:engine"
 import anim "moonhug:packages/animation"
+import common "moonhug:tests/common"
 
 @(test)
 test_frame_rate_defaults_for_a_clip_without_one :: proc(t: ^testing.T) {
@@ -84,4 +86,36 @@ test_key_bounds_out_of_range_index_is_inert :: proc(t: ^testing.T) {
 	lo, hi := anim.animation_key_bounds(times, sel, 7, 3)
 	testing.expect_value(t, lo, f32(0))
 	testing.expect_value(t, hi, f32(3))
+}
+
+// A channel with no keys contributes nothing. Sampling one yields zeros, and
+// applying those would collapse a scale or snap a position to the origin, so
+// both apply paths skip it.
+@(test)
+test_empty_channel_does_not_apply :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	tH := engine.transform_new("A")
+	tr := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH))
+	tr.scale = {2, 3, 4}
+	tr.position = {5, 6, 7}
+
+	clip := anim.AnimationClip{length = 1}
+	defer delete(clip.channels)
+	// Two keyless channels that would otherwise write zeros.
+	append(&clip.channels, anim.Animation_Channel{path = .Scale})
+	append(&clip.channels, anim.Animation_Channel{path = .Position})
+	defer for &ch in clip.channels {
+		delete(ch.times)
+		delete(ch.values)
+	}
+
+	anim.animation_clip_apply(&clip, tH, 0.5)
+
+	testing.expect_value(t, tr.scale, [3]f32{2, 3, 4})
+	testing.expect_value(t, tr.position, [3]f32{5, 6, 7})
 }

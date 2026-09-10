@@ -111,6 +111,13 @@ _pv: struct {
 	// Box select in progress, and where it started (screen space).
 	box:       bool,
 	box_from:  im.Vec2,
+
+	// Time-axis view, the sequencer's model: zoom is a multiple of the scale
+	// that fits the whole clip, so 1 is "fit" and pan is then pinned to 0.
+	// pan is the time at the canvas's left edge.
+	zoom:      f32,
+	pan:       f32,
+	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
 	sync:      bool, // document edited this frame -> push to the clip cache
 }
 
@@ -446,8 +453,9 @@ _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx
 // The last key of a channel stays — an empty channel samples to zero, which
 // is never what a delete meant.
 @(private = "file")
-// Deletes every selected key in one undo step. A channel always keeps at
-// least one key, so a selection covering a whole channel leaves its first.
+// Deletes every selected key in one undo step. A channel left with no keys
+// goes with them: a keyless channel animates nothing, so the property row
+// disappears rather than lingering empty.
 _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if !_pv_sel_valid(clip) do return
 	_pv_sel_prune(clip)
@@ -460,22 +468,31 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		return a.ch != b.ch ? a.ch > b.ch : a.key > b.key
 	})
 
-	removed := 0
 	_pv_edit_begin(doc)
 	for r in refs {
 		ch := &clip.channels[r.ch]
-		if len(ch.times) <= 1 do continue
 		ordered_remove(&ch.times, r.key)
 		ordered_remove(&ch.values, r.key)
-		removed += 1
 	}
-	if removed == 0 {
-		undo.edit_session_abort(&_pv_session)
-		return
+	// Emptied channels, highest index first for the same reason.
+	for i := len(clip.channels) - 1; i >= 0; i -= 1 {
+		if len(clip.channels[i].times) > 0 do continue
+		_pv_channel_remove(clip, i)
 	}
-	clear(&_pv.sel)
-	_pv.sel_key = -1
+	_pv_deselect() // channel indices may have shifted
 	_pv_edit_commit(doc)
+}
+
+// Frees a channel's own allocations and drops it from the clip.
+@(private = "file")
+_pv_channel_remove :: proc(clip: ^anim.AnimationClip, i: int) {
+	ch := &clip.channels[i]
+	delete(ch.target)
+	delete(ch.component)
+	delete(ch.field)
+	delete(ch.times)
+	delete(ch.values)
+	ordered_remove(&clip.channels, i)
 }
 
 // --- Add Property ------------------------------------------------------------------------
@@ -899,8 +916,10 @@ _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	case .Loop:
 		_pv.time -= length * math.floor(_pv.time / length)
 	case .Once:
-		_pv.time = length
-		_pv.playing = false // stop at the end, nothing more to show
+		// Played through: rewind to the first frame and stop, so pressing play
+		// again replays from the start instead of sitting on the last frame.
+		_pv.time = 0
+		_pv.playing = false
 	}
 }
 
@@ -980,8 +999,15 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	left_x1 := origin.x + left_w
 	x0 := left_x1 + widgets.SPLITTER_SIZE
 	x1 := origin.x + avail.x
-	pps := (x1 - x0 - 2 * _ANIM_PAD_X) / length // pixels per second
-	tx0 := x0 + _ANIM_PAD_X                     // x of t=0
+	// Time axis: pps (pixels per second) is the fit scale times the zoom, so
+	// zoom 1 shows the whole clip and no pan is possible.
+	if _pv.zoom < 1 do _pv.zoom = 1
+	span_px := max(x1 - x0 - 2 * _ANIM_PAD_X, 1)
+	pps_fit := span_px / length
+	pps := pps_fit * _pv.zoom
+	visible := span_px / pps // seconds across the canvas
+	_pv.pan = clamp(_pv.pan, 0, max(length - visible, 0))
+	tx0 := x0 + _ANIM_PAD_X - _pv.pan * pps // x of t=0
 
 	nrows := len(clip.channels)
 	rows_y := origin.y + _ANIM_RULER_H
@@ -993,6 +1019,46 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	} else {
 		body_h = max(f32(nrows)*_ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, 140))
 	}
+
+	// --- Zoom and pan on the time axis. Zoom keeps the time under the cursor
+	// in place, which is what makes wheel zoom feel anchored.
+	{
+		mp := im.GetMousePos()
+		// Resolved every frame so a gesture times out even while the pointer
+		// is elsewhere; only acted on while the canvas is under it.
+		wheel_v, wheel_h := widgets.wheel_dominant(&_pv.wheel)
+		over_canvas := im.IsWindowHovered(im.HoveredFlags_ChildWindows) && mp.x >= x0 && mp.x <= x1
+		if over_canvas {
+			if wheel := wheel_v; wheel != 0 {
+				t_at := (mp.x - tx0) / pps
+				_pv.zoom = clamp(_pv.zoom * math.pow(f32(1.15), wheel), 1, 200)
+				new_pps := pps_fit * _pv.zoom
+				_pv.pan = t_at + (x0 + _ANIM_PAD_X - mp.x) / new_pps
+				pps = new_pps
+				visible = span_px / pps
+				_pv.pan = clamp(_pv.pan, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+			}
+			// Horizontal wheel (a trackpad's sideways swipe) pans, signed the
+			// way imgui scrolls its own windows: positive moves the view
+			// toward earlier time.
+			if wheel_h != 0 {
+				step := span_px * 0.15 / pps // a sixth of the view per notch
+				_pv.pan = clamp(_pv.pan - wheel_h * step, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+			}
+			// Middle-drag pans too, for a mouse without a sideways wheel.
+			if im.IsMouseDragging(.Middle, 1) {
+				_pv.pan = clamp(_pv.pan - im.GetIO().MouseDelta.x / pps, 0, max(length - visible, 0))
+				tx0 = x0 + _ANIM_PAD_X - _pv.pan * pps
+			}
+		}
+	}
+
+	// Canvas drawing is clipped to its own column: zoomed in, keys and ticks
+	// fall outside it and would otherwise paint over the property panel.
+	canvas_clip_min := im.Vec2{x0, origin.y}
+	canvas_clip_max := im.Vec2{x1, rows_y + body_h}
 
 	// --- Ruler: dragging it scrubs (the only scrub surface).
 	im.SetCursorScreenPos(im.Vec2{x0, origin.y})
@@ -1011,12 +1077,14 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		}
 	}
 	tick_col := im.GetColorU32(.TextDisabled)
+	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	for i in 0 ..= int(length / step) {
 		t := f32(i) * step
 		tx := tx0 + t * pps
 		im.DrawList_AddLine(dl, im.Vec2{tx, origin.y + _ANIM_RULER_H - 6}, im.Vec2{tx, origin.y + _ANIM_RULER_H}, tick_col, 1)
 		im.DrawList_AddText(dl, im.Vec2{tx + 3, origin.y + 3}, tick_col, fmt.ctprintf("%.2f", t))
 	}
+	im.DrawList_PopClipRect(dl)
 
 	// --- Rows surface (left panel + canvas share it; hit-tested by x). It
 	// spans the splitter gap too: AllowOverlap lets the splitter, submitted
@@ -1055,30 +1123,28 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	if im.BeginPopup("##anim_ch_ctx") {
 		if im.MenuItem("Remove Property") && _pv.sel_ch >= 0 && _pv.sel_ch < len(clip.channels) {
 			_pv_edit_begin(doc)
-			ch := &clip.channels[_pv.sel_ch]
-			delete(ch.target)
-			delete(ch.component)
-			delete(ch.field)
-			delete(ch.times)
-			delete(ch.values)
-			ordered_remove(&clip.channels, _pv.sel_ch)
+			_pv_channel_remove(clip, _pv.sel_ch)
 			_pv_deselect()
 			_pv_edit_commit(doc)
 		}
 		im.EndPopup()
 	}
 
+	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	if _pv.mode == .Dopesheet {
 		_pv_sheet_dopesheet(doc, clip, dl, origin, rows_y, body_h, x0, x1, tx0, pps, hovered, mp, row_at)
 	} else {
 		_pv_sheet_curves(doc, clip, dl, rows_y, body_h, x0, x1, tx0, pps, mp, row_at)
 	}
+	im.DrawList_PopClipRect(dl)
 
-	// Playhead over everything.
+	// Playhead over everything, inside the canvas column.
+	im.DrawList_PushClipRect(dl, canvas_clip_min, canvas_clip_max, true)
 	px := tx0 + clamp(_pv.time, 0, length) * pps
 	head_col := im.GetColorU32ImVec4(im.Vec4{0.92, 0.28, 0.28, 1})
 	im.DrawList_AddLine(dl, im.Vec2{px, origin.y}, im.Vec2{px, rows_y + body_h}, head_col, 1)
 	im.DrawList_AddTriangleFilled(dl, im.Vec2{px - 5, origin.y}, im.Vec2{px + 5, origin.y}, im.Vec2{px, origin.y + 8}, head_col)
+	im.DrawList_PopClipRect(dl)
 
 	// Shared drag update/commit (a drag started in either mode).
 	if _pv.drag_key {
@@ -1120,7 +1186,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 
 	// Key context menu (opened by the mode-specific right-click handling).
 	if im.BeginPopup("##anim_key_ctx") {
-		can_delete := _pv_sel_valid(clip) && len(clip.channels[_pv.sel_ch].times) > 1
+		can_delete := _pv_sel_valid(clip)
 		label: cstring = len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key"
 		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
 		im.EndPopup()

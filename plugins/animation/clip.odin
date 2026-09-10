@@ -223,10 +223,15 @@ _animation_clip_destroy :: proc(clip: ^AnimationClip) {
 
 // Write every channel's value at `time` into the owner's transform hierarchy
 // (and, for property channels, into the targeted component fields).
-// Channels whose target path doesn't resolve are skipped.
+// Channels whose target path doesn't resolve, or that hold no keys, are
+// skipped.
 animation_clip_apply :: proc(clip: ^AnimationClip, owner: engine.Transform_Handle, time: f32) {
 	w := engine.ctx_world()
 	for &ch in clip.channels {
+		// A channel with no keys has nothing to say: sampling it yields zeros,
+		// which would collapse a scale or snap a position to the origin. Same
+		// treatment as an unresolved target.
+		if len(ch.times) == 0 do continue
 		tH, ok := _animation_resolve_target(owner, ch.target)
 		if !ok do continue
 		v := _animation_channel_sample(&ch, time)
