@@ -117,13 +117,6 @@ _SE_CREATE   :: u32(0xFF7DE59E) // ABGR green
 _SE_ZOOM_MIN :: f32(0.1)
 _SE_ZOOM_MAX :: f32(32)
 
-// Unity keeps the window reachable from the Window menu too — without a
-// target it shows the "select a texture" hint.
-@(menu_item={path="Window/Sprite Editor", shortcut=""})
-sprite_editor_menu :: proc() {
-	wnd.open("sprite_editor")
-}
-
 // Opened from the texture importer inspector's Sprite Editor button.
 sprite_editor_open :: proc(path: string, guid: engine.Asset_GUID) {
 	context.allocator = runtime.default_allocator()
