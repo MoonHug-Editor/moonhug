@@ -1,6 +1,6 @@
 package animation_editor
 
-// Animation window — Unity's Animation window on the PlayableGraph scrub path
+// Animation window — clip authoring on the PlayableGraph scrub path
 // (docs/PlayableGraph.md steps 5+6): scrub preview plus dopesheet and curve
 // editing for the clips on the selected object's Animation component.
 //
@@ -25,12 +25,14 @@ package animation_editor
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:fmt"
+import "core:math"
 import "core:math/linalg"
 import "core:path/filepath"
 import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import engine "moonhug:engine"
+import gfx "moonhug:engine/gfx"
 import anim "moonhug:packages/animation"
 import ser "moonhug:engine/serialization"
 import "moonhug:editor/inspector"
@@ -79,6 +81,14 @@ _pv: struct {
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
 
+	playing:   bool, // transport running: time advances every frame
+	recording: bool, // armed: an edited animated field keys itself at the playhead
+	// Live value of each channel when recording armed (or last keyed), parallel
+	// to clip.channels. A channel whose live value leaves this is a user edit,
+	// which is what recording keys — no inspector hook needed, and scrubbing
+	// alone never keys because authored values do not move with the playhead.
+	rec_shadow: [dynamic][4]f32,
+
 	mode:      _Anim_Mode,
 	sel_ch:    int, // selected channel row, -1 = none
 	sel_key:   int, // selected key in sel_ch, -1 = none
@@ -117,7 +127,7 @@ shutdown_animation_view :: proc() {
 	_pv_teardown()
 }
 
-// Closing the window ends the preview (Unity behavior). Called from the main
+// Closing the window ends the preview. Called from the main
 // loop when the window toggle is off.
 animation_preview_stop :: proc() {
 	_pv.active = false
@@ -149,7 +159,7 @@ _pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^anim.Playable_Grap
 }
 
 // The Animation component the window targets: on the active selection or its
-// nearest ancestor — Unity resolves the window's target the same way, so
+// nearest ancestor, so
 // selecting a child bone keeps the window on the animated root. Shared with
 // the Playable Graph visualizer, which targets identically.
 @(private)
@@ -314,7 +324,7 @@ _pv_ch_label :: proc(ch: ^anim.Animation_Channel) -> (label: cstring, resolved: 
 // --- Keyframe operations --------------------------------------------------------------
 
 // Insert a key at `t` sampling the curve's current value there, so adding a
-// key never changes the curve's shape (Unity's Add Key).
+// key never changes the curve's shape.
 @(private = "file")
 _pv_add_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, ch_idx: int, t: f32) {
 	if ch_idx < 0 || ch_idx >= len(clip.channels) do return
@@ -353,7 +363,7 @@ _pv_delete_key :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	_pv_edit_commit(doc)
 }
 
-// --- Add Property (Unity's Add Property menu) -------------------------------------------
+// --- Add Property ------------------------------------------------------------------------
 //
 // The owner's subtree as nested menus: per object the three transform
 // channels, then each component with its animatable POD leaves enumerated by
@@ -461,7 +471,7 @@ _pv_add_channel_property :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.Animatio
 		if c.target == target && c.component == guid_str && c.field == field do return
 	}
 	// First key holds the field's CURRENT value, so adding a property never
-	// visibly changes the object (Unity's behavior).
+	// visibly changes the object.
 	v: [4]f32
 	step := false
 	if ptr, kind, leaf, ok := anim._prop_locate(tH, guid_str, field); ok {
@@ -515,7 +525,7 @@ draw_animation_view :: proc() {
 		im.TextDisabled("Select an object with an Animation component.")
 		return
 	}
-	// Retarget follows selection (Unity): the old target's graph and binding
+	// Retarget follows selection: the old target's graph and binding
 	// belong to the old owner.
 	if owner != _pv.owner {
 		_pv_teardown()
@@ -544,6 +554,8 @@ draw_animation_view :: proc() {
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 
 	_pv_draw_toolbar(doc, clip, clips, length)
+	_pv_advance(clip, length)
+	_pv_rec_poll(doc, clip)
 
 	if clip == nil {
 		im.TextDisabled("The clip has no document (missing or unreadable .anim).")
@@ -553,10 +565,15 @@ draw_animation_view :: proc() {
 	if _pv.sel_ch >= len(clip.channels) do _pv_deselect()
 	if _pv.sel_ch >= 0 && _pv.sel_key >= len(clip.channels[_pv.sel_ch].times) do _pv.sel_key = -1
 
+	// The sheet, then the view tabs under it: the tabs belong to the sheet,
+	// not to the transport, so they sit at its bottom edge.
 	footer := _pv_sel_valid(clip)
-	im.BeginChild("##anim_body", im.Vec2{0, footer ? -(im.GetFrameHeight() + 8) : 0}, {.Borders})
+	tabs_h := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y
+	body_h := -(tabs_h + (footer ? im.GetFrameHeight() + 8 : 0))
+	im.BeginChild("##anim_body", im.Vec2{0, body_h}, {.Borders})
 	_pv_draw_sheet(doc, clip)
 	im.EndChild()
+	_pv_draw_mode_tabs()
 
 	// Delete on the selected key; text input (a drag field being typed into)
 	// owns Backspace.
@@ -581,50 +598,84 @@ draw_animation_view :: proc() {
 
 @(private = "file")
 _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID, length: f32) {
-	// Preview toggle (Unity's Animation window preview button). The pop must
-	// match the state at push time — the click flips _pv.active in between.
+	fps := anim.animation_clip_frame_rate(clip)
+
+	// Preview toggle. The pop must match the state at push time — the click
+	// flips _pv.active in between.
 	tinted := _pv.active
 	if tinted do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	if im.Button("Preview") do _pv.active = !_pv.active
 	if tinted do im.PopStyleColor()
+	if im.IsItemHovered({}) do im.SetTooltip("Pose the object from this clip while the window is open")
 
+	// Record: while armed, editing an animated field writes a key at the
+	// playhead. Drawn in red like a record light, lit while armed.
+	// The record light is red whether armed or not, brighter while armed. The
+	// Text push is what colors the glyph the shared button draws.
 	im.SameLine()
-	im.SetNextItemWidth(180)
-	cur := strings.clone_to_cstring(_pv_clip_name(_pv.clip), context.temp_allocator)
-	if im.BeginCombo("##pv_clip", cur) {
-		for c in clips {
-			name := strings.clone_to_cstring(_pv_clip_name(c), context.temp_allocator)
-			if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
-				_pv_teardown()
-				_pv_deselect()
-				_pv.clip = c
-				_pv.time = 0
-			}
+	rec := _pv.recording
+	im.PushStyleColorImVec4(.Text, rec ? im.Vec4{0.95, 0.25, 0.25, 1} : im.Vec4{0.75, 0.35, 0.35, 1})
+	armed := widgets.icon_button(icons.ICON_MD_RECORD, "##rec",
+		"Record: an edited animated field keys itself at the playhead", active = rec)
+	im.PopStyleColor()
+	if armed {
+		_pv.recording = !_pv.recording
+		if _pv.recording {
+			_pv.active = true // recording poses the object, as previewing does
+			_pv_rec_resync(clip)
 		}
-		im.EndCombo()
+	}
+
+	// Transport: start, previous key, play, next key, end.
+	im.SameLine()
+	if widgets.icon_button(icons.ICON_MD_FIRST_PAGE, "##first", "Go to the start") {
+		_pv.time = 0
+		_pv.active = true
 	}
 
 	im.SameLine()
-	im.SetNextItemWidth(70)
-	if im.DragFloat("##pv_time", &_pv.time, 0.005, 0, length, "%.3f") {
-		_pv.active = true // scrubbing enters preview, like Unity
+	if widgets.icon_button(icons.ICON_MD_PREV_KEY, "##prevkey", "Previous keyframe") {
+		_pv.time = _pv_key_step(clip, _pv.time, back = true)
+		_pv.active = true
 	}
-	_pv.time = clamp(_pv.time, 0, length)
-	im.SameLine()
-	im.TextUnformatted(fmt.ctprintf("/ %.3f s", length))
 
 	im.SameLine()
-	for mode in _Anim_Mode {
-		m_tinted := _pv.mode == mode
-		if m_tinted do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-		if im.Button(fmt.ctprintf("%v", mode)) do _pv.mode = mode
-		if m_tinted do im.PopStyleColor()
-		im.SameLine()
+	if widgets.icon_button(_pv.playing ? icons.ICON_MD_PAUSE : icons.ICON_MD_PLAY_ARROW, "##play", _pv.playing ? "Pause" : "Play the clip") {
+		_pv.playing = !_pv.playing
+		if _pv.playing do _pv.active = true
 	}
+
+	im.SameLine()
+	if widgets.icon_button(icons.ICON_MD_NEXT_KEY, "##nextkey", "Next keyframe") {
+		_pv.time = _pv_key_step(clip, _pv.time, back = false)
+		_pv.active = true
+	}
+
+	im.SameLine()
+	if widgets.icon_button(icons.ICON_MD_LAST_PAGE, "##last", "Go to the end") {
+		_pv.time = length
+		_pv.active = true
+	}
+
+	// The playhead as a frame number, with the clip's frame count beside it.
+	im.SameLine()
+	im.SetNextItemWidth(58)
+	frame := i32(math.round(_pv.time * fps))
+	if im.InputInt("##pv_frame", &frame, 0, 0, {.EnterReturnsTrue}) {
+		_pv.time = clamp(f32(frame) / fps, 0, length)
+		_pv.active = true
+	}
+	if im.IsItemHovered({}) do im.SetTooltip("Playhead frame")
+	im.SameLine()
+	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
 	if clip != nil && doc != nil {
+		// Key the selected property at the playhead.
+		im.SameLine()
 		im.BeginDisabled(_pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels))
-		if im.Button("Add Key") do _pv_add_key(doc, clip, _pv.sel_ch, _pv.time)
+		if widgets.icon_button(icons.ICON_MD_KEYFRAME, "##addkey", "Add a keyframe on the selected property") {
+			_pv_add_key(doc, clip, _pv.sel_ch, _pv.time)
+		}
 		im.EndDisabled()
 
 		im.SameLine()
@@ -634,6 +685,28 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, c
 			im.EndPopup()
 		}
 
+		// Clip picker and Save sit at the right end, away from the transport.
+		im.SameLine()
+		save_w := im.CalcTextSize(doc.dirty ? "Save *" : "Save").x + im.GetStyle().FramePadding.x * 2
+		right := im.GetContentRegionAvail().x - (180 + im.GetStyle().ItemSpacing.x + save_w)
+		if right > 0 do im.SetCursorPosX(im.GetCursorPosX() + right)
+
+		im.SetNextItemWidth(180)
+		cur := strings.clone_to_cstring(_pv_clip_name(_pv.clip), context.temp_allocator)
+		if im.BeginCombo("##pv_clip", cur) {
+			for c in clips {
+				name := strings.clone_to_cstring(_pv_clip_name(c), context.temp_allocator)
+				if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
+					_pv_teardown()
+					_pv_deselect()
+					_pv.clip = c
+					_pv.time = 0
+				}
+			}
+			im.EndCombo()
+		}
+		if im.IsItemHovered({}) do im.SetTooltip("Clip to edit")
+
 		im.SameLine()
 		im.BeginDisabled(!doc.dirty)
 		if im.Button(doc.dirty ? "Save *" : "Save") {
@@ -641,9 +714,125 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, c
 		}
 		im.EndDisabled()
 	} else {
-		// Terminate the mode buttons' trailing SameLine.
 		im.NewLine()
 	}
+}
+
+// Dopesheet / Curves, as tabs along the bottom of the sheet.
+@(private = "file")
+_pv_draw_mode_tabs :: proc() {
+	if !im.BeginTabBar("##anim_modes", {}) do return
+	defer im.EndTabBar()
+	// imgui owns which tab is open and _pv.mode follows it. Forcing the open
+	// tab from _pv.mode every frame would re-select the current one before a
+	// click on the other could take effect.
+	for mode in _Anim_Mode {
+		if im.BeginTabItem(fmt.ctprintf("%v", mode), nil, {}) {
+			_pv.mode = mode
+			im.EndTabItem()
+		}
+	}
+}
+
+// The nearest key time before or after `from` across every channel, so the
+// transport steps between poses rather than by a fixed amount. Returns `from`
+// when there is nothing further in that direction.
+@(private = "file")
+_pv_key_step :: proc(clip: ^anim.AnimationClip, from: f32, back: bool) -> f32 {
+	if clip == nil do return from
+	EPS :: f32(1e-5)
+	best := from
+	found := false
+	for &ch in clip.channels {
+		for t in ch.times {
+			if back {
+				if t < from - EPS && (!found || t > best) {
+					best = t
+					found = true
+				}
+			} else {
+				if t > from + EPS && (!found || t < best) {
+					best = t
+					found = true
+				}
+			}
+		}
+	}
+	return best
+}
+
+// Advance the playhead while the transport runs, wrapping the way the clip
+// itself does so playback matches what the component will do.
+@(private = "file")
+_pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
+	if !_pv.playing do return
+	_pv.time += gfx.delta_time()
+	if _pv.time < length do return
+	switch clip != nil ? clip.wrap : anim.Animation_Wrap.Once {
+	case .Loop:
+		_pv.time -= length * math.floor(_pv.time / length)
+	case .Once:
+		_pv.time = length
+		_pv.playing = false // stop at the end, nothing more to show
+	}
+}
+
+// --- Record ------------------------------------------------------------------------
+//
+// Recording needs no hook into the inspector: a channel's live value only
+// leaves the shadow when something wrote the field, and scrubbing never does
+// (authored values do not move with the playhead). One key per changed
+// channel per frame, each its own undo step like any keyframe edit.
+
+@(private = "file")
+_pv_rec_resync :: proc(clip: ^anim.AnimationClip) {
+	clear(&_pv.rec_shadow)
+	if clip == nil do return
+	for &ch in clip.channels {
+		v, _ := _pv_live_value(&ch)
+		append(&_pv.rec_shadow, v)
+	}
+}
+
+@(private = "file")
+_pv_rec_poll :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
+	if !_pv.recording || clip == nil || doc == nil do return
+	// A channel added or removed since the last resync invalidates the pairing.
+	if len(_pv.rec_shadow) != len(clip.channels) {
+		_pv_rec_resync(clip)
+		return
+	}
+	EPS :: f32(1e-6)
+	for &ch, i in clip.channels {
+		v, ok := _pv_live_value(&ch)
+		if !ok do continue
+		d := v - _pv.rec_shadow[i]
+		if abs(d.x) < EPS && abs(d.y) < EPS && abs(d.z) < EPS && abs(d.w) < EPS do continue
+		_pv.rec_shadow[i] = v
+		_pv_add_key(doc, clip, i, _pv.time)
+	}
+}
+
+// A channel's value as the object holds it right now: the transform for a
+// transform channel, the resolved field for a property channel.
+@(private = "file")
+_pv_live_value :: proc(ch: ^anim.Animation_Channel) -> (v: [4]f32, ok: bool) {
+	tH, tok := anim._animation_resolve_target(_pv.owner, ch.target)
+	if !tok do return {}, false
+	if anim.animation_channel_is_property(ch) {
+		ptr, kind, leaf, pok := anim._prop_locate(tH, ch.component, ch.field)
+		if !pok do return {}, false
+		return anim._prop_read(ptr, kind, leaf), true
+	}
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return {}, false
+	switch ch.path {
+	case .Position: v.xyz = t.position
+	case .Rotation: v = t.rotation
+	case .Scale:    v.xyz = t.scale
+	}
+	return v, true
 }
 
 // The sheet: property rows on the left, the time canvas (ruler + dopesheet
@@ -676,7 +865,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		body_h = max(f32(nrows)*_ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, 140))
 	}
 
-	// --- Ruler: dragging it scrubs (the only scrub surface, like Unity).
+	// --- Ruler: dragging it scrubs (the only scrub surface).
 	im.SetCursorScreenPos(im.Vec2{x0, origin.y})
 	im.InvisibleButton("##anim_ruler", im.Vec2{max(x1 - x0, 1), _ANIM_RULER_H})
 	if im.IsItemActive() {
@@ -720,14 +909,14 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 			im.DrawList_AddRectFilled(dl, im.Vec2{origin.x, ry}, im.Vec2{left_x1, ry + _ANIM_ROW_H}, im.GetColorU32(.FrameBg, 0.25))
 		}
 		label, resolved := _pv_ch_label(&ch)
-		// Unity's missing-binding yellow: the channel's component or field no
+		// Missing-binding yellow: the channel's component or field no
 		// longer resolves — it samples but never applies.
 		col := resolved ? im.GetColorU32(.Text) : im.GetColorU32ImVec4(im.Vec4{0.95, 0.83, 0.30, 1})
 		im.DrawList_AddText(dl, im.Vec2{origin.x + 6, ry + 3}, col, label)
 	}
 	im.DrawList_PopClipRect(dl)
 
-	// Right-click a row: channel operations (Unity's Remove Property).
+	// Right-click a row: channel operations.
 	if hovered && mp.x < x0 && row_at >= 0 && row_at < len(clip.channels) &&
 	   im.IsMouseClicked(.Right) {
 		_pv.sel_ch = row_at

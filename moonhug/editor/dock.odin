@@ -13,6 +13,7 @@ import "core:math"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 // ---------------------------------------------------------------------------
 // Main dockspace
@@ -683,7 +684,7 @@ overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggl
 	// glyph (the EXPAND_MORE glyph has left bearing that offsets it in a narrow
 	// box). Draw the glyph ourselves, centered on the button rect.
 	arrow = im.Button("##arrow", im.Vec2{OVERLAY_ARROW_WIDTH, OVERLAY_BUTTON_SIZE})
-	_draw_centered_glyph(icons.ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
+	widgets.icon_draw_centered(icons.ICON_MD_EXPAND_MORE, im.GetItemRectMin(), im.GetItemRectMax())
 	if active {
 		im.PopStyleColor()
 	}
@@ -691,15 +692,4 @@ overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggl
 		im.SetTooltip(_overlay_item_tooltip("Settings"))
 	}
 	return
-}
-
-// Draw a glyph centered within the rect [rmin, rmax] on the current draw list,
-// in the current text color.
-_draw_centered_glyph :: proc(glyph: cstring, rmin, rmax: im.Vec2) {
-	sz := im.CalcTextSize(glyph, nil, false, -1)
-	pos := im.Vec2{
-		rmin.x + (rmax.x - rmin.x - sz.x) * 0.5,
-		rmin.y + (rmax.y - rmin.y - sz.y) * 0.5,
-	}
-	im.DrawList_AddText(im.GetWindowDrawList(), pos, im.GetColorU32(.Text), glyph)
 }

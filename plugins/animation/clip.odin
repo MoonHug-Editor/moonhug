@@ -1,14 +1,14 @@
 package animation
 
-// Unity-style AnimationClip asset: keyframe curves that animate transform
+// AnimationClip asset: keyframe curves that animate transform
 // position/rotation/scale — or any POD component field via property channels
 // (clip_property.odin) — over time. Clips are JSON files under assets/
 // (".anim"), cached by guid like materials. The Animation component
-// (component_Animation.odin) plays one — Unity's LEGACY clip player, not
+// (component_Animation.odin) plays one — a single-clip player, not
 // Mecanim: no state machines, no blending, script-level Play/Stop.
 //
 // Channels target transforms by NAME PATH relative to the Animation owner:
-// "" is the owner itself, "Body/Arm" walks children by name (Unity's curve
+// "" is the owner itself, "Body/Arm" walks children by name (the curve
 // binding paths). "Assets/Extract Assets" turns glTF animations into .anim
 // files whose paths mirror the glTF node hierarchy.
 
@@ -20,13 +20,13 @@ import "core:math/linalg"
 import "core:os"
 import "core:strings"
 
-// Unity WrapMode subset. Once clamps at length and stops; Loop wraps.
+// Once clamps at length and stops; Loop wraps.
 Animation_Wrap :: enum u8 {
 	Once,
 	Loop,
 }
 
-// Which transform property a channel writes (glTF target paths; Unity curves
+// Which transform property a channel writes (glTF target paths; curves
 // bind arbitrary properties — transforms cover the imported set).
 Animation_Path :: enum u8 {
 	Position,
@@ -38,8 +38,8 @@ Animation_Path :: enum u8 {
 // Values pack into [4]f32 — xyz for position/scale, xyzw quat for rotation,
 // x (or the leading lanes) for property channels.
 //
-// A channel with a non-empty `component` is a PROPERTY channel (Unity's
-// EditorCurveBinding model: path + type + propertyName): `component` is the
+// A channel with a non-empty `component` is a PROPERTY channel (bound by
+// path + component type + property name): `component` is the
 // component's type guid, `field` a dotted path to a POD leaf on it
 // ("emission.rate.value_min"). The file stores untyped floats — the live
 // field's typeid at bind time is the single authority for how many lanes
@@ -62,13 +62,27 @@ animation_channel_is_property :: proc(ch: ^Animation_Channel) -> bool {
 @(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", makeProcName=make_pAnimationClip, menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
 AnimationClip :: struct {
 	length:   f32, // seconds; set from the last keyframe at import
+	// Frames per second the editor snaps keys and the playhead to. Authoring
+	// only — evaluation is continuous in seconds. 0 in a file predates the
+	// field, so readers go through animation_clip_frame_rate.
+	frame_rate: f32,
 	wrap:     Animation_Wrap,
 	channels: [dynamic]Animation_Channel,
+}
+
+// The clip's authoring frame rate, defaulted for a clip saved before the
+// field existed (a zero would make every frame conversion divide by zero).
+ANIMATION_FRAME_RATE_DEFAULT :: f32(60)
+
+animation_clip_frame_rate :: proc(c: ^AnimationClip) -> f32 {
+	if c == nil || c.frame_rate <= 0 do return ANIMATION_FRAME_RATE_DEFAULT
+	return c.frame_rate
 }
 
 make_pAnimationClip :: proc() -> any {
 	c := new(AnimationClip)
 	c.length = 1
+	c.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 	return c^
 }
 

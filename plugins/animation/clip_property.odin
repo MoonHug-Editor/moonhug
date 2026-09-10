@@ -38,7 +38,7 @@ prop_kind_discrete :: proc(kind: Prop_Kind) -> bool {
 }
 
 // The animatable kind of a field type, unwrapping named aliases. References,
-// strings, and structs are not animatable — same boundary as Unity.
+// strings, and structs are not animatable.
 _prop_kind_of :: proc(tid: typeid) -> (Prop_Kind, bool) {
 	ti := runtime.type_info_base(type_info_of(tid))
 	#partial switch v in ti.variant {
