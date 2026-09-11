@@ -48,7 +48,7 @@ import "moonhug:editor/icons"
 @(private = "file") _anim_left_w: f32 = 200
 @(private = "file") _ANIM_MIN_LEFT_W :: f32(120)
 @(private = "file") _ANIM_MIN_CANVAS_W :: f32(80)
-@(private = "file") _ANIM_RULER_H :: f32(22)
+@(private = "file") _ANIM_RULER_H :: f32(22) // minimum: the band grows to a frame height
 @(private = "file") _ANIM_ROW_H :: f32(20)
 @(private = "file") _ANIM_PAD_X :: f32(10) // time gutter inside the canvas
 @(private = "file") _ANIM_KEY_R :: f32(4)  // key diamond half-size
@@ -696,11 +696,13 @@ draw_animation_view :: proc() {
 	doc, clip := _pv_doc()
 	length := clip != nil ? max(clip.length, 0.0001) : 0.0001
 
-	_pv_draw_toolbar(doc, clip, clips, length)
+	_pv_draw_toolbar(doc, clip, length)
 	_pv_advance(clip, length)
 	_pv_rec_poll(doc, clip)
 
 	if clip == nil {
+		// The picker still draws, so a broken clip is not a dead end.
+		_pv_draw_sheet_header(doc, nil, clips, _anim_left_w)
 		im.TextDisabled("The clip has no document (missing or unreadable .anim).")
 		return
 	}
@@ -715,7 +717,7 @@ draw_animation_view :: proc() {
 	tabs_h := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y
 	body_h := -(tabs_h + (footer ? im.GetFrameHeight() + 8 : 0))
 	im.BeginChild("##anim_body", im.Vec2{0, body_h}, {.Borders})
-	_pv_draw_sheet(doc, clip)
+	_pv_draw_sheet(doc, clip, clips)
 	im.EndChild()
 	_pv_draw_mode_tabs()
 
@@ -741,7 +743,7 @@ draw_animation_view :: proc() {
 }
 
 @(private = "file")
-_pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID, length: f32) {
+_pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, length: f32) {
 	fps := anim.animation_clip_frame_rate(clip)
 
 	// Preview toggle. The pop must match the state at push time — the click
@@ -814,52 +816,53 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, c
 	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
 	if clip != nil && doc != nil {
-		// Key the selected property at the playhead.
+		// Save sits at the right end, away from the transport.
 		im.SameLine()
-		im.BeginDisabled(_pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels))
-		if widgets.icon_button(icons.ICON_MD_KEYFRAME, "##addkey", "Add a keyframe on the selected property") {
-			_pv_add_key(doc, clip, _pv.sel_ch, _pv.time)
-		}
-		im.EndDisabled()
-
-		im.SameLine()
-		if im.Button("Add Property") do im.OpenPopup("##anim_add_prop")
-		if im.BeginPopup("##anim_add_prop") {
-			_pv_add_prop_object(doc, clip, _pv.owner, "", 0)
-			im.EndPopup()
-		}
-
-		// Clip picker and Save sit at the right end, away from the transport.
-		im.SameLine()
-		save_w := im.CalcTextSize(doc.dirty ? "Save *" : "Save").x + im.GetStyle().FramePadding.x * 2
-		right := im.GetContentRegionAvail().x - (180 + im.GetStyle().ItemSpacing.x + save_w)
+		save: cstring = doc.dirty ? "Save *" : "Save"
+		save_w := im.CalcTextSize(save).x + im.GetStyle().FramePadding.x * 2
+		right := im.GetContentRegionAvail().x - save_w
 		if right > 0 do im.SetCursorPosX(im.GetCursorPosX() + right)
 
-		im.SetNextItemWidth(180)
-		cur := strings.clone_to_cstring(_pv_clip_name(_pv.clip), context.temp_allocator)
-		if im.BeginCombo("##pv_clip", cur) {
-			for c in clips {
-				name := strings.clone_to_cstring(_pv_clip_name(c), context.temp_allocator)
-				if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
-					_pv_teardown()
-					_pv_deselect()
-					_pv.clip = c
-					_pv.time = 0
-				}
-			}
-			im.EndCombo()
-		}
-		if im.IsItemHovered({}) do im.SetTooltip("Clip to edit")
-
-		im.SameLine()
 		im.BeginDisabled(!doc.dirty)
-		if im.Button(doc.dirty ? "Save *" : "Save") {
+		if im.Button(save) {
 			if ser.save_to_file(doc.path, doc.data) do doc.dirty = false
 		}
 		im.EndDisabled()
 	} else {
 		im.NewLine()
 	}
+}
+
+// Header of the property column: the clip picker, stretched to the column
+// width, and the key button beside it. Both act on the track list below them
+// rather than on the transport, so they sit at its head.
+@(private = "file")
+_pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID, left_w: f32) {
+	key_w := im.GetFrameHeight()
+	combo_w := max(left_w - key_w - im.GetStyle().ItemSpacing.x, 1)
+
+	im.SetNextItemWidth(combo_w)
+	cur := strings.clone_to_cstring(_pv_clip_name(_pv.clip), context.temp_allocator)
+	if im.BeginCombo("##pv_clip", cur) {
+		for c in clips {
+			name := strings.clone_to_cstring(_pv_clip_name(c), context.temp_allocator)
+			if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
+				_pv_teardown()
+				_pv_deselect()
+				_pv.clip = c
+				_pv.time = 0
+			}
+		}
+		im.EndCombo()
+	}
+	if im.IsItemHovered({}) do im.SetTooltip("Clip to edit")
+
+	im.SameLine()
+	im.BeginDisabled(doc == nil || clip == nil || _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels))
+	if widgets.icon_button(icons.ICON_MD_KEYFRAME, "##addkey", "Add a keyframe on the selected property") {
+		_pv_add_key(doc, clip, _pv.sel_ch, _pv.time)
+	}
+	im.EndDisabled()
 }
 
 // Dopesheet / Curves, as tabs along the bottom of the sheet.
@@ -984,7 +987,7 @@ _pv_live_value :: proc(ch: ^anim.Animation_Channel) -> (v: [4]f32, ok: bool) {
 // The sheet: property rows on the left, the time canvas (ruler + dopesheet
 // keys or curves) on the right, one interaction surface each.
 @(private = "file")
-_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
+_pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, clips: []engine.Asset_GUID) {
 	dl := im.GetWindowDrawList()
 	origin := im.GetCursorScreenPos()
 	avail := im.GetContentRegionAvail()
@@ -996,6 +999,17 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	length := max(clip.length, 0.0001)
 	// Property column | splitter gap | time canvas.
 	left_w := clamp(_anim_left_w, _ANIM_MIN_LEFT_W, avail.x - widgets.SPLITTER_SIZE - _ANIM_MIN_CANVAS_W)
+	// The ruler band spans the whole sheet, but only the canvas half of it
+	// holds the ruler — the property column's half takes the header controls.
+	// It is at least a frame tall so they fit without a row of their own.
+	ruler_h := max(_ANIM_RULER_H, im.GetFrameHeight())
+
+	// Header in the property column's half of the band. Drawn before the two
+	// interaction surfaces below, which the mode handlers read as the last
+	// item, and clear of both in x and y.
+	im.SetCursorScreenPos(origin)
+	_pv_draw_sheet_header(doc, clip, clips, left_w)
+
 	left_x1 := origin.x + left_w
 	x0 := left_x1 + widgets.SPLITTER_SIZE
 	x1 := origin.x + avail.x
@@ -1010,14 +1024,14 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	tx0 := x0 + _ANIM_PAD_X - _pv.pan * pps // x of t=0
 
 	nrows := len(clip.channels)
-	rows_y := origin.y + _ANIM_RULER_H
+	rows_y := origin.y + ruler_h
 	body_h: f32
 	if _pv.mode == .Dopesheet {
 		// Fills the pane rather than stopping at the last track: the empty
 		// area below the tracks is where a box selection often starts.
-		body_h = max(f32(nrows) * _ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, _ANIM_ROW_H))
+		body_h = max(f32(nrows) * _ANIM_ROW_H, max(avail.y - ruler_h, _ANIM_ROW_H))
 	} else {
-		body_h = max(f32(nrows)*_ANIM_ROW_H, max(avail.y - _ANIM_RULER_H, 140))
+		body_h = max(f32(nrows)*_ANIM_ROW_H, max(avail.y - ruler_h, 140))
 	}
 
 	// --- Zoom and pan on the time axis. Zoom keeps the time under the cursor
@@ -1062,12 +1076,12 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 
 	// --- Ruler: dragging it scrubs (the only scrub surface).
 	im.SetCursorScreenPos(im.Vec2{x0, origin.y})
-	im.InvisibleButton("##anim_ruler", im.Vec2{max(x1 - x0, 1), _ANIM_RULER_H})
+	im.InvisibleButton("##anim_ruler", im.Vec2{max(x1 - x0, 1), ruler_h})
 	if im.IsItemActive() {
 		_pv.time = clamp(_pv_snap_time(clip, (im.GetMousePos().x - tx0) / pps), 0, clip.length)
 		_pv.active = true
 	}
-	im.DrawList_AddRectFilled(dl, im.Vec2{x0, origin.y}, im.Vec2{x1, origin.y + _ANIM_RULER_H}, im.GetColorU32(.FrameBg, 0.6))
+	im.DrawList_AddRectFilled(dl, im.Vec2{x0, origin.y}, im.Vec2{x1, origin.y + ruler_h}, im.GetColorU32(.FrameBg, 0.6))
 	steps := [?]f32{0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 1, 2, 5, 10, 30, 60}
 	step := steps[len(steps) - 1]
 	for s in steps {
@@ -1081,7 +1095,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 	for i in 0 ..= int(length / step) {
 		t := f32(i) * step
 		tx := tx0 + t * pps
-		im.DrawList_AddLine(dl, im.Vec2{tx, origin.y + _ANIM_RULER_H - 6}, im.Vec2{tx, origin.y + _ANIM_RULER_H}, tick_col, 1)
+		im.DrawList_AddLine(dl, im.Vec2{tx, origin.y + ruler_h - 6}, im.Vec2{tx, origin.y + ruler_h}, tick_col, 1)
 		im.DrawList_AddText(dl, im.Vec2{tx + 3, origin.y + 3}, tick_col, fmt.ctprintf("%.2f", t))
 	}
 	im.DrawList_PopClipRect(dl)
@@ -1189,6 +1203,25 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 		can_delete := _pv_sel_valid(clip)
 		label: cstring = len(_pv.sel) > 1 ? fmt.ctprintf("Delete %d Keys", len(_pv.sel)) : "Delete Key"
 		if im.MenuItem(label, nil, false, can_delete) do _pv_delete_key(doc, clip)
+		im.EndPopup()
+	}
+
+	// Add Property closes the track list, under the last row. Submitted after
+	// the mode handlers for the same reason as the splitter below — they read
+	// the sheet button as the last item. A press here lands in the property
+	// column below every row, so it matches no sheet case either way.
+	// Fixed width, centered in the column, as the inspector's Add Component is
+	// — narrowed only when the column is too thin to hold it.
+	add_w := min(f32(220), max(left_w - 8, 1))
+	im.SetCursorScreenPos(im.Vec2{
+		origin.x + (left_w - add_w) * 0.5,
+		rows_y + f32(len(clip.channels)) * _ANIM_ROW_H + 4,
+	})
+	im.BeginDisabled(doc == nil)
+	if im.Button("Add Property", im.Vec2{add_w, 0}) do im.OpenPopup("##anim_add_prop")
+	im.EndDisabled()
+	if im.BeginPopup("##anim_add_prop") {
+		_pv_add_prop_object(doc, clip, _pv.owner, "", 0)
 		im.EndPopup()
 	}
 
