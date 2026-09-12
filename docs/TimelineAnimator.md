@@ -42,22 +42,28 @@ to an `Animation` produces a pose output, a track bound to an `AudioSource`
 produces an audio output, and a key bound to the wrong component type is an
 authoring error caught at build.
 
-## Levels of configuration
+## Levels
 
-Several mechanisms say "another driver owns your playback": `timeline_driven`
-on `Animation`, `_director_is_control_driven` for a director inside a control
-track's clip, and the parking TimelineAnimator does to a state's director.
+Each level is a DEFAULT for the level above it. A higher level overrides a
+lower one wherever both have a value, and the highest one present wins.
 
-These are not three solutions to one problem. They are LEVELS. The higher a
-driver sits, the more generic it is, and a lower level overrides the one above
-it wherever both apply:
+- A track's own `key` is a default. A state's route for that track overrides
+  it.
+- An `Animation` playing its own clip is a default. A timeline's animation
+  track driving that component overrides it. A TimelineAnimator driving that
+  timeline overrides that.
 
-- `Animation` running its own clip is the most generic.
-- A timeline's animation track overriding that component is more concrete.
-- A TimelineAnimator owning that timeline is more concrete still.
+So every level works with nothing above it configured, and anything a level
+sets can be replaced from above. `timeline_driven` on `Animation`,
+`_director_is_control_driven` for a director inside a control track's clip,
+and the parking TimelineAnimator does to a state's director are not three
+solutions to one problem — they are this one rule at three places. A driver
+added later takes its place in the order rather than inventing its own
+handshake.
 
-A new driver added later takes its place in that order rather than inventing
-its own handshake.
+The same rule decides who owns the playable graph: the highest level present
+owns it, and everything below attaches a subtree under a parent handle it is
+handed.
 
 ## One graph, many outputs
 
@@ -118,6 +124,29 @@ which is what a driver posing a single target uses.
 Script and audio are still not output KINDS — scripts leave evaluation through
 an out-param and audio through `Track_Desc.tick`. Straightening that is the
 first item under Next.
+
+## Graphs do not nest
+
+`Playable_Graph` is an ARENA, not a graph. It holds the node storage, the free
+list and the outputs. The graph itself — the DAG — lives in
+`Playable_Node.inputs`, so any handle is a subtree root and any subtree is an
+input to another node. A subtree already IS a node, and `playable_connect` is
+how one is plugged into another.
+
+Two things do not nest, and neither of them is the graph:
+
+- **The arena.** `Playable_Handle` is an index into `g.nodes`. It is an
+  allocator offset, not an identity, so two arenas cannot name each other's
+  nodes.
+- **An output.** It writes to a binding and terminates. A sink is not
+  something another node consumes.
+
+So there is no "combine two graphs" operation and none is planned. Anything
+reusable composes by being BUILT INTO the host arena, the way a prefab
+instantiates into a scene rather than being referenced live. That is what
+`docs/PlayableGraph.md` already specifies for the future graph asset: a shared
+immutable template, a per-instance runtime copy, exposed parameters instead of
+poked node indices.
 
 ## The tree
 
@@ -299,10 +328,10 @@ edits that list.
   evaluation pulls per output instead of returning a pose with scripts on the
   side. `Playable_Output` becomes one entry in that list rather than a graph
   of its own. This is finishing docs/PlayableGraph.md, not changing it.
-- `Track_Ctx` gains the output the track builds into. `_animation_track_build`
-  uses the provided graph instead of calling `playable_output_init`, and
-  `_animation_track_tick` does not apply a pose when it does not own the
-  output.
+- The animation package owns one graph per director and resolves it internally,
+  since `Track_Ctx` cannot name a `Playable_Graph`. When audio becomes a real
+  output kind the audio package cannot import animation either, so
+  `Playable_Graph` has to move somewhere both can reach.
 - `TrackAnimation` gains `key`. Standalone directors pass no manager and
   resolve through the chain they use today.
 
@@ -350,6 +379,12 @@ The machinery exists. `Override{target, property_path, value}` and
 list already. What this idea adds is the FILTER: prefab overrides may hit any
 property path, a published list curates a subset and gives each one a name.
 
+This is the same idea as the EXPOSED PARAMETERS `docs/PlayableGraph.md`
+specifies for the future graph asset — named inputs a driver writes instead of
+poking node indices. One is at the graph level and one at the timeline level.
+They should be decided together, or they will be designed twice with different
+rules for naming, defaults and visibility.
+
 Two things to weigh before adopting it:
 
 - **Overrides land at instantiate time.** `nested_scene_apply_overrides`
@@ -379,12 +414,33 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    `playable_graph_evaluate` takes an explicit root so it stays a pure
    primitive. `_graph_bind` walks only the subtree reachable from that root,
    so a binding never carries a sibling output's channels.
-2. **A track builds into a provided output.** `Track_Ctx` carries the graph and
-   the parent handle to attach under. `_animation_track_build` uses them
-   instead of calling `playable_output_init`, and `_animation_track_tick` does
-   not apply a pose when it does not own the output. A standalone director
-   passes nothing and behaves as it does today. Without this, two timelines
-   apply separately and cannot blend at all.
+2. ~~**Graph ownership moves up a level.**~~ DONE, with one correction to the
+   plan: the arena cannot ride on `Track_Ctx`. That type lives in the
+   sequencer package, which never imports animation, so it cannot name a
+   `Playable_Graph`.
+
+   The animation package keeps the arena instead, keyed by the director's
+   transform (`_director_arenas`, track_animation.odin). One graph per
+   director, one output per distinct target, a layer mixer at each output's
+   root, and each track attaches its own mixer there in track order. The
+   sequencer is unchanged.
+
+   A track flushes its OWN output at the end of its tick rather than one pass
+   flushing the arena, because the editor scrub and preview call
+   `director_evaluate_at` directly and there is no post-evaluation hook.
+   Tracks sharing an output each flush it, and the last to tick produces the
+   final pose. Retargeting flushes the abandoned output once, or the object it
+   was posing stays frozen — outputs are only ever flushed by a track that
+   feeds them.
+
+   This fixed a live bug. Two animation tracks aimed at one object used to
+   own a graph each, so the second resolved its partial weight against a
+   bind-time default captured on the first evaluation and never refreshed.
+   They agree on frame one and drift apart after it.
+
+   When TimelineAnimator arrives it replaces the arena lookup — the graph
+   comes from the animator instead of being created per director. Same
+   package, so that stays internal too.
 3. **The component and its graph skeleton.** Fields, `reset_`, `cleanup_`,
    graph init and teardown, the per-frame tick. One layer mixer at the root
    and one mixer per layer. No states yet.
@@ -493,8 +549,14 @@ transforms and components.
 
 Accepted for now. The scene tree is what gives overrides, variants and
 per-instance binding for free, and those are worth more than the cost while
-the feature is unproven. A denser data format is a later optimization, taken
-only once the feature has earned it.
+the feature is unproven.
+
+The later optimization has a known shape rather than being an open "denser
+format": a GRAPH TEMPLATE built straight into the animator's arena, with no
+scene subtree at all. The prefab instance exists today only to hold authoring
+data — its graph contribution is already inlined into the arena the moment
+tracks attach. Replacing the instance means replacing where the authoring data
+is read from, not how evaluation works.
 
 ### String keys across a prefab boundary — deferred
 

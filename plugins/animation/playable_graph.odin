@@ -167,6 +167,16 @@ playable_connect :: proc(g: ^Playable_Graph, parent, child: Playable_Handle, wei
 	append(&p.inputs, Playable_Input{node = child, weight = weight})
 }
 
+// Detach `child` from `parent` without freeing it — for moving a subtree to a
+// different parent, which playable_remove cannot do (it kills the node).
+playable_disconnect :: proc(g: ^Playable_Graph, parent, child: Playable_Handle) {
+	p := playable_node(g, parent)
+	if p == nil do return
+	for i := len(p.inputs) - 1; i >= 0; i -= 1 {
+		if p.inputs[i].node == child do ordered_remove(&p.inputs, i)
+	}
+}
+
 playable_set_input_weight :: proc(g: ^Playable_Graph, parent, child: Playable_Handle, weight: f32) {
 	p := playable_node(g, parent)
 	if p == nil do return

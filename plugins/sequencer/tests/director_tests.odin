@@ -579,3 +579,57 @@ test_timeline_prefab_instance_targets_host_object :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, found, "the instance survives reload")
 }
+
+// Two animation tracks on one object, both animating the same channel, the
+// second easing in over the first.
+//
+// One output and one layer mixer means the second track blends over whatever
+// the first produced THIS evaluation. With a graph each, the second resolved
+// its partial weight against its own bind-time default — captured once, on the
+// first evaluation, and never refreshed. The two agree on frame one and
+// diverge as soon as the first track's value moves, which is the drift the
+// pure-evaluator rule exists to prevent.
+@(test)
+test_two_animation_tracks_blend_on_one_object :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	ramp_guid, hi_guid := _clip_guid(21), _clip_guid(22)
+	anim.animation_clip_cache[ramp_guid] = _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0})
+	anim.animation_clip_cache[hi_guid] = _ramp_clip(.Position, {20, 0, 0, 0}, {20, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+
+	_, raw := engine.transform_add_comp(root, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)raw
+	d.enabled = true
+	d.duration = 1
+	d.wrap = .Once
+	defer seq.director_teardown(d)
+
+	a := _mk_track(root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1})
+	_set_anim_clip(a, 0, ramp_guid)
+	// ease_in 1 makes this track's weight equal to the timeline time.
+	b := _mk_track(root, .TrackAnimation, seq.Clip_View{start = 0, duration = 1, ease_in = 1})
+	_set_anim_clip(b, 0, hi_guid)
+
+	rt := engine.pool_get(&tc.world.transforms, engine.Handle(root))
+
+	// Frame one: A is at 2.5, B blends in at 0.25 -> lerp(2.5, 20, 0.25).
+	seq.director_set_time(d, 0.25)
+	testing.expect(t, abs(rt.position.x - 6.875) < 0.001,
+		"the later track blends over the earlier one")
+
+	// Frame two: A has moved to 7.5, so B must blend over 7.5, not over a
+	// default captured on frame one -> lerp(7.5, 20, 0.75).
+	seq.director_set_time(d, 0.75)
+	testing.expect(t, abs(rt.position.x - 16.875) < 0.001,
+		"the blend follows the earlier track instead of a stale default")
+}
