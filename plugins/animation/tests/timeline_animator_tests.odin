@@ -511,8 +511,9 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	// The test asset DB does not scan the samples folder, so the clips the
 	// sample's timelines reference would never load and every later assertion
 	// would pass on an animator that poses nothing. Seed the cache by hand.
-	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_left.anim")
-	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_right.anim")
+	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_idle.anim")
+	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_swing_body.anim")
+	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/rig_swing_prop.anim")
 
 	PATH :: "plugins/animation/samples/timeline_sample/assets/timeline_animator_demo.scene"
 	s := engine.scene_load_single_path(PATH)
@@ -525,40 +526,48 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	testing.expect(t, ta != nil, "the root carries a TimelineAnimator")
 	if ta == nil do return
 
-	testing.expect_value(t, len(ta.targets), 1)
+	testing.expect_value(t, len(ta.targets), 2)
 	testing.expect_value(t, len(ta.layers), 1)
 	testing.expect_value(t, len(ta.layers[0].states), 2)
 
-	// Building resolves the key binding and both state timelines.
 	anim.timeline_animator_tick(0)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Body"), 0)
-	_, l_ok := anim.animator_find(ta, "LeanLeft")
-	_, r_ok := anim.animator_find(ta, "LeanRight")
-	testing.expect(t, l_ok && r_ok, "both states resolve by name")
-
-	// And the authored wiring has no problems: every track key is bound and no
-	// two pose outputs overlap.
+	testing.expect(t, anim.timeline_animator_output_for_key(ta, "Body") >= 0, "Body is bound")
+	testing.expect(t, anim.timeline_animator_output_for_key(ta, "Prop") >= 0, "Prop is bound")
+	_, i_ok := anim.animator_find(ta, "Idle")
+	_, s_ok := anim.animator_find(ta, "Swing")
+	testing.expect(t, i_ok && s_ok, "both states resolve by name")
 	testing.expect_value(t, len(anim.timeline_animator_problems(ta)), 0)
 
-	// End to end, so none of the above can pass on a state whose timeline
-	// never resolved: playing LeanLeft must actually move Body. The clip puts
-	// x at -2.5 halfway through.
-	bt: ^engine.Transform
-	if rt := engine.pool_get(&tc.world.transforms, engine.Handle(root)); rt != nil {
-		for ch in rt.children {
-			c := engine.pool_get(&tc.world.transforms, ch.handle)
-			if c != nil && c.name == "Body" do bt = c
-		}
-	}
-	testing.expect(t, bt != nil, "the sample has a Body object")
-	if bt == nil do return
+	// End to end, and specifically the thing a clip player cannot do: ONE
+	// state posing two keyed targets. Swing rotates ArmR (several levels down
+	// a name path) and the Sword (a different Animation component).
+	arm := _find_by_name(tc, root, "ArmR")
+	sword := _find_by_name(tc, root, "Sword")
+	testing.expect(t, arm != nil && sword != nil, "the rig has an ArmR and a Sword")
+	if arm == nil || sword == nil do return
 
-	id, _ := anim.animator_find(ta, "LeanLeft")
+	id, _ := anim.animator_find(ta, "Swing")
 	anim.animator_play(ta, id, 0)
-	anim.timeline_animator_tick(0.5)
-	testing.expectf(t, abs(bt.position.x - (-2.5)) < 0.01,
-		"playing a sample state poses Body, got %v", bt.position.x)
+	anim.timeline_animator_tick(0.35) // the top of the arc
+
+	testing.expectf(t, abs(arm.rotation.z) > 0.1,
+		"Swing rotates the body rig, got %v", arm.rotation.z)
+	testing.expectf(t, abs(sword.rotation.z) > 0.1,
+		"the same state also poses the prop through its own key, got %v", sword.rotation.z)
 }
+
+// Depth-first by name, since a scene has no by-name lookup.
+@(private = "file")
+_find_by_name :: proc(tc: ^common.TestCtx, h: engine.Transform_Handle, name: string) -> ^engine.Transform {
+	t := engine.pool_get(&tc.world.transforms, engine.Handle(h))
+	if t == nil do return nil
+	if t.name == name do return t
+	for ch in t.children {
+		if got := _find_by_name(tc, engine.Transform_Handle(ch.handle), name); got != nil do return got
+	}
+	return nil
+}
+
 
 // Read a .anim and its .meta straight into the clip cache, bypassing the asset
 // DB. Only for tests that load shipped sample assets by path.

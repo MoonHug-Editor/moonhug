@@ -1,8 +1,8 @@
 {
-  "root": 7001,
+  "root": 8001,
   "transforms": [
     {
-      "local_id": 7001,
+      "local_id": 8001,
       "name": "TimelineAnimatorDemo",
       "is_active": true,
       "position": [
@@ -31,52 +31,52 @@
       "children": [
         {
           "pptr": {
-            "local_id": 7003,
+            "local_id": 8004,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 7005,
+            "local_id": 8006,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 7008,
+            "local_id": 8008,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 7016,
+            "local_id": 8028,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 7224,
+            "local_id": 8036,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
       "components": [
         {
-          "local_id": 7002
+          "local_id": 8002
         },
         {
-          "local_id": 7121
+          "local_id": 8003
         }
       ]
     },
     {
-      "local_id": 7003,
+      "local_id": 8004,
       "name": "Camera",
       "is_active": true,
       "position": [
         0.0,
-        0.4,
-        7.0
+        1.0,
+        6.5
       ],
       "rotation": [
         0.0,
@@ -92,19 +92,96 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7001,
+          "local_id": 8001,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [],
       "components": [
         {
-          "local_id": 7004
+          "local_id": 8005
         }
       ]
     },
     {
-      "local_id": 7005,
+      "local_id": 8006,
+      "name": "Light",
+      "is_active": true,
+      "position": [
+        2.0,
+        4.0,
+        5.0
+      ],
+      "rotation": [
+        -0.239118,
+        -0.209272,
+        0.052422,
+        0.946764
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 8007
+        }
+      ]
+    },
+    {
+      "local_id": 8008,
+      "name": "Hero",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 8009,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 8023,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 8009,
       "name": "Body",
       "is_active": true,
       "position": [
@@ -119,33 +196,278 @@
         1.0
       ],
       "scale": [
-        1.5,
-        1.5,
-        1.5
+        1.0,
+        1.0,
+        1.0
       ],
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7001,
+          "local_id": 8008,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 8011,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 8014,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 8017,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 8020,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 8010
+        }
+      ]
+    },
+    {
+      "local_id": 8011,
+      "name": "Torso",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.8,
+        1.2,
+        0.45
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8009,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [],
       "components": [
         {
-          "local_id": 7006
+          "local_id": 8012
         },
         {
-          "local_id": 7222
-        },
-        {
-          "local_id": 7223
+          "local_id": 8013
         }
       ]
     },
     {
-      "local_id": 7008,
-      "name": "lean_left",
+      "local_id": 8014,
+      "name": "Head",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.95,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.5,
+        0.5,
+        0.45
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8009,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 8015
+        },
+        {
+          "local_id": 8016
+        }
+      ]
+    },
+    {
+      "local_id": 8017,
+      "name": "ArmL",
+      "is_active": true,
+      "position": [
+        -0.58,
+        0.15,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.22,
+        0.95,
+        0.22
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8009,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 8018
+        },
+        {
+          "local_id": 8019
+        }
+      ]
+    },
+    {
+      "local_id": 8020,
+      "name": "ArmR",
+      "is_active": true,
+      "position": [
+        0.58,
+        0.15,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.22,
+        0.95,
+        0.22
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8009,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 8021
+        },
+        {
+          "local_id": 8022
+        }
+      ]
+    },
+    {
+      "local_id": 8023,
+      "name": "Sword",
+      "is_active": true,
+      "position": [
+        0.58,
+        0.15,
+        0.3
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8008,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 8025,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 8024
+        }
+      ]
+    },
+    {
+      "local_id": 8025,
+      "name": "Blade",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.75,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        0.1,
+        1.3,
+        0.1
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8023,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 8026
+        },
+        {
+          "local_id": 8027
+        }
+      ]
+    },
+    {
+      "local_id": 8028,
+      "name": "idle",
       "is_active": true,
       "position": [
         0.0,
@@ -166,26 +488,26 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7001,
+          "local_id": 8001,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [
         {
           "pptr": {
-            "local_id": 7010,
+            "local_id": 8030,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
       "components": [
         {
-          "local_id": 7009
+          "local_id": 8029
         }
       ]
     },
     {
-      "local_id": 7010,
+      "local_id": 8030,
       "name": "animation",
       "is_active": true,
       "position": [
@@ -207,29 +529,29 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7008,
+          "local_id": 8028,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [
         {
           "pptr": {
-            "local_id": 7013,
+            "local_id": 8033,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
       "components": [
         {
-          "local_id": 7011
+          "local_id": 8031
         },
         {
-          "local_id": 7012
+          "local_id": 8032
         }
       ]
     },
     {
-      "local_id": 7013,
+      "local_id": 8033,
       "name": "clip",
       "is_active": true,
       "position": [
@@ -251,23 +573,23 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7010,
+          "local_id": 8030,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [],
       "components": [
         {
-          "local_id": 7014
+          "local_id": 8034
         },
         {
-          "local_id": 7015
+          "local_id": 8035
         }
       ]
     },
     {
-      "local_id": 7016,
-      "name": "lean_right",
+      "local_id": 8036,
+      "name": "swing",
       "is_active": true,
       "position": [
         0.0,
@@ -288,26 +610,32 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7001,
+          "local_id": 8001,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [
         {
           "pptr": {
-            "local_id": 7018,
+            "local_id": 8038,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 8044,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
       "components": [
         {
-          "local_id": 7017
+          "local_id": 8037
         }
       ]
     },
     {
-      "local_id": 7018,
+      "local_id": 8038,
       "name": "animation",
       "is_active": true,
       "position": [
@@ -329,29 +657,29 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7016,
+          "local_id": 8036,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [
         {
           "pptr": {
-            "local_id": 7021,
+            "local_id": 8041,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
       "components": [
         {
-          "local_id": 7019
+          "local_id": 8039
         },
         {
-          "local_id": 7020
+          "local_id": 8040
         }
       ]
     },
     {
-      "local_id": 7021,
+      "local_id": 8041,
       "name": "clip",
       "is_active": true,
       "position": [
@@ -373,34 +701,34 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7018,
+          "local_id": 8038,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [],
       "components": [
         {
-          "local_id": 7022
+          "local_id": 8042
         },
         {
-          "local_id": 7023
+          "local_id": 8043
         }
       ]
     },
     {
-      "local_id": 7224,
-      "name": "Light",
+      "local_id": 8044,
+      "name": "animation",
       "is_active": true,
       "position": [
-        2.0,
-        4.0,
-        5.0
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
-        -0.252684,
-        -0.209065,
-        -0.056019,
-        0.94303
+        0.0,
+        0.0,
+        0.0,
+        1.0
       ],
       "scale": [
         1.0,
@@ -410,14 +738,61 @@
       "render_layer": 1,
       "parent": {
         "pptr": {
-          "local_id": 7001,
+          "local_id": 8036,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 8047,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 8045
+        },
+        {
+          "local_id": 8046
+        }
+      ]
+    },
+    {
+      "local_id": 8047,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 8044,
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
       "children": [],
       "components": [
         {
-          "local_id": 7225
+          "local_id": 8048
+        },
+        {
+          "local_id": 8049
         }
       ]
     }
@@ -429,7 +804,7 @@
       "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
       "base": {
         "enabled": true,
-        "local_id": 7004
+        "local_id": 8005
       },
       "clear_color": [
         0.06,
@@ -438,202 +813,18 @@
         1.0
       ],
       "far_clip": 1000.0,
+      "near_clip": 0.1,
       "fov": 60.0,
-      "near_clip": 0.30000001,
-      "order": 0,
-      "render_layer_mask": 4294967295
-    },
-    {
-      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
-      "base": {
-        "enabled": true,
-        "local_id": 7006
-      },
-      "clip": "00000000-0000-0000-0000-000000000000",
-      "layers": [],
-      "play_automatically": false,
-      "speed": 1.0,
-      "wrap_mode": 0
-    },
-    {
-      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
-      "base": {
-        "enabled": true,
-        "local_id": 7009
-      },
-      "duration": 1.0,
-      "manual_start": true,
-      "speed": 1.0,
-      "wrap": 1
-    },
-    {
-      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
-      "base": {
-        "enabled": true,
-        "local_id": 7011
-      },
-      "muted": false
-    },
-    {
-      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
-      "base": {
-        "enabled": true,
-        "local_id": 7012
-      },
-      "key": "Body",
-      "target": {
-        "local_id": 0
-      }
-    },
-    {
-      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "base": {
-        "enabled": true,
-        "local_id": 7014
-      },
-      "start": 0.0,
-      "duration": 1.0,
-      "ease_in": 0.0,
-      "ease_out": 0.0,
-      "speed": 1.0
-    },
-    {
-      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
-      "base": {
-        "enabled": true,
-        "local_id": 7015
-      },
-      "clip": "7d1f8a0a-c29f-4210-912d-8494eee725b9"
-    },
-    {
-      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
-      "base": {
-        "enabled": true,
-        "local_id": 7017
-      },
-      "duration": 1.0,
-      "manual_start": true,
-      "speed": 1.0,
-      "wrap": 1
-    },
-    {
-      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
-      "base": {
-        "enabled": true,
-        "local_id": 7019
-      },
-      "muted": false
-    },
-    {
-      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
-      "base": {
-        "enabled": true,
-        "local_id": 7020
-      },
-      "key": "Body",
-      "target": {
-        "local_id": 0
-      }
-    },
-    {
-      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
-      "base": {
-        "enabled": true,
-        "local_id": 7022
-      },
-      "start": 0.0,
-      "duration": 1.0,
-      "ease_in": 0.0,
-      "ease_out": 0.0,
-      "speed": 1.0
-    },
-    {
-      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
-      "base": {
-        "enabled": true,
-        "local_id": 7023
-      },
-      "clip": "7c5471e1-0540-4a3f-8be4-d613762d7114"
-    },
-    {
-      "__type": "0959886b-dc83-491c-9843-df105c69e01d",
-      "base": {
-        "enabled": true,
-        "local_id": 7002
-      },
-      "speed": 1.0,
-      "targets": [
-        {
-          "key": "Body",
-          "target": {
-            "local_id": 7006
-          }
-        }
-      ],
-      "layers": [
-        {
-          "name": "Base",
-          "weight": 1.0,
-          "states": [
-            {
-              "name": "LeanLeft",
-              "timeline": {
-                "local_id": 7008,
-                "guid": "00000000-0000-0000-0000-000000000000"
-              },
-              "speed": 1.0,
-              "wrap": 1,
-              "fade": 0.4
-            },
-            {
-              "name": "LeanRight",
-              "timeline": {
-                "local_id": 7016,
-                "guid": "00000000-0000-0000-0000-000000000000"
-              },
-              "speed": 1.0,
-              "wrap": 1,
-              "fade": 0.4
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "__type": "7c7a5a92-7ea8-4409-a913-2252a0f48a21",
-      "base": {
-        "enabled": true,
-        "local_id": 7121
-      },
-      "fade": -1.0,
-      "auto_start": true
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 7222
-      },
-      "mesh": {
-        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
-        "local_id": 0
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 7223
-      },
-      "materials": [
-        "86518465-b823-4eb9-b3f5-c0deef450fc6"
-      ]
+      "ortho_size": 5.0,
+      "projection": 0,
+      "render_layers": 1,
+      "depth": 0
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
       "base": {
         "enabled": true,
-        "local_id": 7225
+        "local_id": 8007
       },
       "type": 0,
       "color": [
@@ -647,6 +838,333 @@
       "spot_angle": 30.0,
       "inner_spot_angle": 21.8,
       "ambient": 0.35
+    },
+    {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
+      "base": {
+        "enabled": true,
+        "local_id": 8010
+      },
+      "clip": "00000000-0000-0000-0000-000000000000",
+      "layers": [],
+      "play_automatically": false,
+      "speed": 1.0,
+      "wrap_mode": 0
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 8012
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 8013
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 8015
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 8016
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 8018
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 8019
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 8021
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 8022
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
+      "base": {
+        "enabled": true,
+        "local_id": 8024
+      },
+      "clip": "00000000-0000-0000-0000-000000000000",
+      "layers": [],
+      "play_automatically": false,
+      "speed": 1.0,
+      "wrap_mode": 0
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 8026
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 8027
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
+      "base": {
+        "enabled": true,
+        "local_id": 8029
+      },
+      "duration": 2.0,
+      "manual_start": true,
+      "speed": 1.0,
+      "wrap": 1
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 8031
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 8032
+      },
+      "key": "Body",
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 8034
+      },
+      "start": 0.0,
+      "duration": 2.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 1.0
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 8035
+      },
+      "clip": "d6d7f204-10f5-402d-abd6-a2bc88b2719b"
+    },
+    {
+      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
+      "base": {
+        "enabled": true,
+        "local_id": 8037
+      },
+      "duration": 1.0,
+      "manual_start": true,
+      "speed": 1.0,
+      "wrap": 1
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 8039
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 8040
+      },
+      "key": "Body",
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 8042
+      },
+      "start": 0.0,
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 1.0
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 8043
+      },
+      "clip": "c35ce969-2079-457d-9e12-f4c6c08e089a"
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 8045
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 8046
+      },
+      "key": "Prop",
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 8048
+      },
+      "start": 0.0,
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 1.0
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 8049
+      },
+      "clip": "d75b906f-0e99-41d5-b615-a2bf8c973106"
+    },
+    {
+      "__type": "0959886b-dc83-491c-9843-df105c69e01d",
+      "base": {
+        "enabled": true,
+        "local_id": 8002
+      },
+      "speed": 1.0,
+      "targets": [
+        {
+          "key": "Body",
+          "target": {
+            "local_id": 8010
+          }
+        },
+        {
+          "key": "Prop",
+          "target": {
+            "local_id": 8024
+          }
+        }
+      ],
+      "layers": [
+        {
+          "name": "Base",
+          "weight": 1.0,
+          "states": [
+            {
+              "name": "Idle",
+              "timeline": {
+                "local_id": 8028,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              },
+              "speed": 1.0,
+              "wrap": 1,
+              "fade": 0.35
+            },
+            {
+              "name": "Swing",
+              "timeline": {
+                "local_id": 8036,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              },
+              "speed": 1.0,
+              "wrap": 1,
+              "fade": 0.15
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "__type": "7c7a5a92-7ea8-4409-a913-2252a0f48a21",
+      "base": {
+        "enabled": true,
+        "local_id": 8003
+      },
+      "fade": -1.0,
+      "auto_start": true
     }
   ]
 }

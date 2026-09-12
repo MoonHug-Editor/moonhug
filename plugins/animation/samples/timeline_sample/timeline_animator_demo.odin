@@ -57,14 +57,14 @@ _tad_play :: proc(d: ^TimelineAnimatorDemo, name: string) {
 	anim.animator_play(a, id, d.fade)
 }
 
-@(inspector_button={label="Lean Left", row=0})
-tad_lean_left :: proc(d: ^TimelineAnimatorDemo) {
-	_tad_play(d, "LeanLeft")
+@(inspector_button={label="Idle", row=0})
+tad_idle :: proc(d: ^TimelineAnimatorDemo) {
+	_tad_play(d, "Idle")
 }
 
-@(inspector_button={label="Lean Right", row=0})
-tad_lean_right :: proc(d: ^TimelineAnimatorDemo) {
-	_tad_play(d, "LeanRight")
+@(inspector_button={label="Swing", row=0})
+tad_swing :: proc(d: ^TimelineAnimatorDemo) {
+	_tad_play(d, "Swing")
 }
 
 @(inspector_button={label="Stop", row=1})
@@ -86,7 +86,7 @@ timeline_animator_demo_tick :: proc(dt: f32) {
 		}
 		a := _tad_animator(d)
 		if a == nil do continue
-		if id, ok := anim.animator_find(a, "LeanLeft"); ok {
+		if id, ok := anim.animator_find(a, "Idle"); ok {
 			anim.animator_play(a, id, 0)
 			d.started = true
 		}

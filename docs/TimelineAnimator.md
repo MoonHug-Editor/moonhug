@@ -410,29 +410,42 @@ beside the sequencer's `timeline_demo.scene`:
 TimelineAnimatorDemo    TimelineAnimator + TimelineAnimatorDemo (sample script)
 ├── Camera
 ├── Light               directional, or a lit material renders black
-├── Body                Animation (the pose target) + the built-in cube mesh
-├── lean_left           PlayableDirector -> animation track, key "Body"
-└── lean_right          PlayableDirector -> animation track, key "Body"
+├── Hero
+│   ├── Body            Animation          -> key "Body"
+│   │   ├── Torso
+│   │   ├── Head
+│   │   ├── ArmL
+│   │   └── ArmR
+│   └── Sword           Animation          -> key "Prop"
+│       └── Blade
+├── idle                director -> one animation track, key "Body"
+└── swing               director -> two animation tracks, keys "Body" and "Prop"
 ```
 
-Body is `essentials.CUBE_MESH_GUID` with the default material, so the scene
-needs no imported asset and is visible the moment it opens. A particle system
-was the first attempt and is the wrong choice for a sample: particles run on
-`@(update)`, so the scene looks empty in edit mode.
+Everything is the built-in cube with the default material, so the scene needs no
+imported asset and is visible the moment it opens. It is a box RIG rather than a
+character because the engine has no skinning — a rigged mesh would load and never
+deform (README TODO).
 
-The animator binds the key "Body" to the Animation on Body, and its one layer
-holds two states pointing at the two timelines with a LOCAL reference — guid
-zero, local_id set — so the sample needs no prefab asset.
+Two things the sample exists to show, neither of which a single-clip player can
+do:
 
-Neither timeline names a scene object. Both say "Body" and the animator decides
-what that means, which is the whole point: the same timeline would drive a
-different character under a different animator.
+- **Swing drives two keyed targets from ONE state.** Its timeline has an
+  animation track keyed "Body" and another keyed "Prop", so one weight and one
+  fade move the arm and the sword together.
+- **Idle and Swing cover different objects.** Idle touches the body only, so
+  going back to it leaves nothing driving the Sword and it settles toward its
+  bind-time pose instead of holding. That is the partial-coverage behaviour in
+  Concerns, made visible on purpose rather than designed around.
 
-`timeline_animator_demo.odin` is the part a game writes. It is a component with
-inspector buttons — Lean Left, Lean Right, Stop — that resolve a state by name
-and call `animator_play`. Press Play and click them to watch the cross-fade.
-Passing no duration lets each state's authored `fade` decide, so retuning how a
-switch feels is an inspector edit.
+Channels target by NAME PATH from the Animation's owner — "ArmR" is a child of
+Body — so the sample exercises the hierarchy walk, which a single cube does not.
+
+`timeline_animator_demo.odin` is the part a game writes: a component with
+inspector buttons (Idle, Swing, Stop) that resolve a state by name and call
+`animator_play`. Press Play and click them. Passing no duration lets each
+state's authored `fade` decide, so retuning how a switch feels is an inspector
+edit.
 
 `test_timeline_animator_demo_scene_loads` loads the scene, checks the
 wiring, and plays a state through to a posed transform. Worth knowing why it goes that far: the
