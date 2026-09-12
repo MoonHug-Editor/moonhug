@@ -368,8 +368,17 @@ _ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32) {
 			length := seq.director_duration(d, seq.director_tracks(d))
 			if length > 0 {
 				switch desc.wrap {
-				case .Loop: for st.time >= length do st.time -= length
-				case .Once: st.time = min(st.time, length)
+				case .Loop:
+					for st.time >= length do st.time -= length
+				case .Once:
+					// A Once state reports done at its end and stays there, so
+					// gameplay can hand back to whatever should follow it. It
+					// keeps evaluating: the driver decides when to leave, not
+					// the state.
+					if st.time >= length {
+						st.time = length
+						st.done = true
+					}
 				}
 			}
 			seq.director_evaluate_at(d, st.time, .Play)
@@ -489,7 +498,12 @@ animator_find :: proc(a: ^TimelineAnimator, name: string) -> (State_Id, bool) {
 
 // Play `s` on its layer, fading every other state there out from its CURRENT
 // weight. `fade` of -1 takes the state's authored duration, which is the point
-// of authoring one — anything at or below 0 is a hard cut that also rewinds.
+// of authoring one, and anything at or below 0 is a hard cut.
+//
+// The target ALWAYS starts from time 0. Play means play, and a finished
+// one-shot that resumed where it stopped would report done again on the next
+// tick and never be seen. Resuming mid-state would be a separate argument if
+// anything ever needs it.
 //
 // There is no separate cross-fade entry point: a cut is a fade of length 0.
 animator_play :: proc(a: ^TimelineAnimator, s: State_Id, fade: f32 = -1) {
@@ -516,7 +530,9 @@ animator_play :: proc(a: ^TimelineAnimator, s: State_Id, fade: f32 = -1) {
 	}
 	for &st, i in lr.states {
 		_ta_fade_start(&st, i == si ? 1 : 0, dur)
-		if i == si do st.done = false
+		if i != si do continue
+		st.time = 0
+		st.done = false
 	}
 }
 

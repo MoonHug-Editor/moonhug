@@ -684,3 +684,135 @@ test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
 	testing.expect(t, ok2, "an adopted director is still claimed")
 	testing.expect(t, src2.graph == &ta.graph, "and reports the adopter's graph")
 }
+
+// A Once state runs to its end and REPORTS it, so gameplay can hand back to
+// whatever should follow. A Loop state never does.
+@(test)
+test_once_state_reports_done :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	guid := _clip_guid(71)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+
+	looping := _mk_state("Looping", _mk_local_timeline(root, "Body", guid))
+	once := _mk_state("Once", _mk_local_timeline(root, "Body", guid))
+	once.wrap = .Once
+	append(&layer.states, looping)
+	append(&layer.states, once)
+	append(&ta.layers, layer)
+
+	loop_id, _ := anim.animator_find(ta, "Looping")
+	once_id, _ := anim.animator_find(ta, "Once")
+
+	// A looping state runs past its length without ever finishing.
+	anim.animator_play(ta, loop_id, 0)
+	anim.timeline_animator_tick(2.5)
+	_, _, loop_done := anim.animator_state(ta)
+	testing.expect(t, !loop_done, "a Loop state never reports done")
+
+	// A Once state does, and stays there.
+	anim.animator_play(ta, once_id, 0)
+	anim.timeline_animator_tick(0.5)
+	_, mid, done_mid := anim.animator_state(ta)
+	testing.expect(t, !done_mid, "mid-clip is not done")
+	testing.expectf(t, abs(mid - 0.5) < 0.01, "normalized time tracks the playhead, got %v", mid)
+
+	anim.timeline_animator_tick(1.0)
+	lead, _, done := anim.animator_state(ta)
+	testing.expect_value(t, lead, once_id)
+	testing.expect(t, done, "a Once state past its end reports done")
+
+	anim.timeline_animator_tick(1.0)
+	_, _, still := anim.animator_state(ta)
+	testing.expect(t, still, "and keeps reporting it until something replaces it")
+}
+
+// A one-shot must be replayable. Playing always starts the target at time 0 —
+// a finished Once state that resumed where it stopped would report done again
+// on the next tick and never be seen.
+@(test)
+test_replaying_a_finished_once_state_rewinds :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	guid := _clip_guid(72)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, _mk_state("Idle", _mk_local_timeline(root, "Body", guid)))
+	shot := _mk_state("Shot", _mk_local_timeline(root, "Body", guid))
+	shot.wrap = .Once
+	append(&layer.states, shot)
+	append(&ta.layers, layer)
+
+	idle, _ := anim.animator_find(ta, "Idle")
+	one_shot, _ := anim.animator_find(ta, "Shot")
+
+	// Run it to the end.
+	anim.animator_play(ta, one_shot, 0)
+	anim.timeline_animator_tick(2)
+	_, _, done := anim.animator_state(ta)
+	testing.expect(t, done, "the one-shot finished")
+
+	// Hand back, then trigger it again WITH A FADE — the path that used to
+	// clear `done` without rewinding.
+	anim.animator_play(ta, idle, 0)
+	anim.timeline_animator_tick(0.1)
+	anim.animator_play(ta, one_shot, 0.2)
+	anim.timeline_animator_tick(0.25)
+
+	lead, normalized, done2 := anim.animator_state(ta)
+	testing.expect_value(t, lead, one_shot)
+	testing.expect(t, !done2, "a replayed one-shot is not instantly finished again")
+	testing.expectf(t, normalized < 0.5, "and starts near the beginning, got %v", normalized)
+
+	// Play means play: a state that is already leading still restarts.
+	anim.animator_play(ta, idle, 0)
+	anim.timeline_animator_tick(0.6)
+	_, before, _ := anim.animator_state(ta)
+	testing.expect(t, before > 0.1, "the looping state has advanced")
+	anim.animator_play(ta, idle, 0.2)
+	anim.timeline_animator_tick(0.05)
+	_, after, _ := anim.animator_state(ta)
+	testing.expectf(t, after < before,
+		"playing a state restarts it from 0, %v -> %v", before, after)
+}

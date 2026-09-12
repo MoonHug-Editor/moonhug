@@ -447,6 +447,12 @@ inspector buttons (Idle, Swing, Stop) that resolve a state by name and call
 state's authored `fade` decide, so retuning how a switch feels is an inspector
 edit.
 
+Idle LOOPS and Swing plays ONCE. When Swing finishes, the script polls
+`animator_state`'s `done` and hands back to Idle — which is the shape the
+design asks for: no transitions in the data, a driver deciding what follows
+what. The one flag it keeps is "a hand-back is already in flight", so the fade
+is started once instead of restarted every frame.
+
 `test_timeline_animator_demo_scene_loads` loads the scene, checks the
 wiring, and plays a state through to a posed transform. Worth knowing why it goes that far: the
 first version asserted only that the scene parsed and the names resolved, and
@@ -570,8 +576,14 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 
    There is no separate cross-fade call. `animator_play(a, s, fade)` covers
    both: -1 takes the state's authored duration, which is the point of
-   authoring one, and anything at or below 0 is a hard cut that also rewinds.
-   A cut is a fade of length 0, so one entry point is enough.
+   authoring one, and anything at or below 0 is a hard cut. A cut is a fade of
+   length 0, so one entry point is enough.
+
+   **Play always starts the target at time 0.** The fade path once cleared
+   `done` without rewinding, so a one-shot worked the first time and never
+   again — it resumed at its end, reported done on the next tick, and handed
+   straight back. Resuming mid-state would be a separate argument if anything
+   ever needs one.
 
    Two ordering rules the implementation depends on:
 
@@ -657,6 +669,10 @@ Known risks with a position, recorded so they are not argued twice.
 
 ### A finished Once state stops posing instead of holding
 
+(Partly addressed: a Once state now sets `done` at its end and holds its
+playhead there, so a driver can hand back to another state. What follows is
+about what the pose does if nobody hands back.)
+
 A timeline clip covers `[start, start+duration)`, so at exactly the end its
 weight is 0. A state whose wrap is Once clamps its playhead to the timeline
 length, lands on that boundary, and contributes nothing — the object falls back
@@ -671,7 +687,7 @@ epsilon that rots. The real answer is probably for a Once timeline to hold its
 last evaluated pose explicitly, which wants the same decision as "what does a
 finished state do" in the play API.
 
-### Adding a field to PlayableDirector breaks scene round-trip — unexplained
+### Changing a component's fields breaks scene round-trip — unexplained
 
 Adding one `bool` tagged `json:"-" inspect:"-"` to `PlayableDirector` makes
 `scene_file_unmarshal` fail with `Invalid_Data`, so a simulate Stop cannot
@@ -683,10 +699,15 @@ narrowed this far:
 - the same field added to `Animation` is harmless,
 - the scene being round-tripped contains no PlayableDirector at all.
 
-Sidestepped rather than fixed: the parking flag became
-`director_register_drive_check`, which needs no new field and fits the
-registry style better anyway. The underlying fault is still there and will bite
-whoever next adds a field to that component.
+It is NOT specific to that component. Adding two fields and removing one on
+`TimelineAnimatorDemo` — a sample component that appears in no test scene —
+broke the same test the same way, and reverting the field change fixed it.
+Two components out of the three tried reproduce it.
+
+Sidestepped twice rather than fixed: the parking flag became
+`director_register_drive_check`, and the sample's cycle timer moved to
+file-scope statics. Both avoid touching a component's fields. The underlying
+fault is still there and will bite the next person who adds one.
 
 One more symptom worth knowing: the failing test leaves
 `moonhug/tests/fixtures/_test_sim_set_kept.scene` behind, and that stale file
