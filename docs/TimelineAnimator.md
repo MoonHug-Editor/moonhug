@@ -294,14 +294,13 @@ Names resolve to handles once, then gameplay uses handles:
 State_Id :: distinct i32
 
 animator_find         :: proc(a: ^TimelineAnimator, name: string) -> (State_Id, bool)
-animator_play         :: proc(a: ^TimelineAnimator, s: State_Id)
-animator_cross_fade   :: proc(a: ^TimelineAnimator, s: State_Id, duration: f32 = -1)
+animator_play         :: proc(a: ^TimelineAnimator, s: State_Id, fade: f32 = -1)
 animator_stop         :: proc(a: ^TimelineAnimator)
 animator_state        :: proc(a: ^TimelineAnimator, layer := 0) -> (s: State_Id, normalized: f32, done: bool)
 animator_layer_weight :: proc(a: ^TimelineAnimator, layer: int, w: f32)
 ```
 
-- `duration` of -1 uses the state's own `fade`.
+- `fade` of -1 uses the state's own duration, 0 or less is a hard cut.
 - The layer is implicit. A state belongs to exactly one layer, so `play`
   resolves it the way `_anim_layer_of` resolves a clip's layer today.
 
@@ -505,14 +504,49 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    actually plays and the cross-asset instancing path has no test. The local
    path and the adopted key routing are both tested. Weight and cross-fade are
    item 6, and they are what make a state audible.
-6. **Weight and cross-fade.** One weight per state, fanned to one mixer input
-   per output it reaches. The weight-continuous fade bookkeeping is a port of
-   what `component_Animation` already does.
-7. **API.** `animator_find`, `animator_play`, `animator_cross_fade`,
-   `animator_layer_weight`, `animator_state`.
-8. **Tests.** Weights sum to 1 through a fade interrupted by a third state. A
-   Once state holds its last pose. A state advances at its own speed. An
-   unbound key fails at build. Two overlapping pose outputs fail at build.
+6. ~~**Weight and cross-fade.**~~ DONE. One weight per state, written to one
+   mixer input per output it reaches, so a single fade moves the whole
+   performance. The fade bookkeeping is the weight-continuous port of
+   `component_Animation`: interrupting a fade retargets from the CURRENT
+   weights, so nothing snaps and no snapshot is kept.
+
+   `animator_find`, `animator_play`, `animator_stop`, `animator_state` and
+   `animator_layer_weight`. A `State_Id` packs layer and index, so a caller
+   resolves a name once and then holds a handle.
+
+   There is no separate cross-fade call. `animator_play(a, s, fade)` covers
+   both: -1 takes the state's authored duration, which is the point of
+   authoring one, and anything at or below 0 is a hard cut that also rewinds.
+   A cut is a fade of length 0, so one entry point is enough.
+
+   Two ordering rules the implementation depends on:
+
+   * Fades advance BEFORE the "is anything playing" check, or a fade starting
+     from weight 0 reads as idle, the tick skips, and the fade never gets a
+     first frame.
+   * "Playing" means a state carries weight, not that states exist. An
+     animator holding only silent states applies nothing and releases its
+     targets, because writing an empty pose every frame would push bind-time
+     defaults over whatever else poses the object.
+
+   Known gap: a Once timeline that reaches its end collapses to the default
+   pose instead of holding its last one. At `t == duration` a timeline clip's
+   weight is 0, so the state contributes nothing. `component_Animation` holds
+   the final pose in the equivalent case. See Concerns.
+7. ~~**API.**~~ DONE with item 6, and one call shorter than planned — see
+   above.
+8. ~~**Tests.**~~ DONE, minus one. `timeline_animator_problems` finds authoring
+   errors when the graph is built: a track asking for a key nothing binds, and
+   two pose outputs whose subtrees overlap. Reported rather than fatal, since
+   wrong authored data is not an invariant violation — but reported EARLY,
+   because the alternative is a character that silently never moves.
+
+   Covered: an interrupted fade stays continuous and still lands on the third
+   state, a state's speed multiplies the animator's, an unbound key is
+   reported, overlapping pose outputs are reported.
+
+   NOT covered: "a Once state holds its last pose", because it does not. See
+   Concerns.
 
 ### Next
 
@@ -566,6 +600,22 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 ## Concerns
 
 Known risks with a position, recorded so they are not argued twice.
+
+### A finished Once state stops posing instead of holding
+
+A timeline clip covers `[start, start+duration)`, so at exactly the end its
+weight is 0. A state whose wrap is Once clamps its playhead to the timeline
+length, lands on that boundary, and contributes nothing — the object falls back
+to the bind-time default rather than holding the last pose.
+
+`component_Animation` does not have this problem: a done clip node samples at
+its length and the sampler clamps to the last key, so the pose holds. The
+difference is that a timeline adds a clip-weight layer underneath.
+
+Not fixed. Clamping to just under the length would work and is the kind of
+epsilon that rots. The real answer is probably for a Once timeline to hold its
+last evaluated pose explicitly, which wants the same decision as "what does a
+finished state do" in the play API.
 
 ### Adding a field to PlayableDirector breaks scene round-trip — unexplained
 

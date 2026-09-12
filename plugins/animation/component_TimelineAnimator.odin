@@ -70,6 +70,13 @@ Animator_State_Runtime :: struct {
 	mixers: [dynamic]Playable_Handle, // parallel to graph.outputs
 	time:   f32,
 	weight: f32,
+	// Weight moves linearly from `fade_from` toward `fade_target` over
+	// `fade_dur` seconds of real time. 0 duration means not fading.
+	fade_from:   f32,
+	fade_target: f32,
+	fade_t:      f32,
+	fade_dur:    f32,
+	done:        bool, // a Once timeline ran past its end
 }
 
 @(component={menu="Animation/TimelineAnimator"})
@@ -287,16 +294,14 @@ timeline_animator_layer_mixer :: proc(a: ^TimelineAnimator, layer, output: int) 
 	return lr.mixers[output]
 }
 
-// Whether any layer mixer has something attached. Until a state does, the
-// graph would evaluate to an empty pose and applying it every frame would
-// write bind-time defaults over whatever else poses the target.
+// Whether any state carries weight. An animator holding states that are all
+// silent applies nothing: the graph would evaluate to an empty pose, and
+// writing that every frame would push bind-time defaults over whatever else
+// poses the target. Having states is not the same as playing one.
 @(private = "file")
 _ta_has_content :: proc(a: ^TimelineAnimator) -> bool {
 	for &lr in a.rt {
-		for m in lr.mixers {
-			n := playable_node(&a.graph, m)
-			if n != nil && len(n.inputs) > 0 do return true
-		}
+		for &st in lr.states do if st.weight > PLAYABLE_WEIGHT_EPS do return true
 	}
 	return false
 }
@@ -386,10 +391,263 @@ timeline_animator_tick :: proc(dt: f32) {
 		}
 		_ta_ensure_graph(a)
 		_ta_sync_layer_weights(a)
+		// Fades advance BEFORE the content check, or a fade starting from
+		// weight 0 would never get a first frame: it would read as idle, the
+		// tick would skip, and the fade would sit at 0 forever.
+		_ta_advance_fades(a, dt)
 		active := _ta_has_content(a)
 		_ta_claim_targets(a, active)
 		if !active do continue
 		_ta_advance_states(a, dt)
 		playable_graph_tick(&a.graph)
 	}
+}
+
+// --- Weight and cross-fade ------------------------------------------------------------
+//
+// A state has ONE weight, written to one mixer input per output it reaches.
+// Nothing multiplies weights by hand: a mixer input weight propagates down the
+// whole subtree during evaluation, so setting it scales every track and every
+// clip inside that state's timeline.
+//
+// Fades are weight-continuous, the rule component_Animation already uses:
+// cross-fading to C in the middle of an A to B fade retargets A and B toward 0
+// FROM THEIR CURRENT WEIGHTS while C rises. Weights that summed to 1 still sum
+// to 1, and interruption needs no snapshot machinery.
+
+// Opaque: layer in the high 16 bits, state index in the low 16.
+State_Id :: distinct i32
+STATE_ID_NONE :: State_Id(-1)
+
+@(private = "file")
+_state_id :: proc(layer, index: int) -> State_Id {
+	return State_Id(i32(layer) << 16 | i32(index) & 0xFFFF)
+}
+
+@(private = "file")
+_state_split :: proc(id: State_Id) -> (layer, index: int) {
+	return int(i32(id) >> 16), int(i32(id) & 0xFFFF)
+}
+
+@(private = "file")
+_ta_state_rt :: proc(a: ^TimelineAnimator, id: State_Id) -> ^Animator_State_Runtime {
+	li, si := _state_split(id)
+	if li < 0 || li >= len(a.rt) do return nil
+	lr := &a.rt[li]
+	if si < 0 || si >= len(lr.states) do return nil
+	return &lr.states[si]
+}
+
+@(private = "file")
+_ta_fade_start :: proc(st: ^Animator_State_Runtime, target, duration: f32) {
+	st.fade_from = st.weight
+	st.fade_target = target
+	st.fade_t = 0
+	st.fade_dur = duration
+}
+
+// Push a state's weight into the graph: the same number on every output it
+// reaches, so one fade moves the whole performance.
+@(private = "file")
+_ta_push_weight :: proc(a: ^TimelineAnimator, li: int, st: ^Animator_State_Runtime) {
+	if li < 0 || li >= len(a.rt) do return
+	lr := &a.rt[li]
+	for m, oi in st.mixers {
+		if oi >= len(lr.mixers) do break
+		playable_set_input_weight(&a.graph, lr.mixers[oi], m, st.weight)
+	}
+}
+
+@(private = "file")
+_ta_advance_fades :: proc(a: ^TimelineAnimator, dt: f32) {
+	for &lr, li in a.rt {
+		for &st in lr.states {
+			if st.fade_dur > 0 {
+				st.fade_t += dt
+				k := st.fade_t / st.fade_dur
+				if k >= 1 {
+					k = 1
+					st.fade_dur = 0
+				}
+				st.weight = st.fade_from + (st.fade_target - st.fade_from) * k
+			}
+			_ta_push_weight(a, li, &st)
+		}
+	}
+}
+
+// --- API ------------------------------------------------------------------------------
+
+// Resolve a state name once, then use the handle. Names are per layer, and the
+// first match wins when two layers use the same name.
+animator_find :: proc(a: ^TimelineAnimator, name: string) -> (State_Id, bool) {
+	for &l, li in a.layers {
+		for &st, si in l.states do if st.name == name do return _state_id(li, si), true
+	}
+	return STATE_ID_NONE, false
+}
+
+// Play `s` on its layer, fading every other state there out from its CURRENT
+// weight. `fade` of -1 takes the state's authored duration, which is the point
+// of authoring one — anything at or below 0 is a hard cut that also rewinds.
+//
+// There is no separate cross-fade entry point: a cut is a fade of length 0.
+animator_play :: proc(a: ^TimelineAnimator, s: State_Id, fade: f32 = -1) {
+	_ta_ensure_graph(a)
+	li, si := _state_split(s)
+	if li < 0 || li >= len(a.rt) || li >= len(a.layers) do return
+	lr := &a.rt[li]
+	if si < 0 || si >= len(lr.states) || si >= len(a.layers[li].states) do return
+
+	dur := fade
+	if dur < 0 do dur = a.layers[li].states[si].fade
+	if dur <= 0 {
+		for &st, i in lr.states {
+			st.fade_dur = 0
+			st.fade_target = i == si ? 1 : 0
+			st.weight = st.fade_target
+			if i == si {
+				st.time = 0
+				st.done = false
+			}
+			_ta_push_weight(a, li, &st)
+		}
+		return
+	}
+	for &st, i in lr.states {
+		_ta_fade_start(&st, i == si ? 1 : 0, dur)
+		if i == si do st.done = false
+	}
+}
+
+// Silence every state. Timelines keep their playheads, and whatever was posed
+// last stays posed — nothing rewinds and nothing is destroyed.
+animator_stop :: proc(a: ^TimelineAnimator) {
+	if !a.graph_ready do return
+	for &lr, li in a.rt {
+		for &st in lr.states {
+			st.fade_dur = 0
+			st.fade_target = 0
+			st.weight = 0
+			_ta_push_weight(a, li, &st)
+		}
+	}
+}
+
+// The leading state on a layer: the one carrying the most weight, its playhead
+// as a fraction of its timeline, and whether a Once timeline has finished.
+animator_state :: proc(a: ^TimelineAnimator, layer := 0) -> (s: State_Id, normalized: f32, done: bool) {
+	s = STATE_ID_NONE
+	if layer < 0 || layer >= len(a.rt) do return
+	lr := &a.rt[layer]
+	best := f32(0)
+	bi := -1
+	for &st, i in lr.states {
+		if st.weight > best {
+			best = st.weight
+			bi = i
+		}
+	}
+	if bi < 0 do return
+	st := &lr.states[bi]
+	s = _state_id(layer, bi)
+	done = st.done
+	if length := _ta_state_length(st); length > 0 do normalized = st.time / length
+	return
+}
+
+// A layer's weight, applied to every output. Authored `weight` is the default
+// this overrides until the next rebuild.
+animator_layer_weight :: proc(a: ^TimelineAnimator, layer: int, w: f32) {
+	if layer < 0 || layer >= len(a.rt) do return
+	lr := &a.rt[layer]
+	for m, oi in lr.mixers {
+		o := graph_output(&a.graph, oi)
+		if o == nil do continue
+		playable_set_input_weight(&a.graph, o.root, m, w)
+	}
+	if layer < len(a.layers) do a.layers[layer].weight = w
+}
+
+// The state's timeline length, or 0 when it has no live director.
+@(private = "file")
+_ta_state_length :: proc(st: ^Animator_State_Runtime) -> f32 {
+	w := engine.ctx_world()
+	if w == nil || !engine.world_pool_valid(w, st.dir) do return 0
+	d := cast(^seq.PlayableDirector)engine.world_pool_get(w, st.dir)
+	if d == nil do return 0
+	return seq.director_duration(d, seq.director_tracks(d))
+}
+
+// --- Authoring validation -------------------------------------------------------------
+//
+// Found once when the graph is built, not per frame. Authored data being wrong
+// is not an invariant violation, so these are reported rather than fatal — but
+// they are reported EARLY, because the alternative is a character that silently
+// never moves.
+
+Animator_Problem_Kind :: enum u8 {
+	Unbound_Key,     // a track asks for a key `targets` does not bind
+	Overlapping_Pose, // two bound targets pose the same transforms
+}
+
+Animator_Problem :: struct {
+	kind: Animator_Problem_Kind,
+	key:  string, // borrowed from the component's own data
+}
+
+// Whether `anc` is `h` or an ancestor of it.
+@(private = "file")
+_ta_is_ancestor :: proc(anc, h: engine.Transform_Handle) -> bool {
+	w := engine.ctx_world()
+	cur := h
+	for i := 0; i < 256; i += 1 {
+		if cur == anc do return true
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
+		if t == nil || t.parent.handle == {} do return false
+		cur = engine.Transform_Handle(t.parent.handle)
+	}
+	return false
+}
+
+// Every key the animator's states ask for, and every pair of pose targets that
+// would clobber each other. Allocates into `allocator`.
+timeline_animator_problems :: proc(a: ^TimelineAnimator, allocator := context.temp_allocator) -> []Animator_Problem {
+	out := make([dynamic]Animator_Problem, allocator)
+	w := engine.ctx_world()
+
+	// Keys asked for by a state's tracks but bound by nothing.
+	for &lr in a.rt {
+		for &st in lr.states {
+			if st.root == {} || !engine.world_pool_valid(w, st.dir) do continue
+			d := cast(^seq.PlayableDirector)engine.world_pool_get(w, st.dir)
+			if d == nil do continue
+			for &tv in seq.director_tracks(d) {
+				_, tr := engine.transform_get_comp(tv.node, TrackAnimation)
+				if tr == nil || tr.key == "" do continue
+				if timeline_animator_output_for_key(a, tr.key) >= 0 do continue
+				append(&out, Animator_Problem{kind = .Unbound_Key, key = tr.key})
+			}
+		}
+	}
+
+	// Two pose outputs whose subtrees overlap write the same transforms, and
+	// the later apply wins. Checked between bound targets, since that is where
+	// an author can see and fix it.
+	for i in 0 ..< len(a.out_target) {
+		oi := graph_output(&a.graph, i)
+		if oi == nil do continue
+		for j in i + 1 ..< len(a.out_target) {
+			oj := graph_output(&a.graph, j)
+			if oj == nil do continue
+			overlaps := _ta_is_ancestor(oi.binding.owner, oj.binding.owner) ||
+			            _ta_is_ancestor(oj.binding.owner, oi.binding.owner)
+			if !overlaps do continue
+			ti := a.out_target[j]
+			if ti >= 0 && ti < len(a.targets) {
+				append(&out, Animator_Problem{kind = .Overlapping_Pose, key = a.targets[ti].key})
+			}
+		}
+	}
+	return out[:]
 }
