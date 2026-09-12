@@ -69,7 +69,7 @@ draw_playable_graph_view :: proc() {
 	}
 
 	im.TextDisabled("Source: %s", source)
-	if g == nil || anim.playable_node(g, g.root) == nil {
+	if g == nil || anim.graph_output(g) == nil || anim.playable_node(g, anim.graph_output(g).root) == nil {
 		im.TextDisabled("The component produces an empty graph (no clips).")
 		return
 	}
@@ -92,12 +92,13 @@ _pg_authored_shape :: proc(a: ^anim.Animation) -> ^anim.Playable_Graph {
 	context.allocator = context.temp_allocator
 	g := new(anim.Playable_Graph)
 	anim.playable_graph_init(g)
-	g.root = anim.playable_add(g, anim.Layer_Mixer_Playable{})
+	anim.graph_output_add(g, {})
+	anim.graph_output(g).root = anim.playable_add(g, anim.Layer_Mixer_Playable{})
 
 	n_layers := max(len(a.layers), 1)
 	for li in 0 ..< n_layers {
 		mixer := anim.playable_add(g, anim.Mixer_Playable{})
-		anim.playable_connect(g, g.root, mixer, 1)
+		anim.playable_connect(g, anim.graph_output(g).root, mixer, 1)
 
 		clips := make([dynamic]engine.Asset_GUID)
 		if li == 0 && a.clip != {} do append(&clips, a.clip)
@@ -147,9 +148,10 @@ _pg_layout :: proc(g: ^anim.Playable_Graph, salt: u64) {
 	for i in 0 ..< n do depth[i] = -1
 	queue := make([dynamic]anim.Playable_Handle, context.temp_allocator)
 	max_depth := 0
-	if anim.playable_node(g, g.root) != nil {
-		depth[int(g.root) - 1] = 0
-		append(&queue, g.root)
+	for &o in g.outputs {
+		if anim.playable_node(g, o.root) == nil do continue
+		depth[int(o.root) - 1] = 0
+		append(&queue, o.root)
 	}
 	for qi := 0; qi < len(queue); qi += 1 {
 		h := queue[qi]
@@ -245,7 +247,15 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		if !n.alive do continue
 		id := i + 1
 		pos := _pg.pos[id]
-		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].lines, len(n.inputs), id != int(g.root))
+		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].lines, len(n.inputs), !_pg_is_output_root(g, i + 1))
 		_pg.pos[id] = pos
 	}
+}
+
+// Whether a node is one of the graph's output roots — those draw without an
+// output pin, since nothing downstream consumes them.
+@(private = "file")
+_pg_is_output_root :: proc(g: ^anim.Playable_Graph, h: int) -> bool {
+	for &o in g.outputs do if int(o.root) == h do return true
+	return false
 }

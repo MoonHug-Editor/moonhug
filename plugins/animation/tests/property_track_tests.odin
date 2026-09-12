@@ -75,11 +75,11 @@ test_property_channel_f32_mix :: proc(t: ^testing.T) {
 	anim.animation_clip_cache[b_guid] = _prop_clip(cam, "fov", {90, 0, 0, 0})
 
 	mixer := anim.playable_add(&pt.g, anim.Mixer_Playable{})
-	pt.g.root = mixer
+	groot := mixer
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = a_guid}), 0.5)
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = b_guid}), 0.5)
 
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, abs(pt.camera.fov - 60) < 0.001, "50/50 mix of fov 30 and 90 should land at 60")
 }
@@ -93,9 +93,9 @@ test_property_channel_vec4_full :: proc(t: ^testing.T) {
 
 	guid := _clip_guid(0x63)
 	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "clear_color", {1, 0, 0, 1})
-	pt.g.root = anim.playable_add(&pt.g, anim.Clip_Playable{clip = guid})
+	groot := anim.playable_add(&pt.g, anim.Clip_Playable{clip = guid})
 
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, pt.camera.clear_color == {1, 0, 0, 1}, "full-weight vec4 channel writes the whole value")
 }
@@ -113,22 +113,21 @@ test_property_channel_discrete_dominant :: proc(t: ^testing.T) {
 	anim.animation_clip_cache[b_guid] = _prop_clip(cam, "order", {9, 0, 0, 0})
 
 	mixer := anim.playable_add(&pt.g, anim.Mixer_Playable{})
-	pt.g.root = mixer
+	groot := mixer
 	a_node := anim.playable_add(&pt.g, anim.Clip_Playable{clip = a_guid})
 	anim.playable_connect(&pt.g, mixer, a_node, 0.3)
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = b_guid}), 0.7)
 
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, pt.camera.order == 9, "discrete channels take the dominant contributor, never a lerp")
 
 	// A lone clip below half weight loses to the default.
-	anim.playable_remove(&pt.g, pt.g.root)
-	pt.g.root = {}
+	anim.playable_remove(&pt.g, groot)
 	mixer2 := anim.playable_add(&pt.g, anim.Mixer_Playable{})
-	pt.g.root = mixer2
+	groot = mixer2
 	anim.playable_connect(&pt.g, mixer2, a_node, 0.3)
-	pose2 := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose2 := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose2)
 	testing.expect(t, pt.camera.order == 0, "a discrete channel below half weight rests at the default")
 }
@@ -143,11 +142,11 @@ test_property_channel_partial_weight_blends_default :: proc(t: ^testing.T) {
 	guid := _clip_guid(0x66)
 	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
 	mixer := anim.playable_add(&pt.g, anim.Mixer_Playable{})
-	pt.g.root = mixer
+	groot := mixer
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = guid}), 0.25)
 
 	// Bind-time default fov is 60 (reset_Camera): 0.25*100 + 0.75*60 = 70.
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, abs(pt.camera.fov - 70) < 0.001, "partial weight blends toward the bind-time default")
 }
@@ -163,12 +162,12 @@ test_property_channel_unresolved_skips :: proc(t: ^testing.T) {
 	anim.animation_clip_cache[a_guid] = _prop_clip(_camera_guid_str(), "no_such_field", {1, 0, 0, 0})
 	anim.animation_clip_cache[b_guid] = _prop_clip("not-a-guid", "fov", {1, 0, 0, 0})
 	mixer := anim.playable_add(&pt.g, anim.Mixer_Playable{})
-	pt.g.root = mixer
+	groot := mixer
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = a_guid}), 1)
 	anim.playable_connect(&pt.g, mixer, anim.playable_add(&pt.g, anim.Clip_Playable{clip = b_guid}), 1)
 
 	before := pt.camera^
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, pt.camera.fov == before.fov, "unresolvable channels are skipped, nothing written")
 }
@@ -182,10 +181,10 @@ test_property_channel_write_defaults_restores :: proc(t: ^testing.T) {
 
 	guid := _clip_guid(0x69)
 	anim.animation_clip_cache[guid] = _prop_clip(_camera_guid_str(), "fov", {100, 0, 0, 0})
-	pt.g.root = anim.playable_add(&pt.g, anim.Clip_Playable{clip = guid})
+	groot := anim.playable_add(&pt.g, anim.Clip_Playable{clip = guid})
 
 	original := pt.camera.fov
-	pose := anim.playable_graph_evaluate(&pt.g, &pt.b)
+	pose := anim.playable_graph_evaluate(&pt.g, groot, &pt.b)
 	anim.animation_pose_apply(&pt.b, pose)
 	testing.expect(t, abs(pt.camera.fov - 100) < 0.001, "the clip drives the field")
 

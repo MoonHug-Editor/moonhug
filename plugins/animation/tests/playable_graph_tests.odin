@@ -57,11 +57,11 @@ test_playable_mixer_blend :: proc(t: ^testing.T) {
 	defer anim.animation_binding_destroy(&b)
 
 	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
-	g.root = mixer
+	groot := mixer
 	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = a_guid}), 0.5)
 	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = b_guid}), 0.5)
 
-	pose := anim.playable_graph_evaluate(&g, &b)
+	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -93,10 +93,10 @@ test_playable_partial_weight_blends_default :: proc(t: ^testing.T) {
 	defer anim.animation_binding_destroy(&b)
 
 	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
-	g.root = mixer
+	groot := mixer
 	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = guid}), 0.3)
 
-	pose := anim.playable_graph_evaluate(&g, &b)
+	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -106,7 +106,7 @@ test_playable_partial_weight_blends_default :: proc(t: ^testing.T) {
 
 	// Purity: evaluating again at the same state gives the same result — the
 	// default did not drift toward the written value.
-	pose2 := anim.playable_graph_evaluate(&g, &b)
+	pose2 := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose2)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 4.4) < 0.001, "re-evaluating must not drift (blends against default, not live)")
@@ -136,7 +136,7 @@ test_playable_layer_override :: proc(t: ^testing.T) {
 	defer anim.animation_binding_destroy(&b)
 
 	root := anim.playable_add(&g, anim.Layer_Mixer_Playable{})
-	g.root = root
+	groot := root
 	l0 := anim.playable_add(&g, anim.Mixer_Playable{})
 	l1 := anim.playable_add(&g, anim.Mixer_Playable{})
 	anim.playable_connect(&g, root, l0, 1)
@@ -144,14 +144,14 @@ test_playable_layer_override :: proc(t: ^testing.T) {
 	anim.playable_connect(&g, l0, anim.playable_add(&g, anim.Clip_Playable{clip = lo_guid}), 1)
 	anim.playable_connect(&g, l1, anim.playable_add(&g, anim.Clip_Playable{clip = hi_guid}), 1)
 
-	pose := anim.playable_graph_evaluate(&g, &b)
+	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 9) < 0.001, "the higher layer at full weight should override the lower")
 
 	// Half-weight upper layer blends over the lower layer's result.
 	anim.playable_set_input_weight(&g, root, l1, 0.5)
-	pose = anim.playable_graph_evaluate(&g, &b)
+	pose = anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 5) < 0.001, "a half-weight layer should blend over the lower layer (1 -> 9 at 0.5 = 5)")
@@ -181,11 +181,11 @@ test_playable_rotation_blend :: proc(t: ^testing.T) {
 	defer anim.animation_binding_destroy(&b)
 
 	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
-	g.root = mixer
+	groot := mixer
 	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = a_guid}), 0.5)
 	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = b_guid}), 0.5)
 
-	pose := anim.playable_graph_evaluate(&g, &b)
+	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	// nlerp of identity and 90 deg = 45 deg about z: {0, 0, 0.38268, 0.92388}
@@ -220,7 +220,7 @@ test_playable_script_collection :: proc(t: ^testing.T) {
 	fired: Fired
 
 	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
-	g.root = mixer
+	groot := mixer
 	script := anim.playable_add(&g, anim.Script_Playable{
 		user_data = &fired,
 		process = proc(data: rawptr, time: f32, weight: f32) {
@@ -234,7 +234,7 @@ test_playable_script_collection :: proc(t: ^testing.T) {
 	if node := anim.playable_node(&g, script); node != nil do node.time = 1.5
 
 	scripts := make([dynamic]anim.Script_Invocation, context.temp_allocator)
-	pose := anim.playable_graph_evaluate(&g, &b, &scripts)
+	pose := anim.playable_graph_evaluate(&g, groot, &b, &scripts)
 	anim.animation_pose_apply(&b, pose)
 	testing.expect(t, fired.count == 0, "callbacks must not fire during evaluation")
 	anim.playable_scripts_fire(scripts[:])
@@ -431,13 +431,13 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	b: anim.Animation_Binding
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
-	g.root = anim.playable_add(&g, anim.Clip_Playable{clip = guid})
+	groot := anim.playable_add(&g, anim.Clip_Playable{clip = guid})
 
 	// Frame 1: scrub to t=0.5 — the pose renders, the restore puts the
 	// authored values back.
 	anim.animation_binding_refresh_defaults(&b)
-	if n := anim.playable_node(&g, g.root); n != nil do n.time = 0.5
-	pose := anim.playable_graph_evaluate(&g, &b)
+	if n := anim.playable_node(&g, groot); n != nil do n.time = 0.5
+	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 4) < 0.001, "scrub at t=0.5 should pose x at 4")
@@ -450,8 +450,8 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	// value captured when the preview started.
 	ot.position = {5, 2, 3}
 	anim.animation_binding_refresh_defaults(&b)
-	if n := anim.playable_node(&g, g.root); n != nil do n.time = 0.25
-	pose2 := anim.playable_graph_evaluate(&g, &b)
+	if n := anim.playable_node(&g, groot); n != nil do n.time = 0.25
+	pose2 := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose2)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expect(t, abs(ot.position.x - 2) < 0.001, "scrub at t=0.25 should pose x at 2")
@@ -524,7 +524,7 @@ test_playable_speed_and_done :: proc(t: ^testing.T) {
 
 	// speed 2: local time 0.25 samples the clip at 0.5.
 	node := anim.playable_add(&o.graph, anim.Clip_Playable{clip = guid}, speed = 2)
-	o.graph.root = node
+	anim.playable_output_root(&o)^ = node
 	anim.playable_node(&o.graph, node).time = 0.25
 	anim.playable_output_tick(&o)
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -536,4 +536,86 @@ test_playable_speed_and_done :: proc(t: ^testing.T) {
 	testing.expect(t, !anim.playable_node_done(&o.graph, node), "mid-clip is not done")
 	anim.playable_node(&o.graph, node).time = 0.6 // * speed 2 = 1.2 >= length
 	testing.expect(t, anim.playable_node_done(&o.graph, node), "Once clip past its end is done")
+}
+
+// --- Multiple outputs -----------------------------------------------------------------
+
+@(test)
+test_graph_two_outputs_pose_separate_targets :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	a_guid, b_guid := _clip_guid(11), _clip_guid(12)
+	anim.animation_clip_cache[a_guid] = _const_clip(.Position, {3, 0, 0, 0})
+	anim.animation_clip_cache[b_guid] = _const_clip(.Position, {7, 0, 0, 0})
+
+	rig_a := engine.transform_new("RigA")
+	rig_b := engine.transform_new("RigB")
+
+	g: anim.Playable_Graph
+	anim.playable_graph_init(&g)
+	defer anim.playable_graph_destroy(&g)
+
+	oa := anim.graph_output_add(&g, rig_a)
+	ob := anim.graph_output_add(&g, rig_b)
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Clip_Playable{clip = a_guid})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Clip_Playable{clip = b_guid})
+
+	// One tick poses both targets, each from its own subtree.
+	anim.playable_graph_tick(&g)
+	ta := engine.pool_get(&tc.world.transforms, engine.Handle(rig_a))
+	tb := engine.pool_get(&tc.world.transforms, engine.Handle(rig_b))
+	testing.expect(t, abs(ta.position.x - 3) < 0.001, "output A poses its own target")
+	testing.expect(t, abs(tb.position.x - 7) < 0.001, "output B poses its own target")
+}
+
+@(test)
+test_graph_output_binds_only_its_subtree :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	// Both clips animate a child named "Bone", but each rig has its own.
+	pos_guid, scl_guid := _clip_guid(13), _clip_guid(14)
+	anim.animation_clip_cache[pos_guid] = _const_clip(.Position, {5, 0, 0, 0}, target = "Bone")
+	anim.animation_clip_cache[scl_guid] = _const_clip(.Scale, {2, 2, 2, 0}, target = "Bone")
+
+	rig_a := engine.transform_new("RigA")
+	rig_b := engine.transform_new("RigB")
+	bone_a := engine.transform_new("Bone", rig_a)
+	bone_b := engine.transform_new("Bone", rig_b)
+
+	g: anim.Playable_Graph
+	anim.playable_graph_init(&g)
+	defer anim.playable_graph_destroy(&g)
+
+	oa := anim.graph_output_add(&g, rig_a)
+	ob := anim.graph_output_add(&g, rig_b)
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Clip_Playable{clip = pos_guid})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Clip_Playable{clip = scl_guid})
+	anim.playable_graph_tick(&g)
+
+	// The claim under test: a binding covers only the clips REACHABLE from its
+	// own root. Asserted on the slot counts, because an unbound slot rests at
+	// its default and so would produce the same transforms either way — the
+	// cost of over-binding is a larger pose buffer every frame and
+	// write_defaults touching channels this output never animates.
+	testing.expect_value(t, len(anim.graph_output(&g, oa).binding.slots), 1)
+	testing.expect_value(t, len(anim.graph_output(&g, ob).binding.slots), 1)
+
+	ba := engine.pool_get(&tc.world.transforms, engine.Handle(bone_a))
+	bb := engine.pool_get(&tc.world.transforms, engine.Handle(bone_b))
+	testing.expect(t, abs(ba.position.x - 5) < 0.001, "A's bone takes A's position channel")
+	testing.expect(t, abs(ba.scale.x - 1) < 0.001, "A's bone is untouched by B's scale channel")
+	testing.expect(t, abs(bb.scale.x - 2) < 0.001, "B's bone takes B's scale channel")
+	testing.expect(t, abs(bb.position.x) < 0.001, "B's bone is untouched by A's position channel")
 }

@@ -78,23 +78,49 @@ playable_node_time :: proc(n: ^Playable_Node) -> f32 {
 	return n.speed != 0 ? n.time * n.speed : n.time
 }
 
+// One sink: a subtree root and the target it writes to. A graph holds several,
+// so a single evaluation can pose more than one object — which is what lets
+// weights blend across targets instead of the last write winning.
+Graph_Output :: struct {
+	root:    Playable_Handle,
+	binding: Animation_Binding,
+}
+
 Playable_Graph :: struct {
 	nodes:      [dynamic]Playable_Node,
 	free_slots: [dynamic]Playable_Handle,
-	root:       Playable_Handle,
+	outputs:    [dynamic]Graph_Output,
 }
 
 playable_graph_init :: proc(g: ^Playable_Graph) {
 	g.nodes = make([dynamic]Playable_Node)
 	g.free_slots = make([dynamic]Playable_Handle)
-	g.root = {}
+	g.outputs = make([dynamic]Graph_Output)
 }
 
 playable_graph_destroy :: proc(g: ^Playable_Graph) {
 	for &n in g.nodes do delete(n.inputs)
 	delete(g.nodes)
 	delete(g.free_slots)
+	for &o in g.outputs do animation_binding_destroy(&o.binding)
+	delete(g.outputs)
 	g^ = {}
+}
+
+// Add an output bound to `owner`'s hierarchy and return its index. Outputs are
+// added when a driver builds its graph and never removed, so an index stays
+// valid — but a `^Graph_Output` does NOT survive another add, the same rule
+// pooled pointers follow.
+graph_output_add :: proc(g: ^Playable_Graph, owner: engine.Transform_Handle) -> int {
+	append(&g.outputs, Graph_Output{})
+	idx := len(g.outputs) - 1
+	animation_binding_init(&g.outputs[idx].binding, owner)
+	return idx
+}
+
+graph_output :: proc(g: ^Playable_Graph, idx := 0) -> ^Graph_Output {
+	if idx < 0 || idx >= len(g.outputs) do return nil
+	return &g.outputs[idx]
 }
 
 playable_node :: proc(g: ^Playable_Graph, h: Playable_Handle) -> ^Playable_Node {
@@ -130,7 +156,9 @@ playable_remove :: proc(g: ^Playable_Graph, h: Playable_Handle) {
 		}
 	}
 	append(&g.free_slots, h)
-	if g.root == h do g.root = {}
+	// Any output rooted at the removed node goes empty rather than dangling —
+	// an empty root evaluates to the default pose.
+	for &o in g.outputs do if o.root == h do o.root = {}
 }
 
 playable_connect :: proc(g: ^Playable_Graph, parent, child: Playable_Handle, weight: f32 = 1) {
@@ -410,12 +438,28 @@ Script_Invocation :: struct {
 	weight: f32,
 }
 
-// Ensure every alive clip node's channels have binding slots, so the pose
-// buffer size is fixed before evaluation. Cache-hit cheap after the first call.
+// Ensure every clip node REACHABLE FROM `root` has binding slots for its
+// channels, so the pose buffer size is fixed before evaluation. Cache-hit
+// cheap after the first call.
+//
+// Reachability, not the whole node list: with several outputs each binding
+// covers only its own subtree. Binding a sibling output's clips would size the
+// pose for channels this target never writes, and resolve their name paths
+// against the wrong root.
 @(private = "file")
-_graph_bind :: proc(g: ^Playable_Graph, b: ^Animation_Binding) {
-	for &n in g.nodes {
-		if !n.alive do continue
+_graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Binding) {
+	if len(g.nodes) == 0 do return
+	seen := make([]bool, len(g.nodes), context.temp_allocator)
+	stack := make([dynamic]Playable_Handle, 0, 8, context.temp_allocator)
+	append(&stack, root)
+	for len(stack) > 0 {
+		h := pop(&stack)
+		n := playable_node(g, h)
+		if n == nil do continue
+		if seen[int(h) - 1] do continue
+		seen[int(h) - 1] = true
+		for input in n.inputs do append(&stack, input.node)
+
 		c, is_clip := n.variant.(Clip_Playable)
 		if !is_clip do continue
 		clip, ok := animation_clip_load(c.clip)
@@ -436,20 +480,36 @@ _graph_bind :: proc(g: ^Playable_Graph, b: ^Animation_Binding) {
 	}
 }
 
-// Pull the pose from the root at the nodes' current local times. Pure: mutates
-// nothing but the returned buffer (and the optional script collection).
+// Pull the pose for the subtree at `root` at the nodes' current local times.
+// Pure: mutates nothing but the returned buffer (and the optional script
+// collection).
 playable_graph_evaluate :: proc(
 	g: ^Playable_Graph,
+	root: Playable_Handle,
 	b: ^Animation_Binding,
 	scripts: ^[dynamic]Script_Invocation = nil,
 	allocator := context.temp_allocator,
 ) -> Pose {
-	_graph_bind(g, b)
+	_graph_bind(g, root, b)
 	out := _pose_make(b, allocator)
-	if playable_node(g, g.root) != nil {
-		_eval_node(g, g.root, b, out, 1, scripts, allocator)
+	if playable_node(g, root) != nil {
+		_eval_node(g, root, b, out, 1, scripts, allocator)
 	}
 	return out
+}
+
+// One full frame for every output: evaluate and apply each, then fire the
+// scripts collected across all of them. Scripts fire after the LAST apply, so
+// a callback never observes a frame where some targets are posed and others
+// are not.
+playable_graph_tick :: proc(g: ^Playable_Graph) {
+	scripts := make([dynamic]Script_Invocation, context.temp_allocator)
+	for i in 0 ..< len(g.outputs) {
+		o := &g.outputs[i]
+		pose := playable_graph_evaluate(g, o.root, &o.binding, &scripts)
+		animation_pose_apply(&o.binding, pose)
+	}
+	playable_scripts_fire(scripts[:])
 }
 
 @(private = "file")
@@ -632,34 +692,36 @@ _pose_blend_over :: proc(out, child: Pose, layer_w: f32, b: ^Animation_Binding) 
 	}
 }
 
-// --- Owning a graph outside component_Animation ---------------------------------------
+// --- A graph with exactly one output --------------------------------------------------
 //
-// The graph + binding pair every driver needs, bundled: the director (and any
-// future owner) holds ONE Playable_Output instead of duplicating
-// component_Animation's init/destroy/evaluate/apply/fire plumbing.
+// What a driver posing a SINGLE target needs, so it does not repeat the
+// init/destroy/tick plumbing. A driver with several targets holds a
+// Playable_Graph directly and adds an output per target.
 
 Playable_Output :: struct {
-	graph:   Playable_Graph,
-	binding: Animation_Binding,
+	graph: Playable_Graph,
 }
 
 playable_output_init :: proc(o: ^Playable_Output, owner: engine.Transform_Handle) {
 	playable_graph_init(&o.graph)
-	animation_binding_init(&o.binding, owner)
+	graph_output_add(&o.graph, owner)
 }
 
 playable_output_destroy :: proc(o: ^Playable_Output) {
 	playable_graph_destroy(&o.graph)
-	animation_binding_destroy(&o.binding)
 }
 
-// One full frame: evaluate, apply the pose, fire the collected scripts (after
-// the apply, per the invariant at the top of this file).
+// The single output's root, assignable — where the owner hangs its tree.
+playable_output_root :: proc(o: ^Playable_Output) -> ^Playable_Handle {
+	return &o.graph.outputs[0].root
+}
+
+playable_output_binding :: proc(o: ^Playable_Output) -> ^Animation_Binding {
+	return &o.graph.outputs[0].binding
+}
+
 playable_output_tick :: proc(o: ^Playable_Output) {
-	scripts := make([dynamic]Script_Invocation, context.temp_allocator)
-	pose := playable_graph_evaluate(&o.graph, &o.binding, &scripts)
-	animation_pose_apply(&o.binding, pose)
-	playable_scripts_fire(scripts[:])
+	playable_graph_tick(&o.graph)
 }
 
 // --- Output -------------------------------------------------------------------------

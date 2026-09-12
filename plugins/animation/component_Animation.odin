@@ -85,7 +85,6 @@ Animation :: struct {
 	started: bool `json:"-" inspect:"-"`, // play_automatically consumed on first tick
 
 	graph:       Playable_Graph `json:"-" inspect:"-"`,
-	binding:     Animation_Binding `json:"-" inspect:"-"`,
 	rt_layers:   [dynamic]Anim_Layer `json:"-" inspect:"-"`, // playback state per layer
 	graph_ready: bool `json:"-" inspect:"-"`,
 }
@@ -105,7 +104,7 @@ on_destroy_Animation :: proc(a: ^Animation) {
 // type_cleanup dispatches on the `cleanup_<Type>` name. Without this proc the
 // undo path silently orphaned `layers` and every nested `clips` on each restore.
 //
-// The runtime side (`graph`, `binding`, `rt_layers`) is guarded by graph_ready:
+// The runtime side (`graph`, `rt_layers`) is guarded by graph_ready:
 // it is built lazily by _anim_ensure_graph, so a component that never ticked has
 // none of it, and freeing unconditionally would delete arrays that were never
 // made. engine.comp_zero at the end clears graph_ready along with every freed pointer,
@@ -114,7 +113,6 @@ on_destroy_Animation :: proc(a: ^Animation) {
 cleanup_Animation :: proc(a: ^Animation) {
 	if a.graph_ready {
 		playable_graph_destroy(&a.graph)
-		animation_binding_destroy(&a.binding)
 		for &l in a.rt_layers do delete(l.states)
 		delete(a.rt_layers)
 	}
@@ -143,9 +141,9 @@ _anim_layer_of :: proc(a: ^Animation, clip: engine.Asset_GUID, layer: int) -> in
 _anim_ensure_graph :: proc(a: ^Animation) {
 	if a.graph_ready do return
 	playable_graph_init(&a.graph)
-	animation_binding_init(&a.binding, a.owner)
+	graph_output_add(&a.graph, a.owner)
 	a.rt_layers = make([dynamic]Anim_Layer)
-	a.graph.root = playable_add(&a.graph, Layer_Mixer_Playable{})
+	graph_output(&a.graph).root = playable_add(&a.graph, Layer_Mixer_Playable{})
 	a.graph_ready = true
 }
 
@@ -154,7 +152,7 @@ _anim_ensure_graph :: proc(a: ^Animation) {
 _anim_layer :: proc(a: ^Animation, idx: int) -> ^Anim_Layer {
 	for len(a.rt_layers) <= idx {
 		mixer := playable_add(&a.graph, Mixer_Playable{})
-		playable_connect(&a.graph, a.graph.root, mixer, 1)
+		playable_connect(&a.graph, graph_output(&a.graph).root, mixer, 1)
 		append(&a.rt_layers, Anim_Layer{mixer = mixer, states = make([dynamic]Anim_State)})
 	}
 	return &a.rt_layers[idx]
@@ -381,8 +379,7 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 
 	if !any_state do return
 
-	pose := playable_graph_evaluate(&a.graph, &a.binding)
-	animation_pose_apply(&a.binding, pose)
+	playable_graph_tick(&a.graph)
 
 	// Mirror layer 0's leading state for inspection/back-compat.
 	if len(a.rt_layers) > 0 {

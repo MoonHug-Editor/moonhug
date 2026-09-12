@@ -84,7 +84,6 @@ _pv: struct {
 	clip:    engine.Asset_GUID,
 	time:    f32,
 	graph:     anim.Playable_Graph, // the component's FULL authored graph
-	binding:   anim.Animation_Binding,
 	node:      anim.Playable_Handle, // the scrubbed clip's node (weight 1)
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
@@ -157,11 +156,17 @@ animation_preview_stop :: proc() {
 	_pv.active = false
 }
 
+// The scrub graph's single output binding.
+@(private = "file")
+_pv_binding :: proc() -> ^anim.Animation_Binding {
+	o := anim.graph_output(&_pv.graph)
+	return o != nil ? &o.binding : nil
+}
+
 @(private = "file")
 _pv_teardown :: proc() {
 	if _pv.ready {
 		anim.playable_graph_destroy(&_pv.graph)
-		anim.animation_binding_destroy(&_pv.binding)
 	}
 	_pv.ready = false
 	_pv.node = {}
@@ -1573,14 +1578,14 @@ _pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
 @(private = "file")
 _pv_build_graph :: proc(a: ^anim.Animation) {
 	anim.playable_graph_init(&_pv.graph)
-	anim.animation_binding_init(&_pv.binding, _pv.owner)
-	_pv.graph.root = anim.playable_add(&_pv.graph, anim.Layer_Mixer_Playable{})
+	anim.graph_output_add(&_pv.graph, _pv.owner)
+	anim.graph_output(&_pv.graph).root = anim.playable_add(&_pv.graph, anim.Layer_Mixer_Playable{})
 	_pv.node = {}
 
 	n_layers := max(len(a.layers), 1)
 	for li in 0 ..< n_layers {
 		mixer := anim.playable_add(&_pv.graph, anim.Mixer_Playable{})
-		anim.playable_connect(&_pv.graph, _pv.graph.root, mixer, 1)
+		anim.playable_connect(&_pv.graph, anim.graph_output(&_pv.graph).root, mixer, 1)
 
 		clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
 		if li == 0 do _pv_clips_add(&clips, a.clip)
@@ -1624,9 +1629,8 @@ animation_preview_apply :: proc() {
 		n.time = clamp(_pv.time, 0, clip.length)
 	}
 
-	anim.animation_binding_refresh_defaults(&_pv.binding)
-	pose := anim.playable_graph_evaluate(&_pv.graph, &_pv.binding)
-	anim.animation_pose_apply(&_pv.binding, pose)
+	anim.animation_binding_refresh_defaults(_pv_binding())
+	anim.playable_graph_tick(&_pv.graph)
 	_pv.applied = true
 }
 
@@ -1635,5 +1639,5 @@ animation_preview_apply :: proc() {
 animation_preview_restore :: proc() {
 	if !_pv.applied do return
 	_pv.applied = false
-	anim.animation_binding_write_defaults(&_pv.binding)
+	anim.animation_binding_write_defaults(_pv_binding())
 }

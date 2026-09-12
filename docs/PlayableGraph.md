@@ -139,6 +139,19 @@ this wrong is the expensive mistake: if the evaluator's result type is a pose,
 script and audio get bolted on later as side-channels. The animation pull and
 script collection are implemented, audio is the designed-but-unbuilt third.
 
+A graph holds a LIST of outputs (`Playable_Graph.outputs`), each a subtree root
+plus the binding it writes through. `playable_graph_tick` evaluates and applies
+every one of them, then fires the scripts collected across all of them, so a
+callback never sees a frame where some targets are posed and others are not.
+Several outputs of the same kind is the normal case — one driver posing more
+than one object. A binding covers only the clips REACHABLE from its own root,
+so a sibling output's channels neither size this pose buffer nor resolve their
+name paths against the wrong target.
+
+`playable_graph_evaluate(g, root, binding)` stays the pure primitive: one
+subtree, one binding, no writes. `Playable_Output` is the convenience wrapper
+for a graph with exactly one output.
+
 ## The pose buffer (animation output internals)
 
 The structural change to the existing runtime is splitting

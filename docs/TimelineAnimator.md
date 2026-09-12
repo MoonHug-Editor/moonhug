@@ -1,7 +1,7 @@
 # TimelineAnimator
 
-> Design. Nothing here is implemented. The pieces it builds on are:
-> the playable graph (packages/animation/playable_graph.odin), the animation
+> Design, except TODO item 1 (the graph's output list), which is implemented
+> in packages/animation/playable_graph.odin. The rest builds on the animation
 > track (packages/animation/track_animation.odin) and the director
 > (packages/sequencer/director.odin).
 
@@ -109,11 +109,15 @@ error. A pose output and an audio output on the same object write different
 things and never conflict. The check runs once when the output set is built,
 not per state.
 
-The current implementation has one output and welds it to the graph:
-`playable_graph_evaluate` returns a pose and collects scripts through an
-out-param, and `Playable_Output` pairs one graph with one binding. That is the
-side-channel shape docs/PlayableGraph.md warns against, and straightening it
-is the first piece of work this design needs.
+`Playable_Graph.outputs` holds them, `playable_graph_tick` evaluates and
+applies each and fires the collected scripts once at the end, and
+`playable_graph_evaluate(g, root, binding)` is the pure primitive underneath.
+`Playable_Output` remains as the wrapper for a graph with exactly one output,
+which is what a driver posing a single target uses.
+
+Script and audio are still not output KINDS — scripts leave evaluation through
+an out-param and audio through `Track_Desc.tick`. Straightening that is the
+first item under Next.
 
 ## The tree
 
@@ -370,11 +374,11 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 
 ### MVP — two states cross-fading across two keyed targets
 
-1. **Graph carries a list of outputs.** `Playable_Graph.outputs` replaces the
-   single `root`, and evaluation pulls per output instead of returning one
-   pose. `Playable_Output` becomes one entry rather than a graph of its own.
-   Existing playable graph tests keep passing. Nothing else can start until
-   one graph can write to more than one target.
+1. ~~**Graph carries a list of outputs.**~~ DONE. `Playable_Graph.outputs`
+   replaces the single `root`, `playable_graph_tick` pulls per output, and
+   `playable_graph_evaluate` takes an explicit root so it stays a pure
+   primitive. `_graph_bind` walks only the subtree reachable from that root,
+   so a binding never carries a sibling output's channels.
 2. **A track builds into a provided output.** `Track_Ctx` carries the graph and
    the parent handle to attach under. `_animation_track_build` uses them
    instead of calling `playable_output_init`, and `_animation_track_tick` does

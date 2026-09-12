@@ -102,7 +102,7 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 	st.root = _animation_track_root(ctx)
 	playable_output_init(&st.output, st.root)
 	st.mixer = playable_add(&st.output.graph, Mixer_Playable{})
-	st.output.graph.root = st.mixer
+	playable_output_root(&st.output)^ = st.mixer
 	st.clips = make([dynamic]Playable_Handle, 0, len(ctx.track.clips))
 	for &c in ctx.track.clips {
 		node := playable_add(&st.output.graph, Clip_Playable{clip = _anim_clip_asset(&c)})
@@ -132,9 +132,10 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	// Retarget: release the old object's pose before binding the new one, so
 	// nothing is left frozen mid-animation.
 	if root := _animation_track_root(ctx); root != st.root {
-		animation_binding_write_defaults(&st.output.binding)
-		animation_binding_destroy(&st.output.binding)
-		animation_binding_init(&st.output.binding, root)
+		b := playable_output_binding(&st.output)
+		animation_binding_write_defaults(b)
+		animation_binding_destroy(b)
+		animation_binding_init(b, root)
 		st.root = root
 	}
 	for &c, ci in ctx.track.clips {
@@ -161,7 +162,7 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 _animation_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 	st := cast(^_Anim_Track)ctx.state
 	if st == nil do return
-	animation_binding_write_defaults(&st.output.binding)
+	animation_binding_write_defaults(playable_output_binding(&st.output))
 	// Hand the object back to its component.
 	if a := _animation_track_comp(ctx); a != nil do a.timeline_driven = false
 }
@@ -171,5 +172,5 @@ _animation_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 animation_track_binding :: proc(state: rawptr) -> ^Animation_Binding {
 	st := cast(^_Anim_Track)state
 	if st == nil do return nil
-	return &st.output.binding
+	return playable_output_binding(&st.output)
 }
