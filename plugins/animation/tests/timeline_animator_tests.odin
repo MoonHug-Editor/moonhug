@@ -127,3 +127,95 @@ test_timeline_animator_idle_leaves_targets_alone :: proc(t: ^testing.T) {
 	testing.expect(t, abs(bt.position.x - 3) < 0.001,
 		"an animator with no states does not touch its targets")
 }
+
+// Stands in for the state that item 5 will build: enough attached to a layer
+// mixer that the animator stops being idle.
+@(private = "file")
+_ta_attach_clip :: proc(ta: ^anim.TimelineAnimator, layer, output: int, guid: engine.Asset_GUID) {
+	m := anim.timeline_animator_layer_mixer(ta, layer, output)
+	n := anim.playable_add(&ta.graph, anim.Clip_Playable{clip = guid})
+	anim.playable_connect(&ta.graph, m, n, 1)
+}
+
+@(test)
+test_timeline_animator_key_resolves_to_bound_object :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	anim.timeline_animator_tick(0)
+
+	// A key resolves to the OWNER of the bound component, not the component.
+	// That is the transform the output's pose is written through.
+	got, ok := anim.timeline_animator_target_for_key(ta, "Body")
+	testing.expect(t, ok, "a bound key resolves")
+	testing.expect_value(t, got, body)
+
+	_, missing := anim.timeline_animator_target_for_key(ta, "Face")
+	testing.expect(t, !missing, "an unbound key resolves to nothing")
+}
+
+@(test)
+test_timeline_animator_claims_bound_animation :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	guid := _clip_guid(31)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {4, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, b_raw := engine.transform_add_comp(body, .Animation)
+	target := cast(^anim.Animation)b_raw
+	target.enabled = true
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
+
+	// Idle: the component keeps playing itself. Binding a target is not by
+	// itself a reason to take it over.
+	anim.timeline_animator_tick(0)
+	testing.expect(t, !target.timeline_driven, "an idle animator does not claim its targets")
+
+	// Something to play: the animator takes over.
+	_ta_attach_clip(ta, 0, 0, guid)
+	anim.timeline_animator_tick(0)
+	testing.expect(t, target.timeline_driven, "an animator with content claims its targets")
+
+	// Disabled: handed back, so the component plays itself again.
+	ta.enabled = false
+	anim.timeline_animator_tick(0)
+	testing.expect(t, !target.timeline_driven, "a disabled animator releases its targets")
+
+	ta.enabled = true
+	anim.timeline_animator_tick(0)
+	testing.expect(t, target.timeline_driven, "re-enabling claims again")
+
+	// Destroyed: handed back, or the object would stay suppressed forever.
+	// cleanup_ is the proc on_destroy and undo both route through.
+	anim.cleanup_TimelineAnimator(ta)
+	testing.expect(t, !target.timeline_driven, "a destroyed animator releases its targets")
+}

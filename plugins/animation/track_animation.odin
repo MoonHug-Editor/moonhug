@@ -26,10 +26,17 @@ import seq "moonhug:packages/sequencer"
 TrackAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
-	// The Animation component this track drives — the object the clips play
-	// on. Its own playback is suppressed while the track drives it. Unset =
-	// the director's own object, which is what a timeline authored as a
-	// self-contained prefab wants.
+	// The output slot this track drives when a TimelineAnimator owns the
+	// timeline. It is the track's own DEFAULT: a state may route this track to
+	// a different slot, and a state that routes nothing gets this one. Naming
+	// a slot rather than an object is what lets one timeline prefab serve
+	// several animators binding different objects.
+	key: string,
+
+	// The Animation component this track drives when no animator is involved —
+	// the object the clips play on. Its own playback is suppressed while the
+	// track drives it. Unset = the director's own object, which is what a
+	// timeline authored as a self-contained prefab wants.
 	target: engine.Ref_Local `ref:"Animation"`,
 }
 
@@ -39,6 +46,14 @@ ClipAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	clip: engine.Asset_GUID `ext:"anim"`,
+}
+
+// `key` is heap-owned, so the component needs this under exactly this name:
+// type_cleanup dispatches on `cleanup_<Type>`, and undo calls it before
+// unmarshalling a restored value.
+cleanup_TrackAnimation :: proc(tr: ^TrackAnimation) {
+	if tr.key != "" do delete(tr.key)
+	tr.key = ""
 }
 
 // The .anim a timeline clip plays, or the empty guid.
@@ -164,6 +179,16 @@ _Anim_Track :: struct {
 
 // The Animation component the track drives, or nil when it poses a bare
 // transform instead (no target and none on the director).
+//
+// Full resolution order, lowest default first, each overridden from above:
+//   1. the director's own transform
+//   2. an Animation on the director
+//   3. this track's `target`
+//   4. this track's `key`, through the owning animator's `targets`
+//   5. the playing state's route for this track
+// Levels 4 and 5 need a TimelineAnimator owning the timeline, which is what
+// adopts the director — until then a track resolves through 1-3 exactly as it
+// always has.
 @(private = "file")
 _animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^Animation {
 	w := engine.ctx_world()

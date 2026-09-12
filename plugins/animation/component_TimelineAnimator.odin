@@ -75,6 +75,9 @@ on_destroy_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 // what makes a second call safe.
 cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 	if a.graph_ready {
+		// Hand every claimed target back first: a component destroyed while
+		// holding them would leave them suppressed forever.
+		_ta_claim_targets(a, false)
 		playable_graph_destroy(&a.graph)
 		for &l in a.rt do delete(l.mixers)
 		delete(a.rt)
@@ -168,6 +171,16 @@ timeline_animator_output_for_key :: proc(a: ^TimelineAnimator, key: string) -> i
 	return -1
 }
 
+// The transform behind a key, for a track resolving its target through this
+// animator. False when the key names nothing or its binding is dead.
+timeline_animator_target_for_key :: proc(a: ^TimelineAnimator, key: string) -> (engine.Transform_Handle, bool) {
+	oi := timeline_animator_output_for_key(a, key)
+	if oi < 0 do return {}, false
+	o := graph_output(&a.graph, oi)
+	if o == nil do return {}, false
+	return o.binding.owner, true
+}
+
 // The mixer a state on `layer` attaches to for `output`.
 timeline_animator_layer_mixer :: proc(a: ^TimelineAnimator, layer, output: int) -> Playable_Handle {
 	if layer < 0 || layer >= len(a.rt) do return {}
@@ -205,16 +218,44 @@ _ta_sync_layer_weights :: proc(a: ^TimelineAnimator) {
 	}
 }
 
+// An Animation bound as a target stops driving itself for as long as this
+// animator has something to play — the higher level overriding the lower one.
+//
+// An IDLE animator releases it instead. Claiming unconditionally would mean
+// that adding a TimelineAnimator and binding a target silently freezes the
+// object until states exist, and every level is supposed to work with nothing
+// above it configured.
+@(private = "file")
+_ta_claim_targets :: proc(a: ^TimelineAnimator, claim: bool) {
+	w := engine.ctx_world()
+	if w == nil do return
+	for ti in a.out_target {
+		if ti < 0 || ti >= len(a.targets) do continue
+		h := a.targets[ti].target.handle
+		if h.type_key != .Animation do continue
+		if !engine.world_pool_valid(w, h) do continue
+		comp := cast(^Animation)engine.world_pool_get(w, h)
+		if comp != nil do comp.timeline_driven = claim
+	}
+}
+
 @(update={order=2})
 timeline_animator_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
 	it := engine.pool_iterator(timeline_animators(w))
 	for a, _ in engine.pool_next(&it) {
-		if !a.enabled do continue
 		if !engine.pool_valid(&w.transforms, engine.Handle(a.owner)) do continue
+		if !a.enabled {
+			// A disabled animator owns nothing, so whatever it held plays
+			// itself again.
+			if a.graph_ready do _ta_claim_targets(a, false)
+			continue
+		}
 		_ta_ensure_graph(a)
 		_ta_sync_layer_weights(a)
-		if !_ta_has_content(a) do continue
+		active := _ta_has_content(a)
+		_ta_claim_targets(a, active)
+		if !active do continue
 		playable_graph_tick(&a.graph)
 	}
 }

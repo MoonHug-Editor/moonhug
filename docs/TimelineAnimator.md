@@ -458,10 +458,23 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    an animator with nothing attached to any layer mixer does not apply at all —
    once the bindings have slots, an empty pose applied every frame would write
    bind-time defaults over whatever else poses the object.
-4. **Target keys.** The `targets` list, key resolution to an output component,
-   one graph output per reached target. `TrackAnimation.key` and the route
-   lookup, with the existing fallback chain underneath. An `Animation` bound
-   as a target sets `timeline_driven` so it stops driving itself.
+4. ~~**Target keys.**~~ DONE for levels 2 and 3. `TrackAnimation.key` is the
+   track's own default slot, `timeline_animator_target_for_key` resolves a key
+   to the bound component's OWNER transform, and the full resolution order is
+   documented on `_animation_track_comp`.
+
+   The `timeline_driven` handshake follows the levels rule with one wrinkle: an
+   IDLE animator RELEASES its targets rather than holding them. Claiming
+   unconditionally would mean binding a target silently freezes the object
+   until states exist, and every level is supposed to work with nothing above
+   it configured. A disabled or destroyed animator releases too.
+
+   Level 1 (a state's route) and the live use of level 2 both need a
+   TimelineAnimator that owns a director, which is item 5. Until then `key` is
+   stored and inert, and tracks resolve through levels 1-3 exactly as before.
+
+   `TrackAnimation` gained `cleanup_TrackAnimation` — adding a string made it
+   an owning component, which a contract test enforces.
 5. **State instances.** Instantiate each state's timeline prefab with
    `scene_instantiate_guid`, park it so `director_tick` never runs on it, and
    drive its time from the state.
