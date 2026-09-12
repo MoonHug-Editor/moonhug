@@ -1,0 +1,652 @@
+{
+  "root": 7001,
+  "transforms": [
+    {
+      "local_id": 7001,
+      "name": "AnimatorDemo",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 7003,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 7005,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 7008,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 7016,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 7224,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 7002
+        },
+        {
+          "local_id": 7121
+        }
+      ]
+    },
+    {
+      "local_id": 7003,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.4,
+        7.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 7004
+        }
+      ]
+    },
+    {
+      "local_id": 7005,
+      "name": "Body",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.5,
+        1.5,
+        1.5
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 7006
+        },
+        {
+          "local_id": 7222
+        },
+        {
+          "local_id": 7223
+        }
+      ]
+    },
+    {
+      "local_id": 7008,
+      "name": "lean_left",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 7010,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 7009
+        }
+      ]
+    },
+    {
+      "local_id": 7010,
+      "name": "animation",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7008,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 7013,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 7011
+        },
+        {
+          "local_id": 7012
+        }
+      ]
+    },
+    {
+      "local_id": 7013,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7010,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 7014
+        },
+        {
+          "local_id": 7015
+        }
+      ]
+    },
+    {
+      "local_id": 7016,
+      "name": "lean_right",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 7018,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 7017
+        }
+      ]
+    },
+    {
+      "local_id": 7018,
+      "name": "animation",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7016,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 7021,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 7019
+        },
+        {
+          "local_id": 7020
+        }
+      ]
+    },
+    {
+      "local_id": 7021,
+      "name": "clip",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7018,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 7022
+        },
+        {
+          "local_id": 7023
+        }
+      ]
+    },
+    {
+      "local_id": 7224,
+      "name": "Light",
+      "is_active": true,
+      "position": [
+        2.0,
+        4.0,
+        5.0
+      ],
+      "rotation": [
+        -0.252684,
+        -0.209065,
+        -0.056019,
+        0.94303
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 7001,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 7225
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "base": {
+        "enabled": true,
+        "local_id": 7004
+      },
+      "clear_color": [
+        0.06,
+        0.06,
+        0.09,
+        1.0
+      ],
+      "far_clip": 1000.0,
+      "fov": 60.0,
+      "near_clip": 0.30000001,
+      "order": 0,
+      "render_layer_mask": 4294967295
+    },
+    {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
+      "base": {
+        "enabled": true,
+        "local_id": 7006
+      },
+      "clip": "00000000-0000-0000-0000-000000000000",
+      "layers": [],
+      "play_automatically": false,
+      "speed": 1.0,
+      "wrap_mode": 0
+    },
+    {
+      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
+      "base": {
+        "enabled": true,
+        "local_id": 7009
+      },
+      "duration": 1.0,
+      "manual_start": true,
+      "speed": 1.0,
+      "wrap": 1
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 7011
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 7012
+      },
+      "key": "Body",
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 7014
+      },
+      "start": 0.0,
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 1.0
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 7015
+      },
+      "clip": "7d1f8a0a-c29f-4210-912d-8494eee725b9"
+    },
+    {
+      "__type": "b7aaabb5-aaee-4aa9-af14-fdc8e2254d6c",
+      "base": {
+        "enabled": true,
+        "local_id": 7017
+      },
+      "duration": 1.0,
+      "manual_start": true,
+      "speed": 1.0,
+      "wrap": 1
+    },
+    {
+      "__type": "9666aed8-e855-4a36-90fa-4adbbd5db3c0",
+      "base": {
+        "enabled": true,
+        "local_id": 7019
+      },
+      "muted": false
+    },
+    {
+      "__type": "89aaf6a3-5c2e-4af3-8893-81833e7f79b9",
+      "base": {
+        "enabled": true,
+        "local_id": 7020
+      },
+      "key": "Body",
+      "target": {
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "2f5aa77a-01a4-4265-80cd-1c5f136b9efd",
+      "base": {
+        "enabled": true,
+        "local_id": 7022
+      },
+      "start": 0.0,
+      "duration": 1.0,
+      "ease_in": 0.0,
+      "ease_out": 0.0,
+      "speed": 1.0
+    },
+    {
+      "__type": "d0b0e534-01d0-4b0f-9f2c-1e38daa94c3d",
+      "base": {
+        "enabled": true,
+        "local_id": 7023
+      },
+      "clip": "7c5471e1-0540-4a3f-8be4-d613762d7114"
+    },
+    {
+      "__type": "0959886b-dc83-491c-9843-df105c69e01d",
+      "base": {
+        "enabled": true,
+        "local_id": 7002
+      },
+      "speed": 1.0,
+      "targets": [
+        {
+          "key": "Body",
+          "target": {
+            "local_id": 7006
+          }
+        }
+      ],
+      "layers": [
+        {
+          "name": "Base",
+          "weight": 1.0,
+          "states": [
+            {
+              "name": "LeanLeft",
+              "timeline": {
+                "local_id": 7008,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              },
+              "speed": 1.0,
+              "wrap": 1,
+              "fade": 0.4
+            },
+            {
+              "name": "LeanRight",
+              "timeline": {
+                "local_id": 7016,
+                "guid": "00000000-0000-0000-0000-000000000000"
+              },
+              "speed": 1.0,
+              "wrap": 1,
+              "fade": 0.4
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "__type": "7c7a5a92-7ea8-4409-a913-2252a0f48a21",
+      "base": {
+        "enabled": true,
+        "local_id": 7121
+      },
+      "fade": -1.0,
+      "auto_start": true
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 7222
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 7223
+      },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
+      "base": {
+        "enabled": true,
+        "local_id": 7225
+      },
+      "type": 0,
+      "color": [
+        1.0,
+        0.97,
+        0.9,
+        1.0
+      ],
+      "intensity": 1.4,
+      "range": 10.0,
+      "spot_angle": 30.0,
+      "inner_spot_angle": 21.8,
+      "ambient": 0.35
+    }
+  ]
+}

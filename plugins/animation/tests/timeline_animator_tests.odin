@@ -4,6 +4,9 @@ package animation_tests
 // one output per bound target, a layer mixer at each output's root, one mixer
 // per layer under it.
 
+import "core:encoding/json"
+import "core:encoding/uuid"
+import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -489,4 +492,90 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, unbound == 1, "a key nothing binds is reported")
 	testing.expect(t, overlap == 1, "two pose outputs that overlap are reported")
+}
+
+// The shipped sample scene is hand-generated JSON, which is exactly the kind of
+// asset that rots silently. Loading it here catches a renamed field or a bad
+// local_id at test time instead of when someone opens it.
+@(test)
+test_animator_sample_scene_loads :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	// The test asset DB does not scan the samples folder, so the clips the
+	// sample's timelines reference would never load and every later assertion
+	// would pass on an animator that poses nothing. Seed the cache by hand.
+	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_left.anim")
+	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_right.anim")
+
+	PATH :: "plugins/animation/samples/timeline_sample/assets/animator_demo.scene"
+	s := engine.scene_load_single_path(PATH)
+	testing.expect(t, s != nil, "the sample scene parses and loads")
+	if s == nil do return
+	tc.scene = s
+
+	root := engine.Transform_Handle(s.root.handle)
+	_, ta := engine.transform_get_comp(root, anim.TimelineAnimator)
+	testing.expect(t, ta != nil, "the root carries a TimelineAnimator")
+	if ta == nil do return
+
+	testing.expect_value(t, len(ta.targets), 1)
+	testing.expect_value(t, len(ta.layers), 1)
+	testing.expect_value(t, len(ta.layers[0].states), 2)
+
+	// Building resolves the key binding and both state timelines.
+	anim.timeline_animator_tick(0)
+	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Body"), 0)
+	_, l_ok := anim.animator_find(ta, "LeanLeft")
+	_, r_ok := anim.animator_find(ta, "LeanRight")
+	testing.expect(t, l_ok && r_ok, "both states resolve by name")
+
+	// And the authored wiring has no problems: every track key is bound and no
+	// two pose outputs overlap.
+	testing.expect_value(t, len(anim.timeline_animator_problems(ta)), 0)
+
+	// End to end, so none of the above can pass on a state whose timeline
+	// never resolved: playing LeanLeft must actually move Body. The clip puts
+	// x at -2.5 halfway through.
+	bt: ^engine.Transform
+	if rt := engine.pool_get(&tc.world.transforms, engine.Handle(root)); rt != nil {
+		for ch in rt.children {
+			c := engine.pool_get(&tc.world.transforms, ch.handle)
+			if c != nil && c.name == "Body" do bt = c
+		}
+	}
+	testing.expect(t, bt != nil, "the sample has a Body object")
+	if bt == nil do return
+
+	id, _ := anim.animator_find(ta, "LeanLeft")
+	anim.animator_play(ta, id, 0)
+	anim.timeline_animator_tick(0.5)
+	testing.expectf(t, abs(bt.position.x - (-2.5)) < 0.01,
+		"playing a sample state poses Body, got %v", bt.position.x)
+}
+
+// Read a .anim and its .meta straight into the clip cache, bypassing the asset
+// DB. Only for tests that load shipped sample assets by path.
+@(private = "file")
+_load_sample_clip :: proc(path: string) {
+	meta_path := strings.concatenate({path, ".meta"}, context.temp_allocator)
+	meta_bytes, merr := os.read_entire_file(meta_path, context.temp_allocator)
+	if merr != nil do return
+	Meta :: struct { guid: string }
+	meta: Meta
+	if json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator) != nil do return
+	id, err := uuid.read(meta.guid)
+	if err != nil do return
+
+	data, derr := os.read_entire_file(path, context.temp_allocator)
+	if derr != nil do return
+	clip: anim.AnimationClip
+	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
+	anim.animation_clip_cache[engine.Asset_GUID(id)] = clip
 }

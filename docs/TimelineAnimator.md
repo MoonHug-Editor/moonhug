@@ -400,6 +400,47 @@ Two things to weigh before adopting it:
   editor on the director, a value editor on the state, and a type story for
   every promotable field.
 
+## Sample
+
+`packages/animation/samples/timeline_sample` (installed as the
+`packages/timeline_sample` symlink) ships `animator_demo.scene` beside the
+sequencer's `timeline_demo.scene`:
+
+```
+AnimatorDemo            TimelineAnimator + AnimatorDemo (sample script)
+├── Camera
+├── Light               directional, or a lit material renders black
+├── Body                Animation (the pose target) + the built-in cube mesh
+├── lean_left           PlayableDirector -> animation track, key "Body"
+└── lean_right          PlayableDirector -> animation track, key "Body"
+```
+
+Body is `essentials.CUBE_MESH_GUID` with the default material, so the scene
+needs no imported asset and is visible the moment it opens. A particle system
+was the first attempt and is the wrong choice for a sample: particles run on
+`@(update)`, so the scene looks empty in edit mode.
+
+The animator binds the key "Body" to the Animation on Body, and its one layer
+holds two states pointing at the two timelines with a LOCAL reference — guid
+zero, local_id set — so the sample needs no prefab asset.
+
+Neither timeline names a scene object. Both say "Body" and the animator decides
+what that means, which is the whole point: the same timeline would drive a
+different character under a different animator.
+
+`animator_sample.odin` is the part a game writes. It is a component with
+inspector buttons — Lean Left, Lean Right, Stop — that resolve a state by name
+and call `animator_play`. Press Play and click them to watch the cross-fade.
+Passing no duration lets each state's authored `fade` decide, so retuning how a
+switch feels is an inspector edit.
+
+`test_animator_sample_scene_loads` loads the scene, checks the wiring, and plays
+a state through to a posed transform. Worth knowing why it goes that far: the
+first version asserted only that the scene parsed and the names resolved, and
+it passed while the animator posed nothing, because the sample's clips are not
+in the test asset DB. An assertion that the object actually MOVES is the only
+one that could not pass vacuously.
+
 ## Non-goals
 
 - No transition graph, conditions or parameters.
