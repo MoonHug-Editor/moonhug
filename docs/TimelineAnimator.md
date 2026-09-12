@@ -88,9 +88,14 @@ An output varies along two INDEPENDENT axes:
 - **Target** — the component it writes to.
 
 Several outputs of the same kind is the normal case, not an edge one: a
-performance that poses three characters has three pose outputs. Outputs are
-derived rather than declared — the graph holds one per target some track
-actually reaches, so a key nothing routes to costs nothing.
+performance that poses three characters has three pose outputs.
+
+One output per entry in `targets`, built when the graph is built rather than
+when a state first reaches one. Every binding then captures its default pose at
+the same deterministic moment, and an output nothing feeds costs one empty pose
+per frame. Deriving the set from what states actually route to would save that
+and pay for it with captures happening at arbitrary times, which is the harder
+bug.
 
 ```odin
 Graph_Output :: struct {
@@ -441,9 +446,18 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    When TimelineAnimator arrives it replaces the arena lookup — the graph
    comes from the animator instead of being created per director. Same
    package, so that stays internal too.
-3. **The component and its graph skeleton.** Fields, `reset_`, `cleanup_`,
-   graph init and teardown, the per-frame tick. One layer mixer at the root
-   and one mixer per layer. No states yet.
+3. ~~**The component and its graph skeleton.**~~ DONE.
+   `plugins/animation/component_TimelineAnimator.odin` — fields, `reset_`,
+   `cleanup_`, a lazily built graph guarded by `graph_ready`, and the tick. One
+   output per bound target, a layer mixer at each output's root, one mixer per
+   layer under it, layer weights pushed every tick since they are authored
+   data.
+
+   Two decisions worth knowing. Outputs come from the `targets` list rather
+   than from what states reach, for the deterministic-capture reason above. And
+   an animator with nothing attached to any layer mixer does not apply at all —
+   once the bindings have slots, an empty pose applied every frame would write
+   bind-time defaults over whatever else poses the object.
 4. **Target keys.** The `targets` list, key resolution to an output component,
    one graph output per reached target. `TrackAnimation.key` and the route
    lookup, with the existing fallback chain underneath. An `Animation` bound
