@@ -403,11 +403,11 @@ Two things to weigh before adopting it:
 ## Sample
 
 `packages/animation/samples/timeline_sample` (installed as the
-`packages/timeline_sample` symlink) ships `animator_demo.scene` beside the
-sequencer's `timeline_demo.scene`:
+`packages/timeline_sample` symlink) ships `timeline_animator_demo.scene`
+beside the sequencer's `timeline_demo.scene`:
 
 ```
-AnimatorDemo            TimelineAnimator + AnimatorDemo (sample script)
+TimelineAnimatorDemo    TimelineAnimator + TimelineAnimatorDemo (sample script)
 ├── Camera
 ├── Light               directional, or a lit material renders black
 ├── Body                Animation (the pose target) + the built-in cube mesh
@@ -428,14 +428,14 @@ Neither timeline names a scene object. Both say "Body" and the animator decides
 what that means, which is the whole point: the same timeline would drive a
 different character under a different animator.
 
-`animator_sample.odin` is the part a game writes. It is a component with
+`timeline_animator_demo.odin` is the part a game writes. It is a component with
 inspector buttons — Lean Left, Lean Right, Stop — that resolve a state by name
 and call `animator_play`. Press Play and click them to watch the cross-fade.
 Passing no duration lets each state's authored `fade` decide, so retuning how a
 switch feels is an inspector edit.
 
-`test_animator_sample_scene_loads` loads the scene, checks the wiring, and plays
-a state through to a posed transform. Worth knowing why it goes that far: the
+`test_timeline_animator_demo_scene_loads` loads the scene, checks the
+wiring, and plays a state through to a posed transform. Worth knowing why it goes that far: the
 first version asserted only that the scene parsed and the names resolved, and
 it passed while the animator posed nothing, because the sample's clips are not
 in the test asset DB. An assertion that the object actually MOVES is the only

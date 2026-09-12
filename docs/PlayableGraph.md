@@ -152,6 +152,34 @@ name paths against the wrong target.
 subtree, one binding, no writes. `Playable_Output` is the convenience wrapper
 for a graph with exactly one output.
 
+## Who owns a graph
+
+Several things own one: an `Animation` component, a `TimelineAnimator`, the
+arena shared by one director's animation tracks, and the editor's scrub
+preview. A viewer must not name any of them, or every new driver means another
+branch in the window.
+
+Owners register a PROVIDER instead — the same shape the track registry and the
+director drive checks use — and a viewer asks
+`playable_graph_for_object(owner)`. Lower `order` wins, so the most concrete
+live driver is reported:
+
+| order | source |
+| --- | --- |
+| 10 | TimelineAnimator runtime graph |
+| 20 | Animation runtime graph |
+| 30 | a director's track arena, or its adopter's graph when adopted |
+| 40 | the Animation window's scrub preview |
+| 50 | the authored shape, rebuilt from data, weights not live |
+
+The ordering is the levels rule again: the more concrete driver is the one
+actually posing, so it is the one worth looking at.
+
+A caller searching up a hierarchy must compare `Graph_Source.order` ACROSS
+objects rather than stopping at the first ancestor that answers. An object can
+carry an `Animation` with no clips, which the authored-shape fallback claims,
+while the driver posing it is a TimelineAnimator further up.
+
 ## The pose buffer (animation output internals)
 
 The structural change to the existing runtime is splitting

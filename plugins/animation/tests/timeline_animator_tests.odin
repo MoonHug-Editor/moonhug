@@ -498,7 +498,7 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 // asset that rots silently. Loading it here catches a renamed field or a bad
 // local_id at test time instead of when someone opens it.
 @(test)
-test_animator_sample_scene_loads :: proc(t: ^testing.T) {
+test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -514,7 +514,7 @@ test_animator_sample_scene_loads :: proc(t: ^testing.T) {
 	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_left.anim")
 	_load_sample_clip("plugins/animation/samples/timeline_sample/assets/lean_right.anim")
 
-	PATH :: "plugins/animation/samples/timeline_sample/assets/animator_demo.scene"
+	PATH :: "plugins/animation/samples/timeline_sample/assets/timeline_animator_demo.scene"
 	s := engine.scene_load_single_path(PATH)
 	testing.expect(t, s != nil, "the sample scene parses and loads")
 	if s == nil do return
@@ -578,4 +578,100 @@ _load_sample_clip :: proc(path: string) {
 	clip: anim.AnimationClip
 	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
 	anim.animation_clip_cache[engine.Asset_GUID(id)] = clip
+}
+
+// A viewer asks which graph belongs to an object rather than naming owners.
+// A TimelineAnimator outranks an Animation on the same object: it is the more
+// concrete driver, so it is the one actually posing.
+@(test)
+test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+	anim.playable_graph_providers_init()
+
+	guid := _clip_guid(61)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	b_owned, b_raw := engine.transform_add_comp(root, .Animation)
+	a_comp := cast(^anim.Animation)b_raw
+	a_comp.enabled = true
+
+	// Nothing has built a graph yet, so no runtime provider claims it.
+	_, found := anim.playable_graph_for_object(root)
+	testing.expect(t, !found, "an object with no built graph is not claimed")
+
+	// The Animation builds one when it plays.
+	anim.animation_play_clip(a_comp, guid)
+	src, ok := anim.playable_graph_for_object(root)
+	testing.expect(t, ok, "a playing Animation is claimed")
+	testing.expect(t, src.graph == &a_comp.graph, "and it reports that component's graph")
+	testing.expect(t, src.live, "a runtime graph is live")
+
+	// A TimelineAnimator on the same object takes over the report once built.
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Self", b_owned.handle))
+	anim.timeline_animator_tick(0)
+
+	src2, ok2 := anim.playable_graph_for_object(root)
+	testing.expect(t, ok2, "the object is still claimed")
+	testing.expect(t, src2.graph == &ta.graph,
+		"the TimelineAnimator outranks the Animation under it")
+	testing.expect(t, src2.order < src.order, "and does so by provider order")
+}
+
+// A director's animation tracks share one arena, and that is the graph a
+// viewer should show for the director — including when an animator adopted it,
+// where the tracks build into the ANIMATOR's graph instead.
+@(test)
+test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+	anim.playable_graph_providers_init()
+
+	guid := _clip_guid(62)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {2, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	tl := _mk_local_timeline(root, "Body", guid)
+
+	// Standalone: the arena is the director's own.
+	_, d := engine.transform_get_comp(tl, seq.PlayableDirector)
+	seq.director_evaluate_at(d, 0.5, .Play)
+	src, ok := anim.playable_graph_for_object(tl)
+	testing.expect(t, ok, "a director with animation tracks is claimed")
+	testing.expect(t, src.graph == anim.animation_director_graph(tl), "it reports its own arena")
+
+	// Adopted: the tracks live in the animator's graph, so that is what a
+	// viewer must show — the director's own arena graph is empty.
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	anim.timeline_animator_tick(0)
+	anim.animation_director_adopt(tl, ta, {anim.graph_output(&ta.graph, 0).root})
+
+	src2, ok2 := anim.playable_graph_for_object(tl)
+	testing.expect(t, ok2, "an adopted director is still claimed")
+	testing.expect(t, src2.graph == &ta.graph, "and reports the adopter's graph")
 }

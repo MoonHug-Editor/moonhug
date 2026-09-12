@@ -3,7 +3,7 @@
   "transforms": [
     {
       "local_id": 7001,
-      "name": "AnimatorDemo",
+      "name": "TimelineAnimatorDemo",
       "is_active": true,
       "position": [
         0.0,

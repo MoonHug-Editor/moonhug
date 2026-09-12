@@ -46,31 +46,20 @@ draw_playable_graph_view :: proc() {
 	}
 	defer im.End()
 
-	owner, a := _pv_target()
-	if a == nil {
-		im.TextDisabled("Select an object with an Animation component.")
+	// Who owns a graph is not this window's business: it asks the registry
+	// (playable_graph.odin) and draws whatever claims the selection. An
+	// Animation, a TimelineAnimator, a director's track arena and the scrub
+	// preview all answer through the same call.
+	owner, src, found := _pg_selected_source()
+	if !found {
+		im.TextDisabled("Select an object that owns a playable graph.")
 		return
 	}
+	g, live := src.graph, src.live
 
-	g: ^anim.Playable_Graph
-	source: cstring
-	live := false
-	if a.graph_ready {
-		g = &a.graph
-		source = "runtime graph (live)"
-		live = true
-	} else if pg := _pv_preview_graph(owner); pg != nil {
-		g = pg
-		source = "scrub preview graph (live)"
-		live = true
-	} else {
-		g = _pg_authored_shape(a)
-		source = "authored shape (weights not live)"
-	}
-
-	im.TextDisabled("Source: %s", source)
+	im.TextDisabled("Source: %s", fmt.ctprint(src.label))
 	if g == nil || anim.graph_output(g) == nil || anim.playable_node(g, anim.graph_output(g).root) == nil {
-		im.TextDisabled("The component produces an empty graph (no clips).")
+		im.TextDisabled("The graph is empty (nothing to play).")
 		return
 	}
 
@@ -258,4 +247,47 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 _pg_is_output_root :: proc(g: ^anim.Playable_Graph, h: int) -> bool {
 	for &o in g.outputs do if int(o.root) == h do return true
 	return false
+}
+
+// The graph to show for the current selection, searched up the ancestors so
+// selecting a child bone keeps the window on the animated root.
+//
+// The BEST source across the chain wins, not the nearest one. An object can
+// carry an Animation with no clips — which the authored-shape fallback happily
+// claims — while the driver actually posing it is a TimelineAnimator further
+// up. Stopping at the first ancestor that answers shows the empty one.
+@(private = "file")
+_pg_selected_source :: proc() -> (owner: engine.Transform_Handle, src: anim.Graph_Source, found: bool) {
+	w := engine.ctx_world()
+	tH := engine.inspector_active_selection()
+	best_order := max(int)
+	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
+		if s, ok := anim.playable_graph_for_object(tH); ok && s.order < best_order {
+			owner, src, found, best_order = tH, s, true, s.order
+		}
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do break
+		tH = engine.Transform_Handle(t.parent.handle)
+	}
+	return
+}
+
+// Editor-only sources, registered behind the runtime ones: a live preview
+// outranks a shape rebuilt from authored data.
+@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+playable_graph_editor_providers_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+
+	anim.playable_graph_register_provider(40, proc(owner: engine.Transform_Handle) -> (anim.Graph_Source, bool) {
+		g := _pv_preview_graph(owner)
+		if g == nil do return {}, false
+		return {graph = g, label = "scrub preview graph (live)", live = true}, true
+	})
+	anim.playable_graph_register_provider(50, proc(owner: engine.Transform_Handle) -> (anim.Graph_Source, bool) {
+		_, a := engine.transform_get_comp(owner, anim.Animation)
+		if a == nil do return {}, false
+		return {graph = _pg_authored_shape(a), label = "authored shape (weights not live)", live = false}, true
+	})
 }

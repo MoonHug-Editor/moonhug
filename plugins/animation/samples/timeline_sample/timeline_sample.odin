@@ -7,8 +7,8 @@ package timeline_sample
 // The timeline IS the director's subtree (track and clip nodes). Open the
 // scene, select TimelineDemo and use the Sequencer window's Preview.
 //
-// assets/animator_demo.scene is the TimelineAnimator sample on top of the same
-// pieces — see animator_sample.odin, which is the only code here.
+// assets/timeline_animator_demo.scene is the TimelineAnimator sample on top
+// of the same pieces — see timeline_animator_demo.odin, the only code here.
 
 // Load-bearing: prebuild discovers packages by scanned DECLARATIONS — a file
 // with only a package clause is invisible to it.

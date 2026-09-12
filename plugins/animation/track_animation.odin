@@ -407,3 +407,11 @@ animation_track_binding :: proc(state: rawptr) -> ^Animation_Binding {
 	o := graph_output(&a.graph, st.out)
 	return o != nil ? &o.binding : nil
 }
+
+// The graph a director's animation tracks build into, or nil. An adopted
+// director reports its ADOPTER's graph, which is the one actually evaluated.
+animation_director_graph :: proc(director: engine.Transform_Handle) -> ^Playable_Graph {
+	a, ok := _director_arenas[director]
+	if !ok do return nil
+	return _arena_graph(a)
+}

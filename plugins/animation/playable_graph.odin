@@ -810,3 +810,80 @@ _finalize_quat :: proc(acc: [4]f32, w: f32, def: [4]f32) -> [4]f32 {
 	if l := linalg.length(q); l > PLAYABLE_WEIGHT_EPS do return (1.0 / l) * q
 	return def
 }
+
+// --- Who owns a graph -----------------------------------------------------------------
+//
+// Several things own a Playable_Graph now: an Animation component, a
+// TimelineAnimator, the arena shared by one director's animation tracks, and
+// the editor's scrub preview. A viewer should not name any of them — it asks
+// which graph belongs to a selected object and shows what it gets.
+//
+// Providers register instead, the same shape the track registry and the
+// director drive checks use. Lower `order` wins, so the most live source is
+// found first.
+
+Graph_Source :: struct {
+	graph: ^Playable_Graph,
+	label: string, // shown as the source, e.g. "runtime graph (live)"
+	live:  bool,   // real weights and times, not a shape rebuilt from authored data
+	order: int,    // the winning provider's order, so a caller can compare objects
+}
+
+Graph_Provider :: struct {
+	order: int,
+	fn:    proc(owner: engine.Transform_Handle) -> (Graph_Source, bool),
+}
+
+@(private = "file")
+_graph_providers: [dynamic]Graph_Provider
+
+// Process-global, so never the caller's allocator.
+playable_graph_register_provider :: proc(order: int, fn: proc(owner: engine.Transform_Handle) -> (Graph_Source, bool)) {
+	context.allocator = runtime.default_allocator()
+	if _graph_providers == nil do _graph_providers = make([dynamic]Graph_Provider)
+	append(&_graph_providers, Graph_Provider{order = order, fn = fn})
+}
+
+// The graph to show for `owner`: the lowest-order provider that claims it.
+playable_graph_for_object :: proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
+	best: Graph_Source
+	best_order := max(int)
+	found := false
+	for p in _graph_providers {
+		if p.order >= best_order do continue
+		src, ok := p.fn(owner)
+		if !ok do continue
+		src.order = p.order
+		best, best_order, found = src, p.order, true
+	}
+	return best, found
+}
+
+// The runtime graphs this package owns. The editor registers its own for the
+// scrub preview and the authored shape.
+@(phase={key=ImportersInit, order=5})
+playable_graph_providers_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+
+	// A TimelineAnimator outranks an Animation on the same object: it is the
+	// more concrete driver, so it is the one actually posing.
+	playable_graph_register_provider(10, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
+		_, a := engine.transform_get_comp(owner, TimelineAnimator)
+		if a == nil || !a.graph_ready do return {}, false
+		return {graph = &a.graph, label = "TimelineAnimator (live)", live = true}, true
+	})
+	playable_graph_register_provider(20, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
+		_, a := engine.transform_get_comp(owner, Animation)
+		if a == nil || !a.graph_ready do return {}, false
+		return {graph = &a.graph, label = "Animation runtime graph (live)", live = true}, true
+	})
+	// A director's animation tracks share one arena, which is where a
+	// standalone timeline's blending actually happens.
+	playable_graph_register_provider(30, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
+		g := animation_director_graph(owner)
+		if g == nil do return {}, false
+		return {graph = g, label = "timeline tracks (live)", live = true}, true
+	})
+}
