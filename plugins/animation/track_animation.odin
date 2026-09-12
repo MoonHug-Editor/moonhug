@@ -16,6 +16,7 @@ package animation
 // it cannot name a Playable_Graph.
 
 import "base:runtime"
+import "core:slice"
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
 
@@ -74,6 +75,11 @@ animation_track_init :: proc() {
 		context.allocator = runtime.default_allocator()
 		_director_arenas = make(map[engine.Transform_Handle]^_Director_Arena)
 	}
+	// An adopted director never ticks itself: the animator owns its time.
+	seq.director_register_drive_check(proc(d: ^seq.PlayableDirector) -> bool {
+		a, ok := _director_arenas[d.owner]
+		return ok && a.adopter != nil
+	})
 	seq.track_register(seq.Track_Desc{
 		track_key   = .TrackAnimation,
 		clip_key    = .ClipAnimation,
@@ -96,9 +102,58 @@ animation_track_init :: proc() {
 // Entries are heap-allocated: a pointer into map storage dangles on rehash.
 @(private = "file")
 _Director_Arena :: struct {
-	graph:   Playable_Graph,
+	graph:   Playable_Graph,                  // used only when `adopter` is nil
 	targets: map[engine.Transform_Handle]int, // target transform -> output index
 	refs:    int,                             // tracks attached
+
+	// ADOPTED: a TimelineAnimator owns this director, so its tracks build into
+	// the ANIMATOR's graph instead — one arena would otherwise mean one pose
+	// per director applied on its own, which cannot blend with the other
+	// states. `parents` is the animator's per-output mixer for the state this
+	// director backs, parallel to the animator's outputs, and tracks resolve
+	// their output by KEY rather than by their own target.
+	adopter: ^TimelineAnimator,
+	parents: []Playable_Handle,
+}
+
+// The graph a track on this director builds into.
+@(private = "file")
+_arena_graph :: proc(a: ^_Director_Arena) -> ^Playable_Graph {
+	return a.adopter != nil ? &a.adopter.graph : &a.graph
+}
+
+// Hand a director to an animator: its tracks stop owning a pose and start
+// contributing a subtree under `parents`. Called when a state instantiates its
+// timeline, before the director builds, and re-read whenever it rebuilds.
+//
+// The adoption holds a reference of its own, so the arena survives a rebuild
+// that momentarily destroys every track.
+animation_director_adopt :: proc(director: engine.Transform_Handle, adopter: ^TimelineAnimator, parents: []Playable_Handle) {
+	a := _arena_get_or_make(director)
+	if a.adopter == nil do a.refs += 1
+	a.adopter = adopter
+	// Copied, not borrowed: the arena outlives any caller's slice, and a
+	// dangling `parents` is read on every rebuild.
+	context.allocator = runtime.default_allocator()
+	delete(a.parents)
+	a.parents = slice.clone(parents)
+}
+
+// Whether a driver has claimed this director's time.
+animation_director_is_adopted :: proc(director: engine.Transform_Handle) -> bool {
+	a, ok := _director_arenas[director]
+	return ok && a.adopter != nil
+}
+
+// Drop the adoption reference. The arena goes when its last track goes too.
+animation_director_unadopt :: proc(director: engine.Transform_Handle) {
+	a, ok := _director_arenas[director]
+	if !ok || a.adopter == nil do return
+	a.adopter = nil
+	context.allocator = runtime.default_allocator()
+	delete(a.parents)
+	a.parents = nil
+	_arena_release(director)
 }
 
 @(private = "file")
@@ -109,17 +164,20 @@ _director_arenas: map[engine.Transform_Handle]^_Director_Arena
 // here is pinned to the process allocator, never the caller's. Same rule the
 // registries follow.
 @(private = "file")
-_arena_acquire :: proc(director: engine.Transform_Handle) -> ^_Director_Arena {
-	if a, ok := _director_arenas[director]; ok {
-		a.refs += 1
-		return a
-	}
+_arena_get_or_make :: proc(director: engine.Transform_Handle) -> ^_Director_Arena {
+	if a, ok := _director_arenas[director]; ok do return a
 	context.allocator = runtime.default_allocator()
 	a := new(_Director_Arena)
 	playable_graph_init(&a.graph)
 	a.targets = make(map[engine.Transform_Handle]int)
-	a.refs = 1
 	_director_arenas[director] = a
+	return a
+}
+
+@(private = "file")
+_arena_acquire :: proc(director: engine.Transform_Handle) -> ^_Director_Arena {
+	a := _arena_get_or_make(director)
+	a.refs += 1
 	return a
 }
 
@@ -132,6 +190,7 @@ _arena_release :: proc(director: engine.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	playable_graph_destroy(&a.graph)
 	delete(a.targets)
+	delete(a.parents)
 	free(a)
 	delete_key(&_director_arenas, director)
 }
@@ -142,9 +201,22 @@ _arena_output :: proc(a: ^_Director_Arena, target: engine.Transform_Handle) -> i
 	if idx, ok := a.targets[target]; ok do return idx
 	context.allocator = runtime.default_allocator()
 	idx := graph_output_add(&a.graph, target)
-	graph_output(&a.graph, idx).root = playable_add(&a.graph, Layer_Mixer_Playable{})
+	root := playable_add(&a.graph, Layer_Mixer_Playable{})
+	graph_output(&a.graph, idx).root = root
 	a.targets[target] = idx
 	return idx
+}
+
+// The animator output an adopted track writes to. Its own `key` is the
+// default, and the track's `target` is not consulted at all — under an
+// animator the scene binding belongs to the animator, not to the timeline.
+@(private = "file")
+_ta_track_output :: proc(a: ^_Director_Arena, ctx: ^seq.Track_Ctx) -> int {
+	if a.adopter == nil do return -1
+	key := ""
+	if _, at := get_comp(ctx.track.node, TrackAnimation); at != nil do key = at.key
+	if key == "" do return -1
+	return timeline_animator_output_for_key(a.adopter, key)
 }
 
 // Evaluate and apply ONE output. A track flushes its own output at the end of
@@ -155,6 +227,9 @@ _arena_output :: proc(a: ^_Director_Arena, target: engine.Transform_Handle) -> i
 // produces the final pose.
 @(private = "file")
 _arena_flush :: proc(a: ^_Director_Arena, idx: int) {
+	// An adopted director never applies: the animator owns the graph and
+	// flushes every output once, after every state has set its weights.
+	if a.adopter != nil do return
 	o := graph_output(&a.graph, idx)
 	if o == nil do return
 	scripts := make([dynamic]Script_Invocation, context.temp_allocator)
@@ -216,10 +291,26 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 	st.director = ctx.owner
 	st.root = _animation_track_root(ctx)
 	a := _arena_acquire(ctx.owner)
-	st.out = _arena_output(a, st.root)
-	g := &a.graph
+	g := _arena_graph(a)
+	parent: Playable_Handle
+	if a.adopter != nil {
+		// Adopted: the output comes from this track's KEY through the
+		// animator's bindings, and the subtree hangs under the state's mixer
+		// for that output. An unresolved key leaves the track inert rather
+		// than posing something arbitrary.
+		st.out = _ta_track_output(a, ctx)
+		if st.out < 0 || st.out >= len(a.parents) {
+			st.out = -1
+			st.clips = make([dynamic]Playable_Handle)
+			return st
+		}
+		parent = a.parents[st.out]
+	} else {
+		st.out = _arena_output(a, st.root)
+		parent = graph_output(g, st.out).root
+	}
 	st.mixer = playable_add(g, Mixer_Playable{})
-	playable_connect(g, graph_output(g, st.out).root, st.mixer, 1)
+	playable_connect(g, parent, st.mixer, 1)
 	st.clips = make([dynamic]Playable_Handle, 0, len(ctx.track.clips))
 	for &c in ctx.track.clips {
 		node := playable_add(g, Clip_Playable{clip = _anim_clip_asset(&c)})
@@ -233,8 +324,9 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 _animation_track_destroy :: proc(state: rawptr) {
 	st := cast(^_Anim_Track)state
 	if a, ok := _director_arenas[st.director]; ok {
-		for h in st.clips do playable_remove(&a.graph, h)
-		playable_remove(&a.graph, st.mixer)
+		g := _arena_graph(a)
+		for h in st.clips do playable_remove(g, h)
+		playable_remove(g, st.mixer)
 	}
 	delete(st.clips)
 	_arena_release(st.director)
@@ -247,7 +339,8 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	if st == nil do return
 	arena, has_arena := _director_arenas[st.director]
 	if !has_arena do return
-	g := &arena.graph
+	if st.out < 0 do return // key resolved to nothing at build
+	g := _arena_graph(arena)
 	// The driven component stands down: the track owns its object's pose for
 	// as long as it is driving. Released in preview_end / on retarget.
 	if comp := _animation_track_comp(ctx); comp != nil {
@@ -261,13 +354,15 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	// its bind-time defaults and releases the object. A sibling track still
 	// feeding it keeps posing it instead, which is why this flushes rather than
 	// forcing defaults.
-	if root := _animation_track_root(ctx); root != st.root {
-		old := st.out
-		if o := graph_output(g, old); o != nil do playable_disconnect(g, o.root, st.mixer)
-		_arena_flush(arena, old)
-		st.root = root
-		st.out = _arena_output(arena, root)
-		playable_connect(g, graph_output(g, st.out).root, st.mixer, 1)
+	if arena.adopter == nil {
+		if root := _animation_track_root(ctx); root != st.root {
+			old := st.out
+			if o := graph_output(g, old); o != nil do playable_disconnect(g, o.root, st.mixer)
+			_arena_flush(arena, old)
+			st.root = root
+			st.out = _arena_output(arena, root)
+			playable_connect(g, graph_output(g, st.out).root, st.mixer, 1)
+		}
 	}
 	for &c, ci in ctx.track.clips {
 		if ci >= len(st.clips) do break

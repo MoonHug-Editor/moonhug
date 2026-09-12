@@ -15,6 +15,7 @@ package sequencer
 // director_set_time — the sequencer window's preview and the control track
 // both ride it.
 
+import "base:runtime"
 import "core:math"
 import "core:slice"
 import "moonhug:engine"
@@ -27,11 +28,33 @@ directors_tick :: proc(dt: f32) {
 		if !d.enabled do continue
 		if !engine.pool_valid(&w.transforms, engine.Handle(d.owner)) do continue
 		if !engine.transform_active_in_hierarchy(d.owner) do continue
-		// A director nested under a control track's clip is DRIVEN, never
-		// self-ticking — the parent timeline owns its time.
+		// A director another driver owns is never self-ticking. Two ways to be
+		// owned: nested under a control track's clip, or claimed by a driver in
+		// another package through a registered check.
 		if _director_is_control_driven(d) do continue
+		if _director_is_claimed(d) do continue
 		director_tick(d, dt)
 	}
+}
+
+// Drivers that own a director's time live in other packages — a
+// TimelineAnimator driving a state's timeline, for one — and the sequencer
+// names none of them. Each registers a check instead, the same shape the track
+// registry uses.
+@(private = "file")
+_drive_checks: [dynamic]proc(d: ^PlayableDirector) -> bool
+
+// Process-global, so never the caller's allocator.
+director_register_drive_check :: proc(fn: proc(d: ^PlayableDirector) -> bool) {
+	context.allocator = runtime.default_allocator()
+	if _drive_checks == nil do _drive_checks = make([dynamic]proc(d: ^PlayableDirector) -> bool)
+	append(&_drive_checks, fn)
+}
+
+@(private = "file")
+_director_is_claimed :: proc(d: ^PlayableDirector) -> bool {
+	for fn in _drive_checks do if fn(d) do return true
+	return false
 }
 
 // Whether an ancestor node carries a TimelineClip — the director sits inside

@@ -15,6 +15,7 @@ package animation
 // not cross-fade, the second write replaces the first.
 
 import "moonhug:engine"
+import seq "moonhug:packages/sequencer"
 
 // A key bound to an output component in the scene. The component's TYPE
 // decides the output kind — an Animation receives a pose, an AudioSource
@@ -33,12 +34,42 @@ Target_Binding :: struct {
 Animator_Layer :: struct {
 	name:   string,
 	weight: f32,
+	states: [dynamic]Timeline_State,
+}
+
+// One state: a whole timeline played as a unit.
+//
+// `timeline` points at a root carrying a PlayableDirector, two ways:
+//   * CROSS-ASSET (guid set) — a prefab. The animator instances it and owns
+//     the instance, so the prefab system supplies authoring, variants and
+//     per-instance overrides.
+//   * LOCAL (guid zero, local_id set) — a timeline already in this scene.
+//     Adopted where it stands and never destroyed, so a timeline can be
+//     authored in place without making an asset first.
+Timeline_State :: struct {
+	name:     string,
+	timeline: engine.PPtr,
+	speed:    f32, // 0 runs at 1
+	wrap:     seq.Timeline_Wrap,
+	fade:     f32, // default cross-fade duration INTO this state
 }
 
 // A layer's presence in the graph: one mixer per output, parallel to
 // `graph.outputs`. States attach to these.
 Animator_Layer_Runtime :: struct {
 	mixers: [dynamic]Playable_Handle,
+	states: [dynamic]Animator_State_Runtime,
+}
+
+// A state's live half: the instantiated timeline, the mixers its tracks hang
+// under (one per output), and its own playhead.
+Animator_State_Runtime :: struct {
+	root:   engine.Transform_Handle, // the timeline's root
+	owned:  bool,                    // instanced by this animator, so destroyed by it
+	dir:    engine.Handle,           // its PlayableDirector
+	mixers: [dynamic]Playable_Handle, // parallel to graph.outputs
+	time:   f32,
+	weight: f32,
 }
 
 @(component={menu="Animation/TimelineAnimator"})
@@ -79,12 +110,24 @@ cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 		// holding them would leave them suppressed forever.
 		_ta_claim_targets(a, false)
 		playable_graph_destroy(&a.graph)
-		for &l in a.rt do delete(l.mixers)
+		for &l in a.rt {
+			for &st in l.states {
+				animation_director_unadopt(st.root)
+				if st.owned && st.root != {} do engine.transform_destroy(st.root)
+				delete(st.mixers)
+			}
+			delete(l.states)
+			delete(l.mixers)
+		}
 		delete(a.rt)
 		delete(a.out_target)
 	}
 	if a.layers != nil {
-		for &l in a.layers do delete(l.name)
+		for &l in a.layers {
+			delete(l.name)
+			for &st in l.states do delete(st.name)
+			delete(l.states)
+		}
 		delete(a.layers)
 	}
 	if a.targets != nil {
@@ -144,9 +187,56 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 			playable_connect(&a.graph, graph_output(&a.graph, oi).root, m, _ta_layer_weight(&l))
 			append(&lr.mixers, m)
 		}
+		lr.states = make([dynamic]Animator_State_Runtime, 0, len(l.states))
+		for &stateDesc in l.states {
+			append(&lr.states, _ta_build_state(a, &stateDesc, lr.mixers[:]))
+		}
 		append(&a.rt, lr)
 	}
 	a.graph_ready = true
+}
+
+// Instantiate a state's timeline and wire it in:
+//   * one mixer per output, under this layer's mixer, starting at weight 0,
+//   * the prefab instanced as a child of the animator,
+//   * its director adopted, so its tracks build into THIS graph under those
+//     mixers and it stops ticking itself.
+// An empty or unloadable timeline yields a state with no instance, which stays
+// silent rather than failing the build.
+@(private = "file")
+_ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixers: []Playable_Handle) -> Animator_State_Runtime {
+	st := Animator_State_Runtime{
+		mixers = make([dynamic]Playable_Handle, 0, len(layer_mixers)),
+	}
+	for lm in layer_mixers {
+		m := playable_add(&a.graph, Mixer_Playable{})
+		playable_connect(&a.graph, lm, m, 0)
+		append(&st.mixers, m)
+	}
+	st.root, st.owned = _ta_state_root(a, desc)
+	if st.root == {} do return st
+	if dh, d := engine.transform_get_comp(st.root, seq.PlayableDirector); d != nil {
+		st.dir = dh.handle
+	}
+	animation_director_adopt(st.root, a, st.mixers[:])
+	return st
+}
+
+// The timeline's root for a state, and whether this animator owns it. A
+// cross-asset reference is instanced here; a local one is found in the
+// animator's own scene and left alone.
+@(private = "file")
+_ta_state_root :: proc(a: ^TimelineAnimator, desc: ^Timeline_State) -> (engine.Transform_Handle, bool) {
+	if !engine.asset_guid_is_empty(desc.timeline.guid) {
+		return engine.scene_instantiate_guid(desc.timeline.guid, a.owner), true
+	}
+	if desc.timeline.local_id == 0 do return {}, false
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(a.owner))
+	if t == nil || t.scene == nil do return {}, false
+	h, ok := engine.scene_find_selectable_transform_local_id(t.scene, desc.timeline.local_id)
+	if !ok do return {}, false
+	return h, false
 }
 
 // Drop the graph so the next tick rebuilds it — for a targets or layers edit,
@@ -154,7 +244,15 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 timeline_animator_rebuild :: proc(a: ^TimelineAnimator) {
 	if !a.graph_ready do return
 	playable_graph_destroy(&a.graph)
-	for &l in a.rt do delete(l.mixers)
+	for &l in a.rt {
+		for &st in l.states {
+			animation_director_unadopt(st.root)
+			if st.owned && st.root != {} do engine.transform_destroy(st.root)
+			delete(st.mixers)
+		}
+		delete(l.states)
+		delete(l.mixers)
+	}
 	delete(a.rt)
 	delete(a.out_target)
 	a.rt = nil
@@ -239,6 +337,41 @@ _ta_claim_targets :: proc(a: ^TimelineAnimator, claim: bool) {
 	}
 }
 
+// Advance every playing state and push its time into its timeline.
+//
+// The director is evaluated directly rather than ticked: director_run skips it
+// (the animation package registers a drive check for adopted directors), so
+// the animator owns its time the way a control track owns a nested timeline's.
+// Evaluating makes its tracks set weights and times in THIS graph, and nothing
+// is applied until the animator flushes.
+@(private = "file")
+_ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32) {
+	w := engine.ctx_world()
+	speed := a.speed != 0 ? a.speed : 1
+	for &lr, li in a.rt {
+		if li >= len(a.layers) do continue
+		for &st, si in lr.states {
+			if si >= len(a.layers[li].states) do continue
+			desc := &a.layers[li].states[si]
+			if st.weight <= PLAYABLE_WEIGHT_EPS do continue
+			if st.root == {} do continue
+			if !engine.world_pool_valid(w, st.dir) do continue
+			d := cast(^seq.PlayableDirector)engine.world_pool_get(w, st.dir)
+			if d == nil do continue
+
+			st.time += dt * speed * (desc.speed != 0 ? desc.speed : 1)
+			length := seq.director_duration(d, seq.director_tracks(d))
+			if length > 0 {
+				switch desc.wrap {
+				case .Loop: for st.time >= length do st.time -= length
+				case .Once: st.time = min(st.time, length)
+				}
+			}
+			seq.director_evaluate_at(d, st.time, .Play)
+		}
+	}
+}
+
 @(update={order=2})
 timeline_animator_tick :: proc(dt: f32) {
 	w := engine.ctx_world()
@@ -256,6 +389,7 @@ timeline_animator_tick :: proc(dt: f32) {
 		active := _ta_has_content(a)
 		_ta_claim_targets(a, active)
 		if !active do continue
+		_ta_advance_states(a, dt)
 		playable_graph_tick(&a.graph)
 	}
 }

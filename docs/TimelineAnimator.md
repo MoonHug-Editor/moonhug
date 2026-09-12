@@ -251,7 +251,7 @@ Animator_Layer :: struct {
 
 Timeline_State :: struct {
 	name:     string,
-	timeline: engine.Asset_GUID, // prefab whose root carries a PlayableDirector
+	timeline: engine.PPtr, // a prefab, or a timeline already in this scene
 	routes:   [dynamic]Track_Route,
 	speed:    f32,
 	wrap:     Timeline_Wrap,
@@ -475,9 +475,36 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 
    `TrackAnimation` gained `cleanup_TrackAnimation` — adding a string made it
    an owning component, which a contract test enforces.
-5. **State instances.** Instantiate each state's timeline prefab with
-   `scene_instantiate_guid`, park it so `director_tick` never runs on it, and
-   drive its time from the state.
+5. ~~**State instances.**~~ DONE. A state points at its timeline with a
+   `PPtr`, which covers both authoring modes:
+
+   * CROSS-ASSET (guid set) — a prefab. The animator instances it under itself
+     with `scene_instantiate_guid` and OWNS the instance, so the prefab system
+     supplies variants and per-instance overrides.
+   * LOCAL (guid zero, local_id set) — a timeline already in the scene,
+     adopted where it stands and never destroyed. A timeline can be authored in
+     place without making an asset first, which is what "every level works with
+     nothing above it configured" asks for.
+
+   Either way the state gets one mixer per output under its layer's mixer at
+   weight 0, and its director is ADOPTED.
+
+   Adoption is what makes a state part of the animator rather than a separate
+   performance: the director's tracks build into the animator's graph under
+   those mixers, resolve their output by `key` instead of by their own
+   `target`, and never apply a pose — the animator flushes once, after every
+   state has set its weights.
+
+   Parking is a REGISTERED CHECK, not a flag.
+   `director_register_drive_check` lets a driver in another package answer "I
+   own this director", and the animation package registers one that reports
+   adopted arenas. A `driven: bool` on `PlayableDirector` was the first
+   attempt and is not viable — see Concerns.
+
+   Not covered yet: nothing sets a state's weight above 0, so no state
+   actually plays and the cross-asset instancing path has no test. The local
+   path and the adopted key routing are both tested. Weight and cross-fade are
+   item 6, and they are what make a state audible.
 6. **Weight and cross-fade.** One weight per state, fanned to one mixer input
    per output it reaches. The weight-continuous fade bookkeeping is a port of
    what `component_Animation` already does.
@@ -539,6 +566,27 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 ## Concerns
 
 Known risks with a position, recorded so they are not argued twice.
+
+### Adding a field to PlayableDirector breaks scene round-trip — unexplained
+
+Adding one `bool` tagged `json:"-" inspect:"-"` to `PlayableDirector` makes
+`scene_file_unmarshal` fail with `Invalid_Data`, so a simulate Stop cannot
+restore its snapshot (`test_sim_start_stop_round_trip`). Reproducible, and
+narrowed this far:
+
+- the field's NAME and POSITION in the struct do not matter,
+- every `*_generated.odin` file is byte-identical with and without it,
+- the same field added to `Animation` is harmless,
+- the scene being round-tripped contains no PlayableDirector at all.
+
+Sidestepped rather than fixed: the parking flag became
+`director_register_drive_check`, which needs no new field and fits the
+registry style better anyway. The underlying fault is still there and will bite
+whoever next adds a field to that component.
+
+One more symptom worth knowing: the failing test leaves
+`moonhug/tests/fixtures/_test_sim_set_kept.scene` behind, and that stale file
+then changes the result of later runs. Clean it before trusting a bisect.
 
 ### Default pose coverage — live, needs a policy
 

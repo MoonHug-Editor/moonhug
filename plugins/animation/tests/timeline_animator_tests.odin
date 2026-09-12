@@ -8,6 +8,7 @@ import "core:strings"
 import "core:testing"
 import "moonhug:engine"
 import anim "moonhug:packages/animation"
+import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"
 
 // Strings on a component are owned by it: cleanup_TimelineAnimator frees them,
@@ -218,4 +219,122 @@ test_timeline_animator_claims_bound_animation :: proc(t: ^testing.T) {
 	// cleanup_ is the proc on_destroy and undo both route through.
 	anim.cleanup_TimelineAnimator(ta)
 	testing.expect(t, !target.timeline_driven, "a destroyed animator releases its targets")
+}
+
+// A timeline whose director is adopted builds its tracks into the ANIMATOR's
+// graph, under the state's mixer, and resolves its target by KEY rather than
+// by its own reference. Nothing applies until the animator flushes.
+@(test)
+test_adopted_director_routes_by_key :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	guid := _clip_guid(41)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {7, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
+	anim.timeline_animator_tick(0)
+
+	// A director with one animation track keyed to "Body", hand-built rather
+	// than instanced, so the test does not need a prefab on disk.
+	tl := engine.transform_new("Timeline", root)
+	_, draw := engine.transform_add_comp(tl, .PlayableDirector)
+	d := cast(^seq.PlayableDirector)draw
+	d.enabled = true
+	d.duration = 1
+	d.wrap = .Loop
+
+	track := engine.transform_new("animation", tl)
+	engine.transform_get_or_add_comp(track, seq.TimelineTrack)
+	_, traw := engine.transform_add_comp(track, .TrackAnimation)
+	tr := cast(^anim.TrackAnimation)traw
+	tr.key = strings.clone("Body")
+
+	clip := engine.transform_new("clip", track)
+	_, cc := engine.transform_get_or_add_comp(clip, seq.TimelineClip)
+	cc.start = 0
+	cc.duration = 1
+	_, ca := engine.transform_add_comp(clip, .ClipAnimation)
+	(cast(^anim.ClipAnimation)ca).clip = guid
+
+	// Adopt, giving the director the state's per-output mixers to hang under.
+	mixers := []anim.Playable_Handle{anim.timeline_animator_layer_mixer(ta, 0, 0)}
+	anim.animation_director_adopt(tl, ta, mixers)
+	seq.director_evaluate_at(d, 0.5, .Play)
+
+	bt := engine.pool_get(&tc.world.transforms, engine.Handle(body))
+
+	// The track wrote nothing on its own — an adopted director never applies.
+	testing.expect(t, abs(bt.position.x) < 0.001,
+		"an adopted track does not apply a pose of its own")
+
+	// The animator's flush is what poses the object, through the key's output.
+	anim.timeline_animator_tick(0)
+	testing.expect(t, abs(bt.position.x - 7) < 0.001,
+		"the animator flush poses the key's target")
+}
+
+// A state may point at a timeline that already lives in the scene: guid zero,
+// local_id set. The animator adopts it where it stands and must not destroy it
+// on rebuild — it never created it.
+@(test)
+test_state_adopts_local_timeline :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_track_init()
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+
+	tl := engine.transform_new("Timeline", root)
+	_, draw := engine.transform_add_comp(tl, .PlayableDirector)
+	(cast(^seq.PlayableDirector)draw).enabled = true
+	tlt := engine.pool_get(&tc.world.transforms, engine.Handle(tl))
+	lid := tlt.local_id
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.targets = make([dynamic]anim.Target_Binding)
+	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, anim.Timeline_State{
+		name     = strings.clone("Idle"),
+		timeline = {local_id = lid}, // guid zero: a local reference
+	})
+	append(&ta.layers, layer)
+
+	anim.timeline_animator_tick(0)
+	testing.expect(t, anim.animation_director_is_adopted(tl),
+		"a local timeline is adopted where it stands")
+
+	// Rebuilding drops the adoption and leaves the object alone.
+	anim.timeline_animator_rebuild(ta)
+	testing.expect(t, !anim.animation_director_is_adopted(tl), "rebuild releases the adoption")
+	testing.expect(t, engine.pool_valid(&tc.world.transforms, engine.Handle(tl)),
+		"a timeline the animator did not create survives its rebuild")
 }
