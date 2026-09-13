@@ -9,6 +9,7 @@ package simulate
 // The snapshot is the same bytes a save writes: capture is scene_serialize,
 // restore is scene_reload_in_place_bytes.
 
+import "base:runtime"
 import "core:strings"
 import "moonhug:engine"
 import "moonhug:engine/log"
@@ -161,9 +162,19 @@ start :: proc(paused := false) -> bool {
         return false
     }
 
-    _snapshot = snapshot
+    // The snapshot outlives this call by the whole length of the run, so it
+    // cannot keep the CALLER's allocator: scene_serialize hands back memory
+    // from context.allocator, and whoever pressed Play may be running on a
+    // scoped or per-frame one. Reusing that memory rewrites bytes inside the
+    // snapshot, which shows up as "snapshot restore failed" on Stop with the
+    // scene left in its simulated state — a lost edit, at the point the user
+    // is least expecting one. Pin it to the default allocator, like every
+    // other global here.
+    _snapshot = make([]byte, len(snapshot), runtime.default_allocator())
+    copy(_snapshot, snapshot)
+    delete(snapshot)
     _scene = scene
-    _scene_path = strings.clone(scene.path)
+    _scene_path = strings.clone(scene.path, runtime.default_allocator())
     _record_loaded_scenes()
 
     clear(&_selection)
@@ -206,11 +217,11 @@ stop :: proc() {
         log.error("Simulate: snapshot restore failed - the scene was NOT restored; reopen it from Project")
     }
 
-    delete(_snapshot)
+    delete(_snapshot, runtime.default_allocator())
     _snapshot = nil
     _scene = nil
     if _scene_path != "" {
-        delete(_scene_path)
+        delete(_scene_path, runtime.default_allocator())
         _scene_path = ""
     }
 

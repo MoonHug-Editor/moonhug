@@ -48,9 +48,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 9004,
@@ -79,9 +77,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 9005
@@ -115,9 +111,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 9007
@@ -135,9 +129,9 @@
       ],
       "rotation": [
         0.0,
+        0.3665012267242973,
         0.0,
-        0.0,
-        1.0
+        0.9304175679820246
       ],
       "scale": [
         1.0,
@@ -221,9 +215,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 2958865923717254,
@@ -252,9 +244,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 3503240097300411
@@ -277,7 +267,7 @@
         0.0,
         -1.0,
         0.0,
-        0.00000019
+        1.9e-07
       ],
       "scale": [
         0.99999994,
@@ -299,9 +289,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3509314173856592,
@@ -314,7 +302,7 @@
       ],
       "rotation": [
         0.0,
-        -0.00000001,
+        -1e-08,
         -0.0,
         1.0
       ],
@@ -338,22 +326,20 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 175578901665612,
       "name": "PEITO.001",
       "is_active": true,
       "position": [
-        0.00000001,
+        1e-08,
         0.41634822,
-        -0.00000001
+        -1e-08
       ],
       "rotation": [
         0.0,
-        -0.00000001,
+        -1e-08,
         -0.0,
         1.0
       ],
@@ -389,9 +375,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3667384306104167,
@@ -404,7 +388,7 @@
       ],
       "rotation": [
         0.0,
-        -0.00000001,
+        -1e-08,
         -0.0,
         1.0
       ],
@@ -428,22 +412,20 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1998228507397402,
       "name": "CABECA_end",
       "is_active": true,
       "position": [
-        0.00000001,
+        1e-08,
         0.55999953,
-        0.00000001
+        1e-08
       ],
       "rotation": [
         0.0,
-        -0.00000001,
+        -1e-08,
         -0.0,
         1.0
       ],
@@ -459,12 +441,8 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     },
     {
       "local_id": 4318837238333866,
@@ -501,18 +479,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1953523341653836,
       "name": "BRACO_L",
       "is_active": true,
       "position": [
-        -0.00000001,
+        -1e-08,
         0.39055994,
-        -0.00000018
+        -1.8e-07
       ],
       "rotation": [
         -0.59828418,
@@ -540,18 +516,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1786805514719421,
       "name": "ANTBRACO_L",
       "is_active": true,
       "position": [
-        -0.00000003,
+        -3e-08,
         0.68817502,
-        -0.00000051
+        -5.1e-07
       ],
       "rotation": [
         -0.00611952,
@@ -579,23 +553,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3268608733402468,
       "name": "MAO_L",
       "is_active": true,
       "position": [
-        -0.00000012,
+        -1.2e-07,
         0.73296398,
-        0.00000013
+        1.3e-07
       ],
       "rotation": [
         -0.03402336,
-        0.00000004,
-        0.00000011,
+        4e-08,
+        1.1e-07,
         0.99942106
       ],
       "scale": [
@@ -618,23 +590,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3782853825173679,
       "name": "DEDOS_L",
       "is_active": true,
       "position": [
-        0.00000008,
+        8e-08,
         0.18480557,
-        -0.00000003
+        -3e-08
       ],
       "rotation": [
         -0.15679318,
-        -0.00000002,
-        -0.00000007,
+        -2e-08,
+        -7e-08,
         0.9876315
       ],
       "scale": [
@@ -657,23 +627,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3920018314052849,
       "name": "DEDOS_L_end",
       "is_active": true,
       "position": [
-        -0.00000002,
+        -2e-08,
         0.18320721,
-        0.00000001
+        1e-08
       ],
       "rotation": [
-        -0.00000003,
-        0.00000001,
-        -0.00000008,
+        -3e-08,
+        1e-08,
+        -8e-08,
         1.0
       ],
       "scale": [
@@ -688,12 +656,8 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     },
     {
       "local_id": 3222242664743148,
@@ -730,18 +694,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3403779635335155,
       "name": "BRACO_R",
       "is_active": true,
       "position": [
-        -0.00000003,
+        -3e-08,
         0.39055991,
-        -0.00000021
+        -2.1e-07
       ],
       "rotation": [
         -0.59828389,
@@ -769,18 +731,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 564226369294413,
       "name": "ANTBRACO_R",
       "is_active": true,
       "position": [
-        0.00000001,
+        1e-08,
         0.68817461,
-        0.00000011
+        1.1e-07
       ],
       "rotation": [
         -0.00611953,
@@ -808,23 +768,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1096990302385705,
       "name": "MAO_R",
       "is_active": true,
       "position": [
-        0.00000006,
+        6e-08,
         0.73296291,
-        0.00000004
+        4e-08
       ],
       "rotation": [
         -0.03402334,
-        0.00000023,
-        0.00000015,
+        2.3e-07,
+        1.5e-07,
         0.99942106
       ],
       "scale": [
@@ -847,23 +805,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 2619644301061041,
       "name": "DEDOS_R",
       "is_active": true,
       "position": [
-        -0.00000002,
+        -2e-08,
         0.18480472,
-        0.00000001
+        1e-08
       ],
       "rotation": [
         -0.15679297,
-        -0.00000007,
-        -0.00000019,
+        -7e-08,
+        -1.9e-07,
         0.9876315
       ],
       "scale": [
@@ -886,23 +842,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3831227675350980,
       "name": "DEDOS_R_end",
       "is_active": true,
       "position": [
-        -0.00000003,
+        -3e-08,
         0.1832076,
-        -0.00000003
+        -3e-08
       ],
       "rotation": [
-        -0.00000017,
-        -0.00000015,
-        0.00000007,
+        -1.7e-07,
+        -1.5e-07,
+        7e-08,
         1.0
       ],
       "scale": [
@@ -917,19 +871,15 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     },
     {
       "local_id": 2116881087647826,
       "name": "BARRIGA.001",
       "is_active": true,
       "position": [
-        0.00000006,
+        6e-08,
         2.27425337,
         0.0
       ],
@@ -959,18 +909,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3530399991087366,
       "name": "PERNA_L",
       "is_active": true,
       "position": [
-        0.00000013,
+        1.3e-07,
         0.22509387,
-        0.00000021
+        2.1e-07
       ],
       "rotation": [
         -0.49039206,
@@ -998,18 +946,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 1941283802569292,
       "name": "ANTPERNA_L",
       "is_active": true,
       "position": [
-        -0.00000009,
+        -9e-08,
         0.98727298,
-        0.00000069
+        6.9e-07
       ],
       "rotation": [
         0.05134723,
@@ -1037,9 +983,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3531598380619615,
@@ -1048,7 +992,7 @@
       "position": [
         0.0,
         0.99796075,
-        -0.00000006
+        -6e-08
       ],
       "rotation": [
         0.31569064,
@@ -1076,18 +1020,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 2554886553769243,
       "name": "PED_L",
       "is_active": true,
       "position": [
-        -0.00000004,
+        -4e-08,
         0.35693148,
-        -0.00000009
+        -9e-08
       ],
       "rotation": [
         0.30946678,
@@ -1115,23 +1057,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3509238391678086,
       "name": "PED_L_end",
       "is_active": true,
       "position": [
-        0.00000003,
+        3e-08,
         0.22790346,
-        0.00000001
+        1e-08
       ],
       "rotation": [
-        0.00000005,
+        5e-08,
         -0.0,
-        -0.00000004,
+        -4e-08,
         1.0
       ],
       "scale": [
@@ -1146,12 +1086,8 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     },
     {
       "local_id": 3751402770854640,
@@ -1160,7 +1096,7 @@
       "position": [
         0.0,
         2.27425361,
-        -0.00000001
+        -1e-08
       ],
       "rotation": [
         -0.76875311,
@@ -1188,18 +1124,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 2413202369440507,
       "name": "PERNA_R",
       "is_active": true,
       "position": [
-        0.00000037,
+        3.7e-07,
         0.22509372,
-        -0.00000016
+        -1.6e-07
       ],
       "rotation": [
         -0.47629711,
@@ -1227,18 +1161,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 899946112986882,
       "name": "ANTPERNA_R",
       "is_active": true,
       "position": [
-        -0.00000012,
+        -1.2e-07,
         0.98727298,
-        -0.00000077
+        -7.7e-07
       ],
       "rotation": [
         0.05134623,
@@ -1266,16 +1198,14 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 70284313913785,
       "name": "PE_R",
       "is_active": true,
       "position": [
-        0.00000001,
+        1e-08,
         0.99796027,
         0.0
       ],
@@ -1305,18 +1235,16 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 4470537281344422,
       "name": "PED_R",
       "is_active": true,
       "position": [
-        -0.00000001,
+        -1e-08,
         0.35693133,
-        -0.00000003
+        -3e-08
       ],
       "rotation": [
         0.3094669,
@@ -1344,23 +1272,21 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 3144809086332428,
       "name": "PED_R_end",
       "is_active": true,
       "position": [
-        0.00000008,
+        8e-08,
         0.22790356,
-        -0.00000001
+        -1e-08
       ],
       "rotation": [
-        0.00000003,
+        3e-08,
         0.0,
-        0.00000001,
+        1e-08,
         1.0
       ],
       "scale": [
@@ -1375,20 +1301,12 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
-      "components": [
-
-      ]
+      "children": [],
+      "components": []
     }
   ],
-  "nested_scenes": [
-
-  ],
-  "breadcrumbs": [
-
-  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
   "components": [
     {
       "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
@@ -1421,7 +1339,7 @@
         0.89999998,
         1.0
       ],
-      "inner_spot_angle": 21.7999992399999982,
+      "inner_spot_angle": 21.79999924,
       "intensity": 1.39999998,
       "range": 10.0,
       "spot_angle": 30.0,
@@ -1436,35 +1354,91 @@
       "clip": "5de156d5-15c4-4934-be74-b8cc41fec86b",
       "layers": [
         {
-          "clips": [
-            "5de156d5-15c4-4934-be74-b8cc41fec86b",
-            "f58c6c38-0a96-4b18-854a-55927e85cf98",
-            "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812",
-            "c60585bf-dae8-4c4d-a808-4d6368f8b16f",
-            "37f0c3bd-e9a1-44dd-a634-aad5d0a34404",
-            "d1bc6f35-1375-4846-9b3c-d45ecfe11276",
-            "adbbe30c-fad0-48d9-adcf-7873dfc4b4d7",
-            "1002bc62-5880-465a-8e26-cc362abc22d9",
-            "6413bbd7-72ab-4c56-b1d9-d57de61ee3e3"
+          "entries": [
+            {
+              "id": 1,
+              "parent": 0,
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "name": "Locomotion",
+              "variant": {
+                "__type_guid": "8c5e2a06-1f3d-4b78-a9e4-05c6b2d94871",
+                "value": 0.0
+              }
+            },
+            {
+              "id": 2,
+              "parent": 1,
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "name": "Walk",
+              "variant": {
+                "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
+                "clip": "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812"
+              }
+            },
+            {
+              "id": 3,
+              "parent": 1,
+              "pos": [
+                1.0,
+                0.0
+              ],
+              "name": "Run",
+              "variant": {
+                "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
+                "clip": "c60585bf-dae8-4c4d-a808-4d6368f8b16f"
+              }
+            },
+            {
+              "id": 4,
+              "parent": 0,
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "name": "Idle",
+              "variant": {
+                "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
+                "clip": "5de156d5-15c4-4934-be74-b8cc41fec86b"
+              }
+            },
+            {
+              "id": 5,
+              "parent": 0,
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "name": "Jump",
+              "variant": {
+                "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
+                "clip": "37f0c3bd-e9a1-44dd-a634-aad5d0a34404"
+              }
+            },
+            {
+              "id": 6,
+              "parent": 0,
+              "pos": [
+                0.0,
+                0.0
+              ],
+              "name": "Death",
+              "variant": {
+                "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
+                "clip": "1002bc62-5880-465a-8e26-cc362abc22d9"
+              }
+            }
           ]
         }
       ],
-      "play_automatically": true,
+      "play_automatically": false,
       "speed": 1.0,
       "wrap_mode": 2
-    },
-    {
-      "__type": "b1d4c0ae-3f57-4a62-9d18-6c0e5a79f284",
-      "base": {
-        "enabled": true,
-        "local_id": 9002
-      },
-      "death": "1002bc62-5880-465a-8e26-cc362abc22d9",
-      "fade": 0.25,
-      "idle": "5de156d5-15c4-4934-be74-b8cc41fec86b",
-      "jump": "37f0c3bd-e9a1-44dd-a634-aad5d0a34404",
-      "run": "c60585bf-dae8-4c4d-a808-4d6368f8b16f",
-      "walk": "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812"
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
@@ -1489,6 +1463,16 @@
       "root_bone": {
         "local_id": 0
       }
+    },
+    {
+      "__type": "b1d4c0ae-3f57-4a62-9d18-6c0e5a79f284",
+      "base": {
+        "enabled": true,
+        "local_id": 9002
+      },
+      "fade": 0.25,
+      "blend": 0.0,
+      "auto_start": true
     }
   ]
 }

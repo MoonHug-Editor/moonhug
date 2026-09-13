@@ -307,52 +307,27 @@ Scrubbing degrades by domain. This is inherent, not a design flaw:
 
 ## What Animation becomes
 
-v1: a thin wrapper that builds a one-clip graph on play and drives its time.
-Same fields, same inspector, same `play_automatically`, zero behavior change
-for existing scenes. **This is the compatibility test for the whole refactor:
-if `Animation` cannot be expressed trivially on the graph, the graph is
-wrong.**
+`Animation` is the first driver built on this layer and the compatibility test
+for it: if a clip player cannot be expressed trivially on the graph, the graph
+is wrong. It owns every stateful thing — state times, fade progress, the queue,
+the authored state tree — and restructures its graph between evaluations, while
+the graph stays a pure evaluator.
 
-Then it grows the rest of Unity's legacy Animation API — this is a MUST, not
-an extension: `cross_fade(clip, duration)`, queued play
-(Unity's `CrossFadeQueued`), stop, and LAYERS (legacy Unity's
-`state.layer`). The component owns all playback state: the fade list, the
-queue, per-layer states, removal of finished one-shots from its graph.
+The graph it builds: one layer mixer at the root, one mixer per layer, one node
+per playing state as leaves. A blend state is a mixer of its own holding all its
+children, so it fades as one thing.
 
-Layers are AUTHORED on the component: a serialized `layers` list, each entry
-holding the clips gameplay plays on it, edited in the inspector like any
-array field. The list is declarative — nothing in it starts by itself (only
-`clip` + `play_automatically` auto-starts) — and its job is layer
-resolution: play/cross_fade called without a layer argument look the clip up
-here, so call sites stay `animation_cross_fade(a, clip_guid)`. An explicit
-layer argument overrides, and unlisted clips land on layer 0.
+See **docs/AnimationComponent.md** for the component itself: states, blends,
+fades, layers, the API, its inspector tree and the Animation window.
 
-**THE MILESTONE: an Animation component with N layers, each holding M clips,
-producing a PlayableGraph with working cross-fade and interruption.** That is
-legacy Unity Animation's feature set, completed. The graph it builds per
-component: one layer mixer at the root, one mixer per layer, one clip node
-per playing state as leaves. A Once clip that finishes holds its final pose —
-when every state is done the component stops evaluating and freezes, matching
-the pre-graph runtime.
-
-**Interruption is smooth by construction, not by snapshot.** Fades are
-weight-continuous per state: cross-fading to C mid A→B just retargets — every
-state fades to 0 FROM ITS CURRENT WEIGHT while C fades in, so the blended
-pose never jumps. Weights on a layer sum to 1 whenever they summed to 1
-before the call (each old weight w becomes w * (1-k) as the new state reaches
-k), and the first fade-in on an empty layer blends up from the default pose.
-This is Unity's legacy weight model rather than Mecanim's transition model —
-the transition model is what needs frozen-pose snapshots to avoid pops, and
-is why Animancer earns its price and Spine grew `holdPrevious`.
-
-- `animation_tick` stays `@(update)` per-frame (Unity animates in Update, not
+- `animation_tick` stays `@(update)` per-frame (animation belongs in Update, not
   FixedUpdate — docs/FixedTick.md keeps view-side work per-frame).
 - The graph stays agnostic about who advances time. That property is what the
   editor scrubber rides on.
 - The component owns its graph, pooled like everything else.
 
-The tween system (docs/Tweens.md) stays untouched — procedural, not
-clip-based, a different concept.
+The tween system (docs/Tweens.md) stays untouched — procedural, not clip-based,
+a different concept.
 
 ## Non-goals
 

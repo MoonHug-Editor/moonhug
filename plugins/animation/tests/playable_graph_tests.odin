@@ -383,8 +383,8 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	// argument — the component resolves the layer from the authored data.
 	// Layer 0 must stay untouched.
 	append(&a.layers, anim.Animation_Layer{}, anim.Animation_Layer{})
-	a.layers[1].clips = make([dynamic]engine.Asset_GUID)
-	append(&a.layers[1].clips, c_guid)
+	a.layers[1].entries = make([dynamic]anim.Anim_Entry)
+	append(&a.layers[1].entries, anim.Anim_Entry{id = 1, variant = anim.Clip_Entry{clip = c_guid}})
 	anim.animation_cross_fade(a, c_guid, 1.0)
 	anim.animation_tick(0.5)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))

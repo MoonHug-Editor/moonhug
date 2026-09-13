@@ -1,7 +1,7 @@
 package animation_editor
 
 // Animation window — clip authoring on the PlayableGraph scrub path
-// (docs/PlayableGraph.md steps 5+6): scrub preview plus dopesheet and curve
+// (docs/AnimationComponent.md steps 5+6): scrub preview plus dopesheet and curve
 // editing for the clips on the selected object's Animation component.
 //
 // PREVIEW (step 5): never leaks into saved data. Each frame:
@@ -284,14 +284,17 @@ _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	return {}, nil
 }
 
-// Every clip reachable from the component: the default clip plus the authored
-// layers' clips, deduplicated, temp-allocated.
+// Every clip reachable from the component: the default clip plus every clip
+// entry on every layer, blend children included — a clip inside a blend is
+// still a clip you edit here. Deduplicated, temp-allocated.
 @(private = "file")
 _pv_clips :: proc(a: ^anim.Animation) -> []engine.Asset_GUID {
 	clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
 	_pv_clips_add(&clips, a.clip)
 	for &l in a.layers {
-		for c in l.clips do _pv_clips_add(&clips, c)
+		for &e in l.entries {
+			if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_clips_add(&clips, c.clip)
+		}
 	}
 	return clips[:]
 }
@@ -1556,7 +1559,9 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 	_pv_sig_mix(&sig, a.clip)
 	for &l in a.layers {
 		sig ~= 0x9e37
-		for c in l.clips do _pv_sig_mix(&sig, c)
+		for &e in l.entries {
+			if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_sig_mix(&sig, c.clip)
+		}
 	}
 	return sig
 }
@@ -1590,7 +1595,9 @@ _pv_build_graph :: proc(a: ^anim.Animation) {
 		clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
 		if li == 0 do _pv_clips_add(&clips, a.clip)
 		if li < len(a.layers) {
-			for c in a.layers[li].clips do _pv_clips_add(&clips, c)
+			for &e in a.layers[li].entries {
+				if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_clips_add(&clips, c.clip)
+			}
 		}
 		for c in clips {
 			node := anim.playable_add(&_pv.graph, anim.Clip_Playable{clip = c})

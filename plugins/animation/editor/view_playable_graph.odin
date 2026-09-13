@@ -89,20 +89,30 @@ _pg_authored_shape :: proc(a: ^anim.Animation) -> ^anim.Playable_Graph {
 		mixer := anim.playable_add(g, anim.Mixer_Playable{})
 		anim.playable_connect(g, anim.graph_output(g).root, mixer, 1)
 
-		clips := make([dynamic]engine.Asset_GUID)
-		if li == 0 && a.clip != {} do append(&clips, a.clip)
-		if li < len(a.layers) {
-			for c in a.layers[li].clips {
-				if c == {} do continue
-				dup := false
-				for e in clips {
-					if e == c do dup = true
-				}
-				if !dup do append(&clips, c)
-			}
+		if li == 0 && a.clip != {} {
+			anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = a.clip}), 1)
 		}
-		for c in clips {
-			anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = c}), 1)
+		if li >= len(a.layers) do continue
+
+		// Top-level entries only — a blend owns its children, so they hang off
+		// its own mixer the way they would if it were playing.
+		for &e in a.layers[li].entries {
+			if e.parent != 0 do continue
+			switch v in e.variant {
+			case anim.Clip_Entry:
+				if v.clip == {} do continue
+				if li == 0 && v.clip == a.clip do continue // already in as the default
+				anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = v.clip}), 1)
+			case anim.Blend1D_Entry:
+				blend := anim.playable_add(g, anim.Mixer_Playable{})
+				anim.playable_connect(g, mixer, blend, 1)
+				for &kid in a.layers[li].entries {
+					if kid.parent != e.id do continue
+					ce, is_clip := kid.variant.(anim.Clip_Entry)
+					if !is_clip || ce.clip == {} do continue
+					anim.playable_connect(g, blend, anim.playable_add(g, anim.Clip_Playable{clip = ce.clip}), 1)
+				}
+			}
 		}
 	}
 	return g

@@ -1,14 +1,14 @@
 package animation_sample
 
-// Sample gameplay for the Animation component (docs/PlayableGraph.md).
+// Sample gameplay for the Animation component (docs/AnimationComponent.md).
 //
-// assets/animation_demo.scene is the imported character: a skinned mesh posed
-// by SkinnedMeshRenderer, its armature, and an Animation component holding the
-// nine clips that came with the model. This script sits next to that component
-// and cross-fades between them from inspector buttons.
+// assets/animation_demo.scene is the imported character: a skinned mesh posed by
+// SkinnedMeshRenderer, its armature, and an Animation component whose layer holds
+// the states this script plays — Idle, Jump and Death as single clips, and
+// Locomotion as a Blend1D over walk and run.
 //
-// The clips are FIELDS rather than names in code, so the scene decides which
-// clip each button plays and the inspector can repoint one without a rebuild.
+// States are played BY NAME, so the scene decides what each button means and a
+// clip can be repointed in the inspector without touching this file.
 
 import "core:log"
 import "moonhug:engine"
@@ -22,16 +22,20 @@ AnimationDemo :: struct {
 	// Cross-fade duration the buttons ask for, in seconds. 0 cuts.
 	fade: f32,
 
-	// What each button plays.
-	idle:  engine.Asset_GUID `ext:"anim"`,
-	walk:  engine.Asset_GUID `ext:"anim"`,
-	run:   engine.Asset_GUID `ext:"anim"`,
-	jump:  engine.Asset_GUID `ext:"anim"`,
-	death: engine.Asset_GUID `ext:"anim"`,
+	// Walk at 0, run at 1, pushed into the Locomotion blend — the value a
+	// character controller would feed from its own speed.
+	blend: f32 `decor:range(0, 1)`,
+
+	// Start on the blend rather than on the component's own `clip`, so the
+	// scene opens showing the thing it exists to show.
+	auto_start: bool,
+	started:    bool `json:"-" inspect:"-"`,
+	pushed:     f32 `json:"-" inspect:"-"`, // last value written to the blend
 }
 
 reset_AnimationDemo :: proc(d: ^AnimationDemo) {
 	d.fade = 0.25
+	d.auto_start = true
 }
 
 // The Animation component this script drives. Both sit on the same object, the
@@ -43,45 +47,69 @@ _ad_animation :: proc(d: ^AnimationDemo) -> ^anim.Animation {
 }
 
 @(private = "file")
-_ad_play :: proc(d: ^AnimationDemo, clip: engine.Asset_GUID, what: string) {
+_ad_play :: proc(d: ^AnimationDemo, name: string) {
 	a := _ad_animation(d)
 	if a == nil {
 		log.warn("[AnimationDemo] no Animation component on this object")
 		return
 	}
-	if engine.asset_guid_is_empty(clip) {
-		log.warnf("[AnimationDemo] the %s clip is unset", what)
+	id, ok := anim.animation_find(a, name)
+	if !ok {
+		log.warnf("[AnimationDemo] no state named %q", name)
 		return
 	}
-	anim.animation_cross_fade(a, clip, d.fade)
+	anim.animation_play_entry(a, id, d.fade)
 }
 
 @(inspector_button={label="Idle", row=0})
 ad_idle :: proc(d: ^AnimationDemo) {
-	_ad_play(d, d.idle, "idle")
+	_ad_play(d, "Idle")
 }
 
-@(inspector_button={label="Walk", row=0})
-ad_walk :: proc(d: ^AnimationDemo) {
-	_ad_play(d, d.walk, "walk")
-}
-
-@(inspector_button={label="Run", row=0})
-ad_run :: proc(d: ^AnimationDemo) {
-	_ad_play(d, d.run, "run")
+@(inspector_button={label="Locomotion", row=0})
+ad_locomotion :: proc(d: ^AnimationDemo) {
+	_ad_play(d, "Locomotion")
 }
 
 @(inspector_button={label="Jump", row=-1})
 ad_jump :: proc(d: ^AnimationDemo) {
-	_ad_play(d, d.jump, "jump")
+	_ad_play(d, "Jump")
 }
 
 @(inspector_button={label="Death", row=-1})
 ad_death :: proc(d: ^AnimationDemo) {
-	_ad_play(d, d.death, "death")
+	_ad_play(d, "Death")
 }
 
 @(inspector_button={label="Stop", row=-2})
 ad_stop :: proc(d: ^AnimationDemo) {
 	if a := _ad_animation(d); a != nil do anim.animation_stop(a)
+}
+
+// Feed the blend. Writing it every frame rather than on change is deliberate:
+// it is the shape real gameplay has, where the value comes from a speed that
+// changes continuously.
+@(update)
+animation_demo_tick :: proc(dt: f32) {
+	w := engine.ctx_world()
+	it := engine.pool_iterator(animation_demos(w))
+	for d, _ in engine.pool_next(&it) {
+		if !d.enabled do continue
+		a := _ad_animation(d)
+		if a == nil do continue
+		id, ok := anim.animation_find(a, "Locomotion")
+		if !ok do continue
+		// Only on change. A real controller writes its speed every frame, but
+		// the blend's value is one field shared with the inspector, so a demo
+		// that wrote unconditionally would drag the States tree slider back to
+		// this one every frame and look broken.
+		if d.blend != d.pushed {
+			d.pushed = d.blend
+			anim.animation_blend_set(a, id, d.blend)
+		}
+		if !d.started && d.auto_start {
+			d.started = true
+			anim.animation_play_entry(a, id, 0) // a cut: nothing to fade from
+		}
+	}
 }

@@ -688,27 +688,26 @@ epsilon that rots. The real answer is probably for a Once timeline to hold its
 last evaluated pose explicitly, which wants the same decision as "what does a
 finished state do" in the play API.
 
-### Changing a component's fields breaks scene round-trip — unexplained
+### Changing a component's fields broke scene round-trip — fixed
 
-Adding one `bool` tagged `json:"-" inspect:"-"` to `PlayableDirector` makes
-`scene_file_unmarshal` fail with `Invalid_Data`, so a simulate Stop cannot
-restore its snapshot (`test_sim_start_stop_round_trip`). Reproducible, and
-narrowed this far:
+Adding one field to almost any component made `scene_file_unmarshal` fail with
+`Invalid_Data`, so a simulate Stop could not restore its snapshot
+(`test_sim_start_stop_round_trip`). It looked like a serialization problem and
+was sidestepped twice: the director's parking flag became
+`director_register_drive_check`, and a sample's cycle timer moved to file-scope
+statics.
 
-- the field's NAME and POSITION in the struct do not matter,
-- every `*_generated.odin` file is byte-identical with and without it,
-- the same field added to `Animation` is harmless,
-- the scene being round-tripped contains no PlayableDirector at all.
+It was not serialization. The snapshot BYTES were corrupt — a guid string
+truncated mid-write, with valid JSON on both sides of it. `simulate._snapshot`
+is a global that held the buffer `scene_serialize` returned, which comes from
+`context.allocator`, so unrelated allocation churn between Start and Stop
+rewrote bytes inside it. Changing any component's fields shifted that churn
+enough to move the corruption in or out of the snapshot, which is why it looked
+like the FIELDS mattered.
 
-It is NOT specific to that component. Adding two fields and removing one on
-`TimelineAnimatorDemo` — a sample component that appears in no test scene —
-broke the same test the same way, and reverting the field change fixed it.
-Two components out of the three tried reproduce it.
-
-Sidestepped twice rather than fixed: the parking flag became
-`director_register_drive_check`, and the sample's cycle timer moved to
-file-scope statics. Both avoid touching a component's fields. The underlying
-fault is still there and will bite the next person who adds one.
+Fixed by pinning the snapshot and the scene path to the default allocator
+(`simulate.odin`). The user-visible bug it was causing: Stop reporting "snapshot
+restore failed" and leaving the scene in its simulated state.
 
 One more symptom worth knowing: the failing test leaves
 `moonhug/tests/fixtures/_test_sim_set_kept.scene` behind, and that stale file

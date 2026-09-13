@@ -571,7 +571,6 @@ _find_by_name :: proc(tc: ^common.TestCtx, h: engine.Transform_Handle, name: str
 
 // Read a .anim and its .meta straight into the clip cache, bypassing the asset
 // DB. Only for tests that load shipped sample assets by path.
-@(private = "file")
 _load_sample_clip :: proc(path: string) {
 	meta_path := strings.concatenate({path, ".meta"}, context.temp_allocator)
 	meta_bytes, merr := os.read_entire_file(meta_path, context.temp_allocator)

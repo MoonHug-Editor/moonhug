@@ -7,9 +7,16 @@ import "core:io"
 import "core:mem"
 import engine ".."
 
+// Every guid in a scene goes through here, so it runs thousands of times per
+// save. The string is built on the STACK rather than in the temp allocator: a
+// scene marshal is a long call chain that temp-allocates freely underneath this
+// one, and a guid string handed out of a temp arena that gets reset mid-marshal
+// writes garbage into the middle of the file — a corrupt scene that only fails
+// on the next load.
 asset_guid_marshal :: proc(w: io.Stream, v: any, opt: ^json.Marshal_Options) -> json.Marshal_Error {
 	guid := (cast(^engine.Asset_GUID)v.data)^
-	s := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
+	buf: [uuid.EXPECTED_LENGTH]byte
+	s := uuid.to_string(uuid.Identifier(guid), buf[:])
 	if err := json.marshal_to_writer(w, s, opt); err != nil do return err
 	return nil
 }
