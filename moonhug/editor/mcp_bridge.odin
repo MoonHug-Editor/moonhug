@@ -463,16 +463,22 @@ mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 @(mcp_tool={
-	description="Ping an asset in the project view — reveal its folder and flash it, the same as clicking a scene title or a Ref field value. Navigating the project view also renders thumbnails for the revealed folder.",
+	description="Ping an asset in the project view — reveal its folder and flash it, the same as clicking a scene title or a Ref field value. Navigating the project view also renders thumbnails for the revealed folder. Pass select to also make it the active file, which is what Assets menu actions like Extract Assets act on.",
 	param_path="string:Asset path relative to the project root",
+	param_select="boolean:Also select it, so Assets menu actions target it",
 })
 mcp_tool_ping_asset :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	path, ok := params["path"].(json.String)
 	if !ok do return _mcp_fail("bad_path", "path required")
 	guid, gok := engine.asset_db_get_guid(string(path))
 	if !gok do return _mcp_fail("not_found", "no asset at %q", string(path))
-	engine.inspector_request_ping_asset(engine.Asset_GUID(guid))
-	return _mcp_ok(struct{ pinged: string }{pinged = string(path)})
+	select, _ := params["select"].(json.Boolean)
+	if select {
+		engine.inspector_request_select_asset(engine.Asset_GUID(guid))
+	} else {
+		engine.inspector_request_ping_asset(engine.Asset_GUID(guid))
+	}
+	return _mcp_ok(struct{ pinged: string, selected: bool }{pinged = string(path), selected = bool(select)})
 }
 
 @(mcp_tool={

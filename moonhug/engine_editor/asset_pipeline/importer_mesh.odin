@@ -50,10 +50,7 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
 
     // Whole model: every mesh node baked through its world transform, buckets
     // ordered by material first-appearance across the file.
-    whole := _Mesh_Build{
-        vertices = make([dynamic]gfx.Vertex, context.temp_allocator),
-        buckets  = make([dynamic]_Submesh_Bucket, context.temp_allocator),
-    }
+    whole := _mesh_build_make()
     for &node in data.nodes {
         if node.mesh == nil do continue
 
@@ -61,7 +58,10 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
         cgltf.node_transform_world(&node, &world_flat[0])
         world := transmute(matrix[4, 4]f32)world_flat // cgltf is column-major, same as Odin
 
-        if !_mesh_append_mesh(&whole, node.mesh, world, scale, source_path) do return false
+        // One skin per artifact. A file with several skinned characters is a
+        // scene, not a mesh — extract it and each character gets its own.
+        if node.skin != nil do _mesh_take_skin(&whole, node.skin, scale)
+        if !_mesh_append_mesh(&whole, node.mesh, world, scale, source_path, node.skin) do return false
     }
 
     total_indices := 0
@@ -82,11 +82,18 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
     // transform) — a MeshFilter part reference draws it under its own
     // transform. Meshes several nodes share import once.
     for &mesh, mi in data.meshes {
-        part := _Mesh_Build{
-            vertices = make([dynamic]gfx.Vertex, context.temp_allocator),
-            buckets  = make([dynamic]_Submesh_Bucket, context.temp_allocator),
+        part := _mesh_build_make()
+        // The skin belongs to the NODE, not the mesh, so find a node using
+        // this mesh to learn whether it is skinned.
+        part_skin: ^cgltf.skin
+        for &node in data.nodes {
+            if node.mesh == &mesh && node.skin != nil {
+                part_skin = node.skin
+                break
+            }
         }
-        if !_mesh_append_mesh(&part, &mesh, linalg.MATRIX4F32_IDENTITY, scale, source_path) do return false
+        if part_skin != nil do _mesh_take_skin(&part, part_skin, scale)
+        if !_mesh_append_mesh(&part, &mesh, linalg.MATRIX4F32_IDENTITY, scale, source_path, part_skin) do return false
         if len(part.vertices) == 0 do continue
         part_path := engine.mesh_part_artifact_path(artifact_path, mi, context.temp_allocator)
         if !_mesh_write_artifact(part_path, &part) do return false
@@ -119,6 +126,45 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
     return true
 }
 
+@(private = "file")
+_mesh_build_make :: proc() -> _Mesh_Build {
+    return {
+        vertices      = make([dynamic]gfx.Vertex, context.temp_allocator),
+        buckets       = make([dynamic]_Submesh_Bucket, context.temp_allocator),
+        skin          = nil, // stays nil until a skin is taken
+        joint_names   = make([dynamic]string, context.temp_allocator),
+        inverse_binds = make([dynamic]matrix[4, 4]f32, context.temp_allocator),
+    }
+}
+
+// Record a skin's joints on the build: their names, which is how a joint finds
+// its transform at bind time, and their inverse bind matrices.
+//
+// The translation part of an inverse bind matrix is in the file's units, so it
+// scales with the import scale exactly as vertex positions do. Missing it puts
+// every joint at the wrong offset and the mesh turns inside out.
+@(private = "file")
+_mesh_take_skin :: proc(build: ^_Mesh_Build, skin: ^cgltf.skin, scale: f32) {
+    if build.skin != nil do return // first skin wins
+    build.skin = make([dynamic]engine.Mesh_Skin_Vertex, context.temp_allocator)
+    for joint, ji in skin.joints {
+        name := joint.name != nil ? string(joint.name) : ""
+        if name == "" do name = fmt.tprintf("joint_%d", ji)
+        append(&build.joint_names, name)
+
+        m := linalg.MATRIX4F32_IDENTITY
+        if skin.inverse_bind_matrices != nil {
+            flat: [16]f32
+            _ = cgltf.accessor_read_float(skin.inverse_bind_matrices, uint(ji), &flat[0], 16)
+            m = transmute(matrix[4, 4]f32)flat
+        }
+        m[0, 3] *= scale
+        m[1, 3] *= scale
+        m[2, 3] *= scale
+        append(&build.inverse_binds, m)
+    }
+}
+
 // One material-keyed index bucket (nil = "no material") of a build in flight.
 _Submesh_Bucket :: struct {
     material: ^cgltf.material,
@@ -128,12 +174,20 @@ _Submesh_Bucket :: struct {
 _Mesh_Build :: struct {
     vertices: [dynamic]gfx.Vertex,
     buckets:  [dynamic]_Submesh_Bucket,
+
+    // Skin, filled only when a primitive carries JOINTS_0/WEIGHTS_0. `skin`
+    // stays parallel to `vertices` — a build that mixes skinned and static
+    // primitives pads the static ones with a zero binding rather than going
+    // ragged.
+    skin:          [dynamic]engine.Mesh_Skin_Vertex,
+    joint_names:   [dynamic]string,
+    inverse_binds: [dynamic]matrix[4, 4]f32,
 }
 
 // Append every triangle primitive of one glTF mesh through `world`, bucketing
 // indices by material (first appearance within this build). Returns false
 // only on hard import errors (Draco).
-_mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[4, 4]f32, scale: f32, source_path: string) -> bool {
+_mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[4, 4]f32, scale: f32, source_path: string, skin: ^cgltf.skin = nil) -> bool {
     // Rotation/scale part for normals (unlit shader — plain rotation is
     // fine; inverse-transpose only matters once lighting lands).
     normal_mat := matrix[3, 3]f32{
@@ -152,7 +206,7 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
             return false
         }
 
-        pos_acc, norm_acc, uv_acc: ^cgltf.accessor
+        pos_acc, norm_acc, uv_acc, joint_acc, weight_acc: ^cgltf.accessor
         for &attr in prim.attributes {
             #partial switch attr.type {
             case .position:
@@ -161,9 +215,16 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
                 if norm_acc == nil do norm_acc = attr.data
             case .texcoord:
                 if uv_acc == nil && attr.index == 0 do uv_acc = attr.data
+            case .joints:
+                if joint_acc == nil && attr.index == 0 do joint_acc = attr.data
+            case .weights:
+                if weight_acc == nil && attr.index == 0 do weight_acc = attr.data
             }
         }
         if pos_acc == nil do continue
+        // A skin needs both halves. One without the other is a broken export,
+        // and treating it as skinned would collapse the mesh to the origin.
+        skinned := skin != nil && joint_acc != nil && weight_acc != nil
 
         bucket: ^_Submesh_Bucket
         for &b in build.buckets {
@@ -189,13 +250,21 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
 
             p: [3]f32
             _ = cgltf.accessor_read_float(pos_acc, vi, &p[0], 3)
-            p4 := world * [4]f32{p.x, p.y, p.z, 1}
-            v.position = p4.xyz * scale
+            if skinned {
+                // Skinned vertices stay in BIND space: the skin matrices put
+                // them in world space at draw time, and glTF ignores the mesh
+                // node's own transform for a skinned mesh. Baking `world` in
+                // would apply it twice.
+                v.position = p * scale
+            } else {
+                p4 := world * [4]f32{p.x, p.y, p.z, 1}
+                v.position = p4.xyz * scale
+            }
 
             if norm_acc != nil && vi < uint(norm_acc.count) {
                 n: [3]f32
                 _ = cgltf.accessor_read_float(norm_acc, vi, &n[0], 3)
-                v.normal = linalg.normalize0(normal_mat * n)
+                v.normal = skinned ? linalg.normalize0(n) : linalg.normalize0(normal_mat * n)
             } else {
                 v.normal = {0, 0, 1} // flat fallback; fine for unlit
             }
@@ -203,6 +272,29 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
                 _ = cgltf.accessor_read_float(uv_acc, vi, &v.uv[0], 2)
             }
             append(&build.vertices, v)
+
+            // Keep `skin` parallel to `vertices` whenever this build has any
+            // skinned primitive at all.
+            if skin == nil do continue
+            sv: engine.Mesh_Skin_Vertex
+            if skinned {
+                // Joint indices are integers, read as integers. Blender writes
+                // them as UNSIGNED_BYTE and other exporters as UNSIGNED_SHORT,
+                // which accessor_read_uint widens for both.
+                j: [4]u32
+                _ = cgltf.accessor_read_uint(joint_acc, vi, &j[0], 4)
+                _ = cgltf.accessor_read_float(weight_acc, vi, &sv.weights[0], 4)
+                for k in 0 ..< 4 do sv.joints[k] = u16(j[k])
+                // A zero-weight vertex would vanish at the origin. Pin it to
+                // its first joint instead, which is what a rigid vertex means.
+                if sv.weights[0] + sv.weights[1] + sv.weights[2] + sv.weights[3] <= 0 {
+                    sv.weights[0] = 1
+                }
+            }
+            for len(build.skin) < len(build.vertices) - 1 {
+                append(&build.skin, engine.Mesh_Skin_Vertex{weights = {1, 0, 0, 0}})
+            }
+            append(&build.skin, sv)
         }
 
         first_index := len(bucket.indices)
@@ -246,12 +338,30 @@ _mesh_write_artifact :: proc(path: string, build: ^_Mesh_Build) -> bool {
     }
     if len(vertices) == 0 || len(indices) == 0 do return false
 
+    // A skin that never reached every vertex would desync the parallel array,
+    // so pad it before the counts are written.
+    skinned := len(build.joint_names) > 0 && build.skin != nil
+    if skinned {
+        for len(build.skin) < len(vertices) {
+            append(&build.skin, engine.Mesh_Skin_Vertex{weights = {1, 0, 0, 0}})
+        }
+    }
+    name_blob := make([dynamic]u8, 0, 256, context.temp_allocator)
+    if skinned {
+        for n in build.joint_names {
+            append(&name_blob, ..transmute([]u8)n)
+            append(&name_blob, 0)
+        }
+    }
+
     header := engine.Mesh_Artifact_Header{
         vertex_count  = u32(len(vertices)),
         index_count   = u32(len(indices)),
         submesh_count = u32(len(submeshes)),
         aabb_min      = vertices[0].position,
         aabb_max      = vertices[0].position,
+        joint_count      = skinned ? u32(len(build.joint_names)) : 0,
+        joint_name_bytes = skinned ? u32(len(name_blob)) : 0,
     }
     copy(header.magic[:], engine.MESH_ARTIFACT_MAGIC)
     for &v in vertices {
@@ -268,6 +378,13 @@ _mesh_write_artifact :: proc(path: string, build: ^_Mesh_Build) -> bool {
     append(&blob, ..index_bytes)
     submesh_bytes := ([^]u8)(raw_data(submeshes))[:len(submeshes) * size_of(engine.Mesh_Submesh)]
     append(&blob, ..submesh_bytes)
+    if skinned {
+        skin_bytes := ([^]u8)(raw_data(build.skin))[:len(build.skin) * size_of(engine.Mesh_Skin_Vertex)]
+        append(&blob, ..skin_bytes)
+        ib_bytes := ([^]u8)(raw_data(build.inverse_binds))[:len(build.inverse_binds) * size_of(matrix[4, 4]f32)]
+        append(&blob, ..ib_bytes)
+        append(&blob, ..name_blob[:])
+    }
 
     if write_err := os.write_entire_file(path, blob[:]); write_err != nil {
         fmt.printf("[Pipeline] Failed to write mesh artifact: %s\n", path)

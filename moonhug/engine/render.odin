@@ -90,6 +90,10 @@ Draw_Mesh :: struct {
 	part:      i32, // resolved FILE-ORDER part: 0 = whole model, N = glTF mesh N-1 (mesh_filter_part)
 	materials: []Asset_GUID, // per-submesh; view into the renderer's array (frame lifetime). missing/empty = white unlit
 	model:     matrix[4, 4]f32,
+	// Posed vertices from a SkinnedMeshRenderer, drawn instead of the asset's
+	// own buffers. The asset is still loaded, for its submesh ranges and
+	// materials. nil for a static draw.
+	skinned:   ^gfx.Mesh,
 }
 
 Render_Command :: struct {
@@ -206,6 +210,7 @@ render_register_collector :: proc(c: Render_Collector) {
 // built-in collectors, then every registered one.
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
 	_collect_mesh_renderers(view, out)
+	skinned_mesh_collect(out, view) // component_SkinnedMeshRenderer.odin
 	canvas_collect_graphics(view, out) // the canvas tree (ui_canvas.odin)
 	for c in _render_collectors do c(view, out)
 }
@@ -315,11 +320,12 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 		case Draw_Mesh:
 			mesh, ok := mesh_load(d.mesh, d.part)
 			if !ok do continue
+			gpu := d.skinned != nil ? d.skinned^ : mesh.gpu
 			for sub, i in mesh.submeshes {
 				mat_guid: Asset_GUID
 				if i < len(d.materials) do mat_guid = d.materials[i]
 				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid)
-				gfx.draw_mesh(mesh.gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
+				gfx.draw_mesh(gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
 			}
 		}
 	}

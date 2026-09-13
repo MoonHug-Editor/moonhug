@@ -1359,6 +1359,11 @@ draw_project_view :: proc() {
             _project_reveal_path(path, select = false)
         }
     }
+    if sel_guid, ok := engine.inspector_take_pending_select_asset(); ok {
+        if path, pok := engine.asset_db_get_path(uuid.Identifier(sel_guid)); pok {
+            _project_reveal_path(path, select = true)
+        }
+    }
     if open_guid, ok := engine.inspector_take_pending_open_asset(); ok {
         if path, pok := engine.asset_db_get_path(uuid.Identifier(open_guid)); pok {
             _project_reveal_path(path, select = true)

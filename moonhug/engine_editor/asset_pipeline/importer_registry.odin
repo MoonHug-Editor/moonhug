@@ -81,7 +81,7 @@ register_builtin_importers :: proc() {
 	})
 	importer_register({
 		name         = "mesh",
-		version      = 1,
+		version      = 2, // 2: artifacts carry skin data
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,

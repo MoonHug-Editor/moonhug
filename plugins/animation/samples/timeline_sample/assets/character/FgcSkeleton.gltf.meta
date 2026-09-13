@@ -1,0 +1,42 @@
+{
+  "guid": "9ece5665-e5d7-4770-8b35-b2204db21480",
+  "importer": "mesh",
+  "settings": {
+    "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "parts": [
+      {
+        "id": 1,
+        "name": "SkeletonMesh.005"
+      },
+      {
+        "id": 2,
+        "name": "SkeletonMesh.004"
+      },
+      {
+        "id": 3,
+        "name": "SkeletonMesh.001"
+      },
+      {
+        "id": 4,
+        "name": "SkeletonMesh.002"
+      },
+      {
+        "id": 5,
+        "name": "SkeletonMesh.008"
+      },
+      {
+        "id": 6,
+        "name": "SkeletonMesh"
+      },
+      {
+        "id": 7,
+        "name": "SkeletonMesh.006"
+      },
+      {
+        "id": 8,
+        "name": "SkeletonMesh.007"
+      }
+    ],
+    "scale": 1.0000000000000000
+  }
+}

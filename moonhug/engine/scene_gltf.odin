@@ -94,15 +94,28 @@ _scene_gltf_add_node :: proc(data: ^cgltf.data, node: ^cgltf.node, parent: Trans
 		parts := mesh_parts(mesh_guid)
 		id := mi < len(parts) ? parts[mi].id : Local_ID(mi + 1)
 		mf.mesh = PPtr{guid = mesh_guid, local_id = id}
-		_, mr_raw := transform_add_comp(tH, .MeshRenderer)
-		mr := cast(^MeshRenderer)mr_raw
+
+		// A node with a SKIN gets the skinned renderer: its mesh is stored in
+		// bind space and only means anything once joint transforms deform it.
+		// A static MeshRenderer would draw the bind pose forever.
+		materials := make([dynamic]Asset_GUID, context.temp_allocator)
 		for m in gltf_mesh_materials(node.mesh) {
 			g: Asset_GUID
 			if m != nil {
 				mi := int(cgltf.material_index(data, m))
 				if mi < len(material_guids) do g = material_guids[mi]
 			}
-			append(&mr.materials, g)
+			append(&materials, g)
+		}
+		if node.skin != nil {
+			_, smr_raw := transform_add_comp(tH, .SkinnedMeshRenderer)
+			smr := cast(^SkinnedMeshRenderer)smr_raw
+			if smr.materials == nil do smr.materials = make([dynamic]Asset_GUID)
+			append(&smr.materials, ..materials[:])
+		} else {
+			_, mr_raw := transform_add_comp(tH, .MeshRenderer)
+			mr := cast(^MeshRenderer)mr_raw
+			append(&mr.materials, ..materials[:])
 		}
 	}
 

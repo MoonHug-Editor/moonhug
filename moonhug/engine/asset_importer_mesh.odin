@@ -61,6 +61,22 @@ Mesh_Artifact_Header :: struct #packed {
     submesh_count: u32,
     aabb_min:      [3]f32,
     aabb_max:      [3]f32,
+    // Skin, 0 when the mesh is not skinned. When set there is one
+    // Mesh_Skin_Vertex per vertex, then `joint_count` inverse bind matrices,
+    // then `joint_name_bytes` of NUL-separated joint names.
+    joint_count:      u32,
+    joint_name_bytes: u32,
+}
+
+// One vertex's skin binding, up to four joints as glTF allows.
+//
+// `joints` indexes the SKIN's joint list, NOT glTF node indices. Reading them
+// as node indices is the classic "my character explodes" bug. Blender writes
+// them as UNSIGNED_BYTE, other exporters as UNSIGNED_SHORT, so the importer
+// widens both to u16.
+Mesh_Skin_Vertex :: struct #packed {
+    joints:  [4]u16,
+    weights: [4]f32,
 }
 
 // An index range drawn with one material (materials[i] on the renderer).
@@ -87,7 +103,7 @@ _mesh_artifact_parse :: proc(blob: []u8) -> (header: Mesh_Artifact_Header, verti
     vert_bytes := int(header.vertex_count) * size_of(gfx.Vertex)
     index_bytes := int(header.index_count) * size_of(u32)
     submesh_bytes := int(header.submesh_count) * size_of(Mesh_Submesh)
-    if len(blob) != size_of(Mesh_Artifact_Header) + vert_bytes + index_bytes + submesh_bytes do return
+    if len(blob) != size_of(Mesh_Artifact_Header) + vert_bytes + index_bytes + submesh_bytes + _mesh_skin_bytes(header) do return
 
     verts_ptr := raw_data(blob[size_of(Mesh_Artifact_Header):])
     vertices = ([^]gfx.Vertex)(verts_ptr)[:header.vertex_count]
@@ -101,4 +117,49 @@ _mesh_artifact_parse :: proc(blob: []u8) -> (header: Mesh_Artifact_Header, verti
         if int(s.first_index) + int(s.index_count) > int(header.index_count) do return {}, nil, nil, nil, false
     }
     return header, vertices, indices, submeshes, true
+}
+
+// Bytes the skin sections occupy after the submesh table. Zero when the mesh
+// carries no skin.
+_mesh_skin_bytes :: proc(h: Mesh_Artifact_Header) -> int {
+    if h.joint_count == 0 do return 0
+    return int(h.vertex_count) * size_of(Mesh_Skin_Vertex) +
+           int(h.joint_count) * size_of(matrix[4, 4]f32) +
+           int(h.joint_name_bytes)
+}
+
+// The skin sections of an artifact: per-vertex bindings, the inverse bind
+// matrix per joint, and the joint names as one NUL-separated blob. All three
+// point INTO `blob`, so they live as long as it does.
+//
+// Names are how a joint finds its transform at bind time — the same name-path
+// resolution animation channels use — rather than a node index, which would
+// only be meaningful inside the file it came from.
+_mesh_artifact_parse_skin :: proc(blob: []u8, header: Mesh_Artifact_Header) -> (skin: []Mesh_Skin_Vertex, inverse_binds: []matrix[4, 4]f32, names: []u8, ok: bool) {
+    if header.joint_count == 0 do return nil, nil, nil, false
+    off := size_of(Mesh_Artifact_Header) +
+        int(header.vertex_count) * size_of(gfx.Vertex) +
+        int(header.index_count) * size_of(u32) +
+        int(header.submesh_count) * size_of(Mesh_Submesh)
+    if off + _mesh_skin_bytes(header) > len(blob) do return nil, nil, nil, false
+
+    skin = ([^]Mesh_Skin_Vertex)(raw_data(blob[off:]))[:header.vertex_count]
+    off += int(header.vertex_count) * size_of(Mesh_Skin_Vertex)
+    inverse_binds = ([^]matrix[4, 4]f32)(raw_data(blob[off:]))[:header.joint_count]
+    off += int(header.joint_count) * size_of(matrix[4, 4]f32)
+    names = blob[off:off + int(header.joint_name_bytes)]
+    return skin, inverse_binds, names, true
+}
+
+// Split the NUL-separated joint name blob. Slices point into `names`.
+mesh_joint_names :: proc(names: []u8, count: int, alloc := context.allocator) -> []string {
+    out := make([]string, count, alloc)
+    start, n := 0, 0
+    for i in 0 ..< len(names) {
+        if names[i] != 0 do continue
+        if n < count do out[n] = string(names[start:i])
+        n += 1
+        start = i + 1
+    }
+    return out
 }

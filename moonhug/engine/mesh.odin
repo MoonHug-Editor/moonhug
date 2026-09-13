@@ -20,6 +20,21 @@ Mesh :: struct {
     aabb_max:  [3]f32,
     submeshes: []Mesh_Submesh, // per-material index ranges (owned, ≥1)
     gpu:       gfx.Mesh,
+
+    // Skin, empty when the mesh is not skinned. All owned by the cache entry.
+    //
+    // `bind_vertices` is the artifact's vertex data kept on the CPU: a skinned
+    // draw rebuilds vertices from it every frame, so it cannot be dropped after
+    // upload the way a static mesh's can.
+    skin:          []Mesh_Skin_Vertex,       // parallel to bind_vertices
+    bind_vertices: []gfx.Vertex,             // bind-pose positions and normals
+    bind_indices:  []u32,                    // the skinned buffer draws these
+    inverse_binds: []matrix[4, 4]f32,        // one per joint
+    joint_names:   []string,                 // one per joint, for binding
+}
+
+mesh_is_skinned :: proc(m: ^Mesh) -> bool {
+    return m != nil && len(m.joint_names) > 0
 }
 
 Mesh_Key :: struct {
@@ -50,6 +65,12 @@ mesh_cache_shutdown :: proc() {
     for _, &mesh in mesh_cache {
         gfx.mesh_destroy(&mesh.gpu)
         delete(mesh.submeshes)
+        delete(mesh.skin)
+        delete(mesh.bind_vertices)
+        delete(mesh.bind_indices)
+        delete(mesh.inverse_binds)
+        for n in mesh.joint_names do delete(n)
+        delete(mesh.joint_names)
     }
     delete(mesh_cache)
     delete(_mesh_failed)
@@ -185,13 +206,29 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
 
     owned_submeshes := make([]Mesh_Submesh, len(submeshes))
     copy(owned_submeshes, submeshes)
-    mesh_cache[key] = Mesh{
+    m := Mesh{
         guid      = guid,
         aabb_min  = header.aabb_min,
         aabb_max  = header.aabb_max,
         submeshes = owned_submeshes,
         gpu       = gpu,
     }
+    // A skinned mesh keeps its bind pose on the CPU: every frame rebuilds
+    // vertices from it, so unlike a static mesh the data outlives the upload.
+    if skin, inv, names, sok := _mesh_artifact_parse_skin(blob, header); sok {
+        m.skin = make([]Mesh_Skin_Vertex, len(skin))
+        copy(m.skin, skin)
+        m.bind_vertices = make([]gfx.Vertex, len(vertices))
+        copy(m.bind_vertices, vertices)
+        m.bind_indices = make([]u32, len(indices))
+        copy(m.bind_indices, indices)
+        m.inverse_binds = make([]matrix[4, 4]f32, len(inv))
+        copy(m.inverse_binds, inv)
+        split := mesh_joint_names(names, len(inv), context.temp_allocator)
+        m.joint_names = make([]string, len(split))
+        for n, i in split do m.joint_names[i] = strings.clone(n)
+    }
+    mesh_cache[key] = m
     return &mesh_cache[key], true
 }
 
@@ -208,6 +245,12 @@ mesh_unload :: proc(guid: Asset_GUID) {
         mesh := &mesh_cache[key]
         gfx.mesh_destroy(&mesh.gpu)
         delete(mesh.submeshes)
+        delete(mesh.skin)
+        delete(mesh.bind_vertices)
+        delete(mesh.bind_indices)
+        delete(mesh.inverse_binds)
+        for n in mesh.joint_names do delete(n)
+        delete(mesh.joint_names)
         delete_key(&mesh_cache, key)
     }
 
@@ -218,4 +261,10 @@ mesh_unload :: proc(guid: Asset_GUID) {
     for key in failed {
         delete_key(&_mesh_failed, key)
     }
+}
+
+// The indices a skinned draw builds its own buffer against — the asset's own,
+// kept on the CPU alongside the bind pose.
+_mesh_indices_of :: proc(m: ^Mesh) -> []u32 {
+    return m != nil ? m.bind_indices : nil
 }

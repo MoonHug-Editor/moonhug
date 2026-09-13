@@ -53,6 +53,7 @@ InspectorState :: struct {
     // Same channel shape for assets: the project view navigates to and
     // selects the asset ("ping"). {} means "no pending request".
     pending_ping_asset:    Asset_GUID,
+    pending_select_asset:  Asset_GUID,
     // Open request: the project view navigates AND activates the asset
     // (opens scenes, loads .asset into the inspector).
     pending_open_asset:    Asset_GUID,
@@ -166,6 +167,25 @@ inspector_take_pending_ping :: proc() -> (Transform_Handle, bool) {
     if tH == {} do return {}, false
     uc.inspector.pending_ping_tH = {}
     return tH, true
+}
+
+// Posts a cross-package "select this asset" request: reveal it AND make it the
+// project view's active file, without the activation an open would do. Menu
+// actions that read `projectViewData.selectedFile` — Extract Assets, Create
+// Scene Variant — act on it afterwards.
+inspector_request_select_asset :: proc(guid: Asset_GUID) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.pending_select_asset = guid
+}
+
+inspector_take_pending_select_asset :: proc() -> (Asset_GUID, bool) {
+    uc := ctx_get()
+    if uc == nil do return {}, false
+    guid := uc.inspector.pending_select_asset
+    if guid == (Asset_GUID{}) do return {}, false
+    uc.inspector.pending_select_asset = {}
+    return guid, true
 }
 
 // Posts a cross-package "ping this asset" request; the project view consumes

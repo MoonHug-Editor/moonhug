@@ -499,6 +499,76 @@ mesh_create :: proc(vertices: []Vertex, indices: []u32) -> Mesh {
 	return Mesh{vbuf = vbuf, ibuf = ibuf, index_count = u32(len(indices))}
 }
 
+// A mesh whose VERTICES are rewritten every frame and whose indices never
+// change — what CPU skinning needs: the index buffer is the bind mesh's, the
+// vertex buffer is the posed result.
+//
+// The transfer buffer is kept rather than recreated per update, and both it and
+// the vertex buffer cycle on write so the GPU is never asked to read a buffer
+// that is being overwritten.
+Dynamic_Mesh :: struct {
+	using mesh:    Mesh,
+	transfer:      ^sdl.GPUTransferBuffer,
+	vertex_capacity: u32,
+}
+
+dynamic_mesh_create :: proc(vertex_capacity: int, indices: []u32) -> Dynamic_Mesh {
+	vsize := u32(vertex_capacity * size_of(Vertex))
+	isize := u32(len(indices) * size_of(u32))
+	if vsize == 0 || isize == 0 do return {}
+
+	vbuf := sdl.CreateGPUBuffer(_gfx.device, {usage = {.VERTEX}, size = vsize})
+	ibuf := sdl.CreateGPUBuffer(_gfx.device, {usage = {.INDEX}, size = isize})
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .UPLOAD, size = max(vsize, isize)})
+	if vbuf == nil || ibuf == nil || transfer == nil {
+		if vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, vbuf)
+		if ibuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, ibuf)
+		if transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
+		return {}
+	}
+
+	// Indices go up once.
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, transfer, false)
+	runtime.mem_copy_non_overlapping(mapped, raw_data(indices), int(isize))
+	sdl.UnmapGPUTransferBuffer(_gfx.device, transfer)
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	copy_pass := sdl.BeginGPUCopyPass(cmd)
+	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = transfer}, {buffer = ibuf, size = isize}, false)
+	sdl.EndGPUCopyPass(copy_pass)
+	_ = sdl.SubmitGPUCommandBuffer(cmd)
+
+	return Dynamic_Mesh{
+		mesh = Mesh{vbuf = vbuf, ibuf = ibuf, index_count = u32(len(indices))},
+		transfer = transfer,
+		vertex_capacity = u32(vertex_capacity),
+	}
+}
+
+// Replace the vertex data. Silently does nothing past the capacity the mesh was
+// created with, which is the bind mesh's vertex count and never changes.
+dynamic_mesh_update :: proc(m: ^Dynamic_Mesh, vertices: []Vertex) {
+	if m.vbuf == nil || m.transfer == nil do return
+	n := min(u32(len(vertices)), m.vertex_capacity)
+	if n == 0 do return
+	vsize := n * size_of(Vertex)
+
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, m.transfer, true) // cycle
+	runtime.mem_copy_non_overlapping(mapped, raw_data(vertices), int(vsize))
+	sdl.UnmapGPUTransferBuffer(_gfx.device, m.transfer)
+
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	copy_pass := sdl.BeginGPUCopyPass(cmd)
+	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = m.transfer}, {buffer = m.vbuf, size = vsize}, true)
+	sdl.EndGPUCopyPass(copy_pass)
+	_ = sdl.SubmitGPUCommandBuffer(cmd)
+}
+
+dynamic_mesh_destroy :: proc(m: ^Dynamic_Mesh) {
+	if m.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, m.transfer)
+	mesh_destroy(&m.mesh)
+	m^ = {}
+}
+
 mesh_destroy :: proc(mesh: ^Mesh) {
 	if mesh.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, mesh.vbuf)
 	if mesh.ibuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, mesh.ibuf)
