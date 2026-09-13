@@ -1,3 +1,16 @@
+## [0.96.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.95.0...v0.96.0) (2026-09-13)
+
+### Features
+
+* animation component UX ([d33e72e](https://github.com/MoonHug-Editor/moonhug/commit/d33e72ef931c4669549201d97c6b88f31afa6ed8))
+* animation sample ([b87f450](https://github.com/MoonHug-Editor/moonhug/commit/b87f4505429cba8cfcb140a80f6c9316d93a4aeb))
+* playable graph now has multiple outputs ([f622fd1](https://github.com/MoonHug-Editor/moonhug/commit/f622fd16363f3d4f77c60428a485a440385ff949))
+* scene discard ([cc88022](https://github.com/MoonHug-Editor/moonhug/commit/cc88022d61b95efcdb47f080aaf287f8f5db9afc))
+
+### Bug Fixes
+
+* improve sequencer UX ([1b79daf](https://github.com/MoonHug-Editor/moonhug/commit/1b79daff5bf7036906327642b584f5edf10579e6))
+
 ## [0.95.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.94.0...v0.95.0) (2026-09-10)
 
 ### Features
