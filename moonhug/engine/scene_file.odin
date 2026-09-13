@@ -1685,6 +1685,32 @@ scene_reload_in_place_bytes :: proc(target: ^Scene, data: []byte, guid: Asset_GU
 	return s
 }
 
+// Reload ONE loaded scene from a file, leaving other loaded scenes alone: the
+// path counterpart of scene_reload_in_place_bytes. The scene keeps its slot and
+// its active status, so the hierarchy shows it where it was.
+//
+// Returns nil if the file does not parse or the load fails, with the target
+// already destroyed. The Scene POINTER does not survive either way — callers
+// re-read the returned one.
+scene_reload_in_place_path :: proc(target: ^Scene, path: string) -> ^Scene {
+	// Callers pass target.path, which scene_destroy frees partway through the
+	// reload. Copy it first so every read below is of live memory.
+	p := strings.clone(path, context.temp_allocator)
+	sf, ok := scene_file_load(p)
+	if !ok do return nil
+	defer scene_file_destroy(&sf)
+
+	scene_guid: Asset_GUID = {}
+	if g, gok := asset_db_get_guid(p); gok {
+		scene_guid = Asset_GUID(g)
+	}
+	s := scene_reload_in_place(target, &sf, scene_guid)
+	if s != nil {
+		s.path = strings.clone(p)
+	}
+	return s
+}
+
 scene_load_additive_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil

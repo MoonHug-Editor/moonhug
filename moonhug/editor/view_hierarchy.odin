@@ -179,6 +179,28 @@ _hierarchy_exit_scene :: proc() {
 	engine.sm_scene_set_active(scene)
 }
 
+// Discard: reload one scene from its file, dropping every unsaved edit. Enter
+// and Exit above replace the whole set of loaded scenes; this replaces ONE in
+// place, so its slot, its active status and every other loaded scene stay as
+// they are.
+//
+// Undo records go first: they address objects the reload destroys, so an undo
+// step replayed afterwards would work on dead handles. The selection is dropped
+// for the same reason.
+//
+// The Scene POINTER does not survive — callers must not touch `scene` after
+// this returns.
+@(private)
+_hierarchy_discard_scene :: proc(scene: ^engine.Scene) {
+	if scene == nil || len(scene.path) == 0 do return
+	path := strings.clone(scene.path, context.temp_allocator)
+	undo.purge_scene(undo.get(), scene)
+	sel_scene_clear()
+	if engine.scene_reload_in_place_path(scene, path) == nil {
+		fmt.printf("[Editor] Discard: %s did not reload — the scene is gone from the hierarchy\n", path)
+	}
+}
+
 @(private)
 _save_as_buf: [512]byte
 @(private)
@@ -372,6 +394,23 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 			mem.copy(&_save_as_buf[0], raw_data(path_bytes), copy_len)
 		}
 		im.Separator()
+		// Discard and Unload both destroy the Scene the rest of this proc
+		// reads, so each returns immediately after acting.
+		//
+		// Discard is off for a scene with no path — never saved, so there is
+		// no file to read back — and while a simulation runs, which holds the
+		// scene pointer it restores on Stop.
+		im.BeginDisabled(len(scene.path) == 0 || engine.application_is_playing())
+		discard := im.MenuItem("Discard")
+		im.EndDisabled()
+		if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
+			im.SetTooltip("Reload this scene from its file, dropping unsaved changes")
+		}
+		if discard {
+			_hierarchy_discard_scene(scene)
+			im.EndPopup()
+			return
+		}
 		if im.MenuItem("Unload") {
 			undo.purge_scene(undo.get(), scene)
 			engine.sm_scene_unload(scene)

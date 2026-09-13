@@ -353,3 +353,94 @@ test_nested_instance_keeps_asset_pptr_part_ids :: proc(t: ^testing.T) {
 	}
 	testing.expect_value(t, checked, 2)
 }
+
+@(private = "file")
+_find_in_scene_by_name :: proc(w: ^engine.World, s: ^engine.Scene, name: string) -> ^engine.Transform {
+	it := engine.pool_iterator(&w.transforms)
+	for tr, _ in engine.pool_next(&it) {
+		if tr.scene != s do continue
+		if tr.name == name do return tr
+	}
+	return nil
+}
+
+@(private = "file")
+_scene_slot :: proc(s: ^engine.Scene) -> int {
+	sm := engine.ctx_scene_manager()
+	for i in 0 ..< sm.count {
+		if sm.loaded[i] == s do return i
+	}
+	return -1
+}
+
+// Discard in the hierarchy's scene menu: reload ONE scene from its file. Two
+// things make it more than a load. The target's `path` is freed partway through
+// the reload, and the caller has nothing else to name the file with — reading it
+// after that point is a use-after-free, so the proc must copy it first. And the
+// scene must come back in its own slot, or the hierarchy reorders itself and a
+// sibling scene loses its active status.
+@(test)
+test_reload_in_place_path_discards_edits_and_keeps_the_slot :: proc(t: ^testing.T) {
+	dir := "moonhug/tests/_test_discard"
+	os.make_directory(dir)
+	d_path := strings.concatenate({dir, "/d.scene"}, context.temp_allocator)
+	d_meta := strings.concatenate({dir, "/d.scene.meta"}, context.temp_allocator)
+	defer { os.remove(d_path); os.remove(d_meta); os.remove(dir) }
+
+	d_json := `{
+  "root": 1,
+  "next_local_id": 20,
+  "transforms": [
+    {
+      "local_id": 1, "name": "DRoot", "is_active": true,
+      "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [{"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}],
+      "components": []
+    },
+    {
+      "local_id": 2, "name": "DChild", "is_active": true,
+      "position": [1,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+      "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+      "children": [], "components": []
+    }
+  ],
+  "nested_scenes": [], "breadcrumbs": [], "components": []
+}`
+	testing.expect(t, os.write_entire_file(d_path, transmute([]byte)d_json) == nil)
+
+	engine.asset_db_init(dir)
+	defer engine.asset_db_shutdown()
+	defer engine.scene_lib_shutdown()
+
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	d := engine.scene_load_additive_path(d_path)
+	testing.expect(t, d != nil, "d.scene loads")
+	if d == nil do return
+	slot_before := _scene_slot(d)
+
+	child := _find_in_scene_by_name(&tc.world, d, "DChild")
+	testing.expect(t, child != nil, "the scene has its child")
+	if child == nil do return
+	child.position = {9, 9, 9}
+
+	// Exactly the editor's call: the scene's own path, which the reload frees.
+	reloaded := engine.scene_reload_in_place_path(d, d.path)
+	testing.expect(t, reloaded != nil, "the scene reloads from its file")
+	if reloaded == nil do return
+	defer engine.sm_scene_destroy_or_unload(reloaded)
+
+	back := _find_in_scene_by_name(&tc.world, reloaded, "DChild")
+	testing.expect(t, back != nil, "the child is back")
+	if back == nil do return
+	testing.expectf(t, back.position == {1, 0, 0},
+		"the unsaved edit is gone, got %v", back.position)
+	testing.expect_value(t, reloaded.path, d_path)
+	testing.expect_value(t, _scene_slot(reloaded), slot_before)
+	testing.expect(t, engine.sm_scene_is_loaded(tc.scene), "the other loaded scene is untouched")
+}
