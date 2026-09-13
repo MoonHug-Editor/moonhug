@@ -147,13 +147,10 @@ Everything under `library/` is derived data — never a source of truth, safe to
 ## TODO
 - export ships EVERY registered asset — trim it: dependency closure from the boot scene (guid harvest over serialized JSON, transitive, plus an explicit always-ship list for dynamically loaded assets), and ship one representation per asset instead of source + artifact both (needs importers to declare whether runtime reads source or artifact)
 
-- skinned mesh: there is no skinning at all — no `JOINTS_0`/`WEIGHTS_0` read at
-  import, no skin matrices, no skinned renderer. A rigged glTF loads as a mesh
-  that never deforms, so every animated character has to be a rig of separate
-  meshes moved by transform channels. Needed before any real character asset is
-  usable, and the sample character waits on it
-  (packages/timeline_sample/assets/timeline_animator_demo.scene is a box rig for
-  exactly this reason)
+- skinned mesh runs on the CPU: `SkinnedMeshRenderer` rebuilds the bind-pose
+  vertices through the skin matrices every frame and uploads them. GPU skinning
+  — a bone matrix buffer plus a vertex shader variant — is the drop-in
+  replacement that makes many characters on screen affordable
 
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 

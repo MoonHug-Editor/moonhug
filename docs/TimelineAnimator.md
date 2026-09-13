@@ -423,9 +423,10 @@ TimelineAnimatorDemo    TimelineAnimator + TimelineAnimatorDemo (sample script)
 ```
 
 Everything is the built-in cube with the default material, so the scene needs no
-imported asset and is visible the moment it opens. It is a box RIG rather than a
-character because the engine has no skinning — a rigged mesh would load and never
-deform (README TODO).
+imported asset and is visible the moment it opens. A box RIG also keeps the
+demo readable: every channel moves a transform you can see in the hierarchy.
+The `animation_sample` package is the skinned counterpart — an imported
+character posed by the same clip path through `SkinnedMeshRenderer`.
 
 Two things the sample exists to show, neither of which a single-clip player can
 do:

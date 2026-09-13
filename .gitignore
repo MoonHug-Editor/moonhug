@@ -2,6 +2,9 @@ bin/**
 .idea/**
 
 *.bin
+# glTF buffers are source assets, not build output - a .gltf without its .bin
+# is unusable, so sample and project assets keep theirs.
+!**/assets/**/*.bin
 
 *.o
 *.a
