@@ -77,6 +77,7 @@ _sq: struct {
 	playing:   bool, // auto-advance the playhead
 	time:      f32,
 	pps:       f32, // pixels per second (zoom)
+	pan:       f32, // seconds scrolled off the canvas's left edge
 	wheel:     widgets.Wheel_Lock, // one wheel axis per gesture
 	sel_track: int,
 	sel_clip:  int,
@@ -370,24 +371,22 @@ sequencer_window_draw :: proc() {
 	dur_changed := im.DragFloat("##sq_dur", &d.duration, 0.05, 0, 0, "len %.2f")
 	im.SetItemTooltip("Duration (0 = last clip end)")
 	_sq_field_undo(dcomp_owned.handle, "Timeline Duration", dur_changed)
+	// Save sits at the right end, away from the transport — the same place the
+	// animation window puts it. The timeline is scene content, so Save saves
+	// the owner's scene.
 	im.SameLine()
 	{
-		// The timeline is scene content: Save saves the owner's scene.
 		scene: ^engine.Scene
 		if t := engine.pool_get(&w.transforms, engine.Handle(owner)); t != nil do scene = t.scene
+		label: cstring = "Save Scene"
+		right := im.GetContentRegionAvail().x -
+			(im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2)
+		if right > 0 do im.SetCursorPosX(im.GetCursorPosX() + right)
 		im.BeginDisabled(scene == nil || len(scene.path) == 0)
-		if im.Button("Save Scene") {
+		if im.Button(label) {
 			if scene != nil do engine.scene_save(scene, scene.path)
 		}
 		im.EndDisabled()
-	}
-	im.SameLine()
-	if im.SmallButton("Add Track") do im.OpenPopup("sq_add_track")
-	if im.BeginPopup("sq_add_track") {
-		for desc in seq.track_kinds() {
-			if im.Selectable(fmt.ctprintf("%s", desc.label)) do _sq_add_track(owner, desc)
-		}
-		im.EndPopup()
 	}
 
 	// --- Legend | canvas | inspector, splitters between --------------------------
@@ -397,7 +396,22 @@ sequencer_window_draw :: proc() {
 	_sq.legend_w = clamp(_sq.legend_w, _SQ_MIN_PANE, max(total_w - 2 * _SQ_MIN_PANE, _SQ_MIN_PANE))
 	_sq.inspector_w = clamp(_sq.inspector_w, _SQ_MIN_PANE, max(total_w - _sq.legend_w - _SQ_MIN_PANE, _SQ_MIN_PANE))
 
-	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, body_h}) {
+	// Tracks and clips scroll TOGETHER. One outer child owns the vertical
+	// scroll and both panes inside it are sized to the full row height, so
+	// neither scrolls on its own — separate scroll areas let a row's name and
+	// its clips drift apart, which is the bug this shape removes. The
+	// animation window is built the same way, one surface for both halves.
+	rows_pane_w := max(total_w - _sq.inspector_w - widgets.SPLITTER_SIZE, _SQ_MIN_PANE)
+	// Add Track hangs below the last row, so its band is part of the scrollable
+	// content. Sizing the panes to rows_h alone puts it past the scroll extent,
+	// where a short pane can never reach it.
+	add_track_h := im.GetFrameHeight() + 12
+	pane_h := max(rows_h + add_track_h, body_h)
+	{
+		im.BeginChild("##sq_rows", im.Vec2{rows_pane_w, body_h}, {}, {.NoScrollWithMouse})
+		defer im.EndChild()
+
+	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, pane_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
 		// Rows are pinned to the SAME grid the canvas draws: row i starts at
 		// ruler + i*_SQ_ROW_H from the pane top. Stacking widget heights and
 		// padding the remainder drifts, because a row's widgets do not add up
@@ -495,23 +509,48 @@ sequencer_window_draw :: proc() {
 			undo.record_delete(remove_track)
 			_sq.sel_track = -1
 		}
+
+		// Add Track closes the list, under the last row — where the animation
+		// window puts Add Property. Fixed width and centered, as the
+		// inspector's Add Component is, narrowed when the pane is thinner.
+		add_w := min(f32(220), max(_sq.legend_w - 8, 1))
+		im.SetCursorScreenPos(im.Vec2{
+			im.GetWindowPos().x + (_sq.legend_w - add_w) * 0.5,
+			legend_top + _SQ_RULER_H + f32(len(tracks)) * _SQ_ROW_H + 4,
+		})
+		if im.Button("Add Track", im.Vec2{add_w, 0}) do im.OpenPopup("sq_add_track")
+		if im.BeginPopup("sq_add_track") {
+			for desc in seq.track_kinds() {
+				if im.Selectable(fmt.ctprintf("%s", desc.label)) do _sq_add_track(owner, desc)
+			}
+			im.EndPopup()
+		}
 	}
 	im.EndChild()
 	im.SameLine(0, 0)
 	_sq_splitter("##sq_split_l", true, &_sq.legend_w, total_w - _sq.inspector_w)
 	im.SameLine(0, 0)
 
-	canvas_pane_w := max(total_w - _sq.legend_w - _sq.inspector_w - 2 * widgets.SPLITTER_SIZE, _SQ_MIN_PANE)
-	// NoScrollWithMouse: the wheel is the zoom here, so imgui must not also
-	// scroll the child with it. Horizontal panning is applied explicitly
-	// below, and the scrollbar still drags.
-	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, body_h}, {}, {.HorizontalScrollbar, .NoScrollWithMouse}) {
+	canvas_pane_w := max(rows_pane_w - _sq.legend_w - widgets.SPLITTER_SIZE, _SQ_MIN_PANE)
+	// No scrollbars of its own: the parent scrolls vertically for both panes,
+	// and horizontal panning is a VALUE (_sq.pan) rather than imgui's scroll.
+	// A horizontal scrollbar here would sit at the bottom of a pane taller than
+	// the view and scroll out of reach.
+	if im.BeginChild("##sq_canvas", im.Vec2{canvas_pane_w, pane_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
 		dl := im.GetWindowDrawList()
-		origin := im.GetCursorScreenPos()
 		// Room past the timeline end: clips may live beyond it (a computed
 		// duration then grows to include them, an authored one clips them).
-		canvas_w := max((dur + _SQ_TAIL_S) * _sq.pps + 120, im.GetContentRegionAvail().x)
-		im.Dummy(im.Vec2{canvas_w, rows_h}) // reserves the scrollable extent
+		canvas_w := max((dur + _SQ_TAIL_S) * _sq.pps + 120, canvas_pane_w)
+		// Clamped to what is actually off-screen, so panning never runs into
+		// empty space.
+		_sq.pan = clamp(_sq.pan, 0, max(canvas_w - canvas_pane_w, 0) / _sq.pps)
+		origin := im.GetCursorScreenPos()
+		clip_min := origin
+		clip_max := im.Vec2{origin.x + canvas_pane_w, origin.y + pane_h}
+		origin.x -= _sq.pan * _sq.pps
+		im.Dummy(im.Vec2{0, rows_h}) // reserves the row height only
+		im.DrawList_PushClipRect(dl, clip_min, clip_max, true)
+		defer im.DrawList_PopClipRect(dl)
 
 		// Wheel up/down zooms, wheel left/right pans — the same pair the
 		// animation window uses. The horizontal step and its sign follow
@@ -522,8 +561,8 @@ sequencer_window_draw :: proc() {
 				_sq.pps = clamp(_sq.pps * math.pow(f32(1.15), wheel_v), 20, 2000)
 			}
 			if wheel_h != 0 {
-				step := min(2 * im.GetFontSize(), im.GetContentRegionAvail().x * 0.67)
-				im.SetScrollX(im.GetScrollX() - wheel_h * step)
+				step := min(2 * im.GetFontSize(), canvas_pane_w * 0.67)
+				_sq.pan -= wheel_h * step / _sq.pps
 			}
 		}
 
@@ -687,6 +726,7 @@ sequencer_window_draw :: proc() {
 		im.DrawList_AddLine(dl, {px, origin.y}, {px, origin.y + rows_h}, im.GetColorU32ImVec4({1, 0.3, 0.25, 1}), 2)
 	}
 	im.EndChild()
+	} // ##sq_rows — its EndChild is deferred above
 
 	// Keyboard: Delete/Backspace removes the selected clip — unless a text
 	// field owns the keyboard.
