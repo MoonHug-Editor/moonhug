@@ -30,14 +30,10 @@ TimelineAnimatorDemo :: struct {
 	// Start on Idle at the first tick, so the scene is alive when it opens.
 	auto_start: bool,
 	started:    bool `json:"-" inspect:"-"`,
+	// True while the hand-back to Idle is in flight, so it starts one fade
+	// instead of restarting it every frame.
+	returning:  bool `json:"-" inspect:"-"`,
 }
-
-// True while the hand-back to Idle is in flight, so it starts one fade instead
-// of restarting it every frame. On the component would be tidier, but changing
-// a component's fields currently breaks scene round-trip
-// (docs/TimelineAnimator.md, Concerns) and a sample is not the place to fight
-// that. One scene has one of these.
-@(private = "file") _returning: bool
 
 reset_TimelineAnimatorDemo :: proc(d: ^TimelineAnimatorDemo) {
 	d.fade = -1
@@ -73,7 +69,7 @@ tad_idle :: proc(d: ^TimelineAnimatorDemo) {
 
 @(inspector_button={label="Swing", row=0})
 tad_swing :: proc(d: ^TimelineAnimatorDemo) {
-	_returning = false
+	d.returning = false
 	_tad_play(d, "Swing")
 }
 
@@ -107,12 +103,12 @@ timeline_animator_demo_tick :: proc(dt: f32) {
 
 		cur, _, done := anim.animator_state(a)
 		if cur == idle {
-			_returning = false
+			d.returning = false
 			continue
 		}
 		// A Once state that has finished hands back to Idle.
-		if done && !_returning {
-			_returning = true
+		if done && !d.returning {
+			d.returning = true
 			anim.animator_play(a, idle)
 		}
 	}

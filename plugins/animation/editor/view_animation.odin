@@ -1551,8 +1551,8 @@ _pv_draw_key_footer :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip
 
 // --- Preview apply/restore (main loop hooks) --------------------------------------------
 
-// A fingerprint of the component's authored clip set, so the preview graph
-// rebuilds when layers/clips are edited while previewing.
+// A fingerprint of the component's authored state tree, so the preview graph
+// rebuilds when it is edited while previewing.
 @(private = "file")
 _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 	sig := u64(0xcbf29ce484222325)
@@ -1560,6 +1560,10 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 	for &l in a.layers {
 		sig ~= 0x9e37
 		for &e in l.entries {
+			// Structure too, not just the clip set: moving a clip into a blend
+			// changes the graph's shape without changing which clips it holds.
+			sig = (sig ~ u64(u32(e.id))) * 0x100000001b3
+			sig = (sig ~ u64(u32(e.parent))) * 0x100000001b3
 			if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_sig_mix(&sig, c.clip)
 		}
 	}
@@ -1574,40 +1578,27 @@ _pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
 	for b in bytes do sig^ = (sig^ ~ u64(b)) * 0x100000001b3
 }
 
-// The scrub preview evaluates the component's FULL authored graph — layer
-// mixer root, one mixer per authored layer, every clip a leaf — with the
-// scrubbed clip at weight 1 and everything else at 0. The zero-weight nodes
-// cost nothing (the evaluator skips them) and change nothing in the pose,
-// but the preview path is the graph the component actually plays, and the
-// Playable Graph visualizer shows the real topology with live weights.
+// The scrub preview evaluates the component's FULL authored graph — every
+// state, blend children under their blend's mixer — with the scrubbed clip at
+// weight 1 and everything else at 0. The zero-weight nodes cost nothing (the
+// evaluator skips them) and change nothing in the pose, and because the graph
+// comes from the same builder the driver uses, the Playable Graph window shows
+// the topology the component actually plays, with live weights.
+//
+// A clip inside a blend is lit along its whole chain: the clip under the
+// blend's mixer, and that mixer under the layer mixer. Lighting only the leaf
+// would leave its blend at 0 under the layer, and nothing would reach the pose.
 @(private = "file")
 _pv_build_graph :: proc(a: ^anim.Animation) {
-	anim.playable_graph_init(&_pv.graph)
-	anim.graph_output_add(&_pv.graph, _pv.owner)
-	anim.graph_output(&_pv.graph).root = anim.playable_add(&_pv.graph, anim.Layer_Mixer_Playable{})
+	leaves := make([dynamic]anim.Authored_Leaf, context.temp_allocator)
+	anim.animation_graph_build_authored(a, &_pv.graph, _pv.owner, 0, &leaves)
 	_pv.node = {}
-
-	n_layers := max(len(a.layers), 1)
-	for li in 0 ..< n_layers {
-		mixer := anim.playable_add(&_pv.graph, anim.Mixer_Playable{})
-		anim.playable_connect(&_pv.graph, anim.graph_output(&_pv.graph).root, mixer, 1)
-
-		clips := make([dynamic]engine.Asset_GUID, context.temp_allocator)
-		if li == 0 do _pv_clips_add(&clips, a.clip)
-		if li < len(a.layers) {
-			for &e in a.layers[li].entries {
-				if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_clips_add(&clips, c.clip)
-			}
-		}
-		for c in clips {
-			node := anim.playable_add(&_pv.graph, anim.Clip_Playable{clip = c})
-			w := f32(0)
-			if c == _pv.clip && _pv.node == {} {
-				_pv.node = node
-				w = 1
-			}
-			anim.playable_connect(&_pv.graph, mixer, node, w)
-		}
+	for l in leaves {
+		if l.clip != _pv.clip do continue
+		_pv.node = l.node
+		anim.playable_set_input_weight(&_pv.graph, l.under, l.node, 1)
+		anim.playable_set_input_weight(&_pv.graph, l.layer, l.top, 1)
+		break
 	}
 	_pv.graph_sig = _pv_authored_sig(a)
 	_pv.ready = true

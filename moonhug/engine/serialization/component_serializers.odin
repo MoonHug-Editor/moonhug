@@ -15,6 +15,22 @@ _component_serializers_maps_init :: proc "contextless" () {
 	component_unmarshalers = make(map[typeid]json.User_Unmarshaler, alloc)
 }
 
+// Unions that serialize through the guid-tagged form (union_marshal), queued
+// before the marshaler maps are installed and registered once they are.
+//
+// Queued from an @(init) in a GENERATED file (prebuild/union_gen) rather than
+// from a SerializationInit phase proc: the phase table is itself generated from
+// a scan of the files on disk, and a file emitted during the same prebuild is
+// not on disk when that scan runs. A phase proc there misses the first build
+// silently — exactly the failure this registration exists to prevent. @(init)
+// is the language's, needs no table, and runs whenever the file compiles.
+_pending_unions: [dynamic]typeid
+
+register_union_type :: proc(T: typeid) {
+	if _pending_unions == nil do _pending_unions = make([dynamic]typeid, runtime.default_allocator())
+	append(&_pending_unions, T)
+}
+
 Phase_Extra :: enum {
 	SerializationInit,
 }
@@ -27,6 +43,13 @@ register_component_serializers :: proc() {
 
     json.set_user_marshalers(&component_marshalers)
     json.set_user_unmarshalers(&component_unmarshalers)
+
+    // Unions queued at program init by generated code (prebuild/union_gen),
+    // now that the maps they go into exist.
+    for tid in _pending_unions {
+        json.register_user_marshaler(tid, union_marshal)
+        json.register_user_unmarshaler(tid, union_unmarshal)
+    }
 
     json.register_user_marshaler(engine.Asset_GUID, asset_guid_marshal)
     json.register_user_unmarshaler(engine.Asset_GUID, asset_guid_unmarshal)

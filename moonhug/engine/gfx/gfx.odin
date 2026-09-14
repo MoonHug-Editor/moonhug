@@ -140,7 +140,14 @@ swapchain_format :: proc() -> sdl.GPUTextureFormat {
 	return _gfx.swapchain_format
 }
 
+// Frames begun since startup, bumped before anything else in a frame, so the
+// first frame is 1 and a zero stamp never matches a real one. Per-frame work
+// that several views would otherwise repeat — CPU skinning, collected once per
+// view — stamps itself with this and skips when the stamp already matches.
+frame_index: u64
+
 frame_begin :: proc() -> bool {
+	frame_index += 1
 	_platform_frame_tick()
 	_gfx.cmd = sdl.AcquireGPUCommandBuffer(_gfx.device)
 	return _gfx.cmd != nil

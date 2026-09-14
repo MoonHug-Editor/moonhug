@@ -40,6 +40,7 @@ import _ "inspector_button_gen"
 import _ "packages_gen"
 import _ "gizmos_gen"
 import _ "mcp_tool_gen"
+import _ "union_gen"
 // Package-shipped generators (moonhug/packages/<name>/gen) are imported by
 // the generated package_gens_generated.odin next to this file.
 

@@ -66,17 +66,14 @@ owning component is then preserved verbatim as an unknown one — the object rea
 empty clip entry is the natural zero, and it is what an author gets when they
 add a state before picking its clip.
 
-Both variants carry a `@(typ_guid)`, and the union is registered at
-`SerializationInit`:
-
-```odin
-json.register_user_marshaler(Anim_Entry_Variant, serialization.union_marshal)
-json.register_user_unmarshaler(Anim_Entry_Variant, serialization.union_unmarshal)
-```
-
-Without that registration the default marshaler writes the active variant's
-fields with no tag, which reads back as the zero variant: a blend saved and
-loaded comes back a clip, quietly.
+Both variants carry a `@(typ_guid)`, and that is what gets the union
+serialized: `union_gen` (a prebuild module) finds every hand-written union
+whose variants all carry the tag and emits the guid-tagged marshaler
+registration into that package's `unions_generated.odin`, so no package has to
+remember it. Without the registration the default marshaler writes the active
+variant's fields with no tag, which reads back as the zero variant: a blend
+saved and loaded comes back a clip, quietly. A union with an untagged variant
+is left alone and keeps the default marshaler.
 
 ## API
 
@@ -128,6 +125,12 @@ fades both children together.
 
 That asymmetry is why the tree cannot be a view of the graph, and why the play
 buttons in the inspector call the driver rather than touching graph nodes.
+
+Every reader builds nodes through one primitive, `animation_entry_build`: the
+driver for the states that play, and `animation_graph_build_authored` — which
+the Playable Graph window draws and the scrub preview evaluates — for the whole
+tree at once. One builder, so the window cannot show a shape the component
+would not play.
 
 Nested blends are not built. A blend child that is itself a blend is skipped
 rather than flattened, so the graph never silently means something other than

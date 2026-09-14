@@ -44,6 +44,7 @@ SkinnedMeshRenderer :: struct {
     bound_guid:  Asset_GUID `json:"-" inspect:"-"`, // what `joints` was built for
     bound_part:  i32 `json:"-" inspect:"-"`,
     bound_ready: bool `json:"-" inspect:"-"`,
+    posed_frame: u64 `json:"-" inspect:"-"`, // gfx.frame_index the skinning last ran in
 }
 
 on_destroy_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
@@ -182,9 +183,12 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
     gfx.dynamic_mesh_update(&smr.gpu, smr.posed[:])
 }
 
-// Pose every enabled SkinnedMeshRenderer and hand the result to `out`. Called
-// from the mesh collector so skinning happens once per frame per renderer,
-// whatever number of views draw it.
+// Hand every enabled SkinnedMeshRenderer's draw to `out`. Called from the
+// render collector once PER VIEW, so the draw command is appended for each
+// view but the skinning itself runs once per frame per renderer — the frame
+// stamp below. Skinning is a pure function of the bind pose and the current
+// joint transforms, so a second view in the same frame would rebuild identical
+// vertices and upload them again.
 skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
     w := ctx_world()
     it := pool_iterator(skinned_mesh_renderers(w))
@@ -202,7 +206,14 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
         if !mesh_ok || !mesh_is_skinned(mesh) do continue
 
         if !_skin_bind(smr, mesh, mf.mesh.guid, part) do continue
-        _skin_pose(smr, mesh)
+        // Safe because nothing moves a joint between two collects of one
+        // frame: the editor loop runs sim_tick and preview.apply_all before
+        // the scene and game views draw and preview.restore_all after both
+        // (editor/main.odin), and the app loop updates, then renders.
+        if smr.posed_frame != gfx.frame_index {
+            _skin_pose(smr, mesh)
+            smr.posed_frame = gfx.frame_index
+        }
 
         // Identity model: skin matrices already produced world space.
         append(out, Render_Command{

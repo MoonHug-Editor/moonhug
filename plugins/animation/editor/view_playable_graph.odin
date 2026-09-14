@@ -71,50 +71,17 @@ draw_playable_graph_view :: proc() {
 	nc.canvas_end(&_pg.cv)
 }
 
-// The graph the component builds when it plays, from authored data alone:
-// layer mixer root, one mixer per authored layer (at least the default
-// layer 0), clip leaves. Temp-allocated wholesale — no destroy, the frame's
-// free_all reclaims it. Handles are deterministic (same build order every
-// frame), so layout and selection stay stable.
+// The graph the component builds when it plays, from authored data alone —
+// every state present, blend children under their blend's mixer — through the
+// same builder the driver uses (animation_graph_build_authored), so this window
+// cannot show a shape the component would not play. Temp-allocated wholesale:
+// no destroy, the frame's free_all reclaims it. Handles are deterministic (same
+// build order every frame), so layout and selection stay stable.
 @(private = "file")
 _pg_authored_shape :: proc(a: ^anim.Animation) -> ^anim.Playable_Graph {
 	context.allocator = context.temp_allocator
 	g := new(anim.Playable_Graph)
-	anim.playable_graph_init(g)
-	anim.graph_output_add(g, {})
-	anim.graph_output(g).root = anim.playable_add(g, anim.Layer_Mixer_Playable{})
-
-	n_layers := max(len(a.layers), 1)
-	for li in 0 ..< n_layers {
-		mixer := anim.playable_add(g, anim.Mixer_Playable{})
-		anim.playable_connect(g, anim.graph_output(g).root, mixer, 1)
-
-		if li == 0 && a.clip != {} {
-			anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = a.clip}), 1)
-		}
-		if li >= len(a.layers) do continue
-
-		// Top-level entries only — a blend owns its children, so they hang off
-		// its own mixer the way they would if it were playing.
-		for &e in a.layers[li].entries {
-			if e.parent != 0 do continue
-			switch v in e.variant {
-			case anim.Clip_Entry:
-				if v.clip == {} do continue
-				if li == 0 && v.clip == a.clip do continue // already in as the default
-				anim.playable_connect(g, mixer, anim.playable_add(g, anim.Clip_Playable{clip = v.clip}), 1)
-			case anim.Blend1D_Entry:
-				blend := anim.playable_add(g, anim.Mixer_Playable{})
-				anim.playable_connect(g, mixer, blend, 1)
-				for &kid in a.layers[li].entries {
-					if kid.parent != e.id do continue
-					ce, is_clip := kid.variant.(anim.Clip_Entry)
-					if !is_clip || ce.clip == {} do continue
-					anim.playable_connect(g, blend, anim.playable_add(g, anim.Clip_Playable{clip = ce.clip}), 1)
-				}
-			}
-		}
-	}
+	anim.animation_graph_build_authored(a, g, {}, 1)
 	return g
 }
 

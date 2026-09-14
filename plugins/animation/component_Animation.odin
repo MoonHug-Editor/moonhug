@@ -21,10 +21,8 @@ package animation
 // The editor never simulates: clips advance only in the app, per-frame
 // (animation_tick, the @(update) subscriber below).
 
-import "core:encoding/json"
 import "core:slice"
 import "moonhug:engine"
-import serialization "moonhug:engine/serialization"
 
 // Unity's component-level WrapMode: Default defers to the clip's own wrap.
 Animation_Wrap_Mode :: enum u8 {
@@ -90,13 +88,14 @@ Animation_Layer :: struct {
 	entries: [dynamic]Anim_Entry,
 }
 
-// One child of a playing blend. `length` is cached at build time because the
-// blended cycle rate reads it every frame.
+// One child of a playing blend. `length` and `wrap` are cached at build time:
+// the blended cycle rate reads one and the phase wrap the other every frame.
 Anim_Blend_Child :: struct {
 	clip:   engine.Asset_GUID,
 	node:   Playable_Handle,
 	pos:    f32,
 	length: f32,
+	wrap:   Animation_Wrap,
 }
 
 // One playing state on a layer: a clip, or a blend and its children. `weight`
@@ -108,7 +107,7 @@ Anim_Blend_Child :: struct {
 // A blend runs on `phase`, a shared 0..1 position through the cycle, rather than
 // on `time`: its children have different lengths, and sampling them at the same
 // absolute seconds slides them out of step within a second or two.
-Anim_State :: struct {
+Animation_State_Runtime :: struct {
 	entry:       i32, // authored entry, 0 for a clip played by guid
 	clip:        engine.Asset_GUID,
 	node:        Playable_Handle, // clip node, or the blend's mixer
@@ -124,9 +123,9 @@ Anim_State :: struct {
 	done:        bool,
 }
 
-Anim_Layer :: struct {
+Animation_Layer_Runtime :: struct {
 	mixer:      Playable_Handle,
-	states:     [dynamic]Anim_State,
+	states:     [dynamic]Animation_State_Runtime,
 	queue_clip: engine.Asset_GUID,
 	queue_fade: f32,
 	queued:     bool,
@@ -157,25 +156,14 @@ Animation :: struct {
 	started: bool `json:"-" inspect:"-"`, // play_automatically consumed on first tick
 
 	graph:       Playable_Graph `json:"-" inspect:"-"`,
-	rt_layers:   [dynamic]Anim_Layer `json:"-" inspect:"-"`, // playback state per layer
+	rt_layers:   [dynamic]Animation_Layer_Runtime `json:"-" inspect:"-"`, // playback state per layer
 	graph_ready: bool `json:"-" inspect:"-"`,
 }
 
-// A union only serializes through the guid-tagged form once it is registered
-// here. Without this the default marshaler writes the ACTIVE VARIANT'S FIELDS
-// with no tag, which reads back as the union's zero variant — a blend saved and
-// loaded would come back a clip, quietly.
-@(phase={key=SerializationInit, order=2})
-animation_serialization_init :: proc() {
-	@(static) done := false
-	if done do return
-	done = true
-	json.register_user_marshaler(Anim_Entry_Variant, serialization.union_marshal)
-	json.register_user_unmarshaler(Anim_Entry_Variant, serialization.union_unmarshal)
-	engine.register_pointer_type(Clip_Entry)
-	engine.register_pointer_type(Blend1D_Entry)
-	engine.register_pointer_type(Anim_Entry_Variant)
-}
+// Anim_Entry_Variant's guid-tagged marshaler pair is registered through the
+// generated unions_generated.odin: union_gen emits it for every union whose
+// variants all carry @(typ_guid), so nothing here has to remember. The
+// variants' pointer types come with their @(typ_guid).
 
 reset_Animation :: proc(comp: ^Animation) {
 	comp.play_automatically = true
@@ -283,18 +271,18 @@ _anim_ensure_graph :: proc(a: ^Animation) {
 	if a.graph_ready do return
 	playable_graph_init(&a.graph)
 	graph_output_add(&a.graph, a.owner)
-	a.rt_layers = make([dynamic]Anim_Layer)
+	a.rt_layers = make([dynamic]Animation_Layer_Runtime)
 	graph_output(&a.graph).root = playable_add(&a.graph, Layer_Mixer_Playable{})
 	a.graph_ready = true
 }
 
 // Layers are dense 0..idx so the root's input order IS the layer order.
 @(private = "file")
-_anim_layer :: proc(a: ^Animation, idx: int) -> ^Anim_Layer {
+_anim_layer :: proc(a: ^Animation, idx: int) -> ^Animation_Layer_Runtime {
 	for len(a.rt_layers) <= idx {
 		mixer := playable_add(&a.graph, Mixer_Playable{})
 		playable_connect(&a.graph, graph_output(&a.graph).root, mixer, 1)
-		append(&a.rt_layers, Anim_Layer{mixer = mixer, states = make([dynamic]Anim_State)})
+		append(&a.rt_layers, Animation_Layer_Runtime{mixer = mixer, states = make([dynamic]Animation_State_Runtime)})
 	}
 	return &a.rt_layers[idx]
 }
@@ -303,7 +291,7 @@ _anim_layer :: proc(a: ^Animation, idx: int) -> ^Anim_Layer {
 // the SAME state: matching on both keys keeps a Play(guid) from stacking a
 // second copy beside a running entry.
 @(private = "file")
-_anim_state_find :: proc(l: ^Anim_Layer, clip: engine.Asset_GUID) -> int {
+_anim_state_find :: proc(l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID) -> int {
 	for &st, i in l.states {
 		if !st.is_blend && st.clip == clip do return i
 	}
@@ -311,7 +299,7 @@ _anim_state_find :: proc(l: ^Anim_Layer, clip: engine.Asset_GUID) -> int {
 }
 
 @(private = "file")
-_anim_state_find_entry :: proc(l: ^Anim_Layer, entry: i32) -> int {
+_anim_state_find_entry :: proc(l: ^Animation_Layer_Runtime, entry: i32) -> int {
 	for &st, i in l.states {
 		if st.entry == entry do return i
 	}
@@ -319,65 +307,163 @@ _anim_state_find_entry :: proc(l: ^Anim_Layer, entry: i32) -> int {
 }
 
 @(private = "file")
-_anim_state_add :: proc(a: ^Animation, l: ^Anim_Layer, clip: engine.Asset_GUID, weight: f32) -> ^Anim_State {
+_anim_state_add :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID, weight: f32) -> ^Animation_State_Runtime {
 	node := playable_add(&a.graph, Clip_Playable{clip = clip})
 	playable_connect(&a.graph, l.mixer, node, weight)
-	append(&l.states, Anim_State{clip = clip, node = node, weight = weight})
+	append(&l.states, Animation_State_Runtime{clip = clip, node = node, weight = weight})
 	return &l.states[len(l.states) - 1]
 }
 
-// Build the nodes for one authored entry. A clip is one leaf. A blend is a mixer
-// with EVERY child built at once — that is what makes a blend a single state
-// with a single weight, and it is the one place the authored tree and the graph
-// differ in shape.
+// --- Tree to graph ------------------------------------------------------------------
+//
+// Every reader of the authored tree builds graph nodes through
+// animation_entry_build: the driver when a state plays, the Playable Graph
+// window and the scrub preview when they draw the authored shape. One builder,
+// so all three agree on what the tree means — three hand-rolled copies drifted
+// the moment blends arrived.
+
+// One authored entry as graph nodes under `parent`. A clip is one leaf. A blend
+// is a mixer with EVERY child leaf built at once — that is what makes a blend a
+// single state with a single weight, and it is the one place the authored tree
+// and the graph differ in shape.
+//
+// `weight` is the entry's own input weight under `parent`, `kid_w` the weight of
+// a blend's children under its mixer (the driver passes 0 and lets the 1D rule
+// set them each tick). Every clip leaf built is appended to `leaves`, a blend's
+// sorted by position so the 1D rule can walk neighbours whatever order they
+// were authored in.
 //
 // Nested blends are not built: a child that is itself a blend is skipped rather
 // than flattened, so the graph never silently means something other than the
-// tree. Returns the new state's index, or -1 when the entry produced nothing.
-@(private = "file")
-_anim_state_add_entry :: proc(a: ^Animation, l: ^Anim_Layer, li: int, id: i32, weight: f32) -> int {
+// tree. Returns 0 when nothing was built.
+animation_entry_build :: proc(
+	a: ^Animation, g: ^Playable_Graph, li: int, id: i32,
+	parent: Playable_Handle, weight, kid_w: f32,
+	leaves: ^[dynamic]Anim_Blend_Child,
+) -> (node: Playable_Handle, is_blend: bool) {
 	_, e := _anim_entry_find(a, id)
-	if e == nil do return -1
+	if e == nil do return {}, false
 
 	switch v in e.variant {
 	case Clip_Entry:
-		if v.clip == {} do return -1
-		node := playable_add(&a.graph, Clip_Playable{clip = v.clip})
-		playable_connect(&a.graph, l.mixer, node, weight)
-		append(&l.states, Anim_State{entry = id, clip = v.clip, node = node, weight = weight})
+		if v.clip == {} do return {}, false
+		node = playable_add(g, Clip_Playable{clip = v.clip})
+		playable_connect(g, parent, node, weight)
+		length, wrap := _anim_clip_info(v.clip)
+		append(leaves, Anim_Blend_Child{clip = v.clip, node = node, length = length, wrap = wrap})
+		return node, false
 
 	case Blend1D_Entry:
-		mixer := playable_add(&a.graph, Mixer_Playable{})
-		playable_connect(&a.graph, l.mixer, mixer, weight)
-		st := Anim_State{
-			entry    = id,
-			node     = mixer,
-			weight   = weight,
-			is_blend = true,
-			kids     = make([dynamic]Anim_Blend_Child),
-		}
+		node = playable_add(g, Mixer_Playable{})
+		playable_connect(g, parent, node, weight)
+		first := len(leaves)
 		for &kid in a.layers[li].entries {
 			if kid.parent != id do continue
 			ce, is_clip := kid.variant.(Clip_Entry)
 			if !is_clip || ce.clip == {} do continue
-			length := f32(1)
-			if c, ok := animation_clip_load(ce.clip); ok do length = max(c.length, PLAYABLE_WEIGHT_EPS)
-			node := playable_add(&a.graph, Clip_Playable{clip = ce.clip})
-			playable_connect(&a.graph, mixer, node, 0)
-			append(&st.kids, Anim_Blend_Child{clip = ce.clip, node = node, pos = kid.pos.x, length = length})
+			leaf := playable_add(g, Clip_Playable{clip = ce.clip})
+			playable_connect(g, node, leaf, kid_w)
+			length, wrap := _anim_clip_info(ce.clip)
+			append(leaves, Anim_Blend_Child{clip = ce.clip, node = leaf, pos = kid.pos.x, length = length, wrap = wrap})
 		}
-		// Sorted by position, so the 1D rule can walk neighbours in order
-		// whatever order the entries were authored in.
-		slice.sort_by(st.kids[:], proc(x, y: Anim_Blend_Child) -> bool {
+		slice.sort_by((leaves^)[first:], proc(x, y: Anim_Blend_Child) -> bool {
 			return x.pos < y.pos
 		})
-		append(&l.states, st)
+		return node, true
 	}
+	return {}, false
+}
+
+// What a blend child needs from its clip, read once at build.
+@(private = "file")
+_anim_clip_info :: proc(clip: engine.Asset_GUID) -> (length: f32, wrap: Animation_Wrap) {
+	if c, ok := animation_clip_load(clip); ok do return max(c.length, PLAYABLE_WEIGHT_EPS), c.wrap
+	return 1, .Loop
+}
+
+// A clip leaf of the full authored graph and where it hangs.
+Authored_Leaf :: struct {
+	clip:  engine.Asset_GUID,
+	node:  Playable_Handle, // the clip node
+	under: Playable_Handle, // its parent: a blend's mixer, or the layer mixer
+	top:   Playable_Handle, // what hangs from the layer mixer: that blend mixer, or `node`
+	layer: Playable_Handle, // the layer mixer
+}
+
+// The FULL authored shape into an empty `g`, every state present whether it
+// plays or not: layer mixer root, one mixer per layer (at least layer 0), the
+// default `clip` on layer 0 unless an entry there already names it, then every
+// top-level entry through animation_entry_build. Layer inputs are 1, entries
+// and blend children get `w`.
+//
+// The Playable Graph window draws this when nothing is playing, and the scrub
+// preview evaluates it. The driver builds the same nodes through the same
+// primitive, only for the states that play.
+animation_graph_build_authored :: proc(a: ^Animation, g: ^Playable_Graph, owner: engine.Transform_Handle, w: f32, leaves: ^[dynamic]Authored_Leaf = nil) {
+	playable_graph_init(g)
+	graph_output_add(g, owner)
+	root := playable_add(g, Layer_Mixer_Playable{})
+	graph_output(g).root = root
+
+	kids := make([dynamic]Anim_Blend_Child, context.temp_allocator)
+	n_layers := max(len(a.layers), 1)
+	for li in 0 ..< n_layers {
+		mixer := playable_add(g, Mixer_Playable{})
+		playable_connect(g, root, mixer, 1)
+
+		if li == 0 && a.clip != {} && !_anim_layer_names_clip(a, 0, a.clip) {
+			node := playable_add(g, Clip_Playable{clip = a.clip})
+			playable_connect(g, mixer, node, w)
+			if leaves != nil do append(leaves, Authored_Leaf{clip = a.clip, node = node, under = mixer, top = node, layer = mixer})
+		}
+		if li >= len(a.layers) do continue
+
+		for &e in a.layers[li].entries {
+			if e.parent != 0 do continue
+			clear(&kids)
+			top, is_blend := animation_entry_build(a, g, li, e.id, mixer, w, w, &kids)
+			if top == {} || leaves == nil do continue
+			for k in kids {
+				append(leaves, Authored_Leaf{clip = k.clip, node = k.node, under = is_blend ? top : mixer, top = top, layer = mixer})
+			}
+		}
+	}
+}
+
+// Whether a top-level clip entry on layer `li` names `clip`.
+@(private = "file")
+_anim_layer_names_clip :: proc(a: ^Animation, li: int, clip: engine.Asset_GUID) -> bool {
+	if li >= len(a.layers) do return false
+	for &e in a.layers[li].entries {
+		if e.parent != 0 do continue
+		if c, is_clip := e.variant.(Clip_Entry); is_clip && c.clip == clip do return true
+	}
+	return false
+}
+
+// Add a playing state for an authored entry. Returns its index, or -1 when the
+// entry produced nothing.
+@(private = "file")
+_anim_state_add_entry :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, li: int, id: i32, weight: f32) -> int {
+	kids := make([dynamic]Anim_Blend_Child)
+	node, is_blend := animation_entry_build(a, &a.graph, li, id, l.mixer, weight, 0, &kids)
+	if node == {} {
+		delete(kids)
+		return -1
+	}
+	st := Animation_State_Runtime{entry = id, node = node, weight = weight, is_blend = is_blend}
+	if is_blend {
+		st.kids = kids
+	} else {
+		st.clip = kids[0].clip
+		delete(kids)
+	}
+	append(&l.states, st)
 	return len(l.states) - 1
 }
 
 @(private = "file")
-_anim_state_remove :: proc(a: ^Animation, l: ^Anim_Layer, i: int) {
+_anim_state_remove :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, i: int) {
 	st := &l.states[i]
 	for &k in st.kids do playable_remove(&a.graph, k.node)
 	delete(st.kids)
@@ -386,7 +472,7 @@ _anim_state_remove :: proc(a: ^Animation, l: ^Anim_Layer, i: int) {
 }
 
 @(private = "file")
-_anim_fade_start :: proc(st: ^Anim_State, target, duration: f32) {
+_anim_fade_start :: proc(st: ^Animation_State_Runtime, target, duration: f32) {
 	st.fade_from = st.weight
 	st.fade_target = target
 	st.fade_t = 0
@@ -414,7 +500,7 @@ animation_play_clip :: proc(a: ^Animation, clip: engine.Asset_GUID, layer := -1)
 	for i := len(l.states) - 1; i >= 0; i -= 1 {
 		if l.states[i].clip != clip do _anim_state_remove(a, l, i)
 	}
-	st: ^Anim_State
+	st: ^Animation_State_Runtime
 	if i := _anim_state_find(l, clip); i >= 0 do st = &l.states[i]
 	if st == nil do st = _anim_state_add(a, l, clip, 1)
 	st.time = 0
@@ -434,6 +520,15 @@ animation_play_entry :: proc(a: ^Animation, id: i32, duration: f32 = 0) {
 	_anim_ensure_graph(a)
 	l := _anim_layer(a, li)
 
+	// A cut removes every other state FIRST, so whatever survives is found or
+	// added afterwards and no index has to be tracked across removals — the
+	// same order animation_play_clip uses.
+	if duration <= 0 {
+		for j := len(l.states) - 1; j >= 0; j -= 1 {
+			if l.states[j].entry != id do _anim_state_remove(a, l, j)
+		}
+	}
+
 	i := _anim_state_find_entry(l, id)
 	if i < 0 do i = _anim_state_add_entry(a, l, li, id, duration > 0 ? 0 : 1)
 	if i < 0 do return
@@ -442,25 +537,14 @@ animation_play_entry :: proc(a: ^Animation, id: i32, duration: f32 = 0) {
 	st.time = 0
 	st.phase = 0
 	st.done = false
-
 	if duration <= 0 {
-		// Cut: every other state goes now. Removing from the end keeps the
-		// indices below `i` stable, and `i` itself shifts down by one for each
-		// earlier removal.
-		keep := i
-		for j := len(l.states) - 1; j >= 0; j -= 1 {
-			if j == keep do continue
-			_anim_state_remove(a, l, j)
-			if j < keep do keep -= 1
-		}
-		st = &l.states[keep]
 		st.weight = 1
 		st.fade_dur = 0
 	} else {
 		for &other, j in l.states {
 			if j != i do _anim_fade_start(&other, 0, duration)
 		}
-		_anim_fade_start(&l.states[i], 1, duration)
+		_anim_fade_start(st, 1, duration)
 	}
 	a.playing = true
 	a.started = true
@@ -493,7 +577,7 @@ animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f
 	}
 	_anim_ensure_graph(a)
 	l := _anim_layer(a, _anim_layer_of(a, clip, layer))
-	target: ^Anim_State
+	target: ^Animation_State_Runtime
 	for &st in l.states {
 		if st.clip == clip {
 			target = &st
@@ -587,7 +671,7 @@ _anim_wrap :: proc(a: ^Animation, clip_wrap: Animation_Wrap) -> Animation_Wrap {
 // False means the state produced nothing this frame (no children, or none of
 // their clips loaded) and should be left alone.
 @(private = "file")
-_anim_blend_advance :: proc(a: ^Animation, st: ^Anim_State, dt: f32) -> bool {
+_anim_blend_advance :: proc(a: ^Animation, st: ^Animation_State_Runtime, dt: f32) -> bool {
 	if len(st.kids) == 0 do return false
 
 	_, e := _anim_entry_find(a, st.entry)
@@ -599,10 +683,9 @@ _anim_blend_advance :: proc(a: ^Animation, st: ^Anim_State, dt: f32) -> bool {
 	if cycle <= 0 do return false
 
 	// Wrap follows the first child's clip, the same "defer to the clip" rule a
-	// single-clip state uses — a blend has no clip of its own to ask.
-	wrap := Animation_Wrap.Loop
-	if c, ok := animation_clip_load(st.kids[0].clip); ok do wrap = c.wrap
-	wrap = _anim_wrap(a, wrap)
+	// single-clip state uses — a blend has no clip of its own to ask. Cached on
+	// the child at build, like its length.
+	wrap := _anim_wrap(a, st.kids[0].wrap)
 
 	if !st.done do st.phase += dt * a.speed / cycle
 	p, done := animation_wrap_time(st.phase, 1, wrap)
@@ -618,7 +701,7 @@ _anim_blend_advance :: proc(a: ^Animation, st: ^Anim_State, dt: f32) -> bool {
 // ends clamp. Returns the blended cycle length, which is what the phase
 // advances against.
 @(private = "file")
-_anim_blend1d_weights :: proc(a: ^Animation, st: ^Anim_State, value: f32) -> f32 {
+_anim_blend1d_weights :: proc(a: ^Animation, st: ^Animation_State_Runtime, value: f32) -> f32 {
 	for &k in st.kids do playable_set_input_weight(&a.graph, st.node, k.node, 0)
 
 	last := len(st.kids) - 1

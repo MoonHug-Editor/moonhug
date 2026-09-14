@@ -345,3 +345,73 @@ _find_child_named :: proc(tc: ^common.TestCtx, h: engine.Transform_Handle, name:
 	}
 	return {}
 }
+
+// One builder for every reader of the tree. The Playable Graph window and the
+// scrub preview used to build their own copies of this shape, and the preview's
+// never learned about blends — so what the window showed while scrubbing was not
+// what the component played. Now they and the driver share animation_entry_build,
+// and this pins the shape they agree on.
+@(test)
+test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	walk, run, idle := _clip_guid(50), _clip_guid(51), _clip_guid(52)
+	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[idle] = _const_clip(.Position, {0, 0, 0, 0}, 1, .Loop)
+
+	owner := engine.transform_new("Rig")
+	_, ptr := engine.transform_add_comp(owner, .Animation)
+	a := cast(^anim.Animation)ptr
+	a.enabled = true
+	a.speed = 1
+	a.started = true
+
+	_ = _blend_layer(a, {walk, run}, 0)
+	append(&a.layers[0].entries, anim.Anim_Entry{
+		id      = anim.animation_entry_next_id(a),
+		name    = strings.clone("Idle"),
+		variant = anim.Clip_Entry{clip = idle},
+	})
+	// The default clip names a clip an entry already holds: it must not become
+	// a second leaf.
+	a.clip = idle
+
+	g: anim.Playable_Graph
+	leaves := make([dynamic]anim.Authored_Leaf)
+	defer delete(leaves)
+	anim.animation_graph_build_authored(a, &g, owner, 1, &leaves)
+	defer anim.playable_graph_destroy(&g)
+
+	// root + layer mixer + blend mixer + three clips.
+	alive := 0
+	for &n in g.nodes do if n.alive do alive += 1
+	testing.expect_value(t, alive, 6)
+	testing.expect_value(t, len(leaves), 3)
+
+	blend_top: anim.Playable_Handle
+	for l in leaves {
+		if l.clip == idle {
+			testing.expect(t, l.under == l.layer && l.top == l.node, "a top-level clip hangs from the layer mixer")
+			continue
+		}
+		testing.expect(t, l.under != l.layer && l.under == l.top, "a blend child hangs from its blend's mixer")
+		if blend_top == {} do blend_top = l.top
+		testing.expect(t, l.top == blend_top, "both children share one blend mixer")
+	}
+
+	// The driver builds the same blend through the same primitive.
+	bid, _ := anim.animation_find(a, "Locomotion")
+	anim.animation_play_entry(a, bid)
+	testing.expect_value(t, len(a.rt_layers[0].states), 1)
+	st := &a.rt_layers[0].states[0]
+	testing.expect(t, st.is_blend, "a blend entry plays as a blend state")
+	testing.expect_value(t, len(st.kids), 2)
+	testing.expect(t, st.kids[0].pos <= st.kids[1].pos, "children come out sorted by position")
+}
