@@ -1,3 +1,16 @@
+## [0.97.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.96.0...v0.97.0) (2026-09-14)
+
+### Features
+
+* animation importer with extra settings in meta ([a960f78](https://github.com/MoonHug-Editor/moonhug/commit/a960f7810fbbdcbcd80e8ea7d635e7f8c3039967))
+* sequencer UX ([d40da76](https://github.com/MoonHug-Editor/moonhug/commit/d40da76b0521274fb8db8a9308af0e802d777e1d))
+
+### Bug Fixes
+
+* animation view play loop or once by clip wrap mode ([6579139](https://github.com/MoonHug-Editor/moonhug/commit/6579139e207706a731d0065bef010be401e567fa))
+* animation view UX ([0b730a8](https://github.com/MoonHug-Editor/moonhug/commit/0b730a89c19cb76517824e70cc29117182e45e6c))
+* audio test ([0f22e17](https://github.com/MoonHug-Editor/moonhug/commit/0f22e17909d634124582be9df01064d97f85355c))
+
 ## [0.96.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.95.0...v0.96.0) (2026-09-13)
 
 ### Features
