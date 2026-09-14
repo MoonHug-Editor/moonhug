@@ -27,7 +27,7 @@ Target_Binding :: struct {
 
 // One authored layer. Layer order is override order: a higher layer replaces a
 // lower one wherever it animates a channel, which is what
-// Layer_Mixer_Playable already does with its inputs.
+// Playable_Layer_Mixer already does with its inputs.
 //
 // `weight` is zero-neutral like the director's `speed` — a layer added in the
 // inspector starts at full strength rather than silent.
@@ -185,7 +185,7 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 		tH, ok := _ta_target_transform(&tb)
 		if !ok do continue
 		idx := graph_output_add(&a.graph, tH)
-		root := playable_add(&a.graph, Layer_Mixer_Playable{})
+		root := playable_add(&a.graph, Playable_Layer_Mixer{})
 		graph_output(&a.graph, idx).root = root
 		append(&a.out_target, ti)
 	}
@@ -197,7 +197,7 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 			mixers = make([dynamic]Playable_Handle, 0, len(a.graph.outputs)),
 		}
 		for oi in 0 ..< len(a.graph.outputs) {
-			m := playable_add(&a.graph, Mixer_Playable{})
+			m := playable_add(&a.graph, Playable_Mixer{})
 			playable_connect(&a.graph, graph_output(&a.graph, oi).root, m, _ta_layer_weight(&l))
 			append(&lr.mixers, m)
 		}
@@ -224,7 +224,7 @@ _ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixer
 		mixers = make([dynamic]Playable_Handle, 0, len(layer_mixers)),
 	}
 	for lm in layer_mixers {
-		m := playable_add(&a.graph, Mixer_Playable{})
+		m := playable_add(&a.graph, Playable_Mixer{})
 		playable_connect(&a.graph, lm, m, 0)
 		append(&st.mixers, m)
 	}
@@ -435,7 +435,7 @@ timeline_animator_tick :: proc(dt: f32) {
 // A state's minted id (Timeline_State.id), not a position. An index-based
 // handle silently repoints when an authored state is deleted or reordered,
 // which is the one thing a handle held across an edit must not do. Same
-// convention Anim_Entry uses in component_Animation.odin: ids start at 1, so 0
+// convention Animation_Entry uses in component_Animation.odin: ids start at 1, so 0
 // is "no state" and a zero value is inert.
 State_Id :: distinct i32
 STATE_ID_NONE :: State_Id(0)

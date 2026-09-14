@@ -150,10 +150,10 @@ node_destroy :: proc(h: Node_Handle) {
 	ptr, desc := _node_ptr(h)
 	if ptr == nil do return
 	if desc.children_offset >= 0 {
-		kids := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
-		for k in kids^ do node_destroy(k)
-		delete(kids^)
-		kids^ = nil
+		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
+		for k in children^ do node_destroy(k)
+		delete(children^)
+		children^ = nil
 	}
 	if desc.cleanup_thunk != nil do desc.cleanup_thunk(desc.cleanup_raw, ptr)
 	desc.entry.destroy_fn(desc.pool, _core_handle(h))
@@ -355,9 +355,11 @@ _instantiate :: proc(v: json.Value) -> (Node_Handle, bool) {
 		}
 	}
 
-	if kids, kok := authored_children(v); kok && desc.children_offset >= 0 {
+	// Two lists in play: the AUTHORED children (json) being instantiated, and
+	// the node's own runtime handle list they land in.
+	if authored, kok := authored_children(v); kok && desc.children_offset >= 0 {
 		children := cast(^[dynamic]Node_Handle)(uintptr(ptr) + uintptr(desc.children_offset))
-		for child_v in kids {
+		for child_v in authored {
 			child_h, cok := _instantiate(child_v)
 			if !cok {
 				node_destroy(h)

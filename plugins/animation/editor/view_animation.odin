@@ -95,7 +95,7 @@ _pv: struct {
 	// `entry_clock` is seconds for a clip state and a normalized phase for a
 	// blend, matching what each kind runs on at playback.
 	entry:       i32,
-	entry_kids:  [dynamic]anim.Anim_Blend_Child, // a blend's children, sorted by position
+	entry_kids:  [dynamic]anim.Animation_Blend_Child, // a blend's children, sorted by position
 	entry_top:   anim.Playable_Handle, // what hangs from the layer mixer
 	entry_layer: anim.Playable_Handle,
 	entry_clock: f32,
@@ -345,7 +345,7 @@ _pv_clips :: proc(a: ^anim.Animation) -> []engine.Asset_GUID {
 	_pv_clips_add(&clips, a.clip)
 	for &l in a.layers {
 		for &e in l.entries {
-			if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_clips_add(&clips, c.clip)
+			if c, is_clip := e.kind.(anim.Animation_Entry_Clip); is_clip do _pv_clips_add(&clips, c.clip)
 		}
 	}
 	return clips[:]
@@ -1617,7 +1617,7 @@ _pv_authored_sig :: proc(a: ^anim.Animation) -> u64 {
 			// changes the graph's shape without changing which clips it holds.
 			sig = (sig ~ u64(u32(e.id))) * 0x100000001b3
 			sig = (sig ~ u64(u32(e.parent))) * 0x100000001b3
-			if c, is_clip := e.variant.(anim.Clip_Entry); is_clip do _pv_sig_mix(&sig, c.clip)
+			if c, is_clip := e.kind.(anim.Animation_Entry_Clip); is_clip do _pv_sig_mix(&sig, c.clip)
 		}
 	}
 	return sig
@@ -1643,14 +1643,14 @@ _pv_sig_mix :: proc(sig: ^u64, g: engine.Asset_GUID) {
 // would leave its blend at 0 under the layer, and nothing would reach the pose.
 @(private = "file")
 _pv_build_graph :: proc(a: ^anim.Animation) {
-	leaves := make([dynamic]anim.Authored_Leaf, context.temp_allocator)
+	leaves := make([dynamic]anim.Animation_Authored_Leaf, context.temp_allocator)
 	anim.animation_graph_build_authored(a, &_pv.graph, _pv.owner, 0, &leaves)
 	_pv.node = {}
 
 	if _pv.entry != 0 {
 		// A state lights its whole chain: for a blend that is its mixer under
 		// the layer, with the 1D rule weighting the children every frame.
-		if _pv.entry_kids == nil do _pv.entry_kids = make([dynamic]anim.Anim_Blend_Child)
+		if _pv.entry_kids == nil do _pv.entry_kids = make([dynamic]anim.Animation_Blend_Child)
 		clear(&_pv.entry_kids)
 		for l in leaves {
 			if l.entry != _pv.entry do continue

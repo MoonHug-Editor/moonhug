@@ -41,7 +41,7 @@ Each entry carries:
 | `parent`  | another entry's id, 0 for a state directly on the layer      |
 | `pos`     | placement in the PARENT's blend space (1D reads x)           |
 | `name`    | what `animation_find` looks up                               |
-| `variant` | `Clip_Entry` or `Blend1D_Entry`                              |
+| `kind` | `Animation_Entry_Clip` or `Animation_Entry_Blend1D`                              |
 
 Ids rather than indices, because deleting a sibling shifts every index after it
 and would silently repoint a play call at a different state. `TimelineAnimator`
@@ -61,7 +61,7 @@ array inside a union, where a missing `register_pointer_type` makes it silently
 no-op. One array is one undo edit and one JSON array, and it still draws as a
 tree.
 
-`Anim_Entry_Variant` is `#no_nil` with `Clip_Entry` first. A nil union marshals
+`Animation_Entry_Kind` is `#no_nil` with `Animation_Entry_Clip` first. A nil union marshals
 to bare `null`, which the generic union reader cannot read back, and the whole
 owning component is then preserved verbatim as an unknown one — the object reads
 "Missing Component" and every field vanishes because one variant was unset. An
@@ -90,7 +90,7 @@ animation_find(a, name) -> (id, ok)     // a state by name
 animation_play_entry(a, id, duration)   // a state by id: clip or blend
 animation_blend_set(a, id, value)       // move a blend along its axis
 animation_blend_get(a, id)
-animation_entry(a, id) -> ^Anim_Entry
+animation_entry(a, id) -> ^Animation_Entry
 ```
 
 `animation_play_entry` with `duration` 0 cuts, above 0 cross-fades. Playback
@@ -134,8 +134,8 @@ the Playable Graph window draws, and which the editor preview evaluates for
 both a clip scrub and a played state — for the whole tree at once. One builder,
 so the window cannot show a shape the component would not play.
 
-`animation_graph_build_authored` reports an `Authored_Leaf` per clip: the
-`Anim_Blend_Child` the 1D rule needs, which top-level entry it belongs to, and
+`animation_graph_build_authored` reports an `Animation_Authored_Leaf` per clip: the
+`Animation_Blend_Child` the 1D rule needs, which top-level entry it belongs to, and
 the chain it hangs from (`under`, `top`, `layer`). Lighting a clip inside a
 blend means weighting that whole chain — the clip under the blend's mixer AND
 that mixer under the layer — since a blend left at 0 reaches the pose with
@@ -173,9 +173,9 @@ clip state uses — a blend has no clip of its own to ask.
 ## The playing state
 
 A playing state is `Animation_State_Runtime`: the fade fields and `done`, plus a
-`kind` union of `Clip_State` (a clip and its clock in seconds) and `Blend_State`
+`kind` union of `Animation_State_Clip` (a clip and its clock in seconds) and `Animation_State_Blend`
 (its children and a shared phase). Runtime only and never serialized, so unlike
-the authored `Anim_Entry_Variant` it carries no guid and needs no marshaler —
+the authored `Animation_Entry_Kind` it carries no guid and needs no marshaler —
 but it is a union for the same reason, so neither kind holds the other's fields.
 
 ## Fades

@@ -82,14 +82,14 @@ test_instantiate_remaps_tween_subject_ref :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(inst_player.animations), 1)
 	if len(inst_player.animations) < 1 do return
 
-	kids, kok := tween.authored_children(inst_player.animations[0].value)
+	children, kok := tween.authored_children(inst_player.animations[0].value)
 	testing.expect(t, kok, "pasted sequence should keep its children")
 	if !kok do return
-	testing.expect_value(t, len(kids), 2)
-	if len(kids) < 2 do return
+	testing.expect_value(t, len(children), 2)
+	if len(children) < 2 do return
 
-	child0_lid := _subject_lid(kids[0])
-	child1_lid := _subject_lid(kids[1])
+	child0_lid := _subject_lid(children[0])
+	child1_lid := _subject_lid(children[1])
 
 	testing.expect(t, child0_lid != i64(t1_lid),
 		"child0 subject should differ from original")

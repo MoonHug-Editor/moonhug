@@ -373,9 +373,9 @@ _scene_load_additive :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUI
             // additions that themselves nest).
             rt := pool_get(&ctx_world().transforms, Handle(root_tH))
             if rt != nil {
-                kids := make([]Ref, len(rt.children), context.temp_allocator)
-                copy(kids, rt.children[:])
-                for child in kids do _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+                children := make([]Ref, len(rt.children), context.temp_allocator)
+                copy(children, rt.children[:])
+                for child in children do _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
             }
             // The root NS's SHALLOW overrides were baked at materialize time, but
             // its DEEP overrides (targeting content inside the base's own nested

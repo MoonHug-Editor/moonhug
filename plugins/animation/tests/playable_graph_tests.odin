@@ -56,10 +56,10 @@ test_playable_mixer_blend :: proc(t: ^testing.T) {
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
 
-	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
+	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = a_guid}), 0.5)
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = b_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = a_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = b_guid}), 0.5)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -92,9 +92,9 @@ test_playable_partial_weight_blends_default :: proc(t: ^testing.T) {
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
 
-	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
+	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = guid}), 0.3)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = guid}), 0.3)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -135,14 +135,14 @@ test_playable_layer_override :: proc(t: ^testing.T) {
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
 
-	root := anim.playable_add(&g, anim.Layer_Mixer_Playable{})
+	root := anim.playable_add(&g, anim.Playable_Layer_Mixer{})
 	groot := root
-	l0 := anim.playable_add(&g, anim.Mixer_Playable{})
-	l1 := anim.playable_add(&g, anim.Mixer_Playable{})
+	l0 := anim.playable_add(&g, anim.Playable_Mixer{})
+	l1 := anim.playable_add(&g, anim.Playable_Mixer{})
 	anim.playable_connect(&g, root, l0, 1)
 	anim.playable_connect(&g, root, l1, 1)
-	anim.playable_connect(&g, l0, anim.playable_add(&g, anim.Clip_Playable{clip = lo_guid}), 1)
-	anim.playable_connect(&g, l1, anim.playable_add(&g, anim.Clip_Playable{clip = hi_guid}), 1)
+	anim.playable_connect(&g, l0, anim.playable_add(&g, anim.Playable_Clip{clip = lo_guid}), 1)
+	anim.playable_connect(&g, l1, anim.playable_add(&g, anim.Playable_Clip{clip = hi_guid}), 1)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -180,10 +180,10 @@ test_playable_rotation_blend :: proc(t: ^testing.T) {
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
 
-	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
+	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = a_guid}), 0.5)
-	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Clip_Playable{clip = b_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = a_guid}), 0.5)
+	anim.playable_connect(&g, mixer, anim.playable_add(&g, anim.Playable_Clip{clip = b_guid}), 0.5)
 
 	pose := anim.playable_graph_evaluate(&g, groot, &b)
 	anim.animation_pose_apply(&b, pose)
@@ -219,9 +219,9 @@ test_playable_script_collection :: proc(t: ^testing.T) {
 	}
 	fired: Fired
 
-	mixer := anim.playable_add(&g, anim.Mixer_Playable{})
+	mixer := anim.playable_add(&g, anim.Playable_Mixer{})
 	groot := mixer
-	script := anim.playable_add(&g, anim.Script_Playable{
+	script := anim.playable_add(&g, anim.Playable_Script{
 		user_data = &fired,
 		process = proc(data: rawptr, time: f32, weight: f32) {
 			f := cast(^Fired)data
@@ -383,8 +383,8 @@ test_animation_layers_stack :: proc(t: ^testing.T) {
 	// argument — the component resolves the layer from the authored data.
 	// Layer 0 must stay untouched.
 	append(&a.layers, anim.Animation_Layer{}, anim.Animation_Layer{})
-	a.layers[1].entries = make([dynamic]anim.Anim_Entry)
-	append(&a.layers[1].entries, anim.Anim_Entry{id = 1, variant = anim.Clip_Entry{clip = c_guid}})
+	a.layers[1].entries = make([dynamic]anim.Animation_Entry)
+	append(&a.layers[1].entries, anim.Animation_Entry{id = 1, kind = anim.Animation_Entry_Clip{clip = c_guid}})
 	anim.animation_cross_fade(a, c_guid, 1.0)
 	anim.animation_tick(0.5)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -431,7 +431,7 @@ test_playable_scrub_preview_cycle :: proc(t: ^testing.T) {
 	b: anim.Animation_Binding
 	anim.animation_binding_init(&b, owner)
 	defer anim.animation_binding_destroy(&b)
-	groot := anim.playable_add(&g, anim.Clip_Playable{clip = guid})
+	groot := anim.playable_add(&g, anim.Playable_Clip{clip = guid})
 
 	// Frame 1: scrub to t=0.5 — the pose renders, the restore puts the
 	// authored values back.
@@ -523,7 +523,7 @@ test_playable_speed_and_done :: proc(t: ^testing.T) {
 	defer anim.playable_output_destroy(&o)
 
 	// speed 2: local time 0.25 samples the clip at 0.5.
-	node := anim.playable_add(&o.graph, anim.Clip_Playable{clip = guid}, speed = 2)
+	node := anim.playable_add(&o.graph, anim.Playable_Clip{clip = guid}, speed = 2)
 	anim.playable_output_root(&o)^ = node
 	anim.playable_node(&o.graph, node).time = 0.25
 	anim.playable_output_tick(&o)
@@ -563,8 +563,8 @@ test_graph_two_outputs_pose_separate_targets :: proc(t: ^testing.T) {
 
 	oa := anim.graph_output_add(&g, rig_a)
 	ob := anim.graph_output_add(&g, rig_b)
-	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Clip_Playable{clip = a_guid})
-	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Clip_Playable{clip = b_guid})
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = a_guid})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = b_guid})
 
 	// One tick poses both targets, each from its own subtree.
 	anim.playable_graph_tick(&g)
@@ -600,8 +600,8 @@ test_graph_output_binds_only_its_subtree :: proc(t: ^testing.T) {
 
 	oa := anim.graph_output_add(&g, rig_a)
 	ob := anim.graph_output_add(&g, rig_b)
-	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Clip_Playable{clip = pos_guid})
-	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Clip_Playable{clip = scl_guid})
+	anim.graph_output(&g, oa).root = anim.playable_add(&g, anim.Playable_Clip{clip = pos_guid})
+	anim.graph_output(&g, ob).root = anim.playable_add(&g, anim.Playable_Clip{clip = scl_guid})
 	anim.playable_graph_tick(&g)
 
 	// The claim under test: a binding covers only the clips REACHABLE from its

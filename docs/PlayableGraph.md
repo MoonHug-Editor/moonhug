@@ -278,7 +278,7 @@ the transform — Unity's EditorCurveBinding model `(path, type, propertyName)`:
 Odin-shaped: no closures, no GC. A script node is a vtable plus user data:
 
 ```odin
-Script_Playable :: struct {
+Playable_Script :: struct {
     user_data: rawptr,
     on_play:   proc(data: rawptr),
     on_pause:  proc(data: rawptr),
@@ -370,7 +370,7 @@ Every dynamic comes from outside writes. No conditions, no transitions, no
 "activates when parameter > x" in the data, or Mecanim reassembles itself by
 accident.
 
-Wrinkle to design in, not discover: `Script_Playable` holds proc pointers,
+Wrinkle to design in, not discover: `Playable_Script` holds proc pointers,
 which do not serialize. Authored script nodes reference registered names
 through a registry (the ext-component registry is the precedent).
 

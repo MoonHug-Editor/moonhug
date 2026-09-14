@@ -49,6 +49,6 @@ test_tween_roots_walk_order :: proc(t: ^testing.T) {
 
 	tid, ok := tween.authored_typeid(roots[3].value)
 	testing.expect(t, ok && tid == typeid_of(tween.Sequence), "root type resolves through the guid")
-	kids, kok := tween.authored_children(roots[3].value)
-	testing.expect(t, kok && len(kids) == 1, "children nest inside the blob")
+	children, kok := tween.authored_children(roots[3].value)
+	testing.expect(t, kok && len(children) == 1, "children nest inside the blob")
 }

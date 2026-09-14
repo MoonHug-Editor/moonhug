@@ -318,8 +318,8 @@ _walk :: proc(
 	})
 	if parent >= 0 do append(links, ng.Link{from = parent, to = idx})
 
-	if kids, kok := tween.authored_children(v); kok {
-		for child, i in kids {
+	if children, kok := tween.authored_children(v); kok {
+		for child, i in children {
 			_walk(child, idx, i, walked, nodes, links, depth + 1)
 		}
 	}
@@ -463,9 +463,9 @@ _edit_finalize :: proc() {
 	for i in 0 ..< _edit.depth {
 		obj, is_obj := v^.(json.Object)
 		if !is_obj do return
-		kids, kok := obj["children"].(json.Array)
-		if !kok || int(_edit.path[i]) >= len(kids) do return
-		v = &kids[_edit.path[i]]
+		children, kok := obj["children"].(json.Array)
+		if !kok || int(_edit.path[i]) >= len(children) do return
+		v = &children[_edit.path[i]]
 	}
 	if tid, tok := tween.authored_typeid(v^); !tok || tid != _edit.tid do return
 
@@ -693,8 +693,8 @@ _draw_node_inline :: proc(owner: engine.Handle, root_idx: int, path: []i32, dept
 	if depth >= 60 do return
 	_node_editor(owner, root_idx, path[:depth], v, tid)
 
-	if kids, kok := tween.authored_children(v); kok {
-		for child, i in kids {
+	if children, kok := tween.authored_children(v); kok {
+		for child, i in children {
 			clabel := "?"
 			if ctid, cok := tween.authored_typeid(child); cok do clabel = _type_label(ctid)
 			if im.TreeNode(fmt.ctprintf("%d: %s##twc_%d_%d", i, clabel, depth, i)) {

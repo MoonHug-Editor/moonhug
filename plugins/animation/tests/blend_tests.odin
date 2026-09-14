@@ -10,21 +10,21 @@ import "moonhug:engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
 
-// A layer holding one blend with `kids` clips placed at 0, 1, 2... on the axis.
+// A layer holding one blend with `children` clips placed at 0, 1, 2... on the axis.
 @(private = "file")
-_blend_layer :: proc(a: ^anim.Animation, kids: []engine.Asset_GUID, value: f32) -> (blend_id: i32) {
-	entries := make([dynamic]anim.Anim_Entry)
-	append(&entries, anim.Anim_Entry{
+_blend_layer :: proc(a: ^anim.Animation, children: []engine.Asset_GUID, value: f32) -> (blend_id: i32) {
+	entries := make([dynamic]anim.Animation_Entry)
+	append(&entries, anim.Animation_Entry{
 		id      = 1,
 		name    = strings.clone("Locomotion"),
-		variant = anim.Blend1D_Entry{value = value},
+		kind = anim.Animation_Entry_Blend1D{value = value},
 	})
-	for g, i in kids {
-		append(&entries, anim.Anim_Entry{
+	for g, i in children {
+		append(&entries, anim.Animation_Entry{
 			id      = i32(i) + 2,
 			parent  = 1,
 			pos     = {f32(i), 0},
-			variant = anim.Clip_Entry{clip = g},
+			kind = anim.Animation_Entry_Clip{clip = g},
 		})
 	}
 	a.layers = make([dynamic]anim.Animation_Layer)
@@ -141,10 +141,10 @@ test_entry_ids_are_stable_and_named :: proc(t: ^testing.T) {
 
 	_ = _blend_layer(a, {walk, run}, 0)
 	// A second top-level state beside the blend.
-	append(&a.layers[0].entries, anim.Anim_Entry{
+	append(&a.layers[0].entries, anim.Animation_Entry{
 		id      = anim.animation_entry_next_id(a),
 		name    = strings.clone("Idle"),
-		variant = anim.Clip_Entry{clip = walk},
+		kind = anim.Animation_Entry_Clip{clip = walk},
 	})
 
 	blend_id, blend_ok := anim.animation_find(a, "Locomotion")
@@ -197,7 +197,7 @@ test_blend_and_clip_states_replace_each_other :: proc(t: ^testing.T) {
 	anim.animation_play_clip(a, walk, 0)
 	anim.animation_tick(0.016)
 	testing.expect_value(t, len(a.rt_layers[0].states), 1)
-	_, still_clip := a.rt_layers[0].states[0].kind.(anim.Clip_State)
+	_, still_clip := a.rt_layers[0].states[0].kind.(anim.Animation_State_Clip)
 	testing.expect(t, still_clip, "the surviving state is the clip")
 
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
@@ -249,14 +249,14 @@ test_entry_tree_round_trips :: proc(t: ^testing.T) {
 
 	blend := back.layers[0].entries[0]
 	testing.expect_value(t, blend.name, "Locomotion")
-	b, is_blend := blend.variant.(anim.Blend1D_Entry)
-	testing.expect(t, is_blend, "the first entry is still a blend, not a null variant")
+	b, is_blend := blend.kind.(anim.Animation_Entry_Blend1D)
+	testing.expect(t, is_blend, "the first entry is still a blend, not the zero variant")
 	if is_blend do testing.expectf(t, abs(b.value - 0.25) < 0.0001, "blend value survives, got %v", b.value)
 
-	kid := back.layers[0].entries[2]
-	testing.expect_value(t, kid.parent, blend.id)
-	testing.expectf(t, abs(kid.pos.x - 1) < 0.0001, "the second child keeps its axis position, got %v", kid.pos.x)
-	c, is_clip := kid.variant.(anim.Clip_Entry)
+	child := back.layers[0].entries[2]
+	testing.expect_value(t, child.parent, blend.id)
+	testing.expectf(t, abs(child.pos.x - 1) < 0.0001, "the second child keeps its axis position, got %v", child.pos.x)
+	c, is_clip := child.kind.(anim.Animation_Entry_Clip)
 	testing.expect(t, is_clip, "children are still clip entries")
 	if is_clip do testing.expect_value(t, c.clip, run)
 }
@@ -306,14 +306,14 @@ test_animation_demo_scene_loads :: proc(t: ^testing.T) {
 	e := anim.animation_entry(a, blend_id)
 	testing.expect(t, e != nil, "the blend entry is there")
 	if e == nil do return
-	_, is_blend := e.variant.(anim.Blend1D_Entry)
+	_, is_blend := e.kind.(anim.Animation_Entry_Blend1D)
 	testing.expect(t, is_blend, "it survived as a blend, not the zero variant")
 
-	kids := 0
+	children := 0
 	for &entry in a.layers[0].entries {
-		if entry.parent == blend_id do kids += 1
+		if entry.parent == blend_id do children += 1
 	}
-	testing.expect_value(t, kids, 2)
+	testing.expect_value(t, children, 2)
 
 	_, idle_ok := anim.animation_find(a, "Idle")
 	_, jump_ok := anim.animation_find(a, "Jump")
@@ -375,17 +375,17 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	a.started = true
 
 	_ = _blend_layer(a, {walk, run}, 0)
-	append(&a.layers[0].entries, anim.Anim_Entry{
+	append(&a.layers[0].entries, anim.Animation_Entry{
 		id      = anim.animation_entry_next_id(a),
 		name    = strings.clone("Idle"),
-		variant = anim.Clip_Entry{clip = idle},
+		kind = anim.Animation_Entry_Clip{clip = idle},
 	})
 	// The default clip names a clip an entry already holds: it must not become
 	// a second leaf.
 	a.clip = idle
 
 	g: anim.Playable_Graph
-	leaves := make([dynamic]anim.Authored_Leaf)
+	leaves := make([dynamic]anim.Animation_Authored_Leaf)
 	defer delete(leaves)
 	anim.animation_graph_build_authored(a, &g, owner, 1, &leaves)
 	defer anim.playable_graph_destroy(&g)
@@ -412,11 +412,11 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	anim.animation_play_entry(a, bid)
 	testing.expect_value(t, len(a.rt_layers[0].states), 1)
 	st := &a.rt_layers[0].states[0]
-	b, is_blend := &st.kind.(anim.Blend_State)
+	b, is_blend := &st.kind.(anim.Animation_State_Blend)
 	testing.expect(t, is_blend, "a blend entry plays as a blend state")
 	if !is_blend do return
-	testing.expect_value(t, len(b.kids), 2)
-	testing.expect(t, b.kids[0].pos <= b.kids[1].pos, "children come out sorted by position")
+	testing.expect_value(t, len(b.children), 2)
+	testing.expect(t, b.children[0].pos <= b.children[1].pos, "children come out sorted by position")
 }
 
 // The editor's edit-mode state preview (view_animation.odin `_pv_entry_tick`)
@@ -451,26 +451,26 @@ test_authored_graph_poses_a_blend_without_a_playing_state :: proc(t: ^testing.T)
 
 	// Exactly what the preview does when a state's play button is pressed.
 	g: anim.Playable_Graph
-	leaves := make([dynamic]anim.Authored_Leaf)
+	leaves := make([dynamic]anim.Animation_Authored_Leaf)
 	defer delete(leaves)
 	anim.animation_graph_build_authored(a, &g, owner, 0, &leaves)
 	defer anim.playable_graph_destroy(&g)
 
-	kids := make([dynamic]anim.Anim_Blend_Child)
-	defer delete(kids)
+	children := make([dynamic]anim.Animation_Blend_Child)
+	defer delete(children)
 	top, layer: anim.Playable_Handle
 	for l in leaves {
 		if l.entry != id do continue
 		top, layer = l.top, l.layer
-		append(&kids, l.child)
+		append(&children, l.child)
 	}
 	testing.expect(t, top != {}, "the blend's chain is in the authored graph")
 	if top == {} do return
-	testing.expect_value(t, len(kids), 2)
+	testing.expect_value(t, len(children), 2)
 
 	anim.playable_set_input_weight(&g, layer, top, 1)
-	cycle := anim.animation_blend1d_weights(&g, top, kids[:], 0.5)
-	anim.animation_blend_sample(&g, kids[:], 0)
+	cycle := anim.animation_blend1d_weights(&g, top, children[:], 0.5)
+	anim.animation_blend_sample(&g, children[:], 0)
 	anim.playable_graph_tick(&g)
 
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))

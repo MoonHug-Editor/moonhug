@@ -29,7 +29,7 @@ package union_gen
 //   silent Marshaler_Previously_Found.
 // - unions with an untagged variant: they cannot be guid-keyed, and they keep
 //   the default marshaler they have today (the editor's undo Command, the
-//   inspector's Min_Value, the graph's runtime Playable_Variant). Changing how
+//   inspector's Min_Value, the graph's runtime Playable_Kind). Changing how
 //   an existing type serializes is the one thing this module must never do.
 // - anything under moonhug/engine: engine/serialization imports the engine,
 //   so a file there importing it back is a cycle. The engine declares no

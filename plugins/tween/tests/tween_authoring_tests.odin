@@ -42,8 +42,8 @@ test_authored_make_and_child_ops :: proc(t: ^testing.T) {
 	testing.expect(t, cok)
 	testing.expect(t, tween.authored_add_child(&seq.value, scale))
 
-	kids, kok := tween.authored_children(seq.value)
-	testing.expect(t, kok && len(kids) == 2, "both children attached")
+	children, kok := tween.authored_children(seq.value)
+	testing.expect(t, kok && len(children) == 2, "both children attached")
 
 	// A leaf rejects children (the editor hides the button, the API guards).
 	leaf, lok := tween.authored_make(typeid_of(tween.TweenMoveToLocal))
@@ -87,8 +87,8 @@ test_authored_retype :: proc(t: ^testing.T) {
 	testing.expect(t, tween.authored_retype(&seq.value, typeid_of(tween.Parallel)))
 	tid, tok := tween.authored_typeid(seq.value)
 	testing.expect(t, tok && tid == typeid_of(tween.Parallel), "type tag switched")
-	kids, kok := tween.authored_children(seq.value)
-	testing.expect(t, kok && len(kids) == 1, "composite -> composite keeps children")
+	children, kok := tween.authored_children(seq.value)
+	testing.expect(t, kok && len(children) == 1, "composite -> composite keeps children")
 
 	// Composite -> leaf drops them (a leaf has nowhere to put children).
 	testing.expect(t, tween.authored_retype(&seq.value, typeid_of(tween.TweenScaleToLocal)))

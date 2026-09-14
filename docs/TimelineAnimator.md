@@ -186,7 +186,7 @@ playable_set_input_weight(&g, layer_mixer, state_node, w)
 ```
 
 **Every playable handles its own weight.** The graph delivers the number, the
-node decides what it means. `Script_Playable.process` already receives it, so
+node decides what it means. `Playable_Script.process` already receives it, so
 a track that produces side effects rather than a pose — audio, activation,
 markers — builds a script node and reads the weight there. There is no path
 out of the manager that skips it.

@@ -35,33 +35,33 @@ Playable_Input :: struct {
 }
 
 // Leaf: samples an AnimationClip at the node's local time.
-Clip_Playable :: struct {
+Playable_Clip :: struct {
 	clip: engine.Asset_GUID,
 }
 
 // Blends its inputs by weight. Input weights sum to 1 in normal play — a sum
 // below 1 blends the remainder from the default pose, above 1 normalizes.
-Mixer_Playable :: struct {}
+Playable_Mixer :: struct {}
 
 // Stacks layer poses bottom-up: the result starts as the default pose and
 // each input blends over the running result by its weight, so a higher layer
 // overrides lower ones wherever it animates a channel.
-Layer_Mixer_Playable :: struct {}
+Playable_Layer_Mixer :: struct {}
 
 // Leaf: a callback with a local time. Timeline markers are the zero-duration
 // case. on_play/on_pause are for drivers; evaluation only collects `process`.
-Script_Playable :: struct {
+Playable_Script :: struct {
 	user_data: rawptr,
 	on_play:   proc(data: rawptr),
 	on_pause:  proc(data: rawptr),
 	process:   proc(data: rawptr, time: f32, weight: f32),
 }
 
-Playable_Variant :: union {
-	Clip_Playable,
-	Mixer_Playable,
-	Layer_Mixer_Playable,
-	Script_Playable,
+Playable_Kind :: union {
+	Playable_Clip,
+	Playable_Mixer,
+	Playable_Layer_Mixer,
+	Playable_Script,
 }
 
 Playable_Node :: struct {
@@ -69,7 +69,7 @@ Playable_Node :: struct {
 	time:    f32, // local time, written by the driver (already wrapped for clips)
 	speed:   f32, // scales the local time at evaluation: samples read time * speed
 	inputs:  [dynamic]Playable_Input,
-	variant: Playable_Variant,
+	kind:    Playable_Kind,
 }
 
 // The node's local time as evaluation reads it. speed 0 is the zero value of
@@ -130,16 +130,16 @@ playable_node :: proc(g: ^Playable_Graph, h: Playable_Handle) -> ^Playable_Node 
 	return n.alive ? n : nil
 }
 
-playable_add :: proc(g: ^Playable_Graph, variant: Playable_Variant, speed: f32 = 1) -> Playable_Handle {
+playable_add :: proc(g: ^Playable_Graph, kind: Playable_Kind, speed: f32 = 1) -> Playable_Handle {
 	if len(g.free_slots) > 0 {
 		h := pop(&g.free_slots)
 		n := &g.nodes[int(h) - 1]
 		inputs := n.inputs
 		clear(&inputs)
-		n^ = Playable_Node{alive = true, speed = speed, inputs = inputs, variant = variant}
+		n^ = Playable_Node{alive = true, speed = speed, inputs = inputs, kind = kind}
 		return h
 	}
-	append(&g.nodes, Playable_Node{alive = true, speed = speed, inputs = make([dynamic]Playable_Input), variant = variant})
+	append(&g.nodes, Playable_Node{alive = true, speed = speed, inputs = make([dynamic]Playable_Input), kind = kind})
 	return Playable_Handle(len(g.nodes))
 }
 
@@ -193,7 +193,7 @@ playable_set_input_weight :: proc(g: ^Playable_Graph, parent, child: Playable_Ha
 playable_clip_length :: proc(g: ^Playable_Graph, h: Playable_Handle) -> (f32, bool) {
 	n := playable_node(g, h)
 	if n == nil do return 0, false
-	c, is_clip := n.variant.(Clip_Playable)
+	c, is_clip := n.kind.(Playable_Clip)
 	if !is_clip do return 0, false
 	clip, ok := animation_clip_load(c.clip)
 	if !ok do return 0, false
@@ -206,7 +206,7 @@ playable_clip_length :: proc(g: ^Playable_Graph, h: Playable_Handle) -> (f32, bo
 playable_node_done :: proc(g: ^Playable_Graph, h: Playable_Handle) -> bool {
 	n := playable_node(g, h)
 	if n == nil do return true
-	c, is_clip := n.variant.(Clip_Playable)
+	c, is_clip := n.kind.(Playable_Clip)
 	if !is_clip do return false
 	clip, ok := animation_clip_load(c.clip)
 	if !ok do return true
@@ -443,7 +443,7 @@ animation_binding_write_defaults :: proc(b: ^Animation_Binding) {
 // --- Evaluation ---------------------------------------------------------------------
 
 Script_Invocation :: struct {
-	script: Script_Playable,
+	script: Playable_Script,
 	time:   f32,
 	weight: f32,
 }
@@ -470,7 +470,7 @@ _graph_bind :: proc(g: ^Playable_Graph, root: Playable_Handle, b: ^Animation_Bin
 		seen[int(h) - 1] = true
 		for input in n.inputs do append(&stack, input.node)
 
-		c, is_clip := n.variant.(Clip_Playable)
+		c, is_clip := n.kind.(Playable_Clip)
 		if !is_clip do continue
 		clip, ok := animation_clip_load(c.clip)
 		if !ok do continue
@@ -542,8 +542,8 @@ _eval_node :: proc(
 ) {
 	n := playable_node(g, h)
 	if n == nil do return
-	switch v in n.variant {
-	case Clip_Playable:
+	switch v in n.kind {
+	case Playable_Clip:
 		clip, ok := animation_clip_load(v.clip)
 		if !ok do return
 		t := playable_node_time(n)
@@ -567,14 +567,14 @@ _eval_node :: proc(
 			case .Scale:    pv.scl = val.xyz; pv.scl_w = 1
 			}
 		}
-	case Mixer_Playable:
+	case Playable_Mixer:
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
 			child := _pose_make(b, allocator)
 			_eval_node(g, inp.node, b, child, path_weight * inp.weight, scripts, allocator)
 			_pose_accumulate(out, child, inp.weight, b)
 		}
-	case Layer_Mixer_Playable:
+	case Playable_Layer_Mixer:
 		_pose_set_default(out, b)
 		for inp in n.inputs {
 			if inp.weight <= PLAYABLE_WEIGHT_EPS do continue
@@ -582,7 +582,7 @@ _eval_node :: proc(
 			_eval_node(g, inp.node, b, child, path_weight * inp.weight, scripts, allocator)
 			_pose_blend_over(out, child, inp.weight, b)
 		}
-	case Script_Playable:
+	case Playable_Script:
 		if scripts != nil {
 			append(scripts, Script_Invocation{script = v, time = playable_node_time(n), weight = path_weight})
 		}

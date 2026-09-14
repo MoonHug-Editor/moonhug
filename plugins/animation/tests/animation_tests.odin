@@ -226,10 +226,10 @@ test_animation_cleanup_is_idempotent :: proc(t: ^testing.T) {
 	a := cast(^anim.Animation)ptr
 
 	a.layers = make([dynamic]anim.Animation_Layer)
-	entries := make([dynamic]anim.Anim_Entry)
+	entries := make([dynamic]anim.Animation_Entry)
 	// An owned name too: cleanup frees one string per entry, and a double free
 	// there is exactly what this test is for.
-	append(&entries, anim.Anim_Entry{id = 1, name = strings.clone("Walk")})
+	append(&entries, anim.Animation_Entry{id = 1, name = strings.clone("Walk")})
 	append(&a.layers, anim.Animation_Layer{entries = entries})
 
 	engine.type_cleanup(.Animation, ptr)

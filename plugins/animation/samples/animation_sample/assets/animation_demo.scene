@@ -1363,7 +1363,7 @@
                 0.0
               ],
               "name": "Locomotion",
-              "variant": {
+              "kind": {
                 "__type_guid": "8c5e2a06-1f3d-4b78-a9e4-05c6b2d94871",
                 "value": 0.0
               }
@@ -1376,7 +1376,7 @@
                 0.0
               ],
               "name": "Walk",
-              "variant": {
+              "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
                 "clip": "d1cd9780-a8f2-4ab6-9fcf-ce77583c2812"
               }
@@ -1389,7 +1389,7 @@
                 0.0
               ],
               "name": "Run",
-              "variant": {
+              "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
                 "clip": "c60585bf-dae8-4c4d-a808-4d6368f8b16f"
               }
@@ -1402,7 +1402,7 @@
                 0.0
               ],
               "name": "Idle",
-              "variant": {
+              "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
                 "clip": "5de156d5-15c4-4934-be74-b8cc41fec86b"
               }
@@ -1415,7 +1415,7 @@
                 0.0
               ],
               "name": "Jump",
-              "variant": {
+              "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
                 "clip": "37f0c3bd-e9a1-44dd-a634-aad5d0a34404"
               }
@@ -1428,7 +1428,7 @@
                 0.0
               ],
               "name": "Death",
-              "variant": {
+              "kind": {
                 "__type_guid": "3d9b41f7-64ac-4a55-9c02-b8e1d7f5a630",
                 "clip": "1002bc62-5880-465a-8e26-cc362abc22d9"
               }

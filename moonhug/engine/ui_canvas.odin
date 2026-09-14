@@ -379,7 +379,7 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 	}
 	stack := make([dynamic]Entry, context.temp_allocator)
 	append(&stack, Entry{tH = canvas_tH, parent = root, xform = linalg.MATRIX4F32_IDENTITY})
-	kids := make([dynamic]Transform_Handle, context.temp_allocator)
+	children := make([dynamic]Transform_Handle, context.temp_allocator)
 	laid := make([dynamic]Rect, context.temp_allocator)
 	for len(stack) > 0 {
 		e := pop(&stack)
@@ -406,18 +406,18 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 
 		// A layout container arranges the active RectTransform children; the
 		// rest pass the rect through as usual.
-		clear(&kids)
+		clear(&children)
 		for child in t.children {
 			ch := Transform_Handle(child.handle)
 			ct := pool_get(&w.transforms, Handle(ch))
 			if ct == nil || !ct.is_active do continue
-			if _, rt := transform_get_comp(ch, RectTransform); rt != nil && rt.enabled do append(&kids, ch)
+			if _, rt := transform_get_comp(ch, RectTransform); rt != nil && rt.enabled do append(&children, ch)
 		}
 		has_layout := false
-		if len(kids) > 0 {
-			resize(&laid, len(kids))
+		if len(children) > 0 {
+			resize(&laid, len(children))
 			for p in _canvas_layout_providers {
-				if p(e.tH, rect, kids[:], laid[:]) {
+				if p(e.tH, rect, children[:], laid[:]) {
 					has_layout = true
 					break
 				}
@@ -426,11 +426,11 @@ canvas_resolve_rects :: proc(canvas_tH: Transform_Handle, root: Rect, out: ^[dyn
 
 		// Pushed in reverse so the pop order is hierarchy order; laid-out
 		// children take their slot in the order they were listed.
-		slot := len(kids) - 1
+		slot := len(children) - 1
 		#reverse for child in t.children {
 			ch := Transform_Handle(child.handle)
 			entry := Entry{tH = ch, parent = rect, xform = xform}
-			if slot >= 0 && kids[slot] == ch {
+			if slot >= 0 && children[slot] == ch {
 				if has_layout {
 					entry.forced = laid[slot]
 					entry.laid = true

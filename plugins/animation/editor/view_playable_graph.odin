@@ -95,11 +95,11 @@ _pg_layout :: proc(g: ^anim.Playable_Graph, salt: u64) {
 	for &n, i in g.nodes {
 		if !n.alive do continue
 		tag := u64(0)
-		switch _ in n.variant {
-		case anim.Clip_Playable:        tag = 1
-		case anim.Mixer_Playable:       tag = 2
-		case anim.Layer_Mixer_Playable: tag = 3
-		case anim.Script_Playable:      tag = 4
+		switch _ in n.kind {
+		case anim.Playable_Clip:        tag = 1
+		case anim.Playable_Mixer:       tag = 2
+		case anim.Playable_Layer_Mixer: tag = 3
+		case anim.Playable_Script:      tag = 4
 		}
 		sig = sig * 31 + u64(i) * 7 + tag
 		for inp in n.inputs {
@@ -163,8 +163,8 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		if !n.alive do continue
 		lines := make([dynamic]cstring, context.temp_allocator)
 		d: _Desc
-		switch v in n.variant {
-		case anim.Clip_Playable:
+		switch v in n.kind {
+		case anim.Playable_Clip:
 			d.title = "Clip"
 			d.color = {0.26, 0.42, 0.69, 1}
 			append(&lines, fmt.ctprintf("%s", _pv_clip_name(v.clip)))
@@ -175,15 +175,15 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 					append(&lines, fmt.ctprintf("len %.2f s, %v", clip.length, clip.wrap))
 				}
 			}
-		case anim.Mixer_Playable:
+		case anim.Playable_Mixer:
 			d.title = "Mixer"
 			d.color = {0.29, 0.55, 0.35, 1}
 			append(&lines, fmt.ctprintf("%d input%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
-		case anim.Layer_Mixer_Playable:
+		case anim.Playable_Layer_Mixer:
 			d.title = "Layer Mixer"
 			d.color = {0.52, 0.36, 0.64, 1}
 			append(&lines, fmt.ctprintf("%d layer%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
-		case anim.Script_Playable:
+		case anim.Playable_Script:
 			d.title = "Script"
 			d.color = {0.75, 0.52, 0.25, 1}
 			if live do append(&lines, fmt.ctprintf("t %.2f s", n.time))

@@ -85,7 +85,7 @@ _states_section :: proc(a: ^anim.Animation) {
 	if im.Button("Add Layer") {
 		sess := inspector.structural_edit_begin("Add Layer")
 		if a.layers == nil do a.layers = make([dynamic]anim.Animation_Layer)
-		append(&a.layers, anim.Animation_Layer{entries = make([dynamic]anim.Anim_Entry)})
+		append(&a.layers, anim.Animation_Layer{entries = make([dynamic]anim.Animation_Entry)})
 		inspector.structural_edit_end(&sess)
 	}
 	if len(a.layers) > 1 {
@@ -113,9 +113,9 @@ _layer_rows :: proc(a: ^anim.Animation, li: int) {
 	im.SameLine()
 	w := im.CalcTextSize("+ Blend").x + im.CalcTextSize("+ State").x + im.GetStyle().FramePadding.x * 4 + im.GetStyle().ItemSpacing.x
 	im.SetCursorPosX(im.GetCursorPosX() + im.GetContentRegionAvail().x - w)
-	if im.Button("+ State") do _entry_add(a, li, anim.Clip_Entry{}, "State", 0)
+	if im.Button("+ State") do _entry_add(a, li, anim.Animation_Entry_Clip{}, "State", 0)
 	im.SameLine()
-	if im.Button("+ Blend") do _entry_add(a, li, anim.Blend1D_Entry{}, "Blend", 0)
+	if im.Button("+ Blend") do _entry_add(a, li, anim.Animation_Entry_Blend1D{}, "Blend", 0)
 
 	if !open do return
 	defer im.TreePop()
@@ -147,7 +147,7 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	im.PushIDInt(id)
 	defer im.PopID()
 
-	_, is_blend := e.variant.(anim.Blend1D_Entry)
+	_, is_blend := e.kind.(anim.Animation_Entry_Blend1D)
 
 	// Both kinds are a foldout, so every state's name starts at the same x and
 	// any of them can be collapsed. A clip holds one row, a blend holds its
@@ -179,26 +179,26 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	// animation_blend_set writes, so dragging it here is what gameplay does.
 	// Two-value form: the single-value pointer assertion PANICS on a mismatch
 	// rather than returning nil.
-	if b, is := &e.variant.(anim.Blend1D_Entry); is {
+	if b, is := &e.kind.(anim.Animation_Entry_Blend1D); is {
 		lo, hi := _blend_extent(a, li, id)
 		im.SetNextItemWidth(-1)
 		_drag_session(im.SliderFloat("##value", &b.value, lo, hi, "value %.2f"))
 	}
 
-	kids := 0
+	children := 0
 	i := 0
 	for i < len(a.layers[li].entries) {
-		kid := &a.layers[li].entries[i]
-		if kid.parent != id {
+		child := &a.layers[li].entries[i]
+		if child.parent != id {
 			i += 1
 			continue
 		}
-		kids += 1
-		if !_blend_child_row(a, li, kid.id) do continue
+		children += 1
+		if !_blend_child_row(a, li, child.id) do continue
 		i += 1
 	}
-	if kids == 0 do im.TextDisabled("No children. A blend with nothing to blend poses nothing.")
-	if im.Button("+ Clip") do _entry_add(a, li, anim.Clip_Entry{}, "Clip", id)
+	if children == 0 do im.TextDisabled("No children. A blend with nothing to blend poses nothing.")
+	if im.Button("+ Clip") do _entry_add(a, li, anim.Animation_Entry_Clip{}, "Clip", id)
 	return true
 }
 
@@ -266,7 +266,7 @@ _row_buttons :: proc(a: ^anim.Animation, li: int, id: i32, play := true) -> bool
 }
 
 @(private = "file")
-_name_field :: proc(e: ^anim.Anim_Entry) {
+_name_field :: proc(e: ^anim.Animation_Entry) {
 	im.SetNextItemWidth(140)
 	if _rename_id == e.id {
 		if im.InputText("##name", cstring(raw_data(_rename_buf[:])), len(_rename_buf), {.EnterReturnsTrue}) {
@@ -287,7 +287,7 @@ _name_field :: proc(e: ^anim.Anim_Entry) {
 }
 
 @(private = "file")
-_rename_commit :: proc(e: ^anim.Anim_Entry) {
+_rename_commit :: proc(e: ^anim.Animation_Entry) {
 	text := string(cstring(raw_data(_rename_buf[:])))
 	if text != e.name {
 		sess := inspector.structural_edit_begin("Rename State")
@@ -299,8 +299,8 @@ _rename_commit :: proc(e: ^anim.Anim_Entry) {
 }
 
 @(private = "file")
-_clip_field :: proc(a: ^anim.Animation, e: ^anim.Anim_Entry, label: cstring) {
-	c, is_clip := &e.variant.(anim.Clip_Entry)
+_clip_field :: proc(a: ^anim.Animation, e: ^anim.Animation_Entry, label: cstring) {
+	c, is_clip := &e.kind.(anim.Animation_Entry_Clip)
 	if !is_clip do return
 	prev := inspector.current_field_ext_filter
 	inspector.current_field_ext_filter = "anim"
@@ -316,14 +316,14 @@ _clip_field :: proc(a: ^anim.Animation, e: ^anim.Anim_Entry, label: cstring) {
 @(private = "file")
 _blend_extent :: proc(a: ^anim.Animation, li: int, id: i32) -> (lo: f32, hi: f32) {
 	found := false
-	for &kid in a.layers[li].entries {
-		if kid.parent != id do continue
+	for &child in a.layers[li].entries {
+		if child.parent != id do continue
 		if !found {
-			lo, hi, found = kid.pos.x, kid.pos.x, true
+			lo, hi, found = child.pos.x, child.pos.x, true
 			continue
 		}
-		lo = min(lo, kid.pos.x)
-		hi = max(hi, kid.pos.x)
+		lo = min(lo, child.pos.x)
+		hi = max(hi, child.pos.x)
 	}
 	if !found do return 0, 1
 	if hi - lo < 0.0001 do return lo, lo + 1
@@ -331,26 +331,26 @@ _blend_extent :: proc(a: ^anim.Animation, li: int, id: i32) -> (lo: f32, hi: f32
 }
 
 @(private = "file")
-_entry_add :: proc(a: ^anim.Animation, li: int, variant: anim.Anim_Entry_Variant, name: string, parent: i32) {
+_entry_add :: proc(a: ^anim.Animation, li: int, variant: anim.Animation_Entry_Kind, name: string, parent: i32) {
 	sess := inspector.structural_edit_begin("Add State")
 	defer inspector.structural_edit_end(&sess)
 
-	if a.layers[li].entries == nil do a.layers[li].entries = make([dynamic]anim.Anim_Entry)
+	if a.layers[li].entries == nil do a.layers[li].entries = make([dynamic]anim.Animation_Entry)
 	id := anim.animation_entry_next_id(a)
 	// A new child lands past the last sibling, so adding to a blend extends its
 	// axis instead of landing on top of an existing child.
 	x := f32(0)
 	if parent != 0 {
-		for &kid in a.layers[li].entries {
-			if kid.parent == parent do x = max(x, kid.pos.x + 1)
+		for &child in a.layers[li].entries {
+			if child.parent == parent do x = max(x, child.pos.x + 1)
 		}
 	}
-	append(&a.layers[li].entries, anim.Anim_Entry{
+	append(&a.layers[li].entries, anim.Animation_Entry{
 		id      = id,
 		parent  = parent,
 		pos     = {x, 0},
 		name    = strings.clone(fmt.tprintf("%s %d", name, id)),
-		variant = variant,
+		kind = variant,
 	})
 }
 

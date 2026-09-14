@@ -201,7 +201,7 @@ _arena_output :: proc(a: ^_Director_Arena, target: engine.Transform_Handle) -> i
 	if idx, ok := a.targets[target]; ok do return idx
 	context.allocator = runtime.default_allocator()
 	idx := graph_output_add(&a.graph, target)
-	root := playable_add(&a.graph, Layer_Mixer_Playable{})
+	root := playable_add(&a.graph, Playable_Layer_Mixer{})
 	graph_output(&a.graph, idx).root = root
 	a.targets[target] = idx
 	return idx
@@ -309,11 +309,11 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 		st.out = _arena_output(a, st.root)
 		parent = graph_output(g, st.out).root
 	}
-	st.mixer = playable_add(g, Mixer_Playable{})
+	st.mixer = playable_add(g, Playable_Mixer{})
 	playable_connect(g, parent, st.mixer, 1)
 	st.clips = make([dynamic]Playable_Handle, 0, len(ctx.track.clips))
 	for &c in ctx.track.clips {
-		node := playable_add(g, Clip_Playable{clip = _anim_clip_asset(&c)})
+		node := playable_add(g, Playable_Clip{clip = _anim_clip_asset(&c)})
 		playable_connect(g, st.mixer, node, 0)
 		append(&st.clips, node)
 	}
