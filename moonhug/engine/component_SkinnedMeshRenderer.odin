@@ -43,6 +43,7 @@ SkinnedMeshRenderer :: struct {
     gpu:         gfx.Dynamic_Mesh `json:"-" inspect:"-"`,
     bound_guid:  Asset_GUID `json:"-" inspect:"-"`, // what `joints` was built for
     bound_part:  i32 `json:"-" inspect:"-"`,
+    bound_root:  Transform_Handle `json:"-" inspect:"-"`, // the subtree it searched
     bound_ready: bool `json:"-" inspect:"-"`,
     posed_frame: u64 `json:"-" inspect:"-"`, // gfx.frame_index the skinning last ran in
 }
@@ -57,6 +58,30 @@ cleanup_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
     delete(smr.posed)
     if smr.materials != nil do delete(smr.materials)
     comp_zero(smr)
+}
+
+// False when a joint that RESOLVED at bind time is dead now: the skeleton was
+// rebuilt under us by a delete and recreate, an undo, or a prefab reload.
+// Holding the dead handle would pose that joint's bind pose forever, so the
+// binding is thrown away and the names are resolved again.
+//
+// A joint that never resolved stays zero and is not a reason to rebind — it is
+// already reported at bind time and rebinding would just repeat the search.
+skin_joints_alive :: proc(smr: ^SkinnedMeshRenderer) -> bool {
+    w := ctx_world()
+    for h in smr.joints {
+        if h == {} do continue
+        if !pool_valid(&w.transforms, Handle(h)) do return false
+    }
+    return true
+}
+
+// Re-resolve the joints by name. Renaming a bone is not observable from here —
+// no hierarchy version exists and names are written directly — so a rename after
+// bind needs this. A deleted joint or a repointed root bone rebinds on its own.
+@(inspector_button={label="Rebind Joints", row=-1})
+skinned_mesh_rebind :: proc(smr: ^SkinnedMeshRenderer) {
+    smr.bound_ready = false
 }
 
 // Depth-first search for a transform by name.
@@ -95,12 +120,16 @@ _skin_search_root :: proc(smr: ^SkinnedMeshRenderer) -> Transform_Handle {
 // can rather than collapsing the mesh.
 @(private = "file")
 _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, part: i32) -> bool {
-    if smr.bound_ready && smr.bound_guid == guid && smr.bound_part == part do return true
+    root := _skin_search_root(smr)
+    // The search root counts as part of the binding: repointing root_bone must
+    // re-resolve the joints, not keep the ones found under the old subtree.
+    if smr.bound_ready && smr.bound_guid == guid && smr.bound_part == part && smr.bound_root == root {
+        return true
+    }
     if smr.bound_ready do gfx.dynamic_mesh_destroy(&smr.gpu)
     clear(&smr.joints)
     smr.bound_ready = false
 
-    root := _skin_search_root(smr)
     missing := 0
     if smr.joints == nil do smr.joints = make([dynamic]Transform_Handle)
     for name in mesh.joint_names {
@@ -120,7 +149,7 @@ _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, par
 
     if smr.posed == nil do smr.posed = make([dynamic]gfx.Vertex)
     resize(&smr.posed, len(mesh.bind_vertices))
-    smr.bound_guid, smr.bound_part, smr.bound_ready = guid, part, true
+    smr.bound_guid, smr.bound_part, smr.bound_root, smr.bound_ready = guid, part, root, true
     return true
 }
 
@@ -205,6 +234,9 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
         mesh, mesh_ok := mesh_load(mf.mesh.guid, part)
         if !mesh_ok || !mesh_is_skinned(mesh) do continue
 
+        // Checked before the bind, so a frame is never drawn through a palette
+        // that holds a dead joint.
+        if smr.bound_ready && !skin_joints_alive(smr) do smr.bound_ready = false
         if !_skin_bind(smr, mesh, mf.mesh.guid, part) do continue
         // Safe because nothing moves a joint between two collects of one
         // frame: the editor loop runs sim_tick and preview.apply_all before

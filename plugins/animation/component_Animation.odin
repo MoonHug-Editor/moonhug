@@ -98,29 +98,62 @@ Anim_Blend_Child :: struct {
 	wrap:   Animation_Wrap,
 }
 
-// One playing state on a layer: a clip, or a blend and its children. `weight`
-// moves linearly from `fade_from` toward `fade_target` over `fade_dur` seconds
-// (real time, like Unity — fades ignore state speed). A Once state that ran past
-// its end holds its final pose (`done`) until everything is done or something
-// replaces it.
-//
-// A blend runs on `phase`, a shared 0..1 position through the cycle, rather than
-// on `time`: its children have different lengths, and sampling them at the same
-// absolute seconds slides them out of step within a second or two.
+// A playing clip: its own clock, in seconds.
+Clip_State :: struct {
+	clip: engine.Asset_GUID,
+	time: f32,
+}
+
+// A playing blend and its children. It runs on `phase`, a shared 0..1 position
+// through the cycle, rather than on a clock in seconds: the children have
+// different lengths, and sampling them at the same absolute seconds slides them
+// out of step within a second or two.
+Blend_State :: struct {
+	kids:  [dynamic]Anim_Blend_Child,
+	phase: f32,
+}
+
+// What a state IS, so neither kind carries the other's fields. Runtime only —
+// never serialized, so no guid and no marshaler, unlike the authored
+// Anim_Entry_Variant. #no_nil for the same reason that one is: the zero value
+// has to be inert rather than a variant-less hole.
+Animation_State_Kind :: union #no_nil {
+	Clip_State,
+	Blend_State,
+}
+
+// One playing state on a layer. `weight` moves linearly from `fade_from` toward
+// `fade_target` over `fade_dur` seconds (real time, like Unity — fades ignore
+// state speed). A Once state that ran past its end holds its final pose
+// (`done`) until everything is done or something replaces it.
 Animation_State_Runtime :: struct {
 	entry:       i32, // authored entry, 0 for a clip played by guid
-	clip:        engine.Asset_GUID,
 	node:        Playable_Handle, // clip node, or the blend's mixer
-	is_blend:    bool,
-	kids:        [dynamic]Anim_Blend_Child,
-	phase:       f32,
-	time:        f32,
+	kind:        Animation_State_Kind,
 	weight:      f32,
 	fade_from:   f32,
 	fade_target: f32,
 	fade_t:      f32,
 	fade_dur:    f32, // 0 = not fading
 	done:        bool,
+}
+
+// The clip a CLIP state plays. A blend has no clip of its own, so guid-keyed
+// calls (play, cross_fade) never match one.
+@(private = "file")
+_anim_state_clip :: proc(st: ^Animation_State_Runtime) -> (engine.Asset_GUID, bool) {
+	if c, is := &st.kind.(Clip_State); is do return c.clip, true
+	return {}, false
+}
+
+// Rewind to the start, whichever clock the kind runs on.
+@(private = "file")
+_anim_state_rewind :: proc(st: ^Animation_State_Runtime) {
+	switch &k in st.kind {
+	case Clip_State:  k.time = 0
+	case Blend_State: k.phase = 0
+	}
+	st.done = false
 }
 
 Animation_Layer_Runtime :: struct {
@@ -190,7 +223,9 @@ cleanup_Animation :: proc(a: ^Animation) {
 	if a.graph_ready {
 		playable_graph_destroy(&a.graph)
 		for &l in a.rt_layers {
-			for &st in l.states do delete(st.kids)
+			for &st in l.states {
+				if b, is := &st.kind.(Blend_State); is do delete(b.kids)
+			}
 			delete(l.states)
 		}
 		delete(a.rt_layers)
@@ -293,7 +328,7 @@ _anim_layer :: proc(a: ^Animation, idx: int) -> ^Animation_Layer_Runtime {
 @(private = "file")
 _anim_state_find :: proc(l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID) -> int {
 	for &st, i in l.states {
-		if !st.is_blend && st.clip == clip do return i
+		if c, is := _anim_state_clip(&st); is && c == clip do return i
 	}
 	return -1
 }
@@ -310,7 +345,7 @@ _anim_state_find_entry :: proc(l: ^Animation_Layer_Runtime, entry: i32) -> int {
 _anim_state_add :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, clip: engine.Asset_GUID, weight: f32) -> ^Animation_State_Runtime {
 	node := playable_add(&a.graph, Clip_Playable{clip = clip})
 	playable_connect(&a.graph, l.mixer, node, weight)
-	append(&l.states, Animation_State_Runtime{clip = clip, node = node, weight = weight})
+	append(&l.states, Animation_State_Runtime{kind = Clip_State{clip = clip}, node = node, weight = weight})
 	return &l.states[len(l.states) - 1]
 }
 
@@ -381,12 +416,14 @@ _anim_clip_info :: proc(clip: engine.Asset_GUID) -> (length: f32, wrap: Animatio
 	return 1, .Loop
 }
 
-// A clip leaf of the full authored graph and where it hangs.
+// A clip leaf of the full authored graph, where it hangs, and everything the 1D
+// rule needs — `child` is exactly what a playing blend holds, so a preview can
+// weight a blend it built itself through animation_blend1d_weights.
 Authored_Leaf :: struct {
-	clip:  engine.Asset_GUID,
-	node:  Playable_Handle, // the clip node
+	using child: Anim_Blend_Child, // clip, node, pos, length, wrap
+	entry: i32,             // the TOP-LEVEL entry it belongs to, 0 for the default clip
 	under: Playable_Handle, // its parent: a blend's mixer, or the layer mixer
-	top:   Playable_Handle, // what hangs from the layer mixer: that blend mixer, or `node`
+	top:   Playable_Handle, // what hangs from the layer mixer: that blend mixer, or the clip node
 	layer: Playable_Handle, // the layer mixer
 }
 
@@ -414,7 +451,13 @@ animation_graph_build_authored :: proc(a: ^Animation, g: ^Playable_Graph, owner:
 		if li == 0 && a.clip != {} && !_anim_layer_names_clip(a, 0, a.clip) {
 			node := playable_add(g, Clip_Playable{clip = a.clip})
 			playable_connect(g, mixer, node, w)
-			if leaves != nil do append(leaves, Authored_Leaf{clip = a.clip, node = node, under = mixer, top = node, layer = mixer})
+			if leaves != nil {
+				length, wrap := _anim_clip_info(a.clip)
+				append(leaves, Authored_Leaf{
+					child = {clip = a.clip, node = node, length = length, wrap = wrap},
+					under = mixer, top = node, layer = mixer,
+				})
+			}
 		}
 		if li >= len(a.layers) do continue
 
@@ -424,7 +467,10 @@ animation_graph_build_authored :: proc(a: ^Animation, g: ^Playable_Graph, owner:
 			top, is_blend := animation_entry_build(a, g, li, e.id, mixer, w, w, &kids)
 			if top == {} || leaves == nil do continue
 			for k in kids {
-				append(leaves, Authored_Leaf{clip = k.clip, node = k.node, under = is_blend ? top : mixer, top = top, layer = mixer})
+				append(leaves, Authored_Leaf{
+					child = k, entry = e.id,
+					under = is_blend ? top : mixer, top = top, layer = mixer,
+				})
 			}
 		}
 	}
@@ -451,11 +497,11 @@ _anim_state_add_entry :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, li: in
 		delete(kids)
 		return -1
 	}
-	st := Animation_State_Runtime{entry = id, node = node, weight = weight, is_blend = is_blend}
+	st := Animation_State_Runtime{entry = id, node = node, weight = weight}
 	if is_blend {
-		st.kids = kids
+		st.kind = Blend_State{kids = kids}
 	} else {
-		st.clip = kids[0].clip
+		st.kind = Clip_State{clip = kids[0].clip}
 		delete(kids)
 	}
 	append(&l.states, st)
@@ -465,8 +511,10 @@ _anim_state_add_entry :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, li: in
 @(private = "file")
 _anim_state_remove :: proc(a: ^Animation, l: ^Animation_Layer_Runtime, i: int) {
 	st := &l.states[i]
-	for &k in st.kids do playable_remove(&a.graph, k.node)
-	delete(st.kids)
+	if b, is := &st.kind.(Blend_State); is {
+		for &k in b.kids do playable_remove(&a.graph, k.node)
+		delete(b.kids)
+	}
 	playable_remove(&a.graph, st.node)
 	ordered_remove(&l.states, i)
 }
@@ -498,15 +546,14 @@ animation_play_clip :: proc(a: ^Animation, clip: engine.Asset_GUID, layer := -1)
 	_anim_ensure_graph(a)
 	l := _anim_layer(a, _anim_layer_of(a, clip, layer))
 	for i := len(l.states) - 1; i >= 0; i -= 1 {
-		if l.states[i].clip != clip do _anim_state_remove(a, l, i)
+		if c, is := _anim_state_clip(&l.states[i]); !is || c != clip do _anim_state_remove(a, l, i)
 	}
 	st: ^Animation_State_Runtime
 	if i := _anim_state_find(l, clip); i >= 0 do st = &l.states[i]
 	if st == nil do st = _anim_state_add(a, l, clip, 1)
-	st.time = 0
+	_anim_state_rewind(st)
 	st.weight = 1
 	st.fade_dur = 0
-	st.done = false
 	a.playing = true
 	a.started = true
 }
@@ -534,9 +581,7 @@ animation_play_entry :: proc(a: ^Animation, id: i32, duration: f32 = 0) {
 	if i < 0 do return
 
 	st := &l.states[i]
-	st.time = 0
-	st.phase = 0
-	st.done = false
+	_anim_state_rewind(st)
 	if duration <= 0 {
 		st.weight = 1
 		st.fade_dur = 0
@@ -579,7 +624,7 @@ animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f
 	l := _anim_layer(a, _anim_layer_of(a, clip, layer))
 	target: ^Animation_State_Runtime
 	for &st in l.states {
-		if st.clip == clip {
+		if c, is := _anim_state_clip(&st); is && c == clip {
 			target = &st
 			continue
 		}
@@ -671,58 +716,67 @@ _anim_wrap :: proc(a: ^Animation, clip_wrap: Animation_Wrap) -> Animation_Wrap {
 // False means the state produced nothing this frame (no children, or none of
 // their clips loaded) and should be left alone.
 @(private = "file")
-_anim_blend_advance :: proc(a: ^Animation, st: ^Animation_State_Runtime, dt: f32) -> bool {
-	if len(st.kids) == 0 do return false
+_anim_blend_advance :: proc(a: ^Animation, st: ^Animation_State_Runtime, b: ^Blend_State, dt: f32) -> bool {
+	if len(b.kids) == 0 do return false
 
 	_, e := _anim_entry_find(a, st.entry)
 	if e == nil do return false
 	value := f32(0)
-	if b, ok := &e.variant.(Blend1D_Entry); ok do value = b.value
+	if v, ok := &e.variant.(Blend1D_Entry); ok do value = v.value
 
-	cycle := _anim_blend1d_weights(a, st, value)
+	cycle := animation_blend1d_weights(&a.graph, st.node, b.kids[:], value)
 	if cycle <= 0 do return false
 
 	// Wrap follows the first child's clip, the same "defer to the clip" rule a
 	// single-clip state uses — a blend has no clip of its own to ask. Cached on
 	// the child at build, like its length.
-	wrap := _anim_wrap(a, st.kids[0].wrap)
+	wrap := _anim_wrap(a, b.kids[0].wrap)
 
-	if !st.done do st.phase += dt * a.speed / cycle
-	p, done := animation_wrap_time(st.phase, 1, wrap)
+	if !st.done do b.phase += dt * a.speed / cycle
+	p, done := animation_wrap_time(b.phase, 1, wrap)
 	if done do st.done = true
 
-	for &k in st.kids {
-		if node := playable_node(&a.graph, k.node); node != nil do node.time = p * k.length
-	}
+	animation_blend_sample(&a.graph, b.kids[:], p)
 	return true
 }
 
-// Unity's 1D rule: the two children bracketing `value` share the weight, the
-// ends clamp. Returns the blended cycle length, which is what the phase
-// advances against.
-@(private = "file")
-_anim_blend1d_weights :: proc(a: ^Animation, st: ^Animation_State_Runtime, value: f32) -> f32 {
-	for &k in st.kids do playable_set_input_weight(&a.graph, st.node, k.node, 0)
-
-	last := len(st.kids) - 1
-	if value <= st.kids[0].pos {
-		playable_set_input_weight(&a.graph, st.node, st.kids[0].node, 1)
-		return st.kids[0].length
+// Sample every child of a blend at one normalized phase. The editor's preview
+// drives a blend through this and the weights proc without a playing state.
+animation_blend_sample :: proc(g: ^Playable_Graph, kids: []Anim_Blend_Child, phase: f32) {
+	for &k in kids {
+		if node := playable_node(g, k.node); node != nil do node.time = phase * k.length
 	}
-	if value >= st.kids[last].pos {
-		playable_set_input_weight(&a.graph, st.node, st.kids[last].node, 1)
-		return st.kids[last].length
+}
+
+// The 1D rule: the two children bracketing `value` share the weight, the ends
+// clamp. Returns the blended cycle length, which is what the phase advances
+// against. `kids` must be sorted by position — animation_entry_build does that.
+//
+// Takes a graph and a mixer rather than a playing state, so the editor's
+// preview weights a blend it built itself the same way the driver does.
+animation_blend1d_weights :: proc(g: ^Playable_Graph, mixer: Playable_Handle, kids: []Anim_Blend_Child, value: f32) -> f32 {
+	if len(kids) == 0 do return 0
+	for &k in kids do playable_set_input_weight(g, mixer, k.node, 0)
+
+	last := len(kids) - 1
+	if value <= kids[0].pos {
+		playable_set_input_weight(g, mixer, kids[0].node, 1)
+		return kids[0].length
+	}
+	if value >= kids[last].pos {
+		playable_set_input_weight(g, mixer, kids[last].node, 1)
+		return kids[last].length
 	}
 	for i in 0 ..< last {
-		lo, hi := st.kids[i], st.kids[i + 1]
+		lo, hi := kids[i], kids[i + 1]
 		if value < lo.pos || value > hi.pos do continue
 		span := hi.pos - lo.pos
 		k := span > 0 ? (value - lo.pos) / span : 0
-		playable_set_input_weight(&a.graph, st.node, lo.node, 1 - k)
-		playable_set_input_weight(&a.graph, st.node, hi.node, k)
+		playable_set_input_weight(g, mixer, lo.node, 1 - k)
+		playable_set_input_weight(g, mixer, hi.node, k)
 		return lo.length + (hi.length - lo.length) * k
 	}
-	return st.kids[0].length
+	return kids[0].length
 }
 
 @(private = "file")
@@ -760,21 +814,25 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 				continue
 			}
 
-			if st.is_blend {
-				if !_anim_blend_advance(a, st, dt) {
-					i += 1
-					continue
+			advanced := false
+			switch &k in st.kind {
+			case Blend_State:
+				advanced = _anim_blend_advance(a, st, &k, dt)
+			case Clip_State:
+				if clip, ok := animation_clip_load(k.clip); ok {
+					if !st.done do k.time += dt * a.speed
+					t, done := animation_wrap_time(k.time, clip.length, _anim_wrap(a, clip.wrap))
+					if done do st.done = true
+					if node := playable_node(&a.graph, st.node); node != nil do node.time = t
+					advanced = true
 				}
-			} else {
-				clip, ok := animation_clip_load(st.clip)
-				if !ok {
-					i += 1
-					continue
-				}
-				if !st.done do st.time += dt * a.speed
-				t, done := animation_wrap_time(st.time, clip.length, _anim_wrap(a, clip.wrap))
-				if done do st.done = true
-				if node := playable_node(&a.graph, st.node); node != nil do node.time = t
+			}
+			// Nothing to sample this frame (a clip that will not load, a blend
+			// with no children): leave the state alone rather than weighting a
+			// node that holds no pose.
+			if !advanced {
+				i += 1
+				continue
 			}
 			playable_set_input_weight(&a.graph, l.mixer, st.node, st.weight)
 
@@ -807,9 +865,13 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 	if len(a.rt_layers) > 0 {
 		lead_w := f32(-1)
 		for &st in a.rt_layers[0].states {
-			if st.weight > lead_w {
-				lead_w = st.weight
-				a.time = st.time
+			if st.weight <= lead_w do continue
+			lead_w = st.weight
+			// A blend has no clock in seconds, so its normalized phase stands
+			// in. This field is for inspection only.
+			switch k in st.kind {
+			case Clip_State:  a.time = k.time
+			case Blend_State: a.time = k.phase
 			}
 		}
 	}

@@ -197,7 +197,8 @@ test_blend_and_clip_states_replace_each_other :: proc(t: ^testing.T) {
 	anim.animation_play_clip(a, walk, 0)
 	anim.animation_tick(0.016)
 	testing.expect_value(t, len(a.rt_layers[0].states), 1)
-	testing.expect(t, !a.rt_layers[0].states[0].is_blend, "the surviving state is the clip")
+	_, still_clip := a.rt_layers[0].states[0].kind.(anim.Clip_State)
+	testing.expect(t, still_clip, "the surviving state is the clip")
 
 	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
 	testing.expectf(t, abs(ot.position.x - 10) < 0.01, "the clip owns the pose, got %v", ot.position.x)
@@ -411,7 +412,72 @@ test_authored_graph_matches_the_tree :: proc(t: ^testing.T) {
 	anim.animation_play_entry(a, bid)
 	testing.expect_value(t, len(a.rt_layers[0].states), 1)
 	st := &a.rt_layers[0].states[0]
-	testing.expect(t, st.is_blend, "a blend entry plays as a blend state")
-	testing.expect_value(t, len(st.kids), 2)
-	testing.expect(t, st.kids[0].pos <= st.kids[1].pos, "children come out sorted by position")
+	b, is_blend := &st.kind.(anim.Blend_State)
+	testing.expect(t, is_blend, "a blend entry plays as a blend state")
+	if !is_blend do return
+	testing.expect_value(t, len(b.kids), 2)
+	testing.expect(t, b.kids[0].pos <= b.kids[1].pos, "children come out sorted by position")
+}
+
+// The editor's edit-mode state preview (view_animation.odin `_pv_entry_tick`)
+// poses through the same three procs the driver uses, on a graph it built
+// itself with animation_graph_build_authored. The editor package is not linked
+// into tests, so this exercises that path directly: light the blend's chain,
+// weight its children by the 1D rule, sample them at one phase, evaluate.
+//
+// What it protects: the preview must not need a playing state, and its pose
+// must match what playing the state produces.
+@(test)
+test_authored_graph_poses_a_blend_without_a_playing_state :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+
+	walk, run := _clip_guid(60), _clip_guid(61)
+	anim.animation_clip_cache[walk] = _const_clip(.Position, {10, 0, 0, 0}, 1, .Loop)
+	anim.animation_clip_cache[run] = _const_clip(.Position, {20, 0, 0, 0}, 1, .Loop)
+
+	owner := engine.transform_new("Rig")
+	_, ptr := engine.transform_add_comp(owner, .Animation)
+	a := cast(^anim.Animation)ptr
+	a.enabled = true
+	a.speed = 1
+
+	id := _blend_layer(a, {walk, run}, 0.5)
+
+	// Exactly what the preview does when a state's play button is pressed.
+	g: anim.Playable_Graph
+	leaves := make([dynamic]anim.Authored_Leaf)
+	defer delete(leaves)
+	anim.animation_graph_build_authored(a, &g, owner, 0, &leaves)
+	defer anim.playable_graph_destroy(&g)
+
+	kids := make([dynamic]anim.Anim_Blend_Child)
+	defer delete(kids)
+	top, layer: anim.Playable_Handle
+	for l in leaves {
+		if l.entry != id do continue
+		top, layer = l.top, l.layer
+		append(&kids, l.child)
+	}
+	testing.expect(t, top != {}, "the blend's chain is in the authored graph")
+	if top == {} do return
+	testing.expect_value(t, len(kids), 2)
+
+	anim.playable_set_input_weight(&g, layer, top, 1)
+	cycle := anim.animation_blend1d_weights(&g, top, kids[:], 0.5)
+	anim.animation_blend_sample(&g, kids[:], 0)
+	anim.playable_graph_tick(&g)
+
+	ot := engine.pool_get(&tc.world.transforms, engine.Handle(owner))
+	testing.expectf(t, abs(ot.position.x - 15) < 0.01,
+		"the preview poses the blend with nothing playing, got %v", ot.position.x)
+	testing.expectf(t, abs(cycle - 1) < 0.01, "the blended cycle comes back for the phase rate, got %v", cycle)
+
+	// Nothing was started: the component has no runtime state at all.
+	testing.expect_value(t, len(a.rt_layers), 0)
 }

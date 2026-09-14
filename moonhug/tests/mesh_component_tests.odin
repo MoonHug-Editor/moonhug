@@ -52,3 +52,40 @@ test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {
 	if loaded_mr == nil do return
 	testing.expect(t, len(loaded_mr.materials) == 1 && loaded_mr.materials[0] == engine.Asset_GUID(mat_guid), "materials array should round-trip")
 }
+
+// A SkinnedMeshRenderer resolves its joints by NAME once and caches the
+// handles. If the skeleton is rebuilt under it — delete and recreate, an undo,
+// a prefab reload — those handles die, and posing through them would hold that
+// joint at its bind pose forever with nothing reporting it. The collector asks
+// skin_joints_alive before every pose and throws the binding away when it says no.
+//
+// Skinning itself needs a GPU device, so this covers the decision, not the pose.
+@(test)
+test_skin_binding_notices_a_dead_joint :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	hip := engine.transform_new("Hip", root)
+	knee := engine.transform_new("Knee", hip)
+
+	_, smr := engine.transform_get_or_add_comp(root, engine.SkinnedMeshRenderer)
+	testing.expect(t, smr != nil)
+	if smr == nil do return
+	smr.joints = make([dynamic]engine.Transform_Handle)
+	append(&smr.joints, hip, knee)
+
+	testing.expect(t, engine.skin_joints_alive(smr), "a live skeleton keeps its binding")
+
+	// A joint that never resolved is zero, and that is not a rebind reason —
+	// the missing name was already reported when the binding was built.
+	append(&smr.joints, engine.Transform_Handle{})
+	testing.expect(t, engine.skin_joints_alive(smr), "an unresolved joint does not force a rebind")
+
+	engine.transform_destroy(knee)
+	testing.expect(t, !engine.skin_joints_alive(smr), "a joint that died invalidates the binding")
+}

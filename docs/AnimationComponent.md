@@ -44,7 +44,9 @@ Each entry carries:
 | `variant` | `Clip_Entry` or `Blend1D_Entry`                              |
 
 Ids rather than indices, because deleting a sibling shifts every index after it
-and would silently repoint a play call at a different state.
+and would silently repoint a play call at a different state. `TimelineAnimator`
+follows the same rule — its `State_Id` is a minted `Timeline_State.id`, filled
+in by `_ta_ensure_ids` for states added through the inspector's array rows.
 
 `pos` lives on the CHILD, not as a threshold list on the parent. A child then
 works under any blend kind without knowing which it is, and switching a blend
@@ -128,9 +130,16 @@ buttons in the inspector call the driver rather than touching graph nodes.
 
 Every reader builds nodes through one primitive, `animation_entry_build`: the
 driver for the states that play, and `animation_graph_build_authored` — which
-the Playable Graph window draws and the scrub preview evaluates — for the whole
-tree at once. One builder, so the window cannot show a shape the component
-would not play.
+the Playable Graph window draws, and which the editor preview evaluates for
+both a clip scrub and a played state — for the whole tree at once. One builder,
+so the window cannot show a shape the component would not play.
+
+`animation_graph_build_authored` reports an `Authored_Leaf` per clip: the
+`Anim_Blend_Child` the 1D rule needs, which top-level entry it belongs to, and
+the chain it hangs from (`under`, `top`, `layer`). Lighting a clip inside a
+blend means weighting that whole chain — the clip under the blend's mixer AND
+that mixer under the layer — since a blend left at 0 reaches the pose with
+nothing.
 
 Nested blends are not built. A blend child that is itself a blend is skipped
 rather than flattened, so the graph never silently means something other than
@@ -160,6 +169,14 @@ walk-to-run blend read as one gait rather than two.
 
 Wrap follows the first child's clip, the same "defer to the clip" rule a single
 clip state uses — a blend has no clip of its own to ask.
+
+## The playing state
+
+A playing state is `Animation_State_Runtime`: the fade fields and `done`, plus a
+`kind` union of `Clip_State` (a clip and its clock in seconds) and `Blend_State`
+(its children and a shared phase). Runtime only and never serialized, so unlike
+the authored `Anim_Entry_Variant` it carries no guid and needs no marshaler —
+but it is a union for the same reason, so neither kind holds the other's fields.
 
 ## Fades
 
@@ -198,8 +215,18 @@ child with that child's position on the axis. Add and remove go through
 `inspector.structural_edit_begin/end`, so every edit is one undo step and is
 recorded as a prefab override.
 
-The play button calls `animation_play_entry`. The editor does not tick, so it
-takes effect while simulating.
+The play button never touches graph nodes. While simulating it calls
+`animation_play_entry` and lets the next tick rebuild the graph. In edit mode
+nothing ticks the component, so it drives the animation window's preview
+instead — ONE preview in the editor, so a state and a clip scrub can never pose
+the same object at once. Entering state mode ends a scrub, picking a clip in
+the window ends the state, and the button turns into a stop while its state is
+previewing.
+
+A previewed blend runs exactly as a played one does: the same
+`animation_blend1d_weights` and `animation_blend_sample`, on a graph built by
+`animation_graph_build_authored`. So dragging a blend's value in the tree moves
+the character in edit mode.
 
 Removing a blend takes its children with it. A child whose parent is gone is
 unreachable, unplayable, and invisible in the tree.

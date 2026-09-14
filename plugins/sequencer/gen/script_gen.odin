@@ -117,7 +117,7 @@ script_generate :: proc(w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 	strings.write_string(&b, "package sequencer\n\n")
-	strings.write_string(&b, "import \"core:encoding/json\"\n")
+	strings.write_string(&b, "import \"base:runtime\"\n")
 	strings.write_string(&b, "import \"moonhug:engine\"\n")
 	strings.write_string(&b, "import serialization \"moonhug:engine/serialization\"\n")
 	strings.write_string(&b, "import core \"moonhug:packages/sequencer/core\"\n")
@@ -159,13 +159,17 @@ script_generate :: proc(w: ^db.World) -> bool {
 
 	// Guid-keyed union persistence + the union's pointer type for undo
 	// capture of [dynamic]ScriptUnion fields.
-	strings.write_string(&b, "@(phase={key=SerializationInit, order=2})\n")
-	strings.write_string(&b, "script_union_serialization_init :: proc() {\n")
-	strings.write_string(&b, "\t@(static) done := false\n")
-	strings.write_string(&b, "\tif done do return\n")
-	strings.write_string(&b, "\tdone = true\n")
-	strings.write_string(&b, "\tjson.register_user_marshaler(ScriptUnion, serialization.union_marshal)\n")
-	strings.write_string(&b, "\tjson.register_user_unmarshaler(ScriptUnion, serialization.union_unmarshal)\n")
+	// An @(init), not a SerializationInit phase proc: the phase table is
+	// generated from a scan of the files on disk, and THIS file is not on disk
+	// when that scan runs in the same prebuild. A phase proc here is missing
+	// from the table on the first build and present on the second, with nothing
+	// failing in between — the registration just does not happen. @(init) is
+	// the language's own and needs no table. The engine registers the queued
+	// unions once its marshaler maps exist.
+	strings.write_string(&b, "@(init)\n")
+	strings.write_string(&b, "_register_script_union :: proc \"contextless\" () {\n")
+	strings.write_string(&b, "\tcontext = runtime.default_context()\n")
+	strings.write_string(&b, "\tserialization.register_union_type(ScriptUnion)\n")
 	strings.write_string(&b, "\tengine.register_pointer_type(ScriptUnion)\n")
 	strings.write_string(&b, "}\n")
 

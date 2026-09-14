@@ -815,3 +815,62 @@ test_replaying_a_finished_once_state_rewinds :: proc(t: ^testing.T) {
 	testing.expectf(t, after < before,
 		"playing a state restarts it from 0, %v -> %v", before, after)
 }
+
+// A State_Id names a state, not a position. It used to be layer<<16|index into
+// arrays kept parallel to the authored list, so deleting an earlier state on
+// the same layer silently repointed every id after it — a handle taken before
+// the edit then played the wrong timeline. Ids are minted and never reused now.
+@(test)
+test_state_id_survives_deleting_an_earlier_state :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	guid := _clip_guid(90)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0}, 1, .Loop)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.speed = 1
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, _mk_state("First", _mk_local_timeline(root, "Body", guid)))
+	append(&layer.states, _mk_state("Second", _mk_local_timeline(root, "Body", guid)))
+	append(&ta.layers, layer)
+
+	second, ok := anim.animator_find(ta, "Second")
+	testing.expect(t, ok, "the second state resolves by name")
+	if !ok do return
+
+	// Delete the state BEFORE it. Under the old scheme `second` now named the
+	// state that moved into index 0.
+	delete(ta.layers[0].states[0].name)
+	ordered_remove(&ta.layers[0].states, 0)
+
+	again, still := anim.animator_find(ta, "Second")
+	testing.expect(t, still, "it still resolves by name after the delete")
+	testing.expect_value(t, again, second)
+
+	_, _, desc_name := _state_name_of(ta, second)
+	testing.expect_value(t, desc_name, "Second")
+}
+
+// The authored name behind a State_Id, for asserting which state an id means.
+@(private = "file")
+_state_name_of :: proc(a: ^anim.TimelineAnimator, id: anim.State_Id) -> (layer: int, index: int, name: string) {
+	for &l, li in a.layers {
+		for &st, si in l.states {
+			if anim.State_Id(st.id) == id do return li, si, st.name
+		}
+	}
+	return -1, -1, ""
+}

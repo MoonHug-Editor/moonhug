@@ -11,9 +11,14 @@ package animation_editor
 //
 // The tree is AUTHORED data, not the playable graph. The graph holds only what
 // is playing right now, so it can never be the thing you click to start a
-// state. Play buttons call the driver (animation_play_entry) and let the next
-// tick rebuild the graph. The Playable Graph window is the other half of the
-// picture: this is what CAN run, that is what IS running.
+// state. The Playable Graph window is the other half of the picture: this is
+// what CAN run, that is what IS running.
+//
+// A play button therefore never touches graph nodes. While simulating it calls
+// the driver (animation_play_entry) and lets the next tick rebuild the graph.
+// In edit mode nothing ticks the component, so it drives the animation window's
+// preview instead (view_animation.odin) — one preview in the editor, so a state
+// and a clip scrub can never pose the same object at once.
 
 import "core:fmt"
 import "core:strings"
@@ -231,11 +236,23 @@ _row_buttons :: proc(a: ^anim.Animation, li: int, id: i32, play := true) -> bool
 	if play {
 		// Playing asks the DRIVER, never the graph: the graph holds only what
 		// is already running, and this state is by definition not in it yet.
-		if im.Button(icons.ICON_MD_PLAY_ARROW, im.Vec2{btn, btn}) {
-			anim.animation_play_entry(a, id, 0)
+		//
+		// In edit mode nothing ticks the component, so the same button drives
+		// the animation window's preview instead — one preview for the whole
+		// editor, so a state and a clip scrub can never pose the object at once.
+		previewing := !engine.application_is_playing() && preview_entry(a.owner) == id
+		icon: cstring = previewing ? icons.ICON_MD_STOP : icons.ICON_MD_PLAY_ARROW
+		if im.Button(icon, im.Vec2{btn, btn}) {
+			if engine.application_is_playing() {
+				anim.animation_play_entry(a, id, 0)
+			} else if previewing {
+				preview_stop_entry()
+			} else {
+				preview_play_entry(a.owner, id)
+			}
 		}
 		if im.IsItemHovered({}) {
-			im.SetTooltip("Play this state. The editor does not tick, so this takes effect while simulating")
+			im.SetTooltip(previewing ? "Stop previewing this state" : "Play this state")
 		}
 		im.SameLine()
 	}

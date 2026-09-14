@@ -102,9 +102,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8005
@@ -141,9 +139,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8007
@@ -191,9 +187,7 @@
           }
         }
       ],
-      "components": [
-
-      ]
+      "components": []
     },
     {
       "local_id": 8009,
@@ -281,9 +275,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8012
@@ -320,9 +312,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8015
@@ -359,9 +349,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8018
@@ -398,9 +386,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8021
@@ -478,9 +464,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8026
@@ -602,9 +586,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8034
@@ -738,9 +720,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8042
@@ -821,9 +801,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 8048
@@ -904,9 +882,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 908078030979309
@@ -943,9 +919,7 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [
-
-      ],
+      "children": [],
       "components": [
         {
           "local_id": 2715653696262579
@@ -953,12 +927,8 @@
       ]
     }
   ],
-  "nested_scenes": [
-
-  ],
-  "breadcrumbs": [
-
-  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
   "components": [
     {
       "__type": "0959886b-dc83-491c-9843-df105c69e01d",
@@ -971,6 +941,7 @@
           "name": "Base",
           "states": [
             {
+              "id": 1,
               "fade": 0.34999999,
               "name": "Idle",
               "speed": 1.0,
@@ -981,6 +952,7 @@
               "wrap": 1
             },
             {
+              "id": 2,
               "fade": 0.15000001,
               "name": "Swing",
               "speed": 1.0,
@@ -1057,7 +1029,7 @@
         0.89999998,
         1.0
       ],
-      "inner_spot_angle": 21.7999992399999982,
+      "inner_spot_angle": 21.79999924,
       "intensity": 1.39999998,
       "range": 10.0,
       "spot_angle": 30.0,
@@ -1070,9 +1042,7 @@
         "local_id": 8010
       },
       "clip": "00000000-0000-0000-0000-000000000000",
-      "layers": [
-
-      ],
+      "layers": [],
       "play_automatically": false,
       "speed": 1.0,
       "wrap_mode": 0
@@ -1168,9 +1138,7 @@
         "local_id": 8024
       },
       "clip": "00000000-0000-0000-0000-000000000000",
-      "layers": [
-
-      ],
+      "layers": [],
       "play_automatically": false,
       "speed": 1.0,
       "wrap_mode": 0

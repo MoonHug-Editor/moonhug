@@ -88,6 +88,19 @@ _pv: struct {
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
 
+	// STATE mode: the States tree is previewing an authored state rather than
+	// the window scrubbing a clip. Both drive this one preview, so they cannot
+	// pose the object at the same time — entry 0 means clip-scrub mode.
+	//
+	// `entry_clock` is seconds for a clip state and a normalized phase for a
+	// blend, matching what each kind runs on at playback.
+	entry:       i32,
+	entry_kids:  [dynamic]anim.Anim_Blend_Child, // a blend's children, sorted by position
+	entry_top:   anim.Playable_Handle, // what hangs from the layer mixer
+	entry_layer: anim.Playable_Handle,
+	entry_clock: f32,
+	entry_done:  bool,
+
 	playing:   bool, // transport running: time advances every frame
 	recording: bool, // armed: an edited animated field keys itself at the playhead
 	// Live value of each channel when recording armed (or last keyed), parallel
@@ -170,6 +183,45 @@ _pv_teardown :: proc() {
 	}
 	_pv.ready = false
 	_pv.node = {}
+	// These name nodes in the graph just destroyed.
+	clear(&_pv.entry_kids)
+	_pv.entry_top = {}
+	_pv.entry_layer = {}
+}
+
+// --- Previewing an authored STATE (the inspector's States tree) -------------
+//
+// The tree plays a state in edit mode through the window's preview rather than
+// its own: one preview means one poser, so a scrub and a state can never fight
+// over the same object. Entering state mode ends any scrub, and picking a clip
+// in the window ends the state.
+
+// Play an authored state on `owner` in edit mode, from its start.
+preview_play_entry :: proc(owner: engine.Transform_Handle, id: i32) {
+	if _pv.owner != owner {
+		_pv_deselect()
+		_pv.owner = owner
+		_pv.clip = {}
+	}
+	_pv_teardown()
+	_pv.entry = id
+	_pv.entry_clock = 0
+	_pv.entry_done = false
+	_pv.playing = false // the transport drives the clip scrub, not this
+	_pv.active = true
+}
+
+// The state being previewed on `owner`, or 0.
+preview_entry :: proc(owner: engine.Transform_Handle) -> i32 {
+	if !_pv.active || _pv.owner != owner do return 0
+	return _pv.entry
+}
+
+preview_stop_entry :: proc() {
+	if _pv.entry == 0 do return
+	_pv.entry = 0
+	_pv.active = false
+	_pv_teardown()
 }
 
 @(private = "file")
@@ -857,6 +909,7 @@ _pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationCl
 			if im.Selectable(name, c == _pv.clip) && c != _pv.clip {
 				_pv_teardown()
 				_pv_deselect()
+				_pv.entry = 0 // the window takes the preview back from the States tree
 				_pv.clip = c
 				_pv.time = 0
 			}
@@ -1593,6 +1646,30 @@ _pv_build_graph :: proc(a: ^anim.Animation) {
 	leaves := make([dynamic]anim.Authored_Leaf, context.temp_allocator)
 	anim.animation_graph_build_authored(a, &_pv.graph, _pv.owner, 0, &leaves)
 	_pv.node = {}
+
+	if _pv.entry != 0 {
+		// A state lights its whole chain: for a blend that is its mixer under
+		// the layer, with the 1D rule weighting the children every frame.
+		if _pv.entry_kids == nil do _pv.entry_kids = make([dynamic]anim.Anim_Blend_Child)
+		clear(&_pv.entry_kids)
+		for l in leaves {
+			if l.entry != _pv.entry do continue
+			_pv.entry_top, _pv.entry_layer = l.top, l.layer
+			append(&_pv.entry_kids, l.child)
+		}
+		if _pv.entry_top != {} {
+			anim.playable_set_input_weight(&_pv.graph, _pv.entry_layer, _pv.entry_top, 1)
+			// A clip state IS its node, so light it under the layer directly.
+			// A blend's children are weighted per frame by the 1D rule.
+			if len(_pv.entry_kids) == 1 && _pv.entry_kids[0].node == _pv.entry_top {
+				_pv.node = _pv.entry_top
+			}
+		}
+		_pv.graph_sig = _pv_authored_sig(a)
+		_pv.ready = true
+		return
+	}
+
 	for l in leaves {
 		if l.clip != _pv.clip do continue
 		_pv.node = l.node
@@ -1604,26 +1681,63 @@ _pv_build_graph :: proc(a: ^anim.Animation) {
 	_pv.ready = true
 }
 
+// Advance the previewed state and write its times into the graph. A blend runs
+// on a shared phase at the blended cycle length, exactly as it does when the
+// driver plays it — the same two procs do the work in both places.
+@(private = "file")
+_pv_entry_tick :: proc(a: ^anim.Animation, dt: f32) {
+	if _pv.entry_top == {} || len(_pv.entry_kids) == 0 do return
+
+	// A single clip whose node IS the top: an ordinary clip state.
+	if _pv.node != {} {
+		k := _pv.entry_kids[0]
+		if !_pv.entry_done do _pv.entry_clock += dt
+		t, done := anim.animation_wrap_time(_pv.entry_clock, k.length, k.wrap)
+		if done do _pv.entry_done = true
+		if n := anim.playable_node(&_pv.graph, _pv.node); n != nil do n.time = t
+		return
+	}
+
+	value := anim.animation_blend_get(a, _pv.entry)
+	cycle := anim.animation_blend1d_weights(&_pv.graph, _pv.entry_top, _pv.entry_kids[:], value)
+	if cycle <= 0 do return
+	if !_pv.entry_done do _pv.entry_clock += dt / cycle
+	p, done := anim.animation_wrap_time(_pv.entry_clock, 1, _pv.entry_kids[0].wrap)
+	if done do _pv.entry_done = true
+	anim.animation_blend_sample(&_pv.graph, _pv.entry_kids[:], p)
+}
+
 // Apply the preview pose for this frame's scene/game render. Runs in the main
 // loop after the window UI set the scrub state, right before the world renders.
 animation_preview_apply :: proc() {
 	if !_pv.active do return
 	w := engine.ctx_world()
-	if !engine.pool_valid(&w.transforms, engine.Handle(_pv.owner)) || _pv.clip == {} {
-		_pv.active = false
+	if !engine.pool_valid(&w.transforms, engine.Handle(_pv.owner)) do _pv.active = false
+	if _pv.entry == 0 && _pv.clip == {} do _pv.active = false
+	if !_pv.active {
+		_pv.entry = 0
 		return
 	}
 	_, a := engine.transform_get_comp(_pv.owner, anim.Animation)
 	if a == nil {
 		_pv.active = false
+		_pv.entry = 0
 		return
 	}
-	clip, ok := anim.animation_clip_load(_pv.clip)
-	if !ok do return
+
+	clip: ^anim.AnimationClip
+	if _pv.entry == 0 {
+		c, ok := anim.animation_clip_load(_pv.clip)
+		if !ok do return
+		clip = c
+	}
 
 	if _pv.ready && _pv.graph_sig != _pv_authored_sig(a) do _pv_teardown()
 	if !_pv.ready do _pv_build_graph(a)
-	if n := anim.playable_node(&_pv.graph, _pv.node); n != nil {
+
+	if _pv.entry != 0 {
+		_pv_entry_tick(a, im.GetIO().DeltaTime)
+	} else if n := anim.playable_node(&_pv.graph, _pv.node); n != nil {
 		n.time = clamp(_pv.time, 0, clip.length)
 	}
 

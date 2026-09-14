@@ -106,6 +106,12 @@ is_active :: proc() -> bool {
     return _state != .Stopped
 }
 
+// The scene captured at Start, or nil when stopped. The hierarchy asks so it
+// can keep Unload off the one scene a Stop has to restore.
+scene :: proc() -> ^engine.Scene {
+    return _state != .Stopped ? _scene : nil
+}
+
 // True while the scene advances. Paused holds the world without leaving.
 is_ticking :: proc() -> bool {
     return _state == .Running

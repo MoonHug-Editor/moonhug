@@ -11,6 +11,7 @@ import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import "menu"
 import "undo"
+import "simulate"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 
@@ -411,7 +412,17 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 			im.EndPopup()
 			return
 		}
-		if im.MenuItem("Unload") {
+		// Unloading the scene a run is simulating leaves Stop with nothing to
+		// restore: it logs, reloads the file, and every unsaved edit made
+		// before the run is gone. Additive scenes stay unloadable — dropping
+		// one mid-run is a supported flow.
+		im.BeginDisabled(scene == simulate.scene())
+		unload := im.MenuItem("Unload")
+		im.EndDisabled()
+		if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) && scene == simulate.scene() {
+			im.SetTooltip("This scene is simulating. Stop first, or its pre-run state is lost")
+		}
+		if unload {
 			undo.purge_scene(undo.get(), scene)
 			engine.sm_scene_unload(scene)
 			im.EndPopup()

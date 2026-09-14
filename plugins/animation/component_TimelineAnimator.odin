@@ -47,6 +47,11 @@ Animator_Layer :: struct {
 //     Adopted where it stands and never destroyed, so a timeline can be
 //     authored in place without making an asset first.
 Timeline_State :: struct {
+	// Minted on first build and never reused, so a held State_Id keeps naming
+	// the same state across edits that reorder or delete its siblings. 0 means
+	// not minted yet — an authored state added through the inspector's array
+	// rows starts that way and is filled in by _ta_ensure_ids.
+	id:       i32,
 	name:     string,
 	timeline: engine.PPtr,
 	speed:    f32, // 0 runs at 1
@@ -64,6 +69,7 @@ Animator_Layer_Runtime :: struct {
 // A state's live half: the instantiated timeline, the mixers its tracks hang
 // under (one per output), and its own playhead.
 Animator_State_Runtime :: struct {
+	id:     i32,                     // the authored state's id, what State_Id names
 	root:   engine.Transform_Handle, // the timeline's root
 	owned:  bool,                    // instanced by this animator, so destroyed by it
 	dir:    engine.Handle,           // its PlayableDirector
@@ -166,6 +172,7 @@ _ta_layer_weight :: proc(l: ^Animator_Layer) -> f32 {
 @(private = "file")
 _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 	if a.graph_ready do return
+	_ta_ensure_ids(a)
 	playable_graph_init(&a.graph)
 	a.rt = make([dynamic]Animator_Layer_Runtime)
 	a.out_target = make([dynamic]int)
@@ -213,6 +220,7 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 @(private = "file")
 _ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixers: []Playable_Handle) -> Animator_State_Runtime {
 	st := Animator_State_Runtime{
+		id     = desc.id,
 		mixers = make([dynamic]Playable_Handle, 0, len(layer_mixers)),
 	}
 	for lm in layer_mixers {
@@ -424,27 +432,55 @@ timeline_animator_tick :: proc(dt: f32) {
 // FROM THEIR CURRENT WEIGHTS while C rises. Weights that summed to 1 still sum
 // to 1, and interruption needs no snapshot machinery.
 
-// Opaque: layer in the high 16 bits, state index in the low 16.
+// A state's minted id (Timeline_State.id), not a position. An index-based
+// handle silently repoints when an authored state is deleted or reordered,
+// which is the one thing a handle held across an edit must not do. Same
+// convention Anim_Entry uses in component_Animation.odin: ids start at 1, so 0
+// is "no state" and a zero value is inert.
 State_Id :: distinct i32
-STATE_ID_NONE :: State_Id(-1)
+STATE_ID_NONE :: State_Id(0)
 
+// Give every authored state an id. Runs before the graph is built, so the
+// runtime states copy ids that already exist. Ids are unique across the whole
+// component, not per layer, so one id names one state.
 @(private = "file")
-_state_id :: proc(layer, index: int) -> State_Id {
-	return State_Id(i32(layer) << 16 | i32(index) & 0xFFFF)
+_ta_ensure_ids :: proc(a: ^TimelineAnimator) {
+	top := i32(0)
+	for &l in a.layers {
+		for &st in l.states do if st.id > top do top = st.id
+	}
+	for &l in a.layers {
+		for &st in l.states {
+			if st.id != 0 do continue
+			top += 1
+			st.id = top
+		}
+	}
 }
 
+// The runtime state with this id, and the layer it sits on.
 @(private = "file")
-_state_split :: proc(id: State_Id) -> (layer, index: int) {
-	return int(i32(id) >> 16), int(i32(id) & 0xFFFF)
+_ta_state_rt :: proc(a: ^TimelineAnimator, id: State_Id) -> (layer: int, st: ^Animator_State_Runtime) {
+	if id == STATE_ID_NONE do return -1, nil
+	for &lr, li in a.rt {
+		for &s in lr.states {
+			if s.id == i32(id) do return li, &s
+		}
+	}
+	return -1, nil
 }
 
+// The authored state with this id, and its position, for the fields the
+// runtime does not copy (fade, speed, wrap).
 @(private = "file")
-_ta_state_rt :: proc(a: ^TimelineAnimator, id: State_Id) -> ^Animator_State_Runtime {
-	li, si := _state_split(id)
-	if li < 0 || li >= len(a.rt) do return nil
-	lr := &a.rt[li]
-	if si < 0 || si >= len(lr.states) do return nil
-	return &lr.states[si]
+_ta_state_desc :: proc(a: ^TimelineAnimator, id: State_Id) -> (layer: int, index: int, desc: ^Timeline_State) {
+	if id == STATE_ID_NONE do return -1, -1, nil
+	for &l, li in a.layers {
+		for &st, si in l.states {
+			if st.id == i32(id) do return li, si, &st
+		}
+	}
+	return -1, -1, nil
 }
 
 @(private = "file")
@@ -490,8 +526,11 @@ _ta_advance_fades :: proc(a: ^TimelineAnimator, dt: f32) {
 // Resolve a state name once, then use the handle. Names are per layer, and the
 // first match wins when two layers use the same name.
 animator_find :: proc(a: ^TimelineAnimator, name: string) -> (State_Id, bool) {
-	for &l, li in a.layers {
-		for &st, si in l.states do if st.name == name do return _state_id(li, si), true
+	// Ids are minted with the graph, and gameplay may ask before the first
+	// tick — mint here too rather than handing back a 0 that never resolves.
+	_ta_ensure_ids(a)
+	for &l in a.layers {
+		for &st in l.states do if st.name == name do return State_Id(st.id), true
 	}
 	return STATE_ID_NONE, false
 }
@@ -508,13 +547,13 @@ animator_find :: proc(a: ^TimelineAnimator, name: string) -> (State_Id, bool) {
 // There is no separate cross-fade entry point: a cut is a fade of length 0.
 animator_play :: proc(a: ^TimelineAnimator, s: State_Id, fade: f32 = -1) {
 	_ta_ensure_graph(a)
-	li, si := _state_split(s)
-	if li < 0 || li >= len(a.rt) || li >= len(a.layers) do return
+	li, si, desc := _ta_state_desc(a, s)
+	if desc == nil || li >= len(a.rt) do return
 	lr := &a.rt[li]
-	if si < 0 || si >= len(lr.states) || si >= len(a.layers[li].states) do return
+	if si >= len(lr.states) do return
 
 	dur := fade
-	if dur < 0 do dur = a.layers[li].states[si].fade
+	if dur < 0 do dur = desc.fade
 	if dur <= 0 {
 		for &st, i in lr.states {
 			st.fade_dur = 0
@@ -566,7 +605,7 @@ animator_state :: proc(a: ^TimelineAnimator, layer := 0) -> (s: State_Id, normal
 	}
 	if bi < 0 do return
 	st := &lr.states[bi]
-	s = _state_id(layer, bi)
+	s = State_Id(st.id)
 	done = st.done
 	if length := _ta_state_length(st); length > 0 do normalized = st.time / length
 	return
