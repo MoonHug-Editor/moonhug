@@ -88,6 +88,11 @@ _pv: struct {
 	graph_sig: u64, // authored clip set the graph was built from
 	ready:     bool,
 
+	// Set by the sheet each frame: the pointer is over the time canvas, where
+	// the wheel zooms. Read by the body child, which scrolls on the wheel only
+	// when it is false.
+	over_canvas: bool,
+
 	// STATE mode: the States tree is previewing an authored state rather than
 	// the window scrubbing a clip. Both drive this one preview, so they cannot
 	// pose the object at the same time — entry 0 means clip-scrub mode.
@@ -776,8 +781,18 @@ draw_animation_view :: proc() {
 	footer := _pv_sel_valid(clip)
 	tabs_h := im.GetFrameHeight() + im.GetStyle().ItemSpacing.y
 	body_h := -(tabs_h + (footer ? im.GetFrameHeight() + 8 : 0))
-	im.BeginChild("##anim_body", im.Vec2{0, body_h}, {.Borders})
+	// NoScrollWithMouse: over the time canvas the wheel ZOOMS, and imgui
+	// scrolling this child at the same time made the sheet drift under the
+	// cursor mid-zoom. The property-name column has no such claim, so the wheel
+	// there scrolls by hand below — the sequencer splits its two halves the
+	// same way.
+	im.BeginChild("##anim_body", im.Vec2{0, body_h}, {.Borders}, {.NoScrollWithMouse})
 	_pv_draw_sheet(doc, clip, clips)
+	if !_pv.over_canvas && im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+		if wheel := im.GetIO().MouseWheel; wheel != 0 {
+			im.SetScrollY(im.GetScrollY() - wheel * im.GetTextLineHeightWithSpacing() * 3)
+		}
+	}
 	im.EndChild()
 	_pv_draw_mode_tabs()
 
@@ -848,7 +863,14 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 	im.SameLine()
 	if widgets.icon_button(_pv.playing ? icons.ICON_MD_PAUSE : icons.ICON_MD_PLAY_ARROW, "##play", _pv.playing ? "Pause" : "Play the clip") {
 		_pv.playing = !_pv.playing
-		if _pv.playing do _pv.active = true
+		if _pv.playing {
+			_pv.active = true
+			// Pressing play with the playhead already at the end replays from
+			// the start. Without this the first press only advances past the
+			// end, which _pv_advance answers by rewinding AND stopping — so it
+			// took two presses to play, the first one looking like a rewind.
+			if _pv.time >= length do _pv.time = 0
+		}
 	}
 
 	im.SameLine()
@@ -1103,6 +1125,7 @@ _pv_draw_sheet :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, cli
 		// is elsewhere; only acted on while the canvas is under it.
 		wheel_v, wheel_h := widgets.wheel_dominant(&_pv.wheel)
 		over_canvas := im.IsWindowHovered(im.HoveredFlags_ChildWindows) && mp.x >= x0 && mp.x <= x1
+		_pv.over_canvas = over_canvas
 		if over_canvas {
 			if wheel := wheel_v; wheel != 0 {
 				t_at := (mp.x - tx0) / pps
