@@ -152,6 +152,11 @@ Everything under `library/` is derived data — never a source of truth, safe to
   — a bone matrix buffer plus a vertex shader variant — is the drop-in
   replacement that makes many characters on screen affordable
 
+- animation clip settings live in the .anim file, so re-extracting a model
+  cannot refresh its curves without losing them — extraction skips an existing
+  clip instead of replacing it. Move wrap and frame rate into .anim.meta as
+  importer settings and let extraction overwrite (docs/AnimationComponent.md)
+
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key

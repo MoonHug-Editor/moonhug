@@ -36,7 +36,7 @@ animation_inspector_install :: proc() {
 
 @(private = "file")
 _animation_inspector :: proc(ctx: ^inspector.Component_Ctx) {
-	inspector.draw(ctx) // clip, play_automatically, wrap_mode, speed
+	inspector.draw(ctx) // clip, play_automatically, speed
 	a := cast(^anim.Animation)ctx.ptr
 	if a == nil do return
 	_states_section(a)
@@ -170,6 +170,7 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	if !open do return true
 	defer im.TreePop()
 
+	_wrap_field(e)
 	if !is_blend {
 		_clip_field(a, e, "Clip")
 		return true
@@ -263,6 +264,27 @@ _row_buttons :: proc(a: ^anim.Animation, li: int, id: i32, play := true) -> bool
 		removed = true
 	}
 	return removed
+}
+
+// Whether this state loops, as a per-STATE override of its clip. Default is the
+// usual answer — the motion knows whether it is cyclic — so the combo shows the
+// clip's own wrap when nothing overrides it.
+@(private = "file")
+_wrap_field :: proc(e: ^anim.Animation_Entry) {
+	// In the body rather than on the header row: the header already carries the
+	// name, the kind and the right-aligned buttons, and a fourth widget there
+	// runs into them on the longer "Blend1D" rows.
+	im.AlignTextToFramePadding()
+	im.TextDisabled("wrap")
+	im.SameLine(90)
+	im.SetNextItemWidth(110)
+	cur := i32(e.wrap)
+	if im.Combo("##wrap", &cur, "Default\x00Once\x00Loop\x00") && i32(e.wrap) != cur {
+		sess := inspector.structural_edit_begin("Set Wrap")
+		e.wrap = anim.Animation_Wrap_Mode(cur)
+		inspector.structural_edit_end(&sess)
+	}
+	if im.IsItemHovered({}) do im.SetTooltip("Default takes the clip's own wrap")
 }
 
 @(private = "file")

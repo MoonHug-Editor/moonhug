@@ -62,12 +62,18 @@ animation_channel_is_property :: proc(ch: ^Animation_Channel) -> bool {
 @(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", makeProcName=make_pAnimationClip, menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
 AnimationClip :: struct {
 	length:   f32, // seconds; set from the last keyframe at import
+	// Baked from the .meta's Animation_Clip_Settings at import — authored
+	// there, never here. A source .anim carries only `length` and `channels`.
+	//
 	// Frames per second the editor snaps keys and the playhead to. Authoring
 	// only — evaluation is continuous in seconds. 0 in a file predates the
 	// field, so readers go through animation_clip_frame_rate.
 	frame_rate: f32,
 	wrap:     Animation_Wrap,
-	channels: [dynamic]Animation_Channel,
+	cycle_offset: f32,
+	// Edited as a dopesheet in the Animation window, never as reflected rows —
+	// a clip has hundreds of channels each holding two parallel key arrays.
+	channels: [dynamic]Animation_Channel `inspect:"-"`,
 }
 
 // The clip's authoring frame rate, defaulted for a clip saved before the
@@ -150,8 +156,18 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 	}
 	if !_animation_clip_cache_ready do return nil, false
 
-	path, path_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-	if !path_ok do return nil, false
+	// The ARTIFACT, not the source: the importer bakes the .meta's settings
+	// into it, so the runtime never opens a meta.
+	path, path_ok := engine.asset_pipeline_artifact_path(guid)
+	if !path_ok {
+		// Self-heal is editor-only (asset_pipeline_request_import is nil in a
+		// game binary — a missing artifact there is a load error).
+		src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
+		if !src_ok do return nil, false
+		_ = engine.asset_pipeline_request_import(src, force = false)
+		path, path_ok = engine.asset_pipeline_artifact_path(guid)
+		if !path_ok do return nil, false
+	}
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil, false
 
@@ -205,6 +221,18 @@ animation_clip_path_changed :: proc(path: string) {
 	if guid, ok := engine.asset_db_get_guid(path); ok {
 		animation_clip_unload(engine.Asset_GUID(guid))
 	}
+}
+
+// Public for the importer, which parses a clip, bakes settings into it and
+// frees it again.
+animation_clip_destroy :: proc(clip: ^AnimationClip) {
+	_animation_clip_destroy(clip)
+}
+
+// A reimported clip drops its cached copy, so the next load picks up the new
+// artifact — settings changed in the inspector apply without a restart.
+animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
+	animation_clip_unload(guid)
 }
 
 _animation_clip_destroy :: proc(clip: ^AnimationClip) {

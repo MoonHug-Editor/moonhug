@@ -165,11 +165,11 @@ extract_gltf_assets :: proc(model_path: string) {
 	// object that carries the Animation component (Unity's curve bindings).
 	anims_written := 0
 	for &an, ai in data.animations {
+		// REPLACED, not skipped: a clip is a generated file, and re-exporting
+		// the model has to be able to refresh its curves. What an author set —
+		// wrap, frame rate, cycle offset, trim — lives in the .meta beside it
+		// and rides through untouched.
 		out := _gltf_anim_out_path(dir, stem, &an, ai)
-		if os.exists(out) {
-			fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
-			continue
-		}
 		clip, ok := anim.animation_clip_from_gltf(data, &an)
 		if !ok {
 			fmt.printf("[Editor] Extract: no usable channels in %s\n", out)

@@ -1,7 +1,5 @@
 {
   "length": 1.0,
-  "frame_rate": 60.0,
-  "wrap": 1,
   "channels": [
     {
       "target": "",

@@ -1044,8 +1044,7 @@
       "clip": "00000000-0000-0000-0000-000000000000",
       "layers": [],
       "play_automatically": false,
-      "speed": 1.0,
-      "wrap_mode": 0
+      "speed": 1.0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
@@ -1140,8 +1139,7 @@
       "clip": "00000000-0000-0000-0000-000000000000",
       "layers": [],
       "play_automatically": false,
-      "speed": 1.0,
-      "wrap_mode": 0
+      "speed": 1.0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",

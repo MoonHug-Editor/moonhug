@@ -260,6 +260,10 @@ _project_go_up :: proc() {
 
 // JSON asset files the project inspector opens directly (serialized
 // __type_guid instances): generic .asset plus typed extensions (.mat).
+//
+// A .anim is NOT here: it is importer-backed, so it routes to the import
+// settings panel below and its wrap, frame rate, cycle offset and trim are
+// edited there — in the .meta, which survives re-extracting the model.
 _is_inspector_asset :: proc(path: string) -> bool {
     return strings.has_suffix(path, ".asset") || strings.has_suffix(path, ".mat")
 }
@@ -447,6 +451,8 @@ _project_file_icon :: proc(path: string) -> string {
         return icons.ICON_MD_SETTINGS
     case ".mat":
         return icons.ICON_MD_PALETTE
+    case ".anim":
+        return icons.ICON_MD_ANIMATION
     case ".glsl":
         return icons.ICON_MD_CODE
     case:
@@ -1324,6 +1330,10 @@ _project_reveal_path :: proc(path: string, select: bool) {
     _project_set_current(parent)
     if select {
         _project_set_selected(path)
+        // Same as clicking the row: selecting a file in this view loads it into
+        // the inspector, and a reveal that skipped that left the panel showing
+        // whatever was there before.
+        _project_inspect_path(path)
         _project_scroll_to_list_sel = true
     } else {
         if _project_ping_path != "" do delete(_project_ping_path)

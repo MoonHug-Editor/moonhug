@@ -75,11 +75,17 @@ Animation_Entry_Kind :: union #no_nil {
 // blend space (1D reads x), which is what lets one child work under any blend
 // kind without knowing which it is.
 Animation_Entry :: struct {
-	id:      i32,
-	parent:  i32, // 0 = directly on the layer
-	pos:     [2]f32,
-	name:    string,
-	kind:    Animation_Entry_Kind,
+	id:     i32,
+	parent: i32, // 0 = directly on the layer
+	pos:    [2]f32,
+	name:   string,
+	// Default defers to the clip's own wrap, which is the usual answer: a walk
+	// cycle IS cyclic and a death IS one-shot, so the motion knows. The state
+	// overrides for the case one clip is used both ways. A blend reads this
+	// rather than any one child's clip — its children share a phase, so no
+	// single child's wrap is the blend's.
+	wrap:   Animation_Wrap_Mode,
+	kind:   Animation_Entry_Kind,
 }
 
 // One AUTHORED layer. The layer index in `Animation.layers` is the runtime layer
@@ -170,7 +176,6 @@ Animation :: struct {
 	using base:         engine.CompData `inspect:"-"`,
 	clip:               engine.Asset_GUID `ext:"anim"`,
 	play_automatically: bool,
-	wrap_mode:          Animation_Wrap_Mode,
 	speed:              f32,
 	// Authored layers, each a tree of states. play/cross_fade called without a
 	// layer resolve the clip's layer here (unlisted clips land on layer 0).
@@ -695,12 +700,18 @@ animation_tick :: proc(dt: f32) {
 	}
 }
 
-// The component-level wrap overrides the clip's own, Default defers to it.
-@(private = "file")
-_anim_wrap :: proc(a: ^Animation, clip_wrap: Animation_Wrap) -> Animation_Wrap {
-	#partial switch a.wrap_mode {
-	case .Once: return .Once
-	case .Loop: return .Loop
+// How a state wraps: its own override, else the clip's own wrap.
+//
+// The override lives on the STATE rather than the component, because a
+// component holds Idle and Death at once and one wrap for both can never be
+// right — a component-wide Loop made Death loop, which is what moved it here.
+// A state played by guid has no entry (`entry` 0) and takes the clip's wrap.
+animation_entry_wrap :: proc(a: ^Animation, entry: i32, clip_wrap: Animation_Wrap) -> Animation_Wrap {
+	if e := animation_entry(a, entry); e != nil {
+		#partial switch e.wrap {
+		case .Once: return .Once
+		case .Loop: return .Loop
+		}
 	}
 	return clip_wrap
 }
@@ -727,10 +738,10 @@ _anim_blend_advance :: proc(a: ^Animation, st: ^Animation_State_Runtime, b: ^Ani
 	cycle := animation_blend1d_weights(&a.graph, st.node, b.children[:], value)
 	if cycle <= 0 do return false
 
-	// Wrap follows the first child's clip, the same "defer to the clip" rule a
-	// single-clip state uses — a blend has no clip of its own to ask. Cached on
-	// the child at build, like its length.
-	wrap := _anim_wrap(a, b.children[0].wrap)
+	// The blend's own wrap, falling back to a child's clip. Children share one
+	// phase, so no single child's wrap is the blend's — the entry is where the
+	// answer belongs, and the child is only the default.
+	wrap := animation_entry_wrap(a, st.entry, b.children[0].wrap)
 
 	if !st.done do b.phase += dt * a.speed / cycle
 	p, done := animation_wrap_time(b.phase, 1, wrap)
@@ -821,7 +832,7 @@ _anim_comp_tick :: proc(a: ^Animation, dt: f32) {
 			case Animation_State_Clip:
 				if clip, ok := animation_clip_load(k.clip); ok {
 					if !st.done do k.time += dt * a.speed
-					t, done := animation_wrap_time(k.time, clip.length, _anim_wrap(a, clip.wrap))
+					t, done := animation_wrap_time(k.time, clip.length, animation_entry_wrap(a, st.entry, clip.wrap))
 					if done do st.done = true
 					if node := playable_node(&a.graph, st.node); node != nil do node.time = t
 					advanced = true

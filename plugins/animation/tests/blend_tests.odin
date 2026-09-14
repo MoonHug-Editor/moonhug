@@ -481,3 +481,49 @@ test_authored_graph_poses_a_blend_without_a_playing_state :: proc(t: ^testing.T)
 	// Nothing was started: the component has no runtime state at all.
 	testing.expect_value(t, len(a.rt_layers), 0)
 }
+
+// Clip settings live in the .meta and the importer bakes them into the
+// artifact, so the runtime reads one file. These cover the baking itself —
+// the pipeline is exercised in the editor, the maths has to hold here.
+@(test)
+test_clip_settings_trim_keeps_the_edges :: proc(t: ^testing.T) {
+	// A ramp 0 -> 10 over 2s, trimmed to 0.5..1.5, is a ramp 2.5 -> 7.5 over
+	// 1s. The cut falls BETWEEN keys, so the trimmed clip has to start and end
+	// on interpolated values rather than on the nearest key.
+	clip := _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0}, 2.0, .Loop)
+	defer anim.animation_clip_destroy(&clip)
+
+	anim.animation_clip_apply_settings(&clip, {wrap = .Loop, trim_start = 0.5, trim_stop = 1.5})
+
+	testing.expectf(t, abs(clip.length - 1) < 0.001, "length is the kept range, got %v", clip.length)
+	ch := &clip.channels[0]
+	testing.expectf(t, abs(ch.times[0]) < 0.001, "times rebase to 0, got %v", ch.times[0])
+	testing.expectf(t, abs(ch.values[0].x - 2.5) < 0.01, "starts on the interpolated edge, got %v", ch.values[0].x)
+	last := len(ch.times) - 1
+	testing.expectf(t, abs(ch.times[last] - 1) < 0.001, "ends at the new length, got %v", ch.times[last])
+	testing.expectf(t, abs(ch.values[last].x - 7.5) < 0.01, "ends on the interpolated edge, got %v", ch.values[last].x)
+}
+
+// Cycle offset shifts where in a loop sampling starts, applied at the ONE place
+// a clip is evaluated so the driver, the editor preview and a timeline track
+// all get it without cooperating.
+@(test)
+test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
+	clip := _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Loop)
+	defer anim.animation_clip_destroy(&clip)
+	anim.animation_clip_apply_settings(&clip, {wrap = .Loop, cycle_offset = 0.25})
+
+	testing.expectf(t, abs(anim.animation_clip_sample_time(&clip, 0) - 0.25) < 0.001,
+		"t=0 samples a quarter in, got %v", anim.animation_clip_sample_time(&clip, 0))
+	// Past the end it wraps rather than running off: 0.9 + 0.25 = 1.15 -> 0.15.
+	testing.expectf(t, abs(anim.animation_clip_sample_time(&clip, 0.9) - 0.15) < 0.001,
+		"the shifted time wraps back into the clip, got %v", anim.animation_clip_sample_time(&clip, 0.9))
+
+	// A Once clip has no cycle to offset: starting it mid-way would just skip
+	// its beginning, so the setting is ignored rather than half-honoured.
+	once := _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Once)
+	defer anim.animation_clip_destroy(&once)
+	anim.animation_clip_apply_settings(&once, {wrap = .Once, cycle_offset = 0.25})
+	testing.expectf(t, abs(anim.animation_clip_sample_time(&once, 0)) < 0.001,
+		"Once ignores the offset, got %v", anim.animation_clip_sample_time(&once, 0))
+}

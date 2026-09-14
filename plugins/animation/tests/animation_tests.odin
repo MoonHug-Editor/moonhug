@@ -96,8 +96,10 @@ test_animation_component_tick :: proc(t: ^testing.T) {
 	testing.expect(t, abs(ot.position.x - 2) < 0.001, "Once should clamp at the final key")
 	testing.expect(t, !a.playing, "Once should stop at the clip end")
 
-	// Loop override: restart, run 1.25s total → wrapped t=0.25 → x=0.5.
-	a.wrap_mode = .Loop
+	// Loop: the CLIP owns it for a clip played by guid — there is no state to
+	// override, which is the point of the clip being the default.
+	clip := &anim.animation_clip_cache[guid]
+	clip.wrap = .Loop
 	anim.animation_play(a)
 	anim.animation_tick(1.25)
 	ot = engine.pool_get(&tc.world.transforms, engine.Handle(owner))

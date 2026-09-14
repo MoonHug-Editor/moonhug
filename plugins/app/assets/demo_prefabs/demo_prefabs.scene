@@ -1140,14 +1140,6 @@
             0.0,
             -3.0290660900000002
           ]
-        },
-        {
-          "target": {
-            "local_id": 3,
-            "guid": "7f3a6162-c0b2-4944-a153-c1971af3d3af"
-          },
-          "property_path": "wrap_mode",
-          "value": 2
         }
       ],
       "removed_components": [

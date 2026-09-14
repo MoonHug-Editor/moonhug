@@ -1,3 +1,12 @@
 {
-  "guid": "2d6b87d1-b699-4b79-a3e9-bc24fd25e83b"
+  "guid": "2d6b87d1-b699-4b79-a3e9-bc24fd25e83b",
+  "importer": "animation",
+  "settings": {
+    "__type_guid": "6b1f9d3a-7c42-4e85-b0a6-1d28e5f47c93",
+    "wrap": 0,
+    "frame_rate": 60.0,
+    "cycle_offset": 0.0,
+    "trim_start": 0.0,
+    "trim_stop": 0.0
+  }
 }

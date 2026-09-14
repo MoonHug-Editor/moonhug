@@ -12,7 +12,6 @@ this API. What the component holds is the LIST of things that can be played.
 Animation
 ├── clip                one clip, played on the first tick if play_automatically
 ├── play_automatically
-├── wrap_mode           Default defers to the clip's own wrap, else Once or Loop
 ├── speed               scales time for every state on this component
 └── layers              the states, as a tree per layer
 ```
@@ -41,6 +40,7 @@ Each entry carries:
 | `parent`  | another entry's id, 0 for a state directly on the layer      |
 | `pos`     | placement in the PARENT's blend space (1D reads x)           |
 | `name`    | what `animation_find` looks up                               |
+| `wrap`    | Default defers to the clip, else Once or Loop                 |
 | `kind` | `Animation_Entry_Clip` or `Animation_Entry_Blend1D`                              |
 
 Ids rather than indices, because deleting a sibling shifts every index after it
@@ -76,6 +76,32 @@ remember it. Without the registration the default marshaler writes the active
 variant's fields with no tag, which reads back as the zero variant: a blend
 saved and loaded comes back a clip, quietly. A union with an untagged variant
 is left alone and keeps the default marshaler.
+
+### Wrap
+
+**The clip is the default and the state overrides it.** A walk cycle is cyclic
+and a death is one-shot, so the motion usually knows — `AnimationClip.wrap` is
+the answer most of the time, and an entry left at `Default` takes it. The state
+overrides for the case one clip is played both ways.
+
+The override sits on the STATE rather than the component on purpose. A
+component holds Idle and Death at once, so one wrap for both can never be
+right: a component-wide `wrap_mode = Loop` is what made Death loop in this
+package's own demo, and removing that field is what fixed it. A clip played by
+guid has no entry and takes the clip's wrap.
+
+A **blend** reads its own entry, not any child's clip. Children share one
+phase, so no single child's wrap is the blend's — a child's clip is only the
+fallback when the blend says Default.
+
+Other systems answer this differently and it is worth knowing why. A legacy
+clip player overrides at three levels (clip, component, playing state). A
+mecanim-style controller has no wrap on a state at all — looping is a clip
+import setting, because the motion owns it. A timeline adds a separate
+EXTRAPOLATION concept (hold, loop, ping pong) for what a track does outside a
+clip's extent, rather than reusing wrap for it. We sit between the first two:
+the clip owns the default, one level above overrides, and the coarse
+component-wide level is gone.
 
 ## API
 
@@ -266,6 +292,67 @@ than on change is deliberate: it is the shape real gameplay has.
 serialization, and plays the blend through to a posed joint. The scene is
 hand-generated JSON carrying hand-written union tags, which is exactly the kind
 of asset that rots silently.
+
+## TODO: clip settings move to the meta
+
+**Decided: `wrap` and `frame_rate` leave the `.anim` file for `.anim.meta` as
+importer settings, and extraction REPLACES an existing clip instead of skipping
+it.** Both halves are one change — neither works without the other.
+
+The reason is that a clip extracted from a model is a GENERATED artifact.
+Extraction refuses to overwrite one today:
+
+```odin
+if os.exists(out) {
+    fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
+    continue
+}
+```
+
+So re-exporting the character from Blender cannot refresh its curves without
+deleting the clip — which deletes its authored wrap along with them. Anything
+that must survive a re-import cannot live in the file the re-import rewrites.
+
+Every `.anim` does this, not only extracted ones. A hand-created clip has no
+model behind it, but one rule beats two: an author looking for a clip's wrap
+should never have to ask where the clip came from first. Unity splits exactly
+here — imported clips keep their settings in the MODEL's meta, native `.anim`
+assets keep theirs in the file — and the split is a thing people have to learn.
+
+### Shape
+
+`.anim` becomes an imported asset, the way audio and textures already are:
+
+- an `@(phase={key=ImportersInit})` registration with
+  `settings_tid = typeid_of(Animation_Clip_Settings)` holding `wrap` and
+  `frame_rate`
+- the meta gains `importer` and a settings blob, the shape
+  `plugins/mhgui/assets/white.png.meta` already has
+- the import BAKES the settings into the artifact, so `animation_clip_load`
+  reads an artifact and the runtime never opens a meta
+- the project inspector then shows the import-settings panel on its own
+  (`_draw_import_settings_inspector` routes by importer), so `.anim` comes back
+  OUT of `_is_inspector_asset` — the document routing added for clips is a
+  stepping stone this replaces
+- `AnimationClip.wrap` and `.frame_rate` come off the serialized struct.
+  `length` stays: it is derived from the last key, not authored.
+
+Extraction then drops the `os.exists` guard and writes the clip every time. The
+meta is a separate file, so the settings ride through untouched — which is the
+whole point of moving them.
+
+### Migration
+
+Every shipped `.anim` carries `wrap` in the file today (`BoxAnimated_0.anim` is
+Loop, the character's nine are Once). A one-off pass moves each clip's value
+into its meta and drops the field.
+
+### Open
+
+A hand-created clip (Assets/Create/Animation) has no source to re-import from —
+its `.anim` IS the source. Simplest answer that keeps one rule: the importer
+copies it through unchanged and its settings still live in the meta. Worth
+confirming that reads well in the project inspector before committing to it.
 
 ## Non-goals
 

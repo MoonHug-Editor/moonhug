@@ -546,7 +546,7 @@ _eval_node :: proc(
 	case Playable_Clip:
 		clip, ok := animation_clip_load(v.clip)
 		if !ok do return
-		t := playable_node_time(n)
+		t := animation_clip_sample_time(clip, playable_node_time(n))
 		for &ch in clip.channels {
 			// No keys, nothing to contribute: sampling would write zeros over
 			// the pose (see animation_clip_apply).
