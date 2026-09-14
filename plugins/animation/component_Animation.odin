@@ -24,7 +24,7 @@ package animation
 import "core:slice"
 import "moonhug:engine"
 
-// Unity's component-level WrapMode: Default defers to the clip's own wrap.
+// Default defers to the clip's own wrap, Once and Loop override it.
 Animation_Wrap_Mode :: enum u8 {
 	Default,
 	Once,
@@ -129,8 +129,8 @@ Animation_State_Kind :: union #no_nil {
 }
 
 // One playing state on a layer. `weight` moves linearly from `fade_from` toward
-// `fade_target` over `fade_dur` seconds (real time, like Unity — fades ignore
-// state speed). A Once state that ran past its end holds its final pose
+// `fade_target` over `fade_dur` seconds of REAL time — a fade ignores state
+// speed, so slowing a state does not slow the blend into it. A Once state that ran past its end holds its final pose
 // (`done`) until everything is done or something replaces it.
 Animation_State_Runtime :: struct {
 	entry:       i32, // authored entry, 0 for a clip played by guid
@@ -188,7 +188,7 @@ Animation :: struct {
 	playing: bool `json:"-" inspect:"-"`,
 	// A timeline's animation track is driving this component: its own
 	// playback stands down so the two never write the same transforms in one
-	// frame (Unity's Animator-under-Timeline rule). Set every tick by the
+	// frame — the higher driver wins. Set every tick by the
 	// track, cleared when it stops driving.
 	timeline_driven: bool `json:"-" inspect:"-"`,
 	started: bool `json:"-" inspect:"-"`, // play_automatically consumed on first tick
@@ -534,8 +534,8 @@ _anim_fade_start :: proc(st: ^Animation_State_Runtime, target, duration: f32) {
 
 // --- API ----------------------------------------------------------------------------
 
-// Restart the default clip from t=0 (Unity Animation.Play rewinds a stopped
-// clip). Other clips on layer 0 stop instantly.
+// Restart the default clip from t=0: play means play, so a stopped clip
+// rewinds rather than resuming. Other clips on layer 0 stop instantly.
 animation_play :: proc(a: ^Animation) {
 	a.time = 0
 	a.playing = true
@@ -545,7 +545,7 @@ animation_play :: proc(a: ^Animation) {
 }
 
 // Play a clip immediately at full weight, stopping everything else on the
-// layer (Unity Play with the default StopSameLayer).
+// layer.
 animation_play_clip :: proc(a: ^Animation, clip: engine.Asset_GUID, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
@@ -617,7 +617,7 @@ animation_blend_get :: proc(a: ^Animation, id: i32) -> f32 {
 }
 
 // Fade `clip` in over `duration` while everything else on the layer fades out
-// from its CURRENT weight (Unity Animation.CrossFade). Calling this mid-fade
+// from its CURRENT weight. Calling this mid-fade
 // is the interruption case and is smooth by construction.
 animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
@@ -644,10 +644,9 @@ animation_cross_fade :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f
 	a.started = true
 }
 
-// Cross-fade to `clip` when the layer's current clips finish (Unity
-// CrossFadeQueued with CompleteOthers). With nothing playing it fades in now.
-// A looping current clip never finishes, so the queue never fires — same as
-// Unity. One pending entry per layer, the newest wins.
+// Cross-fade to `clip` when the layer's current clips finish. With nothing playing it fades in now.
+// A looping current clip never finishes, so the queue never fires. One pending
+// entry per layer, the newest wins.
 animation_cross_fade_queued :: proc(a: ^Animation, clip: engine.Asset_GUID, duration: f32 = 0.3, layer := -1) {
 	if clip == {} do return
 	_anim_ensure_graph(a)
@@ -662,7 +661,7 @@ animation_cross_fade_queued :: proc(a: ^Animation, clip: engine.Asset_GUID, dura
 	l.queued = true
 }
 
-// Stop everything and rewind (Unity Animation.Stop). Transforms keep their
+// Stop everything and rewind. Transforms keep their
 // last written values.
 animation_stop :: proc(a: ^Animation) {
 	a.time = 0
@@ -678,7 +677,7 @@ animation_stop :: proc(a: ^Animation) {
 // --- Tick ---------------------------------------------------------------------------
 
 // Per-frame advance + evaluate + apply for every enabled Animation component.
-// Unity animates in Update, not FixedUpdate.
+// Animation is view-side work, so it runs per frame rather than per fixed tick.
 @(update={order=2})
 animation_tick :: proc(dt: f32) {
 	w := engine.ctx_world()

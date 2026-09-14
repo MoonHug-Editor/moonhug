@@ -171,7 +171,20 @@ shutdown_animation_view :: proc() {
 // Closing the window ends the preview. Called from the main
 // loop when the window toggle is off.
 animation_preview_stop :: proc() {
+	_pv_preview_off()
+}
+
+// Stop previewing, and stop everything that only makes sense while previewing.
+// A running transport with nothing posed is a playhead sweeping the sheet for
+// no reason, and it surprises you later: turning preview back on resumes
+// mid-clip, and the button sat on Pause the whole time. A previewed STATE is
+// the same — it poses through this preview, so it ends with it.
+@(private = "file")
+_pv_preview_off :: proc() {
 	_pv.active = false
+	_pv.playing = false
+	_pv.recording = false
+	_pv.entry = 0
 }
 
 // The scrub graph's single output binding.
@@ -224,8 +237,7 @@ preview_entry :: proc(owner: engine.Transform_Handle) -> i32 {
 
 preview_stop_entry :: proc() {
 	if _pv.entry == 0 do return
-	_pv.entry = 0
-	_pv.active = false
+	_pv_preview_off()
 	_pv_teardown()
 }
 
@@ -729,7 +741,7 @@ draw_animation_view :: proc() {
 
 	owner, a := _pv_target()
 	if a == nil {
-		_pv.active = false
+		_pv_preview_off()
 		im.TextDisabled("Select an object with an Animation component.")
 		return
 	}
@@ -743,7 +755,7 @@ draw_animation_view :: proc() {
 
 	clips := _pv_clips(a)
 	if len(clips) == 0 {
-		_pv.active = false
+		_pv_preview_off()
 		im.TextDisabled("The Animation component has no clips.")
 		return
 	}
@@ -825,7 +837,13 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 	// flips _pv.active in between.
 	tinted := _pv.active
 	if tinted do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
-	if im.Button("Preview") do _pv.active = !_pv.active
+	if im.Button("Preview") {
+		if _pv.active {
+			_pv_preview_off()
+		} else {
+			_pv.active = true
+		}
+	}
 	if tinted do im.PopStyleColor()
 	if im.IsItemHovered({}) do im.SetTooltip("Pose the object from this clip while the window is open")
 
@@ -998,7 +1016,13 @@ _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	if !_pv.playing do return
 	_pv.time += gfx.delta_time()
 	if _pv.time < length do return
-	switch clip != nil ? clip.wrap : anim.Animation_Wrap.Once {
+	// The IMPORTED clip's wrap, not the edited document's: wrap is authored in
+	// the .meta and baked into the artifact, so the document has none. Playback
+	// here then matches what the clip does at runtime — a Once clip plays
+	// through and stops, a Loop clip cycles.
+	wrap := anim.Animation_Wrap.Once
+	if imported, ok := anim.animation_clip_load(_pv.clip); ok do wrap = imported.wrap
+	switch wrap {
 	case .Loop:
 		_pv.time -= length * math.floor(_pv.time / length)
 	case .Once:
@@ -1735,16 +1759,15 @@ _pv_entry_tick :: proc(a: ^anim.Animation, dt: f32) {
 animation_preview_apply :: proc() {
 	if !_pv.active do return
 	w := engine.ctx_world()
-	if !engine.pool_valid(&w.transforms, engine.Handle(_pv.owner)) do _pv.active = false
-	if _pv.entry == 0 && _pv.clip == {} do _pv.active = false
+	if !engine.pool_valid(&w.transforms, engine.Handle(_pv.owner)) do _pv_preview_off()
+	if _pv.entry == 0 && _pv.clip == {} do _pv_preview_off()
 	if !_pv.active {
-		_pv.entry = 0
+		_pv_preview_off()
 		return
 	}
 	_, a := engine.transform_get_comp(_pv.owner, anim.Animation)
 	if a == nil {
-		_pv.active = false
-		_pv.entry = 0
+		_pv_preview_off()
 		return
 	}
 

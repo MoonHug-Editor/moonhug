@@ -193,10 +193,17 @@ animation_clip_unload :: proc(guid: engine.Asset_GUID) {
 // immediately, while the file keeps the last saved state.
 animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	if !_animation_clip_cache_ready do return
+	// Settings are BAKED, so the edited document does not carry them: it holds
+	// length and channels, and wrap, frame rate and cycle offset came from the
+	// .meta at import. Keep the imported values rather than taking the
+	// document's zeros, or previewing an unsaved key edit would quietly turn a
+	// looping clip into a one-shot.
+	wrap, rate, offset := clip.wrap, clip.frame_rate, clip.cycle_offset
 	if old, ok := &animation_clip_cache[guid]; ok {
+		wrap, rate, offset = old.wrap, old.frame_rate, old.cycle_offset
 		_animation_clip_destroy(old)
 	}
-	cp := AnimationClip{length = clip.length, wrap = clip.wrap}
+	cp := AnimationClip{length = clip.length, wrap = wrap, frame_rate = rate, cycle_offset = offset}
 	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
 	for &ch in clip.channels {
 		c := Animation_Channel{

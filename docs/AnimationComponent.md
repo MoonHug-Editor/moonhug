@@ -293,66 +293,66 @@ serialization, and plays the blend through to a posed joint. The scene is
 hand-generated JSON carrying hand-written union tags, which is exactly the kind
 of asset that rots silently.
 
-## TODO: clip settings move to the meta
+## Clip settings live in the meta
 
-**Decided: `wrap` and `frame_rate` leave the `.anim` file for `.anim.meta` as
-importer settings, and extraction REPLACES an existing clip instead of skipping
-it.** Both halves are one change — neither works without the other.
+A clip is an IMPORTED asset, like audio and textures. Its settings are authored
+in the `.meta` and baked into the artifact at import, so the runtime loads one
+file and never opens a meta.
 
-The reason is that a clip extracted from a model is a GENERATED artifact.
-Extraction refuses to overwrite one today:
-
-```odin
-if os.exists(out) {
-    fmt.printf("[Editor] Extract: %s exists, skipped (delete it to re-extract)\n", out)
-    continue
+```json
+{
+  "guid": "5de156d5-...",
+  "importer": "animation",
+  "settings": {
+    "__type_guid": "6b1f9d3a-...",
+    "wrap": 1, "frame_rate": 60.0,
+    "cycle_offset": 0.0, "trim_start": 0.0, "trim_stop": 0.0
+  }
 }
 ```
 
-So re-exporting the character from Blender cannot refresh its curves without
-deleting the clip — which deletes its authored wrap along with them. Anything
-that must survive a re-import cannot live in the file the re-import rewrites.
+| setting        | effect                                                        |
+|----------------|---------------------------------------------------------------|
+| `wrap`         | Once holds the final pose, Loop restarts. Every state's default |
+| `frame_rate`   | the editor's key and playhead grid. Authoring only              |
+| `cycle_offset` | where in a loop sampling starts, as a fraction of the clip      |
+| `trim_start` / `trim_stop` | the sub-range to keep, in source seconds          |
 
-Every `.anim` does this, not only extracted ones. A hand-created clip has no
-model behind it, but one rule beats two: an author looking for a clip's wrap
-should never have to ask where the clip came from first. Unity splits exactly
-here — imported clips keep their settings in the MODEL's meta, native `.anim`
-assets keep theirs in the file — and the split is a thing people have to learn.
+They live there rather than in the `.anim` because a clip extracted from a model
+is a GENERATED file: extraction rewrites it so a re-exported model can refresh
+its curves, and anything authored has to survive that. The meta is a separate
+file, so it does. A source `.anim` therefore carries only `length` and
+`channels`.
 
-### Shape
+`cycle_offset` is honoured in `animation_clip_sample_time`, called at the one
+place a clip is evaluated — so the driver, the editor preview and a timeline's
+animation track all get it without cooperating. The trim is BAKED instead: the
+importer drops keys outside the range, rebases the times and keeps an
+interpolated key at each edge, so a cut between keys starts on the value the
+clip actually had there and nothing pays for it at runtime.
 
-`.anim` becomes an imported asset, the way audio and textures already are:
+### Settings deliberately absent
 
-- an `@(phase={key=ImportersInit})` registration with
-  `settings_tid = typeid_of(Animation_Clip_Settings)` holding `wrap` and
-  `frame_rate`
-- the meta gains `importer` and a settings blob, the shape
-  `plugins/mhgui/assets/white.png.meta` already has
-- the import BAKES the settings into the artifact, so `animation_clip_load`
-  reads an artifact and the runtime never opens a meta
-- the project inspector then shows the import-settings panel on its own
-  (`_draw_import_settings_inspector` routes by importer), so `.anim` comes back
-  OUT of `_is_inspector_asset` — the document routing added for clips is a
-  stepping stone this replaces
-- `AnimationClip.wrap` and `.frame_rate` come off the serialized struct.
-  `length` stays: it is derived from the last key, not authored.
+A knob that does nothing is worse than a missing one, so these wait for the
+system behind them:
 
-Extraction then drops the `os.exists` guard and writes the clip every time. The
-meta is a separate file, so the settings ride through untouched — which is the
-whole point of moving them.
+- **Mirror** needs a left/right bone mapping. There is no avatar.
+- **Root motion** — bake into pose, orientation and Y/XZ offsets, height from
+  feet — needs a root-motion system.
+- **Additive reference pose** needs additive layers. Layers here override
+  rather than add.
 
-### Migration
+### The Animation window
 
-Every shipped `.anim` carries `wrap` in the file today (`BoxAnimated_0.anim` is
-Loop, the character's nine are Once). A one-off pass moves each clip's value
-into its meta and drops the field.
+Playback respects the clip's `wrap`: a Once clip plays through and stops, a Loop
+clip cycles. The window reads the IMPORTED clip for that, not the document it is
+editing — the document holds keys, the meta holds wrap.
 
-### Open
-
-A hand-created clip (Assets/Create/Animation) has no source to re-import from —
-its `.anim` IS the source. Simplest answer that keeps one rule: the importer
-copies it through unchanged and its settings still live in the meta. Worth
-confirming that reads well in the project inspector before committing to it.
+This is a deliberate choice, and not the common one: clip editors usually loop
+their preview unconditionally, treating it as a scrubber rather than a
+simulation. Respecting wrap means the preview shows what the clip will actually
+do when something plays it, which is the question being asked while authoring
+one.
 
 ## Non-goals
 
