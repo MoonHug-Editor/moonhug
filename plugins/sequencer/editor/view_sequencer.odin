@@ -408,8 +408,14 @@ sequencer_window_draw :: proc() {
 	add_track_h := im.GetFrameHeight() + 12
 	pane_h := max(rows_h + add_track_h, body_h)
 	{
+		// NoScrollWithMouse, because the canvas inside claims the wheel for
+		// zoom and pan. The legend half has no such claim, so the wheel there
+		// scrolls this pane by hand at the end of the block — the animation
+		// window behaves the same way, and with more tracks than fit, a
+		// scrollbar drag is otherwise the only way down.
 		im.BeginChild("##sq_rows", im.Vec2{rows_pane_w, body_h}, {}, {.NoScrollWithMouse})
 		defer im.EndChild()
+		rows_origin := im.GetCursorScreenPos()
 
 	if im.BeginChild("##sq_legend", im.Vec2{_sq.legend_w, pane_h}, {}, {.NoScrollbar, .NoScrollWithMouse}) {
 		// Rows are pinned to the SAME grid the canvas draws: row i starts at
@@ -726,6 +732,18 @@ sequencer_window_draw :: proc() {
 		im.DrawList_AddLine(dl, {px, origin.y}, {px, origin.y + rows_h}, im.GetColorU32ImVec4({1, 0.3, 0.25, 1}), 2)
 	}
 	im.EndChild()
+
+	// Wheel over the LEGEND scrolls the pane. Gated on the pointer being left
+	// of the canvas rather than on which child is hovered, the way the
+	// animation window gates its own zoom — a child that forwards the wheel
+	// still reports itself hovered, so hover alone cannot tell the halves
+	// apart.
+	if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
+		if wheel := im.GetIO().MouseWheel; wheel != 0 &&
+		   im.GetMousePos().x < rows_origin.x + _sq.legend_w {
+			im.SetScrollY(im.GetScrollY() - wheel * im.GetTextLineHeightWithSpacing() * 3)
+		}
+	}
 	} // ##sq_rows — its EndChild is deferred above
 
 	// Keyboard: Delete/Backspace removes the selected clip — unless a text
