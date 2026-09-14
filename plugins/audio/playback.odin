@@ -29,7 +29,25 @@ _mix_lib_ensure :: proc() {
 // Tests/tooling: pin the process to a deviceless mixer before anything
 // creates the device one. Loading works, mix.Generate drives playback,
 // nothing is audible.
+// Whoever asks for a mixer FIRST decides whether a playback device opens, and
+// clip_load asks on its own through _mixer_ensure. So a test that opens a
+// deviceless mixer in its own body is not enough: anything that loaded a clip
+// earlier in the process already opened the device, and every later
+// mixer_init_headless returns that one. Set this before any of it runs
+// (audio/tests declares it at @(init)) and no device is ever opened.
+@(private)
+_force_deviceless: bool
+
+// Never open a playback DEVICE in this process. A test binary says so once at
+// startup: a device mixer is driven by its own audio callback, so mix.Generate
+// pulls nothing from it and a test that steps a clip by hand hangs on tracks
+// that never finish — besides playing the fixtures out loud.
+audio_force_deviceless :: proc() {
+	_force_deviceless = true
+}
+
 mixer_init_headless :: proc() -> bool {
+	_force_deviceless = true
 	if _audio_state.mixer != nil do return true
 	_mix_lib_ensure()
 	_audio_state.mixer = _create_deviceless_mixer()
@@ -45,7 +63,8 @@ _create_deviceless_mixer :: proc() -> ^mix.Mixer {
 _mixer_ensure :: proc() -> bool {
 	if _audio_state.mixer != nil do return true
 	_mix_lib_ensure()
-	m := mix.CreateMixerDevice(sdl.AUDIO_DEVICE_DEFAULT_PLAYBACK, nil)
+	m: ^mix.Mixer
+	if !_force_deviceless do m = mix.CreateMixerDevice(sdl.AUDIO_DEVICE_DEFAULT_PLAYBACK, nil)
 	if m == nil do m = _create_deviceless_mixer()
 	_audio_state.mixer = m
 	return m != nil
