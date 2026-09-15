@@ -12,6 +12,7 @@ package animation
 // binding paths). "Assets/Extract Assets" turns glTF animations into .anim
 // files whose paths mirror the glTF node hierarchy.
 
+import "base:runtime"
 import "core:encoding/json"
 import "moonhug:engine"
 import "core:encoding/uuid"
@@ -156,6 +157,15 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 	}
 	if !_animation_clip_cache_ready do return nil, false
 
+	// A CACHE ENTRY OUTLIVES THE CALL, so it never borrows the caller's
+	// allocator. A clip first loaded under a temp allocator left the cache
+	// holding channels that the frame's free_all reclaimed, and every later
+	// load returned that dangling entry from the cache — the scrub preview
+	// then posed from freed memory and froze. The Playable Graph window builds
+	// the authored shape into temp memory, which is how it got reached.
+	// os.read_entire_file below asks for temp explicitly and is unaffected.
+	context.allocator = runtime.default_allocator()
+
 	// The ARTIFACT, not the source: the importer bakes the .meta's settings
 	// into it, so the runtime never opens a meta.
 	path, path_ok := engine.asset_pipeline_artifact_path(guid)
@@ -193,6 +203,9 @@ animation_clip_unload :: proc(guid: engine.Asset_GUID) {
 // immediately, while the file keeps the last saved state.
 animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	if !_animation_clip_cache_ready do return
+	// The deep copy below becomes a cache entry, so it owns its memory for the
+	// same reason animation_clip_load's does.
+	context.allocator = runtime.default_allocator()
 	// Settings are BAKED, so the edited document does not carry them: it holds
 	// length and channels, and wrap, frame rate and cycle offset came from the
 	// .meta at import. Keep the imported values rather than taking the

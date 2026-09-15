@@ -253,11 +253,13 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 			from := nc.canvas_port_out(cv, _pg.pos[ci + 1])
 			to := nc.canvas_port_in(cv, _pg.pos[id], ii + 1)
 			// An edge carries a pose, so it takes the pose port's colour and
-			// fades with the weight rather than going grey.
+			// fades with the weight rather than going grey. Beads flow along it
+			// only when a pose is actually moving through: on a live graph that
+			// is the weight, and the authored shape is not running at all.
 			w := clamp(inp.weight, 0, 1)
 			col := nc.PORT_POSE
 			col.w = live ? 0.28 + 0.72 * w : 0.9
-			nc.canvas_link(cv, from, to, im.GetColorU32ImVec4(col), 1.4 + (live ? w : 0))
+			nc.canvas_link(cv, from, to, im.GetColorU32ImVec4(col), 1.4 + (live ? w : 0), live ? w : 0)
 		}
 	}
 

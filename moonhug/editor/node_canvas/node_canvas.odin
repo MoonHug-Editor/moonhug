@@ -257,24 +257,60 @@ _port :: proc(dl: ^im.DrawList, cv: ^Node_Canvas, at: im.Vec2, col: im.Vec4) {
 }
 
 // Bezier edge between two port positions (screen coords), horizontal
-// tangents, a bead at the midpoint, optional label beside it. Draw before the
-// nodes.
-canvas_link :: proc(cv: ^Node_Canvas, from, to: im.Vec2, col: u32, thickness: f32 = 1.5, label: cstring = nil) {
+// tangents, optional label at the midpoint. Draw before the nodes.
+//
+// `flow` above 0 sends beads along the edge from source to target, and is how
+// much is flowing (a weight in 0..1): it sets both how fast they travel and
+// how bright they are. 0 draws the line alone. An idle edge and a carrying one
+// then differ by MOTION, which is the one channel a static graph has no way to
+// show and the eye picks up without being pointed at it.
+canvas_link :: proc(
+	cv: ^Node_Canvas,
+	from, to: im.Vec2,
+	col: u32,
+	thickness: f32 = 1.5,
+	flow: f32 = 0,
+	label: cstring = nil,
+) {
 	dl := im.GetWindowDrawList()
 	d := clamp(abs(to.x - from.x) * 0.5, 30 * cv.zoom, 120 * cv.zoom)
 	c1 := from + im.Vec2{d, 0}
 	c2 := to - im.Vec2{d, 0}
 	im.DrawList_AddBezierCubic(dl, from, c1, c2, to, col, thickness * cv.zoom)
 
-	// The bead marks which of several edges landing on one node is which, and
-	// gives the label something to hang off.
-	mid := (from + c1 * 3 + c2 * 3 + to) / 8
-	im.DrawList_AddCircleFilled(dl, mid, (thickness + 1.2) * cv.zoom, col)
+	if flow > 0.001 {
+		// One bead per BEAD_SPACING of screen length, so a long edge carries
+		// several and a short one does not crowd. The chord underestimates the
+		// curve, which only ever spaces them slightly wider than asked.
+		span := max(abs(to.x - from.x), abs(to.y - from.y))
+		n := clamp(int(span / (BEAD_SPACING * cv.zoom)), 2, 10)
+		// Beads move with the weight and never stall: a barely-weighted edge
+		// still creeps, which is what distinguishes it from a dead one.
+		phase := f32(math.mod(im.GetTime() * f64((0.25 + 0.75 * flow) * BEAD_SPEED), 1))
+		r := (thickness + 0.6) * cv.zoom
+		bead := (col & 0x00FFFFFF) | (u32(clamp(90 + 165 * flow, 0, 255)) << 24)
+		for i in 0 ..< n {
+			t := math.mod(phase + f32(i) / f32(n), 1)
+			im.DrawList_AddCircleFilled(dl, _bezier(from, c1, c2, to, t), r, bead)
+		}
+	}
 
 	if label != nil {
+		mid := _bezier(from, c1, c2, to, 0.5)
 		font_sz := max(im.GetFontSize() * cv.zoom * 0.9, 7)
 		im.DrawList_AddTextImFontPtr(dl, im.GetFont(), font_sz, mid + im.Vec2{5 * cv.zoom, -font_sz - 2}, im.GetColorU32(.Text), label)
 	}
+}
+
+// Screen pixels between flowing beads at zoom 1.
+BEAD_SPACING :: f32(26)
+// Bead travel, in edge-lengths per second at full weight.
+BEAD_SPEED :: f32(0.75)
+
+@(private = "file")
+_bezier :: proc(p0, p1, p2, p3: im.Vec2, t: f32) -> im.Vec2 {
+	u := 1 - t
+	return p0 * (u * u * u) + p1 * (3 * u * u * t) + p2 * (3 * u * t * t) + p3 * (t * t * t)
 }
 
 // Multiplies a colour toward black, for a muted fill of the same hue.
