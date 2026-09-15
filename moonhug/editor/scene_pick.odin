@@ -3,8 +3,14 @@ package editor
 // Scene-view click picking (docs/SDL3Renderer.md #7). CPU tests — sprites
 // against their exact world quads (the SAME corners the renderer draws, via
 // sprites.sprite_quad), meshes against their import-time AABB in local
-// space. Nearest hit wins. Like Unity, the editor ignores render layer masks
-// — you can pick anything you can see.
+// space, skinned meshes against the world bounds of the pose they last drew.
+// Nearest hit wins. The editor ignores render layer masks — you can pick
+// anything you can see.
+//
+// Each renderer is tested the way it is DRAWN. That is the rule that matters:
+// a skinned mesh draws posed world vertices under an identity model, so a
+// local-space test against its bind pose looks for it where its rig was
+// authored rather than where it is on screen.
 
 import "core:math/linalg"
 import "../engine"
@@ -62,6 +68,23 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if t, hit := engine.ray_hit_aabb(local_ray, mesh.aabb_min, mesh.aabb_max); hit && t < best_t {
 			best_t = t
 			best = engine.Transform_Handle(mr.owner)
+			found = true
+		}
+	}
+
+	// Skinned meshes test their POSED world bounds. Their mesh aabb is the bind
+	// pose in the skeleton's own space, so the transform-relative test above
+	// would look for a character wherever its rig was authored — which is why
+	// clicking one selected nothing.
+	smr_it := engine.pool_iterator(engine.skinned_mesh_renderers(w))
+	for smr, _ in engine.pool_next(&smr_it) {
+		if !smr.enabled do continue
+		if !engine.transform_active_in_hierarchy(smr.owner) do continue
+		lo, hi, ok := engine.skinned_mesh_world_bounds(smr)
+		if !ok do continue
+		if t, hit := engine.ray_hit_aabb(ray, lo, hi); hit && t < best_t {
+			best_t = t
+			best = engine.Transform_Handle(smr.owner)
 			found = true
 		}
 	}
@@ -139,6 +162,27 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		}
 		if _rect_hits_points(view, rmin, rmax, corners[:]) {
 			append(&out, engine.Transform_Handle(mr.owner))
+		}
+	}
+
+	// Skinned meshes: their posed bounds are already world-space, so unlike the
+	// mesh renderers above there is no model matrix to push the corners through.
+	smr_it := engine.pool_iterator(engine.skinned_mesh_renderers(w))
+	for smr, _ in engine.pool_next(&smr_it) {
+		if !smr.enabled do continue
+		if !engine.transform_active_in_hierarchy(smr.owner) do continue
+		lo, hi, ok := engine.skinned_mesh_world_bounds(smr)
+		if !ok do continue
+		corners: [8][3]f32
+		for k in 0 ..< 8 {
+			corners[k] = {
+				k & 1 == 0 ? lo.x : hi.x,
+				k & 2 == 0 ? lo.y : hi.y,
+				k & 4 == 0 ? lo.z : hi.z,
+			}
+		}
+		if _rect_hits_points(view, rmin, rmax, corners[:]) {
+			append(&out, engine.Transform_Handle(smr.owner))
 		}
 	}
 

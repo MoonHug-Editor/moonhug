@@ -332,9 +332,28 @@ _ui_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32,
 	return (lo + hi) * 0.5, max(linalg.length(hi - lo) * 0.5, 0.1), true
 }
 
-// Bounding sphere of the selection: mesh AABB through the world transform,
-// sprite quad, or a default radius around the position (mirrors the shapes
-// draw_selection_outline draws).
+// World bounds of a skinned mesh, for the selection shapes below.
+//
+// A skinned mesh is posed straight into WORLD space
+// (component_SkinnedMeshRenderer.odin), so its box is axis-aligned and takes
+// no model matrix. The MeshFilter path below is wrong for one twice over: the
+// mesh aabb is the BIND pose in the rig's own space, and pushing it through
+// the owner's transform makes a box that swings with the animated root while
+// the character deforms independently inside it — which reads as a shaky box
+// at a strange angle.
+//
+// nil when the renderer has never been skinned: there is no pose to bound yet,
+// and the callers fall through to the shapes they already drew.
+@(private = "file")
+_skinned_world_aabb :: proc(tH: engine.Transform_Handle) -> (lo, hi: [3]f32, ok: bool) {
+	_, smr := engine.transform_get_comp(tH, engine.SkinnedMeshRenderer)
+	if smr == nil do return {}, {}, false
+	return engine.skinned_mesh_world_bounds(smr)
+}
+
+// Bounding sphere of the selection: skinned mesh from its posed world bounds,
+// mesh AABB through the world transform, sprite quad, or a default radius
+// around the position (mirrors the shapes draw_selection_outline draws).
 _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32) {
 	if c, r, ok := _ui_bounds(tH); ok do return c, r
 	tw := engine.transform_world(tH)
@@ -343,6 +362,14 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 
 	vmin :: proc(a, b: [3]f32) -> [3]f32 {return {min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)}}
 	vmax :: proc(a, b: [3]f32) -> [3]f32 {return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)}}
+
+	// Before the MeshFilter branch: a skinned character carries both, and only
+	// this one describes where it currently is.
+	if lo, hi, ok := _skinned_world_aabb(tH); ok {
+		center = (lo + hi) * 0.5
+		radius = max(linalg.length(hi - lo) * 0.5, 0.1)
+		return
+	}
 
 	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
 	if mf != nil && mf.mesh != {} {
@@ -448,15 +475,26 @@ render_scene_rt :: proc(w, h: i32) {
 	gfx.pass_end()
 }
 
-// Unity-orange wireframe on the selected object: mesh → its local AABB edges
+// Orange wireframe on the selected object: mesh → its local AABB edges
 // through the world transform; sprite → its exact world quad; neither → a
 // small axis cross at the position.
+//
+// A SKINNED mesh deliberately gets no box. Its mesh aabb is the bind pose in
+// the rig's own space, so the box below swings with the animated root while
+// the character deforms independently inside it. The box is a stand-in for a
+// silhouette outline, which is what an editor draws here when it can, and a
+// box at the wrong angle is further from that than nothing — the transform
+// gizmo and the axis cross still mark the selection. `_selection_bounds` does
+// use the posed world bounds, so framing the selection still frames the
+// character where it actually is.
 draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 	ORANGE :: [4]f32{1, 0.6, 0.1, 1}
 	tw := engine.transform_world(tH)
 
+	_, skinned := engine.transform_get_comp(tH, engine.SkinnedMeshRenderer)
+
 	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
-	if mf != nil && mf.mesh != {} {
+	if skinned == nil && mf != nil && mf.mesh != {} {
 		if mesh, ok := engine.mesh_load_filter(mf); ok {
 			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
 			lo, hi := mesh.aabb_min, mesh.aabb_max

@@ -46,6 +46,25 @@ SkinnedMeshRenderer :: struct {
     bound_root:  Transform_Handle `json:"-" inspect:"-"`, // the subtree it searched
     bound_ready: bool `json:"-" inspect:"-"`,
     posed_frame: u64 `json:"-" inspect:"-"`, // gfx.frame_index the skinning last ran in
+    // World bounds of `posed`, accumulated by _skin_pose. Kept because the
+    // skinned bounds are the only ones that describe where the mesh actually
+    // IS — the mesh's own aabb is the bind pose in the skeleton's space, which
+    // a posed character has usually left entirely.
+    posed_min:   [3]f32 `json:"-" inspect:"-"`,
+    posed_max:   [3]f32 `json:"-" inspect:"-"`,
+}
+
+// World-space bounds of the skinned vertices as of the last pose. The skin
+// matrices produce world space directly (see _skin_pose), which is why the
+// draw command uses an identity model and why nothing is transformed here.
+//
+// False until the renderer has been skinned at least once. Before that the
+// only bounds available are the bind pose's, which sit wherever the skeleton
+// was authored rather than where the object is, so this reports nothing rather
+// than reporting somewhere wrong.
+skinned_mesh_world_bounds :: proc(smr: ^SkinnedMeshRenderer) -> (lo, hi: [3]f32, ok: bool) {
+    if smr == nil || len(smr.posed) == 0 do return {}, {}, false
+    return smr.posed_min, smr.posed_max, true
 }
 
 on_destroy_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
@@ -178,6 +197,12 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
         palette[j] = trs_matrix(tw.position, tw.rotation, tw.scale) * mesh.inverse_binds[j]
     }
 
+    // Accumulated as the vertices are written, since this loop already visits
+    // every one of them — recomputing the bounds per pick would walk the whole
+    // mesh again on every click and every rubber-band frame.
+    lo := [3]f32{max(f32), max(f32), max(f32)}
+    hi := [3]f32{min(f32), min(f32), min(f32)}
+
     for i in 0 ..< len(mesh.bind_vertices) {
         v := mesh.bind_vertices[i]
         sv := mesh.skin[i]
@@ -208,7 +233,10 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
             v.normal = linalg.normalize0(nrm)
         }
         smr.posed[i] = v
+        lo = {min(lo.x, v.position.x), min(lo.y, v.position.y), min(lo.z, v.position.z)}
+        hi = {max(hi.x, v.position.x), max(hi.y, v.position.y), max(hi.z, v.position.z)}
     }
+    if len(mesh.bind_vertices) > 0 do smr.posed_min, smr.posed_max = lo, hi
     gfx.dynamic_mesh_update(&smr.gpu, smr.posed[:])
 }
 
