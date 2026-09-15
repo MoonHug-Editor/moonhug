@@ -24,8 +24,19 @@ import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/icons"
 
-@(private = "file") _PG_COL_W :: f32(230) // one depth rank
-@(private = "file") _PG_ROW_H :: f32(95)
+@(private = "file") _PG_BAR_PAD :: f32(4) // inset of the strip above the canvas
+@(private = "file") _PG_COL_W :: f32(250) // one depth rank
+@(private = "file") _PG_GAP :: f32(26) // vertical space between nodes in a rank
+
+// Node hues. A pose source, a blend, the layer stack and a script each get
+// their own, and the graph's OUTPUT ROOT gets a terminal colour of its own —
+// there is exactly one, and "this is where the pose leaves the graph" is the
+// first thing to find when reading an unfamiliar graph.
+@(private = "file") _PG_CLIP :: im.Vec4{0.55, 0.49, 0.29, 1}
+@(private = "file") _PG_MIXER :: im.Vec4{0.28, 0.52, 0.45, 1}
+@(private = "file") _PG_LAYERS :: im.Vec4{0.45, 0.36, 0.62, 1}
+@(private = "file") _PG_SCRIPT :: im.Vec4{0.62, 0.43, 0.23, 1}
+@(private = "file") _PG_OUTPUT :: im.Vec4{0.55, 0.28, 0.28, 1}
 
 @(private = "file")
 _pg: struct {
@@ -40,7 +51,14 @@ shutdown_playable_graph_view :: proc() {
 }
 
 draw_playable_graph_view :: proc() {
-	if !im.Begin(icons.TITLE_PLAYABLE_GRAPH, &menu.show_playable_graph, {.NoCollapse}) {
+	// No window padding, so the canvas reaches every edge of the view — a
+	// canvas framed by the panel colour reads as a widget sitting in a window
+	// rather than as the surface the window is for. Everything drawn above it
+	// pads itself instead (the game view's toolbar does the same).
+	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
+	defer im.PopStyleVar()
+
+	if !im.Begin(icons.TITLE_PLAYABLE_GRAPH, &menu.show_playable_graph, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
 		im.End()
 		return
 	}
@@ -52,16 +70,20 @@ draw_playable_graph_view :: proc() {
 	// preview all answer through the same call.
 	owner, src, found := _pg_selected_source()
 	if !found {
+		_pg_pad()
 		im.TextDisabled("Select an object that owns a playable graph.")
 		return
 	}
 	g, live := src.graph, src.live
 
+	_pg_pad()
 	im.TextDisabled("Source: %s", fmt.ctprint(src.label))
 	if g == nil || anim.graph_output(g) == nil || anim.playable_node(g, anim.graph_output(g).root) == nil {
+		_pg_pad()
 		im.TextDisabled("The graph is empty (nothing to play).")
 		return
 	}
+	im.SetCursorPosY(im.GetCursorPosY() + _PG_BAR_PAD)
 
 	_pg_layout(g, u64(uintptr(engine.Handle(owner).index)))
 
@@ -69,6 +91,14 @@ draw_playable_graph_view :: proc() {
 		_pg_draw(g, live)
 	}
 	nc.canvas_end(&_pg.cv)
+}
+
+// Inset for one line drawn above the canvas. The window has no padding of its
+// own, so anything outside the canvas supplies it.
+@(private = "file")
+_pg_pad :: proc() {
+	im.SetCursorPosX(im.GetCursorPosX() + _PG_BAR_PAD)
+	im.SetCursorPosY(im.GetCursorPosY() + _PG_BAR_PAD)
 }
 
 // The graph the component builds when it plays, from authored data alone —
@@ -139,13 +169,29 @@ _pg_layout :: proc(g: ^anim.Playable_Graph, salt: u64) {
 
 	if _pg.pos == nil do _pg.pos = make(map[int]im.Vec2)
 	clear(&_pg.pos)
-	rows := make([]int, max_depth + 2, context.temp_allocator)
+	// A y cursor per rank rather than a fixed row pitch: node height follows
+	// its input count now, so a six-input mixer would sit under its neighbour.
+	next_y := make([]f32, max_depth + 2, context.temp_allocator)
+	for &y in next_y do y = 20
 	for i in 0 ..< n {
 		if !g.nodes[i].alive do continue
 		d := depth[i]
-		_pg.pos[i + 1] = im.Vec2{f32(max_depth + 1 - d) * _PG_COL_W + 20, f32(rows[d]) * _PG_ROW_H + 20}
-		rows[d] += 1
+		_pg.pos[i + 1] = im.Vec2{f32(max_depth + 1 - d) * _PG_COL_W + 20, next_y[d]}
+		next_y[d] += nc.canvas_node_size(_pg_row_count(&g.nodes[i])).y + _PG_GAP
 	}
+}
+
+// How many body rows a node draws. Shared with _pg_draw so the layout cannot
+// size a node differently from the way it is drawn.
+@(private = "file")
+_pg_row_count :: proc(n: ^anim.Playable_Node) -> int {
+	switch _ in n.kind {
+	case anim.Playable_Clip:
+		return 3
+	case anim.Playable_Mixer, anim.Playable_Layer_Mixer, anim.Playable_Script:
+		return 1 + len(n.inputs)
+	}
+	return 1
 }
 
 @(private = "file")
@@ -153,42 +199,46 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 	cv := &_pg.cv
 
 	// Per-node presentation, computed before edges need port positions.
+	// Row 0 is always the node's own summary and carries the output port, so
+	// input i sits on row i+1 — the rule the edge routing below relies on.
 	_Desc :: struct {
 		title: cstring,
 		color: im.Vec4,
-		lines: []cstring,
+		rows:  []nc.Canvas_Row,
 	}
 	descs := make([]_Desc, len(g.nodes), context.temp_allocator)
 	for &n, i in g.nodes {
 		if !n.alive do continue
-		lines := make([dynamic]cstring, context.temp_allocator)
+		rows := make([dynamic]nc.Canvas_Row, context.temp_allocator)
 		d: _Desc
 		switch v in n.kind {
 		case anim.Playable_Clip:
-			d.title = "Clip"
-			d.color = {0.26, 0.42, 0.69, 1}
-			append(&lines, fmt.ctprintf("%s", _pv_clip_name(v.clip)))
+			d.title, d.color = "Clip", _PG_CLIP
+			append(&rows, nc.Canvas_Row{label = "Clip", value = fmt.ctprintf("%s", _pv_clip_name(v.clip))})
 			if clip, ok := anim.animation_clip_load(v.clip); ok {
-				if live {
-					append(&lines, fmt.ctprintf("t %.2f / %.2f s", n.time, clip.length))
-				} else {
-					append(&lines, fmt.ctprintf("len %.2f s, %v", clip.length, clip.wrap))
-				}
+				append(&rows, live \
+					? nc.Canvas_Row{label = "Time", value = fmt.ctprintf("%.2f / %.2f", n.time, clip.length)} \
+					: nc.Canvas_Row{label = "Length", value = fmt.ctprintf("%.2f s", clip.length)})
+				append(&rows, nc.Canvas_Row{label = "Wrap", value = fmt.ctprintf("%v", clip.wrap)})
+			} else {
+				append(&rows, nc.Canvas_Row{label = "Length", value = "—"})
+				append(&rows, nc.Canvas_Row{label = "Wrap", value = "—"})
 			}
 		case anim.Playable_Mixer:
-			d.title = "Mixer"
-			d.color = {0.29, 0.55, 0.35, 1}
-			append(&lines, fmt.ctprintf("%d input%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
+			d.title, d.color = "Mixer", _PG_MIXER
+			append(&rows, nc.Canvas_Row{label = "Inputs", value = fmt.ctprintf("%d", len(n.inputs))})
+			_pg_input_rows(&rows, n.inputs[:], "Pose", live)
 		case anim.Playable_Layer_Mixer:
-			d.title = "Layer Mixer"
-			d.color = {0.52, 0.36, 0.64, 1}
-			append(&lines, fmt.ctprintf("%d layer%s", len(n.inputs), len(n.inputs) == 1 ? "" : "s"))
+			d.title, d.color = "Layer Mixer", _PG_LAYERS
+			append(&rows, nc.Canvas_Row{label = "Layers", value = fmt.ctprintf("%d", len(n.inputs))})
+			_pg_input_rows(&rows, n.inputs[:], "Layer", live)
 		case anim.Playable_Script:
-			d.title = "Script"
-			d.color = {0.75, 0.52, 0.25, 1}
-			if live do append(&lines, fmt.ctprintf("t %.2f s", n.time))
+			d.title, d.color = "Script", _PG_SCRIPT
+			append(&rows, nc.Canvas_Row{label = "Time", value = live ? fmt.ctprintf("%.2f s", n.time) : "—"})
+			_pg_input_rows(&rows, n.inputs[:], "Pose", live)
 		}
-		d.lines = lines[:]
+		if _pg_is_output_root(g, i + 1) do d.color = _PG_OUTPUT
+		d.rows = rows[:]
 		descs[i] = d
 	}
 
@@ -200,12 +250,14 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		for inp, ii in n.inputs {
 			ci := int(inp.node) - 1
 			if ci < 0 || ci >= len(g.nodes) || !g.nodes[ci].alive do continue
-			from := nc.canvas_port_out(cv, _pg.pos[ci + 1], len(descs[ci].lines))
-			to := nc.canvas_port_in(cv, _pg.pos[id], len(descs[i].lines), ii, len(n.inputs))
-			alpha := live ? 0.25 + 0.75 * clamp(inp.weight, 0, 1) : 1
-			col := im.GetColorU32(.Text, alpha)
-			label := live ? fmt.ctprintf("%.2f", inp.weight) : nil
-			nc.canvas_link(cv, from, to, col, 1 + (live ? clamp(inp.weight, 0, 1) : 0), label)
+			from := nc.canvas_port_out(cv, _pg.pos[ci + 1])
+			to := nc.canvas_port_in(cv, _pg.pos[id], ii + 1)
+			// An edge carries a pose, so it takes the pose port's colour and
+			// fades with the weight rather than going grey.
+			w := clamp(inp.weight, 0, 1)
+			col := nc.PORT_POSE
+			col.w = live ? 0.28 + 0.72 * w : 0.9
+			nc.canvas_link(cv, from, to, im.GetColorU32ImVec4(col), 1.4 + (live ? w : 0))
 		}
 	}
 
@@ -213,8 +265,23 @@ _pg_draw :: proc(g: ^anim.Playable_Graph, live: bool) {
 		if !n.alive do continue
 		id := i + 1
 		pos := _pg.pos[id]
-		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].lines, len(n.inputs), !_pg_is_output_root(g, i + 1))
+		nc.canvas_node(cv, id, &pos, descs[i].title, descs[i].color, descs[i].rows, !_pg_is_output_root(g, id))
 		_pg.pos[id] = pos
+	}
+}
+
+// One row per input, each carrying the port its edge lands on. The weight is
+// the value: it is the only thing that differs between a mixer's inputs, and
+// on a live graph it is what the window exists to show.
+@(private = "file")
+_pg_input_rows :: proc(rows: ^[dynamic]nc.Canvas_Row, inputs: []anim.Playable_Input, label: string, live: bool) {
+	for inp, i in inputs {
+		append(rows, nc.Canvas_Row{
+			label = fmt.ctprintf("%s %d", label, i),
+			value = live ? fmt.ctprintf("%.2f", inp.weight) : "",
+			port  = true,
+			col   = nc.PORT_POSE,
+		})
 	}
 }
 
