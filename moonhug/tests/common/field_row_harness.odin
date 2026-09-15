@@ -1,4 +1,4 @@
-package tests
+package tests_common
 
 // Drives an inspector field ROW across frames, without a UI.
 //
@@ -21,9 +21,9 @@ package tests
 // transaction, the peer apply or the undo recording is reimplemented here, so a
 // test exercises the shipping code path rather than a model of it.
 
-import "../editor"
-import "../editor/inspector"
-import "../engine"
+import "../../editor"
+import "../../editor/inspector"
+import "../../engine"
 
 // One frame of a gesture, as the row would observe it.
 Frame :: struct {

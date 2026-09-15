@@ -241,9 +241,11 @@ already has one open is a no-op, which is what makes per-frame calling safe.
 
 ### Testing rows
 
-`tests/field_row_harness.odin` replays a SEQUENCE of frames through the real
-`field_edit_row`, substituting the three imgui item-state queries a row
-observes. Frame builders name the cases: `frame_idle`, `frame_press`,
+`tests/common/field_row_harness.odin` replays a SEQUENCE of frames through the
+real `field_edit_row`, substituting the three imgui item-state queries a row
+observes. It lives in `tests/common` so a package's own suite can drive its
+custom rows too; the central suite keeps the short names through `bootstrap.odin`.
+Frame builders name the cases: `frame_idle`, `frame_press`,
 `frame_drag`, `frame_release`, `frame_popup_write`, `frame_button_click`.
 Rotation has its own driver (`rotation_row_drive_for_test`), because its row
 edits an euler cache rather than the stored quaternion.
@@ -327,6 +329,50 @@ the whole transform. `_wrap_transform_field_override`
 bypass the generic field loop and also record prefab-instance overrides.
 
 For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` — an `Edit_Scope` IS a one-target `Edit_Session`, so it is the same mechanism with a two-line spelling.
+
+### Custom rows draw through `field_edit_row`
+
+Undo is automatic per ROW DRAWN THROUGH `field_edit_row`, not per widget. A
+custom inspector that calls imgui directly has drawn a row that never went
+through it, so nothing snapshots the value and nothing commits it. The value
+still changes — it was written straight onto the component — so the loss is
+invisible until Ctrl+Z. This is the single most common way a new feature ships
+without undo.
+
+A custom value row is therefore written as a drawer handed to the row:
+
+```odin
+_slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+    if widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, lo, hi) {
+        inspector.mark_inspector_changed()
+    }
+}
+
+inspector.field_edit_row(&entry.value, typeid_of(f32), 0, "Blend Value", _slider_drawer, "Value")
+```
+
+What the row does that a hand-rolled bracket does not:
+
+- groups the drawer, so a row drawing several items (a slider's track plus its
+  number field, a picker's button plus its clear) is one gesture whichever item
+  the user grabs
+- opens the session from the inspector's owner stack and picks field-vs-whole
+  granularity itself, so a value inside a dynamic-array element records the
+  whole component without the caller knowing
+- brackets a picker or enum combo retroactively, since a popup write has no
+  observable gesture start
+- closes a gesture whose widget stopped being drawn mid-drag
+  (`field_edit_frame_begin`), which a per-widget latch cannot see
+
+A tree that is not multi-edit aware clears the peers around its rows
+(`multi_set_peers(nil)`), because the row applies to every peer at the row's
+offset and an array element has no offset.
+
+Structural changes — add, remove, a variant switch — have no gesture to bracket
+and use `structural_edit_begin/end` instead. `plugins/animation/editor/inspector_animation.odin`
+is the reference example of both in one panel, and
+`plugins/animation/tests/inspector_undo_tests.odin` drives its rows through the
+harness below.
 
 ## Editor code usage
 

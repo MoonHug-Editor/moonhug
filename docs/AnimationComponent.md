@@ -237,9 +237,7 @@ a tree of arrays of unions is the shape those rows draw worst.
 
 Each row carries what its kind actually has: a clip entry gets a clip picker, a
 blend gets a value slider spanning its children's positions plus a row per
-child with that child's position on the axis. Add and remove go through
-`inspector.structural_edit_begin/end`, so every edit is one undo step and is
-recorded as a prefab override.
+child with that child's position on the axis.
 
 The play button never touches graph nodes. While simulating it calls
 `animation_play_entry` and lets the next tick rebuild the graph. In edit mode

@@ -20,12 +20,13 @@ package animation_editor
 // preview instead (view_animation.odin) — one preview in the editor, so a state
 // and a clip scrub can never pose the same object at once.
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
-import "moonhug:editor/undo"
+import "moonhug:editor/widgets"
 import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
 
@@ -42,25 +43,69 @@ _animation_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	_states_section(a)
 }
 
-// Drag widgets in this tree share one whole-component undo session: it opens
-// when a widget activates and closes when it deactivates, and only one widget is
-// ever active. A drag WITHOUT a session is written straight onto the component
-// with nothing recording it, so the inspector's baseline wins on the next frame
-// and the value snaps back — which reads as "it drops to 0 all the time".
-@(private = "file") _drag_sess: undo.Edit_Session
-@(private = "file") _dragging: bool
+// NO value row here writes its own undo. Every one of them goes through
+// inspector.field_edit_row, which is the single place the snapshot, the gesture
+// bracket and the commit live (editor/inspector/field_edit.odin). It groups the
+// widgets a row draws so any of them can own the gesture, opens the session from
+// the inspector's owner stack, brackets a picker retroactively (a popup write
+// has no gesture to observe), and closes on release.
+//
+// That is the whole rule, and it is why a custom inspector loses undo: undo is
+// automatic per ROW DRAWN THROUGH field_edit_row, not per widget. A drawer that
+// calls imgui directly has drawn a row that never went through it, so nothing
+// snapshots it and nothing commits it. The value still changes — it was written
+// straight onto the component — which is why the loss is invisible until Ctrl+Z.
+//
+// Rows whose value sits in a dynamic-array element record the WHOLE component.
+// The session decides that itself: no offset from the component base names an
+// entry, whose storage is a separate allocation (editor/undo/undo_session.odin).
+
+// field_edit_row hands a drawer nothing but the field, and Odin procs are not
+// closures, so a row's extra parameters travel here.
+@(private = "file") _slider_lo, _slider_hi: f32
 
 @(private = "file")
-_drag_session :: proc(changed: bool) {
-	if im.IsItemActivated() && !_dragging {
-		_drag_sess = inspector.structural_edit_begin("Edit State")
-		_dragging = true
+_slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	if widgets.slider_float(inspector.field_row(label), cast(^f32)ptr, _slider_lo, _slider_hi) {
+		inspector.mark_inspector_changed()
 	}
-	if changed do inspector.mark_inspector_changed()
-	if im.IsItemDeactivated() && _dragging {
-		inspector.structural_edit_end(&_drag_sess)
-		_dragging = false
+}
+
+@(private = "file")
+_pos_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	im.SetNextItemWidth(90)
+	if im.DragFloat(label, cast(^f32)ptr, 0.01, 0, 0, "at %.2f") do inspector.mark_inspector_changed()
+	if im.IsItemHovered({}) do im.SetTooltip("Where this clip sits on the blend axis")
+}
+
+@(private = "file")
+_wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	w := cast(^anim.Animation_Wrap_Mode)ptr
+	cur := i32(w^)
+	id := inspector.field_row(label)
+	im.SetNextItemWidth(110)
+	if im.Combo(id, &cur, "Default\x00Once\x00Loop\x00") && i32(w^) != cur {
+		w^ = anim.Animation_Wrap_Mode(cur)
+		inspector.mark_inspector_changed()
 	}
+	if im.IsItemHovered({}) do im.SetTooltip("Default takes the clip's own wrap")
+}
+
+// One value row of the tree: the shared row transaction, then the prefab
+// override its commit implies. An entry has no path from the component base,
+// so the override names the whole `layers` field — the same granularity the
+// undo step records. No-op on an object that is not a prefab instance.
+@(private = "file")
+_tree_row :: proc(
+	a: ^anim.Animation,
+	ptr: rawptr,
+	tid: typeid,
+	label: string,
+	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
+	draw_label: cstring,
+) {
+	finished := inspector.field_edit_row(ptr, tid, 0, label, drawer, draw_label)
+	inspector.record_nested_override(&a.layers, typeid_of([dynamic]anim.Animation_Layer), "layers", finished)
 }
 
 // Which entry the name field is being typed into, so exactly one row owns an
@@ -71,6 +116,14 @@ _drag_session :: proc(changed: bool) {
 @(private = "file")
 _states_section :: proc(a: ^anim.Animation) {
 	im.SeparatorText("States")
+
+	// The tree is single-object. A row names an entry by id, and two selected
+	// objects have their own trees with their own ids, so one object's row means
+	// nothing on another. Clearing the peers is what stops field_edit_row from
+	// trying: it writes a row onto every peer at the row's offset, and an entry
+	// has no offset from the component base.
+	prev_peers := inspector.multi_set_peers(nil)
+	defer inspector.multi_set_peers(prev_peers)
 
 	if len(a.layers) == 0 {
 		im.TextDisabled("No layers. A layer holds the states gameplay plays.")
@@ -108,20 +161,27 @@ _layer_rows :: proc(a: ^anim.Animation, li: int) {
 	// swallows every click meant for the buttons drawn on the same line.
 	open := im.TreeNodeEx(label, {.DefaultOpen, .SpanAvailWidth, .FramePadding, .AllowOverlap})
 
-	// Add buttons sit on the layer's own row, right-aligned, the way Add
-	// Component does — the layer is what they add to.
+	// One Add button on the layer's own row, right-aligned, the way Add
+	// Component does — the layer is what it adds to, and the menu is the list
+	// of kinds a state can be.
 	im.SameLine()
-	w := im.CalcTextSize("+ Blend").x + im.CalcTextSize("+ State").x + im.GetStyle().FramePadding.x * 4 + im.GetStyle().ItemSpacing.x
+	w := im.CalcTextSize("Add").x + im.GetStyle().FramePadding.x * 2
 	im.SetCursorPosX(im.GetCursorPosX() + im.GetContentRegionAvail().x - w)
-	if im.Button("+ State") do _entry_add(a, li, anim.Animation_Entry_Clip{}, "State", 0)
-	im.SameLine()
-	if im.Button("+ Blend") do _entry_add(a, li, anim.Animation_Entry_Blend1D{}, "Blend", 0)
+	if im.Button("Add") do im.OpenPopup("##add_state")
+	if im.BeginPopup("##add_state") {
+		info := _entry_kind_info()
+		for v, idx in info.variants {
+			label := strings.clone_to_cstring(_kind_name(v), context.temp_allocator)
+			if im.MenuItem(label, nil, false, true) do _entry_add(a, li, idx, 0)
+		}
+		im.EndPopup()
+	}
 
 	if !open do return
 	defer im.TreePop()
 
 	if len(a.layers[li].entries) == 0 {
-		im.TextDisabled("Empty. Add a state or a blend.")
+		im.TextDisabled("Empty. Add picks the kind of state.")
 		return
 	}
 	// Top level only — a blend draws its own children, so walking every entry
@@ -170,7 +230,7 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	if !open do return true
 	defer im.TreePop()
 
-	_wrap_field(e)
+	_wrap_field(a, e)
 	if !is_blend {
 		_clip_field(a, e, "Clip")
 		return true
@@ -181,9 +241,8 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	// Two-value form: the single-value pointer assertion PANICS on a mismatch
 	// rather than returning nil.
 	if b, is := &e.kind.(anim.Animation_Entry_Blend1D); is {
-		lo, hi := _blend_extent(a, li, id)
-		im.SetNextItemWidth(-1)
-		_drag_session(im.SliderFloat("##value", &b.value, lo, hi, "value %.2f"))
+		_slider_lo, _slider_hi = _blend_extent(a, li, id)
+		_tree_row(a, &b.value, typeid_of(f32), "Blend Value", _slider_drawer, "Value")
 	}
 
 	children := 0
@@ -199,7 +258,9 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 		i += 1
 	}
 	if children == 0 do im.TextDisabled("No children. A blend with nothing to blend poses nothing.")
-	if im.Button("+ Clip") do _entry_add(a, li, anim.Animation_Entry_Clip{}, "Clip", id)
+	// A 1D blend samples its children as clips, so its children are clips —
+	// no menu to pick from here.
+	if im.Button("+ Clip") do _entry_add(a, li, _kind_index(typeid_of(anim.Animation_Entry_Clip)), id)
 	return true
 }
 
@@ -217,9 +278,7 @@ _blend_child_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	_clip_field(a, e, "")
 
 	im.Indent(im.GetStyle().IndentSpacing)
-	im.SetNextItemWidth(90)
-	_drag_session(im.DragFloat("##pos", &e.pos.x, 0.01, 0, 0, "at %.2f"))
-	if im.IsItemHovered({}) do im.SetTooltip("Where this clip sits on the blend axis")
+	_tree_row(a, &e.pos.x, typeid_of(f32), "Blend Position", _pos_drawer, "##pos")
 	removed := _row_buttons(a, li, id, play = false)
 	im.Unindent(im.GetStyle().IndentSpacing)
 	return !removed
@@ -270,21 +329,11 @@ _row_buttons :: proc(a: ^anim.Animation, li: int, id: i32, play := true) -> bool
 // usual answer — the motion knows whether it is cyclic — so the combo shows the
 // clip's own wrap when nothing overrides it.
 @(private = "file")
-_wrap_field :: proc(e: ^anim.Animation_Entry) {
+_wrap_field :: proc(a: ^anim.Animation, e: ^anim.Animation_Entry) {
 	// In the body rather than on the header row: the header already carries the
 	// name, the kind and the right-aligned buttons, and a fourth widget there
 	// runs into them on the longer "Blend1D" rows.
-	im.AlignTextToFramePadding()
-	im.TextDisabled("wrap")
-	im.SameLine(90)
-	im.SetNextItemWidth(110)
-	cur := i32(e.wrap)
-	if im.Combo("##wrap", &cur, "Default\x00Once\x00Loop\x00") && i32(e.wrap) != cur {
-		sess := inspector.structural_edit_begin("Set Wrap")
-		e.wrap = anim.Animation_Wrap_Mode(cur)
-		inspector.structural_edit_end(&sess)
-	}
-	if im.IsItemHovered({}) do im.SetTooltip("Default takes the clip's own wrap")
+	_tree_row(a, &e.wrap, typeid_of(anim.Animation_Wrap_Mode), "Wrap", _wrap_drawer, "Wrap")
 }
 
 @(private = "file")
@@ -328,9 +377,10 @@ _clip_field :: proc(a: ^anim.Animation, e: ^anim.Animation_Entry, label: cstring
 	inspector.current_field_ext_filter = "anim"
 	defer inspector.current_field_ext_filter = prev
 
-	before := c.clip
-	inspector.draw_asset_guid_property(&c.clip, typeid_of(engine.Asset_GUID), label)
-	if c.clip != before do inspector.mark_inspector_changed()
+	// A picker: the value lands from inside a popup with no gesture to observe,
+	// so the row is the thing that brackets it, after the fact, with the value
+	// it snapshotted before the draw.
+	_tree_row(a, &c.clip, typeid_of(engine.Asset_GUID), "Clip", inspector.draw_asset_guid_property, label)
 }
 
 // The axis range a blend's slider spans: its children's positions, widened to
@@ -352,8 +402,35 @@ _blend_extent :: proc(a: ^anim.Animation, li: int, id: i32) -> (lo: f32, hi: f32
 	return lo, hi
 }
 
+// The kinds a state can be, read from the union itself — a new variant appears
+// in the Add menu without an edit here.
 @(private = "file")
-_entry_add :: proc(a: ^anim.Animation, li: int, variant: anim.Animation_Entry_Kind, name: string, parent: i32) {
+_entry_kind_info :: proc() -> runtime.Type_Info_Union {
+	ti := runtime.type_info_base(type_info_of(anim.Animation_Entry_Kind))
+	info, _ := ti.variant.(runtime.Type_Info_Union)
+	return info
+}
+
+// "animation.Animation_Entry_Blend1D" -> "Blend1D". The menu names the kind,
+// not the type.
+@(private = "file")
+_kind_name :: proc(ti: ^runtime.Type_Info) -> string {
+	name := fmt.tprintf("%v", ti)
+	if i := strings.last_index_byte(name, '.'); i >= 0 do name = name[i + 1:]
+	return strings.trim_prefix(name, "Animation_Entry_")
+}
+
+@(private = "file")
+_kind_index :: proc(tid: typeid) -> int {
+	info := _entry_kind_info()
+	for v, i in info.variants {
+		if v.id == tid do return i
+	}
+	fmt.panicf("%v is not a variant of Animation_Entry_Kind", tid)
+}
+
+@(private = "file")
+_entry_add :: proc(a: ^anim.Animation, li: int, variant_index: int, parent: i32) {
 	sess := inspector.structural_edit_begin("Add State")
 	defer inspector.structural_edit_end(&sess)
 
@@ -367,13 +444,18 @@ _entry_add :: proc(a: ^anim.Animation, li: int, variant: anim.Animation_Entry_Ki
 			if child.parent == parent do x = max(x, child.pos.x + 1)
 		}
 	}
+	info := _entry_kind_info()
 	append(&a.layers[li].entries, anim.Animation_Entry{
-		id      = id,
-		parent  = parent,
-		pos     = {x, 0},
-		name    = strings.clone(fmt.tprintf("%s %d", name, id)),
-		kind = variant,
+		id     = id,
+		parent = parent,
+		pos    = {x, 0},
+		name   = strings.clone(fmt.tprintf("%s %d", _kind_name(info.variants[variant_index]), id)),
 	})
+	// The tag is set through the inspector's own union helper, so the tag
+	// encoding lives in one place rather than being re-derived per package.
+	e := &a.layers[li].entries[len(a.layers[li].entries) - 1]
+	tag_ptr := rawptr(uintptr(rawptr(&e.kind)) + info.tag_offset)
+	inspector.union_set_variant(&e.kind, tag_ptr, info, variant_index, record_undo = false)
 }
 
 // Removing a blend takes its children with it: a child whose parent is gone
