@@ -1,3 +1,9 @@
+## [0.97.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.0...v0.97.1) (2026-09-15)
+
+### Bug Fixes
+
+* animation component undo fixes and UX ([d28c5d2](https://github.com/MoonHug-Editor/moonhug/commit/d28c5d2e9f830998a39b986e28c1de8b9dcb5e5d))
+
 ## [0.97.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.96.0...v0.97.0) (2026-09-14)
 
 ### Features
