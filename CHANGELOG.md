@@ -1,3 +1,11 @@
+## [0.97.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.1...v0.97.2) (2026-09-15)
+
+### Bug Fixes
+
+* first animation preview in scene stuck when playable graph visible ([b04ba79](https://github.com/MoonHug-Editor/moonhug/commit/b04ba7913a72754f26927dc32e729507706ded90))
+* improve playable graph colors and layout ([d6a0cd1](https://github.com/MoonHug-Editor/moonhug/commit/d6a0cd1311e2142d5c65104e730c8a5fca606549))
+* scene pick SkinnedMeshRenderer ([b6be1b1](https://github.com/MoonHug-Editor/moonhug/commit/b6be1b1245b5bd575af8d15fb11c9c612ff829e2))
+
 ## [0.97.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.0...v0.97.1) (2026-09-15)
 
 ### Bug Fixes
