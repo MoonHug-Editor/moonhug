@@ -1,3 +1,13 @@
+## [0.98.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.2...v0.98.0) (2026-09-16)
+
+### Features
+
+* improve timeline_animator inspector ([99d34d5](https://github.com/MoonHug-Editor/moonhug/commit/99d34d5f21014c73ab2474cabe5de4324822762c))
+
+### Bug Fixes
+
+* collapse/expand all by hold Alt in animation inspector ([a0df848](https://github.com/MoonHug-Editor/moonhug/commit/a0df848ee61a6ccb1731d518e6eb58fd72c72c6d))
+
 ## [0.97.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.1...v0.97.2) (2026-09-15)
 
 ### Bug Fixes
