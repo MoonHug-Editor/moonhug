@@ -162,6 +162,7 @@ _animation_views_draw :: proc() {
 animation_views_shutdown :: proc() {
 	shutdown_playable_graph_view()
 	shutdown_animation_view()
+	shutdown_animation_inspector()
 }
 
 shutdown_animation_view :: proc() {

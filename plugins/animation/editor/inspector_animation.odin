@@ -33,7 +33,28 @@ import anim "moonhug:packages/animation"
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 animation_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(anim.Animation), _animation_inspector)
+	// Editor state, so it owns its memory rather than taking whatever allocator
+	// a draw happens to be running under.
+	_alt_open_pending = make(map[i32]bool, 16, runtime.default_allocator())
 }
+
+shutdown_animation_inspector :: proc() {
+	delete(_alt_open_pending)
+	_alt_open_pending = nil
+}
+
+// Alt-click on a foldout applies to the whole subtree, as in the hierarchy
+// (editor/view_hierarchy.odin): the click toggles the row itself, and every row
+// under it is queued to take the same state when it next draws. Queued rather
+// than applied directly, because imgui owns a node's open state and the only
+// way to set it is SetNextItemOpen before that node draws.
+//
+// Collapsing leaves the queue unconsumed — the rows do not draw while their
+// layer is closed — which is what makes expanding the layer again reveal a
+// collapsed subtree rather than the state it had before.
+//
+// Keyed by entry id, which is minted per component and never reused.
+@(private = "file") _alt_open_pending: map[i32]bool
 
 @(private = "file")
 _animation_inspector :: proc(ctx: ^inspector.Component_Ctx) {
@@ -161,6 +182,12 @@ _layer_rows :: proc(a: ^anim.Animation, li: int) {
 	// swallows every click meant for the buttons drawn on the same line.
 	open := im.TreeNodeEx(label, {.DefaultOpen, .SpanAvailWidth, .FramePadding, .AllowOverlap})
 
+	// The layer is the only row with foldouts beneath it: a blend's children
+	// draw a clip picker and a position, not a node of their own.
+	if im.IsItemToggledOpen() && im.GetIO().KeyAlt {
+		for &e in a.layers[li].entries do _alt_open_pending[e.id] = open
+	}
+
 	// One Add button on the layer's own row, right-aligned, the way Add
 	// Component does — the layer is what it adds to, and the menu is the list
 	// of kinds a state can be.
@@ -214,6 +241,10 @@ _entry_row :: proc(a: ^anim.Animation, li: int, id: i32) -> bool {
 	// value and its children.
 	// AllowOverlap: the node's frame spans the row, so without it the node
 	// swallows every click meant for the buttons drawn on the same line.
+	if v, queued := _alt_open_pending[id]; queued {
+		im.SetNextItemOpen(v)
+		delete_key(&_alt_open_pending, id)
+	}
 	open := im.TreeNodeEx("##entry", {.DefaultOpen, .SpanAvailWidth, .FramePadding, .AllowOverlap})
 	im.SameLine()
 
