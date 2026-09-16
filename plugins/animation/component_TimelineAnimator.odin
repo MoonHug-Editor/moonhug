@@ -39,13 +39,13 @@ Animator_Layer :: struct {
 
 // One state: a whole timeline played as a unit.
 //
-// `timeline` points at a root carrying a PlayableDirector, two ways:
-//   * CROSS-ASSET (guid set) — a prefab. The animator instances it and owns
-//     the instance, so the prefab system supplies authoring, variants and
-//     per-instance overrides.
-//   * LOCAL (guid zero, local_id set) — a timeline already in this scene.
-//     Adopted where it stands and never destroyed, so a timeline can be
-//     authored in place without making an asset first.
+// `timeline` names a PlayableDirector in the SAME FILE, adopted where it
+// stands and never destroyed by the animator. Sharing a state set between
+// objects is what putting this component in a prefab already does, and the
+// timelines travel inside that prefab with it — so a cross-asset timeline
+// reference buys nothing the file does not already give. Ref_Local says that
+// in the type. If a timeline ever does need to live in another asset, this
+// becomes an engine.Ref and _ta_state_root grows an instantiate branch back.
 Timeline_State :: struct {
 	// Minted on first build and never reused, so a held State_Id keeps naming
 	// the same state across edits that reorder or delete its siblings. 0 means
@@ -53,7 +53,12 @@ Timeline_State :: struct {
 	// rows starts that way and is filled in by _ta_ensure_ids.
 	id:       i32,
 	name:     string,
-	timeline: engine.PPtr,
+	// The director itself, not the object carrying it — the same type and the
+	// same shape Target_Binding uses, so both reference fields on this
+	// component read and resolve identically. A reference type rather than a
+	// bare PPtr because the picker, the reference drawer, `ref:` filtering and
+	// the loader's handle resolution all key off it.
+	timeline: engine.Ref_Local `ref:"PlayableDirector"`,
 	speed:    f32, // 0 runs at 1
 	wrap:     seq.Timeline_Wrap,
 	fade:     f32, // default cross-fade duration INTO this state
@@ -66,12 +71,12 @@ Animator_Layer_Runtime :: struct {
 	states: [dynamic]Animator_State_Runtime,
 }
 
-// A state's live half: the instantiated timeline, the mixers its tracks hang
-// under (one per output), and its own playhead.
+// A state's live half: the adopted timeline, the mixers its tracks hang under
+// (one per output), and its own playhead. The animator never owns the timeline
+// object — it is a scene object that outlives any rebuild.
 Animator_State_Runtime :: struct {
 	id:     i32,                     // the authored state's id, what State_Id names
 	root:   engine.Transform_Handle, // the timeline's root
-	owned:  bool,                    // instanced by this animator, so destroyed by it
 	dir:    engine.Handle,           // its PlayableDirector
 	mixers: [dynamic]Playable_Handle, // parallel to graph.outputs
 	time:   f32,
@@ -91,7 +96,10 @@ TimelineAnimator :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	speed:   f32, // playback speed, 0 runs at 1
-	layers:  [dynamic]Animator_Layer,
+	// Drawn by the States tree (editor/inspector_timeline_animator.odin), not by
+	// the reflected field loop — layers of states is the shape those rows draw
+	// worst.
+	layers:  [dynamic]Animator_Layer `inspect:"-"`,
 	targets: [dynamic]Target_Binding,
 
 	// Runtime, built lazily by _ta_ensure_graph and guarded by graph_ready, so
@@ -126,7 +134,6 @@ cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 		for &l in a.rt {
 			for &st in l.states {
 				animation_director_unadopt(st.root)
-				if st.owned && st.root != {} do engine.transform_destroy(st.root)
 				delete(st.mixers)
 			}
 			delete(l.states)
@@ -228,7 +235,7 @@ _ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixer
 		playable_connect(&a.graph, lm, m, 0)
 		append(&st.mixers, m)
 	}
-	st.root, st.owned = _ta_state_root(a, desc)
+	st.root = _ta_state_root(a, desc)
 	if st.root == {} do return st
 	if dh, d := engine.transform_get_comp(st.root, seq.PlayableDirector); d != nil {
 		st.dir = dh.handle
@@ -237,21 +244,18 @@ _ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixer
 	return st
 }
 
-// The timeline's root for a state, and whether this animator owns it. A
-// cross-asset reference is instanced here; a local one is found in the
-// animator's own scene and left alone.
+// The timeline's root for a state: the owner of the director it names — the
+// same step _ta_target_transform takes for a bound target, and the handle is
+// resolved by the scene loader for the same reason. An unbound or dead
+// reference yields no root, and the state poses nothing.
 @(private = "file")
-_ta_state_root :: proc(a: ^TimelineAnimator, desc: ^Timeline_State) -> (engine.Transform_Handle, bool) {
-	if !engine.asset_guid_is_empty(desc.timeline.guid) {
-		return engine.scene_instantiate_guid(desc.timeline.guid, a.owner), true
-	}
-	if desc.timeline.local_id == 0 do return {}, false
+_ta_state_root :: proc(a: ^TimelineAnimator, desc: ^Timeline_State) -> engine.Transform_Handle {
 	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(a.owner))
-	if t == nil || t.scene == nil do return {}, false
-	h, ok := engine.scene_find_selectable_transform_local_id(t.scene, desc.timeline.local_id)
-	if !ok do return {}, false
-	return h, false
+	if !engine.world_pool_valid(w, desc.timeline.handle) do return {}
+	base := cast(^engine.CompData)engine.world_pool_get(w, desc.timeline.handle)
+	if base == nil do return {}
+	if !engine.pool_valid(&w.transforms, engine.Handle(base.owner)) do return {}
+	return base.owner
 }
 
 // Drop the graph so the next tick rebuilds it — for a targets or layers edit,
@@ -262,7 +266,6 @@ timeline_animator_rebuild :: proc(a: ^TimelineAnimator) {
 	for &l in a.rt {
 		for &st in l.states {
 			animation_director_unadopt(st.root)
-			if st.owned && st.root != {} do engine.transform_destroy(st.root)
 			delete(st.mixers)
 		}
 		delete(l.states)
@@ -439,6 +442,18 @@ timeline_animator_tick :: proc(dt: f32) {
 // is "no state" and a zero value is inert.
 State_Id :: distinct i32
 STATE_ID_NONE :: State_Id(0)
+
+// The id a newly authored state takes. The inspector mints here rather than
+// leaving 0 for _ta_ensure_ids to fill: a state added in the editor is a row
+// immediately, and two rows both holding 0 would collide as widget ids and as
+// the key of anything that addresses a state before the first build.
+animator_state_next_id :: proc(a: ^TimelineAnimator) -> i32 {
+	top := i32(0)
+	for &l in a.layers {
+		for &st in l.states do if st.id > top do top = st.id
+	}
+	return top + 1
+}
 
 // Give every authored state an id. Runs before the graph is built, so the
 // runtime states copy ids that already exist. Ids are unique across the whole

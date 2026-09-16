@@ -251,7 +251,7 @@ Animator_Layer :: struct {
 
 Timeline_State :: struct {
 	name:     string,
-	timeline: engine.PPtr, // a prefab, or a timeline already in this scene
+	timeline: engine.Ref_Local `ref:"PlayableDirector"`, // a director in this file
 	routes:   [dynamic]Track_Route,
 	speed:    f32,
 	wrap:     Timeline_Wrap,
@@ -268,8 +268,74 @@ Target_Binding :: struct {
 caller hard-codes a duration and retuning how a transition feels is a code
 change.
 
-The regular inspector is enough to author this. A dedicated window is a later
-convenience, not a prerequisite.
+## The States tree
+
+`plugins/animation/editor/inspector_timeline_animator.odin` draws `layers` in
+the inspector, and the field is `inspect:"-"` so the reflected field loop skips
+it. It is the same tree the Animation component gets
+(docs/AnimationComponent.md, "The States tree"), one level shallower: a
+`Timeline_State` is a flat entry in its layer rather than a node with a parent
+and a union of kinds, so Add is a plain button rather than a menu of variants.
+
+```
+States
+├─ Layer 0  [name]                          [Add State]
+│    Weight  ──●────
+│    ├─ Idle                            [▶] [x]
+│    │    Timeline  <reference picker>
+│    │    Speed / Wrap / Fade
+│    └─ Swing ...
+└─ [Add Layer] [Remove Layer]
+```
+
+The timeline field picks like every other reference field, filtered to
+`PlayableDirector`.
+
+It gets all of that from its TYPE. The field was a bare `engine.PPtr`, which
+nothing registers a drawer for, so the reflected loop recursed into it and drew
+`local_id` and `guid` as raw numbers. PPtr is the storage primitive; `Ref` and
+`Ref_Local` are the reference types built on it (docs/ReferenceHandles.md), and
+only those get the reference drawer, `ref:` filtering, and handle resolution
+from the scene loader.
+
+`Ref_Local` rather than `Ref`, so a timeline is a director **in the same
+file**. The cross-asset form existed and was never used: no scene set a
+timeline guid and no test covered the branch, so the instantiate path and the
+`owned` flag that destroyed what it created were dead in every configuration
+that ships. Sharing a state set between objects is what putting this component
+in a prefab already does, and the timelines travel inside that prefab with it.
+If a timeline ever does need to live in another asset, the field becomes an
+`engine.Ref` and `_ta_state_root` grows an instantiate branch back.
+
+The state names the **director**, not the object carrying it, and
+`_ta_state_root` takes its owner as the timeline root — the same step
+`_ta_target_transform` takes for a bound target. Both reference fields on the
+component now have the same type and resolve the same way.
+
+Every value row draws through `inspector.field_edit_row`, so each drag or
+assignment is one undo step, and on a prefab instance the commit records an
+override on the whole `layers` field — a state has no path from the component
+base, which is the granularity the undo step records too. Add, remove and
+rename have no gesture and use `inspector.structural_edit_begin/end`. See
+docs/Undo.md, "Custom rows draw through `field_edit_row`".
+
+A state added here is given its id immediately by `animator_state_next_id`,
+rather than left at 0 for `_ta_ensure_ids` to fill at build time: a row has to
+key a widget the moment it appears, and two rows holding 0 would collide.
+
+Alt-click a layer to collapse or expand every state under it, as in the
+hierarchy.
+
+**Play is gated on simulation.** A state instantiates a whole timeline and is
+advanced by `timeline_animator_tick`, an `@(update)` proc, so nothing plays it
+in edit mode — the button disables itself and says so. An edit-mode preview
+goes in that same spot when it arrives, the way the Animation tree drives the
+animation window's preview.
+
+`targets` keeps its ordinary array rows. A flat list of `{key, Ref_Local}` is a
+shape those rows draw well.
+
+A dedicated window is a later convenience, not a prerequisite.
 
 Runtime state per playing state:
 

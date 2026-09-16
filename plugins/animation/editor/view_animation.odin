@@ -163,6 +163,7 @@ animation_views_shutdown :: proc() {
 	shutdown_playable_graph_view()
 	shutdown_animation_view()
 	shutdown_animation_inspector()
+	shutdown_timeline_animator_inspector()
 }
 
 shutdown_animation_view :: proc() {

@@ -159,12 +159,13 @@ _mk_local_timeline :: proc(parent: engine.Transform_Handle, key: string, clip: e
 }
 
 @(private = "file")
+// The state names the DIRECTOR on `tl`, not `tl` itself — the animator takes
+// its owner as the timeline root.
 _mk_state :: proc(name: string, tl: engine.Transform_Handle, fade: f32 = 0) -> anim.Timeline_State {
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tl))
+	owned, _ := engine.transform_get_comp_key(tl, .PlayableDirector)
 	return {
 		name     = strings.clone(name),
-		timeline = {local_id = t.local_id},
+		timeline = {local_id = owned.local_id, handle = owned.handle},
 		fade     = fade,
 		wrap     = .Loop,
 	}
@@ -188,10 +189,8 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 	b_owned, _ := engine.transform_add_comp(body, .Animation)
 
 	tl := engine.transform_new("Timeline", root)
-	_, draw := engine.transform_add_comp(tl, .PlayableDirector)
+	d_owned, draw := engine.transform_add_comp(tl, .PlayableDirector)
 	(cast(^seq.PlayableDirector)draw).enabled = true
-	tlt := engine.pool_get(&tc.world.transforms, engine.Handle(tl))
-	lid := tlt.local_id
 
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
@@ -203,7 +202,8 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 	layer.states = make([dynamic]anim.Timeline_State)
 	append(&layer.states, anim.Timeline_State{
 		name     = strings.clone("Idle"),
-		timeline = {local_id = lid}, // guid zero: a local reference
+		// guid zero: a local reference, naming the director in this scene
+		timeline = {local_id = d_owned.local_id, handle = d_owned.handle},
 	})
 	append(&ta.layers, layer)
 
