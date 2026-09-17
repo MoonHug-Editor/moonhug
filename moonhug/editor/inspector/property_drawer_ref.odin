@@ -1,7 +1,6 @@
 package inspector
 
 import "core:fmt"
-import "core:reflect"
 import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
@@ -17,14 +16,8 @@ import "moonhug:editor/widgets"
 @(property_drawer={type = engine.Ref, priority = 0})
 draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	ref_ptr := cast(^engine.Ref)ptr
-	target_type_name := current_field_ref_target
-
-	target_key := engine.INVALID_TYPE_KEY
-	if target_type_name != "" {
-		if v, ok := reflect.enum_from_name(engine.TypeKey, target_type_name); ok {
-			target_key = v
-		}
-	}
+	spec := current_field_ref_target
+	keys := ref_target_keys(spec)
 
 	allow_scene := current_field_pick_mode != "project"
 	allow_project := current_field_pick_mode != "scene"
@@ -33,7 +26,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	has_value := ref_ptr.pptr.local_id != 0 || ref_ptr.handle != {} || is_asset_ref
 
 	owner_root_scene := ref_local_owner_root_scene()
-	display := _ref_display(ref_ptr^, target_key)
+	display := _ref_display(ref_ptr^, spec)
 
 	popup_id := strings.clone_to_cstring(
 		fmt.tprintf("ref_picker##%s", label), context.temp_allocator,
@@ -64,8 +57,8 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 
 	if im.BeginPopup(popup_id) {
-		if target_key == engine.INVALID_TYPE_KEY {
-			im.TextDisabled("Add `ref:\"TypeName\"` field tag to enable picker")
+		if len(keys) == 0 {
+			im.TextDisabled("Add `ref:\"TypeName\"` or `ref:\"@Tag\"` field tag to enable picker")
 		} else {
 			search := _picker_search_bar()
 			if im.Selectable("None") {
@@ -78,7 +71,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 					if !allow_scene {
 						im.TextDisabled("pick:\"project\" - this field takes assets only")
 					} else {
-						objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
+						objects := _find_objects_of_types(keys, owner_root_scene)
 						shown := 0
 						for obj in objects {
 							if !widgets.search_match(obj.name, search) {
@@ -115,7 +108,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 						im.TextDisabled("pick:\"scene\" - this field takes scene objects only")
 					} else {
 						picked: engine.PPtr
-						if _picker_asset_rows(target_key, search, &picked) {
+						if _picker_asset_rows_of_types(keys, search, &picked) {
 							// The pick IS the persistent pointer; the handle
 							// stays unresolved until the asset is loaded.
 							ref_ptr.pptr = picked
@@ -133,7 +126,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 }
 
 @(private)
-_ref_display :: proc(r: engine.Ref, key: engine.TypeKey) -> string {
+_ref_display :: proc(r: engine.Ref, spec: string) -> string {
 	if !engine.asset_guid_is_empty(r.pptr.guid) {
 		// Cross-asset: name it from the AssetDB (never requires the asset
 		// to be loaded).
@@ -147,5 +140,5 @@ _ref_display :: proc(r: engine.Ref, key: engine.TypeKey) -> string {
 		return filepath_base(path)
 	}
 	// Local: same rules as Ref_Local.
-	return _ref_local_display({r.pptr.local_id, r.handle}, key)
+	return _ref_local_display({r.pptr.local_id, r.handle}, spec)
 }

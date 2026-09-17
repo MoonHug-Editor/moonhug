@@ -1,7 +1,6 @@
 package inspector
 
 import "core:fmt"
-import "core:reflect"
 import "core:slice"
 import "core:strings"
 import "core:encoding/uuid"
@@ -65,16 +64,12 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
                 }
                 im.Separator()
 
-                // With a `ref:"Type"` tag: only scene assets whose ROOT carries
-                // that component (AssetDB inverted index). Untagged: every asset.
-                key := engine.INVALID_TYPE_KEY
-                if current_field_ref_target != "" {
-                    if v, ok := reflect.enum_from_name(engine.TypeKey, current_field_ref_target); ok {
-                        key = v
-                    }
-                }
+                // With a `ref:` tag: only scene assets whose ROOT carries one of
+                // the admitted components (AssetDB inverted index). Untagged:
+                // every asset.
+                keys := ref_target_keys(current_field_ref_target)
                 picked: engine.PPtr
-                if _picker_asset_rows(key, search, &picked) {
+                if _picker_asset_rows_of_types(keys, search, &picked) {
                     guid_ptr^ = picked.guid
                     mark_inspector_changed()
                 }
@@ -84,6 +79,19 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         }
         im.EndPopup()
     }
+}
+
+// `_picker_asset_rows` over a set of keys: no keys means every asset, one key
+// is the plain call, several are drawn one after another — an asset whose root
+// carries two admitted components lists once per component, as the scene
+// picker does.
+_picker_asset_rows_of_types :: proc(keys: []engine.TypeKey, search: []string, picked: ^engine.PPtr) -> bool {
+    if len(keys) == 0 do return _picker_asset_rows(engine.INVALID_TYPE_KEY, search, picked)
+    clicked := false
+    for k in keys {
+        if _picker_asset_rows(k, search, picked) do clicked = true
+    }
+    return clicked
 }
 
 // Rows of scene assets whose root carries `key` (INVALID_TYPE_KEY: every

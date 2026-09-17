@@ -18,6 +18,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:mem"
+import "core:slice"
 import "core:strings"
 import "log"
 
@@ -38,6 +39,31 @@ Component_Desc :: struct {
 	cleanup:     proc(comp: rawptr),
 	on_validate: proc(comp: rawptr),
 	on_destroy:  proc(comp: rawptr),
+
+	// Capability tags a reference field can name with `ref:"@Tag"` instead of
+	// a type: every registered component carrying the tag is a valid target.
+	// Declared on the component (`@(component={ref_tags="Output"})`), so a
+	// plugin adds its own types to a field it never sees, and a disabled
+	// plugin's types drop out of the picker with the plugin. The registry owns
+	// the slice (component_register clones it); the strings are literals.
+	ref_tags: []string,
+}
+
+// Every registered component carrying `tag`. Registration is per package at
+// load, so this reads the live registry rather than any generated table — the
+// set follows which plugins are actually present.
+component_keys_with_ref_tag :: proc(tag: string, allocator := context.temp_allocator) -> []TypeKey {
+	out := make([dynamic]TypeKey, allocator)
+	for &desc, key in component_registry {
+		if desc.tid == nil do continue
+		for t in desc.ref_tags {
+			if t == tag {
+				append(&out, key)
+				break
+			}
+		}
+	}
+	return out[:]
 }
 
 // Serialized external components are plain component objects (same shape as
@@ -59,6 +85,14 @@ component_register :: proc(desc: Component_Desc) {
 		// allocator (the test runner hands every test a scoped tracking allocator
 		// that is torn down afterwards — a registry allocated there would dangle).
 		context.allocator = runtime.default_allocator()
+		desc := desc
+		// `ref_tags` arrives as a compound literal from the generated
+		// registration proc, and a slice literal is backed by THAT proc's
+		// stack. The registry outlives it, so it takes its own copy — the
+		// strings inside are literals and need none. A re-registration frees
+		// the copy it replaces.
+		if prev := component_registry[desc.type_key].ref_tags; prev != nil do delete(prev)
+		desc.ref_tags = len(desc.ref_tags) > 0 ? slice.clone(desc.ref_tags) : nil
 		component_registry[desc.type_key] = desc
 		_component_registry_by_guid[desc.type_guid] = desc.type_key
 

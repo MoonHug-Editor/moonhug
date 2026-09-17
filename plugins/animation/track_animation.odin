@@ -80,6 +80,14 @@ animation_track_init :: proc() {
 		a, ok := _director_arenas[d.owner]
 		return ok && a.adopter != nil
 	})
+	// A track on an adopted director resolves its key through the animator's
+	// outputs. Registered with the sequencer so a track in ANY plugin can ask,
+	// without that plugin importing this one — the audio track is the first.
+	seq.director_register_key_resolver(proc(director: engine.Transform_Handle, key: string) -> (engine.Transform_Handle, bool) {
+		a, ok := _director_arenas[director]
+		if !ok || a.adopter == nil do return {}, false
+		return timeline_animator_output_owner_for_key(a.adopter, key)
+	})
 	seq.track_register(seq.Track_Desc{
 		track_key   = .TrackAnimation,
 		clip_key    = .ClipAnimation,

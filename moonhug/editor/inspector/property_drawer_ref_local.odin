@@ -2,7 +2,6 @@ package inspector
 
 import "core:fmt"
 import "core:mem"
-import "core:reflect"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
@@ -128,17 +127,11 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 @(property_drawer={type = engine.Ref_Local, priority = 0})
 draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	ref_ptr := cast(^engine.Ref_Local)ptr
-	target_type_name := current_field_ref_target
-
-	target_key := engine.INVALID_TYPE_KEY
-	if target_type_name != "" {
-		if v, ok := reflect.enum_from_name(engine.TypeKey, target_type_name); ok {
-			target_key = v
-		}
-	}
+	spec := current_field_ref_target
+	keys := ref_target_keys(spec)
 
 	owner_root_scene := ref_local_owner_root_scene()
-	display := _ref_local_display(ref_ptr^, target_key)
+	display := _ref_local_display(ref_ptr^, spec)
 	has_value := ref_ptr.local_id != 0 || ref_ptr.handle != {}
 
 	popup_id := strings.clone_to_cstring(
@@ -166,8 +159,8 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 
 	if im.BeginPopup(popup_id) {
-		if target_key == engine.INVALID_TYPE_KEY {
-			im.TextDisabled("Add `ref:\"TypeName\"` field tag to enable picker")
+		if len(keys) == 0 {
+			im.TextDisabled("Add `ref:\"TypeName\"` or `ref:\"@Tag\"` field tag to enable picker")
 		} else {
 			search := _picker_search_bar()
 			// Single Scene tab: a Ref_Local is a same-file local_id — fields
@@ -179,7 +172,7 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 						mark_inspector_changed()
 					}
 					im.Separator()
-					objects := engine.sm_find_objects_of_type(target_key, owner_root_scene)
+					objects := _find_objects_of_types(keys, owner_root_scene)
 					shown := 0
 					for obj in objects {
 						if !widgets.search_match(obj.name, search) {
@@ -242,7 +235,8 @@ ref_local_owner_root_scene :: proc() -> ^engine.Scene {
 }
 
 @(private)
-_ref_local_display :: proc(r: engine.Ref_Local, key: engine.TypeKey) -> string {
+// `spec` is the field's raw `ref:` value, for the Missing text.
+_ref_local_display :: proc(r: engine.Ref_Local, spec: string) -> string {
 	if r.local_id == 0 && r.handle == {} {
 		return "None"
 	}
@@ -264,12 +258,58 @@ _ref_local_display :: proc(r: engine.Ref_Local, key: engine.TypeKey) -> string {
 			}
 		}
 	}
-	// Once-set reference whose target is gone (deleted object, dead handle) —
-	// Unity shows "Missing (Type)" here.
-	if key != engine.INVALID_TYPE_KEY {
-		return fmt.tprintf("Missing (%v)", key)
+	// Once-set reference whose target is gone (deleted object, dead handle):
+	// "Missing (what the field asked for)".
+	return ref_target_missing_text(spec)
+}
+
+// Objects matching ANY key in `keys`, concatenated, then narrowed by the
+// field's `has:` filter. An object carrying two matching components appears
+// once per component, which is right — they are different pick targets.
+_find_objects_of_types :: proc(keys: []engine.TypeKey, root_scene: ^engine.Scene) -> []engine.Found_Object {
+	found: []engine.Found_Object
+	if len(keys) == 1 {
+		found = engine.sm_find_objects_of_type(keys[0], root_scene)
+	} else {
+		out := make([dynamic]engine.Found_Object, context.temp_allocator)
+		for k in keys {
+			append(&out, ..engine.sm_find_objects_of_type(k, root_scene))
+		}
+		found = out[:]
 	}
-	return "Missing"
+	return _filter_objects_has(found)
+}
+
+// Keeps the candidates whose OWNER object carries at least one component in
+// the field's `has:` list. No filter, or a filter naming nothing, keeps all —
+// a typo in `has:` then shows every object rather than none, which is the
+// visible failure.
+@(private = "file")
+_filter_objects_has :: proc(found: []engine.Found_Object) -> []engine.Found_Object {
+	if current_field_has_filter == "" do return found
+	need := ref_target_keys(current_field_has_filter)
+	if len(need) == 0 do return found
+	w := engine.ctx_world()
+	out := make([dynamic]engine.Found_Object, 0, len(found), context.temp_allocator)
+	for obj in found {
+		// The candidate is a transform for a `ref:"Transform"` field, a
+		// component otherwise — either way, the object is the owner.
+		tH := obj.handle
+		if tH.type_key != .Transform {
+			raw := engine.world_pool_get(w, tH)
+			if raw == nil do continue
+			tH = engine.Handle((cast(^engine.CompData)raw).owner)
+		}
+		t := engine.pool_get(&w.transforms, tH)
+		if t == nil do continue
+		keep := false
+		for c in t.components {
+			for k in need do if c.handle.type_key == k { keep = true; break }
+			if keep do break
+		}
+		if keep do append(&out, obj)
+	}
+	return out[:]
 }
 
 // A reference field with NO pick or clear buttons — the value is fixed by what

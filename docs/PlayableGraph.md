@@ -130,9 +130,11 @@ time/weight structure:
   transform subtree.
 - **Script output** — invokes callbacks with `(time, weight)`.
 - **Audio output** — produces frame-quantized play/stop/volume commands for
-  the audio runtime (designed now, unimplemented until playback exists — today
-  the engine imports audio files but has no playback: no source component, no
-  device, no mixer).
+  the audio runtime. Designed, not built: the audio package has its source
+  component, device and mixer, and its timeline track plays through
+  `Track_Desc.tick` rather than as a graph output. A TimelineAnimator already
+  retargets audio tracks by key (`TrackAudio.key`), so the key → object
+  mapping this output would consume exists today.
 
 Evaluation is per-output-kind pull, NOT "evaluate returns a pose". Getting
 this wrong is the expensive mistake: if the evaluator's result type is a pose,

@@ -20,6 +20,7 @@ ComponentEntry :: struct {
 	has_reset:       bool,
 	has_cleanup:     bool,
 	field_types:     []string, // rendered type of every field, for pointer-type registration
+	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 }
 
 PoolableEntry :: struct {
@@ -51,6 +52,7 @@ Component_GenComp :: struct {
 	has_reset:       bool,
 	has_cleanup:     bool,
 	field_types:     []string,
+	ref_tags:        []string,
 }
 
 
@@ -179,6 +181,7 @@ provide :: proc(w: ^db.World) -> bool {
 				has_reset       = gen_core.FileHasProc(decl.file, reset_name),
 				has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 				field_types     = field_types[:],
+				ref_tags        = _split_tags(args.fields["ref_tags"]),
 			})
 			continue
 		}
@@ -251,6 +254,7 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				has_reset       = component.has_reset,
 				has_cleanup     = component.has_cleanup,
 				field_types     = component.field_types,
+				ref_tags        = component.ref_tags,
 			})
 		case .Poolable:
 			append(&data.poolable_entries, PoolableEntry{
@@ -354,9 +358,30 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		if e.has_on_destroy {
 			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
+		if len(e.ref_tags) > 0 {
+			strings.write_string(b, "\t\t\tref_tags = {")
+			for tag, i in e.ref_tags {
+				if i > 0 do strings.write_string(b, ", ")
+				fmt.sbprintf(b, "%q", tag)
+			}
+			strings.write_string(b, "},\n")
+		}
 		strings.write_string(b, "\t\t})\n")
 	}
 	_write_pointer_types(b, entries, pkg_path, qual)
+}
+
+// "A, B" -> {"A", "B"}. The same comma list a `ref:` field tag takes, so a
+// type's tags and a field's spec are written the same way.
+_split_tags :: proc(spec: string) -> []string {
+	if strings.trim_space(spec) == "" do return nil
+	parts := strings.split(spec, ",")
+	out := make([dynamic]string, 0, len(parts))
+	for p in parts {
+		t := strings.trim_space(p)
+		if t != "" do append(&out, t)
+	}
+	return out[:]
 }
 
 // Undo, clipboard and nested-scene overrides write a field back from JSON

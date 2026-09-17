@@ -41,7 +41,7 @@ shutdown_timeline_animator_inspector :: proc() {
 
 @(private = "file")
 _timeline_animator_inspector :: proc(ctx: ^inspector.Component_Ctx) {
-	inspector.draw(ctx) // speed, targets
+	inspector.draw(ctx) // speed, outputs
 	a := cast(^anim.TimelineAnimator)ctx.ptr
 	if a == nil do return
 	_ta_states_section(a)

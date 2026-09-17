@@ -965,17 +965,17 @@
         }
       ],
       "speed": 1.0,
-      "targets": [
+      "outputs": [
         {
           "key": "Body",
-          "target": {
-            "local_id": 8010
+          "object": {
+            "local_id": 8009
           }
         },
         {
           "key": "Prop",
-          "target": {
-            "local_id": 8024
+          "object": {
+            "local_id": 8023
           }
         }
       ]

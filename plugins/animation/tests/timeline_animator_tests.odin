@@ -16,9 +16,25 @@ import common "moonhug:tests/common"
 
 // Strings on a component are owned by it: cleanup_TimelineAnimator frees them,
 // so a test may not hand it a literal.
+//
+// An output names an OBJECT. `h` is the component the older tests bound; the
+// helper takes its owner, so every existing test reads unchanged and binds
+// what the field now stores. A zero handle stays unbound.
 @(private = "file")
-_ta_target :: proc(key: string, h: engine.Handle) -> anim.Target_Binding {
-	return {key = strings.clone(key), target = {handle = h}}
+_ta_output :: proc(key: string, h: engine.Handle) -> anim.Output_Binding {
+	obj: engine.Handle
+	if h != {} {
+		if raw := engine.world_pool_get(engine.ctx_world(), h); raw != nil {
+			obj = engine.Handle((cast(^engine.CompData)raw).owner)
+		}
+	}
+	return {key = strings.clone(key), object = {handle = obj}}
+}
+
+// An output bound straight to an object, the shape the field actually holds.
+@(private = "file")
+_ta_output_obj :: proc(key: string, tH: engine.Transform_Handle) -> anim.Output_Binding {
+	return {key = strings.clone(key), object = {handle = engine.Handle(tH)}}
 }
 
 @(test)
@@ -40,9 +56,9 @@ test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
-	append(&ta.targets, _ta_target("Face", f_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
+	append(&ta.outputs, _ta_output("Face", f_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
 	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Upper"), weight = 0.5})
@@ -85,9 +101,9 @@ test_timeline_animator_skips_unbound_targets :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Nothing", {})) // never bound
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Nothing", {})) // never bound
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 
 	anim.timeline_animator_tick(0)
 
@@ -114,8 +130,8 @@ test_timeline_animator_idle_leaves_targets_alone :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
 
@@ -195,8 +211,8 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -247,8 +263,8 @@ test_state_play_poses_keyed_target :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -301,8 +317,8 @@ test_state_cross_fade_blends :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -362,8 +378,8 @@ test_state_fade_interrupted_by_third :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -422,8 +438,8 @@ test_state_speed_scales_its_playhead :: proc(t: ^testing.T) {
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
 	ta.speed = 2
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -470,9 +486,9 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
-	append(&ta.targets, _ta_target("Inner", i_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
+	append(&ta.outputs, _ta_output("Inner", i_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -526,7 +542,7 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	testing.expect(t, ta != nil, "the root carries a TimelineAnimator")
 	if ta == nil do return
 
-	testing.expect_value(t, len(ta.targets), 2)
+	testing.expect_value(t, len(ta.outputs), 2)
 	testing.expect_value(t, len(ta.layers), 1)
 	testing.expect_value(t, len(ta.layers[0].states), 2)
 
@@ -627,8 +643,8 @@ test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Self", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Self", b_owned.handle))
 	anim.timeline_animator_tick(0)
 
 	src2, ok2 := anim.playable_graph_for_object(root)
@@ -674,8 +690,8 @@ test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	anim.timeline_animator_tick(0)
 	anim.animation_director_adopt(tl, ta, {anim.graph_output(&ta.graph, 0).root})
 
@@ -708,8 +724,8 @@ test_once_state_reports_done :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -772,8 +788,8 @@ test_replaying_a_finished_once_state_rewinds :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.targets = make([dynamic]anim.Target_Binding)
-	append(&ta.targets, _ta_target("Body", b_owned.handle))
+	ta.outputs = make([dynamic]anim.Output_Binding)
+	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)

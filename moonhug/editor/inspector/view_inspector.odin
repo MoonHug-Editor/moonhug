@@ -36,6 +36,11 @@ current_field_pick_mode: string
 // Comma-separated allowed extensions from the field's `ext:"..."` tag; limits
 // the Asset_GUID picker + drag-drop to matching files ("" = everything).
 current_field_ext_filter: string
+// `has:"..."` — the same list grammar as `ref:`, naming components an OBJECT
+// must carry to be offered. For a `ref:"Transform"` field this is the filter:
+// `ref:` says what is stored, `has:` says which objects qualify. Two tags,
+// because one cannot say both without being ambiguous about what to store.
+current_field_has_filter: string
 
 InspectorData :: struct {
     mode: InspectorMode,
@@ -753,10 +758,13 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             current_field_pick_mode = pick_tag
             ext_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ext")
             current_field_ext_filter = ext_tag
+            has_tag, _ := reflect.struct_tag_lookup(field_info.tag, "has")
+            current_field_has_filter = has_tag
             defer {
                 current_field_ref_target = ""
                 current_field_pick_mode = ""
                 current_field_ext_filter = ""
+                current_field_has_filter = ""
             }
 
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {

@@ -6,7 +6,10 @@ package audio
 import mix "vendor:sdl3/mixer"
 import engine "moonhug:engine"
 
-@(component={menu="Audio/AudioSource"})
+// ref_tags="Output": a TimelineAnimator output may bind an object for this —
+// its audio track resolves the slot's object and plays through the AudioSource
+// on it (track_audio.odin).
+@(component={menu="Audio/AudioSource", ref_tags="Output"})
 @(typ_guid={guid="6f7fb020-d764-4ce1-bc09-d8088356bd22"})
 AudioSource :: struct {
 	using base:    engine.CompData `inspect:"-"`,

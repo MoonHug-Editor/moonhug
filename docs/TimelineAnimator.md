@@ -24,23 +24,37 @@ matters more than fitting the shape of whatever is being built today.
 One naming hop, in three steps.
 
 1. **The scene already holds the output components.** An `Animation` receives a
-   pose, an `AudioSource` receives audio. Nothing is marked or tagged — the
-   component that receives a kind of output is the component that already does
-   that job.
-2. **TimelineAnimator gives them keys.** Its `targets` list maps a key name to
-   one of those components.
-3. **A timeline's tracks name keys.** A track says "Body", and which component
-   that is depends on the TimelineAnimator playing it.
+   pose, an `AudioSource` receives sound. Each says so once, on its own
+   declaration: `@(component={ref_tags="Output"})`.
+2. **TimelineAnimator gives OBJECTS keys.** Its `outputs` list maps a key name
+   to a transform, and the picker offers objects carrying a tagged component
+   (`has:"@Output"`, docs/ObjectPicker.md). The animator never names a
+   component type: it builds a pose output for an object that has an
+   Animation, and for any other object it holds the key → object mapping and
+   nothing else — no binding that could write bind-time defaults over it.
+3. **A timeline's tracks name keys, and each finds its own component.** A track
+   says "Body", asks the sequencer which object that is for the animator
+   playing it (`seq.track_resolve_key`), and takes the component it drives from
+   that object — the animation track its Animation, the audio track its
+   AudioSource. One key therefore serves several track kinds at once.
+
+A plugin joins with three lines and no import of this package: `ref_tags=
+"Output"` on its component, a `key` on its track, and `seq.track_resolve_key`
+in the track's target lookup falling back to its own direct reference. The
+animator registers the resolver with the sequencer beside the drive check, so
+the sequencer names no driver either.
 
 The timeline prefab is the shared part, and it names only keys. The component
 decides what those keys mean, so one timeline serves several animators binding
 different objects. The same shape a key binding table uses: the map declares
 actions, the instance binds devices.
 
-**The output kind is the component type.** It is never declared. A track bound
-to an `Animation` produces a pose output, a track bound to an `AudioSource`
-produces an audio output, and a key bound to the wrong component type is an
-authoring error caught at build.
+**A track's kind is its own business.** The animator binds objects and never
+declares what any of them is for. An animation track finds an Animation on the
+object and poses it, an audio track finds an AudioSource and plays through it,
+and a track that finds nothing it can drive on the object does nothing — that
+is the whole of the type check, and it lives in each track rather than in the
+animator.
 
 ## Levels
 
@@ -83,14 +97,14 @@ implementation up to the spec.
 
 An output varies along two INDEPENDENT axes:
 
-- **Kind** — what it writes. Pose, script callbacks, audio commands. Taken
-  from the target component's type, never declared.
-- **Target** — the component it writes to.
+- **Kind** — what it writes. Pose, script callbacks, audio commands. Decided
+  by the track that feeds it, never declared on the binding.
+- **Object** — the transform it writes to, the one the key names.
 
 Several outputs of the same kind is the normal case, not an edge one: a
 performance that poses three characters has three pose outputs.
 
-One output per entry in `targets`, built when the graph is built rather than
+One output per entry in `outputs`, built when the graph is built rather than
 when a state first reaches one. Every binding then captures its default pose at
 the same deterministic moment, and an output nothing feeds costs one empty pose
 per frame. Deriving the set from what states actually route to would save that
@@ -235,7 +249,7 @@ TimelineAnimator :: struct {
 	using base: engine.CompData,
 	speed:      f32,
 	layers:     [dynamic]Animator_Layer,
-	targets:    [dynamic]Target_Binding, // key -> output component
+	outputs:    [dynamic]Output_Binding, // key -> output component
 
 	// runtime, not serialized
 	graph: Playable_Graph,
@@ -258,9 +272,9 @@ Timeline_State :: struct {
 	fade:     f32, // default cross-fade duration INTO this state
 }
 
-Target_Binding :: struct {
+Output_Binding :: struct {
 	key:    string,
-	target: engine.Ref_Local, // an Animation, an AudioSource, and so on
+	object: engine.Ref_Local `ref:"Transform" has:"@Output"`, // an object carrying a tagged component
 }
 ```
 
@@ -332,7 +346,7 @@ in edit mode — the button disables itself and says so. An edit-mode preview
 goes in that same spot when it arrives, the way the Animation tree drives the
 animation window's preview.
 
-`targets` keeps its ordinary array rows. A flat list of `{key, Ref_Local}` is a
+`outputs` keeps its ordinary array rows. A flat list of `{key, Ref_Local}` is a
 shape those rows draw well.
 
 A dedicated window is a later convenience, not a prerequisite.
@@ -376,19 +390,19 @@ not a rule engine.
 
 ## Build and validation
 
-The output set is built once from the `targets` list, not when a state fades
+The output set is built once from the `outputs` list, not when a state fades
 in, so every binding captures its default pose at a deterministic moment.
 
 - Union the keys every state's timeline tracks ask for. Resolved through
-  `targets`, that is the output set.
-- A key with no binding in `targets` is an authoring error, reported at build.
+  `outputs`, that is the output set.
+- A key with no binding in `outputs` is an authoring error, reported at build.
 - A key bound to a component of the wrong kind for the track that uses it is an
   authoring error.
 - Two POSE outputs whose bound subtrees overlap is an authoring error. Other
   kind pairs on the same object are fine.
 - A bound target that no state reaches is dead and harmless.
 
-The `targets` list is serialized data on the component, so nothing has to be
+The `outputs` list is serialized data on the component, so nothing has to be
 discovered by walking the scene and the output set changes only when someone
 edits that list.
 
@@ -579,7 +593,7 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    layer under it, layer weights pushed every tick since they are authored
    data.
 
-   Two decisions worth knowing. Outputs come from the `targets` list rather
+   Two decisions worth knowing. Outputs come from the `outputs` list rather
    than from what states reach, for the deterministic-capture reason above. And
    an animator with nothing attached to any layer mixer does not apply at all —
    once the bindings have slots, an empty pose applied every frame would write
@@ -723,7 +737,7 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
 - **What `timeline_driven` becomes.** An `Animation` bound as a pose target
   stops running its own playback, which is the flag's existing meaning. Under a
   TimelineAnimator it is set for as long as the component is a target rather
-  than per tick, and nothing has decided who clears it when the `targets` list
+  than per tick, and nothing has decided who clears it when the `outputs` list
   changes or the animator is disabled.
 - **Whether an output component may be a target of two animators.** Two
   TimelineAnimators keying the same `Animation` is the same clobbering problem
