@@ -17,20 +17,6 @@ package animation
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
 
-// A key bound to an OBJECT in the scene. Each track finds the component it
-// drives on that object itself — the animation track its Animation, the audio
-// track its AudioSource — so one key can serve several track kinds at once,
-// and the animator never names a component type.
-//
-// `has:"@Output"` filters the picker to objects carrying a component tagged
-// `ref_tags="Output"`. It is a hint about what is worth binding, nothing
-// more: binding an object with none of them is inert, since no track will
-// find anything on it.
-Output_Binding :: struct {
-	key:    string,
-	object: engine.Ref_Local `ref:"Transform" has:"@Output"`,
-}
-
 // One authored layer. Layer order is override order: a higher layer replaces a
 // lower one wherever it animates a channel, which is what
 // Playable_Layer_Mixer already does with its inputs.
@@ -59,11 +45,14 @@ Timeline_State :: struct {
 	// rows starts that way and is filled in by _ta_ensure_ids.
 	id:       i32,
 	name:     string,
-	// The director itself, not the object carrying it — the same type and the
-	// same shape Output_Binding uses, so both reference fields on this
-	// component read and resolve identically. A reference type rather than a
-	// bare PPtr because the picker, the reference drawer, `ref:` filtering and
-	// the loader's handle resolution all key off it.
+	// The director itself, not the object carrying it. A reference type rather
+	// than a bare PPtr because the picker, the reference drawer, `ref:`
+	// filtering and the loader's handle resolution all key off it.
+	//
+	// The state binds NOTHING else. What its timeline's tracks drive is each
+	// track's own `target`, and the inspector draws those fields under the
+	// state (Track_Desc.binding) so they are edited here — but they live on
+	// the tracks, which is what lets the same timeline play standalone.
 	timeline: engine.Ref_Local `ref:"PlayableDirector"`,
 	speed:    f32, // 0 runs at 1
 	wrap:     seq.Timeline_Wrap,
@@ -106,16 +95,14 @@ TimelineAnimator :: struct {
 	// the reflected field loop — layers of states is the shape those rows draw
 	// worst.
 	layers:  [dynamic]Animator_Layer `inspect:"-"`,
-	outputs: [dynamic]Output_Binding,
 
 	// Runtime, built lazily by _ta_ensure_graph and guarded by graph_ready, so
 	// a component that never ticked owns nothing and cleanup frees nothing.
 	graph:       Playable_Graph `json:"-" inspect:"-"`,
 	rt:          [dynamic]Animator_Layer_Runtime `json:"-" inspect:"-"`,
-	// Parallel to `graph.outputs`: the `outputs` index each graph output came
-	// from, so a key resolves to one. An index, not the key string, because the
-	// string belongs to `outputs` and moves when that list is edited.
-	out_binding: [dynamic]int `json:"-" inspect:"-"`,
+	// Parallel to `graph.outputs`: the object each pose output writes to. An
+	// adopted track finds its output by the object it drives on its own.
+	out_object:  [dynamic]engine.Transform_Handle `json:"-" inspect:"-"`,
 	graph_ready: bool `json:"-" inspect:"-"`,
 }
 
@@ -146,7 +133,7 @@ cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 			delete(l.mixers)
 		}
 		delete(a.rt)
-		delete(a.out_binding)
+		delete(a.out_object)
 	}
 	if a.layers != nil {
 		for &l in a.layers {
@@ -156,34 +143,44 @@ cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 		}
 		delete(a.layers)
 	}
-	if a.outputs != nil {
-		for &tb in a.outputs do delete(tb.key)
-		delete(a.outputs)
-	}
 	engine.comp_zero(a)
 }
 
 // --- Graph skeleton -------------------------------------------------------------------
 
-// The object an output names. An unbound or dead reference yields no output,
-// and the keys naming it fail to resolve.
-@(private = "file")
-_ta_output_transform :: proc(tb: ^Output_Binding) -> (engine.Transform_Handle, bool) {
-	w := engine.ctx_world()
-	h := tb.object.handle
-	if h.type_key != .Transform || !engine.pool_valid(&w.transforms, h) do return {}, false
-	return engine.Transform_Handle(h), true
+// The index of the pose output writing to `tH`, or -1. This is how an adopted
+// track finds where its subtree hangs: it resolves the object it drives on its
+// own, and asks for that object's output.
+timeline_animator_output_index :: proc(a: ^TimelineAnimator, tH: engine.Transform_Handle) -> int {
+	for o, i in a.out_object do if o == tH do return i
+	return -1
 }
 
-// Whether an output object is POSED by the graph: only when it carries an
-// Animation. Every other output is a key -> object mapping for tracks to
-// resolve, and gets no pose binding — a binding nothing feeds writes bind-time
-// defaults over its subtree every frame, which would freeze an object bound
-// only for its AudioSource.
+// Every object the animator's timelines will pose: each animation track's own
+// root across every state, distinct, in first-seen order. Read from authored
+// data before any track builds, so the output set exists — and captures its
+// default poses — at one deterministic moment rather than as tracks arrive.
 @(private = "file")
-_ta_output_is_posed :: proc(tH: engine.Transform_Handle) -> bool {
-	_, a := engine.transform_get_comp(tH, Animation)
-	return a != nil
+_ta_collect_pose_roots :: proc(a: ^TimelineAnimator) -> []engine.Transform_Handle {
+	w := engine.ctx_world()
+	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
+	for &l in a.layers {
+		for &desc in l.states {
+			director := _ta_state_root(a, &desc)
+			if director == {} do continue
+			_, d := engine.transform_get_comp(director, seq.PlayableDirector)
+			if d == nil do continue
+			for &tv in seq.director_tracks(d) {
+				if tv.kind != .TrackAnimation do continue
+				root := animation_track_root_at(tv.node, director)
+				if !engine.pool_valid(&w.transforms, engine.Handle(root)) do continue
+				seen := false
+				for have in out do if have == root { seen = true; break }
+				if !seen do append(&out, root)
+			}
+		}
+	}
+	return out[:]
 }
 
 @(private = "file")
@@ -197,21 +194,18 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 	_ta_ensure_ids(a)
 	playable_graph_init(&a.graph)
 	a.rt = make([dynamic]Animator_Layer_Runtime)
-	a.out_binding = make([dynamic]int)
+	a.out_object = make([dynamic]engine.Transform_Handle)
 
-	// One graph output per POSED binding, built from the authored list rather
-	// than from what states happen to reach. Every binding then captures its
-	// default pose at the same deterministic moment, and an output nothing
-	// feeds costs one empty pose. An unposed binding (no Animation on the
-	// object) gets no graph output at all — its key still resolves to the
-	// object through `outputs`, which is all a non-pose track needs.
-	for &tb, ti in a.outputs {
-		tH, ok := _ta_output_transform(&tb)
-		if !ok || !_ta_output_is_posed(tH) do continue
-		idx := graph_output_add(&a.graph, tH)
-		root := playable_add(&a.graph, Playable_Layer_Mixer{})
-		graph_output(&a.graph, idx).root = root
-		append(&a.out_binding, ti)
+	// One pose output per object the timelines' animation tracks drive, read
+	// from the tracks' own targets across every state. Built here rather than
+	// as tracks arrive, so every binding captures its default pose at the same
+	// deterministic moment. A non-pose track (audio) needs no output — it
+	// plays through its own target and never enters the graph.
+	for root in _ta_collect_pose_roots(a) {
+		idx := graph_output_add(&a.graph, root)
+		mixer := playable_add(&a.graph, Playable_Layer_Mixer{})
+		graph_output(&a.graph, idx).root = mixer
+		append(&a.out_object, root)
 	}
 
 	// Every layer gets a mixer under every output's layer mixer. Input order
@@ -261,10 +255,9 @@ _ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixer
 	return st
 }
 
-// The timeline's root for a state: the owner of the director it names — the
-// same step _ta_output_transform takes for a bound target, and the handle is
-// resolved by the scene loader for the same reason. An unbound or dead
-// reference yields no root, and the state poses nothing.
+// The timeline's root for a state: the owner of the director it names. The
+// handle is resolved by the scene loader like every Ref_Local. An unbound or
+// dead reference yields no root, and the state poses nothing.
 @(private = "file")
 _ta_state_root :: proc(a: ^TimelineAnimator, desc: ^Timeline_State) -> engine.Transform_Handle {
 	w := engine.ctx_world()
@@ -289,31 +282,10 @@ timeline_animator_rebuild :: proc(a: ^TimelineAnimator) {
 		delete(l.mixers)
 	}
 	delete(a.rt)
-	delete(a.out_binding)
+	delete(a.out_object)
 	a.rt = nil
-	a.out_binding = nil
+	a.out_object = nil
 	a.graph_ready = false
-}
-
-// The output index for a key, or -1. Resolution goes through `outputs`, so a
-// key nothing binds simply has no output.
-timeline_animator_output_for_key :: proc(a: ^TimelineAnimator, key: string) -> int {
-	for ti, oi in a.out_binding {
-		if ti < len(a.outputs) && a.outputs[ti].key == key do return oi
-	}
-	return -1
-}
-
-// The object behind a key, for a track resolving its target through this
-// animator. Reads the authored list, not the graph: an output bound only for
-// its AudioSource has no graph output, and its key must still resolve. False
-// when the key names nothing or its binding is dead.
-timeline_animator_output_owner_for_key :: proc(a: ^TimelineAnimator, key: string) -> (engine.Transform_Handle, bool) {
-	for &tb in a.outputs {
-		if tb.key != key do continue
-		return _ta_output_transform(&tb)
-	}
-	return {}, false
 }
 
 // The mixer a state on `layer` attaches to for `output`.
@@ -362,13 +334,10 @@ _ta_sync_layer_weights :: proc(a: ^TimelineAnimator) {
 _ta_claim_outputs :: proc(a: ^TimelineAnimator, claim: bool) {
 	w := engine.ctx_world()
 	if w == nil do return
-	_ = w
-	for ti in a.out_binding {
-		if ti < 0 || ti >= len(a.outputs) do continue
-		tH, ok := _ta_output_transform(&a.outputs[ti])
-		if !ok do continue
-		// The same lookup every track does: the Animation on the bound object,
-		// if it has one. out_binding only holds posed outputs, so it does.
+	for tH in a.out_object {
+		if !engine.pool_valid(&w.transforms, engine.Handle(tH)) do continue
+		// The Animation on the posed object, when it has one — a track driving
+		// a bare transform claims nothing.
 		if _, comp := engine.transform_get_comp(tH, Animation); comp != nil {
 			comp.timeline_driven = claim
 		}
@@ -679,13 +648,12 @@ _ta_state_length :: proc(st: ^Animator_State_Runtime) -> f32 {
 // never moves.
 
 Animator_Problem_Kind :: enum u8 {
-	Unbound_Key,     // a track asks for a key `outputs` does not bind
-	Overlapping_Pose, // two bound outputs pose the same transforms
+	Overlapping_Pose, // two tracks pose objects whose hierarchies overlap
 }
 
 Animator_Problem :: struct {
-	kind: Animator_Problem_Kind,
-	key:  string, // borrowed from the component's own data
+	kind:   Animator_Problem_Kind,
+	object: engine.Transform_Handle, // the inner of the two overlapping objects
 }
 
 // Whether `anc` is `h` or an ancestor of it.
@@ -702,42 +670,21 @@ _ta_is_ancestor :: proc(anc, h: engine.Transform_Handle) -> bool {
 	return false
 }
 
-// Every key the animator's states ask for, and every pair of pose targets that
-// would clobber each other. Allocates into `allocator`.
+// Every pair of pose outputs that would clobber each other. Allocates into
+// `allocator`.
 timeline_animator_problems :: proc(a: ^TimelineAnimator, allocator := context.temp_allocator) -> []Animator_Problem {
 	out := make([dynamic]Animator_Problem, allocator)
-	w := engine.ctx_world()
-
-	// Keys asked for by a state's tracks but bound by nothing.
-	for &lr in a.rt {
-		for &st in lr.states {
-			if st.root == {} || !engine.world_pool_valid(w, st.dir) do continue
-			d := cast(^seq.PlayableDirector)engine.world_pool_get(w, st.dir)
-			if d == nil do continue
-			for &tv in seq.director_tracks(d) {
-				_, tr := engine.transform_get_comp(tv.node, TrackAnimation)
-				if tr == nil || tr.key == "" do continue
-				if timeline_animator_output_for_key(a, tr.key) >= 0 do continue
-				append(&out, Animator_Problem{kind = .Unbound_Key, key = tr.key})
-			}
-		}
-	}
 
 	// Two pose outputs whose subtrees overlap write the same transforms, and
-	// the later apply wins. Checked between bound targets, since that is where
-	// an author can see and fix it.
-	for i in 0 ..< len(a.out_binding) {
-		oi := graph_output(&a.graph, i)
-		if oi == nil do continue
-		for j in i + 1 ..< len(a.out_binding) {
-			oj := graph_output(&a.graph, j)
-			if oj == nil do continue
-			overlaps := _ta_is_ancestor(oi.binding.owner, oj.binding.owner) ||
-			            _ta_is_ancestor(oj.binding.owner, oi.binding.owner)
-			if !overlaps do continue
-			ti := a.out_binding[j]
-			if ti >= 0 && ti < len(a.outputs) {
-				append(&out, Animator_Problem{kind = .Overlapping_Pose, key = a.outputs[ti].key})
+	// the later apply wins. Reported against the inner object, which is the
+	// one an author would move or untarget.
+	for i in 0 ..< len(a.out_object) {
+		for j in i + 1 ..< len(a.out_object) {
+			oi, oj := a.out_object[i], a.out_object[j]
+			if _ta_is_ancestor(oi, oj) {
+				append(&out, Animator_Problem{kind = .Overlapping_Pose, object = oj})
+			} else if _ta_is_ancestor(oj, oi) {
+				append(&out, Animator_Problem{kind = .Overlapping_Pose, object = oi})
 			}
 		}
 	}

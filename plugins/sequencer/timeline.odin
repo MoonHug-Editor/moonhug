@@ -147,6 +147,15 @@ Track_Desc :: struct {
 	// import every track's package").
 	build:       proc(ctx: ^Track_Ctx) -> rawptr,
 	destroy:     proc(state: rawptr),
+
+	// The field on the kind's track component that says WHAT the track drives
+	// — an animation track's Animation, an audio track's AudioSource. Optional.
+	// A driver's inspector (the TimelineAnimator's) draws that field beside
+	// the state playing the timeline, so every binding a character depends on
+	// is editable in one place without the driver importing the kind's package.
+	// The field stays where it is: the proxy row edits it through this pointer
+	// with undo owned by the track component.
+	binding: proc(node: engine.Transform_Handle) -> (Track_Binding, bool),
 	tick:        proc(ctx: ^Track_Ctx),
 	preview_end: proc(ctx: ^Track_Ctx),
 }
@@ -155,6 +164,24 @@ _track_registry: map[engine.TypeKey]Track_Desc
 
 // Process-global registry: never borrows the caller's allocator (same rule
 // as every registry — a test's tracking allocator would dangle).
+// A track's binding field, as a driver's inspector draws it. `ptr`/`tid` name
+// the field, `ref` is its `ref:` spec for the picker, `comp` owns it for undo
+// — the edit is recorded against the track component, not the driver.
+Track_Binding :: struct {
+	ptr:   rawptr,
+	tid:   typeid,
+	ref:   string,
+	field: string, // the field's name on the component, for prefab overrides
+	comp:  engine.Handle,
+}
+
+// The binding field of `tv`'s track, when its kind exposes one.
+track_binding :: proc(tv: ^Track_View) -> (Track_Binding, bool) {
+	d, ok := track_desc(tv.kind)
+	if !ok || d.binding == nil do return {}, false
+	return d.binding(tv.node)
+}
+
 track_register :: proc(desc: Track_Desc) {
 	context.allocator = runtime.default_allocator()
 	if _track_registry == nil do _track_registry = make(map[engine.TypeKey]Track_Desc)

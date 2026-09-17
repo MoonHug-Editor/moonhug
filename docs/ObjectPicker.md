@@ -90,8 +90,9 @@ object: engine.Ref_Local `ref:"Transform" has:"@Output"`
 The picker lists transforms whose components include at least one admitted by
 `has:`. Two tags rather than one, because `ref:"@Output"` alone on a
 `Ref_Local` cannot say whether to store the matching component or its owner.
-`TimelineAnimator.outputs` is the case: it stores the object, each track finds
-its own component on it, and `@Output` only decides what is worth offering.
+The shape fits any field that names an object FOR something on it — "the
+object whose Animation this drives" — where the code fetches the component
+itself and only the picker needs narrowing.
 
 A `has:` that resolves to nothing keeps every object — the visible failure for
 a typo is a long list, not an empty one.

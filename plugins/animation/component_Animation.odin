@@ -170,10 +170,8 @@ Animation_Layer_Runtime :: struct {
 	queued:     bool,
 }
 
-// ref_tags="Output": a TimelineAnimator output may bind an object for this —
-// the animator builds a pose output over the object and its animation tracks
-// route into it. A component in any plugin tags itself the same way to appear
-// in that picker; its track resolves the slot through seq.track_resolve_key.
+// ref_tags="Output": something a timeline track can drive. A `has:"@Output"`
+// picker offers objects carrying one.
 @(component={menu="Animation/Animation", ref_tags="Output"})
 @(typ_guid={guid = "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13"})
 Animation :: struct {

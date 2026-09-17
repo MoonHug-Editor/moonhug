@@ -132,9 +132,8 @@ time/weight structure:
 - **Audio output** — produces frame-quantized play/stop/volume commands for
   the audio runtime. Designed, not built: the audio package has its source
   component, device and mixer, and its timeline track plays through
-  `Track_Desc.tick` rather than as a graph output. A TimelineAnimator already
-  retargets audio tracks by key (`TrackAudio.key`), so the key → object
-  mapping this output would consume exists today.
+  `Track_Desc.tick` rather than as a graph output — driving the AudioSource
+  its own `source` names, under an animator or not.
 
 Evaluation is per-output-kind pull, NOT "evaluate returns a pose". Getting
 this wrong is the expensive mistake: if the evaluator's result type is a pose,

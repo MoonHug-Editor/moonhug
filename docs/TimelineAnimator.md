@@ -19,50 +19,63 @@ callbacks before it is useful on its own.
 This is an engine tool, not a solution to one game's current needs. Breadth
 matters more than fitting the shape of whatever is being built today.
 
-## Target keys
+## Bindings
 
-One naming hop, in three steps.
+**A track's own target is the only binding there is.** An animation track
+names the Animation it drives, an audio track the AudioSource, exactly as they
+do in a standalone timeline. A TimelineAnimator adds no binding layer of its
+own: it reads those targets to size its outputs, and changes only WHERE a
+track's subtree hangs — inside the animator's one graph, so several states
+blend — never what the track drives.
 
-1. **The scene already holds the output components.** An `Animation` receives a
-   pose, an `AudioSource` receives sound. Each says so once, on its own
-   declaration: `@(component={ref_tags="Output"})`.
-2. **TimelineAnimator gives OBJECTS keys.** Its `outputs` list maps a key name
-   to a transform, and the picker offers objects carrying a tagged component
-   (`has:"@Output"`, docs/ObjectPicker.md). The animator never names a
-   component type: it builds a pose output for an object that has an
-   Animation, and for any other object it holds the key → object mapping and
-   nothing else — no binding that could write bind-time defaults over it.
-3. **A timeline's tracks name keys, and each finds its own component.** A track
-   says "Body", asks the sequencer which object that is for the animator
-   playing it (`seq.track_resolve_key`), and takes the component it drives from
-   that object — the animation track its Animation, the audio track its
-   AudioSource. One key therefore serves several track kinds at once.
+Two things follow, and both are the prefab system doing the work rather than
+this component:
 
-A plugin joins with three lines and no import of this package: `ref_tags=
-"Output"` on its component, a `key` on its track, and `seq.track_resolve_key`
-in the track's target lookup falling back to its own direct reference. The
-animator registers the resolver with the sequencer beside the drive check, so
-the sequencer names no driver either.
+- **A timeline is reusable across characters** by living inside the
+  character's prefab. Its tracks target objects in that prefab, and a second
+  character is a second instance. Retargeting is a prefab override on a
+  track's `target`.
+- **A timeline needs no setup to play under an animator.** Author it, point
+  its tracks at what they drive, add a state naming it. Nothing else.
 
-The timeline prefab is the shared part, and it names only keys. The component
-decides what those keys mean, so one timeline serves several animators binding
-different objects. The same shape a key binding table uses: the map declares
-actions, the instance binds devices.
+The animator's inspector draws every track's binding field under the state
+that plays the timeline (Track_Desc.binding), so all the objects a character
+depends on are read and edited in one place. But those rows edit the tracks'
+own fields — undo lands on the track component, a prefab override records
+against the track — so the same timeline still plays standalone, unchanged.
 
-**A track's kind is its own business.** The animator binds objects and never
-declares what any of them is for. An animation track finds an Animation on the
-object and poses it, an audio track finds an AudioSource and plays through it,
-and a track that finds nothing it can drive on the object does nothing — that
-is the whole of the type check, and it lives in each track rather than in the
-animator.
+**A track's kind is its own business.** The animator never names a component
+type. An animation track finds an Animation and poses it, an audio track finds
+an AudioSource and plays through it, and the animator builds a pose output for
+each distinct object its animation tracks drive. A kind in any plugin joins by
+registering its binding field on its `Track_Desc` — no import of this package.
+
+### Why not keys
+
+The first design routed tracks through named slots: a track said "Body", the
+animator mapped "Body" to an object, so one timeline PREFAB could serve several
+animators binding different objects. Built, then removed, for three reasons:
+
+- The reuse it enabled was already covered. A timeline lives in the same file
+  as its animator (`Ref_Local`), so sharing across characters is the whole
+  animator as a prefab — and prefab instances retarget on their own.
+- Under an animator a track's own target was ignored, so a self-contained
+  timeline did nothing until every track was keyed and every key bound. Two
+  free-text strings had to match, and a typo was invisible until runtime.
+- What keys alone could do — one animator playing one timeline object into
+  different objects across states — nobody needs. Duplicating the timeline
+  subtree covers it if it ever comes up.
+
+`ref_tags`, `ref:` lists and `has:` stayed: they are picker features with no
+dependence on this component.
 
 ## Levels
 
 Each level is a DEFAULT for the level above it. A higher level overrides a
 lower one wherever both have a value, and the highest one present wins.
 
-- A track's own `key` is a default. A state's route for that track overrides
-  it.
+- A track with no `target` drives its director's own object. A `target`
+  overrides that.
 - An `Animation` playing its own clip is a default. A timeline's animation
   track driving that component overrides it. A TimelineAnimator driving that
   timeline overrides that.
@@ -99,17 +112,17 @@ An output varies along two INDEPENDENT axes:
 
 - **Kind** — what it writes. Pose, script callbacks, audio commands. Decided
   by the track that feeds it, never declared on the binding.
-- **Object** — the transform it writes to, the one the key names.
+- **Object** — the transform it writes to, the one a track targets.
 
 Several outputs of the same kind is the normal case, not an edge one: a
 performance that poses three characters has three pose outputs.
 
-One output per entry in `outputs`, built when the graph is built rather than
-when a state first reaches one. Every binding then captures its default pose at
-the same deterministic moment, and an output nothing feeds costs one empty pose
-per frame. Deriving the set from what states actually route to would save that
-and pay for it with captures happening at arbitrary times, which is the harder
-bug.
+One output per distinct object the states' animation tracks drive, read from
+the tracks' own targets when the graph is built rather than when a state first
+reaches one. Every binding then captures its default pose at the same
+deterministic moment, and an output nothing feeds costs one empty pose per
+frame. Building outputs as tracks arrive would save that and pay for it with
+captures happening at arbitrary times, which is the harder bug.
 
 ```odin
 Graph_Output :: struct {
@@ -171,7 +184,7 @@ poked node indices.
 
 ```
 Graph
-├── Output (pose, "Body")       key "Body" -> an Animation component
+├── Output (pose, Body)         the object the Body tracks target
 │   └── Layer_Mixer
 │       ├── Mixer  layer 0
 │       │   ├── Mixer  state "Idle"   w = 1 - fade
@@ -179,11 +192,11 @@ Graph
 │       │   │   └── Mixer  track
 │       │   └── Mixer  state "Run"    w = fade
 │       └── Mixer  layer 1            w = layer weight
-├── Output (pose, "Face")
-│   └── Layer_Mixer
-│       └── ...
-└── Output (audio, "Voice")     key "Voice" -> an AudioSource
-    └── ...
+└── Output (pose, Face)
+    └── Layer_Mixer
+        └── ...
+(audio tracks play through their own AudioSource and enter no output — see
+docs/PlayableGraph.md, "Typed outputs")
 ```
 
 ## Weight
@@ -210,32 +223,6 @@ fading to C in the middle of an A to B fade retargets A and B toward 0 from
 their CURRENT weights while C rises. No snapshots, and weights that summed to
 1 still sum to 1.
 
-## Keys
-
-A track resolves its target in this order:
-
-1. the state's route for that track
-2. the track's own `key` field
-3. the standalone chain that exists today — explicit target, the director's
-   own Animation component, then the director's transform
-
-Level 2 is the default so a timeline that drives one object needs no routing
-at all. Level 1 is what lets the same timeline serve several states with
-different targets.
-
-"Idea: published properties" below is the alternative to this whole section.
-
-A route identifies its track by `Local_ID`, not by name, so renaming a track
-does not break a state. The state already holds the timeline's guid, so the
-route stores only the id:
-
-```odin
-Track_Route :: struct {
-	track: engine.Local_ID, // the track node inside this state's timeline
-	key:   string,          // target slot it drives
-}
-```
-
 ## Data
 
 TimelineAnimator is a plain component. Its layers and states are its own
@@ -249,11 +236,11 @@ TimelineAnimator :: struct {
 	using base: engine.CompData,
 	speed:      f32,
 	layers:     [dynamic]Animator_Layer,
-	outputs:    [dynamic]Output_Binding, // key -> output component
 
 	// runtime, not serialized
-	graph: Playable_Graph,
-	rt:    [dynamic]Layer_Runtime,
+	graph:      Playable_Graph,
+	rt:         [dynamic]Layer_Runtime,
+	out_object: [dynamic]engine.Transform_Handle, // parallel to graph.outputs
 }
 
 Animator_Layer :: struct {
@@ -266,17 +253,14 @@ Animator_Layer :: struct {
 Timeline_State :: struct {
 	name:     string,
 	timeline: engine.Ref_Local `ref:"PlayableDirector"`, // a director in this file
-	routes:   [dynamic]Track_Route,
 	speed:    f32,
 	wrap:     Timeline_Wrap,
 	fade:     f32, // default cross-fade duration INTO this state
 }
-
-Output_Binding :: struct {
-	key:    string,
-	object: engine.Ref_Local `ref:"Transform" has:"@Output"`, // an object carrying a tagged component
-}
 ```
+
+A state binds nothing but its timeline. What that timeline drives is each
+track's own `target` (see Bindings).
 
 `fade` belongs on the state rather than at the call site. Without it every
 caller hard-codes a duration and retuning how a transition feels is a code
@@ -346,8 +330,13 @@ in edit mode — the button disables itself and says so. An edit-mode preview
 goes in that same spot when it arrives, the way the Animation tree drives the
 animation window's preview.
 
-`outputs` keeps its ordinary array rows. A flat list of `{key, Ref_Local}` is a
-shape those rows draw well.
+Under each state's own fields sit its timeline's **tracks**, one row each,
+showing the track's binding field — the animation track's `target`, the audio
+track's `source` — as `Track_Desc.binding` exposes it. This is the reason the
+tree exists: every object a character depends on is read and edited in one
+place. But the fields live on the tracks. Each row pushes the TRACK component
+as the undo owner and records any prefab override against it, so editing here
+is editing the track, and the Sequencer window shows the same value.
 
 A dedicated window is a later convenience, not a prerequisite.
 
@@ -390,21 +379,20 @@ not a rule engine.
 
 ## Build and validation
 
-The output set is built once from the `outputs` list, not when a state fades
-in, so every binding captures its default pose at a deterministic moment.
+The output set is built once, when the graph is built, so every binding
+captures its default pose at a deterministic moment.
 
-- Union the keys every state's timeline tracks ask for. Resolved through
-  `outputs`, that is the output set.
-- A key with no binding in `outputs` is an authoring error, reported at build.
-- A key bound to a component of the wrong kind for the track that uses it is an
-  authoring error.
-- Two POSE outputs whose bound subtrees overlap is an authoring error. Other
-  kind pairs on the same object are fine.
-- A bound target that no state reaches is dead and harmless.
+- Walk every state's timeline; for each animation track take the object it
+  drives (its `target`'s owner, else the director's own object). The distinct
+  set is the output set.
+- Two POSE outputs whose subtrees overlap is an authoring error
+  (`Overlapping_Pose`, reported against the inner object). Other kind pairs
+  on the same object are fine.
+- A track whose target appears after the build is inert until the next
+  rebuild; an edit to `layers` triggers one.
 
-The `outputs` list is serialized data on the component, so nothing has to be
-discovered by walking the scene and the output set changes only when someone
-edits that list.
+The set derives from the timelines' own data, so there is nothing to keep in
+sync and nothing that can be bound but unused.
 
 ## What changes in existing code
 
@@ -416,10 +404,11 @@ edits that list.
   since `Track_Ctx` cannot name a `Playable_Graph`. When audio becomes a real
   output kind the audio package cannot import animation either, so
   `Playable_Graph` has to move somewhere both can reach.
-- `TrackAnimation` gains `key`. Standalone directors pass no manager and
-  resolve through the chain they use today.
+- `Track_Desc` gains `binding`, so a driver's inspector can show a track's
+  target field without importing the track's package.
 
-A standalone director keeps working unchanged.
+A standalone director keeps working unchanged, and so does a director under an
+animator — its tracks resolve the same targets either way.
 
 ## Idea: published properties
 
@@ -441,8 +430,8 @@ The same shape fits here:
 
 Under this model a target reference is one property TYPE, not the mechanism. A
 clip's duration, a tween's endpoint, an audio volume and a track's target are
-all equally promotable, and `Track_Route` becomes one case of a general
-override.
+all equally promotable, and the per-track binding rows the inspector draws
+today become one case of a general override.
 
 ```odin
 // Declared on the timeline's director root — the published interface.
@@ -491,15 +480,15 @@ TimelineAnimatorDemo    TimelineAnimator + TimelineAnimatorDemo (sample script)
 ├── Camera
 ├── Light               directional, or a lit material renders black
 ├── Hero
-│   ├── Body            Animation          -> key "Body"
+│   ├── Body            Animation          <- targeted by the Body tracks
 │   │   ├── Torso
 │   │   ├── Head
 │   │   ├── ArmL
 │   │   └── ArmR
-│   └── Sword           Animation          -> key "Prop"
+│   └── Sword           Animation          <- targeted by the Prop track
 │       └── Blade
-├── idle                director -> one animation track, key "Body"
-└── swing               director -> two animation tracks, keys "Body" and "Prop"
+├── idle                director -> one animation track, target Body
+└── swing               director -> two animation tracks, targets Body and Sword
 ```
 
 Everything is the built-in cube with the default material, so the scene needs no
@@ -511,9 +500,9 @@ character posed by the same clip path through `SkinnedMeshRenderer`.
 Two things the sample exists to show, neither of which a single-clip player can
 do:
 
-- **Swing drives two keyed targets from ONE state.** Its timeline has an
-  animation track keyed "Body" and another keyed "Prop", so one weight and one
-  fade move the arm and the sword together.
+- **Swing drives two targets from ONE state.** Its timeline has an animation
+  track targeting Body and another targeting Sword, so one weight and one fade
+  move the arm and the sword together.
 - **Idle and Swing cover different objects.** Idle touches the body only, so
   going back to it leaves nothing driving the Sword and it settles toward its
   bind-time pose instead of holding. That is the partial-coverage behaviour in
@@ -552,7 +541,7 @@ one that could not pass vacuously.
 
 In dependency order. Each MVP item is a prerequisite of the ones under it.
 
-### MVP — two states cross-fading across two keyed targets
+### MVP — two states cross-fading across two targets
 
 1. ~~**Graph carries a list of outputs.**~~ DONE. `Playable_Graph.outputs`
    replaces the single `root`, `playable_graph_tick` pulls per output, and
@@ -593,15 +582,16 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    layer under it, layer weights pushed every tick since they are authored
    data.
 
-   Two decisions worth knowing. Outputs come from the `outputs` list rather
-   than from what states reach, for the deterministic-capture reason above. And
-   an animator with nothing attached to any layer mixer does not apply at all —
-   once the bindings have slots, an empty pose applied every frame would write
-   bind-time defaults over whatever else poses the object.
-4. ~~**Target keys.**~~ DONE for levels 2 and 3. `TrackAnimation.key` is the
-   track's own default slot, `timeline_animator_target_for_key` resolves a key
-   to the bound component's OWNER transform, and the full resolution order is
-   documented on `_animation_track_comp`.
+   Two decisions worth knowing. Outputs come from the tracks' own targets,
+   read at build, rather than from what states reach at runtime, for the
+   deterministic-capture reason above. And an animator with nothing attached
+   to any layer mixer does not apply at all — an empty pose applied every frame
+   would write bind-time defaults over whatever else poses the object.
+4. ~~**Target keys.**~~ Built, then REMOVED. Tracks were routed through named
+   slots the animator bound to objects; a track's own target was ignored under
+   an animator. Replaced by the tracks' own targets as the only binding, with
+   the animator's inspector drawing those fields per state — see Bindings and
+   "Why not keys" for the three reasons.
 
    The `timeline_driven` handshake follows the levels rule with one wrinkle: an
    IDLE animator RELEASES its targets rather than holding them. Claiming
@@ -728,16 +718,10 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
   prefab's track nodes without instantiating it, and `director_tracks` needs a
   live director and a built subtree. Published properties (below) remove the
   question by declaring the interface instead of deriving it.
-- **Whether a route names a track or a slot.** `Track_Route.track` is a
-  `Local_ID`, so a state reaches inside the timeline prefab and names one of
-  its nodes. Splitting one track into two then breaks every state that routed
-  it. Naming a slot the timeline publishes keeps the internals free to change,
-  and moves the breakage to renaming a published name, where it belongs. This
-  is the small version of the published-properties idea below.
 - **What `timeline_driven` becomes.** An `Animation` bound as a pose target
   stops running its own playback, which is the flag's existing meaning. Under a
   TimelineAnimator it is set for as long as the component is a target rather
-  than per tick, and nothing has decided who clears it when the `outputs` list
+  than per tick, and nothing has decided who clears it when a track's target
   changes or the animator is disabled.
 - **Whether an output component may be a target of two animators.** Two
   TimelineAnimators keying the same `Animation` is the same clobbering problem
@@ -837,14 +821,6 @@ scene subtree at all. The prefab instance exists today only to hold authoring
 data — its graph contribution is already inlined into the arena the moment
 tracks attach. Replacing the instance means replacing where the authoring data
 is read from, not how evaluation works.
-
-### String keys across a prefab boundary — deferred
-
-A timeline prefab is edited independently of every animator using it, so
-adding or renaming a key breaks routes silently until something rebuilds.
-
-Treated as a UX problem rather than a design one. It waits until the tool is
-in use, along with the other problems that will surface then.
 
 ### API surface — deferred
 

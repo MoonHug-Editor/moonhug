@@ -1,8 +1,8 @@
 package animation_editor
 
-// The TimelineAnimator's STATES, drawn as the layers and states they are
-// (docs/TimelineAnimator.md): one section per layer, each holding the states
-// gameplay plays — a whole timeline each.
+// The TimelineAnimator's OUTPUTS and STATES, drawn as the lists they are
+// (docs/TimelineAnimator.md): the objects its timelines drive, then one section
+// per layer holding the states gameplay plays — a whole timeline each.
 //
 // The same tree the Animation component gets (inspector_animation.odin), one
 // level shallower: a Timeline_State is a flat entry in its layer, with no
@@ -23,6 +23,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
@@ -41,7 +42,7 @@ shutdown_timeline_animator_inspector :: proc() {
 
 @(private = "file")
 _timeline_animator_inspector :: proc(ctx: ^inspector.Component_Ctx) {
-	inspector.draw(ctx) // speed, outputs
+	inspector.draw(ctx) // speed
 	a := cast(^anim.TimelineAnimator)ctx.ptr
 	if a == nil do return
 	_ta_states_section(a)
@@ -53,11 +54,13 @@ _timeline_animator_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 // component and never reused.
 @(private = "file") _ta_alt_open_pending: map[i32]bool
 
-// Which state the name field is being typed into, so exactly one row owns an
-// edit buffer at a time. Layers rename through the same pair, keyed by a
-// negative id so the two namespaces cannot collide.
+// Which name field is being typed into, so exactly one row owns an edit buffer
+// at a time. A state uses its own minted id, which is always positive; a layer
+// has no id and takes a negative band keyed by index, so the two cannot
+// collide.
 @(private = "file") _ta_rename_id: i32
 @(private = "file") _ta_rename_buf: [64]byte
+@(private = "file") _RENAME_LAYER :: i32(-1) // -1, -2, ... by layer index
 
 // --- Row drawers ----------------------------------------------------------------
 // field_edit_row hands a drawer nothing but the field, and Odin procs are not
@@ -164,7 +167,7 @@ _ta_layer_rows :: proc(a: ^anim.TimelineAnimator, li: int) {
 
 	// Layers carry a name here, unlike the Animation component's — it is what
 	// animator_layer_weight and the doc's layer table refer to.
-	_ta_name_field(-i32(li) - 1, &l.name, "Layer")
+	_ta_name_field(_RENAME_LAYER - i32(li), &l.name, "Layer")
 	im.SameLine()
 	im.TextDisabled("Layer %d", i32(li))
 
@@ -229,7 +232,51 @@ _ta_state_row :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 	_ta_row(a, &st.speed, typeid_of(f32), "State Speed", _ta_speed_drawer, "Speed")
 	_ta_row(a, &st.wrap, typeid_of(seq.Timeline_Wrap), "Wrap", _ta_wrap_drawer, "Wrap")
 	_ta_row(a, &st.fade, typeid_of(f32), "Fade", _ta_fade_drawer, "Fade")
+	_ta_track_bindings(st)
 	return true
+}
+
+// What the state's timeline drives: one row per track, showing that TRACK's
+// own binding field — the animation track's Animation, the audio track's
+// AudioSource — through Track_Desc.binding, so the animator never names a
+// kind. This is the reason the tree exists: every object a character depends
+// on is read and edited in one place. But the fields live on the tracks, so
+// each row pushes the TRACK component as the undo owner and records any prefab
+// override against it. Editing here is editing the track.
+@(private = "file")
+_ta_track_bindings :: proc(st: ^anim.Timeline_State) {
+	w := engine.ctx_world()
+	if !engine.world_pool_valid(w, st.timeline.handle) do return
+	base := cast(^engine.CompData)engine.world_pool_get(w, st.timeline.handle)
+	if base == nil do return
+	_, d := engine.transform_get_comp(base.owner, seq.PlayableDirector)
+	if d == nil do return
+	tracks := seq.director_tracks(d)
+	if len(tracks) == 0 do return
+
+	im.AlignTextToFramePadding()
+	im.TextDisabled("Tracks")
+	for &tv in tracks {
+		b, ok := seq.track_binding(&tv)
+		if !ok do continue
+		im.PushIDInt(i32(tv.node.index))
+		undo.push_component_owner(b.comp)
+
+		// The override belongs to the track component, not the animator.
+		track_base := cast(^engine.CompData)engine.world_pool_get(w, b.comp)
+		prev_lid := engine.inspector_set_nested_local_id(track_base.local_id if track_base != nil else 0)
+		prev_ref := inspector.current_field_ref_target
+		inspector.current_field_ref_target = b.ref
+
+		label := strings.clone_to_cstring(tv.name, context.temp_allocator)
+		finished := inspector.field_edit_row(b.ptr, b.tid, 0, "Track Binding", inspector.resolve_property_drawer(b.tid), label)
+		inspector.record_nested_override(b.ptr, b.tid, b.field, finished)
+
+		inspector.current_field_ref_target = prev_ref
+		engine.inspector_set_nested_local_id(prev_lid)
+		undo.pop_owner()
+		im.PopID()
+	}
 }
 
 // Play and remove, right-aligned. Returns true when the state was removed.

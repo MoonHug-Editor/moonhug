@@ -28,23 +28,10 @@ import seq "moonhug:packages/sequencer"
 TrackAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
-	// The output slot this track plays through when a TimelineAnimator owns
-	// the timeline: the animator maps the key to an object, and the track
-	// takes the AudioSource on it. Naming a slot rather than an object is what
-	// lets one timeline prefab voice several characters. Same shape as
-	// TrackAnimation.key.
-	key: string,
-
-	// The AudioSource this track plays through when no animator is involved.
+	// The AudioSource this track plays through. A TimelineAnimator playing the
+	// timeline shows this field beside its state (Track_Desc.binding), so
+	// retargeting a character's sounds is done there — on this field.
 	source: engine.Ref_Local `ref:"AudioSource"`,
-}
-
-// `key` is heap-owned, so the component needs this under exactly this name:
-// type_cleanup dispatches on `cleanup_<Type>`, and undo calls it before
-// unmarshalling a restored value.
-cleanup_TrackAudio :: proc(tr: ^TrackAudio) {
-	if tr.key != "" do delete(tr.key)
-	tr.key = ""
 }
 
 @(component={menu="Playables/Clips/ClipAudio"})
@@ -68,25 +55,27 @@ audio_track_init :: proc() {
 		destroy     = _audio_track_destroy,
 		tick        = _audio_track_tick,
 		preview_end = _audio_track_preview_end,
+		binding     = _audio_track_binding,
 	})
 }
 
-// The AudioSource this track drives, or nil. A driver owning the director
-// resolves the track's key to an object first, and the AudioSource on that
-// object wins; otherwise the track's own `source`. The same two-level rule the
-// animation track follows: the track's binding is a default, the driver above
-// it overrides.
+// The AudioSource this track drives, or nil.
 @(private = "file")
 _audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^AudioSource {
 	_, at := get_comp(ctx.track.node, TrackAudio)
-	if at == nil do return nil
-	if tH, ok := seq.track_resolve_key(ctx, at.key); ok {
-		if _, src := engine.transform_get_comp(tH, AudioSource); src != nil do return src
-	}
-	if at.source.handle.type_key != .AudioSource do return nil
+	if at == nil || at.source.handle.type_key != .AudioSource do return nil
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, at.source.handle) do return nil
 	return cast(^AudioSource)engine.world_pool_get(w, at.source.handle)
+}
+
+// `source`, for a driver's inspector to draw beside the state playing this
+// track. Undo lands on the TrackAudio, since that is whose field it is.
+@(private = "file")
+_audio_track_binding :: proc(node: engine.Transform_Handle) -> (seq.Track_Binding, bool) {
+	owned, at := get_comp(node, TrackAudio)
+	if at == nil do return {}, false
+	return {ptr = &at.source, tid = typeid_of(engine.Ref_Local), ref = "AudioSource", field = "source", comp = owned.handle}, true
 }
 
 // Per-(director, track) state: the voice each active clip plays through,

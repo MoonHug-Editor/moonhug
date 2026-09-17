@@ -57,33 +57,6 @@ _director_is_claimed :: proc(d: ^PlayableDirector) -> bool {
 	return false
 }
 
-// A track names its target by KEY when a driver owns its director, and the
-// driver decides what the key means. The driver lives in another package (a
-// TimelineAnimator maps keys to objects), so it registers a resolver here, and
-// a track in any package asks through track_resolve_key — the same shape as
-// the drive checks above, for the same reason: the sequencer names no driver.
-Key_Resolver :: proc(director: engine.Transform_Handle, key: string) -> (engine.Transform_Handle, bool)
-
-@(private = "file")
-_key_resolvers: [dynamic]Key_Resolver
-
-// Process-global, so never the caller's allocator.
-director_register_key_resolver :: proc(fn: Key_Resolver) {
-	context.allocator = runtime.default_allocator()
-	if _key_resolvers == nil do _key_resolvers = make([dynamic]Key_Resolver)
-	append(&_key_resolvers, fn)
-}
-
-// The object `key` names for the director this track belongs to. False when
-// no driver owns the director or none of them binds the key — the track then
-// falls back to its own direct target.
-track_resolve_key :: proc(ctx: ^Track_Ctx, key: string) -> (engine.Transform_Handle, bool) {
-	if key == "" do return {}, false
-	for fn in _key_resolvers {
-		if tH, ok := fn(ctx.owner, key); ok do return tH, true
-	}
-	return {}, false
-}
 
 // Whether an ancestor node carries a TimelineClip — the director sits inside
 // a control track's clip and takes its time from the parent timeline.

@@ -27,17 +27,16 @@ import seq "moonhug:packages/sequencer"
 TrackAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
-	// The output slot this track drives when a TimelineAnimator owns the
-	// timeline. It is the track's own DEFAULT: a state may route this track to
-	// a different slot, and a state that routes nothing gets this one. Naming
-	// a slot rather than an object is what lets one timeline prefab serve
-	// several animators binding different objects.
-	key: string,
-
-	// The Animation component this track drives when no animator is involved —
-	// the object the clips play on. Its own playback is suppressed while the
-	// track drives it. Unset = the director's own object, which is what a
-	// timeline authored as a self-contained prefab wants.
+	// The Animation component this track drives — the object the clips play
+	// on. Its own playback is suppressed while the track drives it. Unset = the
+	// director's own object, which is what a timeline authored as a
+	// self-contained prefab wants.
+	//
+	// This is the ONLY binding, under an animator or not. Retargeting a
+	// timeline to another character is a prefab override on this field, and
+	// the TimelineAnimator's inspector draws it beside the state playing the
+	// timeline (Track_Desc.binding), so every binding a character depends on is
+	// edited in one place — but it is still this field being edited.
 	target: engine.Ref_Local `ref:"Animation"`,
 }
 
@@ -47,14 +46,6 @@ ClipAnimation :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	clip: engine.Asset_GUID `ext:"anim"`,
-}
-
-// `key` is heap-owned, so the component needs this under exactly this name:
-// type_cleanup dispatches on `cleanup_<Type>`, and undo calls it before
-// unmarshalling a restored value.
-cleanup_TrackAnimation :: proc(tr: ^TrackAnimation) {
-	if tr.key != "" do delete(tr.key)
-	tr.key = ""
 }
 
 // The .anim a timeline clip plays, or the empty guid.
@@ -80,14 +71,6 @@ animation_track_init :: proc() {
 		a, ok := _director_arenas[d.owner]
 		return ok && a.adopter != nil
 	})
-	// A track on an adopted director resolves its key through the animator's
-	// outputs. Registered with the sequencer so a track in ANY plugin can ask,
-	// without that plugin importing this one — the audio track is the first.
-	seq.director_register_key_resolver(proc(director: engine.Transform_Handle, key: string) -> (engine.Transform_Handle, bool) {
-		a, ok := _director_arenas[director]
-		if !ok || a.adopter == nil do return {}, false
-		return timeline_animator_output_owner_for_key(a.adopter, key)
-	})
 	seq.track_register(seq.Track_Desc{
 		track_key   = .TrackAnimation,
 		clip_key    = .ClipAnimation,
@@ -96,7 +79,17 @@ animation_track_init :: proc() {
 		destroy     = _animation_track_destroy,
 		tick        = _animation_track_tick,
 		preview_end = _animation_track_preview_end,
+		binding     = _animation_track_binding,
 	})
+}
+
+// `target`, for a driver's inspector to draw beside the state playing this
+// track. Undo lands on the TrackAnimation, since that is whose field it is.
+@(private = "file")
+_animation_track_binding :: proc(node: engine.Transform_Handle) -> (seq.Track_Binding, bool) {
+	owned, at := get_comp(node, TrackAnimation)
+	if at == nil do return {}, false
+	return {ptr = &at.target, tid = typeid_of(engine.Ref_Local), ref = "Animation", field = "target", comp = owned.handle}, true
 }
 
 // --- The per-director arena -----------------------------------------------------------
@@ -215,16 +208,14 @@ _arena_output :: proc(a: ^_Director_Arena, target: engine.Transform_Handle) -> i
 	return idx
 }
 
-// The animator output an adopted track writes to. Its own `key` is the
-// default, and the track's `target` is not consulted at all — under an
-// animator the scene binding belongs to the animator, not to the timeline.
+// The animator output an adopted track writes to: the one built for the
+// object this track drives on its own. The track resolves its target exactly
+// as it does without an animator — the animator only changes WHERE the
+// resulting subtree hangs, so several states blend inside one graph.
 @(private = "file")
 _ta_track_output :: proc(a: ^_Director_Arena, ctx: ^seq.Track_Ctx) -> int {
 	if a.adopter == nil do return -1
-	key := ""
-	if _, at := get_comp(ctx.track.node, TrackAnimation); at != nil do key = at.key
-	if key == "" do return -1
-	return timeline_animator_output_for_key(a.adopter, key)
+	return timeline_animator_output_index(a.adopter, _animation_track_root(ctx))
 }
 
 // Evaluate and apply ONE output. A track flushes its own output at the end of
@@ -263,25 +254,28 @@ _Anim_Track :: struct {
 // The Animation component the track drives, or nil when it poses a bare
 // transform instead (no target and none on the director).
 //
-// Full resolution order, lowest default first, each overridden from above:
+// Resolution order, lowest default first, each overridden from above:
 //   1. the director's own transform
 //   2. an Animation on the director
 //   3. this track's `target`
-//   4. this track's `key`, through the owning animator's `targets`
-//   5. the playing state's route for this track
-// Levels 4 and 5 need a TimelineAnimator owning the timeline, which is what
-// adopts the director — until then a track resolves through 1-3 exactly as it
-// always has.
+// The same three levels with or without a TimelineAnimator: an animator
+// changes where the track's subtree hangs, never what it drives.
 @(private = "file")
 _animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^Animation {
+	return animation_track_comp_at(ctx.track.node, ctx.owner)
+}
+
+// `_animation_track_comp` for a track node and its director, for callers that
+// hold no Track_Ctx — the animator, sizing its outputs before any track builds.
+animation_track_comp_at :: proc(node, director: engine.Transform_Handle) -> ^Animation {
 	w := engine.ctx_world()
-	if _, at := get_comp(ctx.track.node, TrackAnimation); at != nil {
+	if _, at := get_comp(node, TrackAnimation); at != nil {
 		if engine.world_pool_valid(w, at.target.handle) && at.target.handle.type_key == .Animation {
 			return cast(^Animation)engine.world_pool_get(w, at.target.handle)
 		}
 	}
 	// Unset: the director's own Animation, when it has one.
-	_, a := get_comp(ctx.owner, Animation)
+	_, a := get_comp(director, Animation)
 	return a
 }
 
@@ -289,8 +283,12 @@ _animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^Animation {
 // the director when it drives none.
 @(private = "file")
 _animation_track_root :: proc(ctx: ^seq.Track_Ctx) -> engine.Transform_Handle {
-	if a := _animation_track_comp(ctx); a != nil do return engine.Transform_Handle(a.owner)
-	return ctx.owner
+	return animation_track_root_at(ctx.track.node, ctx.owner)
+}
+
+animation_track_root_at :: proc(node, director: engine.Transform_Handle) -> engine.Transform_Handle {
+	if a := animation_track_comp_at(node, director); a != nil do return engine.Transform_Handle(a.owner)
+	return director
 }
 
 @(private = "file")
@@ -302,10 +300,10 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 	g := _arena_graph(a)
 	parent: Playable_Handle
 	if a.adopter != nil {
-		// Adopted: the output comes from this track's KEY through the
-		// animator's bindings, and the subtree hangs under the state's mixer
-		// for that output. An unresolved key leaves the track inert rather
-		// than posing something arbitrary.
+		// Adopted: the output is the animator's one for this track's own
+		// target, and the subtree hangs under the state's mixer for it. A
+		// target the animator built no output for (it appeared after the
+		// build) leaves the track inert until the next rebuild.
 		st.out = _ta_track_output(a, ctx)
 		if st.out < 0 || st.out >= len(a.parents) {
 			st.out = -1

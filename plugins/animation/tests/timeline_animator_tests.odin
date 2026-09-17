@@ -1,8 +1,12 @@
 package animation_tests
 
 // TimelineAnimator (docs/TimelineAnimator.md): the component's graph skeleton —
-// one output per bound target, a layer mixer at each output's root, one mixer
-// per layer under it.
+// one output per object its timelines' tracks drive, a layer mixer at each
+// output's root, one mixer per layer under it.
+//
+// A track's own `target` is the ONLY binding, under an animator or not. The
+// animator reads those targets to size its outputs, and changes only where a
+// track's subtree hangs — never what it drives.
 
 import "core:encoding/json"
 import "core:encoding/uuid"
@@ -14,29 +18,6 @@ import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"
 
-// Strings on a component are owned by it: cleanup_TimelineAnimator frees them,
-// so a test may not hand it a literal.
-//
-// An output names an OBJECT. `h` is the component the older tests bound; the
-// helper takes its owner, so every existing test reads unchanged and binds
-// what the field now stores. A zero handle stays unbound.
-@(private = "file")
-_ta_output :: proc(key: string, h: engine.Handle) -> anim.Output_Binding {
-	obj: engine.Handle
-	if h != {} {
-		if raw := engine.world_pool_get(engine.ctx_world(), h); raw != nil {
-			obj = engine.Handle((cast(^engine.CompData)raw).owner)
-		}
-	}
-	return {key = strings.clone(key), object = {handle = obj}}
-}
-
-// An output bound straight to an object, the shape the field actually holds.
-@(private = "file")
-_ta_output_obj :: proc(key: string, tH: engine.Transform_Handle) -> anim.Output_Binding {
-	return {key = strings.clone(key), object = {handle = engine.Handle(tH)}}
-}
-
 @(test)
 test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
@@ -44,6 +25,12 @@ test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+
+	anim.animation_track_init()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	guid := _clip_guid(11)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -56,23 +43,28 @@ test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
-	append(&ta.outputs, _ta_output("Face", f_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
-	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
-	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Upper"), weight = 0.5})
+	// The outputs come from what the states' tracks drive: one timeline on
+	// Body, one on Face, on either layer.
+	base := anim.Animator_Layer{name = strings.clone("Base")}
+	base.states = make([dynamic]anim.Timeline_State)
+	append(&base.states, _mk_state("A", _mk_local_timeline(root, b_owned.handle, guid)))
+	upper := anim.Animator_Layer{name = strings.clone("Upper"), weight = 0.5}
+	upper.states = make([dynamic]anim.Timeline_State)
+	append(&upper.states, _mk_state("B", _mk_local_timeline(root, f_owned.handle, guid)))
+	append(&ta.layers, base)
+	append(&ta.layers, upper)
 
 	anim.timeline_animator_tick(0)
 
 	testing.expect_value(t, len(ta.graph.outputs), 2)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Body"), 0)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Face"), 1)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Missing"), -1)
+	testing.expect_value(t, anim.timeline_animator_output_index(ta, body), 0)
+	testing.expect_value(t, anim.timeline_animator_output_index(ta, face), 1)
+	testing.expect_value(t, anim.timeline_animator_output_index(ta, root), -1)
 
 	for oi in 0 ..< 2 {
 		o := anim.graph_output(&ta.graph, oi)
-		testing.expect(t, o != nil, "every bound target has an output")
+		testing.expect(t, o != nil, "every driven object has an output")
 		n := anim.playable_node(&ta.graph, o.root)
 		testing.expect(t, n != nil, "the output root is a live node")
 		// One mixer per layer, in layer order — input order IS override order.
@@ -85,13 +77,21 @@ test_timeline_animator_graph_skeleton :: proc(t: ^testing.T) {
 	}
 }
 
+// A track with no target drives its director's own object — the default a
+// self-contained timeline relies on — and the animator builds that output like
+// any other. Two states, one on Body and one unset, give two outputs.
 @(test)
-test_timeline_animator_skips_unbound_targets :: proc(t: ^testing.T) {
+test_unset_track_target_falls_back_to_director :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
+	anim.animation_track_init()
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	guid := _clip_guid(12)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {1, 0, 0, 0})
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
@@ -101,17 +101,20 @@ test_timeline_animator_skips_unbound_targets :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Nothing", {})) // never bound
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	bound := _mk_local_timeline(root, b_owned.handle, guid)
+	loose := _mk_local_timeline(root, {}, guid) // no target, no Animation on the director
+	append(&layer.states, _mk_state("Bound", bound))
+	append(&layer.states, _mk_state("Loose", loose))
+	append(&ta.layers, layer)
 
 	anim.timeline_animator_tick(0)
 
-	// A key with no component behind it produces no output, and the keys that
-	// do resolve are unaffected by its position in the list.
-	testing.expect_value(t, len(ta.graph.outputs), 1)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Nothing"), -1)
-	testing.expect_value(t, anim.timeline_animator_output_for_key(ta, "Body"), 0)
+	testing.expect_value(t, len(ta.graph.outputs), 2)
+	testing.expect(t, anim.timeline_animator_output_index(ta, body) >= 0, "a targeted track poses its target")
+	testing.expect(t, anim.timeline_animator_output_index(ta, loose) >= 0, "an untargeted track poses its own director")
 }
 
 @(test)
@@ -130,29 +133,33 @@ test_timeline_animator_idle_leaves_targets_alone :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
-	append(&ta.layers, anim.Animator_Layer{name = strings.clone("Base")})
+	// A state exists, so Body has an output — but nothing plays it.
+	anim.animation_track_init()
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, _mk_state("Idle", _mk_local_timeline(root, b_owned.handle, {})))
+	append(&ta.layers, layer)
 
 	bt := engine.pool_get(&tc.world.transforms, engine.Handle(body))
 	bt.position = {3, 0, 0}
 
-	// No state is attached to any layer mixer, so the graph would evaluate to
-	// an empty pose. Applying that would write bind-time defaults over whatever
-	// else poses the object, so an idle animator must not apply at all.
+	// No state has weight, so the graph would evaluate to an empty pose.
+	// Applying that would write bind-time defaults over whatever else poses
+	// the object, so an idle animator must not apply at all.
 	anim.timeline_animator_tick(0)
 	anim.timeline_animator_tick(0)
 
+	testing.expect(t, len(ta.graph.outputs) == 1, "the state's target has an output")
 	testing.expect(t, abs(bt.position.x - 3) < 0.001,
-		"an animator with no states does not touch its targets")
+		"an animator playing nothing does not touch its targets")
 }
 
-// A timeline living in the scene: a director with one animation track keyed to
-// `key`, playing `clip` across its whole length. Cheaper than a prefab fixture
-// and exercises the local-reference form a state supports.
+// A timeline living in the scene: a director with one animation track driving
+// the Animation `target`, playing `clip` across its whole length. The track's
+// own target is the only binding there is — under an animator too.
 @(private = "file")
-_mk_local_timeline :: proc(parent: engine.Transform_Handle, key: string, clip: engine.Asset_GUID, length: f32 = 1) -> engine.Transform_Handle {
+_mk_local_timeline :: proc(parent: engine.Transform_Handle, target: engine.Handle, clip: engine.Asset_GUID, length: f32 = 1) -> engine.Transform_Handle {
 	tl := engine.transform_new("Timeline", parent)
 	_, draw := engine.transform_add_comp(tl, .PlayableDirector)
 	d := cast(^seq.PlayableDirector)draw
@@ -163,7 +170,7 @@ _mk_local_timeline :: proc(parent: engine.Transform_Handle, key: string, clip: e
 	track := engine.transform_new("animation", tl)
 	engine.transform_get_or_add_comp(track, seq.TimelineTrack)
 	_, traw := engine.transform_add_comp(track, .TrackAnimation)
-	(cast(^anim.TrackAnimation)traw).key = strings.clone(key)
+	(cast(^anim.TrackAnimation)traw).target = {handle = target}
 
 	cn := engine.transform_new("clip", track)
 	_, cc := engine.transform_get_or_add_comp(cn, seq.TimelineClip)
@@ -202,7 +209,7 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
 	body := engine.transform_new("Body", root)
-	b_owned, _ := engine.transform_add_comp(body, .Animation)
+	engine.transform_add_comp(body, .Animation)
 
 	tl := engine.transform_new("Timeline", root)
 	d_owned, draw := engine.transform_add_comp(tl, .PlayableDirector)
@@ -211,8 +218,6 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -237,8 +242,13 @@ test_state_adopts_local_timeline :: proc(t: ^testing.T) {
 // Playing a state routes its timeline's tracks to the keys the animator binds,
 // and the animator's flush is what poses the object. An adopted track never
 // applies a pose of its own.
+//
+// This is also THE fallback test: the timeline is self-contained — its track
+// names Body directly, the animator binds nothing — and it plays under the
+// animator with zero setup. Before, an adopted track's own target was ignored
+// and this exact timeline would have been inert.
 @(test)
-test_state_play_poses_keyed_target :: proc(t: ^testing.T) {
+test_state_play_poses_track_target :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -258,13 +268,11 @@ test_state_play_poses_keyed_target :: proc(t: ^testing.T) {
 	driven := cast(^anim.Animation)b_raw
 	driven.enabled = true
 
-	tl := _mk_local_timeline(root, "Body", guid)
+	tl := _mk_local_timeline(root, b_owned.handle, guid)
 
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -284,7 +292,7 @@ test_state_play_poses_keyed_target :: proc(t: ^testing.T) {
 	anim.timeline_animator_tick(0.1)
 
 	testing.expect(t, abs(bt.position.x - 7) < 0.001,
-		"playing a state poses the key's target through the animator")
+		"playing a state poses the track's target through the animator")
 	testing.expect(t, driven.timeline_driven, "playing claims the bound component")
 }
 
@@ -311,14 +319,12 @@ test_state_cross_fade_blends :: proc(t: ^testing.T) {
 	body := engine.transform_new("Body", root)
 	b_owned, _ := engine.transform_add_comp(body, .Animation)
 
-	tl_a := _mk_local_timeline(root, "Body", lo)
-	tl_b := _mk_local_timeline(root, "Body", hi)
+	tl_a := _mk_local_timeline(root, b_owned.handle, lo)
+	tl_b := _mk_local_timeline(root, b_owned.handle, hi)
 
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
@@ -378,14 +384,12 @@ test_state_fade_interrupted_by_third :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
-	append(&layer.states, _mk_state("A", _mk_local_timeline(root, "Body", ga)))
-	append(&layer.states, _mk_state("B", _mk_local_timeline(root, "Body", gb)))
-	append(&layer.states, _mk_state("C", _mk_local_timeline(root, "Body", gc)))
+	append(&layer.states, _mk_state("A", _mk_local_timeline(root, b_owned.handle, ga)))
+	append(&layer.states, _mk_state("B", _mk_local_timeline(root, b_owned.handle, gb)))
+	append(&layer.states, _mk_state("C", _mk_local_timeline(root, b_owned.handle, gc)))
 	append(&ta.layers, layer)
 
 	a_id, _ := anim.animator_find(ta, "A")
@@ -438,12 +442,10 @@ test_state_speed_scales_its_playhead :: proc(t: ^testing.T) {
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
 	ta.speed = 2
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
-	st := _mk_state("Fast", _mk_local_timeline(root, "Body", guid, 10))
+	st := _mk_state("Fast", _mk_local_timeline(root, b_owned.handle, guid, 10))
 	st.speed = 3
 	append(&layer.states, st)
 	append(&ta.layers, layer)
@@ -486,28 +488,25 @@ test_animator_reports_authoring_problems :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
-	append(&ta.outputs, _ta_output("Inner", i_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
-	// The track asks for "Face", which nothing binds.
-	append(&layer.states, _mk_state("Bad", _mk_local_timeline(root, "Face", guid)))
+	// One timeline poses Body, another poses Inner, which sits inside Body.
+	append(&layer.states, _mk_state("Outer", _mk_local_timeline(root, b_owned.handle, guid)))
+	append(&layer.states, _mk_state("Inner", _mk_local_timeline(root, i_owned.handle, guid)))
 	append(&ta.layers, layer)
 
 	anim.timeline_animator_tick(0)
 	problems := anim.timeline_animator_problems(ta)
 
-	unbound, overlap := 0, 0
+	overlap := 0
 	for p in problems {
-		switch p.kind {
-		case .Unbound_Key:      if p.key == "Face" do unbound += 1
-		case .Overlapping_Pose: overlap += 1
+		if p.kind == .Overlapping_Pose {
+			overlap += 1
+			testing.expect_value(t, p.object, inner)
 		}
 	}
-	testing.expect(t, unbound == 1, "a key nothing binds is reported")
-	testing.expect(t, overlap == 1, "two pose outputs that overlap are reported")
+	testing.expect(t, overlap == 1, "two pose outputs that overlap are reported, against the inner one")
 }
 
 // The shipped sample scene is hand-generated JSON, which is exactly the kind of
@@ -542,20 +541,23 @@ test_timeline_animator_demo_scene_loads :: proc(t: ^testing.T) {
 	testing.expect(t, ta != nil, "the root carries a TimelineAnimator")
 	if ta == nil do return
 
-	testing.expect_value(t, len(ta.outputs), 2)
 	testing.expect_value(t, len(ta.layers), 1)
 	testing.expect_value(t, len(ta.layers[0].states), 2)
 
 	anim.timeline_animator_tick(0)
-	testing.expect(t, anim.timeline_animator_output_for_key(ta, "Body") >= 0, "Body is bound")
-	testing.expect(t, anim.timeline_animator_output_for_key(ta, "Prop") >= 0, "Prop is bound")
+	// The tracks target the Animations on Body (8009) and Sword (8023), so
+	// those two objects are what the animator poses.
+	body_h, _ := engine.scene_find_selectable_transform_local_id(s, 8009)
+	sword_h, _ := engine.scene_find_selectable_transform_local_id(s, 8023)
+	testing.expect(t, anim.timeline_animator_output_index(ta, body_h) >= 0, "Body is posed")
+	testing.expect(t, anim.timeline_animator_output_index(ta, sword_h) >= 0, "Sword is posed")
 	_, i_ok := anim.animator_find(ta, "Idle")
 	_, s_ok := anim.animator_find(ta, "Swing")
 	testing.expect(t, i_ok && s_ok, "both states resolve by name")
 	testing.expect_value(t, len(anim.timeline_animator_problems(ta)), 0)
 
 	// End to end, and specifically the thing a clip player cannot do: ONE
-	// state posing two keyed targets. Swing rotates ArmR (several levels down
+	// state posing two targets. Swing rotates ArmR (several levels down
 	// a name path) and the Sword (a different Animation component).
 	arm := _find_by_name(tc, root, "ArmR")
 	sword := _find_by_name(tc, root, "Sword")
@@ -624,7 +626,7 @@ test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
-	b_owned, b_raw := engine.transform_add_comp(root, .Animation)
+	_, b_raw := engine.transform_add_comp(root, .Animation)
 	a_comp := cast(^anim.Animation)b_raw
 	a_comp.enabled = true
 
@@ -643,8 +645,6 @@ test_graph_provider_prefers_the_concrete_driver :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Self", b_owned.handle))
 	anim.timeline_animator_tick(0)
 
 	src2, ok2 := anim.playable_graph_for_object(root)
@@ -674,7 +674,9 @@ test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
-	tl := _mk_local_timeline(root, "Body", guid)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+	tl := _mk_local_timeline(root, b_owned.handle, guid)
 
 	// Standalone: the arena is the director's own.
 	_, d := engine.transform_get_comp(tl, seq.PlayableDirector)
@@ -684,16 +686,17 @@ test_graph_provider_reports_director_arena :: proc(t: ^testing.T) {
 	testing.expect(t, src.graph == anim.animation_director_graph(tl), "it reports its own arena")
 
 	// Adopted: the tracks live in the animator's graph, so that is what a
-	// viewer must show — the director's own arena graph is empty.
-	body := engine.transform_new("Body", root)
-	b_owned, _ := engine.transform_add_comp(body, .Animation)
+	// viewer must show — the director's own arena graph is empty. A state
+	// naming the timeline is what adopts it, and what gives Body its output.
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, _mk_state("Idle", tl))
+	append(&ta.layers, layer)
 	anim.timeline_animator_tick(0)
-	anim.animation_director_adopt(tl, ta, {anim.graph_output(&ta.graph, 0).root})
 
 	src2, ok2 := anim.playable_graph_for_object(tl)
 	testing.expect(t, ok2, "an adopted director is still claimed")
@@ -724,14 +727,12 @@ test_once_state_reports_done :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
 
-	looping := _mk_state("Looping", _mk_local_timeline(root, "Body", guid))
-	once := _mk_state("Once", _mk_local_timeline(root, "Body", guid))
+	looping := _mk_state("Looping", _mk_local_timeline(root, b_owned.handle, guid))
+	once := _mk_state("Once", _mk_local_timeline(root, b_owned.handle, guid))
 	once.wrap = .Once
 	append(&layer.states, looping)
 	append(&layer.states, once)
@@ -788,13 +789,11 @@ test_replaying_a_finished_once_state_rewinds :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
 	ta := cast(^anim.TimelineAnimator)raw
 	ta.enabled = true
-	ta.outputs = make([dynamic]anim.Output_Binding)
-	append(&ta.outputs, _ta_output("Body", b_owned.handle))
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
-	append(&layer.states, _mk_state("Idle", _mk_local_timeline(root, "Body", guid)))
-	shot := _mk_state("Shot", _mk_local_timeline(root, "Body", guid))
+	append(&layer.states, _mk_state("Idle", _mk_local_timeline(root, b_owned.handle, guid)))
+	shot := _mk_state("Shot", _mk_local_timeline(root, b_owned.handle, guid))
 	shot.wrap = .Once
 	append(&layer.states, shot)
 	append(&ta.layers, layer)
@@ -849,6 +848,8 @@ test_state_id_survives_deleting_an_earlier_state :: proc(t: ^testing.T) {
 
 	root := engine.transform_new("Rig")
 	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
 	guid := _clip_guid(90)
 	anim.animation_clip_cache[guid] = _const_clip(.Position, {5, 0, 0, 0}, 1, .Loop)
 
@@ -859,8 +860,8 @@ test_state_id_survives_deleting_an_earlier_state :: proc(t: ^testing.T) {
 	ta.layers = make([dynamic]anim.Animator_Layer)
 	layer := anim.Animator_Layer{name = strings.clone("Base")}
 	layer.states = make([dynamic]anim.Timeline_State)
-	append(&layer.states, _mk_state("First", _mk_local_timeline(root, "Body", guid)))
-	append(&layer.states, _mk_state("Second", _mk_local_timeline(root, "Body", guid)))
+	append(&layer.states, _mk_state("First", _mk_local_timeline(root, b_owned.handle, guid)))
+	append(&layer.states, _mk_state("Second", _mk_local_timeline(root, b_owned.handle, guid)))
 	append(&ta.layers, layer)
 
 	second, ok := anim.animator_find(ta, "Second")

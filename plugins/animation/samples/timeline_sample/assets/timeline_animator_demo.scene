@@ -102,7 +102,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8005
@@ -139,7 +141,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8007
@@ -187,7 +191,9 @@
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 8009,
@@ -275,7 +281,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8012
@@ -312,7 +320,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8015
@@ -349,7 +359,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8018
@@ -386,7 +398,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8021
@@ -464,7 +478,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8026
@@ -517,7 +533,7 @@
     },
     {
       "local_id": 8030,
-      "name": "animation",
+      "name": "Body",
       "is_active": true,
       "position": [
         0.0,
@@ -586,7 +602,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8034
@@ -651,7 +669,7 @@
     },
     {
       "local_id": 8038,
-      "name": "animation",
+      "name": "Body",
       "is_active": true,
       "position": [
         0.0,
@@ -720,7 +738,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8042
@@ -732,7 +752,7 @@
     },
     {
       "local_id": 8044,
-      "name": "animation",
+      "name": "Prop",
       "is_active": true,
       "position": [
         0.0,
@@ -801,7 +821,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 8048
@@ -882,7 +904,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 908078030979309
@@ -919,7 +943,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 2715653696262579
@@ -927,8 +953,12 @@
       ]
     }
   ],
-  "nested_scenes": [],
-  "breadcrumbs": [],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
   "components": [
     {
       "__type": "0959886b-dc83-491c-9843-df105c69e01d",
@@ -941,8 +971,8 @@
           "name": "Base",
           "states": [
             {
-              "id": 1,
               "fade": 0.34999999,
+              "id": 1,
               "name": "Idle",
               "speed": 1.0,
               "timeline": {
@@ -951,8 +981,8 @@
               "wrap": 1
             },
             {
-              "id": 2,
               "fade": 0.15000001,
+              "id": 2,
               "name": "Swing",
               "speed": 1.0,
               "timeline": {
@@ -964,21 +994,7 @@
           "weight": 1.0
         }
       ],
-      "speed": 1.0,
-      "outputs": [
-        {
-          "key": "Body",
-          "object": {
-            "local_id": 8009
-          }
-        },
-        {
-          "key": "Prop",
-          "object": {
-            "local_id": 8023
-          }
-        }
-      ]
+      "speed": 1.0
     },
     {
       "__type": "7c7a5a92-7ea8-4409-a913-2252a0f48a21",
@@ -1027,7 +1043,7 @@
         0.89999998,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
+      "inner_spot_angle": 21.7999992399999982,
       "intensity": 1.39999998,
       "range": 10.0,
       "spot_angle": 30.0,
@@ -1040,7 +1056,9 @@
         "local_id": 8010
       },
       "clip": "00000000-0000-0000-0000-000000000000",
-      "layers": [],
+      "layers": [
+
+      ],
       "play_automatically": false,
       "speed": 1.0
     },
@@ -1135,7 +1153,9 @@
         "local_id": 8024
       },
       "clip": "00000000-0000-0000-0000-000000000000",
-      "layers": [],
+      "layers": [
+
+      ],
       "play_automatically": false,
       "speed": 1.0
     },
@@ -1185,9 +1205,8 @@
         "enabled": true,
         "local_id": 8032
       },
-      "key": "Body",
       "target": {
-        "local_id": 0
+        "local_id": 8010
       }
     },
     {
@@ -1235,9 +1254,8 @@
         "enabled": true,
         "local_id": 8040
       },
-      "key": "Body",
       "target": {
-        "local_id": 0
+        "local_id": 8010
       }
     },
     {
@@ -1274,9 +1292,8 @@
         "enabled": true,
         "local_id": 8046
       },
-      "key": "Prop",
       "target": {
-        "local_id": 0
+        "local_id": 8024
       }
     },
     {
