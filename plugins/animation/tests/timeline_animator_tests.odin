@@ -11,6 +11,7 @@ package animation_tests
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
+import "core:reflect"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -890,4 +891,35 @@ _state_name_of :: proc(a: ^anim.TimelineAnimator, id: anim.State_Id) -> (layer: 
 		}
 	}
 	return -1, -1, ""
+}
+
+// The binding a driver's inspector draws is READ OFF THE TRACK STRUCT — field
+// type, pointer and picker tags — from nothing but the registered name, so
+// the proxy row and the track's own inspector cannot disagree.
+@(test)
+test_track_binding_resolves_from_struct :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	body := engine.transform_new("Body")
+	b_owned, _ := engine.transform_add_comp(body, .Animation)
+	tl := _mk_local_timeline(engine.Transform_Handle(tc.scene.root.handle), b_owned.handle, {})
+	_, draw := engine.transform_get_comp_key(tl, .PlayableDirector)
+	tracks := seq.director_tracks(cast(^seq.PlayableDirector)draw)
+	testing.expect_value(t, len(tracks), 1)
+	if len(tracks) != 1 do return
+
+	b, ok := seq.track_binding(&tracks[0])
+	testing.expect(t, ok, "an animation track registers a binding field")
+	if !ok do return
+	track_owned, ta := engine.transform_get_comp(tracks[0].node, anim.TrackAnimation)
+	testing.expect(t, b.ptr == rawptr(&ta.target), "the pointer is the track's own target field")
+	testing.expect(t, b.tid == typeid_of(engine.Ref_Local), "the type is the field's")
+	testing.expect_value(t, b.field, "target")
+	testing.expect(t, b.comp == track_owned.handle, "undo owner is the track component")
+	ref, has_ref := reflect.struct_tag_lookup(b.tag, "ref")
+	testing.expect(t, has_ref && ref == "Animation", "the picker tag is the struct's, not a copy")
 }

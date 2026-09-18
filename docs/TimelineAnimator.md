@@ -39,7 +39,7 @@ this component:
   its tracks at what they drive, add a state naming it. Nothing else.
 
 The animator's inspector draws every track's binding field under the state
-that plays the timeline (Track_Desc.binding), so all the objects a character
+that plays the timeline (`Track_Desc.binding_field`), so all the objects a character
 depends on are read and edited in one place. But those rows edit the tracks'
 own fields — undo lands on the track component, a prefab override records
 against the track — so the same timeline still plays standalone, unchanged.
@@ -48,7 +48,9 @@ against the track — so the same timeline still plays standalone, unchanged.
 type. An animation track finds an Animation and poses it, an audio track finds
 an AudioSource and plays through it, and the animator builds a pose output for
 each distinct object its animation tracks drive. A kind in any plugin joins by
-registering its binding field on its `Track_Desc` — no import of this package.
+naming its binding field on its `Track_Desc` — no import of this package. Only
+the name is registered: the field's type and picker tags are read off the
+struct, so the row here can never disagree with the track's own inspector.
 
 ### Why not keys
 
@@ -334,7 +336,7 @@ animation window's preview.
 
 Under each state's own fields sit its timeline's **tracks**, one row each,
 showing the track's binding field — the animation track's `target`, the audio
-track's `source` — as `Track_Desc.binding` exposes it. This is the reason the
+track's `source` — as `Track_Desc.binding_field` names it. This is the reason the
 tree exists: every object a character depends on is read and edited in one
 place. But the fields live on the tracks. Each row pushes the TRACK component
 as the undo owner and records any prefab override against it, so editing here

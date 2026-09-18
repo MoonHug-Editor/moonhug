@@ -29,7 +29,7 @@ TrackAudio :: struct {
 	using base: engine.CompData `inspect:"-"`,
 
 	// The AudioSource this track plays through. A TimelineAnimator playing the
-	// timeline shows this field beside its state (Track_Desc.binding), so
+	// timeline shows this field beside its state (Track_Desc.binding_field), so
 	// retargeting a character's sounds is done there — on this field.
 	source: engine.Ref_Local `ref:"AudioSource"`,
 }
@@ -55,7 +55,7 @@ audio_track_init :: proc() {
 		destroy     = _audio_track_destroy,
 		tick        = _audio_track_tick,
 		preview_end = _audio_track_preview_end,
-		binding     = _audio_track_binding,
+		binding_field = "source",
 	})
 }
 
@@ -67,15 +67,6 @@ _audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^AudioSource {
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, at.source.handle) do return nil
 	return cast(^AudioSource)engine.world_pool_get(w, at.source.handle)
-}
-
-// `source`, for a driver's inspector to draw beside the state playing this
-// track. Undo lands on the TrackAudio, since that is whose field it is.
-@(private = "file")
-_audio_track_binding :: proc(node: engine.Transform_Handle) -> (seq.Track_Binding, bool) {
-	owned, at := get_comp(node, TrackAudio)
-	if at == nil do return {}, false
-	return {ptr = &at.source, tid = typeid_of(engine.Ref_Local), ref = "AudioSource", field = "source", comp = owned.handle}, true
 }
 
 // Per-(director, track) state: the voice each active clip plays through,

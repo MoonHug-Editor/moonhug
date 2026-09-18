@@ -268,14 +268,13 @@ _ta_track_bindings :: proc(st: ^anim.Timeline_State) {
 		host, lid := inspector.nested_context_for_comp(b.comp)
 		prev_host := engine.inspector_set_nested_host(host)
 		prev_lid := engine.inspector_set_nested_local_id(lid)
-		prev_ref := inspector.current_field_ref_target
-		inspector.current_field_ref_target = b.ref
+		prev_tags := inspector.field_tags_set(b.tag)
 
 		label := strings.clone_to_cstring(tv.name, context.temp_allocator)
 		inspector.custom_field_row(b.ptr, b.tid, "Track Binding", inspector.resolve_property_drawer(b.tid), label,
 			{b.ptr, b.tid, b.field})
 
-		inspector.current_field_ref_target = prev_ref
+		inspector.field_tags_restore(prev_tags)
 		engine.inspector_set_nested_local_id(prev_lid)
 		engine.inspector_set_nested_host(prev_host)
 		undo.pop_owner()

@@ -42,6 +42,31 @@ current_field_ext_filter: string
 // because one cannot say both without being ambiguous about what to store.
 current_field_has_filter: string
 
+// The four tag variables above as one value, so a row drawn outside the
+// generic loop (a proxy row for another component's field) publishes the
+// field's tags the same way and puts the previous ones back.
+Field_Tags :: struct {
+    ref, pick, ext, has: string,
+}
+
+// Publishes `tag`'s picker tags for the drawer about to run. Returns what was
+// there, for field_tags_restore.
+field_tags_set :: proc(tag: reflect.Struct_Tag) -> (prev: Field_Tags) {
+    prev = {current_field_ref_target, current_field_pick_mode, current_field_ext_filter, current_field_has_filter}
+    current_field_ref_target, _ = reflect.struct_tag_lookup(tag, "ref")
+    current_field_pick_mode, _ = reflect.struct_tag_lookup(tag, "pick")
+    current_field_ext_filter, _ = reflect.struct_tag_lookup(tag, "ext")
+    current_field_has_filter, _ = reflect.struct_tag_lookup(tag, "has")
+    return prev
+}
+
+field_tags_restore :: proc(prev: Field_Tags) {
+    current_field_ref_target = prev.ref
+    current_field_pick_mode = prev.pick
+    current_field_ext_filter = prev.ext
+    current_field_has_filter = prev.has
+}
+
 InspectorData :: struct {
     mode: InspectorMode,
     filePath: string,
@@ -836,20 +861,8 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             // Field-level picker tags apply through EVERY drawer path — a
             // [dynamic]Asset_GUID `ext:"mat"` field reaches the guid drawer
             // via draw_inspector_array, and the elements must still filter.
-            ref_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ref")
-            current_field_ref_target = ref_tag
-            pick_tag, _ := reflect.struct_tag_lookup(field_info.tag, "pick")
-            current_field_pick_mode = pick_tag
-            ext_tag, _ := reflect.struct_tag_lookup(field_info.tag, "ext")
-            current_field_ext_filter = ext_tag
-            has_tag, _ := reflect.struct_tag_lookup(field_info.tag, "has")
-            current_field_has_filter = has_tag
-            defer {
-                current_field_ref_target = ""
-                current_field_pick_mode = ""
-                current_field_ext_filter = ""
-                current_field_has_filter = ""
-            }
+            prev_tags := field_tags_set(field_info.tag)
+            defer field_tags_restore(prev_tags)
 
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
                 // Mixed-value display for the selection. Read by the drawer.

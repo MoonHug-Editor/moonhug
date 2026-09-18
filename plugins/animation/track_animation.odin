@@ -79,17 +79,8 @@ animation_track_init :: proc() {
 		destroy     = _animation_track_destroy,
 		tick        = _animation_track_tick,
 		preview_end = _animation_track_preview_end,
-		binding     = _animation_track_binding,
+		binding_field = "target",
 	})
-}
-
-// `target`, for a driver's inspector to draw beside the state playing this
-// track. Undo lands on the TrackAnimation, since that is whose field it is.
-@(private = "file")
-_animation_track_binding :: proc(node: engine.Transform_Handle) -> (seq.Track_Binding, bool) {
-	owned, at := get_comp(node, TrackAnimation)
-	if at == nil do return {}, false
-	return {ptr = &at.target, tid = typeid_of(engine.Ref_Local), ref = "Animation", field = "target", comp = owned.handle}, true
 }
 
 // --- The per-director arena -----------------------------------------------------------
