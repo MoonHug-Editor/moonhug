@@ -76,7 +76,7 @@ _parse_param_spec :: proc(spec: string) -> (type_name: string, required: bool, d
 		return type_name, required, description, true
 	// Arrays carry their element type in the spec ("integer[]"), because JSON
 	// Schema needs an `items` sub-object to say what the array holds.
-	case "string[]", "integer[]", "number[]", "boolean[]":
+	case "string[]", "integer[]", "number[]", "boolean[]", "object[]":
 		return type_name, required, description, true
 	}
 	return "", false, "", false
@@ -114,7 +114,7 @@ provide :: proc(w: ^db.World) -> bool {
 				if pname == "" do continue
 				type_name, required, pdesc, ok := _parse_param_spec(value)
 				if !ok {
-					fmt.eprintf("mcp_tool: %s.%s param %q needs \"<string|integer|number|boolean>[!]:<description>\"\n",
+					fmt.eprintf("mcp_tool: %s.%s param %q needs \"<string|integer|number|boolean|object[]>[!]:<description>\"\n",
 						decl.pkg.name, decl.name, pname)
 					continue
 				}

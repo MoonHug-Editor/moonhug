@@ -293,24 +293,38 @@ Mcp_Tool_Def :: struct {
 // A handler that answers on its own schedule (across frames).
 MCP_DEFERRED :: "\x00deferred"
 
+// Runs one tool and hands back its marshaled result, without answering the
+// client. Dispatch answers; batch collects. Both go through here so a batched
+// call cannot diverge from the same call made on its own.
+@(private = "file")
+_mcp_invoke :: proc(id: i64, tool: string, params: json.Object) -> (string, Mcp_Error) {
+	for def in _mcp_tool_table() {
+		if def.name != tool do continue
+		return def.handler(id, params)
+	}
+	return "", Mcp_Error{"unknown_tool", fmt.tprintf("no tool named %q", tool)}
+}
+
+// Runs a tool by name the way a client call does, for tests. The handlers are
+// where the behaviour is, and reaching them through the socket would need a
+// live editor.
+mcp_tool_for_test :: proc(tool: string, params: json.Object) -> (string, Mcp_Error) {
+	return _mcp_invoke(0, tool, params)
+}
+
 @(private = "file")
 _mcp_dispatch :: proc(id: i64, tool: string, params: json.Object) {
 	if tool == "describe" {
 		_mcp_respond(id, _mcp_describe_json())
 		return
 	}
-	for def in _mcp_tool_table() {
-		if def.name != tool do continue
-		result, err := def.handler(id, params)
-		if err.code != "" {
-			_mcp_respond_error(id, err.code, err.message)
-			return
-		}
-		if result == MCP_DEFERRED do return // handler responds later
-		_mcp_respond(id, result)
+	result, err := _mcp_invoke(id, tool, params)
+	if err.code != "" {
+		_mcp_respond_error(id, err.code, err.message)
 		return
 	}
-	_mcp_respond_error(id, "unknown_tool", fmt.tprintf("no tool named %q", tool))
+	if result == MCP_DEFERRED do return // handler responds later
+	_mcp_respond(id, result)
 }
 
 // tools/list payload, built from the generated table.
@@ -404,8 +418,9 @@ mcp_tool_read_log :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 }
 
 @(mcp_tool={
-	description="Active scene contents: a summary (roots, transform count, selection) or the full serialized scene.",
+	description="Active scene contents: a summary (roots, transform count, selection) or the full serialized scene. A full dump is the whole file and can be very large — it is refused above max_bytes, and list_objects plus get_property answer most questions for a fraction of it.",
 	param_full="boolean:Return the complete serialized scene JSON instead of the summary",
+	param_max_bytes="integer:Refuse a full dump larger than this (default 8000)",
 })
 mcp_tool_scene_dump :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	s := engine.sm_scene_get_active()
@@ -416,6 +431,17 @@ mcp_tool_scene_dump :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 		data, ok := engine.scene_serialize(s)
 		if !ok do return _mcp_fail("serialize_failed", "scene_serialize failed")
 		defer delete(data)
+		// 8000 bytes is roughly 2000 tokens. Half the sample scenes fit under
+		// it; the ones that do not are exactly the ones worth refusing, since
+		// a 32 KB dump costs more context than every other call in a session
+		// put together and almost always answers a question list_objects and
+		// get_property would have answered for a fraction.
+		max_bytes := int(_json_int(params, "max_bytes", 8000))
+		if max_bytes > 0 && len(data) > max_bytes {
+			return _mcp_fail("too_large",
+				"the full scene is %d bytes, over max_bytes %d — raise max_bytes deliberately, or use list_objects and get_property",
+				len(data), max_bytes)
+		}
 		return _mcp_ok(struct {
 			path:  string,
 			scene: string,
@@ -437,6 +463,81 @@ mcp_tool_scene_dump :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 		roots:           []string,
 		selection:       []string,
 	}{path = s.path, transform_count = count, roots = roots[:], selection = _mcp_selection_names()})
+}
+
+// Several tools in one round trip. The frame-polled bridge answers one call
+// per frame, so N separate calls cost N frames and N envelopes; authoring a
+// scene is mostly repetition, which is exactly what that penalizes.
+//
+// Every command goes through _mcp_invoke — the same path a standalone call
+// takes — so batching changes when a tool runs, never what it does. Each
+// command keeps its own undo step: a batch is a convenience, not a transaction,
+// and nothing here merges or rolls back across commands.
+@(mcp_tool={
+	description="Run several tools in one round trip. Strongly preferred for repetitive work — setting many properties, renaming several objects — since the bridge otherwise answers one call per frame. Each command is {\"tool\": name, \"params\": {...}} and keeps its own undo step, so this is a convenience, not a transaction: a later failure does not roll back an earlier success. Max 100 commands. Cannot nest, and cannot carry screenshot (it answers across frames).",
+	param_commands="object[]!:Commands to run in order, each {\"tool\": name, \"params\": {...}}",
+	param_fail_fast="boolean:Stop at the first failure (default true)",
+})
+mcp_tool_batch :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	raw, has := params["commands"].(json.Array)
+	if !has do return _mcp_fail("bad_request", "need commands: an array of {tool, params}")
+	if len(raw) == 0 do return _mcp_fail("bad_request", "commands is empty")
+	if len(raw) > 100 do return _mcp_fail("bad_request", "%d commands, max 100", len(raw))
+	fail_fast := true
+	if v, hf := params["fail_fast"].(json.Boolean); hf do fail_fast = bool(v)
+
+	// Results splice each handler's already-marshaled JSON, the way
+	// _mcp_describe_json does — no parse-and-remarshal round trip.
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[")
+	ran, failed := 0, 0
+	for entry, i in raw {
+		if i > 0 do strings.write_string(&b, ",")
+		cmd, is_obj := entry.(json.Object)
+		tool: string
+		if is_obj {
+			tool, _ = cmd["tool"].(json.String)
+		}
+		name_json, _ := json.marshal(tool, {}, context.temp_allocator)
+
+		err: Mcp_Error
+		result: string
+		switch {
+		case !is_obj:
+			err = {"bad_request", "each command must be an object"}
+		case tool == "":
+			err = {"bad_request", "command has no tool"}
+		case tool == "batch":
+			err = {"bad_request", "batch cannot nest"}
+		case:
+			cmd_params, _ := cmd["params"].(json.Object)
+			result, err = _mcp_invoke(id, tool, cmd_params)
+			if err.code == "" && result == MCP_DEFERRED {
+				// The batch answers once, so a handler that replies across
+				// frames would strand its result.
+				err = {"bad_request", fmt.tprintf("%s answers across frames and cannot run in a batch", tool)}
+				result = ""
+			}
+		}
+
+		if err.code != "" {
+			failed += 1
+			code, _ := json.marshal(err.code, {}, context.temp_allocator)
+			msg, _ := json.marshal(err.message, {}, context.temp_allocator)
+			fmt.sbprintf(&b, `{{"tool":%s,"status":"error","code":%s,"message":%s}}`,
+				string(name_json), string(code), string(msg))
+			if fail_fast {
+				ran += 1
+				break
+			}
+		} else {
+			fmt.sbprintf(&b, `{{"tool":%s,"status":"ok","result":%s}}`, string(name_json), result)
+		}
+		ran += 1
+	}
+	strings.write_string(&b, "]")
+	return fmt.tprintf(`{{"ran":%d,"failed":%d,"stopped_early":%t,"results":%s}}`,
+		ran, failed, ran < len(raw), strings.to_string(b)), {}
 }
 
 @(mcp_tool={description="Every invokable editor menu path."})
@@ -482,27 +583,45 @@ mcp_tool_ping_asset :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 @(mcp_tool={
-	description="Objects in the active scene with their transform and components. Names repeat, so use the returned local_id to address one.",
+	description="Objects in the active scene: local_id, name, parent and the components each carries — enough to pick what to read with get_property. PAGINATED: 50 per page by default, next_cursor is -1 on the last page. World positions are opt-in, since they are the bulk of the payload. Names repeat, so address an object by local_id.",
 	param_name="string:Only objects whose name contains this text",
+	param_page_size="integer:Objects per page (default 50, max 500)",
+	param_cursor="integer:Index to resume from — next_cursor from the previous page",
+	param_detail="boolean:Also return each object's world position",
 })
 mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	s := engine.sm_scene_get_active()
 	if s == nil do return _mcp_fail("no_scene", "no active scene")
 	filter, _ := params["name"].(json.String)
 
+	// `position` is a slice so it can be absent: a scene's worth of full-
+	// precision floats is most of the payload, and a listing is usually asked
+	// to find an object, not to measure one.
 	Obj :: struct {
 		local_id:   u64,
 		name:       string,
 		parent:     string,
-		position:   [3]f32,
 		components: []string,
+		position:   []f32,
 	}
+	page_size := int(_json_int(params, "page_size", 50))
+	if page_size <= 0 do page_size = 50
+	if page_size > 500 do page_size = 500
+	cursor := int(_json_int(params, "cursor", 0))
+	if cursor < 0 do cursor = 0
+	detail, _ := params["detail"].(json.Boolean)
+
 	w := engine.ctx_world()
 	out := make([dynamic]Obj, context.temp_allocator)
+	total := 0
 	it := engine.pool_iterator(&w.transforms)
 	for t, h in engine.pool_next(&it) {
 		if t.scene != s do continue
 		if filter != "" && !strings.contains(t.name, filter) do continue
+		total += 1
+		index := total - 1
+		if index < cursor || len(out) >= page_size do continue
+
 		parent_name: string
 		if pt := engine.pool_get(&w.transforms, t.parent.handle); pt != nil do parent_name = pt.name
 		comps := make([dynamic]string, context.temp_allocator)
@@ -513,15 +632,28 @@ mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 		}
 		h := h
 		h.type_key = .Transform
-		append(&out, Obj{
+		obj := Obj{
 			local_id   = u64(t.local_id),
 			name       = t.name,
 			parent     = parent_name,
-			position   = engine.transform_world(engine.Transform_Handle(h)).position,
 			components = comps[:],
-		})
+		}
+		if detail {
+			p := engine.transform_world(engine.Transform_Handle(h)).position
+			pos := make([]f32, 3, context.temp_allocator)
+			pos[0], pos[1], pos[2] = p.x, p.y, p.z
+			obj.position = pos
+		}
+		append(&out, obj)
 	}
-	return _mcp_ok(out[:])
+
+	next := cursor + len(out)
+	if next >= total do next = -1
+	return _mcp_ok(struct {
+		objects:     []Obj,
+		total:       int,
+		next_cursor: int,
+	}{objects = out[:], total = total, next_cursor = next})
 }
 
 // --- Write tools -----------------------------------------------------------------

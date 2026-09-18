@@ -23,7 +23,7 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 ```
 
 - `mcp_tool_<name>` — the tool name is the proc name minus prefix
-- `param_<name>` — field is `"<string|integer|number|boolean>[!]:<description>"`, where `!` marks it required. Append `[]` to the type for an array (`"integer[]:..."`), which emits the JSON Schema `items` sub-object.
+- `param_<name>` — field is `"<string|integer|number|boolean>[!]:<description>"`, where `!` marks it required. Append `[]` to the type for an array (`"integer[]:..."`, also `"object[]"` for a list of records), which emits the JSON Schema `items` sub-object.
 - handler returns marshaled JSON (`_mcp_ok`) or an error (`_mcp_fail`).
 - returning `MCP_DEFERRED` means the handler answers later itself (screenshots do this while the GPU readback fence settles).
 
@@ -31,8 +31,9 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 
 - `editor_state` — active scene, simulate state, selection (names and `local_id`s, since names repeat)
 - `read_log` — recent console entries
-- `scene_dump` — scene summary (roots, counts, selection), `full=true` for the complete serialized scene
-- `list_objects` — every object in the scene: name, parent, world position, components, and the `local_id` used to address one
+- `scene_dump` — scene summary (roots, counts, selection), `full=true` for the complete serialized scene. A full dump is the whole file, so it is refused above `max_bytes` (default 8000, about 2000 tokens) rather than silently filling a context — `list_objects` plus `get_property` answer most questions for a fraction of it
+- `list_objects` — objects in the scene: `local_id`, name, parent and the components each carries. **Paginated** (`page_size` 50 by default, 500 max, `cursor` to resume, `next_cursor` is -1 on the last page) and world positions are opt-in (`detail`), because a whole scene of objects with full-precision floats is most of an agent's context for a question usually answered by a name
+- `batch` — several tools in one round trip, each `{tool, params}`. The bridge answers one call per frame, so repetitive work otherwise costs one frame per command. Every command runs through the same dispatch a standalone call does and keeps its own undo step: a batch is a convenience, not a transaction, and a later failure does not roll back an earlier success. `fail_fast` (default true) stops at the first error. Max 100, no nesting, and no `screenshot` (it answers across frames)
 - `list_menus` / `invoke_menu` — enumerate and invoke menu actions by path (same code path as clicking)
 - `select` — build a selection: `local_ids` for an exact set (this is how a multi-selection is made, which is what the inspector multi-edits), `name` for every object with that name, `add=true` to extend the current one, empty to clear
 - `set_transform` — position, rotation (euler degrees) or scale on one object. Omitted components keep their value
@@ -50,6 +51,18 @@ Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambi
 One switch, Edit ▸ Project Settings ▸ MCP (`enabled`, persisted to `ProjectSettings/mcp.json`, on by default, applied at editor start). Off means the editor never opens the socket and removes its bridge file, so no agent can reach it by any tool — enforceable with no per-tool knowledge and nothing a developer can forget to declare.
 
 Editing tools go through the editor's own undo stack, so an agent edit is Ctrl+Z-able and indistinguishable from a manual one. Combined with loopback-only binding and a per-session token, anything it touches is visible and reversible.
+
+## Answering cheaply
+
+A tool's cost to an agent is its reply, and a scene has no natural size bound.
+Two rules keep that from being the bridge's dominant cost:
+
+- **Bounded by default, complete on request.** `list_objects` pages; a full
+  `scene_dump` is refused past a byte cap it names. Both can be opened up by
+  passing a parameter, so nothing is unreachable — it just has to be asked for.
+- **Identify first, detail second.** A listing carries what is needed to CHOOSE
+  a target (`local_id`, name, parent, component names). Values come from
+  `get_property` on the one object that turned out to matter.
 
 ## TODO
 
