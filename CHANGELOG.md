@@ -1,3 +1,10 @@
+## [0.99.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.98.0...v0.99.0) (2026-09-18)
+
+### Features
+
+* add ref_tags feature ([340e105](https://github.com/MoonHug-Editor/moonhug/commit/340e105ef5074f9596eca4eb8232faab715a2765))
+* remove outputs from timeline_animator, show outputs in its states ([3d3106c](https://github.com/MoonHug-Editor/moonhug/commit/3d3106cc508c4087632fb1b7815509e7f4bff0ad))
+
 ## [0.98.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.97.2...v0.98.0) (2026-09-16)
 
 ### Features
