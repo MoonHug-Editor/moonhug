@@ -37,12 +37,13 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 - `select` — build a selection: `local_ids` for an exact set (this is how a multi-selection is made, which is what the inspector multi-edits), `name` for every object with that name, `add=true` to extend the current one, empty to clear
 - `set_transform` — position, rotation (euler degrees) or scale on one object. Omitted components keep their value
 - `rename_object` — rename one object
+- `get_property` / `set_property` — a component (or the transform) on an object, or one field of it, addressed by component name as `list_objects` prints it plus a dotted path with `[i]` for array elements (`layers[0].states[1].speed`). No path reads the whole component, which is how an agent learns its field names. Values are JSON in the field's own shape. A write is one undo step, obeys a reference field's `ref:` / `has:` tags the way the picker does, and on a prefab instance records the override the inspector would — on the whole array when the path indexes one (docs/InspectorProperty.md)
 - `editor_setting` — read all editor settings, or set one scalar field
 - `screenshot` — full-resolution PNG to `library/screenshots/`, plus a downscaled copy (default ≤640px) inline as MCP image content. Three views:
   - `scene` (default) / `game` — that view's render target. The tick runs before views draw, so the RT holds the previous frame's submitted contents and is read back asynchronously (fence polled per tick, response sent when pixels land).
   - `editor` — the whole editor window, imgui panels included (inspector, hierarchy, console). Those panels draw straight to the swapchain and never reach a render target, so this copies the swapchain image itself (`gfx.swapchain_capture`). The copy runs **only on frames a screenshot was asked for**, after the UI pass has drawn and while the command buffer is still open — so there is no per-frame cost for a feature used occasionally, and no OS screen-recording permission, since a swapchain image contains nothing but the editor's own window. The request is queued by the tool and serviced at end of frame, because the bridge tick runs before the UI draws.
 
-Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambiguous name is an error naming the count, and lookups are outer-transform only, so nested-scene contents are never mutated through the bridge.
+Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambiguous name is an error naming the count. Every object `list_objects` prints is addressable, prefab-instance content included: all bridge writes go through `inspector.property_set_json` (docs/InspectorProperty.md), which records the override the inspector would, so a write into instance content survives the next resolve exactly as an inspector edit does.
 
 ## Enabling
 
@@ -52,6 +53,5 @@ Editing tools go through the editor's own undo stack, so an agent edit is Ctrl+Z
 
 ## TODO
 
-- component property writes (needs the reflection-driven path the inspector uses, shared with multiedit)
 - argv mode on the shim binary (`moonhug` CLI front-end over the same socket)
 - pending/poll envelope for operations spanning many seconds

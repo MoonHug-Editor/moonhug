@@ -209,6 +209,14 @@ edit_session_abort :: proc(sess: ^Edit_Session) {
 	_session_reset(sess)
 }
 
+// Drops a session without recording: the write it bracketed did not happen
+// (a JSON value that failed to decode), so there is no after-state to keep.
+edit_session_abandon :: proc(sess: ^Edit_Session) {
+	if sess == nil || !sess.active do return
+	_session_free_payloads(sess)
+	_session_reset(sess)
+}
+
 edit_session_active :: proc(sess: ^Edit_Session) -> bool {
 	return sess != nil && sess.active
 }

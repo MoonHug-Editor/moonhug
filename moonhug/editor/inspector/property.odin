@@ -10,6 +10,7 @@ package inspector
 // proc here that draws.
 
 import "base:runtime"
+import "core:fmt"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
@@ -201,4 +202,112 @@ _resolve_index :: proc(p: ^Property, idx: int) -> Resolve_Error {
 _join_path :: proc(prefix, name: string) -> string {
     if prefix == "" do return name
     return strings.concatenate({prefix, ".", name}, context.temp_allocator)
+}
+
+// --- Writing without a row -----------------------------------------------------
+// The wire consumer: an MCP property write reaches the field with undo and the
+// prefab override recorded exactly as a row commit would, and draws nothing.
+
+// The field's current value as JSON. Caller owns the bytes.
+property_get_json :: proc(p: Property) -> []byte {
+    return undo.capture_json(p.ptr, p.tid)
+}
+
+// Assigns `json_bytes` to the field as ONE undo step labelled `label`, and
+// records the prefab override `p.record` names on the property's own instance.
+//
+// Refused, with `why` naming the reason and nothing recorded, when the JSON
+// does not decode into the field's type, or when a reference field would point
+// at something its `ref:` / `has:` tags do not admit — the same rule the picker
+// enforces by only offering admitted targets. A wire write has no picker, so
+// the rule is checked here.
+property_set_json :: proc(p: Property, json_bytes: []byte, label: string) -> (ok: bool, why: string) {
+    if p.owner.kind != .Pooled do return false, "owner is gone"
+    scene := _property_scene(p)
+    before := undo.capture_json(p.ptr, p.tid)
+    defer delete(before)
+
+    sess := undo.edit_session_begin({undo.edit_target_pooled(p.owner.handle, p.ptr, p.tid)}, label)
+    if !undo.write_json_value(p.ptr, p.tid, json_bytes, scene, quiet = true) {
+        undo.edit_session_abandon(&sess)
+        return false, fmt.tprintf("does not decode into %v", p.tid)
+    }
+    if reason, admitted := _reference_admitted(p); !admitted {
+        // Put the old value back before dropping the session: the write went
+        // through, only the rule rejects it.
+        undo.write_json_value(p.ptr, p.tid, before, scene, quiet = true)
+        undo.edit_session_abandon(&sess)
+        return false, reason
+    }
+    undo.edit_session_end(&sess)
+
+    prev_host := engine.inspector_set_nested_host(p.nested_host)
+    prev_lid := engine.inspector_set_nested_local_id(p.nested_lid)
+    record_nested_override(p.record.ptr, p.record.tid, p.record.path, true)
+    engine.inspector_set_nested_local_id(prev_lid)
+    engine.inspector_set_nested_host(prev_host)
+    return true, ""
+}
+
+// Whether a reference field's CURRENT value is one its tags admit. Non-reference
+// fields, untagged fields and a cleared reference always are. Mirrors the
+// picker: `ref:` names what may be stored (a component type, a capability
+// tag, or Transform), `has:` names components the target's OBJECT must carry.
+// A reference into another asset (Ref with a guid) is not checked — the
+// picker validates those against the asset index, which a live handle cannot.
+@(private = "file")
+_reference_admitted :: proc(p: Property) -> (why: string, ok: bool) {
+    h: engine.Handle
+    switch p.tid {
+    case typeid_of(engine.Ref_Local):
+        r := cast(^engine.Ref_Local)p.ptr
+        if r.local_id == 0 do return "", true
+        h = r.handle
+    case typeid_of(engine.Ref):
+        r := cast(^engine.Ref)p.ptr
+        if r.pptr.local_id == 0 || !engine.asset_guid_is_empty(r.pptr.guid) do return "", true
+        h = r.handle
+    case:
+        return "", true
+    }
+    ref_spec, has_ref := reflect.struct_tag_lookup(p.tag, "ref")
+    if !has_ref || ref_spec == "" do return "", true
+    if h == {} do return "local_id names nothing in this scene", false
+
+    keys := ref_target_keys(ref_spec)
+    admitted := false
+    for k in keys do if k == h.type_key { admitted = true; break }
+    if !admitted {
+        return fmt.tprintf("field admits %s, got %v", ref_spec, h.type_key), false
+    }
+
+    has_spec, has_has := reflect.struct_tag_lookup(p.tag, "has")
+    if !has_has || has_spec == "" do return "", true
+    need := ref_target_keys(has_spec)
+    if len(need) == 0 do return "", true
+    w := engine.ctx_world()
+    tH := h
+    if tH.type_key != .Transform {
+        raw := engine.world_pool_get(w, h)
+        if raw == nil do return "target is gone", false
+        tH = engine.Handle((cast(^engine.CompData)raw).owner)
+    }
+    t := engine.pool_get(&w.transforms, tH)
+    if t == nil do return "target is gone", false
+    for c in t.components do for k in need do if c.handle.type_key == k do return "", true
+    return fmt.tprintf("target's object must carry %s", has_spec), false
+}
+
+// The scene the owner lives in, for rebinding reference handles after a write.
+@(private = "file")
+_property_scene :: proc(p: Property) -> ^engine.Scene {
+    w := engine.ctx_world()
+    if p.owner.handle.type_key == .Transform {
+        t := engine.pool_get(&w.transforms, p.owner.handle)
+        return t.scene if t != nil else nil
+    }
+    base := cast(^engine.CompData)p.owner.base_ptr
+    if base == nil do return nil
+    t := engine.pool_get(&w.transforms, engine.Handle(base.owner))
+    return t.scene if t != nil else nil
 }

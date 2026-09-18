@@ -215,7 +215,9 @@ scene_find_outer_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transfo
 }
 
 // Selection-grade lookup: also matches nested-scene contents. Use it to FIND
-// an object (selection restore, reveal, display) — never to mutate it.
+// an object (selection restore, reveal, display). A write through it must go
+// the inspector's way and record a prefab override (inspector.property_set_json)
+// — a raw write into instance content is lost on the next resolve.
 scene_find_selectable_transform_local_id :: proc(s: ^Scene, id: Local_ID) -> (Transform_Handle, bool) {
 	return _scene_find_transform_local_id(s, id, include_nested = true)
 }

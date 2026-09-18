@@ -1,8 +1,9 @@
 # Inspector Property
 
-> Implemented: `editor/inspector/property.odin`. First consumer is the
-> TimelineAnimator's per-track binding rows. Second, planned, is MCP component
-> property writes (docs/McpBridge.md TODO).
+> Implemented: `editor/inspector/property.odin`. Consumers: the
+> TimelineAnimator's per-track binding rows (`property_row`) and the MCP
+> `get_property` / `set_property` tools (`property_get_json` /
+> `property_set_json`, docs/McpBridge.md).
 
 An ADDRESSED FIELD: a field on an object, resolved from the owner and a dotted
 path, carrying everything a write or a row needs — the value, the undo owner,
@@ -53,6 +54,12 @@ property :: proc(p: Property, path: string) -> (Property, Resolve_Error)
 
 // Draw it as one row: marker, transaction, override record, context menu.
 property_row :: proc(p: Property, label: string, drawer = nil, draw_label = "") -> (finished: bool)
+
+// Or write it with no row: one undo step, override recorded. The wire path.
+// A refused write says why: bad shape, or a reference the field's ref: / has:
+// tags do not admit — the rule the picker enforces by what it offers.
+property_get_json :: proc(p: Property) -> []byte
+property_set_json :: proc(p: Property, json_bytes: []byte, label: string) -> (ok: bool, why: string)
 ```
 
 The proxy row:
@@ -170,14 +177,10 @@ one, and rewriting it over `Property` would replace one walker with another.
 
 ## TODO
 
-1. **MCP `set_property`.** Resolve with `property`, decode the JSON value into
-   `(ptr, tid)`, wrap in an undo edit session against `owner`, record
-   `record` on `nested_host` / `nested_lid`. The resolver is done — this is
-   the bridge tool.
-2. **Serialized name vs field name.** Paths use Odin field names, as does the
+1. **Serialized name vs field name.** Paths use Odin field names, as does the
    override path the generic loop builds. A field carrying `json:"other"`
    would record an override against a key the file does not have. No
    component renames a field today, so this is latent — resolution is where it
    gets fixed.
-3. **Union descent.** A path cannot enter a union's active variant. Not needed
+2. **Union descent.** A path cannot enter a union's active variant. Not needed
    by the first two consumers.

@@ -1166,7 +1166,12 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 // Used by undo to apply a Value_Command, and by multi-edit to copy one committed
 // field onto the rest of a selection. Both need identical semantics, and having
 // one implementation is what stops them drifting.
-write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engine.Scene) -> bool {
+//
+// A decode failure is logged as an error: for those callers the payload was
+// captured from a live field, so it cannot legitimately fail to decode. A
+// caller whose bytes come from outside (an MCP property write) passes `quiet`
+// and reports the refusal itself — a bad value there is input, not a fault.
+write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engine.Scene, quiet := false) -> bool {
 	if ptr == nil || tid == nil || json_bytes == nil do return false
 	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(tid)
 	if !ok {
@@ -1179,7 +1184,7 @@ write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engin
 	target_ptr := ptr
 	target_any := any{data = &target_ptr, id = ptr_tid}
 	if err := json.unmarshal_any(json_bytes, target_any, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
-		log.error(fmt.tprintf("undo: unmarshal failed (tid=%v): %v", tid, err))
+		if !quiet do log.error(fmt.tprintf("undo: unmarshal failed (tid=%v): %v", tid, err))
 		return false
 	}
 

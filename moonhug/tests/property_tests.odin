@@ -5,9 +5,12 @@ package tests
 // timeline animator's proxy rows share, so the path grammar and the two
 // addresses — the value, and the array an override names — are pinned here.
 
+import "core:fmt"
+import "core:strings"
 import "core:testing"
 import "../engine"
 import "../editor/inspector"
+import "../editor/undo"
 import anim "moonhug:packages/animation"
 
 @(private = "file")
@@ -126,4 +129,74 @@ test_property_fixed_array_index :: proc(t: ^testing.T) {
 	testing.expect(t, y.record.ptr == rawptr(&tr.position), "override names the whole vector")
 	testing.expect(t, y.owner.handle == engine.Handle(tH), "the transform owns it")
 	testing.expect(t, y.nested_host == {}, "plain content has no prefab context")
+}
+
+// The wire path: a JSON write through the property is one undo step and lands
+// in the field, exactly as a row commit would.
+@(test)
+test_property_set_json_is_one_undo_step :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	u := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, u)
+
+	a, comp := _animator_with_states()
+	p, _ := inspector.inspect_comp(comp)
+	sp, err := inspector.property(p, "layers[0].states[1].speed")
+	testing.expect_value(t, err, inspector.Resolve_Error.None)
+	if err != .None do return
+
+	before := u.top
+	ok, _ := inspector.property_set_json(sp, transmute([]byte)string("7.5"), "Set speed")
+	testing.expect(t, ok, "write decodes")
+	testing.expect_value(t, a.layers[0].states[1].speed, f32(7.5))
+	testing.expect_value(t, u.top, before + 1)
+
+	testing.expect(t, undo.apply_undo(u), "undo applies")
+	testing.expect_value(t, a.layers[0].states[1].speed, f32(2))
+
+	bad, why := inspector.property_set_json(sp, transmute([]byte)string(`"words"`), "bad")
+	testing.expect(t, !bad && why != "", "a value of the wrong shape is refused with a reason")
+	testing.expect(t, u.top == before, "a refused write records no step")
+}
+
+// A reference field over the wire obeys its ref: tag the way the picker does:
+// the state's timeline admits a PlayableDirector and nothing else.
+@(test)
+test_property_set_json_enforces_ref_tag :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	u := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, u)
+
+	a, comp := _animator_with_states()
+	root := engine.Transform_Handle(tc.scene.root.handle)
+	tl := engine.transform_new("Timeline", root)
+	director, _ := engine.transform_add_comp(tl, .PlayableDirector)
+	body := engine.transform_new("Body", root)
+	animation, _ := engine.transform_add_comp(body, .Animation)
+
+	p, _ := inspector.inspect_comp(comp)
+	tp, err := inspector.property(p, "layers[0].states[0].timeline")
+	testing.expect_value(t, err, inspector.Resolve_Error.None)
+	if err != .None do return
+	steps := u.top
+
+	wrong := fmt.tprintf(`{{"local_id": %d}}`, animation.local_id)
+	ok, why := inspector.property_set_json(tp, transmute([]byte)wrong, "bad ref")
+	testing.expect(t, !ok, "an Animation is not a PlayableDirector")
+	testing.expect(t, strings.contains(why, "PlayableDirector"), "the reason names what the field admits")
+	testing.expect_value(t, a.layers[0].states[0].timeline.local_id, engine.Local_ID(0))
+	testing.expect(t, u.top == steps, "a refused reference records no step")
+
+	right := fmt.tprintf(`{{"local_id": %d}}`, director.local_id)
+	ok2, _ := inspector.property_set_json(tp, transmute([]byte)right, "good ref")
+	testing.expect(t, ok2, "a director is admitted")
+	testing.expect_value(t, a.layers[0].states[0].timeline.handle, director.handle)
+	testing.expect(t, u.top == steps + 1)
+
+	cleared, _ := inspector.property_set_json(tp, transmute([]byte)string(`{"local_id": 0}`), "clear")
+	testing.expect(t, cleared, "clearing a reference is always admitted")
 }

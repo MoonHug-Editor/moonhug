@@ -28,7 +28,7 @@ import engine "../engine"
 import gfx "../engine/gfx"
 import "../engine/log"
 import "menu"
-import "undo"
+import "inspector"
 import sim "./simulate"
 
 _MCP_PORT_FIRST :: 6600
@@ -530,12 +530,16 @@ mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 
 // Resolves an object by local_id (from list_objects), else by exact name.
 @(private = "file")
+// Matches prefab-instance contents too — everything list_objects prints. Every
+// bridge write goes through inspector.property_set_json, which records the
+// override the inspector would, so instance content is as writable here as
+// in the inspector.
 _mcp_find_object :: proc(params: json.Object) -> (engine.Transform_Handle, Mcp_Error) {
 	s := engine.sm_scene_get_active()
 	if s == nil do return {}, Mcp_Error{"no_scene", "no active scene"}
 
 	if lid := _json_int(params, "local_id", 0); lid != 0 {
-		if tH, ok := engine.scene_find_outer_transform_local_id(s, engine.Local_ID(lid)); ok {
+		if tH, ok := engine.scene_find_selectable_transform_local_id(s, engine.Local_ID(lid)); ok {
 			return tH, {}
 		}
 		return {}, Mcp_Error{"not_found", fmt.tprintf("no object with local_id %d — see list_objects", lid)}
@@ -583,7 +587,7 @@ mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 			f, is_num := entry.(json.Float)
 			if !is_num do return _mcp_fail("bad_param", "local_ids must contain numbers")
 			lid := engine.Local_ID(i64(f))
-			tH, found := engine.scene_find_outer_transform_local_id(s, lid)
+			tH, found := engine.scene_find_selectable_transform_local_id(s, lid)
 			if !found {
 				append(&missing, i64(f))
 				continue
@@ -652,29 +656,118 @@ mcp_tool_set_transform :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 	if f, ok := _json_f32(params, "y"); ok do v.y = f
 	if f, ok := _json_f32(params, "z"); ok do v.z = f
 
-	// One bracketed transaction per call (docs/Undo.md). A tool call
-	// is a complete gesture, so begin and end sit either side of the write.
-	switch field {
-	case "position":
-		sess := undo.edit_session_begin(
-			{undo.edit_target_transform(tH, &t.position, typeid_of([3]f32))}, "Set Position (MCP)")
-		defer undo.edit_session_end(&sess)
-		t.position = v
-	case "scale":
-		sess := undo.edit_session_begin(
-			{undo.edit_target_transform(tH, &t.scale, typeid_of([3]f32))}, "Set Scale (MCP)")
-		defer undo.edit_session_end(&sess)
-		t.scale = v
-	case "rotation":
-		sess := undo.edit_session_begin(
-			{undo.edit_target_transform(tH, &t.rotation, typeid_of([4]f32))}, "Set Rotation (MCP)")
-		defer undo.edit_session_end(&sess)
-		t.rotation = engine.quat_from_euler_xyz(v.x, v.y, v.z)
+	// Through the property path: one undo step, and on prefab-instance content
+	// the override the inspector's transform rows would record. The euler
+	// conversion is this tool's own convenience — the field stores a quaternion.
+	p, pok := inspector.inspect_transform(tH)
+	if !pok do return _mcp_fail("not_found", "object went away")
+	fp, _ := inspector.property(p, field)
+	encoded: []byte
+	merr: json.Marshal_Error
+	if field == "rotation" {
+		encoded, merr = json.marshal(engine.quat_from_euler_xyz(v.x, v.y, v.z), {}, context.temp_allocator)
+	} else {
+		encoded, merr = json.marshal(v, {}, context.temp_allocator)
+	}
+	if merr != nil do return _mcp_fail("bad_value", "could not encode %s", field)
+	if ok, why := inspector.property_set_json(fp, encoded, fmt.tprintf("Set %s (MCP)", strings.to_pascal_case(field, context.temp_allocator))); !ok {
+		return _mcp_fail("bad_value", "%s", why)
 	}
 	return _mcp_ok(struct {
 		field: string,
 		value: [3]f32,
 	}{field = field, value = v})
+}
+
+// A component on an object, named the way list_objects prints it. An empty or
+// "Transform" name is the transform itself.
+@(private = "file")
+_mcp_find_property :: proc(params: json.Object) -> (inspector.Property, Mcp_Error) {
+	tH, ferr := _mcp_find_object(params)
+	if ferr.code != "" do return {}, ferr
+	comp_name, _ := params["component"].(json.String)
+	path, _ := params["path"].(json.String) // empty: the whole component
+
+	root: inspector.Property
+	if comp_name == "" || comp_name == "Transform" {
+		p, ok := inspector.inspect_transform(tH)
+		if !ok do return {}, Mcp_Error{"not_found", "object went away"}
+		root = p
+	} else {
+		w := engine.ctx_world()
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}, Mcp_Error{"not_found", "object went away"}
+		found := false
+		for c in t.components {
+			tid := engine.get_typeid_by_type_key(c.handle.type_key)
+			if tid == nil do continue
+			if fmt.tprintf("%v", tid) != comp_name && fmt.tprintf("%v", c.handle.type_key) != comp_name do continue
+			p, ok := inspector.inspect_comp(c.handle)
+			if !ok do return {}, Mcp_Error{"not_found", "component went away"}
+			root = p
+			found = true
+			break
+		}
+		if !found do return {}, Mcp_Error{"not_found", fmt.tprintf("object has no component %q — see list_objects", comp_name)}
+	}
+	prop, err := inspector.property(root, path)
+	if err != .None do return {}, Mcp_Error{"bad_path", fmt.tprintf("%s: %v", path, err)}
+	return prop, {}
+}
+
+@(mcp_tool={
+	description="Read a component (or the transform) on an object as JSON, or one field of it. Address the object by local_id (preferred) or exact name, the component as list_objects prints it. Omit path for the whole component — the way to learn its field names — or give a dotted path with [i] for array elements, e.g. color, layers[0].states[1].speed.",
+	param_local_id="integer:Object local_id from list_objects",
+	param_name="string:Exact object name (alternative to local_id)",
+	param_component="string:Component type as list_objects prints it; omit or Transform for the transform",
+	param_path="string:Field path, dot-separated, [i] indexes an array; omit for the whole component",
+})
+mcp_tool_get_property :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	p, perr := _mcp_find_property(params)
+	if perr.code != "" do return "", perr
+	bytes := inspector.property_get_json(p)
+	defer delete(bytes)
+	path, _ := params["path"].(json.String)
+	return _mcp_ok(struct {
+		path:  string,
+		type:  string,
+		value: json.Value,
+	}{path = path, type = fmt.tprintf("%v", p.tid), value = _mcp_parse_value(bytes)})
+}
+
+@(mcp_tool={
+	description="Set one field of a component (or the transform) on an object. Same addressing as get_property. The value is JSON in the field's own shape — get_property shows it. A reference field accepts only what its ref: tag admits, as the picker does. One undo step. On a prefab instance the write records an override on the field, or on the whole array when the path indexes one.",
+	param_local_id="integer:Object local_id from list_objects",
+	param_name="string:Exact object name (alternative to local_id)",
+	param_component="string:Component type as list_objects prints it; omit or Transform for the transform",
+	param_path="string!:Field path, dot-separated, [i] indexes an array",
+	param_value="string!:JSON-encoded value, e.g. 2.5, true, [1,0,0,1], {\"local_id\":12}",
+})
+mcp_tool_set_property :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	p, perr := _mcp_find_property(params)
+	if perr.code != "" do return "", perr
+	value, has_value := params["value"].(json.String)
+	if !has_value do return _mcp_fail("bad_request", "need value (JSON-encoded, as a string)")
+	path, _ := params["path"].(json.String)
+	if path == "" do return _mcp_fail("bad_request", "set needs a field path — a whole component is not assignable")
+	if ok, why := inspector.property_set_json(p, transmute([]byte)string(value), fmt.tprintf("Set %s (MCP)", path)); !ok {
+		return _mcp_fail("bad_value", "%s: %s", value, why)
+	}
+	bytes := inspector.property_get_json(p)
+	defer delete(bytes)
+	return _mcp_ok(struct {
+		path:  string,
+		value: json.Value,
+	}{path = path, value = _mcp_parse_value(bytes)})
+}
+
+// Captured field bytes as a json.Value, so the reply nests the value instead
+// of quoting it. Temp-allocated.
+@(private = "file")
+_mcp_parse_value :: proc(bytes: []byte) -> json.Value {
+	v, err := json.parse(bytes, allocator = context.temp_allocator)
+	if err != nil do return json.String(string(bytes))
+	return v
 }
 
 @(mcp_tool={
@@ -689,15 +782,16 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 	new_name, has := params["new_name"].(json.String)
 	if !has || new_name == "" do return _mcp_fail("bad_request", "need new_name")
 
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(tH))
-	if t == nil do return _mcp_fail("not_found", "object went away")
-
-	sess := undo.edit_session_begin(
-		{undo.edit_target_transform(tH, &t.name, typeid_of(string))}, "Rename (MCP)")
-	defer undo.edit_session_end(&sess)
-	delete(t.name)
-	t.name = strings.clone(new_name)
+	// Through the property path, so a rename on prefab-instance content records
+	// the override the inspector's name field would.
+	p, pok := inspector.inspect_transform(tH)
+	if !pok do return _mcp_fail("not_found", "object went away")
+	np, _ := inspector.property(p, "name")
+	encoded, merr := json.marshal(new_name, {}, context.temp_allocator)
+	if merr != nil do return _mcp_fail("bad_value", "could not encode name")
+	if ok, why := inspector.property_set_json(np, encoded, "Rename (MCP)"); !ok {
+		return _mcp_fail("bad_value", "%s", why)
+	}
 	return _mcp_ok(struct{ name: string }{new_name})
 }
 
