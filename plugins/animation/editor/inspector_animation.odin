@@ -112,10 +112,9 @@ _wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if im.IsItemHovered({}) do im.SetTooltip("Default takes the clip's own wrap")
 }
 
-// One value row of the tree: the shared row transaction, then the prefab
-// override its commit implies. An entry has no path from the component base,
-// so the override names the whole `layers` field — the same granularity the
-// undo step records. No-op on an object that is not a prefab instance.
+// One value row of the tree. An entry has no path from the component base, so
+// the prefab override names the whole `layers` field — the same granularity
+// the undo step records.
 @(private = "file")
 _tree_row :: proc(
 	a: ^anim.Animation,
@@ -125,8 +124,8 @@ _tree_row :: proc(
 	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
 	draw_label: cstring,
 ) {
-	finished := inspector.field_edit_row(ptr, tid, 0, label, drawer, draw_label)
-	inspector.record_nested_override(&a.layers, typeid_of([dynamic]anim.Animation_Layer), "layers", finished)
+	inspector.custom_field_row(ptr, tid, label, drawer, draw_label,
+		{&a.layers, typeid_of([dynamic]anim.Animation_Layer), "layers"})
 }
 
 // Which entry the name field is being typed into, so exactly one row owns an

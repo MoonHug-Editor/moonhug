@@ -162,8 +162,6 @@ Track_Desc :: struct {
 
 _track_registry: map[engine.TypeKey]Track_Desc
 
-// Process-global registry: never borrows the caller's allocator (same rule
-// as every registry — a test's tracking allocator would dangle).
 // A track's binding field, as a driver's inspector draws it. `ptr`/`tid` name
 // the field, `ref` is its `ref:` spec for the picker, `comp` owns it for undo
 // — the edit is recorded against the track component, not the driver.
@@ -182,6 +180,8 @@ track_binding :: proc(tv: ^Track_View) -> (Track_Binding, bool) {
 	return d.binding(tv.node)
 }
 
+// Process-global registry: never borrows the caller's allocator (same rule
+// as every registry — a test's tracking allocator would dangle).
 track_register :: proc(desc: Track_Desc) {
 	context.allocator = runtime.default_allocator()
 	if _track_registry == nil do _track_registry = make(map[engine.TypeKey]Track_Desc)

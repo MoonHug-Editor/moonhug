@@ -310,12 +310,14 @@ The state names the **director**, not the object carrying it, and
 `_ta_target_transform` takes for a bound target. Both reference fields on the
 component now have the same type and resolve the same way.
 
-Every value row draws through `inspector.field_edit_row`, so each drag or
+Every value row draws through `inspector.custom_field_row`, so each drag or
 assignment is one undo step, and on a prefab instance the commit records an
 override on the whole `layers` field — a state has no path from the component
-base, which is the granularity the undo step records too. Add, remove and
-rename have no gesture and use `inspector.structural_edit_begin/end`. See
-docs/Undo.md, "Custom rows draw through `field_edit_row`".
+base, which is the granularity the undo step records too — with the override
+marker and the right-click Revert / Apply menu the generic inspector gives any
+field. Add, remove and rename have no gesture and use
+`inspector.structural_edit_begin/end`. See docs/Undo.md, "Custom rows draw
+through `field_edit_row`".
 
 A state added here is given its id immediately by `animator_state_next_id`,
 rather than left at 0 for `_ta_ensure_ids` to fill at build time: a row has to
@@ -337,6 +339,16 @@ tree exists: every object a character depends on is read and edited in one
 place. But the fields live on the tracks. Each row pushes the TRACK component
 as the undo owner and records any prefab override against it, so editing here
 is editing the track, and the Sequencer window shows the same value.
+
+A row like that is a PROXY: it draws a component the inspector is not drawing,
+so it pushes that component's own prefab context —
+`inspector.nested_context_for_comp`, host and local id together — before the
+row. Inheriting the animator's context is silently wrong. The host picks which
+prefab an override lands on, and a local id from another namespace does not
+fail the lookup: `nested_scene_locate_root_override` projects it into the
+host's namespace, where it names an unrelated object. The animator is often
+plain scene content driving tracks that are not, in which case the animator's
+context would record no override at all.
 
 A dedicated window is a later convenience, not a prerequisite.
 

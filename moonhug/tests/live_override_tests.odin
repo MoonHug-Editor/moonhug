@@ -6,6 +6,7 @@ package tests
 
 import "../engine"
 import sprites "moonhug:packages/sprites"
+import "../editor/inspector"
 import "../editor/undo"
 
 import "core:testing"
@@ -987,4 +988,89 @@ test_nested_create_child_undo_redo :: proc(t: ^testing.T) {
 	// A host addition, NOT prefab content — it must stay capturable as an
 	// added_object.
 	testing.expect(t, !bt.nested_owned, "a host-created child is not prefab content")
+}
+
+// --- Proxy rows ---------------------------------------------------------------
+// A panel that draws ANOTHER component's field (the timeline animator's per-track
+// binding rows) has to push that component's own prefab context, not the one the
+// inspector set for the component it is drawing. The fixture host is the shape
+// that catches it: HRoot is plain scene content, and the sprite it drives lives
+// deep inside a nested bullet_Variant instance.
+@(test)
+test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing.T) {
+	fx: Fixture_Chain
+	defer fixture_chain_destroy(&fx)
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	fx_ok: bool
+	fx, fx_ok = fixture_chain_author(t, tc_mem, "moonhug/tests/_fx_proxy_override")
+	if !fx_ok do return
+
+	s := tc_mem.scene // host.scene, left active by the fixture
+	testing.expect(t, s != nil)
+	if s == nil do return
+
+	sr, sr_tH := fixture_find_sprite(&tc_mem.world, s, nested_only = true)
+	testing.expect(t, sr != nil && sr_tH != {}, "the host nests a prefab sprite")
+	if sr == nil || sr_tH == {} do return
+	comp, _ := engine.transform_get_comp(sr_tH, sprites.SpriteRenderer)
+	testing.expect(t, comp.handle != {}, "sprite component handle")
+	if comp.handle == {} do return
+
+	host, lid := inspector.nested_context_for_comp(comp.handle)
+	testing.expect(t, host != {}, "a component inside an instance has a nested host")
+	testing.expect(t, lid == sr.base.local_id, "the lid is the component's own")
+	if host == {} do return
+
+	testing.expect(t, !engine.nested_scene_has_root_override(s, host, lid, "color"),
+		"the host instance must not override color before the edit")
+
+	// What the animator's context would be: its own object, HRoot, is native
+	// content — so the drawn component's context records nothing here.
+	root_t := engine.pool_get(&tc_mem.world.transforms, engine.Handle(s.root.handle))
+	testing.expect(t, root_t != nil)
+	if root_t == nil do return
+	engine.inspector_set_nested_host({})
+	engine.inspector_set_nested_local_id(root_t.local_id)
+	sr.color = {0.1, 0.2, 0.3, 1}
+	inspector.record_nested_override(&sr.color, typeid_of([4]f32), "color", true)
+	testing.expect(t, !engine.nested_scene_has_root_override(s, host, lid, "color"),
+		"inheriting the drawn component's context loses the override entirely")
+
+	// The proxy row's own context records it against the instance the component
+	// actually belongs to.
+	engine.inspector_set_nested_host(host)
+	engine.inspector_set_nested_local_id(lid)
+	sr.color = {0.4, 0.5, 0.6, 1}
+	inspector.record_nested_override(&sr.color, typeid_of([4]f32), "color", true)
+	engine.inspector_set_nested_host({})
+	engine.inspector_set_nested_local_id(0)
+
+	testing.expect(t, engine.nested_scene_has_root_override(s, host, lid, "color"),
+		"a proxy row edit must be overridden on the component's own instance")
+}
+
+// Plain scene content has no instance to record against, and neither does a
+// component ADDED to an instance — both must yield a zero host so the proxy row
+// simply records nothing instead of aliasing a lid into someone else's namespace.
+@(test)
+test_proxy_row_context_empty_for_non_prefab_component :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	owner := engine.transform_new("Plain")
+	comp, ptr := engine.transform_add_comp(owner, .SpriteRenderer)
+	testing.expect(t, ptr != nil, "sprite added")
+	if ptr == nil do return
+
+	host, lid := inspector.nested_context_for_comp(comp.handle)
+	testing.expect(t, host == {}, "plain scene content has no nested host")
+	testing.expect_value(t, lid, engine.Local_ID(0))
 }

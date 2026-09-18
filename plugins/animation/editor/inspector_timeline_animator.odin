@@ -262,18 +262,22 @@ _ta_track_bindings :: proc(st: ^anim.Timeline_State) {
 		im.PushIDInt(i32(tv.node.index))
 		undo.push_component_owner(b.comp)
 
-		// The override belongs to the track component, not the animator.
-		track_base := cast(^engine.CompData)engine.world_pool_get(w, b.comp)
-		prev_lid := engine.inspector_set_nested_local_id(track_base.local_id if track_base != nil else 0)
+		// The override belongs to the TRACK's instance, not the animator's: the
+		// two are only the same prefab by coincidence, and the animator is often
+		// plain scene content driving tracks that are not.
+		host, lid := inspector.nested_context_for_comp(b.comp)
+		prev_host := engine.inspector_set_nested_host(host)
+		prev_lid := engine.inspector_set_nested_local_id(lid)
 		prev_ref := inspector.current_field_ref_target
 		inspector.current_field_ref_target = b.ref
 
 		label := strings.clone_to_cstring(tv.name, context.temp_allocator)
-		finished := inspector.field_edit_row(b.ptr, b.tid, 0, "Track Binding", inspector.resolve_property_drawer(b.tid), label)
-		inspector.record_nested_override(b.ptr, b.tid, b.field, finished)
+		inspector.custom_field_row(b.ptr, b.tid, "Track Binding", inspector.resolve_property_drawer(b.tid), label,
+			{b.ptr, b.tid, b.field})
 
 		inspector.current_field_ref_target = prev_ref
 		engine.inspector_set_nested_local_id(prev_lid)
+		engine.inspector_set_nested_host(prev_host)
 		undo.pop_owner()
 		im.PopID()
 	}
@@ -310,9 +314,8 @@ _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 	return removed
 }
 
-// One value row: the shared row transaction, then the prefab override its
-// commit implies. A state lives in a dynamic array, so the override names the
-// whole `layers` field — the granularity the undo step records too.
+// One value row. A state lives in a dynamic array, so the prefab override
+// names the whole `layers` field — the granularity the undo step records too.
 @(private = "file")
 _ta_row :: proc(
 	a: ^anim.TimelineAnimator,
@@ -322,8 +325,8 @@ _ta_row :: proc(
 	drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
 	draw_label: cstring,
 ) {
-	finished := inspector.field_edit_row(ptr, tid, 0, label, drawer, draw_label)
-	inspector.record_nested_override(&a.layers, typeid_of([dynamic]anim.Animator_Layer), "layers", finished)
+	inspector.custom_field_row(ptr, tid, label, drawer, draw_label,
+		{&a.layers, typeid_of([dynamic]anim.Animator_Layer), "layers"})
 }
 
 // Click-to-rename, shared by layer and state rows. `key` identifies which row

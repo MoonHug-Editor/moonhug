@@ -339,7 +339,13 @@ still changes — it was written straight onto the component — so the loss is
 invisible until Ctrl+Z. This is the single most common way a new feature ships
 without undo.
 
-A custom value row is therefore written as a drawer handed to the row:
+A custom value row is therefore written as a drawer handed to the row. It goes
+through `custom_field_row`, which is `field_edit_row` plus what the generic
+loop puts around every field: the override marker, the override record on
+commit, and the right-click menu (Reset, Revert / Apply on prefab content,
+Copy / Paste). The last argument names the field the override records — the
+row's own value, or the whole array when the value sits in a dynamic-array
+element and no path reaches it:
 
 ```odin
 _slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
@@ -348,10 +354,15 @@ _slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     }
 }
 
-inspector.field_edit_row(&entry.value, typeid_of(f32), 0, "Blend Value", _slider_drawer, "Value")
+inspector.custom_field_row(&entry.value, typeid_of(f32), "Blend Value", _slider_drawer, "Value",
+    {&a.layers, typeid_of([dynamic]Layer), "layers"})
 ```
 
-What the row does that a hand-rolled bracket does not:
+A row that calls `field_edit_row` alone records the override but shows no
+marker and offers no Revert, so the user has to find the field elsewhere to
+see or undo what they did here.
+
+What the row transaction does that a hand-rolled bracket does not:
 
 - groups the drawer, so a row drawing several items (a slider's track plus its
   number field, a picker's button plus its clear) is one gesture whichever item
@@ -367,6 +378,16 @@ What the row does that a hand-rolled bracket does not:
 A tree that is not multi-edit aware clears the peers around its rows
 (`multi_set_peers(nil)`), because the row applies to every peer at the row's
 offset and an array element has no offset.
+
+A row that draws a component the inspector is NOT drawing — a proxy row, like
+the timeline animator's per-track binding rows — pushes two more things around
+`custom_field_row`: `undo.push_component_owner` for that component, so the step
+lands on it, and `inspector.nested_context_for_comp` for its prefab host and
+local id, so the override lands on the instance it belongs to. The second is the easy one
+to miss, because inheriting the drawn component's context looks right whenever
+the two happen to share a prefab, and goes wrong silently otherwise: a local id
+from another namespace is projected into the host's namespace rather than
+rejected, and a proxy under a plain-scene host records nothing at all.
 
 Structural changes — add, remove, a variant switch — have no gesture to bracket
 and use `structural_edit_begin/end` instead. `plugins/animation/editor/inspector_animation.odin`

@@ -605,7 +605,7 @@ _nested_scene_for_host :: proc(host_tH: engine.Transform_Handle) -> ^engine.Nest
 }
 
 @(private)
-_override_color := im.Vec4{0.4, 0.8, 1.0, 1.0}
+_override_color := inspector.OVERRIDE_TEXT_COLOR
 
 @(private)
 _push_override_style :: proc(is_overridden: bool) -> bool {

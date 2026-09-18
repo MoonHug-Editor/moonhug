@@ -372,6 +372,86 @@ _is_picker_type :: proc(tid: typeid) -> bool {
            is_enum_type(tid)
 }
 
+// Text color of a field that a prefab instance overrides. One value for the
+// generic loop, custom rows and the hierarchy's own markers.
+OVERRIDE_TEXT_COLOR :: im.Vec4{0.4, 0.8, 1.0, 1.0}
+
+// The field a prefab override NAMES for a row. For most rows it is the row's
+// own value. For a row inside a dynamic-array element (a state in `layers`) no
+// dotted path reaches the value, so the override names the whole array — the
+// granularity the undo step records too — and Revert restores the array.
+Override_Field :: struct {
+    ptr:  rawptr,
+    tid:  typeid,
+    path: string,
+}
+
+// Tints the label when the ambient prefab context overrides `path`. Pair with
+// override_marker_pop.
+override_marker_push :: proc(path: string) -> bool {
+    host_tH := engine.inspector_get_nested_host()
+    nested_lid := engine.inspector_get_nested_local_id()
+    if host_tH == {} || nested_lid == 0 || path == "" do return false
+    w := engine.ctx_world()
+    ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+    if ht == nil do return false
+    if !engine.nested_scene_has_root_override(ht.scene, host_tH, nested_lid, path) do return false
+    im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
+    return true
+}
+
+override_marker_pop :: proc(pushed: bool) {
+    if pushed do im.PopStyleColor(1)
+}
+
+// A value row the generic field loop does not draw — a custom tree's row, or a
+// PROXY row showing another component's field — with everything the loop puts
+// around a field: the override marker, the shared row transaction, the
+// override record on commit, and the right-click menu (Reset, Revert / Apply
+// on prefab content, Copy / Paste). A custom row that calls field_edit_row
+// alone records the override but shows no marker and offers no Revert, so the
+// user has to find the field elsewhere to see or undo what they did here.
+//
+// Offset is 0: custom trees clear the multi-edit peers around their rows.
+custom_field_row :: proc(
+    ptr: rawptr,
+    tid: typeid,
+    label: string,
+    drawer: proc(ptr: rawptr, tid: typeid, label: cstring),
+    draw_label: cstring,
+    record: Override_Field,
+) -> (finished: bool) {
+    pushed := override_marker_push(record.path)
+    finished = field_edit_row(ptr, tid, 0, label, drawer, draw_label)
+    record_nested_override(record.ptr, record.tid, record.path, finished)
+    draw_field_context_menu(ptr, tid, record.path, record)
+    override_marker_pop(pushed)
+    return finished
+}
+
+// The prefab-instance context of a component the inspector is NOT drawing — a
+// PROXY row, where a panel shows some other component's field (the timeline
+// animator's per-track binding rows). Push the pair before the row and restore
+// it after, the way the hierarchy inspector does for the component it owns.
+//
+// Both halves have to come from that component's own instance. The host decides
+// which prefab the override lands on, and a lid from another namespace does not
+// fail the lookup: nested_scene_locate_root_override projects it into the host's
+// namespace, where it names an unrelated object. So inheriting the drawn
+// component's context is silently wrong as soon as the two live in different
+// instances, and records nothing at all when only the proxy is prefab content.
+//
+// A component outside any instance yields a zero host, which makes
+// record_nested_override a no-op — the right outcome for plain scene content,
+// and for a component ADDED to an instance, which is not prefab content either.
+nested_context_for_comp :: proc(comp: engine.Handle) -> (host: engine.Transform_Handle, lid: engine.Local_ID) {
+    raw := engine.world_pool_get(engine.ctx_world(), comp)
+    if raw == nil do return {}, 0
+    base := cast(^engine.CompData)raw
+    if !base.nested_owned do return {}, 0
+    return engine.transform_immediate_nested_host(base.owner), base.local_id
+}
+
 // Records a prefab-instance override for a field whose edit just committed, so
 // the override marker / Revert / Apply light up immediately instead of after a
 // save. No-op for non-nested content.
@@ -488,7 +568,7 @@ _field_menu_undo_end :: proc(u: _FieldMenuUndo) {
 }
 
 @(private)
-_draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, readonly: bool, property_path: string) -> bool {
+_draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, readonly: bool, record: Override_Field) -> bool {
     full_ti := type_info_of(field_tid)
     check_ti := runtime.type_info_base(full_ti)
     check_tid := field_tid
@@ -533,7 +613,7 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
             _field_menu_undo_end(u)
             // Reset is an ordinary value edit: on prefab-instance content it
             // creates an override like typing a value would.
-            record_nested_override(field_ptr, field_tid, property_path, true)
+            record_nested_override(record.ptr, record.tid, record.path, true)
             mark_inspector_changed()
         }
         return true
@@ -543,9 +623,9 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
         if im.MenuItem("Reset", nil, false, !readonly) {
             u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
             if is_fixed_array {
-                if property_path == "scale" && check_tid == typeid_of(f32) && fixed_count == 3 {
+                if record.path == "scale" && check_tid == typeid_of(f32) && fixed_count == 3 {
                     (cast(^[3]f32)(field_ptr))^ = {1, 1, 1}
-                } else if property_path == "rotation" && check_tid == typeid_of(f32) && fixed_count == 4 {
+                } else if record.path == "rotation" && check_tid == typeid_of(f32) && fixed_count == 4 {
                     (cast(^[4]f32)(field_ptr))^ = engine.QUAT_IDENTITY
                 } else {
                     mem.zero(field_ptr, full_ti.size)
@@ -561,7 +641,7 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
             _field_menu_undo_end(u)
             // Reset is an ordinary value edit: on prefab-instance content it
             // creates an override like typing a value would.
-            record_nested_override(field_ptr, field_tid, property_path, true)
+            record_nested_override(record.ptr, record.tid, record.path, true)
             mark_inspector_changed()
         }
         return true
@@ -569,12 +649,16 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
     return false
 }
 
-draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_path: string = "") {
+// `record` is the field a prefab override names when it is not the row's own
+// value (see Override_Field). Zero means the row itself.
+draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_path: string = "", record := Override_Field{}) {
+    record := record
+    if record.ptr == nil do record = {field_ptr, field_tid, property_path}
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
         readonly := engine.inspector_is_readonly()
-        if _draw_field_context_menu_reset(field_ptr, field_tid, readonly, property_path) {
+        if _draw_field_context_menu_reset(field_ptr, field_tid, readonly, record) {
             im.Separator()
         }
 
@@ -595,8 +679,8 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
 	                    // they are attached to the undo step after it commits,
 	                    // so the record undoes together with the value.
 	                    snap := undo.override_removal_snapshot(root_ns, root_target, property_path)
-	                    u := _field_menu_undo_begin(field_ptr, field_tid, "Revert")
-	                    engine.nested_scene_revert_override(ht.scene, root_ns, root_target, property_path, field_ptr)
+	                    u := _field_menu_undo_begin(record.ptr, record.tid, "Revert")
+	                    engine.nested_scene_revert_override(ht.scene, root_ns, root_target, property_path, record.ptr)
 	                    _field_menu_undo_end(u)
 	                    undo.record_override_removed(ht.scene, host_tH, nested_lid, property_path, snap)
 	                    mark_inspector_changed()
@@ -727,7 +811,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
         inspector_changed = false
 
         if is_field_overridden {
-            im.PushStyleColorImVec4(im.Col.Text, im.Vec4{0.4, 0.8, 1.0, 1.0})
+            im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
         }
 
         // A decorator that draws the row itself writes the value before the
