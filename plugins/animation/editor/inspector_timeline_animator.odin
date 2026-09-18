@@ -23,7 +23,6 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
-import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
@@ -238,11 +237,12 @@ _ta_state_row :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 
 // What the state's timeline drives: one row per track, showing that TRACK's
 // own binding field — the animation track's Animation, the audio track's
-// AudioSource — through Track_Desc.binding, so the animator never names a
-// kind. This is the reason the tree exists: every object a character depends
-// on is read and edited in one place. But the fields live on the tracks, so
-// each row pushes the TRACK component as the undo owner and records any prefab
-// override against it. Editing here is editing the track.
+// AudioSource — named by Track_Desc.binding_field, so the animator never names
+// a kind. This is the reason the tree exists: every object a character depends
+// on is read and edited in one place. The field lives on the track, and the
+// row is a PROXY for it: inspector.property addresses it on the track
+// component, so undo lands there and a prefab override records against the
+// track's own instance. Editing here is editing the track.
 @(private = "file")
 _ta_track_bindings :: proc(st: ^anim.Timeline_State) {
 	w := engine.ctx_world()
@@ -257,27 +257,20 @@ _ta_track_bindings :: proc(st: ^anim.Timeline_State) {
 	im.AlignTextToFramePadding()
 	im.TextDisabled("Tracks")
 	for &tv in tracks {
-		b, ok := seq.track_binding(&tv)
-		if !ok do continue
+		desc, ok := seq.track_desc(tv.kind)
+		if !ok || desc.binding_field == "" do continue
+		owned, raw := engine.transform_get_comp_key(tv.node, desc.track_key)
+		if raw == nil do continue
+		p, pok := inspector.inspect_comp(owned.handle)
+		if !pok do continue
+		// The name is a literal a track kind registers, so a miss is that
+		// kind's bug — not something to skip quietly.
+		b, err := inspector.property(p, desc.binding_field)
+		if err != .None {
+			fmt.panicf("track kind %v registers binding_field %q: %v", tv.kind, desc.binding_field, err)
+		}
 		im.PushIDInt(i32(tv.node.index))
-		undo.push_component_owner(b.comp)
-
-		// The override belongs to the TRACK's instance, not the animator's: the
-		// two are only the same prefab by coincidence, and the animator is often
-		// plain scene content driving tracks that are not.
-		host, lid := inspector.nested_context_for_comp(b.comp)
-		prev_host := engine.inspector_set_nested_host(host)
-		prev_lid := engine.inspector_set_nested_local_id(lid)
-		prev_tags := inspector.field_tags_set(b.tag)
-
-		label := strings.clone_to_cstring(tv.name, context.temp_allocator)
-		inspector.custom_field_row(b.ptr, b.tid, "Track Binding", inspector.resolve_property_drawer(b.tid), label,
-			{b.ptr, b.tid, b.field})
-
-		inspector.field_tags_restore(prev_tags)
-		engine.inspector_set_nested_local_id(prev_lid)
-		engine.inspector_set_nested_host(prev_host)
-		undo.pop_owner()
+		inspector.property_row(b, "Track Binding", draw_label = strings.clone_to_cstring(tv.name, context.temp_allocator))
 		im.PopID()
 	}
 }

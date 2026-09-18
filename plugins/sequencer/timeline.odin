@@ -14,8 +14,6 @@ package sequencer
 // own component (and their clips' components) for targets and payloads.
 
 import "base:runtime"
-import "core:fmt"
-import "core:reflect"
 import "core:slice"
 import "moonhug:engine"
 
@@ -156,48 +154,15 @@ Track_Desc :: struct {
 	// draws that field beside the state playing the timeline, so every
 	// binding a character depends on is editable in one place without the
 	// driver importing the kind's package. Only the name is registered: the
-	// field's type and its picker tags (`ref:`, `has:`, `pick:`) are read off
-	// the struct, so the proxy row can never disagree with the track's own
-	// inspector. A name the struct does not have is a programming error and
-	// panics on first use.
+	// driver resolves it on the live track component (inspector.property), so
+	// the field's type and picker tags come off the struct and the proxy row
+	// can never disagree with the track's own inspector.
 	binding_field: string,
 	tick:        proc(ctx: ^Track_Ctx),
 	preview_end: proc(ctx: ^Track_Ctx),
 }
 
 _track_registry: map[engine.TypeKey]Track_Desc
-
-// A track's binding field resolved on a live track, as a driver's inspector
-// draws it: `ptr`/`tid` are the field, `tag` its struct tag for the picker,
-// `comp` the track component that owns it for undo, `field` the name for a
-// prefab override's path.
-Track_Binding :: struct {
-	ptr:   rawptr,
-	tid:   typeid,
-	tag:   reflect.Struct_Tag,
-	field: string,
-	comp:  engine.Handle,
-}
-
-// The binding field of `tv`'s track, when its kind registers one.
-track_binding :: proc(tv: ^Track_View) -> (Track_Binding, bool) {
-	d, ok := track_desc(tv.kind)
-	if !ok || d.binding_field == "" do return {}, false
-	owned, raw := engine.transform_get_comp_key(tv.node, d.track_key)
-	if raw == nil do return {}, false
-	tid := engine.get_typeid_by_type_key(d.track_key)
-	f := reflect.struct_field_by_name(tid, d.binding_field)
-	if f.name == "" {
-		fmt.panicf("track kind %v registers binding_field %q, which %v does not have", d.track_key, d.binding_field, tid)
-	}
-	return {
-		ptr   = rawptr(uintptr(raw) + f.offset),
-		tid   = f.type.id,
-		tag   = f.tag,
-		field = d.binding_field,
-		comp  = owned.handle,
-	}, true
-}
 
 // Process-global registry: never borrows the caller's allocator (same rule
 // as every registry — a test's tracking allocator would dangle).

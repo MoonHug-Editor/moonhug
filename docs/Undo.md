@@ -380,14 +380,16 @@ A tree that is not multi-edit aware clears the peers around its rows
 offset and an array element has no offset.
 
 A row that draws a component the inspector is NOT drawing — a proxy row, like
-the timeline animator's per-track binding rows — pushes two more things around
-`custom_field_row`: `undo.push_component_owner` for that component, so the step
-lands on it, and `inspector.nested_context_for_comp` for its prefab host and
-local id, so the override lands on the instance it belongs to. The second is the easy one
-to miss, because inheriting the drawn component's context looks right whenever
-the two happen to share a prefab, and goes wrong silently otherwise: a local id
-from another namespace is projected into the host's namespace rather than
-rejected, and a proxy under a plain-scene host records nothing at all.
+the timeline animator's per-track binding rows — goes through
+`inspector.property_row` on a `Property` from `inspect_comp` + `property`
+(docs/InspectorProperty.md). The property carries that component's undo owner
+and its own prefab host and local id, and the row pushes them around
+`custom_field_row` and puts the inspector's back. The prefab context is the
+easy one to get wrong by hand, because inheriting the drawn component's
+context looks right whenever the two happen to share a prefab, and goes wrong
+silently otherwise: a local id from another namespace is projected into the
+host's namespace rather than rejected, and a proxy under a plain-scene host
+records nothing at all.
 
 Structural changes — add, remove, a variant switch — have no gesture to bracket
 and use `structural_edit_begin/end` instead. `plugins/animation/editor/inspector_animation.odin`

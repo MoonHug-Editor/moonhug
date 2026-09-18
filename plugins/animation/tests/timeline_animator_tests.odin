@@ -14,6 +14,7 @@ import "core:os"
 import "core:reflect"
 import "core:strings"
 import "core:testing"
+import inspector "moonhug:editor/inspector"
 import "moonhug:engine"
 import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
@@ -912,14 +913,19 @@ test_track_binding_resolves_from_struct :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(tracks), 1)
 	if len(tracks) != 1 do return
 
-	b, ok := seq.track_binding(&tracks[0])
-	testing.expect(t, ok, "an animation track registers a binding field")
-	if !ok do return
+	desc, dok := seq.track_desc(tracks[0].kind)
+	testing.expect(t, dok && desc.binding_field == "target", "the animation track registers its target")
 	track_owned, ta := engine.transform_get_comp(tracks[0].node, anim.TrackAnimation)
+	p, pok := inspector.inspect_comp(track_owned.handle)
+	testing.expect(t, pok)
+	if !pok do return
+	b, err := inspector.property(p, desc.binding_field)
+	testing.expect_value(t, err, inspector.Resolve_Error.None)
+	if err != .None do return
 	testing.expect(t, b.ptr == rawptr(&ta.target), "the pointer is the track's own target field")
 	testing.expect(t, b.tid == typeid_of(engine.Ref_Local), "the type is the field's")
-	testing.expect_value(t, b.field, "target")
-	testing.expect(t, b.comp == track_owned.handle, "undo owner is the track component")
+	testing.expect_value(t, b.record.path, "target")
+	testing.expect(t, b.owner.handle == track_owned.handle, "undo owner is the track component")
 	ref, has_ref := reflect.struct_tag_lookup(b.tag, "ref")
 	testing.expect(t, has_ref && ref == "Animation", "the picker tag is the struct's, not a copy")
 }

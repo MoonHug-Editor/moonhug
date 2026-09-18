@@ -1021,7 +1021,10 @@ test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing
 	testing.expect(t, comp.handle != {}, "sprite component handle")
 	if comp.handle == {} do return
 
-	host, lid := inspector.nested_context_for_comp(comp.handle)
+	p, pok := inspector.inspect_comp(comp.handle)
+	testing.expect(t, pok)
+	if !pok do return
+	host, lid := p.nested_host, p.nested_lid
 	testing.expect(t, host != {}, "a component inside an instance has a nested host")
 	testing.expect(t, lid == sr.base.local_id, "the lid is the component's own")
 	if host == {} do return
@@ -1070,7 +1073,8 @@ test_proxy_row_context_empty_for_non_prefab_component :: proc(t: ^testing.T) {
 	testing.expect(t, ptr != nil, "sprite added")
 	if ptr == nil do return
 
-	host, lid := inspector.nested_context_for_comp(comp.handle)
-	testing.expect(t, host == {}, "plain scene content has no nested host")
-	testing.expect_value(t, lid, engine.Local_ID(0))
+	p, pok := inspector.inspect_comp(comp.handle)
+	testing.expect(t, pok)
+	testing.expect(t, p.nested_host == {}, "plain scene content has no nested host")
+	testing.expect_value(t, p.nested_lid, engine.Local_ID(0))
 }

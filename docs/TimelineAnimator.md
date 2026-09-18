@@ -343,9 +343,10 @@ as the undo owner and records any prefab override against it, so editing here
 is editing the track, and the Sequencer window shows the same value.
 
 A row like that is a PROXY: it draws a component the inspector is not drawing,
-so it pushes that component's own prefab context —
-`inspector.nested_context_for_comp`, host and local id together — before the
-row. Inheriting the animator's context is silently wrong. The host picks which
+so it addresses the field on that component — `inspector.inspect_comp` +
+`property(p, desc.binding_field)`, docs/InspectorProperty.md — and the
+property carries the track's own undo owner and prefab context, host and local
+id together. Inheriting the animator's context is silently wrong. The host picks which
 prefab an override lands on, and a local id from another namespace does not
 fail the lookup: `nested_scene_locate_root_override` projects it into the
 host's namespace, where it names an unrelated object. The animator is often

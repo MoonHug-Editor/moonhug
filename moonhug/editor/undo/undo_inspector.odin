@@ -43,16 +43,17 @@ current_owner :: proc() -> (Inspector_Owner, bool) {
 }
 
 push_pooled_owner :: proc(h: engine.Handle) {
+	push_owner(pooled_owner(h))
+}
+
+// The owner record for a pooled transform or component, without pushing it —
+// for a caller that carries the owner around (inspector.Property) and pushes
+// it only while a row draws. `.None` when the handle is dead.
+pooled_owner :: proc(h: engine.Handle) -> Inspector_Owner {
 	w := engine.ctx_world()
-	if w == nil {
-		push_owner(Inspector_Owner{kind = .None})
-		return
-	}
+	if w == nil do return Inspector_Owner{kind = .None}
 	base := engine.world_pool_get(w, h)
-	if base == nil {
-		push_owner(Inspector_Owner{kind = .None})
-		return
-	}
+	if base == nil do return Inspector_Owner{kind = .None}
 	scene: ^engine.Scene
 	lid: engine.Local_ID
 	if h.type_key == .Transform {
@@ -66,13 +67,13 @@ push_pooled_owner :: proc(h: engine.Handle) {
 			scene = t.scene
 		}
 	}
-	push_owner(Inspector_Owner{
+	return Inspector_Owner{
 		kind = .Pooled,
 		scene = scene_ref(scene),
 		local_id = lid,
 		handle = h,
 		base_ptr = base,
-	})
+	}
 }
 
 push_transform_owner :: proc(tH: engine.Transform_Handle) {
