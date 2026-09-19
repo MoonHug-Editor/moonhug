@@ -34,6 +34,7 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Err
 - `scene_dump` — scene summary (roots, counts, selection), `full=true` for the complete serialized scene. A full dump is the whole file, so it is refused above `max_bytes` (default 8000, about 2000 tokens) rather than silently filling a context — `list_objects` plus `get_property` answer most questions for a fraction of it
 - `list_objects` — objects in the scene: `local_id`, name, parent and the components each carries. **Paginated** (`page_size` 50 by default, 500 max, `cursor` to resume, `next_cursor` is -1 on the last page) and world positions are opt-in (`detail`), because a whole scene of objects with full-precision floats is most of an agent's context for a question usually answered by a name
 - `batch` — several tools in one round trip, each `{tool, params}`. The bridge answers one call per frame, so repetitive work otherwise costs one frame per command. Every command runs through the same dispatch a standalone call does and keeps its own undo step: a batch is a convenience, not a transaction, and a later failure does not roll back an earlier success. `fail_fast` (default true) stops at the first error. Max 100, no nesting, and no `screenshot` (it answers across frames)
+- `describe_type` — what a component looks like: its fields, their types, and the `ref:` / `has:` tags saying what a reference field accepts. No `type` lists every registered component. Type-level, so it needs no object, and `path` walks into a field (ignoring array indices, so a `get_property` path also describes its shape). Answers "does this field exist and what does it take" before a write, instead of after a failed one
 - `list_menus` / `invoke_menu` — enumerate and invoke menu actions by path (same code path as clicking)
 - `select` — build a selection: `local_ids` for an exact set (this is how a multi-selection is made, which is what the inspector multi-edits), `name` for every object with that name, `add=true` to extend the current one, empty to clear
 - `set_transform` — position, rotation (euler degrees) or scale on one object. Omitted components keep their value
@@ -63,6 +64,9 @@ Two rules keep that from being the bridge's dominant cost:
 - **Identify first, detail second.** A listing carries what is needed to CHOOSE
   a target (`local_id`, name, parent, component names). Values come from
   `get_property` on the one object that turned out to matter.
+- **Answer from the registry, not from a failure.** `describe_type` reports a
+  component's fields and their reference tags without touching an object, so a
+  wrong field name costs one cheap call rather than a write that is refused.
 
 ## TODO
 

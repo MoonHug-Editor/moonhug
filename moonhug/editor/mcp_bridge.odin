@@ -20,7 +20,9 @@ import "core:encoding/base64"
 import "core:encoding/json"
 import "core:fmt"
 import "core:net"
+import "core:reflect"
 import "core:os"
+import "core:slice"
 import "core:strings"
 import stbi "vendor:stb/image"
 import mcp "moonhug:editor/mcp"
@@ -538,6 +540,140 @@ mcp_tool_batch :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	strings.write_string(&b, "]")
 	return fmt.tprintf(`{{"ran":%d,"failed":%d,"stopped_early":%t,"results":%s}}`,
 		ran, failed, ran < len(raw), strings.to_string(b)), {}
+}
+
+// What a component IS, from the live registry and Odin reflection — the
+// question an agent otherwise answers by guessing a field name and reading the
+// error. The registry is the same one the inspector draws from, so a plugin's
+// components appear here and a disabled plugin's do not.
+//
+// Type-level, so it needs no object: `path` walks field names, skipping array
+// indices (`layers[0].states` and `layers.states` describe the same type),
+// which means the path that addresses a value in get_property also describes
+// its shape here.
+@(private = "file")
+_describe_find_type :: proc(name: string) -> (typeid, engine.TypeKey, bool) {
+	for desc, key in engine.component_registry {
+		if desc.tid == nil do continue
+		if fmt.tprintf("%v", desc.tid) == name || fmt.tprintf("%v", key) == name {
+			return desc.tid, key, true
+		}
+	}
+	return nil, {}, false
+}
+
+// Unwraps arrays and pointers to the type a path segment can name fields on.
+@(private = "file")
+_describe_elem :: proc(tid: typeid) -> typeid {
+	cur := tid
+	for {
+		ti := runtime.type_info_base(type_info_of(cur))
+		#partial switch v in ti.variant {
+		case runtime.Type_Info_Array:         cur = v.elem.id
+		case runtime.Type_Info_Dynamic_Array: cur = v.elem.id
+		case runtime.Type_Info_Slice:         cur = v.elem.id
+		case runtime.Type_Info_Pointer:
+			if v.elem == nil do return cur
+			cur = v.elem.id
+		case:
+			return cur
+		}
+	}
+}
+
+// Fields of `tid` as JSON, omitting what a field does not declare — a listing
+// of empty tag strings would be most of the payload.
+@(private = "file")
+_describe_fields_json :: proc(tid: typeid) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[")
+	ti := runtime.type_info_base(type_info_of(tid))
+	if _, is_struct := ti.variant.(runtime.Type_Info_Struct); !is_struct {
+		strings.write_string(&b, "]")
+		return strings.to_string(b)
+	}
+	n := 0
+	for f in reflect.struct_fields_zipped(tid) {
+		if n > 0 do strings.write_string(&b, ",")
+		n += 1
+		name, _ := json.marshal(f.name, {}, context.temp_allocator)
+		ftype, _ := json.marshal(fmt.tprintf("%v", f.type.id), {}, context.temp_allocator)
+		fmt.sbprintf(&b, `{{"name":%s,"type":%s`, string(name), string(ftype))
+		for tag in ([?]string{"ref", "has", "pick", "ext"}) {
+			v, has := reflect.struct_tag_lookup(f.tag, tag)
+			if !has || v == "" do continue
+			tv, _ := json.marshal(v, {}, context.temp_allocator)
+			fmt.sbprintf(&b, `,"%s":%s`, tag, string(tv))
+		}
+		// A field the serializer skips can be written, but the write does not
+		// survive a save — worth knowing before setting one.
+		if j, has_j := reflect.struct_tag_lookup(f.tag, "json"); has_j && j == "-" {
+			strings.write_string(&b, `,"serialized":false`)
+		}
+		strings.write_string(&b, "}")
+	}
+	strings.write_string(&b, "]")
+	return strings.to_string(b)
+}
+
+@(mcp_tool={
+	description="What a component looks like: its fields, their types, and the ref:/has: tags that say what a reference field accepts. Omit type to list every registered component. Type-level, so it needs no object — check a field exists and what it admits BEFORE calling set_property, instead of learning it from the error. path walks into a field and describes that type, ignoring array indices, so the same path that addresses a value in get_property describes its shape here.",
+	param_type="string:Component type name as list_objects prints it; omit to list every registered component",
+	param_path="string:Field path into the type, e.g. layers or layers[0].states",
+})
+mcp_tool_describe_type :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	name, has_name := params["type"].(json.String)
+	if !has_name || name == "" {
+		names := make([dynamic]string, context.temp_allocator)
+		for desc in engine.component_registry {
+			if desc.tid == nil do continue
+			append(&names, fmt.tprintf("%v", desc.tid))
+		}
+		slice.sort(names[:])
+		return _mcp_ok(struct {
+			components: []string,
+		}{components = names[:]})
+	}
+
+	tid, key, found := _describe_find_type(string(name))
+	if !found do return _mcp_fail("not_found", "no registered component named %q — call describe_type with no type to list them", name)
+
+	cur := tid
+	path, _ := params["path"].(json.String)
+	if path != "" {
+		for seg in strings.split(string(path), ".", context.temp_allocator) {
+			field := seg
+			if open := strings.index_byte(field, '['); open >= 0 do field = field[:open]
+			if field == "" do return _mcp_fail("bad_path", "%s: empty segment", path)
+			owner := _describe_elem(cur)
+			f := reflect.struct_field_by_name(owner, field)
+			if f.name == "" {
+				return _mcp_fail("bad_path", "%v has no field %q", owner, field)
+			}
+			cur = f.type.id
+		}
+	}
+
+	elem := _describe_elem(cur)
+	ref_tags := engine.component_registry[key].ref_tags
+	if ref_tags == nil do ref_tags = {}
+	return fmt.tprintf(
+		`{{"type":%q,"element":%q,"ref_tags":%s,"fields":%s}}`,
+		fmt.tprintf("%v", cur), fmt.tprintf("%v", elem),
+		_mcp_strings_json(ref_tags), _describe_fields_json(elem)), {}
+}
+
+@(private = "file")
+_mcp_strings_json :: proc(xs: []string) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[")
+	for x, i in xs {
+		if i > 0 do strings.write_string(&b, ",")
+		v, _ := json.marshal(x, {}, context.temp_allocator)
+		strings.write_string(&b, string(v))
+	}
+	strings.write_string(&b, "]")
+	return strings.to_string(b)
 }
 
 @(mcp_tool={description="Every invokable editor menu path."})
