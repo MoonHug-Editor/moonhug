@@ -186,7 +186,9 @@ add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int
 	if node.shortcut_cstr != nil {
 		mem.delete_cstring(node.shortcut_cstr)
 	}
-	node.shortcut, _ = strings.clone(shortcut)
+	// strings.clone("") still allocates, and the free guard below skips empty
+	// strings — so cloning a missing shortcut leaked it. Most items have none.
+	node.shortcut = shortcut == "" ? "" : strings.clone(shortcut)
 	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.action = action
 	node.enabled = enabled
@@ -204,7 +206,9 @@ add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, 
 	if node.shortcut_cstr != nil {
 		mem.delete_cstring(node.shortcut_cstr)
 	}
-	node.shortcut, _ = strings.clone(shortcut)
+	// strings.clone("") still allocates, and the free guard below skips empty
+	// strings — so cloning a missing shortcut leaked it. Most items have none.
+	node.shortcut = shortcut == "" ? "" : strings.clone(shortcut)
 	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.value = value
 	node.enabled = enabled
@@ -234,23 +238,47 @@ find_path :: proc(path: string) -> ^MenuNode {
 	return node
 }
 
-// Invokes the Action registered at `path`, honoring its enabled predicate.
-// False when the path doesn't exist, isn't an action, or is disabled.
-invoke_path :: proc(path: string) -> bool {
-	node := find_path(path)
-	if node == nil || node.kind != .Action || node.action == nil do return false
-	if node.enabled != nil && !node.enabled() do return false
-	node.action()
-	return true
+// Whether `node` is something invoke_path can fire. Actions and toggles both
+// are: clicking either does something. Submenus and separators are not.
+@(private = "file")
+_node_invokable :: proc(node: ^MenuNode) -> bool {
+	if node == nil do return false
+	#partial switch node.kind {
+	case .Action: return node.action != nil
+	case .Toggle: return node.value != nil
+	}
+	return false
 }
 
-// Every invokable action path ("Edit/Undo", ...), temp-allocated.
-collect_action_paths :: proc(allocator := context.temp_allocator) -> []string {
+// Invokes the item at `path` as clicking it would, honoring its enabled
+// predicate: an Action runs, a Toggle flips. `state` is the toggle's value
+// afterwards, so a caller that cannot see the menu knows where it landed —
+// flipping is not idempotent, and there is no other way to read it back.
+// False when the path doesn't exist, isn't invokable, or is disabled.
+invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
+	node := find_path(path)
+	if !_node_invokable(node) do return false, false
+	if node.enabled != nil && !node.enabled() do return false, false
+	#partial switch node.kind {
+	case .Action:
+		node.action()
+	case .Toggle:
+		node.value^ = !node.value^
+		return true, node.value^
+	}
+	return true, false
+}
+
+// Every path invoke_path accepts ("Edit/Undo", "Help/Input Debug", ...),
+// temp-allocated. Toggles are included: they are as clickable as actions, and
+// leaving them out made them invisible to anything driving the menu from
+// outside, with no hint that they existed.
+collect_invokable_paths :: proc(allocator := context.temp_allocator) -> []string {
 	out := make([dynamic]string, allocator)
 	walk :: proc(node: ^MenuNode, prefix: string, out: ^[dynamic]string, allocator: mem.Allocator) {
 		for child in node.children {
 			path := prefix == "" ? child.name : strings.concatenate({prefix, "/", child.name}, allocator)
-			if child.kind == .Action && child.action != nil {
+			if _node_invokable(child) {
 				append(out, path)
 			}
 			walk(child, path, out, allocator)

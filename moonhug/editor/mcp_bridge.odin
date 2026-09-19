@@ -676,9 +676,9 @@ _mcp_strings_json :: proc(xs: []string) -> string {
 	return strings.to_string(b)
 }
 
-@(mcp_tool={description="Every invokable editor menu path."})
+@(mcp_tool={description="Every invokable editor menu path, actions and toggles alike. invoke_menu fires any of them: an action runs, a toggle flips and the reply says which way it landed."})
 mcp_tool_list_menus :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
-	return _mcp_ok(menu.collect_action_paths())
+	return _mcp_ok(menu.collect_invokable_paths())
 }
 
 @(mcp_tool={
@@ -1101,16 +1101,22 @@ mcp_tool_editor_setting :: proc(id: i64, params: json.Object) -> (string, Mcp_Er
 }
 
 @(mcp_tool={
-	description="Invoke an editor menu action by path, e.g. Edit/Undo (same as clicking it).",
+	description="Invoke an editor menu item by path, e.g. Edit/Undo (same as clicking it). An action runs. A TOGGLE FLIPS — it does not take a value — so the reply carries its resulting state, and asking twice puts it back.",
 	param_path="string!:Menu path from list_menus",
 })
 mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	path, has := params["path"].(json.String)
 	if !has do return _mcp_fail("bad_request", "missing path")
-	if !menu.invoke_path(path) {
-		return _mcp_fail("menu_unavailable", "%q not found, not an action, or disabled — see list_menus", path)
+	ok, state := menu.invoke_path(path)
+	if !ok {
+		return _mcp_fail("menu_unavailable", "%q not found, not invokable, or disabled — see list_menus", path)
 	}
-	return _mcp_ok(struct{ invoked: bool }{true})
+	// A toggle FLIPS, so the reply carries where it landed — an agent has no
+	// other way to read menu state, and asking twice would undo the first ask.
+	return _mcp_ok(struct {
+		invoked: bool,
+		state:   bool,
+	}{invoked = true, state = state})
 }
 
 // --- Screenshot ------------------------------------------------------------------
