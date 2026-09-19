@@ -1,3 +1,16 @@
+## [0.101.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.100.0...v0.101.0) (2026-09-19)
+
+### Features
+
+* mcp describe type procs ([0fece0f](https://github.com/MoonHug-Editor/moonhug/commit/0fece0febcd5047e8f3a1d02a55f0974a3ef636a))
+* mcp list_objects filter by comp ([e657d2d](https://github.com/MoonHug-Editor/moonhug/commit/e657d2df7f6fa0c9f5a3d5864309f90ecb03ccef))
+* timeline_animator edit mode preview ([82766b8](https://github.com/MoonHug-Editor/moonhug/commit/82766b80d5bcbb6734e106fe379c2ed60b096202))
+* unify menu_items with toggle, add TODOs ([f460e6e](https://github.com/MoonHug-Editor/moonhug/commit/f460e6e968c8769ed78e145ad23027dbd391051f))
+
+### Bug Fixes
+
+* allow mcp trigger menu toggles ([41d7103](https://github.com/MoonHug-Editor/moonhug/commit/41d7103bad1f25e0393e06d3ff6fd982856dc509))
+
 ## [0.100.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.99.0...v0.100.0) (2026-09-19)
 
 ### Features
