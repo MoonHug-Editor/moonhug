@@ -719,8 +719,9 @@ mcp_tool_ping_asset :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 @(mcp_tool={
-	description="Objects in the active scene: local_id, name, parent and the components each carries — enough to pick what to read with get_property. PAGINATED: 50 per page by default, next_cursor is -1 on the last page. World positions are opt-in, since they are the bulk of the payload. Names repeat, so address an object by local_id.",
+	description="Objects in the active scene: local_id, name, parent and the components each carries — enough to pick what to read with get_property. Filter by name and/or component, which is how you answer \"every object with an X\" without listing the scene. PAGINATED: 50 per page by default, next_cursor is -1 on the last page. World positions are opt-in, since they are the bulk of the payload. Names repeat, so address an object by local_id.",
 	param_name="string:Only objects whose name contains this text",
+	param_component="string:Only objects carrying this component, named as this tool prints it (see describe_type)",
 	param_page_size="integer:Objects per page (default 50, max 500)",
 	param_cursor="integer:Index to resume from — next_cursor from the previous page",
 	param_detail="boolean:Also return each object's world position",
@@ -729,6 +730,16 @@ mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 	s := engine.sm_scene_get_active()
 	if s == nil do return _mcp_fail("no_scene", "no active scene")
 	filter, _ := params["name"].(json.String)
+	comp_filter, _ := params["component"].(json.String)
+	// A component name that matches nothing is a typo, not an empty scene —
+	// an empty list would read as "no such objects" and send the caller
+	// looking in the wrong place.
+	if comp_filter != "" {
+		if _, _, known := _describe_find_type(string(comp_filter)); !known {
+			return _mcp_fail("not_found",
+				"no registered component named %q — call describe_type with no type to list them", comp_filter)
+		}
+	}
 
 	// `position` is a slice so it can be absent: a scene's worth of full-
 	// precision floats is most of the payload, and a listing is usually asked
@@ -754,18 +765,26 @@ mcp_tool_list_objects :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 	for t, h in engine.pool_next(&it) {
 		if t.scene != s do continue
 		if filter != "" && !strings.contains(t.name, filter) do continue
-		total += 1
-		index := total - 1
-		if index < cursor || len(out) >= page_size do continue
 
-		parent_name: string
-		if pt := engine.pool_get(&w.transforms, t.parent.handle); pt != nil do parent_name = pt.name
+		// Component names are needed for the filter and for the reply, so they
+		// are collected once, before the paging cut.
 		comps := make([dynamic]string, context.temp_allocator)
 		for c in t.components {
 			if tid := engine.get_typeid_by_type_key(c.handle.type_key); tid != nil {
 				append(&comps, fmt.tprintf("%v", tid))
 			}
 		}
+		if comp_filter != "" {
+			carries := false
+			for cn in comps do if cn == string(comp_filter) { carries = true; break }
+			if !carries do continue
+		}
+		total += 1
+		index := total - 1
+		if index < cursor || len(out) >= page_size do continue
+
+		parent_name: string
+		if pt := engine.pool_get(&w.transforms, t.parent.handle); pt != nil do parent_name = pt.name
 		h := h
 		h.type_key = .Transform
 		obj := Obj{

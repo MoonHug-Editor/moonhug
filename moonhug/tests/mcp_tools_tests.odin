@@ -333,3 +333,46 @@ test_describe_type_rejects_what_does_not_exist :: proc(t: ^testing.T) {
 		{"type", json.String("TimelineAnimator")}, {"path", json.String("layers.nope")}))
 	testing.expect_value(t, e2.code, "bad_path")
 }
+
+// "every object with an X" is the query that otherwise means listing the whole
+// scene and filtering client-side.
+@(test)
+test_list_objects_filters_by_component :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc, "")
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	engine.sm_scene_set_active(tc.scene)
+
+	root := engine.Transform_Handle(tc.scene.root.handle)
+	for _ in 0 ..< 3 do engine.transform_new("Plain", root)
+	for _ in 0 ..< 2 {
+		lit := engine.transform_new("Lit", root)
+		engine.transform_add_comp(lit, .Light)
+	}
+
+	lights, ok := _tool(t, "list_objects", _params({"component", json.String("Light")}))
+	if !ok do return
+	objs, _ := lights["objects"].(json.Array)
+	testing.expect_value(t, len(objs), 2)
+	total, _ := lights["total"].(json.Integer)
+	// total counts the FILTERED set, so paging stays right under a filter.
+	testing.expect_value(t, total, json.Integer(2))
+	for o in objs {
+		obj, _ := o.(json.Object)
+		n, _ := obj["name"].(json.String)
+		testing.expect_value(t, string(n), "Lit")
+	}
+
+	// Both filters narrow together.
+	none, ok2 := _tool(t, "list_objects", _params(
+		{"component", json.String("Light")}, {"name", json.String("Plain")}))
+	if !ok2 do return
+	nobjs, _ := none["objects"].(json.Array)
+	testing.expect_value(t, len(nobjs), 0)
+
+	// A component that does not exist is a typo, not an empty result.
+	_, err := editor.mcp_tool_for_test("list_objects", _params({"component", json.String("Lite")}))
+	testing.expect_value(t, err.code, "not_found")
+}
