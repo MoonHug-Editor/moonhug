@@ -157,37 +157,46 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
 
 - spline package: a path through space, the spatial counterpart to the engine's scalar `Curve`
-  - a Spline component holding control points, edited in the scene view through the handles layer (one drag is one undo step)
-  - sampling by parameter and by arc length, so a constant speed along the path needs no work from the caller
+  - a Spline component holding control points, edited in the scene view through the handles layer
+  - sampling by parameter and by arc length
   - consumers decide what a path means: move a transform along it, aim a camera, place objects at intervals
-  - a sequencer track that drives a transform along a spline is the first real test of whether the API fits
+  - first consumer: a sequencer track that drives a transform along a spline
 
 - transform:
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
-- handles follow-ups (see [Handles](docs/Handles.md)) - the model and drawing are there, what is missing is composites and the wiring the transform gizmo kept to itself
-  - axis-constrained slider handle - drag along one direction, not just on a plane. Every composite gizmo starts with this, and a spline tangent needs it
-  - snapping - `snap_settings` and the Ctrl-modifier XOR live in gizmo.odin, so a package-authored handle silently ignores the user's snap setting
-  - bezier/curve drawing, so every spline-shaped consumer does not rewrite the polyline
-  - bounds handles (box, sphere, capsule) - the shape colliders and any volume component want them
-  - port gizmo.odin onto handles, leaving one input system. Its own job, not something to fold into a package that happens to need handles
+- handles follow-ups (see [Handles](docs/Handles.md)) - missing composites, and the wiring gizmo.odin kept to itself
+  - axis-constrained slider handle - drag along one direction, not just on a plane
+  - snapping - `snap_settings` and the Ctrl-modifier XOR live in gizmo.odin, so a package-authored handle ignores the user's snap setting
+  - bezier/curve drawing
+  - bounds handles (box, sphere, capsule)
+  - port gizmo.odin onto handles, leaving one input system. Its own job
   - box select through pick providers - click picking consults them, box select does not
 
-- gizmo drawing - the `@(on_draw_gizmos)` hook, the batching and keeping wire geometry in the runtime package (shared with `@(debug_draw)`) are already right. What is missing is breadth: `gfx.draw_line` is the only primitive, so `_draw_cone`, `_draw_cube`, the collider drawers and handles each rebuild the same shapes. ALINE (Unity asset) is the reference for what the surface should feel like, but DESIGN THE API FIRST - copying its shape list without deciding how colour, space, duration and depth are carried just moves the duplication into a bigger file
+- gizmo drawing - `gfx.draw_line` is the only primitive, so `_draw_cone`, `_draw_cube`, the collider drawers and handles each rebuild the same shapes. ALINE (Unity asset) is the reference for the surface, but DESIGN THE API FIRST
   - decide what a draw call carries before adding shapes: colour and space as scopes or as arguments, who owns depth-test choice, whether a shape can outlive the frame
-  - shape library over `draw_line` once that is settled - arc, circle per plane, wire box, sphere, capsule, cylinder, cone, arrow, cross, grid, polyline, bezier
-  - local space, so a component draws in its own coordinates instead of transforming every point by hand, which is what all of them do today
-  - duration - a shape that stays for N seconds is the most useful debugging feature ALINE has, and it needs a retained buffer the pass drains
+  - shape library over `draw_line` - arc, circle per plane, wire box, sphere, capsule, cylinder, cone, arrow, cross, grid, polyline, bezier
+  - local space, so a component draws in its own coordinates
+  - duration - a shape that stays for N seconds, needs a retained buffer the pass drains
   - line width - the one item with real renderer cost, since lines become quads
   - solid shapes and labels reachable from a gizmo proc, not only from handles
-  - the test that it worked: `gizmo.odin`, the collider drawers and handles all delete their private shape code
+  - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
 
-- dynamic menu items - `MenuEntryKind` is Submenu/Action/Toggle/Separator, so every item is registered at init and nothing can compute its item set at draw time. Recent Scenes, run configs and the inspector's "Apply to Prefab 'X'" list (one entry per prefab in the chain, hand-rolled with im.MenuItem in view_inspector.odin because it could not be a menu item) all want this
-  - one new kind holding a `proc()` that draws its own items into the open menu - the escape hatch, not the general form
-  - keep it narrow on purpose: `collect_action_paths` feeds MCP `list_menus` / `invoke_menu`, and `_process_menu_shortcuts` walks the tree for global shortcuts. An item that exists only while its popup is open can be neither listed, invoked by path, nor bound to a key
-  - so anything an agent or a keybinding should reach stays a static item. Recent Scenes is the right user, "Save Scene" is not
-  - `collect_action_paths` filters to `.Action`, so toggles are already invisible to `list_menus` and `invoke_menu("Help/Input Debug")` cannot work. Fix that walk while adding the kind
+- view menu and toolbar extensibility - every view gets a menu and a toolbar any package can add to, built-in views included
+  - menu: its own attribute and registry, `@(view_menu={view="Scene", order=0})` - not a reserved root inside menu_item, which would put view items in the main tree for the bar, shortcuts and list_menus to skip
+  - reuse the menu package's drawing and node kinds, not its tree - same action/toggle/`checked=`/`enabled=` shape
+  - its own collect + invoke so `list_menus` / `invoke_menu` reach view items too
+  - toolbar: a drawer proc, since its contents are widgets (lock, size dropdown, search field), not commands. `@(scene_overlay)` is already that shape - generalise it from the scene view to any view
+  - view id is the text after `###` in the window title, already the ini and dock key
+  - one shared helper draws the button, and draws nothing when that view has no items
+  - a view's own options register the same way a package's do
+  - decide the toolbar vs menu rule before filling either: frequent controls on the toolbar, rare or modal ones in the menu
+
+- dynamic menu items - every item is registered at init, so nothing can compute its item set at draw time. Recent Scenes, run configs, the inspector's "Apply to Prefab 'X'" list
+  - one new kind holding a `proc()` that draws its own items into the open menu
+  - `collect_invokable_paths` feeds MCP `list_menus` / `invoke_menu` and `_process_menu_shortcuts` walks the tree for shortcuts, so a dynamic item can be neither listed, invoked by path, nor bound to a key
+  - keep it the escape hatch, not the general form: Recent Scenes is the right user, "Save Scene" is not
 
 - improve default types inspector UX
 
