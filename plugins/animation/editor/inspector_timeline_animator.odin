@@ -23,6 +23,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
+import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
 import engine "moonhug:engine"
 import anim "moonhug:packages/animation"
@@ -275,6 +276,96 @@ _ta_track_bindings :: proc(st: ^anim.Timeline_State) {
 	}
 }
 
+// --- Edit-mode state preview ------------------------------------------------
+//
+// Nothing ticks a TimelineAnimator outside simulation — timeline_animator_tick
+// is an @(update) proc. So the States tree's play button drives a preview
+// instead: pose the world right before the scene render, put it back right
+// after (docs/PlayableGraph.md step 5, moonhug:editor/preview). The world
+// holds authored values for the rest of the frame, so saves, undo and the
+// inspector never see the pose.
+//
+// The advance itself is timeline_animator_step, the same proc the runtime tick
+// calls, in .Preview_Play mode. A preview with its own advance would drift
+// from play mode one fix at a time.
+
+@(private = "file")
+_ta_pv: struct {
+	owner:   engine.Transform_Handle,
+	state:   i32, // authored Timeline_State.id, 0 = not previewing
+	applied: bool,
+}
+
+@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+ta_preview_install :: proc() {
+	preview.register({apply = _ta_preview_apply, restore = _ta_preview_restore})
+}
+
+// Play an authored state on `owner` in edit mode, from its start.
+ta_preview_play :: proc(owner: engine.Transform_Handle, id: i32) {
+	// Two posers previewing at once is confusing even though the preview stack
+	// unwinds correctly, and both buttons mean "show me this animation".
+	animation_preview_stop()
+	_ta_pv.owner = owner
+	_ta_pv.state = id
+	_, a := engine.transform_get_comp(owner, anim.TimelineAnimator)
+	if a == nil do return
+	anim.animator_play(a, anim.State_Id(id))
+}
+
+// The state being previewed on `owner`, or 0.
+ta_preview_state :: proc(owner: engine.Transform_Handle) -> i32 {
+	if _ta_pv.owner != owner do return 0
+	return _ta_pv.state
+}
+
+ta_preview_stop :: proc() {
+	if _ta_pv.state == 0 do return
+	if _, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator); a != nil {
+		anim.animator_stop(a)
+		anim.timeline_animator_release(a)
+	}
+	_ta_pv.state = 0
+	_ta_pv.applied = false
+}
+
+@(private = "file")
+_ta_preview_apply :: proc() {
+	if _ta_pv.state == 0 do return
+	// Simulation owns the component once it starts, and it ticks the animator
+	// itself — a preview on top would advance it twice per frame.
+	if engine.application_is_playing() {
+		ta_preview_stop()
+		return
+	}
+	w := engine.ctx_world()
+	if !engine.pool_valid(w == nil ? nil : &w.transforms, engine.Handle(_ta_pv.owner)) {
+		_ta_pv.state = 0
+		return
+	}
+	_, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator)
+	if a == nil {
+		_ta_pv.state = 0
+		return
+	}
+
+	// Build first: refreshing defaults needs bindings, and the graph is what
+	// holds them.
+	anim.timeline_animator_ensure_graph(a)
+	anim.timeline_animator_refresh_defaults(a)
+	anim.timeline_animator_step(a, im.GetIO().DeltaTime, .Preview_Play)
+	_ta_pv.applied = true
+}
+
+@(private = "file")
+_ta_preview_restore :: proc() {
+	if !_ta_pv.applied do return
+	_ta_pv.applied = false
+	if _, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator); a != nil {
+		anim.timeline_animator_write_defaults(a)
+	}
+}
+
 // Play and remove, right-aligned. Returns true when the state was removed.
 @(private = "file")
 _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
@@ -283,18 +374,21 @@ _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 	im.SameLine()
 	im.SetCursorPosX(im.GetCursorPosX() + im.GetContentRegionAvail().x - (btn * 2 + style.ItemSpacing.x))
 
-	// A state instantiates a whole timeline and is advanced by
-	// timeline_animator_tick, which is an @(update) proc — so nothing plays it
-	// outside simulation. An edit-mode preview goes HERE when it arrives, the
-	// way the Animation tree drives the animation window's preview.
+	// Simulating, the button plays the state on the live component. In edit
+	// mode nothing ticks the animator, so the same button drives the preview
+	// above — the Animation tree's states work the same way.
+	id := a.layers[li].states[si].id
 	playing := engine.application_is_playing()
-	im.BeginDisabled(!playing)
-	if im.Button(icons.ICON_MD_PLAY_ARROW, im.Vec2{btn, btn}) {
-		anim.animator_play(a, anim.State_Id(a.layers[li].states[si].id))
+	previewing := !playing && ta_preview_state(a.owner) == id
+	if im.Button(previewing ? icons.ICON_MD_STOP : icons.ICON_MD_PLAY_ARROW, im.Vec2{btn, btn}) {
+		switch {
+		case playing:    anim.animator_play(a, anim.State_Id(id))
+		case previewing: ta_preview_stop()
+		case:            ta_preview_play(a.owner, id)
+		}
 	}
-	im.EndDisabled()
-	if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-		im.SetTooltip(playing ? "Play this state" : "A timeline state plays while simulating")
+	if im.IsItemHovered({}) {
+		im.SetTooltip(previewing ? "Stop previewing this state" : "Play this state")
 	}
 	im.SameLine()
 

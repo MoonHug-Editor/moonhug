@@ -929,3 +929,67 @@ test_track_binding_resolves_from_struct :: proc(t: ^testing.T) {
 	ref, has_ref := reflect.struct_tag_lookup(b.tag, "ref")
 	testing.expect(t, has_ref && ref == "Animation", "the picker tag is the struct's, not a copy")
 }
+
+// The editor's edit-mode preview advances a state through
+// timeline_animator_step — the same proc the runtime tick calls — so a
+// previewed state poses exactly what a playing one does. What the preview adds
+// is the bracket: pose before the scene render, put the world back after, so
+// saves, undo and the inspector never see the pose.
+@(test)
+test_preview_step_poses_then_restores :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	anim.animation_clip_cache_init()
+	defer anim.animation_clip_cache_shutdown()
+	anim.animation_track_init()
+
+	guid := _clip_guid(77)
+	anim.animation_clip_cache[guid] = _const_clip(.Position, {7, 0, 0, 0})
+
+	root := engine.transform_new("Rig")
+	engine.scene_set_root(tc.scene, root)
+	body := engine.transform_new("Body", root)
+	b_owned, b_raw := engine.transform_add_comp(body, .Animation)
+	driven := cast(^anim.Animation)b_raw
+	driven.enabled = true
+
+	tl := _mk_local_timeline(root, b_owned.handle, guid)
+
+	_, raw := engine.transform_add_comp(root, .TimelineAnimator)
+	ta := cast(^anim.TimelineAnimator)raw
+	ta.enabled = true
+	ta.layers = make([dynamic]anim.Animator_Layer)
+	layer := anim.Animator_Layer{name = strings.clone("Base")}
+	layer.states = make([dynamic]anim.Timeline_State)
+	append(&layer.states, _mk_state("Idle", tl))
+	append(&ta.layers, layer)
+
+	bt := engine.pool_get(&tc.world.transforms, engine.Handle(body))
+	testing.expect(t, bt != nil)
+	if bt == nil do return
+	authored := bt.position
+
+	anim.timeline_animator_ensure_graph(ta)
+	id, found := anim.animator_find(ta, "Idle")
+	testing.expect(t, found)
+	if !found do return
+	anim.animator_play(ta, id, 0)
+
+	// Apply: capture what to put back, then advance and pose.
+	anim.timeline_animator_refresh_defaults(ta)
+	anim.timeline_animator_step(ta, 0.1, .Preview_Play)
+	testing.expect(t, abs(bt.position.x - 7) < 0.001, "stepping the preview poses the driven object")
+	testing.expect(t, driven.timeline_driven, "a stepped animator claims what it poses")
+
+	// Restore: the world holds authored values again for the rest of the frame.
+	anim.timeline_animator_write_defaults(ta)
+	testing.expect(t, abs(bt.position.x - authored.x) < 0.001, "restore puts the authored pose back")
+
+	// Stopping hands the object back, or its Animation stays flagged as
+	// timeline-driven and refuses to play itself.
+	anim.timeline_animator_release(ta)
+	testing.expect(t, !driven.timeline_driven, "release hands it back")
+}

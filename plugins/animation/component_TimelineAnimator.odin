@@ -352,7 +352,7 @@ _ta_claim_outputs :: proc(a: ^TimelineAnimator, claim: bool) {
 // Evaluating makes its tracks set weights and times in THIS graph, and nothing
 // is applied until the animator flushes.
 @(private = "file")
-_ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32) {
+_ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32, mode: seq.Track_Mode) {
 	w := engine.ctx_world()
 	speed := a.speed != 0 ? a.speed : 1
 	for &lr, li in a.rt {
@@ -383,9 +383,37 @@ _ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32) {
 					}
 				}
 			}
-			seq.director_evaluate_at(d, st.time, .Play)
+			seq.director_evaluate_at(d, st.time, mode)
 		}
 	}
+}
+
+// One animator's frame. The runtime tick calls it per animator; the editor's
+// state preview calls it for the one animator it previews, so a previewed
+// state advances, fades and poses through exactly the code that runs in play
+// mode. A preview that reimplemented this would drift from it silently.
+//
+// `mode` is how the timelines read the advance: .Play at runtime,
+// .Preview_Play for the editor, where crossings and audio are real but game
+// scripts stay silent (docs/Sequencer.md, Track_Mode).
+timeline_animator_step :: proc(a: ^TimelineAnimator, dt: f32, mode := seq.Track_Mode.Play) {
+	if !a.enabled {
+		// A disabled animator owns nothing, so whatever it held plays
+		// itself again.
+		if a.graph_ready do _ta_claim_outputs(a, false)
+		return
+	}
+	_ta_ensure_graph(a)
+	_ta_sync_layer_weights(a)
+	// Fades advance BEFORE the content check, or a fade starting from
+	// weight 0 would never get a first frame: it would read as idle, the
+	// tick would skip, and the fade would sit at 0 forever.
+	_ta_advance_fades(a, dt)
+	active := _ta_has_content(a)
+	_ta_claim_outputs(a, active)
+	if !active do return
+	_ta_advance_states(a, dt, mode)
+	playable_graph_tick(&a.graph)
 }
 
 @(update={order=2})
@@ -394,24 +422,40 @@ timeline_animator_tick :: proc(dt: f32) {
 	it := engine.pool_iterator(timeline_animators(w))
 	for a, _ in engine.pool_next(&it) {
 		if !engine.pool_valid(&w.transforms, engine.Handle(a.owner)) do continue
-		if !a.enabled {
-			// A disabled animator owns nothing, so whatever it held plays
-			// itself again.
-			if a.graph_ready do _ta_claim_outputs(a, false)
-			continue
-		}
-		_ta_ensure_graph(a)
-		_ta_sync_layer_weights(a)
-		// Fades advance BEFORE the content check, or a fade starting from
-		// weight 0 would never get a first frame: it would read as idle, the
-		// tick would skip, and the fade would sit at 0 forever.
-		_ta_advance_fades(a, dt)
-		active := _ta_has_content(a)
-		_ta_claim_outputs(a, active)
-		if !active do continue
-		_ta_advance_states(a, dt)
-		playable_graph_tick(&a.graph)
+		timeline_animator_step(a, dt)
 	}
+}
+
+// --- Editor preview support -----------------------------------------------------------
+//
+// An edit-mode preview poses the world for the scene render and puts it back
+// after (docs/PlayableGraph.md step 5), so it needs the graph built before it
+// can capture what to put back, and the bindings of EVERY output — one
+// animator poses as many objects as its timelines drive.
+
+timeline_animator_ensure_graph :: proc(a: ^TimelineAnimator) {
+	_ta_ensure_graph(a)
+}
+
+// Re-reads each output's default pose from the live transforms, so a preview
+// restores what the object holds NOW rather than what it held when the graph
+// was built and the user has since edited.
+timeline_animator_refresh_defaults :: proc(a: ^TimelineAnimator) {
+	if !a.graph_ready do return
+	for &o in a.graph.outputs do animation_binding_refresh_defaults(&o.binding)
+}
+
+timeline_animator_write_defaults :: proc(a: ^TimelineAnimator) {
+	if !a.graph_ready do return
+	for &o in a.graph.outputs do animation_binding_write_defaults(&o.binding)
+}
+
+// Hands every posed object back to itself. A preview that just stopped must
+// release its claim, or the Animation components it drove stay flagged as
+// timeline-driven and refuse to play themselves.
+timeline_animator_release :: proc(a: ^TimelineAnimator) {
+	if !a.graph_ready do return
+	_ta_claim_outputs(a, false)
 }
 
 // --- Weight and cross-fade ------------------------------------------------------------

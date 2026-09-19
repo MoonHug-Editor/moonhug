@@ -328,11 +328,32 @@ key a widget the moment it appears, and two rows holding 0 would collide.
 Alt-click a layer to collapse or expand every state under it, as in the
 hierarchy.
 
-**Play is gated on simulation.** A state instantiates a whole timeline and is
-advanced by `timeline_animator_tick`, an `@(update)` proc, so nothing plays it
-in edit mode — the button disables itself and says so. An edit-mode preview
-goes in that same spot when it arrives, the way the Animation tree drives the
-animation window's preview.
+**Play works in both modes, through different paths.** Simulating, the button
+plays the state on the live component and `timeline_animator_tick` advances it.
+In edit mode nothing ticks the animator, so the same button starts a PREVIEW:
+pose the world right before the scene render, put it back right after
+(`moonhug:editor/preview`, docs/PlayableGraph.md step 5). The world holds
+authored values for the rest of the frame, so saves, undo and the inspector
+never see the pose, and there is no preview state to revert when it ends.
+
+The advance is `timeline_animator_step`, the same proc the runtime tick calls,
+in `.Preview_Play` mode — crossings and audio are real, game scripts stay
+silent. Sharing that proc is the point: a preview with its own advance would
+drift from play mode one fix at a time. Three things bracket it:
+
+- `timeline_animator_ensure_graph` first, because refreshing defaults needs the
+  bindings and the graph is what holds them.
+- `timeline_animator_refresh_defaults` re-reads each output's default pose from
+  the live transforms, so a preview restores what the object holds NOW rather
+  than what it held when the graph was built.
+- `timeline_animator_release` on stop, or the Animation components the preview
+  drove stay flagged `timeline_driven` and refuse to play themselves.
+
+One animator poses as many objects as its timelines drive, so all of those walk
+every output rather than a single binding. Starting a state preview stops the
+animation window's clip preview: the preview stack unwinds correctly either
+way, but two posers at once is confusing and both buttons mean the same thing
+to the user.
 
 Under each state's own fields sit its timeline's **tracks**, one row each,
 showing the track's binding field — the animation track's `target`, the audio
