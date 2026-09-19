@@ -194,60 +194,75 @@ help_about_menu :: proc() {
 
 // Diagnostics for the "keyboard input dies until restart" bug — see
 // editor/view_input_debug.odin. Mouse-only operable on purpose.
-@(menu_toggle={path="Help/Input Debug", order=999})
+@(menu_item={path="Help/Input Debug", order=999})
 show_input_debug := false
 
-@(menu_item={path="Window/Theme/Spectrum Dark", order=-14, shortcut=""})
+// The theme list is a RADIO group: every item sets active_theme, and its
+// checked predicate reports whether it is the one currently set. No exclusive
+// menu kind — an action plus a tick predicate is what one-of-N is.
+
+@(menu_item={path="Window/Theme/Spectrum Dark", order=-14, shortcut="", checked=theme_is_spectrum_dark})
 menu_item_view_theme_spectrum_dark :: proc() {
     set_theme(.Spectrum_Dark)
 }
+theme_is_spectrum_dark :: proc() -> bool { return active_theme == .Spectrum_Dark }
 
-@(menu_item={path="Window/Theme/Spectrum Light", order=-13, shortcut=""})
+@(menu_item={path="Window/Theme/Spectrum Light", order=-13, shortcut="", checked=theme_is_spectrum_light})
 menu_item_view_theme_spectrum_light :: proc() {
     set_theme(.Spectrum_Light)
 }
+theme_is_spectrum_light :: proc() -> bool { return active_theme == .Spectrum_Light }
 
-@(menu_item={path="Window/Theme/Dark", order=-12, shortcut=""})
+@(menu_item={path="Window/Theme/Dark", order=-12, shortcut="", checked=theme_is_dark})
 menu_item_view_theme_dark :: proc() {
     set_theme(.Dark)
 }
+theme_is_dark :: proc() -> bool { return active_theme == .Dark }
 
-@(menu_item={path="Window/Theme/Light", order=-11, shortcut=""})
+@(menu_item={path="Window/Theme/Light", order=-11, shortcut="", checked=theme_is_light})
 menu_item_view_theme_light :: proc() {
     set_theme(.Light)
 }
+theme_is_light :: proc() -> bool { return active_theme == .Light }
 
-@(menu_item={path="Window/Theme/Classic", order=-10, shortcut=""})
+@(menu_item={path="Window/Theme/Classic", order=-10, shortcut="", checked=theme_is_classic})
 menu_item_view_theme_classic :: proc() {
     set_theme(.Classic)
 }
+theme_is_classic :: proc() -> bool { return active_theme == .Classic }
 
-@(menu_item={path="Window/Theme/Photoshop", order=-9, shortcut=""})
+@(menu_item={path="Window/Theme/Photoshop", order=-9, shortcut="", checked=theme_is_photoshop})
 menu_item_view_theme_photoshop :: proc() {
     set_theme(.Photoshop)
 }
+theme_is_photoshop :: proc() -> bool { return active_theme == .Photoshop }
 
-@(menu_item={path="Window/Theme/Unreal", order=-8, shortcut=""})
+@(menu_item={path="Window/Theme/Unreal", order=-8, shortcut="", checked=theme_is_unreal})
 menu_item_view_theme_unreal :: proc() {
     set_theme(.Unreal)
 }
+theme_is_unreal :: proc() -> bool { return active_theme == .Unreal }
 
-@(menu_item={path="Window/Theme/Deep Dark", order=-7, shortcut=""})
+@(menu_item={path="Window/Theme/Deep Dark", order=-7, shortcut="", checked=theme_is_deep_dark})
 menu_item_view_theme_deep_dark :: proc() {
     set_theme(.Deep_Dark)
 }
+theme_is_deep_dark :: proc() -> bool { return active_theme == .Deep_Dark }
 
-@(menu_item={path="Window/Theme/Dracula", order=-6, shortcut=""})
+@(menu_item={path="Window/Theme/Dracula", order=-6, shortcut="", checked=theme_is_dracula})
 menu_item_view_theme_dracula :: proc() {
     set_theme(.Dracula)
 }
+theme_is_dracula :: proc() -> bool { return active_theme == .Dracula }
 
-@(menu_item={path="Window/Theme/Catppuccin Mocha", order=-5, shortcut=""})
+@(menu_item={path="Window/Theme/Catppuccin Mocha", order=-5, shortcut="", checked=theme_is_catppuccin_mocha})
 menu_item_view_theme_catppuccin_mocha :: proc() {
     set_theme(.Catppuccin_Mocha)
 }
+theme_is_catppuccin_mocha :: proc() -> bool { return active_theme == .Catppuccin_Mocha }
 
-@(menu_item={path="Window/Theme/Paper And Ink", order=-4, shortcut=""})
+@(menu_item={path="Window/Theme/Paper And Ink", order=-4, shortcut="", checked=theme_is_paper_and_ink})
 menu_item_view_theme_paper_and_ink :: proc() {
     set_theme(.Paper_And_Ink)
 }
+theme_is_paper_and_ink :: proc() -> bool { return active_theme == .Paper_And_Ink }

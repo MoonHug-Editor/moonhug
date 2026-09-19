@@ -3,8 +3,12 @@ package menu_gen
 // menu_gen: ECS prebuild module for menu_items_generated.odin.
 //
 //   provide  - query {DeclInfo}, recognise decls carrying @(menu_item) /
-//              @(menu_separator) / @(menu_toggle) attributes, tag each with a
-//              Menu_GenComp carrying the per-entry MenuEntry data.
+//              @(menu_separator) attributes, tag each with a Menu_GenComp
+//              carrying the per-entry MenuEntry data.
+//
+// ONE attribute, and what it is attached to says which kind it is: @(menu_item)
+// on a proc is an action, on a bool variable it is a toggle. The generator
+// already knows the difference, so the author does not have to name it.
 //   generate - query {DeclInfo, Menu_GenComp}, rebuild rows, sort + dedupe, build
 //              menu_items_generated.odin, emit it (gen_db writes it).
 //
@@ -26,6 +30,7 @@ MenuEntry :: struct {
 	shortcut:    string,
 	order:       int,
 	enabled:     string, // optional predicate proc name in the source package
+	checked:     string, // optional tick predicate, same form as enabled
 	source_pkg:  string,
 	source_path: string,
 }
@@ -45,8 +50,8 @@ _register :: proc "contextless" () {
 
 
 // Extract path, order, shortcut, enabled from a flattened attribute's fields.
-_extract_menu_item_comp :: proc(args: gen_facts.Attr_Args) -> (path: string, order: int, shortcut: string, enabled: string) {
-	return args.fields["path"], gen_facts.attr_int(args, "order"), args.fields["shortcut"], args.fields["enabled"]
+_extract_menu_item_comp :: proc(args: gen_facts.Attr_Args) -> (path: string, order: int, shortcut: string, enabled: string, checked: string) {
+	return args.fields["path"], gen_facts.attr_int(args, "order"), args.fields["shortcut"], args.fields["enabled"], args.fields["checked"]
 }
 
 _parent_path :: proc(path: string) -> string {
@@ -87,30 +92,31 @@ provide :: proc(w: ^db.World) -> bool {
 			// Iterate attributes in source order: a proc may carry several
 			// menu_item / menu_separator entries and their order matters.
 			for args in attr_set.attrs {
-				path, shortcut, enabled, separator_path: string
+				path, shortcut, enabled, checked, separator_path: string
 				menu_order: int = 0
 				separator_order: int = 0
 
 				if args.key == "menu_item" {
-					path, menu_order, shortcut, enabled = _extract_menu_item_comp(args)
+					path, menu_order, shortcut, enabled, checked = _extract_menu_item_comp(args)
 				}
 				if args.key == "menu_separator" {
-					separator_path, separator_order, _, _ = _extract_menu_item_comp(args)
+					separator_path, separator_order, _, _, _ = _extract_menu_item_comp(args)
 				}
 
 				if path != "" && separator_path == "" {
-					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, decl.pkg.name, decl.pkg_path})
+					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, checked, decl.pkg.name, decl.pkg_path})
 				} else if separator_path != "" {
-					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", ""})
+					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", "", ""})
 				}
 			}
 		} else {
+			// A bool variable: the same attribute, drawn as a checkbox that
+			// writes straight into it.
 			for args in attr_set.attrs {
-				if args.key == "menu_toggle" {
-					path, menu_order, shortcut, _ := _extract_menu_item_comp(args)
-					if path != "" {
-						append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", decl.pkg.name, decl.pkg_path})
-					}
+				if args.key != "menu_item" do continue
+				path, menu_order, shortcut, _, _ := _extract_menu_item_comp(args)
+				if path != "" {
+					append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", "", decl.pkg.name, decl.pkg_path})
 				}
 			}
 		}
@@ -242,8 +248,12 @@ generate :: proc(w: ^db.World) -> bool {
 			strings.write_string(&b, "\", ")
 			strings.write_string(&b, _qualified_name(_PKG_NAME, e))
 			fmt.sbprintf(&b, ", %d", e.order)
-			if e.enabled != "" {
-				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.enabled))
+			if e.enabled != "" || e.checked != "" {
+				enabled := e.enabled != "" ? _qualified_ident(_PKG_NAME, e.source_pkg, e.enabled) : "nil"
+				fmt.sbprintf(&b, ", %s", enabled)
+			}
+			if e.checked != "" {
+				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.checked))
 			}
 			strings.write_string(&b, ")\n")
 		case .Toggle:

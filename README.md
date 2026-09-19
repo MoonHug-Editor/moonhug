@@ -92,7 +92,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - importers carry a version constant (`_importer_version`) — bump it when an importer's output changes and exactly its artifacts re-import, nothing else
 
 ## Features
-- menu bar - customizable via @(menu_item=...) on proc
+- menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
 
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 
@@ -156,9 +156,38 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
 
+- spline package: a path through space, the spatial counterpart to the engine's scalar `Curve`
+  - a Spline component holding control points, edited in the scene view through the handles layer (one drag is one undo step)
+  - sampling by parameter and by arc length, so a constant speed along the path needs no work from the caller
+  - consumers decide what a path means: move a transform along it, aim a camera, place objects at intervals
+  - a sequencer track that drives a transform along a spline is the first real test of whether the API fits
+
 - transform:
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
+
+- handles follow-ups (see [Handles](docs/Handles.md)) - the model and drawing are there, what is missing is composites and the wiring the transform gizmo kept to itself
+  - axis-constrained slider handle - drag along one direction, not just on a plane. Every composite gizmo starts with this, and a spline tangent needs it
+  - snapping - `snap_settings` and the Ctrl-modifier XOR live in gizmo.odin, so a package-authored handle silently ignores the user's snap setting
+  - bezier/curve drawing, so every spline-shaped consumer does not rewrite the polyline
+  - bounds handles (box, sphere, capsule) - the shape colliders and any volume component want them
+  - port gizmo.odin onto handles, leaving one input system. Its own job, not something to fold into a package that happens to need handles
+  - box select through pick providers - click picking consults them, box select does not
+
+- gizmo drawing - the `@(on_draw_gizmos)` hook, the batching and keeping wire geometry in the runtime package (shared with `@(debug_draw)`) are already right. What is missing is breadth: `gfx.draw_line` is the only primitive, so `_draw_cone`, `_draw_cube`, the collider drawers and handles each rebuild the same shapes. ALINE (Unity asset) is the reference for what the surface should feel like, but DESIGN THE API FIRST - copying its shape list without deciding how colour, space, duration and depth are carried just moves the duplication into a bigger file
+  - decide what a draw call carries before adding shapes: colour and space as scopes or as arguments, who owns depth-test choice, whether a shape can outlive the frame
+  - shape library over `draw_line` once that is settled - arc, circle per plane, wire box, sphere, capsule, cylinder, cone, arrow, cross, grid, polyline, bezier
+  - local space, so a component draws in its own coordinates instead of transforming every point by hand, which is what all of them do today
+  - duration - a shape that stays for N seconds is the most useful debugging feature ALINE has, and it needs a retained buffer the pass drains
+  - line width - the one item with real renderer cost, since lines become quads
+  - solid shapes and labels reachable from a gizmo proc, not only from handles
+  - the test that it worked: `gizmo.odin`, the collider drawers and handles all delete their private shape code
+
+- dynamic menu items - `MenuEntryKind` is Submenu/Action/Toggle/Separator, so every item is registered at init and nothing can compute its item set at draw time. Recent Scenes, run configs and the inspector's "Apply to Prefab 'X'" list (one entry per prefab in the chain, hand-rolled with im.MenuItem in view_inspector.odin because it could not be a menu item) all want this
+  - one new kind holding a `proc()` that draws its own items into the open menu - the escape hatch, not the general form
+  - keep it narrow on purpose: `collect_action_paths` feeds MCP `list_menus` / `invoke_menu`, and `_process_menu_shortcuts` walks the tree for global shortcuts. An item that exists only while its popup is open can be neither listed, invoked by path, nor bound to a key
+  - so anything an agent or a keybinding should reach stays a static item. Recent Scenes is the right user, "Save Scene" is not
+  - `collect_action_paths` filters to `.Action`, so toggles are already invisible to `list_menus` and `invoke_menu("Help/Input Debug")` cannot work. Fix that walk while adding the kind
 
 - improve default types inspector UX
 

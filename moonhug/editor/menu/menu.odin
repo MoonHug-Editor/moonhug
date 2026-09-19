@@ -38,6 +38,10 @@ MenuNode :: struct {
 	action:        proc(),
 	value:         ^bool,
 	enabled:       proc() -> bool, // nil = always enabled
+	// Draws the item checked when it returns true. An Action whose state is
+	// computed rather than stored in a bool: a radio group is N actions that
+	// each set the state and each report whether they are the current one.
+	checked:       proc() -> bool,
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 }
@@ -172,7 +176,10 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // path format: "RootItem/NodeItem1/NodeItem2/LeafItem"
 // add_menu_item adds an action at the given path. When selected, action is called.
 // enabled (optional) is polled at draw time; nil means always enabled.
-add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil) {
+// checked (optional) is polled the same way and draws the item with a tick —
+// for a toggle whose state is computed, and for radio groups, where each option
+// is an action that sets the state and reports whether it is the current one.
+add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil) {
 	node := _get_or_create_path(path)
 	node.kind = .Action
 	node.order = order
@@ -183,9 +190,12 @@ add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int
 	node.shortcut_cstr = strings.clone_to_cstring(node.shortcut)
 	node.action = action
 	node.enabled = enabled
+	node.checked = checked
 }
 
 // add_menu_toggle adds a checkbox at the given path that toggles the value.
+// Declared as @(menu_item) on a bool variable — the same attribute an action
+// uses on a proc, since what it is attached to already says which it is.
 // A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
 add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil) {
 	node := _get_or_create_path(path)
@@ -415,7 +425,8 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 			#partial switch child.kind {
 			case .Action:
 				shortcut_label := child.shortcut_cstr if child.shortcut_cstr != nil else ""
-				if im.MenuItem(child.name_cstr, shortcut_label, false, _node_enabled(child)) {
+				ticked := child.checked != nil && child.checked()
+				if im.MenuItem(child.name_cstr, shortcut_label, ticked, _node_enabled(child)) {
 					if child.action != nil do child.action()
 				}
 			case .Toggle:
