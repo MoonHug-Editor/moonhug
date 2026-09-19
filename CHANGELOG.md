@@ -1,3 +1,14 @@
+## [0.100.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.99.0...v0.100.0) (2026-09-19)
+
+### Features
+
+* improve mcp tools ([0decfd1](https://github.com/MoonHug-Editor/moonhug/commit/0decfd1ec6c2763420cbefbd457ae31405fe3d4a))
+* mcp get set property value ([0689676](https://github.com/MoonHug-Editor/moonhug/commit/068967614044bbc418645e76ec3be6763af67aaa))
+
+### Bug Fixes
+
+* allow revert proxy field ([c75d810](https://github.com/MoonHug-Editor/moonhug/commit/c75d8104fdfbfe27334e582e36e59fe95368e407))
+
 ## [0.99.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.98.0...v0.99.0) (2026-09-18)
 
 ### Features
