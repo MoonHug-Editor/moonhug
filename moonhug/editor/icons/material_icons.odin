@@ -73,6 +73,8 @@ ICON_MD_CONTENT_COPY  :: "\ue14d"   // content_copy
 ICON_MD_CONTENT_PASTE :: "\ue14f"   // content_paste
 ICON_MD_MORE_HORIZ    :: "\ue5d3"   // more_horiz
 ICON_MD_MENU          :: "\ue5d4"   // menu ("..." dropdown / overflow menu)
+ICON_MD_LOCK          :: "\ue897"   // lock (inspector pinned to its target)
+ICON_MD_LOCK_OPEN     :: "\ue898"   // lock_open (inspector follows the selection)
 ICON_MD_SETTINGS      :: "\ue8b8"   // settings
 ICON_MD_PALETTE       :: "\ue40a"   // palette (.mat material asset)
 ICON_MD_CODE          :: "\ue86f"   // code (.glsl shader asset)

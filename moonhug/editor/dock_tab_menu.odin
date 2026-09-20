@@ -46,6 +46,8 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 
 	popup := _popup_id(node)
 	tab_bar := node.TabBar
+	active_title: cstring
+	if node.VisibleWindow != nil do active_title = node.VisibleWindow.Name
 
 	// Drawn in the host window at the FAR RIGHT of the tab bar rect, past
 	// where tabs flow, so it reads as chrome on the bar rather than as
@@ -79,6 +81,55 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 			glyph_pos := bmin + (im.Vec2{size, size} - glyph_sz) * 0.5
 			col: im.Col = hovered ? .Text : .TextDisabled
 			im.DrawList_AddText(dl, glyph_pos, im.GetColorU32(col), icons.ICON_MD_MENU)
+
+			// The visible tab's toolbar items, left of the menu button. Here
+			// rather than inside the view because a view then owes the feature
+			// nothing: no call to make, no width to reserve, no placement to
+			// choose, and no silent failure when it forgets. Switching tabs
+			// switches the toolbar for free, since the bar belongs to the node
+			// and the items are looked up per frame from its visible window.
+			if active_title != nil {
+				// Items are arbitrary widgets, so the BAR decides how they
+				// look: no frame, hover tint only, and frame padding sized so
+				// a button is exactly the bar's height. Otherwise a default
+				// button is taller than the bar and hangs out of it.
+				//
+				// Pushed BEFORE measuring, or the width is measured in one
+				// style and drawn in another.
+				bar_h := bar.Max.y - bar.Min.y
+				// Sized from the FONT, not the text line height: an icon glyph
+				// is taller than the base line, so padding derived from the
+				// line height makes a button that overflows the bar. INSET
+				// keeps its background just inside the bar rather than filling
+				// it edge to edge, which is what reads as chrome.
+				INSET :: f32(4)
+				pad_y := max((bar_h - im.GetFontSize() - INSET) * 0.5, 0)
+				im.PushStyleColorImVec4(.Button, {0, 0, 0, 0})
+				im.PushStyleVarImVec2(.FramePadding, {style.FramePadding.x, pad_y})
+				im.PushStyleVar(.FrameRounding, 3) // matches the menu button's hover
+				// Every node's items draw into the same HOST window, so two
+				// views whose items share a label would collide. The node id
+				// is unique and is what distinguishes them.
+				im.PushIDInt(i32(node.ID_))
+
+				view := view_id_of(active_title)
+				items_w := view_tab_bar_width(view)
+				// Only when the bar has room beside the tabs. A narrow node
+				// keeps its tabs readable and its items reachable through the
+				// menu instead.
+				if items_w > 0 && bmin.x - items_w - style.ItemSpacing.x > bar.Min.x + tab_bar.WidthAllTabs {
+					// Centred on whatever height the padding produced, rather
+					// than pinned to the bar's top edge.
+					item_h := im.GetFrameHeight()
+					y := bar.Min.y + max((bar_h - item_h) * 0.5, 0)
+					im.SetCursorScreenPos({bmin.x - items_w, y})
+					view_tab_bar_draw(view)
+				}
+
+				im.PopID()
+				im.PopStyleVar(2)
+				im.PopStyleColor()
+			}
 		}
 
 		if im.BeginPopup(popup, {}) {
@@ -113,7 +164,7 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 	if active_title != nil {
 		// The visible view's OWN options first: they are what this menu is for,
 		// and the tab actions below are the same on every view.
-		if view_menu_draw_items(view_chrome_id(active_title)) {
+		if view_menu_draw_items(view_id_of(active_title)) {
 			im.Separator()
 		}
 		if im.MenuItem("Close Tab") {

@@ -200,7 +200,6 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 		im.SetTooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels")
 	}
 	im.EndDisabled()
-
 }
 
 draw_game_view :: proc() {

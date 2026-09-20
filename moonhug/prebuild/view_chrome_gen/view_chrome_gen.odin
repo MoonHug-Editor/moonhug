@@ -2,7 +2,7 @@ package view_chrome_gen
 
 // view_chrome_gen: ECS prebuild module for view_chrome_generated.odin.
 //
-//   provide  - recognise @(view_toolbar={view=..., order=N}) on a proc, and
+//   provide  - recognise @(view_tab_bar={view=..., order=N}) on a proc, and
 //              @(view_menu={view=..., label=..., order=N}) on a proc (action)
 //              or a bool variable (toggle).
 //   generate - sort, dedupe, emit registrations into editor/view_chrome.odin.
@@ -19,7 +19,7 @@ import "../gen_facts"
 
 _PKG_NAME :: "editor"
 
-Chrome_Kind :: enum { Toolbar, Action, Toggle }
+Chrome_Kind :: enum { Tab_Bar, Action, Toggle }
 
 ChromeEntry :: struct {
 	kind:        Chrome_Kind,
@@ -63,11 +63,11 @@ provide :: proc(w: ^db.World) -> bool {
 			order := gen_facts.attr_int(args, "order")
 
 			switch args.key {
-			case "view_toolbar":
+			case "view_tab_bar":
 				// A widget draws itself, so only a proc can be one.
 				if !is_proc do continue
 				append(&entries, ChromeEntry{
-					kind = .Toolbar, view = view, name = decl.name, order = order,
+					kind = .Tab_Bar, view = view, name = decl.name, order = order,
 					source_pkg = decl.pkg.name, source_path = decl.pkg_path,
 				})
 			case "view_menu":
@@ -160,6 +160,23 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	resize(&entries, i)
 
+	// A menu label is a PATH inside its view's tree, so two declarations
+	// naming the same (view, label) resolve to the same node and the later
+	// registration silently replaces the earlier one at runtime. Packages that
+	// never see each other's code are exactly the ones that would collide, so
+	// it is caught here, where every registration in the build is visible at
+	// once, rather than by whoever notices their item stopped working.
+	for a, ai in entries {
+		if a.kind == .Tab_Bar do continue
+		for b in entries[ai + 1:] {
+			if b.kind == .Tab_Bar || a.view != b.view || a.label != b.label do continue
+			fmt.eprintf(
+				"view_chrome_gen: two @(view_menu) declarations both claim %q in view %q — %s.%s and %s.%s. Labels are paths in the view's menu tree, so one would silently replace the other.\n",
+				a.label, a.view, a.source_pkg, a.name, b.source_pkg, b.name)
+			return false
+		}
+	}
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
@@ -189,8 +206,8 @@ generate :: proc(w: ^db.World) -> bool {
 	for e in entries {
 		qualified := _qualified_name(_PKG_NAME, e)
 		switch e.kind {
-		case .Toolbar:
-			fmt.sbprintf(&b, "\tview_toolbar_add_item(\"%s\", %s, %d)\n", e.view, qualified, e.order)
+		case .Tab_Bar:
+			fmt.sbprintf(&b, "\tview_tab_bar_add_item(\"%s\", %s, %d)\n", e.view, qualified, e.order)
 		case .Toggle:
 			fmt.sbprintf(&b, "\tview_menu_add_toggle(\"%s\", \"%s\", &%s, %d", e.view, e.label, qualified, e.order)
 			if e.enabled != "" {

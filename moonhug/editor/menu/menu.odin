@@ -46,14 +46,33 @@ MenuNode :: struct {
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 }
 
+// THE main menu bar's tree. Every add_menu_* / invoke_path / collect_* below
+// is a one-line wrapper that passes it to the tree_* proc of the same name.
+//
+// The tree is a PARAMETER rather than a hidden global because there is more
+// than one menu: each view has its own (view_chrome.odin), shown in its tab
+// bar's popup. A view menu is the same tree, the same node kinds and the same
+// drawing — only the root differs — so submenus, ordering, separators,
+// `checked`, `enabled` and invoke-by-path work there without a second
+// implementation that would drift from this one.
 _menu_root: ^MenuNode
+
+tree_make :: proc() -> ^MenuNode {
+	root := new(MenuNode)
+	root.kind = .Submenu
+	root.order = ORDER_DEFAULT
+	root.children = make([dynamic]^MenuNode)
+	return root
+}
+
+tree_destroy :: proc(root: ^MenuNode) {
+	if root == nil do return
+	_destroy_node(root)
+}
 
 // init_menu initializes the menu system. Call once before adding items.
 init_menu :: proc() {
-	_menu_root = new(MenuNode)
-	_menu_root.kind = .Submenu
-	_menu_root.order = ORDER_DEFAULT
-	_menu_root.children = make([dynamic]^MenuNode)
+	_menu_root = tree_make()
 }
 
 _NodeOrder :: struct {
@@ -94,8 +113,7 @@ sort_top_menu :: proc(top_order: map[string]int) {
 }
 
 shutdown_menu :: proc() {
-	if _menu_root == nil do return
-	_destroy_node(_menu_root)
+	tree_destroy(_menu_root)
 	_menu_root = nil
 }
 
@@ -112,15 +130,22 @@ _destroy_node :: proc(node: ^MenuNode) {
 }
 
 draw_menu_subtree :: proc(path: string) {
-	node := _get_or_create_path(path)
-	_draw_menu_children(node)
+	_draw_menu_children(_get_or_create_path(_menu_root, path))
+}
+
+// Draws every item under `root`. A view's menu is a whole tree rather than a
+// subtree of the main one, so it draws from its root.
+tree_draw :: proc(root: ^MenuNode) -> (drew: bool) {
+	if root == nil || len(root.children) == 0 do return false
+	_draw_menu_children(root)
+	return true
 }
 
 // Draw a subtree's children, leaving out the ones named in `skip`. The tab
 // menu shows the Window subtree without its Theme and Reset Layout entries,
 // which are editor-wide rather than per-tab.
 draw_menu_subtree_except :: proc(path: string, skip: []string) {
-	node := _get_or_create_path(path)
+	node := _get_or_create_path(_menu_root, path)
 	if node == nil do return
 	for child in node.children {
 		skipped := false
@@ -155,7 +180,7 @@ section :: proc(path: string, min_order := min(int), max_order := max(int)) -> M
 draw_menu_sections :: proc(sections: []Menu_Section) {
 	prev_drawn := false
 	for s in sections {
-		node := _get_or_create_path(s.path)
+		node := _get_or_create_path(_menu_root, s.path)
 		has_items := false
 		for child in node.children {
 			if child.kind != .Separator && child.order >= s.min_order && child.order <= s.max_order {
@@ -180,7 +205,11 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 // for a toggle whose state is computed, and for radio groups, where each option
 // is an action that sets the state and reports whether it is the current one.
 add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil) {
-	node := _get_or_create_path(path)
+	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked)
+}
+
+tree_add_item :: proc(root: ^MenuNode, path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil) {
+	node := _get_or_create_path(root, path)
 	node.kind = .Action
 	node.order = order
 	if node.shortcut_cstr != nil {
@@ -200,7 +229,11 @@ add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int
 // uses on a proc, since what it is attached to already says which it is.
 // A shortcut ("Ctrl+1" — Ctrl renders as Cmd on macOS) toggles it globally.
 add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil) {
-	node := _get_or_create_path(path)
+	tree_add_toggle(_menu_root, path, value, order, shortcut, enabled)
+}
+
+tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int = ORDER_DEFAULT, shortcut := "", enabled: proc() -> bool = nil) {
+	node := _get_or_create_path(root, path)
 	node.kind = .Toggle
 	node.order = order
 	if node.shortcut_cstr != nil {
@@ -216,7 +249,11 @@ add_menu_toggle :: proc(path: string, value: ^bool, order: int = ORDER_DEFAULT, 
 
 // add_menu_separator adds a separator in the menu at the given path (path = parent menu, e.g. "File").
 add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
-	parent := _get_or_create_path(path)
+	tree_add_separator(_menu_root, path, order)
+}
+
+tree_add_separator :: proc(root: ^MenuNode, path: string, order: int = ORDER_DEFAULT) {
+	parent := _get_or_create_path(root, path)
 	sep := new(MenuNode)
 	sep.kind = .Separator
 	sep.name = ""
@@ -227,8 +264,12 @@ add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
 
 // Finds an existing node without creating path segments (nil = no such path).
 find_path :: proc(path: string) -> ^MenuNode {
+	return tree_find(_menu_root, path)
+}
+
+tree_find :: proc(root: ^MenuNode, path: string) -> ^MenuNode {
 	parts := strings.split(path, "/", context.temp_allocator)
-	node := _menu_root
+	node := root
 	for part in parts {
 		name := strings.trim_space(part)
 		if name == "" do continue
@@ -256,7 +297,11 @@ _node_invokable :: proc(node: ^MenuNode) -> bool {
 // flipping is not idempotent, and there is no other way to read it back.
 // False when the path doesn't exist, isn't invokable, or is disabled.
 invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
-	node := find_path(path)
+	return tree_invoke(_menu_root, path)
+}
+
+tree_invoke :: proc(root: ^MenuNode, path: string) -> (ok: bool, state: bool) {
+	node := tree_find(root, path)
 	if !_node_invokable(node) do return false, false
 	if node.enabled != nil && !node.enabled() do return false, false
 	#partial switch node.kind {
@@ -278,6 +323,13 @@ invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
 // leaving them out made them invisible to anything driving the menu from
 // outside, with no hint that they existed.
 collect_invokable_paths :: proc(allocator := context.temp_allocator) -> []string {
+	return tree_collect(_menu_root, "", allocator)
+}
+
+// Every invokable path under `root`, each prefixed with `prefix` — a view menu
+// passes "View/<view>" so its items address the same way main-menu ones do.
+tree_collect :: proc(root: ^MenuNode, prefix := "", allocator := context.temp_allocator) -> []string {
+	if root == nil do return nil
 	out := make([dynamic]string, allocator)
 	walk :: proc(node: ^MenuNode, prefix: string, out: ^[dynamic]string, allocator: mem.Allocator) {
 		for child in node.children {
@@ -288,33 +340,25 @@ collect_invokable_paths :: proc(allocator := context.temp_allocator) -> []string
 			walk(child, path, out, allocator)
 		}
 	}
-	walk(_menu_root, "", &out, allocator)
+	walk(root, prefix, &out, allocator)
 	return out[:]
 }
 
 // The node at `path`, nil when no item registered under it. For widgets that
 // present a subtree their own way (the Add Component popup).
 node_at :: proc(path: string) -> ^MenuNode {
-	parts := strings.split(path, "/", context.temp_allocator)
-	node := _menu_root
-	for part in parts {
-		name := strings.trim_space(part)
-		if name == "" do continue
-		node = _find_child(node, name)
-		if node == nil do return nil
-	}
-	return node
+	return tree_find(_menu_root, path)
 }
 
 node_enabled :: proc(node: ^MenuNode) -> bool {
 	return _node_enabled(node)
 }
 
-_get_or_create_path :: proc(path: string) -> ^MenuNode {
+_get_or_create_path :: proc(root: ^MenuNode, path: string) -> ^MenuNode {
 	parts := strings.split(path, "/")
 	defer delete(parts)
-	if len(parts) == 0 do return _menu_root
-	node := _menu_root
+	if len(parts) == 0 do return root
+	node := root
 	for i in 0 ..< len(parts) {
 		name := strings.trim_space(parts[i])
 		if name == "" do continue

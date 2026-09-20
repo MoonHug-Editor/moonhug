@@ -98,10 +98,6 @@ draw_console_view :: proc() {
 			btn_width += im.CalcTextSize(lbl).x + style.FramePadding.x * 2
 		}
 		btn_width += style.ItemSpacing.x * 2
-		// Toolbar items sit right of the log-level buttons, so the row reserves
-		// them here — right-aligning to the raw right edge would push them off.
-		chrome_id := view_chrome_id(icons.TITLE_CONSOLE)
-		btn_width += view_chrome_width(chrome_id)
 
 		im.SameLine()
 		im.Dummy(im.Vec2{style.ItemSpacing.x * 8, 0})
@@ -119,7 +115,6 @@ draw_console_view :: proc() {
 		filter_toggle_button(icons.ICON_MD_WARNING, &_console_show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
 		im.SameLine()
 		filter_toggle_button(icons.ICON_MD_ERROR, &_console_show_error, im.Vec4{0.827, 0.133, 0.133, 1})
-		view_chrome_draw(chrome_id, right_align = false)
 
 		// Zero horizontal inner padding so rows sit flush against the left border
 		// (keep the default vertical padding for top/bottom breathing room).

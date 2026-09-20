@@ -205,6 +205,22 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	resize(&entries, i)
 
+	// Two declarations at the same path resolve to the same node, and the
+	// later registration silently replaces the earlier one at runtime. Caught
+	// here, where every registration in the build is visible at once, rather
+	// than by whoever notices their menu item stopped working. Separators are
+	// exempt: several at one path is how sections are built.
+	for a, ai in entries {
+		if a.kind == .Separator do continue
+		for b in entries[ai + 1:] {
+			if b.kind == .Separator || a.path != b.path do continue
+			fmt.eprintf(
+				"menu_gen: two declarations both claim menu path %q — %s.%s and %s.%s. One would silently replace the other.\n",
+				a.path, a.source_pkg, a.name, b.source_pkg, b.name)
+			return false
+		}
+	}
+
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 

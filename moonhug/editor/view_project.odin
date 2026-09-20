@@ -273,6 +273,8 @@ _is_inspector_asset :: proc(path: string) -> bool {
 // package inspector, JSON assets the asset inspector, importables their
 // import settings. Anything else leaves the inspector as it is.
 _project_inspect_path :: proc(full_path: string) {
+    // A locked project inspector keeps its asset, unsaved edits included.
+    if !project_inspector_accepts_target() do return
     if project_path_is_package_root(full_path) {
         inspector.load_package(project_package_root_name(full_path), full_path, _project_package_asset_count(full_path))
         return

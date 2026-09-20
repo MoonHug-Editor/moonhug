@@ -94,7 +94,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 ## Features
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
 
-- view menu and toolbar - every view can carry an overflow menu and toolbar widgets, any package can add to them. @(view_menu={view="Console", label="..."}) on a proc is an action, on a bool variable it is a toggle, with `checked=`/`enabled=` like menu_item. @(view_toolbar={view="Output", order=0}) on a proc draws a widget. The view id is the text after ### in its title. Items are reachable from MCP as View/<view>/<label>
+- view tab bar and menu - every dock node's tab bar carries the visible view's toolbar items, then a ⋮ menu. Any package adds to either: @(view_tab_bar={view="Animation", order=0}) on a proc draws a widget, @(view_menu={view="Animation", label="..."}) on a proc is an action and on a bool variable a toggle, with `checked=`/`enabled=` like menu_item.
 
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 

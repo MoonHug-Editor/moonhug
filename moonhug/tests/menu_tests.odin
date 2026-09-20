@@ -9,8 +9,8 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
-import "../editor"
 import "../engine"
+import "../editor"
 import "../editor/icons"
 import "../editor/menu"
 
@@ -118,7 +118,7 @@ test_menu_listing_is_deterministic :: proc(t: ^testing.T) {
 	for p, i in first do testing.expect_value(t, p, second[i])
 }
 
-// --- Per-view menu and toolbar (editor/view_chrome.odin) ---------------------
+// --- Per-view menu and tab bar (editor/view_chrome.odin) ---------------------
 //
 // View items live in their own registry, not the main menu tree. That must not
 // make them unreachable: anything driving the editor from outside addresses
@@ -138,7 +138,7 @@ _view_fixture :: proc() {
 	editor.view_menu_add_toggle("Console", "Clear on Play", &_view_flag)
 	editor.view_menu_add_action("Console", "Reset", _view_act)
 	editor.view_menu_add_action("Console", "Never", _view_act, 0, _never)
-	editor.view_toolbar_add_item("Output", _view_act, 0)
+	editor.view_tab_bar_add_item("Output", _view_act, 0)
 }
 
 @(test)
@@ -208,16 +208,16 @@ test_view_menu_and_toolbar_do_not_mix :: proc(t: ^testing.T) {
 	for p in paths do testing.expect(t, !strings.has_prefix(p, "View/Output/"), "a toolbar item is not a menu path")
 
 	// And a view whose only items are menu items reserves no toolbar width.
-	testing.expect_value(t, editor.view_chrome_width("Console"), f32(0))
+	testing.expect_value(t, editor.view_tab_bar_width("Console"), f32(0))
 }
 
 // The id keys the registry and the imgui ini, so it is the text after ###.
 @(test)
 test_view_chrome_id_is_the_ini_key :: proc(t: ^testing.T) {
-	testing.expect_value(t, editor.view_chrome_id(icons.TITLE_CONSOLE), "Console")
-	testing.expect_value(t, editor.view_chrome_id(icons.TITLE_PROJECT_INSPECTOR), "Project Inspector")
+	testing.expect_value(t, editor.view_id_of(icons.TITLE_CONSOLE), "Console")
+	testing.expect_value(t, editor.view_id_of(icons.TITLE_PROJECT_INSPECTOR), "Project Inspector")
 	// A title written without the marker still keys something stable.
-	testing.expect_value(t, editor.view_chrome_id("Plain"), "Plain")
+	testing.expect_value(t, editor.view_id_of("Plain"), "Plain")
 }
 
 // --- User settings (engine/user_settings.odin) -------------------------------
@@ -263,4 +263,24 @@ test_user_settings_missing_file_keeps_defaults :: proc(t: ^testing.T) {
 test_user_settings_file_slug :: proc(t: ^testing.T) {
 	testing.expect_value(t, engine.user_settings_file("Animation"), "UserSettings/animation.json")
 	testing.expect_value(t, engine.user_settings_file("Test View"), "UserSettings/test_view.json")
+}
+
+// A view menu IS a menu tree, so a path with slashes nests instead of becoming
+// a label with slashes in it. The flat list this replaced could not do it, and
+// nothing in view_chrome implements nesting — it comes from the menu package.
+@(test)
+test_view_menu_supports_submenus :: proc(t: ^testing.T) {
+	editor.view_chrome_shutdown()
+	defer editor.view_chrome_shutdown()
+	_view_ran = 0
+	editor.view_menu_add_action("Console", "Export/As PNG", _view_act)
+
+	paths := editor.view_menu_paths()
+	testing.expect(t, _has(paths, "View/Console/Export/As PNG"), "a nested item addresses by its full path")
+	// The submenu itself is a container, not something to invoke.
+	testing.expect(t, !_has(paths, "View/Console/Export"), "the parent submenu is not invokable")
+
+	ok, _ := editor.view_menu_invoke("View/Console/Export/As PNG")
+	testing.expect(t, ok)
+	testing.expect_value(t, _view_ran, 1)
 }

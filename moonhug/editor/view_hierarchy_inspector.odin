@@ -42,7 +42,9 @@ draw_hierarchy_inspector :: proc() {
 	}
 	defer im.End()
 
-	tH := hierarchy_get_selected()
+	// Through the lock: a pinned inspector keeps drawing what it was pinned
+	// to while the selection moves on (inspector_lock.odin).
+	tH := inspector_active_target()
 	if tH == _HANDLE_NONE {
 		im.TextDisabled("No object selected")
 		return
@@ -57,9 +59,9 @@ draw_hierarchy_inspector :: proc() {
 	// which now multi-edit like anything else, so the only case left is a
 	// destroyed handle — a transient frame that prunes itself. A qualifier that
 	// is always true is noise.
-	sel := sel_scene_items()
+	sel := inspector_targets()
 	multi := multi_selection_editable(sel)
-	if n := sel_scene_count(); n > 1 {
+	if n := len(sel); n > 1 {
 		im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%d selected", n), context.temp_allocator))
 		im.Separator()
 	}
@@ -573,7 +575,7 @@ _inspector_euler_quat_src: [4]f32
 _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	// UI nodes show one transform block: the RectTransform inspector draws
 	// position, rotation and scale (view_rect_transform.odin).
-	if rect_transform_covers_selection(tH, sel_scene_items() if len(peers) > 0 else nil) do return
+	if rect_transform_covers_selection(tH, inspector_targets() if len(peers) > 0 else nil) do return
 	im.SetNextItemOpen(_inspector_transform_open, .Once)
 	if im.CollapsingHeader("Transform", {.DefaultOpen}) {
 		_inspector_transform_open = true
