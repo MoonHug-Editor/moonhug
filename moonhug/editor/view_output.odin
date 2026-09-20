@@ -8,6 +8,17 @@ import "moonhug:editor/icons"
 
 MAX_OUTPUT_LINES :: 2000
 
+// A frequent control, so it sits on the toolbar rather than in the menu:
+// following a running build is the reason the view is open.
+@(view_toolbar={view="Output", order=0})
+_output_follow_toolbar :: proc() {
+	filter_toggle_button("Follow", &output_follow_tail)
+}
+
+// Off means the view stays where you scrolled it while a build keeps writing,
+// which is the only way to read an error that has scrolled past.
+output_follow_tail := true
+
 _output_lines: [dynamic]string
 _output_mutex: sync.Mutex
 _output_last_count: int
@@ -82,6 +93,7 @@ draw_output_view :: proc() {
 	}
 	im.SameLine()
 	im.Text("Last run stdout/stderr (max %d lines)", MAX_OUTPUT_LINES)
+	view_chrome_draw(view_chrome_id(icons.TITLE_OUTPUT))
 	im.Separator()
 
 	// Read-only multiline input: real text selection + copy (an error line
@@ -92,7 +104,7 @@ draw_output_view :: proc() {
 	joined := strings.join(_output_lines[:], "\n", context.temp_allocator)
 	sync.mutex_unlock(&_output_mutex)
 
-	if n > _output_last_count && n > 0 {
+	if output_follow_tail && n > _output_last_count && n > 0 {
 		// New output: pin the input's internal child (the NEXT window imgui
 		// creates) to the bottom. x = -1 leaves horizontal scroll alone.
 		im.SetNextWindowScroll(im.Vec2{-1, max(f32)})

@@ -111,6 +111,11 @@ _tab_menu_contents :: proc(node: ^im.DockNode) {
 	if node.VisibleWindow != nil do active_title = node.VisibleWindow.Name
 
 	if active_title != nil {
+		// The visible view's OWN options first: they are what this menu is for,
+		// and the tab actions below are the same on every view.
+		if view_menu_draw_items(view_chrome_id(active_title)) {
+			im.Separator()
+		}
 		if im.MenuItem("Close Tab") {
 			_close_view(active_title)
 		}

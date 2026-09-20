@@ -262,6 +262,10 @@ invoke_path :: proc(path: string) -> (ok: bool, state: bool) {
 	#partial switch node.kind {
 	case .Action:
 		node.action()
+		// An action with a tick predicate IS a toggle or a radio option, so
+		// the reply says where it landed — without it a caller that cannot see
+		// the menu learns nothing from invoking one.
+		if node.checked != nil do return true, node.checked()
 	case .Toggle:
 		node.value^ = !node.value^
 		return true, node.value^

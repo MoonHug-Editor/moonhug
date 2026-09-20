@@ -94,6 +94,8 @@ Everything under `library/` is derived data — never a source of truth, safe to
 ## Features
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
 
+- view menu and toolbar - every view can carry an overflow menu and toolbar widgets, any package can add to them. @(view_menu={view="Console", label="..."}) on a proc is an action, on a bool variable it is a toggle, with `checked=`/`enabled=` like menu_item. @(view_toolbar={view="Output", order=0}) on a proc draws a widget. The view id is the text after ### in its title. Items are reachable from MCP as View/<view>/<label>
+
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
 
 - Project Settings window (Edit ▸ Project Settings…) - Unity-style section list + inspector pane, extensible via @(project_settings={name="Tab"}) on a package-level settings struct var; values persist to ProjectSettings/*.json, read by editor and game, edits undoable (see [Plugins](docs/Plugins.md))
@@ -182,16 +184,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - line width - the one item with real renderer cost, since lines become quads
   - solid shapes and labels reachable from a gizmo proc, not only from handles
   - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
-
-- view menu and toolbar extensibility - every view gets a menu and a toolbar any package can add to, built-in views included
-  - menu: its own attribute and registry, `@(view_menu={view="Scene", order=0})` - not a reserved root inside menu_item, which would put view items in the main tree for the bar, shortcuts and list_menus to skip
-  - reuse the menu package's drawing and node kinds, not its tree - same action/toggle/`checked=`/`enabled=` shape
-  - its own collect + invoke so `list_menus` / `invoke_menu` reach view items too
-  - toolbar: a drawer proc, since its contents are widgets (lock, size dropdown, search field), not commands. `@(scene_overlay)` is already that shape - generalise it from the scene view to any view
-  - view id is the text after `###` in the window title, already the ini and dock key
-  - one shared helper draws the button, and draws nothing when that view has no items
-  - a view's own options register the same way a package's do
-  - decide the toolbar vs menu rule before filling either: frequent controls on the toolbar, rare or modal ones in the menu
 
 - dynamic menu items - every item is registered at init, so nothing can compute its item set at draw time. Recent Scenes, run configs, the inspector's "Apply to Prefab 'X'" list
   - one new kind holding a `proc()` that draws its own items into the open menu

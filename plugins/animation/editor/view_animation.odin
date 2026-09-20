@@ -1011,6 +1011,30 @@ _pv_key_step :: proc(clip: ^anim.AnimationClip, from: f32, back: bool) -> f32 {
 	return best
 }
 
+// This view's per-developer preferences, persisted to UserSettings/animation.json.
+// Not project settings: where someone's playhead stops is about them, not the
+// project, and the game binary has no business reading it.
+Anim_View_Prefs :: struct {
+	// Where the playhead lands when a Once clip finishes: the last frame, or
+	// back at the first. Off by default, which is how it has always behaved.
+	ends_on_last_frame: bool,
+}
+
+@(user_settings={name="Animation"})
+anim_view_prefs: Anim_View_Prefs
+
+// The menu item is an ACTION with a checked predicate rather than a toggle,
+// because a toggle writes through a ^bool and would need its own variable —
+// two places holding the same preference, one of them persisted.
+@(view_menu={view="Animation", label="Play Ends on Last Frame", checked=anim_ends_on_last_frame})
+anim_toggle_ends_on_last_frame :: proc() {
+	anim_view_prefs.ends_on_last_frame = !anim_view_prefs.ends_on_last_frame
+}
+
+anim_ends_on_last_frame :: proc() -> bool {
+	return anim_view_prefs.ends_on_last_frame
+}
+
 // Advance the playhead while the transport runs, wrapping the way the clip
 // itself does so playback matches what the component will do.
 @(private = "file")
@@ -1028,9 +1052,11 @@ _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	case .Loop:
 		_pv.time -= length * math.floor(_pv.time / length)
 	case .Once:
-		// Played through: rewind to the first frame and stop, so pressing play
-		// again replays from the start instead of sitting on the last frame.
-		_pv.time = 0
+		// Where a Once clip comes to rest. Ending ON the last frame is what you
+		// want when the pose it lands in is the thing being authored — a death,
+		// a landing, anything whose final frame is the point. Rewinding is what
+		// you want when you are watching the motion over and over.
+		_pv.time = anim_view_prefs.ends_on_last_frame ? length : 0
 		_pv.playing = false
 	}
 }

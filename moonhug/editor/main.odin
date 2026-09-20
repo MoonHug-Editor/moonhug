@@ -362,6 +362,8 @@ editor_init :: proc() {
 
     setup_menu_items :: proc() {
         _register_menu_items()
+        _register_view_chrome()
+        _load_user_settings() // @(user_settings) vars -> UserSettings/*.json
         register_create_asset_menus()
         register_component_menus()
 
@@ -453,7 +455,9 @@ editor_shutdown :: proc() {
     inspector.shutdown_registries()
     shutdown_hierarchy_views()
     shutdown_project_view()
+    _save_user_settings()
     menu.shutdown_menu()
+    view_chrome_shutdown()
     log.info("Editor Shutdown")
     log.shutdown()
 }

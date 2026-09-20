@@ -676,9 +676,14 @@ _mcp_strings_json :: proc(xs: []string) -> string {
 	return strings.to_string(b)
 }
 
-@(mcp_tool={description="Every invokable editor menu path, actions and toggles alike. invoke_menu fires any of them: an action runs, a toggle flips and the reply says which way it landed."})
+@(mcp_tool={description="Every invokable editor menu path, actions and toggles alike, including per-view menus addressed View/<view>/<label>. invoke_menu fires any of them: an action runs, a toggle flips and the reply says which way it landed."})
 mcp_tool_list_menus :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
-	return _mcp_ok(menu.collect_invokable_paths())
+	// The main menu and the per-view menus are separate registries, so a
+	// listing that showed only one would hide half the editor's commands.
+	paths := make([dynamic]string, context.temp_allocator)
+	append(&paths, ..menu.collect_invokable_paths())
+	append(&paths, ..view_menu_paths())
+	return _mcp_ok(paths[:])
 }
 
 @(mcp_tool={
@@ -1108,6 +1113,7 @@ mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error
 	path, has := params["path"].(json.String)
 	if !has do return _mcp_fail("bad_request", "missing path")
 	ok, state := menu.invoke_path(path)
+	if !ok do ok, state = view_menu_invoke(path)
 	if !ok {
 		return _mcp_fail("menu_unavailable", "%q not found, not invokable, or disabled — see list_menus", path)
 	}
