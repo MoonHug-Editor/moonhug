@@ -1,3 +1,14 @@
+## [0.102.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.101.0...v0.102.0) (2026-09-20)
+
+### Features
+
+* add view_menu attr, animation play ends on last frame example ([03bbc2c](https://github.com/MoonHug-Editor/moonhug/commit/03bbc2c9b5c5f6b6f0b279dc611a4f2b3a894e5f))
+* view_tab_bar attribute ([74fd46f](https://github.com/MoonHug-Editor/moonhug/commit/74fd46f0db1a82d0fbb18cebd230f632faaba4e9))
+
+### Bug Fixes
+
+* ui spacing minor ([f557758](https://github.com/MoonHug-Editor/moonhug/commit/f5577580cba99032154c6492ee4cb0b6ee6baeea))
+
 ## [0.101.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.100.0...v0.101.0) (2026-09-19)
 
 ### Features
