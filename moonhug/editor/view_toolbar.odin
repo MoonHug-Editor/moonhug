@@ -142,6 +142,10 @@ draw_tool_bar :: proc() {
     button_play_text: cstring = icons.ICON_MD_RUN_CONFIG + "###RunConfigPlay"
     button_scene_text: cstring = icons.ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene"
     avail := im.GetContentRegionAvail()
+    // GetContentRegionAvail is a WIDTH and SetCursorPosX takes a POSITION, so
+    // the right edge is this start plus that width. Right-aligning to avail.x
+    // alone lands one WindowPadding.x short, leaving a gap past the last item.
+    content_x := im.GetCursorPosX()
     style := im.GetStyle()
     // hide_text_after_double_hash: the ### id suffix is not drawn, so it must
     // not be measured either.
@@ -209,7 +213,7 @@ draw_tool_bar :: proc() {
     // Relaunch sits at the far right, past a vertical separator.
     relaunch_w := style.ItemSpacing.x * 2 + 1 + btn_size.x
     run_total := phase_w + btn_size.x + style.ItemSpacing.x + combo_w + relaunch_w
-    right_x := avail.x - run_total
+    right_x := content_x + avail.x - run_total
     im.SameLine(0, 0)
     im.SetCursorPosX(max(im.GetCursorPosX() + style.ItemSpacing.x, right_x))
 

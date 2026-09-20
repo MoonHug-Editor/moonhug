@@ -120,8 +120,10 @@ view_tab_bar_width :: proc(view: string) -> f32 {
 	tools := _view_tab_bar_items_for(view)
 	w: f32
 	if len(tools) > 0 {
-		style := im.GetStyle()
-		for _ in tools do w += style.ItemSpacing.x
+		// Spacing BETWEEN items only. A leading one would push the whole strip
+		// away from the menu button beside it, and both already carry their own
+		// frame padding.
+		w += im.GetStyle().ItemSpacing.x * f32(len(tools) - 1)
 		w += _view_tab_bar_measure(tools)
 	}
 	_view_tab_bar_width_cache = {view = view, frame = gfx.frame_index, width = w}
