@@ -11,6 +11,7 @@ package editor
 import "core:math"
 import "core:math/linalg"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 
 _ORIENT_RADIUS :: f32(36) // widget radius, px
 _ORIENT_TIP :: f32(7)     // positive-axis tip radius
@@ -138,8 +139,10 @@ draw_orientation_overlay :: proc(vertical: bool) {
 	}
 	if hot >= 0 {
 		a := _ORIENT_AXES[hot]
-		im.SetTooltip(a.axis.y > 0.5 ? "Top" : a.axis.y < -0.5 ? "Bottom" : a.axis.x > 0.5 ? "Right" : a.axis.x < -0.5 ? "Left" : a.axis.z > 0.5 ? "Front" : "Back")
+		// This widget hit-tests itself against the pointer (the whole overlay is
+		// one imgui item), so the tooltip is raised without an item check.
+		widgets.tooltip_unchecked(a.axis.y > 0.5 ? "Top" : a.axis.y < -0.5 ? "Bottom" : a.axis.x > 0.5 ? "Right" : a.axis.x < -0.5 ? "Left" : a.axis.z > 0.5 ? "Front" : "Back")
 	} else if over_center || over_label {
-		im.SetTooltip(scene_cam_ortho ? "Orthographic — click for perspective" : "Perspective — click for orthographic")
+		widgets.tooltip_unchecked(scene_cam_ortho ? "Orthographic — click for perspective" : "Perspective — click for orthographic")
 	}
 }

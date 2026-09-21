@@ -29,6 +29,7 @@ import ng "moonhug:packages/node_graph"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/widgets"
 
 @(private = "file")
 _state: struct {
@@ -191,7 +192,7 @@ _draw_structural_ops :: proc(
 	// picker, so no separate "Change Type" affordance is needed.
 	type_name := tid != nil ? _type_label(tid) : "unknown type"
 	if im.Button(strings.clone_to_cstring(type_name, context.temp_allocator)) do im.OpenPopup("##tw_retype")
-	im.SetItemTooltip("Change node type")
+	widgets.tooltip("Change node type", im.HoveredFlags_ForTooltip)
 	if new_tid, picked := _node_type_popup("##tw_retype"); picked && new_tid != tid {
 		// The session is claimed by the field editors too — flush it so a
 		// pending field edit lands before the structural step.
@@ -602,7 +603,7 @@ _draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if im.SmallButton(fmt.ctprintf("%s##tg_%v", _ICON_GRAPH, ptr)) {
 		_open_graph_for(a)
 	}
-	im.SetItemTooltip("Open in Tween Graph")
+	widgets.tooltip("Open in Tween Graph", im.HoveredFlags_ForTooltip)
 	im.SameLine()
 
 	ntid, nok := tween.authored_typeid(a.value)
@@ -636,7 +637,7 @@ _draw_authored_row :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	// in the graph panel, where each is selectable.
 	root_popup := fmt.ctprintf("##tw_rt_%v", ptr)
 	if im.SmallButton(fmt.ctprintf("%s##tw_rtb_%v", _type_label(ntid), ptr)) do im.OpenPopup(root_popup)
-	im.SetItemTooltip("Change node type")
+	widgets.tooltip("Change node type", im.HoveredFlags_ForTooltip)
 	if new_tid, picked := _node_type_popup(root_popup); picked && new_tid != ntid {
 		o, o_ok := undo.current_owner()
 		if o_ok && o.kind == .Pooled {

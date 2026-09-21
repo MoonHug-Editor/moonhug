@@ -32,6 +32,10 @@ ButtonEntry :: struct {
 	show_in_array: bool,
 	source_pkg:  string,
 	source_path: string,
+	// Where the button was declared, rendered by gen_facts.attr_origin.
+	// Emitted into the registration and shown in the button's tooltip in help
+	// mode.
+	origin:      string,
 }
 
 Button_GenComp :: struct {
@@ -98,6 +102,7 @@ provide :: proc(w: ^db.World) -> bool {
 				show_in_array = show_in_array,
 				source_pkg  = decl.pkg.name,
 				source_path = decl.pkg_path,
+				origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
 			})
 		}
 
@@ -176,8 +181,8 @@ generate :: proc(w: ^db.World) -> bool {
 		for k in i ..< j {
 			be := entries[k]
 			fmt.sbprintf(&b,
-				"\t\tbtns[%d] = {{label = \"%s\", row = %d, weight = %v, show_in_array = %v, invoke = proc(comp: rawptr) {{ %s.%s(cast(^%s)comp) }}}}\n",
-				k - i, be.label, be.row, f32(be.weight), be.show_in_array, be.comp_pkg, be.proc_name, qual)
+				"\t\tbtns[%d] = {{label = \"%s\", row = %d, weight = %v, show_in_array = %v, origin = %q, invoke = proc(comp: rawptr) {{ %s.%s(cast(^%s)comp) }}}}\n",
+				k - i, be.label, be.row, f32(be.weight), be.show_in_array, be.origin, be.comp_pkg, be.proc_name, qual)
 		}
 		fmt.sbprintf(&b, "\t\tinspector_buttons[typeid_of(%s)] = btns\n", qual)
 		strings.write_string(&b, "\t}\n")

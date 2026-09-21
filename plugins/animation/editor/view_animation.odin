@@ -847,7 +847,7 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 		}
 	}
 	if tinted do im.PopStyleColor()
-	if im.IsItemHovered({}) do im.SetTooltip("Pose the object from this clip while the window is open")
+	widgets.tooltip("Pose the object from this clip while the window is open")
 
 	// Record: while armed, editing an animated field writes a key at the
 	// playhead. Drawn in red like a record light, lit while armed.
@@ -913,7 +913,7 @@ _pv_draw_toolbar :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip, l
 		_pv.time = clamp(f32(frame) / fps, 0, length)
 		_pv.active = true
 	}
-	if im.IsItemHovered({}) do im.SetTooltip("Playhead frame")
+	widgets.tooltip("Playhead frame")
 	im.SameLine()
 	im.TextDisabled(fmt.ctprintf("/ %d", i32(math.round(length * fps))))
 
@@ -958,7 +958,7 @@ _pv_draw_sheet_header :: proc(doc: ^inspector.Asset_Doc, clip: ^anim.AnimationCl
 		}
 		im.EndCombo()
 	}
-	if im.IsItemHovered({}) do im.SetTooltip("Clip to edit")
+	widgets.tooltip("Clip to edit")
 
 	im.SameLine()
 	im.BeginDisabled(doc == nil || clip == nil || _pv.sel_ch < 0 || _pv.sel_ch >= len(clip.channels))

@@ -22,6 +22,9 @@ ContextMenuEntry :: struct {
 	order:       int,
 	source_pkg:  string,
 	source_path: string,
+	// Where the entry was declared, rendered by gen_facts.attr_origin. Emitted
+	// into the registration and shown in the item's tooltip with debug tooltips on.
+	origin:      string,
 }
 
 // ContextMenu_GenComp marks a DeclInfo entity as a context-menu proc and carries the
@@ -33,6 +36,7 @@ ContextMenu_GenComp :: struct {
 	order:       int,
 	source_pkg:  string,
 	source_path: string,
+	origin:      string,
 }
 
 
@@ -71,6 +75,7 @@ provide :: proc(w: ^db.World) -> bool {
 			order       = gen_facts.attr_int(args, "order"),
 			source_pkg  = decl.pkg.name,
 			source_path = decl.pkg_path,
+			origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name),
 		})
 	}
 	return true
@@ -115,6 +120,7 @@ generate :: proc(w: ^db.World) -> bool {
 			order       = menu.order,
 			source_pkg  = menu.source_pkg,
 			source_path = menu.source_path,
+			origin      = menu.origin,
 		})
 	}
 
@@ -179,7 +185,7 @@ generate :: proc(w: ^db.World) -> bool {
 		fmt.sbprintf(&b, "\t{{\n")
 		fmt.sbprintf(&b, "\t\tkey := engine.TypeKey.%s\n", key_name)
 		fmt.sbprintf(&b, "\t\tif key not_in _context_menu_registry do _context_menu_registry[key] = make([dynamic]ContextMenuEntry)\n")
-		fmt.sbprintf(&b, "\t\tappend(&_context_menu_registry[key], ContextMenuEntry{{label = \"%s\", action = %s}})\n", e.menu_label, qualified)
+		fmt.sbprintf(&b, "\t\tappend(&_context_menu_registry[key], ContextMenuEntry{{label = \"%s\", action = %s, origin = %q}})\n", e.menu_label, qualified, e.origin)
 		fmt.sbprintf(&b, "\t}}\n")
 	}
 

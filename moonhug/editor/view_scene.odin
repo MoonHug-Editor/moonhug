@@ -12,6 +12,7 @@ import "inspector"
 import "moonhug:editor/handles"
 import "core:strings"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 scene_rt: ^gfx.Render_Target
 
@@ -800,13 +801,13 @@ draw_grid_overlay :: proc(vertical: bool) {
 		im.SeparatorText("Cells")
 		im.SetNextItemWidth(110)
 		inspector.drag_float("Cell size", &gs.cell_size, 0.5, 0.01, 10000, "%.2f")
-		if im.IsItemHovered({}) do im.SetTooltip("One cell in world units (emphasized lines)")
+		widgets.tooltip("One cell in world units (emphasized lines)")
 		im.SetNextItemWidth(110)
 		inspector.drag_int("Subdivide", &gs.subdivide, 1, 1, 100)
-		if im.IsItemHovered({}) do im.SetTooltip("Fine-line divisions inside each cell (1 = none)")
+		widgets.tooltip("Fine-line divisions inside each cell (1 = none)")
 		im.SetNextItemWidth(110)
 		inspector.drag_int("Cells count", &gs.cells_count, 1, 1, 1000)
-		if im.IsItemHovered({}) do im.SetTooltip("Cells from the center to the grid's edge")
+		widgets.tooltip("Cells from the center to the grid's edge")
 		im.EndPopup()
 	}
 }
@@ -824,7 +825,7 @@ draw_snap_overlay :: proc(vertical: bool) {
 		ss := &snap_settings
 		im.SetNextItemWidth(110)
 		inspector.drag_float("Angle", &ss.angle, 1, 1, 180, "%.0f deg")
-		if im.IsItemHovered({}) do im.SetTooltip("Rotate gizmo snap increment")
+		widgets.tooltip("Rotate gizmo snap increment")
 
 		mode_names := [Snap_Mode]cstring{.Grid = "Grid", .SubGrid = "SubGrid", .Units = "Units"}
 		im.SetNextItemWidth(110)
@@ -834,7 +835,7 @@ draw_snap_overlay :: proc(vertical: bool) {
 			}
 			im.EndCombo()
 		}
-		if im.IsItemHovered({}) do im.SetTooltip("Grid = one cell, SubGrid = one subdivision, Units = custom step")
+		widgets.tooltip("Grid = one cell, SubGrid = one subdivision, Units = custom step")
 		if ss.mode == .Units {
 			im.SetNextItemWidth(110)
 			inspector.drag_float("Value", &ss.units, 0.1, 0.01, 10000, "%.2f")

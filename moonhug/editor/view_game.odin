@@ -159,9 +159,7 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	if flipped {
 		im.PopStyleColor()
 	}
-	if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-		im.SetTooltip(free ? "Flip width and height (needs a fixed aspect or resolution)" : "Flip width and height")
-	}
+	widgets.tooltip(free ? "Flip width and height (needs a fixed aspect or resolution)" : "Flip width and height", im.HoveredFlags_AllowWhenDisabled)
 	im.EndDisabled()
 
 	im.SameLine()
@@ -196,9 +194,7 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	im.BeginDisabled(free_size)
 	slider_w := max(im.GetContentRegionAvail().x - GAME_TOOLBAR_PAD, widgets.slider_width_for_track(40))
 	widgets.slider_float("##game_scale", &game_scale, lo, GAME_SCALE_MAX, "%.2f", slider_w)
-	if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-		im.SetTooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels")
-	}
+	widgets.tooltip(free_size ? "Zoom applies to a fixed aspect or resolution" : "Zoom the rendered rect. 1x is the size's actual pixels", im.HoveredFlags_AllowWhenDisabled)
 	im.EndDisabled()
 }
 

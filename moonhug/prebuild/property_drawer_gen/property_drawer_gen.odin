@@ -25,6 +25,10 @@ PropertyDrawer_GenComp :: struct {
 	proc_name:   string,
 	source_pkg:  string, // package where the procedure is defined; empty or same as output => use bare proc_name
 	source_path: string, // that package's scan path, for the import
+	// Where the drawer was declared, rendered by gen_facts.attr_origin. A
+	// drawer draws a whole field row, so debug tooltips show this on every row of
+	// the drawn type.
+	origin:      string,
 }
 
 
@@ -56,6 +60,7 @@ provide :: proc(w: ^db.World) -> bool {
 			proc_name   = decl.name,
 			source_pkg  = decl.pkg.name,
 			source_path = decl.pkg_path,
+			origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
 		})
 	}
 	return true
@@ -67,6 +72,7 @@ _PropertyDrawerRow :: struct {
 	proc_name:   string,
 	source_pkg:  string,
 	source_path: string,
+	origin:      string,
 }
 
 // Import path for a package reached from `out_dir`. A package NAME cannot be
@@ -142,6 +148,7 @@ generate :: proc(w: ^db.World) -> bool {
 			proc_name   = drawer.proc_name,
 			source_pkg  = drawer.source_pkg,
 			source_path = drawer.source_path,
+			origin      = drawer.origin,
 		})
 	}
 
@@ -204,6 +211,7 @@ generate :: proc(w: ^db.World) -> bool {
 			rhs = e.proc_name
 		}
 		fmt.sbprintf(&b, "\tmapPropertyDrawer[typeid_of(%s)] = %s\n", e.type_name, rhs)
+		fmt.sbprintf(&b, "\tmapPropertyDrawerOrigin[typeid_of(%s)] = %q\n", e.type_name, e.origin)
 	}
 
 	strings.write_string(&b, "}\n")

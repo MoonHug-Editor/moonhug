@@ -333,7 +333,7 @@ sequencer_window_draw :: proc() {
 	if im.Checkbox("Preview", &_sq.preview) {
 		if !_sq.preview do _sq.playing = false
 	}
-	if playing_mode do im.SetItemTooltip("Play mode drives the director")
+	if playing_mode do widgets.tooltip("Play mode drives the director", im.HoveredFlags_ForTooltip)
 	// Transport: to start, one frame back, play/pause, one frame forward, to
 	// end. A frame is the engine's fixed tick (fixed_dt), the same step play
 	// mode takes, so stepping lands on the frames the runtime will hit. Every
@@ -347,29 +347,29 @@ sequencer_window_draw :: proc() {
 	}
 	im.SameLine()
 	if im.SmallButton(_ICON_SKIP_PREVIOUS) do jump(0)
-	im.SetItemTooltip("To Start")
+	widgets.tooltip("To Start", im.HoveredFlags_ForTooltip)
 	im.SameLine()
 	if im.SmallButton(_ICON_STEP_BACK) do jump(max(_sq.time - frame, 0))
-	im.SetItemTooltip("Frame Backward")
+	widgets.tooltip("Frame Backward", im.HoveredFlags_ForTooltip)
 	im.SameLine()
 	if im.SmallButton(_sq.playing ? _ICON_PAUSE : _ICON_PLAY) {
 		_sq.playing = !_sq.playing
 		if _sq.playing do _sq.preview = true
 	}
-	im.SetItemTooltip(_sq.playing ? "Pause" : "Play")
+	widgets.tooltip(_sq.playing ? "Pause" : "Play", im.HoveredFlags_ForTooltip)
 	im.SameLine()
 	if im.SmallButton(_ICON_STEP_FWD) do jump(min(_sq.time + frame, dur))
-	im.SetItemTooltip("Frame Forward")
+	widgets.tooltip("Frame Forward", im.HoveredFlags_ForTooltip)
 	im.SameLine()
 	if im.SmallButton(_ICON_SKIP_NEXT) do jump(dur)
-	im.SetItemTooltip("To End")
+	widgets.tooltip("To End", im.HoveredFlags_ForTooltip)
 	im.EndDisabled()
 	im.SameLine()
 	im.Text("%6.2fs / %.2fs", _sq.time, dur)
 	im.SameLine()
 	im.SetNextItemWidth(90)
 	dur_changed := im.DragFloat("##sq_dur", &d.duration, 0.05, 0, 0, "len %.2f")
-	im.SetItemTooltip("Duration (0 = last clip end)")
+	widgets.tooltip("Duration (0 = last clip end)", im.HoveredFlags_ForTooltip)
 	_sq_field_undo(dcomp_owned.handle, "Timeline Duration", dur_changed)
 	// Save sits at the right end, away from the transport — the same place the
 	// animation window puts it. The timeline is scene content, so Save saves
@@ -459,7 +459,7 @@ sequencer_window_draw :: proc() {
 				_sq.sel_track = ti
 				_sq.sel_clip = -1
 			}
-			im.SetItemTooltip("%s track", _sq_kind_label(tv.kind))
+			widgets.tooltip(fmt.ctprintf("%s track", _sq_kind_label(tv.kind)), im.HoveredFlags_ForTooltip)
 			im.OpenPopupOnItemClick("track_ctx")
 
 			// Mute: lit while the track plays, dimmed when muted (the state
@@ -474,13 +474,13 @@ sequencer_window_draw :: proc() {
 				_sq_session_end()
 			}
 			if was_muted do im.PopStyleColor()
-			im.SetItemTooltip(was_muted ? "Unmute" : "Mute")
+			widgets.tooltip(was_muted ? "Unmute" : "Mute", im.HoveredFlags_ForTooltip)
 
 			// Everything else the track can do is one menu, the same one the
 			// name's right-click opens, so a track operation is defined once.
 			im.SameLine()
 			if im.SmallButton(_ICON_TRACK_MENU) do im.OpenPopup("track_ctx")
-			im.SetItemTooltip("Track menu")
+			widgets.tooltip("Track menu", im.HoveredFlags_ForTooltip)
 
 			// Drawn after the buttons: BeginPopup must run after the
 			// OpenPopup that opened it, or the menu waits a frame.
@@ -790,7 +790,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 			_sq_session_end()
 		}
 		if was_muted do im.PopStyleColor()
-		im.SetItemTooltip(was_muted ? "Unmute" : "Mute")
+		widgets.tooltip(was_muted ? "Unmute" : "Mute", im.HoveredFlags_ForTooltip)
 		im.Text("%d clips", i32(len(tv.clips)))
 		// The kind's own fields (its target, its options) — tags drive the
 		// pickers, so nothing here knows what a kind needs.
@@ -841,7 +841,7 @@ _sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 		_sq_field_undo(comp, "Clip Ease", im.DragFloat("##c_eout", &cc.ease_out, 0.01, 0, 0, "%.2f s"))
 		row("Speed")
 		_sq_field_undo(comp, "Clip Speed", im.DragFloat("##c_speed", &cc.speed, 0.01, 0, 0, "x%.2f"))
-		im.SetItemTooltip("0 behaves as 1")
+		widgets.tooltip("0 behaves as 1", im.HoveredFlags_ForTooltip)
 
 		// The clip's payload lives on the kind's clip component — its `ext:`
 		// tags filter the asset picker without the window naming any kind.

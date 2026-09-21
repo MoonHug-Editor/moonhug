@@ -32,12 +32,16 @@ import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import gfx "moonhug:engine/gfx"
+import "moonhug:editor/widgets"
 import "menu"
 
 View_Tab_Bar_Item :: struct {
-	view:  string,
-	draw:  proc(),
-	order: int,
+	view:   string,
+	draw:   proc(),
+	order:  int,
+	// The @(view_tab_bar) that created the item, with its file and line, as
+	// rendered by the generator. Shown in the item's tooltip with debug tooltips on.
+	origin: string,
 }
 
 // One menu TREE per view, the same kind the main menu bar is. Nothing here
@@ -64,22 +68,28 @@ view_menu_add_action :: proc(
     order := 0,
     enabled: proc() -> bool = nil,
     checked: proc() -> bool = nil,
+    origin := "",
 ) {
     context.allocator = runtime.default_allocator()
-    menu.tree_add_item(_view_menu_tree(view), label, "", action, order, enabled, checked)
+    menu.tree_add_item(_view_menu_tree(view), label, "", action, order, enabled, checked, origin)
 }
 
-view_menu_add_toggle :: proc(view, label: string, value: ^bool, order := 0, enabled: proc() -> bool = nil) {
+view_menu_add_toggle :: proc(view, label: string, value: ^bool, order := 0, enabled: proc() -> bool = nil, origin := "") {
     context.allocator = runtime.default_allocator()
-    menu.tree_add_toggle(_view_menu_tree(view), label, value, order, "", enabled)
+    menu.tree_add_toggle(_view_menu_tree(view), label, value, order, "", enabled, origin)
 }
 
-view_tab_bar_add_item :: proc(view: string, draw: proc(), order := 0) {
+view_tab_bar_add_item :: proc(view: string, draw: proc(), order := 0, origin := "") {
 	context.allocator = runtime.default_allocator()
-	append(&_view_tab_bar_items, View_Tab_Bar_Item{view = view, draw = draw, order = order})
+	append(&_view_tab_bar_items, View_Tab_Bar_Item{view = view, draw = draw, order = order, origin = origin})
 }
 
 view_chrome_shutdown :: proc() {
+    // Everything here was allocated under default_allocator (the registries
+    // pin it on the way in), so it is freed under the same one — not whatever
+    // is ambient at shutdown. Under a tracking allocator the mismatch reports
+    // every node as a bad free, and under a different one it would crash.
+    context.allocator = runtime.default_allocator()
     for view, tree in _view_menus {
         menu.tree_destroy(tree)
         delete(view)
@@ -147,7 +157,12 @@ view_tab_bar_draw :: proc(view: string) {
 	items := _view_tab_bar_items_for(view)
 	for it, i in items {
 		if i > 0 do im.SameLine()
-		if it.draw != nil do it.draw()
+		if it.draw == nil do continue
+		// Ambient for the duration of the item's draw, so any tooltip it
+		// raises can name the attribute that registered it (debug tooltips).
+		prev := widgets.ui_origin_push(it.origin)
+		it.draw()
+		widgets.ui_origin_pop(prev)
 	}
 }
 

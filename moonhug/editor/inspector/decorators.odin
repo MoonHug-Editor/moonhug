@@ -89,11 +89,9 @@ decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
 decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
 	if !ctx.is_visible || ctx.is_pre do return
 
-	if im.IsItemHovered() {
-		im.BeginTooltip()
-		im.TextUnformatted(desc)
-		im.EndTooltip()
-	}
+	// Through the shared tooltip so debug tooltips can add the tag that put this
+	// decorator on the field.
+	widgets.tooltip(desc)
 }
 
 decorator_separator :: proc(ctx: ^DrawContext) {
@@ -301,4 +299,7 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 		}
 		structural_edit_end(&sess)
 	}
+	// A button has no tooltip of its own, so the empty text draws nothing
+	// outside debug tooltips.
+	widgets.tooltip("")
 }

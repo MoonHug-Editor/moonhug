@@ -27,6 +27,10 @@ DecoratorCall :: struct {
 FieldDecorators :: struct {
 	field_name: string,
 	calls:      [dynamic]DecoratorCall,
+	// The `decor:` tags as written, with the file and line of the field they
+	// sit on, rendered by gen_facts.tag_origin. A decorator draws part of the
+	// field's row, so debug tooltips show this while that row draws.
+	origin:     string,
 }
 
 TypeDecorators :: struct {
@@ -103,9 +107,27 @@ _rewrite_button_call :: proc(rest: string, pkg_name: string) -> (call: string, r
 	return fmt.tprintf("decorator_button(ctx, %s%s", qualified, tail), row
 }
 
-_parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> [dynamic]DecoratorCall {
+// _unescape_tag_quotes turns the tag's \" back into " so a rendered origin
+// reads the way the tag is written in source.
+_unescape_tag_quotes :: proc(s: string) -> string {
+	b := strings.builder_make()
+	for i := 0; i < len(s); i += 1 {
+		if s[i] == '\\' && i + 1 < len(s) && s[i+1] == '"' {
+			strings.write_byte(&b, '"')
+			i += 1
+		} else {
+			strings.write_byte(&b, s[i])
+		}
+	}
+	return strings.to_string(b)
+}
+
+// `raw` is every decor: value of the tag as written, joined — what debug tooltips
+// shows as the origin of the field's decorators.
+_parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> (out: [dynamic]DecoratorCall, raw: string) {
 	calls: [dynamic]DecoratorCall
 	defer if len(calls) > 0 do delete(calls)
+	raw_b := strings.builder_make()
 
 	key := "decor:"
 	pos := 0
@@ -133,6 +155,9 @@ _parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> [dynamic]D
 			} else do break
 		}
 		if len(val) == 0 do continue
+		if strings.builder_len(raw_b) > 0 do strings.write_byte(&raw_b, ' ')
+		strings.write_string(&raw_b, "decor:")
+		strings.write_string(&raw_b, _unescape_tag_quotes(val))
 		// val is e.g. "header(text=\"Hello\")" or "separator()"
 		// Prepend "decorator_" to proc name; insert "ctx, " after "(" (or just "ctx" if no args)
 		paren := strings.index_rune(val, '(')
@@ -164,7 +189,7 @@ _parse_decor_calls_from_tag :: proc(tag: string, pkg_name: string) -> [dynamic]D
 
 	result: [dynamic]DecoratorCall
 	for c in calls do append(&result, c)
-	return result
+	return result, strings.to_string(raw_b)
 }
 
 provide :: proc(w: ^db.World) -> bool {
@@ -183,14 +208,20 @@ provide :: proc(w: ^db.World) -> bool {
 		has_any := false
 		for sf in struct_fields {
 			if sf.name == "" do continue
-			calls := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
+			calls, raw := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
 			defer delete(calls)
 			if len(calls) == 0 {
 				append(&fields, FieldDecorators{field_name = sf.name})
 				continue
 			}
 			has_any = true
-			fd: FieldDecorators = {field_name = sf.name}
+			origin := gen_facts.tag_origin(
+				raw,
+				gen_facts.decl_rel_path(decl),
+				sf.line,
+				fmt.aprintf("%s.%s", decl.name, sf.name),
+			)
+			fd: FieldDecorators = {field_name = sf.name, origin = origin}
 			for c in calls do append(&fd.calls, c)
 			append(&fields, fd)
 		}
@@ -315,22 +346,26 @@ generate :: proc(w: ^db.World) -> bool {
 		}
 
 		strings.write_string(&b, type_slice_name)
-		strings.write_string(&b, ": []DecoratorProc\n\n")
+		strings.write_string(&b, ": []DecoratorProc\n")
+		fmt.sbprintf(&b, "__decorator_origins__%s: []string\n\n", e.type_name)
 	}
 
 	strings.write_string(&b, "init_decorators :: proc() {\n")
 	for e in entries {
 		type_slice_name := fmt.tprintf("__decorators__%s", e.type_name)
+		origin_slice_name := fmt.tprintf("__decorator_origins__%s", e.type_name)
 		type_prefix := fmt.tprintf("__decorator__%s__", e.type_name)
 		qual := e.type_name
 		if e.pkg_name != "" do qual = fmt.tprintf("%s.%s", e.pkg_name, e.type_name)
 		n := len(e.fields)
 		fmt.sbprintf(&b, "\t%s = make([]DecoratorProc, %d)\n", type_slice_name, n)
+		fmt.sbprintf(&b, "\t%s = make([]string, %d)\n", origin_slice_name, n)
 		for fd, idx in e.fields {
 			if len(fd.calls) == 0 {
 				fmt.sbprintf(&b, "\t%s[%d] = nil\n", type_slice_name, idx)
 			} else {
 				fmt.sbprintf(&b, "\t%s[%d] = %s%s\n", type_slice_name, idx, type_prefix, fd.field_name)
+				fmt.sbprintf(&b, "\t%s[%d] = %q\n", origin_slice_name, idx, fd.origin)
 			}
 		}
 		strings.write_string(&b, "\tdecorator_registry[typeid_of(")
@@ -338,6 +373,7 @@ generate :: proc(w: ^db.World) -> bool {
 		strings.write_string(&b, ")] = ")
 		strings.write_string(&b, type_slice_name)
 		strings.write_string(&b, "\n")
+		fmt.sbprintf(&b, "\tdecorator_origin_registry[typeid_of(%s)] = %s\n", qual, origin_slice_name)
 	}
 	strings.write_string(&b, "}\n")
 

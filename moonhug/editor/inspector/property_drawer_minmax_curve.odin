@@ -9,6 +9,7 @@ package inspector
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "../../engine"
+import "moonhug:editor/widgets"
 
 @(private = "file") ICON_MD_EXPAND_MORE :: "\ue5cf" // the editor's dropdown glyph
 
@@ -45,7 +46,7 @@ draw_minmax_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	if im.SmallButton(fmt.ctprintf("%s##mm_mode_%s", ICON_MD_EXPAND_MORE, label)) {
 		im.OpenPopup("mm_mode")
 	}
-	im.SetItemTooltip("%s", _mm_mode_names[mm.mode])
+	widgets.tooltip(_mm_mode_names[mm.mode], im.HoveredFlags_ForTooltip)
 	if im.BeginPopup("mm_mode") {
 		for name, mode in _mm_mode_names {
 			if im.Selectable(name, mm.mode == mode) {
@@ -64,29 +65,29 @@ draw_minmax_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		if drag_float(fmt.ctprintf("##mm_v%s", label), &mm.value_min, 0.05) {
 			mark_inspector_changed()
 		}
-		im.SetItemTooltip("Value")
+		widgets.tooltip("Value", im.HoveredFlags_ForTooltip)
 	case .Random_Two_Constants:
 		half := (avail - 4) * 0.5
 		im.SetNextItemWidth(half)
 		if drag_float(fmt.ctprintf("##mm_lo%s", label), &mm.value_min, 0.05) {
 			mark_inspector_changed()
 		}
-		im.SetItemTooltip("Min")
+		widgets.tooltip("Min", im.HoveredFlags_ForTooltip)
 		im.SameLine(0, 4)
 		im.SetNextItemWidth(half)
 		if drag_float(fmt.ctprintf("##mm_hi%s", label), &mm.value_max, 0.05) {
 			mark_inspector_changed()
 		}
-		im.SetItemTooltip("Max")
+		widgets.tooltip("Max", im.HoveredFlags_ForTooltip)
 	case .Curve:
 		_mm_curve_cell(&mm.curve_min, "##mm_c", avail)
-		im.SetItemTooltip("Curve over the cycle — click to edit")
+		widgets.tooltip("Curve over the cycle — click to edit", im.HoveredFlags_ForTooltip)
 	case .Random_Two_Curves:
 		half := (avail - 4) * 0.5
 		_mm_curve_cell(&mm.curve_min, "##mm_clo", half)
-		im.SetItemTooltip("Min curve — click to edit")
+		widgets.tooltip("Min curve — click to edit", im.HoveredFlags_ForTooltip)
 		im.SameLine(0, 4)
 		_mm_curve_cell(&mm.curve_max, "##mm_chi", half)
-		im.SetItemTooltip("Max curve — click to edit")
+		widgets.tooltip("Max curve — click to edit", im.HoveredFlags_ForTooltip)
 	}
 }

@@ -37,6 +37,13 @@ For more details see [Contribution](docs/Contribution.md)
 ## Community
 - [Discord](https://discord.gg/HTpBmhESwW)
 
+## License
+zlib — see [LICENSE](LICENSE). Games built with MoonHug carry no notice
+obligation from MoonHug itself; bundled third-party components and what they
+require are listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+Contributions are accepted under the same license
+(see [Contribution](docs/Contribution.md)).
+
 ## Building
 
 Install [Odin](https://odin-lang.org/docs/install/) and SDL3 (`brew install sdl3`), then, in a fresh clone:
@@ -185,7 +192,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - solid shapes and labels reachable from a gizmo proc, not only from handles
   - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
 
-- help mode - a toggle that makes every registered UI element explain itself on hover: which attribute put it there, its field values, the declaring package and file, and its live value
+- debug tooltips - a toggle that makes every registered UI element explain itself on hover: which attribute put it there, its field values, the declaring package and file, and its live value
 
 - dynamic menu items - every item is registered at init, so nothing can compute its item set at draw time. Recent Scenes, run configs, the inspector's "Apply to Prefab 'X'" list
   - one new kind holding a `proc()` that draws its own items into the open menu

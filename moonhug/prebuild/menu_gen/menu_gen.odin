@@ -33,6 +33,9 @@ MenuEntry :: struct {
 	checked:     string, // optional tick predicate, same form as enabled
 	source_pkg:  string,
 	source_path: string,
+	// Where the entry was declared, rendered by gen_facts.attr_origin. Emitted
+	// into the registration call and shown in the item's tooltip with debug tooltips on.
+	origin:      string,
 }
 
 // Menu_GenComp marks a DeclInfo entity as a menu declaration. A single declaration's
@@ -104,9 +107,11 @@ provide :: proc(w: ^db.World) -> bool {
 				}
 
 				if path != "" && separator_path == "" {
-					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, checked, decl.pkg.name, decl.pkg_path})
+					origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
+					append(&entries, MenuEntry{.Item, path, ident_name, shortcut, menu_order, enabled, checked, decl.pkg.name, decl.pkg_path, origin})
 				} else if separator_path != "" {
-					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", "", ""})
+					// A separator has nothing to hover, so it carries no origin.
+					append(&entries, MenuEntry{.Separator, separator_path, "", "", separator_order, "", "", "", "", ""})
 				}
 			}
 		} else {
@@ -116,7 +121,8 @@ provide :: proc(w: ^db.World) -> bool {
 				if args.key != "menu_item" do continue
 				path, menu_order, shortcut, _, _ := _extract_menu_item_comp(args)
 				if path != "" {
-					append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", "", decl.pkg.name, decl.pkg_path})
+					origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
+					append(&entries, MenuEntry{.Toggle, path, ident_name, shortcut, menu_order, "", "", decl.pkg.name, decl.pkg_path, origin})
 				}
 			}
 		}
@@ -271,7 +277,8 @@ generate :: proc(w: ^db.World) -> bool {
 			if e.checked != "" {
 				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.checked))
 			}
-			strings.write_string(&b, ")\n")
+			// Named, so the optional arguments in between need no filler.
+			fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 		case .Toggle:
 			strings.write_string(&b, "\tmenu.add_menu_toggle(\"")
 			strings.write_string(&b, e.path)
@@ -281,7 +288,7 @@ generate :: proc(w: ^db.World) -> bool {
 			if e.shortcut != "" {
 				fmt.sbprintf(&b, ", \"%s\"", e.shortcut)
 			}
-			strings.write_string(&b, ")\n")
+			fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 		case .Separator:
 			strings.write_string(&b, "\tmenu.add_menu_separator(\"")
 			strings.write_string(&b, e.path)

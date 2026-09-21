@@ -36,6 +36,10 @@ _Settings_Tab :: struct {
 	// A tab that draws itself instead of a settings struct (the Plugins tab,
 	// whose state is the filesystem). No undo owner, nothing persisted.
 	draw:      proc(),
+	// The @(project_settings) that created the tab, with its file and line, as
+	// rendered by the generator. Shown in the tab row's tooltip with debug tooltips on.
+	// A hand-registered tab (settings_add_custom_tab) has none.
+	origin:    string,
 }
 
 @(private = "file")
@@ -51,9 +55,9 @@ _settings_split_ratio: f32 = 0.28
 // Registers one tab. The generated _register_project_settings loads the var's
 // persisted values (a typed engine.project_settings_load) right before this
 // call, so the editor session starts from the file.
-settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid) {
+settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid, origin := "") {
 	append(&_settings_tabs, _Settings_Tab{
-		name = name, ptr = ptr, tid = tid,
+		name = name, ptr = ptr, tid = tid, origin = origin,
 		last_json = undo.capture_json(ptr, tid),
 	})
 	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
@@ -127,6 +131,9 @@ project_settings_window_draw :: proc() {
 		if !widgets.search_match(tab.name, filter) {
 			continue
 		}
+		// A tab row has no tooltip of its own, so the empty text below draws
+		// nothing outside debug tooltips.
+		prev := widgets.ui_origin_push(tab.origin)
 		if im.Selectable(
 			strings.clone_to_cstring(tab.name, context.temp_allocator),
 			selected != nil && selected.name == tab.name,
@@ -134,6 +141,8 @@ project_settings_window_draw :: proc() {
 			editor_settings.project_settings_tab = tab.name
 			selected = &tab
 		}
+		widgets.tooltip("")
+		widgets.ui_origin_pop(prev)
 	}
 	im.EndChild()
 

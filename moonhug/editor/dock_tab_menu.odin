@@ -15,6 +15,7 @@ import im "moonhug:external/odin-imgui"
 import "menu"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 import "core:fmt"
 import "core:strings"
 
@@ -69,9 +70,17 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 			// The button's own id must be unique per node too, or every node's
 			// button shares one id and only the first responds. The popup name
 			// already carries the node id, so it doubles as the button label.
+			// The tab's menu button stands in for the tab itself with debug tooltips on:
+			// a plugin window is declared by @(editor_window), and this is the
+			// one piece of its chrome the dock system owns. The button has no
+			// tooltip of its own, so the empty text draws nothing outside help
+			// mode.
+			origin_prev := widgets.ui_origin_push(_window_origin(active_title))
 			im.SetCursorScreenPos(bmin)
 			clicked := im.InvisibleButton(popup, {size, size})
 			hovered := im.IsItemHovered({})
+			widgets.tooltip("")
+			widgets.ui_origin_pop(origin_prev)
 			if clicked do im.OpenPopup(popup)
 
 			if hovered {
@@ -138,6 +147,18 @@ _tab_menu_node :: proc(node: ^im.DockNode) {
 		}
 	}
 	im.End()
+}
+
+// The @(editor_window) origin behind the tab whose imgui window title is
+// `title`. Titles are "<icon> Name###id", and a plugin window's id is the text
+// after "###" — a built-in view has no registered window and answers "".
+@(private = "file")
+_window_origin :: proc(title: cstring) -> string {
+	if title == nil do return ""
+	s := string(title)
+	idx := strings.last_index(s, "###")
+	if idx < 0 do return ""
+	return wnd.origin_of(s[idx + 3:])
 }
 
 // Close the view whose imgui window title is `title`: a built-in view clears

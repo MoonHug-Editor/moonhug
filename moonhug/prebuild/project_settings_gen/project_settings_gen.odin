@@ -27,6 +27,10 @@ SettingsEntry :: struct {
 	name:        string, // the settings var
 	source_pkg:  string,
 	source_path: string,
+	// Where the tab was declared, rendered by gen_facts.attr_origin. Emitted
+	// into the registration call and shown in the tab row's tooltip in help
+	// mode.
+	origin:      string,
 }
 
 Settings_GenComp :: struct {
@@ -64,6 +68,7 @@ provide :: proc(w: ^db.World) -> bool {
 				name        = decl.name,
 				source_pkg  = decl.pkg.name,
 				source_path = decl.pkg_path,
+				origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name),
 			})
 		}
 
@@ -158,7 +163,7 @@ generate :: proc(w: ^db.World) -> bool {
 	for e in entries {
 		q := _qualified_name(e)
 		fmt.sbprintf(&b, "\t__engine.project_settings_load(%q, &%s)\n", e.tab_name, q)
-		fmt.sbprintf(&b, "\tsettings_add_tab(%q, &%s, typeid_of(type_of(%s)))\n", e.tab_name, q, q)
+		fmt.sbprintf(&b, "\tsettings_add_tab(%q, &%s, typeid_of(type_of(%s)), origin = %q)\n", e.tab_name, q, q, e.origin)
 	}
 	strings.write_string(&b, "}\n")
 

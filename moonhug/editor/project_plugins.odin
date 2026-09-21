@@ -14,6 +14,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 // The working directory is moonhug/, so plugins/ is one level up.
 PLUGINS_DIR :: "../plugins"
@@ -118,13 +119,13 @@ project_plugins_draw :: proc() {
 				else do _plugin_disable(p.name)
 			}
 			im.EndDisabled()
-			if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-				switch p.state {
-				case .Linked:    im.SetTooltip(fmt.ctprintf("Enabled: packages/%s -> ../../plugins/%s", p.name, p.name))
-				case .Off:       // nothing to say: no link exists
-				case .Directory: im.SetTooltip(fmt.ctprintf("packages/%s is a real directory (a copy), not a link", p.name))
-				}
+			tip: cstring
+			switch p.state {
+			case .Linked:    tip = fmt.ctprintf("Enabled: packages/%s -> ../../plugins/%s", p.name, p.name)
+			case .Off:       // nothing to say: no link exists
+			case .Directory: tip = fmt.ctprintf("packages/%s is a real directory (a copy), not a link", p.name)
 			}
+			widgets.tooltip(tip, im.HoveredFlags_AllowWhenDisabled)
 		}
 		im.EndTable()
 	}

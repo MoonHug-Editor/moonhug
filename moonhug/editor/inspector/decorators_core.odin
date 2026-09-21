@@ -6,10 +6,17 @@ package inspector
 //        decor:separator()`,        // <-- decorator_separator :: proc(ctx:^DrawContext)
 //}
 
+import "moonhug:editor/widgets"
+
 DecoratorProc :: distinct proc(ctx: ^DrawContext)
 DecoratorsMap :: map[typeid][]DecoratorProc
 
 decorator_registry: DecoratorsMap
+
+// The `decor:` tags behind each entry of decorator_registry, indexed the same
+// way (typeid, then field index). Filled by init_decorators; a field with no
+// decorators has "".
+decorator_origin_registry: map[typeid][]string
 
 DrawContext :: struct {
     is_visible: bool,
@@ -34,5 +41,14 @@ run_field_decorators :: proc(tid: typeid, field_index: int, ctx: ^DrawContext) {
     if field_index < 0 || field_index >= len(decorators) do return
     run := decorators[field_index]
     if run == nil do return
+    // A decorator draws part of the field's row, so its tag is what debug tooltips
+    // names for anything it hovers. Popped before returning, so the row's own
+    // drawer is not attributed to the decorator.
+    origin := ""
+    if origins, has := decorator_origin_registry[tid]; has && field_index < len(origins) {
+        origin = origins[field_index]
+    }
+    prev := widgets.ui_origin_push(origin)
+    defer widgets.ui_origin_pop(prev)
     run(ctx)
 }

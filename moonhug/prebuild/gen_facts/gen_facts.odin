@@ -58,6 +58,29 @@ attr_find :: proc(comp: ^Attrs_GenComp, key: string) -> (Attr_Args, bool) {
 }
 attr_int :: gen_core.AttrInt
 
+// attr_origin renders "attribute as written + file:line + declaration name"
+// for one registration. A generator emits it as the `origin` argument of the
+// registration call, and debug tooltips show it in the element's tooltip.
+attr_origin :: gen_core.AttrOrigin
+
+// tag_origin is the same for a registration written as a struct tag.
+tag_origin :: gen_core.TagOrigin
+
+// decl_rel_path is the declaration's file, repo-relative. DeclInfo.file_path is
+// the key the parser produced, which is ABSOLUTE — it names the machine the
+// build ran on, and an origin string ends up in a committed generated file.
+// pkg_path is already repo-relative, and a package's files sit directly in it.
+decl_rel_path :: proc(d: ^db.DeclInfo) -> string {
+	base := d.file_path
+	for i := len(base) - 1; i >= 0; i -= 1 {
+		if base[i] == '/' || base[i] == '\\' {
+			base = base[i + 1:]
+			break
+		}
+	}
+	return strings.concatenate({d.pkg_path, "/", base})
+}
+
 // attr_nested returns a nested compound-literal member of an attribute
 // (e.g. typ_guid's "menu_assets_create"), if present.
 attr_nested :: proc(args: Attr_Args, key: string) -> (Attr_Args, bool) {

@@ -30,6 +30,7 @@ import engine "../engine"
 import "handles"
 import "inspector"
 import "undo"
+import "moonhug:editor/widgets"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 rect_transform_inspector_install :: proc() {
@@ -269,7 +270,7 @@ _rt_draw_position_block :: proc(driven: bool) {
 	btn_pos.y += (block_h - btn) * 0.5
 	im.SetCursorScreenPos(btn_pos)
 	if im.InvisibleButton("##rt_anchor_preset", {btn, btn}) do im.OpenPopup("##rt_anchor_presets")
-	if im.IsItemHovered() do im.SetTooltip("Anchor presets")
+	widgets.tooltip("Anchor presets")
 	anchors_mixed := false
 	for t in _rt_targets[1:] do if t.rt.anchor_min != rt.anchor_min || t.rt.anchor_max != rt.anchor_max do anchors_mixed = true
 	_rt_anchor_icon(im.GetWindowDrawList(), btn_pos, btn, rt.anchor_min, rt.anchor_max, im.IsItemHovered() || im.IsItemActive(), false, anchors_mixed)
@@ -325,7 +326,7 @@ _rt_draw_raw_toggle :: proc(size: f32) {
 	if on do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	if im.Button("R", {size, size}) do handles.rect_raw_edit = !handles.rect_raw_edit
 	if on do im.PopStyleColor()
-	if im.IsItemHovered() do im.SetTooltip("Raw edit mode: anchor and pivot edits leave position and size as they are, so the rect moves")
+	widgets.tooltip("Raw edit mode: anchor and pivot edits leave position and size as they are, so the rect moves")
 }
 
 // --- Anchors and pivot ---------------------------------------------------------------

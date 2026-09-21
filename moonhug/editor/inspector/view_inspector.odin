@@ -80,6 +80,12 @@ InspectorData :: struct {
 
 MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
 
+// The @(property_drawer) behind each entry of mapPropertyDrawer, with its file
+// and line, as rendered by the generator. A drawer owns the whole field row,
+// so debug tooltips show this while the row draws. Filled by
+// init_property_drawer_map; a hand-registered drawer has no entry.
+mapPropertyDrawerOrigin: map[typeid]string
+
 // Asset preview pane: package editor subpackages register a drawer per
 // source extension (lowercase, with dot). A matching drawer pins a Preview
 // section to the BOTTOM of the Project Inspector, below whatever the mode
@@ -88,8 +94,10 @@ mapAssetPreview: map[string]proc(path: string)
 
 init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
+    mapPropertyDrawerOrigin = make(map[typeid]string)
     mapAssetPreview = make(map[string]proc(path: string))
     decorator_registry = make(DecoratorsMap)
+    decorator_origin_registry = make(map[typeid][]string)
     init_property_drawer_map()
     // Manual registration: the prebuild attribute parser takes plain type
     // names, not container type expressions.
@@ -105,11 +113,16 @@ init :: proc() {
 shutdown_registries :: proc() {
     multi_shutdown()
     delete(mapPropertyDrawer)
+    delete(mapPropertyDrawerOrigin)
     delete(mapAssetPreview)
     for _, v in decorator_registry {
         delete(v)
     }
     delete(decorator_registry)
+    for _, v in decorator_origin_registry {
+        delete(v)
+    }
+    delete(decorator_origin_registry)
     for _, v in inspector_buttons {
         delete(v)
     }
@@ -865,6 +878,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
             defer field_tags_restore(prev_tags)
 
             if drawer, ok := mapPropertyDrawer[field_type.id]; ok {
+                // The drawer owns this row, so its @(property_drawer) is what
+                // debug tooltips name for anything the row hovers.
+                origin_prev := widgets.ui_origin_push(mapPropertyDrawerOrigin[field_type.id])
+                defer widgets.ui_origin_pop(origin_prev)
+
                 // Mixed-value display for the selection. Read by the drawer.
                 multi_offset := multi_offset_of(field_ptr, ptr)
                 multi_probe_field(field_ptr, field_type.id, multi_offset)

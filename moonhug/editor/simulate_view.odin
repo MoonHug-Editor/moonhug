@@ -11,6 +11,7 @@ import "../engine"
 import "../engine/input"
 import sim "./simulate"
 import "moonhug:editor/icons"
+import "widgets"
 
 // Simulate's accent, on every simulate button while a run is active. The rest of
 // the toolbar is theme-neutral.
@@ -184,9 +185,7 @@ _draw_simulate_controls :: proc() {
         }
     }
     _pop_sim_button_bg()
-    if im.IsItemHovered({}) {
-        im.SetTooltip(active ? "Stop (Cmd/Ctrl+P)" : "Play (Cmd/Ctrl+P)")
-    }
+    widgets.tooltip(active ? "Stop (Cmd/Ctrl+P)" : "Play (Cmd/Ctrl+P)")
 
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)
@@ -200,9 +199,7 @@ _draw_simulate_controls :: proc() {
         }
     }
     _pop_sim_button_bg()
-    if im.IsItemHovered({}) {
-        im.SetTooltip(active && paused ? "Resume (Cmd/Ctrl+Shift+P)" : "Pause (Cmd/Ctrl+Shift+P)")
-    }
+    widgets.tooltip(active && paused ? "Resume (Cmd/Ctrl+Shift+P)" : "Pause (Cmd/Ctrl+Shift+P)")
 
     im.SameLine(0, style.ItemSpacing.x)
     _push_sim_button_bg(active)
@@ -210,9 +207,7 @@ _draw_simulate_controls :: proc() {
         sim.step()
     }
     _pop_sim_button_bg()
-    if im.IsItemHovered({}) {
-        im.SetTooltip("Step Frame")
-    }
+    widgets.tooltip("Step Frame")
 }
 
 // Which game Simulate ticks. Always drawn, disabled below two hosts, where it
@@ -236,16 +231,13 @@ _draw_sim_host_combo :: proc() {
         im.EndCombo()
     }
     im.EndDisabled()
-    if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-        switch len(all) {
-        case 0:
-            im.SetTooltip("No runnable package found (a game is a package with main at its root)")
-        case 1:
-            im.SetTooltip(fmt.ctprintf("Sim host: %s (only game installed)", host.name))
-        case:
-            im.SetTooltip("Sim host: which game's code Simulate runs")
-        }
+    host_tip: cstring
+    switch len(all) {
+    case 0: host_tip = "No runnable package found (a game is a package with main at its root)"
+    case 1: host_tip = fmt.ctprintf("Sim host: %s (only game installed)", host.name)
+    case:   host_tip = "Sim host: which game's code Simulate runs"
     }
+    widgets.tooltip(host_tip, im.HoveredFlags_AllowWhenDisabled)
 }
 
 // Sized to the widest host name, so switching hosts does not shift the toolbar.

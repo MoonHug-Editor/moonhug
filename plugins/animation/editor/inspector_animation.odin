@@ -96,7 +96,7 @@ _slider_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 _pos_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	im.SetNextItemWidth(90)
 	if im.DragFloat(label, cast(^f32)ptr, 0.01, 0, 0, "at %.2f") do inspector.mark_inspector_changed()
-	if im.IsItemHovered({}) do im.SetTooltip("Where this clip sits on the blend axis")
+	widgets.tooltip("Where this clip sits on the blend axis")
 }
 
 @(private = "file")
@@ -109,7 +109,7 @@ _wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		w^ = anim.Animation_Wrap_Mode(cur)
 		inspector.mark_inspector_changed()
 	}
-	if im.IsItemHovered({}) do im.SetTooltip("Default takes the clip's own wrap")
+	widgets.tooltip("Default takes the clip's own wrap")
 }
 
 // One value row of the tree. An entry has no path from the component base, so
@@ -341,9 +341,7 @@ _row_buttons :: proc(a: ^anim.Animation, li: int, id: i32, play := true) -> bool
 				preview_play_entry(a.owner, id)
 			}
 		}
-		if im.IsItemHovered({}) {
-			im.SetTooltip(previewing ? "Stop previewing this state" : "Play this state")
-		}
+		widgets.tooltip(previewing ? "Stop previewing this state" : "Play this state")
 		im.SameLine()
 	}
 
@@ -384,7 +382,7 @@ _name_field :: proc(e: ^anim.Animation_Entry) {
 		for i in 0 ..< len(_rename_buf) do _rename_buf[i] = 0
 		copy(_rename_buf[:], src[:n])
 	}
-	if im.IsItemHovered({}) do im.SetTooltip("Click to rename. animation_find looks states up by this")
+	widgets.tooltip("Click to rename. animation_find looks states up by this")
 }
 
 @(private = "file")

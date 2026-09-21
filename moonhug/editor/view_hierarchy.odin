@@ -404,9 +404,7 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 		im.BeginDisabled(len(scene.path) == 0 || engine.application_is_playing())
 		discard := im.MenuItem("Discard")
 		im.EndDisabled()
-		if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-			im.SetTooltip("Reload this scene from its file, dropping unsaved changes")
-		}
+		widgets.tooltip("Reload this scene from its file, dropping unsaved changes", im.HoveredFlags_AllowWhenDisabled)
 		if discard {
 			_hierarchy_discard_scene(scene)
 			im.EndPopup()
@@ -419,8 +417,8 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 		im.BeginDisabled(scene == simulate.scene())
 		unload := im.MenuItem("Unload")
 		im.EndDisabled()
-		if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) && scene == simulate.scene() {
-			im.SetTooltip("This scene is simulating. Stop first, or its pre-run state is lost")
+		if scene == simulate.scene() {
+			widgets.tooltip("This scene is simulating. Stop first, or its pre-run state is lost", im.HoveredFlags_AllowWhenDisabled)
 		}
 		if unload {
 			undo.purge_scene(undo.get(), scene)

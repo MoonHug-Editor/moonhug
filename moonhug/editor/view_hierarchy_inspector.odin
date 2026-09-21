@@ -14,6 +14,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -1194,9 +1195,14 @@ _draw_component_overflow_menu :: proc(
 		}
 		for entry in ctx_entries {
 			c_label := strings.clone_to_cstring(entry.label, context.temp_allocator)
+			// A menu item has no tooltip of its own, so the empty text below
+			// draws nothing outside debug tooltips.
+			prev := widgets.ui_origin_push(entry.origin)
 			if im.MenuItem(c_label) {
 				entry.action(comp_ptr)
 			}
+			widgets.tooltip("")
+			widgets.ui_origin_pop(prev)
 		}
 		im.EndPopup()
 	}
@@ -1565,9 +1571,7 @@ _draw_add_component_button_nested :: proc(t: ^engine.Transform, tH: engine.Trans
 	if im.Button("Add Component", im.Vec2{btn_w, 0}) {
 		im.OpenPopup("##AddComponentPopupNested")
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip("Adds a component to this prefab instance only (recorded as an override)")
-	}
+	widgets.tooltip("Adds a component to this prefab instance only (recorded as an override)")
 
 	if im.BeginPopup("##AddComponentPopupNested") {
 		menu.draw_menu_subtree("Component")

@@ -27,6 +27,9 @@ _Registered :: struct {
 	title:        cstring, // the imgui window name: "<icon> <title>###<id>"
 	draw:         Draw_Proc,
 	default_size: im.Vec2, // {} = imgui's default
+	// The @(editor_window) that declared it, with its file and line, as
+	// rendered by the generator. Shown on the tab's menu button with debug tooltips on.
+	origin:       string,
 }
 
 _Open :: struct {
@@ -41,7 +44,7 @@ _focus_request: int = -1 // registry index to focus next frame
 // Called by the generated _register_editor_windows (editor_window_gen). The
 // imgui window name is "<icon> <title>###<id>": the icon and title show, the
 // id stays the imgui id whatever they are.
-register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32) {
+register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "") {
 	for &r in _registry {
 		if r.id == id {
 			log.errorf("editor_window: duplicate id %q (%s ignored)", id, title)
@@ -54,6 +57,7 @@ register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width
 		title        = strings.clone_to_cstring(fmt.tprintf("%s %s###%s", icon, title, id), runtime.default_allocator()),
 		draw         = draw,
 		default_size = {width, height},
+		origin       = origin,
 	})
 }
 
@@ -115,6 +119,15 @@ close :: proc(id: string) {
 	for &e in _open_windows {
 		if _registry[e.reg].id == id do e.open = false
 	}
+}
+
+// The origin of the window declared under `id`, for debug tooltips. Unknown ids
+// (a built-in view, which is not a registered window) answer "".
+origin_of :: proc(id: string) -> string {
+	for &r in _registry {
+		if r.id == id do return r.origin
+	}
+	return ""
 }
 
 is_open :: proc(id: string) -> bool {

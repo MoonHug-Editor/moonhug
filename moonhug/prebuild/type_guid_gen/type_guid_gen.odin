@@ -20,6 +20,7 @@ CreateAssetMenuData :: struct {
 	file_name: string,
 	menu_name: string,
 	order:     int,
+	origin:    string,
 }
 
 // TypeGuid_GenComp marks a DeclInfo entity as a @typ_guid struct/union. The type
@@ -34,6 +35,10 @@ TypeGuid_GenComp :: struct {
 	create_file_name: string,
 	create_menu_name: string,
 	create_order:     int,
+	// Where the nested menu_assets_create was declared, rendered by
+	// gen_facts.attr_origin. Emitted into the Assets/Create menu registration
+	// and shown in the item's tooltip with debug tooltips on.
+	create_origin:    string,
 }
 
 // Cleanup_GenComp marks a DeclInfo entity as an @cleanup-annotated proc (engine pkg).
@@ -64,7 +69,9 @@ provide_synthetic :: proc(w: ^db.World, name, pkg_name, guid: string) -> bool {
 	return true
 }
 
-_has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp) -> (guid: string, makeProcName: string, create: CreateAssetMenuData, has_create_menu: bool, found: bool) {
+// `decl` supplies the file and line the origin string names — the create-asset
+// menu item is hoverable UI, so it carries where it was declared.
+_has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp, decl: ^db.DeclInfo) -> (guid: string, makeProcName: string, create: CreateAssetMenuData, has_create_menu: bool, found: bool) {
 	args, ok := gen_facts.attr_find(attr_set, "typ_guid")
 	if !ok do return "", "", {}, false, false
 
@@ -77,6 +84,7 @@ _has_typ_guid_attr :: proc(attr_set: ^gen_facts.Attrs_GenComp) -> (guid: string,
 		create.file_name = menu.fields["file_name"]
 		create.menu_name = menu.fields["menu_name"]
 		create.order = gen_facts.attr_int(menu, "order")
+		create.origin = gen_facts.attr_origin(menu, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 	}
 	return guid, makeProcName, create, has_create_menu, guid != ""
 }
@@ -111,7 +119,7 @@ provide :: proc(w: ^db.World) -> bool {
 		// types can't be referenced from the app-side registration file.
 		type_name := decl.name
 		if type_name != "" && db.has(structs, entity) && !strings.has_suffix(decl.pkg_path, "/editor") {
-			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set)
+			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set, decl)
 			if found {
 				reset_name   := strings.concatenate({"reset_",   type_name})
 				cleanup_name := strings.concatenate({"cleanup_", type_name})
@@ -131,6 +139,7 @@ provide :: proc(w: ^db.World) -> bool {
 					tag.create_menu_name = create.menu_name
 					if tag.create_menu_name == "" do tag.create_menu_name = type_name
 					tag.create_order = create.order
+					tag.create_origin = create.origin
 				}
 				db.set(guids, entity, tag)
 			}
@@ -158,6 +167,7 @@ _TypeGuidRow :: struct {
 	create_file_name: string,
 	create_menu_name: string,
 	create_order:     int,
+	create_origin:    string,
 	tid_expr:         string,
 }
 
@@ -208,6 +218,7 @@ generate :: proc(w: ^db.World) -> bool {
 				create_file_name = guid.create_file_name,
 				create_menu_name = guid.create_menu_name,
 				create_order     = guid.create_order,
+				create_origin    = guid.create_origin,
 			})
 		}
 	}
@@ -424,7 +435,8 @@ _generate_create_asset_menus :: proc(entries: []_TypeGuidRow, w: ^db.World) -> b
 	for e in entries {
 		if e.create_menu_name == "" do continue
 		menu_path := strings.concatenate({"Assets/Create/", e.create_menu_name})
-		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", __create_asset__%s, %d)\n", menu_path, e.type_name, e.create_order)
+		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", __create_asset__%s, %d, origin = %q)\n",
+			menu_path, e.type_name, e.create_order, e.create_origin)
 		delete(menu_path)
 	}
 	strings.write_string(&b, "}\n")

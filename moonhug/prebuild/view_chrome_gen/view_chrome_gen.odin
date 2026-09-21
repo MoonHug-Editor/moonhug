@@ -31,6 +31,9 @@ ChromeEntry :: struct {
 	checked:     string, // tick predicate, actions only
 	source_pkg:  string,
 	source_path: string,
+	// Where the entry was declared, rendered by gen_facts.attr_origin. Emitted
+	// into the registration call and shown in the element's tooltip with debug tooltips on.
+	origin:      string,
 }
 
 Chrome_GenComp :: struct {
@@ -61,6 +64,7 @@ provide :: proc(w: ^db.World) -> bool {
 			view := args.fields["view"]
 			if view == "" do continue
 			order := gen_facts.attr_int(args, "order")
+			origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 
 			switch args.key {
 			case "view_tab_bar":
@@ -68,7 +72,7 @@ provide :: proc(w: ^db.World) -> bool {
 				if !is_proc do continue
 				append(&entries, ChromeEntry{
 					kind = .Tab_Bar, view = view, name = decl.name, order = order,
-					source_pkg = decl.pkg.name, source_path = decl.pkg_path,
+					source_pkg = decl.pkg.name, source_path = decl.pkg_path, origin = origin,
 				})
 			case "view_menu":
 				label := args.fields["label"]
@@ -77,7 +81,7 @@ provide :: proc(w: ^db.World) -> bool {
 					kind = is_proc ? .Action : .Toggle,
 					view = view, label = label, name = decl.name, order = order,
 					enabled = args.fields["enabled"], checked = args.fields["checked"],
-					source_pkg = decl.pkg.name, source_path = decl.pkg_path,
+					source_pkg = decl.pkg.name, source_path = decl.pkg_path, origin = origin,
 				})
 			}
 		}
@@ -207,13 +211,14 @@ generate :: proc(w: ^db.World) -> bool {
 		qualified := _qualified_name(_PKG_NAME, e)
 		switch e.kind {
 		case .Tab_Bar:
-			fmt.sbprintf(&b, "\tview_tab_bar_add_item(\"%s\", %s, %d)\n", e.view, qualified, e.order)
+			fmt.sbprintf(&b, "\tview_tab_bar_add_item(\"%s\", %s, %d, origin = %q)\n", e.view, qualified, e.order, e.origin)
 		case .Toggle:
 			fmt.sbprintf(&b, "\tview_menu_add_toggle(\"%s\", \"%s\", &%s, %d", e.view, e.label, qualified, e.order)
 			if e.enabled != "" {
 				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.enabled))
 			}
-			strings.write_string(&b, ")\n")
+			// Named, so the optional arguments in between need no filler.
+			fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 		case .Action:
 			fmt.sbprintf(&b, "\tview_menu_add_action(\"%s\", \"%s\", %s, %d", e.view, e.label, qualified, e.order)
 			if e.enabled != "" || e.checked != "" {
@@ -223,7 +228,7 @@ generate :: proc(w: ^db.World) -> bool {
 			if e.checked != "" {
 				fmt.sbprintf(&b, ", %s", _qualified_ident(_PKG_NAME, e.source_pkg, e.checked))
 			}
-			strings.write_string(&b, ")\n")
+			fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
 		}
 	}
 	strings.write_string(&b, "}\n")

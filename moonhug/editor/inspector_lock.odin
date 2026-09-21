@@ -17,8 +17,8 @@ package editor
 // the selection itself, which the hierarchy highlight also reads.
 
 import "base:runtime"
-import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 import "moonhug:engine"
 
 // --- Scene inspector ---------------------------------------------------------
@@ -30,9 +30,7 @@ import "moonhug:engine"
 _inspector_lock_button :: proc() {
 	was := _inspector_locked
 	filter_toggle_button(_inspector_locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &_inspector_locked)
-	if im.IsItemHovered({}) {
-		im.SetTooltip(_inspector_locked ? "Unlock: follow the selection again" : "Lock to the current selection")
-	}
+	widgets.tooltip(_inspector_locked ? "Unlock: follow the selection again" : "Lock to the current selection")
 	if _inspector_locked == was do return
 	if _inspector_locked {
 		// Take the whole selection, not just the active object: the inspector
@@ -89,9 +87,7 @@ inspector_lock_shutdown :: proc() {
 _project_inspector_lock_button :: proc() {
 	was := _project_inspector_locked
 	filter_toggle_button(_project_inspector_locked ? icons.ICON_MD_LOCK : icons.ICON_MD_LOCK_OPEN, &_project_inspector_locked)
-	if im.IsItemHovered({}) {
-		im.SetTooltip(_project_inspector_locked ? "Unlock: follow the project selection again" : "Lock to the current asset")
-	}
+	widgets.tooltip(_project_inspector_locked ? "Unlock: follow the project selection again" : "Lock to the current asset")
 	// Unlocking CATCHES UP: it retargets to whatever is selected now, rather
 	// than holding the stale asset until the next click. The scene inspector
 	// does this for free by reading the selection live, and the two should not

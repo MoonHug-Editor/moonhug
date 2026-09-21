@@ -78,7 +78,7 @@ _ta_speed_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	id := inspector.field_row(label)
 	im.SetNextItemWidth(110)
 	if im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f") do inspector.mark_inspector_changed()
-	if im.IsItemHovered({}) do im.SetTooltip("Playback speed for this state. 0 runs at 1")
+	widgets.tooltip("Playback speed for this state. 0 runs at 1")
 }
 
 @(private = "file")
@@ -86,7 +86,7 @@ _ta_fade_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	id := inspector.field_row(label)
 	im.SetNextItemWidth(110)
 	if im.DragFloat(id, cast(^f32)ptr, 0.01, 0, 0, "%.2f s") do inspector.mark_inspector_changed()
-	if im.IsItemHovered({}) do im.SetTooltip("Cross-fade duration INTO this state, unless the caller passes its own")
+	widgets.tooltip("Cross-fade duration INTO this state, unless the caller passes its own")
 }
 
 @(private = "file")
@@ -387,9 +387,7 @@ _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 		case:            ta_preview_play(a.owner, id)
 		}
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip(previewing ? "Stop previewing this state" : "Play this state")
-	}
+	widgets.tooltip(previewing ? "Stop previewing this state" : "Play this state")
 	im.SameLine()
 
 	removed := false
@@ -435,9 +433,7 @@ _ta_name_field :: proc(key: i32, name: ^string, kind: string) {
 		for i in 0 ..< len(_ta_rename_buf) do _ta_rename_buf[i] = 0
 		copy(_ta_rename_buf[:], src[:n])
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip(kind == "State" ? "Click to rename. animator_find looks states up by this" : "Click to rename")
-	}
+	widgets.tooltip(kind == "State" ? "Click to rename. animator_find looks states up by this" : "Click to rename")
 }
 
 @(private = "file")

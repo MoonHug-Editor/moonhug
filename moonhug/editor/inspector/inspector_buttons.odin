@@ -11,12 +11,16 @@ package inspector
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
+import "moonhug:editor/widgets"
 
 Inspector_Button :: struct {
 	label:    cstring,
 	row:      int,
 	weight:   f32,
 	show_in_array: bool, // also frame array ELEMENTS of this type (default true)
+	// The @(inspector_button) that created the button, with its file and line,
+	// as rendered by the generator. Shown in the button's tooltip with debug tooltips on.
+	origin:   string,
 	invoke:   proc(comp: rawptr),
 }
 
@@ -84,9 +88,14 @@ draw_inspector_buttons :: proc(tid: typeid, comp_ptr: rawptr, above: bool, eleme
 			drawn += 1
 			width := row_w * max(b.weight, 0.01) / total_w
 			id := fmt.ctprintf("%s##ibtn_%d", b.label, k)
+			// A button has no tooltip of its own, so the empty text below
+			// draws nothing outside debug tooltips.
+			prev := widgets.ui_origin_push(b.origin)
 			if im.Button(id, im.Vec2{width, 0}) {
 				inspector_button_invoke(b, comp_ptr)
 			}
+			widgets.tooltip("")
+			widgets.ui_origin_pop(prev)
 		}
 		i = j
 	}

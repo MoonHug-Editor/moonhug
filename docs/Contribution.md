@@ -77,3 +77,14 @@ On lower level Feature consists of smaller building blocks — use-cases or func
 - Fix - fixing error in existing functionality (changing actual to intended)
 - Refactor - changing code without changing its key functionality
 
+
+## Licensing
+
+MoonHug is licensed under the zlib License (`LICENSE` at the repository
+root). By submitting a contribution you agree it is licensed under the same
+terms — no CLA, no sign-off. If you are contributing code you did not write,
+say where it came from and under what license in the pull request.
+
+Third-party code bundled with MoonHug is listed in `THIRD_PARTY_NOTICES.md`
+with its license and whether it reaches shipped games. Adding a dependency
+means adding a row there.

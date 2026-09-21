@@ -6,7 +6,9 @@ import "core:path/filepath"
 import "core:odin/parser"
 import "core:odin/ast"
 import "core:odin/tokenizer"
+import "core:slice"
 import "core:strconv"
+import "core:strings"
 
 // ParsePackage parses a package from path. Returns (nil, false) on failure.
 ParsePackage :: proc(pkg_path: string) -> (^ast.Package, bool) {
@@ -213,6 +215,7 @@ Struct_Field :: struct {
 	name: string,
 	type: string, // rendered type expression: "Transform", "engine.Tween", "^Foo", "[4]int"
 	tag:  string, // raw struct tag (see StructFieldTag)
+	line: int,    // the field's own line, for origin strings (see TagOrigin)
 }
 
 // Attr_Args is one @(...) attribute element, flattened to plain data. `key` is
@@ -394,9 +397,63 @@ StructFields :: proc(v_decl: ^ast.Value_Decl) -> []Struct_Field {
 			name = name,
 			type = RenderValue(f.type),
 			tag  = StructFieldTag(f),
+			line = f.names[0].pos.line,
 		})
 	}
 	return out[:]
+}
+
+// AttrOrigin renders where one registration came from, in the form
+//
+//   @(view_tab_bar view="Inspector" order=0)  moonhug/editor/inspector_lock.odin:31  _inspector_lock_button
+//
+// A generator emits this into the registration call as `origin = "..."`, the
+// registry stores it, and debug tooltips append it to the element's tooltip — so
+// the attribute behind any piece of editor UI is one hover away.
+//
+// Fields are sorted by key: a map iterates in an unspecified order, and an
+// unsorted rendering would make the generated file churn between builds. A
+// value that parses as an integer prints bare, anything else is quoted, which
+// reproduces how the attribute is written in source.
+AttrOrigin :: proc(args: Attr_Args, file_path: string, line: int, decl_name: string) -> string {
+	keys: [dynamic]string
+	defer delete(keys)
+	for k in args.fields do append(&keys, k)
+	slice.sort(keys[:])
+
+	b := strings.builder_make()
+	strings.write_string(&b, "@(")
+	strings.write_string(&b, args.key)
+	for k in keys {
+		v := args.fields[k]
+		// The scalar form @(key=value) stores its value under the empty key.
+		if k == "" {
+			strings.write_string(&b, "=")
+		} else {
+			strings.write_string(&b, " ")
+			strings.write_string(&b, k)
+			strings.write_string(&b, "=")
+		}
+		if _, is_int := strconv.parse_int(v); is_int && v != "" {
+			strings.write_string(&b, v)
+		} else {
+			fmt.sbprintf(&b, "%q", v)
+		}
+	}
+	fmt.sbprintf(&b, ")  %s:%d  %s", file_path, line, decl_name)
+	return strings.to_string(b)
+}
+
+// TagOrigin is AttrOrigin for a registration written as a struct TAG rather
+// than an @(...) attribute, in the form
+//
+//   `decor:range(min=0, max=1)`  moonhug/packages/app/tank.odin:12  Tank.blend
+//
+// `tag_text` is the tag as written, `decl_name` the owner and field joined
+// ("Tank.blend"). The layout matches AttrOrigin so debug tooltips read the same
+// either way.
+TagOrigin :: proc(tag_text: string, file_path: string, line: int, decl_name: string) -> string {
+	return fmt.aprintf("`%s`  %s:%d  %s", tag_text, file_path, line, decl_name)
 }
 
 // WriteGeneratedFile writes content to path (creating the parent directory —

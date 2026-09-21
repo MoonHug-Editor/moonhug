@@ -21,6 +21,10 @@ ComponentEntry :: struct {
 	has_cleanup:     bool,
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
+	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
+	// Emitted into the Component menu registration and shown in the item's
+	// tooltip with debug tooltips on.
+	origin:          string,
 }
 
 PoolableEntry :: struct {
@@ -53,6 +57,7 @@ Component_GenComp :: struct {
 	has_cleanup:     bool,
 	field_types:     []string,
 	ref_tags:        []string,
+	origin:          string,
 }
 
 
@@ -182,6 +187,7 @@ provide :: proc(w: ^db.World) -> bool {
 				has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
+				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
 			})
 			continue
 		}
@@ -255,6 +261,7 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				has_cleanup     = component.has_cleanup,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
+				origin          = component.origin,
 			})
 		case .Poolable:
 			append(&data.poolable_entries, PoolableEntry{
@@ -308,7 +315,8 @@ generate_component_menus :: proc(w: ^db.World) -> bool {
 	for e in menu_entries {
 		menu_full := strings.concatenate({"Component/", e.menu_path})
 		defer delete(menu_full)
-		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }})\n", menu_full, e.type_name)
+		fmt.sbprintf(&b, "\tmenu.add_menu_item(%q, \"\", proc() {{ _component_menu_add(.%s) }}, origin = %q)\n",
+			menu_full, e.type_name, e.origin)
 	}
 	strings.write_string(&b, "}\n\n")
 

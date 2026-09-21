@@ -146,8 +146,11 @@ Overlay_Setting :: struct {
 // imgui widgets (tooltips included, e.g. via overlay_tool_button); between its
 // OWN widgets it calls SameLine when !vertical (the system positions the items).
 Overlay_Item :: struct {
-	draw:  proc(vertical: bool),
-	order: int,
+	draw:   proc(vertical: bool),
+	order:  int,
+	// The @(scene_overlay) that created the item, with its file and line, as
+	// rendered by the generator. Shown in the item's tooltip with debug tooltips on.
+	origin: string,
 }
 
 Overlay :: struct {
@@ -197,7 +200,7 @@ overlay_set_transparent :: proc(overlay_id: cstring) {
 
 // Add an item to overlay `overlay_id`, creating the overlay on first use
 // (overlays stack in their dock zone in creation order). Items sort by order.
-overlay_add_item :: proc(overlay_id: cstring, draw: proc(vertical: bool), order: int) {
+overlay_add_item :: proc(overlay_id: cstring, draw: proc(vertical: bool), order: int, origin := "") {
 	ov: ^Overlay
 	for &o in _overlays {
 		if o.id == overlay_id {
@@ -216,7 +219,7 @@ overlay_add_item :: proc(overlay_id: cstring, draw: proc(vertical: bool), order:
 			break
 		}
 	}
-	inject_at(&ov.items, idx, Overlay_Item{draw = draw, order = order})
+	inject_at(&ov.items, idx, Overlay_Item{draw = draw, order = order, origin = origin})
 }
 
 overlays_shutdown :: proc() {
@@ -550,7 +553,11 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 	for &it, idx in ov.items {
 		if !vertical && idx > 0 do im.SameLine()
 		_overlay_item_ctx = {overlay_id = ov.id, order = it.order, active = true}
+		// Ambient for the duration of the item's draw, so any tooltip it
+		// raises can name the attribute that registered it (debug tooltips).
+		prev := widgets.ui_origin_push(it.origin)
 		it.draw(vertical)
+		widgets.ui_origin_pop(prev)
 	}
 	_overlay_item_ctx = {}
 	// Did the items submit anything? Any item advances the cursor. The group's
@@ -572,7 +579,8 @@ _overlay_draw_one :: proc(ov: ^Overlay, pos: im.Vec2, vertical: bool) {
 
 // Tooltip text + where the hovered item lives so anyone can see how to
 // target/reorder it with @(scene_overlay). No braces: ProggyClean renders
-// { } poorly at 13px.
+// { } poorly at 13px. The result goes through widgets.tooltip, which appends
+// the help-mode origin block after this suffix.
 _overlay_item_tooltip :: proc(tip: cstring) -> cstring {
 	if !_overlay_item_ctx.active do return tip
 	return fmt.ctprintf("%s\nid=\"%s\", order=%d", tip, _overlay_item_ctx.overlay_id, _overlay_item_ctx.order)
@@ -661,9 +669,9 @@ overlay_tool_button :: proc(icon: cstring, tooltip: cstring, active: bool, width
 	if active {
 		im.PopStyleColor()
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip(_overlay_item_tooltip(tooltip))
-	}
+	// widgets.tooltip hit-tests the button it follows and, with debug tooltips on, adds
+	// the attribute that registered this overlay item.
+	widgets.tooltip(_overlay_item_tooltip(tooltip))
 	return clicked
 }
 
@@ -688,9 +696,7 @@ overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggl
 		im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	}
 	toggled = im.Button(icon, im.Vec2{OVERLAY_BUTTON_SIZE, OVERLAY_BUTTON_SIZE})
-	if im.IsItemHovered({}) {
-		im.SetTooltip(_overlay_item_tooltip(tooltip))
-	}
+	widgets.tooltip(_overlay_item_tooltip(tooltip))
 	im.SameLine()
 	// Arrow half: empty-label button so imgui's text centering can't drift the
 	// glyph (the EXPAND_MORE glyph has left bearing that offsets it in a narrow
@@ -700,8 +706,6 @@ overlay_split_button :: proc(id, icon, tooltip: cstring, active: bool) -> (toggl
 	if active {
 		im.PopStyleColor()
 	}
-	if im.IsItemHovered({}) {
-		im.SetTooltip(_overlay_item_tooltip("Settings"))
-	}
+	widgets.tooltip(_overlay_item_tooltip("Settings"))
 	return
 }

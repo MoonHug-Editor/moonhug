@@ -15,6 +15,7 @@ import "moonhug:editor/runconfig"
 import "../engine"
 import "../engine/log"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 // The toolbar's own vertical padding. Tighter than WindowPadding so the bar
 // hugs its buttons (Unity's toolbar), and the same in every theme.
@@ -186,13 +187,9 @@ draw_tool_bar :: proc() {
     if im.Button(button_scene_text) && sel != nil {
         run_app_play(sel.id, sel.source, with_current_scene = true, mode = _run_mode_from_modifiers())
     }
-    if im.IsItemHovered({}) {
-        if sel != nil {
-            im.SetTooltip(fmt.ctprintf("Build & Run with current scene state (%s)" + MOD_HINT, sel.label))
-        } else {
-            im.SetTooltip("No run configs found (packages/*/run_configs/*.odin)")
-        }
-    }
+    scene_tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
+    if sel != nil do scene_tip = fmt.ctprintf("Build & Run with current scene state (%s)" + MOD_HINT, sel.label)
+    widgets.tooltip(scene_tip)
 
     // Right-pinned cluster. Measured from the right edge of the content region,
     // clamped so a narrow window degrades to "as far right as fits" instead of
@@ -228,13 +225,9 @@ draw_tool_bar :: proc() {
     if im.Button(button_play_text) && sel != nil {
         run_app_play(sel.id, sel.source, mode = _run_mode_from_modifiers())
     }
-    if im.IsItemHovered({}) {
-        if sel != nil {
-            im.SetTooltip(fmt.ctprintf("Build & Run (%s)" + MOD_HINT, sel.label))
-        } else {
-            im.SetTooltip("No run configs found (packages/*/run_configs/*.odin)")
-        }
-    }
+    play_tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
+    if sel != nil do play_tip = fmt.ctprintf("Build & Run (%s)" + MOD_HINT, sel.label)
+    widgets.tooltip(play_tip)
 
     im.SameLine()
     im.SetNextItemWidth(combo_w)
@@ -252,9 +245,7 @@ draw_tool_bar :: proc() {
         }
         im.EndCombo()
     }
-    if im.IsItemHovered({}) {
-        im.SetTooltip("Run configuration")
-    }
+    widgets.tooltip("Run configuration")
 
     // Relaunch: rebuild and restart the editor the way it was started
     // (editor/relaunch.odin). The separator keeps it apart from the run
@@ -266,13 +257,11 @@ draw_tool_bar :: proc() {
     im.BeginDisabled(pending)
     if im.Button(icons.ICON_MD_REFRESH, btn_size) do relaunch_request()
     im.EndDisabled()
-    if im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-        if pending {
-            im.SetTooltip(fmt.ctprintf("Relaunch Editor\nbuilding: %s", relaunch_command()))
-        } else {
-            im.SetTooltip(fmt.ctprintf("Relaunch Editor\n%s", relaunch_command()))
-        }
-    }
+    widgets.tooltip(
+        pending \
+            ? fmt.ctprintf("Relaunch Editor\nbuilding: %s", relaunch_command()) \
+            : fmt.ctprintf("Relaunch Editor\n%s", relaunch_command()),
+        im.HoveredFlags_AllowWhenDisabled)
 }
 
 RunPlayData :: struct {

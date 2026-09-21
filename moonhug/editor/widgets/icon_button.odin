@@ -11,6 +11,10 @@ package widgets
 
 import im "moonhug:external/odin-imgui"
 
+// icon_button's `tooltip` parameter shadows the tooltip proc, so the package
+// reaches it under a second name (ui_help.odin).
+_tooltip :: tooltip
+
 // Draws `glyph` centered inside [rmin, rmax] on the current draw list, in the
 // current text color. For a caller that owns its own button or frame.
 icon_draw_centered :: proc(glyph: cstring, rmin, rmax: im.Vec2) {
@@ -34,14 +38,18 @@ icon_button :: proc(
 	tooltip: cstring = "",
 	active := false,
 	size: f32 = 0,
+	loc := #caller_location,
 ) -> (clicked: bool) {
 	h := size > 0 ? size : im.GetFrameHeight()
 	if active do im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
 	clicked = im.Button(id, im.Vec2{h, h})
 	if active do im.PopStyleColor()
 	icon_draw_centered(glyph, im.GetItemRectMin(), im.GetItemRectMax())
-	if tooltip != "" && im.IsItemHovered(im.HoveredFlags_AllowWhenDisabled) {
-		im.SetTooltip(tooltip)
-	}
+	// Through the shared tooltip so debug tooltips can add the attribute that
+	// registered whatever this button is part of. The parameter shadows the
+	// proc name, so the call goes through the alias. `loc` is the CALLER's,
+	// forwarded — a hand-drawn button should name the line that drew it, not
+	// this helper.
+	_tooltip(tooltip, im.HoveredFlags_AllowWhenDisabled, loc)
 	return
 }
