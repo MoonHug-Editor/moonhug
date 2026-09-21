@@ -1,3 +1,15 @@
+## [0.103.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.102.0...v0.103.0) (2026-09-21)
+
+### Features
+
+* @(toolbar attr ([9fdf4ef](https://github.com/MoonHug-Editor/moonhug/commit/9fdf4efb9001aff1fc92afd03ef8998807fbd2bd))
+* debug tooltips ([6826826](https://github.com/MoonHug-Editor/moonhug/commit/682682690036f017384cb07d4fd33f1de62d02d9))
+* export build with its used assets catalog ([c50f595](https://github.com/MoonHug-Editor/moonhug/commit/c50f5955357ffac6e435a7a74eff2b86b89ee5cf))
+
+### Bug Fixes
+
+* clear on play by simulate ([27e123f](https://github.com/MoonHug-Editor/moonhug/commit/27e123f15fb8b04b6980fedce5817dc2f5a654a3))
+
 ## [0.102.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.101.0...v0.102.0) (2026-09-20)
 
 ### Features
