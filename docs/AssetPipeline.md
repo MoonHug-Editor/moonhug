@@ -146,31 +146,47 @@ code:
 
 ```odin
 main :: proc() {
-    rc.build({package_path = "moonhug/packages/app", out = "builds/app"})
-    rc.export_data("builds/app", scene = "packages/app/assets/demo_menu/menu.scene")
-    rc.run_build("builds/app")
+    rc.play({package_path = "moonhug/packages/app", out = "builds/app"}, "packages/app/assets/demo_menu/menu.scene")
 }
 ```
 
+- `rc.play` is `rc.build`, `rc.export_data`, `rc.run_build` in a row, and the toolbar modifiers turn the same call into a dev run, a run of the last build, or a build with no run, so one config and one button cover every way of playing. The three steps stay public for a config that needs something between them
 - `rc.export_data` stages `<out>_data` beside the binary — Unity's
   `Game` + `Game_Data` layout — from the editor-maintained catalog
   (`catalog.export_from`, moonhug:engine/catalog — a leaf package, so config
-  binaries stay small): every source, every artifact (mesh parts included),
+  binaries stay small): the boot scene's DEPENDENCY CLOSURE (source and
+  artifact of every asset it references, transitively, mesh parts included)
   and a RELOCATABLE catalog whose paths and `artifacts/` fan-out resolve
   relative to its own directory. The data dir moves as one unit and is
   self-contained — the round-trip test boots it with the working tree's
   `assets/` and `library/` deleted
+- what ships: the boot scene, everything under any folder named `resources`
+  (for assets the game loads by path at runtime, which the walk cannot see),
+  and everything they reference. References are found by harvesting guid
+  strings from each asset's bytes and baked settings, so every asset type is
+  covered by one rule and the walk can only ship too much, never too little.
+  An unreferenced asset outside `resources` does not ship. With no pinned
+  scene the whole catalog ships
 - the config's `scene` pins the boot scene (stamped into the catalog as a
   guid): every launch of a config produces the same build. An app on the catalog pipeline with
   no scene argument boots the stamped scene
+- a binary launched bare, with no `--catalog`, looks for `<exe>_data/catalog.json`
+  beside itself first, so a build double-clicked in `builds/` boots its own
+  export. Only with no data dir beside it does it fall back to the editor's
+  in-place `library/catalog.json`
+- `out` names the build, not the package: the samples all compile the app
+  runner package but as `builds/particles_sample`, `builds/physics2d_sample`
+  and so on, each with its own `_data`, so building one never overwrites another
 - toolbar: two **Build & Run** buttons, both driving the selected config.
   The right one (beside the config dropdown) runs it verbatim — its own
   pinned scene. The middle one (beside the Simulate controls) forwards the
   CURRENT scene state to the run — unsaved edits on the built binary, assets
-  still resolving through the catalog. On both, **Alt = build only** and
-  **Shift = run only** (skip the compile and the staging, run the last
-  build). The rc helpers own the protocol (`rc.scene_arg`, `rc.build_only`,
-  `rc.run_only`), config files never see it
+  still resolving through the catalog. On both, **Alt = dev run** (build,
+  then run against the editor's live library catalog with no export, the
+  fast loop), **Shift = run only** (skip the compile and the staging, run the
+  last build) and **Alt+Shift = build only**. The rc helpers own the protocol
+  (`rc.scene_arg`, `rc.dev_run`, `rc.run_only`, `rc.build_only`), config
+  files never see it
 
 The app has ONE pipeline: catalog. With no flag it boots the editor-maintained
 in-place `library/catalog.json` (dev runs, the Play button), with `--catalog`

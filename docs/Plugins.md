@@ -175,17 +175,22 @@ server, an engine sample) ships configurations in `run_configs/`:
   import rc "moonhug:editor/runconfig"
 
   main :: proc() {
-      rc.build_and_run({
+      rc.play({
           package_path = "moonhug/packages/app",
           out          = "builds/app_debug",
           flags        = {"-debug"},
-      })
+      }, "packages/app/assets/demo_menu/menu.scene")
   }
   ```
 
+- `rc.play` builds, exports the data dir for the pinned scene and runs the
+  export. Alt on the toolbar button makes the same config a dev run against
+  the editor's live catalog with no export, Shift runs the last build,
+  Alt+Shift builds without running (docs/AssetPipeline.md "Asset catalog and
+  builds").
 - Configs run from the REPO ROOT and receive the editor's args — the
-  live-scene snapshot path when launched via Play. `build_and_run` forwards
-  them to the game and exits with the game's exit code. The same config runs
+  live-scene snapshot path when launched via Play. The rc procs forward them
+  to the game and exit with the game's exit code. The same config runs
   from a terminal:
   `odin run moonhug/packages/app/run_configs/run.odin -file -collection:moonhug=moonhug`
 - The editor's toolbar Play is a split button: the play half compiles and runs

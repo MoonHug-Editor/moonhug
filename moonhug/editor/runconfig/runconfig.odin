@@ -71,20 +71,29 @@ chdir_repo_root :: proc() -> bool {
 }
 
 // The editor's toolbar modifiers arrive as flags, honored inside the rc procs
-// so config files stay straight-line scripts: --build-only (Alt) builds and
-// stages data but skips every run step, --run-only (Shift) runs what the last
-// build produced, skipping the compile and the data staging.
-build_only :: proc() -> bool {
+// so config files stay straight-line scripts:
+//
+//   (none)        build, export the data dir, run the export   (the shipping shape)
+//   --dev         Alt        build, run against the editor's live library catalog, no export
+//   --run-only    Shift      run what the last build produced, no compile, no staging
+//   --build-only  Alt+Shift  build and stage, skip every run step
+FLAGS :: [?]string{"--dev", "--run-only", "--build-only"}
+
+build_only :: proc() -> bool { return _flag("--build-only") }
+run_only   :: proc() -> bool { return _flag("--run-only") }
+dev_run    :: proc() -> bool { return _flag("--dev") }
+
+@(private = "file")
+_flag :: proc(name: string) -> bool {
 	for arg in os.args[1:] {
-		if arg == "--build-only" do return true
+		if arg == name do return true
 	}
 	return false
 }
 
-run_only :: proc() -> bool {
-	for arg in os.args[1:] {
-		if arg == "--run-only" do return true
-	}
+@(private = "file")
+_is_rc_flag :: proc(arg: string) -> bool {
+	for f in FLAGS do if arg == f do return true
 	return false
 }
 
@@ -96,6 +105,28 @@ scene_arg :: proc() -> string {
 		if !strings.has_prefix(arg, "--") do return arg
 	}
 	return ""
+}
+
+// THE one-call config: build, export the data dir, run the export. The
+// modifiers (see FLAGS) turn the same call into a dev run, a run of the last
+// build, or a build with no run, so one config file and one toolbar button
+// cover every way of playing. `scene` is the pinned boot scene, moonhug-
+// relative. An invoker scene (the editor's live snapshot) wins for the RUN
+// only, never for what gets staged. Does not return.
+play :: proc(cfg: Config, scene := "") {
+	if dev_run() {
+		// No export: the game reads the editor's in-place catalog, the way it
+		// does under Simulate. The pinned scene applies when no invoker scene
+		// was passed.
+		if scene != "" && scene_arg() == "" {
+			build_and_run(cfg, scene)
+		} else {
+			build_and_run(cfg)
+		}
+	}
+	if _, ok := build(cfg); !ok do exit_build_failed(cfg.package_path)
+	if !export_data(cfg.out, scene) do exit_build_failed(strings.concatenate({cfg.out, " data"}, context.temp_allocator))
+	run_build(cfg.out)
 }
 
 // Builds `cfg`, then runs the result and exits with ITS exit code, so the editor
@@ -203,13 +234,14 @@ build :: proc(cfg: Config) -> (exe: string, ok: bool) {
 }
 
 // Runs a built binary with THIS process's arguments appended after `extra` —
-// that is the live-scene snapshot path when Play launched us. Returns its exit
+// that is the live-scene snapshot path when Play launched us. The rc flags
+// are the config's, not the game's, and are not forwarded. Returns its exit
 // code. The old scripts spelled this `exec "$binary" "$@"`.
 run :: proc(exe: string, extra: ..string) -> int {
 	cmd := make([dynamic]string, context.temp_allocator)
 	append(&cmd, exe)
 	append(&cmd, ..extra)
-	if len(os.args) > 1 do append(&cmd, ..os.args[1:])
+	for arg in os.args[1:] do if !_is_rc_flag(arg) do append(&cmd, arg)
 	return spawn(cmd[:])
 }
 

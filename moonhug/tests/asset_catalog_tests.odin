@@ -7,6 +7,7 @@ package tests
 // imports are refused.
 
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -132,6 +133,74 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 	}
 
 	testing.expect(t, !asset_pipeline.asset_pipeline_import_asset(path), "catalog pipeline should refuse imports")
+}
+
+// The export ships the boot scene's dependency CLOSURE, not the whole catalog:
+// an asset the scene references by guid ships, one under a `resources` folder
+// ships, an unreferenced one does not. Folders on the way to shipped assets
+// ship too, so the exported tree keeps its shape. Proven the same way as the
+// self-contained test: the originals are deleted before the export is read.
+@(test)
+test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_catalog_closure_tmp"
+	used :: src_dir + "/used.png"
+	unused :: src_dir + "/unused.png"
+	res_dir :: src_dir + "/" + catalog.RESOURCES_DIR
+	by_path :: res_dir + "/by_path.png"
+	scene :: src_dir + "/boot.scene"
+	data_dir :: src_dir + "_data"
+	os.make_directory(src_dir)
+	os.make_directory(res_dir)
+	png, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	for p in ([]string{used, unused, by_path}) do testing.expect(t, os.write_entire_file(p, png) == nil)
+	// A placeholder scene: the guid of `used` is not known until the scan
+	// mints it, so the file is rewritten below.
+	testing.expect(t, os.write_entire_file(scene, transmute([]byte)string("{}")) == nil)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree(data_dir)
+		_remove_tree("library")
+	}
+
+	asset_pipeline.asset_pipeline_init()
+	engine.asset_db_init(src_dir)
+	for p in ([]string{used, unused, by_path}) do _ = asset_pipeline.asset_pipeline_import_asset(p)
+	used_guid, uok := engine.asset_db_get_guid(used)
+	unused_guid, nok := engine.asset_db_get_guid(unused)
+	by_path_guid, bok := engine.asset_db_get_guid(by_path)
+	res_guid, fok := engine.asset_db_get_guid(res_dir)
+	testing.expect(t, uok && nok && bok && fok, "scan should register every fixture, the folder included")
+	if !(uok && nok && bok && fok) do return
+
+	// The scene references `used` the way a serialized component does: its
+	// guid as a string, somewhere in the text.
+	scene_text := strings.concatenate({"{\"sprite\": {\"guid\": \"", uuid.to_string(used_guid, context.temp_allocator), "\"}}"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(scene, transmute([]byte)scene_text) == nil)
+
+	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
+	engine.asset_db_shutdown()
+	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = scene), "export should succeed")
+
+	_remove_tree(src_dir)
+	_remove_tree("library")
+
+	testing.expect(t, engine.asset_db_init_from_catalog(data_dir + "/catalog.json"), "catalog pipeline from the export")
+	defer engine.asset_db_shutdown()
+
+	_, has_used := engine.asset_db_get_path(used_guid)
+	_, has_unused := engine.asset_db_get_path(unused_guid)
+	_, has_by_path := engine.asset_db_get_path(by_path_guid)
+	_, has_res := engine.asset_db_get_path(res_guid)
+	testing.expect(t, has_used, "an asset the boot scene references ships")
+	testing.expect(t, !has_unused, "an asset nothing references does not ship")
+	testing.expect(t, has_by_path, "an asset under a resources folder ships")
+	testing.expect(t, has_res, "the resources folder itself ships")
+	testing.expect(t, os.exists(data_dir + "/" + used), "referenced source is copied")
+	testing.expect(t, !os.exists(data_dir + "/" + unused), "unreferenced source is not copied")
+	artifact, aok := engine.asset_pipeline_artifact_path(engine.Asset_GUID(used_guid))
+	testing.expect(t, aok && os.exists(artifact), "referenced artifact is copied")
 }
 
 @(test)

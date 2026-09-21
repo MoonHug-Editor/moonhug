@@ -255,7 +255,7 @@ draw_tool_bar :: proc() {
 // and the combo to its widest label, so the bar never shifts when a run starts
 // or a config is picked.
 
-MOD_HINT :: "\nAlt: build only, Shift: run only"
+MOD_HINT :: "\nAlt: dev run (no export), Shift: run last build, Alt+Shift: build only"
 NO_CONFIGS :: cstring("No run configs")
 
 // Explicit ### ids: the labels are icon-only, and imgui derives ids from
@@ -581,16 +581,18 @@ _play_dispatch_line :: proc(line: string) {
 // the Build button. `id` only names the config binary, so two packages can each
 // ship a run.odin without colliding.
 // Toolbar modifier state at click time, forwarded to the config as flags the
-// rc procs honor: Alt = build only, Shift = run only (skip compile + staging).
+// rc procs honor (runconfig.FLAGS): plain = build, export, run the export.
 Run_Mode :: enum {
 	Build_And_Run,
-	Build_Only, // Alt
-	Run_Only,   // Shift
+	Dev,        // Alt: build, run against the live library catalog, no export
+	Run_Only,   // Shift: run the last build, no compile, no staging
+	Build_Only, // Alt+Shift: build and stage, no run
 }
 
 _run_mode_from_modifiers :: proc() -> Run_Mode {
 	io := im.GetIO()
-	if io.KeyAlt do return .Build_Only
+	if io.KeyAlt && io.KeyShift do return .Build_Only
+	if io.KeyAlt do return .Dev
 	if io.KeyShift do return .Run_Only
 	return .Build_And_Run
 }
@@ -653,6 +655,7 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
         }
     }
     switch mode {
+    case .Dev:        append(&run_parts, "--dev")
     case .Build_Only: append(&run_parts, "--build-only")
     case .Run_Only:   append(&run_parts, "--run-only")
     case .Build_And_Run:

@@ -1,14 +1,16 @@
 package run_debug
 
-// Debug build: the app captures call stacks for console log lines
-// (ODIN_DEBUG-gated in the app process). See run.odin for the contract.
+// The app's run configuration with a -debug build, so console logs carry call
+// stacks. Same modifiers as run.odin.
 
 import rc "moonhug:editor/runconfig"
 
+SCENE :: "packages/app/assets/demo_menu/menu.scene"
+
 main :: proc() {
-	rc.build_and_run({
+	rc.play({
 		package_path = "moonhug/packages/app",
 		out          = "builds/app_debug",
 		flags        = {"-debug"},
-	})
+	}, SCENE)
 }

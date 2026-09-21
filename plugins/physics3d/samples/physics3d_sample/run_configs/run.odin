@@ -1,22 +1,16 @@
 package run
 
-// Run configuration (docs/Plugins.md): plays the physics3d sample scene
-// through the app runner. The editor's Play passes its live-scene snapshot
-// as the program argument, which takes priority — launched from a terminal
-// with no argument, the sample scene is the default.
+// Run configuration (docs/Plugins.md): one call does it all. Plain: build the
+// app runner as builds/physics3d_sample, export the physics3d sample's data dir, run the export. Alt: dev run against the
+// editor's live catalog. Shift: run the last build. Alt+Shift: build only.
+// The editor's Play passes its live-scene snapshot as the program argument,
+// which takes priority for the run.
 
-import "core:os"
 import rc "moonhug:editor/runconfig"
 
-// The app normalizes its cwd to moonhug/, so the default scene path is
-// moonhug-relative.
+// The app normalizes its cwd to moonhug/, so the scene path is moonhug-relative.
 SCENE :: "packages/physics3d_sample/assets/physics3d_sample.scene"
 
 main :: proc() {
-	cfg := rc.Config{package_path = "moonhug/packages/app", out = "builds/app"}
-	if len(os.args) > 1 {
-		rc.build_and_run(cfg)
-	} else {
-		rc.build_and_run(cfg, SCENE)
-	}
+	rc.play({package_path = "moonhug/packages/app", out = "builds/physics3d_sample"}, SCENE)
 }

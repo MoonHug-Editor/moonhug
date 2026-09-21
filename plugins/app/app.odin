@@ -35,6 +35,16 @@ main :: proc() {
             _catalog_path = arg[len("--catalog="):]
         }
     }
+    // Launched bare, the binary finds its own export: <exe>_data/catalog.json
+    // beside it, the Game + Game_Data layout run configs stage. So a build
+    // double-clicked in builds/ boots its stamped scene instead of falling
+    // through to the editor's in-place catalog and the dev menu.
+    if _catalog_path == "" {
+        if exe, eerr := os.get_executable_path(context.temp_allocator); eerr == nil {
+            beside := strings.concatenate({exe, "_data/catalog.json"}, context.temp_allocator)
+            if os.exists(beside) do _catalog_path = beside
+        }
+    }
 
     if !gfx.init("App", 800, 600) {
         log.error("gfx init failed")

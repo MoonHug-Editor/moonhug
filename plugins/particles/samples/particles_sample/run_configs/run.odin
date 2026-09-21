@@ -1,22 +1,16 @@
 package run
 
-// Run configuration (docs/Plugins.md): plays the particles museum scene
-// through the app runner. The editor's Play passes its live-scene snapshot
-// as the program argument, which takes priority — launched from a terminal
-// with no argument, the museum is the default.
+// Run configuration (docs/Plugins.md): one call does it all. Plain: build the
+// app runner as builds/particles_sample, export the particles museum's data dir, run the export. Alt: dev run against the
+// editor's live catalog. Shift: run the last build. Alt+Shift: build only.
+// The editor's Play passes its live-scene snapshot as the program argument,
+// which takes priority for the run.
 
-import "core:os"
 import rc "moonhug:editor/runconfig"
 
-// The app normalizes its cwd to moonhug/, so the default scene path is
-// moonhug-relative.
-SCENE :: "packages/particles_sample/assets/particles_museum.scene"
+// The app normalizes its cwd to moonhug/, so the scene path is moonhug-relative.
+SCENE :: "packages/particles_sample/assets/particles_samples.scene"
 
 main :: proc() {
-	cfg := rc.Config{package_path = "moonhug/packages/app", out = "builds/app"}
-	if len(os.args) > 1 {
-		rc.build_and_run(cfg)
-	} else {
-		rc.build_and_run(cfg, SCENE)
-	}
+	rc.play({package_path = "moonhug/packages/app", out = "builds/particles_sample"}, SCENE)
 }

@@ -1,14 +1,16 @@
 package run
 
-// Run configuration (docs/Plugins.md): the editor's Play dropdown lists every
-// packages/*/run_configs/*.odin by filename, compiles the picked one, and runs
-// it from the REPO ROOT with the live-scene snapshot path as an argument.
-// build_and_run forwards that argument to the game. Works identically from a
-// terminal: `odin run moonhug/packages/app/run_configs/run.odin -file
-// -collection:moonhug=moonhug`.
+// The app's run configuration (docs/AssetPipeline.md "Asset catalog and
+// builds"): build the game, stage builds/app_data from the editor-maintained
+// catalog, run the binary against it, the shipping shape. Alt: dev run
+// against the live catalog, no export. Shift: run the last build. Alt+Shift:
+// build only. The pinned scene makes every plain launch produce the same
+// build. The editor's Build button forwards its live scene to the RUN only.
 
 import rc "moonhug:editor/runconfig"
 
+SCENE :: "packages/app/assets/demo_menu/menu.scene"
+
 main :: proc() {
-	rc.build_and_run({package_path = "moonhug/packages/app", out = "builds/app"})
+	rc.play({package_path = "moonhug/packages/app", out = "builds/app"}, SCENE)
 }
