@@ -338,6 +338,16 @@ _draw_console_detail :: proc() {
 	im.PopStyleVar()
 }
 
+// Clears the log when "Clear on Play" is on. Both ways of playing call it:
+// a build-and-run from the toolbar, and Simulate as it leaves edit mode.
+// Simulate fires that AFTER its own checks pass, so a start that fails with
+// "no sim host" leaves the error where it can be read.
+console_clear_on_play :: proc() {
+	if !_console_clear_on_play do return
+	log.clear()
+	_console_last_count = 0
+}
+
 // "<icon> 12" for a level toggle. Capped at 999+ so the toggles keep one width
 // once the log is long. The ### id keeps the button's id stable while the
 // count changes, so a press is not lost on the frame a new entry lands.

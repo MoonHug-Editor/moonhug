@@ -604,10 +604,7 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
         thread.destroy(_play_thread)
         _play_thread = nil
     }
-    if _console_clear_on_play {
-        log.clear()
-        _console_last_count = 0
-    }
+    console_clear_on_play()
     // Configs run from the REPO ROOT (parent of the editor's normalized
     // moonhug/ cwd) — the one canonical build cwd. The app normalizes its own
     // runtime cwd back to moonhug/.

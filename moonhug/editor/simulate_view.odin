@@ -83,7 +83,9 @@ _sim_selection_add_id :: proc(s: ^engine.Scene, id: engine.Local_ID) {
 @(private="file")
 _sim_fire_phase :: proc(p: sim.Phase) {
     switch p {
-    case .ExitingEditMode: phase_editor_run(.ExitingEditMode)
+    case .ExitingEditMode:
+        console_clear_on_play()
+        phase_editor_run(.ExitingEditMode)
     case .EnteredPlayMode:
         game_view_focus()
         input.reset_edges() // the Play click is not the game's
