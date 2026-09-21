@@ -91,11 +91,22 @@ draw_console_view :: proc() {
 		im.SameLine()
 		filter_toggle_button("Clear on Play", &_console_clear_on_play)
 
+		// Each level toggle carries how many entries it filters, so a hidden
+		// level still says it has something. Counted per frame: the entry list is
+		// small and a running tally would have to follow clear() and intake too.
+		counts: [log.Level]int
+		for entry in log.entries do counts[entry.level] += 1
+		btn_labels := [3]cstring{
+			_console_count_label(icons.ICON_MD_INFO, counts[.Info]),
+			_console_count_label(icons.ICON_MD_WARNING, counts[.Warning]),
+			_console_count_label(icons.ICON_MD_ERROR, counts[.Error]),
+		}
+
 		style := im.GetStyle()
-		btn_labels := [3]cstring{icons.ICON_MD_INFO, icons.ICON_MD_WARNING, icons.ICON_MD_ERROR}
 		btn_width: f32
 		for lbl in btn_labels {
-			btn_width += im.CalcTextSize(lbl).x + style.FramePadding.x * 2
+			// hide_text_after_double_hash: the ### id suffix is not drawn.
+			btn_width += im.CalcTextSize(lbl, nil, true, -1).x + style.FramePadding.x * 2
 		}
 		btn_width += style.ItemSpacing.x * 2
 
@@ -110,11 +121,11 @@ draw_console_view :: proc() {
 		im.SameLine()
 		im.SetCursorPosX(cursor_x + avail_x - btn_width)
 
-		filter_toggle_button(icons.ICON_MD_INFO, &_console_show_info)
+		filter_toggle_button(btn_labels[0], &_console_show_info)
 		im.SameLine()
-		filter_toggle_button(icons.ICON_MD_WARNING, &_console_show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
+		filter_toggle_button(btn_labels[1], &_console_show_warning, im.Vec4{0.957, 0.737, 0.008, 1})
 		im.SameLine()
-		filter_toggle_button(icons.ICON_MD_ERROR, &_console_show_error, im.Vec4{0.827, 0.133, 0.133, 1})
+		filter_toggle_button(btn_labels[2], &_console_show_error, im.Vec4{0.827, 0.133, 0.133, 1})
 
 		// Zero horizontal inner padding so rows sit flush against the left border
 		// (keep the default vertical padding for top/bottom breathing room).
@@ -325,6 +336,14 @@ _draw_console_detail :: proc() {
 	im.InputTextMultiline("##console_detail_text", buf, uint(len(text) + 1), im.Vec2{-1, -1}, {.ReadOnly, .WordWrap})
 	im.PopStyleColor(2)
 	im.PopStyleVar()
+}
+
+// "<icon> 12" for a level toggle. Capped at 999+ so the toggles keep one width
+// once the log is long. The ### id keeps the button's id stable while the
+// count changes, so a press is not lost on the frame a new entry lands.
+_console_count_label :: proc(icon: cstring, n: int) -> cstring {
+	if n > 999 do return fmt.ctprintf("%s 999+###%s", icon, icon)
+	return fmt.ctprintf("%s %d###%s", icon, n, icon)
 }
 
 // A filter toggle. On: highlighted with on_color (or the theme's active-button

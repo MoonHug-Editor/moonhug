@@ -98,6 +98,8 @@ view_chrome_shutdown :: proc() {
     _view_menus = nil
     delete(_view_tab_bar_items)
     _view_tab_bar_items = nil
+    // Registered by the same generated proc, so released with it.
+    toolbar_shutdown()
 }
 
 // Sorted by order, so the strip does not depend on registration order.

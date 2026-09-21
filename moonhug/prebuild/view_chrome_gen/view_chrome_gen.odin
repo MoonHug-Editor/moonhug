@@ -2,10 +2,12 @@ package view_chrome_gen
 
 // view_chrome_gen: ECS prebuild module for view_chrome_generated.odin.
 //
-//   provide  - recognise @(view_tab_bar={view=..., order=N}) on a proc, and
+//   provide  - recognise @(view_tab_bar={view=..., order=N}) on a proc,
 //              @(view_menu={view=..., label=..., order=N}) on a proc (action)
-//              or a bool variable (toggle).
-//   generate - sort, dedupe, emit registrations into editor/view_chrome.odin.
+//              or a bool variable (toggle), and
+//              @(toolbar={zone="left"|"center"|"right", order=N}) on a proc.
+//   generate - sort, dedupe, emit registrations into editor/view_chrome.odin
+//              and editor/view_toolbar.odin.
 //
 // ONE attribute per surface, and what it is attached to says the rest: a proc
 // is an action, a bool variable is a toggle. Same rule menu_item uses, so
@@ -19,10 +21,12 @@ import "../gen_facts"
 
 _PKG_NAME :: "editor"
 
-Chrome_Kind :: enum { Tab_Bar, Action, Toggle }
+Chrome_Kind :: enum { Tab_Bar, Action, Toggle, Toolbar }
 
 ChromeEntry :: struct {
 	kind:        Chrome_Kind,
+	// The view for tab bar and menu entries. For a toolbar entry this holds
+	// the ZONE ("left", "center", "right"), so one sort covers every kind.
 	view:        string,
 	label:       string,
 	name:        string,
@@ -61,10 +65,25 @@ provide :: proc(w: ^db.World) -> bool {
 
 		entries: [dynamic]ChromeEntry
 		for args in attr_set.attrs {
-			view := args.fields["view"]
-			if view == "" do continue
 			order := gen_facts.attr_int(args, "order")
 			origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
+
+			if args.key == "toolbar" {
+				if !is_proc do continue
+				zone := args.fields["zone"]
+				if zone != "left" && zone != "center" && zone != "right" {
+					fmt.eprintf("view_chrome_gen: @(toolbar) on %s.%s needs zone=\"left\", \"center\" or \"right\" (got %q)\n", decl.pkg.name, decl.name, zone)
+					return false
+				}
+				append(&entries, ChromeEntry{
+					kind = .Toolbar, view = zone, name = decl.name, order = order,
+					source_pkg = decl.pkg.name, source_path = decl.pkg_path, origin = origin,
+				})
+				continue
+			}
+
+			view := args.fields["view"]
+			if view == "" do continue
 
 			switch args.key {
 			case "view_tab_bar":
@@ -171,9 +190,9 @@ generate :: proc(w: ^db.World) -> bool {
 	// it is caught here, where every registration in the build is visible at
 	// once, rather than by whoever notices their item stopped working.
 	for a, ai in entries {
-		if a.kind == .Tab_Bar do continue
+		if a.kind == .Tab_Bar || a.kind == .Toolbar do continue
 		for b in entries[ai + 1:] {
-			if b.kind == .Tab_Bar || a.view != b.view || a.label != b.label do continue
+			if b.kind == .Tab_Bar || b.kind == .Toolbar || a.view != b.view || a.label != b.label do continue
 			fmt.eprintf(
 				"view_chrome_gen: two @(view_menu) declarations both claim %q in view %q — %s.%s and %s.%s. Labels are paths in the view's menu tree, so one would silently replace the other.\n",
 				a.label, a.view, a.source_pkg, a.name, b.source_pkg, b.name)
@@ -212,6 +231,9 @@ generate :: proc(w: ^db.World) -> bool {
 		switch e.kind {
 		case .Tab_Bar:
 			fmt.sbprintf(&b, "\tview_tab_bar_add_item(\"%s\", %s, %d, origin = %q)\n", e.view, qualified, e.order, e.origin)
+		case .Toolbar:
+			zone := e.view == "left" ? ".Left" : e.view == "center" ? ".Center" : ".Right"
+			fmt.sbprintf(&b, "\ttoolbar_add_item(%s, %s, %d, origin = %q)\n", zone, qualified, e.order, e.origin)
 		case .Toggle:
 			fmt.sbprintf(&b, "\tview_menu_add_toggle(\"%s\", \"%s\", &%s, %d", e.view, e.label, qualified, e.order)
 			if e.enabled != "" {

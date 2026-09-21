@@ -1,6 +1,7 @@
 package editor
 
 import "base:runtime"
+import "core:slice"
 import "core:strings"
 import "core:strconv"
 import "core:fmt"
@@ -120,6 +121,87 @@ _select_run_config :: proc(id: string) {
     editor_settings.run_config = strings.clone(id)
 }
 
+// --- Composition -------------------------------------------------------------
+//
+// The toolbar is COMPOSED from registered items, not drawn by one proc:
+//
+//   @(toolbar={zone="center", order=0}) on proc()  -> a widget in that zone
+//
+// Three zones. Left starts at the window edge, center is centred on the bar,
+// right ends at the window edge. Items sort by order inside a zone. Every
+// control the editor ships is itself a registered item (simulate_view.odin and
+// below), so a plugin's button and the Play button reach the bar the same way,
+// and there is no built-in list that a package would have to be spliced into.
+//
+// Zone widths are measured by drawing the items once off-screen per frame, the
+// way the view tab bar does (view_chrome.odin). An item therefore declares no
+// width, but it should keep its own width state-independent (size a button
+// slot to its widest glyph) or the zone shifts as it changes.
+
+Toolbar_Zone :: enum { Left, Center, Right }
+
+Toolbar_Item :: struct {
+    zone:   Toolbar_Zone,
+    draw:   proc(),
+    order:  int,
+    // The @(toolbar) that created the item, as rendered by the generator.
+    // Shown in the item's tooltip with debug tooltips on.
+    origin: string,
+}
+
+@(private = "file") _toolbar_items: [dynamic]Toolbar_Item
+
+// Registered once at startup from view_chrome_generated.odin. Process-global,
+// so never borrows the caller's allocator.
+toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin := "") {
+    context.allocator = runtime.default_allocator()
+    append(&_toolbar_items, Toolbar_Item{zone = zone, draw = draw, order = order, origin = origin})
+}
+
+toolbar_shutdown :: proc() {
+    context.allocator = runtime.default_allocator()
+    delete(_toolbar_items)
+    _toolbar_items = nil
+}
+
+@(private = "file")
+_toolbar_items_for :: proc(zone: Toolbar_Zone) -> []Toolbar_Item {
+    out := make([dynamic]Toolbar_Item, context.temp_allocator)
+    for it in _toolbar_items do if it.zone == zone && it.draw != nil do append(&out, it)
+    slice.sort_by(out[:], proc(a, b: Toolbar_Item) -> bool { return a.order < b.order })
+    return out[:]
+}
+
+// Draws a zone's items from where the cursor is. Items are separated by
+// ItemSpacing, and each draws under its origin so debug tooltips can name the
+// attribute that registered it.
+@(private = "file")
+_toolbar_draw_items :: proc(items: []Toolbar_Item) {
+    for it, i in items {
+        if i > 0 do im.SameLine(0, im.GetStyle().ItemSpacing.x)
+        prev := widgets.ui_origin_push(it.origin)
+        it.draw()
+        widgets.ui_origin_pop(prev)
+    }
+}
+
+// Width of a zone, by drawing it once off-screen. Its own id scope, or every
+// item exists twice under one id and imgui reports the conflict.
+@(private = "file")
+_toolbar_measure :: proc(items: []Toolbar_Item) -> f32 {
+    if len(items) == 0 do return 0
+    start := im.GetCursorPos()
+    im.SetCursorPos(im.Vec2{-10000, start.y})
+    im.PushID("##measure")
+    im.BeginGroup()
+    _toolbar_draw_items(items)
+    im.EndGroup()
+    w := im.GetItemRectSize().x
+    im.PopID()
+    im.SetCursorPos(start)
+    return w
+}
+
 draw_tool_bar :: proc() {
     vp := im.GetMainViewport()
     im.SetNextWindowPos(vp.WorkPos, {}, {0, 0})
@@ -131,34 +213,111 @@ draw_tool_bar :: proc() {
     defer im.End()
 
     if len(_run_configs) == 0 do _scan_run_configs()
-    sel := _selected_run_config()
 
-    // Two clusters: Simulate + sim host CENTERED (the controls used constantly),
-    // Play + run-config dropdown pinned RIGHT (build-and-launch, used rarely).
-    // Separating them by position keeps "tick this scene" from reading as part of
-    // the same control group as "compile and launch the game".
-    //
-    // Explicit ### id: the label is icon-only, and imgui derives ids from labels
-    // — so a Simulate button showing the same glyph would share this one's id.
-    button_play_text: cstring = icons.ICON_MD_RUN_CONFIG + "###RunConfigPlay"
-    button_scene_text: cstring = icons.ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene"
-    avail := im.GetContentRegionAvail()
+    style := im.GetStyle()
+    avail := im.GetContentRegionAvail().x
     // GetContentRegionAvail is a WIDTH and SetCursorPosX takes a POSITION, so
-    // the right edge is this start plus that width. Right-aligning to avail.x
-    // alone lands one WindowPadding.x short, leaving a gap past the last item.
+    // the right edge is this start plus that width.
     content_x := im.GetCursorPosX()
+
+    zones: [Toolbar_Zone][]Toolbar_Item
+    widths: [Toolbar_Zone]f32
+    for z in Toolbar_Zone {
+        zones[z] = _toolbar_items_for(z)
+        widths[z] = _toolbar_measure(zones[z])
+    }
+
+    // Center is centred on the bar, right ends at its edge. Both are clamped
+    // to sit after whatever came before, so a narrow window degrades to "as
+    // far along as fits" instead of overlapping.
+    targets := [Toolbar_Zone]f32{
+        .Left   = content_x,
+        .Center = content_x + (avail - widths[.Center]) * 0.5,
+        .Right  = content_x + avail - widths[.Right],
+    }
+    drew := false
+    for z in Toolbar_Zone {
+        if len(zones[z]) == 0 do continue
+        x := targets[z]
+        if drew {
+            im.SameLine(0, 0)
+            x = max(x, im.GetCursorPosX() + style.ItemSpacing.x)
+        }
+        im.SetCursorPosX(x)
+        _toolbar_draw_items(zones[z])
+        drew = true
+    }
+}
+
+// --- The editor's own items ----------------------------------------------------
+//
+// Widths are state-independent: each button slot is sized to its widest glyph
+// and the combo to its widest label, so the bar never shifts when a run starts
+// or a config is picked.
+
+MOD_HINT :: "\nAlt: build only, Shift: run only"
+NO_CONFIGS :: cstring("No run configs")
+
+// Explicit ### ids: the labels are icon-only, and imgui derives ids from
+// labels, so a Simulate button showing the same glyph would share the id.
+BUTTON_PLAY_TEXT :: cstring(icons.ICON_MD_RUN_CONFIG + "###RunConfigPlay")
+BUTTON_SCENE_TEXT :: cstring(icons.ICON_MD_CONSTRUCTION + "###BuildRunCurrentScene")
+
+@(private = "file")
+_toolbar_button_size :: proc(label: cstring) -> im.Vec2 {
     style := im.GetStyle()
     // hide_text_after_double_hash: the ### id suffix is not drawn, so it must
     // not be measured either.
-    btn_size := im.CalcTextSize(button_play_text, nil, true, -1)
-    btn_size.x += style.FramePadding.x * 2
-    btn_size.y += style.FramePadding.y * 2
-    btn_scene_size := im.CalcTextSize(button_scene_text, nil, true, -1)
-    btn_scene_size.x += style.FramePadding.x * 2
+    size := im.CalcTextSize(label, nil, true, -1)
+    size.x += style.FramePadding.x * 2
+    size.y += style.FramePadding.y * 2
+    return size
+}
 
-    MOD_HINT :: "\nAlt: build only, Shift: run only"
+// Build & Run with the CURRENT scene state (the live snapshot, forwarded to
+// the run only, the staged data is always the config's own build). Sits with
+// the simulate controls: both act on the scene as it is now.
+@(toolbar={zone="center", order=20})
+_toolbar_build_run_scene :: proc() {
+    sel := _selected_run_config()
+    if im.Button(BUTTON_SCENE_TEXT) && sel != nil {
+        run_app_play(sel.id, sel.source, with_current_scene = true, mode = _run_mode_from_modifiers())
+    }
+    tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
+    if sel != nil do tip = fmt.ctprintf("Build & Run with current scene state (%s)" + MOD_HINT, sel.label)
+    widgets.tooltip(tip)
+}
 
-    NO_CONFIGS :: cstring("No run configs")
+// The phase label sits LEFT of Play, so a long "(compiling)" grows inward
+// instead of off the right edge. Then the config verbatim: its own pinned
+// scene, the same build a bare launch produces.
+@(toolbar={zone="right", order=0})
+_toolbar_play :: proc() {
+    phase_text: cstring = nil
+    switch sync.atomic_load(&_play_phase) {
+    case .Compiling: phase_text = "(compiling)"
+    case .Running:   phase_text = "(running)"
+    case .Idle:
+    }
+    if phase_text != nil {
+        im.AlignTextToFramePadding()
+        im.TextDisabled(phase_text)
+        im.SameLine(0, im.GetStyle().ItemSpacing.x)
+    }
+
+    sel := _selected_run_config()
+    if im.Button(BUTTON_PLAY_TEXT) && sel != nil {
+        run_app_play(sel.id, sel.source, mode = _run_mode_from_modifiers())
+    }
+    tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
+    if sel != nil do tip = fmt.ctprintf("Build & Run (%s)" + MOD_HINT, sel.label)
+    widgets.tooltip(tip)
+}
+
+@(toolbar={zone="right", order=10})
+_toolbar_run_config :: proc() {
+    style := im.GetStyle()
+    sel := _selected_run_config()
     preview := NO_CONFIGS
     if sel != nil do preview = sel.label
 
@@ -170,66 +329,6 @@ draw_tool_bar :: proc() {
     }
     combo_w += style.FramePadding.x * 2 + im.GetFrameHeight()
 
-    // Centered cluster. Widths are state-independent (each button slot is sized to
-    // its widest glyph), so the group never shifts when a run starts or pauses.
-    sim_w := _simulate_controls_width()
-    sim_host_w := _sim_host_combo_width()
-    sim_total := sim_w + style.ItemSpacing.x + sim_host_w + style.ItemSpacing.x + btn_scene_size.x
-    im.SetCursorPosX(max(0, (avail.x - sim_total) * 0.5))
-
-    _draw_simulate_controls()
-    im.SameLine(0, style.ItemSpacing.x)
-    _draw_sim_host_combo()
-    im.SameLine(0, style.ItemSpacing.x)
-
-    // Build & Run with the CURRENT scene state (the live snapshot, forwarded
-    // to the run only — the staged data is always the config's own build).
-    if im.Button(button_scene_text) && sel != nil {
-        run_app_play(sel.id, sel.source, with_current_scene = true, mode = _run_mode_from_modifiers())
-    }
-    scene_tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
-    if sel != nil do scene_tip = fmt.ctprintf("Build & Run with current scene state (%s)" + MOD_HINT, sel.label)
-    widgets.tooltip(scene_tip)
-
-    // Right-pinned cluster. Measured from the right edge of the content region,
-    // clamped so a narrow window degrades to "as far right as fits" instead of
-    // drawing off-screen or overlapping the centered group.
-    // The phase label is part of the right cluster and sits LEFT of Play, so a
-    // long "(compiling)" grows inward instead of off the right edge.
-    phase_text: cstring = nil
-    switch sync.atomic_load(&_play_phase) {
-    case .Compiling: phase_text = "(compiling)"
-    case .Running:   phase_text = "(running)"
-    case .Idle:
-    }
-    phase_w: f32 = 0
-    if phase_text != nil {
-        phase_w = im.CalcTextSize(phase_text, nil, false, -1).x + style.ItemSpacing.x
-    }
-
-    // Relaunch sits at the far right, past a vertical separator.
-    relaunch_w := style.ItemSpacing.x * 2 + 1 + btn_size.x
-    run_total := phase_w + btn_size.x + style.ItemSpacing.x + combo_w + relaunch_w
-    right_x := content_x + avail.x - run_total
-    im.SameLine(0, 0)
-    im.SetCursorPosX(max(im.GetCursorPosX() + style.ItemSpacing.x, right_x))
-
-    if phase_text != nil {
-        im.AlignTextToFramePadding()
-        im.TextDisabled(phase_text)
-        im.SameLine(0, style.ItemSpacing.x)
-    }
-
-    // The config verbatim — its own pinned scene, the same build a bare
-    // launch produces.
-    if im.Button(button_play_text) && sel != nil {
-        run_app_play(sel.id, sel.source, mode = _run_mode_from_modifiers())
-    }
-    play_tip: cstring = "No run configs found (packages/*/run_configs/*.odin)"
-    if sel != nil do play_tip = fmt.ctprintf("Build & Run (%s)" + MOD_HINT, sel.label)
-    widgets.tooltip(play_tip)
-
-    im.SameLine()
     im.SetNextItemWidth(combo_w)
     if im.BeginCombo("##run_config", preview, {}) {
         // Rescan on open to pick up new/removed configs. That frees every label
@@ -246,16 +345,18 @@ draw_tool_bar :: proc() {
         im.EndCombo()
     }
     widgets.tooltip("Run configuration")
+}
 
-    // Relaunch: rebuild and restart the editor the way it was started
-    // (editor/relaunch.odin). The separator keeps it apart from the run
-    // configs, which build and run the GAME.
-    im.SameLine(0, style.ItemSpacing.x)
+// Relaunch: rebuild and restart the editor the way it was started
+// (editor/relaunch.odin). The separator keeps it apart from the run configs,
+// which build and run the GAME. Last in the zone, so it is the far-right item.
+@(toolbar={zone="right", order=20})
+_toolbar_relaunch :: proc() {
     im.SeparatorEx({.Vertical})
-    im.SameLine(0, style.ItemSpacing.x)
+    im.SameLine(0, im.GetStyle().ItemSpacing.x)
     pending := relaunch_pending()
     im.BeginDisabled(pending)
-    if im.Button(icons.ICON_MD_REFRESH, btn_size) do relaunch_request()
+    if im.Button(icons.ICON_MD_REFRESH, _toolbar_button_size(BUTTON_PLAY_TEXT)) do relaunch_request()
     im.EndDisabled()
     widgets.tooltip(
         pending \

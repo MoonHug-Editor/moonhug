@@ -152,7 +152,8 @@ _process_simulate_shortcuts :: proc() {
 }
 
 // Simulate / Pause / Step, all three always visible and enabled. Pressing Pause
-// or Step while stopped enters a held run.
+// or Step while stopped enters a held run. The centre of the toolbar, first.
+@(toolbar={zone="center", order=0})
 _draw_simulate_controls :: proc() {
     style := im.GetStyle()
 
@@ -212,6 +213,7 @@ _draw_simulate_controls :: proc() {
 
 // Which game Simulate ticks. Always drawn, disabled below two hosts, where it
 // reads out the sole game's name.
+@(toolbar={zone="center", order=10})
 _draw_sim_host_combo :: proc() {
     host, has_host := sim.active_host()
     all := sim.hosts()
@@ -268,18 +270,4 @@ _push_sim_button_bg :: proc(on: bool) {
 
 _pop_sim_button_bg :: proc() {
     im.PopStyleColor(3)
-}
-
-// Total width of the cluster, constant across every run state.
-_simulate_controls_width :: proc() -> f32 {
-    style := im.GetStyle()
-    pad := style.FramePadding.x * 2
-
-    sim_w := max(im.CalcTextSize(icons.ICON_MD_PLAY_ARROW, nil, false, -1).x,
-                 im.CalcTextSize(icons.ICON_MD_STOP, nil, false, -1).x)
-    pause_w := max(im.CalcTextSize(icons.ICON_MD_PAUSE, nil, false, -1).x,
-                   im.CalcTextSize(icons.ICON_MD_PLAY_CIRCLE, nil, false, -1).x)
-    step_w := im.CalcTextSize(icons.ICON_MD_SKIP_NEXT, nil, false, -1).x
-
-    return sim_w + pause_w + step_w + pad * 3 + style.ItemSpacing.x * 2
 }
