@@ -3,6 +3,7 @@ package menu_gen
 // menu_gen: ECS prebuild module for menu_items_generated.odin.
 //
 //   provide  - query {DeclInfo}, recognise decls carrying @(menu_item) /
+//              @(menu_dynamic) (a proc that draws a submenu's items itself) /
 //              @(menu_separator) attributes, tag each with a Menu_GenComp
 //              carrying the per-entry MenuEntry data.
 //
@@ -24,7 +25,7 @@ import "../gen_facts"
 _PKG_NAME :: "editor"
 
 MenuEntry :: struct {
-	kind:        enum { Item, Toggle, Separator },
+	kind:        enum { Item, Toggle, Separator, Dynamic },
 	path:        string,
 	name:        string,
 	shortcut:    string,
@@ -104,6 +105,15 @@ provide :: proc(w: ^db.World) -> bool {
 				}
 				if args.key == "menu_separator" {
 					separator_path, separator_order, _, _, _ = _extract_menu_item_comp(args)
+				}
+				// A proc that DRAWS a submenu's items itself (menu.MenuEntryKind.Dynamic).
+				if args.key == "menu_dynamic" {
+					dpath, dorder, _, denabled, _ := _extract_menu_item_comp(args)
+					if dpath != "" {
+						origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name)
+						append(&entries, MenuEntry{.Dynamic, dpath, ident_name, "", dorder, denabled, "", decl.pkg.name, decl.pkg_path, origin})
+					}
+					continue
 				}
 
 				if path != "" && separator_path == "" {
@@ -289,6 +299,8 @@ generate :: proc(w: ^db.World) -> bool {
 				fmt.sbprintf(&b, ", \"%s\"", e.shortcut)
 			}
 			fmt.sbprintf(&b, ", origin = %q)\n", e.origin)
+		case .Dynamic:
+			fmt.sbprintf(&b, "\tmenu.add_menu_dynamic(\"%s\", %s, %d, origin = %q)\n", e.path, _qualified_name(_PKG_NAME, e), e.order, e.origin)
 		case .Separator:
 			strings.write_string(&b, "\tmenu.add_menu_separator(\"")
 			strings.write_string(&b, e.path)

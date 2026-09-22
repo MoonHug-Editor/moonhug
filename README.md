@@ -101,6 +101,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 ## Features
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
 
+- dynamic menus - @(menu_dynamic={path="File/Recent Scenes"}) on a proc makes a submenu whose items the proc draws each frame it is open, for item sets that only exist at runtime. Recent Scenes uses it. Nothing inside one can be listed, invoked by path or bound to a key, so it is the escape hatch and @(menu_item) stays the form.
 - view tab bar and menu - every dock node's tab bar carries the visible view's toolbar items, then a ⋮ menu. Any package adds to either: @(view_tab_bar={view="Animation", order=0}) on a proc draws a widget, @(view_menu={view="Animation", label="..."}) on a proc is an action and on a bool variable a toggle, with `checked=`/`enabled=` like menu_item.
 
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order
@@ -190,18 +191,11 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - solid shapes and labels reachable from a gizmo proc, not only from handles
   - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
 
-- dynamic menu items - every item is registered at init, so nothing can compute its item set at draw time. Recent Scenes, run configs, the inspector's "Apply to Prefab 'X'" list
-  - one new kind holding a `proc()` that draws its own items into the open menu
-  - `collect_invokable_paths` feeds MCP `list_menus` / `invoke_menu` and `_process_menu_shortcuts` walks the tree for shortcuts, so a dynamic item can be neither listed, invoked by path, nor bound to a key
-  - keep it the escape hatch, not the general form: Recent Scenes is the right user, "Save Scene" is not
-
 - improve default types inspector UX
 
 - draw materials below components in inspector
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
-
-- hierarchy fix copy/paste/duplicate bugs
 
 - physics2d follow-ups:
   - PhysicsLayerCollision2D settings asset

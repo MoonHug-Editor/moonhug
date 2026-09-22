@@ -77,6 +77,8 @@ _ac_draw_tree :: proc(root: ^menu.MenuNode) {
 				if im.Selectable(child.name_cstr) do append(&_ac_path, child)
 				im.SameLine(_AC_WIDTH - 24)
 				im.TextDisabled(">")
+			case .Dynamic:
+				// The Add Component tree is registered items only.
 			case .Action, .Toggle:
 				im.BeginDisabled(!menu.node_enabled(child))
 				if im.Selectable(child.name_cstr) do _ac_pick(child)
@@ -130,6 +132,7 @@ _ac_collect :: proc(node: ^menu.MenuNode, category: string, words: []string, out
 		case .Submenu:
 			sub := child.name if category == "" else strings.concatenate({category, "/", child.name}, context.temp_allocator)
 			_ac_collect(child, sub, words, out)
+		case .Dynamic:
 		case .Action, .Toggle:
 			if widgets.search_match(strings.concatenate({category, "/", child.name}, context.temp_allocator), words) {
 				append(out, _Ac_Match{node = child, category = category})

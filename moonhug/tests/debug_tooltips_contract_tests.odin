@@ -51,7 +51,7 @@ test_no_raw_imgui_tooltips :: proc(t: ^testing.T) {
 @(test)
 test_generated_ui_registrations_carry_origin :: proc(t: ^testing.T) {
 	REGISTRATIONS := []string{
-		"menu.add_menu_item(", "menu.add_menu_toggle(",
+		"menu.add_menu_item(", "menu.add_menu_toggle(", "menu.add_menu_dynamic(",
 		"view_menu_add_action(", "view_menu_add_toggle(", "view_tab_bar_add_item(",
 		"toolbar_add_item(", "overlay_add_item(", "settings_add_tab(",
 		"__wnd.register(",

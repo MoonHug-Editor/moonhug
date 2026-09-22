@@ -12,6 +12,12 @@ MenuEntryKind :: enum {
 	Action,
 	Toggle,
 	Separator,
+	// A submenu whose items are drawn by a proc at draw time instead of being
+	// registered at init: Recent Scenes. The escape hatch
+	// for an item set that only exists at runtime, not the general form —
+	// nothing inside it can be listed, invoked by path, or bound to a key,
+	// because the tree does not know what is in it.
+	Dynamic,
 }
 
 ORDER_DEFAULT :: 1 << 30
@@ -43,6 +49,7 @@ MenuNode :: struct {
 	// computed rather than stored in a bool: a radio group is N actions that
 	// each set the state and each report whether they are the current one.
 	checked:       proc() -> bool,
+	draw:          proc(), // Dynamic: emits the submenu's items, called while it is open
 	children:      [dynamic]^MenuNode,
 	order:         int, // sort key (lower = earlier); ORDER_DEFAULT when unspecified
 	// The @(menu_item) that created this node, with its file and line, as
@@ -255,6 +262,20 @@ tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int 
 }
 
 // add_menu_separator adds a separator in the menu at the given path (path = parent menu, e.g. "File").
+// A submenu at `path` whose contents `draw` emits each frame it is open, with
+// plain im.MenuItem calls. See MenuEntryKind.Dynamic for what it gives up.
+add_menu_dynamic :: proc(path: string, draw: proc(), order: int = ORDER_DEFAULT, origin := "") {
+	tree_add_dynamic(_menu_root, path, draw, order, origin)
+}
+
+tree_add_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(), order: int = ORDER_DEFAULT, origin := "") {
+	node := _get_or_create_path(root, path)
+	node.kind = .Dynamic
+	node.draw = draw
+	node.order = order
+	node.origin = origin
+}
+
 add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
 	tree_add_separator(_menu_root, path, order)
 }
@@ -457,8 +478,8 @@ _parse_shortcut :: proc(shortcut: string) -> (chord: im.KeyChord, ok: bool) {
 _process_menu_shortcuts :: proc(node: ^MenuNode) {
 	for child in node.children {
 		switch child.kind {
-		case .Separator:
-			// skip
+		case .Separator, .Dynamic:
+			// nothing to bind: a dynamic submenu's items are not in the tree
 		case .Submenu:
 			_process_menu_shortcuts(child)
 		case .Action:
@@ -498,6 +519,18 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 	switch child.kind {
 	case .Separator:
 		im.Separator()
+	case .Dynamic:
+		// The header is the registered element, so it carries the origin. Its
+		// tooltip only shows while the submenu is closed: once open, imgui's
+		// "last item" is inside the child window.
+		prev := widgets.ui_origin_push(child.origin)
+		defer widgets.ui_origin_pop(prev)
+		if im.BeginMenu(child.name_cstr, _node_enabled(child)) {
+			if child.draw != nil do child.draw()
+			im.EndMenu()
+		} else {
+			widgets.tooltip("", im.HoveredFlags_AllowWhenDisabled)
+		}
 	case .Submenu, .Action, .Toggle:
 		if child.kind == .Submenu || len(child.children) > 0 {
 			if im.BeginMenu(child.name_cstr, true) {

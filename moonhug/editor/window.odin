@@ -33,6 +33,7 @@ EditorSettings :: struct {
     y:                        i32,
     theme:                    menu.Theme,
     open_scene_guids:         [dynamic]string,
+    recent_scene_guids:       [dynamic]string,          // File/Recent Scenes, newest first (recent_scenes.odin)
     open_window_ids:          [dynamic]string,          // plugin editor windows open last session (window/window.odin)
     show_inspector:           bool,
     show_project_inspector:   bool,

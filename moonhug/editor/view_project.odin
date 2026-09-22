@@ -291,13 +291,7 @@ _project_inspect_path :: proc(full_path: string) {
 // Same side effects as clicking/double-clicking the file row.
 _project_activate_file :: proc(full_path: string) {
     _project_inspect_path(full_path)
-    if strings.has_suffix(full_path, ".scene") {
-        undo.purge_scenes(undo.get())
-        // Fresh navigation — reset the nested-scene edit stack.
-        hierarchy_edit_stack_clear()
-        scene := engine.scene_load_single_path(full_path)
-        engine.sm_scene_set_active(scene)
-    }
+    if strings.has_suffix(full_path, ".scene") do editor_open_scene(full_path)
 }
 
 _project_open_selected :: proc() {
@@ -1207,11 +1201,7 @@ _project_item_clicked :: proc(full_path: string, is_dir: bool) {
     } else if !toggled_off {
         _project_inspect_path(full_path)
         if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
-            undo.purge_scenes(undo.get())
-            // Fresh navigation — reset the nested-scene edit stack.
-            hierarchy_edit_stack_clear()
-            scene := engine.scene_load_single_path(full_path)
-            engine.sm_scene_set_active(scene)
+            editor_open_scene(full_path)
         }
     }
 }
