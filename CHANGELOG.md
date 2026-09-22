@@ -1,3 +1,14 @@
+## [0.105.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.104.0...v0.105.0) (2026-09-22)
+
+### Features
+
+* preview scene asset ([58eb4ee](https://github.com/MoonHug-Editor/moonhug/commit/58eb4ee57fbd21f2134280576f22a0ed8ed6d0be))
+
+### Bug Fixes
+
+* don't show saved message in project inspector, minor ([469dc27](https://github.com/MoonHug-Editor/moonhug/commit/469dc2719a19fa0311be3ada92b97c26a7b8a0f5))
+* minor, padding, filename only in project inspector view ([0e9a854](https://github.com/MoonHug-Editor/moonhug/commit/0e9a854523eee01b11c8b9b8639803697f7beb86))
+
 ## [0.104.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.103.0...v0.104.0) (2026-09-22)
 
 ### Features
