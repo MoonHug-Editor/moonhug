@@ -41,23 +41,47 @@ current_field_ext_filter: string
 // `ref:` says what is stored, `has:` says which objects qualify. Two tags,
 // because one cannot say both without being ambiguous about what to store.
 current_field_has_filter: string
+// `expand` — an Asset_GUID row (or each element of an array of them) gets a
+// foldout that opens the referenced asset's document right under it, edited
+// in place with the same undo and live preview the Project Inspector gives
+// it (asset_expand.odin). Opt-in per field: a material slot wants it, a mesh
+// slot does not. Not `inline`, which flattens a nested struct's rows.
+current_field_expand: bool
+// Width a row's caller will draw AFTER the value on the same line (an expand
+// arrow, an array element's remove button). A drawer that sizes its value to
+// the remaining width subtracts this, so trailing buttons eat the field's
+// space instead of adding to the row.
+current_field_trailing_w: f32
 
-// The four tag variables above as one value, so a row drawn outside the
-// generic loop (a proxy row for another component's field) publishes the
-// field's tags the same way and puts the previous ones back.
+// The tag variables above as one value, so a row drawn outside the generic
+// loop (a proxy row for another component's field) publishes the field's
+// tags the same way and puts the previous ones back.
 Field_Tags :: struct {
     ref, pick, ext, has: string,
+    expand: bool,
 }
 
 // Publishes `tag`'s picker tags for the drawer about to run. Returns what was
 // there, for field_tags_restore.
 field_tags_set :: proc(tag: reflect.Struct_Tag) -> (prev: Field_Tags) {
-    prev = {current_field_ref_target, current_field_pick_mode, current_field_ext_filter, current_field_has_filter}
+    prev = {current_field_ref_target, current_field_pick_mode, current_field_ext_filter, current_field_has_filter, current_field_expand}
     current_field_ref_target, _ = reflect.struct_tag_lookup(tag, "ref")
     current_field_pick_mode, _ = reflect.struct_tag_lookup(tag, "pick")
     current_field_ext_filter, _ = reflect.struct_tag_lookup(tag, "ext")
     current_field_has_filter, _ = reflect.struct_tag_lookup(tag, "has")
+    current_field_expand = _tag_has_flag(tag, "expand")
     return prev
+}
+
+// A flag tag is a bare word: `ext:"mat" expand`. reflect.struct_tag_lookup
+// only reads key:"value" pairs, so the word is matched as its own token, and
+// the key:"" spelling is accepted as well.
+_tag_has_flag :: proc(tag: reflect.Struct_Tag, name: string) -> bool {
+    if _, has := reflect.struct_tag_lookup(tag, name); has do return true
+    for tok in strings.fields(string(tag), context.temp_allocator) {
+        if tok == name do return true
+    }
+    return false
 }
 
 field_tags_restore :: proc(prev: Field_Tags) {
@@ -65,6 +89,7 @@ field_tags_restore :: proc(prev: Field_Tags) {
     current_field_pick_mode = prev.pick
     current_field_ext_filter = prev.ext
     current_field_has_filter = prev.has
+    current_field_expand = prev.expand
 }
 
 InspectorData :: struct {
@@ -145,9 +170,11 @@ load_from_file :: proc(filepath: string){
         inspectorData.fileData = doc.data
         inspectorData.doc = doc
         inspectorData.mode = .Asset
-        inspectorData.statusMessage = fmt.tprintf("Loaded from %s", filepath)
+        // No "loaded" status: the file row right below says which asset this
+        // is, and the load is logged. A status row here only pushes the path down.
+        _set_status("")
     } else {
-        inspectorData.statusMessage = fmt.tprintf("Failed to load %s", filepath)
+        _set_status(fmt.tprintf("Failed to load %s", filepath))
     }
 }
 
@@ -162,9 +189,9 @@ load_import_settings :: proc(filepath: string) {
         if inspectorData.importSettings.data != nil do free(inspectorData.importSettings.data, runtime.default_allocator())
         inspectorData.importSettings = settings
         inspectorData.mode = .ImportSettings
-        inspectorData.statusMessage = ""
+        _set_status("")
     } else {
-        inspectorData.statusMessage = fmt.tprintf("No import settings for %s", filepath)
+        _set_status(fmt.tprintf("No import settings for %s", filepath))
     }
 }
 
@@ -179,26 +206,41 @@ load_package :: proc(name: string, assets_path: string, asset_count: int) {
     inspectorData.fileData = {}
     inspectorData.doc = nil
     inspectorData.mode = .Package
-    inspectorData.statusMessage = ""
+    _set_status("")
+}
+
+// The status line's text, owned. It is read on LATER frames than the one that
+// set it, so it cannot be temp-allocated: the temp allocator resets at the end
+// of the frame, leaving a string whose length is non-zero and whose bytes are
+// gone — which drew as a blank row above the file path.
+_set_status :: proc(msg: string) {
+    delete(inspectorData.statusMessage, runtime.default_allocator())
+    inspectorData.statusMessage = msg == "" ? "" : strings.clone(msg, runtime.default_allocator())
 }
 
 get_file_path :: proc() -> string {
     return inspectorData.filePath
 }
 
+// File/Save: the open document, then every other dirty document (an asset
+// edited through an `expand` foldout has no Save button of its own).
 save_to_file :: proc() {
     // Only an ASSET has a document to write. A package folder (or an import
     // settings view) leaves fileData as a nil `any`, and serializing that asks
     // for the GUID of a nil typeid — which panics rather than failing softly.
-    if inspectorData.mode != .Asset || inspectorData.fileData.data == nil {
-        return
+    if inspectorData.mode == .Asset && inspectorData.fileData.data != nil {
+        ok := inspectorData.doc != nil ? asset_doc_save(inspectorData.doc) : ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
+        if ok {
+            _set_status(fmt.tprintf("Saved successfully to %s", inspectorData.filePath))
+        } else {
+            _set_status(fmt.tprintf("Failed to save %s", inspectorData.filePath))
+        }
     }
-    if ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
-    {
-        if inspectorData.doc != nil do inspectorData.doc.dirty = false
-        inspectorData.statusMessage = fmt.tprintf("Saved successfully to %s", inspectorData.filePath)
-    } else {
-        inspectorData.statusMessage = fmt.tprintf("Failed to save %s", inspectorData.filePath)
+    saved, failed := asset_docs_save_dirty()
+    if failed > 0 {
+        _set_status(fmt.tprintf("%d asset(s) failed to save", failed))
+    } else if saved > 0 && inspectorData.statusMessage == "" {
+        _set_status(fmt.tprintf("Saved %d asset(s)", saved))
     }
 }
 
@@ -275,16 +317,12 @@ _draw_asset_inspector :: proc() {
         inspectorData.fileData = inspectorData.doc.data
     }
 
-    if im.Button("Save", im.Vec2{60, 0}) {
-        save_to_file()
-    }
-    im.SameLine()
-
+    // No Save button: File/Save (Ctrl+S) writes every dirty document and
+    // scene, and the star after the path is the pending mark.
     if inspectorData.statusMessage != "" {
         im.Text(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
+        im.Separator()
     }
-
-    im.Separator()
 
     if inspectorData.filePath != "" {
         dirty := inspectorData.doc != nil && inspectorData.doc.dirty ? " *" : ""
@@ -295,26 +333,34 @@ _draw_asset_inspector :: proc() {
 
     im.Separator()
 
-    if inspectorData.fileData.data != nil {
-        if inspectorData.fileData.id == typeid_of(engine.Material) {
-            current_material = cast(^engine.Material)inspectorData.fileData.data
-        }
-        // Whole-document undo: _undo_finalize_widget after each drawer snapshots
-        // and commits against this owner, exactly like the component inspector.
-        if inspectorData.doc != nil {
-            undo.push_asset_owner(inspectorData.doc.guid, inspectorData.fileData.data, inspectorData.fileData.id)
-        }
-        prev_changed := inspector_changed
-        inspector_changed = false
+    if inspectorData.doc != nil {
+        draw_asset_doc(inspectorData.doc)
+    } else if inspectorData.fileData.data != nil {
+        // No document behind the data (a package view): plain rows, no undo owner.
         draw_inspector(inspectorData.fileData)
-        if inspector_changed && inspectorData.doc != nil {
-            inspectorData.doc.dirty = true
-        }
-        inspector_changed |= prev_changed
-        if inspectorData.doc != nil do undo.pop_owner()
-        _material_live_preview()
-        current_material = nil
     }
+}
+
+// The body of an asset document: its rows, whole-document undo, and the live
+// preview. Drawn by the Project Inspector for its open file and by an
+// `expand` foldout under a component's reference row (asset_expand.odin), so
+// both edit the same document and an unsaved change shows in both.
+draw_asset_doc :: proc(doc: ^Asset_Doc) {
+    if doc == nil || doc.data.data == nil do return
+    if doc.data.id == typeid_of(engine.Material) {
+        current_material = cast(^engine.Material)doc.data.data
+    }
+    // Whole-document undo: _undo_finalize_widget after each drawer snapshots
+    // and commits against this owner, exactly like the component inspector.
+    undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
+    prev_changed := inspector_changed
+    inspector_changed = false
+    draw_inspector(doc.data)
+    if inspector_changed do doc.dirty = true
+    inspector_changed |= prev_changed
+    undo.pop_owner()
+    _material_live_preview(doc)
+    current_material = nil
 }
 
 // Material edits render live (Unity-style): the open .mat's values are
@@ -322,13 +368,11 @@ _draw_asset_inspector :: proc() {
 // persists them to disk; unsaved edits revert on the next editor run.
 // Property rows for the assigned custom shader auto-populate from its
 // reflected UBO members, so names never have to be typed by hand.
-_material_live_preview :: proc() {
-    if inspectorData.fileData.id != typeid_of(engine.Material) do return
-    mat := cast(^engine.Material)inspectorData.fileData.data
+_material_live_preview :: proc(doc: ^Asset_Doc) {
+    if doc.data.id != typeid_of(engine.Material) do return
+    mat := cast(^engine.Material)doc.data.data
     _ = engine.material_sync_properties(mat)
-    if guid, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
-        engine.material_preview(engine.Asset_GUID(guid), mat^)
-    }
+    engine.material_preview(doc.guid, mat^)
 }
 
 _draw_import_settings_inspector :: proc() {
@@ -359,9 +403,9 @@ draw_default_import_settings :: proc() {
             // Reimport hooks evict every guid-keyed cache (textures, package
             // asset caches) so the new settings apply without a restart.
             asset_pipeline.asset_pipeline_reimport(inspectorData.filePath)
-            inspectorData.statusMessage = fmt.tprintf("Reimported %s", inspectorData.filePath)
+            _set_status(fmt.tprintf("Reimported %s", inspectorData.filePath))
         } else {
-            inspectorData.statusMessage = fmt.tprintf("Failed to save settings for %s", inspectorData.filePath)
+            _set_status(fmt.tprintf("Failed to save settings for %s", inspectorData.filePath))
         }
     }
     im.SameLine()
@@ -892,6 +936,8 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
                 // only tests the last one — right-click would then work only on
                 // the tiny X (or only when no value meant no X).
+                expands := current_field_expand && field_type.id == typeid_of(engine.Asset_GUID)
+                if expands do current_field_trailing_w = EXPAND_BTN_W
                 im.BeginGroup()
                 // The whole transaction, shared with the array-element path so
                 // the two cannot drift — see field_edit_row.
@@ -902,7 +948,16 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                                            field_name, drawer, c_field_name)
                 field_edit_set_path(prev_path)
                 im.EndGroup()
+                current_field_trailing_w = 0
                 record_nested_override(field_ptr, field_type.id, full_path, finished)
+                // The arrow sits in the space the row left for it, and the
+                // document draws below, outside the row's transaction: its
+                // rows must not read as edits of this reference field.
+                if expands {
+                    guid := (^engine.Asset_GUID)(field_ptr)^
+                    im.SameLine(0, 0)
+                    if expand_arrow(guid) do draw_expanded_asset(guid)
+                }
             } else if is_array_type(field_type.id) {
                 // Elements multi-edit through their own rebased peer list —
                 // draw_inspector_array does that itself, since only it knows

@@ -18,6 +18,10 @@ Scene :: struct {
 	root:                 Ref,
 	path:                 string,
 	asset_guid:           Asset_GUID `json:"-"`,
+	// Edited since it was loaded or last saved. Set by the editor's undo stack
+	// whenever a command targeting this scene is pushed, undone or redone,
+	// cleared by scene_save. Shown as a star on the scene's headers.
+	dirty:                bool `json:"-"`,
 	// The world whose pools hold this scene's objects, captured at scene_new.
 	// The scene manager is global while worlds are not (preview/thumbnail
 	// worlds coexist with the live one), so identity stamping guards on this:

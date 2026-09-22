@@ -323,6 +323,39 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 	}
 	append(&s.items, Entry{label = strings.clone(effective_label), cmd = cmd})
 	s.top = len(s.items)
+	_mark_scenes_dirty(&s.items[len(s.items) - 1].cmd)
+}
+
+// Every scene a command touches is edited by it, whether the command is
+// being recorded, undone or redone. Selection commands touch none, and asset
+// value commands mark their document instead (asset_docs). A scene that has
+// been unloaded since is skipped by the validity check.
+@(private)
+_mark_scenes_dirty :: proc(cmd: ^Command) {
+	mark :: proc(r: Scene_Ref) {
+		if r.ptr != nil && engine.sm_scene_is_valid(r.ptr) do r.ptr.dirty = true
+	}
+	switch v in cmd {
+	case Value_Command:
+		if v.target.kind == .Pooled do mark(v.target.scene)
+	case Structural_Command:
+		switch sv in v {
+		case Reparent_Command:                 mark(sv.scene)
+		case Create_Subtree_Command:           mark(sv.scene)
+		case Delete_Subtree_Command:           mark(sv.scene)
+		case Add_Component_Command:            mark(sv.scene)
+		case Remove_Component_Command:         mark(sv.scene)
+		case Reorder_Components_Command:       mark(sv.scene)
+		case Remove_Unknown_Component_Command: mark(sv.scene)
+		}
+	case Dropdown_Revert_Command:
+		mark(v.scene)
+	case Group_Command:
+		for i in 0 ..< len(v.subs) do _mark_scenes_dirty(&v.subs[i])
+	case Selection_Command:
+	case Record_Override_Command:
+		mark(v.scene)
+	}
 }
 
 jump_to :: proc(s: ^Undo_Stack, target_top: int) -> bool {
@@ -419,6 +452,8 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp)})
 	s.top = len(s.items)
 	s.activity = true
+	// Lands outside push(), so the dirty mark is made here as well.
+	_mark_scenes_dirty(&s.items[len(s.items) - 1].cmd)
 }
 
 can_undo :: proc(s: ^Undo_Stack) -> bool {
@@ -463,6 +498,7 @@ apply_redo :: proc(s: ^Undo_Stack) -> bool {
 
 @(private)
 _apply_command :: proc(cmd: ^Command) {
+	_mark_scenes_dirty(cmd)
 	switch v in cmd {
 	case Value_Command:
 		_value_apply(v, v.new_json)
@@ -497,6 +533,7 @@ _apply_command :: proc(cmd: ^Command) {
 
 @(private)
 _revert_command :: proc(cmd: ^Command) {
+	_mark_scenes_dirty(cmd)
 	switch v in cmd {
 	case Value_Command:
 		_value_apply(v, v.old_json)

@@ -1431,6 +1431,7 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 		delete(s.path)
 		s.path = strings.clone(path)
 	}
+	s.dirty = false
 
 	// Per docs/NestedPrefabs.md "Changes propagation": saving a prefab walks
 	// all live `NestedScene` records whose `source_prefab` GUID matches the

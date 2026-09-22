@@ -8,7 +8,7 @@ package engine
 @(typ_guid={guid = "73e161a0-c599-4cfb-9826-447e05baa76c"})
 MeshRenderer :: struct {
     using base: CompData `inspect:"-"`,
-    materials: [dynamic]Asset_GUID `ext:"mat"`,
+    materials: [dynamic]Asset_GUID `ext:"mat" expand`,
 }
 
 on_destroy_MeshRenderer :: proc(mr: ^MeshRenderer) {

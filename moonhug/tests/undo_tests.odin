@@ -680,3 +680,50 @@ test_undo_ref_clear_resolves_for_fresh_objects :: proc(t: ^testing.T) {
 	testing.expect(t, ct.parent.handle == engine.Handle(pH),
 		"ref to a never-saved transform must resolve after undo")
 }
+
+// A scene is dirty from the first recorded edit until scene_save, and an
+// undo or redo edits it again. Selection commands touch no scene.
+@(test)
+test_undo_marks_scene_dirty :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	scene := engine.sm_scene_get_active()
+	testing.expect(t, scene != nil, "setup provides an active scene")
+	if scene == nil do return
+	scene.dirty = false
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+	testing.expect(t, tr.scene == scene, "a new transform belongs to the active scene")
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {1, 2, 3}
+	new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json, new_json)
+	testing.expect(t, scene.dirty, "recording an edit marks the scene dirty")
+
+	scene.dirty = false
+	undo.apply_undo(s)
+	testing.expect(t, scene.dirty, "undo marks the scene dirty")
+
+	scene.dirty = false
+	undo.apply_redo(s)
+	testing.expect(t, scene.dirty, "redo marks the scene dirty")
+
+	// A grouped edit lands through end_group_command, not push, and must mark too.
+	scene.dirty = false
+	undo.begin_group_command(s, "Group")
+	old_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {4, 5, 6}
+	new_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json2, new_json2)
+	testing.expect(t, !scene.dirty, "a command inside an open group is not landed yet")
+	undo.end_group_command(s, "Group")
+	testing.expect(t, scene.dirty, "closing the group marks the scene dirty")
+}

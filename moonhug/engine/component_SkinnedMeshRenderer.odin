@@ -30,7 +30,7 @@ SkinnedMeshRenderer :: struct {
     using base: CompData `inspect:"-"`,
 
     // One material per submesh, like MeshRenderer.
-    materials: [dynamic]Asset_GUID `ext:"mat"`,
+    materials: [dynamic]Asset_GUID `ext:"mat" expand`,
 
     // Where joint names are resolved from. Unset searches the parent's subtree,
     // which is where an extracted glTF puts the armature next to the mesh.

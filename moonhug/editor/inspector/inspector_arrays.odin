@@ -168,6 +168,8 @@ array_remove_element :: proc(da: ^runtime.Raw_Dynamic_Array, array_offset: uintp
 	multi_array_structural(.Remove, da, array_offset, elem_ti, index, peers, "Remove Element")
 }
 
+ARRAY_REMOVE_BTN_W :: f32(24)
+
 draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Type_Info, field_ptr: rawptr, field_tid: typeid, label: cstring, array_offset: uintptr = 0) {
 	tree_open := im.TreeNode(label)
 	draw_field_context_menu(field_ptr, field_tid)
@@ -215,18 +217,30 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		im.Text("%d:", i)
 		im.SameLine()
 		elem_ptr := rawptr(uintptr(da.data) + uintptr(i * elem_ti.size))
-		im.SetNextItemWidth(im.GetContentRegionAvail().x - 30)
+		// The remove button and, with `expand` on the array field, the arrow
+		// take their width from the element, not from the row.
+		expands := current_field_expand && elem_ti.id == typeid_of(engine.Asset_GUID)
+		trailing := ARRAY_REMOVE_BTN_W + (expands ? EXPAND_BTN_W : 0)
+		current_field_trailing_w = trailing
+		im.SetNextItemWidth(im.GetContentRegionAvail().x - trailing)
 		draw_array_element(elem_ptr, elem_ti.id, "##val", uintptr(i * elem_ti.size))
-		im.SameLine()
+		current_field_trailing_w = 0
+		open := false
+		if expands {
+			im.SameLine(0, 0)
+			open = expand_arrow((^engine.Asset_GUID)(elem_ptr)^)
+		}
+		im.SameLine(0, 0)
 		if readonly {
 			im.BeginDisabled(true)
 		}
-		if im.Button("x") {
+		if im.Button("x", {ARRAY_REMOVE_BTN_W, 0}) {
 			to_remove = i
 		}
 		if readonly {
 			im.EndDisabled()
 		}
+		if open do draw_expanded_asset((^engine.Asset_GUID)(elem_ptr)^)
 		im.PopID()
 	}
 	_draw_reorder_tail(field_ptr, draw_count)

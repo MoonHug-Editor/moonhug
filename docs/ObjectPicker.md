@@ -51,6 +51,8 @@ Each drawer shows only the tabs its type can assign (hidden, not disabled):
 |--------------|--------------|----------------------------------------------------|
 | `Ref_Local`  | live objects, narrowed by `has:` | hidden (a local_id cannot reference another file)  |
 | `Asset_GUID` | hidden       | assets; `ref:"Type"` tag filters to scene assets whose root has that component; `ext:"glb,gltf"` tag filters by file extension (also gates drag-drop) |
+
+An `expand` tag on an `Asset_GUID` field (or an array of them) adds a foldout under the row that opens the referenced asset's document in place, edited with the same undo and live preview the Project Inspector gives it. File/Save writes every dirty asset document, so an edit made in a foldout is saved with Ctrl+S. Material slots on renderers carry it. Not `inline`, which flattens a nested struct's rows.
 | `Ref` (PPtr) | live objects | scene-asset roots; assigns the PPtr `{guid, root local_id}`; `pick:` tag can limit to one tab |
 
 ### What a field admits: the `ref:` tag

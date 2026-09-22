@@ -64,7 +64,7 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	// width. The buttons size themselves, hence reading it rather than relying on
 	// the item width field_row also set.
 	avail := im.GetContentRegionAvail().x
-	value_w := avail - BTN_W
+	value_w := avail - BTN_W - current_field_trailing_w
 	if has_value do value_w -= BTN_W
 
 	value_label := strings.clone_to_cstring(

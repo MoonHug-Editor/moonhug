@@ -343,6 +343,8 @@ _draw_scene_section :: proc(scene: ^engine.Scene, is_last := false, filter: []st
 	if len(scene.path) > 0 {
 		scene_name = filepath.stem(scene.path)
 	}
+	// The pending mark. Cleared by scene_save, set by the undo stack.
+	if scene.dirty do scene_name = fmt.tprintf("%s *", scene_name)
 
 	im.PushIDPtr(scene)
 	defer im.PopID()

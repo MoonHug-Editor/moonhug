@@ -193,8 +193,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - improve default types inspector UX
 
-- draw materials below components in inspector
-
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:
@@ -250,7 +248,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - ability to switch Value/Ref field in inspector where valid
 
-- Dirty flags for modified data
 
 - Convert resource into usable format at buildStage or runtimeStage
 

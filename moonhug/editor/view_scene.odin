@@ -636,7 +636,13 @@ draw_scene_view :: proc() {
 	// freshly appearing or resizing overlay can momentarily extend past the
 	// window edge — a scrollbar would shrink the content region, resize the
 	// RT and shift the image, oscillating for frames.
-	if im.Begin(icons.TITLE_SCENE, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
+	// A star on the tab while the active scene has unsaved edits. Only the
+	// text after ### is the window id, so the label can change freely.
+	scene_title: cstring = icons.TITLE_SCENE
+	if active := engine.sm_scene_get_active(); active != nil && active.dirty {
+		scene_title = icons.ICON_MD_LANDSCAPE + " Scene *###Scene"
+	}
+	if im.Begin(scene_title, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
 		if _scene_2d_pending {
 			_scene_2d_pending = false
 			scene_set_2d(true)

@@ -58,6 +58,30 @@ asset_doc_get :: proc(path: string) -> ^Asset_Doc {
     return doc
 }
 
+// Writes the document to its file and clears the dirty flag. The one save
+// path, whether the Project Inspector's Save button or an expanded row's.
+asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
+    if doc == nil || doc.data.data == nil do return false
+    if !ser.save_to_file(doc.path, doc.data) do return false
+    doc.dirty = false
+    return true
+}
+
+// Writes every document edited since its last save, wherever it was edited:
+// the Project Inspector or an `expand` foldout under a component. This is
+// what File/Save does, so one shortcut saves all pending asset edits.
+asset_docs_save_dirty :: proc() -> (saved, failed: int) {
+    for _, doc in _docs {
+        if !doc.dirty do continue
+        if asset_doc_save(doc) {
+            saved += 1
+        } else {
+            failed += 1
+        }
+    }
+    return
+}
+
 // Undo hook: replace the document's payload with the given JSON (a full
 // capture_json of the document struct). A fresh zeroed instance is
 // unmarshalled so dynamic arrays never merge with stale contents. The old

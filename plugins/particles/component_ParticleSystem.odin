@@ -202,7 +202,7 @@ ParticleSystem :: struct {
 	// texture is stretched ONCE along the whole trail. Empty = the
 	// particle's sprite/material.
 	trail_sprite:   engine.PPtr `inspect:"-"`,
-	trail_material: engine.Asset_GUID `ext:"mat"`,
+	trail_material: engine.Asset_GUID `ext:"mat" expand`,
 
 	// Rotation by speed: additional angular velocity (degrees per second)
 	// from the curve evaluated at the particle's speed remapped from
@@ -221,7 +221,7 @@ ParticleSystem :: struct {
 	// like SpriteRenderer (the editor wrapper draws the picker), material's
 	// shader/tint applies with the sprite's own texture.
 	sprite:         engine.PPtr `inspect:"-"`,
-	material:       engine.Asset_GUID `ext:"mat"`,
+	material:       engine.Asset_GUID `ext:"mat" expand`,
 	render_mode:    Render_Mode,
 	// Stretched quad length = size * length_scale + speed * speed_scale.
 	// length_scale 0 behaves as 1 (absent fields load as zero).
