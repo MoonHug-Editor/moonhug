@@ -65,8 +65,9 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 	testing.expect(t, sok && still == png, "refresh under catalog pipeline should change nothing")
 }
 
-// catalog.export_from: sources + artifacts copied into a self-contained data
-// dir with a RELOCATABLE catalog, boot scene stamped. Proven by deleting the
+// catalog.export_from: one representation per asset (artifact when there is
+// one, else source) copied into a self-contained data dir with a RELOCATABLE
+// catalog, boot scene stamped. Proven by deleting the
 // originals — every resolve must come from the export alone (including baked
 // import settings, since no .meta ships). Runs the same catalog-driven path
 // run configs use (rc.export_data), just without the "moonhug" root prefix
@@ -114,7 +115,9 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 
 	path, pok := engine.asset_db_get_path(raw_guid)
 	testing.expect(t, pok && strings.has_prefix(path, data_dir), "path should point into the data dir")
-	testing.expect(t, pok && os.exists(path), "copied source should exist")
+	// One representation: the texture has an artifact, so its source is not
+	// shipped. The path stays as the settings key.
+	testing.expect(t, pok && !os.exists(path), "source of an imported asset is not shipped")
 
 	artifact, aok := engine.asset_pipeline_artifact_path(guid)
 	testing.expect(t, aok && strings.has_prefix(artifact, data_dir), "artifact should point into the data dir")
@@ -154,7 +157,13 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	png, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
-	for p in ([]string{used, unused, by_path}) do testing.expect(t, os.write_entire_file(p, png) == nil)
+	for p in ([]string{used, by_path}) do testing.expect(t, os.write_entire_file(p, png) == nil)
+	// Artifacts are content-addressed, so an identical copy would share the
+	// referenced asset's artifact and ship with it. One extra byte makes the
+	// unused png its own artifact.
+	other := make([]byte, len(png) + 1, context.temp_allocator)
+	copy(other, png)
+	testing.expect(t, os.write_entire_file(unused, other) == nil)
 	// A placeholder scene: the guid of `used` is not known until the scan
 	// mints it, so the file is rewritten below.
 	testing.expect(t, os.write_entire_file(scene, transmute([]byte)string("{}")) == nil)
@@ -179,6 +188,12 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	scene_text := strings.concatenate({"{\"sprite\": {\"guid\": \"", uuid.to_string(used_guid, context.temp_allocator), "\"}}"}, context.temp_allocator)
 	testing.expect(t, os.write_entire_file(scene, transmute([]byte)scene_text) == nil)
 
+	// The unused asset's artifact name, taken while the live index is up, so
+	// its absence from the export can be checked as a file below.
+	unused_key, ukok := engine.asset_pipeline_artifact_key(engine.Asset_GUID(unused_guid))
+	testing.expect(t, ukok)
+	unused_key = strings.clone(unused_key, context.temp_allocator)
+
 	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
 	engine.asset_db_shutdown()
 	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = scene), "export should succeed")
@@ -197,10 +212,12 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	testing.expect(t, !has_unused, "an asset nothing references does not ship")
 	testing.expect(t, has_by_path, "an asset under a resources folder ships")
 	testing.expect(t, has_res, "the resources folder itself ships")
-	testing.expect(t, os.exists(data_dir + "/" + used), "referenced source is copied")
-	testing.expect(t, !os.exists(data_dir + "/" + unused), "unreferenced source is not copied")
+	testing.expect(t, os.exists(data_dir + "/" + scene), "the boot scene has no artifact, so its source is copied")
+	testing.expect(t, !os.exists(data_dir + "/" + used), "an imported asset ships its artifact, not its source")
 	artifact, aok := engine.asset_pipeline_artifact_path(engine.Asset_GUID(used_guid))
 	testing.expect(t, aok && os.exists(artifact), "referenced artifact is copied")
+	unused_artifact := strings.concatenate({data_dir, "/artifacts/", unused_key[:2], "/", unused_key, ".bin"}, context.temp_allocator)
+	testing.expect(t, !os.exists(unused_artifact), "unreferenced asset ships nothing")
 }
 
 @(test)

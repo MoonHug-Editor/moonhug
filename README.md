@@ -154,8 +154,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - if no menu path specified, type name is used
 
 ## TODO
-- export ships source + artifact for every asset — ship one representation per asset (needs importers to declare whether runtime reads source or artifact)
-
 - skinned mesh runs on the CPU: `SkinnedMeshRenderer` rebuilds the bind-pose
   vertices through the skin matrices every frame and uploads them. GPU skinning
   — a bone matrix buffer plus a vertex shader variant — is the drop-in

@@ -70,15 +70,17 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     // Headless contexts (tests, scene tooling) have no GPU device.
     if gfx.device() == nil do return nil, false
 
+    // Artifact first, like every other loader: the artifact is what an export
+    // ships (catalog.export_from copies no source for an imported asset), so
+    // reading the source first would work in the editor and fail in a build.
+    // The source is the fallback for a dev run whose import has not happened.
+    // The path stays the key for settings even when the file is not there.
     path, path_ok := asset_db_get_path(uuid.Identifier(guid))
     if !path_ok do return nil, false
-
-    g := _texture_decode_file(path)
-    if g == nil {
-        artifact := _artifact_path(uuid.Identifier(guid))
-        defer delete(artifact)
-        g = _texture_decode_file(artifact)
-    }
+    artifact := _artifact_path(uuid.Identifier(guid))
+    defer delete(artifact)
+    g := _texture_decode_file(artifact)
+    if g == nil do g = _texture_decode_file(path)
     if g == nil do return nil, false
 
     ppu := f32(PIXELS_PER_UNIT)

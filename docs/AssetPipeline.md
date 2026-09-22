@@ -154,12 +154,18 @@ main :: proc() {
 - `rc.export_data` stages `<out>_data` beside the binary — Unity's
   `Game` + `Game_Data` layout — from the editor-maintained catalog
   (`catalog.export_from`, moonhug:engine/catalog — a leaf package, so config
-  binaries stay small): the boot scene's DEPENDENCY CLOSURE (source and
-  artifact of every asset it references, transitively, mesh parts included)
-  and a RELOCATABLE catalog whose paths and `artifacts/` fan-out resolve
+  binaries stay small): the boot scene's DEPENDENCY CLOSURE (every asset it
+  references, transitively) and a RELOCATABLE catalog whose paths and `artifacts/` fan-out resolve
   relative to its own directory. The data dir moves as one unit and is
   self-contained — the round-trip test boots it with the working tree's
   `assets/` and `library/` deleted
+- one representation per asset: an asset with an artifact ships the artifact
+  (mesh parts included) and not its source, an asset without one (scene,
+  material, prefab) ships its source. Every runtime loader reads the artifact
+  first and reaches the source only through an import request, which the
+  catalog pipeline refuses, so the artifact's existence is the whole rule and
+  no importer declares anything. The entry keeps its path as the key for
+  settings and type lookups
 - what ships: the boot scene, everything under any folder named `resources`
   (for assets the game loads by path at runtime, which the walk cannot see),
   and everything they reference. References are found by harvesting guid

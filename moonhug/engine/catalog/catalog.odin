@@ -61,8 +61,16 @@ save :: proc(cf: ^File, path: string) -> bool {
 }
 
 // The export step, driven entirely by an existing catalog file: copy the
-// assets the boot scene needs, with their artifacts, into `data_dir` and
-// write a RELOCATABLE catalog beside them, boot scene stamped.
+// assets the boot scene needs into `data_dir` and write a RELOCATABLE
+// catalog beside them, boot scene stamped.
+//
+// ONE REPRESENTATION PER ASSET. An asset with an artifact ships the artifact
+// and not its source: every runtime loader reads the artifact and falls back
+// to the source only by requesting an import, which the catalog pipeline
+// refuses. An asset without an artifact (scene, material, prefab) ships its
+// source. The entry keeps its path either way, since the path is the key
+// settings and type lookups use. No importer declares which it is, the
+// artifact's existence is the declaration.
 //
 // WHAT SHIPS is the dependency closure of the roots (see _closure): the boot
 // scene, plus every asset under a folder named `resources`, plus everything
@@ -141,7 +149,7 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 			// Folders are guid-addressable assets too (they carry metas) —
 			// mirror the directory, nothing to copy.
 			ensure_parent_dirs(strings.concatenate({dst, "/x"}, context.temp_allocator))
-		} else {
+		} else if entry.artifact == "" {
 			if !_copy_file(src_path, dst) {
 				fmt.eprintfln("[Catalog] export: cannot copy %s", src_path)
 				return false
