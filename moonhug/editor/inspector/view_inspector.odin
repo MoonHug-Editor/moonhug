@@ -327,6 +327,17 @@ _draw_package_inspector :: proc() {
     }
 }
 
+// The open file, by NAME. The full path is a folder listing the project view
+// already shows, and at inspector width it wrapped or clipped — the name is
+// what identifies the asset. The path stays one hover away. A star marks
+// unsaved edits.
+_draw_file_row :: proc(dirty: bool) {
+    label := filepath_base(inspectorData.filePath)
+    if dirty do label = fmt.tprintf("%s *", label)
+    im.TextUnformatted(strings.clone_to_cstring(label, context.temp_allocator))
+    widgets.tooltip(strings.clone_to_cstring(inspectorData.filePath, context.temp_allocator), im.HoveredFlags_ForTooltip)
+}
+
 _draw_asset_inspector :: proc() {
     // Undo may have swapped the document payload since last frame.
     if inspectorData.doc != nil {
@@ -341,8 +352,7 @@ _draw_asset_inspector :: proc() {
     }
 
     if inspectorData.filePath != "" {
-        dirty := inspectorData.doc != nil && inspectorData.doc.dirty ? " *" : ""
-        im.Text(strings.clone_to_cstring(fmt.tprintf("File: %s%s", inspectorData.filePath, dirty), context.temp_allocator))
+        _draw_file_row(inspectorData.doc != nil && inspectorData.doc.dirty)
     } else {
         im.TextColored(im.Vec4{1, 0, 0, 1}, "No file loaded")
     }
@@ -433,7 +443,7 @@ draw_default_import_settings :: proc() {
     im.Separator()
 
     if inspectorData.filePath != "" {
-        im.Text(strings.clone_to_cstring(fmt.tprintf("File: %s", inspectorData.filePath), context.temp_allocator))
+        _draw_file_row(false)
     }
 
     im.Separator()

@@ -629,8 +629,11 @@ draw_axis_lines :: proc() {
 }
 
 draw_scene_view :: proc() {
+	// Zero padding so the render target fills the window edge to edge. Popped
+	// as soon as Begin has read it (the content region is computed there):
+	// held any longer, every tooltip and popup the overlays raise is a window
+	// too and would draw its text flush against its own border.
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
-	defer im.PopStyleVar()
 
 	// NoScrollbar: overlays draw ON the image with last-frame sizes, so a
 	// freshly appearing or resizing overlay can momentarily extend past the
@@ -642,7 +645,9 @@ draw_scene_view :: proc() {
 	if active := engine.sm_scene_get_active(); active != nil && active.dirty {
 		scene_title = icons.ICON_MD_LANDSCAPE + " Scene *###Scene"
 	}
-	if im.Begin(scene_title, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
+	open := im.Begin(scene_title, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
+	im.PopStyleVar()
+	if open {
 		if _scene_2d_pending {
 			_scene_2d_pending = false
 			scene_set_2d(true)

@@ -199,10 +199,12 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 }
 
 draw_game_view :: proc() {
+	// Popped right after Begin — see draw_scene_view: the image wants zero
+	// padding, the tooltips raised over it do not.
 	im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
-	defer im.PopStyleVar()
-
-	if im.Begin(icons.TITLE_GAME, &menu.show_game, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse}) {
+	open := im.Begin(icons.TITLE_GAME, &menu.show_game, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
+	im.PopStyleVar()
+	if open {
 		content_min := im.GetCursorScreenPos()
 		full := im.GetContentRegionAvail()
 
