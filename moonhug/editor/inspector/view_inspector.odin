@@ -238,23 +238,25 @@ get_file_path :: proc() -> string {
 
 // File/Save: the open document, then every other dirty document (an asset
 // edited through an `expand` foldout has no Save button of its own).
+//
+// Only FAILURES are reported. A save that worked is already visible — the
+// dirty star clears — so a success line would be one more thing to read and
+// then dismiss.
 save_to_file :: proc() {
     // Only an ASSET has a document to write. A package folder (or an import
     // settings view) leaves fileData as a nil `any`, and serializing that asks
     // for the GUID of a nil typeid — which panics rather than failing softly.
+    failed_path := ""
     if inspectorData.mode == .Asset && inspectorData.fileData.data != nil {
         ok := inspectorData.doc != nil ? asset_doc_save(inspectorData.doc) : ser.save_to_file(inspectorData.filePath, inspectorData.fileData)
-        if ok {
-            _set_status(fmt.tprintf("Saved successfully to %s", inspectorData.filePath))
-        } else {
-            _set_status(fmt.tprintf("Failed to save %s", inspectorData.filePath))
-        }
+        if !ok do failed_path = inspectorData.filePath
     }
-    saved, failed := asset_docs_save_dirty()
-    if failed > 0 {
-        _set_status(fmt.tprintf("%d asset(s) failed to save", failed))
-    } else if saved > 0 && inspectorData.statusMessage == "" {
-        _set_status(fmt.tprintf("Saved %d asset(s)", saved))
+    _, failed := asset_docs_save_dirty()
+    switch {
+    case failed_path != "": _set_status(fmt.tprintf("Failed to save %s", failed_path))
+    case failed > 0:        _set_status(fmt.tprintf("%d asset(s) failed to save", failed))
+    // Clears a failure left from an earlier attempt.
+    case:                   _set_status("")
     }
 }
 

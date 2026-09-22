@@ -1,5 +1,6 @@
 {
   "__type_guid": "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+  "playerSpeed": 0.5,
   "maxHealth": 5,
   "isDebugMode": false,
   "test": false,

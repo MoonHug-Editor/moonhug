@@ -2,7 +2,7 @@ package app
 
 @(typ_guid={guid = "f47ac10b-58cc-4372-a567-0e02b2c3d479", menu_assets_create = {menu_name = "Game Settings", order = 0}})
 GameSettings :: struct {
-    playerSpeed: f32 `inspect:"" json:"-"
+    playerSpeed: f32 `inspect:""
         decor:min(0.5)`,
     maxHealth: int `
         decor:min(5)
