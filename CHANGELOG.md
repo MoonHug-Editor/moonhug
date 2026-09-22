@@ -1,3 +1,14 @@
+## [0.104.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.103.0...v0.104.0) (2026-09-22)
+
+### Features
+
+* add expand field tag for asset preview in inspector, scene dirtying and save all to clear dirty ([14bb5df](https://github.com/MoonHug-Editor/moonhug/commit/14bb5df9f617afc65c29ff06071dc8cce825c1b3))
+* menu_dynamic for recent scenes ([7b4c5c1](https://github.com/MoonHug-Editor/moonhug/commit/7b4c5c1d43b2d330e46fb04f0558df4e26468fd4))
+
+### Bug Fixes
+
+* export artifacts ([26f7573](https://github.com/MoonHug-Editor/moonhug/commit/26f75730b924e2d9117a233d13ac05b6494c46d5))
+
 ## [0.103.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.102.0...v0.103.0) (2026-09-21)
 
 ### Features
