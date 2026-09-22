@@ -192,8 +192,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - solid shapes and labels reachable from a gizmo proc, not only from handles
   - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
 
-- debug tooltips - a toggle that makes every registered UI element explain itself on hover: which attribute put it there, its field values, the declaring package and file, and its live value
-
 - dynamic menu items - every item is registered at init, so nothing can compute its item set at draw time. Recent Scenes, run configs, the inspector's "Apply to Prefab 'X'" list
   - one new kind holding a `proc()` that draws its own items into the open menu
   - `collect_invokable_paths` feeds MCP `list_menus` / `invoke_menu` and `_process_menu_shortcuts` walks the tree for shortcuts, so a dynamic item can be neither listed, invoked by path, nor bound to a key
