@@ -29,6 +29,11 @@ _register_asset_previews :: proc() {
 }
 
 asset_previews_shutdown :: proc() {
+	// Just drop the handle: the instance lives in the preview world, and
+	// preview_world_shutdown destroys that world with everything in it.
+	// Reaching into the world here would rebuild it after it was torn down.
+	_scene_pv_root = {}
+	_scene_pv_guid = {}
 	if _mesh_pv_rt != nil {
 		gfx.rt_destroy(_mesh_pv_rt)
 		_mesh_pv_rt = nil
@@ -176,6 +181,26 @@ _pv_image_orbit :: proc(rt: ^gfx.Render_Target, avail: im.Vec2) {
 // frame's picking or views (the thumbnail renderer's contract). Content goes
 // on the reserved preview layer and the view masks to it, so the open
 // scene's content never bleeds in.
+// The scene instance behind the preview, kept alive between frames. Spawning
+// is a full deserialize of the scene file and every object it creates, so
+// doing it per frame pegged a core on a 35-object scene. Exactly one lives at
+// a time: the preview world is rendered whole, so a leftover instance from a
+// previous selection would be drawn into the next one's picture.
+@(private = "file") _scene_pv_guid: engine.Asset_GUID
+@(private = "file") _scene_pv_root: engine.Transform_Handle
+@(private = "file") _scene_pv_center: [3]f32
+@(private = "file") _scene_pv_radius: f32
+
+// Frees the instance. Must run inside preview_world_begin/end — its
+// transforms live in the preview world's pools.
+@(private = "file")
+_scene_pv_release :: proc() {
+	if _scene_pv_root == {} do return
+	engine.transform_destroy(_scene_pv_root)
+	_scene_pv_root = {}
+	_scene_pv_guid = {}
+}
+
 _preview_scene :: proc(path: string) {
 	raw_guid, gok := engine.asset_db_get_guid(path)
 	if !gok do return
@@ -188,19 +213,30 @@ _preview_scene :: proc(path: string) {
 
 	prev := preview_world_begin()
 	defer preview_world_end(prev)
-	spawned := engine.scene_instantiate_guid(guid, preview_world_root())
-	if spawned == {} {
-		im.TextDisabled("prefab not loadable")
-		return
-	}
-	defer engine.transform_destroy(spawned)
-	_thumb_set_layer(spawned)
 
-	bmin, bmax, bok := _thumb_bounds(spawned)
-	if !bok do return
-	center := (bmin + bmax) * 0.5
-	radius := max(linalg.length(bmax - bmin) * 0.5, 0.01)
-	rv, _ := _pv_view(center, radius, avail)
+	// Respawn only when the selection moved to another scene. Bounds come
+	// from the same pass, so the tree is walked once per instance rather than
+	// once per frame.
+	if guid != _scene_pv_guid || _scene_pv_root == {} {
+		_scene_pv_release()
+		spawned := engine.scene_instantiate_guid(guid, preview_world_root())
+		if spawned == {} {
+			im.TextDisabled("scene not loadable")
+			return
+		}
+		_thumb_set_layer(spawned)
+		bmin, bmax, bok := _thumb_bounds(spawned)
+		if !bok {
+			engine.transform_destroy(spawned)
+			return
+		}
+		_scene_pv_guid = guid
+		_scene_pv_root = spawned
+		_scene_pv_center = (bmin + bmax) * 0.5
+		_scene_pv_radius = max(linalg.length(bmax - bmin) * 0.5, 0.01)
+	}
+
+	rv, _ := _pv_view(_scene_pv_center, _scene_pv_radius, avail)
 
 	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
 	engine.render_collect_commands(rv, &cmds)

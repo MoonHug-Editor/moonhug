@@ -178,6 +178,20 @@ load_from_file :: proc(filepath: string){
     }
 }
 
+// A file the inspector can NAME but not edit: a scene. It carries no document
+// — a scene is edited in the Hierarchy once opened — so the panel shows the
+// file row and, keyed off the same path, whatever Preview drawer its extension
+// registered. Without this a scene never reaches the inspector at all, and the
+// preview registered for `.scene` could never run.
+load_file_only :: proc(filepath: string) {
+    delete(inspectorData.filePath)
+    inspectorData.filePath = strings.clone(filepath)
+    inspectorData.fileData = {}
+    inspectorData.doc = nil
+    inspectorData.mode = .Asset
+    _set_status("")
+}
+
 load_import_settings :: proc(filepath: string) {
     settings, ok := engine.asset_pipeline_get_settings(filepath, runtime.default_allocator())
     if ok {

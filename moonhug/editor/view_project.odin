@@ -283,6 +283,13 @@ _project_inspect_path :: proc(full_path: string) {
         inspector.load_from_file(full_path)
         return
     }
+    // A scene is not a document and no importer claims it, so it would fall
+    // through and leave the inspector on the previously selected asset. Name
+    // it instead, which is also what makes its Preview drawer reachable.
+    if strings.has_suffix(full_path, ".scene") {
+        inspector.load_file_only(full_path)
+        return
+    }
     if asset_pipeline.is_importable_extension(filepath.ext(full_path)) {
         inspector.load_import_settings(full_path)
     }
