@@ -1,0 +1,14 @@
+{
+  "guid": "435efc91-9ad7-459c-a734-9c5e6bbf5840",
+  "importer": "mesh",
+  "settings": {
+    "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "parts": [
+      {
+        "id": 1,
+        "name": "Mannequin"
+      }
+    ],
+    "scale": 1.0000000000000000
+  }
+}

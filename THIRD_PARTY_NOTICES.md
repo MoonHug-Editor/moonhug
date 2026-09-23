@@ -27,8 +27,8 @@ binary and never reaches a game.
 - **MIT** (stb, Box2D, Box3D when used): the respective copyright notice and
   license text in the game's documentation or credits.
 
-Editor-only components (Dear ImGui, odin-imgui, Material Symbols, cgltf)
-impose nothing on shipped games.
+Editor-only components (Dear ImGui, odin-imgui, Material Symbols, cgltf) and
+the CC0 assets impose nothing on shipped games.
 
 Full license texts live with each component in the Odin `vendor/` tree or
 the paths listed above.
