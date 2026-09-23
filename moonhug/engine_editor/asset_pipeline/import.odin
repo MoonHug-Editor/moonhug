@@ -127,7 +127,12 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 	mtime := info.modification_time._nsec
 	size := info.size
 
-	settings_hex := _settings_hash_hex(import_meta.settings)
+	// The freshness stamp, not the bare settings hash: it also carries the
+	// importer's version, so bumping a version reimports every asset of that
+	// kind even when source and settings are unchanged. The fast path below
+	// never computes the artifact key, which is where the version otherwise
+	// lives, so without it a version bump changed nothing.
+	settings_hex := _freshness_hex(import_meta.settings, importer_for_extension(ext))
 	if !force {
 		if e, has := engine._artifact_index_lookup(guid); has &&
 		   e.mtime == mtime && e.size == size && e.settings == settings_hex {
@@ -151,7 +156,7 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 		// internalIDToNameTable). Persist the refinement and move the
 		// artifacts under the refined content key, so the next refresh sees
 		// a fresh entry instead of importing a second time.
-		if refined_hex := _settings_hash_hex(import_meta.settings); refined_hex != settings_hex {
+		if refined_hex := _freshness_hex(import_meta.settings, importer_for_extension(ext)); refined_hex != settings_hex {
 			_write_import_meta(meta_path, import_meta)
 			refined_key := _artifact_key(data, import_meta.settings, importer_for_extension(ext))
 			refined_path := engine._artifact_key_path(refined_key, context.temp_allocator)
@@ -320,6 +325,14 @@ _settings_hash_hex :: proc(settings: any) -> string {
 	data, merr := json.marshal(settings, {spec = .JSON}, context.temp_allocator)
 	if merr != nil do return "0000000000000000"
 	return fmt.tprintf("%016x", xxh.XXH3_64(data))
+}
+
+// What the index remembers about the inputs of an asset's last import, other
+// than the source's mtime and size: its settings and the importer version and
+// artifact format they were imported under.
+@(private = "file")
+_freshness_hex :: proc(settings: any, importer: string) -> string {
+	return fmt.tprintf("%s|v%d|f%d", _settings_hash_hex(settings), _importer_version(importer), _ARTIFACT_FORMAT_VERSION)
 }
 
 // The artifact key: 128-bit hash of the source bytes, seeded by everything

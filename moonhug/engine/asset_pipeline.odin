@@ -255,8 +255,9 @@ _ensure_artifact_dir :: proc(artifact_path: string) {
 
 // Garbage collection: an artifact file no index entry references is dead —
 // delete it. Files sitting directly in Artifacts/ predate the fan-out layout
-// and are never referenced, so they collect the same way. Mesh part files
-// ("<key>_m<i>.bin") live and die with their primary key.
+// and are never referenced, so they collect the same way. Fan-out files
+// ("<key>_m<i>.bin" mesh parts, "<key>_a<i>.bin" baked clips) live and die
+// with their primary key.
 _cleanup_stale_artifacts :: proc() {
     referenced := make(map[string]bool, len(_artifact_index), context.temp_allocator)
     for _, e in _artifact_index {
@@ -280,8 +281,12 @@ _cleanup_stale_artifacts :: proc() {
             }
             if !strings.has_suffix(entry.name, ".bin") do continue
             key := strings.trim_suffix(entry.name, ".bin")
-            if m := strings.last_index(key, "_m"); m >= 0 {
-                key = key[:m]
+            // Keys are hex digests and never contain '_', so anything after
+            // one is a fan-out suffix, whichever kind. Matching a named suffix
+            // instead is what deleted every baked clip at startup, since only
+            // "_m" was known.
+            if i := strings.index_byte(key, '_'); i >= 0 {
+                key = key[:i]
             }
             if top || !referenced[key] {
                 os.remove(full_path)

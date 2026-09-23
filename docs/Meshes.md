@@ -14,7 +14,7 @@ history live there.
 - Add **MeshFilter** (pick the mesh — the Object Picker lists only
   glb/gltf via the field's `ext:` tag) and **MeshRenderer** (a `materials`
   list of [Material](Materials.md) assets, one per submesh; missing/empty
-  entries render white unlit) to a transform.
+  entries render white, lit) to a transform.
 
 Unity parity: MeshFilter references the mesh DATA, MeshRenderer decides how
 it draws (via its Materials — submesh i uses `materials[i]`).

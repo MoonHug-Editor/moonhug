@@ -324,7 +324,7 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			for sub, i in mesh.submeshes {
 				mat_guid: Asset_GUID
 				if i < len(d.materials) do mat_guid = d.materials[i]
-				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid)
+				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid, .Lit)
 				gfx.draw_mesh(gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
 			}
 		}

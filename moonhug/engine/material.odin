@@ -5,8 +5,8 @@ package engine
 // color, and named properties for custom shaders. Materials are JSON files
 // under assets/ ("Assets/Create/Material" writes New Material.mat) and
 // cached by guid like textures/meshes. MeshRenderer references one by guid;
-// no material = plain white unlit (mirrors Unity's missing-material magenta,
-// minus the drama).
+// no material = plain white, lit on a mesh and unlit on a quad (mirrors
+// Unity's default material, lit, and its sprite default, unlit).
 
 import gfx "gfx"
 import "core:encoding/json"
@@ -47,8 +47,11 @@ Material :: struct {
 	textures:      [dynamic]Material_Texture,  // custom-shader extra sampler assignments
 }
 
+// A new material is Lit, like Unity's. `shader` is stored as a number and
+// every saved material carries it, so this changes nothing already written.
 make_pMaterial :: proc() -> any {
 	m := new(Material)
+	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
 	return m^
 }
@@ -64,7 +67,9 @@ material_shader_name :: proc(shader: Material_Shader) -> string {
 }
 
 // Resolves a material guid to draw state for gfx.draw_mesh. Empty guid or
-// any load failure falls back to white unlit. material_data (temp-allocated,
+// any load failure falls back to plain white drawn with `fallback`: meshes
+// pass Lit, so an unassigned slot is shaded like a default material, quads
+// keep Unlit, so a sprite without a material stays flat. material_data (temp-allocated,
 // nil when the shader has no property block) is the packed UBO for the
 // custom shader's material block; extra_textures (temp-allocated, nil unless
 // the custom shader declares samplers past binding 0) holds bindings 1..N —
@@ -77,8 +82,8 @@ material_resolve_draw :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Te
 	return _resolve_material(guid)
 }
 
-_resolve_material :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
-	shader = material_shader_name(.Unlit)
+_resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
+	shader = material_shader_name(fallback)
 	color = {1, 1, 1, 1}
 	if guid == {} do return
 	mat, ok := material_load(guid)
@@ -329,7 +334,9 @@ _material_equal :: proc(a, b: Material) -> bool {
 // the unknown key. Fields absent from the file keep the defaults set here.
 // Allocates with context.allocator (properties live in the cache).
 _material_parse :: proc(data: []byte) -> (Material, bool) {
-	mat := Material{color = {1, 1, 1, 1}}
+	// The same defaults as make_pMaterial, for a hand-written file that
+	// leaves a field out.
+	mat := Material{shader = .Lit, color = {1, 1, 1, 1}}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {
 		_material_destroy(&mat)
 		return {}, false

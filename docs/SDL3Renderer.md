@@ -281,7 +281,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 ### 6. MeshFilter + MeshRenderer + picker ext: filter
 - [x] `engine/component_MeshFilter.odin` — `mesh: Asset_GUID` `ext:"glb,gltf"`
 - [x] `engine/component_MeshRenderer.odin` — `material: Asset_GUID`
-      `ext:"mat"` (empty = white unlit; originally raw texture+color, replaced
+      `ext:"mat"` (empty = white, lit; originally raw texture+color, replaced
       by the Material asset — see docs/Materials.md)
 - [x] `Draw_Mesh` emission in `render_collect_commands` (sibling MeshFilter via
       transform_get_comp; skip empty guid); render_execute draws meshes first

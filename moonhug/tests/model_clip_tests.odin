@@ -241,3 +241,45 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 	parts := engine.mesh_parts(model)
 	testing.expect(t, len(parts) > 0 && raw_data(engine.mesh_parts(model)) == raw_data(parts), "parts are served from the cache")
 }
+
+// The startup import ends with a sweep that deletes artifact files the index
+// does not reference. A baked clip is a fan-out of its model's key, so it
+// must survive, like a mesh part. The failure it guards: the sweep knew only
+// the "_m" suffix and deleted every clip at each launch, so every model clip
+// loaded as nothing and its preview stayed in the rest pose.
+@(test)
+test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_model_clip_sweep_tmp"
+	gltf :: src_dir + "/box.gltf"
+	os.make_directory(src_dir)
+	bytes, rerr := os.read_entire_file(BOX_ANIM_GLTF, context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree("library")
+	}
+
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")
+
+	raw, ok := engine.asset_db_get_guid(gltf)
+	testing.expect(t, ok)
+	if !ok do return
+	whole, wok := engine.asset_pipeline_artifact_path(engine.Asset_GUID(raw))
+	testing.expect(t, wok)
+	if !wok do return
+	whole = strings.clone(whole, context.temp_allocator)
+	clip0 := engine.mesh_clip_artifact_path(whole, 0, context.temp_allocator)
+	part0 := engine.mesh_part_artifact_path(whole, 0, context.temp_allocator)
+	testing.expect(t, os.exists(clip0), "the import bakes clip 0")
+
+	engine._cleanup_stale_artifacts()
+	testing.expect(t, os.exists(whole), "the model's artifact survives the sweep")
+	testing.expect(t, os.exists(part0), "its mesh part survives the sweep")
+	testing.expect(t, os.exists(clip0), "its baked clip survives the sweep")
+}

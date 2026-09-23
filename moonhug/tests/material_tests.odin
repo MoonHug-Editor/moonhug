@@ -32,7 +32,7 @@ test_material_parse_defaults :: proc(t: ^testing.T) {
 	data := `{}`
 	mat, ok := engine._material_parse(transmute([]u8)data)
 	testing.expect(t, ok, "empty object should parse")
-	testing.expect(t, mat.shader == .Unlit, "default shader is unlit")
+	testing.expect(t, mat.shader == .Lit, "default shader is lit")
 	testing.expect(t, mat.color == {1, 1, 1, 1}, "default color is white")
 }
 

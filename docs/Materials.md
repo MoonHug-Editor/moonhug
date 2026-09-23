@@ -18,7 +18,9 @@ asset conventions as everything else — a JSON file under `assets/` with a
   `.mat` via the field's `ext:` tag). Submesh i uses `materials[i]`.
 
 A submesh without a material (missing entry or empty guid) renders plain
-white unlit — the fallback, not an error.
+white, lit — the fallback, not an error. A sprite or other quad without a
+material stays unlit, so 2D art is never shaded by accident. A new material
+starts as Lit.
 
 **Extract from glTF**: select a `.glb`/`.gltf` in the project view →
 right-click → `Extract Textures & Material`. Embedded images are written as

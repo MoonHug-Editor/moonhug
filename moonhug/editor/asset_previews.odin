@@ -329,12 +329,16 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 	if avail.x < 32 || avail.y < 32 do return
 	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
 	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
-	rv, _ := _pv_view(_clip_pv.center, _clip_pv.radius, avail)
+	rv, forward := _pv_view(_clip_pv.center, _clip_pv.radius, avail)
 	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
 	engine.render_collect_commands(rv, &cmds)
+	// A headlight from the camera, the same one the model preview uses: the
+	// preview world has no lights of its own, and unlit reads as flat white.
+	gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
 	gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
 	engine.render_execute(rv, cmds[:])
 	gfx.pass_end()
+	gfx.set_lights_default() // the headlight must not leak into later passes
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
 
