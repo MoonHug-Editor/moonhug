@@ -42,6 +42,13 @@ asset_catalog_write :: proc(path: string = ASSET_CATALOG_PATH) -> bool {
 	cf.assets = make(map[string]catalog.Entry, len(asset_db.guid_to_path), context.temp_allocator)
 	for guid, asset_path in asset_db.guid_to_path {
 		entry := catalog.Entry{path = asset_path}
+		// A sub-asset guid: identity only. Its artifact and settings are the
+		// owner's, looked up by path, and must not be written under it.
+		if ref, is_sub := asset_db.subs[guid]; is_sub {
+			entry.sub = i64(ref.id)
+			cf.assets[uuid.to_string(guid, context.temp_allocator)] = entry
+			continue
+		}
 		if key, has := asset_pipeline_artifact_key(Asset_GUID(guid)); has {
 			entry.artifact = key
 		}
@@ -93,6 +100,7 @@ asset_db_init_from_catalog :: proc(catalog_path: string = ASSET_CATALOG_PATH) ->
 	asset_db.pipeline = .Catalog
 	asset_db.guid_to_path = make(map[uuid.Identifier]string)
 	asset_db.path_to_guid = make(map[string]uuid.Identifier)
+	asset_db.subs = make(map[uuid.Identifier]Sub_Asset_Ref)
 	asset_db.root_info = make(map[Asset_GUID]Asset_Root_Info)
 	asset_db.assets_by_type = make(map[TypeKey][dynamic]PPtr)
 	asset_db.file_state = make(map[string]Asset_File_Stamp)
@@ -116,6 +124,7 @@ asset_db_init_from_catalog :: proc(catalog_path: string = ASSET_CATALOG_PATH) ->
 	}
 
 	for guid_str, entry in cf.assets {
+		if entry.sub != 0 do continue // second pass, once every owner is in
 		guid, perr := uuid.read(guid_str)
 		if perr != nil {
 			log.errorf("[Catalog] bad guid %q — skipped", guid_str)
@@ -130,6 +139,19 @@ asset_db_init_from_catalog :: proc(catalog_path: string = ASSET_CATALOG_PATH) ->
 		if entry.settings != "" {
 			_catalog_settings_set(guid, entry.settings)
 		}
+	}
+	for guid_str, entry in cf.assets {
+		if entry.sub == 0 do continue
+		guid, perr := uuid.read(guid_str)
+		if perr != nil do continue
+		p := base == "" ? entry.path : strings.concatenate({base, "/", entry.path}, context.temp_allocator)
+		owner, has := asset_db.path_to_guid[p]
+		if !has {
+			log.errorf("[Catalog] sub-asset %s names owner %q, which is not in the catalog — skipped", guid_str, entry.path)
+			continue
+		}
+		// `kind` serves the editor's picker only, and a game has no picker.
+		_register_sub(p, Asset_GUID(owner), Asset_GUID(guid), Local_ID(entry.sub), "")
 	}
 	log.infof("[Catalog] catalog pipeline from %s (%d assets)", catalog_path, len(cf.assets))
 	return true

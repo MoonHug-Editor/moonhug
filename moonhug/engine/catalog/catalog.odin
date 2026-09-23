@@ -21,6 +21,10 @@ Entry :: struct {
 	path:     string,
 	artifact: string, // content-address key; "" = source-read asset (no artifact)
 	settings: string, // import settings baked as JSON text; "" = defaults / none
+	// Non-zero: a sub-asset with its own guid (a clip inside a model). `path`
+	// is then the OWNER's path and this is the sub-asset id. It ships nothing
+	// of its own, the owner's entry carries the files.
+	sub: i64,
 }
 
 File :: struct {
@@ -143,6 +147,11 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 	copied := 0
 	for guid_str in ship {
 		entry := src.assets[guid_str]
+		if entry.sub != 0 {
+			// Identity only. _closure put the owner in `ship` as well.
+			out.assets[guid_str] = entry
+			continue
+		}
 		src_path := _rooted(root, entry.path)
 		dst := strings.concatenate({data_dir, "/", entry.path}, context.temp_allocator)
 		if os.is_dir(src_path) {
@@ -171,11 +180,15 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 			copied += 1
 			base_src := strings.trim_suffix(asrc, ".bin")
 			base_dst := strings.trim_suffix(adst, ".bin")
-			for i := 0; ; i += 1 {
-				part_src := fmt.tprintf("%s_m%d.bin", base_src, i)
-				if !os.exists(part_src) do break
-				if !_copy_file(part_src, fmt.tprintf("%s_m%d.bin", base_dst, i)) do return false
-				copied += 1
+			// Mesh parts and baked clips, the two fan-outs asset_importer_mesh
+			// names (_m<i>, _a<i>).
+			for suffix in ([2]string{"_m", "_a"}) {
+				for i := 0; ; i += 1 {
+					part_src := fmt.tprintf("%s%s%d.bin", base_src, suffix, i)
+					if !os.exists(part_src) do break
+					if !_copy_file(part_src, fmt.tprintf("%s%s%d.bin", base_dst, suffix, i)) do return false
+					copied += 1
+				}
 			}
 		}
 
@@ -225,6 +238,9 @@ _closure :: proc(src: ^File, boot_guid: string, root: string) -> (ship: [dynamic
 		append(ship, guid_str)
 	}
 
+	path_to_guid := make(map[string]string, len(src.assets), context.temp_allocator)
+	for guid_str, entry in src.assets do if entry.sub == 0 do path_to_guid[entry.path] = guid_str
+
 	push(&ship, &seen, boot_guid)
 	for guid_str, entry in src.assets {
 		if _under_resources(entry.path) do push(&ship, &seen, guid_str)
@@ -233,6 +249,11 @@ _closure :: proc(src: ^File, boot_guid: string, root: string) -> (ship: [dynamic
 	// Breadth-first over `ship` itself: it grows while it is walked.
 	for i := 0; i < len(ship); i += 1 {
 		entry := src.assets[ship[i]]
+		if entry.sub != 0 {
+			// A referenced clip ships its owner, whose files hold the data.
+			if g, has := path_to_guid[entry.path]; has do push(&ship, &seen, g)
+			continue
+		}
 		src_path := _rooted(root, entry.path)
 		if !os.is_dir(src_path) {
 			data, read_err := os.read_entire_file(src_path, context.temp_allocator)
@@ -246,8 +267,6 @@ _closure :: proc(src: ^File, boot_guid: string, root: string) -> (ship: [dynamic
 	}
 
 	// Ancestor folders of everything shipped.
-	path_to_guid := make(map[string]string, len(src.assets), context.temp_allocator)
-	for guid_str, entry in src.assets do path_to_guid[entry.path] = guid_str
 	for i := 0; i < len(ship); i += 1 {
 		dir := src.assets[ship[i]].path
 		for {

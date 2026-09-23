@@ -3,6 +3,53 @@
   "importer": "mesh",
   "settings": {
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "e9328721-ee7c-4e94-b81e-e3dc9c3a9482",
+        "id": 2,
+        "name": "death_01"
+      },
+      {
+        "guid": "f8cddce0-39fc-40ec-b6d4-6364c0c7707d",
+        "id": 3,
+        "name": "death_02"
+      },
+      {
+        "guid": "f5950104-f3e1-4c3c-bbfd-410bf3723553",
+        "id": 4,
+        "name": "falling_idle"
+      },
+      {
+        "guid": "c3747d32-c416-4555-bcc6-b37a8ef4d352",
+        "id": 5,
+        "name": "idle_01"
+      },
+      {
+        "guid": "25e69249-759d-429b-83cb-c7dcd612e96f",
+        "id": 6,
+        "name": "idle_02"
+      },
+      {
+        "guid": "ea6162a0-875d-42cb-9daa-66f6d6b960b2",
+        "id": 7,
+        "name": "jump_idle"
+      },
+      {
+        "guid": "4b74952d-10cb-44b9-9ef1-e799bb7768a4",
+        "id": 8,
+        "name": "jump_runing"
+      },
+      {
+        "guid": "ec790efa-66f9-4c3f-aa55-d58aec47d08d",
+        "id": 9,
+        "name": "runing"
+      },
+      {
+        "guid": "ca175589-64fe-42e6-92d5-81264ef90a01",
+        "id": 10,
+        "name": "walking"
+      }
+    ],
     "parts": [
       {
         "id": 1,

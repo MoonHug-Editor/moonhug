@@ -23,9 +23,22 @@ Asset_Pipeline_Kind :: enum {
     Catalog,
 }
 
+// A sub-asset that carries its OWN guid (a clip inside a model): the asset
+// that owns it, its id in that asset's sub-asset id space, and the picker
+// kind it answers to (the extension a field's `ext:` tag would name, "anim").
+// The sub guid is also in guid_to_path, mapped to the OWNER's path, so path
+// lookups, the catalog and the export's guid harvest treat it as an asset
+// without knowing it is nested. path_to_guid stays one-to-one.
+Sub_Asset_Ref :: struct {
+    owner: Asset_GUID,
+    id:    Local_ID,
+    kind:  string, // static literal, never freed
+}
+
 AssetDB :: struct {
     guid_to_path: map[uuid.Identifier]string,
     path_to_guid: map[string]uuid.Identifier,
+    subs:         map[uuid.Identifier]Sub_Asset_Ref,
     root_path:    string,
     pipeline:     Asset_Pipeline_Kind,
     // The catalog's pinned boot scene ({} = none) — what the app loads under
@@ -136,11 +149,14 @@ asset_db_shutdown :: proc() {
 }
 
 _free_maps :: proc() {
+    // Sub-asset entries own their own clone of the owner path, freed here
+    // with everything else in guid_to_path.
     for _, v in asset_db.guid_to_path {
         delete(v)
     }
     delete(asset_db.guid_to_path)
     delete(asset_db.path_to_guid)
+    delete(asset_db.subs)
 }
 
 _free_root_index :: proc() {
@@ -202,10 +218,81 @@ _asset_removed :: proc(path: string) {
         shader_unload(Asset_GUID(guid))
     }
     stored := asset_db.guid_to_path[guid] // the one owned clone (used as key AND value)
+    _unregister_subs_of(Asset_GUID(guid))
     delete_key(&asset_db.path_to_guid, path)
     delete_key(&asset_db.guid_to_path, guid)
     _index_remove(Asset_GUID(guid))
     delete(stored)
+}
+
+// --- Sub-asset guids -----------------------------------------------------------
+
+asset_db_get_sub :: proc(guid: Asset_GUID) -> (Sub_Asset_Ref, bool) {
+    ref, ok := asset_db.subs[uuid.Identifier(guid)]
+    return ref, ok
+}
+
+// The guid of `owner`'s sub-asset `id`, for a drop from the project view,
+// which carries (owner, id). Linear: a model has tens of clips, not thousands.
+asset_db_sub_guid :: proc(owner: Asset_GUID, id: Local_ID) -> (Asset_GUID, bool) {
+    for guid, ref in asset_db.subs {
+        if ref.owner == owner && ref.id == id do return Asset_GUID(guid), true
+    }
+    return {}, false
+}
+
+// A fresh guid for an importer minting sub-asset identities.
+asset_db_new_guid :: proc() -> Asset_GUID {
+    return Asset_GUID(_generate_guid())
+}
+
+// Idempotent: re-registering the same sub is a no-op, a sub that moved to a
+// different owner is re-pointed.
+_register_sub :: proc(owner_path: string, owner: Asset_GUID, sub: Asset_GUID, id: Local_ID, kind: string) {
+    key := uuid.Identifier(sub)
+    if ref, has := asset_db.subs[key]; has && ref.owner == owner && ref.id == id do return
+    if stored, has := asset_db.guid_to_path[key]; has {
+        if _, is_asset := asset_db.path_to_guid[stored]; is_asset && asset_db.path_to_guid[stored] == key {
+            // A real asset already holds this guid. Never let a nested one shadow it.
+            log.errorf("[AssetDB] sub-asset guid %s collides with asset %s — not registered", uuid.to_string(key, context.temp_allocator), stored)
+            return
+        }
+        delete(stored)
+    }
+    asset_db.guid_to_path[key] = strings.clone(owner_path)
+    asset_db.subs[key] = Sub_Asset_Ref{owner = owner, id = id, kind = kind}
+}
+
+_unregister_subs_of :: proc(owner: Asset_GUID) {
+    gone := make([dynamic]uuid.Identifier, context.temp_allocator)
+    for guid, ref in asset_db.subs do if ref.owner == owner do append(&gone, guid)
+    for guid in gone {
+        if stored, has := asset_db.guid_to_path[guid]; has {
+            delete(stored)
+            delete_key(&asset_db.guid_to_path, guid)
+        }
+        delete_key(&asset_db.subs, guid)
+    }
+}
+
+// Registers every clip guid a model's settings list, and drops the ones no
+// longer there. Called after the model imports (the importer refines the
+// list) and when the scan first sees the model, so a fresh clone resolves
+// clip references before any import has run.
+asset_db_register_model_subs :: proc(path: string) {
+    raw, gok := asset_db.path_to_guid[path]
+    if !gok do return
+    owner := Asset_GUID(raw)
+    settings, sok := asset_pipeline_get_settings(path, context.temp_allocator)
+    if !sok do return
+    ms, is_mesh := settings.(MeshSettings)
+    if !is_mesh do return
+    // Drop first, so a clip removed from the model stops resolving.
+    _unregister_subs_of(owner)
+    for c in ms.clips {
+        if c.guid == {} || c.id == 0 do continue
+        _register_sub(path, owner, c.guid, c.id, "anim")
+    }
 }
 
 _reindex_if_scene :: proc(path: string) {

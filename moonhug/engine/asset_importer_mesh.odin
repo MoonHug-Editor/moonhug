@@ -28,12 +28,26 @@ Mesh_Part :: struct {
     name: string,
 }
 
+// A clip inside a model: one glTF animation, baked to its own artifact
+// (mesh_clip_artifact_path) and addressable by its OWN guid, so a
+// `clip: Asset_GUID` field names it exactly the way it names a standalone
+// .anim. The guid lives in the model's .meta and is committed with it, the
+// data stays in library/. Ids share the model's sub-asset id space with parts
+// and, like parts, are matched by name across reimports, so a clip added in
+// the DCC tool never renumbers the rest (docs/AnimationComponent.md).
+Mesh_Clip :: struct {
+    id:   Local_ID,
+    name: string,
+    guid: Asset_GUID,
+}
+
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631", makeProcName=make_pMeshSettings})
 MeshSettings :: struct {
     scale: f32, // uniform import scale
     // Importer-maintained id table, one entry per glTF mesh IN FILE ORDER
     // (entry i names part artifact _m<i>.bin). First mint is index + 1.
     parts: [dynamic]Mesh_Part,
+    clips: [dynamic]Mesh_Clip,
 }
 
 default_mesh_settings :: proc() -> MeshSettings {
@@ -89,6 +103,13 @@ Mesh_Submesh :: struct #packed {
 mesh_part_artifact_path :: proc(artifact_path: string, mesh_index: int, alloc := context.allocator) -> string {
     base := strings.trim_suffix(artifact_path, ".bin")
     return fmt.aprintf("%s_m%d.bin", base, mesh_index, allocator = alloc)
+}
+
+// The clip fan-out beside the parts: <key>_a<i>.bin, `i` the glTF animation
+// index. The catalog export copies these by probing the same pattern.
+mesh_clip_artifact_path :: proc(artifact_path: string, clip_index: int, alloc := context.allocator) -> string {
+    base := strings.trim_suffix(artifact_path, ".bin")
+    return fmt.aprintf("%s_a%d.bin", base, clip_index, allocator = alloc)
 }
 
 // Validates an artifact blob and returns views into it (no copies) — shared

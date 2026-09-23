@@ -59,6 +59,7 @@ mesh_cache_init :: proc() {
     mesh_cache = make(map[Mesh_Key]Mesh)
     _mesh_failed = make(map[Mesh_Key]bool)
     _mesh_parts = make(map[Asset_GUID][]Mesh_Part)
+    _mesh_clips = make(map[Asset_GUID][]Mesh_Clip)
 }
 
 mesh_cache_shutdown :: proc() {
@@ -78,6 +79,9 @@ mesh_cache_shutdown :: proc() {
     for guid in _mesh_parts do _mesh_parts_free(guid)
     delete(_mesh_parts)
     _mesh_parts = nil
+    for guid in _mesh_clips do _mesh_clips_free(guid)
+    delete(_mesh_clips)
+    _mesh_clips = nil
 }
 
 // Part id table per model, from the import settings (sprites' Texture2D
@@ -123,6 +127,48 @@ mesh_parts :: proc(guid: Asset_GUID) -> []Mesh_Part {
 mesh_part_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
     for p, i in mesh_parts(guid) {
         if p.id == id do return i32(i), true
+    }
+    return 0, false
+}
+
+// The model's clips, from its settings, cached the same way as parts.
+@(private = "file") _mesh_clips: map[Asset_GUID][]Mesh_Clip
+
+@(private = "file")
+_mesh_clips_free :: proc(guid: Asset_GUID) {
+    alloc := runtime.default_allocator()
+    if clips, ok := _mesh_clips[guid]; ok {
+        for c in clips do delete(c.name, alloc)
+        delete(clips, alloc)
+    }
+}
+
+mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
+    if _mesh_clips != nil {
+        if clips, ok := _mesh_clips[guid]; ok do return clips
+    }
+    cached := _mesh_clips != nil
+    alloc := cached ? runtime.default_allocator() : context.temp_allocator
+
+    out: []Mesh_Clip
+    if path, pok := asset_db_get_path(uuid.Identifier(guid)); pok {
+        if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
+            if ms, is_mesh := settings.(MeshSettings); is_mesh && len(ms.clips) > 0 {
+                out = make([]Mesh_Clip, len(ms.clips), alloc)
+                for c, i in ms.clips {
+                    out[i] = Mesh_Clip{id = c.id, name = strings.clone(c.name, alloc), guid = c.guid}
+                }
+            }
+        }
+    }
+    if cached do _mesh_clips[guid] = out
+    return out
+}
+
+// Resolves a clip id to its FILE-ORDER index (the _a<i>.bin artifact).
+mesh_clip_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
+    for c, i in mesh_clips(guid) {
+        if c.id == id do return i32(i), true
     }
     return 0, false
 }
@@ -237,6 +283,8 @@ mesh_load :: proc(guid: Asset_GUID, part: i32 = 0) -> (^Mesh, bool) {
 mesh_unload :: proc(guid: Asset_GUID) {
     _mesh_parts_free(guid)
     delete_key(&_mesh_parts, guid)
+    _mesh_clips_free(guid)
+    delete_key(&_mesh_clips, guid)
     keys := make([dynamic]Mesh_Key, context.temp_allocator)
     for key in mesh_cache {
         if key.guid == guid do append(&keys, key)

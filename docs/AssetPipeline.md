@@ -160,7 +160,7 @@ main :: proc() {
   self-contained — the round-trip test boots it with the working tree's
   `assets/` and `library/` deleted
 - one representation per asset: an asset with an artifact ships the artifact
-  (mesh parts included) and not its source, an asset without one (scene,
+  (mesh parts and baked clips included) and not its source, an asset without one (scene,
   material, prefab) ships its source. Every runtime loader reads the artifact
   first and reaches the source only through an import request, which the
   catalog pipeline refuses, so the artifact's existence is the whole rule and

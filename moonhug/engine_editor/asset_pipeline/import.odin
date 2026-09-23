@@ -155,13 +155,26 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 			_write_import_meta(meta_path, import_meta)
 			refined_key := _artifact_key(data, import_meta.settings, importer_for_extension(ext))
 			refined_path := engine._artifact_key_path(refined_key, context.temp_allocator)
-			os.rename(artifact_path, refined_path)
+			// The refined key fans out under its own two-char prefix, which
+			// rarely matches the original's. Without the directory the rename
+			// fails, the index points at a file that is not there, and the
+			// artifact is only found again by the next load's reimport.
+			engine._ensure_artifact_dir(refined_path)
+			if os.rename(artifact_path, refined_path) != nil {
+				fmt.printf("[Pipeline] cannot move %s to its refined key %s\n", artifact_path, refined_path)
+				return false
+			}
 			// Part fan-out files move with the main artifact (the catalog
 			// export walks them the same way).
 			for i := 0; ; i += 1 {
 				old_part := engine.mesh_part_artifact_path(artifact_path, i, context.temp_allocator)
 				if !os.exists(old_part) do break
 				os.rename(old_part, engine.mesh_part_artifact_path(refined_path, i, context.temp_allocator))
+			}
+			for i := 0; ; i += 1 {
+				old_clip := engine.mesh_clip_artifact_path(artifact_path, i, context.temp_allocator)
+				if !os.exists(old_clip) do break
+				os.rename(old_clip, engine.mesh_clip_artifact_path(refined_path, i, context.temp_allocator))
 			}
 			key = refined_key
 			settings_hex = refined_hex
@@ -170,6 +183,8 @@ _import_asset :: proc(source_path: string, force: bool) -> bool {
 
 	engine._artifact_index_set(guid, key, mtime, size, settings_hex)
 	engine._artifact_index_save()
+	// The settings may now list clips that did not exist before this import.
+	engine.asset_db_register_model_subs(source_path)
 	engine._notify_reimported(guid)
 	return true
 }

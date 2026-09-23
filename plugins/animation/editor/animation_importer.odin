@@ -17,6 +17,7 @@ import "moonhug:engine/serialization"
 import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:engine/log"
 import anim "moonhug:packages/animation"
+import cgltf "vendor:cgltf"
 
 @(phase={key=ImportersInit, order=1, mode=Editor})
 animation_importers_init :: proc() {
@@ -31,6 +32,22 @@ animation_importers_init :: proc() {
 		run          = _import_animation,
 	})
 	engine.asset_pipeline_add_reimport_hook(anim.animation_clip_reimported)
+	// The mesh importer hands every glTF animation here, so a model's clips
+	// bake to its own artifacts and need no extraction to be played.
+	asset_pipeline.gltf_clip_baker = bake_gltf_clip
+}
+
+// One glTF animation to one clip artifact, the same bytes _import_animation
+// writes for a standalone .anim, so the runtime loader reads both alike.
+// Default settings for now: per-clip settings on a model land with the
+// model's clip list, not here.
+bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool {
+	clip, ok := anim.animation_clip_from_gltf(data, an)
+	if !ok do return false
+	s := anim.Animation_Clip_Settings{frame_rate = anim.ANIMATION_FRAME_RATE_DEFAULT}
+	anim.animation_clip_apply_settings(&clip, s)
+	return serialization.write_asset_to_path(
+		out_path, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip)
 }
 
 @(private = "file")

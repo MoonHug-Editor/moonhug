@@ -3,6 +3,223 @@
   "importer": "mesh",
   "settings": {
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "f89adda1-a412-4981-aae0-e7c33f379af1",
+        "id": 2,
+        "name": "A_TPose"
+      },
+      {
+        "guid": "e40d0107-ea86-404e-acff-c3ffcff725d2",
+        "id": 3,
+        "name": "Chest_Open"
+      },
+      {
+        "guid": "fd62dbd3-448d-4149-bfc3-cba840e307e3",
+        "id": 4,
+        "name": "ClimbUp_1m"
+      },
+      {
+        "guid": "901a99fd-1d50-4d2f-972e-98530410ab32",
+        "id": 5,
+        "name": "Consume"
+      },
+      {
+        "guid": "a63d40b3-3304-401f-96cb-acb14754dd33",
+        "id": 6,
+        "name": "Farm_Harvest"
+      },
+      {
+        "guid": "454d0f9d-cbdc-4a9c-a09e-139882353fba",
+        "id": 7,
+        "name": "Farm_PlantSeed"
+      },
+      {
+        "guid": "98d0d497-16d7-4c5c-85c9-d222c603c99d",
+        "id": 8,
+        "name": "Farm_Watering"
+      },
+      {
+        "guid": "b84ec642-0eab-4a70-b3a7-216758b1c720",
+        "id": 9,
+        "name": "Hit_Knockback"
+      },
+      {
+        "guid": "09f8cf02-bc94-4ef7-bced-77fbe37928a0",
+        "id": 10,
+        "name": "Idle_FoldArms_Loop"
+      },
+      {
+        "guid": "d7b24ab0-7a0f-4bc1-80b8-a23a72dc1678",
+        "id": 11,
+        "name": "Idle_Lantern_Loop"
+      },
+      {
+        "guid": "a9b19718-6df1-4257-ad39-d5bb4f8b7f09",
+        "id": 12,
+        "name": "Idle_No_Loop"
+      },
+      {
+        "guid": "6bc2bad4-5deb-430a-a720-b2097fe2ee57",
+        "id": 13,
+        "name": "Idle_Rail_Call"
+      },
+      {
+        "guid": "ff580ee7-4c34-469b-afe5-143dbb9981ac",
+        "id": 14,
+        "name": "Idle_Rail_Loop"
+      },
+      {
+        "guid": "32dcdb89-dc8d-44a4-a58e-9c7e35bf61d7",
+        "id": 15,
+        "name": "Idle_Shield_Break"
+      },
+      {
+        "guid": "b3e17b44-eade-4c36-8a45-186c7d8ff88e",
+        "id": 16,
+        "name": "Idle_Shield_Loop"
+      },
+      {
+        "guid": "39fe348d-b4c2-4f88-b250-cc2d14f83b91",
+        "id": 17,
+        "name": "Idle_TalkingPhone_Loop"
+      },
+      {
+        "guid": "471ec842-bf68-4f8d-b89a-f6f22f3a2c33",
+        "id": 18,
+        "name": "LayToIdle"
+      },
+      {
+        "guid": "b9d90cd5-c263-4232-b8ba-808a26235241",
+        "id": 19,
+        "name": "Melee_Hook"
+      },
+      {
+        "guid": "5bf901ae-a027-4dec-9915-a2a933506cdd",
+        "id": 20,
+        "name": "Melee_Hook_Rec"
+      },
+      {
+        "guid": "c16d567f-342e-43a1-ac7c-436b32592482",
+        "id": 21,
+        "name": "NinjaJump_Idle_Loop"
+      },
+      {
+        "guid": "8b35c66b-d5f5-468f-abf3-940684e1886b",
+        "id": 22,
+        "name": "NinjaJump_Land"
+      },
+      {
+        "guid": "8f038aa1-91be-4b9d-bd29-af94be7d72b6",
+        "id": 23,
+        "name": "NinjaJump_Start"
+      },
+      {
+        "guid": "0bd17a6c-47d0-42f9-89e0-399730d06719",
+        "id": 24,
+        "name": "OverhandThrow"
+      },
+      {
+        "guid": "177288dc-6bba-4989-8e3b-be6e42d7c8d0",
+        "id": 25,
+        "name": "Shield_Dash"
+      },
+      {
+        "guid": "111425df-b0f5-4d65-a678-cb443fa10f8e",
+        "id": 26,
+        "name": "Shield_OneShot"
+      },
+      {
+        "guid": "be44a7ba-8fa1-4de7-960f-60fa1c9a1ded",
+        "id": 27,
+        "name": "Slide_Exit"
+      },
+      {
+        "guid": "e070cc72-bbde-4cce-9361-98953f67cbd6",
+        "id": 28,
+        "name": "Slide_Loop"
+      },
+      {
+        "guid": "4aad67bb-7f79-4817-8f63-f8efd71fa7aa",
+        "id": 29,
+        "name": "Slide_Start"
+      },
+      {
+        "guid": "e484def4-e5ce-461a-8b93-62f8eeaa873b",
+        "id": 30,
+        "name": "Sword_Block"
+      },
+      {
+        "guid": "9329afe8-df6b-4f2a-9fc8-7ee8d0de604e",
+        "id": 31,
+        "name": "Sword_Dash"
+      },
+      {
+        "guid": "f59b524f-86ff-4cd0-ad05-bd4f94b9f028",
+        "id": 32,
+        "name": "Sword_Heavy_Combo"
+      },
+      {
+        "guid": "dcd79647-9d5b-4b51-b004-97f4a0620ddb",
+        "id": 33,
+        "name": "Sword_Regular_A"
+      },
+      {
+        "guid": "79db08e6-6ac1-4bb0-a1ee-4209dea0ffd3",
+        "id": 34,
+        "name": "Sword_Regular_A_Rec"
+      },
+      {
+        "guid": "fbc10b9f-d457-4509-b75a-314d429c9fa0",
+        "id": 35,
+        "name": "Sword_Regular_B"
+      },
+      {
+        "guid": "757aea20-0cd2-4b37-a697-5510d0406c79",
+        "id": 36,
+        "name": "Sword_Regular_B_Rec"
+      },
+      {
+        "guid": "f854f2e6-0864-413b-9610-9437515fc288",
+        "id": 37,
+        "name": "Sword_Regular_C"
+      },
+      {
+        "guid": "a82c528f-c87f-42ee-96f3-b36a79936e1a",
+        "id": 38,
+        "name": "Sword_Regular_Combo"
+      },
+      {
+        "guid": "641411af-d6c3-45ed-a241-8aea209d3e08",
+        "id": 39,
+        "name": "TreeChopping_Loop"
+      },
+      {
+        "guid": "29a1c739-e7df-4251-85a1-0bc7a897e1fc",
+        "id": 40,
+        "name": "Walk_Carry_Loop"
+      },
+      {
+        "guid": "06d75d02-ef84-4d59-9d4c-8567230fd34e",
+        "id": 41,
+        "name": "Yes"
+      },
+      {
+        "guid": "03ab30e1-dbbf-43fe-8cbb-049bc9f8f3bd",
+        "id": 42,
+        "name": "Zombie_Idle_Loop"
+      },
+      {
+        "guid": "c1073ff1-cdd1-4ca7-a223-a2de5a5a90e7",
+        "id": 43,
+        "name": "Zombie_Scratch"
+      },
+      {
+        "guid": "b0d877fe-db2a-44e9-ad79-7a806a25abcb",
+        "id": 44,
+        "name": "Zombie_Walk_Fwd_Loop"
+      }
+    ],
     "parts": [
       {
         "id": 1,

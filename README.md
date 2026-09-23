@@ -102,6 +102,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
 
 - dynamic menus - @(menu_dynamic={path="File/Recent Scenes"}) on a proc makes a submenu whose items the proc draws each frame it is open, for item sets that only exist at runtime. Recent Scenes uses it. Nothing inside one can be listed, invoked by path or bound to a key, so it is the escape hatch and @(menu_item) stays the form.
+- clips inside a model - a glTF model's animations play without extraction: the importer bakes them beside the mesh parts, each gets its own guid in the model's meta, and a clip field names one like any `.anim`. Nothing but the model and its meta is committed ([Animation](docs/AnimationComponent.md)).
 - view tab bar and menu - every dock node's tab bar carries the visible view's toolbar items, then a ⋮ menu. Any package adds to either: @(view_tab_bar={view="Animation", order=0}) on a proc draws a widget, @(view_menu={view="Animation", label="..."}) on a proc is an action and on a bool variable a toggle, with `checked=`/`enabled=` like menu_item.
 
 - scene view overlays - Unity-style dockable overlays (drag the grip to dock to view edges or float), extensible via @(scene_overlay={id="...", order=0}) on a proc that draws IMGUI; item tooltips end with the overlay id and order

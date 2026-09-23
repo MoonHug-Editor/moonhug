@@ -3,6 +3,53 @@
   "importer": "mesh",
   "settings": {
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "3565ee19-e287-4f1a-a54e-d04bb35bda2d",
+        "id": 3,
+        "name": "Step Scale"
+      },
+      {
+        "guid": "d65da57a-fff1-4d05-b9fb-a1886b072dce",
+        "id": 4,
+        "name": "Linear Scale"
+      },
+      {
+        "guid": "532d6be6-ad5a-4885-828e-248522c95e27",
+        "id": 5,
+        "name": "CubicSpline Scale"
+      },
+      {
+        "guid": "d76266f7-c2a0-4563-a5ce-92e67cd686c9",
+        "id": 6,
+        "name": "Step Rotation"
+      },
+      {
+        "guid": "cfa6806e-073a-4a05-a1ec-2cdfe78b35b4",
+        "id": 7,
+        "name": "CubicSpline Rotation"
+      },
+      {
+        "guid": "20cb43a5-7da5-470f-af38-ceca0305a821",
+        "id": 8,
+        "name": "Linear Rotation"
+      },
+      {
+        "guid": "4e90a252-6138-4280-a2d9-14bd4d000685",
+        "id": 9,
+        "name": "Step Translation"
+      },
+      {
+        "guid": "5ebe0136-69da-4298-b4e3-e4a92ff93572",
+        "id": 10,
+        "name": "CubicSpline Translation"
+      },
+      {
+        "guid": "ed621fde-fe95-4cda-9f8a-b0fdb32cfede",
+        "id": 11,
+        "name": "Linear Translation"
+      }
+    ],
     "parts": [
       {
         "id": 1,

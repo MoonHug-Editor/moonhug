@@ -3,6 +3,223 @@
   "importer": "mesh",
   "settings": {
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "28b0cd20-1bd7-454a-9939-334a99170672",
+        "id": 2,
+        "name": "A_TPose"
+      },
+      {
+        "guid": "7f0c9e70-53ce-41fa-a078-6957ef9f0c33",
+        "id": 3,
+        "name": "Crouch_Fwd_Loop"
+      },
+      {
+        "guid": "d92c706c-963c-4967-8a91-71685aceaf19",
+        "id": 4,
+        "name": "Crouch_Idle_Loop"
+      },
+      {
+        "guid": "dd837374-4461-4b23-9c0c-f9c9a6331bdd",
+        "id": 5,
+        "name": "Dance_Loop"
+      },
+      {
+        "guid": "3268a6bf-9817-4535-bdc2-543aba3432ff",
+        "id": 6,
+        "name": "Death01"
+      },
+      {
+        "guid": "5d23e136-2264-40f3-be68-b4c9d17bebd9",
+        "id": 7,
+        "name": "Driving_Loop"
+      },
+      {
+        "guid": "097f4e11-2ae7-4325-b2f4-205ae01f299a",
+        "id": 8,
+        "name": "Fixing_Kneeling"
+      },
+      {
+        "guid": "0ea5d0e7-dc4e-49c1-bc2a-c72350d30216",
+        "id": 9,
+        "name": "Hit_Chest"
+      },
+      {
+        "guid": "b96ddb1c-1c9b-4684-85a7-6628616f0333",
+        "id": 10,
+        "name": "Hit_Head"
+      },
+      {
+        "guid": "ed7f6ad6-792f-4637-9545-55f122d2e61a",
+        "id": 11,
+        "name": "Idle_Loop"
+      },
+      {
+        "guid": "6137a599-3f03-447e-90b8-1096c88224ff",
+        "id": 12,
+        "name": "Idle_Talking_Loop"
+      },
+      {
+        "guid": "2c234331-7b9d-4c36-943b-9d21a89e11e8",
+        "id": 13,
+        "name": "Idle_Torch_Loop"
+      },
+      {
+        "guid": "67c8fa17-aaaa-48f8-8e42-1ac1da71977a",
+        "id": 14,
+        "name": "Interact"
+      },
+      {
+        "guid": "bee57051-7aa6-48db-adbb-254444addc35",
+        "id": 15,
+        "name": "Jog_Fwd_Loop"
+      },
+      {
+        "guid": "f6fee7ba-ff37-4238-818d-e6dca8a99be3",
+        "id": 16,
+        "name": "Jump_Land"
+      },
+      {
+        "guid": "5057dfca-7221-40bc-85fa-ad51956f3ef0",
+        "id": 17,
+        "name": "Jump_Loop"
+      },
+      {
+        "guid": "dd6366a4-229a-4ac0-a2c0-b22ca0e86beb",
+        "id": 18,
+        "name": "Jump_Start"
+      },
+      {
+        "guid": "ef99250d-d463-4862-b452-c4f7e2974588",
+        "id": 19,
+        "name": "PickUp_Table"
+      },
+      {
+        "guid": "f716988e-1d02-4879-81d3-634289996abe",
+        "id": 20,
+        "name": "Pistol_Aim_Down"
+      },
+      {
+        "guid": "d2707e3d-df74-4001-98b8-dd040de4586d",
+        "id": 21,
+        "name": "Pistol_Aim_Neutral"
+      },
+      {
+        "guid": "b1cdc315-2683-4ea9-80c6-71e0d8056619",
+        "id": 22,
+        "name": "Pistol_Aim_Up"
+      },
+      {
+        "guid": "38764366-8a82-4590-84c4-47e581209d6a",
+        "id": 23,
+        "name": "Pistol_Idle_Loop"
+      },
+      {
+        "guid": "d8a5ff66-3105-4b54-a13f-13e3bdd9583f",
+        "id": 24,
+        "name": "Pistol_Reload"
+      },
+      {
+        "guid": "8a72995e-9bfe-41e2-9498-69b5f7924bab",
+        "id": 25,
+        "name": "Pistol_Shoot"
+      },
+      {
+        "guid": "9536a6c8-e8e1-4ff8-96cf-962460f2f465",
+        "id": 26,
+        "name": "Punch_Cross"
+      },
+      {
+        "guid": "5e44452e-6729-49d9-aa35-03a2ec06fa6a",
+        "id": 27,
+        "name": "Punch_Jab"
+      },
+      {
+        "guid": "ac35d662-5c91-465c-8127-69da03e9707a",
+        "id": 28,
+        "name": "Push_Loop"
+      },
+      {
+        "guid": "b643e9f8-99f9-417e-97f4-e4396d6a69ba",
+        "id": 29,
+        "name": "Roll"
+      },
+      {
+        "guid": "70fba13e-d95c-48d5-88c7-027562746987",
+        "id": 30,
+        "name": "Sitting_Enter"
+      },
+      {
+        "guid": "feee554e-140b-4447-ac32-782b789e9e47",
+        "id": 31,
+        "name": "Sitting_Exit"
+      },
+      {
+        "guid": "a66379cd-d9bb-46cc-814f-ddfc77c04445",
+        "id": 32,
+        "name": "Sitting_Idle_Loop"
+      },
+      {
+        "guid": "9783a247-9031-4336-944d-e236c574c99e",
+        "id": 33,
+        "name": "Sitting_Talking_Loop"
+      },
+      {
+        "guid": "ec66bf5f-6503-46e9-9ab5-bcc355a9e219",
+        "id": 34,
+        "name": "Spell_Simple_Enter"
+      },
+      {
+        "guid": "8458709d-aadd-4522-a840-3116be746570",
+        "id": 35,
+        "name": "Spell_Simple_Exit"
+      },
+      {
+        "guid": "12a2e51d-5e33-4c54-ba73-21d8ba2aa7f4",
+        "id": 36,
+        "name": "Spell_Simple_Idle_Loop"
+      },
+      {
+        "guid": "58fa6bf7-d60b-432c-97fa-bc295f11ad50",
+        "id": 37,
+        "name": "Spell_Simple_Shoot"
+      },
+      {
+        "guid": "e7a02327-4b57-4651-ad85-e19c3630ace2",
+        "id": 38,
+        "name": "Sprint_Loop"
+      },
+      {
+        "guid": "58d85f5e-8e51-4e69-9725-ca5920f0b88a",
+        "id": 39,
+        "name": "Swim_Fwd_Loop"
+      },
+      {
+        "guid": "fcc0719f-6842-448d-a44e-bc23a6b5da32",
+        "id": 40,
+        "name": "Swim_Idle_Loop"
+      },
+      {
+        "guid": "731e21da-708c-44e2-94a7-f3f4171ba9df",
+        "id": 41,
+        "name": "Sword_Attack"
+      },
+      {
+        "guid": "d8f5cfa9-136d-472d-9ce1-0e0c775e454c",
+        "id": 42,
+        "name": "Sword_Idle"
+      },
+      {
+        "guid": "65af74c3-dd50-4b31-8e93-c83deff3e3eb",
+        "id": 43,
+        "name": "Walk_Formal_Loop"
+      },
+      {
+        "guid": "3437be89-ac15-42b4-bbda-9f8ce3ec1427",
+        "id": 44,
+        "name": "Walk_Loop"
+      }
+    ],
     "parts": [
       {
         "id": 1,

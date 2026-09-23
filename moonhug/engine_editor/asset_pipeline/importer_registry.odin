@@ -21,6 +21,7 @@ package asset_pipeline
 //   pointer to that instance (nil when the meta's importer mismatches).
 
 import "base:runtime"
+import cgltf "vendor:cgltf"
 import "moonhug:engine"
 
 Importer_Desc :: struct {
@@ -30,6 +31,13 @@ Importer_Desc :: struct {
 	settings_tid: typeid,
 	run:          proc(source_path, artifact_path: string, settings: rawptr) -> bool,
 }
+
+// Bakes one glTF animation of `data` to `out_path`, the model's _a<i>.bin
+// fan-out. Installed by the animation package's editor half at
+// ImportersInit: the clip format is that package's, and this one stays
+// plugin-agnostic. nil = the mesh importer lists clips but bakes none.
+Gltf_Clip_Baker :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool
+gltf_clip_baker: Gltf_Clip_Baker
 
 Phase_Extra :: enum {
 	ImportersInit,
@@ -81,7 +89,7 @@ register_builtin_importers :: proc() {
 	})
 	importer_register({
 		name         = "mesh",
-		version      = 2, // 2: artifacts carry skin data
+		version      = 3, // 2: artifacts carry skin data. 3: clips baked to the _a<i> fan-out
 		extensions   = _MESH_EXTS,
 		settings_tid = typeid_of(engine.MeshSettings),
 		run          = _import_mesh,

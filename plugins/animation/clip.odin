@@ -168,15 +168,36 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 
 	// The ARTIFACT, not the source: the importer bakes the .meta's settings
 	// into it, so the runtime never opens a meta.
-	path, path_ok := engine.asset_pipeline_artifact_path(guid)
-	if !path_ok {
-		// Self-heal is editor-only (asset_pipeline_request_import is nil in a
-		// game binary — a missing artifact there is a load error).
-		src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
-		if !src_ok do return nil, false
-		_ = engine.asset_pipeline_request_import(src, force = false)
+	//
+	// A clip inside a model (engine.Mesh_Clip) has no artifact of its own:
+	// its bytes are the OWNER's _a<i>.bin fan-out, indexed by the clip's file
+	// order. Either way a missing artifact asks for an import, which is
+	// editor-only (asset_pipeline_request_import is nil in a game binary, so
+	// a missing artifact there is a load error).
+	path: string
+	path_ok: bool
+	if sub, is_sub := engine.asset_db_get_sub(guid); is_sub {
+		whole, wok := engine.asset_pipeline_artifact_path(sub.owner)
+		if !wok {
+			src, src_ok := engine.asset_db_get_path(uuid.Identifier(sub.owner))
+			if !src_ok do return nil, false
+			_ = engine.asset_pipeline_request_import(src, force = false)
+			whole, wok = engine.asset_pipeline_artifact_path(sub.owner)
+			if !wok do return nil, false
+		}
+		idx, iok := engine.mesh_clip_index(sub.owner, sub.id)
+		if !iok do return nil, false
+		path = engine.mesh_clip_artifact_path(whole, int(idx), context.temp_allocator)
+		path_ok = true
+	} else {
 		path, path_ok = engine.asset_pipeline_artifact_path(guid)
-		if !path_ok do return nil, false
+		if !path_ok {
+			src, src_ok := engine.asset_db_get_path(uuid.Identifier(guid))
+			if !src_ok do return nil, false
+			_ = engine.asset_pipeline_request_import(src, force = false)
+			path, path_ok = engine.asset_pipeline_artifact_path(guid)
+			if !path_ok do return nil, false
+		}
 	}
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil, false
@@ -253,6 +274,13 @@ animation_clip_destroy :: proc(clip: ^AnimationClip) {
 // artifact — settings changed in the inspector apply without a restart.
 animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 	animation_clip_unload(guid)
+	// A reimported MODEL rebakes every clip it holds. Those are cached under
+	// their own guids, so the hook fires for the owner and the owned go too.
+	owned := make([dynamic]engine.Asset_GUID, context.temp_allocator)
+	for k in animation_clip_cache {
+		if sub, is_sub := engine.asset_db_get_sub(k); is_sub && sub.owner == guid do append(&owned, k)
+	}
+	for k in owned do animation_clip_unload(k)
 }
 
 _animation_clip_destroy :: proc(clip: ^AnimationClip) {

@@ -106,21 +106,53 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
     // instance lives on the import call's temp allocator
     // (_read_import_meta) — the refined table does too, and the driver
     // marshals it to the meta right after the run.
+    // One artifact per glTF animation, through the animation package's baker
+    // (importer_registry.odin). A model with clips and no baker still lists
+    // them below, so their guids exist and references keep resolving.
+    if gltf_clip_baker != nil {
+        for &an, ai in data.animations {
+            out := engine.mesh_clip_artifact_path(artifact_path, ai, context.temp_allocator)
+            if !gltf_clip_baker(data, &an, out) {
+                fmt.printf("[Pipeline] Failed to bake clip %d of %s\n", ai, source_path)
+                return false
+            }
+        }
+    }
+
     if settings != nil {
         ms := cast(^engine.MeshSettings)settings
         old := ms.parts
+        old_clips := ms.clips
         ms.parts = make([dynamic]engine.Mesh_Part, context.temp_allocator)
+        ms.clips = make([dynamic]engine.Mesh_Clip, context.temp_allocator)
+        // Parts and clips share one id space (a sub-asset id must be unique
+        // within its model), so both allocate above everything already used.
         max_id := engine.Local_ID(0)
         for p in old do max_id = max(max_id, p.id)
+        for c in old_clips do max_id = max(max_id, c.id)
         for &mesh, mi in data.meshes {
             name := mesh.name != nil ? string(mesh.name) : fmt.tprintf("mesh_%d", mi)
             id := engine.Local_ID(0)
             for p in old do if p.name == name { id = p.id; break }
             if id == 0 {
-                id = len(old) == 0 ? engine.Local_ID(mi + 1) : max_id + 1
+                id = len(old) == 0 && len(old_clips) == 0 ? engine.Local_ID(mi + 1) : max_id + 1
                 max_id = max(max_id, id)
             }
             append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
+        }
+        // Clips keep id AND guid by name: the guid is what scenes reference,
+        // and it must survive every reimport.
+        for &an, ai in data.animations {
+            name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
+            id := engine.Local_ID(0)
+            guid: engine.Asset_GUID
+            for c in old_clips do if c.name == name { id = c.id; guid = c.guid; break }
+            if id == 0 {
+                max_id += 1
+                id = max_id
+            }
+            if guid == {} do guid = engine.asset_db_new_guid()
+            append(&ms.clips, engine.Mesh_Clip{id = id, name = strings.clone(name, context.temp_allocator), guid = guid})
         }
     }
     return true

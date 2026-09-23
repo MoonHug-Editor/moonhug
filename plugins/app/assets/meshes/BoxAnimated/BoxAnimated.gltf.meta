@@ -3,6 +3,13 @@
   "importer": "mesh",
   "settings": {
     "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "c03f9bac-4247-4f3f-96a5-318d62d79e27",
+        "id": 3,
+        "name": "anim_0"
+      }
+    ],
     "parts": [
       {
         "id": 1,

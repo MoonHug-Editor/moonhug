@@ -329,6 +329,25 @@ importer drops keys outside the range, rebases the times and keeps an
 interpolated key at each edge, so a cut between keys starts on the value the
 clip actually had there and nothing pays for it at runtime.
 
+## Clips inside a model
+
+A glTF file's animations play without being extracted. The mesh importer bakes each one to the model's own artifact fan-out, `<key>_a<i>.bin` beside the `<key>_m<i>.bin` mesh parts, and lists it in the model's settings:
+
+```json
+"clips": [
+  { "id": 2, "name": "Walk_Loop", "guid": "3f0c…" },
+  { "id": 3, "name": "Idle_Loop", "guid": "9a41…" }
+]
+```
+
+Each clip carries its OWN guid, minted at first import and kept across reimports by matching the clip's name, the way part ids are. That guid is what a `clip: Asset_GUID` field stores, so a component cannot tell a clip inside a model from a standalone `.anim`. The AssetDB resolves it to the owner's path plus the clip id, the runtime reads the owner's fan-out, and the catalog carries it as a `sub` entry so a build and an export resolve it the same way. An export that references a clip ships its owner. Parts and clips share one id space, since a sub-asset id must be unique within its model.
+
+What lands in the repository is the model and a few lines of its `.meta`. The curve data stays in `library/`, rebuilt from the model on any machine.
+
+In the project view a model expands to its parts and its clips. A clip row drags onto a clip field, and the picker lists clips as `Model / Clip` under their owner. Assets / Extract Assets remains the way to get an editable standalone `.anim`, the "duplicate to edit" step, and a hand-authored clip is still a standalone `.anim`.
+
+Not yet: per-clip settings for clips inside a model (they bake with defaults), selecting a clip to see its settings and scrub it, and clip thumbnails in the grid.
+
 ### Settings deliberately absent
 
 A knob that does nothing is worse than a missing one, so these wait for the

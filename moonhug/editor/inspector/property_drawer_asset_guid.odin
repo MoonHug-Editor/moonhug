@@ -19,6 +19,8 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     display: string
     if !has_value {
         display = "None"
+    } else if sub_label, is_sub := _sub_asset_label(guid_ptr^); is_sub {
+        display = sub_label
     } else if path, ok := engine.asset_db_get_path(guid_val); ok {
         display = filepath_base(path)
     } else {
@@ -31,8 +33,20 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 
     value_clicked, value_double, cleared: bool
     dropped: string
-    if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped) {
+    dropped_pptr: engine.PPtr
+    dropped_pptr_ok: bool
+    if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_pptr, &dropped_pptr_ok) {
         im.OpenPopup(popup_id)
+    }
+    // A sub-asset row dragged from the project view carries (owner, id). The
+    // clip's own guid is what the field stores.
+    if dropped_pptr_ok && dropped_pptr.local_id != 0 {
+        if sub_guid, sok := engine.asset_db_sub_guid(dropped_pptr.guid, dropped_pptr.local_id); sok {
+            if ref, rok := engine.asset_db_get_sub(sub_guid); rok && _ext_allowed(ref.kind) {
+                guid_ptr^ = sub_guid
+                mark_inspector_changed()
+            }
+        }
     }
     // Single click: ping (project view navigates to + selects the asset).
     // Double click: OPEN it (scene loads, .asset goes to the inspector).
@@ -99,19 +113,33 @@ _picker_asset_rows_of_types :: proc(keys: []engine.TypeKey, search: []string, pi
 // `picked` when a row is clicked (picked may be nil for display-only lists).
 _picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engine.PPtr) -> bool {
     Candidate :: struct {
-        path:  string,
+        path:  string, // sort key
+        label: string, // row text: the file name, or "Model / Clip" for a sub-asset
+        kind:  string, // what the ext filter tests: the file's extension, or the sub-asset's kind
         entry: engine.PPtr,
     }
     candidates := make([dynamic]Candidate, context.temp_allocator)
     if key != engine.INVALID_TYPE_KEY {
         for entry in engine.asset_db_assets_with_root_type(key) {
             if path, pok := engine.asset_db_get_path(uuid.Identifier(entry.guid)); pok {
-                append(&candidates, Candidate{path = path, entry = entry})
+                append(&candidates, Candidate{path = path, label = filepath_base(path), kind = _path_ext(path), entry = entry})
             }
         }
     } else {
         for path, guid in engine.asset_db.path_to_guid {
-            append(&candidates, Candidate{path = path, entry = {guid = engine.Asset_GUID(guid)}})
+            append(&candidates, Candidate{path = path, label = filepath_base(path), kind = _path_ext(path), entry = {guid = engine.Asset_GUID(guid)}})
+        }
+        // Sub-assets with their own guid (a model's clips) are assignable
+        // wherever their kind is. They sort under their owner's path.
+        for guid, ref in engine.asset_db.subs {
+            if owner_path, clip_name, ok := _sub_asset_parts(engine.Asset_GUID(guid)); ok {
+                append(&candidates, Candidate{
+                    path  = fmt.tprintf("%s/%s", owner_path, clip_name),
+                    label = fmt.tprintf("%s / %s", _stem(owner_path), clip_name),
+                    kind  = ref.kind,
+                    entry = {guid = engine.Asset_GUID(guid)},
+                })
+            }
         }
     }
     slice.sort_by(candidates[:], proc(a, b: Candidate) -> bool { return a.path < b.path })
@@ -119,8 +147,8 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engin
     result := false
     shown := 0
     for cand in candidates {
-        if !_ext_filter_matches(cand.path) do continue
-        name := filepath_base(cand.path)
+        if !_ext_allowed(cand.kind) do continue
+        name := cand.label
         if !widgets.search_match(name, search) {
             continue
         }
@@ -143,15 +171,56 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engin
 // separated, no dots). No tag = no filtering. Applies to picker rows AND the
 // drag-drop assign path so a sprite can't be dropped on a mesh field.
 _ext_filter_matches :: proc(path: string) -> bool {
-    if current_field_ext_filter == "" do return true
+    return _ext_allowed(_path_ext(path))
+}
+
+// The lowercase extension without the dot, "" when there is none.
+@(private = "file")
+_path_ext :: proc(path: string) -> string {
     dot := strings.last_index(path, ".")
-    if dot < 0 || dot + 1 >= len(path) do return false
-    ext := strings.to_lower(path[dot + 1:], context.temp_allocator)
+    if dot < 0 || dot + 1 >= len(path) do return ""
+    return strings.to_lower(path[dot + 1:], context.temp_allocator)
+}
+
+// Whether `ext` (a file's extension, or a sub-asset's kind, spelled the same
+// way) passes the field's `ext:` tag. No tag = everything.
+@(private = "file")
+_ext_allowed :: proc(ext: string) -> bool {
+    if current_field_ext_filter == "" do return true
+    if ext == "" do return false
     remaining := current_field_ext_filter
     for allowed in strings.split_iterator(&remaining, ",") {
         if ext == strings.trim_space(allowed) do return true
     }
     return false
+}
+
+// The owner's path and the clip's name for a guid that names a sub-asset.
+@(private = "file")
+_sub_asset_parts :: proc(guid: engine.Asset_GUID) -> (owner_path, name: string, ok: bool) {
+    ref, is_sub := engine.asset_db_get_sub(guid)
+    if !is_sub do return
+    owner_path, ok = engine.asset_db_get_path(uuid.Identifier(ref.owner))
+    if !ok do return
+    for c in engine.mesh_clips(ref.owner) {
+        if c.id == ref.id do return owner_path, c.name, true
+    }
+    return owner_path, fmt.tprintf("#%d", i64(ref.id)), true
+}
+
+// "Model / Clip", so a clip field never reads as the model file it lives in.
+@(private = "file")
+_sub_asset_label :: proc(guid: engine.Asset_GUID) -> (string, bool) {
+    owner_path, name, ok := _sub_asset_parts(guid)
+    if !ok do return "", false
+    return fmt.tprintf("%s / %s", _stem(owner_path), name), true
+}
+
+@(private = "file")
+_stem :: proc(path: string) -> string {
+    stem := filepath_base(path)
+    if dot := strings.last_index(stem, "."); dot > 0 do stem = stem[:dot]
+    return stem
 }
 
 // filepath.base without importing core:path/filepath (returns a slice into path).
