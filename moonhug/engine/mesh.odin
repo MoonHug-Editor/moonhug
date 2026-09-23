@@ -156,7 +156,8 @@ mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
             if ms, is_mesh := settings.(MeshSettings); is_mesh && len(ms.clips) > 0 {
                 out = make([]Mesh_Clip, len(ms.clips), alloc)
                 for c, i in ms.clips {
-                    out[i] = Mesh_Clip{id = c.id, name = strings.clone(c.name, alloc), guid = c.guid}
+                    // Settings stay in the meta. The cache carries identity only.
+                    out[i] = Mesh_Clip{id = c.id, name = strings.clone(c.name, alloc), guid = c.guid, orphan = c.orphan}
                 }
             }
         }
@@ -165,10 +166,11 @@ mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
     return out
 }
 
-// Resolves a clip id to its FILE-ORDER index (the _a<i>.bin artifact).
+// Resolves a clip id to its FILE-ORDER index (the _a<i>.bin artifact). Orphans
+// have no artifact and sit after every real clip, so they never resolve.
 mesh_clip_index :: proc(guid: Asset_GUID, id: Local_ID) -> (i32, bool) {
     for c, i in mesh_clips(guid) {
-        if c.id == id do return i32(i), true
+        if c.id == id do return i32(i), !c.orphan
     }
     return 0, false
 }

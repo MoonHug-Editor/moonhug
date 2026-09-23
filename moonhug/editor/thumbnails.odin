@@ -232,7 +232,10 @@ _thumb_render :: proc(key: _Thumb_Key, path: string) -> ^gfx.Texture {
 		// preview as crops of the resident texture, no render).
 		switch filepath.ext(path) {
 		case ".glb", ".gltf":
-			return _thumb_render_mesh_part(key.guid, key.sub)
+			if _, is_part := engine.mesh_part_index(key.guid, key.sub); is_part {
+				return _thumb_render_mesh_part(key.guid, key.sub)
+			}
+			return _thumb_render_clip(key.guid, key.sub, path)
 		}
 		return nil
 	}
@@ -416,6 +419,20 @@ _thumb_render_mesh_part :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID) -
 
 // Frames `tH`'s bounds with a perspective camera (front-on when the content
 // is flat — sprite scenes), renders through the normal pipeline, snapshots.
+@(private = "file")
+// A clip inside a model: the model's rig posed at the clip's midpoint, built
+// in the preview world for the one frame and torn down again. Cached to disk
+// like every thumbnail, so the rig is built once per clip, not per frame.
+_thumb_render_clip :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID, path: string) -> ^gfx.Texture {
+	prev := preview_world_begin()
+	defer preview_world_end(prev)
+	rig, ok := model_clip_rig_build(path, guid, sub, preview_world_root())
+	if !ok do return nil
+	defer model_clip_rig_destroy(&rig)
+	model_clip_rig_pose(&rig, rig.length * 0.5)
+	return _thumb_render_framed(rig.root)
+}
+
 @(private = "file")
 _thumb_render_framed :: proc(tH: engine.Transform_Handle) -> ^gfx.Texture {
 	_thumb_set_layer(tH)

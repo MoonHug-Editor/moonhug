@@ -8,6 +8,7 @@ package subassets
 // comes from the provider (persistent, minted by the asset's importer).
 
 import "base:runtime"
+import "core:fmt"
 import "moonhug:engine"
 
 Sub_Asset :: struct {
@@ -32,10 +33,17 @@ Provider :: struct {
 // Extension (lowercase, with dot: ".png") -> provider.
 _providers: map[string]Provider
 
+// One provider per extension. A second registration used to replace the
+// first silently, so two packages each listing a model's sub-assets meant one
+// list vanished with no trace of why. It is a wiring error, so it stops the
+// editor where it happens.
 register :: proc(ext: string, p: Provider) {
 	// Registry state never borrows the caller's allocator.
 	context.allocator = runtime.default_allocator()
 	if _providers == nil do _providers = make(map[string]Provider)
+	if ext in _providers {
+		fmt.panicf("subassets: a provider for %q is already registered — extend it instead of registering a second one", ext)
+	}
 	_providers[ext] = p
 }
 

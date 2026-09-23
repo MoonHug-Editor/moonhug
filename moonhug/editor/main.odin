@@ -342,7 +342,7 @@ editor_init :: proc() {
     registration.register_type_guids()
     _init_context_menu_registry()
     _register_asset_previews()
-    _register_model_subassets()
+    _register_model_clip_ui()
     init_project_view()
     progress.report("Scanning assets")
     engine.asset_catalog_auto = true // editor maintains library/catalog.json

@@ -16,6 +16,9 @@ import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"
 import "inspector"
 import "subassets"
+import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
+import anim "moonhug:packages/animation"
 
 _register_asset_previews :: proc() {
 	for ext in ([]string{".png", ".jpg", ".jpeg", ".bmp"}) {
@@ -34,6 +37,10 @@ asset_previews_shutdown :: proc() {
 	// Reaching into the world here would rebuild it after it was torn down.
 	_scene_pv_root = {}
 	_scene_pv_guid = {}
+	// Same for the clip rig's transforms. Its graph is heap state of its own
+	// and goes here.
+	_clip_pv.rig.root = {}
+	anim.playable_graph_destroy(&_clip_pv.rig.graph)
 	if _mesh_pv_rt != nil {
 		gfx.rt_destroy(_mesh_pv_rt)
 		_mesh_pv_rt = nil
@@ -107,7 +114,12 @@ _preview_model :: proc(path: string) {
 
 	part := i32(0)
 	if s, sok := _preview_selected_sub(path); sok {
-		if idx, iok := engine.mesh_part_index(guid, s.id); iok do part = idx + 1
+		if idx, iok := engine.mesh_part_index(guid, s.id); iok {
+			part = idx + 1
+		} else if _, cok := engine.mesh_clip_index(guid, s.id); cok {
+			_preview_clip(path, guid, s.id)
+			return
+		}
 	}
 	mesh, mok := engine.mesh_load(guid, part)
 	if !mok {
@@ -244,6 +256,85 @@ _preview_scene :: proc(path: string) {
 	engine.render_execute(rv, cmds[:])
 	gfx.pass_end()
 
+	_pv_image_orbit(_mesh_pv_rt, avail)
+}
+
+// A clip inside a model: the model's skeleton posed by the clip, scrubbed by a
+// slider or playing, orbitable like the other 3D previews. The rig lives in
+// the preview world between frames (see _preview_scene for why one instance
+// at a time) and is rebuilt when the selection moves to another clip.
+@(private = "file") _clip_pv: struct {
+	owner:   engine.Asset_GUID,
+	id:      engine.Local_ID,
+	rig:     Model_Clip_Rig,
+	time:    f32,
+	playing: bool,
+	center:  [3]f32,
+	radius:  f32,
+}
+
+@(private = "file")
+_clip_pv_release :: proc() {
+	if _clip_pv.rig.root != {} do model_clip_rig_destroy(&_clip_pv.rig)
+	_clip_pv.owner = {}
+	_clip_pv.id = 0
+}
+
+@(private = "file")
+_preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Local_ID) {
+	avail := im.GetContentRegionAvail()
+	controls_h := im.GetFrameHeightWithSpacing()
+	if avail.x < 32 || avail.y < 32 + controls_h do return
+
+	prev := preview_world_begin()
+	defer preview_world_end(prev)
+
+	if owner != _clip_pv.owner || clip_id != _clip_pv.id || _clip_pv.rig.root == {} {
+		_clip_pv_release()
+		rig, ok := model_clip_rig_build(path, owner, clip_id, preview_world_root())
+		if !ok {
+			im.TextDisabled("clip not loadable")
+			return
+		}
+		_clip_pv.rig = rig
+		_clip_pv.owner = owner
+		_clip_pv.id = clip_id
+		_clip_pv.time = 0
+		_clip_pv.playing = true
+		// Bounds from the rest pose, once. A walking character would
+		// otherwise pull the camera along with every step.
+		_thumb_set_layer(rig.root)
+		bmin, bmax, bok := _thumb_bounds(rig.root)
+		if !bok {
+			bmin, bmax = {-1, -1, -1}, {1, 1, 1}
+		}
+		_clip_pv.center = (bmin + bmax) * 0.5
+		_clip_pv.radius = max(linalg.length(bmax - bmin) * 0.5, 0.01)
+	}
+	rig := &_clip_pv.rig
+
+	// Transport: play toggle and a scrub over the clip's length.
+	if im.Button(_clip_pv.playing ? icons.ICON_MD_PAUSE : icons.ICON_MD_PLAY_ARROW) do _clip_pv.playing = !_clip_pv.playing
+	widgets.tooltip(_clip_pv.playing ? "Pause" : "Play")
+	im.SameLine()
+	im.SetNextItemWidth(im.GetContentRegionAvail().x)
+	if im.SliderFloat("##clip_time", &_clip_pv.time, 0, rig.length, "%.2f s") do _clip_pv.playing = false
+	if _clip_pv.playing {
+		_clip_pv.time += im.GetIO().DeltaTime
+		if _clip_pv.time > rig.length do _clip_pv.time -= rig.length
+	}
+	model_clip_rig_pose(rig, _clip_pv.time)
+
+	avail = im.GetContentRegionAvail()
+	if avail.x < 32 || avail.y < 32 do return
+	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
+	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
+	rv, _ := _pv_view(_clip_pv.center, _clip_pv.radius, avail)
+	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+	engine.render_collect_commands(rv, &cmds)
+	gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
+	engine.render_execute(rv, cmds[:])
+	gfx.pass_end()
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
 

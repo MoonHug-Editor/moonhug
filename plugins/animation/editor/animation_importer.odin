@@ -39,12 +39,16 @@ animation_importers_init :: proc() {
 
 // One glTF animation to one clip artifact, the same bytes _import_animation
 // writes for a standalone .anim, so the runtime loader reads both alike.
-// Default settings for now: per-clip settings on a model land with the
-// model's clip list, not here.
-bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool {
+// `settings` is the clip's entry in the model's meta (engine.Mesh_Clip), a
+// JSON value because the type is this package's. Overlaid on defaults, so an
+// entry from before a field existed still picks up that field's default.
+bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool {
 	clip, ok := anim.animation_clip_from_gltf(data, an)
 	if !ok do return false
 	s := anim.Animation_Clip_Settings{frame_rate = anim.ANIMATION_FRAME_RATE_DEFAULT}
+	if settings != nil {
+		engine._settings_overlay(any{&s, typeid_of(anim.Animation_Clip_Settings)}, settings)
+	}
 	anim.animation_clip_apply_settings(&clip, s)
 	return serialization.write_asset_to_path(
 		out_path, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip)

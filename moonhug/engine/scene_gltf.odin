@@ -63,10 +63,19 @@ scene_from_gltf :: proc(data: ^cgltf.data, name: string, mesh_guid: Asset_GUID, 
 
 	if decorate_root != nil do decorate_root(root, user)
 
-	for &node in data.nodes {
-		if node.parent == nil do _scene_gltf_add_node(data, &node, root, mesh_guid, material_guids)
-	}
+	scene_gltf_populate(data, root, mesh_guid, material_guids)
 	return scene_save(s, out_path)
+}
+
+// The model's node hierarchy as LIVE transforms under `parent`, in the active
+// scene and world, with MeshFilter and renderer components pointing at the
+// model's parts. The write-to-file path above and the editor's clip previews
+// and thumbnails (a posed model needs its skeleton) both build from this.
+// `material_guids` may be nil: slots stay empty and the default material draws.
+scene_gltf_populate :: proc(data: ^cgltf.data, parent: Transform_Handle, mesh_guid: Asset_GUID, material_guids: []Asset_GUID) {
+	for &node in data.nodes {
+		if node.parent == nil do _scene_gltf_add_node(data, &node, parent, mesh_guid, material_guids)
+	}
 }
 
 // One transform per glTF node, recursing into children. Names come from

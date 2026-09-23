@@ -15,6 +15,7 @@ package engine
 // (harmless) guid/meta from the AssetDB walk.
 
 import gfx "gfx"
+import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
 
@@ -39,6 +40,15 @@ Mesh_Clip :: struct {
     id:   Local_ID,
     name: string,
     guid: Asset_GUID,
+    // The clip's import settings (the animation package's
+    // Animation_Clip_Settings), kept as a JSON value because that type is the
+    // package's, not the engine's. The baker overlays it on its defaults.
+    // Absent or null = defaults.
+    settings: json.Value,
+    // The model no longer has a clip by this name. The entry stays so the
+    // guid keeps resolving and the user can remap it to a renamed clip
+    // instead of losing every reference. Nothing is baked for it.
+    orphan: bool,
 }
 
 @(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631", makeProcName=make_pMeshSettings})
@@ -47,7 +57,10 @@ MeshSettings :: struct {
     // Importer-maintained id table, one entry per glTF mesh IN FILE ORDER
     // (entry i names part artifact _m<i>.bin). First mint is index + 1.
     parts: [dynamic]Mesh_Part,
-    clips: [dynamic]Mesh_Clip,
+    // Identity table, not a setting: shown and edited through the selected
+    // clip's own section (editor/model_subassets.odin). The reflected drawer
+    // must not walk it, since each entry's settings is a raw JSON value.
+    clips: [dynamic]Mesh_Clip `inspect:"-"`,
 }
 
 default_mesh_settings :: proc() -> MeshSettings {

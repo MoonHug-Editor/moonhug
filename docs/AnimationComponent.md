@@ -346,7 +346,7 @@ What lands in the repository is the model and a few lines of its `.meta`. The cu
 
 In the project view a model expands to its parts and its clips. A clip row drags onto a clip field, and the picker lists clips as `Model / Clip` under their owner. Assets / Extract Assets remains the way to get an editable standalone `.anim`, the "duplicate to edit" step, and a hand-authored clip is still a standalone `.anim`.
 
-Not yet: per-clip settings for clips inside a model (they bake with defaults), selecting a clip to see its settings and scrub it, and clip thumbnails in the grid.
+Selecting a clip under a model shows the model's import settings and, below them, that clip's own `Animation_Clip_Settings`. They live in the clip's entry in the model's meta and bake on Apply, the same rule a standalone `.anim` follows. The Preview pane poses the model's skeleton with the clip, playing or scrubbed by a slider, and the grid shows each clip at its midpoint. A clip that disappears from the model, renamed in the DCC tool for instance, stays in the list as an orphan so its guid keeps resolving, and its section offers a remap onto one of the model's current clips, which then takes over the guid.
 
 ### Settings deliberately absent
 

@@ -1,8 +1,10 @@
 package mesh_editor
 
 // Editor half of the engine's mesh components: the MeshFilter mesh/part
-// picker and the model files' sub-asset provider (parts in the project
-// window). Compiled into the editor binary only.
+// picker and the model files' sub-asset provider (parts, then clips, in the
+// project window). This is the ONE provider for model files: the registry
+// keeps the last registration per extension, so a second provider for .glb
+// silently replaces whichever ran first. Compiled into the editor binary only.
 
 import "base:runtime"
 import "core:encoding/uuid"
@@ -32,16 +34,22 @@ mesh_editor_install :: proc() {
 	}
 }
 
+// Parts first, then the clips baked from the model's animations
+// (engine.Mesh_Clip). An orphan clip, gone from the model but still
+// referenced, stays listed so its section can remap it.
 _model_sub_assets :: proc(path: string, allocator: runtime.Allocator) -> []subassets.Sub_Asset {
 	guid, ok := engine.asset_db_get_guid(path)
 	if !ok do return nil
 	parts := engine.mesh_parts(engine.Asset_GUID(guid))
-	if len(parts) == 0 do return nil
-	out := make([]subassets.Sub_Asset, len(parts), allocator)
-	for p, i in parts {
-		out[i] = subassets.Sub_Asset{id = p.id, name = p.name}
+	clips := engine.mesh_clips(engine.Asset_GUID(guid))
+	if len(parts) + len(clips) == 0 do return nil
+	out := make([dynamic]subassets.Sub_Asset, 0, len(parts) + len(clips), allocator)
+	for p in parts do append(&out, subassets.Sub_Asset{id = p.id, name = p.name})
+	for c in clips {
+		name := c.orphan ? fmt.aprintf("%s (missing)", c.name, allocator = allocator) : c.name
+		append(&out, subassets.Sub_Asset{id = c.id, name = name})
 	}
-	return out
+	return out[:]
 }
 
 _mesh_display :: proc(ref: engine.PPtr) -> string {
@@ -85,7 +93,10 @@ _mesh_filter_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 		}
 	}
 	if dropped_ref_ok {
-		if path, pok := engine.asset_db_get_path(uuid.Identifier(dropped_ref.guid)); pok && _is_model_path(path) {
+		// A model row carries parts AND clips. Only a part (or the whole
+		// model, id 0) is a mesh.
+		_, is_part := engine.mesh_part_index(dropped_ref.guid, dropped_ref.local_id)
+		if path, pok := engine.asset_db_get_path(uuid.Identifier(dropped_ref.guid)); pok && _is_model_path(path) && (dropped_ref.local_id == 0 || is_part) {
 			_set_mesh(mf, dropped_ref)
 		}
 	}

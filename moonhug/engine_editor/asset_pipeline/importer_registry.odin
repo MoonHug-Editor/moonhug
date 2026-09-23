@@ -22,6 +22,7 @@ package asset_pipeline
 
 import "base:runtime"
 import cgltf "vendor:cgltf"
+import "core:encoding/json"
 import "moonhug:engine"
 
 Importer_Desc :: struct {
@@ -36,7 +37,7 @@ Importer_Desc :: struct {
 // fan-out. Installed by the animation package's editor half at
 // ImportersInit: the clip format is that package's, and this one stays
 // plugin-agnostic. nil = the mesh importer lists clips but bakes none.
-Gltf_Clip_Baker :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool
+Gltf_Clip_Baker :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool
 gltf_clip_baker: Gltf_Clip_Baker
 
 Phase_Extra :: enum {

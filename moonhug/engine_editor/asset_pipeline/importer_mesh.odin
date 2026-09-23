@@ -18,6 +18,7 @@ package asset_pipeline
 // engine (asset_importer_mesh.odin) — runtime mesh loading reads it.
 
 import cgltf "vendor:cgltf"
+import "core:encoding/json"
 import "core:fmt"
 import "core:math/linalg"
 import "core:os"
@@ -112,7 +113,14 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
     if gltf_clip_baker != nil {
         for &an, ai in data.animations {
             out := engine.mesh_clip_artifact_path(artifact_path, ai, context.temp_allocator)
-            if !gltf_clip_baker(data, &an, out) {
+            // The clip's settings from the meta, matched by name (the list is
+            // rebuilt below, so this reads the incoming one).
+            clip_settings: json.Value
+            if settings != nil {
+                name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
+                for c in (cast(^engine.MeshSettings)settings).clips do if c.name == name { clip_settings = c.settings; break }
+            }
+            if !gltf_clip_baker(data, &an, clip_settings, out) {
                 fmt.printf("[Pipeline] Failed to bake clip %d of %s\n", ai, source_path)
                 return false
             }
@@ -140,19 +148,32 @@ _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawpt
             }
             append(&ms.parts, engine.Mesh_Part{id = id, name = strings.clone(name, context.temp_allocator)})
         }
-        // Clips keep id AND guid by name: the guid is what scenes reference,
-        // and it must survive every reimport.
+        // Clips keep id, guid AND settings by name: the guid is what scenes
+        // reference, and it must survive every reimport. Real clips first, in
+        // file order (mesh_clip_index relies on it), orphans after.
+        matched := make([]bool, len(old_clips), context.temp_allocator)
         for &an, ai in data.animations {
             name := an.name != nil ? string(an.name) : fmt.tprintf("anim_%d", ai)
-            id := engine.Local_ID(0)
-            guid: engine.Asset_GUID
-            for c in old_clips do if c.name == name { id = c.id; guid = c.guid; break }
-            if id == 0 {
-                max_id += 1
-                id = max_id
+            entry := engine.Mesh_Clip{name = strings.clone(name, context.temp_allocator)}
+            for c, ci in old_clips do if c.name == name {
+                entry.id, entry.guid, entry.settings = c.id, c.guid, c.settings
+                matched[ci] = true
+                break
             }
-            if guid == {} do guid = engine.asset_db_new_guid()
-            append(&ms.clips, engine.Mesh_Clip{id = id, name = strings.clone(name, context.temp_allocator), guid = guid})
+            if entry.id == 0 {
+                max_id += 1
+                entry.id = max_id
+            }
+            if entry.guid == {} do entry.guid = engine.asset_db_new_guid()
+            append(&ms.clips, entry)
+        }
+        // A clip the model lost keeps its entry as an orphan, so references
+        // to it still name something and it can be remapped to a renamed clip.
+        for c, ci in old_clips {
+            if matched[ci] do continue
+            o := c
+            o.orphan = true
+            append(&ms.clips, o)
         }
     }
     return true

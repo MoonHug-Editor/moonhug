@@ -8,6 +8,7 @@ package tests
 // resolve it too. Nothing is extracted.
 
 import "base:runtime"
+import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
@@ -17,6 +18,7 @@ import "../engine/catalog"
 import "moonhug:engine_editor/asset_pipeline"
 import anim "moonhug:packages/animation"
 import animation_editor "moonhug:packages/animation/editor"
+import mesh_editor "moonhug:engine_editor/mesh_editor"
 
 BOX_ANIM_GLTF :: "moonhug/tests/fixtures/meshes/box_animated.gltf"
 
@@ -48,6 +50,24 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].id == first.id, "clip id survives reimport")
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].guid == first.guid, "clip guid survives reimport")
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].name == first.name, "clip name survives reimport")
+
+	// Settings in the entry reach the bake, and a clip the model lost stays
+	// as an orphan with its guid, after every real clip.
+	ms2 := engine.MeshSettings{scale = 1}
+	ms2.clips = make([dynamic]engine.Mesh_Clip, context.temp_allocator)
+	ghost := engine.Mesh_Clip{id = 7, name = "Ghost", guid = engine.asset_db_new_guid()}
+	append(&ms2.clips, ghost)
+	loop_v, perr := json.parse(transmute([]byte)string(`{"wrap": 1}`), .JSON, true, context.temp_allocator)
+	testing.expect(t, perr == nil)
+	append(&ms2.clips, engine.Mesh_Clip{id = 9, name = first.name, guid = first.guid, settings = loop_v})
+	testing.expect(t, asset_pipeline._import_mesh(BOX_ANIM_GLTF, artifact, &ms2), "import with settings failed")
+	testing.expect(t, len(ms2.clips) == 2, "one real clip, one orphan")
+	if len(ms2.clips) == 2 {
+		testing.expect(t, ms2.clips[0].name == first.name && ms2.clips[0].id == 9 && ms2.clips[0].guid == first.guid && !ms2.clips[0].orphan, "the real clip keeps its identity, first")
+		testing.expect(t, ms2.clips[1].name == "Ghost" && ms2.clips[1].guid == ghost.guid && ms2.clips[1].orphan, "the lost clip stays as an orphan, last")
+	}
+	baked, berr := os.read_entire_file(clip0, context.temp_allocator)
+	testing.expect(t, berr == nil && strings.contains(string(baked), "\"wrap\": 1"), "the entry's wrap setting is baked into the clip")
 }
 
 // The whole path a clip reference takes: AssetDB sub-guid, the runtime loader,
@@ -133,5 +153,45 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 		testing.expect(t, has && entry.sub == i64(clips[0].id), "the exported catalog carries the clip as a sub entry")
 	} else {
 		testing.expect(t, false, "exported catalog parses")
+	}
+}
+
+// The project view lists a model's sub-assets through the ONE model provider
+// (engine_editor/mesh_editor): its parts, then its clips. The failure it
+// guards: a second provider for .glb replaced this one, and the clips never
+// showed while the parts did.
+@(test)
+test_model_provider_lists_parts_then_clips :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_model_provider_tmp"
+	gltf :: src_dir + "/box.gltf"
+	os.make_directory(src_dir)
+	bytes, rerr := os.read_entire_file(BOX_ANIM_GLTF, context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree("library")
+	}
+
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")
+
+	raw, ok := engine.asset_db_get_guid(gltf)
+	testing.expect(t, ok)
+	if !ok do return
+	model := engine.Asset_GUID(raw)
+	parts := engine.mesh_parts(model)
+	clips := engine.mesh_clips(model)
+	testing.expect(t, len(parts) >= 1 && len(clips) >= 1, "the fixture has parts and a clip")
+
+	rows := mesh_editor._model_sub_assets(gltf, context.temp_allocator)
+	testing.expect_value(t, len(rows), len(parts) + len(clips))
+	if len(rows) == len(parts) + len(clips) {
+		for p, i in parts do testing.expect(t, rows[i].id == p.id, "parts come first, in order")
+		for c, i in clips do testing.expect(t, rows[len(parts) + i].id == c.id, "clips follow the parts, in order")
 	}
 }
