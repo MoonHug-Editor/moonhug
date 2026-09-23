@@ -55,11 +55,26 @@ mesh_cache: map[Mesh_Key]Mesh
 // changed file retries.
 @(private = "file") _mesh_failed: map[Mesh_Key]bool
 
+// Whether the parts and clips caches are live. A flag, not a nil check on the
+// maps: an empty `make(map)` allocates nothing and compares equal to nil until
+// its first insert, so a nil check reads "not initialised" forever and nothing
+// is ever cached. Mirrors _animation_clip_cache_ready.
+@(private = "file") _mesh_cache_ready: bool
+
 mesh_cache_init :: proc() {
     mesh_cache = make(map[Mesh_Key]Mesh)
     _mesh_failed = make(map[Mesh_Key]bool)
-    _mesh_parts = make(map[Asset_GUID][]Mesh_Part)
-    _mesh_clips = make(map[Asset_GUID][]Mesh_Clip)
+    // Cross-frame caches: never the caller's allocator.
+    _mesh_parts = make(map[Asset_GUID][]Mesh_Part, runtime.default_allocator())
+    _mesh_clips = make(map[Asset_GUID][]Mesh_Clip, runtime.default_allocator())
+    _mesh_cache_ready = true
+    // A reimport rewrites the model's artifact and the parts and clips lists
+    // in its meta, so both cached lists and every loaded part go with it.
+    @(static) hooked := false
+    if !hooked {
+        hooked = true
+        asset_pipeline_add_reimport_hook(mesh_unload)
+    }
 }
 
 mesh_cache_shutdown :: proc() {
@@ -82,6 +97,7 @@ mesh_cache_shutdown :: proc() {
     for guid in _mesh_clips do _mesh_clips_free(guid)
     delete(_mesh_clips)
     _mesh_clips = nil
+    _mesh_cache_ready = false
 }
 
 // Part id table per model, from the import settings (sprites' Texture2D
@@ -99,13 +115,13 @@ _mesh_parts_free :: proc(guid: Asset_GUID) {
 
 // The model's part id table, cached from its import settings.
 mesh_parts :: proc(guid: Asset_GUID) -> []Mesh_Part {
-    if _mesh_parts != nil {
+    if _mesh_cache_ready {
         if parts, ok := _mesh_parts[guid]; ok do return parts
     }
 
     // Headless contexts (tests, scene tooling) run without the cache — read
     // per call onto the temp allocator instead of caching.
-    cached := _mesh_parts != nil
+    cached := _mesh_cache_ready
     alloc := cached ? runtime.default_allocator() : context.temp_allocator
 
     out: []Mesh_Part
@@ -144,10 +160,10 @@ _mesh_clips_free :: proc(guid: Asset_GUID) {
 }
 
 mesh_clips :: proc(guid: Asset_GUID) -> []Mesh_Clip {
-    if _mesh_clips != nil {
+    if _mesh_cache_ready {
         if clips, ok := _mesh_clips[guid]; ok do return clips
     }
-    cached := _mesh_clips != nil
+    cached := _mesh_cache_ready
     alloc := cached ? runtime.default_allocator() : context.temp_allocator
 
     out: []Mesh_Clip

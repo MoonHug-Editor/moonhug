@@ -195,3 +195,49 @@ test_model_provider_lists_parts_then_clips :: proc(t: ^testing.T) {
 		for c, i in clips do testing.expect(t, rows[len(parts) + i].id == c.id, "clips follow the parts, in order")
 	}
 }
+
+// The parts and clips caches store what they read, so a reimport must drop
+// them: it rewrites both lists in the model's meta. The failure it guards: a
+// model read before its first import kept its empty clip list for the whole
+// session. Also proves the caches cache at all, which they did not while
+// their readiness was a nil check on a lazily allocated map.
+@(test)
+test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
+	src_dir :: "moonhug/tests/fixtures/_model_clip_cache_tmp"
+	gltf :: src_dir + "/box.gltf"
+	os.make_directory(src_dir)
+	bytes, rerr := os.read_entire_file(BOX_ANIM_GLTF, context.temp_allocator)
+	testing.expect(t, rerr == nil)
+	if rerr != nil do return
+	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
+	defer {
+		_remove_tree(src_dir)
+		_remove_tree("library")
+	}
+
+	engine.mesh_cache_init()
+	defer engine.mesh_cache_shutdown()
+	asset_pipeline.asset_pipeline_init()
+	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	engine.asset_db_init(src_dir)
+	defer engine.asset_db_shutdown()
+
+	raw, ok := engine.asset_db_get_guid(gltf)
+	testing.expect(t, ok)
+	if !ok do return
+	model := engine.Asset_GUID(raw)
+
+	// Read before the clips exist, the way the project view does at startup.
+	before := engine.mesh_clips(model)
+	testing.expect(t, len(before) == 0, "no clips before the first import")
+
+	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")
+	clips := engine.mesh_clips(model)
+	testing.expect(t, len(clips) >= 1, "the clip list is re-read after the import")
+
+	// The cache is live: a second read returns the SAME storage. An uncached
+	// read allocates a fresh slice every call, so the pointers would differ.
+	testing.expect(t, len(clips) > 0 && raw_data(engine.mesh_clips(model)) == raw_data(clips), "clips are served from the cache")
+	parts := engine.mesh_parts(model)
+	testing.expect(t, len(parts) > 0 && raw_data(engine.mesh_parts(model)) == raw_data(parts), "parts are served from the cache")
+}
