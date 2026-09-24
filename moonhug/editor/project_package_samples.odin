@@ -22,6 +22,7 @@ import im "moonhug:external/odin-imgui"
 import "inspector"
 import "moonhug:engine_editor/asset_pipeline"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 Sample_State :: enum {
 	Not_Installed,
@@ -200,9 +201,8 @@ package_samples_draw :: proc(pkg: string) {
 				_sample_confirm_name = strings.clone(s.name)
 				_sample_confirm_dst = strings.clone(s.dst)
 				_sample_confirm_linked = s.state == .Linked
-				im.OpenPopup("Remove Sample")
+				_sample_open_confirm()
 			}
-			_sample_draw_confirm_popup()
 		case .Not_Installed:
 			w = btn_w("Copy") + style.ItemSpacing.x + btn_w("Symlink")
 			im.SameLine()
@@ -214,27 +214,16 @@ package_samples_draw :: proc(pkg: string) {
 	}
 }
 
-// Inside the row's PushID scope, so OpenPopup and BeginPopupModal agree on
-// the popup's ID.
 @(private = "file")
-_sample_draw_confirm_popup :: proc() {
-	center := im.GetMainViewport().Pos + im.GetMainViewport().Size * 0.5
-	im.SetNextWindowPos(center, .Appearing, im.Vec2{0.5, 0.5})
-	if im.BeginPopupModal("Remove Sample", nil, {.AlwaysAutoResize}) {
-		im.Text(strings.clone_to_cstring(fmt.tprintf("Remove sample '%s'?", _sample_confirm_name), context.temp_allocator))
-		if _sample_confirm_linked {
-			im.TextDisabled("The symlink is removed - the sample source stays.")
-		} else {
-			im.TextDisabled(strings.clone_to_cstring(fmt.tprintf("%s moves to the Trash.", _sample_confirm_dst), context.temp_allocator))
-		}
-		if im.Button("Remove", im.Vec2{100, 0}) {
-			_sample_remove_confirmed()
-			im.CloseCurrentPopup()
-		}
-		im.SameLine()
-		if im.Button("Cancel", im.Vec2{100, 0}) {
-			im.CloseCurrentPopup()
-		}
-		im.EndPopup()
-	}
+_sample_open_confirm :: proc() {
+	detail := "The symlink is removed. The sample source stays." if _sample_confirm_linked else fmt.tprintf("%s moves to the Trash.", _sample_confirm_dst)
+	widgets.dialog_open({
+		title       = "Remove Sample",
+		description = fmt.tprintf("Remove sample '%s'?\n\n%s", _sample_confirm_name, detail),
+		icon        = icons.ICON_MD_WARNING,
+		buttons     = {
+			{label = "Remove", action = _sample_remove_confirmed, is_default = true},
+			{label = "Cancel", is_cancel = true},
+		},
+	})
 }

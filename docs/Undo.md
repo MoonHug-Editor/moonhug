@@ -535,6 +535,6 @@ undo.purge_scenes(undo.get())       // all scenes, before a single-scene load
 - Capacity is 128 entries. Overflow drops the oldest.
 - Import settings edits are not recorded (the Apply+reimport button is already an explicit transaction).
 - Undoing an asset edit replaces the whole document instance. The old instance's nested allocations live until editor shutdown (same lifetime the pre-registry reload-on-click had). Asset docs have no eviction — `.mat`-scale files only.
-- File operations in the project view (rename/move/delete files) are not undoable — Unity doesn't undo these either.
+- File operations in the project view (rename/move/delete files) are not undoable — Unity doesn't undo these either. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
 - Structural commands capture full subtree JSON on delete/remove. Large subtrees produce large entries.
 - Component inspector edits serialize the whole component per step. Components with large dynamic arrays produce correspondingly large entries. In practice the inspector is not the hot path, so this is acceptable.

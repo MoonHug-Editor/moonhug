@@ -3,6 +3,7 @@ package editor
 import im "moonhug:external/odin-imgui"
 import "core:math"
 import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 // Roboto Medium (shipped with imgui under misc/fonts, Apache-2.0) is the base
 // UI font. 15px is the size imgui's own font notes recommend for it on a 1x
@@ -96,4 +97,5 @@ editor_fonts_init :: proc() {
 		&lg_cfg,
 		&icon_ranges[0],
 	)
+	widgets.dialog_icon_font = editor_icon_font_lg
 }

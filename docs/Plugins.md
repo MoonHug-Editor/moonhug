@@ -43,8 +43,7 @@ is a subpackage a package `editor/` may import:
   starts — subscribe `@(phase={key=engine.Phase.ExitingEditMode, mode=Editor})`
   and guard `apply` with `engine.application_is_playing()`: play owns the
   world, and a preview posing it every frame fights the simulation.
-- **Shared widgets** — `editor/node_canvas` (pan/zoom node graph),
-  `editor/inspector`, `editor/undo`, `editor/window`, `editor/menu`.
+- **Shared widgets** — `editor/node_canvas` (pan/zoom node graph), `editor/inspector`, `editor/undo`, `editor/window`, `editor/menu`, `editor/widgets` (icon buttons, search field, tooltips, and `dialog_open`: a modal question built from a config with a title, a description, an optional icon and any number of buttons, drawn by the editor, so any code can open it).
 
 With those, a window lives entirely in its package: the animation, playable
 graph and sequencer windows all moved out of the editor root this way, and

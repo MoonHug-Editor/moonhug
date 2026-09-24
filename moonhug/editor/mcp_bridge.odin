@@ -31,6 +31,7 @@ import gfx "../engine/gfx"
 import "../engine/log"
 import "menu"
 import "inspector"
+import "moonhug:editor/widgets"
 import sim "./simulate"
 
 _MCP_PORT_FIRST :: 6600
@@ -1119,10 +1120,41 @@ mcp_tool_invoke_menu :: proc(id: i64, params: json.Object) -> (string, Mcp_Error
 	}
 	// A toggle FLIPS, so the reply carries where it landed — an agent has no
 	// other way to read menu state, and asking twice would undo the first ask.
+	// An item that asks first (Delete) opens a dialog: the reply names it, so
+	// the agent knows to answer it with the dialog tool.
+	d, _ := widgets.dialog_current()
 	return _mcp_ok(struct {
 		invoked: bool,
 		state:   bool,
-	}{invoked = true, state = state})
+		dialog:  string,
+	}{invoked = true, state = state, dialog = d.title})
+}
+
+@(mcp_tool={
+	description="The open confirmation dialog (title, text, buttons), or none. Pass press=<button label> to answer it, same as clicking the button.",
+	param_press="string:Label of the button to press",
+})
+mcp_tool_dialog :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	d, open := widgets.dialog_current()
+	press, has_press := params["press"].(json.String)
+	if !has_press {
+		labels := make([]string, len(d.buttons), context.temp_allocator)
+		for b, i in d.buttons do labels[i] = b.label
+		return _mcp_ok(struct {
+			open:        bool,
+			title:       string,
+			description: string,
+			buttons:     []string,
+		}{open = open, title = d.title, description = d.description, buttons = labels})
+	}
+	if !open do return _mcp_fail("no_dialog", "no dialog is open")
+	for b, i in d.buttons {
+		if b.label == press {
+			widgets.dialog_choose(i)
+			return _mcp_ok(struct{ pressed: string }{press})
+		}
+	}
+	return _mcp_fail("bad_request", "%q is not a button of %q", press, d.title)
 }
 
 // --- Screenshot ------------------------------------------------------------------

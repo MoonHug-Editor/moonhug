@@ -16,6 +16,7 @@ import "menu"
 import clip "clipboard"
 import "undo"
 import wnd "moonhug:editor/window"
+import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
 import "../engine/registration"
 import "core:os"
@@ -297,6 +298,8 @@ main :: proc() {
         wnd.draw_all()
 
         draw_about_popup()
+        // Confirmations and other modal questions (widgets/dialog.odin).
+        widgets.dialog_draw()
         draw_status_bar()
         draw_pending_scene_overlay()
 

@@ -11,11 +11,13 @@ package editor
 //   preserved, references survive (mirrors rename).
 // - Copy/Paste and Duplicate never copy .meta — the copy is a NEW asset and
 //   mints a fresh guid on refresh.
-// - Delete trashes the .meta with the asset (recoverable together).
+// - Delete asks for confirmation, then trashes the .meta with the asset
+//   (recoverable together).
 //
 // Deletes go to the OS Trash (project_os_darwin.odin), never permanent.
 // File operations are NOT undoable (see docs/Undo.md non-goals).
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:path/filepath"
@@ -25,6 +27,8 @@ import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import engine "../engine"
 import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/icons"
+import "moonhug:editor/widgets"
 
 // --- File clipboard -----------------------------------------------------------
 
@@ -38,6 +42,7 @@ project_file_ops_shutdown :: proc() {
 	for p in _file_clip do delete(p)
 	delete(_file_clip)
 	_file_clip = nil
+	_project_delete_pending_clear()
 }
 
 // Cut files draw dimmed in the list (Finder/Explorer convention).
@@ -235,17 +240,69 @@ project_ops_duplicate :: proc() {
 	_project_select_paths(dups[:])
 }
 
+// Every asset delete (Edit/Delete, Assets/Delete, the Delete key) asks first:
+// the files go to the OS Trash and undo does not bring them back. The dialog
+// lists what it deletes, _project_delete_confirmed does the work.
 project_ops_delete :: proc() {
-	srcs := slice.clone(sel_proj_items(), context.temp_allocator)
+	srcs := sel_proj_items()
 	if len(srcs) == 0 {
 		fmt.println("[Editor] Delete: select files first")
 		return
 	}
+	_project_delete_pending_clear()
 	for src in srcs {
 		if project_path_is_protected(src) {
 			fmt.printf("[Editor] Delete: %s is a package root — remove the package folder on disk to uninstall\n", src)
 			continue
 		}
+		append(&_delete_pending, strings.clone(src, runtime.default_allocator()))
+	}
+	if len(_delete_pending) == 0 do return
+
+	DELETE_LIST_MAX :: 10
+	b := strings.builder_make(context.temp_allocator)
+	for p, i in _delete_pending {
+		if i == DELETE_LIST_MAX {
+			fmt.sbprintf(&b, "... and %d more\n", len(_delete_pending) - DELETE_LIST_MAX)
+			break
+		}
+		fmt.sbprintf(&b, "%s\n", p)
+	}
+	strings.write_string(&b, "\nThe files move to the Trash. Undo does not restore them.")
+	title := "Delete selected asset?" if len(_delete_pending) == 1 else fmt.tprintf("Delete %d selected assets?", len(_delete_pending))
+	widgets.dialog_open({
+		title       = title,
+		description = strings.to_string(b),
+		icon        = icons.ICON_MD_WARNING,
+		buttons     = {
+			{label = "Delete", action = _project_delete_confirmed, is_default = true},
+			{label = "Cancel", action = _project_delete_pending_clear, is_cancel = true},
+		},
+	})
+}
+
+// Paths the open delete confirmation asks about (default allocator: the list
+// lives across frames).
+@(private = "file")
+_delete_pending: [dynamic]string
+
+@(private = "file")
+_project_delete_pending_clear :: proc() {
+	context.allocator = runtime.default_allocator()
+	for p in _delete_pending do delete(p)
+	delete(_delete_pending)
+	_delete_pending = nil
+}
+
+// The paths an open delete confirmation would trash (tests).
+project_ops_delete_pending :: proc() -> []string {
+	return _delete_pending[:]
+}
+
+@(private = "file")
+_project_delete_confirmed :: proc() {
+	defer _project_delete_pending_clear()
+	for src in _delete_pending {
 		if !os.exists(src) do continue // a trashed parent folder took it along
 		if !file_move_to_trash(src) {
 			fmt.printf("[Editor] Delete: failed to trash %s\n", src)

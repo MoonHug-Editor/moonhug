@@ -563,7 +563,9 @@ _draw_menu_child :: proc(child: ^MenuNode) {
 // draw_menu_bar builds and draws the ImGui main menu bar from the path tree.
 // Top-level menu shortcuts are processed every frame so they work when the menu is not open.
 draw_menu_bar :: proc() -> bool {
-	_process_menu_shortcuts(_menu_root)
+	// A modal (a confirmation dialog) owns the keyboard: a global shortcut
+	// behind it (Delete, Undo, Save) would act on what the modal asks about.
+	if im.GetTopMostPopupModal() == nil do _process_menu_shortcuts(_menu_root)
 	if !im.BeginMainMenuBar() do return false
 	defer im.EndMainMenuBar()
 	_draw_menu_children(_menu_root)
