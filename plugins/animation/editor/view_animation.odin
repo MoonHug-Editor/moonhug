@@ -343,7 +343,7 @@ _pv_preview_graph :: proc(owner: engine.Transform_Handle) -> ^anim.Playable_Grap
 @(private)
 _pv_target :: proc() -> (owner: engine.Transform_Handle, a: ^anim.Animation) {
 	w := engine.ctx_world()
-	tH := engine.inspector_active_selection()
+	tH := engine.inspector_inspected_selection()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if _, comp := engine.transform_get_comp(tH, anim.Animation); comp != nil {
 			return tH, comp

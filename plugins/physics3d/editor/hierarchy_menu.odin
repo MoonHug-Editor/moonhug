@@ -72,4 +72,6 @@ _create_primitive :: proc(name: string, mesh_guid: string, collider_key: engine.
 	_add_comp(tH, collider_key) // reset defaults match the primitive mesh
 
 	undo.group_commit(&g)
+	// What was made becomes the selection, in the create's own undo step.
+	engine.inspector_request_select(tH)
 }

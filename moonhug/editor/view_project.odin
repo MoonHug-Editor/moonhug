@@ -1,5 +1,7 @@
 package editor
 
+import "base:runtime"
+
 import "core:c"
 import "core:fmt"
 import "core:mem"
@@ -97,7 +99,7 @@ shutdown_project_view :: proc() {
     delete(projectViewData.rootPath)
     delete(projectViewData.currentPath)
     if projectViewData.selectedFile != "" {
-        delete(projectViewData.selectedFile)
+        delete(projectViewData.selectedFile, runtime.default_allocator()) // see _project_set_active
     }
     delete(_project_tree_rows)
     delete(_project_list_rows)
@@ -168,6 +170,8 @@ _project_set_current :: proc(path: string) {
 // Re-point the active path WITHOUT touching the multi-selection set
 // (cmd-click toggles, range ends).
 _project_set_active :: proc(path: string) {
+    // Editor-wide state: allocated and freed under one allocator, whoever calls.
+    context.allocator = runtime.default_allocator()
     new_path := strings.clone(path)
     delete(projectViewData.selectedFile)
     projectViewData.selectedFile = new_path
@@ -236,9 +240,11 @@ _project_cancel_search :: proc() {
     }
 }
 
+// Navigation, not a selection change: what is selected stays selected, the
+// way a file manager keeps it while you browse, and nothing lands in the
+// history.
 _project_enter_dir :: proc(full_path: string) {
     _project_set_current(full_path)
-    _project_set_selected("")
     // Navigating to a folder leaves search mode — the list shows the folder now.
     mem.zero(&_project_search_buf, len(_project_search_buf))
     _project_tree_reveal = true

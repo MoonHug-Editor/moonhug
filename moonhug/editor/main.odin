@@ -196,6 +196,7 @@ main :: proc() {
         // Once per frame rather than at every mutation site: selection moves
         // from clicks, picking, pending-select and undo restore alike.
         engine.inspector_set_active_selection(sel_scene_active())
+        engine.inspector_set_inspected_selection(inspector_active_target())
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the

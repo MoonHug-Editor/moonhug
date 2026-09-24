@@ -100,17 +100,45 @@ _hierarchy_cut_pending :: proc() -> bool {
 		!_hierarchy_handle_is_nested(_hierarchy_cut_tH)
 }
 
+// --- The Edit menu acts on the selection, wherever it is --------------------------
+//
+// One selection for the whole editor (selection.odin): while it lives in the
+// project, Cut, Copy, Paste, Duplicate, Rename and Delete act on the selected
+// files, the same operations the project view's own shortcuts run. Otherwise
+// they act on the scene objects, as below.
+
+@(private)
+_edit_can_cut :: proc() -> bool { return sel_in_project() || _hierarchy_selection_mutable() }
+@(private)
+_edit_can_copy :: proc() -> bool { return sel_in_project() || _hierarchy_has_selection() }
+@(private)
+_edit_can_paste :: proc() -> bool { return sel_in_project() ? project_ops_can_paste() : _hierarchy_can_paste() }
+@(private)
+_edit_can_duplicate :: proc() -> bool { return sel_in_project() || _hierarchy_selection_mutable() }
+@(private)
+_edit_can_rename :: proc() -> bool { return sel_in_project() ? _project_selection_renameable() : _hierarchy_can_rename() }
+@(private)
+_edit_can_delete :: proc() -> bool { return sel_in_project() || _hierarchy_selection_deletable() }
+
 @(menu_separator={path="Edit", order=-60})
-@(menu_item={path="Edit/Cut", order=-50, enabled=_hierarchy_selection_mutable})
+@(menu_item={path="Edit/Cut", order=-50, enabled=_edit_can_cut})
 hierarchy_cut_menu :: proc() {
+	if sel_in_project() {
+		project_ops_cut()
+		return
+	}
 	active := sel_scene_active()
 	if !_hierarchy_handle_valid(active) do return
 	if _hierarchy_handle_is_root(active) || _hierarchy_handle_is_nested(active) do return
 	_hierarchy_cut_tH = active
 }
 
-@(menu_item={path="Edit/Copy", order=-49, enabled=_hierarchy_has_selection})
+@(menu_item={path="Edit/Copy", order=-49, enabled=_edit_can_copy})
 hierarchy_copy_menu :: proc() {
+	if sel_in_project() {
+		project_ops_copy()
+		return
+	}
 	active := sel_scene_active()
 	if !_hierarchy_handle_valid(active) do return
 	_hierarchy_cut_tH = _HANDLE_NONE
@@ -127,10 +155,17 @@ _hierarchy_can_paste :: proc() -> bool {
 	return clip.has_hierarchy()
 }
 
-@(menu_item={path="Edit/Paste", order=-48, enabled=_hierarchy_can_paste})
+@(menu_item={path="Edit/Paste", order=-48, enabled=_edit_can_paste})
 hierarchy_paste_menu :: proc() {
+	if sel_in_project() {
+		project_ops_paste()
+		return
+	}
 	if !_hierarchy_can_paste() do return
 	target := _hierarchy_active_or_root()
+	// The pasted or moved object becomes the selection. The tracker attaches
+	// that to the paste's own undo step, so one undo also restores what was
+	// selected before.
 	if _hierarchy_cut_pending() {
 		undo.record_reparent_to(_hierarchy_cut_tH, target)
 		sel_scene_only(_hierarchy_cut_tH)
@@ -138,12 +173,17 @@ hierarchy_paste_menu :: proc() {
 	} else {
 		result := _paste_subtree_with_undo(clip.paste_hierarchy(), target)
 		engine._transform_append_name_suffix(result, "_copy")
+		if result != _HANDLE_NONE do sel_scene_only(result)
 	}
 	_hierarchy_force_open = target
 }
 
-@(menu_item={path="Edit/Duplicate", order=-47, enabled=_hierarchy_selection_mutable})
+@(menu_item={path="Edit/Duplicate", order=-47, enabled=_edit_can_duplicate})
 hierarchy_duplicate_menu :: proc() {
+	if sel_in_project() {
+		project_ops_duplicate()
+		return
+	}
 	_duplicate_selected()
 }
 
@@ -153,15 +193,23 @@ _hierarchy_can_rename :: proc() -> bool {
 	return _hierarchy_handle_valid(active) && !_hierarchy_handle_is_nested(active)
 }
 
-@(menu_item={path="Edit/Rename", order=-46, enabled=_hierarchy_can_rename})
+@(menu_item={path="Edit/Rename", order=-46, enabled=_edit_can_rename})
 hierarchy_rename_menu :: proc() {
+	if sel_in_project() {
+		if _project_selection_renameable() do _project_begin_rename_selected()
+		return
+	}
 	if !_hierarchy_can_rename() do return
 	_begin_rename(sel_scene_active())
 }
 
 @(menu_separator={path="Edit", order=-40})
-@(menu_item={path="Edit/Delete", order=-45, enabled=_hierarchy_selection_deletable})
+@(menu_item={path="Edit/Delete", order=-45, enabled=_edit_can_delete})
 hierarchy_delete_menu :: proc() {
+	if sel_in_project() {
+		project_ops_delete()
+		return
+	}
 	if _hierarchy_rename_target != _HANDLE_NONE && sel_scene_is(_hierarchy_rename_target) {
 		_hierarchy_rename_target = _HANDLE_NONE
 	}
@@ -177,7 +225,9 @@ hierarchy_delete_menu :: proc() {
 hierarchy_create_empty_menu :: proc() {
 	scene := engine.sm_scene_get_active()
 	if scene == nil do return
-	undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle))
+	// What was made becomes the selection, in the create's own undo step
+	// (the selection tracker attaches it).
+	sel_scene_only(undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle)))
 }
 
 @(private)

@@ -126,7 +126,7 @@ _sq_buf_get :: proc(buf: []u8) -> string {
 @(private = "file")
 _sq_target :: proc() -> (owner: engine.Transform_Handle, d: ^seq.PlayableDirector) {
 	w := engine.ctx_world()
-	tH := engine.inspector_active_selection()
+	tH := engine.inspector_inspected_selection()
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if _, comp := engine.transform_get_comp(tH, seq.PlayableDirector); comp != nil {
 			return tH, comp

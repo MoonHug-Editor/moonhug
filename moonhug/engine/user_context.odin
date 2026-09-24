@@ -43,6 +43,12 @@ InspectorState :: struct {
     // without importing the editor root. {} means nothing selected; readers
     // pool-validate, so a handle that died mid-frame is harmless.
     active_scene_tH:       Transform_Handle,
+    // The object the Inspector shows: the active selection, or, while the
+    // project holds the selection, the object the Inspector kept. What tool
+    // windows (animation, sequencer) follow, so clicking an asset does not
+    // take their target away. active_scene_tH stays the live selection, which
+    // creation menus parent under.
+    inspected_scene_tH:    Transform_Handle,
     // Cross-package selection request: subpackages (e.g. inspector) post a
     // transform here; the editor's hierarchy view picks it up next frame and
     // applies it to its own selection state. {} means "no pending request".
@@ -130,6 +136,18 @@ inspector_active_selection :: proc() -> Transform_Handle {
     uc := ctx_get()
     if uc == nil do return {}
     return uc.inspector.active_scene_tH
+}
+
+inspector_set_inspected_selection :: proc(tH: Transform_Handle) {
+    uc := ctx_get()
+    if uc == nil do return
+    uc.inspector.inspected_scene_tH = tH
+}
+
+inspector_inspected_selection :: proc() -> Transform_Handle {
+    uc := ctx_get()
+    if uc == nil do return {}
+    return uc.inspector.inspected_scene_tH
 }
 
 // Posts a cross-package "select this transform" request. The editor's

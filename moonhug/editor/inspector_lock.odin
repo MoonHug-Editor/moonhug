@@ -38,17 +38,19 @@ _inspector_lock_button :: proc() {
 		// what an edit applies to.
 		context.allocator = runtime.default_allocator()
 		clear(&_inspector_lock_sel)
-		for h in sel_scene_items() do append(&_inspector_lock_sel, h)
+		for h in sel_scene_inspected() do append(&_inspector_lock_sel, h)
 	} else {
 		clear(&_inspector_lock_sel)
 	}
 }
 
-// What the inspector draws: the locked set, or the live selection. Dead
-// handles are dropped, and a lock left holding nothing releases itself rather
-// than leaving the padlock on beside an empty panel.
+// What the inspector draws: the locked set, or the selected objects — which,
+// while the project holds the selection, are the ones it last showed
+// (sel_scene_inspected). Dead handles are dropped, and a lock left holding
+// nothing releases itself rather than leaving the padlock on beside an empty
+// panel.
 inspector_targets :: proc() -> []engine.Transform_Handle {
-	if !_inspector_locked do return sel_scene_items()
+	if !_inspector_locked do return sel_scene_inspected()
 	w := engine.ctx_world()
 	live := 0
 	for h in _inspector_lock_sel {
@@ -60,7 +62,7 @@ inspector_targets :: proc() -> []engine.Transform_Handle {
 	resize(&_inspector_lock_sel, live)
 	if live == 0 {
 		_inspector_locked = false
-		return sel_scene_items()
+		return sel_scene_inspected()
 	}
 	return _inspector_lock_sel[:]
 }
@@ -68,7 +70,7 @@ inspector_targets :: proc() -> []engine.Transform_Handle {
 // The object whose components the inspector draws — the last of the targets,
 // matching the live selection's "most recent wins".
 inspector_active_target :: proc() -> engine.Transform_Handle {
-	if !_inspector_locked do return hierarchy_get_selected()
+	if !_inspector_locked do return sel_scene_inspected_active()
 	t := inspector_targets()
 	if len(t) == 0 do return _HANDLE_NONE
 	return t[len(t) - 1]

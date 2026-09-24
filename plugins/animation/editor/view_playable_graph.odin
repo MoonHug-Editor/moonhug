@@ -305,7 +305,7 @@ _pg_is_output_root :: proc(g: ^anim.Playable_Graph, h: int) -> bool {
 @(private = "file")
 _pg_selected_source :: proc() -> (owner: engine.Transform_Handle, src: anim.Graph_Source, found: bool) {
 	w := engine.ctx_world()
-	tH := engine.inspector_active_selection()
+	tH := engine.inspector_inspected_selection()
 	best_order := max(int)
 	for engine.pool_valid(&w.transforms, engine.Handle(tH)) {
 		if s, ok := anim.playable_graph_for_object(tH); ok && s.order < best_order {

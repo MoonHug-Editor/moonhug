@@ -2,13 +2,28 @@ package editor
 
 // Editor selection state (Unity model): an ORDERED set plus an implicit
 // ACTIVE item — the most recently selected one (last element), which is what
-// the inspector shows and single-target actions (rename, gizmo) use. Two
-// independent domains: scene objects (Transform_Handles) and project files
-// (paths). Multiselect is selection-only for now — no multiedit.
+// the inspector shows and single-target actions (rename, gizmo) use.
+//
+// ONE selection for the whole editor, held in two sets because scene objects
+// (Transform_Handles) and project files (paths) are addressed differently.
+// Selecting in one set deselects the other (_sel_take_scene,
+// _sel_take_project), so the Edit menu always has one thing to act on and
+// the history always names one thing. Clearing one set leaves the other.
+//
+// The two inspectors keep what they last showed when the selection moves to
+// the other set. The Project Inspector does that on its own (it loads a file
+// and holds it). The Inspector reads sel_scene_inspected, which falls back to
+// the objects the project selection took over (_sel_scene_last).
 //
 // Project selection keeps projectViewData.selectedFile as the ACTIVE path
 // (all pre-multiselect code reads it); the set here follows it.
+//
+// All of it is editor-wide state that outlives the call that changes it, so
+// every proc that grows or frees it pins the default allocator. A caller's
+// allocator (a test's tracking allocator, a temp allocator) would otherwise
+// own part of it, and the next free under another allocator corrupts the heap.
 
+import "base:runtime"
 import "core:strings"
 import engine "../engine"
 
@@ -17,8 +32,93 @@ import engine "../engine"
 @(private)
 _sel_scene: [dynamic]engine.Transform_Handle // click order; last = active
 
+// The scene selection as it was when the project selection took over: what
+// the Inspector keeps showing. Empty while the scene set is live.
+@(private)
+_sel_scene_last: [dynamic]engine.Transform_Handle
+
+// An explicit clear (Escape, a click on empty space, a delete) empties the
+// Inspector too.
 sel_scene_clear :: proc() {
+	context.allocator = runtime.default_allocator()
 	clear(&_sel_scene)
+	clear(&_sel_scene_last)
+}
+
+// Selecting a scene object deselects every project item.
+@(private = "file")
+_sel_take_scene :: proc() {
+	context.allocator = runtime.default_allocator()
+	clear(&_sel_scene_last)
+	if len(_sel_proj) > 0 || projectViewData.selectedFile != "" {
+		sel_proj_clear()
+		_project_set_active("")
+	}
+}
+
+// Selecting a project item deselects every scene object, which the Inspector
+// keeps showing.
+@(private = "file")
+_sel_take_project :: proc() {
+	context.allocator = runtime.default_allocator()
+	if len(_sel_scene) == 0 do return
+	clear(&_sel_scene_last)
+	append(&_sel_scene_last, .._sel_scene[:])
+	clear(&_sel_scene)
+}
+
+// True when the selection lives in the project set: what the Edit menu acts on.
+sel_in_project :: proc() -> bool {
+	return len(_sel_scene) == 0 && len(_sel_proj) > 0
+}
+
+// The objects the Inspector shows: the scene selection, or, while the
+// project holds the selection, the objects it took over.
+sel_scene_inspected :: proc() -> []engine.Transform_Handle {
+	if len(_sel_scene) > 0 do return _sel_scene[:]
+	return _sel_scene_last[:]
+}
+
+sel_scene_inspected_active :: proc() -> engine.Transform_Handle {
+	w := engine.ctx_world()
+	if w == nil do return _HANDLE_NONE
+	items := sel_scene_inspected()
+	for i := len(items) - 1; i >= 0; i -= 1 {
+		if engine.pool_valid(&w.transforms, engine.Handle(items[i])) do return items[i]
+	}
+	return _HANDLE_NONE
+}
+
+// Undo restore sets both sets and the Inspector's kept objects exactly as
+// recorded (undo.Selection_State), with no cross-set deselect.
+@(private)
+_sel_restore_begin :: proc() {
+	context.allocator = runtime.default_allocator()
+	clear(&_sel_scene_last)
+	clear(&_sel_scene)
+	sel_proj_clear()
+}
+
+@(private)
+_sel_restore_kept :: proc(tH: engine.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
+	if tH == _HANDLE_NONE do return
+	for h in _sel_scene_last do if h == tH do return
+	append(&_sel_scene_last, tH)
+}
+
+@(private)
+_sel_restore_scene :: proc(tH: engine.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
+	if tH == _HANDLE_NONE || sel_scene_is(tH) do return
+	append(&_sel_scene, tH)
+}
+
+@(private)
+_sel_restore_proj :: proc(path: string, sub_id: engine.Local_ID) {
+	context.allocator = runtime.default_allocator()
+	if path == "" do return
+	append(&_sel_proj, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
 }
 
 sel_scene_is :: proc(tH: engine.Transform_Handle) -> bool {
@@ -29,13 +129,21 @@ sel_scene_is :: proc(tH: engine.Transform_Handle) -> bool {
 }
 
 sel_scene_only :: proc(tH: engine.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
 	clear(&_sel_scene)
-	if tH != _HANDLE_NONE do append(&_sel_scene, tH)
+	if tH == _HANDLE_NONE {
+		clear(&_sel_scene_last)
+		return
+	}
+	_sel_take_scene()
+	append(&_sel_scene, tH)
 }
 
 // Add if absent, MOVE to the end (= make active) if present.
 sel_scene_add :: proc(tH: engine.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
 	if tH == _HANDLE_NONE do return
+	_sel_take_scene()
 	for h, i in _sel_scene {
 		if h == tH {
 			ordered_remove(&_sel_scene, i)
@@ -46,6 +154,7 @@ sel_scene_add :: proc(tH: engine.Transform_Handle) {
 }
 
 sel_scene_remove :: proc(tH: engine.Transform_Handle) {
+	context.allocator = runtime.default_allocator()
 	for h, i in _sel_scene {
 		if h == tH {
 			ordered_remove(&_sel_scene, i)
@@ -66,14 +175,23 @@ sel_scene_toggle :: proc(tH: engine.Transform_Handle) {
 // Drop handles whose objects no longer exist (deleted, scene unloaded).
 // Views call this once per frame before reading the selection.
 sel_scene_prune :: proc() {
+	context.allocator = runtime.default_allocator()
 	w := engine.ctx_world()
 	if w == nil {
 		clear(&_sel_scene)
+		clear(&_sel_scene_last)
 		return
 	}
 	for i := 0; i < len(_sel_scene); {
 		if !engine.pool_valid(&w.transforms, engine.Handle(_sel_scene[i])) {
 			ordered_remove(&_sel_scene, i)
+			continue
+		}
+		i += 1
+	}
+	for i := 0; i < len(_sel_scene_last); {
+		if !engine.pool_valid(&w.transforms, engine.Handle(_sel_scene_last[i])) {
+			ordered_remove(&_sel_scene_last, i)
 			continue
 		}
 		i += 1
@@ -130,6 +248,7 @@ Proj_Sel :: struct {
 _sel_proj: [dynamic]Proj_Sel // click order; last = active
 
 sel_proj_clear :: proc() {
+	context.allocator = runtime.default_allocator()
 	for e in _sel_proj do delete(e.path)
 	clear(&_sel_proj)
 }
@@ -153,13 +272,18 @@ sel_proj_is_sub :: proc(path: string, sub_id: engine.Local_ID) -> bool {
 // Select-only. Callers go through _project_set_selected (which keeps
 // projectViewData.selectedFile — the active path — in sync).
 sel_proj_only :: proc(path: string, sub_id: engine.Local_ID = 0) {
+	context.allocator = runtime.default_allocator()
 	sel_proj_clear()
-	if path != "" do append(&_sel_proj, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
+	if path == "" do return
+	_sel_take_project()
+	append(&_sel_proj, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
 }
 
 // Add if absent, move to the end (= active) if present.
 sel_proj_add :: proc(path: string, sub_id: engine.Local_ID = 0) {
+	context.allocator = runtime.default_allocator()
 	if path == "" do return
+	_sel_take_project()
 	for e, i in _sel_proj {
 		if e.path == path && e.sub_id == sub_id {
 			ordered_remove(&_sel_proj, i)
@@ -171,6 +295,7 @@ sel_proj_add :: proc(path: string, sub_id: engine.Local_ID = 0) {
 }
 
 sel_proj_remove :: proc(path: string, sub_id: engine.Local_ID = 0) {
+	context.allocator = runtime.default_allocator()
 	for e, i in _sel_proj {
 		if e.path == path && e.sub_id == sub_id {
 			delete(e.path)
@@ -207,7 +332,9 @@ sel_proj_last :: proc() -> string {
 }
 
 selection_shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	delete(_sel_scene)
+	delete(_sel_scene_last)
 	sel_proj_clear()
 	delete(_sel_proj)
 }

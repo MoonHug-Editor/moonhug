@@ -85,7 +85,7 @@ asset in the project view touches nothing at all. A group is purged whole if
 ANY sub-command touches the purged scene — groups are atomic, a partial group
 would corrupt the timeline.
 
-The `applying` flag blocks re-entrant recording during undo/redo. The `recording` flag is false in playmode. `activity` is set by every stack mutation and consumed once per frame by the selection tracker (see below).
+The `applying` flag blocks re-entrant recording during undo/redo. The `recording` flag is false in playmode. `activity` is set by every stack mutation and consumed once per frame by the selection tracker (see below). `landed` marks a frame where a new entry reached the stack and nothing else happened: a selection change in such a frame belongs to that operation (a create that selects what it made, a paste that selects what it pasted), so the tracker attaches it to the entry with `amend_top_selection` instead of dropping it. A frame with an undo, redo or purge only re-baselines. A selection snapshot also records the objects the Inspector keeps while a file is selected, so undo restores what both inspectors showed.
 
 Behavior examples:
 
@@ -98,6 +98,7 @@ Behavior examples:
   on each swap. The .mat edit survives and stays undoable.
 - Click through 5 objects → Ctrl+Z walks back through the selections,
   Unity-style.
+- Select an object → GameObject / Create Empty → Ctrl+Z: one undo removes the new object AND reselects the old one.
 
 ## Edit sessions
 

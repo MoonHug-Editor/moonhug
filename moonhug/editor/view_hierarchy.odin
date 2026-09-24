@@ -209,14 +209,20 @@ _save_as_open: bool
 @(private)
 _save_as_pending: bool
 
-draw_hierarchy_view :: proc() {
-	// Drain cross-package selection requests (e.g. inspector "ping" button).
-	// Force-open every ancestor so the target is visible after the selection.
+// Drains a cross-package selection request (a package menu that created an
+// object, the inspector's select button). Force-opens every ancestor so the
+// target is visible after the selection. The hierarchy view and the
+// selection tracker both call it, whichever runs first in the frame.
+hierarchy_apply_pending_select :: proc() {
 	if pending, ok := engine.inspector_take_pending_select(); ok {
 		sel_scene_only(pending)
 		_hierarchy_scroll_to_sel = true
 		_hierarchy_open_ancestors(pending)
 	}
+}
+
+draw_hierarchy_view :: proc() {
+	hierarchy_apply_pending_select()
 	// Ping requests: reveal + flash, selection untouched.
 	if pending, ok := engine.inspector_take_pending_ping(); ok {
 		_hierarchy_ping_tH = pending

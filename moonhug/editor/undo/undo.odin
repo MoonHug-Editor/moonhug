@@ -144,6 +144,11 @@ Selection_Scene_Item :: struct {
 Selection_State :: struct {
 	scene: []Selection_Scene_Item,
 	proj:  []engine.PPtr,
+	// While the project holds the selection, the objects the Inspector keeps
+	// showing (the editor's two-inspector layout). Restored with the rest, so
+	// an undo brings back what both panels showed. Not part of equality: it
+	// only changes when the selection itself moves.
+	kept:  []Selection_Scene_Item,
 }
 
 // A selection change as its own undo step (Unity model): undo applies
@@ -241,6 +246,14 @@ Undo_Stack :: struct {
 	// once per frame by the editor's selection tracker so selection changes
 	// caused by data operations don't also record as selection steps.
 	activity:   bool,
+	// A new top-level entry landed (a push outside any group, or a group
+	// closing). `disturbed` is any other mutation: undo, redo, clear, purge.
+	// A frame that only landed is one where a selection change belongs to the
+	// operation that just ran (a create that selects what it made), and the
+	// tracker attaches it to that entry (amend_top_selection) instead of
+	// dropping it.
+	landed:     bool,
+	disturbed:  bool,
 }
 
 init :: proc(s: ^Undo_Stack) {
@@ -261,6 +274,7 @@ clear :: proc(s: ^Undo_Stack) {
 	builtin.clear(&s.txn_stack)
 	s.top = 0
 	s.activity = true
+	s.disturbed = true
 }
 
 destroy :: proc(s: ^Undo_Stack) {
@@ -303,6 +317,7 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 		append(&top_txn.subs, cmd)
 		return
 	}
+	s.landed = true
 
 	for i := len(s.items) - 1; i >= s.top; i -= 1 {
 		e := &s.items[i]
@@ -452,6 +467,7 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp)})
 	s.top = len(s.items)
 	s.activity = true
+	s.landed = true
 	// Lands outside push(), so the dirty mark is made here as well.
 	_mark_scenes_dirty(&s.items[len(s.items) - 1].cmd)
 }
@@ -477,6 +493,7 @@ can_redo :: proc(s: ^Undo_Stack) -> bool {
 apply_undo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_undo(s) do return false
 	s.activity = true
+	s.disturbed = true
 	s.applying = true
 	defer s.applying = false
 	s.top -= 1
@@ -488,6 +505,7 @@ apply_undo :: proc(s: ^Undo_Stack) -> bool {
 apply_redo :: proc(s: ^Undo_Stack) -> bool {
 	if !can_redo(s) do return false
 	s.activity = true
+	s.disturbed = true
 	s.applying = true
 	defer s.applying = false
 	cmd := &s.items[s.top].cmd
@@ -1601,6 +1619,7 @@ make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid) -> Property_Targ
 selection_state_destroy :: proc(st: ^Selection_State) {
 	if st.scene != nil do delete(st.scene)
 	if st.proj != nil do delete(st.proj)
+	if st.kept != nil do delete(st.kept)
 	st^ = {}
 }
 
@@ -1650,7 +1669,46 @@ activity_consume :: proc(s: ^Undo_Stack) -> bool {
 	if s == nil do return false
 	res := s.activity
 	s.activity = false
+	s.landed = false
+	s.disturbed = false
 	return res
+}
+
+// The tracker's once-per-frame read: whether anything mutated the stack, and
+// whether the only thing that happened is new entries landing. Clears all.
+activity_take :: proc(s: ^Undo_Stack) -> (activity: bool, only_landed: bool) {
+	if s == nil do return false, false
+	activity = s.activity
+	only_landed = s.landed && !s.disturbed
+	s.activity = false
+	s.landed = false
+	s.disturbed = false
+	return
+}
+
+// Attaches a selection change to the entry that just landed, so one undo
+// takes back both: the operation and what it selected. A create that selects
+// what it made, a paste that selects what it pasted. The selection goes LAST
+// in the group: revert walks subs in reverse, so the old selection comes back
+// while the objects it names still exist, and redo re-applies the selection
+// after the operation has recreated what it names. Takes ownership of both
+// states. Does nothing (frees them) when there is no fresh top entry.
+amend_top_selection :: proc(s: ^Undo_Stack, before, after: Selection_State) {
+	b, a := before, after
+	if s == nil || !s.recording || s.applying || len(s.items) == 0 || s.top != len(s.items) || selection_state_equal(b, a) {
+		selection_state_destroy(&b)
+		selection_state_destroy(&a)
+		return
+	}
+	e := &s.items[len(s.items) - 1]
+	sel := Command(Selection_Command{before = b, after = a})
+	if g, is_group := &e.cmd.(Group_Command); is_group {
+		append(&g.subs, sel)
+		return
+	}
+	grp := Group_Command{subs = make([dynamic]Command, 0, 2)}
+	append(&grp.subs, e.cmd, sel)
+	e.cmd = Command(grp)
 }
 
 // --- Purge ----------------------------------------------------------------------
@@ -1720,6 +1778,7 @@ _purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_
 		if i < s.top do s.top -= 1
 	}
 	s.activity = true
+	s.disturbed = true
 }
 
 // Drop entries that reference this scene. Call BEFORE unloading, while the

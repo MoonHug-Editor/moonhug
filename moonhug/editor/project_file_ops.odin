@@ -172,6 +172,11 @@ project_ops_copy :: proc() {
 	_file_clip_set(cut = false)
 }
 
+// Whether a paste would do anything: a Cut or Copy left files to paste.
+project_ops_can_paste :: proc() -> bool {
+	return len(_file_clip) > 0
+}
+
 project_ops_paste :: proc() {
 	if len(_file_clip) == 0 {
 		fmt.println("[Editor] Paste: clipboard is empty (Cut or Copy files first)")
