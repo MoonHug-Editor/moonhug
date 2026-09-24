@@ -1,3 +1,14 @@
+## [0.106.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.105.0...v0.106.0) (2026-09-24)
+
+### Features
+
+* add UAL mannequins and animations ([cde34a0](https://github.com/MoonHug-Editor/moonhug/commit/cde34a0e3f5a498649addabda294d3be515ab52b))
+
+### Bug Fixes
+
+* mesh cache ([d269133](https://github.com/MoonHug-Editor/moonhug/commit/d2691337874e16707ff7623822b8c21be2e99cfc))
+* preview glb animations ([0834435](https://github.com/MoonHug-Editor/moonhug/commit/083443584a9b849132d8f17365fbc97c03a8b0e7))
+
 ## [0.105.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.104.0...v0.105.0) (2026-09-22)
 
 ### Features
