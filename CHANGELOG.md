@@ -1,3 +1,10 @@
+## [0.107.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.106.0...v0.107.0) (2026-09-24)
+
+### Features
+
+* add dialog widget ([93e2104](https://github.com/MoonHug-Editor/moonhug/commit/93e210490c49913338b46a768111fbd303e5c30b))
+* improve selection UX ([cf27101](https://github.com/MoonHug-Editor/moonhug/commit/cf27101835af89777e321d88c116194cef53f723))
+
 ## [0.106.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.105.0...v0.106.0) (2026-09-24)
 
 ### Features
