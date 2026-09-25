@@ -879,6 +879,86 @@ nested_scene_free_owned :: proc(ns: ^NestedScene) {
     ns.added_objects = nil
 }
 
+// What an instance records on top of its prefab: the five owned lists of a
+// NestedScene, deep-copied. The editor's Prefab Apply undo keeps one from
+// before and one from after an Apply, and puts the right one back.
+Nested_Records :: struct {
+    overrides:          [dynamic]Override,
+    removed_components: [dynamic]Removed_Component,
+    added_components:   [dynamic]Added_Component,
+    removed_objects:    [dynamic]Removed_Object,
+    added_objects:      [dynamic]Added_Object,
+}
+
+nested_records_capture :: proc(ns: ^NestedScene) -> Nested_Records {
+    if ns == nil do return {}
+    return _nested_records_clone(Nested_Records{
+        overrides          = ns.overrides,
+        removed_components = ns.removed_components,
+        added_components   = ns.added_components,
+        removed_objects    = ns.removed_objects,
+        added_objects      = ns.added_objects,
+    })
+}
+
+// Replaces the record's lists with copies of `r` (r stays owned by the caller).
+nested_records_restore :: proc(ns: ^NestedScene, r: Nested_Records) {
+    if ns == nil do return
+    nested_scene_free_owned(ns)
+    c := _nested_records_clone(r)
+    ns.overrides          = c.overrides
+    ns.removed_components = c.removed_components
+    ns.added_components   = c.added_components
+    ns.removed_objects    = c.removed_objects
+    ns.added_objects      = c.added_objects
+}
+
+nested_records_destroy :: proc(r: ^Nested_Records) {
+    tmp := NestedScene{
+        overrides          = r.overrides,
+        removed_components = r.removed_components,
+        added_components   = r.added_components,
+        removed_objects    = r.removed_objects,
+        added_objects      = r.added_objects,
+    }
+    nested_scene_free_owned(&tmp)
+    r^ = {}
+}
+
+@(private = "file")
+_nested_records_clone :: proc(r: Nested_Records) -> (c: Nested_Records) {
+    c.overrides = make([dynamic]Override, len(r.overrides))
+    for ov, i in r.overrides {
+        c.overrides[i] = Override{
+            target        = ov.target,
+            property_path = strings.clone(ov.property_path),
+            value         = json.clone_value(ov.value),
+        }
+    }
+    c.removed_components = make([dynamic]Removed_Component, len(r.removed_components))
+    copy(c.removed_components[:], r.removed_components[:])
+    c.added_components = make([dynamic]Added_Component, len(r.added_components))
+    for ac, i in r.added_components {
+        c.added_components[i] = Added_Component{
+            owner     = ac.owner,
+            local_id  = ac.local_id,
+            type_guid = strings.clone(ac.type_guid),
+            json      = strings.clone(ac.json),
+        }
+    }
+    c.removed_objects = make([dynamic]Removed_Object, len(r.removed_objects))
+    copy(c.removed_objects[:], r.removed_objects[:])
+    c.added_objects = make([dynamic]Added_Object, len(r.added_objects))
+    for ao, i in r.added_objects {
+        c.added_objects[i] = Added_Object{
+            parent   = ao.parent,
+            local_id = ao.local_id,
+            json     = strings.clone(ao.json),
+        }
+    }
+    return
+}
+
 // A component the prefab declares that this instance does NOT have. `target`
 // names the component row in the prefab it lives in, encoded exactly like
 // Override.target (deep targets XOR-projected up the chain), so one resolution
@@ -3295,6 +3375,20 @@ _root_added_object :: proc(ns: ^NestedScene, lid: Local_ID) -> (Added_Object, bo
     return {}, false
 }
 
+// One prefab file an Apply wrote (nested_scene_apply_entries `written`).
+Applied_File :: struct {
+    guid:   Asset_GUID,
+    before: []byte,
+    after:  []byte,
+}
+
+applied_files_destroy :: proc(files: []Applied_File) {
+    for f in files {
+        delete(f.before)
+        delete(f.after)
+    }
+}
+
 // Applies the chosen entries into `target_guid` — one of the subjects' chain
 // prefabs (nested_scene_apply_targets). Field overrides also clear the same
 // field from every chain level SHALLOWER than the target, since shallower-wins
@@ -3305,17 +3399,22 @@ _root_added_object :: proc(ns: ^NestedScene, lid: Local_ID) -> (Added_Object, bo
 // files and the live records untouched. On success the applied records drop
 // from the root NS — field values stay live, they ARE the new baseline — and
 // each touched prefab propagates once: peer instances with their own override
-// keep it, peers without pick up the new value. NOT undoable: the change lives
-// in prefab files.
+// keep it, peers without pick up the new value. The editor records it as one
+// undo step (undo.apply_to_prefab) from `written` and the record snapshots.
 //
 // `which` filters `entries` by index (nil = all). Triggers propagation, so
 // `ns` pointers into s.nested_scenes are invalid afterward.
+//
+// `written`, when given, receives every file the apply wrote with its bytes
+// before and after (context allocator, applied_files_destroy). The editor's
+// undo keeps them to write the old bytes back.
 nested_scene_apply_entries :: proc(
     s: ^Scene,
     host_tH: Transform_Handle,
     target_guid: Asset_GUID,
     entries: []Override_Entry,
     which: ^map[int]bool = nil,
+    written: ^[dynamic]Applied_File = nil,
 ) -> bool {
     if s == nil do return false
     ns := scene_find_nested_scene_for_host(s, host_tH)
@@ -3456,6 +3555,11 @@ nested_scene_apply_entries :: proc(
     }
 
     for &o in outs {
+        if written != nil {
+            before, rerr := os.read_entire_file(o.path, context.allocator)
+            if rerr != nil do return false
+            append(written, Applied_File{guid = o.guid, before = before, after = slice.clone(o.data)})
+        }
         if os.write_entire_file(o.path, o.data) != nil do return false
         _prefab_bytes_refresh(o.guid, o.data)
     }

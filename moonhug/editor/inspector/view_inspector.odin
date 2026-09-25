@@ -834,8 +834,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
 	                        }
 	                        root_host := engine.Transform_Handle(
 	                            engine.nested_scene_resolve_host_handle(ht.scene, root_ns))
-	                        engine.nested_scene_apply_entries(
-	                            ht.scene, root_host, tgt.guid, {entry})
+	                        undo.apply_to_prefab(ht.scene, root_host, tgt.guid, {entry})
 	                        mark_inspector_changed()
 	                    }
 	                }

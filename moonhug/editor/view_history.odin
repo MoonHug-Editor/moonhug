@@ -191,6 +191,9 @@ _append_command_details :: proc(b: ^strings.Builder, cmd: ^undo.Command, depth: 
 	case undo.Record_Override_Command:
 		fmt.sbprintf(b, "%sPrefab override created: lid %v %q\n",
 			_indent(depth), v.target_lid, v.property_path)
+	case undo.Prefab_Apply_Command:
+		fmt.sbprintf(b, "%sOverrides applied to %d prefab file(s), instance lid %v\n",
+			_indent(depth), len(v.files), v.host_local_id)
 	}
 }
 

@@ -1,7 +1,9 @@
 package undo
 
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "core:fmt"
+import "core:os"
 import "core:slice"
 import "core:strings"
 import "base:builtin"
@@ -228,6 +230,19 @@ Dropdown_Revert_Command :: struct {
 	snapshot:      engine.Override_Snapshot, // owns its clones
 }
 
+// A Prefab Apply (apply_to_prefab): prefab files changed on disk, and the
+// instance's records lost what went into them. Undo writes the old bytes back
+// and restores the old records, redo the new ones. Either way every instance
+// of each prefab then re-resolves (engine.prefab_propagate), so instances in
+// other loaded scenes follow the files too.
+Prefab_Apply_Command :: struct {
+	scene:         Scene_Ref,
+	host_local_id: engine.Local_ID,
+	files:         []engine.Applied_File,  // owned
+	before:        engine.Nested_Records,  // owned
+	after:         engine.Nested_Records,  // owned
+}
+
 Command :: union {
 	Value_Command,
 	Structural_Command,
@@ -235,6 +250,7 @@ Command :: union {
 	Selection_Command,
 	Record_Override_Command,
 	Dropdown_Revert_Command,
+	Prefab_Apply_Command,
 }
 
 Entry :: struct {
@@ -375,6 +391,8 @@ _mark_scenes_dirty :: proc(cmd: ^Command) {
 		}
 	case Dropdown_Revert_Command:
 		mark(v.scene)
+	case Prefab_Apply_Command:
+		mark(v.scene)
 	case Group_Command:
 		for i in 0 ..< len(v.subs) do _mark_scenes_dirty(&v.subs[i])
 	case Selection_Command:
@@ -414,6 +432,8 @@ default_label :: proc(cmd: Command) -> string {
 		return "Edit Value"
 	case Dropdown_Revert_Command:
 		return "Revert Override"
+	case Prefab_Apply_Command:
+		return "Apply Overrides"
 	case Record_Override_Command:
 		// Never the label of a step on its own — it always rides the value
 		// command's group, which supplies the label.
@@ -595,6 +615,8 @@ _apply_command :: proc(cmd: ^Command) {
 		}
 	case Dropdown_Revert_Command:
 		_dropdown_revert_apply(v) // REDO: drop the record again
+	case Prefab_Apply_Command:
+		_prefab_apply_set(v, true)
 	}
 }
 
@@ -639,6 +661,8 @@ _revert_command :: proc(cmd: ^Command) {
 		}
 	case Dropdown_Revert_Command:
 		_dropdown_revert_undo(v)
+	case Prefab_Apply_Command:
+		_prefab_apply_set(v, false)
 	}
 }
 
@@ -742,6 +766,84 @@ record_dropdown_revert :: proc(
 		removed       = removed,
 		snapshot      = snap,
 	}, "Revert Override")
+}
+
+// Runs a Prefab Apply (engine.nested_scene_apply_entries) and records it as one
+// undo step: the files it wrote with their bytes before and after, and the
+// instance's records before and after. Returns whether the apply ran.
+apply_to_prefab :: proc(
+	s: ^engine.Scene,
+	host_tH: engine.Transform_Handle,
+	target_guid: engine.Asset_GUID,
+	entries: []engine.Override_Entry,
+	which: ^map[int]bool = nil,
+) -> bool {
+	w := engine.ctx_world()
+	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
+	ns := engine.scene_find_nested_scene_for_host(s, host_tH)
+	if ht == nil || ns == nil do return false
+	host_lid := ht.local_id
+	before := engine.nested_records_capture(ns)
+	files := make([dynamic]engine.Applied_File)
+	if !engine.nested_scene_apply_entries(s, host_tH, target_guid, entries, which, &files) {
+		engine.nested_records_destroy(&before)
+		engine.applied_files_destroy(files[:])
+		delete(files)
+		return false
+	}
+	// The apply re-resolved the instance, so its record is found again by id.
+	u := get()
+	after_ns := _prefab_apply_ns(scene_ref(s), host_lid)
+	if u == nil || !u.recording || u.applying || after_ns == nil {
+		engine.nested_records_destroy(&before)
+		engine.applied_files_destroy(files[:])
+		delete(files)
+		return true
+	}
+	push(u, Prefab_Apply_Command{
+		scene         = scene_ref(s),
+		host_local_id = host_lid,
+		files         = files[:],
+		before        = before,
+		after         = engine.nested_records_capture(after_ns),
+	})
+	return true
+}
+
+@(private)
+_prefab_apply_ns :: proc(r: Scene_Ref, host_lid: engine.Local_ID) -> ^engine.NestedScene {
+	sc := resolve_scene(r)
+	if sc == nil do return nil
+	h, ok := engine.bimap_get(&sc.local_ids, host_lid)
+	if !ok || h.type_key != .Transform do return nil
+	return engine.scene_find_nested_scene_for_host(sc, engine.Transform_Handle(h))
+}
+
+// Puts one side of a Prefab Apply in place: `after` for redo, the state from
+// before for undo.
+@(private)
+_prefab_apply_set :: proc(v: Prefab_Apply_Command, after: bool) {
+	// A file that changed on disk since the step (edited outside the editor)
+	// is not overwritten: that would lose the change. The step does nothing.
+	for f in v.files {
+		path, ok := engine.asset_db_get_path(uuid.Identifier(f.guid))
+		cur, err := os.read_entire_file(path, context.temp_allocator)
+		expect := after ? f.before : f.after
+		if !ok || err != nil || string(cur) != string(expect) {
+			log.error(fmt.tprintf("undo: %s changed on disk since the Apply, left as it is", path))
+			return
+		}
+	}
+	for f in v.files {
+		if !engine.prefab_file_write(f.guid, after ? f.after : f.before) {
+			log.error(fmt.tprintf("undo: could not write prefab %v", f.guid))
+			return
+		}
+	}
+	if ns := _prefab_apply_ns(v.scene, v.host_local_id); ns != nil {
+		engine.nested_records_restore(ns, after ? v.after : v.before)
+	}
+	for f in v.files do engine.prefab_propagate(f.guid)
 }
 
 @(private)
@@ -866,6 +968,12 @@ _command_destroy :: proc(cmd: ^Command) {
 	case Dropdown_Revert_Command:
 		drc := v
 		_command_destroy_dropdown_revert(&drc)
+	case Prefab_Apply_Command:
+		pac := v
+		engine.applied_files_destroy(pac.files)
+		delete(pac.files)
+		engine.nested_records_destroy(&pac.before)
+		engine.nested_records_destroy(&pac.after)
 	}
 }
 
@@ -1800,6 +1908,8 @@ _command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, any_scene: bool) 
 		return _scene_ref_matches(r, ptr, any_scene)
 	case Dropdown_Revert_Command:
 		return _scene_ref_matches(v.scene, ptr, any_scene)
+	case Prefab_Apply_Command:
+		return _scene_ref_matches(v.scene, ptr, any_scene)
 	case Group_Command:
 		for i in 0 ..< len(v.subs) {
 			if _command_refs_scene(&v.subs[i], ptr, any_scene) do return true
@@ -1846,6 +1956,8 @@ _command_refs_asset :: proc(cmd: ^Command, guid: engine.Asset_GUID) -> bool {
 	#partial switch v in cmd {
 	case Value_Command:
 		return v.target.kind == .Asset && v.target.asset_guid == guid
+	case Prefab_Apply_Command:
+		for f in v.files do if f.guid == guid do return true
 	case Group_Command:
 		for i in 0 ..< len(v.subs) {
 			if _command_refs_asset(&v.subs[i], guid) do return true

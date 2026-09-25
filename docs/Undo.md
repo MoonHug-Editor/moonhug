@@ -43,6 +43,7 @@ view_history focused:
   - Structural_Command — hierarchy mutation (reparent, create, delete, add/remove/reorder component)
   - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
   - Selection_Command — a selection change (before/after states), Unity's "Selection Change" steps
+  - Prefab_Apply_Command — a Prefab Apply: the prefab files it wrote (bytes before/after) and the instance's records (before/after). Undo and redo write one side back and re-propagate the prefab (docs/NestedPrefabs.md)
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
 - Edit_Session      — a bracketed transaction over N targets: before-state captured at open, one grouped action recorded at close (see "Edit sessions")
 - Scene_Ref         — scene identity: the scene's `session_id`, which an in-place reload (Stop after Play, revert) keeps (`resolve_scene`). Not a pointer (a reload frees the struct) and not the asset guid (one file can be loaded twice, an unsaved scene has none)
@@ -75,7 +76,8 @@ apply_redo    — walks forward one entry, applies it, increments top
 purge_scene   — drops entries referencing ONE scene (call before unloading it)
 purge_scenes  — drops entries referencing ANY scene (single-scene loads). Asset
                 edits and project-only selection steps survive
-purge_asset   — drops entries that edit ONE asset's document (the asset was deleted)
+purge_asset   — drops entries that edit ONE asset (the asset was deleted): its document
+                edits, and Prefab Apply steps that wrote its file
 play_begin    — Play starts: until play_end, undo/redo move only through entries
                 recorded in the run (Entry.in_play)
 play_end      — Stop: drops the run's scene entries, keeps its other entries and

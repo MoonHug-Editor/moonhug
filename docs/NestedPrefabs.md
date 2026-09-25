@@ -190,7 +190,7 @@ The inspector shows an **Overrides (N)** button on a prefab instance's root, lis
 
 Rows are selectable: click for one, ctrl/cmd for a set, shift for a range. **Revert All** and **Revert Selected** drop the chosen records. A field revert restores the base value as well as the record; the structural kinds only drop the record, and the instance rebuilds from its prefab on the next resolve.
 
-**Apply All** and **Apply Selected** each open a menu listing every prefab all the chosen overrides can go to, closest to base (`nested_scene_apply_targets_common`). Picking one runs the shared apply core — see "Apply" under Extras. Structural entries narrow the menu to the levels their record is expressible at, and Apply is not undoable (it rewrites prefab files).
+**Apply All** and **Apply Selected** each open a menu listing every prefab all the chosen overrides can go to, closest to base (`nested_scene_apply_targets_common`). Picking one runs the shared apply core — see "Apply" under Extras. Structural entries narrow the menu to the levels their record is expressible at. Apply is one undo step (`undo.apply_to_prefab`): it keeps every prefab file it wrote with the bytes before and after, and the instance's records before and after. Undo writes the old bytes back, restores the old records and re-propagates the prefab, redo does the same with the new side. A file that changed on disk since the Apply (edited outside the editor) is left as it is, and the step logs an error instead.
 
 Per-field revert and Apply stay on the property context menu, listing the same target chain per field.
 - diff produces overrides between baked_base and working_copy
@@ -266,8 +266,6 @@ A **variant** is a scene asset that is a NestedScene over a base prefab — *bas
 Unity intentionally preserves orphan modifications and stripped objects so that re-adding a removed script field or asset can recover the reference. This codebase is more aggressive: save drops overrides whose `target.local_id` no longer exists in the prefab named by `target.guid`, and prunes orphan stripped-placeholder breadcrumbs that no NS host or live `Ref_Local` references. Trade-off: cleaner files, no recovery on accidental field removal.
 
 # TODO
-- Apply is not undoable — it rewrites prefab files, and undo has no file-snapshot command. Unity's Apply is undoable; matching it needs before/after file bytes captured into an undo entry that rewrites the file and re-propagates on undo/redo.
-
 - (done) prefab overrides — Apply matches Unity: flat menu items (no submenu), one per chain target ordered closest→base, variant bases included. The deepest item bakes into the owner file ("Apply to Scene '<owner>'"), every other target records an override ("Apply as Override in '<prefab>'"). Selecting one clears every shallower copy so the chosen value wins. The Overrides dropdown applies in bulk through the same targets.
 
 - reparenting prefab-instance content has no override representation — hierarchy drag-drop stays disabled on it. This is specified behaviour, not a gap (§4.6).

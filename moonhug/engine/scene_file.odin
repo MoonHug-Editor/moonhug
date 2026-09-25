@@ -1,6 +1,7 @@
 package engine
 
 import "core:encoding/json"
+import "core:encoding/uuid"
 import "core:math/rand"
 import "core:os"
 import "core:fmt"
@@ -1532,6 +1533,16 @@ _prefab_bytes_refresh :: proc(guid: Asset_GUID, data: []byte) {
 	copy(fresh, data)
 	scene_lib[guid] = fresh
 	scene_lib_unpacked_invalidate(guid)
+}
+
+// Writes a prefab file and refreshes the cached bytes its instances resolve
+// from. Call prefab_propagate after to re-resolve the loaded instances.
+prefab_file_write :: proc(guid: Asset_GUID, data: []byte) -> bool {
+	path, ok := asset_db_get_path(uuid.Identifier(guid))
+	if !ok do return false
+	if os.write_entire_file(path, data) != nil do return false
+	_prefab_bytes_refresh(guid, data)
+	return true
 }
 
 // Re-resolve pass for a saved/edited prefab guid. Exposed for Apply's deferred

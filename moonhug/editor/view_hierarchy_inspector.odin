@@ -375,7 +375,7 @@ _draw_overrides_button :: proc(host_tH: engine.Transform_Handle) -> bool {
 // The Apply target menu: one item per prefab every chosen override can go to,
 // closest first, ending at the file that owns the rows. Returns whether an
 // apply ran — the caller closes the dropdown, its rows are stale afterward.
-// Apply writes prefab files and is not undoable.
+// Apply writes prefab files, recorded as one undo step (undo.apply_to_prefab).
 @(private)
 _overrides_apply_menu :: proc(
 	s: ^engine.Scene,
@@ -398,7 +398,7 @@ _overrides_apply_menu :: proc(
 		}
 		label := strings.clone_to_cstring(fmt.tprintf(label_fmt, name), context.temp_allocator)
 		if im.MenuItem(label) {
-			if engine.nested_scene_apply_entries(s, host_tH, tgt.guid, entries, which) {
+			if undo.apply_to_prefab(s, host_tH, tgt.guid, entries, which) {
 				applied = true
 			}
 		}
