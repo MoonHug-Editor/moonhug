@@ -45,7 +45,7 @@ view_history focused:
   - Selection_Command — a selection change (before/after states), Unity's "Selection Change" steps
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
 - Edit_Session      — a bracketed transaction over N targets: before-state captured at open, one grouped action recorded at close (see "Edit sessions")
-- Scene_Ref         — scene identity that survives reloads: live pointer fast path + asset guid fallback (`resolve_scene`)
+- Scene_Ref         — scene identity: the scene's `session_id`, which an in-place reload (Stop after Play, revert) keeps (`resolve_scene`). Not a pointer (a reload frees the struct) and not the asset guid (one file can be loaded twice, an unsaved scene has none)
 - Inspector_Owner   — current Transform/Component/Asset-document frame the inspector is drawing. Pushed by the inspector before drawing so nested drawers can resolve it
 
 ## `Property_Target` for targets to survive pool reallocation
@@ -54,7 +54,7 @@ view_history focused:
 
 `Property_Target` stores a robust identifier that works even after destroy/recreate.
 - `kind` — `Pooled` (anything in the `World` pool table), `Raw` (non-pooled memory) or `Asset` (serialized asset document).
-- `scene` (a `Scene_Ref`) + `local_id` — persistent, file-stable identity used when a `Handle` is stale. The scene re-resolves by asset guid after a reload.
+- `scene` (a `Scene_Ref`) + `local_id` — persistent, file-stable identity used when a `Handle` is stale. The scene re-resolves by session id after an in-place reload.
   - `handle` — fast path, with a `local_id` scan as the fallback when invalid.
 - `offset` + `type_id` — where and what inside the resolved struct.
 - `raw_ptr` — used only for `.Raw` (non-scene data like import settings).
@@ -76,6 +76,10 @@ purge_scene   — drops entries referencing ONE scene (call before unloading it)
 purge_scenes  — drops entries referencing ANY scene (single-scene loads). Asset
                 edits and project-only selection steps survive
 purge_asset   — drops entries that edit ONE asset's document (the asset was deleted)
+play_begin    — Play starts: until play_end, undo/redo move only through entries
+                recorded in the run (Entry.in_play)
+play_end      — Stop: drops the run's scene entries, keeps its other entries and
+                everything from before Play
 clear         — wipes stack (History view's Clear button only)
 ```
 
@@ -86,7 +90,7 @@ asset in the project view touches nothing at all. A group is purged whole if
 ANY sub-command touches the purged scene — groups are atomic, a partial group
 would corrupt the timeline.
 
-The `applying` flag blocks re-entrant recording during undo/redo. The `recording` flag is false in playmode. `activity` is set by every stack mutation and consumed once per frame by the selection tracker (see below). `landed` marks a frame where a new entry reached the stack and nothing else happened: a selection change in such a frame belongs to that operation (a create that selects what it made, a paste that selects what it pasted), so the tracker attaches it to the entry with `amend_top_selection` instead of dropping it. A frame with an undo, redo or purge only re-baselines. A selection snapshot also records the objects the Inspector keeps while a file is selected, so undo restores what both inspectors showed.
+The `applying` flag blocks re-entrant recording during undo/redo. `activity` is set by every stack mutation and consumed once per frame by the selection tracker (see below). `landed` marks a frame where a new entry reached the stack and nothing else happened: a selection change in such a frame belongs to that operation (a create that selects what it made, a paste that selects what it pasted), so the tracker attaches it to the entry with `amend_top_selection` instead of dropping it. A frame with an undo, redo or purge only re-baselines. A selection snapshot also records the objects the Inspector keeps while a file is selected, so undo restores what both inspectors showed.
 
 Behavior examples:
 
@@ -100,6 +104,7 @@ Behavior examples:
 - Click through 5 objects → Ctrl+Z walks back through the selections,
   Unity-style.
 - Select an object → GameObject / Create Empty → Ctrl+Z: one undo removes the new object AND reselects the old one.
+- Edit a light → Play → change its intensity → Ctrl+Z: undoes the Play-time change only. The edit from before Play is locked until Stop. Stop drops the Play-time step, and the next Ctrl+Z reverts the edit from before Play on the restored scene. Details in docs/Simulate.md.
 
 ## Edit sessions
 

@@ -61,17 +61,16 @@ _hierarchy_has_selection :: proc() -> bool {
 }
 
 // --- Edit: Undo / Redo -------------------------------------------------------
+// Enabled during Play too: undo.can_undo/can_redo limit a run to its own steps.
 
 @(private)
 _edit_can_undo :: proc() -> bool {
-	if engine.application_is_playing() do return false
 	s := undo.get()
 	return s != nil && undo.can_undo(s)
 }
 
 @(private)
 _edit_can_redo :: proc() -> bool {
-	if engine.application_is_playing() do return false
 	s := undo.get()
 	return s != nil && undo.can_redo(s)
 }

@@ -22,6 +22,11 @@ Scene :: struct {
 	// whenever a command targeting this scene is pushed, undone or redone,
 	// cleared by scene_save. Shown as a star on the scene's headers.
 	dirty:                bool `json:"-"`,
+	// Identity for the session, never 0. An in-place reload (Stop after Play,
+	// revert) keeps it while the Scene struct itself is freed and replaced, so
+	// editor state that outlives the reload (undo entries) finds the scene by
+	// id. A pointer would dangle, and a guid is empty for an unsaved scene.
+	session_id:           u32 `json:"-"`,
 	// The world whose pools hold this scene's objects, captured at scene_new.
 	// The scene manager is global while worlds are not (preview/thumbnail
 	// worlds coexist with the live one), so identity stamping guards on this:
@@ -34,10 +39,15 @@ Scene :: struct {
 	unknown_components:   [dynamic]Unknown_Component `json:"-"`,
 }
 
+@(private = "file")
+_scene_session_seq: u32
+
 scene_new :: proc() -> ^Scene {
 	s := new(Scene)
 	s.generation = 1 // FIX
 	s.world = ctx_world()
+	_scene_session_seq += 1
+	s.session_id = _scene_session_seq
 	return s
 }
 

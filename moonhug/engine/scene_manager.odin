@@ -117,6 +117,17 @@ sm_scene_is_loaded :: proc(scene: ^Scene) -> bool {
     return false
 }
 
+// The loaded scene with this session id (Scene.session_id), or nil. 0 never matches.
+sm_scene_find_by_session_id :: proc(id: u32) -> ^Scene {
+    if id == 0 do return nil
+    scene_manager := ctx_scene_manager()
+    for i in 0..<scene_manager.count {
+        s := scene_manager.loaded[i]
+        if s != nil && sm_scene_is_valid(s) && s.session_id == id do return s
+    }
+    return nil
+}
+
 // The loaded scene backed by the given asset, or nil (empty guid never matches).
 sm_scene_find_by_guid :: proc(guid: Asset_GUID) -> ^Scene {
     if asset_guid_is_empty(guid) do return nil
@@ -151,7 +162,8 @@ _scene_load_single :: proc(scene_file: ^SceneFile, scene_asset_guid: Asset_GUID 
 //
 // The Scene POINTER does not survive: scene_destroy frees it, so callers re-read
 // the returned pointer. Handles into the old scene are invalid too, since every
-// object is re-created; identity is re-resolved by local_id.
+// object is re-created; identity is re-resolved by local_id. The scene's own
+// identity, session_id, carries over to the replacement.
 scene_reload_in_place :: proc(target: ^Scene, scene_file: ^SceneFile, scene_asset_guid: Asset_GUID = {}) -> ^Scene {
     if target == nil do return nil
     scene_manager := ctx_scene_manager()
@@ -166,6 +178,7 @@ scene_reload_in_place :: proc(target: ^Scene, scene_file: ^SceneFile, scene_asse
     if slot < 0 do return nil // not loaded: nothing to replace in place
 
     was_active := scene_manager.active_scene == Scene_ID(slot)
+    session_id := target.session_id
 
     // Free the slot before building the replacement, so _scene_load_additive's own
     // slot search cannot pick a different one.
@@ -178,6 +191,7 @@ scene_reload_in_place :: proc(target: ^Scene, scene_file: ^SceneFile, scene_asse
         // The old scene is already gone; the slot stays empty.
         return nil
     }
+    s.session_id = session_id // the same scene to everything that outlives the reload
 
     // _scene_load_additive takes the first free slot, which is a lower one if any
     // was free. Move it back so indices are stable across a restore.

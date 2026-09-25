@@ -57,21 +57,24 @@ _hooks: Hooks
 _hosts: []Host
 _host: int
 
-// The scene at Start, in the on-disk scene format, held in memory.
+// The scene at Start, in the on-disk scene format, held in memory. Scenes are
+// remembered by session id, not pointer: a scene unloaded during the run frees
+// its struct, and a later scene can be allocated at the same address.
 _snapshot: []byte
-_scene: ^engine.Scene
+_scene_id: u32
 _scene_path: string
 
 // The scene set at Start: Stop unloads what the run loaded on top and reloads
 // from disk what the run unloaded, so the editor sees the same scenes again.
 _Loaded_Scene :: struct {
-    scene: ^engine.Scene,
-    path:  string,
+    id:   u32, // engine.Scene.session_id
+    path: string,
 }
 _loaded_at_start: [dynamic]_Loaded_Scene
 
 // Ids of the objects selected at Start. Handles hold a pool slot + generation and
 // restore re-creates every object, so ids are what survives.
+// Like every global here it outlives the caller, so it pins the default allocator.
 _selection: [dynamic]engine.Local_ID
 
 // Set by step, consumed by the next tick: advance one frame, then hold.
@@ -109,7 +112,7 @@ is_active :: proc() -> bool {
 // The scene captured at Start, or nil when stopped. The hierarchy asks so it
 // can keep Unload off the one scene a Stop has to restore.
 scene :: proc() -> ^engine.Scene {
-    return _state != .Stopped ? _scene : nil
+    return _state != .Stopped ? engine.sm_scene_find_by_session_id(_scene_id) : nil
 }
 
 // True while the scene advances. Paused holds the world without leaving.
@@ -179,16 +182,21 @@ start :: proc(paused := false) -> bool {
     _snapshot = make([]byte, len(snapshot), runtime.default_allocator())
     copy(_snapshot, snapshot)
     delete(snapshot)
-    _scene = scene
+    _scene_id = scene.session_id
     _scene_path = strings.clone(scene.path, runtime.default_allocator())
     _record_loaded_scenes()
 
-    clear(&_selection)
-    if _hooks.selection_ids != nil {
-        for id in _hooks.selection_ids() do append(&_selection, id)
+    {
+        context.allocator = runtime.default_allocator()
+        clear(&_selection)
+        if _hooks.selection_ids != nil {
+            for id in _hooks.selection_ids() do append(&_selection, id)
+        }
     }
 
     _fire(.ExitingEditMode)
+    // From here undo only walks through what the run records (undo.play_begin).
+    undo.play_begin(undo.get())
     _state = paused ? .Paused : .Running
     _sync_context()
     engine.fixed_reset()
@@ -207,17 +215,15 @@ stop :: proc() {
     // gizmos let go before anything is destroyed.
     if _hooks.selection_clear != nil do _hooks.selection_clear()
 
-    // Scene-referencing undo entries go while the scene pointer is still valid.
-    // This also drops what the run recorded, since those commands target objects
-    // Stop replaces. Asset edits survive.
-    if us := undo.get(); us != nil {
-        undo.purge_scenes(us)
-    }
+    // The run's scene edits leave the undo stack: they target objects Stop
+    // replaces. Edits from before Play stay and find their objects again in
+    // the restored scene. Asset edits stay.
+    undo.play_end(undo.get())
 
     _restore_scene_set()
     restored := false
-    if _snapshot != nil && _scene != nil && engine.sm_scene_is_loaded(_scene) {
-        restored = _restore()
+    if target := engine.sm_scene_find_by_session_id(_scene_id); _snapshot != nil && target != nil {
+        restored = _restore(target)
     }
     if !restored && _snapshot != nil {
         log.error("Simulate: snapshot restore failed - the scene was NOT restored; reopen it from Project")
@@ -225,7 +231,7 @@ stop :: proc() {
 
     delete(_snapshot, runtime.default_allocator())
     _snapshot = nil
-    _scene = nil
+    _scene_id = 0
     if _scene_path != "" {
         delete(_scene_path, runtime.default_allocator())
         _scene_path = ""
@@ -328,16 +334,18 @@ available :: proc() -> bool {
 }
 
 _record_loaded_scenes :: proc() {
+    context.allocator = runtime.default_allocator()
     _clear_loaded_scenes()
     sm := engine.ctx_scene_manager()
     for i in 0 ..< sm.count {
         sc := sm.loaded[i]
         if sc == nil do continue
-        append(&_loaded_at_start, _Loaded_Scene{scene = sc, path = strings.clone(sc.path)})
+        append(&_loaded_at_start, _Loaded_Scene{id = sc.session_id, path = strings.clone(sc.path)})
     }
 }
 
 _clear_loaded_scenes :: proc() {
+    context.allocator = runtime.default_allocator()
     for l in _loaded_at_start do delete(l.path)
     clear(&_loaded_at_start)
 }
@@ -351,11 +359,11 @@ _restore_scene_set :: proc() {
         sc := sm.loaded[i]
         if sc == nil do continue
         known := false
-        for l in _loaded_at_start do if l.scene == sc { known = true; break }
+        for l in _loaded_at_start do if l.id == sc.session_id { known = true; break }
         if !known do engine.sm_scene_unload(sc)
     }
     for l in _loaded_at_start {
-        if engine.sm_scene_is_loaded(l.scene) || l.path == "" do continue
+        if engine.sm_scene_find_by_session_id(l.id) != nil || l.path == "" do continue
         engine.scene_load_additive_path(l.path)
     }
     _clear_loaded_scenes()
@@ -366,9 +374,9 @@ _restore_scene_set :: proc() {
 // additively loaded scenes are untouched.
 //
 // Not atomic: on failure the target scene is already destroyed.
-_restore :: proc() -> bool {
+_restore :: proc(target: ^engine.Scene) -> bool {
     scene := engine.scene_reload_in_place_bytes(
-        _scene, _snapshot, _scene.asset_guid, _scene_path)
+        target, _snapshot, target.asset_guid, _scene_path)
     if scene == nil do return false
 
     // Objects the game destroyed are absent from the restored scene too, so they

@@ -73,10 +73,9 @@ Assets live on disk and are shared by every scene that references them, so they
 are not part of any one scene's state, and mutating one at runtime is legitimate
 gameplay. Git is the restore path for an asset a run changed, as in Unity.
 
-**Undo history from the run.** Edits made while simulating are dropped on Stop,
-along with anything the run recorded. Undo cannot step back into a world that
-Stop has already replaced. Undo history from before Simulate survives, as do
-asset edits.
+**Undo history from the run.** Edits made while simulating are undoable while the run lasts, and their scene steps are dropped on Stop: they describe objects and values Stop replaces. Asset edits made during the run stay, with their undo steps, since Stop does not roll assets back.
+
+While the run lasts, undo and redo move only through the run's own steps. Steps from before Simulate are locked (dimmed in the History view as "before Play"): undoing one would change the running scene, not the snapshot Stop restores, and the stack would stop matching the scene it describes. After Stop they work again on the restored scene.
 
 ## Why it is safe
 
@@ -113,6 +112,8 @@ file stores. On Stop the selection is cleared first (while its handles are still
 valid, so the inspector and gizmos let go cleanly), the scene is restored, then
 the ids are resolved back to fresh handles. Objects the game destroyed simply do
 not resolve, and are dropped from the selection.
+
+The scene keeps its identity. Restore frees the Scene struct and loads a new one, and the new one takes over the old one's `session_id`. Undo steps from before Simulate, and Simulate's own record of the scene set at Start, find scenes by that id. A pointer would dangle, and a guid is empty for an unsaved scene and shared by two copies of one scene file.
 
 ## Ticking
 

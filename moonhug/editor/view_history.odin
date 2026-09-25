@@ -87,7 +87,11 @@ draw_history_view :: proc() {
 		for entry, i in items {
 			step_index := i + 1
 			status: string
-			if step_index <= top {
+			// While playing, steps from before Play don't move (undo.play_begin).
+			locked := s.playing && !entry.in_play
+			if locked {
+				status = "before Play"
+			} else if step_index <= top {
 				status = "done"
 			} else {
 				status = "redo"
@@ -101,7 +105,7 @@ draw_history_view :: proc() {
 			text_col := im.GetStyleColorVec4(.Text)^
 			if is_current {
 				text_col = im.Vec4{0.9, 0.8, 0.3, 1}
-			} else if step_index > top {
+			} else if step_index > top || locked {
 				text_col = im.GetStyleColorVec4(.TextDisabled)^
 			}
 			im.PushStyleColorImVec4(.Text, text_col)

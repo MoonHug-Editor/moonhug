@@ -21,19 +21,25 @@ Owner_Kind :: enum {
 // while the scene stays loaded; the asset guid re-finds the reloaded scene
 // afterwards (empty for never-saved scenes — those can't outlive an unload,
 // purge_* removes their entries).
+// A scene as an undo entry remembers it: its session id, which an in-place
+// reload (Stop after Play, revert) keeps.
+// - Not a pointer: a reload frees the Scene struct, and a stale pointer can
+//   match another scene allocated at the same address.
+// - Not the asset guid: the same file can be loaded twice (Open Scene
+//   Additive), and an unsaved scene has none.
+// Every path that replaces a scene with a NEW one (open, nested edit, unload)
+// purges its entries first, so nothing needs to find a scene across that.
 Scene_Ref :: struct {
-	ptr:  ^engine.Scene,
-	guid: engine.Asset_GUID,
+	id: u32, // engine.Scene.session_id
 }
 
 scene_ref :: proc(s: ^engine.Scene) -> Scene_Ref {
 	if s == nil do return {}
-	return Scene_Ref{ptr = s, guid = s.asset_guid}
+	return Scene_Ref{id = s.session_id}
 }
 
 resolve_scene :: proc(r: Scene_Ref) -> ^engine.Scene {
-	if engine.sm_scene_is_loaded(r.ptr) do return r.ptr
-	return engine.sm_scene_find_by_guid(r.guid)
+	return engine.sm_scene_find_by_session_id(r.id)
 }
 
 Property_Target :: struct {
@@ -232,8 +238,9 @@ Command :: union {
 }
 
 Entry :: struct {
-	label: string,
-	cmd:   Command,
+	label:   string,
+	cmd:     Command,
+	in_play: bool, // recorded during the current Play run (play_begin/play_end)
 }
 
 Undo_Stack :: struct {
@@ -254,6 +261,9 @@ Undo_Stack :: struct {
 	// dropping it.
 	landed:     bool,
 	disturbed:  bool,
+	// Between play_begin and play_end: undo and redo move only through
+	// entries recorded in this run (Entry.in_play).
+	playing:    bool,
 }
 
 init :: proc(s: ^Undo_Stack) {
@@ -336,7 +346,7 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 	if effective_label == "" {
 		effective_label = default_label(cmd)
 	}
-	append(&s.items, Entry{label = strings.clone(effective_label), cmd = cmd})
+	append(&s.items, Entry{label = strings.clone(effective_label), cmd = cmd, in_play = s.playing})
 	s.top = len(s.items)
 	_mark_scenes_dirty(&s.items[len(s.items) - 1].cmd)
 }
@@ -348,7 +358,7 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 @(private)
 _mark_scenes_dirty :: proc(cmd: ^Command) {
 	mark :: proc(r: Scene_Ref) {
-		if r.ptr != nil && engine.sm_scene_is_valid(r.ptr) do r.ptr.dirty = true
+		if s := resolve_scene(r); s != nil do s.dirty = true
 	}
 	switch v in cmd {
 	case Value_Command:
@@ -376,6 +386,13 @@ _mark_scenes_dirty :: proc(cmd: ^Command) {
 jump_to :: proc(s: ^Undo_Stack, target_top: int) -> bool {
 	if s == nil do return false
 	if target_top < 0 || target_top > len(s.items) do return false
+	// While playing only this run's steps move, so a jump past them does
+	// nothing rather than stopping halfway.
+	if s.playing {
+		for i in min(target_top, s.top) ..< max(target_top, s.top) {
+			if !s.items[i].in_play do return false
+		}
+	}
 	for s.top > target_top {
 		if !apply_undo(s) do return false
 	}
@@ -464,7 +481,7 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 	}
 	// Clone like push() does — _entry_destroy deletes the label, and group
 	// labels are usually string literals.
-	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp)})
+	append(&s.items, Entry{label = strings.clone(label), cmd = Command(grp), in_play = s.playing})
 	s.top = len(s.items)
 	s.activity = true
 	s.landed = true
@@ -473,7 +490,8 @@ end_group_command :: proc(s: ^Undo_Stack, label := "") {
 }
 
 can_undo :: proc(s: ^Undo_Stack) -> bool {
-	return s != nil && s.top > 0
+	if s == nil || s.top == 0 do return false
+	return !s.playing || s.items[s.top - 1].in_play
 }
 
 entries :: proc(s: ^Undo_Stack) -> []Entry {
@@ -487,7 +505,38 @@ top_index :: proc(s: ^Undo_Stack) -> int {
 }
 
 can_redo :: proc(s: ^Undo_Stack) -> bool {
-	return s != nil && s.top < len(s.items)
+	if s == nil || s.top >= len(s.items) do return false
+	return !s.playing || s.items[s.top].in_play
+}
+
+// Play starts. From here until play_end, undo and redo only move through what
+// this run records. An entry from before Play targets the edit-time scene,
+// which Stop restores from its snapshot: undoing it on the running scene
+// would change a scene Stop then replaces, and the stack would no longer
+// match the scene it describes.
+play_begin :: proc(s: ^Undo_Stack) {
+	if s == nil do return
+	s.playing = true
+}
+
+// Play ends, before Stop restores the scene. The run's scene edits go: they
+// describe objects and values Stop replaces. The run's asset edits stay,
+// since assets are not rolled back. Entries from before Play stay too: their
+// targets find the restored scene by guid and their objects by local_id.
+play_end :: proc(s: ^Undo_Stack) {
+	if s == nil do return
+	s.playing = false
+	for i := len(s.items) - 1; i >= 0; i -= 1 {
+		e := &s.items[i]
+		if !e.in_play do continue
+		e.in_play = false
+		if !_command_refs_scene(&e.cmd, nil, true) do continue
+		_entry_destroy(e)
+		ordered_remove(&s.items, i)
+		if i < s.top do s.top -= 1
+	}
+	s.activity = true
+	s.disturbed = true
 }
 
 apply_undo :: proc(s: ^Undo_Stack) -> bool {
@@ -1717,28 +1766,26 @@ amend_top_selection :: proc(s: ^Undo_Stack, before, after: Selection_State) {
 // selection steps survive scene navigation.
 
 @(private)
-_scene_ref_matches :: proc(r: Scene_Ref, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
-	if r.ptr == nil && engine.asset_guid_is_empty(r.guid) do return false
+_scene_ref_matches :: proc(r: Scene_Ref, ptr: ^engine.Scene, any_scene: bool) -> bool {
+	if r.id == 0 do return false
 	if any_scene do return true
-	if r.ptr != nil && r.ptr == ptr do return true
-	if !engine.asset_guid_is_empty(guid) && r.guid == guid do return true
-	return false
+	return ptr != nil && r.id == ptr.session_id
 }
 
 @(private)
-_selection_state_refs_scene :: proc(st: Selection_State, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
+_selection_state_refs_scene :: proc(st: Selection_State, ptr: ^engine.Scene, any_scene: bool) -> bool {
 	for it in st.scene {
-		if _scene_ref_matches(it.scene, ptr, guid, any_scene) do return true
+		if _scene_ref_matches(it.scene, ptr, any_scene) do return true
 	}
 	return false
 }
 
 @(private)
-_command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) -> bool {
+_command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, any_scene: bool) -> bool {
 	switch v in cmd {
 	case Value_Command:
 		if v.target.kind != .Pooled do return false
-		return _scene_ref_matches(v.target.scene, ptr, guid, any_scene)
+		return _scene_ref_matches(v.target.scene, ptr, any_scene)
 	case Structural_Command:
 		r: Scene_Ref
 		switch sv in v {
@@ -1750,28 +1797,28 @@ _command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, guid: engine.Asse
 		case Reorder_Components_Command: r = sv.scene
 		case Remove_Unknown_Component_Command: r = sv.scene
 		}
-		return _scene_ref_matches(r, ptr, guid, any_scene)
+		return _scene_ref_matches(r, ptr, any_scene)
 	case Dropdown_Revert_Command:
-		return _scene_ref_matches(v.scene, ptr, guid, any_scene)
+		return _scene_ref_matches(v.scene, ptr, any_scene)
 	case Group_Command:
 		for i in 0 ..< len(v.subs) {
-			if _command_refs_scene(&v.subs[i], ptr, guid, any_scene) do return true
+			if _command_refs_scene(&v.subs[i], ptr, any_scene) do return true
 		}
 		return false
 	case Record_Override_Command:
-		return _scene_ref_matches(v.scene, ptr, guid, any_scene)
+		return _scene_ref_matches(v.scene, ptr, any_scene)
 	case Selection_Command:
-		return _selection_state_refs_scene(v.before, ptr, guid, any_scene) ||
-			_selection_state_refs_scene(v.after, ptr, guid, any_scene)
+		return _selection_state_refs_scene(v.before, ptr, any_scene) ||
+			_selection_state_refs_scene(v.after, ptr, any_scene)
 	}
 	return false
 }
 
 @(private)
-_purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_scene: bool) {
+_purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, any_scene: bool) {
 	if s == nil do return
 	for i := len(s.items) - 1; i >= 0; i -= 1 {
-		if !_command_refs_scene(&s.items[i].cmd, ptr, guid, any_scene) do continue
+		if !_command_refs_scene(&s.items[i].cmd, ptr, any_scene) do continue
 		e := &s.items[i]
 		_entry_destroy(e)
 		ordered_remove(&s.items, i)
@@ -1785,13 +1832,13 @@ _purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, guid: engine.Asset_GUID, any_
 // pointer is still valid.
 purge_scene :: proc(s: ^Undo_Stack, scene: ^engine.Scene) {
 	if scene == nil do return
-	_purge(s, scene, scene.asset_guid, false)
+	_purge(s, scene, false)
 }
 
 // Drop entries that reference ANY scene (single-scene loads unload everything);
 // asset edits and project-only selection steps survive.
 purge_scenes :: proc(s: ^Undo_Stack) {
-	_purge(s, nil, {}, true)
+	_purge(s, nil, true)
 }
 
 @(private)
