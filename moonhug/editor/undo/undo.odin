@@ -1793,3 +1793,35 @@ purge_scene :: proc(s: ^Undo_Stack, scene: ^engine.Scene) {
 purge_scenes :: proc(s: ^Undo_Stack) {
 	_purge(s, nil, {}, true)
 }
+
+@(private)
+_command_refs_asset :: proc(cmd: ^Command, guid: engine.Asset_GUID) -> bool {
+	#partial switch v in cmd {
+	case Value_Command:
+		return v.target.kind == .Asset && v.target.asset_guid == guid
+	case Group_Command:
+		for i in 0 ..< len(v.subs) {
+			if _command_refs_asset(&v.subs[i], guid) do return true
+		}
+	}
+	return false
+}
+
+// Drop entries that edit this asset's document. Call when the asset left the
+// project: undoing one would bring back a document for a missing file. A
+// group goes whole if any sub-command edits the asset, like purge_scene.
+purge_asset :: proc(s: ^Undo_Stack, guid: engine.Asset_GUID) {
+	if s == nil || engine.asset_guid_is_empty(guid) do return
+	removed := false
+	for i := len(s.items) - 1; i >= 0; i -= 1 {
+		if !_command_refs_asset(&s.items[i].cmd, guid) do continue
+		_entry_destroy(&s.items[i])
+		ordered_remove(&s.items, i)
+		if i < s.top do s.top -= 1
+		removed = true
+	}
+	if removed {
+		s.activity = true
+		s.disturbed = true
+	}
+}

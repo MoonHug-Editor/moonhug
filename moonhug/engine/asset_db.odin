@@ -210,6 +210,22 @@ asset_db_add_path_changed_hook :: proc(hook: Path_Changed_Hook) {
     append(&_path_changed_hooks, hook)
 }
 
+// Runs once per asset that left the project in a refresh: deleted, not
+// renamed or moved (a rename keeps its guid under a new path, so it never
+// fires). `path` is where the asset was. Editor state keyed by the guid,
+// such as an open asset document and its undo steps, drops here.
+Asset_Gone_Hook :: proc(guid: Asset_GUID, path: string)
+
+_asset_gone_hooks: [dynamic]Asset_Gone_Hook
+
+asset_db_add_asset_gone_hook :: proc(hook: Asset_Gone_Hook) {
+    for h in _asset_gone_hooks {
+        if h == hook do return
+    }
+    context.allocator = runtime.default_allocator()
+    append(&_asset_gone_hooks, hook)
+}
+
 _asset_removed :: proc(path: string) {
     guid, ok := asset_db.path_to_guid[path]
     if !ok do return

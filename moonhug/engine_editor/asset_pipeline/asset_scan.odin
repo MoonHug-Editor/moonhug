@@ -6,6 +6,7 @@ package asset_pipeline
 // Storage and lookups (guid<->path maps, root-info index, meta primitives)
 // stay in the engine; this file is the driver that fills them from the tree.
 
+import "core:encoding/uuid"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
@@ -38,7 +39,17 @@ asset_db_refresh :: proc() {
 			append(&removed, path)
 		}
 	}
+	// A rename arrives as a removal plus a creation under the same guid, so
+	// whether an asset is really gone is only known after the creations below.
+	Removed :: struct {
+		guid: engine.Asset_GUID,
+		path: string,
+	}
+	gone := make([dynamic]Removed, context.temp_allocator)
 	for path in removed {
+		if guid, ok := engine.asset_db.path_to_guid[path]; ok {
+			append(&gone, Removed{engine.Asset_GUID(guid), strings.clone(path, context.temp_allocator)})
+		}
 		engine._asset_removed(path)
 		old_key, _ := delete_key(&engine.asset_db.file_state, path)
 		delete(old_key)
@@ -69,6 +80,10 @@ asset_db_refresh :: proc() {
 		engine.material_path_changed(path) // externally edited .mat: drop the cache entry
 		engine.shader_path_changed(path)   // edited .glsl: evict (the hook below reimports)
 		for hook in engine._path_changed_hooks do hook(path)
+	}
+	for r in gone {
+		if uuid.Identifier(r.guid) in engine.asset_db.guid_to_path do continue // renamed or moved
+		for hook in engine._asset_gone_hooks do hook(r.guid, r.path)
 	}
 
 	// Orphaned metas: a .meta whose asset (file or folder) is gone.

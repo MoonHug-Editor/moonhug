@@ -75,6 +75,7 @@ apply_redo    — walks forward one entry, applies it, increments top
 purge_scene   — drops entries referencing ONE scene (call before unloading it)
 purge_scenes  — drops entries referencing ANY scene (single-scene loads). Asset
                 edits and project-only selection steps survive
+purge_asset   — drops entries that edit ONE asset's document (the asset was deleted)
 clear         — wipes stack (History view's Clear button only)
 ```
 
@@ -281,6 +282,8 @@ replaces the document payload through the hook installed by
 `inspector.init()` (`undo.set_asset_apply`), marks it dirty (`*` next to the
 file path) and re-pushes material live preview. Undo edits the doc, not the
 disk — Save persists, like unsaved live-preview edits always worked.
+
+A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through the asset-gone hook), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
 ## Selection undo (Unity model)
 

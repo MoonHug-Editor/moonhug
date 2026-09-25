@@ -153,16 +153,14 @@ shutdown_registries :: proc() {
     }
     delete(inspector_buttons)
     decorators_shutdown()
-    if inspectorData.filePath != "" {
-        delete(inspectorData.filePath)
-    }
-    if inspectorData.packageName != "" {
-        delete(inspectorData.packageName)
-    }
+    // The load procs pin the default allocator: the shown file outlives frames.
+    delete(inspectorData.filePath, runtime.default_allocator())
+    delete(inspectorData.packageName, runtime.default_allocator())
     asset_docs_shutdown()
 }
 
 load_from_file :: proc(filepath: string){
+    context.allocator = runtime.default_allocator()
     doc := asset_doc_get(filepath)
     if doc != nil {
         delete(inspectorData.filePath)
@@ -184,6 +182,7 @@ load_from_file :: proc(filepath: string){
 // registered. Without this a scene never reaches the inspector at all, and the
 // preview registered for `.scene` could never run.
 load_file_only :: proc(filepath: string) {
+    context.allocator = runtime.default_allocator()
     delete(inspectorData.filePath)
     inspectorData.filePath = strings.clone(filepath)
     inspectorData.fileData = {}
@@ -193,6 +192,7 @@ load_file_only :: proc(filepath: string) {
 }
 
 load_import_settings :: proc(filepath: string) {
+    context.allocator = runtime.default_allocator()
     settings, ok := engine.asset_pipeline_get_settings(filepath, runtime.default_allocator())
     if ok {
         delete(inspectorData.filePath)
@@ -212,6 +212,7 @@ load_import_settings :: proc(filepath: string) {
 // Package selected in the project view's Packages section (docs/Plugins.md):
 // shows the package inspector instead of an asset document.
 load_package :: proc(name: string, assets_path: string, asset_count: int) {
+    context.allocator = runtime.default_allocator()
     delete(inspectorData.filePath)
     inspectorData.filePath = strings.clone(assets_path)
     delete(inspectorData.packageName)
@@ -220,6 +221,22 @@ load_package :: proc(name: string, assets_path: string, asset_count: int) {
     inspectorData.fileData = {}
     inspectorData.doc = nil
     inspectorData.mode = .Package
+    _set_status("")
+}
+
+// Shows nothing ("No file loaded"): the file the inspector showed left the
+// project, so there is nothing left to edit or save.
+unload :: proc() {
+    context.allocator = runtime.default_allocator()
+    delete(inspectorData.filePath)
+    inspectorData.filePath = ""
+    inspectorData.fileData = {}
+    inspectorData.doc = nil
+    if inspectorData.importSettings.data != nil do free(inspectorData.importSettings.data, runtime.default_allocator())
+    inspectorData.importSettings = {}
+    delete(inspectorData.packageName)
+    inspectorData.packageName = ""
+    inspectorData.mode = .Asset
     _set_status("")
 }
 

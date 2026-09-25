@@ -226,6 +226,7 @@ halves, all installed at the editor's ImportersInit and nil in the app:
   stale artifact at load (fresh clone, format bump) reimports in the
   editor and is a plain load error in the app
 - a path-changed hook reimports edited `.glsl` (shader hot reload)
+- an asset-gone hook (`asset_db_add_asset_gone_hook`) fires after a refresh for every asset that left the project. A rename or move keeps its guid under a new path, so it never fires. The editor drops the asset's open document and its undo steps there.
 
 ## UX
 
