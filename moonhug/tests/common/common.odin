@@ -14,6 +14,7 @@ package tests_common
 //   context.user_ptr = &tc.uc
 //   defer common.teardown(tc)
 
+import "base:runtime"
 import "core:os"
 import "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
@@ -34,34 +35,50 @@ _serializers_registered: bool
 @(private)
 _tween_initialized: bool
 
+// The one-time registrations run at program start, before any test body. Many
+// tests call engine.asset_db_init BEFORE setup, and that scan needs the
+// importers: registering in setup made them pass only after an earlier test
+// had called setup, and fail when run alone. Registries live for the whole run,
+// so they get the default allocator (a test's tracking allocator dies with it).
+@(init)
+_register_at_start :: proc "contextless" () {
+	context = runtime.default_context()
+	registration.register_type_guids()
+	_register_once()
+}
+
+@(private)
+_register_once :: proc() {
+	if _serializers_registered do return
+	// EVERY installed package registers (registration is the same
+	// all-packages generated bundle the editor uses), so tests never
+	// depend on a specific runnable package being installed.
+	registration.register_packages()
+	app.phase_run(.SerializationInit)
+	app.phase_run(.ImportersInit)
+	app.phase_run(.TweenNodesInit)
+	// The import stack is editor-side (mode=Editor phases, absent from
+	// the app dispatcher above) — tests import like the editor does.
+	// Package importers register from the package's OWN tests (this
+	// package never imports moonhug:packages).
+	asset_pipeline.register_builtin_importers()
+	asset_pipeline.import_pipeline_install()
+	// Mirror editor/main.odin: nested_scene_revert_override needs pointer
+	// typeids for primitive field types (position, color, scale, …) so it
+	// can hand a properly-typed `any` to json.unmarshal_any.
+	engine.register_pointer_type(bool)
+	engine.register_pointer_type(int)
+	engine.register_pointer_type(i32)
+	engine.register_pointer_type(u32)
+	engine.register_pointer_type(f32)
+	engine.register_pointer_type(f64)
+	engine.register_pointer_type(string)
+	_serializers_registered = true
+}
+
 setup :: proc(tc: ^TestCtx, path: string = "") {
 	registration.register_type_guids()
-	if !_serializers_registered {
-		// EVERY installed package registers (registration is the same
-		// all-packages generated bundle the editor uses), so tests never
-		// depend on a specific runnable package being installed.
-		registration.register_packages()
-		app.phase_run(.SerializationInit)
-		app.phase_run(.ImportersInit)
-		app.phase_run(.TweenNodesInit)
-		// The import stack is editor-side (mode=Editor phases, absent from
-		// the app dispatcher above) — tests import like the editor does.
-		// Package importers register from the package's OWN tests (this
-		// package never imports moonhug:packages).
-		asset_pipeline.register_builtin_importers()
-		asset_pipeline.import_pipeline_install()
-		// Mirror editor/main.odin: nested_scene_revert_override needs pointer
-		// typeids for primitive field types (position, color, scale, …) so it
-		// can hand a properly-typed `any` to json.unmarshal_any.
-		engine.register_pointer_type(bool)
-		engine.register_pointer_type(int)
-		engine.register_pointer_type(i32)
-		engine.register_pointer_type(u32)
-		engine.register_pointer_type(f32)
-		engine.register_pointer_type(f64)
-		engine.register_pointer_type(string)
-		_serializers_registered = true
-	}
+	_register_once() // done at start (_register_at_start), a no-op here
 	if !_tween_initialized {
 		tween.tween_init()
 		_tween_initialized = true

@@ -29,7 +29,6 @@ test_prefab_apply_undoes_and_redoes :: proc(t: ^testing.T) {
 	s := setup_undo(tc)
 	context.user_ptr = &tc.uc
 	defer teardown_undo(tc, s)
-	// After setup: its first run registers the importers the scan needs.
 	asset_pipeline.asset_pipeline_init()
 	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
 	defer engine.asset_db_shutdown()
