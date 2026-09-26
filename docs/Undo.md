@@ -58,8 +58,8 @@ view_history focused:
 - `scene` (a `Scene_Ref`) + `local_id` — persistent, file-stable identity used when a `Handle` is stale. The scene re-resolves by session id after an in-place reload.
   - `handle` — fast path, with a `local_id` scan as the fallback when invalid.
 - `offset` + `type_id` — where and what inside the resolved struct.
-- `raw_ptr` — used only for `.Raw` (non-scene data like import settings).
-- `asset_guid` — used only for `.Asset`. Applied through the inspector's asset-document hook, never via pointer.
+- `raw_ptr` — used only for `.Raw` (non-scene data like project settings).
+- `asset_guid` + `asset_doc` — used only for `.Asset`: which asset, and which of its documents (the file, or its import settings). Applied through the inspector's asset-document hook, never via pointer.
 
 ## Value payloads are JSON
 
@@ -292,6 +292,16 @@ disk — Save persists, like unsaved live-preview edits always worked.
 
 A document lives as long as its asset. Save writes to the asset's current path, looked up by guid, so a renamed or moved asset saves where it is now. A file that is gone from disk is never written back. Deleting an asset drops its document and its undo steps (`purge_asset`, through the asset-gone hook), and the Project Inspector lets go of it. Without that, undo or File/Save would bring the file back without its `.meta`, as a different asset.
 
+## Import settings (project inspector, Sprite Editor)
+
+An asset's import settings are a second kind of asset document (`undo.Doc_Kind.Import_Settings`, `inspector/import_settings_docs.odin`): one per asset, the typed settings from its `.meta`, shared by every editor that shows or edits them. The import settings inspector, the model clip rows and the Sprite Editor all edit the same document, so an edit in one shows in the others at once.
+
+- **Recording.** No editor of the settings writes undo code. `inspector.import_settings_track` compares every settings document shown or edited since the last compare with its baseline JSON (in memory, nothing touches the disk), and turns a change into one whole-document step ("Edit Import Settings"). The main loop asks for a compare only on frames where an edit may have just finished: a widget was let go, a mouse button went up, or a key was pressed. So a drag, a typed name or a Slice button press is one step, and idle frames cost nothing (a compare of a model with 40 clips takes about a quarter of a millisecond). Undo/redo rebuild the document from the step's JSON and move the baseline, so the restore is not recorded again.
+- **Commit.** Apply writes the `.meta` and reimports. File/Save leaves import settings alone. Revert reloads the `.meta` as one undo step, so a Revert can be undone.
+- **Dirty** means "differs from the `.meta`": undoing back to the applied state clears it, and Apply/Revert are live only while it is set.
+- **Reimport.** A reimport can rewrite the `.meta` itself (the model importer adds entries for new clips). A settings document with no unapplied edits then reloads, so the next Apply does not write the old version back.
+- The JSON is marshaled with sorted map keys: a clip's settings are a JSON object, and an unsorted marshal could read as a change.
+
 ## Selection undo (Unity model)
 
 Selection changes are undo steps. A per-frame tracker
@@ -441,7 +451,7 @@ undo.edit_end(&e)
 // abandon the edit without pushing (e.g. user cancelled mid-frame)
 undo.edit_cancel(&e)
 
-// non-scene data (import settings, asset inspectors)
+// non-scene data (project settings)
 e := undo.edit_begin(base_ptr, typeid_of(Settings), &settings.quality, typeid_of(int))
 settings.quality = 3
 undo.edit_end(&e)
@@ -543,7 +553,6 @@ undo.purge_scenes(undo.get())       // all scenes, before a single-scene load
 ## Limitations
 
 - Capacity is 128 entries. Overflow drops the oldest.
-- Import settings edits are not recorded (the Apply+reimport button is already an explicit transaction).
 - Undoing an asset edit replaces the whole document instance. The old instance's nested allocations live until editor shutdown (same lifetime the pre-registry reload-on-click had). Asset docs have no eviction — `.mat`-scale files only.
 - File operations in the project view (rename/move/delete files) are not undoable — Unity doesn't undo these either. Delete asks for confirmation first and lists the files, since undo can't bring them back (they go to the OS Trash).
 - Structural commands capture full subtree JSON on delete/remove. Large subtrees produce large entries.

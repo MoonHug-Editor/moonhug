@@ -44,6 +44,13 @@ resolve_scene :: proc(r: Scene_Ref) -> ^engine.Scene {
 	return engine.sm_scene_find_by_session_id(r.id)
 }
 
+// Which document of an asset an .Asset target edits: the asset's own file
+// (.mat, .asset) or its import settings (the .meta, committed by Apply).
+Doc_Kind :: enum u8 {
+	File,
+	Import_Settings,
+}
+
 Property_Target :: struct {
 	kind:       Owner_Kind,
 	scene:      Scene_Ref,
@@ -53,6 +60,7 @@ Property_Target :: struct {
 	type_id:    typeid,
 	raw_ptr:    rawptr,
 	asset_guid: engine.Asset_GUID, // .Asset only
+	asset_doc:  Doc_Kind,          // .Asset only
 }
 
 Value_Command :: struct {
@@ -427,7 +435,7 @@ default_label :: proc(cmd: Command) -> string {
 		case .None:   return "Edit Value"
 		case .Pooled: return v.target.handle.type_key == .Transform ? "Edit Transform" : "Edit Component"
 		case .Raw:    return "Edit"
-		case .Asset:  return "Edit Asset"
+		case .Asset:  return v.target.asset_doc == .Import_Settings ? "Edit Import Settings" : "Edit Asset"
 		}
 		return "Edit Value"
 	case Dropdown_Revert_Command:
@@ -1345,7 +1353,7 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 			log.error("undo: no asset apply hook installed (inspector init missing?)")
 			return
 		}
-		if !_asset_apply_hook(vc.target.asset_guid, json_bytes) {
+		if !_asset_apply_hook(vc.target.asset_guid, vc.target.asset_doc, json_bytes) {
 			log.error(fmt.tprintf("undo: asset apply failed (guid=%v)", vc.target.asset_guid))
 		}
 		return
@@ -1749,7 +1757,7 @@ capture_component_json :: proc(ptr: rawptr, tid: typeid) -> []byte {
 
 @(private) _selection_capture_hook: proc() -> Selection_State
 @(private) _selection_apply_hook:   proc(state: Selection_State)
-@(private) _asset_apply_hook:       proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool
+@(private) _asset_apply_hook:       proc(guid: engine.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool
 
 set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(state: Selection_State)) {
 	_selection_capture_hook = capture
@@ -1758,7 +1766,7 @@ set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(stat
 
 // cb replaces the whole asset document identified by guid with the given
 // JSON payload (installed by the project inspector's doc registry).
-set_asset_apply :: proc(cb: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool) {
+set_asset_apply :: proc(cb: proc(guid: engine.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool) {
 	_asset_apply_hook = cb
 }
 
@@ -1767,8 +1775,8 @@ _selection_apply :: proc(state: Selection_State) {
 	if _selection_apply_hook != nil do _selection_apply_hook(state)
 }
 
-make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid) -> Property_Target {
-	return Property_Target{kind = .Asset, asset_guid = guid, type_id = tid}
+make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Property_Target {
+	return Property_Target{kind = .Asset, asset_guid = guid, asset_doc = doc, type_id = tid}
 }
 
 // --- Selection state helpers ----------------------------------------------------

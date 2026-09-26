@@ -98,7 +98,7 @@ InspectorData :: struct {
     fileData: any,
     doc: ^Asset_Doc, // .Asset mode: the registry document backing fileData
     statusMessage: string,
-    importSettings: any, // typed settings instance, owned (default allocator)
+    settingsDoc: ^Asset_Doc, // .ImportSettings mode: the asset's import settings document (registry-owned)
     packageName: string, // .Package mode (owned)
     packageAssetCount: int,
 }
@@ -167,6 +167,7 @@ load_from_file :: proc(filepath: string){
         inspectorData.filePath = strings.clone(filepath)
         inspectorData.fileData = doc.data
         inspectorData.doc = doc
+        inspectorData.settingsDoc = nil
         inspectorData.mode = .Asset
         // No "loaded" status: the file row right below says which asset this
         // is, and the load is logged. A status row here only pushes the path down.
@@ -187,21 +188,21 @@ load_file_only :: proc(filepath: string) {
     inspectorData.filePath = strings.clone(filepath)
     inspectorData.fileData = {}
     inspectorData.doc = nil
+    inspectorData.settingsDoc = nil
     inspectorData.mode = .Asset
     _set_status("")
 }
 
 load_import_settings :: proc(filepath: string) {
     context.allocator = runtime.default_allocator()
-    settings, ok := engine.asset_pipeline_get_settings(filepath, runtime.default_allocator())
-    if ok {
+    // The shared document (import_settings_docs.odin): unapplied edits survive
+    // clicking away and back, and the Sprite Editor edits the same one.
+    if doc := import_settings_doc_get(filepath); doc != nil {
         delete(inspectorData.filePath)
         inspectorData.filePath = strings.clone(filepath)
         inspectorData.fileData = {}
         inspectorData.doc = nil
-        // The working copy survives frames — free the previous one.
-        if inspectorData.importSettings.data != nil do free(inspectorData.importSettings.data, runtime.default_allocator())
-        inspectorData.importSettings = settings
+        inspectorData.settingsDoc = doc
         inspectorData.mode = .ImportSettings
         _set_status("")
     } else {
@@ -220,6 +221,7 @@ load_package :: proc(name: string, assets_path: string, asset_count: int) {
     inspectorData.packageAssetCount = asset_count
     inspectorData.fileData = {}
     inspectorData.doc = nil
+    inspectorData.settingsDoc = nil
     inspectorData.mode = .Package
     _set_status("")
 }
@@ -232,8 +234,7 @@ unload :: proc() {
     inspectorData.filePath = ""
     inspectorData.fileData = {}
     inspectorData.doc = nil
-    if inspectorData.importSettings.data != nil do free(inspectorData.importSettings.data, runtime.default_allocator())
-    inspectorData.importSettings = {}
+    inspectorData.settingsDoc = nil
     delete(inspectorData.packageName)
     inspectorData.packageName = ""
     inspectorData.mode = .Asset
@@ -419,6 +420,9 @@ _material_live_preview :: proc(doc: ^Asset_Doc) {
 }
 
 _draw_import_settings_inspector :: proc() {
+    doc := inspectorData.settingsDoc
+    if doc == nil do return
+    doc.touched = true // shown this frame: import_settings_track looks at it
     // Registered wrappers funnel the settings body (inspector_funnel.odin),
     // keyed by the importer owning this asset's extension.
     ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
@@ -430,7 +434,7 @@ _draw_import_settings_inspector :: proc() {
         actx := Asset_Ctx{
             path     = inspectorData.filePath,
             guid     = guid,
-            settings = inspectorData.importSettings,
+            settings = doc.data,
             _chain   = chain,
         }
         _funnel_draw(&actx)
@@ -439,18 +443,22 @@ _draw_import_settings_inspector :: proc() {
     draw_default_import_settings()
 }
 
-// The asset funnel's base: Apply + file row + the reflected settings.
+// The asset funnel's base: Apply / Revert + file row + the reflected settings.
+// Apply and Revert are live only while the settings differ from the .meta.
 draw_default_import_settings :: proc() {
+    doc := inspectorData.settingsDoc
+    if doc == nil do return
+    im.BeginDisabled(!doc.dirty)
     if im.Button("Apply", im.Vec2{60, 0}) {
-        if asset_pipeline.asset_pipeline_save_settings(inspectorData.filePath, inspectorData.importSettings) {
-            // Reimport hooks evict every guid-keyed cache (textures, package
-            // asset caches) so the new settings apply without a restart.
-            asset_pipeline.asset_pipeline_reimport(inspectorData.filePath)
+        if import_settings_apply(doc) {
             _set_status(fmt.tprintf("Reimported %s", inspectorData.filePath))
         } else {
             _set_status(fmt.tprintf("Failed to save settings for %s", inspectorData.filePath))
         }
     }
+    im.SameLine()
+    if im.Button("Revert", im.Vec2{60, 0}) do import_settings_revert(doc)
+    im.EndDisabled()
     im.SameLine()
 
     if inspectorData.statusMessage != "" {
@@ -460,14 +468,14 @@ draw_default_import_settings :: proc() {
     im.Separator()
 
     if inspectorData.filePath != "" {
-        _draw_file_row(false)
+        _draw_file_row(doc.dirty)
     }
 
     im.Separator()
 
-    if inspectorData.importSettings.data != nil {
-        drawer := resolve_property_drawer(inspectorData.importSettings.id)
-        drawer(inspectorData.importSettings.data, inspectorData.importSettings.id, "Import Settings")
+    if doc.data.data != nil {
+        drawer := resolve_property_drawer(doc.data.id)
+        drawer(doc.data.data, doc.data.id, "Import Settings")
     }
 
 }

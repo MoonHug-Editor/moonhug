@@ -28,14 +28,16 @@ _register_model_clip_ui :: proc() {
 // Selecting a clip under a model selects the model with that sub id, so the
 // model's import settings show. This wrapper adds, below them, the one clip's
 // own settings — or, for a clip the model no longer has, a remap. Edits land in
-// the model's working-copy settings (engine.Mesh_Clip.settings), and the Apply
-// button above saves the meta and reimports, which is when the bake picks
-// them up. Settings live in the meta, never in the artifact, the same rule a
+// the model's import settings document (engine.Mesh_Clip.settings inside it,
+// inspector/import_settings_docs.odin), which records them for undo, and the
+// Apply button above saves the meta and reimports, which is when the bake
+// picks them up. Settings live in the meta, never in the artifact, the same rule a
 // standalone .anim follows.
 
-// Typed working copy of the selected clip's settings: the reflected drawer
-// edits a struct, the meta holds a JSON value. Re-materialised when the
-// selection moves to another clip.
+// Typed copy of the selected clip's settings: the reflected drawer edits a
+// struct, the document holds a JSON value. Re-read from the document every
+// frame no widget is held, so an undo that swapped the document shows at once
+// and the next edit starts from it.
 @(private = "file") _clip_edit: struct {
 	path:  string, // owned
 	id:    engine.Local_ID,
@@ -114,7 +116,7 @@ _model_clip_section :: proc(ctx: ^inspector.Asset_Ctx) {
 		return
 	}
 
-	if !_clip_edit.valid || _clip_edit.path != ctx.path || _clip_edit.id != clip.id {
+	if !_clip_edit.valid || _clip_edit.path != ctx.path || _clip_edit.id != clip.id || !im.IsAnyItemActive() {
 		_clip_edit_load(ctx.path, clip)
 	}
 	// The drawer sets the shared changed flag. Read it around this draw only,

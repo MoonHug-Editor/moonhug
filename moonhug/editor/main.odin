@@ -303,6 +303,10 @@ main :: proc() {
         draw_status_bar()
         draw_pending_scene_overlay()
 
+        // Import settings undo steps: a finished change to a settings document
+        // becomes one step (inspector/import_settings_docs.odin).
+        inspector.import_settings_track(_frame_may_finish_edit())
+
         // Selection undo steps (Unity model): diff selection against the
         // frame's baseline after all views handled input.
         selection_undo_track()
@@ -500,6 +504,25 @@ scene_create_variant_menu :: proc() {
 
 @(menu_separator={path="Assets/Create", order=-9})
 scene_create_variant_separator :: proc() {}
+
+// True on a frame where an edit may have just finished: a widget was let go, a
+// mouse button went up, or a key was pressed. Only then can a document differ
+// from its last recorded state, so the import settings check runs on those
+// frames alone and idle frames cost nothing (comparing a model with 40 clips
+// takes about a quarter of a millisecond).
+@(private = "file")
+_frame_may_finish_edit :: proc() -> bool {
+	@(static) was_active: bool
+	active := im.IsAnyItemActive()
+	defer was_active = active
+	if active do return false
+	if was_active do return true
+	for released in im.GetIO().MouseReleased do if released do return true
+	for k in int(im.Key.NamedKey_BEGIN) ..< int(im.Key.NamedKey_END) {
+		if im.IsKeyPressed(im.Key(k), false) do return true
+	}
+	return false
+}
 
 // Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
 // (hierarchy_menu.odin) — only the Ctrl+Y redo alias is handled here.

@@ -332,9 +332,7 @@ Two funnels share the mechanics:
   `packages/plugin_example/editor` is the reference (a hint row under
   Spinner's fields).
 - **Asset funnel** — keyed by IMPORTER NAME (`""` wraps every asset),
-  wraps the import-settings body. The default drawing is Apply + the
-  reflected settings. `packages/audio/editor` is the reference (clip stats
-  under AudioSettings).
+  wraps the import-settings body. The default drawing is Apply / Revert + the reflected settings. `ctx.settings` is the asset's import settings document (docs/Undo.md, "Import settings"): a wrapper edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
 
 ```odin
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})

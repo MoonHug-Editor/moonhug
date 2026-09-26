@@ -45,6 +45,7 @@ Edit_Target :: struct {
 	// .Asset — a document in the asset registry.
 	asset_guid: engine.Asset_GUID,
 	asset_tid:  typeid,
+	asset_doc:  Doc_Kind,
 
 	// The field inside it. A nil field_ptr means the WHOLE target, which is what
 	// a structural change (array add/remove) needs.
@@ -66,8 +67,8 @@ edit_target_whole :: proc(h: engine.Handle) -> Edit_Target {
 	return Edit_Target{kind = .Pooled, handle = h}
 }
 
-edit_target_asset :: proc(guid: engine.Asset_GUID, tid: typeid) -> Edit_Target {
-	return Edit_Target{kind = .Asset, asset_guid = guid, asset_tid = tid}
+edit_target_asset :: proc(guid: engine.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Edit_Target {
+	return Edit_Target{kind = .Asset, asset_guid = guid, asset_tid = tid, asset_doc = doc}
 }
 
 @(private)
@@ -249,12 +250,12 @@ _entry_begin :: proc(t: Edit_Target) -> (_Edit_Entry, bool) {
 		// Asset documents are applied through the asset hook, which replaces the
 		// whole document — there is no field-level form.
 		if t.asset_tid == nil do return {}, false
-		doc_ptr := _asset_doc_ptr(t.asset_guid)
+		doc_ptr := _asset_doc_ptr(t.asset_guid, t.asset_doc)
 		if doc_ptr == nil do return {}, false
 		old := capture_json(doc_ptr, t.asset_tid)
 		if old == nil do return {}, false
 		return _Edit_Entry{
-			target = make_asset_target(t.asset_guid, t.asset_tid),
+			target = make_asset_target(t.asset_guid, t.asset_tid, t.asset_doc),
 			old_json = old,
 			ptr = doc_ptr,
 		}, true
@@ -332,16 +333,16 @@ _ptr_within :: proc(base: rawptr, base_tid: typeid, field: rawptr, field_tid: ty
 // The live document pointer for an asset guid, via the same hook the asset
 // apply path uses. nil when the inspector has no document open for it.
 @(private = "file")
-_asset_doc_ptr :: proc(guid: engine.Asset_GUID) -> rawptr {
+_asset_doc_ptr :: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr {
 	if _asset_doc_lookup == nil do return nil
-	return _asset_doc_lookup(guid)
+	return _asset_doc_lookup(guid, doc)
 }
 
 // Installed by the inspector at init, like set_asset_apply — the undo package
 // cannot import the inspector.
 @(private)
-_asset_doc_lookup: proc(guid: engine.Asset_GUID) -> rawptr
+_asset_doc_lookup: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr
 
-set_asset_doc_lookup :: proc(fn: proc(guid: engine.Asset_GUID) -> rawptr) {
+set_asset_doc_lookup :: proc(fn: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr) {
 	_asset_doc_lookup = fn
 }

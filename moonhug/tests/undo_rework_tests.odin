@@ -141,7 +141,7 @@ _asset_apply_calls: int
 _asset_apply_last_json: string
 
 @(private="file")
-_test_asset_apply :: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool {
+_test_asset_apply :: proc(guid: engine.Asset_GUID, _: undo.Doc_Kind, json_bytes: []byte) -> bool {
 	_asset_apply_calls += 1
 	delete(_asset_apply_last_json)
 	_asset_apply_last_json = strings.clone(string(json_bytes))

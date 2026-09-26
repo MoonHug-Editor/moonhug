@@ -4,9 +4,10 @@ package sprites_editor
 // the texture with zoom/pan, a Slice popup (Automatic, Grid By Cell Size,
 // Grid By Cell Count), manual rect editing (drag-create on empty space,
 // drag-move, a fields panel for the selection) and its own Apply/Revert.
-// Apply writes the slice list into the texture's import settings
-// (meta + reimport), independent of the import-settings inspector's draft —
-// which reloads if it shows the same file.
+// The slices live in the texture's import settings document
+// (inspector/import_settings_docs.odin), the same one the import settings
+// inspector shows: an edit here shows there at once, and undo records every
+// finished edit with no code in this file. Apply writes the .meta and reimports.
 
 import "base:runtime"
 import "core:fmt"
@@ -18,7 +19,6 @@ import "core:strings"
 import stbi "vendor:stb/image"
 import "moonhug:engine"
 import gfx "moonhug:engine/gfx"
-import asset_pipeline "moonhug:engine_editor/asset_pipeline"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import wnd "moonhug:editor/window"
@@ -63,9 +63,13 @@ _SE_Drag :: enum {
 _SE_State :: struct {
 	path:   string, // heap clone; "" = no target
 	guid:   engine.Asset_GUID,
-	slices: [dynamic]engine.Sprite_Rect, // working copy, heap-owned names
+	// The texture's import settings document and its data, resolved at the top
+	// of every window frame (_se_resolve): undo swaps the instance, so neither
+	// is kept across frames. Slices are ts.sprites, the Single-mode 9-slice
+	// border is ts.sprite_border.
+	doc:    ^inspector.Asset_Doc,
+	ts:     ^engine.TextureSettings,
 	sel:    int, // -1 = none
-	dirty:  bool,
 
 	zoom: f32,
 	pan:  im.Vec2, // image px
@@ -74,10 +78,6 @@ _SE_State :: struct {
 	drag_from:   im.Vec2, // image px at press
 	drag_rect:   [4]f32,  // Create: the rect being rubber-banded
 	drag_border: int,     // Border: 0 left, 1 bottom, 2 right, 3 top
-
-	// Single mode (no slices): the whole texture is the sprite, and these
-	// are its 9-slice borders (TextureSettings.sprite_border).
-	single_border: [4]f32,
 
 	name_buf: [128]u8,
 
@@ -127,14 +127,15 @@ sprite_editor_open :: proc(path: string, guid: engine.Asset_GUID) {
 	_se.drag = .None
 	_se.zoom = 0 // fit on first frame
 	_se.pan = {}
-	_se_load_slices()
+	if _se_resolve() do _se_heal_ids()
 	wnd.open("sprite_editor")
 }
 
 // Opened on a specific slice (a sub-asset row in the project window).
 sprite_editor_open_at :: proc(path: string, guid: engine.Asset_GUID, slice_id: engine.Local_ID) {
 	sprite_editor_open(path, guid)
-	for s, i in _se.slices {
+	if _se.ts == nil do return
+	for s, i in _se.ts.sprites {
 		if s.id == slice_id {
 			_se_select(i)
 			break
@@ -142,10 +143,14 @@ sprite_editor_open_at :: proc(path: string, guid: engine.Asset_GUID, slice_id: e
 	}
 }
 
-_se_free_slices :: proc() {
-	context.allocator = runtime.default_allocator()
-	for s in _se.slices do delete(s.name)
-	clear(&_se.slices)
+// This frame's settings document. False when the texture has no texture
+// import settings (nothing to slice).
+_se_resolve :: proc() -> bool {
+	_se.doc = inspector.import_settings_doc_get(_se.path)
+	_se.ts = nil
+	if _se.doc == nil || _se.doc.data.id != typeid_of(engine.TextureSettings) do return false
+	_se.ts = cast(^engine.TextureSettings)_se.doc.data.data
+	return true
 }
 
 // Persistent slice id — Unity's fileID. Random nonzero, unique in the list.
@@ -155,7 +160,7 @@ _se_mint_id :: proc() -> engine.Local_ID {
 		id := engine.Local_ID(rand.int63())
 		if id == 0 do continue
 		taken := false
-		for s in _se.slices do if s.id == id { taken = true; break }
+		for s in _se.ts.sprites do if s.id == id { taken = true; break }
 		if !taken do return id
 	}
 }
@@ -167,53 +172,22 @@ _se_carry_id :: proc(old: []engine.Sprite_Rect, name: string) -> engine.Local_ID
 	return 0
 }
 
-// Working copy from the CURRENT import settings.
-_se_load_slices :: proc() {
-	_se_free_slices()
-	context.allocator = runtime.default_allocator()
-	_se.single_border = {}
-	if settings, ok := engine.asset_pipeline_get_settings(_se.path, context.temp_allocator); ok {
-		if ts, is_tex := settings.(engine.TextureSettings); is_tex {
-			_se.single_border = ts.sprite_border
-			for s in ts.sprites {
-				append(&_se.slices, engine.Sprite_Rect{
-					id     = s.id,
-					name   = strings.clone(s.name),
-					rect   = s.rect,
-					pivot  = s.pivot,
-					border = s.border,
-				})
-			}
-		}
-	}
-	_se.dirty = false
-	// Heal pre-id metas: slices saved before ids existed carry 0 (= the
-	// whole texture, unreferenceable). Mint here and mark dirty — Apply
-	// stamps them into the meta.
-	for &s in _se.slices {
-		if s.id == 0 {
-			s.id = _se_mint_id()
-			_se.dirty = true
-		}
+// Heal pre-id metas: slices saved before ids existed carry 0 (= the whole
+// texture, unreferenceable). Minting edits the document like any slicer edit,
+// so the heal is one undo step and Apply stamps it into the meta.
+_se_heal_ids :: proc() {
+	for &s in _se.ts.sprites {
+		if s.id == 0 do s.id = _se_mint_id()
 	}
 }
 
+// Added slices make the texture Multiple, in the same undo step as the add.
+_se_slices_added :: proc() {
+	_se.ts.sprite_mode = .Multiple
+}
+
 _se_apply :: proc() {
-	settings, ok := engine.asset_pipeline_get_settings(_se.path, context.temp_allocator)
-	if !ok || settings.id != typeid_of(engine.TextureSettings) do return
-	ts := cast(^engine.TextureSettings)settings.data
-	// Marshal only reads — the temp copy can borrow the working names.
-	ts.sprites = make([dynamic]engine.Sprite_Rect, context.temp_allocator)
-	append(&ts.sprites, .._se.slices[:])
-	if len(_se.slices) > 0 do ts.sprite_mode = .Multiple
-	ts.sprite_border = _se.single_border
-	if !asset_pipeline.asset_pipeline_save_settings(_se.path, settings) do return
-	asset_pipeline.asset_pipeline_reimport(_se.path)
-	// The import-settings inspector holds its own draft of the same meta.
-	if inspector.inspectorData.filePath == _se.path {
-		inspector.load_import_settings(_se.path)
-	}
-	_se.dirty = false
+	if _se_resolve() do inspector.import_settings_apply(_se.doc)
 }
 
 @(editor_window={id="sprite_editor", title="Sprite Editor", icon="CROP", width=940, height=640})
@@ -225,6 +199,10 @@ sprite_editor_window_draw :: proc() {
 	if _se.want_apply {
 		_se.want_apply = false
 		_se_apply()
+	}
+	if !_se_resolve() {
+		im.TextDisabled("no texture import settings: %s", strings.clone_to_cstring(_se.path, context.temp_allocator))
+		return
 	}
 	tex, ok := engine.texture_load(_se.guid)
 	if !ok {
@@ -251,16 +229,20 @@ _se_toolbar :: proc(tex: ^engine.Texture2D) {
 	}
 
 	im.SameLine()
-	im.BeginDisabled(!_se.dirty)
+	im.BeginDisabled(!_se.doc.dirty)
 	if im.Button("Apply") do _se.want_apply = true
 	im.SameLine()
-	if im.Button("Revert") do _se_load_slices()
+	if im.Button("Revert") {
+		inspector.import_settings_revert(_se.doc)
+		_se_resolve()
+		_se.sel = -1
+	}
 	im.EndDisabled()
 
 	im.SameLine()
-	dirty := _se.dirty ? " *" : ""
+	dirty := _se.doc.dirty ? " *" : ""
 	im.TextDisabled("%s%s — %d x %d, %d slices", strings.clone_to_cstring(_se.path, context.temp_allocator),
-		strings.clone_to_cstring(dirty, context.temp_allocator), tex.width, tex.height, i32(len(_se.slices)))
+		strings.clone_to_cstring(dirty, context.temp_allocator), tex.width, tex.height, i32(len(_se.ts.sprites)))
 }
 
 _se_slice_popup :: proc(tex: ^engine.Texture2D) {
@@ -336,8 +318,8 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 	if cw <= 0 || ch <= 0 do return
 
 	context.allocator = runtime.default_allocator()
-	old := _se.slices
-	_se.slices = {}
+	old := _se.ts.sprites
+	_se.ts.sprites = {}
 	base := filepath.stem(_se.path)
 	i := 0
 	for r in 0 ..< rows {
@@ -349,7 +331,7 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 			name := fmt.aprintf("%s_%d", base, i)
 			id := _se_carry_id(old[:], name)
 			if id == 0 do id = _se_mint_id()
-			append(&_se.slices, engine.Sprite_Rect{
+			append(&_se.ts.sprites, engine.Sprite_Rect{
 				id    = id,
 				name  = name,
 				rect  = {f32(x), f32(y), f32(cw), f32(ch)},
@@ -361,7 +343,7 @@ _se_slice_grid :: proc(tex: ^engine.Texture2D, by_count: bool) {
 	for s in old do delete(s.name)
 	delete(old)
 	_se.sel = -1
-	_se.dirty = true
+	_se_slices_added()
 }
 
 // Unity's Automatic: connected islands of non-transparent pixels, one rect
@@ -380,8 +362,8 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 	}
 
 	context.allocator = runtime.default_allocator()
-	old := _se.slices
-	_se.slices = {}
+	old := _se.ts.sprites
+	_se.ts.sprites = {}
 	base := filepath.stem(_se.path)
 	visited := make([]bool, int(w * h), context.temp_allocator)
 	queue := make([dynamic]i32, context.temp_allocator)
@@ -416,7 +398,7 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 		name := fmt.aprintf("%s_%d", base, n)
 		id := _se_carry_id(old[:], name)
 		if id == 0 do id = _se_mint_id()
-		append(&_se.slices, engine.Sprite_Rect{
+		append(&_se.ts.sprites, engine.Sprite_Rect{
 			id    = id,
 			name  = name,
 			rect  = {f32(min_x), f32(min_y), f32(bw), f32(bh)},
@@ -427,7 +409,7 @@ _se_slice_automatic :: proc(tex: ^engine.Texture2D) {
 	for s in old do delete(s.name)
 	delete(old)
 	_se.sel = -1
-	_se.dirty = true
+	_se_slices_added()
 }
 
 // --- Canvas ---------------------------------------------------------------------
@@ -464,7 +446,7 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 	im.DrawList_AddRectFilled(dl, p0, p1, 0xFF202020)
 	im.DrawList_AddImage(dl, im.TextureRef{_TexID = tex_id}, p0, p1)
 
-	for s, i in _se.slices {
+	for s, i in _se.ts.sprites {
 		r0 := _se_screen(origin, {s.rect.x, s.rect.y})
 		r1 := _se_screen(origin, {s.rect.x + s.rect.z, s.rect.y + s.rect.w})
 		im.DrawList_AddRect(dl, r0, r1, i == _se.sel ? _SE_SELECTED : _SE_OUTLINE)
@@ -515,15 +497,13 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 				case 3: border.w = clamp(math.round(img.y - rect.y), 0, rect.w - border.y)
 				case 1: border.y = clamp(math.round(rect.y + rect.w - img.y), 0, rect.w - border.w)
 				}
-				_se.dirty = true
 			}
 		case .Move:
 			if _se.sel >= 0 {
 				delta := im.GetIO().MouseDelta / _se.zoom
-				r := &_se.slices[_se.sel].rect
+				r := &_se.ts.sprites[_se.sel].rect
 				r.x = clamp(r.x + delta.x, 0, f32(tex.width) - r.z)
 				r.y = clamp(r.y + delta.y, 0, f32(tex.height) - r.w)
-				_se.dirty = true
 			}
 		case .Create:
 			lo_x, hi_x := min(_se.drag_from.x, img.x), max(_se.drag_from.x, img.x)
@@ -539,14 +519,14 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 	if im.IsItemDeactivated() {
 		if _se.drag == .Create && _se.drag_rect.z >= 1 && _se.drag_rect.w >= 1 {
 			context.allocator = runtime.default_allocator()
-			append(&_se.slices, engine.Sprite_Rect{
+			append(&_se.ts.sprites, engine.Sprite_Rect{
 				id    = _se_mint_id(),
-				name  = fmt.aprintf("%s_%d", filepath.stem(_se.path), len(_se.slices)),
+				name  = fmt.aprintf("%s_%d", filepath.stem(_se.path), len(_se.ts.sprites)),
 				rect  = _se.drag_rect,
 				pivot = _se_pivot_vec[_se.pivot],
 			})
-			_se_select(len(_se.slices) - 1)
-			_se.dirty = true
+			_se_select(len(_se.ts.sprites) - 1)
+			_se_slices_added()
 		}
 		_se.drag = .None
 	}
@@ -575,12 +555,12 @@ _se_canvas :: proc(tex: ^engine.Texture2D, size: im.Vec2) {
 // rect and border, or the whole texture and its Single-mode border when the
 // texture has no slices.
 _se_active_sprite :: proc(tex: ^engine.Texture2D) -> (rect: [4]f32, border: ^[4]f32, ok: bool) {
-	if _se.sel >= 0 && _se.sel < len(_se.slices) {
-		s := &_se.slices[_se.sel]
+	if _se.sel >= 0 && _se.sel < len(_se.ts.sprites) {
+		s := &_se.ts.sprites[_se.sel]
 		return s.rect, &s.border, true
 	}
-	if len(_se.slices) == 0 {
-		return {0, 0, f32(tex.width), f32(tex.height)}, &_se.single_border, true
+	if len(_se.ts.sprites) == 0 {
+		return {0, 0, f32(tex.width), f32(tex.height)}, &_se.ts.sprite_border, true
 	}
 	return {}, nil, false
 }
@@ -625,7 +605,7 @@ _se_border_fields :: proc(b: ^[4]f32, size: [2]f32) -> (changed: bool) {
 _se_hit_slice :: proc(img: im.Vec2) -> int {
 	best := -1
 	best_area := f32(max(f32))
-	for s, i in _se.slices {
+	for s, i in _se.ts.sprites {
 		r := s.rect
 		if img.x < r.x || img.y < r.y || img.x > r.x + r.z || img.y > r.y + r.w do continue
 		area := r.z * r.w
@@ -641,17 +621,16 @@ _se_select :: proc(i: int) {
 	_se.sel = i
 	_se.name_buf = {}
 	if i >= 0 {
-		copy(_se.name_buf[:len(_se.name_buf) - 1], _se.slices[i].name)
+		copy(_se.name_buf[:len(_se.name_buf) - 1], _se.ts.sprites[i].name)
 	}
 }
 
 _se_delete_selected :: proc() {
-	if _se.sel < 0 || _se.sel >= len(_se.slices) do return
+	if _se.sel < 0 || _se.sel >= len(_se.ts.sprites) do return
 	context.allocator = runtime.default_allocator()
-	delete(_se.slices[_se.sel].name)
-	ordered_remove(&_se.slices, _se.sel)
+	delete(_se.ts.sprites[_se.sel].name)
+	ordered_remove(&_se.ts.sprites, _se.sel)
 	_se.sel = -1
-	_se.dirty = true
 }
 
 // --- Selected-slice panel -------------------------------------------------------
@@ -663,22 +642,22 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 	}
 	defer im.EndChild()
 
-	if len(_se.slices) == 0 {
+	if len(_se.ts.sprites) == 0 {
 		// Single mode: the texture is the sprite. Its borders are the one
 		// thing to author here.
 		im.Text("Sprite (whole texture)")
 		im.TextDisabled("%d x %d", tex.width, tex.height)
-		if _se_border_fields(&_se.single_border, {f32(tex.width), f32(tex.height)}) do _se.dirty = true
+		_se_border_fields(&_se.ts.sprite_border, {f32(tex.width), f32(tex.height)})
 		im.Separator()
 		im.TextWrapped("Drag the green lines to set the 9-slice borders. Drag on the image to create slices (Multiple mode). Middle-drag pans, wheel zooms.")
 		return
 	}
-	if _se.sel < 0 || _se.sel >= len(_se.slices) {
+	if _se.sel < 0 || _se.sel >= len(_se.ts.sprites) {
 		im.TextDisabled("No slice selected.")
 		im.TextWrapped("Click a rect to select. Drag on empty space to create one. Middle-drag pans, wheel zooms.")
 		return
 	}
-	s := &_se.slices[_se.sel]
+	s := &_se.ts.sprites[_se.sel]
 
 	im.Text("Sprite")
 	if im.InputText("Name", cstring(raw_data(_se.name_buf[:])), len(_se.name_buf)) {
@@ -689,19 +668,16 @@ _se_panel :: proc(tex: ^engine.Texture2D) {
 			context.allocator = runtime.default_allocator()
 			delete(s.name)
 			s.name = strings.clone(new_name)
-			_se.dirty = true
 		}
 	}
 
-	changed := false
-	changed |= inspector.drag_float("X", &s.rect.x, 1, 0, f32(tex.width))
-	changed |= inspector.drag_float("Y", &s.rect.y, 1, 0, f32(tex.height))
-	changed |= inspector.drag_float("W", &s.rect.z, 1, 1, f32(tex.width))
-	changed |= inspector.drag_float("H", &s.rect.w, 1, 1, f32(tex.height))
-	changed |= inspector.drag_float("Pivot X", &s.pivot.x, 0.01, 0, 1)
-	changed |= inspector.drag_float("Pivot Y", &s.pivot.y, 0.01, 0, 1)
-	changed |= _se_border_fields(&s.border, {s.rect.z, s.rect.w})
-	if changed do _se.dirty = true
+	inspector.drag_float("X", &s.rect.x, 1, 0, f32(tex.width))
+	inspector.drag_float("Y", &s.rect.y, 1, 0, f32(tex.height))
+	inspector.drag_float("W", &s.rect.z, 1, 1, f32(tex.width))
+	inspector.drag_float("H", &s.rect.w, 1, 1, f32(tex.height))
+	inspector.drag_float("Pivot X", &s.pivot.x, 0.01, 0, 1)
+	inspector.drag_float("Pivot Y", &s.pivot.y, 0.01, 0, 1)
+	_se_border_fields(&s.border, {s.rect.z, s.rect.w})
 
 	im.Separator()
 	if im.Button("Delete Slice") do _se_delete_selected()
