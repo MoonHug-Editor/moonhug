@@ -18,6 +18,20 @@ world_pool_get :: proc(w: ^World, handle: Handle) -> rawptr {
     return entry.get_fn(entry.pool, handle)
 }
 
+// The pool handle of a live component, found through its owner's component
+// list: for code that holds only the pointer (a gizmo hook opening an undo
+// session). ok=false when `c` is not one of its owner's components.
+comp_handle_of :: proc(c: ^CompData) -> (h: Handle, ok: bool) {
+    w := ctx_world()
+    if w == nil || c == nil do return {}, false
+    t := pool_get(&w.transforms, Handle(c.owner))
+    if t == nil do return {}, false
+    for o in t.components {
+        if world_pool_get(w, o.handle) == rawptr(c) do return o.handle, true
+    }
+    return {}, false
+}
+
 world_pool_valid :: proc(w: ^World, handle: Handle) -> bool {
     if !_type_key_valid(handle.type_key) do return false
     entry := w.pool_table[handle.type_key]

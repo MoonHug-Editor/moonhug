@@ -43,6 +43,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `with_color(color)` — the default is white.
 - `with_matrix(m)` — composes with the current space, so nested scopes nest spaces.
 - `in_local_space(transform, use_scale := true)` — the transform's world position, rotation and optionally scale. It replaces the current space instead of composing with it. Colliders pass `use_scale = false` because their sizes are scaled already.
+- `in_world_space()` — replaces the current space with world space, for code that already converted its points (handles do).
 - `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything.
 - `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets `.Editor` around its hooks, handles and the transform gizmo, shown in the scene view only. Hook code never calls it.
 
@@ -64,7 +65,7 @@ Names group by family:
 | `curve_*` (curved strokes) | `curve_bezier` |
 | `wire_*` / `solid_*` (always a pair) | `circle`, `arc`, `rect`, `quad`, `triangle`, `polygon`, `box`, `sphere`, `capsule`, `cylinder`, `cone`, `frustum` |
 | text | `label(pos, text, align, rotated, offset_px)` |
-| helpers | `helper_pixel(pos, px)`, `helper_project(pos)`, and `helper_pixel_in` / `helper_project_in` for a given view |
+| helpers | `helper_pixel(pos, px)`, `helper_project(pos)`, `helper_pixel_in` / `helper_project_in` for a given view, `helper_matrix()` for the current space |
 
 - Angles are radians. `rect` and `line_grid` lie in the local XY plane: rotate them with `with_matrix`.
 - Capsules, cylinders and cones take the two points of their axis. Circles and arcs take a center and a normal.

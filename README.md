@@ -122,7 +122,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - [Materials](docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [SpriteRenderer](docs/SpriteRenderer.md)
 - [Text](docs/Text.md) - TextMeshPro-shaped text plugin for the canvas tree: font files import into a signed-distance-field atlas, an SDF material shader gives outline, underlay shadow, dilation and softness, sharp at any size, backend-neutral layout with a swappable glyph source
-- [Handles](docs/Handles.md) - scene-view interaction layer for editor and package editors: immediate-mode drag handles on a plane, overlay drawing, one drag = one undo step, picking providers
+- [Handles](docs/Handles.md) - scene-view interaction layer for editor and package editors: immediate-mode drag handles on a plane or a line, bounds composites (box, sphere, capsule), snapping, overlay drawing, one drag = one undo step, picking providers
 - [GUI](docs/Gui.md) - canvas tree in the engine (Canvas, RectTransform anchors/pivot layout, CanvasRenderer, CanvasScaler, rect walk with layout providers), mhgui plugin package for the graphics (Image, sprite or solid color), LayoutGroup (row/column/grid), the render collector and the rect tool on editor/handles
 - [Unity Conveniences](docs/UnityConveniences.md)
 - [Multiselection](docs/Multiselection.md) - cmd/shift selection in hierarchy, scene view and project; rubber-band box select; gizmo moves/rotates/scales the whole selection (Pivot/Center toggle); set-wide delete/duplicate/toggle-active as one undo step; multiedit of shared components with Unity's mixed-value indicators
@@ -175,10 +175,8 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
-- handles follow-ups (see [Handles](docs/Handles.md)) - missing composites, and the wiring gizmo.odin kept to itself
-  - axis-constrained slider handle - drag along one direction, not just on a plane
-  - snapping - `snap_settings` and the Ctrl-modifier XOR live in gizmo.odin, so a package-authored handle ignores the user's snap setting
-  - bounds handles (box, sphere, capsule)
+- handles follow-ups (see [Handles](docs/Handles.md)) - the wiring gizmo.odin kept to itself
+  - rect tool snapping - sliders snap through `handles.snap`, the rect tool's drags do not
   - port gizmo.odin onto handles, leaving one input system. Its own job
   - box select through pick providers - click picking consults them, box select does not
 

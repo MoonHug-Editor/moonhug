@@ -451,9 +451,18 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_execute(view, commands[:])
 
 	// Interactive handles (editor/handles) read this frame: view, pointer in
-	// scene-image pixels, and whether the view is hovered.
+	// scene-image pixels, buttons, keys and the translate snap step.
 	hmp := im.GetMousePos()
-	handles.frame_begin(view, {hmp.x - _scene_img_min.x, hmp.y - _scene_img_min.y}, scene_view_hovered)
+	io := im.GetIO()
+	handles.frame_begin(view, handles.Input{
+		mouse   = {hmp.x - _scene_img_min.x, hmp.y - _scene_img_min.y},
+		hovered = scene_view_hovered,
+		down    = im.IsMouseDown(.Left),
+		clicked = im.IsMouseClicked(.Left),
+		alt     = io.KeyAlt,
+		shift   = io.KeyShift,
+		snap    = snap_translate_step() if _gizmo_snap_active() else 0,
+	})
 	gizmos.set_view(view)
 	_scene_view_last = view
 

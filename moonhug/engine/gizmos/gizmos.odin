@@ -9,7 +9,8 @@ package gizmos
 //   open. The matrix applies at call time: a shape stays where it was drawn.
 // - State comes from scopes that undo themselves at the end of the enclosing
 //   block (@(deferred_out)): with_color, with_matrix, in_local_space,
-//   with_depth_test, with_channel. Shape procs take only geometry.
+//   in_world_space, with_depth_test, with_channel. Shape procs take only
+//   geometry.
 // - A shape lives for one frame: the buffer drops the previous frame's shapes
 //   when a new frame starts (gfx.frame_index), so no main loop ends the frame
 //   for it. One recorded during a fixed tick lives until the next tick
@@ -80,9 +81,23 @@ in_local_space :: proc(tH: engine.Transform_Handle, use_scale := true) -> matrix
 	return prev
 }
 
+// Draws in world space: replaces the current matrix with identity. Code that
+// already converted its points to world space (handles) draws from here.
+@(deferred_out = _restore_matrix)
+in_world_space :: proc() -> matrix[4, 4]f32 {
+	prev := _s.space
+	_s.space = 1
+	return prev
+}
+
 @(private)
 _restore_matrix :: proc(prev: matrix[4, 4]f32) {
 	_s.space = prev
+}
+
+// The current space: local points go to world through it.
+helper_matrix :: proc() -> matrix[4, 4]f32 {
+	return _s.space
 }
 
 // Depth-tested by default. Off draws over everything, as handles do.

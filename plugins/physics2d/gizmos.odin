@@ -16,7 +16,7 @@ import "moonhug:engine/gizmos"
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}
 
 // The owner's position and world z rotation: the space 2D colliders live in.
-_collider_space :: proc(owner: engine.Transform_Handle) -> matrix[4, 4]f32 {
+collider_space :: proc(owner: engine.Transform_Handle) -> matrix[4, 4]f32 {
 	tw := engine.transform_world(owner)
 	angle := math.to_radians(engine.quat_to_euler_xyz(tw.rotation).z)
 	return linalg.matrix4_translate_f32(tw.position) * linalg.matrix4_rotate_f32(angle, {0, 0, 1})
@@ -24,21 +24,21 @@ _collider_space :: proc(owner: engine.Transform_Handle) -> matrix[4, 4]f32 {
 
 draw_box_collider_wires :: proc(c: ^BoxCollider2D, color: [4]f32) {
 	gizmos.with_color(color)
-	gizmos.with_matrix(_collider_space(c.owner))
+	gizmos.with_matrix(collider_space(c.owner))
 	size, o := box_scaled(c, collider_scale(c.owner))
 	gizmos.wire_rect({o.x, o.y, 0}, size)
 }
 
 draw_circle_collider_wires :: proc(c: ^CircleCollider2D, color: [4]f32) {
 	gizmos.with_color(color)
-	gizmos.with_matrix(_collider_space(c.owner))
+	gizmos.with_matrix(collider_space(c.owner))
 	radius, o := circle_scaled(c, collider_scale(c.owner))
 	gizmos.wire_circle({o.x, o.y, 0}, {0, 0, 1}, radius)
 }
 
 draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
 	gizmos.with_color(color)
-	gizmos.with_matrix(_collider_space(c.owner))
+	gizmos.with_matrix(collider_space(c.owner))
 	size, o := capsule_scaled(c, collider_scale(c.owner))
 	radius, half: f32
 	axis, side: [2]f32

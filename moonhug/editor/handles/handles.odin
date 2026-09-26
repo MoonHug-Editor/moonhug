@@ -3,17 +3,21 @@ package handles
 // Interactive scene-view handles for editor code and package editors
 // (docs/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
 // proc draws itself (through engine/gizmos), reports hover, and when the user
-// drags it, reports the drag as a world-space offset on a plane. The
-// scene view publishes the frame (view, mouse, hover) before the gizmo hooks
-// run, and asks `consumes_mouse` before picking or box-selecting.
+// drags it, reports the drag as an offset on a plane. The scene view publishes
+// the frame (view, pointer, keys) before the gizmo hooks run, and asks
+// `consumes_mouse` before picking or box-selecting.
 //
-// Undo is the caller's: open an undo session on `started`, close it on
-// `released`, so one drag is one undo step.
+// - Positions and normals are in the current gizmos space (in_local_space,
+//   with_matrix), as for shapes, and drags report in it too. Lengths (sizes,
+//   radii) are world units: world_per_pixels returns them.
+// - Undo is the caller's: open an undo session on `started`, close it on
+//   `released`, so one drag is one undo step.
 
 import "base:runtime"
+import "core:hash"
 import "core:math"
 import "core:math/linalg"
-import im "moonhug:external/odin-imgui"
+import "core:mem"
 import "moonhug:engine"
 import "moonhug:engine/gizmos"
 
@@ -49,12 +53,23 @@ COLOR_SHADOW :: [4]f32{0, 0, 0, 0.5} // under white outlines, for light backgrou
 // Pixel radius inside which a dot handle counts as hovered.
 DOT_HOVER_PX :: f32(8)
 
-Frame :: struct {
-	view:    engine.Render_View,
+// The pointer and keys a frame's handles read. The scene view fills it from
+// imgui, tests from a script.
+Input :: struct {
 	mouse:   [2]f32, // viewport pixels, scene image top-left origin
-	ray:     engine.Ray,
-	hovered: bool, // the scene view has the pointer
-	valid:   bool,
+	hovered: bool,   // the scene view has the pointer
+	down:    bool,   // the left button is held
+	clicked: bool,   // the left button went down this frame
+	alt:     bool,
+	shift:   bool,
+	snap:    f32, // the translate snap step while snapping is on, else 0
+}
+
+Frame :: struct {
+	view:  engine.Render_View,
+	input: Input,
+	ray:   engine.Ray,
+	valid: bool,
 }
 
 _frame: Frame
@@ -62,7 +77,7 @@ _frame: Frame
 // Hot resolution is one frame late (imgui's HoveredIdPreviousFrame): every
 // handle proposes itself during the frame, the nearest highest-priority one
 // wins, and handles read the previous frame's winner. Active is the handle
-// being dragged; it stays active while the mouse is down, and is dropped
+// being dragged. It stays active while the mouse is down, and is dropped
 // when its owner stops calling in.
 _hot_prev:    u64
 _hot:         u64
@@ -70,9 +85,9 @@ _hot_prio:    int
 _hot_dist:    f32
 _active:      u64
 _active_seen: bool
-_grab:        [3]f32 // plane point at grab
-_grab_origin: [3]f32 // drag plane origin
-_grab_normal: [3]f32 // drag plane normal
+_grab:        [3]f32 // plane point at grab, world
+_grab_origin: [3]f32 // drag plane origin, world
+_grab_normal: [3]f32 // drag plane normal, world
 
 // One handle's state for this frame.
 Drag :: struct {
@@ -80,7 +95,7 @@ Drag :: struct {
 	started:  bool, // the mouse went down on it this frame
 	dragging: bool, // the mouse is down and it moved with the drag (includes the start frame)
 	released: bool, // the mouse came up this frame
-	delta:    [3]f32, // world offset of the drag plane point from the grab point
+	delta:    [3]f32, // offset of the drag plane point from the grab point
 	point:    [3]f32, // current drag plane point
 }
 
@@ -91,14 +106,13 @@ Drag :: struct {
 rect_raw_edit: bool
 
 // The scene view calls this once per frame with the pass open, before the
-// gizmo hooks. `mouse` in viewport pixels relative to the scene image.
-frame_begin :: proc(view: engine.Render_View, mouse: [2]f32, hovered: bool) {
+// gizmo hooks.
+frame_begin :: proc(view: engine.Render_View, input: Input) {
 	_frame = Frame{
-		view    = view,
-		mouse   = mouse,
-		ray     = engine.render_view_screen_ray(view, mouse.x, mouse.y),
-		hovered = hovered,
-		valid   = true,
+		view  = view,
+		input = input,
+		ray   = engine.render_view_screen_ray(view, input.mouse.x, input.mouse.y),
+		valid = true,
 	}
 	_hot_prev = _hot
 	_hot = 0
@@ -118,10 +132,86 @@ frame :: proc() -> Frame {
 	return _frame
 }
 
+// `amount` rounded to the translate snap step while snapping is on (the Snap
+// popup's toggle, flipped by holding Ctrl or Cmd). Sliders snap by
+// themselves. A custom handle calls this on its own distances.
+snap :: proc(amount: f32) -> f32 {
+	step := _frame.input.snap
+	if step <= 0 do return amount
+	return math.round(amount / step) * step
+}
+
+// A handle id from a value (a component's pool handle) and a slot: the same
+// inputs give the same id every frame. Never 0, which means no handle. It
+// hashes the value's bytes, so pass a value without padding (handles and
+// integers qualify).
+id_of :: proc(v: $T, slot: u64 = 0) -> u64 {
+	v, slot := v, slot
+	h := hash.fnv64a(mem.ptr_to_bytes(&v))
+	h = hash.fnv64a(mem.ptr_to_bytes(&slot), h)
+	return h if h != 0 else 1
+}
+
+// --- Space --------------------------------------------------------------------------
+// Public procs take points in the current gizmos space, convert them to world
+// space, and do their work there inside gizmos.in_world_space, where the
+// current space is identity.
+
+@(private)
+_Space :: struct {
+	m, inv: matrix[4, 4]f32,
+}
+
+@(private)
+_space :: proc() -> _Space {
+	m := gizmos.helper_matrix()
+	return {m, linalg.inverse(m)}
+}
+
+@(private)
+_to_world :: proc(s: _Space, p: [3]f32) -> [3]f32 {
+	v := s.m * [4]f32{p.x, p.y, p.z, 1}
+	return v.xyz
+}
+
+@(private)
+_from_world :: proc(s: _Space, p: [3]f32) -> [3]f32 {
+	v := s.inv * [4]f32{p.x, p.y, p.z, 1}
+	return v.xyz
+}
+
+@(private)
+_vec_to_world :: proc(s: _Space, d: [3]f32) -> [3]f32 {
+	v := s.m * [4]f32{d.x, d.y, d.z, 0}
+	return v.xyz
+}
+
+@(private)
+_vec_from_world :: proc(s: _Space, d: [3]f32) -> [3]f32 {
+	v := s.inv * [4]f32{d.x, d.y, d.z, 0}
+	return v.xyz
+}
+
+// Normals go through the inverse transpose, so they stay normal to their
+// surface under non-uniform scale.
+@(private)
+_normal_to_world :: proc(s: _Space, n: [3]f32) -> [3]f32 {
+	v := linalg.transpose(s.inv) * [4]f32{n.x, n.y, n.z, 0}
+	return linalg.normalize0(v.xyz)
+}
+
+@(private)
+_drag_from_world :: proc(s: _Space, d: Drag) -> Drag {
+	out := d
+	out.point = _from_world(s, d.point)
+	out.delta = _vec_from_world(s, d.delta)
+	return out
+}
+
 // --- Geometry -----------------------------------------------------------------------
 
 // Ray against the plane through `origin` with `normal`. ok=false when the
-// ray runs parallel to the plane.
+// ray runs parallel to the plane. Plain math: no space applies.
 ray_plane :: proc(ray: engine.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: bool) {
 	denom := linalg.dot(ray.direction, normal)
 	if abs(denom) < 1e-6 do return {}, false
@@ -129,20 +219,29 @@ ray_plane :: proc(ray: engine.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: bo
 	return ray.origin + ray.direction * t, true
 }
 
-// World point -> viewport pixels. ok=false behind the camera.
+// Point -> viewport pixels. ok=false behind the camera.
 project :: proc(p: [3]f32) -> (px: [2]f32, ok: bool) {
-	return gizmos.helper_project_in(_frame.view, p)
+	return gizmos.helper_project_in(_frame.view, _to_world(_space(), p))
 }
 
 // World length that spans `pixels` on screen at `p`.
 world_per_pixels :: proc(p: [3]f32, pixels: f32) -> f32 {
-	return gizmos.helper_pixel_in(_frame.view, p, pixels)
+	return gizmos.helper_pixel_in(_frame.view, _to_world(_space(), p), pixels)
 }
 
 // Camera right and up in world space (rows of the view rotation).
 _camera_basis :: proc() -> (right, up: [3]f32) {
 	m := _frame.view.view
 	return {m[0, 0], m[0, 1], m[0, 2]}, {m[1, 0], m[1, 1], m[1, 2]}
+}
+
+// World direction from `p` toward the camera: the camera's back axis for an
+// orthographic view, where every point sees the camera the same way.
+@(private)
+_to_camera :: proc(p: [3]f32) -> [3]f32 {
+	v := _frame.view
+	if abs(v.proj[3, 3]) > 0.5 do return {v.view[2, 0], v.view[2, 1], v.view[2, 2]}
+	return linalg.normalize0(v.cam_pos - p)
 }
 
 // --- Drawing: handle chrome ---------------------------------------------------------
@@ -154,47 +253,57 @@ _camera_basis :: proc() -> (right, up: [3]f32) {
 // outline still marks the exact edge (the rect tool). bl, br, tr, tl or any
 // closed order.
 rect_outlined :: proc(c: [4][3]f32, color: [4]f32) {
+	s := _space()
+	w := [4][3]f32{_to_world(s, c[0]), _to_world(s, c[1]), _to_world(s, c[2]), _to_world(s, c[3])}
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
-	center := (c[0] + c[1] + c[2] + c[3]) * 0.25
+	center := (w[0] + w[1] + w[2] + w[3]) * 0.25
 	px := world_per_pixels(center, 1)
 	{
 		gizmos.with_color(COLOR_SHADOW)
 		for i in 0 ..< 4 {
-			a, b := c[i], c[(i + 1) % 4]
+			a, b := w[i], w[(i + 1) % 4]
 			inward := linalg.normalize0(center - (a + b) * 0.5) * px
 			gizmos.line(a + inward, b + inward)
 		}
 	}
 	gizmos.with_color(color)
-	gizmos.wire_quad(c)
+	gizmos.wire_quad(w)
 }
 
 // A ring with the dark ring one pixel inside it (the rect tool's pivot).
 circle_outlined :: proc(center, normal: [3]f32, radius: f32, color: [4]f32, segments := 32) {
+	s := _space()
+	c, n := _to_world(s, center), _normal_to_world(s, normal)
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
-	px := world_per_pixels(center, 1)
+	px := world_per_pixels(c, 1)
 	if radius > px {
 		gizmos.with_color(COLOR_SHADOW)
-		gizmos.wire_circle(center, normal, radius - px, segments)
+		gizmos.wire_circle(c, n, radius - px, segments)
 	}
 	gizmos.with_color(color)
-	gizmos.wire_circle(center, normal, radius, segments)
+	gizmos.wire_circle(c, n, radius, segments)
 }
 
 // A filled dot with the dark edge one pixel outside it (the rect tool's
 // corner markers).
 dot_outlined :: proc(center, normal: [3]f32, radius: f32, color: [4]f32) {
+	s := _space()
+	c, n := _to_world(s, center), _normal_to_world(s, normal)
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
-	px := world_per_pixels(center, 1)
+	px := world_per_pixels(c, 1)
 	{
 		gizmos.with_color(COLOR_SHADOW)
-		gizmos.solid_circle(center, normal, radius + px, segments = 24)
+		gizmos.solid_circle(c, n, radius + px, segments = 24)
 	}
 	gizmos.with_color(color)
-	gizmos.solid_circle(center, normal, radius, segments = 24)
+	gizmos.solid_circle(c, n, radius, segments = 24)
 }
 
-// The four corners of a camera-facing square, `half` in world units.
+// The four corners of a camera-facing square, `half` in world units. World
+// center in, world corners out.
 @(private = "file")
 _square_corners :: proc(center: [3]f32, half: f32) -> [4][3]f32 {
 	r, u := _camera_basis()
@@ -203,36 +312,44 @@ _square_corners :: proc(center: [3]f32, half: f32) -> [4][3]f32 {
 
 // A camera-facing filled square, `half` in world units.
 square :: proc(center: [3]f32, half: f32, color: [4]f32) {
+	c := _to_world(_space(), center)
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
 	gizmos.with_color(color)
-	gizmos.solid_quad(_square_corners(center, half))
+	gizmos.solid_quad(_square_corners(c, half))
 }
 
 // A camera-facing square outline, `half` the half side in world units, with
 // the one pixel shadow inside (rect_outlined's look, for corner markers).
 square_outline :: proc(center: [3]f32, half: f32, color: [4]f32) {
-	rect_outlined(_square_corners(center, half), color)
+	c := _to_world(_space(), center)
+	gizmos.in_world_space()
+	rect_outlined(_square_corners(c, half), color)
 }
 
 // A filled triangle facing the camera, apex at `tip` pointing along `dir`
 // (in the plane of the screen), `size` in world units.
 triangle :: proc(tip, dir: [3]f32, size: f32, color: [4]f32) {
-	p, ok := triangle_points(tip, dir, size)
+	s := _space()
+	p, ok := _triangle_points_world(_to_world(s, tip), _vec_to_world(s, dir), size)
 	if !ok do return
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
 	gizmos.with_color(color)
 	gizmos.solid_triangle(p[0], p[1], p[2])
 }
 
 // The triangle's edges only, over a dark copy shifted one pixel right and
-// down, so the outline reads on a white image as well as on a dark scene
-// (Unity's anchor handles do the same).
+// down, so the outline reads on a white image as well as on a dark scene.
 triangle_outline :: proc(tip, dir: [3]f32, size: f32, color: [4]f32) {
-	p, ok := triangle_points(tip, dir, size)
+	s := _space()
+	wtip := _to_world(s, tip)
+	p, ok := _triangle_points_world(wtip, _vec_to_world(s, dir), size)
 	if !ok do return
+	gizmos.in_world_space()
 	gizmos.with_depth_test(false)
 	r, u := _camera_basis()
-	shadow := (r - u) * world_per_pixels(tip, 1) // screen +x, +y (down)
+	shadow := (r - u) * world_per_pixels(wtip, 1) // screen +x, +y (down)
 	{
 		gizmos.with_color(COLOR_SHADOW)
 		gizmos.wire_triangle(p[0] + shadow, p[1] + shadow, p[2] + shadow)
@@ -244,6 +361,15 @@ triangle_outline :: proc(tip, dir: [3]f32, size: f32, color: [4]f32) {
 // The triangle's corners: the tip, then the two base corners `size` behind
 // it along -dir. For hit areas that match the drawing.
 triangle_points :: proc(tip, dir: [3]f32, size: f32) -> (p: [3][3]f32, ok: bool) {
+	s := _space()
+	w: [3][3]f32
+	w, ok = _triangle_points_world(_to_world(s, tip), _vec_to_world(s, dir), size)
+	if !ok do return {}, false
+	return {_from_world(s, w[0]), _from_world(s, w[1]), _from_world(s, w[2])}, true
+}
+
+@(private = "file")
+_triangle_points_world :: proc(tip, dir: [3]f32, size: f32) -> (p: [3][3]f32, ok: bool) {
 	d := linalg.normalize0(dir)
 	if d == {} do return {}, false
 	r, u := _camera_basis()
@@ -256,8 +382,9 @@ triangle_points :: proc(tip, dir: [3]f32, size: f32) -> (p: [3][3]f32, ok: bool)
 
 // --- Handles ------------------------------------------------------------------------
 
-// Shared interaction step. `candidate` says the pointer is over this handle
-// this frame at screen distance `dist`; higher `prio` wins over nearer.
+// Shared interaction step, in world space. `candidate` says the pointer is
+// over this handle this frame at screen distance `dist`. Higher `prio` wins
+// over nearer.
 _interact :: proc(id: u64, candidate: bool, dist: f32, prio: int, plane_origin, normal: [3]f32) -> Drag {
 	d: Drag
 	if !_frame.valid || id == 0 do return d
@@ -271,7 +398,7 @@ _interact :: proc(id: u64, candidate: bool, dist: f32, prio: int, plane_origin, 
 		} else {
 			d.point = _grab
 		}
-		if im.IsMouseDown(.Left) {
+		if _frame.input.down {
 			d.dragging = true
 		} else {
 			d.released = true
@@ -281,13 +408,13 @@ _interact :: proc(id: u64, candidate: bool, dist: f32, prio: int, plane_origin, 
 	}
 	if _active != 0 do return d // another handle owns the drag
 
-	if candidate && _frame.hovered && (prio > _hot_prio || (prio == _hot_prio && dist < _hot_dist)) {
+	if candidate && _frame.input.hovered && (prio > _hot_prio || (prio == _hot_prio && dist < _hot_dist)) {
 		_hot = id
 		_hot_prio = prio
 		_hot_dist = dist
 	}
 	d.hot = _hot_prev == id
-	if d.hot && im.IsMouseClicked(.Left) {
+	if d.hot && _frame.input.clicked {
 		_active = id
 		_active_seen = true
 		_grab_origin = plane_origin
@@ -304,15 +431,52 @@ _interact :: proc(id: u64, candidate: bool, dist: f32, prio: int, plane_origin, 
 	return d
 }
 
+// Screen distance from the pointer to a world point.
+@(private)
+_mouse_dist :: proc(wpos: [3]f32) -> f32 {
+	if sp, ok := gizmos.helper_project_in(_frame.view, wpos); ok do return linalg.length(sp - _frame.input.mouse)
+	return math.F32_MAX
+}
+
 // A draggable point on the plane through `pos` with `normal`, drawn as a
 // camera-facing square `size_px` wide. The drag reports offsets in that plane.
 dot :: proc(id: u64, pos, normal: [3]f32, size_px: f32 = 7, color := COLOR_HANDLE) -> Drag {
-	dist: f32 = math.F32_MAX
-	if sp, ok := project(pos); ok do dist = linalg.length(sp - _frame.mouse)
-	d := _interact(id, dist <= DOT_HOVER_PX, dist, 1, pos, normal)
-	half := world_per_pixels(pos, size_px) * 0.5
-	square(pos, half, COLOR_HOT if d.hot else color)
-	return d
+	s := _space()
+	wpos := _to_world(s, pos)
+	dist := _mouse_dist(wpos)
+	d := _interact(id, dist <= DOT_HOVER_PX, dist, 1, wpos, _normal_to_world(s, normal))
+	gizmos.in_world_space()
+	square(wpos, world_per_pixels(wpos, size_px) * 0.5, COLOR_HOT if d.hot else color)
+	return _drag_from_world(s, d)
+}
+
+// A dot that moves along `dir` only. `delta` and `point` stay on the line
+// through `pos`, and with snapping on the distance moved snaps to the step,
+// in the current space's units. The signed distance moved is
+// linalg.dot(d.delta, linalg.normalize(dir)). `prio` as for point.
+slider :: proc(id: u64, pos, dir: [3]f32, size_px: f32 = 7, color := COLOR_HANDLE, prio := 1) -> Drag {
+	s := _space()
+	wpos := _to_world(s, pos)
+	ldir := linalg.normalize0(dir)
+	wline := _vec_to_world(s, ldir)
+	wdir := linalg.normalize0(wline)
+	// The drag plane holds the line and turns to the camera as far as it can.
+	normal := linalg.normalize0(linalg.cross(wdir, linalg.cross(_to_camera(wpos), wdir)))
+	dist := _mouse_dist(wpos)
+	d := _interact(id, normal != {} && dist <= DOT_HOVER_PX, dist, prio, wpos, normal)
+	{
+		gizmos.in_world_space()
+		square(wpos, world_per_pixels(wpos, size_px) * 0.5, COLOR_HOT if d.hot else color)
+	}
+	if !d.dragging && !d.released do return _drag_from_world(s, d)
+	// Distance along the line in world units, then in the space's units.
+	amount: f32
+	if l := linalg.length(wline); l > 0 do amount = snap(linalg.dot(d.delta, wdir) / l)
+	out := _drag_from_world(s, d)
+	grab := out.point - out.delta
+	out.delta = ldir * amount
+	out.point = grab + out.delta
+	return out
 }
 
 // A draggable point that draws nothing: the caller draws its own marker
@@ -320,53 +484,61 @@ dot :: proc(id: u64, pos, normal: [3]f32, size_px: f32 = 7, color := COLOR_HANDL
 // `prio` above 1 wins over dots and other points at the same spot (the
 // rect tool's pivot over a resize spot it sits on).
 point :: proc(id: u64, pos, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio := 1) -> Drag {
-	dist: f32 = math.F32_MAX
-	if sp, ok := project(pos); ok do dist = linalg.length(sp - _frame.mouse)
-	return _interact(id, dist <= hover_px, dist, prio, pos, normal)
+	s := _space()
+	wpos := _to_world(s, pos)
+	dist := _mouse_dist(wpos)
+	return _drag_from_world(s, _interact(id, dist <= hover_px, dist, prio, wpos, _normal_to_world(s, normal)))
 }
 
 // A draggable line segment that draws nothing: the pointer within `hover_px`
 // of the segment on screen takes it (the rect tool's edges). The drag plane
 // goes through the segment's middle.
 segment :: proc(id: u64, a, b, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio := 1) -> Drag {
-	mid := (a + b) * 0.5
-	sa, oka := project(a)
-	sb, okb := project(b)
-	if !oka || !okb do return _interact(id, false, math.F32_MAX, prio, mid, normal)
+	s := _space()
+	wa, wb := _to_world(s, a), _to_world(s, b)
+	wn := _normal_to_world(s, normal)
+	mid := (wa + wb) * 0.5
+	sa, oka := gizmos.helper_project_in(_frame.view, wa)
+	sb, okb := gizmos.helper_project_in(_frame.view, wb)
+	if !oka || !okb do return _drag_from_world(s, _interact(id, false, math.F32_MAX, prio, mid, wn))
 	ab := sb - sa
 	t := f32(0)
-	if l2 := linalg.dot(ab, ab); l2 > 0 do t = clamp(linalg.dot(_frame.mouse - sa, ab) / l2, 0, 1)
-	dist := linalg.length(_frame.mouse - (sa + ab * t))
-	return _interact(id, dist <= hover_px, dist, prio, mid, normal)
+	if l2 := linalg.dot(ab, ab); l2 > 0 do t = clamp(linalg.dot(_frame.input.mouse - sa, ab) / l2, 0, 1)
+	dist := linalg.length(_frame.input.mouse - (sa + ab * t))
+	return _drag_from_world(s, _interact(id, dist <= hover_px, dist, prio, mid, wn))
 }
 
 // A draggable area that draws nothing: the screen box around `pts` (a marker
 // the caller draws, the rect tool's anchor triangles) is the hit area, so it
 // matches what is seen. The drag plane goes through `plane_pos`.
 area :: proc(id: u64, plane_pos, normal: [3]f32, pts: [][3]f32, prio := 1) -> Drag {
+	s := _space()
+	wpos, wn := _to_world(s, plane_pos), _normal_to_world(s, normal)
 	lo := [2]f32{math.F32_MAX, math.F32_MAX}
 	hi := [2]f32{-math.F32_MAX, -math.F32_MAX}
 	for p in pts {
-		sp, ok := project(p)
-		if !ok do return _interact(id, false, math.F32_MAX, 1, plane_pos, normal)
+		sp, ok := gizmos.helper_project_in(_frame.view, _to_world(s, p))
+		if !ok do return _drag_from_world(s, _interact(id, false, math.F32_MAX, 1, wpos, wn))
 		lo = {min(lo.x, sp.x), min(lo.y, sp.y)}
 		hi = {max(hi.x, sp.x), max(hi.y, sp.y)}
 	}
-	m := _frame.mouse
+	m := _frame.input.mouse
 	inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
 	dist := linalg.length(m - (lo + hi) * 0.5)
-	return _interact(id, inside, dist, prio, plane_pos, normal)
+	return _drag_from_world(s, _interact(id, inside, dist, prio, wpos, wn))
 }
 
 // An invisible draggable surface: the quad bl, br, tr, tl. Lower priority
 // than dots, so dots on its edges win the pointer.
 quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
-	t0, h0 := engine.ray_hit_triangle(_frame.ray, c[0], c[1], c[2])
-	t1, h1 := engine.ray_hit_triangle(_frame.ray, c[0], c[2], c[3])
+	s := _space()
+	w := [4][3]f32{_to_world(s, c[0]), _to_world(s, c[1]), _to_world(s, c[2]), _to_world(s, c[3])}
+	t0, h0 := engine.ray_hit_triangle(_frame.ray, w[0], w[1], w[2])
+	t1, h1 := engine.ray_hit_triangle(_frame.ray, w[0], w[2], w[3])
 	hit := h0 || h1
 	dist := f32(0)
 	if hit do dist = min(t0 if h0 else math.F32_MAX, t1 if h1 else math.F32_MAX)
-	return _interact(id, hit, dist, 0, c[0], normal)
+	return _drag_from_world(s, _interact(id, hit, dist, 0, w[0], _normal_to_world(s, normal)))
 }
 
 // --- Scene picking providers -----------------------------------------------------------

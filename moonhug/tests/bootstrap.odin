@@ -28,3 +28,7 @@ frame_popup_open :: common.frame_popup_open
 frame_popup_drag :: common.frame_popup_drag
 frame_popup_rest :: common.frame_popup_rest
 frame_button_click :: common.frame_button_click
+handles_test_view :: common.handles_test_view
+handles_frame :: common.handles_frame
+handles_drag :: common.handles_drag
+Handles_Keys :: common.Handles_Keys
