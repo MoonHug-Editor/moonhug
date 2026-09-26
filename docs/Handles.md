@@ -38,12 +38,12 @@ d := handles.box_bounds(handles.id_of(h), &center, &size)
 
 ## Frame
 
-The scene view calls `handles.frame_begin(view, input)` once per frame with its pass open, before the gizmo hooks run. `handles.Input` carries what handles read from the user:
+The editor's gizmo pass calls `handles.frame_begin(view, input)` once per frame with the scene view's camera, before the handle hooks run (docs/Gizmos.md, Recording). No render pass needs to be open. `handles.Input` carries what handles read from the user:
 
 - `mouse` in scene image pixels, `hovered` when the pointer is over the view
 - `down` and `clicked` for the left button
 - `alt` and `shift`
-- `snap`: the translate snap step while snapping is on (the Snap popup's toggle, flipped by holding Ctrl or Cmd), else 0
+- `snap` and `snap_angle`: the move step (world units) and the rotate step (radians) while snapping is on (the Snap popup's toggle, flipped by holding Ctrl or Cmd), else 0
 
 Handles never read imgui themselves, so a test drives them with a scripted `Input` (tests/common/handles_driver.odin). The scene view asks `handles.consumes_mouse()` before click picking and before starting a box select, so a hot or dragged handle never selects through.
 
@@ -62,13 +62,21 @@ Every handle takes a caller id, non-zero and stable across frames, and returns a
 Kinds:
 
 - `dot(id, pos, normal, size_px, color)` — a draggable point drawn as a camera-facing square. Drags move on the plane through `pos` with `normal`.
-- `slider(id, pos, dir, size_px, color, prio)` — a dot that moves along `dir` only. The drag plane holds the line and turns to the camera. The distance moved is `linalg.dot(d.delta, linalg.normalize(dir))`, and it snaps to the step while snapping is on.
+- `slider(id, pos, dir, size_px, color, prio)` — a dot that moves along `dir` only. The drag plane holds the line and turns to the camera. The distance moved is `linalg.dot(d.delta, linalg.normalize(dir))`.
 - `point`, `segment`, `area` — draggable spots that draw nothing, for a marker the caller draws itself (the rect tool's pivot, edges and anchor triangles).
 - `quad(id, corners, normal)` — an invisible draggable surface, the quad bl, br, tr, tl. Dots take priority over quads, so handles on a rect's edges win over its body.
 
 Hot resolution is one frame late, the imgui way: handles propose themselves during the frame, the nearest highest-priority one wins, and every handle reads the previous frame's winner. One handle is active at a time. It stays active while the mouse is down and is dropped when its owner stops calling.
 
-`snap(amount)` rounds a distance to the snap step while snapping is on, for a custom handle that measures its own distances.
+## Snapping
+
+Every handle snaps its own drag while snapping is on. Callers never snap:
+
+- Plane handles (`dot`, `point`, `segment`, `area`, `quad`) snap each axis of `delta` in the current space. On a plane oblique to the axes, the snapped point goes back onto the plane.
+- A slider snaps the distance along its line.
+- `point` follows the snapped `delta`.
+- `with_snap(false)` turns snapping off until the end of the enclosing block, for handles whose values are not distances. The rect tool's anchors and pivot are fractions of the parent rect, and the pivot keeps its own Ctrl snap to 0, 0.5 and 1.
+- `snap(amount)` and `snap_angle(radians)` round to the move and rotate steps, for a custom handle that measures a distance or an angle of its own. Both honor `with_snap`.
 
 ## Bounds
 
@@ -106,4 +114,3 @@ Plain shapes and labels come from `engine/gizmos` (docs/Gizmos.md). Handles add 
 ## Not yet
 
 - The move, rotate and scale gizmo in `editor/gizmo.odin` predates this package and keeps its own input handling. Porting it onto handles is the step that leaves one input system.
-- The rect tool does not snap its drags to the grid.

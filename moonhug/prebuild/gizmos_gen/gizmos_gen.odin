@@ -185,9 +185,9 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	strings.write_string(&b, "\n")
 
-	strings.write_string(&b, "// Called by the scene view every frame: every enabled instance.\n")
+	strings.write_string(&b, "// Called by the gizmo pass every frame (gizmo_pass.odin): every enabled instance.\n")
 	_write_dispatcher(&b, "__draw_gizmos", rows[:], .Draw)
-	strings.write_string(&b, "\n// Called by the scene view every frame, in every tool: selected instances only.\n")
+	strings.write_string(&b, "\n// Called by the gizmo pass every frame while the scene view is on screen, in every tool: selected instances only.\n")
 	_write_dispatcher(&b, "__scene_handles", rows[:], .Handles)
 
 	db.emit(w, "moonhug/editor/draw_gizmos_generated.odin", strings.to_string(b))

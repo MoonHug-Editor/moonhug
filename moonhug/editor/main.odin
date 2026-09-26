@@ -277,6 +277,9 @@ main :: proc() {
         // apply here, restore right after, so every other consumer of the
         // world this frame (saves, undo, inspector) sees authored values.
         preview.apply_all()
+        // Handles and gizmo hooks record once per frame, before any view
+        // renders: every view draws the same shapes (gizmo_pass.odin).
+        gizmo_pass()
         if menu.show_scene {
             draw_scene_view()
         }

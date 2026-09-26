@@ -450,44 +450,22 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
 
-	// Interactive handles (editor/handles) read this frame: view, pointer in
-	// scene-image pixels, buttons, keys and the translate snap step.
-	hmp := im.GetMousePos()
-	io := im.GetIO()
-	handles.frame_begin(view, handles.Input{
-		mouse   = {hmp.x - _scene_img_min.x, hmp.y - _scene_img_min.y},
-		hovered = scene_view_hovered,
-		down    = im.IsMouseDown(.Left),
-		clicked = im.IsMouseClicked(.Left),
-		alt     = io.KeyAlt,
-		shift   = io.KeyShift,
-		snap    = snap_translate_step() if _gizmo_snap_active() else 0,
-	})
+	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles and
+	// the gizmo hooks before this render. The next pass reads the view's size
+	// and the frame it rendered in.
+	_scene_rendered_frame = gfx.frame_index
+	_scene_view_size = {f32(w), f32(h)}
 	gizmos.set_view(view)
 	_scene_view_last = view
 
 	{
-		// @(on_draw_gizmos) hooks (generated dispatcher): the gizmos channel,
-		// which the game view shows too with its Gizmos toggle. The hooks'
-		// contexts read this frame's selection marks.
-		gizmo_marks_rebuild()
-		gizmos.with_channel(.Editor)
-		__draw_gizmos()
-	}
-	{
-		// Tools, scene view only and drawn over the gizmos: the selection
-		// outline, the selection's @(on_scene_handles) procs (every tool; T
-		// hides the transform gizmo so they have the scene to themselves) and
-		// the transform gizmo. The gizmo anchors on the ACTIVE object (or the
-		// selection center — gizmo_pivot) and drags apply to every selected
-		// top-level object. It handles its own mouse interaction, in the same
-		// pixel space as picking.
+		// The transform gizmo, scene view only and drawn over the handles. It
+		// anchors on the ACTIVE object (or the selection center, gizmo_pivot)
+		// and drags apply to every selected top-level object. It handles its
+		// own mouse interaction, in the same pixel space as picking. The
+		// Handles tool (T) hides it, so the handles have the scene to
+		// themselves.
 		gizmos.with_channel(.Tools)
-		sel_scene_prune()
-		for h in sel_scene_items() {
-			draw_selection_outline(h)
-		}
-		__scene_handles()
 		sel := sel_scene_active()
 		if gizmo_mode != .Handles && sel != _HANDLE_NONE {
 			mp := im.GetMousePos()

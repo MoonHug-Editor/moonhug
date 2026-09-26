@@ -176,7 +176,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - consider making transform regular component (required or optional), node will hold all components
 
 - handles follow-ups (see [Handles](docs/Handles.md)) - the wiring gizmo.odin kept to itself
-  - rect tool snapping - sliders snap through `handles.snap`, the rect tool's drags do not
   - port gizmo.odin onto handles, leaving one input system. Its own job
   - box select through pick providers - click picking consults them, box select does not
 

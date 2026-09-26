@@ -467,7 +467,8 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 
 	// The four anchors on the parent rect (in the parent's space), bl, br,
 	// tr, tl, each a handle: dragging one moves that anchor along the parent
-	// rect. Coinciding anchors overlap; dragging one pulls it out.
+	// rect. Coinciding anchors overlap: dragging one pulls it out. Anchors are
+	// fractions of the parent rect, so grid snapping stays off for them.
 	a_lo := parent.pos + parent.size * rt.anchor_min
 	a_hi := parent.pos + parent.size * rt.anchor_max
 	anchor_size := handles.world_per_pixels(_rect_point(rect, parent_xform, {0.5, 0.5}), 10)
@@ -478,6 +479,7 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 	anchor_dirs := [4][3]f32{{1, 1, 0}, {-1, 1, 0}, {-1, -1, 0}, {1, -1, 0}}
 	anchor_dragging := false
 	for k in 0 ..< 4 {
+		handles.with_snap(false)
 		p := anchor_at(parent_xform, anchor_pts[k])
 		// The hit area is the triangle's own screen box, so coinciding
 		// anchors are told apart by which triangle is under the mouse.
@@ -521,8 +523,11 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 		if d.hot do im.SetMouseCursor(_resize_cursor(h.sides))
 	}
 
-	// Pivot ring, drawn last so it reads over the handles; a handle too.
+	// Pivot ring, drawn last so it reads over the handles, and a handle too.
 	// It wins over a resize spot it sits on (a pivot on an edge or corner).
+	// The pivot is a fraction of the rect with its own Ctrl snap to 0, 0.5
+	// and 1 (_apply_pivot_drag), so grid snapping stays off for it.
+	handles.with_snap(false)
 	pivot := _rect_point(rect, xform, rt.pivot)
 	pd := handles.point(_handle_id(tH, 10), pivot, _PLANE_NORMAL, prio = _PRIO_PIVOT)
 	handles.circle_outlined(pivot, _PLANE_NORMAL, handles.world_per_pixels(pivot, 5), handles.COLOR_HOT if pd.hot else _COLOR_PIVOT)

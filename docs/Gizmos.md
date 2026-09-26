@@ -4,7 +4,7 @@
 
 ## Where to draw from
 
-- `@(on_draw_gizmos={component=T})` runs for every enabled `T` each frame, from the scene view. It draws only. The proc takes `(c: ^T, ctx: handles.Gizmo_Context)` and decides from `ctx.state` what to draw: `.Selected` (this object), `.Active` (the active object of the selection), `.In_Selection` (it or an ancestor is selected). A gizmo that shows only for the selection starts with `if .In_Selection not_in ctx.state do return`.
+- `@(on_draw_gizmos={component=T})` runs for every enabled `T` each frame, from the editor's gizmo pass (see Recording). It draws only. The proc takes `(c: ^T, ctx: handles.Gizmo_Context)` and decides from `ctx.state` what to draw: `.Selected` (this object), `.Active` (the active object of the selection), `.In_Selection` (it or an ancestor is selected). A gizmo that shows only for the selection starts with `if .In_Selection not_in ctx.state do return`.
 - `@(on_scene_handles={component=T})` takes the same parameters and runs for selected objects, in every tool: interactive handles go there (docs/Handles.md).
 - A `@(phase={key=DebugDraw, mode=App})` subscriber runs in the standalone app while debug drawing is on (F3). `engine/gizmos` subscribes too, at order 1000, and draws the gameplay shapes after the others recorded theirs.
 - Any other code (`update`, `fixed_update`, an editor tool) can draw too. Nothing needs an open render pass.
@@ -30,11 +30,18 @@ A gizmo call records world-space lines, triangles and labels into the current co
 
 Channels say who a shape is for, and draw in this order:
 
-- `.Game` — gameplay and `@(debug_draw)` code. The scene view shows it, the game view with its Gizmos toggle or with debug drawing on, the standalone app with debug drawing on (F3).
-- `.Editor` — `@(on_draw_gizmos)` hooks. The scene view shows it, the game view with its Gizmos toggle.
+- `.Game` — gameplay and `@(debug_draw)` code. The scene view shows it, the game view with Gizmos on in its ⋮ menu or with debug drawing on, the standalone app with debug drawing on (F3).
+- `.Editor` — `@(on_draw_gizmos)` hooks. The scene view shows it, the game view with Gizmos on in its ⋮ menu.
 - `.Tools` — handles, the transform gizmo, the selection outline. Scene view only.
 
-A view draws depth-tested shapes first, then the ones drawn over everything, each channel in that order, so tools always paint over gizmos. The game view draws what the scene view recorded that frame: with the scene view closed, it has no gizmos to show.
+A view draws depth-tested shapes first, then the ones drawn over everything, each channel in that order, so tools always paint over gizmos, whatever order they were recorded in.
+
+The editor's gizmo pass (editor/gizmo_pass.odin) records the hooks once per frame, after the sim tick and before any view renders, so every view draws the same shapes:
+
+- The selection outline and the `@(on_scene_handles)` procs record first, into `.Tools`, while the scene view is on screen. A handle's edit then shows in the same frame's gizmos.
+- The `@(on_draw_gizmos)` procs record into `.Editor` while the scene view is on screen or the game view shows gizmos. The game view has them with the scene view closed.
+- The transform gizmo records in the scene view's render and draws last.
+- Pixel-sized gizmos measure against the scene view's camera while the scene view is on screen, else the game view's camera. With both open, a pixel-sized gizmo in the game view has the scene view's size.
 
 ## Scopes
 

@@ -8,6 +8,7 @@ import "core:math"
 import "core:math/linalg"
 import "core:testing"
 import "../editor"
+import "../editor/menu"
 import "../engine"
 import "moonhug:engine/gizmos"
 
@@ -286,4 +287,49 @@ test_gizmo_marks_selection_order_and_slot_reuse :: proc(t: ^testing.T) {
 	fresh := engine.transform_new("Fresh")
 	testing.expect(t, engine.Handle(fresh).index == old.index, "the new transform reuses the slot (test precondition)")
 	testing.expect(t, editor.gizmo_context(fresh).state == {}, "a reused slot does not inherit the mark")
+}
+
+// --- Gizmo pass ------------------------------------------------------------------------
+
+@(private = "file")
+_count :: proc(tc: ^TestCtx, ch: engine.Gizmo_Channel) -> int {
+	return len(_prims(tc, ch = ch, depth_tested = true)) + len(_prims(tc, ch = ch, depth_tested = false))
+}
+
+// The pass records the gizmo hooks while only the game view shows gizmos, so
+// the game view has them with the scene view closed. The scene-only tools
+// (outline, handles) need the scene view on screen, and nothing records while
+// neither view shows gizmos.
+@(test)
+test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	defer editor.sel_scene_clear()
+	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
+	defer {
+		menu.show_scene = prev_scene
+		menu.show_game = prev_game
+		editor.game_gizmos = prev_toggle
+	}
+
+	cam_t := engine.transform_new("Camera")
+	_, cam_ptr := engine.transform_add_comp(cam_t, .Camera)
+	cam := cast(^engine.Camera)cam_ptr
+	cam.enabled = true
+	editor.sel_scene_only(cam_t)
+
+	menu.show_scene = false
+	menu.show_game = true
+	editor.game_gizmos = true
+	editor.gizmo_pass()
+	testing.expect(t, _count(tc, .Editor) > 0, "the selected camera's frustum records for the game view")
+	testing.expect_value(t, _count(tc, .Tools), 0)
+
+	gizmos.frame_end()
+	editor.game_gizmos = false
+	editor.gizmo_pass()
+	testing.expect_value(t, _count(tc, .Editor), 0)
 }

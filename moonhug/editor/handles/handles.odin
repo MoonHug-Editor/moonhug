@@ -3,13 +3,17 @@ package handles
 // Interactive scene-view handles for editor code and package editors
 // (docs/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
 // proc draws itself (through engine/gizmos), reports hover, and when the user
-// drags it, reports the drag as an offset on a plane. The scene view publishes
-// the frame (view, pointer, keys) before the gizmo hooks run, and asks
-// `consumes_mouse` before picking or box-selecting.
+// drags it, reports the drag as an offset on a plane. The editor's gizmo pass
+// publishes the scene view's frame (view, pointer, keys) before the handle
+// hooks run, and the scene view asks `consumes_mouse` before picking or
+// box-selecting.
 //
 // - Positions and normals are in the current gizmos space (in_local_space,
 //   with_matrix), as for shapes, and drags report in it too. Lengths (sizes,
 //   radii) are world units: world_per_pixels returns them.
+// - Every handle snaps its drag while snapping is on, in the current space:
+//   plane handles per axis, sliders along their line. Callers never snap.
+//   A handle whose values are not distances turns it off with `with_snap`.
 // - Undo is the caller's: open an undo session on `started`, close it on
 //   `released`, so one drag is one undo step.
 
@@ -62,7 +66,11 @@ Input :: struct {
 	clicked: bool,   // the left button went down this frame
 	alt:     bool,
 	shift:   bool,
-	snap:    f32, // the translate snap step while snapping is on, else 0
+	// While snapping is on (the Snap popup's toggle, flipped by holding Ctrl
+	// or Cmd): the move step in world units and the rotate step in radians.
+	// Both are 0 while it is off.
+	snap:       f32,
+	snap_angle: f32,
 }
 
 Frame :: struct {
@@ -105,8 +113,8 @@ Drag :: struct {
 // handles, so it lives here.
 rect_raw_edit: bool
 
-// The scene view calls this once per frame with the pass open, before the
-// gizmo hooks.
+// The editor's gizmo pass calls this once per frame for the scene view,
+// before the handle hooks. Nothing needs a render pass open.
 frame_begin :: proc(view: engine.Render_View, input: Input) {
 	_frame = Frame{
 		view  = view,
@@ -132,13 +140,39 @@ frame :: proc() -> Frame {
 	return _frame
 }
 
-// `amount` rounded to the translate snap step while snapping is on (the Snap
-// popup's toggle, flipped by holding Ctrl or Cmd). Sliders snap by
-// themselves. A custom handle calls this on its own distances.
+// Handles inside the scope snap (true, the default) or not. A handle whose
+// values are not distances (the rect tool's anchors and pivot, fractions of
+// the parent rect) turns snapping off around itself.
+@(deferred_out = _restore_snap)
+with_snap :: proc(enabled: bool) -> bool {
+	prev := _snap_on
+	_snap_on = enabled
+	return prev
+}
+
+@(private)
+_snap_on := true
+
+@(private)
+_restore_snap :: proc(prev: bool) {
+	_snap_on = prev
+}
+
+// `amount` rounded to the move snap step while snapping is on. Handles snap
+// their drags by themselves: this is for a custom handle that measures a
+// distance of its own.
 snap :: proc(amount: f32) -> f32 {
 	step := _frame.input.snap
-	if step <= 0 do return amount
+	if !_snap_on || step <= 0 do return amount
 	return math.round(amount / step) * step
+}
+
+// `radians` rounded to the rotate snap step while snapping is on, for a
+// handle that measures an angle.
+snap_angle :: proc(radians: f32) -> f32 {
+	step := _frame.input.snap_angle
+	if !_snap_on || step <= 0 do return radians
+	return math.round(radians / step) * step
 }
 
 // A handle id from a value (a component's pool handle) and a slot: the same
@@ -205,6 +239,22 @@ _drag_from_world :: proc(s: _Space, d: Drag) -> Drag {
 	out := d
 	out.point = _from_world(s, d.point)
 	out.delta = _vec_from_world(s, d.delta)
+	return out
+}
+
+// A plane handle's drag in the current space, snapped per axis while
+// snapping is on. `normal` is the plane's normal in that space: a plane
+// oblique to the axes gets the snapped point pushed back onto it.
+@(private)
+_finish_plane :: proc(s: _Space, d: Drag, normal: [3]f32) -> Drag {
+	out := _drag_from_world(s, d)
+	if !d.dragging && !d.released do return out
+	if !_snap_on || _frame.input.snap <= 0 do return out
+	grab := out.point - out.delta
+	delta := [3]f32{snap(out.delta.x), snap(out.delta.y), snap(out.delta.z)}
+	if n := linalg.normalize0(normal); n != {} do delta -= n * linalg.dot(delta, n)
+	out.delta = delta
+	out.point = grab + delta
 	return out
 }
 
@@ -447,12 +497,12 @@ dot :: proc(id: u64, pos, normal: [3]f32, size_px: f32 = 7, color := COLOR_HANDL
 	d := _interact(id, dist <= DOT_HOVER_PX, dist, 1, wpos, _normal_to_world(s, normal))
 	gizmos.in_world_space()
 	square(wpos, world_per_pixels(wpos, size_px) * 0.5, COLOR_HOT if d.hot else color)
-	return _drag_from_world(s, d)
+	return _finish_plane(s, d, normal)
 }
 
 // A dot that moves along `dir` only. `delta` and `point` stay on the line
-// through `pos`, and with snapping on the distance moved snaps to the step,
-// in the current space's units. The signed distance moved is
+// through `pos`, and while snapping is on the distance moved snaps to the
+// step, in the current space's units. The signed distance moved is
 // linalg.dot(d.delta, linalg.normalize(dir)). `prio` as for point.
 slider :: proc(id: u64, pos, dir: [3]f32, size_px: f32 = 7, color := COLOR_HANDLE, prio := 1) -> Drag {
 	s := _space()
@@ -487,7 +537,7 @@ point :: proc(id: u64, pos, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio :
 	s := _space()
 	wpos := _to_world(s, pos)
 	dist := _mouse_dist(wpos)
-	return _drag_from_world(s, _interact(id, dist <= hover_px, dist, prio, wpos, _normal_to_world(s, normal)))
+	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, wpos, _normal_to_world(s, normal)), normal)
 }
 
 // A draggable line segment that draws nothing: the pointer within `hover_px`
@@ -500,12 +550,12 @@ segment :: proc(id: u64, a, b, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, pri
 	mid := (wa + wb) * 0.5
 	sa, oka := gizmos.helper_project_in(_frame.view, wa)
 	sb, okb := gizmos.helper_project_in(_frame.view, wb)
-	if !oka || !okb do return _drag_from_world(s, _interact(id, false, math.F32_MAX, prio, mid, wn))
+	if !oka || !okb do return _finish_plane(s, _interact(id, false, math.F32_MAX, prio, mid, wn), normal)
 	ab := sb - sa
 	t := f32(0)
 	if l2 := linalg.dot(ab, ab); l2 > 0 do t = clamp(linalg.dot(_frame.input.mouse - sa, ab) / l2, 0, 1)
 	dist := linalg.length(_frame.input.mouse - (sa + ab * t))
-	return _drag_from_world(s, _interact(id, dist <= hover_px, dist, prio, mid, wn))
+	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, mid, wn), normal)
 }
 
 // A draggable area that draws nothing: the screen box around `pts` (a marker
@@ -518,14 +568,14 @@ area :: proc(id: u64, plane_pos, normal: [3]f32, pts: [][3]f32, prio := 1) -> Dr
 	hi := [2]f32{-math.F32_MAX, -math.F32_MAX}
 	for p in pts {
 		sp, ok := gizmos.helper_project_in(_frame.view, _to_world(s, p))
-		if !ok do return _drag_from_world(s, _interact(id, false, math.F32_MAX, 1, wpos, wn))
+		if !ok do return _finish_plane(s, _interact(id, false, math.F32_MAX, 1, wpos, wn), normal)
 		lo = {min(lo.x, sp.x), min(lo.y, sp.y)}
 		hi = {max(hi.x, sp.x), max(hi.y, sp.y)}
 	}
 	m := _frame.input.mouse
 	inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
 	dist := linalg.length(m - (lo + hi) * 0.5)
-	return _drag_from_world(s, _interact(id, inside, dist, prio, wpos, wn))
+	return _finish_plane(s, _interact(id, inside, dist, prio, wpos, wn), normal)
 }
 
 // An invisible draggable surface: the quad bl, br, tr, tl. Lower priority
@@ -538,7 +588,7 @@ quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
 	hit := h0 || h1
 	dist := f32(0)
 	if hit do dist = min(t0 if h0 else math.F32_MAX, t1 if h1 else math.F32_MAX)
-	return _drag_from_world(s, _interact(id, hit, dist, 0, w[0], _normal_to_world(s, normal)))
+	return _finish_plane(s, _interact(id, hit, dist, 0, w[0], _normal_to_world(s, normal)), normal)
 }
 
 // --- Scene picking providers -----------------------------------------------------------

@@ -219,3 +219,55 @@ test_comp_handle_of_finds_the_instance :: proc(t: ^testing.T) {
 	_, ok = engine.comp_handle_of(&stray)
 	testing.expect(t, !ok, "a pointer that is none of the owner's components")
 }
+
+// --- Snapping ---------------------------------------------------------------------------
+
+@(private = "file")
+_Dot_Case :: struct {
+	snap_off: bool,
+	last:     handles.Drag,
+}
+
+@(private = "file")
+_dot_body :: proc(user: rawptr) {
+	c := cast(^_Dot_Case)user
+	handles.with_snap(!c.snap_off)
+	d := handles.dot(3, {0, 0, 0}, {0, 0, 1})
+	if d.dragging || d.released do c.last = d
+}
+
+// Every handle snaps, not only sliders: a plain dot's drag snaps per axis
+// while snapping is on, and with_snap(false) turns it off around a handle.
+@(test)
+test_handles_plane_drag_snaps_per_axis :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+
+	c := _Dot_Case{}
+	handles_drag(v, {0, 0, 0}, {1.3, 0.7, 0}, _dot_body, &c, Handles_Keys{snap = 0.5})
+	testing.expectf(t, _near(c.last.delta, {1.5, 0.5, 0}), "snapped per axis, got %v", c.last.delta)
+	testing.expectf(t, _near(c.last.point, {1.5, 0.5, 0}), "the point follows the snapped delta, got %v", c.last.point)
+
+	c = _Dot_Case{snap_off = true}
+	handles_drag(v, {0, 0, 0}, {1.3, 0.7, 0}, _dot_body, &c, Handles_Keys{snap = 0.5})
+	testing.expectf(t, _near(c.last.delta, {1.3, 0.7, 0}), "with_snap(false) keeps the raw drag, got %v", c.last.delta)
+}
+
+@(test)
+test_handles_snap_helpers :: proc(t: ^testing.T) {
+	v := handles_test_view()
+	handles_frame(v, {0, 0, 0}, keys = Handles_Keys{snap = 0.25, snap_angle = math.PI / 12})
+	testing.expect_value(t, handles.snap(0.3), f32(0.25))
+	testing.expect(t, abs(handles.snap_angle(0.3) - math.PI / 12) < 1e-6, "0.3 rad snaps to 15 degrees")
+	{
+		handles.with_snap(false)
+		testing.expect_value(t, handles.snap(0.3), f32(0.3))
+	}
+	testing.expect_value(t, handles.snap(0.3), f32(0.25)) // the scope ended
+	handles_frame(v, {0, 0, 0})
+	testing.expect_value(t, handles.snap(0.3), f32(0.3)) // snapping off
+}

@@ -19,9 +19,10 @@ handles_test_view :: proc(eye := [3]f32{0, 0, 10}) -> engine.Render_View {
 
 // Keys held and the snap step for every frame of a drag.
 Handles_Keys :: struct {
-	alt:   bool,
-	shift: bool,
-	snap:  f32,
+	alt:        bool,
+	shift:      bool,
+	snap:       f32,
+	snap_angle: f32,
 }
 
 // Starts one handles frame with the pointer over world point `at`.
@@ -29,13 +30,14 @@ handles_frame :: proc(v: engine.Render_View, at: [3]f32, down := false, clicked 
 	px, _ := gizmos.helper_project_in(v, at)
 	gizmos.set_view(v)
 	handles.frame_begin(v, handles.Input{
-		mouse   = px,
-		hovered = true,
-		down    = down,
-		clicked = clicked,
-		alt     = keys.alt,
-		shift   = keys.shift,
-		snap    = keys.snap,
+		mouse      = px,
+		hovered    = true,
+		down       = down,
+		clicked    = clicked,
+		alt        = keys.alt,
+		shift      = keys.shift,
+		snap       = keys.snap,
+		snap_angle = keys.snap_angle,
 	})
 }
 
