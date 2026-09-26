@@ -173,7 +173,7 @@ sprites in the shared transparent pass.
 The selected system draws its emission shape as wireframe lines in the scene
 view — cone base + spread silhouette, sphere/hemisphere circles, circle,
 edge line, box, point cross (`editor/particles_gizmos.odin`, the
-`@(on_draw_gizmos_selected)` hook).
+`@(on_draw_gizmos)` hook, for systems in the selection).
 
 ## Edit-mode preview
 

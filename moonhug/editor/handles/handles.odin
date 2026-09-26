@@ -2,8 +2,8 @@ package handles
 
 // Interactive scene-view handles for editor code and package editors
 // (docs/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
-// proc draws itself into the open scene pass, reports hover, and when the
-// user drags it, reports the drag as a world-space offset on a plane. The
+// proc draws itself (through engine/gizmos), reports hover, and when the user
+// drags it, reports the drag as a world-space offset on a plane. The
 // scene view publishes the frame (view, mouse, hover) before the gizmo hooks
 // run, and asks `consumes_mouse` before picking or box-selecting.
 //
@@ -13,10 +13,32 @@ package handles
 import "base:runtime"
 import "core:math"
 import "core:math/linalg"
-import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine"
-import gfx "moonhug:engine/gfx"
+import "moonhug:engine/gizmos"
+
+// The scene view's tool: Q W E R T. The editor's gizmo_mode holds it, and
+// gizmo and handles hooks read it from their context.
+Tool :: enum {
+	Picker,    // Q: selection only
+	Translate, // W
+	Rotate,    // E
+	Scale,     // R
+	Handles,   // T: the selection's own handles in place of the transform gizmo
+}
+
+Gizmo_State :: enum {
+	Selected,     // this object is selected
+	Active,       // the active object of the selection
+	In_Selection, // it or an ancestor is selected
+}
+
+// What an @(on_draw_gizmos) or @(on_scene_handles) proc is told about the
+// instance it draws (docs/Gizmos.md, docs/Handles.md).
+Gizmo_Context :: struct {
+	state: bit_set[Gizmo_State],
+	tool:  Tool,
+}
 
 // Hovered handle color, imgui's Handles yellow (the transform gizmo uses it).
 COLOR_HOT :: [4]f32{246.0 / 255, 242.0 / 255, 50.0 / 255, 0.89}
@@ -84,34 +106,6 @@ frame_begin :: proc(view: engine.Render_View, mouse: [2]f32, hovered: bool) {
 	_hot_dist = math.F32_MAX
 	if _active != 0 && !_active_seen do _active = 0 // its owner went away mid-drag
 	_active_seen = false
-	clear(&_labels)
-}
-
-// --- Labels -------------------------------------------------------------------------------
-// Text next to a world point. Handles draw lines through gfx, but text is
-// imgui's: the scene view reads labels() after its image and draws them over
-// it, so a label queued here shows on the same frame.
-
-Label :: struct {
-	px:      [2]f32, // scene image pixels
-	text:    string, // temp-allocated, this frame
-	align:   [2]f32, // which point of the text box sits at px: {0, 0} top-left, {0.5, 0} top-center, {1, 0.5} right-center
-	rotated: bool,   // drawn turned 90 degrees, reading bottom to top (a vertical line's label)
-}
-
-@(private = "file") _labels: [dynamic]Label
-
-// `offset_px` moves the label on screen after projecting, e.g. a few pixels
-// below a line.
-label :: proc(pos: [3]f32, text: string, align := [2]f32{0, 0}, rotated := false, offset_px := [2]f32{0, 0}) {
-	px, ok := project(pos)
-	if !ok do return
-	if _labels == nil do _labels = make([dynamic]Label, runtime.default_allocator())
-	append(&_labels, Label{px = px + offset_px, text = strings.clone(text, context.temp_allocator), align = align, rotated = rotated})
-}
-
-labels :: proc() -> []Label {
-	return _labels[:]
 }
 
 // True while a handle is hovered or dragged: the scene view then neither
@@ -137,26 +131,12 @@ ray_plane :: proc(ray: engine.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: bo
 
 // World point -> viewport pixels. ok=false behind the camera.
 project :: proc(p: [3]f32) -> (px: [2]f32, ok: bool) {
-	v := _frame.view
-	clip := v.view_proj * [4]f32{p.x, p.y, p.z, 1}
-	if clip.w <= 1e-6 do return {}, false
-	ndc := clip.xy / clip.w
-	return {(ndc.x + 1) * 0.5 * v.width, (1 - ndc.y) * 0.5 * v.height}, true
+	return gizmos.helper_project_in(_frame.view, p)
 }
 
-// World length that spans `pixels` on screen at `p`: exact for perspective
-// and orthographic views alike (two unprojected pixels on the plane facing
-// the camera through `p`).
+// World length that spans `pixels` on screen at `p`.
 world_per_pixels :: proc(p: [3]f32, pixels: f32) -> f32 {
-	v := _frame.view
-	sp, ok := project(p)
-	if !ok do return 0
-	n := linalg.normalize0(v.cam_pos - p)
-	if n == {} do n = {0, 0, 1}
-	a, aok := ray_plane(engine.render_view_screen_ray(v, sp.x, sp.y), p, n)
-	b, bok := ray_plane(engine.render_view_screen_ray(v, sp.x + pixels, sp.y), p, n)
-	if !aok || !bok do return 0
-	return linalg.length(b - a)
+	return gizmos.helper_pixel_in(_frame.view, p, pixels)
 }
 
 // Camera right and up in world space (rows of the view rotation).
@@ -165,100 +145,73 @@ _camera_basis :: proc() -> (right, up: [3]f32) {
 	return {m[0, 0], m[0, 1], m[0, 2]}, {m[1, 0], m[1, 1], m[1, 2]}
 }
 
-// --- Drawing (overlay: never depth-tested, like the transform gizmo) --------------
+// --- Drawing: handle chrome ---------------------------------------------------------
+// Handle shapes over everything (no depth test), styled to read on any
+// background: a dark half-transparent line one pixel off each edge. Plain
+// shapes come from engine/gizmos directly.
 
-line :: proc(a, b: [3]f32, color: [4]f32) {
-	gfx.draw_line(a, b, color, depth_test = false)
-}
-
-// bl, br, tr, tl or any closed order.
-rect :: proc(c: [4][3]f32, color: [4]f32) {
-	for i in 0 ..< 4 do line(c[i], c[(i + 1) % 4], color)
-}
-
-// A rect outline with a dark half-transparent line one pixel INSIDE each
-// edge, so the outline reads on a white image too (the rect tool). Inside
-// rather than shifted, so the outline still marks the exact edge.
+// A rect outline with the dark line one pixel INSIDE each edge, so the
+// outline still marks the exact edge (the rect tool). bl, br, tr, tl or any
+// closed order.
 rect_outlined :: proc(c: [4][3]f32, color: [4]f32) {
+	gizmos.with_depth_test(false)
 	center := (c[0] + c[1] + c[2] + c[3]) * 0.25
 	px := world_per_pixels(center, 1)
-	for i in 0 ..< 4 {
-		a, b := c[i], c[(i + 1) % 4]
-		inward := linalg.normalize0(center - (a + b) * 0.5) * px
-		line(a + inward, b + inward, COLOR_SHADOW)
+	{
+		gizmos.with_color(COLOR_SHADOW)
+		for i in 0 ..< 4 {
+			a, b := c[i], c[(i + 1) % 4]
+			inward := linalg.normalize0(center - (a + b) * 0.5) * px
+			gizmos.line(a + inward, b + inward)
+		}
 	}
-	rect(c, color)
+	gizmos.with_color(color)
+	gizmos.wire_quad(c)
 }
 
-circle :: proc(center, normal: [3]f32, radius: f32, color: [4]f32, segments := 32) {
-	n := linalg.normalize0(normal)
-	u := linalg.cross(n, [3]f32{0, 1, 0})
-	if linalg.length(u) < 1e-4 do u = linalg.cross(n, [3]f32{1, 0, 0})
-	u = linalg.normalize(u)
-	v := linalg.cross(n, u)
-	prev := center + u * radius
-	for i in 1 ..= segments {
-		a := f32(i) / f32(segments) * math.TAU
-		p := center + (u * math.cos(a) + v * math.sin(a)) * radius
-		line(prev, p, color)
-		prev = p
-	}
-}
-
-// A ring with a dark half-transparent ring one pixel inside it, so it reads
-// on any color (the rect tool's pivot).
+// A ring with the dark ring one pixel inside it (the rect tool's pivot).
 circle_outlined :: proc(center, normal: [3]f32, radius: f32, color: [4]f32, segments := 32) {
+	gizmos.with_depth_test(false)
 	px := world_per_pixels(center, 1)
-	if radius > px do circle(center, normal, radius - px, COLOR_SHADOW, segments)
-	circle(center, normal, radius, color, segments)
-}
-
-// A filled circle in the plane through `center` with `normal`.
-disc :: proc(center, normal: [3]f32, radius: f32, color: [4]f32, segments := 24) {
-	n := linalg.normalize0(normal)
-	u := linalg.cross(n, [3]f32{0, 1, 0})
-	if linalg.length(u) < 1e-4 do u = linalg.cross(n, [3]f32{1, 0, 0})
-	u = linalg.normalize(u)
-	v := linalg.cross(n, u)
-	prev := center + u * radius
-	for i in 1 ..= segments {
-		a := f32(i) / f32(segments) * math.TAU
-		p := center + (u * math.cos(a) + v * math.sin(a)) * radius
-		gfx.draw_triangle(center, prev, p, color, depth_test = false)
-		prev = p
+	if radius > px {
+		gizmos.with_color(COLOR_SHADOW)
+		gizmos.wire_circle(center, normal, radius - px, segments)
 	}
+	gizmos.with_color(color)
+	gizmos.wire_circle(center, normal, radius, segments)
 }
 
-// A filled dot with a dark half-transparent edge one pixel outside it, so it
-// reads on any color (the rect tool's corner markers).
+// A filled dot with the dark edge one pixel outside it (the rect tool's
+// corner markers).
 dot_outlined :: proc(center, normal: [3]f32, radius: f32, color: [4]f32) {
+	gizmos.with_depth_test(false)
 	px := world_per_pixels(center, 1)
-	disc(center, normal, radius + px, COLOR_SHADOW)
-	disc(center, normal, radius, color)
+	{
+		gizmos.with_color(COLOR_SHADOW)
+		gizmos.solid_circle(center, normal, radius + px, segments = 24)
+	}
+	gizmos.with_color(color)
+	gizmos.solid_circle(center, normal, radius, segments = 24)
+}
+
+// The four corners of a camera-facing square, `half` in world units.
+@(private = "file")
+_square_corners :: proc(center: [3]f32, half: f32) -> [4][3]f32 {
+	r, u := _camera_basis()
+	return {center - r * half - u * half, center + r * half - u * half, center + r * half + u * half, center - r * half + u * half}
 }
 
 // A camera-facing filled square, `half` in world units.
 square :: proc(center: [3]f32, half: f32, color: [4]f32) {
-	r, u := _camera_basis()
-	a := center - r * half - u * half
-	b := center + r * half - u * half
-	c := center + r * half + u * half
-	d := center - r * half + u * half
-	gfx.draw_triangle(a, b, c, color, depth_test = false)
-	gfx.draw_triangle(a, c, d, color, depth_test = false)
+	gizmos.with_depth_test(false)
+	gizmos.with_color(color)
+	gizmos.solid_quad(_square_corners(center, half))
 }
 
 // A camera-facing square outline, `half` the half side in world units, with
 // the one pixel shadow inside (rect_outlined's look, for corner markers).
 square_outline :: proc(center: [3]f32, half: f32, color: [4]f32) {
-	r, u := _camera_basis()
-	c := [4][3]f32{
-		center - r * half - u * half,
-		center + r * half - u * half,
-		center + r * half + u * half,
-		center - r * half + u * half,
-	}
-	rect_outlined(c, color)
+	rect_outlined(_square_corners(center, half), color)
 }
 
 // A filled triangle facing the camera, apex at `tip` pointing along `dir`
@@ -266,19 +219,26 @@ square_outline :: proc(center: [3]f32, half: f32, color: [4]f32) {
 triangle :: proc(tip, dir: [3]f32, size: f32, color: [4]f32) {
 	p, ok := triangle_points(tip, dir, size)
 	if !ok do return
-	gfx.draw_triangle(p[0], p[1], p[2], color, depth_test = false)
+	gizmos.with_depth_test(false)
+	gizmos.with_color(color)
+	gizmos.solid_triangle(p[0], p[1], p[2])
 }
 
-// The triangle's edges only, over a dark half-transparent copy shifted one
-// pixel right and down, so the outline reads on a white image as well as on
-// a dark scene (Unity's anchor handles do the same).
+// The triangle's edges only, over a dark copy shifted one pixel right and
+// down, so the outline reads on a white image as well as on a dark scene
+// (Unity's anchor handles do the same).
 triangle_outline :: proc(tip, dir: [3]f32, size: f32, color: [4]f32) {
 	p, ok := triangle_points(tip, dir, size)
 	if !ok do return
+	gizmos.with_depth_test(false)
 	r, u := _camera_basis()
 	shadow := (r - u) * world_per_pixels(tip, 1) // screen +x, +y (down)
-	for i in 0 ..< 3 do line(p[i] + shadow, p[(i + 1) % 3] + shadow, COLOR_SHADOW)
-	for i in 0 ..< 3 do line(p[i], p[(i + 1) % 3], color)
+	{
+		gizmos.with_color(COLOR_SHADOW)
+		gizmos.wire_triangle(p[0] + shadow, p[1] + shadow, p[2] + shadow)
+	}
+	gizmos.with_color(color)
+	gizmos.wire_triangle(p[0], p[1], p[2])
 }
 
 // The triangle's corners: the tip, then the two base corners `size` behind
@@ -396,19 +356,6 @@ area :: proc(id: u64, plane_pos, normal: [3]f32, pts: [][3]f32, prio := 1) -> Dr
 	inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
 	dist := linalg.length(m - (lo + hi) * 0.5)
 	return _interact(id, inside, dist, prio, plane_pos, normal)
-}
-
-// A dashed line, dashes `dash_px` long on screen.
-dashed_line :: proc(a, b: [3]f32, color: [4]f32, dash_px: f32 = 6) {
-	length := linalg.length(b - a)
-	if length <= 0 do return
-	dash := world_per_pixels((a + b) * 0.5, dash_px)
-	if dash <= 0 do return
-	dir := (b - a) / length
-	for t := f32(0); t < length; t += dash * 2 {
-		end := min(t + dash, length)
-		line(a + dir * t, a + dir * end, color)
-	}
 }
 
 // An invisible draggable surface: the quad bl, br, tr, tl. Lower priority

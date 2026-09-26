@@ -1,19 +1,25 @@
 package gizmos_gen
 
-// gizmos_gen: the scene-view gizmo hook (README on_draw_gizmos TODO).
+// gizmos_gen: the scene-view gizmo and handles hooks (docs/Gizmos.md,
+// docs/Handles.md).
 //
-//   @(on_draw_gizmos={component=BoxCollider2D})          // every alive instance
-//   @(on_draw_gizmos_selected={component=BoxCollider2D}) // only when selected
-//   box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D) { gfx.draw_line(...) }
+//   @(on_draw_gizmos={component=BoxCollider2D})   // drawing, every enabled instance
+//   @(on_scene_handles={component=RectTransform}) // interaction, selected objects
+//   box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D, ctx: handles.Gizmo_Context) {
+//       if .In_Selection not_in ctx.state do return
+//       ...
+//   }
 //
-//   provide  - recognise procs carrying either attribute; the value names a
-//              @(component) type by its unqualified name.
-//   generate - emit moonhug/editor/draw_gizmos_generated.odin: __draw_gizmos()
-//              iterates each named component's alive instances (typed World
-//              pools for engine components, ext pools via the runtime
-//              registry's each_alive for app/package components) and calls
-//              the proc. The scene view calls __draw_gizmos while its
-//              offscreen pass is open, so procs draw with the gfx line API.
+//   provide  - recognise procs carrying one of the attributes; the value names
+//              a @(component) type by its unqualified name.
+//   generate - emit moonhug/editor/draw_gizmos_generated.odin with two
+//              dispatchers, __draw_gizmos() and __scene_handles(). Each iterates
+//              the named component's alive instances (typed World pools for
+//              engine components, ext pools via the runtime registry's
+//              each_alive for app/package components) and calls the proc with
+//              the instance's context (selection state, tool), built by the
+//              editor's gizmo_context. __scene_handles skips instances that are
+//              not selected themselves. Procs draw with engine/gizmos.
 //
 // The dispatcher lives in the editor root and calls INTO plugin editor
 // packages — the legal layering direction (docs/Plugins.md).
@@ -25,9 +31,14 @@ import db "../gen_db"
 import "../gen_facts"
 import "../components_gen"
 
+Gizmo_Hook_Kind :: enum {
+	Draw,    // on_draw_gizmos
+	Handles, // on_scene_handles
+}
+
 Gizmos_GenComp :: struct {
 	component: string, // unqualified @(component) type name
-	selected:  bool,   // draw_gizmos_selected
+	kind:      Gizmo_Hook_Kind,
 }
 
 @(init)
@@ -47,10 +58,16 @@ provide :: proc(w: ^db.World) -> bool {
 		decl := db.get(decls, entity)
 		if decl.name == "" do continue
 		attr_set := db.get(attrs, entity)
+		if _, sfound := gen_facts.attr_find(attr_set, "on_draw_gizmos_selected"); sfound {
+			// Not an attribute: the ignore-unknown-attributes build would drop
+			// the hook without a word.
+			fmt.eprintf("gizmos_gen: %s.%s: use @(on_draw_gizmos) and check ctx.state (.In_Selection) instead of on_draw_gizmos_selected\n", decl.pkg.name, decl.name)
+			return false
+		}
 		if args, found := gen_facts.attr_find(attr_set, "on_draw_gizmos"); found {
-			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), selected = false})
-		} else if args, sfound := gen_facts.attr_find(attr_set, "on_draw_gizmos_selected"); sfound {
-			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), selected = true})
+			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Draw})
+		} else if args, hfound := gen_facts.attr_find(attr_set, "on_scene_handles"); hfound {
+			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Handles})
 		}
 	}
 	return true
@@ -66,7 +83,7 @@ _Row :: struct {
 	pkg:       string, // declared package name; "" when in the editor root
 	pkg_path:  string,
 	component: string,
-	selected:  bool,
+	kind:      Gizmo_Hook_Kind,
 	// resolved from components_gen data:
 	comp_pkg:      string,
 	comp_pkg_path: string,
@@ -113,7 +130,7 @@ generate :: proc(w: ^db.World) -> bool {
 			pkg       = decl.pkg.name == "editor" ? "" : decl.pkg.name,
 			pkg_path  = decl.pkg_path,
 			component = g.component,
-			selected  = g.selected,
+			kind      = g.kind,
 		}
 		// Resolve the component's owning package from components_gen facts.
 		found := false
@@ -168,44 +185,54 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	strings.write_string(&b, "\n")
 
-	strings.write_string(&b, "// Called by the scene view while its offscreen pass is open.\n")
-	strings.write_string(&b, "__draw_gizmos :: proc() {\n")
-	strings.write_string(&b, "\tw := engine.ctx_world()\n")
-	strings.write_string(&b, "\t_ = w\n")
+	strings.write_string(&b, "// Called by the scene view every frame: every enabled instance.\n")
+	_write_dispatcher(&b, "__draw_gizmos", rows[:], .Draw)
+	strings.write_string(&b, "\n// Called by the scene view every frame, in every tool: selected instances only.\n")
+	_write_dispatcher(&b, "__scene_handles", rows[:], .Handles)
+
+	db.emit(w, "moonhug/editor/draw_gizmos_generated.odin", strings.to_string(b))
+	return true
+}
+
+_write_dispatcher :: proc(b: ^strings.Builder, name: string, rows: []_Row, kind: Gizmo_Hook_Kind) {
+	fmt.sbprintf(b, "%s :: proc() {{\n", name)
+	strings.write_string(b, "\tw := engine.ctx_world()\n")
+	strings.write_string(b, "\t_ = w\n")
 	for r in rows {
+		if r.kind != kind do continue
+		selected_only := r.kind == .Handles
 		call := r.pkg == "" ? r.proc_name : fmt.tprintf("%s.%s", r.pkg, r.proc_name)
 		if r.comp_engine {
 			// Engine components live in ext_pools like everything else
 			// (unified components) — go through the typed plural accessor.
-			strings.write_string(&b, "\t{\n")
-			fmt.sbprintf(&b, "\t\tit := engine.pool_iterator(engine.%s(w))\n", r.comp_plural)
-			strings.write_string(&b, "\t\tfor c, _ in engine.pool_next(&it) {\n")
-			strings.write_string(&b, "\t\t\tif !c.enabled do continue\n")
-			if r.selected {
-				strings.write_string(&b, "\t\t\tif !sel_scene_is(c.owner) do continue\n")
+			strings.write_string(b, "\t{\n")
+			fmt.sbprintf(b, "\t\tit := engine.pool_iterator(engine.%s(w))\n", r.comp_plural)
+			strings.write_string(b, "\t\tfor c, _ in engine.pool_next(&it) {\n")
+			strings.write_string(b, "\t\t\tif !c.enabled do continue\n")
+			strings.write_string(b, "\t\t\tctx := gizmo_context(engine.Transform_Handle(c.owner))\n")
+			if selected_only {
+				strings.write_string(b, "\t\t\tif .Selected not_in ctx.state do continue\n")
 			}
-			fmt.sbprintf(&b, "\t\t\t%s(c)\n", call)
-			strings.write_string(&b, "\t\t}\n")
-			strings.write_string(&b, "\t}\n")
+			fmt.sbprintf(b, "\t\t\t%s(c, ctx)\n", call)
+			strings.write_string(b, "\t\t}\n")
+			strings.write_string(b, "\t}\n")
 		} else {
 			// Ext component (app or package): iterate via the runtime registry.
-			fmt.sbprintf(&b, "\tif pool := w.ext_pools[engine.TypeKey.%s]; pool != nil {{\n", r.component)
-			fmt.sbprintf(&b, "\t\tif desc := engine.component_registry[engine.TypeKey.%s]; desc.each_alive != nil {{\n", r.component)
-			strings.write_string(&b, "\t\t\tdesc.each_alive(pool, proc(ptr: rawptr) {\n")
+			fmt.sbprintf(b, "\tif pool := w.ext_pools[engine.TypeKey.%s]; pool != nil {{\n", r.component)
+			fmt.sbprintf(b, "\t\tif desc := engine.component_registry[engine.TypeKey.%s]; desc.each_alive != nil {{\n", r.component)
+			strings.write_string(b, "\t\t\tdesc.each_alive(pool, proc(ptr: rawptr) {\n")
 			comp_ref := r.comp_pkg == "app" ? fmt.tprintf("app.%s", r.component) : fmt.tprintf("%s.%s", r.comp_pkg, r.component)
-			fmt.sbprintf(&b, "\t\t\t\tc := cast(^%s)ptr\n", comp_ref)
-			strings.write_string(&b, "\t\t\t\tif !c.enabled do return\n")
-			if r.selected {
-				strings.write_string(&b, "\t\t\t\tif !sel_scene_is(c.owner) do return\n")
+			fmt.sbprintf(b, "\t\t\t\tc := cast(^%s)ptr\n", comp_ref)
+			strings.write_string(b, "\t\t\t\tif !c.enabled do return\n")
+			strings.write_string(b, "\t\t\t\tctx := gizmo_context(engine.Transform_Handle(c.owner))\n")
+			if selected_only {
+				strings.write_string(b, "\t\t\t\tif .Selected not_in ctx.state do return\n")
 			}
-			fmt.sbprintf(&b, "\t\t\t\t%s(c)\n", call)
-			strings.write_string(&b, "\t\t\t})\n")
-			strings.write_string(&b, "\t\t}\n")
-			strings.write_string(&b, "\t}\n")
+			fmt.sbprintf(b, "\t\t\t\t%s(c, ctx)\n", call)
+			strings.write_string(b, "\t\t\t})\n")
+			strings.write_string(b, "\t\t}\n")
+			strings.write_string(b, "\t}\n")
 		}
 	}
-	strings.write_string(&b, "}\n")
-
-	db.emit(w, "moonhug/editor/draw_gizmos_generated.odin", strings.to_string(b))
-	return true
+	strings.write_string(b, "}\n")
 }

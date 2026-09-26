@@ -59,6 +59,7 @@ EditorSettings :: struct {
     game_size_index:          int,                      // game view size list entry (view_game.odin)
     game_scale:               f32,                      // game view zoom (view_game.odin)
     game_size_flipped:        bool,                     // game view size width/height swap (view_game.odin)
+    game_gizmos:              bool,                     // game view Gizmos toggle (view_game.odin)
 }
 
 editor_settings: EditorSettings
@@ -88,6 +89,7 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             // Zero = the field predates this setting; keep the 1x default.
             if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
             game_size_flipped = editor_settings.game_size_flipped
+            game_gizmos = editor_settings.game_gizmos
             if editor_settings.scene_2d do _scene_2d_pending = true
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
@@ -159,6 +161,7 @@ save_editor_settings :: proc() {
     editor_settings.game_size_index = game_size_index
     editor_settings.game_scale = game_scale
     editor_settings.game_size_flipped = game_size_flipped
+    editor_settings.game_gizmos = game_gizmos
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)

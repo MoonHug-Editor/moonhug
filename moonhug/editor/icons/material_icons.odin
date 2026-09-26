@@ -107,6 +107,7 @@ ICON_MD_VIEW_TIMELINE  :: "\ueb85" // view_timeline (Sequencer)
 ICON_MD_SHOW_CHART     :: "\ue6e1" // show_chart (Tween Graph)
 ICON_MD_EXTENSION      :: "\ue87b" // extension (plugin windows without an icon of their own)
 ICON_MD_CROP           :: "\ue3be" // crop (Sprite Editor)
+ICON_MD_CROP_FREE      :: "\ue3c2" // crop_free (Handles tool)
 ICON_MD_KEYBOARD       :: "\ue312" // keyboard (Input Debug)
 ICON_MD_SCREEN_ROTATION :: "\ue1c1" // screen_rotation (Game view size flip)
 

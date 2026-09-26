@@ -15,6 +15,8 @@ UserContext :: struct {
     is_playing : bool,
     inspector     : InspectorState,
     undo          : rawptr,
+    // Recorded gizmo shapes for this context's views (engine/gizmos).
+    gizmos        : Gizmo_Buffer,
 }
 
 // Unity's Application.isEditor: true in the editor binary, false in a standalone

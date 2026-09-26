@@ -3,76 +3,42 @@ package physics2d
 // Collider outlines, shared by two callers: the editor's selected-object
 // gizmos (packages/physics2d/editor delegates here) and the in-app debug
 // view — the DebugDraw phase subscriber draws EVERY enabled collider when
-// engine.debug_draw_enabled is on. World-space lines in the XY plane at the
-// owner's z, matching the sync's v1 rules. Lines go through the gfx line
-// API, so the caller must have an open pass with a world-space view_proj.
+// engine.debug_draw_enabled is on. Outlines in the XY plane at the owner's
+// z, turned by its world z rotation only, matching the sync's v1 rules.
+// Drawn through engine/gizmos.
 
 import "core:math"
+import "core:math/linalg"
 import "moonhug:engine"
-import gfx "moonhug:engine/gfx"
+import "moonhug:engine/gizmos"
 
 // Unity's 2D collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}
 
-_GIZ_SEGMENTS :: 32
-
-_Giz_Frame :: struct {
-	origin: [3]f32, // owner world position
-	angle:  f32,    // owner world z rotation, radians
-	color:  [4]f32,
-}
-
-_giz_frame :: proc(owner: engine.Transform_Handle, color: [4]f32) -> _Giz_Frame {
+// The owner's position and world z rotation: the space 2D colliders live in.
+_collider_space :: proc(owner: engine.Transform_Handle) -> matrix[4, 4]f32 {
 	tw := engine.transform_world(owner)
-	return {
-		origin = tw.position,
-		angle  = math.to_radians(engine.quat_to_euler_xyz(tw.rotation).z),
-		color  = color,
-	}
-}
-
-// Collider-local 2D point -> world.
-_giz_point :: proc(f: _Giz_Frame, p: [2]f32) -> [3]f32 {
-	s, c := math.sin(f.angle), math.cos(f.angle)
-	return f.origin + {p.x * c - p.y * s, p.x * s + p.y * c, 0}
-}
-
-_giz_line :: proc(f: _Giz_Frame, a, b: [2]f32) {
-	gfx.draw_line(_giz_point(f, a), _giz_point(f, b), f.color)
-}
-
-// Arc around `center`, radians from `from` over `sweep`.
-_giz_arc :: proc(f: _Giz_Frame, center: [2]f32, radius: f32, from, sweep: f32, segments: int) {
-	prev := center + radius * [2]f32{math.cos(from), math.sin(from)}
-	for i in 1 ..= segments {
-		a := from + sweep * f32(i) / f32(segments)
-		next := center + radius * [2]f32{math.cos(a), math.sin(a)}
-		_giz_line(f, prev, next)
-		prev = next
-	}
+	angle := math.to_radians(engine.quat_to_euler_xyz(tw.rotation).z)
+	return linalg.matrix4_translate_f32(tw.position) * linalg.matrix4_rotate_f32(angle, {0, 0, 1})
 }
 
 draw_box_collider_wires :: proc(c: ^BoxCollider2D, color: [4]f32) {
-	f := _giz_frame(c.owner, color)
+	gizmos.with_color(color)
+	gizmos.with_matrix(_collider_space(c.owner))
 	size, o := box_scaled(c, collider_scale(c.owner))
-	h := size * 0.5
-	corners := [4][2]f32{
-		o + {-h.x, -h.y}, o + {h.x, -h.y},
-		o + {h.x, h.y}, o + {-h.x, h.y},
-	}
-	for i in 0 ..< 4 {
-		_giz_line(f, corners[i], corners[(i + 1) % 4])
-	}
+	gizmos.wire_rect({o.x, o.y, 0}, size)
 }
 
 draw_circle_collider_wires :: proc(c: ^CircleCollider2D, color: [4]f32) {
-	f := _giz_frame(c.owner, color)
+	gizmos.with_color(color)
+	gizmos.with_matrix(_collider_space(c.owner))
 	radius, o := circle_scaled(c, collider_scale(c.owner))
-	_giz_arc(f, o, radius, 0, math.TAU, _GIZ_SEGMENTS)
+	gizmos.wire_circle({o.x, o.y, 0}, {0, 0, 1}, radius)
 }
 
 draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
-	f := _giz_frame(c.owner, color)
+	gizmos.with_color(color)
+	gizmos.with_matrix(_collider_space(c.owner))
 	size, o := capsule_scaled(c, collider_scale(c.owner))
 	radius, half: f32
 	axis, side: [2]f32
@@ -90,12 +56,14 @@ draw_capsule_collider_wires :: proc(c: ^CapsuleCollider2D, color: [4]f32) {
 		side = {0, 1}
 		cap_from = math.PI * 0.5
 	}
+	v3 :: proc(p: [2]f32) -> [3]f32 { return {p.x, p.y, 0} }
 	c1 := o + axis * half // cap center on the +axis end
 	c2 := o - axis * half
-	_giz_arc(f, c1, radius, cap_from, math.PI, _GIZ_SEGMENTS / 2)
-	_giz_arc(f, c2, radius, cap_from + math.PI, math.PI, _GIZ_SEGMENTS / 2)
-	_giz_line(f, c1 + side * radius, c2 + side * radius)
-	_giz_line(f, c1 - side * radius, c2 - side * radius)
+	from1 := [3]f32{math.cos(cap_from), math.sin(cap_from), 0}
+	gizmos.wire_arc(v3(c1), {0, 0, 1}, from1, math.PI, radius)
+	gizmos.wire_arc(v3(c2), {0, 0, 1}, -from1, math.PI, radius)
+	gizmos.line(v3(c1 + side * radius), v3(c2 + side * radius))
+	gizmos.line(v3(c1 - side * radius), v3(c2 - side * radius))
 }
 
 // Every enabled collider as an outline (Unity's Physics Debug view, there is

@@ -7,6 +7,7 @@ package engine
 //
 //   steps := engine.fixed_frame_ticks(gfx.delta_time())
 //   for _ in 0 ..< steps {
+//       engine.fixed_tick_begin()
 //       input.fixed_latch()
 //       __fixed_update(engine.fixed_dt())
 //       engine.fixed_tick_advance()
@@ -28,6 +29,7 @@ _fixed: struct {
 	rate:        f32,
 	accumulator: f64,
 	tick:        u64,
+	in_tick:     bool, // between fixed_tick_begin and fixed_tick_advance
 }
 
 fixed_rate :: proc() -> f32 {
@@ -53,8 +55,21 @@ fixed_tick_index :: proc() -> u64 {
 	return _fixed.tick
 }
 
+// A tick starts. Gizmos the previous tick recorded go now: they stayed up to
+// here so frames that run no tick still show them.
+fixed_tick_begin :: proc() {
+	_fixed.in_tick = true
+	if uc := ctx_get(); uc != nil do gizmo_buffer_clear_lifetime(&uc.gizmos, .Fixed_Tick)
+}
+
 fixed_tick_advance :: proc() {
 	_fixed.tick += 1
+	_fixed.in_tick = false
+}
+
+// True while a fixed tick runs (engine/gizmos records with .Fixed_Tick then).
+fixed_in_tick :: proc() -> bool {
+	return _fixed.in_tick
 }
 
 // Consume a frame's dt and return how many fixed ticks to run now (0..max).
@@ -77,4 +92,6 @@ fixed_frame_ticks :: proc(frame_dt: f32) -> int {
 // Tests / playmode restarts.
 fixed_reset :: proc() {
 	_fixed = {}
+	// The last tick's gizmos describe a run that ended.
+	if uc := ctx_get(); uc != nil do gizmo_buffer_clear_lifetime(&uc.gizmos, .Fixed_Tick)
 }

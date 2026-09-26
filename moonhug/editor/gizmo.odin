@@ -17,19 +17,18 @@ package editor
 // hover is a screen-space point↔segment test; every drag is ONE undo step
 // (undo.edit_begin/edit_end on t.position / t.rotation / t.scale).
 
-import gfx "../engine/gfx"
+import "moonhug:engine/gizmos"
+import "moonhug:editor/handles"
 import im "moonhug:external/odin-imgui"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
 import "undo"
 
-Gizmo_Mode :: enum {
-	Picker, // selection only, no gizmo (Unity's Q hand/view slot)
-	Translate,
-	Rotate,
-	Scale,
-}
+// The scene view's tool (handles.Tool): Q selection only (Unity's hand/view
+// slot), W E R the transform gizmo, T the selection's own handles in place of
+// the gizmo.
+Gizmo_Mode :: handles.Tool
 
 gizmo_mode: Gizmo_Mode = .Translate
 
@@ -151,15 +150,17 @@ gizmo_consumes_mouse :: proc() -> bool {
 // (same space as picking); hover needs the view hovered, an active drag
 // keeps tracking even if the cursor leaves the image.
 gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_View, mouse_px, mouse_py: f32) {
+	// The gizmo draws over everything (engine/gizmos, no depth test).
+	gizmos.with_depth_test(false)
 	origin := gizmo_origin(tH)
 	size := linalg.length(scene_cam_pos - origin) * _GIZMO_SIZE_FACTOR
 	if size <= 0 do return
 	mouse_ray := engine.render_view_screen_ray(view, mouse_px, mouse_py)
 
 	switch gizmo_mode {
-	case .Picker:
-		// Selection only: no handles, never consumes the mouse. Close out any
-		// drag left open by a mid-drag mode switch (Q shortcut).
+	case .Picker, .Handles:
+		// No transform gizmo: never consumes the mouse. Close out any drag
+		// left open by a mid-drag mode switch (Q or T shortcut).
 		gizmo_end_drag_if_any()
 		_gizmo_hot_axis = -1
 	case .Translate:
@@ -205,7 +206,7 @@ _gizmo_collect_targets :: proc() -> bool {
 			start_scale = t.scale,
 		})
 		switch gizmo_mode {
-		case .Picker:
+		case .Picker, .Handles:
 		case .Translate:
 			append(&edits, undo.edit_target_transform(h, &t.position, typeid_of([3]f32)))
 			// A UI node moves through its RectTransform (transform_set_world_position
@@ -238,7 +239,7 @@ _gizmo_collect_targets :: proc() -> bool {
 @(private)
 _gizmo_label :: proc() -> string {
 	switch gizmo_mode {
-	case .Picker:    return "Gizmo"
+	case .Picker, .Handles: return "Gizmo"
 	case .Translate: return "Gizmo Move"
 	case .Rotate:    return "Gizmo Rotate"
 	case .Scale:     return "Gizmo Scale"
@@ -322,6 +323,9 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 		}
 	}
 
+	// A hot component handle (@(on_scene_handles)) wins the click: it is
+	// the more specific target.
+	if handles.consumes_mouse() do hover_axis = -1
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
 		grab_ok := true
 		if hover_axis >= _GIZMO_PLANE_AXIS_BASE {
@@ -399,13 +403,12 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 		p10 := origin_now + u * hi + v * lo
 		p11 := origin_now + u * hi + v * hi
 		p01 := origin_now + u * lo + v * hi
-		fill := [4]f32{col.r, col.g, col.b, fill_a}
-		gfx.draw_triangle(p00, p10, p11, fill, depth_test = false)
-		gfx.draw_triangle(p00, p11, p01, fill, depth_test = false)
-		gfx.draw_line(p00, p10, col, depth_test = false)
-		gfx.draw_line(p10, p11, col, depth_test = false)
-		gfx.draw_line(p11, p01, col, depth_test = false)
-		gfx.draw_line(p01, p00, col, depth_test = false)
+		{
+			gizmos.with_color({col.r, col.g, col.b, fill_a})
+			gizmos.solid_quad({p00, p10, p11, p01})
+		}
+		gizmos.with_color(col)
+		gizmos.wire_quad({p00, p10, p11, p01})
 	}
 	for axis in 0 ..< 3 {
 		dir := dirs[axis]
@@ -415,51 +418,11 @@ _gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, 
 			col = active ? _GIZMO_HOT_COLOR : _GIZMO_DIM_COLOR
 		}
 		tip := origin_now + dir * size
+		gizmos.with_color(col)
 		// Line stops where the arrowhead begins.
-		gfx.draw_line(origin_now, tip - dir * size * 0.18, col, depth_test = false)
-
+		gizmos.line(origin_now, tip - dir * size * 0.18)
 		// Arrowhead: solid cone (Unity-like), base pulled back along the axis.
-		_draw_cone(tip - dir * size * 0.18, dir, size * 0.18, size * 0.06, col)
-	}
-}
-
-// Solid overlay cone from base center along dir — the translate arrowhead.
-// The overlay pipeline has no depth test and no culling, so only CAMERA-FACING
-// facets are drawn (back facets would overdraw front ones); for a convex solid
-// their projections never overlap, making draw order irrelevant. The world
-// shader is unlit — 3D reads via flat headlight shading per facet.
-_draw_cone :: proc(base: [3]f32, dir: [3]f32, height, radius: f32, col: [4]f32) {
-	CONE_SEGMENTS :: 16
-	tip := base + dir * height
-	ref := math.abs(dir.y) < 0.9 ? [3]f32{0, 1, 0} : [3]f32{1, 0, 0}
-	u := linalg.normalize0(linalg.cross(ref, dir))
-	v := linalg.cross(dir, u)
-	view_dir := linalg.normalize0(scene_cam_pos - tip)
-
-	// Base cap faces -dir: visible only from behind the base plane.
-	draw_cap := linalg.dot(view_dir, dir) < 0
-	cap_col := [4]f32{col.r * 0.5, col.g * 0.5, col.b * 0.5, col.a}
-
-	prev_ang := f32(0)
-	prev := base + u * radius
-	for i in 1 ..= CONE_SEGMENTS {
-		ang := f32(i) * math.TAU / CONE_SEGMENTS
-		p := base + (u * math.cos(ang) + v * math.sin(ang)) * radius
-		// Outward slant normal at the facet's mid angle: perpendicular to the
-		// slant line and the rim tangent = normalize(radial*height + dir*radius).
-		mid := (prev_ang + ang) * 0.5
-		w := u * math.cos(mid) + v * math.sin(mid)
-		n := linalg.normalize0(w * height + dir * radius)
-		facing := linalg.dot(n, view_dir)
-		if facing > 0 {
-			shade := 0.55 + 0.45 * facing
-			gfx.draw_triangle(tip, prev, p, {col.r * shade, col.g * shade, col.b * shade, col.a}, depth_test = false)
-		}
-		if draw_cap {
-			gfx.draw_triangle(base, prev, p, cap_col, depth_test = false)
-		}
-		prev = p
-		prev_ang = ang
+		gizmos.solid_cone(tip - dir * size * 0.18, tip, size * 0.06, segments = 16)
 	}
 }
 
@@ -494,6 +457,9 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 		}
 	}
 
+	// A hot component handle (@(on_scene_handles)) wins the click: it is
+	// the more specific target.
+	if handles.consumes_mouse() do hover_axis = -1
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
 		if grab, ok := _ray_plane_vector(mouse_ray, origin, dirs[hover_axis]); ok {
 			if _gizmo_collect_targets() {
@@ -527,23 +493,19 @@ _gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, ori
 
 	origin_now := gizmo_origin(tH)
 	for axis in 0 ..< 3 {
-		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
-		u := dirs[(axis + 1) % 3]
-		v := dirs[(axis + 2) % 3]
-		prev := origin_now + u * size
-		for i in 1 ..= _GIZMO_CIRCLE_SEGMENTS {
-			ang := f32(i) * math.TAU / _GIZMO_CIRCLE_SEGMENTS
-			p := origin_now + (u * math.cos(ang) + v * math.sin(ang)) * size
-			gfx.draw_line(prev, p, col, depth_test = false)
-			prev = p
-		}
+		gizmos.with_color(_gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis])
+		gizmos.wire_circle(origin_now, dirs[axis], size, segments = _GIZMO_CIRCLE_SEGMENTS)
 	}
 	// During a drag: show the grab and current vectors like Unity's pie hint
 	// (in the grab-time plane — the live axes rotate with the object).
 	if _gizmo_dragging {
-		gfx.draw_line(origin_now, origin_now + _gizmo_grab_vec * size, _GIZMO_UNIFORM_COLOR, depth_test = false)
+		{
+			gizmos.with_color(_GIZMO_UNIFORM_COLOR)
+			gizmos.line(origin_now, origin_now + _gizmo_grab_vec * size)
+		}
 		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis]); ok {
-			gfx.draw_line(origin_now, origin_now + cur * size, _GIZMO_HOT_COLOR, depth_test = false)
+			gizmos.with_color(_GIZMO_HOT_COLOR)
+			gizmos.line(origin_now, origin_now + cur * size)
 		}
 	}
 }
@@ -580,6 +542,9 @@ _gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, orig
 		}
 	}
 
+	// A hot component handle (@(on_scene_handles)) wins the click: it is
+	// the more specific target.
+	if handles.consumes_mouse() do hover_axis = -1
 	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
 		if _gizmo_collect_targets() {
 			_gizmo_dragging = true
@@ -629,34 +594,24 @@ _gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, orig
 	origin_now := gizmo_origin(tH)
 	for axis in 0 ..< 3 {
 		dir := local_dirs[axis]
-		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
 		tip := origin_now + dir * size
-		gfx.draw_line(origin_now, tip, col, depth_test = false)
-		_draw_cube(tip, local_dirs, size * 0.05, col)
+		gizmos.with_color(_gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis])
+		gizmos.line(origin_now, tip)
+		_gizmo_cube(tip, local_dirs, size * 0.05)
 	}
-	center_col := _gizmo_hot_axis == _GIZMO_UNIFORM_AXIS ? _GIZMO_HOT_COLOR : _GIZMO_UNIFORM_COLOR
-	_draw_cube(origin_now, local_dirs, size * 0.06, center_col)
+	gizmos.with_color(_gizmo_hot_axis == _GIZMO_UNIFORM_AXIS ? _GIZMO_HOT_COLOR : _GIZMO_UNIFORM_COLOR)
+	_gizmo_cube(origin_now, local_dirs, size * 0.06)
 }
 
-// Solid overlay cube (half-extent r) aligned to the axes basis — the scale
-// handle tips, Unity-like. Camera-facing faces only, flat headlight shading;
-// same convex-solid reasoning as _draw_cone.
-_draw_cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32, col: [4]f32) {
-	view_dir := linalg.normalize0(scene_cam_pos - center)
-	for axis in 0 ..< 3 {
-		for side in 0 ..< 2 {
-			n := side == 0 ? axes[axis] : -axes[axis]
-			facing := linalg.dot(n, view_dir)
-			if facing <= 0 do continue
-			a := axes[(axis + 1) % 3] * r
-			b := axes[(axis + 2) % 3] * r
-			c := center + n * r
-			shade := 0.55 + 0.45 * facing
-			face_col := [4]f32{col.r * shade, col.g * shade, col.b * shade, col.a}
-			gfx.draw_triangle(c - a - b, c + a - b, c + a + b, face_col, depth_test = false)
-			gfx.draw_triangle(c - a - b, c + a + b, c - a + b, face_col, depth_test = false)
-		}
-	}
+// A scale handle tip: a solid cube of half-extent r turned to the handle's axes.
+_gizmo_cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32) {
+	gizmos.with_matrix(matrix[4, 4]f32{
+		axes[0].x, axes[1].x, axes[2].x, center.x,
+		axes[0].y, axes[1].y, axes[2].y, center.y,
+		axes[0].z, axes[1].z, axes[2].z, center.z,
+		0, 0, 0, 1,
+	})
+	gizmos.solid_box({}, {2 * r, 2 * r, 2 * r})
 }
 
 // ------------------------------------------------------------------ shared

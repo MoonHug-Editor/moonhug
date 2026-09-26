@@ -103,5 +103,6 @@ teardown :: proc(tc: ^TestCtx) {
 	engine.sm_shutdown()
 	engine.sm_scene_set_active(nil)
 	engine.world_destroy_all(&tc.world)
+	engine.gizmo_buffer_destroy(&tc.uc.gizmos)
 	if tc.path != "" do os.remove(tc.path)
 }

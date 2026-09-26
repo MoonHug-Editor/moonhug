@@ -4,6 +4,7 @@ import gfx "../engine/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import "../engine"
+import "moonhug:engine/gizmos"
 import "../engine/input"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -40,6 +41,9 @@ GAME_SIZES :: []Game_Size{
 game_size_index: int
 game_scale: f32 = 1
 game_size_flipped: bool
+// The toolbar's Gizmos toggle: gizmo hooks and gameplay gizmo shapes in the
+// game view too (the scene view always shows them). Persists in editor_settings.
+game_gizmos: bool
 
 GAME_TOOLBAR_PAD :: f32(4)
 
@@ -131,6 +135,12 @@ render_game_rt :: proc(w, h: i32) -> bool {
 	had_camera := engine.camera_active() != nil
 	// Begins the pass (black clear when no camera) and leaves it open.
 	engine.render_world_cameras(game_rt)
+	// What the scene view recorded this frame (it draws first): gizmos with the
+	// toolbar toggle, gameplay shapes with the toggle or debug drawing on.
+	channels: bit_set[engine.Gizmo_Channel]
+	if game_gizmos do channels += {.Game, .Editor}
+	if engine.debug_draw_enabled do channels += {.Game}
+	if channels != {} do gizmos.draw(channels)
 	gfx.pass_end()
 	return had_camera
 }
@@ -161,6 +171,17 @@ _draw_game_toolbar :: proc(area: im.Vec2) {
 	}
 	widgets.tooltip(free ? "Flip width and height (needs a fixed aspect or resolution)" : "Flip width and height", im.HoveredFlags_AllowWhenDisabled)
 	im.EndDisabled()
+
+	im.SameLine()
+	gizmos_on := game_gizmos
+	if gizmos_on {
+		im.PushStyleColorImVec4(.Button, im.GetStyleColorVec4(.ButtonActive)^)
+	}
+	if im.Button("Gizmos") do game_gizmos = !game_gizmos
+	if gizmos_on {
+		im.PopStyleColor()
+	}
+	widgets.tooltip("Show gizmos in the game view (drawn as the scene view records them)")
 
 	im.SameLine()
 	im.SetNextItemWidth(190)

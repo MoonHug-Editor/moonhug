@@ -11,6 +11,7 @@ import "core:math/linalg"
 import im "moonhug:external/odin-imgui"
 import "moonhug:engine"
 import "moonhug:editor/handles"
+import "moonhug:engine/gizmos"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import mhgui "moonhug:packages/mhgui"
@@ -197,10 +198,12 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 // Every canvas shows its rect in the scene view, selected or not, so the UI
 // space is visible next to the world.
 @(on_draw_gizmos={component=Canvas})
-canvas_gizmos :: proc(c: ^engine.Canvas) {
+canvas_gizmos :: proc(c: ^engine.Canvas, ctx: handles.Gizmo_Context) {
 	if !engine.transform_active_in_hierarchy(c.owner) do return
 	root, xform, _ := engine.canvas_placement(c.owner, engine.canvas_game_viewport())
-	handles.rect(engine.rect_corners(root, xform), _COLOR_CANVAS)
+	gizmos.with_depth_test(false)
+	gizmos.with_color(_COLOR_CANVAS)
+	gizmos.wire_quad(engine.rect_corners(root, xform))
 }
 
 // --- Rect tool -----------------------------------------------------------------------
@@ -363,8 +366,15 @@ _draw_anchor_guides :: proc(rt: ^engine.RectTransform, parent: engine.Rect, m: m
 		return engine.rect_apply(m, parent.pos + parent.size * f)
 	}
 	lo, hi := rt.anchor_min, rt.anchor_max
-	for x in ([2]f32{lo.x, hi.x}) do handles.dashed_line(at(m, parent, {x, 0}), at(m, parent, {x, 1}), _COLOR_GUIDE)
-	for y in ([2]f32{lo.y, hi.y}) do handles.dashed_line(at(m, parent, {0, y}), at(m, parent, {1, y}), _COLOR_GUIDE)
+	{
+		gizmos.with_depth_test(false)
+		gizmos.with_color(_COLOR_GUIDE)
+		dashed :: proc(a, b: [3]f32) {
+			gizmos.line_dashed(a, b, gizmos.helper_pixel((a + b) * 0.5, 6)) // 6 px dashes
+		}
+		for x in ([2]f32{lo.x, hi.x}) do dashed(at(m, parent, {x, 0}), at(m, parent, {x, 1}))
+		for y in ([2]f32{lo.y, hi.y}) do dashed(at(m, parent, {0, y}), at(m, parent, {1, y}))
+	}
 
 	// Labels hang below the horizontal line, centered on their section, and
 	// stand turned left of the vertical one, a few pixels off the dashes.
@@ -372,10 +382,10 @@ _draw_anchor_guides :: proc(rt: ^engine.RectTransform, parent: engine.Rect, m: m
 	ys := [4]f32{0, lo.y, hi.y, 1}
 	for i in 0 ..< 3 {
 		if xs[i + 1] - xs[i] > 0.0005 {
-			handles.label(at(m, parent, {(xs[i] + xs[i + 1]) * 0.5, lo.y}), fmt.tprintf("%.0f%%", (xs[i + 1] - xs[i]) * 100), align = {0.5, 0}, offset_px = {0, 4})
+			gizmos.label(at(m, parent, {(xs[i] + xs[i + 1]) * 0.5, lo.y}), fmt.tprintf("%.0f%%", (xs[i + 1] - xs[i]) * 100), align = {0.5, 0}, offset_px = {0, 4})
 		}
 		if ys[i + 1] - ys[i] > 0.0005 {
-			handles.label(at(m, parent, {lo.x, (ys[i] + ys[i + 1]) * 0.5}), fmt.tprintf("%.0f%%", (ys[i + 1] - ys[i]) * 100), align = {1, 0.5}, rotated = true, offset_px = {-4, 0})
+			gizmos.label(at(m, parent, {lo.x, (ys[i] + ys[i + 1]) * 0.5}), fmt.tprintf("%.0f%%", (ys[i + 1] - ys[i]) * 100), align = {1, 0.5}, rotated = true, offset_px = {-4, 0})
 		}
 	}
 }
@@ -394,12 +404,17 @@ _apply_pivot_drag :: proc(rt: ^engine.RectTransform, d: handles.Drag, rect: engi
 	if !handles.rect_raw_edit do engine.rect_transform_keep_rect(rt, parent, before)
 }
 
-// The rect tool on the selected RectTransform: the rect outline, corner and
-// edge handles that resize, the body that moves, the parent's anchor
-// markers and the pivot ring.
-@(on_draw_gizmos_selected={component=RectTransform})
-rect_transform_gizmos :: proc(rt: ^engine.RectTransform) {
-	tH := rt.owner
+// The selected RectTransform's rect and its parent's, as placed on the canvas.
+// `driven`: a LayoutGroup lays it out.
+@(private = "file")
+_Placed :: struct {
+	rect, parent:        engine.Rect,
+	xform, parent_xform: matrix[4, 4]f32,
+	driven:              bool,
+}
+
+@(private = "file")
+_placed :: proc(tH: engine.Transform_Handle) -> (p: _Placed, ok: bool) {
 	canvas := _canvas_of(tH)
 	if canvas == _NONE || canvas == tH do return
 	w := engine.ctx_world()
@@ -409,22 +424,46 @@ rect_transform_gizmos :: proc(rt: ^engine.RectTransform) {
 
 	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
 	engine.canvas_resolve_placed(canvas, &nodes)
-	rect, parent: engine.Rect
-	xform, parent_xform: matrix[4, 4]f32
-	have_rect, have_parent, driven: bool
+	have_rect, have_parent: bool
 	for n in nodes {
-		if n.tH == tH { rect = n.rect; xform = n.xform; have_rect = true; driven = n.driven }
-		if n.tH == parent_tH { parent = n.rect; parent_xform = n.xform; have_parent = true }
+		if n.tH == tH { p.rect = n.rect; p.xform = n.xform; have_rect = true; p.driven = n.driven }
+		if n.tH == parent_tH { p.parent = n.rect; p.parent_xform = n.xform; have_parent = true }
 	}
-	if !have_rect || !have_parent do return
+	return p, have_rect && have_parent
+}
 
-	// A rect a LayoutGroup lays out shows its outline only: moving or
-	// resizing it would be undone by the layout on the next frame.
-	corners := engine.rect_corners(rect, xform)
-	if driven {
-		handles.rect(corners, _COLOR_RECT_DRIVEN)
+// A selected RectTransform's outline (a parent selected counts), in every
+// tool. A rect a LayoutGroup lays out gets its own color: moving or resizing it
+// would be undone by the layout on the next frame, so the rect tool offers no
+// handles for it.
+@(on_draw_gizmos={component=RectTransform})
+rect_transform_gizmos :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	p, ok := _placed(rt.owner)
+	if !ok do return
+	corners := engine.rect_corners(p.rect, p.xform)
+	if p.driven {
+		gizmos.with_depth_test(false)
+		gizmos.with_color(_COLOR_RECT_DRIVEN)
+		gizmos.wire_quad(corners)
 		return
 	}
+	handles.rect_outlined(corners, _COLOR_RECT)
+}
+
+// The rect tool on a selected RectTransform. The parent's anchor markers work
+// in every tool. With the Handles tool (T) the rest joins them: corner and edge
+// handles that resize, the body that moves, and the pivot ring. The outline
+// comes from rect_transform_gizmos.
+@(on_scene_handles={component=RectTransform})
+rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
+	tH := rt.owner
+	p, ok := _placed(tH)
+	if !ok do return
+	if p.driven do return
+	rect, parent := p.rect, p.parent
+	xform, parent_xform := p.xform, p.parent_xform
+	corners := engine.rect_corners(rect, xform)
 
 	// The four anchors on the parent rect (in the parent's space), bl, br,
 	// tr, tl, each a handle: dragging one moves that anchor along the parent
@@ -453,13 +492,12 @@ rect_transform_gizmos :: proc(rt: ^engine.RectTransform) {
 		if d.released do undo.edit_session_end(&_drag_edit)
 	}
 	if anchor_dragging do _draw_anchor_guides(rt, parent, parent_xform)
+	if ctx.tool != .Handles do return
 
 	// The rect with its own rotation and scale applied. Its corners and whole
 	// edges resize; the cursor says what a spot does (a resize arrow on
 	// corners and edges, the move cursor over the body). Pointer priority:
 	// pivot over corners and anchors over edges over the body.
-	handles.rect_outlined(corners, _COLOR_RECT)
-
 	body := handles.quad(_handle_id(tH, 9), corners, _PLANE_NORMAL)
 	if body.started do _drag_begin(tH, rt)
 	if body.dragging do _apply_drag(rt, nil, body, parent_xform)

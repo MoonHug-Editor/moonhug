@@ -10,6 +10,7 @@ import "../engine"
 import sprites "moonhug:packages/sprites"
 import "inspector"
 import "moonhug:editor/handles"
+import "moonhug:engine/gizmos"
 import "core:strings"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -78,6 +79,8 @@ scene_set_2d :: proc(on: bool) {
 // Click-to-pick state: a click is press+release under a small drag threshold
 // (so orbit/pan drags never select). Set in draw_scene_view / handle_scene_input.
 _scene_img_min: im.Vec2
+// The view the scene image was last rendered with: labels project through it.
+_scene_view_last: engine.Render_View
 _scene_click_pos: im.Vec2
 _scene_click_pending: bool
 
@@ -265,13 +268,13 @@ _update_frame_tween :: proc(dt: f32) {
 // to bottom with the glyph tops facing right: imgui has no rotated text of
 // its own.
 @(private = "file")
-_draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: handles.Label) {
+_draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: engine.Gizmo_Label) {
 	c := strings.clone_to_cstring(l.text, context.temp_allocator)
 	size := im.CalcTextSize(c)
 	if !l.rotated {
 		at := im.Vec2{p.x - size.x * l.align.x, p.y - size.y * l.align.y}
 		im.DrawList_AddText(dl, {at.x + 1, at.y + 1}, 0xB0000000, c)
-		im.DrawList_AddText(dl, at, 0xFFFFFFFF, c)
+		im.DrawList_AddText(dl, at, im.ColorConvertFloat4ToU32(l.color), c)
 		return
 	}
 	font := im.GetFont()
@@ -297,7 +300,7 @@ _draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: handles.Label) {
 		}
 	}
 	draw(dl, font, baked, {origin.x + 1, origin.y + 1}, size.y, l.text, 0xB0000000)
-	draw(dl, font, baked, origin, size.y, l.text, 0xFFFFFFFF)
+	draw(dl, font, baked, origin, size.y, l.text, im.ColorConvertFloat4ToU32(l.color))
 }
 
 // UI bounds: a Canvas frames its whole rect, a RectTransform its resolved
@@ -451,28 +454,42 @@ render_scene_rt :: proc(w, h: i32) {
 	// scene-image pixels, and whether the view is hovered.
 	hmp := im.GetMousePos()
 	handles.frame_begin(view, {hmp.x - _scene_img_min.x, hmp.y - _scene_img_min.y}, scene_view_hovered)
+	gizmos.set_view(view)
+	_scene_view_last = view
 
-	// @(on_draw_gizmos) / @(on_draw_gizmos_selected) hooks (generated dispatcher) —
-	// the pass is open, so procs draw with the gfx line API like the grid.
-	__draw_gizmos()
-
-	// Selection visuals + gizmo (overlay lines, drawn last). Every selected
-	// object gets an outline; the gizmo anchors on the ACTIVE object (or the
-	// selection center — gizmo_pivot) and drags apply to every selected
-	// top-level object. It handles its own mouse interaction, in the same
-	// pixel space as picking.
-	sel_scene_prune()
-	for h in sel_scene_items() {
-		draw_selection_outline(h)
+	{
+		// @(on_draw_gizmos) hooks (generated dispatcher): the gizmos channel,
+		// which the game view shows too with its Gizmos toggle. The hooks'
+		// contexts read this frame's selection marks.
+		gizmo_marks_rebuild()
+		gizmos.with_channel(.Editor)
+		__draw_gizmos()
 	}
-	sel := sel_scene_active()
-	if sel != _HANDLE_NONE {
-		mp := im.GetMousePos()
-		gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
-	} else {
-		_gizmo_hot_axis = -1
-		gizmo_end_drag_if_any()
+	{
+		// Tools, scene view only and drawn over the gizmos: the selection
+		// outline, the selection's @(on_scene_handles) procs (every tool; T
+		// hides the transform gizmo so they have the scene to themselves) and
+		// the transform gizmo. The gizmo anchors on the ACTIVE object (or the
+		// selection center — gizmo_pivot) and drags apply to every selected
+		// top-level object. It handles its own mouse interaction, in the same
+		// pixel space as picking.
+		gizmos.with_channel(.Tools)
+		sel_scene_prune()
+		for h in sel_scene_items() {
+			draw_selection_outline(h)
+		}
+		__scene_handles()
+		sel := sel_scene_active()
+		if gizmo_mode != .Handles && sel != _HANDLE_NONE {
+			mp := im.GetMousePos()
+			gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
+		} else {
+			_gizmo_hot_axis = -1
+			gizmo_end_drag_if_any()
+		}
 	}
+	// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
+	gizmos.draw({.Game, .Editor, .Tools})
 	gfx.pass_end()
 }
 
@@ -489,7 +506,7 @@ render_scene_rt :: proc(w, h: i32) {
 // use the posed world bounds, so framing the selection still frames the
 // character where it actually is.
 draw_selection_outline :: proc(tH: engine.Transform_Handle) {
-	ORANGE :: [4]f32{1, 0.6, 0.1, 1}
+	gizmos.with_color({1, 0.6, 0.1, 1})
 	tw := engine.transform_world(tH)
 
 	_, skinned := engine.transform_get_comp(tH, engine.SkinnedMeshRenderer)
@@ -497,26 +514,9 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
 	if skinned == nil && mf != nil && mf.mesh != {} {
 		if mesh, ok := engine.mesh_load_filter(mf); ok {
-			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
+			gizmos.in_local_space(tH)
 			lo, hi := mesh.aabb_min, mesh.aabb_max
-			corners: [8][3]f32
-			for i in 0 ..< 8 {
-				local := [4]f32{
-					i & 1 == 0 ? lo.x : hi.x,
-					i & 2 == 0 ? lo.y : hi.y,
-					i & 4 == 0 ? lo.z : hi.z,
-					1,
-				}
-				corners[i] = (model * local).xyz
-			}
-			edges := [12][2]int{
-				{0, 1}, {2, 3}, {4, 5}, {6, 7}, // X edges
-				{0, 2}, {1, 3}, {4, 6}, {5, 7}, // Y edges
-				{0, 4}, {1, 5}, {2, 6}, {3, 7}, // Z edges
-			}
-			for e in edges {
-				gfx.draw_line(corners[e[0]], corners[e[1]], ORANGE)
-			}
+			gizmos.wire_box((lo + hi) * 0.5, hi - lo)
 			return
 		}
 	}
@@ -525,20 +525,13 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 	if sr != nil && !engine.asset_guid_is_empty(sr.sprite.guid) {
 		if tex, ok := engine.texture_load(sr.sprite.guid); ok {
 			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
-				gfx.draw_line(c[0], c[1], ORANGE)
-				gfx.draw_line(c[1], c[2], ORANGE)
-				gfx.draw_line(c[2], c[3], ORANGE)
-				gfx.draw_line(c[3], c[0], ORANGE)
+				gizmos.wire_quad(c)
 				return
 			}
 		}
 	}
 
-	S :: f32(0.4)
-	p := tw.position
-	gfx.draw_line(p - {S, 0, 0}, p + {S, 0, 0}, ORANGE)
-	gfx.draw_line(p - {0, S, 0}, p + {0, S, 0}, ORANGE)
-	gfx.draw_line(p - {0, 0, S}, p + {0, 0, S}, ORANGE)
+	gizmos.line_cross(tw.position, 0.8)
 }
 
 // Scene grid: per-plane toggles + cell layout, edited via the Grid overlay
@@ -672,11 +665,13 @@ draw_scene_view :: proc() {
 			im.SetCursorScreenPos({content_min.x + bar_l, content_min.y + bar_t})
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 			_scene_img_min = im.GetItemRectMin()
-			// Handle labels (anchor percentages) over the image, shadowed so
-			// they read on any background.
+			// Gizmo labels (anchor percentages and such) over the image,
+			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
-			for l in handles.labels() {
-				_draw_handle_label(dl, im.Vec2{_scene_img_min.x + l.px.x, _scene_img_min.y + l.px.y}, l)
+			for l in gizmos.labels({.Game, .Editor, .Tools}) {
+				px, ok := gizmos.helper_project_in(_scene_view_last, l.pos)
+				if !ok do continue
+				_draw_handle_label(dl, _scene_img_min + px + l.offset_px, l)
 			}
 			overlays_draw(_scene_img_min, _scene_img_min + avail, content_min, content_max)
 		}
@@ -737,6 +732,7 @@ draw_tools_overlay :: proc(vertical: bool) {
 	mode_button(icons.ICON_MD_OPEN_WITH, "Move (W)", .Translate, vertical)
 	mode_button(icons.ICON_MD_ROTATE_RIGHT, "Rotate (E)", .Rotate, vertical)
 	mode_button(icons.ICON_MD_OPEN_IN_FULL, "Scale (R)", .Scale, vertical)
+	mode_button(icons.ICON_MD_CROP_FREE, "Handles (T): the selection's own handles, like the rect tool", .Handles, vertical)
 }
 
 // View overlay: Unity's 2D toggle.
@@ -948,13 +944,14 @@ handle_scene_input :: proc() {
 	}
 	_fly_speed_cur = scene_fly_speed
 
-	// Gizmo mode shortcuts (Unity's Q/W/E/R) — not during flythrough, whose
+	// Gizmo mode shortcuts (Unity's Q/W/E/R/T) — not during flythrough, whose
 	// WASDQE movement owns these keys.
 	if !rmb_down {
 		if im.IsKeyPressed(.Q) do gizmo_mode = .Picker
 		if im.IsKeyPressed(.W) do gizmo_mode = .Translate
 		if im.IsKeyPressed(.E) do gizmo_mode = .Rotate
 		if im.IsKeyPressed(.R) do gizmo_mode = .Scale
+		if im.IsKeyPressed(.T) do gizmo_mode = .Handles
 		if im.IsKeyPressed(.F) do scene_frame_selected()
 	}
 

@@ -289,6 +289,7 @@ tick :: proc(dt: f32) {
     fdt := engine.fixed_dt()
     steps := 1 if step else engine.fixed_frame_ticks(dt)
     for _ in 0 ..< steps {
+        engine.fixed_tick_begin()
         input.fixed_latch()
         if host.fixed_update != nil do host.fixed_update(fdt)
         engine.fixed_tick_advance()

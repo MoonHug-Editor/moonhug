@@ -99,6 +99,7 @@ main :: proc() {
         // docs/FixedTick.md), then the per-frame view tick.
         steps := engine.fixed_frame_ticks(gfx.delta_time())
         for _ in 0 ..< steps {
+            engine.fixed_tick_begin()
             input.fixed_latch()
             __fixed_update(engine.fixed_dt())
             engine.fixed_tick_advance()

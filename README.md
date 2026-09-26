@@ -178,19 +178,14 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - handles follow-ups (see [Handles](docs/Handles.md)) - missing composites, and the wiring gizmo.odin kept to itself
   - axis-constrained slider handle - drag along one direction, not just on a plane
   - snapping - `snap_settings` and the Ctrl-modifier XOR live in gizmo.odin, so a package-authored handle ignores the user's snap setting
-  - bezier/curve drawing
   - bounds handles (box, sphere, capsule)
   - port gizmo.odin onto handles, leaving one input system. Its own job
   - box select through pick providers - click picking consults them, box select does not
 
-- gizmo drawing - `gfx.draw_line` is the only primitive, so `_draw_cone`, `_draw_cube`, the collider drawers and handles each rebuild the same shapes. ALINE (Unity asset) is the reference for the surface, but DESIGN THE API FIRST
-  - decide what a draw call carries before adding shapes: colour and space as scopes or as arguments, who owns depth-test choice, whether a shape can outlive the frame
-  - shape library over `draw_line` - arc, circle per plane, wire box, sphere, capsule, cylinder, cone, arrow, cross, grid, polyline, bezier
-  - local space, so a component draws in its own coordinates
-  - duration - a shape that stays for N seconds, needs a retained buffer the pass drains
+- gizmo drawing follow-ups (see [Gizmos](docs/Gizmos.md))
+  - lifetimes beyond a frame: `with_duration(seconds, clock)` (game or real clock) and `with_key(key)` (stays until cleared or redrawn), extending the same buffer
   - line width - the one item with real renderer cost, since lines become quads
-  - solid shapes and labels reachable from a gizmo proc, not only from handles
-  - done when `gizmo.odin`, the collider drawers and handles all delete their private shape code
+  - labels in the game view and the standalone app (no text path there yet)
 
 - improve default types inspector UX
 

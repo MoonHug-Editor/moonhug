@@ -1,9 +1,27 @@
 # Handles
 
-`editor/handles` is the scene-view interaction layer for editor code and
-package editors: immediate-mode handles that draw themselves into the open
-scene pass, report hover, and turn a mouse drag into a world-space offset on
-a plane. The mhgui rect tool is the first user.
+`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/Gizmos.md), report hover, and turn a mouse drag into a world-space offset on a plane. The mhgui rect tool is the first user.
+
+## Where handles live
+
+Interactive handles go in one hook per component:
+
+```odin
+@(on_scene_handles={component=RectTransform})
+rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
+	anchors(rt)                                     // every tool
+	if ctx.tool != .Handles do return
+	resize_and_pivot(rt)                            // the Handles tool (T) only
+}
+```
+
+- It runs every frame in the scene view, in every tool, for each object that is selected itself (not for the children of a selected parent). gizmos_gen emits the `__scene_handles` dispatcher.
+- What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the game view.
+- `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`.
+- All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. A hot handle also wins the click over the transform gizmo.
+- Drawing that is not interactive (an outline) belongs in `@(on_draw_gizmos)` (docs/Gizmos.md).
+
+The mhgui rect tool is the first user: its anchors work in every tool, T adds resizing, moving and the pivot, and its outline is a gizmo.
 
 ## Frame
 
@@ -47,10 +65,12 @@ function of where the pointer is, which is what the mhgui rect tool does.
 
 ## Drawing
 
-Overlay lines and fills, never depth-tested, in the colors the transform
-gizmo uses: `line`, `rect`, `circle`, `square`, `triangle`, plus
-`world_per_pixels(pos, px)` to size things in screen pixels and `project` to
-find where a world point lands.
+Plain shapes and labels come from `engine/gizmos` (docs/Gizmos.md). Handles add the chrome a handle needs, drawn over everything and styled to read on any background with a dark half-transparent line one pixel off each edge:
+
+- `rect_outlined`, `circle_outlined`, `dot_outlined`
+- camera-facing caps: `square`, `square_outline`, `triangle`, `triangle_outline`, with `triangle_points` for a hit area that matches the drawing
+
+`world_per_pixels(pos, px)` sizes things in screen pixels and `project` finds where a world point lands, both in the handles frame's view.
 
 ## Picking providers
 
