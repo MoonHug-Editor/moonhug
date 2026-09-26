@@ -1,3 +1,15 @@
+## [0.108.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.107.0...v0.108.0) (2026-09-26)
+
+### Features
+
+* apply prefab undoable ([bd7a779](https://github.com/MoonHug-Editor/moonhug/commit/bd7a779cf6aa20ff932858ffac679decff8caa79))
+* undo in playmode ([03cc192](https://github.com/MoonHug-Editor/moonhug/commit/03cc192f7fe7200f8f398b3ad3a57c8127bc4610))
+
+### Bug Fixes
+
+* remove undos for deleted asset ([a853750](https://github.com/MoonHug-Editor/moonhug/commit/a853750a831492402776652348beb6562ec62468))
+* tests pass when run alone ([4ab7434](https://github.com/MoonHug-Editor/moonhug/commit/4ab7434670f704bf10076aed8f07c85312ed734b))
+
 ## [0.107.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.106.0...v0.107.0) (2026-09-24)
 
 ### Features
