@@ -9,7 +9,6 @@ import "core:math/linalg"
 import "../engine"
 import sprites "moonhug:packages/sprites"
 import "inspector"
-import "moonhug:editor/handles"
 import "moonhug:engine/gizmos"
 import "core:strings"
 import "moonhug:editor/icons"
@@ -450,31 +449,13 @@ render_scene_rt :: proc(w, h: i32) {
 	engine.render_collect_commands(view, &commands)
 	engine.render_execute(view, commands[:])
 
-	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles and
-	// the gizmo hooks before this render. The next pass reads the view's size
+	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles, the
+	// transform gizmo and the gizmo hooks before this render. The next pass reads the view's size
 	// and the frame it rendered in.
 	_scene_rendered_frame = gfx.frame_index
 	_scene_view_size = {f32(w), f32(h)}
 	gizmos.set_view(view)
 	_scene_view_last = view
-
-	{
-		// The transform gizmo, scene view only and drawn over the handles. It
-		// anchors on the ACTIVE object (or the selection center, gizmo_pivot)
-		// and drags apply to every selected top-level object. It handles its
-		// own mouse interaction, in the same pixel space as picking. The
-		// Handles tool (T) hides it, so the handles have the scene to
-		// themselves.
-		gizmos.with_channel(.Tools)
-		sel := sel_scene_active()
-		if gizmo_mode != .Handles && sel != _HANDLE_NONE {
-			mp := im.GetMousePos()
-			gizmo_draw_and_handle(sel, view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
-		} else {
-			_gizmo_hot_axis = -1
-			gizmo_end_drag_if_any()
-		}
-	}
 	// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
 	gizmos.draw({.Game, .Editor, .Tools})
 	gfx.pass_end()
@@ -632,7 +613,6 @@ draw_scene_view :: proc() {
 			_scene_2d_pending = false
 			scene_set_2d(true)
 		}
-		_update_frame_tween(im.GetIO().DeltaTime)
 
 		// Docked toolbar strips take their space first; the image gets what
 		// is left, so a strip sits beside the render instead of over it.
@@ -942,10 +922,10 @@ handle_scene_input :: proc() {
 		if im.IsKeyPressed(.F) do scene_frame_selected()
 	}
 
-	// Escape drops the selection (not mid-gizmo-drag: the drag teardown in
-	// render_scene_rt's else-branch would leave its undo step open). During a
+	// Escape drops the selection (not mid-drag: the drag teardown in
+	// gizmo_tool_frame would leave its undo step open). During a
 	// band it cancels the band and restores the pre-band selection instead.
-	if im.IsKeyPressed(.Escape) && !_gizmo_dragging {
+	if im.IsKeyPressed(.Escape) && !scene_tools_dragging() {
 		if _band_active {
 			_band_active = false
 			sel_scene_clear()
@@ -959,11 +939,11 @@ handle_scene_input :: proc() {
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
 	// not on an overlay — button clicks must not pick behind them).
-	if im.IsMouseClicked(.Left) && !alt_down && !gizmo_consumes_mouse() && !handles.consumes_mouse() && !overlay_wants_mouse() {
+	if im.IsMouseClicked(.Left) && !alt_down && !scene_tools_consume_mouse() && !overlay_wants_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true
 	}
-	if _scene_click_pending && (gizmo_consumes_mouse() || _gizmo_dragging || handles.consumes_mouse()) {
+	if _scene_click_pending && scene_tools_consume_mouse() {
 		_scene_click_pending = false
 	}
 	// An armed click that travels beyond the click threshold becomes a rubber

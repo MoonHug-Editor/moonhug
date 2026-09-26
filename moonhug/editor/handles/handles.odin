@@ -57,6 +57,11 @@ COLOR_SHADOW :: [4]f32{0, 0, 0, 0.5} // under white outlines, for light backgrou
 // Pixel radius inside which a dot handle counts as hovered.
 DOT_HOVER_PX :: f32(8)
 
+// The pointer priority of a tool's parts (the move, rotate and scale
+// handles of the transform tool): below every other handle, so a
+// component's own handle takes the click where the two overlap.
+PRIO_TOOL :: -10
+
 // The pointer and keys a frame's handles read. The scene view fills it from
 // imgui, tests from a script.
 Input :: struct {
@@ -124,20 +129,33 @@ frame_begin :: proc(view: engine.Render_View, input: Input) {
 	}
 	_hot_prev = _hot
 	_hot = 0
-	_hot_prio = -1
+	_hot_prio = min(int)
 	_hot_dist = math.F32_MAX
 	if _active != 0 && !_active_seen do _active = 0 // its owner went away mid-drag
 	_active_seen = false
 }
 
 // True while a handle is hovered or dragged: the scene view then neither
-// picks nor starts a box select.
+// picks nor starts a box select. A handle under the pointer this frame counts
+// too, before it can take a click next frame, so a quick click never selects
+// through it.
 consumes_mouse :: proc() -> bool {
-	return _hot_prev != 0 || _active != 0
+	return _hot_prev != 0 || _hot != 0 || _active != 0
 }
 
 frame :: proc() -> Frame {
 	return _frame
+}
+
+// True while a handle is being dragged.
+dragging :: proc() -> bool {
+	return _active != 0
+}
+
+// Ends the drag in progress now, with no release frame: for a caller whose
+// drag lost its target (the transform tool on a mode switch mid-drag).
+end_drag :: proc() {
+	_active = 0
 }
 
 // Handles inside the scope snap (true, the default) or not. A handle whose
@@ -488,6 +506,19 @@ _mouse_dist :: proc(wpos: [3]f32) -> f32 {
 	return math.F32_MAX
 }
 
+// Screen distance from the pointer to a world segment. F32_MAX when an end
+// is behind the camera.
+@(private)
+_mouse_dist_segment :: proc(wa, wb: [3]f32) -> f32 {
+	sa, oka := gizmos.helper_project_in(_frame.view, wa)
+	sb, okb := gizmos.helper_project_in(_frame.view, wb)
+	if !oka || !okb do return math.F32_MAX
+	ab := sb - sa
+	t := f32(0)
+	if l2 := linalg.dot(ab, ab); l2 > 0 do t = clamp(linalg.dot(_frame.input.mouse - sa, ab) / l2, 0, 1)
+	return linalg.length(_frame.input.mouse - (sa + ab * t))
+}
+
 // A draggable point on the plane through `pos` with `normal`, drawn as a
 // camera-facing square `size_px` wide. The drag reports offsets in that plane.
 dot :: proc(id: u64, pos, normal: [3]f32, size_px: f32 = 7, color := COLOR_HANDLE) -> Drag {
@@ -546,16 +577,8 @@ point :: proc(id: u64, pos, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio :
 segment :: proc(id: u64, a, b, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio := 1) -> Drag {
 	s := _space()
 	wa, wb := _to_world(s, a), _to_world(s, b)
-	wn := _normal_to_world(s, normal)
-	mid := (wa + wb) * 0.5
-	sa, oka := gizmos.helper_project_in(_frame.view, wa)
-	sb, okb := gizmos.helper_project_in(_frame.view, wb)
-	if !oka || !okb do return _finish_plane(s, _interact(id, false, math.F32_MAX, prio, mid, wn), normal)
-	ab := sb - sa
-	t := f32(0)
-	if l2 := linalg.dot(ab, ab); l2 > 0 do t = clamp(linalg.dot(_frame.input.mouse - sa, ab) / l2, 0, 1)
-	dist := linalg.length(_frame.input.mouse - (sa + ab * t))
-	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, mid, wn), normal)
+	dist := _mouse_dist_segment(wa, wb)
+	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, (wa + wb) * 0.5, _normal_to_world(s, normal)), normal)
 }
 
 // A draggable area that draws nothing: the screen box around `pts` (a marker

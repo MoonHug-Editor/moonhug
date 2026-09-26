@@ -1,6 +1,6 @@
 # Handles
 
-`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The mhgui rect tool and the physics collider bounds use it.
+`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool and the physics collider bounds use it.
 
 ## Where handles live
 
@@ -18,7 +18,7 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 - It runs every frame in the scene view, in every tool, for each object that is selected itself (not for the children of a selected parent). gizmos_gen emits the `__scene_handles` dispatcher.
 - What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the game view.
 - `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`.
-- All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. A hot handle also wins the click over the transform gizmo.
+- All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. The transform gizmo's parts use `PRIO_TOOL`, below every other handle, so a component's own handle wins the click over it.
 - Drawing that is not interactive (an outline) belongs in `@(on_draw_gizmos)` (docs/Gizmos.md).
 
 The mhgui rect tool: its anchors work in every tool, T adds resizing, moving and the pivot, and its outline is a gizmo. The physics colliders show bounds handles in T only.
@@ -68,6 +68,9 @@ Kinds:
 
 Hot resolution is one frame late, the imgui way: handles propose themselves during the frame, the nearest highest-priority one wins, and every handle reads the previous frame's winner. One handle is active at a time. It stays active while the mouse is down and is dropped when its owner stops calling.
 
+- `consumes_mouse()` is true while a handle is hovered or dragged, and already on the frame the pointer first reaches one. The scene view picks and box-selects only when it is false.
+- `dragging()` is true while a handle is dragged. `end_drag()` ends the drag now, with no release frame, for a caller whose drag lost its target (the transform tool on a mode switch).
+
 ## Snapping
 
 Every handle snaps its own drag while snapping is on. Callers never snap:
@@ -96,6 +99,24 @@ Behavior:
 
 The physics colliders use them: box, sphere and capsule in physics3d, box, circle and capsule in physics2d (the 2D capsule's size is its bounding box, so it takes box bounds). They work on the scaled sizes inside the collider's space, then write each field back divided by the scale, on the axes the drag changed only.
 
+## Transform handles
+
+The transform tool's parts, for any code that edits a point, a rotation or a scale in the scene. Each edits the value passed by pointer while one of its parts drags, and returns one `Drag`:
+
+- `position_handle(id, &pos, rotation, size, prio)` — three arrows along the axes `rotation` gives, and three squares that move `pos` in a plane. The squares sit in the quadrant turned to the camera and keep it for the whole drag. They win over an arrow they overlap.
+- `rotation_handle(id, &rot, pos, size, local, prio)` — three rings around `pos` that turn `rot`. With `local` the rings follow `rot`, else they sit on the space's axes. The turn is the signed angle on the ring's plane between the grab and the pointer, around the grab-time axis.
+- `scale_handle(id, &scale, pos, rotation, size, prio)` — three arrows with cube tips that scale one component of `scale`, and a center cube that scales all three (drag right or up to grow). The factor never goes below 0.01.
+
+Behavior:
+
+- `size` is an arrow's length or a ring's radius, in world units. The transform tool uses 0.15 of the camera distance, so the gizmo keeps its apparent size while zooming.
+- Values are in the current gizmos space. The rotate and scale handles treat that space as rigid.
+- They snap by themselves: arrows and squares per axis to the move step, rings to the rotate step, scale factors to `SNAP_SCALE_STEP` (0.1).
+- During a move, the parts that are not moving draw faint. A square drag lights its square and its two arrows.
+- Each composite salts its part ids differently, so switching tools mid-drag never hands the drag to another composite.
+
+The transform tool (`editor/gizmo.odin`) keeps only what a drag does: it applies the move, turn or scale factor to every selected top-level object from their grab-time states, orbits and scales their offsets around the pivot, and makes the drag one undo step. For the turn and the factor it hands the rotate and scale handles a value that starts at identity at every grab.
+
 ## Undo
 
 Undo is the caller's. Open an undo session on `started`, edit on `dragging`, close on `released`, and one drag is one undo step. Rebuilding the edit from the grab-time values plus the total `delta` every frame keeps a drag a pure function of where the pointer is. The rect tool and the bounds composites do that.
@@ -113,4 +134,4 @@ Plain shapes and labels come from `engine/gizmos` (docs/Gizmos.md). Handles add 
 
 ## Not yet
 
-- The move, rotate and scale gizmo in `editor/gizmo.odin` predates this package and keeps its own input handling. Porting it onto handles is the step that leaves one input system.
+- A handle-size helper (a fixed number of pixels at a point) for callers with no size of their own.

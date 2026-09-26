@@ -16,6 +16,7 @@ import "core:math/linalg"
 import "../engine"
 import sprites "moonhug:packages/sprites"
 import "moonhug:editor/handles"
+import "moonhug:engine/gizmos"
 
 // px, py in viewport pixels relative to the scene image's top-left.
 scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
@@ -198,7 +199,7 @@ _rect_hits_points :: proc(view: engine.Render_View, rmin, rmax: [2]f32, points: 
 	first := true
 	pmin, pmax: [2]f32
 	for p in points {
-		px, ok := _gizmo_project(view, p)
+		px, ok := gizmos.helper_project_in(view, p)
 		if !ok do continue
 		if first {
 			pmin, pmax = px, px

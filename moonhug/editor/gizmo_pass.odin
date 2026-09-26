@@ -4,17 +4,17 @@ package editor
 // and the preview pose, before any view renders. It records what the scene
 // and game views then draw:
 //
-// - The selection outline and the selection's @(on_scene_handles) procs, into
-//   .Tools, while the scene view is on screen. They run before the gizmo
-//   hooks, so a handle's edit shows in this frame's gizmos and render. The
-//   draw order does not depend on it: .Tools always draws over .Editor.
+// - The selection outline, the selection's @(on_scene_handles) procs and the
+//   transform gizmo, into .Tools, while the scene view is on screen. They run
+//   before the gizmo hooks, so an edit shows in this frame's gizmos and
+//   render. The draw order does not depend on it: .Tools always draws over
+//   .Editor.
 // - Every @(on_draw_gizmos) proc, into .Editor, while the scene view is on
 //   screen or the game view shows gizmos, so the game view has them with the
 //   scene view closed.
 //
 // Pixel-sized gizmos measure against the scene view's camera while it is on
-// screen, else the game view's. The transform gizmo stays in the scene view's
-// render and draws last, over the handles.
+// screen, else the game view's.
 
 import "menu"
 import "../engine"
@@ -35,6 +35,9 @@ gizmo_pass :: proc() {
 
 	gizmo_marks_rebuild()
 	if scene_live {
+		// The camera's focus animation (F) steps first, so the handles and
+		// the render see the same camera.
+		_update_frame_tween(im.GetIO().DeltaTime)
 		view := scene_render_view(_scene_view_size.x, _scene_view_size.y)
 		// The pointer in scene-image pixels, from the image's place last frame.
 		mp := im.GetMousePos()
@@ -54,6 +57,7 @@ gizmo_pass :: proc() {
 		gizmos.with_channel(.Tools)
 		for h in sel_scene_items() do draw_selection_outline(h)
 		__scene_handles()
+		gizmo_tool_frame()
 	} else if v, ok := _game_gizmo_view(); ok {
 		gizmos.set_view(v)
 	}

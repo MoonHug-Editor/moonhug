@@ -175,8 +175,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
-- handles follow-ups (see [Handles](docs/Handles.md)) - the wiring gizmo.odin kept to itself
-  - port gizmo.odin onto handles, leaving one input system. Its own job
+- handles follow-ups (see [Handles](docs/Handles.md))
   - box select through pick providers - click picking consults them, box select does not
 
 - gizmo drawing follow-ups (see [Gizmos](docs/Gizmos.md))

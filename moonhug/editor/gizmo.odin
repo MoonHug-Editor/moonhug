@@ -1,40 +1,38 @@
 package editor
 
-// Scene-view transform gizmos (docs/SDL3Renderer.md #8 + follow-up).
-// Drags apply to EVERY selected top-level object (Unity): translate offsets
-// them all, rotate orbits positions around the gizmo and spins orientations,
-// scale scales offsets + local scales. One undo GROUP per drag (edit scopes
-// captured at grab, pushed at release). The gizmo anchors at the active
-// object's pivot or the selection centroid (gizmo_pivot toggle).
-// - Translate: world-space axis arrows (drag = closest-point-on-axis delta)
-//              + Unity-style plane quads (drag = ray<->plane hit delta,
-//              movement constrained to the plane).
-// - Rotate:    world-space axis circles; drag = signed angle between the
-//              grab and current ray↔plane intersections around the axis.
-// - Scale:     LOCAL axis handles (scale composes in local space, Unity-like)
-//              with square tips + a center handle for uniform scale.
-// All drawn as overlay lines (no depth test) into the current scene pass;
-// hover is a screen-space point↔segment test; every drag is ONE undo step
-// (undo.edit_begin/edit_end on t.position / t.rotation / t.scale).
+// The scene view's transform tool (W E R): a caller of the move, rotate and
+// scale handles (editor/handles/transform_handles.odin). The handles own the
+// pointer, the drawing and the drag math. The tool owns what a drag does:
+//
+// - Drags apply to EVERY selected top-level object: move offsets them all,
+//   rotate orbits positions around the gizmo and turns orientations, scale
+//   scales offsets and local scales. Start states are captured at grab, and
+//   every frame applies start + the drag since the grab.
+// - One undo step per drag: an edit session opened at grab and closed at
+//   release, or when the drag's handle goes away (a mode switch, the
+//   selection emptied).
+// - The gizmo sits on the active object's pivot or the centroid of the
+//   selection (gizmo_pivot). Move and rotate follow gizmo_space, scale is
+//   always on the object's own axes.
+// - Its parts use handles.PRIO_TOOL: a component's own handle under the
+//   pointer takes the click.
 
-import "moonhug:engine/gizmos"
-import "moonhug:editor/handles"
-import im "moonhug:external/odin-imgui"
+import "base:runtime"
 import "core:math"
 import "core:math/linalg"
+import im "moonhug:external/odin-imgui"
+import "moonhug:editor/handles"
 import "../engine"
 import "undo"
 
-// The scene view's tool (handles.Tool): Q selection only (Unity's hand/view
-// slot), W E R the transform gizmo, T the selection's own handles in place of
-// the gizmo.
+// The scene view's tool (handles.Tool): Q selection only, W E R the
+// transform gizmo, T the selection's own handles in place of the gizmo.
 Gizmo_Mode :: handles.Tool
 
 gizmo_mode: Gizmo_Mode = .Translate
 
-// Gizmo axis orientation (Unity's Global/Local pivot switch): Global = world
-// axes; Local = the object's rotated axes. Scale IGNORES this — it always
-// composes in local space.
+// Gizmo axis orientation: Global = world axes, Local = the object's rotated
+// axes. Scale ignores this: it always composes in local space.
 Gizmo_Space :: enum {
 	Global,
 	Local,
@@ -42,9 +40,9 @@ Gizmo_Space :: enum {
 
 gizmo_space: Gizmo_Space = .Global
 
-// Gizmo position (Unity's Pivot/Center toggle): the active object's pivot vs
-// the centroid of the selected top-level objects (Unity uses the combined
-// bounds center; the pivot average is our approximation).
+// Gizmo position: the active object's pivot, or the centroid of the selected
+// top-level objects (the pivot average stands in for the combined bounds
+// center).
 Gizmo_Pivot :: enum {
 	Pivot,
 	Center,
@@ -65,12 +63,10 @@ gizmo_origin :: proc(tH: engine.Transform_Handle) -> [3]f32 {
 	return engine.transform_world_position(tH)
 }
 
-_GIZMO_SNAP_SCALE :: f32(0.1)
-
 // Snap is the Snap popup's Enabled XOR the snap modifier: it temporarily
-// snaps when the toggle is off and frees the drag when it's on. io.KeyCtrl
-// follows Unity's convention — Ctrl on Windows/Linux, Cmd on macOS (imgui's
-// ConfigMacOSXBehaviors remaps it there).
+// snaps when the toggle is off and frees the drag when it's on. io.KeyCtrl is
+// Ctrl on Windows and Linux, Cmd on macOS (imgui's ConfigMacOSXBehaviors
+// remaps it there). The gizmo pass turns this into the handles' snap steps.
 _gizmo_snap_active :: proc() -> bool {
 	return snap_settings.enabled != im.GetIO().KeyCtrl
 }
@@ -79,37 +75,28 @@ _gizmo_snap_angle :: proc() -> f32 {
 	return math.to_radians(max(snap_settings.angle, 1))
 }
 
-_snap :: proc(value, step: f32) -> f32 {
-	if step <= 0 do return value
-	return math.round(value / step) * step
-}
-
 // Gizmo screen presence: fraction of the camera distance, so it stays a
-// constant apparent size while zooming (Unity-like).
+// constant apparent size while zooming.
 _GIZMO_SIZE_FACTOR :: f32(0.15)
-_GIZMO_HOVER_PX :: f32(8)
-_GIZMO_CIRCLE_SEGMENTS :: 48
-_GIZMO_UNIFORM_AXIS :: 3 // scale mode's center handle "axis" index
-// Translate plane handles: hot-axis 4/5/6 = drag on the plane whose NORMAL is
-// X/Y/Z (Unity: the YZ quad is red, XZ green, XY blue — the normal's color).
-_GIZMO_PLANE_AXIS_BASE :: 4
-// Quad extents along both in-plane axes, as fractions of the gizmo size.
-_GIZMO_PLANE_OFFSET :: f32(0)
-_GIZMO_PLANE_SIDE :: f32(0.2)
 
-_gizmo_hot_axis: int = -1 // -1 none, 0/1/2 = X/Y/Z, 3 = uniform (scale), 4/5/6 = plane
+// The tool's handle id: the composites salt their parts from it.
+@(private = "file")
+_TOOL_ID :: u64(0x7472_616e_7366_6f72)
+
 _gizmo_dragging: bool
-_gizmo_drag_axis: int
-_gizmo_drag_dirs: [3][3]f32 // axis dirs captured at grab (local axes move mid-drag)
-_gizmo_grab_s: f32          // axis-line parameter at grab (translate/scale)
-_gizmo_grab_vec: [3]f32     // plane vector at grab (rotate)
-_gizmo_grab_px: [2]f32      // mouse pixels at grab (scale uniform)
-_gizmo_drag_signs: [3][2]f32 // plane-quad quadrant signs frozen at grab
 _gizmo_start_world: [3]f32 // gizmo origin (pivot point) at grab
 
+// What the rotate and scale handles edit during a drag: the turn since the
+// grab (from _gizmo_rot_start) and the per-axis scale factor.
+@(private = "file")
+_gizmo_rot: quaternion128 = 1
+@(private = "file")
+_gizmo_rot_start: quaternion128 = 1
+@(private = "file")
+_gizmo_factor: [3]f32 = {1, 1, 1}
+
 // One drag applies to every selected top-level object. Start states are
-// captured at grab; the per-frame apply is absolute (start + delta), and the
-// edit scopes become ONE undo group at release.
+// captured at grab, the per-frame apply is absolute (start + delta).
 _Gizmo_Target :: struct {
 	tH:          engine.Transform_Handle,
 	start_pos:   [3]f32, // world
@@ -118,75 +105,130 @@ _Gizmo_Target :: struct {
 }
 _gizmo_targets: [dynamic]_Gizmo_Target
 
-// One transaction for the whole drag, however many objects it moves. Opened at
-// grab, closed at release — see docs/Undo.md. Replaces the pair of
-// per-target Edit_Scopes this used to carry: the session captures every target's
-// before-state at one instant and emits a single grouped action.
+// One transaction for the whole drag, however many objects it moves. Opened
+// at grab, closed at release (docs/Undo.md): the session captures every
+// target's before-state at one instant and emits a single grouped action.
 @(private)
 _gizmo_edit: undo.Edit_Session
 
-_GIZMO_AXIS_DIRS :: [3][3]f32{{1, 0, 0}, {0, 1, 0}, {0, 0, 1}}
-// Unity's exact handle palette (UnityCsReference Handles.cs): axis colors
-// s_X/Y/ZAxisColor, selected s_SelectedColor, center s_CenterColor.
-_GIZMO_AXIS_COLORS :: [3][4]f32{
-	{219.0 / 255, 62.0 / 255, 29.0 / 255, 0.93},
-	{154.0 / 255, 243.0 / 255, 72.0 / 255, 0.93},
-	{58.0 / 255, 122.0 / 255, 248.0 / 255, 0.93},
-}
-_GIZMO_HOT_COLOR :: [4]f32{246.0 / 255, 242.0 / 255, 50.0 / 255, 0.89}
-_GIZMO_UNIFORM_COLOR :: [4]f32{0.8, 0.8, 0.8, 0.93}
-// Unity's Handles.secondaryColor — what non-participating parts get during a
-// drag (UnityCsReference Handles.cs: Color(.5, .5, .5, .2)).
-_GIZMO_DIM_COLOR :: [4]f32{0.5, 0.5, 0.5, 0.2}
-
-// True while the gizmo owns the mouse (hot or dragging) — checked by the
-// click-picking path so gizmo grabs never select-through.
-gizmo_consumes_mouse :: proc() -> bool {
-	return _gizmo_dragging || _gizmo_hot_axis >= 0
+// True while the gizmo or a handle owns the mouse (hot or dragging): the
+// scene view then neither picks nor starts a box select, so grabs never
+// select through.
+scene_tools_consume_mouse :: proc() -> bool {
+	return handles.consumes_mouse()
 }
 
-// Draws the active gizmo for tH into the CURRENT gfx pass and handles
-// interaction. mouse_px/py are viewport pixels relative to the scene image
-// (same space as picking); hover needs the view hovered, an active drag
-// keeps tracking even if the cursor leaves the image.
-gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle, view: engine.Render_View, mouse_px, mouse_py: f32) {
-	// The gizmo draws over everything (engine/gizmos, no depth test).
-	gizmos.with_depth_test(false)
+// True while a transform gizmo or handle drag is in progress.
+scene_tools_dragging :: proc() -> bool {
+	return handles.dragging()
+}
+
+// The transform tool's frame, from the gizmo pass after the handle hooks: the
+// gizmo on the active object in W E R, and the end of a drag whose gizmo went
+// away (Q or T pressed mid-drag, the selection emptied).
+gizmo_tool_frame :: proc() {
+	sel := sel_scene_active()
+	if gizmo_mode != .Handles && sel != _HANDLE_NONE {
+		gizmo_draw_and_handle(sel)
+	} else {
+		gizmo_end_drag_if_any()
+	}
+}
+
+// The gizmo for tH in the handles frame (handles.frame: view, pointer,
+// buttons, snap steps), and what its drag does to the selection.
+gizmo_draw_and_handle :: proc(tH: engine.Transform_Handle) {
 	origin := gizmo_origin(tH)
-	size := linalg.length(scene_cam_pos - origin) * _GIZMO_SIZE_FACTOR
+	size := linalg.length(handles.frame().view.cam_pos - origin) * _GIZMO_SIZE_FACTOR
 	if size <= 0 do return
-	mouse_ray := engine.render_view_screen_ray(view, mouse_px, mouse_py)
 
+	d: handles.Drag
 	switch gizmo_mode {
 	case .Picker, .Handles:
-		// No transform gizmo: never consumes the mouse. Close out any drag
-		// left open by a mid-drag mode switch (Q or T shortcut).
 		gizmo_end_drag_if_any()
-		_gizmo_hot_axis = -1
+		return
 	case .Translate:
-		_gizmo_translate(tH, view, origin, size, mouse_ray)
+		rot := _gizmo_rotation(tH) if gizmo_space == .Local else quaternion128(1)
+		pos := origin
+		d = handles.position_handle(_TOOL_ID, &pos, rot, size, handles.PRIO_TOOL)
+		if d.started do _gizmo_begin(origin)
+		if _gizmo_dragging && (d.dragging || d.released) {
+			delta := pos - _gizmo_start_world
+			for &tgt in _gizmo_targets {
+				engine.transform_set_world_position(tgt.tH, tgt.start_pos + delta)
+			}
+		}
 	case .Rotate:
-		_gizmo_rotate(tH, view, origin, size, mouse_ray)
+		local := gizmo_space == .Local
+		if !_gizmo_dragging do _gizmo_rot = _gizmo_rotation(tH) if local else quaternion128(1)
+		d = handles.rotation_handle(_TOOL_ID, &_gizmo_rot, origin, size, local, handles.PRIO_TOOL)
+		if d.started {
+			_gizmo_begin(origin)
+			_gizmo_rot_start = _gizmo_rot
+		}
+		if _gizmo_dragging && (d.dragging || d.released) {
+			turn := _gizmo_rot * conj(_gizmo_rot_start)
+			for &tgt in _gizmo_targets {
+				world := turn * engine.quat_to_native(tgt.start_rot)
+				engine.transform_set_world_rotation(tgt.tH, engine.quat_from_native(world))
+				// Orbit the position around the pivot (no-op for the object
+				// AT the pivot: single-object Pivot mode keeps its place).
+				off := tgt.start_pos - _gizmo_start_world
+				if linalg.length(off) > 1e-6 {
+					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + linalg.quaternion128_mul_vector3(turn, off))
+				}
+			}
+		}
 	case .Scale:
-		_gizmo_scale(tH, view, origin, size, mouse_ray, {mouse_px, mouse_py})
+		if !_gizmo_dragging do _gizmo_factor = {1, 1, 1}
+		rot := _gizmo_rotation(tH)
+		d = handles.scale_handle(_TOOL_ID, &_gizmo_factor, origin, rot, size, handles.PRIO_TOOL)
+		if d.started do _gizmo_begin(origin)
+		if _gizmo_dragging && (d.dragging || d.released) {
+			w := engine.ctx_world()
+			f := _gizmo_factor
+			for &tgt in _gizmo_targets {
+				t := engine.pool_get(&w.transforms, engine.Handle(tgt.tH))
+				if t == nil do continue
+				t.scale = tgt.start_scale * f
+				// Each object's offset from the pivot scales along the
+				// handle's axes by the same factors.
+				off := tgt.start_pos - _gizmo_start_world
+				if linalg.length(off) > 1e-6 {
+					moved := _gizmo_start_world
+					for i in 0 ..< 3 {
+						e: [3]f32
+						e[i] = 1
+						axis := linalg.quaternion128_mul_vector3(rot, e)
+						moved += axis * linalg.dot(off, axis) * f[i]
+					}
+					engine.transform_set_world_position(tgt.tH, moved)
+				}
+			}
+		}
 	}
+	// A released drag is one step, and so is a drag whose handle went away
+	// (another mode's handle holds no drag).
+	if d.released || (_gizmo_dragging && !d.dragging) do gizmo_end_drag_if_any()
 }
 
-// Axis directions for translate/rotate honoring gizmo_space: world axes in
-// Global, the object's rotated basis in Local (same column extraction as the
-// scale gizmo, which is always local).
-_gizmo_axes :: proc(tH: engine.Transform_Handle) -> [3][3]f32 {
-	if gizmo_space == .Global do return _GIZMO_AXIS_DIRS
-	rot := engine.quat_to_matrix3(engine.transform_world_rotation(tH))
-	dirs: [3][3]f32
-	for axis in 0 ..< 3 {
-		dirs[axis] = linalg.normalize0([3]f32{rot[0, axis], rot[1, axis], rot[2, axis]})
-	}
-	return dirs
+@(private = "file")
+_gizmo_rotation :: proc(tH: engine.Transform_Handle) -> quaternion128 {
+	return engine.quat_to_native(engine.transform_world_rotation(tH))
+}
+
+@(private = "file")
+_gizmo_begin :: proc(origin: [3]f32) {
+	gizmo_end_drag_if_any()
+	if !_gizmo_collect_targets() do return
+	_gizmo_dragging = true
+	_gizmo_start_world = origin
 }
 
 @(private)
 _gizmo_collect_targets :: proc() -> bool {
+	// Cross-frame state: never borrows the caller's allocator.
+	if _gizmo_targets == nil do _gizmo_targets = make([dynamic]_Gizmo_Target, runtime.default_allocator())
 	clear(&_gizmo_targets)
 	w := engine.ctx_world()
 
@@ -261,435 +303,12 @@ gizmo_end_drag_if_any :: proc() {
 	if !_gizmo_dragging do return
 	_gizmo_dragging = false
 	_gizmo_end_drag()
+	// The drag's handle is the tool's own (one drag at a time): it holds the
+	// pointer no longer.
+	handles.end_drag()
 }
 
 gizmo_shutdown :: proc() {
 	delete(_gizmo_targets)
 	_gizmo_targets = nil
-}
-
-_gizmo_release_if_needed :: proc() -> bool {
-	if _gizmo_dragging && !im.IsMouseDown(.Left) {
-		_gizmo_dragging = false
-		_gizmo_end_drag()
-	}
-	return _gizmo_dragging
-}
-
-// ---------------------------------------------------------------- Translate
-
-_gizmo_translate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, origin: [3]f32, size: f32, mouse_ray: engine.Ray) {
-	dirs := _gizmo_axes(tH)
-	colors := _GIZMO_AXIS_COLORS
-
-	// Plane quads sit in the camera-facing quadrant of each plane (Unity):
-	// flip each in-plane axis toward the viewer so the handles never hide
-	// behind the origin.
-	view_dir := linalg.normalize0(scene_cam_pos - origin)
-	plane_signs: [3][2]f32
-	for axis in 0 ..< 3 {
-		u := dirs[(axis + 1) % 3]
-		v := dirs[(axis + 2) % 3]
-		plane_signs[axis] = {
-			linalg.dot(u, view_dir) >= 0 ? 1 : -1,
-			linalg.dot(v, view_dir) >= 0 ? 1 : -1,
-		}
-	}
-
-	hover_axis := -1
-	if !_gizmo_dragging && scene_view_hovered {
-		best_px := _GIZMO_HOVER_PX
-		for axis in 0 ..< 3 {
-			d, ok := _segment_screen_distance(view, origin, origin + dirs[axis] * size, mouse_ray)
-			if ok && d < best_px {
-				best_px = d
-				hover_axis = axis
-			}
-		}
-		// Inside a quad beats a nearby axis line (Unity). Two quads can
-		// overlap on screen — take the one whose plane the ray hits first.
-		best_t := max(f32)
-		for axis in 0 ..< 3 {
-			hit, t, ok := _ray_plane_point(mouse_ray, origin, dirs[axis])
-			if !ok || t >= best_t do continue
-			su := linalg.dot(hit - origin, dirs[(axis + 1) % 3]) * plane_signs[axis][0]
-			sv := linalg.dot(hit - origin, dirs[(axis + 2) % 3]) * plane_signs[axis][1]
-			lo := size * _GIZMO_PLANE_OFFSET
-			hi := size * (_GIZMO_PLANE_OFFSET + _GIZMO_PLANE_SIDE)
-			if su >= lo && su <= hi && sv >= lo && sv <= hi {
-				best_t = t
-				hover_axis = _GIZMO_PLANE_AXIS_BASE + axis
-			}
-		}
-	}
-
-	// A hot component handle (@(on_scene_handles)) wins the click: it is
-	// the more specific target.
-	if handles.consumes_mouse() do hover_axis = -1
-	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		grab_ok := true
-		if hover_axis >= _GIZMO_PLANE_AXIS_BASE {
-			hit, _, ok := _ray_plane_point(mouse_ray, origin, dirs[hover_axis - _GIZMO_PLANE_AXIS_BASE])
-			grab_ok = ok
-			_gizmo_grab_vec = hit
-		} else {
-			_gizmo_grab_s = _closest_axis_param(origin, dirs[hover_axis], mouse_ray)
-		}
-		if grab_ok && _gizmo_collect_targets() {
-			_gizmo_dragging = true
-			_gizmo_drag_axis = hover_axis
-			_gizmo_drag_dirs = dirs
-			_gizmo_drag_signs = plane_signs
-			_gizmo_start_world = origin
-		}
-	}
-	if _gizmo_release_if_needed() {
-		// Drag math uses the grab-time axes (dirs would be stable for
-		// translate, but keep the same convention as rotate).
-		delta: [3]f32
-		have_delta := false
-		if _gizmo_drag_axis >= _GIZMO_PLANE_AXIS_BASE {
-			normal_axis := _gizmo_drag_axis - _GIZMO_PLANE_AXIS_BASE
-			n := _gizmo_drag_dirs[normal_axis]
-			if hit, _, ok := _ray_plane_point(mouse_ray, _gizmo_start_world, n); ok {
-				delta = hit - _gizmo_grab_vec
-				if _gizmo_snap_active() {
-					// Per-axis snap on the plane's two spanning directions.
-					u := _gizmo_drag_dirs[(normal_axis + 1) % 3]
-					v := _gizmo_drag_dirs[(normal_axis + 2) % 3]
-					step := snap_translate_step()
-					delta = u * _snap(linalg.dot(delta, u), step) + v * _snap(linalg.dot(delta, v), step)
-				}
-				have_delta = true
-			}
-		} else {
-			s := _closest_axis_param(_gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis], mouse_ray)
-			move := s - _gizmo_grab_s
-			if _gizmo_snap_active() do move = _snap(move, snap_translate_step())
-			delta = _gizmo_drag_dirs[_gizmo_drag_axis] * move
-			have_delta = true
-		}
-		if have_delta {
-			for &tgt in _gizmo_targets {
-				engine.transform_set_world_position(tgt.tH, tgt.start_pos + delta)
-			}
-		}
-	}
-	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
-
-	origin_now := gizmo_origin(tH)
-	// During a drag: participating parts yellow, everything else faint white
-	// (Unity). A plane drag highlights the quad AND its two spanning axes.
-	// The quads also keep their grab-time quadrant placement until release.
-	dragging := _gizmo_dragging
-	drag_plane_normal := dragging && _gizmo_drag_axis >= _GIZMO_PLANE_AXIS_BASE \
-		? _gizmo_drag_axis - _GIZMO_PLANE_AXIS_BASE : -1
-	draw_signs := dragging ? _gizmo_drag_signs : plane_signs
-
-	// Quads first: axis lines and arrowheads draw over them.
-	for axis in 0 ..< 3 {
-		u := dirs[(axis + 1) % 3] * draw_signs[axis][0]
-		v := dirs[(axis + 2) % 3] * draw_signs[axis][1]
-		lo := size * _GIZMO_PLANE_OFFSET
-		hi := size * (_GIZMO_PLANE_OFFSET + _GIZMO_PLANE_SIDE)
-		hot := _gizmo_hot_axis == _GIZMO_PLANE_AXIS_BASE + axis
-		col := hot ? _GIZMO_HOT_COLOR : colors[axis]
-		fill_a := hot ? f32(0.6) : f32(0.35)
-		if dragging && axis != drag_plane_normal {
-			col = _GIZMO_DIM_COLOR
-			fill_a = 0.05
-		}
-		p00 := origin_now + u * lo + v * lo
-		p10 := origin_now + u * hi + v * lo
-		p11 := origin_now + u * hi + v * hi
-		p01 := origin_now + u * lo + v * hi
-		{
-			gizmos.with_color({col.r, col.g, col.b, fill_a})
-			gizmos.solid_quad({p00, p10, p11, p01})
-		}
-		gizmos.with_color(col)
-		gizmos.wire_quad({p00, p10, p11, p01})
-	}
-	for axis in 0 ..< 3 {
-		dir := dirs[axis]
-		col := _gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis]
-		if dragging {
-			active := drag_plane_normal >= 0 ? axis != drag_plane_normal : axis == _gizmo_drag_axis
-			col = active ? _GIZMO_HOT_COLOR : _GIZMO_DIM_COLOR
-		}
-		tip := origin_now + dir * size
-		gizmos.with_color(col)
-		// Line stops where the arrowhead begins.
-		gizmos.line(origin_now, tip - dir * size * 0.18)
-		// Arrowhead: solid cone (Unity-like), base pulled back along the axis.
-		gizmos.solid_cone(tip - dir * size * 0.18, tip, size * 0.06, segments = 16)
-	}
-}
-
-// ------------------------------------------------------------------- Rotate
-
-_gizmo_rotate :: proc(tH: engine.Transform_Handle, view: engine.Render_View, origin: [3]f32, size: f32, mouse_ray: engine.Ray) {
-	// Local axes MOVE while a rotate drag changes the rotation — the drag math
-	// below must use the grab-time axes (_gizmo_drag_dirs); drawing uses the
-	// current ones so the gizmo visibly rotates with the object (Unity-like).
-	dirs := _gizmo_axes(tH)
-	colors := _GIZMO_AXIS_COLORS
-
-	// Hover: nearest of the three circles, tested segment-by-segment in
-	// screen space (robust for any view angle, ~150 projections — trivial).
-	hover_axis := -1
-	if !_gizmo_dragging && scene_view_hovered {
-		best_px := _GIZMO_HOVER_PX
-		for axis in 0 ..< 3 {
-			u := dirs[(axis + 1) % 3]
-			v := dirs[(axis + 2) % 3]
-			prev := origin + u * size
-			for i in 1 ..= _GIZMO_CIRCLE_SEGMENTS {
-				ang := f32(i) * math.TAU / _GIZMO_CIRCLE_SEGMENTS
-				p := origin + (u * math.cos(ang) + v * math.sin(ang)) * size
-				d, ok := _segment_screen_distance(view, prev, p, mouse_ray)
-				if ok && d < best_px {
-					best_px = d
-					hover_axis = axis
-				}
-				prev = p
-			}
-		}
-	}
-
-	// A hot component handle (@(on_scene_handles)) wins the click: it is
-	// the more specific target.
-	if handles.consumes_mouse() do hover_axis = -1
-	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		if grab, ok := _ray_plane_vector(mouse_ray, origin, dirs[hover_axis]); ok {
-			if _gizmo_collect_targets() {
-				_gizmo_dragging = true
-				_gizmo_drag_axis = hover_axis
-				_gizmo_drag_dirs = dirs
-				_gizmo_start_world = origin
-				_gizmo_grab_vec = grab
-			}
-		}
-	}
-	if _gizmo_release_if_needed() {
-		axis := _gizmo_drag_dirs[_gizmo_drag_axis]
-		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, axis); ok {
-			angle := _signed_angle(_gizmo_grab_vec, cur, axis)
-			if _gizmo_snap_active() do angle = _snap(angle, _gizmo_snap_angle())
-			delta := linalg.quaternion_angle_axis_f32(angle, axis)
-			for &tgt in _gizmo_targets {
-				world := delta * engine.quat_to_native(tgt.start_rot)
-				engine.transform_set_world_rotation(tgt.tH, engine.quat_from_native(world))
-				// Orbit the position around the pivot (no-op for the object
-				// AT the pivot — single-object Pivot mode keeps its place).
-				off := tgt.start_pos - _gizmo_start_world
-				if linalg.length(off) > 1e-6 {
-					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + linalg.quaternion128_mul_vector3(delta, off))
-				}
-			}
-		}
-	}
-	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
-
-	origin_now := gizmo_origin(tH)
-	for axis in 0 ..< 3 {
-		gizmos.with_color(_gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis])
-		gizmos.wire_circle(origin_now, dirs[axis], size, segments = _GIZMO_CIRCLE_SEGMENTS)
-	}
-	// During a drag: show the grab and current vectors like Unity's pie hint
-	// (in the grab-time plane — the live axes rotate with the object).
-	if _gizmo_dragging {
-		{
-			gizmos.with_color(_GIZMO_UNIFORM_COLOR)
-			gizmos.line(origin_now, origin_now + _gizmo_grab_vec * size)
-		}
-		if cur, ok := _ray_plane_vector(mouse_ray, _gizmo_start_world, _gizmo_drag_dirs[_gizmo_drag_axis]); ok {
-			gizmos.with_color(_GIZMO_HOT_COLOR)
-			gizmos.line(origin_now, origin_now + cur * size)
-		}
-	}
-}
-
-// -------------------------------------------------------------------- Scale
-
-_gizmo_scale :: proc(tH: engine.Transform_Handle, view: engine.Render_View, origin: [3]f32, size: f32, mouse_ray: engine.Ray, mouse_px: [2]f32) {
-	colors := _GIZMO_AXIS_COLORS
-
-	// Scale composes in LOCAL space — handles follow the object's rotation.
-	rot := engine.quat_to_matrix3(engine.transform_world_rotation(tH))
-	local_dirs: [3][3]f32
-	for axis in 0 ..< 3 {
-		local_dirs[axis] = linalg.normalize0([3]f32{rot[0, axis], rot[1, axis], rot[2, axis]})
-	}
-
-	hover_axis := -1
-	if !_gizmo_dragging && scene_view_hovered {
-		best_px := _GIZMO_HOVER_PX
-		for axis in 0 ..< 3 {
-			d, ok := _segment_screen_distance(view, origin, origin + local_dirs[axis] * size, mouse_ray)
-			if ok && d < best_px {
-				best_px = d
-				hover_axis = axis
-			}
-		}
-		// Center handle: uniform scale.
-		if c, ok := _gizmo_project(view, origin); ok {
-			dx := mouse_px.x - c.x
-			dy := mouse_px.y - c.y
-			if math.sqrt(dx * dx + dy * dy) < _GIZMO_HOVER_PX * 1.5 {
-				hover_axis = _GIZMO_UNIFORM_AXIS
-			}
-		}
-	}
-
-	// A hot component handle (@(on_scene_handles)) wins the click: it is
-	// the more specific target.
-	if handles.consumes_mouse() do hover_axis = -1
-	if !_gizmo_dragging && hover_axis >= 0 && im.IsMouseClicked(.Left) {
-		if _gizmo_collect_targets() {
-			_gizmo_dragging = true
-			_gizmo_drag_axis = hover_axis
-			_gizmo_start_world = origin
-			_gizmo_grab_px = mouse_px
-			if hover_axis < 3 {
-				_gizmo_grab_s = _closest_axis_param(origin, local_dirs[hover_axis], mouse_ray)
-			}
-		}
-	}
-	if _gizmo_release_if_needed() {
-		w := engine.ctx_world()
-		factor: f32
-		if _gizmo_drag_axis == _GIZMO_UNIFORM_AXIS {
-			// Uniform: right/up drag grows, left/down shrinks.
-			pixel_delta := (mouse_px.x - _gizmo_grab_px.x) - (mouse_px.y - _gizmo_grab_px.y)
-			factor = max(1 + pixel_delta * 0.005, 0.01)
-		} else {
-			s := _closest_axis_param(_gizmo_start_world, local_dirs[_gizmo_drag_axis], mouse_ray)
-			factor = max(1 + (s - _gizmo_grab_s) / size, 0.01)
-		}
-		if _gizmo_snap_active() do factor = max(_snap(factor, _GIZMO_SNAP_SCALE), 0.01)
-		for &tgt in _gizmo_targets {
-			t := engine.pool_get(&w.transforms, engine.Handle(tgt.tH))
-			if t == nil do continue
-			off := tgt.start_pos - _gizmo_start_world
-			if _gizmo_drag_axis == _GIZMO_UNIFORM_AXIS {
-				t.scale = tgt.start_scale * factor
-				if linalg.length(off) > 1e-6 {
-					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + off * factor)
-				}
-			} else {
-				// Per-axis: each object's own local component scales; the
-				// offset scales along the drag axis only (Unity group scale).
-				t.scale[_gizmo_drag_axis] = tgt.start_scale[_gizmo_drag_axis] * factor
-				dir := local_dirs[_gizmo_drag_axis]
-				amt := linalg.dot(off, dir)
-				if abs(amt) > 1e-6 {
-					engine.transform_set_world_position(tgt.tH, _gizmo_start_world + off + dir * amt * (factor - 1))
-				}
-			}
-		}
-	}
-	_gizmo_hot_axis = _gizmo_dragging ? _gizmo_drag_axis : hover_axis
-
-	origin_now := gizmo_origin(tH)
-	for axis in 0 ..< 3 {
-		dir := local_dirs[axis]
-		tip := origin_now + dir * size
-		gizmos.with_color(_gizmo_hot_axis == axis ? _GIZMO_HOT_COLOR : colors[axis])
-		gizmos.line(origin_now, tip)
-		_gizmo_cube(tip, local_dirs, size * 0.05)
-	}
-	gizmos.with_color(_gizmo_hot_axis == _GIZMO_UNIFORM_AXIS ? _GIZMO_HOT_COLOR : _GIZMO_UNIFORM_COLOR)
-	_gizmo_cube(origin_now, local_dirs, size * 0.06)
-}
-
-// A scale handle tip: a solid cube of half-extent r turned to the handle's axes.
-_gizmo_cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32) {
-	gizmos.with_matrix(matrix[4, 4]f32{
-		axes[0].x, axes[1].x, axes[2].x, center.x,
-		axes[0].y, axes[1].y, axes[2].y, center.y,
-		axes[0].z, axes[1].z, axes[2].z, center.z,
-		0, 0, 0, 1,
-	})
-	gizmos.solid_box({}, {2 * r, 2 * r, 2 * r})
-}
-
-// ------------------------------------------------------------------ shared
-
-// World point -> viewport pixels; false when behind the camera.
-_gizmo_project :: proc(view: engine.Render_View, p: [3]f32) -> ([2]f32, bool) {
-	clip := view.view_proj * [4]f32{p.x, p.y, p.z, 1}
-	if clip.w <= 0 do return {}, false
-	ndc := clip.xyz / clip.w
-	return {
-		(ndc.x * 0.5 + 0.5) * view.width,
-		(0.5 - ndc.y * 0.5) * view.height,
-	}, true
-}
-
-// Screen-space distance from the mouse (encoded in `ray`'s pixel origin via
-// the caller) to the world segment a-b. The mouse pixel is recovered by
-// projecting the ray origin — cheaper to pass explicitly, but this keeps one
-// signature for all handles.
-_segment_screen_distance :: proc(view: engine.Render_View, a, b: [3]f32, mouse_ray: engine.Ray) -> (f32, bool) {
-	pa, a_ok := _gizmo_project(view, a)
-	pb, b_ok := _gizmo_project(view, b)
-	if !a_ok || !b_ok do return 0, false
-	// Recover the mouse pixel from the ray's near-plane origin.
-	pm, m_ok := _gizmo_project(view, mouse_ray.origin)
-	if !m_ok do return 0, false
-	return _point_segment_distance_2d(pm, pa, pb), true
-}
-
-_point_segment_distance_2d :: proc(p, a, b: [2]f32) -> f32 {
-	ab := b - a
-	len_sq := ab.x * ab.x + ab.y * ab.y
-	t := len_sq > 0 ? clamp(((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / len_sq, 0, 1) : 0
-	closest := a + ab * t
-	d := p - closest
-	return math.sqrt(d.x * d.x + d.y * d.y)
-}
-
-// Parameter s of the closest point on the infinite line (origin + s*axis) to
-// `ray` — standard line-line closest-point solve, degenerate-guarded for a
-// ray (near-)parallel to the axis.
-_closest_axis_param :: proc(origin, axis: [3]f32, ray: engine.Ray) -> f32 {
-	w0 := origin - ray.origin
-	a := linalg.dot(axis, axis)
-	b := linalg.dot(axis, ray.direction)
-	c := linalg.dot(ray.direction, ray.direction)
-	d := linalg.dot(axis, w0)
-	e := linalg.dot(ray.direction, w0)
-	denom := a * c - b * b
-	if abs(denom) < 1e-9 do return 0
-	return (b * e - c * d) / denom
-}
-
-// Ray<->plane intersection point and ray parameter; false when the ray is
-// (near-)parallel to the plane or hits it behind the camera.
-_ray_plane_point :: proc(ray: engine.Ray, plane_origin, n: [3]f32) -> ([3]f32, f32, bool) {
-	denom := linalg.dot(ray.direction, n)
-	if abs(denom) < 1e-6 do return {}, 0, false
-	t := linalg.dot(plane_origin - ray.origin, n) / denom
-	if t < 0 do return {}, 0, false
-	return ray.origin + ray.direction * t, t, true
-}
-
-// Normalized vector from `plane_origin` to the ray's intersection with the
-// plane (normal n); false when the ray is (near-)parallel to the plane or
-// hits it behind the camera.
-_ray_plane_vector :: proc(ray: engine.Ray, plane_origin, n: [3]f32) -> ([3]f32, bool) {
-	denom := linalg.dot(ray.direction, n)
-	if abs(denom) < 1e-6 do return {}, false
-	t := linalg.dot(plane_origin - ray.origin, n) / denom
-	if t < 0 do return {}, false
-	hit := ray.origin + ray.direction * t
-	v := hit - plane_origin
-	if linalg.length(v) < 1e-6 do return {}, false
-	return linalg.normalize(v), true
-}
-
-// Signed angle from a to b around axis n (right-hand rule).
-_signed_angle :: proc(a, b, n: [3]f32) -> f32 {
-	return math.atan2(linalg.dot(linalg.cross(a, b), n), linalg.dot(a, b))
 }
