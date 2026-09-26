@@ -1,3 +1,15 @@
+## [0.109.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.108.0...v0.109.0) (2026-09-26)
+
+### Features
+
+* add handles to colliders ([5cd634d](https://github.com/MoonHug-Editor/moonhug/commit/5cd634d01cce67b25e92270131a07f52153fa79c))
+* improve gizmo and handles ([a23410b](https://github.com/MoonHug-Editor/moonhug/commit/a23410b8a380c24ecfa2b1a44f58e560159a1fb9))
+* undo for import settings ([f8cdf1f](https://github.com/MoonHug-Editor/moonhug/commit/f8cdf1fd0f812e9395e3da7553d4437122b6302d))
+
+### Bug Fixes
+
+* handles snap, game view gizmos not rely on scene view ([22455c5](https://github.com/MoonHug-Editor/moonhug/commit/22455c52b8807a9663065b1048e28145ebc7d4e7))
+
 ## [0.108.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.107.0...v0.108.0) (2026-09-26)
 
 ### Features
