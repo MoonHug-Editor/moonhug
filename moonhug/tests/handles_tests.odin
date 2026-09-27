@@ -271,3 +271,79 @@ test_handles_snap_helpers :: proc(t: ^testing.T) {
 	handles_frame(v, {0, 0, 0})
 	testing.expect_value(t, handles.snap(0.3), f32(0.3)) // snapping off
 }
+
+// --- Picking the hot handle -----------------------------------------------------------
+
+@(private = "file")
+_Pick_Case :: struct {
+	pos:     [3]f32,
+	hidden:  bool, // the handle is not drawn this frame
+	started: bool,
+	hot:     bool,
+}
+
+@(private = "file")
+_pick_body :: proc(user: rawptr) {
+	c := cast(^_Pick_Case)user
+	if c.hidden do return
+	d := handles.dot(5, c.pos, {0, 0, 1})
+	c.started = d.started
+	c.hot = d.hot
+}
+
+// The hot handle comes from last frame's shapes and this frame's pointer: it
+// lights and takes a click on the frame the pointer arrives.
+@(test)
+test_handles_hot_on_the_frame_the_pointer_arrives :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+
+	c := _Pick_Case{pos = {1, 0, 0}}
+	handles_step(v, {3, 3, 0}, _pick_body, &c) // on screen, the pointer elsewhere
+	testing.expect(t, !c.hot, "not hot away from it")
+	handles_step(v, {1, 0, 0}, _pick_body, &c, down = true, clicked = true)
+	testing.expect(t, c.hot && c.started, "hot and grabbed on the frame the pointer arrives with a click")
+	handles_step(v, {1, 0, 0}, _pick_body, &c)
+	handles_frame(v, {3, 3, 0})
+}
+
+// The shapes are world space: a camera that moved since the last frame
+// still finds the handle under the pointer.
+@(test)
+test_handles_pick_follows_a_moved_camera :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	c := _Pick_Case{pos = {1, 0, 0}}
+	handles_step(handles_test_view(), {3, 3, 0}, _pick_body, &c)
+	moved := handles_test_view({4, 2, 8})
+	handles_step(moved, {1, 0, 0}, _pick_body, &c)
+	testing.expect(t, c.hot, "hot under the pointer in the new view")
+	handles_frame(moved, {3, 3, 0})
+}
+
+// A hot handle that does not call in this frame (its object was deselected)
+// does not hold the pointer.
+@(test)
+test_handles_vanished_handle_does_not_block :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+
+	c := _Pick_Case{pos = {1, 0, 0}}
+	handles_step(v, {3, 3, 0}, _pick_body, &c)
+	c.hidden = true
+	handles_step(v, {1, 0, 0}, _pick_body, &c)
+	testing.expect(t, !handles.consumes_mouse(), "nothing under the pointer calls in")
+	handles_frame(v, {3, 3, 0})
+}

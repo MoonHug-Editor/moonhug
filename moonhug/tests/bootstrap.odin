@@ -31,4 +31,5 @@ frame_button_click :: common.frame_button_click
 handles_test_view :: common.handles_test_view
 handles_frame :: common.handles_frame
 handles_drag :: common.handles_drag
+handles_step :: common.handles_step
 Handles_Keys :: common.Handles_Keys

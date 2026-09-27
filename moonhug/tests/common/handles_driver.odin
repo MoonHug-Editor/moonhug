@@ -1,9 +1,10 @@
 package tests_common
 
-// Drives editor/handles across frames without a UI. The scene view hands
-// handles an Input each frame, and so does this, with the pointer over a
-// world point. Handle interaction spans frames (hot resolves one frame late,
-// a drag starts, moves, releases), so a test replays whole drags.
+// Drives editor/handles across frames without a UI. The gizmo pass hands
+// handles an Input each frame and runs the handle code once, and so does
+// this, with the pointer over a world point. The hot handle comes from the
+// shapes the handles recorded the frame before, and a drag spans frames (it
+// starts, moves, releases), so a test replays whole drags.
 
 import "core:math/linalg"
 import "../../engine"
@@ -41,17 +42,20 @@ handles_frame :: proc(v: engine.Render_View, at: [3]f32, down := false, clicked 
 	})
 }
 
-// One drag from `from` to `to`: hover, press, move, release, with `body`
-// running the handle code once per frame. A last frame without the body
-// clears the hot handle, so nothing leaks into the next test.
+// One frame as the gizmo pass runs it: the frame starts, then `body` (the
+// handle code) runs.
+handles_step :: proc(v: engine.Render_View, at: [3]f32, body: proc(user: rawptr), user: rawptr, down := false, clicked := false, keys := Handles_Keys{}) {
+	handles_frame(v, at, down, clicked, keys)
+	body(user)
+}
+
+// One drag from `from` to `to`: hover, press, move, release, one frame each.
+// A last frame without the body clears the hot handle, so nothing leaks into
+// the next test.
 handles_drag :: proc(v: engine.Render_View, from, to: [3]f32, body: proc(user: rawptr), user: rawptr, keys := Handles_Keys{}) {
-	handles_frame(v, from, keys = keys)
-	body(user)
-	handles_frame(v, from, down = true, clicked = true, keys = keys)
-	body(user)
-	handles_frame(v, to, down = true, keys = keys)
-	body(user)
-	handles_frame(v, to, keys = keys)
-	body(user)
+	handles_step(v, from, body, user, keys = keys)
+	handles_step(v, from, body, user, down = true, clicked = true, keys = keys)
+	handles_step(v, to, body, user, down = true, keys = keys)
+	handles_step(v, to, body, user, keys = keys)
 	handles_frame(v, to)
 }

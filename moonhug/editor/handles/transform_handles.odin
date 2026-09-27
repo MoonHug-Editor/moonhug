@@ -107,21 +107,19 @@ position_handle :: proc(id: u64, pos: ^[3]f32, rotation := quaternion128(1), siz
 
 	parts: [6]Drag
 	for i in 0 ..< 3 {
-		dist := _mouse_dist_segment(o, o + dirs[i] * size)
-		parts[i] = _interact(_part(id, 1 + i), dist <= DOT_HOVER_PX, dist, prio, o, _facing_normal(o, dirs[i]))
+		parts[i] = _interact(_part(id, 1 + i), Hit_Segment{o, o + dirs[i] * size, DOT_HOVER_PX}, prio, o, _facing_normal(o, dirs[i]))
 	}
 	// Inside a square, the nearest along the ray. Squares win over arrows.
 	side := size * _SQUARE_SIDE
 	for i in 0 ..< 3 {
-		inside := false
-		t: f32
-		if hit, ht, ok := _ray_plane_ahead(_frame.ray, o, dirs[i]); ok {
-			su := linalg.dot(hit - o, dirs[(i + 1) % 3]) * signs[i][0]
-			sv := linalg.dot(hit - o, dirs[(i + 2) % 3]) * signs[i][1]
-			inside = su >= 0 && su <= side && sv >= 0 && sv <= side
-			t = ht
+		sq := Hit_Square{
+			origin = o,
+			normal = dirs[i],
+			u      = dirs[(i + 1) % 3] * signs[i][0],
+			v      = dirs[(i + 2) % 3] * signs[i][1],
+			side   = side,
 		}
-		parts[3 + i] = _interact(_part(id, 4 + i), inside, t, prio + 1, o, dirs[i])
+		parts[3 + i] = _interact(_part(id, 4 + i), sq, prio + 1, o, dirs[i])
 	}
 
 	out: Drag
@@ -205,16 +203,15 @@ rotation_handle :: proc(id: u64, rot: ^quaternion128, pos: [3]f32, size: f32 = 1
 
 	parts: [3]Drag
 	for i in 0 ..< 3 {
-		u, v := dirs[(i + 1) % 3], dirs[(i + 2) % 3]
-		dist: f32 = math.F32_MAX
-		prev := o + u * size
-		for k in 1 ..= _RING_SEGMENTS {
-			a := f32(k) * math.TAU / _RING_SEGMENTS
-			p := o + (u * math.cos(a) + v * math.sin(a)) * size
-			dist = min(dist, _mouse_dist_segment(prev, p))
-			prev = p
+		ring := Hit_Ring{
+			center   = o,
+			u        = dirs[(i + 1) % 3],
+			v        = dirs[(i + 2) % 3],
+			radius   = size,
+			px       = DOT_HOVER_PX,
+			segments = _RING_SEGMENTS,
 		}
-		parts[i] = _interact(_part(id, 11 + i), dist <= DOT_HOVER_PX, dist, prio, o, dirs[i])
+		parts[i] = _interact(_part(id, 11 + i), ring, prio, o, dirs[i])
 	}
 
 	out: Drag
@@ -275,11 +272,9 @@ scale_handle :: proc(id: u64, scale: ^[3]f32, pos: [3]f32, rotation := quaternio
 
 	parts: [4]Drag
 	for i in 0 ..< 3 {
-		dist := _mouse_dist_segment(o, o + dirs[i] * size)
-		parts[i] = _interact(_part(id, 21 + i), dist <= DOT_HOVER_PX, dist, prio, o, _facing_normal(o, dirs[i]))
+		parts[i] = _interact(_part(id, 21 + i), Hit_Segment{o, o + dirs[i] * size, DOT_HOVER_PX}, prio, o, _facing_normal(o, dirs[i]))
 	}
-	center_dist := _mouse_dist(o)
-	parts[3] = _interact(_part(id, 24), center_dist < DOT_HOVER_PX * 1.5, center_dist, prio + 1, o, _to_camera(o))
+	parts[3] = _interact(_part(id, 24), Hit_Point{o, DOT_HOVER_PX * 1.5}, prio + 1, o, _to_camera(o))
 
 	out: Drag
 	active := -1
@@ -360,17 +355,6 @@ _closest_axis_param :: proc(origin, axis: [3]f32, ray: engine.Ray) -> f32 {
 	denom := a * c - b * b
 	if abs(denom) < 1e-9 do return 0
 	return (b * e - c * d) / denom
-}
-
-// Ray against a plane, in front of the ray only: the hit and its ray
-// parameter.
-@(private = "file")
-_ray_plane_ahead :: proc(ray: engine.Ray, origin, n: [3]f32) -> (hit: [3]f32, t: f32, ok: bool) {
-	denom := linalg.dot(ray.direction, n)
-	if abs(denom) < 1e-6 do return {}, 0, false
-	t = linalg.dot(origin - ray.origin, n) / denom
-	if t < 0 do return {}, 0, false
-	return ray.origin + ray.direction * t, t, true
 }
 
 // The unit direction from `origin` to where the ray meets the plane.

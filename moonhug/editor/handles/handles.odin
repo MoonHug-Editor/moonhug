@@ -87,15 +87,18 @@ Frame :: struct {
 
 _frame: Frame
 
-// Hot resolution is one frame late (imgui's HoveredIdPreviousFrame): every
-// handle proposes itself during the frame, the nearest highest-priority one
-// wins, and handles read the previous frame's winner. Active is the handle
-// being dragged. It stays active while the mouse is down, and is dropped
-// when its owner stops calling in.
-_hot_prev:    u64
-_hot:         u64
-_hot_prio:    int
-_hot_dist:    f32
+// The hot handle is picked when a frame begins, before any handle runs: every
+// handle records its hit shape (Hit) during a frame, and the next frame_begin
+// tests those shapes with the new camera and pointer. The nearest
+// highest-priority one wins, so the highlight and a click land on the frame
+// the pointer arrives, and handle code runs once per frame. The shapes are
+// world space: only a handle that moved since the last frame is a frame
+// behind. A hot handle that does not call in again this frame (its object was
+// deselected) does not count. Active is the handle being dragged. It stays
+// active while the mouse is down, and is dropped when its owner stops calling
+// in.
+_hot:         u64 // this frame's winner, picked in frame_begin
+_hot_seen:    bool // the hot handle called in this frame
 _active:      u64
 _active_seen: bool
 _grab:        [3]f32 // plane point at grab, world
@@ -119,7 +122,8 @@ Drag :: struct {
 rect_raw_edit: bool
 
 // The editor's gizmo pass calls this once per frame for the scene view,
-// before the handle hooks. Nothing needs a render pass open.
+// before the handle hooks. It picks this frame's hot handle from the shapes
+// the handles recorded last frame. Nothing needs a render pass open.
 frame_begin :: proc(view: engine.Render_View, input: Input) {
 	_frame = Frame{
 		view  = view,
@@ -127,20 +131,18 @@ frame_begin :: proc(view: engine.Render_View, input: Input) {
 		ray   = engine.render_view_screen_ray(view, input.mouse.x, input.mouse.y),
 		valid = true,
 	}
-	_hot_prev = _hot
-	_hot = 0
-	_hot_prio = min(int)
-	_hot_dist = math.F32_MAX
 	if _active != 0 && !_active_seen do _active = 0 // its owner went away mid-drag
 	_active_seen = false
+	// A drag in progress owns the pointer: nothing else is hot.
+	_hot = _pick() if _active == 0 else 0
+	_hot_seen = false
+	clear(&_shapes)
 }
 
 // True while a handle is hovered or dragged: the scene view then neither
-// picks nor starts a box select. A handle under the pointer this frame counts
-// too, before it can take a click next frame, so a quick click never selects
-// through it.
+// picks nor starts a box select.
 consumes_mouse :: proc() -> bool {
-	return _hot_prev != 0 || _hot != 0 || _active != 0
+	return (_hot != 0 && _hot_seen) || _active != 0
 }
 
 frame :: proc() -> Frame {
@@ -448,55 +450,144 @@ _triangle_points_world :: proc(tip, dir: [3]f32, size: f32) -> (p: [3][3]f32, ok
 	return {tip, base + side * size * 0.5, base - side * size * 0.5}, true
 }
 
-// --- Handles ------------------------------------------------------------------------
+// --- Hit shapes -----------------------------------------------------------------------
+// Where a handle sits, in world space. A handle records one each frame, and
+// the next frame_begin tests it with that frame's camera and pointer.
 
-// Shared interaction step, in world space. `candidate` says the pointer is
-// over this handle this frame at screen distance `dist`. Higher `prio` wins
-// over nearer.
-_interact :: proc(id: u64, candidate: bool, dist: f32, prio: int, plane_origin, normal: [3]f32) -> Drag {
-	d: Drag
-	if !_frame.valid || id == 0 do return d
+// Within `px` pixels of `pos` on screen.
+Hit_Point :: struct {
+	pos: [3]f32,
+	px:  f32,
+}
 
-	if _active == id {
-		_active_seen = true
-		d.hot = true
-		if p, ok := ray_plane(_frame.ray, _grab_origin, _grab_normal); ok {
-			d.point = p
-			d.delta = p - _grab
-		} else {
-			d.point = _grab
-		}
-		if _frame.input.down {
-			d.dragging = true
-		} else {
-			d.released = true
-			_active = 0
-		}
-		return d
-	}
-	if _active != 0 do return d // another handle owns the drag
+// Within `px` pixels of the segment a-b on screen.
+Hit_Segment :: struct {
+	a, b: [3]f32,
+	px:   f32,
+}
 
-	if candidate && _frame.input.hovered && (prio > _hot_prio || (prio == _hot_prio && dist < _hot_dist)) {
-		_hot = id
-		_hot_prio = prio
-		_hot_dist = dist
-	}
-	d.hot = _hot_prev == id
-	if d.hot && _frame.input.clicked {
-		_active = id
-		_active_seen = true
-		_grab_origin = plane_origin
-		_grab_normal = normal
-		if p, ok := ray_plane(_frame.ray, plane_origin, normal); ok {
-			_grab = p
-		} else {
-			_grab = plane_origin
+// Within `px` pixels of the circle around `center` in the plane of the unit
+// vectors u and v, drawn with `segments` segments.
+Hit_Ring :: struct {
+	center, u, v: [3]f32,
+	radius, px:   f32,
+	segments:     int,
+}
+
+// Inside the screen box around the first `count` points, one pixel of slack.
+// Nearest by distance to the box center.
+Hit_Box :: struct {
+	pts:   [4][3]f32,
+	count: int,
+}
+
+// The ray through the pointer hits the quad bl, br, tr, tl. Nearest by ray
+// distance.
+Hit_Quad :: struct {
+	c: [4][3]f32,
+}
+
+// The ray hits the plane through `origin` with `normal` inside the square
+// spanned by `side` along the unit vectors u and v. Nearest by ray distance.
+Hit_Square :: struct {
+	origin, normal, u, v: [3]f32,
+	side:                 f32,
+}
+
+Hit :: union {
+	Hit_Point,
+	Hit_Segment,
+	Hit_Ring,
+	Hit_Box,
+	Hit_Quad,
+	Hit_Square,
+}
+
+@(private)
+_Shape :: struct {
+	id:   u64,
+	prio: int,
+	hit:  Hit,
+}
+
+// This frame's hit shapes, for the next frame's pick. Cross-frame state:
+// never borrows the caller's allocator.
+@(private)
+_shapes: [dynamic]_Shape
+
+// The recorded shape nearest the pointer, highest priority first. 0 when
+// the pointer is over none or outside the view.
+@(private)
+_pick :: proc() -> u64 {
+	if !_frame.input.hovered do return 0
+	best: u64
+	best_prio := min(int)
+	best_dist: f32 = math.F32_MAX
+	for sh in _shapes {
+		hit, dist := _hit_test(sh.hit)
+		if !hit do continue
+		if sh.prio > best_prio || (sh.prio == best_prio && dist < best_dist) {
+			best, best_prio, best_dist = sh.id, sh.prio, dist
 		}
-		d.point = _grab
-		d.started = true
-		d.dragging = true
 	}
-	return d
+	return best
+}
+
+// Whether the pointer is over the shape this frame, and how near.
+@(private)
+_hit_test :: proc(h: Hit) -> (hit: bool, dist: f32) {
+	switch s in h {
+	case Hit_Point:
+		dist = _mouse_dist(s.pos)
+		return dist <= s.px, dist
+	case Hit_Segment:
+		dist = _mouse_dist_segment(s.a, s.b)
+		return dist <= s.px, dist
+	case Hit_Ring:
+		dist = math.F32_MAX
+		prev := s.center + s.u * s.radius
+		for k in 1 ..= s.segments {
+			a := f32(k) * math.TAU / f32(s.segments)
+			p := s.center + (s.u * math.cos(a) + s.v * math.sin(a)) * s.radius
+			dist = min(dist, _mouse_dist_segment(prev, p))
+			prev = p
+		}
+		return dist <= s.px, dist
+	case Hit_Box:
+		lo := [2]f32{math.F32_MAX, math.F32_MAX}
+		hi := [2]f32{-math.F32_MAX, -math.F32_MAX}
+		for i in 0 ..< s.count {
+			sp, ok := gizmos.helper_project_in(_frame.view, s.pts[i])
+			if !ok do return false, 0
+			lo = {min(lo.x, sp.x), min(lo.y, sp.y)}
+			hi = {max(hi.x, sp.x), max(hi.y, sp.y)}
+		}
+		m := _frame.input.mouse
+		inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
+		return inside, linalg.length(m - (lo + hi) * 0.5)
+	case Hit_Quad:
+		t0, h0 := engine.ray_hit_triangle(_frame.ray, s.c[0], s.c[1], s.c[2])
+		t1, h1 := engine.ray_hit_triangle(_frame.ray, s.c[0], s.c[2], s.c[3])
+		if !h0 && !h1 do return false, 0
+		return true, min(t0 if h0 else math.F32_MAX, t1 if h1 else math.F32_MAX)
+	case Hit_Square:
+		p, t, ok := _ray_plane_ahead(_frame.ray, s.origin, s.normal)
+		if !ok do return false, 0
+		su, sv := linalg.dot(p - s.origin, s.u), linalg.dot(p - s.origin, s.v)
+		return su >= 0 && su <= s.side && sv >= 0 && sv <= s.side, t
+	}
+	return false, 0
+}
+
+// Ray against a plane, in front of the ray only: the hit and its ray
+// parameter.
+@(private)
+_ray_plane_ahead :: proc(ray: engine.Ray, origin, n: [3]f32) -> (hit: [3]f32, t: f32, ok: bool) {
+	denom := linalg.dot(ray.direction, n)
+	if abs(denom) < 1e-6 do return {}, 0, false
+	t = linalg.dot(origin - ray.origin, n) / denom
+	if t < 0 do return {}, 0, false
+	return ray.origin + ray.direction * t, t, true
 }
 
 // Screen distance from the pointer to a world point.
@@ -519,13 +610,64 @@ _mouse_dist_segment :: proc(wa, wb: [3]f32) -> f32 {
 	return linalg.length(_frame.input.mouse - (sa + ab * t))
 }
 
+// --- Handles ------------------------------------------------------------------------
+
+// Shared interaction step, in world space: records `hit` (world space) for
+// the next frame's pick, then reports this frame's state from the hot handle
+// frame_begin picked. Higher `prio` wins over nearer. A nil `hit` never gets
+// hot (a slider pointing at the camera).
+_interact :: proc(id: u64, hit: Hit, prio: int, plane_origin, normal: [3]f32) -> Drag {
+	d: Drag
+	if !_frame.valid || id == 0 do return d
+	if hit != nil {
+		if _shapes == nil do _shapes = make([dynamic]_Shape, 0, 64, runtime.default_allocator())
+		append(&_shapes, _Shape{id = id, prio = prio, hit = hit})
+	}
+
+	if _active == id {
+		_active_seen = true
+		d.hot = true
+		if p, ok := ray_plane(_frame.ray, _grab_origin, _grab_normal); ok {
+			d.point = p
+			d.delta = p - _grab
+		} else {
+			d.point = _grab
+		}
+		if _frame.input.down {
+			d.dragging = true
+		} else {
+			d.released = true
+			_active = 0
+		}
+		return d
+	}
+	if _active != 0 do return d // another handle owns the drag
+
+	d.hot = _hot == id
+	if d.hot do _hot_seen = true
+	if d.hot && _frame.input.clicked {
+		_active = id
+		_active_seen = true
+		_grab_origin = plane_origin
+		_grab_normal = normal
+		if p, ok := ray_plane(_frame.ray, plane_origin, normal); ok {
+			_grab = p
+		} else {
+			_grab = plane_origin
+		}
+		d.point = _grab
+		d.started = true
+		d.dragging = true
+	}
+	return d
+}
+
 // A draggable point on the plane through `pos` with `normal`, drawn as a
 // camera-facing square `size_px` wide. The drag reports offsets in that plane.
 dot :: proc(id: u64, pos, normal: [3]f32, size_px: f32 = 7, color := COLOR_HANDLE) -> Drag {
 	s := _space()
 	wpos := _to_world(s, pos)
-	dist := _mouse_dist(wpos)
-	d := _interact(id, dist <= DOT_HOVER_PX, dist, 1, wpos, _normal_to_world(s, normal))
+	d := _interact(id, Hit_Point{wpos, DOT_HOVER_PX}, 1, wpos, _normal_to_world(s, normal))
 	gizmos.in_world_space()
 	square(wpos, world_per_pixels(wpos, size_px) * 0.5, COLOR_HOT if d.hot else color)
 	return _finish_plane(s, d, normal)
@@ -542,9 +684,11 @@ slider :: proc(id: u64, pos, dir: [3]f32, size_px: f32 = 7, color := COLOR_HANDL
 	wline := _vec_to_world(s, ldir)
 	wdir := linalg.normalize0(wline)
 	// The drag plane holds the line and turns to the camera as far as it can.
+	// A line pointing at the camera has none: it cannot be grabbed.
 	normal := linalg.normalize0(linalg.cross(wdir, linalg.cross(_to_camera(wpos), wdir)))
-	dist := _mouse_dist(wpos)
-	d := _interact(id, normal != {} && dist <= DOT_HOVER_PX, dist, prio, wpos, normal)
+	hit: Hit
+	if normal != {} do hit = Hit_Point{wpos, DOT_HOVER_PX}
+	d := _interact(id, hit, prio, wpos, normal)
 	{
 		gizmos.in_world_space()
 		square(wpos, world_per_pixels(wpos, size_px) * 0.5, COLOR_HOT if d.hot else color)
@@ -567,8 +711,7 @@ slider :: proc(id: u64, pos, dir: [3]f32, size_px: f32 = 7, color := COLOR_HANDL
 point :: proc(id: u64, pos, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio := 1) -> Drag {
 	s := _space()
 	wpos := _to_world(s, pos)
-	dist := _mouse_dist(wpos)
-	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, wpos, _normal_to_world(s, normal)), normal)
+	return _finish_plane(s, _interact(id, Hit_Point{wpos, hover_px}, prio, wpos, _normal_to_world(s, normal)), normal)
 }
 
 // A draggable line segment that draws nothing: the pointer within `hover_px`
@@ -577,28 +720,20 @@ point :: proc(id: u64, pos, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio :
 segment :: proc(id: u64, a, b, normal: [3]f32, hover_px: f32 = DOT_HOVER_PX, prio := 1) -> Drag {
 	s := _space()
 	wa, wb := _to_world(s, a), _to_world(s, b)
-	dist := _mouse_dist_segment(wa, wb)
-	return _finish_plane(s, _interact(id, dist <= hover_px, dist, prio, (wa + wb) * 0.5, _normal_to_world(s, normal)), normal)
+	return _finish_plane(s, _interact(id, Hit_Segment{wa, wb, hover_px}, prio, (wa + wb) * 0.5, _normal_to_world(s, normal)), normal)
 }
 
-// A draggable area that draws nothing: the screen box around `pts` (a marker
-// the caller draws, the rect tool's anchor triangles) is the hit area, so it
-// matches what is seen. The drag plane goes through `plane_pos`.
+// A draggable area that draws nothing: the screen box around `pts` (up to
+// four, a marker the caller draws, the rect tool's anchor triangles) is the
+// hit area, so it matches what is seen. The drag plane goes through
+// `plane_pos`.
 area :: proc(id: u64, plane_pos, normal: [3]f32, pts: [][3]f32, prio := 1) -> Drag {
+	assert(len(pts) <= 4, "handles.area: at most 4 points")
 	s := _space()
-	wpos, wn := _to_world(s, plane_pos), _normal_to_world(s, normal)
-	lo := [2]f32{math.F32_MAX, math.F32_MAX}
-	hi := [2]f32{-math.F32_MAX, -math.F32_MAX}
-	for p in pts {
-		sp, ok := gizmos.helper_project_in(_frame.view, _to_world(s, p))
-		if !ok do return _finish_plane(s, _interact(id, false, math.F32_MAX, 1, wpos, wn), normal)
-		lo = {min(lo.x, sp.x), min(lo.y, sp.y)}
-		hi = {max(hi.x, sp.x), max(hi.y, sp.y)}
-	}
-	m := _frame.input.mouse
-	inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
-	dist := linalg.length(m - (lo + hi) * 0.5)
-	return _finish_plane(s, _interact(id, inside, dist, prio, wpos, wn), normal)
+	box := Hit_Box{count = len(pts)}
+	for p, i in pts do box.pts[i] = _to_world(s, p)
+	wpos := _to_world(s, plane_pos)
+	return _finish_plane(s, _interact(id, box, prio, wpos, _normal_to_world(s, normal)), normal)
 }
 
 // An invisible draggable surface: the quad bl, br, tr, tl. Lower priority
@@ -606,12 +741,7 @@ area :: proc(id: u64, plane_pos, normal: [3]f32, pts: [][3]f32, prio := 1) -> Dr
 quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
 	s := _space()
 	w := [4][3]f32{_to_world(s, c[0]), _to_world(s, c[1]), _to_world(s, c[2]), _to_world(s, c[3])}
-	t0, h0 := engine.ray_hit_triangle(_frame.ray, w[0], w[1], w[2])
-	t1, h1 := engine.ray_hit_triangle(_frame.ray, w[0], w[2], w[3])
-	hit := h0 || h1
-	dist := f32(0)
-	if hit do dist = min(t0 if h0 else math.F32_MAX, t1 if h1 else math.F32_MAX)
-	return _finish_plane(s, _interact(id, hit, dist, 0, w[0], _normal_to_world(s, normal)), normal)
+	return _finish_plane(s, _interact(id, Hit_Quad{w}, 0, w[0], _normal_to_world(s, normal)), normal)
 }
 
 // --- Scene picking providers -----------------------------------------------------------

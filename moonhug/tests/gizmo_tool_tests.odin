@@ -343,8 +343,8 @@ test_tool_yields_to_a_component_handle :: proc(t: ^testing.T) {
 	testing.expectf(t, _close(_pos(obj), {0, 0, 0}, 1e-4), "the object stays, got %v", _pos(obj))
 }
 
-// The pointer over the gizmo blocks click picking, and stops blocking once it
-// has left.
+// The pointer over the gizmo blocks click picking from the frame it arrives,
+// and stops blocking on the frame it leaves.
 @(test)
 test_tool_hover_blocks_picking :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
@@ -359,13 +359,10 @@ test_tool_hover_blocks_picking :: proc(t: ^testing.T) {
 	editor.sel_scene_only(obj)
 	editor.gizmo_mode = .Translate
 	v := handles_test_view()
-	handles_frame(v, {0.75, 0, 0})
-	editor.gizmo_tool_frame()
+	handles_step(v, {3, 3, 0}, _tool_body, nil) // the gizmo on screen, the pointer elsewhere
+	handles_step(v, {0.75, 0, 0}, _tool_body, nil)
 	testing.expect(t, editor.scene_tools_consume_mouse(), "over the X arrow")
-	for _ in 0 ..< 2 {
-		handles_frame(v, {3, 3, 0})
-		editor.gizmo_tool_frame()
-	}
+	handles_step(v, {3, 3, 0}, _tool_body, nil)
 	testing.expect(t, !editor.scene_tools_consume_mouse(), "away from the gizmo")
 	handles_frame(v, {3, 3, 0})
 }
@@ -387,19 +384,14 @@ test_tool_switch_mid_drag_closes_the_step :: proc(t: ^testing.T) {
 	editor.gizmo_mode = .Translate
 	v := handles_test_view()
 	steps := s.top
-	handles_frame(v, {0.75, 0, 0})
-	editor.gizmo_tool_frame()
-	handles_frame(v, {0.75, 0, 0}, down = true, clicked = true)
-	editor.gizmo_tool_frame()
-	handles_frame(v, {1.75, 0, 0}, down = true)
-	editor.gizmo_tool_frame()
+	handles_step(v, {0.75, 0, 0}, _tool_body, nil)
+	handles_step(v, {0.75, 0, 0}, _tool_body, nil, down = true, clicked = true)
+	handles_step(v, {1.75, 0, 0}, _tool_body, nil, down = true)
 	editor.gizmo_mode = .Picker
-	handles_frame(v, {1.75, 0, 0}, down = true)
-	editor.gizmo_tool_frame()
+	handles_step(v, {1.75, 0, 0}, _tool_body, nil, down = true)
 	testing.expect_value(t, s.top, steps + 1)
 	testing.expect(t, !editor.scene_tools_dragging(), "the drag ended")
-	handles_frame(v, {1.75, 0, 0})
-	editor.gizmo_tool_frame()
+	handles_step(v, {1.75, 0, 0}, _tool_body, nil)
 	handles_frame(v, {1.75, 0, 0})
 	testing.expectf(t, _close(_pos(obj), {1, 0, 0}), "got %v", _pos(obj))
 	testing.expect_value(t, s.top, steps + 1)

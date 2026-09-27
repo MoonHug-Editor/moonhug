@@ -7,8 +7,8 @@ package editor
 // - The selection outline, the selection's @(on_scene_handles) procs and the
 //   transform gizmo, into .Tools, while the scene view is on screen. They run
 //   before the gizmo hooks, so an edit shows in this frame's gizmos and
-//   render. The draw order does not depend on it: .Tools always draws over
-//   .Editor.
+//   render. The draw order does not depend on it:
+//   .Tools always draws over .Editor.
 // - Every @(on_draw_gizmos) proc, into .Editor, while the scene view is on
 //   screen or the game view shows gizmos, so the game view has them with the
 //   scene view closed.

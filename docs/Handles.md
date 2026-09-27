@@ -66,9 +66,16 @@ Kinds:
 - `point`, `segment`, `area` — draggable spots that draw nothing, for a marker the caller draws itself (the rect tool's pivot, edges and anchor triangles).
 - `quad(id, corners, normal)` — an invisible draggable surface, the quad bl, br, tr, tl. Dots take priority over quads, so handles on a rect's edges win over its body.
 
-Hot resolution is one frame late, the imgui way: handles propose themselves during the frame, the nearest highest-priority one wins, and every handle reads the previous frame's winner. One handle is active at a time. It stays active while the mouse is down and is dropped when its owner stops calling.
+The hot handle is picked when a frame begins, before any hook runs. Each handle records its hit shape during the frame (a point, a segment, a ring, a screen box, a quad or a square on a plane, in world space), and the next `frame_begin` tests those shapes with the new camera and pointer. The nearest highest-priority one wins. So:
 
-- `consumes_mouse()` is true while a handle is hovered or dragged, and already on the frame the pointer first reaches one. The scene view picks and box-selects only when it is false.
+- The highlight and a click land on the frame the pointer arrives, and hook code runs once per frame.
+- Camera moves are exact, since the shapes are projected with the new camera. A handle that moved in the world since the last frame (an animated object in Play) has its hit area one frame behind.
+- A handle that first appears this frame can be hot from the next one.
+- A hot handle that does not call in again (its object was deselected) does not count.
+
+One handle is active at a time. It stays active while the mouse is down and is dropped when its owner stops calling.
+
+- `consumes_mouse()` is true while a handle is hovered or dragged. The scene view picks and box-selects only when it is false.
 - `dragging()` is true while a handle is dragged. `end_drag()` ends the drag now, with no release frame, for a caller whose drag lost its target (the transform tool on a mode switch).
 
 ## Snapping
