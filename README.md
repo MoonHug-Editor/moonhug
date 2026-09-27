@@ -175,9 +175,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
-- handles follow-ups (see [Handles](docs/Handles.md))
-  - box select through pick providers - click picking consults them, box select does not
-
 - gizmo drawing follow-ups (see [Gizmos](docs/Gizmos.md))
   - lifetimes beyond a frame: `with_duration(seconds, clock)` (game or real clock) and `with_key(key)` (stays until cleared or redrawn), extending the same buffer
   - line width - the one item with real renderer cost, since lines become quads

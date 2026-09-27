@@ -11,6 +11,7 @@ package tests
 
 import "core:testing"
 import "../editor"
+import "../editor/handles"
 import "../engine"
 import "../engine/gfx"
 
@@ -108,4 +109,49 @@ test_band_query_finds_a_posed_skinned_mesh :: proc(t: ^testing.T) {
 	found := false
 	for h in hits do if h == tH do found = true
 	testing.expect(t, found, "the skinned mesh is inside the band")
+}
+
+// --- Pick providers ------------------------------------------------------------------------
+
+// A package shape at the origin, live only while a test turns it on: the
+// registry is process-global and has no unregister.
+@(private = "file")
+_fake_on: bool
+@(private = "file")
+_fake_tH: engine.Transform_Handle
+@(private = "file")
+_fake_registered: bool
+
+@(private = "file")
+_fake_click :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform_Handle, f32, bool) {
+	if !_fake_on do return {}, 0, false
+	return _fake_tH, 1, true
+}
+
+@(private = "file")
+_fake_band :: proc(view: engine.Render_View, rmin, rmax: [2]f32, out: ^[dynamic]engine.Transform_Handle) {
+	if _fake_on do append(out, _fake_tH)
+}
+
+// A provider is asked by click picking and by box select alike.
+@(test)
+test_pick_provider_takes_click_and_box :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	if !_fake_registered {
+		handles.pick_register(handles.Pick_Provider{click = _fake_click, band = _fake_band})
+		_fake_registered = true
+	}
+	_fake_tH = engine.transform_new("Shape")
+	_fake_on = true
+	defer _fake_on = false
+
+	v := handles_test_view()
+	picked, ok := editor.scene_view_pick(v, 400, 300)
+	testing.expect(t, ok && picked == _fake_tH, "the click asks the provider")
+	band := editor.scene_view_band_query(v, {0, 0}, {800, 600})
+	testing.expect(t, len(band) == 1 && band[0] == _fake_tH, "so does box select")
 }

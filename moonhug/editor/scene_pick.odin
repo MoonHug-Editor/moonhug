@@ -103,9 +103,32 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		}
 	}
 
+	// UI: every drawn graphic's rect where the canvas sits, the same set box
+	// select takes (any graphic a package registers).
+	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
+	cv_it := engine.pool_iterator(engine.canvases(w))
+	for canvas, _ in engine.pool_next(&cv_it) {
+		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
+		clear(&nodes)
+		engine.canvas_resolve_placed(canvas.owner, &nodes)
+		for n in nodes {
+			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
+			if cr == nil || !cr.enabled do continue
+			if _, _, _, ok := engine.node_graphic(n.tH); !ok do continue
+			c := engine.rect_corners(n.rect, n.xform)
+			for tri in ([2][3]int{{0, 1, 2}, {0, 2, 3}}) {
+				if t, hit := engine.ray_hit_triangle(ray, c[tri[0]], c[tri[1]], c[tri[2]]); hit && t < best_t {
+					best_t = t
+					best = n.tH
+					found = true
+				}
+			}
+		}
+	}
+
 	// Package shapes (handles.pick_register): nearest wins across all sources.
 	for provider in handles.pick_providers() {
-		if tH, t, ok := provider(view, ray); ok && t < best_t {
+		if tH, t, ok := provider.click(view, ray); ok && t < best_t {
 			best_t = t
 			best = tH
 			found = true
@@ -205,6 +228,9 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		sp, ok := gizmos.helper_project_in(view, ic.pos)
 		if ok && sp.x >= rmin.x && sp.x <= rmax.x && sp.y >= rmin.y && sp.y <= rmax.y do append(&out, ic.owner)
 	}
+
+	// Package shapes (handles.pick_register).
+	for provider in handles.pick_providers() do provider.band(view, rmin, rmax, &out)
 
 	return out[:]
 }

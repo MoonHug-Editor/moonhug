@@ -746,15 +746,23 @@ quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
 
 // --- Scene picking providers -----------------------------------------------------------
 
-// A package's clickable shapes for scene-view picking: the nearest hit along
-// `ray` as (transform, ray parameter). The editor's pick takes the nearest
-// over sprites, meshes and every provider.
-Pick_Provider :: proc(view: engine.Render_View, ray: engine.Ray) -> (tH: engine.Transform_Handle, t: f32, ok: bool)
+// A package's selectable shapes that are neither renderers nor UI graphics
+// (the scene view picks those itself). Both procs are required, so a shape
+// that takes a click also takes a box select.
+Pick_Provider :: struct {
+	// The nearest hit along `ray`: (transform, ray parameter). The editor's
+	// pick takes the nearest over icons, renderers, UI and every provider.
+	click: proc(view: engine.Render_View, ray: engine.Ray) -> (tH: engine.Transform_Handle, t: f32, ok: bool),
+	// Every transform whose shape meets the viewport-pixel rect rmin..rmax,
+	// appended to `out`. Duplicates are fine.
+	band:  proc(view: engine.Render_View, rmin, rmax: [2]f32, out: ^[dynamic]engine.Transform_Handle),
+}
 
 _pick_providers: [dynamic]Pick_Provider
 
 // Process-global registry: never borrows the caller's allocator.
 pick_register :: proc(p: Pick_Provider) {
+	assert(p.click != nil && p.band != nil, "handles.pick_register: a provider needs both click and band")
 	context.allocator = runtime.default_allocator()
 	if _pick_providers == nil do _pick_providers = make([dynamic]Pick_Provider)
 	append(&_pick_providers, p)

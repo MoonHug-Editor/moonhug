@@ -5,6 +5,8 @@ package mhgui_tests
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:engine"
+import "moonhug:engine/gizmos"
+import editor "moonhug:editor"
 import mhgui "moonhug:packages/mhgui"
 import common "moonhug:tests/common"
 
@@ -666,4 +668,36 @@ test_keep_rect_and_driven_flag :: proc(t: ^testing.T) {
 	testing.expect(t, engine.rect_transform_driven(child), "a LayoutGroup child is driven")
 	testing.expect(t, !engine.rect_transform_driven(free_node), "a plain node is not")
 	testing.expect(t, !engine.rect_transform_driven(group), "the group itself is not")
+}
+
+// A UI Image in the scene view takes a click and a box select through the
+// scene view's own UI picking (any registered graphic), with no picking code
+// in the package.
+@(test)
+test_scene_view_picks_ui :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	image := engine.transform_new("Image", canvas)
+	_add(image, .RectTransform)
+	_add(image, .CanvasRenderer)
+	_add(image, .Image)
+	mhgui.mhgui_package_init() // registers Image as a graphic
+	// The scene view places the centered 100x100 image at (50, 0)..(150, 100).
+	engine.canvas_set_game_viewport({200, 100})
+
+	eye := [3]f32{100, 50, 300}
+	view := engine.render_view_make(linalg.matrix4_look_at_f32(eye, {100, 50, 0}, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
+	at, _ := gizmos.helper_project_in(view, {100, 50, 0})
+	picked, ok := editor.scene_view_pick(view, at.x, at.y)
+	testing.expect(t, ok && picked == image, "a click on the image picks it")
+	_, ok = editor.scene_view_pick(view, at.x + 300, at.y)
+	testing.expect(t, !ok, "beside it, nothing")
+	band := editor.scene_view_band_query(view, at - 5, at + 5)
+	testing.expect(t, len(band) >= 1 && band[0] == image, "box select takes it")
 }

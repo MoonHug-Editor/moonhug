@@ -160,9 +160,9 @@ Image creates a RectTransform + CanvasRenderer + Image node under the selection 
 the selection sits in a canvas, else under a new canvas. Each is one undo
 step.
 
-Clicking a UI rect in the scene view selects it (a picking provider,
-docs/Handles.md), and the rubber band selects every graphic whose rect it
-touches, in any canvas mode. The selected RectTransform shows the rect tool, built on
+Clicking a UI rect in the scene view selects it, and the rubber band selects
+every graphic whose rect it touches, in any canvas mode (the scene view's own
+UI picking, docs/Handles.md). The selected RectTransform shows the rect tool, built on
 `editor/handles`: the rect outline (white with a dark line just inside, so
 it reads on light images too), corner dots and the whole edges as resize
 handles that show a resize cursor and resize with the opposite edge fixed,

@@ -173,7 +173,12 @@ Plain shapes and labels come from `engine/gizmos` (docs/Gizmos.md). Handles add 
 
 ## Picking providers
 
-`handles.pick_register(proc(view, ray) -> (transform, t, ok))` adds a package's clickable shapes to scene-view click picking. The editor takes the nearest hit across sprites, meshes and every provider. Box select does not consult providers yet.
+The scene view picks icons, sprites, meshes and UI graphics itself: a click takes the nearest hit along the ray (an icon under the pointer first), and box select takes everything the rect touches. UI graphics are any graphic a package registers with `engine.canvas_graphic_register` (the mhgui Image, the text plugin's Text), so a package's UI needs no picking code.
+
+`handles.pick_register(Pick_Provider{click, band})` adds a package's other selectable shapes. Both procs are required, so a shape that takes a click also takes a box select:
+
+- `click(view, ray) -> (transform, t, ok)` — the nearest hit, joined with every other source by ray distance.
+- `band(view, rmin, rmax, out)` — every transform whose shape meets the viewport-pixel rect, appended to `out`.
 
 ## Not yet
 

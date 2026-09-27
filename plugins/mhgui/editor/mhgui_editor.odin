@@ -104,42 +104,8 @@ ui_menu_image :: proc() {
 	engine.inspector_request_select(tH)
 }
 
-// --- Scene-view picking -------------------------------------------------------------
-
-// Every drawn UI rect, as the quads the scene view shows; nearest hit wins.
-@(private = "file")
-_pick_ui :: proc(view: engine.Render_View, ray: engine.Ray) -> (engine.Transform_Handle, f32, bool) {
-	if view.kind != .SceneView do return _NONE, 0, false
-	w := engine.ctx_world()
-	best_t := f32(1e30)
-	best := _NONE
-	found := false
-	nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
-	it := engine.pool_iterator(engine.canvases(w))
-	for canvas, _ in engine.pool_next(&it) {
-		if !canvas.enabled || !engine.transform_active_in_hierarchy(canvas.owner) do continue
-		clear(&nodes)
-		engine.canvas_resolve_placed(canvas.owner, &nodes)
-		for n in nodes {
-			_, cr := engine.transform_get_comp(n.tH, engine.CanvasRenderer)
-			if cr == nil || !cr.enabled do continue
-			_, img := mhgui.get_comp(n.tH, mhgui.Image)
-			if img == nil || !img.enabled do continue
-			c := engine.rect_corners(n.rect, n.xform)
-			if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
-				best_t, best, found = t, n.tH, true
-			}
-			if t, hit := engine.ray_hit_triangle(ray, c[0], c[2], c[3]); hit && t < best_t {
-				best_t, best, found = t, n.tH, true
-			}
-		}
-	}
-	return best, best_t, found
-}
-
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 mhgui_editor_install :: proc() {
-	handles.pick_register(_pick_ui)
 	inspector.add_component_wrapper(typeid_of(mhgui.Image), _image_inspector)
 }
 
