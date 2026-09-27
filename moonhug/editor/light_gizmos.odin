@@ -1,6 +1,7 @@
 package editor
 
-// Light gizmos and handles, for lights in the selection (docs/Handles.md):
+// Light gizmos and handles, for lights in the selection (docs/Handles.md). Every
+// light also gets a scene icon, a bulb in its color.
 //
 // - Point: the range as a wire sphere, with a radius handle on the world
 //   axes.
@@ -37,10 +38,19 @@ _spot_outer :: proc(l: ^engine.Light) -> f32 {
 	return max(l.spot_angle, l.inner_spot_angle)
 }
 
+// Scene icon: a bulb and its socket, in the light's color.
+@(private = "file")
+_icon_light :: proc() {
+	gizmos.wire_circle({0, 0.2, 0}, {0, 0, 1}, 0.45, segments = 16)
+	gizmos.line({-0.22, -0.35, 0}, {0.22, -0.35, 0})
+	gizmos.line({-0.16, -0.52, 0}, {0.16, -0.52, 0})
+}
+
 @(on_draw_gizmos={component=Light})
 light_gizmos :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
-	if .In_Selection not_in ctx.state do return
 	tH := engine.Transform_Handle(l.owner)
+	handles.icon(engine.transform_world_position(tH), tH, _icon_light, {l.color.r, l.color.g, l.color.b, 1})
+	if .In_Selection not_in ctx.state do return
 	gizmos.with_color(LIGHT_GIZMO_COLOR)
 	switch l.type {
 	case .Point:

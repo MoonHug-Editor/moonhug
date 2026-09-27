@@ -9,6 +9,7 @@ import "core:math/linalg"
 import "core:testing"
 import "../editor"
 import "../editor/menu"
+import "../editor/handles"
 import "../engine"
 import "moonhug:engine/gizmos"
 
@@ -332,4 +333,135 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 	editor.game_gizmos = false
 	editor.gizmo_pass()
 	testing.expect_value(t, _count(tc, .Editor), 0)
+}
+
+// --- Scene icons -------------------------------------------------------------------------
+
+@(private = "file")
+_no_symbol :: proc() {}
+
+// An icon records as data for its owner, and each view builds it facing its
+// own camera: -1..1 spans ICON_PX pixels, upright on that view's screen.
+@(test)
+test_icon_faces_the_view_that_draws_it :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	gizmos.set_view(handles_test_view())
+
+	owner := engine.transform_new("Lamp")
+	handles.icon({1, 0, 0}, owner, _no_symbol)
+	ics := gizmos.icons({.Game, .Editor, .Tools})
+	testing.expect_value(t, len(ics), 1)
+	testing.expect(t, ics[0].owner == owner && ics[0].px == handles.ICON_PX, "the owner and the width")
+
+	// The scene camera and a game camera somewhere else.
+	for v in ([2]engine.Render_View{handles_test_view(), handles_test_view({6, 3, 4})}) {
+		m := gizmos.helper_icon_space(v, {1, 0, 0}, 28)
+		at :: proc(m: matrix[4, 4]f32, p: [3]f32) -> [3]f32 {
+			w := m * [4]f32{p.x, p.y, p.z, 1}
+			return w.xyz
+		}
+		l, _ := gizmos.helper_project_in(v, at(m, {-1, 0, 0}))
+		r, _ := gizmos.helper_project_in(v, at(m, {1, 0, 0}))
+		c, _ := gizmos.helper_project_in(v, at(m, {0, 0, 0}))
+		u, _ := gizmos.helper_project_in(v, at(m, {0, 1, 0}))
+		testing.expectf(t, abs(linalg.length(r - l) - 28) < 0.5, "-1..1 spans 28 pixels, got %v", linalg.length(r - l))
+		testing.expectf(t, abs(u.x - c.x) < 0.01 && u.y < c.y, "+Y points up on this view's screen: %v %v", c, u)
+	}
+
+	// An owner inactive in the hierarchy gets no icon.
+	engine.pool_get(&tc.world.transforms, engine.Handle(owner)).is_active = false
+	handles.icon({1, 0, 0}, owner, _no_symbol)
+	testing.expect_value(t, len(gizmos.icons({.Game, .Editor, .Tools})), 1)
+	gizmos.frame_end()
+}
+
+// A click on an icon selects its owner, and box select takes it. Every light
+// draws one, selected or not.
+@(test)
+test_icon_picking :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+	gizmos.set_view(v)
+
+	lamp := engine.transform_new("Lamp")
+	engine.transform_set_world_position(lamp, {1, 0, 0})
+	_, raw := engine.transform_add_comp(lamp, .Light)
+	l := cast(^engine.Light)raw
+	l.enabled = true
+	editor.light_gizmos(l, handles.Gizmo_Context{})
+	testing.expect_value(t, len(gizmos.icons({.Game, .Editor, .Tools})), 1)
+
+	at, _ := gizmos.helper_project_in(v, {1, 0, 0})
+	picked, ok := editor.scene_view_pick(v, at.x + 5, at.y)
+	testing.expect(t, ok && picked == lamp, "a click inside the icon picks the light")
+	_, ok = editor.scene_view_pick(v, at.x + 40, at.y)
+	testing.expect(t, !ok, "outside the icon, nothing")
+	band := editor.scene_view_band_query(v, at - 10, at + 10)
+	testing.expect(t, len(band) == 1 && band[0] == lamp, "box select takes it")
+	gizmos.frame_end()
+}
+
+// A glyph icon's pixels: the Material Symbols glyph, white, coverage in alpha,
+// centered in its square with the font's padding around it. A codepoint the
+// font does not have reports ok=false.
+@(test)
+test_icon_glyph_bitmap :: proc(t: ^testing.T) {
+	handles.icon_font_set(editor.MATERIAL_FONT_DATA)
+	PX :: 64
+	rgba, ok := handles.glyph_bitmap('\ue80f', PX, context.temp_allocator) // snowing
+	testing.expect(t, ok && len(rgba) == PX * PX * 4, "the glyph rasterizes")
+
+	covered := 0
+	sum: [2]f32
+	total: f32
+	for y in 0 ..< PX {
+		for x in 0 ..< PX {
+			a := f32(rgba[(y * PX + x) * 4 + 3])
+			if a > 0 do covered += 1
+			sum += {f32(x), f32(y)} * a
+			total += a
+		}
+	}
+	testing.expect(t, covered > PX * PX / 20, "a visible share of the square is covered")
+	testing.expect_value(t, rgba[3], 0) // the top-left corner is padding
+	testing.expect(t, rgba[0] == 255 && rgba[1] == 255 && rgba[2] == 255, "white, tinted by the icon color")
+	c := sum / total
+	testing.expectf(t, abs(c.x - PX / 2) < 6 && abs(c.y - PX / 2) < 6, "about centered, got %v", c)
+
+	_, ok = handles.glyph_bitmap(0x10FFFF, PX, context.temp_allocator)
+	testing.expect(t, !ok, "not in the font")
+}
+
+// Each kind of icon image records as itself.
+@(test)
+test_icon_kinds_record :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	gizmos.set_view(handles_test_view())
+
+	owner := engine.transform_new("Thing")
+	guid := engine.Asset_GUID{9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9, 9}
+	handles.icon({0, 0, 0}, owner, _no_symbol)
+	handles.icon({0, 0, 0}, owner, '\ue90f')
+	handles.icon({0, 0, 0}, owner, guid)
+	ics := gizmos.icons({.Game, .Editor, .Tools})
+	testing.expect_value(t, len(ics), 3)
+	_, is_symbol := ics[0].image.(engine.Gizmo_Symbol)
+	glyph, is_glyph := ics[1].image.(rune)
+	tex, is_tex := ics[2].image.(engine.Asset_GUID)
+	testing.expect(t, is_symbol, "a symbol")
+	testing.expect(t, is_glyph && glyph == '\ue90f', "a glyph")
+	testing.expect(t, is_tex && tex == guid && ics[2].color == [4]f32{1, 1, 1, 1}, "a texture, white by default")
+	gizmos.frame_end()
 }

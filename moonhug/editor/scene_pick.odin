@@ -27,6 +27,19 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 	best: engine.Transform_Handle
 	found := false
 
+	// Scene icons (handles.icon) draw over everything, so one under the
+	// pointer wins over any geometry: the nearest along the ray.
+	for ic in gizmos.icons({.Game, .Editor, .Tools}) {
+		sp, ok := gizmos.helper_project_in(view, ic.pos)
+		if !ok || linalg.length(sp - [2]f32{px, py}) > ic.px * 0.5 do continue
+		if t := linalg.dot(ic.pos - ray.origin, ray.direction); t < best_t {
+			best_t = t
+			best = ic.owner
+			found = true
+		}
+	}
+	if found do return best, true
+
 	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
 	for sr, _ in engine.pool_next(&sr_it) {
 		if !sr.enabled || engine.asset_guid_is_empty(sr.sprite.guid) do continue
@@ -185,6 +198,12 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 		if _rect_hits_points(view, rmin, rmax, corners[:]) {
 			append(&out, engine.Transform_Handle(smr.owner))
 		}
+	}
+
+	// Scene icons: the icon's center inside the rect.
+	for ic in gizmos.icons({.Game, .Editor, .Tools}) {
+		sp, ok := gizmos.helper_project_in(view, ic.pos)
+		if ok && sp.x >= rmin.x && sp.x <= rmax.x && sp.y >= rmin.y && sp.y <= rmax.y do append(&out, ic.owner)
 	}
 
 	return out[:]

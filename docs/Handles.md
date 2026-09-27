@@ -134,6 +134,32 @@ Behavior:
 
 The transform tool (`editor/gizmo.odin`) keeps only what a drag does: it applies the move, turn or scale factor to every selected top-level object from their grab-time states, orbits and scales their offsets around the pivot, and makes the drag one undo step. For the turn and the factor it hands the rotate and scale handles a value that starts at identity at every grab.
 
+## Scene icons
+
+`handles.icon(pos, owner, image, color)` draws a clickable marker for a component with nothing else to click: a dark round badge `ICON_PX` (28) pixels wide facing the camera, showing `image`, one of:
+
+- a glyph of the editor's icon font: a Material Symbols codepoint such as `'\ue90f'` (lightbulb). The names and codepoints are in `external/fonts/material/MaterialSymbolsOutlined.codepoints`.
+- a texture asset: its guid, usually a component field picked in the inspector. `color` multiplies it, white by default.
+- a symbol: a proc that draws with engine/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
+
+`color` tints a glyph or a symbol. Call it from an `@(on_draw_gizmos)` hook, before the selection check, so every instance shows one:
+
+```odin
+@(on_draw_gizmos={component=AudioSource})
+audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+	handles.icon(engine.transform_world_position(a.owner), a.owner, _icon_speaker)
+	if .In_Selection not_in ctx.state do return
+	...
+}
+```
+
+- A click inside the badge selects `owner`, over any geometry, since icons draw over everything. Box select takes an icon whose center is inside the rect.
+- Icons are gizmos (the `.Editor` channel): handles and the transform gizmo draw over them, and the game view shows them with its Gizmos toggle. Each view draws them facing its own camera.
+- An owner inactive in the hierarchy gets no icon.
+- Built in: lights (a bulb in the light's color), cameras, audio sources (a speaker), particle systems (the "snowing" glyph, `'\ue80f'`).
+- Glyphs rasterize once per codepoint (`GLYPH_PX`, 64) from the font the editor hands over at startup (`icon_font_set`). A codepoint the font does not have fails loudly. `glyph_bitmap` returns a glyph's pixels.
+- A texture asset that does not load (deleted) leaves the empty badge.
+
 ## Undo
 
 Undo is the caller's. Open an undo session on `started`, edit on `dragging`, close on `released`, and one drag is one undo step. Rebuilding the edit from the grab-time values plus the total `delta` every frame keeps a drag a pure function of where the pointer is. The rect tool and the bounds composites do that.

@@ -3,6 +3,7 @@ package editor
 import im "moonhug:external/odin-imgui"
 import "core:math"
 import "moonhug:editor/icons"
+import "moonhug:editor/handles"
 import "moonhug:editor/widgets"
 
 // Roboto Medium (shipped with imgui under misc/fonts, Apache-2.0) is the base
@@ -81,6 +82,9 @@ editor_fonts_init :: proc() {
 		&icon_cfg,
 		&icon_ranges[0],
 	)
+	// Scene icons draw Material Symbols glyphs from the same static data
+	// (editor/handles/icons.odin).
+	handles.icon_font_set(MATERIAL_FONT_DATA)
 
 	// Standalone large icon font (NOT merged) for the console's 2-row icon
 	// column. Same range, no GlyphOffset — it's drawn on its own, centered by

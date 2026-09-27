@@ -23,6 +23,30 @@ Gizmo_Prim :: struct {
 	kind:  Gizmo_Prim_Kind,
 }
 
+// Draws an icon's symbol with engine/gizmos shapes in -1..1 of the icon
+// square.
+Gizmo_Symbol :: proc()
+
+// What an icon shows: a symbol drawn with shapes, a glyph of the editor's
+// icon font (a Material Symbols codepoint), or a texture asset.
+Gizmo_Icon_Image :: union {
+	Gizmo_Symbol,
+	rune,
+	Asset_GUID,
+}
+
+// A scene icon (gizmos.icon): kept as data, so each view draws it facing its
+// own camera at `px` pixels wide. The scene view selects `owner` on a click
+// inside it.
+Gizmo_Icon :: struct {
+	pos:      [3]f32, // world
+	px:       f32,    // width in pixels
+	owner:    Transform_Handle,
+	image:    Gizmo_Icon_Image,
+	color:    [4]f32, // tints a symbol or glyph, multiplies a texture
+	backdrop: [4]f32, // a disc behind the image, alpha 0 for none
+}
+
 Gizmo_Label :: struct {
 	pos:       [3]f32,
 	text:      string, // owned (default allocator)
@@ -50,6 +74,7 @@ Gizmo_Lifetime :: enum u8 {
 Gizmo_Batch :: struct {
 	prims:  [dynamic]Gizmo_Prim,
 	labels: [dynamic]Gizmo_Label,
+	icons:  [dynamic]Gizmo_Icon,
 }
 
 // [lifetime][channel][depth tested: 0 no, 1 yes]
@@ -71,6 +96,7 @@ gizmo_batch_clear :: proc(b: ^Gizmo_Batch) {
 	for l in b.labels do delete(l.text, b.labels.allocator)
 	clear(&b.prims)
 	clear(&b.labels)
+	clear(&b.icons)
 }
 
 gizmo_buffer_clear_lifetime :: proc(buf: ^Gizmo_Buffer, lifetime: Gizmo_Lifetime) {
@@ -86,6 +112,7 @@ gizmo_buffer_destroy :: proc(buf: ^Gizmo_Buffer) {
 				gizmo_batch_clear(&b)
 				delete(b.prims)
 				delete(b.labels)
+				delete(b.icons)
 			}
 		}
 	}

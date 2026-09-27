@@ -69,8 +69,9 @@ gizmo_pass :: proc() {
 	__draw_gizmos()
 }
 
-// The game view's camera view at its last size.
-@(private = "file")
+// The game view's camera view at its last size: the highest-order camera, the
+// one the game view renders last.
+@(private)
 _game_gizmo_view :: proc() -> (engine.Render_View, bool) {
 	cam := engine.camera_active()
 	if cam == nil || game_rt == nil || game_rt.width < 1 || game_rt.height < 1 do return {}, false

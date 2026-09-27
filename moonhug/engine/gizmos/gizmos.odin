@@ -36,6 +36,7 @@ _State :: struct {
 	channel:    engine.Gizmo_Channel,
 	view:       engine.Render_View,
 	has_view:   bool,
+	target:     ^engine.Gizmo_Batch, // set while a view draws an icon: shapes go here
 }
 
 @(private)
@@ -137,6 +138,21 @@ set_view :: proc(view: engine.Render_View) {
 	_s.has_view = true
 }
 
+// `v` is the current view until the end of the enclosing block: a view that
+// draws icons for its own camera, then gives the view back.
+@(deferred_out = _restore_view)
+with_view :: proc(v: engine.Render_View) -> (prev: engine.Render_View, had: bool) {
+	prev, had = _s.view, _s.has_view
+	set_view(v)
+	return
+}
+
+@(private)
+_restore_view :: proc(prev: engine.Render_View, had: bool) {
+	_s.view = prev
+	_s.has_view = had
+}
+
 // World length that spans `px` screen pixels at `pos`, in the current view.
 // Exact for perspective and orthographic views alike.
 helper_pixel :: proc(pos: [3]f32, px: f32) -> f32 {
@@ -182,6 +198,8 @@ _ray_plane :: proc(ray: engine.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: b
 
 // Draws the recorded shapes of `channels` into the open pass: depth-tested
 // ones first, then the ones drawn over everything, each in recorded order.
+// Icons draw after their batch's shapes, facing the current view's camera
+// (set_view).
 draw :: proc(channels: bit_set[engine.Gizmo_Channel]) {
 	uc := engine.ctx_get()
 	if uc == nil do return
@@ -190,15 +208,99 @@ draw :: proc(channels: bit_set[engine.Gizmo_Channel]) {
 		for ch in engine.Gizmo_Channel {
 			if ch not_in channels do continue
 			for lt in ([2]engine.Gizmo_Lifetime{.Fixed_Tick, .Frame}) {
-				for p in uc.gizmos.batches[lt][ch][depth].prims {
-					switch p.kind {
-					case .Line:     gfx.draw_line(p.p[0], p.p[1], p.color, depth_test = depth == 1)
-					case .Triangle: gfx.draw_triangle(p.p[0], p.p[1], p.p[2], p.color, depth_test = depth == 1)
-					}
-				}
+				b := &uc.gizmos.batches[lt][ch][depth]
+				_draw_prims(b.prims[:], depth == 1)
+				for ic in b.icons do _draw_icon(ic, depth == 1)
 			}
 		}
 	}
+}
+
+// The recorded scene icons of `channels`, for picking (temp slice).
+icons :: proc(channels: bit_set[engine.Gizmo_Channel]) -> []engine.Gizmo_Icon {
+	out := make([dynamic]engine.Gizmo_Icon, context.temp_allocator)
+	uc := engine.ctx_get()
+	if uc == nil do return out[:]
+	engine.gizmo_buffer_sync_frame(&uc.gizmos, gfx.frame_index)
+	for ch in engine.Gizmo_Channel {
+		if ch not_in channels do continue
+		for lt in engine.Gizmo_Lifetime {
+			for b in uc.gizmos.batches[lt][ch] do append(&out, ..b.icons[:])
+		}
+	}
+	return out[:]
+}
+
+@(private)
+_draw_prims :: proc(prims: []engine.Gizmo_Prim, depth_test: bool) {
+	for p in prims {
+		switch p.kind {
+		case .Line:     gfx.draw_line(p.p[0], p.p[1], p.color, depth_test = depth_test)
+		case .Triangle: gfx.draw_triangle(p.p[0], p.p[1], p.p[2], p.color, depth_test = depth_test)
+		}
+	}
+}
+
+// Shapes of the icon being drawn. Default allocator: it outlives the frame.
+@(private)
+_icon_scratch: engine.Gizmo_Batch
+
+// A glyph or texture image fills this much of the icon square (-FILL..FILL).
+ICON_IMAGE_FILL :: f32(0.72)
+
+// Turns a glyph of the editor's icon font into its texture: white, coverage
+// in alpha. The editor installs one (handles.icon_font_set).
+Glyph_Source :: proc(glyph: rune) -> ^gfx.Texture
+
+@(private)
+_glyph_source: Glyph_Source
+
+// Installs the glyph source icons draw their glyphs with.
+set_glyph_source :: proc(source: Glyph_Source) {
+	_glyph_source = source
+}
+
+// Draws an icon facing the current view's camera: its shapes record into a
+// scratch batch with that view's icon space, and draw at once. A glyph or
+// texture image draws as a quad over them.
+@(private)
+_draw_icon :: proc(ic: engine.Gizmo_Icon, depth_test: bool) {
+	assert(_s.has_view, "gizmos.draw: icons need the view (set_view before draw)")
+	if _icon_scratch.prims == nil do _icon_scratch.prims = make([dynamic]engine.Gizmo_Prim, 0, 64, runtime.default_allocator())
+	space := helper_icon_space(_s.view, ic.pos, ic.px)
+	{
+		prev := _s
+		defer _s = prev
+		_s.space = space
+		_s.target = &_icon_scratch
+		if ic.backdrop.a > 0 {
+			_s.color = ic.backdrop
+			solid_circle({}, {0, 0, 1}, 1, segments = 20)
+		}
+		_s.color = ic.color
+		if symbol, ok := ic.image.(engine.Gizmo_Symbol); ok do symbol()
+	}
+	_draw_prims(_icon_scratch.prims[:], depth_test)
+	clear(&_icon_scratch.prims)
+
+	tex: ^gfx.Texture
+	switch img in ic.image {
+	case engine.Gizmo_Symbol:
+	case rune:
+		assert(_glyph_source != nil, "gizmos: a glyph icon needs a glyph source (the editor installs one)")
+		tex = _glyph_source(img)
+	case engine.Asset_GUID:
+		// A texture that does not load (a deleted asset) leaves the backdrop.
+		if t, ok := engine.texture_load(img); ok do tex = t.gfx
+	}
+	if tex == nil do return
+	f := ICON_IMAGE_FILL
+	at :: proc(m: matrix[4, 4]f32, x, y: f32) -> [3]f32 {
+		v := m * [4]f32{x, y, 0, 1}
+		return v.xyz
+	}
+	corners := [4][3]f32{at(space, -f, -f), at(space, f, -f), at(space, f, f), at(space, -f, f)}
+	gfx.draw_quad(corners, {{0, 1}, {1, 1}, {1, 0}, {0, 0}}, ic.color, tex, depth_test = depth_test)
 }
 
 // The recorded labels of `channels`, for a view that draws text (temp slice).
@@ -243,6 +345,7 @@ _prim_line :: proc(a, b: [3]f32, color: [4]f32) -> engine.Gizmo_Prim {
 
 @(private)
 _batch :: proc() -> ^_Batch {
+	if _s.target != nil do return _s.target
 	uc := engine.ctx_get()
 	assert(uc != nil, "gizmos: no user context")
 	engine.gizmo_buffer_sync_frame(&uc.gizmos, gfx.frame_index)
@@ -267,6 +370,36 @@ _seg :: proc(b: ^_Batch, a, c: [3]f32) {
 @(private)
 _tri :: proc(b: ^_Batch, a, c, d: [3]f32) {
 	append(&b.prims, engine.Gizmo_Prim{p = {_xf(a), _xf(c), _xf(d)}, color = _s.color, kind = .Triangle})
+}
+
+// A scene icon at `pos` (in the current space): `image` (a symbol, a glyph
+// of the editor's icon font, or a texture asset) in a square `size_px`
+// pixels wide, over `backdrop` (a disc, alpha 0 for none). `color` tints a
+// symbol or glyph and multiplies a texture. Each view draws it facing its own
+// camera, so it faces the game camera in the game view too. The scene view
+// selects `owner` on a click inside it. For components with nothing else to
+// click (lights, cameras, audio sources): handles.icon draws the editor's.
+icon :: proc(pos: [3]f32, size_px: f32, owner: engine.Transform_Handle, image: engine.Gizmo_Icon_Image, color: [4]f32, backdrop := [4]f32{}) {
+	b := _batch()
+	if b.icons == nil do b.icons = make([dynamic]engine.Gizmo_Icon, 0, 16, runtime.default_allocator())
+	append(&b.icons, engine.Gizmo_Icon{pos = _xf(pos), px = size_px, owner = owner, image = image, color = color, backdrop = backdrop})
+}
+
+// The space an icon at world `pos` draws in for view `v`: -1..1 spans a
+// square `size_px` pixels wide facing the camera, +X right and +Y up on
+// screen.
+helper_icon_space :: proc(v: engine.Render_View, pos: [3]f32, size_px: f32) -> matrix[4, 4]f32 {
+	half := helper_pixel_in(v, pos, size_px * 0.5)
+	m := v.view
+	right := [3]f32{m[0, 0], m[0, 1], m[0, 2]} * half
+	up := [3]f32{m[1, 0], m[1, 1], m[1, 2]} * half
+	back := [3]f32{m[2, 0], m[2, 1], m[2, 2]} * half
+	return matrix[4, 4]f32{
+		right.x, up.x, back.x, pos.x,
+		right.y, up.y, back.y, pos.y,
+		right.z, up.z, back.z, pos.z,
+		0, 0, 0, 1,
+	}
 }
 
 // A label at a point. Views that draw text show it (the scene view today):

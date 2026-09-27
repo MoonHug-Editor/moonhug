@@ -4,7 +4,7 @@ package editor
 // as a wire frustum (near rect, far rect, connecting edges). Aspect comes from
 // the game view's render target so the wires show exactly what the game view
 // sees. Runs through the @(on_draw_gizmos) hook for cameras in the selection, drawn with
-// engine/gizmos.
+// engine/gizmos. Every camera also gets a scene icon.
 
 import "core:math"
 import "moonhug:engine"
@@ -13,8 +13,16 @@ import "moonhug:editor/handles"
 
 CAMERA_GIZMO_COLOR :: [4]f32{0.9, 0.9, 0.9, 0.9}
 
+// Scene icon: a camera body and its lens.
+@(private = "file")
+_icon_camera :: proc() {
+	gizmos.wire_rect({-0.2, 0, 0}, {0.9, 0.6})
+	gizmos.wire_triangle({0.25, 0, 0}, {0.7, 0.3, 0}, {0.7, -0.3, 0})
+}
+
 @(on_draw_gizmos={component=Camera})
 camera_gizmos :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Context) {
+	handles.icon(engine.transform_world_position(engine.Transform_Handle(cam.owner)), engine.Transform_Handle(cam.owner), _icon_camera)
 	if .In_Selection not_in ctx.state do return
 	tw := engine.transform_world(engine.Transform_Handle(cam.owner))
 	rot := engine.quat_to_matrix3(tw.rotation)

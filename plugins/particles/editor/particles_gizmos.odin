@@ -4,6 +4,7 @@ package particles_editor
 // wireframe lines in the emitter's world frame — emission is along local +Z,
 // scale is ignored exactly like the sim's shape sampling. Drawn with
 // engine/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
+// Every system also gets a scene icon, the "snowing" glyph.
 //
 // In the Handles tool (T), shape handles edit it (docs/Handles.md), one undo
 // step per drag: a cone's base radius and angle, a sphere's, hemisphere's,
@@ -20,8 +21,14 @@ SHAPE_GIZMO_COLOR :: [4]f32{0.4, 0.75, 1, 1}
 // Cone spread lines and hemisphere/edge direction hints use this length.
 _SHAPE_GIZMO_LENGTH :: f32(1)
 
+// Scene icon: the Material Symbols "snowing" glyph.
+@(private = "file")
+_ICON_GLYPH :: '\ue80f'
+
 @(on_draw_gizmos={component=ParticleSystem})
 particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
+	owner := engine.Transform_Handle(ps.owner)
+	handles.icon(engine.transform_world_position(owner), owner, _ICON_GLYPH)
 	if .In_Selection not_in ctx.state do return
 	gizmos.with_color(SHAPE_GIZMO_COLOR)
 	gizmos.in_local_space(engine.Transform_Handle(ps.owner), use_scale = false)

@@ -425,8 +425,9 @@ _current_vp :: proc() -> i32 {
 // (two CCW triangles). tex=nil draws untextured white. shader/material work
 // like draw_mesh's (sprite materials); normal is the quad's facing, consumed
 // by lighting shaders. Same-state consecutive quads merge into one draw —
-// distinct material slices don't merge (compared by pointer).
-draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil) {
+// distinct material slices don't merge (compared by pointer). depth_test=false
+// draws over everything (gizmo icons).
+draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture, shader := "", material: []u8 = nil, normal := [3]f32{0, 0, 1}, extra_tex: []^Texture = nil, depth_test := true) {
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
@@ -438,7 +439,7 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 		Vertex{corners[2], n, uvs[2], c},
 		Vertex{corners[3], n, uvs[3], c},
 	)
-	_batch_append(.Tris, tex, first, 6, shader, material, extra_tex)
+	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
 }
 
 // Untextured filled triangle (white 1x1 texture bound at draw). Winding is

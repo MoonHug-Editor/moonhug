@@ -138,10 +138,14 @@ render_game_rt :: proc(w, h: i32) -> bool {
 	engine.render_world_cameras(game_rt)
 	// What the gizmo pass recorded this frame (gizmo_pass.odin): gizmos with
 	// the view menu toggle, gameplay shapes with the toggle or debug drawing on.
+	// Icons draw facing the game camera.
 	channels: bit_set[engine.Gizmo_Channel]
 	if game_gizmos do channels += {.Game, .Editor}
 	if engine.debug_draw_enabled do channels += {.Game}
-	if channels != {} do gizmos.draw(channels)
+	if v, ok := _game_gizmo_view(); ok && channels != {} {
+		gizmos.with_view(v)
+		gizmos.draw(channels)
+	}
 	gfx.pass_end()
 	return had_camera
 }

@@ -50,6 +50,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `with_matrix(m)` — composes with the current space, so nested scopes nest spaces.
 - `in_local_space(transform, use_scale := true)` — the transform's world position, rotation and optionally scale. It replaces the current space instead of composing with it. Colliders pass `use_scale = false` because their sizes are scaled already.
 - `in_world_space()` — replaces the current space with world space, for code that already converted its points (handles do).
+- `with_view(v)` — `v` is the current view until the end of the block, then the previous one comes back. The game view draws with its camera's view this way.
 - `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything.
 - `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets `.Editor` around its hooks, handles and the transform gizmo, shown in the scene view only. Hook code never calls it.
 
@@ -71,6 +72,7 @@ Names group by family:
 | `curve_*` (curved strokes) | `curve_bezier` |
 | `wire_*` / `solid_*` (always a pair) | `circle`, `arc`, `rect`, `quad`, `triangle`, `polygon`, `box`, `sphere`, `capsule`, `cylinder`, `cone`, `frustum` |
 | text | `label(pos, text, align, rotated, offset_px)` |
+| icons | `icon(pos, size_px, owner, image, color, backdrop)`, and `helper_icon_space(view, pos, size_px)` for the space one draws in |
 | helpers | `helper_pixel(pos, px)`, `helper_project(pos)`, `helper_pixel_in` / `helper_project_in` for a given view, `helper_matrix()` for the current space |
 
 - Angles are radians. `rect` and `line_grid` lie in the local XY plane: rotate them with `with_matrix`.
@@ -78,6 +80,8 @@ Names group by family:
 - Solids are unlit color, alpha allowed.
 - A solid volume (box, sphere, capsule, cylinder, cone, frustum) drawn without depth test keeps only the faces turned to the camera, each shaded by how much it faces it. Nothing sorts the triangles, so a back face would otherwise paint over the front. This needs the current view (`set_view`, which the scene view calls before its hooks), so draw those from a view's hooks.
 - Labels show in views that draw text: the scene view today. They are never depth-tested.
+- An icon records as data (position, pixel size, image, colors, owner). Each view builds it when it draws, facing that view's camera at that view's pixel size, so icons face the game camera in the game view. The scene view picks the owner on a click inside it (`icons()` returns this frame's). `handles.icon` draws the editor's (docs/Handles.md).
+- An icon's image is a symbol (a proc drawing with shapes), a glyph (a codepoint of the editor's icon font) or a texture asset. A glyph or texture draws as a quad over the backdrop. Glyphs come from the glyph source the editor installs (`set_glyph_source`): without one, a glyph icon fails loudly, so the standalone app cannot draw them.
 - `helper_pixel` and `helper_project` measure against the current view, so they belong in a view's hooks too.
 
 ## Lifetime
