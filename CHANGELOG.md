@@ -1,3 +1,9 @@
+## [0.111.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.110.0...v0.111.0) (2026-09-27)
+
+### Features
+
+* gizmo menu, lifetimes ([f7be1a0](https://github.com/MoonHug-Editor/moonhug/commit/f7be1a0797b56f64ef2dbfd1921a36226d252106))
+
 ## [0.110.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.109.1...v0.110.0) (2026-09-27)
 
 ### Features
