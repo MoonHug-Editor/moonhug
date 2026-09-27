@@ -1,3 +1,9 @@
+## [0.112.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.112.0...v0.112.1) (2026-09-27)
+
+### Bug Fixes
+
+* game view gizmos don't rely on scene view ([94f237f](https://github.com/MoonHug-Editor/moonhug/commit/94f237f35bf05e80b5b0e161a1ddd85a7fed3d8d))
+
 ## [0.112.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.111.0...v0.112.0) (2026-09-27)
 
 ### Features
