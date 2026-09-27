@@ -2,7 +2,7 @@ package handles
 
 // Scene icons (docs/Handles.md): a clickable marker for components with
 // nothing else to click, drawn from an @(on_draw_gizmos) hook for every
-// instance, selected or not. An icon is a dark round badge ICON_PX wide
+// instance, selected or not. An icon is a dark round badge icon_px wide
 // facing the camera, showing one of:
 //
 // - a symbol: a proc that draws with engine/gizmos shapes (the built-in
@@ -24,8 +24,9 @@ import "moonhug:engine"
 import gfx "moonhug:engine/gfx"
 import "moonhug:engine/gizmos"
 
-// An icon's width on screen.
-ICON_PX :: f32(28)
+// An icon's width on screen: the gizmo settings' Icon Size.
+ICON_PX_DEFAULT :: f32(28)
+icon_px := ICON_PX_DEFAULT
 
 // Draws a symbol with engine/gizmos in the badge's space: -1..1 spans the
 // badge, +X right and +Y up on screen, in the current color.
@@ -64,7 +65,7 @@ icon_texture :: proc(pos: [3]f32, owner: engine.Transform_Handle, texture: engin
 _icon :: proc(pos: [3]f32, owner: engine.Transform_Handle, image: engine.Gizmo_Icon_Image, color: [4]f32) {
 	if !engine.transform_active_in_hierarchy(owner) do return
 	gizmos.with_depth_test(false)
-	gizmos.icon(pos, ICON_PX, owner, image, color, backdrop = COLOR_SHADOW)
+	gizmos.icon(pos, icon_px, owner, image, color, backdrop = COLOR_SHADOW)
 }
 
 // --- Glyphs -------------------------------------------------------------------------

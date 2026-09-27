@@ -76,6 +76,7 @@ line_cross :: proc(center: [3]f32, size: f32) {
 // X, Y, Z from `center`, `size` long, in red, green and blue (the scope color
 // does not apply).
 line_axes :: proc(center: [3]f32, size: f32) {
+	if !_s.shapes do return
 	axes := [3][4]f32{{1, 0.25, 0.25, 1}, {0.3, 1, 0.3, 1}, {0.3, 0.55, 1, 1}}
 	bt := _batch()
 	for axis in 0 ..< 3 {

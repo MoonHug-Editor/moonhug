@@ -457,7 +457,7 @@ render_scene_rt :: proc(w, h: i32) {
 	gizmos.set_view(view)
 	_scene_view_last = view
 	// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
-	gizmos.draw({.Game, .Editor, .Tools})
+	gizmos.draw(scene_gizmo_channels())
 	gfx.pass_end()
 }
 
@@ -635,7 +635,7 @@ draw_scene_view :: proc() {
 			// Gizmo labels (anchor percentages and such) over the image,
 			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
-			for l in gizmos.labels({.Game, .Editor, .Tools}) {
+			for l in gizmos.labels(scene_gizmo_channels()) {
 				px, ok := gizmos.helper_project_in(_scene_view_last, l.pos)
 				if !ok do continue
 				_draw_handle_label(dl, _scene_img_min + px + l.offset_px, l)

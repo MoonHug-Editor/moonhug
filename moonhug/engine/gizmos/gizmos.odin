@@ -37,6 +37,9 @@ _State :: struct {
 	view:       engine.Render_View,
 	has_view:   bool,
 	target:     ^engine.Gizmo_Batch, // set while a view draws an icon: shapes go here
+	shapes:     bool, // off: lines, triangles and labels record nothing (with_shapes)
+	icons:      bool, // off: icons record nothing (with_icons)
+	group:      ^engine.Gizmo_Group, // with_duration, with_key: shapes outlive the frame here
 }
 
 @(private)
@@ -45,6 +48,8 @@ _s := _State{
 	space      = 1,
 	depth_test = true,
 	channel    = .Game,
+	shapes     = true,
+	icons      = true,
 }
 
 // --- Scopes -------------------------------------------------------------------
@@ -127,6 +132,81 @@ with_channel :: proc(channel: engine.Gizmo_Channel) -> engine.Gizmo_Channel {
 @(private)
 _restore_channel :: proc(prev: engine.Gizmo_Channel) {
 	_s.channel = prev
+}
+
+// Lines, triangles and labels inside the scope record (true, the default) or
+// not. Icons are not shapes: with_icons covers them. The editor's gizmo
+// settings hide a component type's gizmo this way around its hook.
+@(deferred_out = _restore_shapes)
+with_shapes :: proc(enabled: bool) -> bool {
+	prev := _s.shapes
+	_s.shapes = enabled
+	return prev
+}
+
+@(private)
+_restore_shapes :: proc(prev: bool) {
+	_s.shapes = prev
+}
+
+// Icons inside the scope record (true, the default) or not: the editor's
+// gizmo settings hide a component type's icon this way around its hook.
+@(deferred_out = _restore_icons)
+with_icons :: proc(enabled: bool) -> bool {
+	prev := _s.icons
+	_s.icons = enabled
+	return prev
+}
+
+@(private)
+_restore_icons :: proc(prev: bool) {
+	_s.icons = prev
+}
+
+// --- Lifetimes ---------------------------------------------------------------
+
+// Shapes inside the scope stay for `seconds` on `clock`, then go: .Game (the
+// simulation, so they pause with Pause and go on Stop) or .Real (wall time,
+// for editor tools). A shape normally lives one frame.
+@(deferred_out = _restore_group)
+with_duration :: proc(seconds: f32, clock := engine.Gizmo_Clock.Game) -> ^engine.Gizmo_Group {
+	prev := _s.group
+	_s.group = engine.gizmo_buffer_timed_group(_buffer(), seconds, clock)
+	return prev
+}
+
+// Shapes inside the scope stay until clear_key(key), or until shapes record
+// under `key` in a later frame, which replace them: draw a path once and
+// keep it, or redraw it only when it changes. `key` is any non-zero id.
+@(deferred_out = _restore_group)
+with_key :: proc(key: u64) -> ^engine.Gizmo_Group {
+	assert(key != 0, "gizmos.with_key: 0 is no key")
+	prev := _s.group
+	_s.group = engine.gizmo_buffer_key_group(_buffer(), key)
+	return prev
+}
+
+@(private)
+_restore_group :: proc(prev: ^engine.Gizmo_Group) {
+	_s.group = prev
+}
+
+// Drops the shapes kept under `key`.
+clear_key :: proc(key: u64) {
+	buf := _buffer()
+	for g in buf.groups {
+		if g.key == key && _s.group == g do _s.group = nil // cleared inside its own scope
+	}
+	engine.gizmo_buffer_clear_key(buf, key)
+}
+
+// The current context's buffer, synced to the frame.
+@(private)
+_buffer :: proc() -> ^engine.Gizmo_Buffer {
+	uc := engine.ctx_get()
+	assert(uc != nil, "gizmos: no user context")
+	engine.gizmo_buffer_sync_frame(&uc.gizmos, gfx.frame_index)
+	return &uc.gizmos
 }
 
 // --- Views --------------------------------------------------------------------
@@ -212,6 +292,11 @@ draw :: proc(channels: bit_set[engine.Gizmo_Channel]) {
 				_draw_prims(b.prims[:], depth == 1)
 				for ic in b.icons do _draw_icon(ic, depth == 1)
 			}
+			for g in uc.gizmos.groups {
+				b := &g.batches[ch][depth]
+				_draw_prims(b.prims[:], depth == 1)
+				for ic in b.icons do _draw_icon(ic, depth == 1)
+			}
 		}
 	}
 }
@@ -226,6 +311,9 @@ icons :: proc(channels: bit_set[engine.Gizmo_Channel]) -> []engine.Gizmo_Icon {
 		if ch not_in channels do continue
 		for lt in engine.Gizmo_Lifetime {
 			for b in uc.gizmos.batches[lt][ch] do append(&out, ..b.icons[:])
+		}
+		for g in uc.gizmos.groups {
+			for b in g.batches[ch] do append(&out, ..b.icons[:])
 		}
 	}
 	return out[:]
@@ -273,6 +361,7 @@ _draw_icon :: proc(ic: engine.Gizmo_Icon, depth_test: bool) {
 		defer _s = prev
 		_s.space = space
 		_s.target = &_icon_scratch
+		_s.shapes = true
 		if ic.backdrop.a > 0 {
 			_s.color = ic.backdrop
 			solid_circle({}, {0, 0, 1}, 1, segments = 20)
@@ -314,14 +403,18 @@ labels :: proc(channels: bit_set[engine.Gizmo_Channel]) -> []engine.Gizmo_Label 
 		for lt in engine.Gizmo_Lifetime {
 			for b in uc.gizmos.batches[lt][ch] do append(&out, ..b.labels[:])
 		}
+		for g in uc.gizmos.groups {
+			for b in g.batches[ch] do append(&out, ..b.labels[:])
+		}
 	}
 	return out[:]
 }
 
-// Drops the frame-lifetime shapes now. The buffer does this by itself when a
-// new frame starts, so only code that runs no gfx frames needs it (tests).
+// Ends the frame now: its shapes go, timed shapes whose clock has passed go,
+// and keys record into a new frame. The buffer does this by itself when a
+// new gfx frame starts, so only code that runs no gfx frames needs it (tests).
 frame_end :: proc() {
-	if uc := engine.ctx_get(); uc != nil do engine.gizmo_buffer_clear_lifetime(&uc.gizmos, .Frame)
+	if uc := engine.ctx_get(); uc != nil do engine.gizmo_buffer_frame_boundary(&uc.gizmos)
 }
 
 // The standalone app's debug view: after every other DebugDraw subscriber
@@ -349,8 +442,13 @@ _batch :: proc() -> ^_Batch {
 	uc := engine.ctx_get()
 	assert(uc != nil, "gizmos: no user context")
 	engine.gizmo_buffer_sync_frame(&uc.gizmos, gfx.frame_index)
-	lt: engine.Gizmo_Lifetime = engine.fixed_in_tick() ? .Fixed_Tick : .Frame
-	b := &uc.gizmos.batches[lt][_s.channel][_s.depth_test ? 1 : 0]
+	b: ^_Batch
+	if _s.group != nil {
+		b = &_s.group.batches[_s.channel][_s.depth_test ? 1 : 0]
+	} else {
+		lt: engine.Gizmo_Lifetime = engine.fixed_in_tick() ? .Fixed_Tick : .Frame
+		b = &uc.gizmos.batches[lt][_s.channel][_s.depth_test ? 1 : 0]
+	}
 	if b.prims == nil do b.prims = make([dynamic]engine.Gizmo_Prim, 0, 256, runtime.default_allocator())
 	return b
 }
@@ -364,11 +462,13 @@ _xf :: proc(p: [3]f32) -> [3]f32 {
 // Local-space segment, transformed and recorded.
 @(private)
 _seg :: proc(b: ^_Batch, a, c: [3]f32) {
+	if !_s.shapes do return
 	append(&b.prims, engine.Gizmo_Prim{p = {_xf(a), _xf(c), {}}, color = _s.color, kind = .Line})
 }
 
 @(private)
 _tri :: proc(b: ^_Batch, a, c, d: [3]f32) {
+	if !_s.shapes do return
 	append(&b.prims, engine.Gizmo_Prim{p = {_xf(a), _xf(c), _xf(d)}, color = _s.color, kind = .Triangle})
 }
 
@@ -380,6 +480,7 @@ _tri :: proc(b: ^_Batch, a, c, d: [3]f32) {
 // selects `owner` on a click inside it. For components with nothing else to
 // click (lights, cameras, audio sources): handles.icon draws the editor's.
 icon :: proc(pos: [3]f32, size_px: f32, owner: engine.Transform_Handle, image: engine.Gizmo_Icon_Image, color: [4]f32, backdrop := [4]f32{}) {
+	if !_s.icons do return
 	b := _batch()
 	if b.icons == nil do b.icons = make([dynamic]engine.Gizmo_Icon, 0, 16, runtime.default_allocator())
 	append(&b.icons, engine.Gizmo_Icon{pos = _xf(pos), px = size_px, owner = owner, image = image, color = color, backdrop = backdrop})
@@ -406,6 +507,7 @@ helper_icon_space :: proc(v: engine.Render_View, pos: [3]f32, size_px: f32) -> m
 // always readable, never depth-tested. `offset_px` moves it on screen after
 // projecting, e.g. a few pixels below a line.
 label :: proc(pos: [3]f32, text: string, align := [2]f32{0, 0}, rotated := false, offset_px := [2]f32{0, 0}) {
+	if !_s.shapes do return
 	b := _batch()
 	if b.labels == nil do b.labels = make([dynamic]engine.Gizmo_Label, 0, 16, runtime.default_allocator())
 	append(&b.labels, engine.Gizmo_Label{

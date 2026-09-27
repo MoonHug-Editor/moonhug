@@ -176,7 +176,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - consider making transform regular component (required or optional), node will hold all components
 
 - gizmo drawing follow-ups (see [Gizmos](docs/Gizmos.md))
-  - lifetimes beyond a frame: `with_duration(seconds, clock)` (game or real clock) and `with_key(key)` (stays until cleared or redrawn), extending the same buffer
   - line width - the one item with real renderer cost, since lines become quads
   - labels in the game view and the standalone app (no text path there yet)
 

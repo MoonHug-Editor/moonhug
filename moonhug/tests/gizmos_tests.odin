@@ -7,6 +7,7 @@ package tests
 import "core:math"
 import "core:math/linalg"
 import "core:testing"
+import "core:time"
 import "../editor"
 import "../editor/menu"
 import "../editor/handles"
@@ -341,7 +342,7 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 _no_symbol :: proc() {}
 
 // An icon records as data for its owner, and each view builds it facing its
-// own camera: -1..1 spans ICON_PX pixels, upright on that view's screen.
+// own camera: -1..1 spans the icon size in pixels, upright on that view's screen.
 @(test)
 test_icon_faces_the_view_that_draws_it :: proc(t: ^testing.T) {
 	tc := new(TestCtx)
@@ -355,7 +356,7 @@ test_icon_faces_the_view_that_draws_it :: proc(t: ^testing.T) {
 	handles.icon({1, 0, 0}, owner, _no_symbol)
 	ics := gizmos.icons({.Game, .Editor, .Tools})
 	testing.expect_value(t, len(ics), 1)
-	testing.expect(t, ics[0].owner == owner && ics[0].px == handles.ICON_PX, "the owner and the width")
+	testing.expect(t, ics[0].owner == owner && ics[0].px == handles.icon_px, "the owner and the width")
 
 	// The scene camera and a game camera somewhere else.
 	for v in ([2]engine.Render_View{handles_test_view(), handles_test_view({6, 3, 4})}) {
@@ -464,4 +465,191 @@ test_icon_kinds_record :: proc(t: ^testing.T) {
 	testing.expect(t, is_glyph && glyph == '\ue90f', "a glyph")
 	testing.expect(t, is_tex && tex == guid && ics[2].color == [4]f32{1, 1, 1, 1}, "a texture, white by default")
 	gizmos.frame_end()
+}
+
+// --- Gizmo settings -------------------------------------------------------------------------
+
+// The dispatcher applies a type's gizmo settings around its hook: a hidden
+// gizmo records no shapes but keeps the icon, a hidden icon drops the icon.
+@(test)
+test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	defer editor.sel_scene_clear()
+	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
+	defer {
+		menu.show_scene = prev_scene
+		menu.show_game = prev_game
+		editor.game_gizmos = prev_toggle
+		editor.gizmo_type_set("Light", .Icon, true)
+		editor.gizmo_type_set("Light", .Gizmo, true)
+	}
+	menu.show_scene = false
+	menu.show_game = true
+	editor.game_gizmos = true
+	gizmos.set_view(handles_test_view())
+
+	lamp := engine.transform_new("Lamp")
+	_, raw := engine.transform_add_comp(lamp, .Light)
+	l := cast(^engine.Light)raw
+	l.enabled = true
+	l.type = .Point
+	editor.sel_scene_only(lamp)
+
+	pass :: proc(tc: ^TestCtx) -> (shapes, icons: int) {
+		gizmos.frame_end()
+		editor.gizmo_pass()
+		return _count(tc, .Editor), len(gizmos.icons({.Editor}))
+	}
+	shapes, icons := pass(tc)
+	testing.expect(t, shapes > 0 && icons == 1, "both by default")
+
+	editor.gizmo_type_set("Light", .Gizmo, false)
+	shapes, icons = pass(tc)
+	testing.expect(t, shapes == 0 && icons == 1, "the gizmo hidden, the icon stays")
+
+	editor.gizmo_type_set("Light", .Icon, false)
+	shapes, icons = pass(tc)
+	testing.expect(t, shapes == 0 && icons == 0, "both hidden")
+	testing.expect(t, editor.gizmo_type_shown("Camera") == {.Icon, .Gizmo}, "other types keep theirs")
+	gizmos.frame_end()
+}
+
+// The scene view's Gizmos toggle: off, it draws no gizmos or icons and picks
+// no icon, and keeps gameplay shapes and tools.
+@(test)
+test_scene_gizmos_toggle :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	defer editor.scene_gizmos = true
+	v := handles_test_view()
+	gizmos.set_view(v)
+
+	lamp := engine.transform_new("Lamp")
+	_, raw := engine.transform_add_comp(lamp, .Light)
+	l := cast(^engine.Light)raw
+	l.enabled = true
+	{
+		gizmos.with_channel(.Editor)
+		editor.light_gizmos(l, handles.Gizmo_Context{})
+	}
+	at, _ := gizmos.helper_project_in(v, {0, 0, 0})
+	_, ok := editor.scene_view_pick(v, at.x, at.y)
+	testing.expect(t, ok, "the icon picks with gizmos on")
+
+	editor.scene_gizmos = false
+	testing.expect(t, editor.scene_gizmo_channels() == {.Game, .Tools}, "no .Editor channel")
+	_, ok = editor.scene_view_pick(v, at.x, at.y)
+	testing.expect(t, !ok, "a hidden icon does not pick")
+	gizmos.frame_end()
+}
+
+@(test)
+test_gizmo_type_labels :: proc(t: ^testing.T) {
+	testing.expect_value(t, editor.gizmo_type_label("BoxCollider2D"), "Box Collider 2D")
+	testing.expect_value(t, editor.gizmo_type_label("AudioSource"), "Audio Source")
+	testing.expect_value(t, editor.gizmo_type_label("Camera"), "Camera")
+}
+
+// --- Lifetimes beyond a frame -----------------------------------------------------------------
+
+@(private = "file")
+_group_prims :: proc(tc: ^TestCtx) -> int {
+	n := 0
+	for g in tc.uc.gizmos.groups {
+		for per_channel in g.batches {
+			for b in per_channel do n += len(b.prims)
+		}
+	}
+	return n
+}
+
+@(test)
+test_gizmo_duration_on_the_real_clock :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	{
+		gizmos.with_duration(0.05, .Real)
+		gizmos.line({0, 0, 0}, {1, 0, 0})
+	}
+	gizmos.line({0, 0, 0}, {0, 1, 0}) // a frame's
+	gizmos.frame_end()
+	testing.expect_value(t, _group_prims(tc), 1)
+	testing.expect_value(t, len(_prims(tc)), 0)
+	time.sleep(70 * time.Millisecond)
+	gizmos.frame_end()
+	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
+}
+
+// The game clock is the simulation's fixed ticks: it waits while no tick
+// runs, and Stop drops what it timed.
+@(test)
+test_gizmo_duration_on_the_game_clock :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	engine.fixed_reset()
+	defer engine.fixed_reset()
+
+	{
+		gizmos.with_duration(0.1)
+		gizmos.line({0, 0, 0}, {1, 0, 0})
+	}
+	for _ in 0 ..< 3 do engine.fixed_tick_advance() // 0.05 s at 60 Hz
+	gizmos.frame_end()
+	testing.expect_value(t, _group_prims(tc), 1)
+	for _ in 0 ..< 4 do engine.fixed_tick_advance() // 0.117 s
+	gizmos.frame_end()
+	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
+
+	{
+		gizmos.with_duration(10)
+		gizmos.line({0, 0, 0}, {1, 0, 0})
+	}
+	engine.fixed_reset()
+	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
+}
+
+// Shapes under a key stay across frames, add up within a frame, are replaced
+// when the key records in a later frame, and go with clear_key.
+@(test)
+test_gizmo_key :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	draw :: proc(n: int) {
+		gizmos.with_key(7)
+		for _ in 0 ..< n do gizmos.line({0, 0, 0}, {1, 0, 0})
+	}
+	draw(1)
+	gizmos.frame_end()
+	testing.expect_value(t, _group_prims(tc), 1)
+	draw(1)
+	draw(1)
+	testing.expect_value(t, _group_prims(tc), 2)
+	gizmos.frame_end()
+	draw(1)
+	testing.expect_value(t, _group_prims(tc), 1)
+	{
+		gizmos.with_key(7)
+		gizmos.label({0, 0, 0}, "kept")
+	}
+	testing.expect_value(t, len(gizmos.labels({.Game})), 1)
+	gizmos.clear_key(7)
+	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
 }

@@ -79,6 +79,13 @@ view_menu_add_toggle :: proc(view, label: string, value: ^bool, order := 0, enab
     menu.tree_add_toggle(_view_menu_tree(view), label, value, order, "", enabled, origin)
 }
 
+// A submenu of `view`'s menu whose contents `draw` emits each frame it is
+// open: any widgets (a slider, checkboxes, which leave the menu open).
+view_menu_add_dynamic :: proc(view, label: string, draw: proc(), order := 0, origin := "") {
+	context.allocator = runtime.default_allocator()
+	menu.tree_add_dynamic(_view_menu_tree(view), label, draw, order, origin)
+}
+
 view_tab_bar_add_item :: proc(view: string, draw: proc(), order := 0, origin := "") {
 	context.allocator = runtime.default_allocator()
 	append(&_view_tab_bar_items, View_Tab_Bar_Item{view = view, draw = draw, order = order, origin = origin})

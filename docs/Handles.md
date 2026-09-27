@@ -136,7 +136,7 @@ The transform tool (`editor/gizmo.odin`) keeps only what a drag does: it applies
 
 ## Scene icons
 
-`handles.icon(pos, owner, image, color)` draws a clickable marker for a component with nothing else to click: a dark round badge `ICON_PX` (28) pixels wide facing the camera, showing `image`, one of:
+`handles.icon(pos, owner, image, color)` draws a clickable marker for a component with nothing else to click: a dark round badge `icon_px` pixels wide (28 by default, the gizmo settings' Icon Size) facing the camera, showing `image`, one of:
 
 - a glyph of the editor's icon font: a Material Symbols codepoint such as `'\ue90f'` (lightbulb). The names and codepoints are in `external/fonts/material/MaterialSymbolsOutlined.codepoints`.
 - a texture asset: its guid, usually a component field picked in the inspector. `color` multiplies it, white by default.

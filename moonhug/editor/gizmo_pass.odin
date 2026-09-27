@@ -9,9 +9,9 @@ package editor
 //   before the gizmo hooks, so an edit shows in this frame's gizmos and
 //   render. The draw order does not depend on it:
 //   .Tools always draws over .Editor.
-// - Every @(on_draw_gizmos) proc, into .Editor, while the scene view is on
-//   screen or the game view shows gizmos, so the game view has them with the
-//   scene view closed.
+// - Every @(on_draw_gizmos) proc, into .Editor, while a view on screen shows
+//   gizmos (its Gizmos toggle, gizmo_settings.odin), so the game view has them
+//   with the scene view closed. The gizmo settings apply per component type.
 //
 // Pixel-sized gizmos measure against the scene view's camera while it is on
 // screen, else the game view's, else the scene camera's at its last size.
@@ -65,8 +65,11 @@ gizmo_pass :: proc() {
 		// scene camera, so they always have a view.
 		gizmos.set_view(scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1)))
 	}
-	gizmos.with_channel(.Editor)
-	__draw_gizmos()
+	// The gizmo hooks, for the views whose Gizmos toggle is on.
+	if (scene_live && scene_gizmos) || game_live {
+		gizmos.with_channel(.Editor)
+		__draw_gizmos()
+	}
 }
 
 // The game view's camera view at its last size: the highest-order camera, the

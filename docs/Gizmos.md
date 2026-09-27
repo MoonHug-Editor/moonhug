@@ -51,6 +51,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `in_local_space(transform, use_scale := true)` — the transform's world position, rotation and optionally scale. It replaces the current space instead of composing with it. Colliders pass `use_scale = false` because their sizes are scaled already.
 - `in_world_space()` — replaces the current space with world space, for code that already converted its points (handles do).
 - `with_view(v)` — `v` is the current view until the end of the block, then the previous one comes back. The game view draws with its camera's view this way.
+- `with_shapes(enabled)` and `with_icons(enabled)` — off, lines, triangles and labels (or icons) record nothing. The gizmo settings hide a component type this way around its hook.
 - `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything.
 - `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets `.Editor` around its hooks, handles and the transform gizmo, shown in the scene view only. Hook code never calls it.
 
@@ -84,12 +85,27 @@ Names group by family:
 - An icon's image is a symbol (a proc drawing with shapes), a glyph (a codepoint of the editor's icon font) or a texture asset. A glyph or texture draws as a quad over the backdrop. Glyphs come from the glyph source the editor installs (`set_glyph_source`): without one, a glyph icon fails loudly, so the standalone app cannot draw them.
 - `helper_pixel` and `helper_project` measure against the current view, so they belong in a view's hooks too.
 
+## Gizmo settings
+
+Both the scene and the game view menus (the ⋮ button on the tab bar) have:
+
+- `Gizmos` — the view's toggle for every gizmo and icon in it. Off in the scene view, handles, the transform gizmo and gameplay shapes (`.Game`) still show, and icons no longer take clicks.
+- `Gizmo Settings` — shared by both views: the icon size, and one row per component type with an `@(on_draw_gizmos)` hook, with an Icon and a Gizmo checkbox.
+
+The gizmo dispatcher applies the checkboxes around each hook (`with_icons`, `with_shapes`), so hook code never checks them, and a type with both off does not run its hook. gizmos_gen lists the types, so a package's own gizmo hooks get rows too. Everything persists in the editor settings, per type by name.
+
 ## Lifetime
 
 A shape lives for one frame: the buffer drops the previous frame's shapes when a new frame starts (`gfx.frame_index` moved on), so no main loop ends the frame for it. A shape recorded during a fixed tick lives until the next tick starts (`engine.fixed_tick_begin`), so it does not flicker on frames that run no tick. Stop (`engine.fixed_reset`) drops those.
 
+Two scopes keep shapes longer, in groups of their own in the same buffer. They draw with the other shapes, channel by channel:
+
+- `with_duration(seconds, clock)` — the shapes stay for `seconds`. `.Game` (the default) is the simulation's clock, fixed ticks: it waits while the game is paused or not running, and Stop drops what it timed. `.Real` is wall time, for editor tools. A raycast drawn once with a duration stays visible after the frame that cast it.
+- `with_key(key)` — the shapes stay until `clear_key(key)`. The first shapes recorded under `key` in a later frame replace them, so a path is drawn once and redrawn only when it changes. Within one frame, shapes under the same key add up. `key` is any non-zero id.
+
+The innermost scope wins, and either one takes precedence over the fixed tick lifetime.
+
 ## Not yet
 
-- Shapes that stay for N seconds (`with_duration(seconds, clock)`) and shapes that stay until cleared (`with_key(key)`). They extend the same buffer.
 - Line width.
 - Labels in the game view and the standalone app: those views draw no text yet.

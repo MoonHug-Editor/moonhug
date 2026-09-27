@@ -92,6 +92,10 @@ fixed_frame_ticks :: proc(frame_dt: f32) -> int {
 // Tests / playmode restarts.
 fixed_reset :: proc() {
 	_fixed = {}
-	// The last tick's gizmos describe a run that ended.
-	if uc := ctx_get(); uc != nil do gizmo_buffer_clear_lifetime(&uc.gizmos, .Fixed_Tick)
+	// The last tick's gizmos describe a run that ended, and the game clock
+	// restarts, so its timed gizmos go too.
+	if uc := ctx_get(); uc != nil {
+		gizmo_buffer_clear_lifetime(&uc.gizmos, .Fixed_Tick)
+		gizmo_buffer_clear_clock(&uc.gizmos, .Game)
+	}
 }
