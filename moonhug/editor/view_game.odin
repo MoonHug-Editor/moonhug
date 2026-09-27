@@ -130,6 +130,27 @@ shutdown_game_view :: proc() {
 	game_rt = nil
 }
 
+// The channels the game view draws: gizmos and icons (.Editor) with its
+// Gizmos toggle, gameplay shapes (.Game) with the toggle or debug drawing on.
+game_gizmo_channels :: proc() -> bit_set[engine.Gizmo_Channel] {
+	channels: bit_set[engine.Gizmo_Channel]
+	if game_gizmos do channels += {.Game, .Editor}
+	if engine.debug_draw_enabled do channels += {.Game}
+	return channels
+}
+
+// Where a gizmo label lands on the game image: projected with the camera
+// view `v` into the render target's pixels, scaled onto the image at
+// `img_min` sized `img_size` (zoom and letterboxing), plus its own screen
+// offset. ok=false behind the camera or off the image.
+game_label_pos :: proc(v: engine.Render_View, img_min, img_size: [2]f32, l: engine.Gizmo_Label) -> ([2]f32, bool) {
+	px, ok := gizmos.helper_project_in(v, l.pos)
+	if !ok do return {}, false
+	p := img_min + px * (img_size / [2]f32{max(v.width, 1), max(v.height, 1)})
+	if p.x < img_min.x || p.y < img_min.y || p.x > img_min.x + img_size.x || p.y > img_min.y + img_size.y do return {}, false
+	return p + l.offset_px, true
+}
+
 render_game_rt :: proc(w, h: i32) -> bool {
 	if w < 1 || h < 1 do return false
 	gfx.rt_resize(game_rt, w, h)
@@ -139,9 +160,7 @@ render_game_rt :: proc(w, h: i32) -> bool {
 	// What the gizmo pass recorded this frame (gizmo_pass.odin): gizmos with
 	// the view menu toggle, gameplay shapes with the toggle or debug drawing on.
 	// Icons draw facing the game camera.
-	channels: bit_set[engine.Gizmo_Channel]
-	if game_gizmos do channels += {.Game, .Editor}
-	if engine.debug_draw_enabled do channels += {.Game}
+	channels := game_gizmo_channels()
 	if v, ok := _game_gizmo_view(); ok && channels != {} {
 		gizmos.with_view(v)
 		gizmos.draw(channels)
@@ -257,6 +276,15 @@ draw_game_view :: proc() {
 			img_min := im.GetItemRectMin()
 			img_max := im.GetItemRectMax()
 			input.set_viewport({img_min.x - origin.x, img_min.y - origin.y}, {img_max.x - img_min.x, img_max.y - img_min.y})
+
+			// Gizmo labels over the image, as the scene view draws them, for
+			// the channels this view shows.
+			if v, vok := _game_gizmo_view(); vok {
+				dl := im.GetWindowDrawList()
+				for l in gizmos.labels(game_gizmo_channels()) {
+					if p, pok := game_label_pos(v, img_min, img_max - img_min, l); pok do _draw_handle_label(dl, p, l)
+				}
+			}
 
 			_game_view_hovered = im.IsItemHovered()
 

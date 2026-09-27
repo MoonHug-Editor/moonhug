@@ -12,6 +12,8 @@ import "../editor"
 import "../editor/menu"
 import "../editor/handles"
 import "../engine"
+import gfx "../engine/gfx"
+import im "moonhug:external/odin-imgui"
 import "moonhug:engine/gizmos"
 
 @(private = "file")
@@ -652,4 +654,66 @@ test_gizmo_key :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(gizmos.labels({.Game})), 1)
 	gizmos.clear_key(7)
 	testing.expect_value(t, len(tc.uc.gizmos.groups), 0)
+}
+
+// --- Gizmo pass: the scene view branch, game view labels ------------------------------------
+
+// With the scene view on screen (it rendered last frame), the pass records
+// the selection outline and the transform gizmo into the scene-only .Tools
+// channel, and publishes the handles frame with the scene camera.
+@(test)
+test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	ictx := im.CreateContext()
+	defer im.DestroyContext(ictx)
+	defer editor.sel_scene_clear()
+
+	prev_scene, prev_game := menu.show_scene, menu.show_game
+	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._scene_rendered_frame, editor._scene_view_size
+	prev_cam, prev_target, prev_mode := editor.scene_cam_pos, editor.scene_cam_target, editor.gizmo_mode
+	defer {
+		menu.show_scene = prev_scene
+		menu.show_game = prev_game
+		gfx.frame_index = prev_frame
+		editor._scene_rendered_frame = prev_rendered
+		editor._scene_view_size = prev_size
+		editor.scene_cam_pos = prev_cam
+		editor.scene_cam_target = prev_target
+		editor.gizmo_mode = prev_mode
+	}
+	menu.show_scene = true
+	menu.show_game = false
+	editor.scene_cam_pos = {0, 0, 10}
+	editor.scene_cam_target = {0, 0, 0}
+	editor.gizmo_mode = .Translate
+	gfx.frame_index += 1
+	editor._scene_rendered_frame = gfx.frame_index - 1
+	editor._scene_view_size = {800, 600}
+
+	obj := engine.transform_new("Obj")
+	editor.sel_scene_only(obj)
+	editor.gizmo_pass()
+	testing.expect(t, _count(tc, .Tools) > 0, "the outline and the transform gizmo record into .Tools")
+	f := handles.frame()
+	testing.expect(t, f.valid && f.view.width == 800 && f.view.height == 600, "the handles frame is the scene view's")
+	testing.expectf(t, linalg.length(f.view.cam_pos - [3]f32{0, 0, 10}) < 1e-3, "with the scene camera, got %v", f.view.cam_pos)
+	gizmos.frame_end()
+}
+
+// A label lands on the game image where the camera sees it, scaled from the
+// render target's pixels onto the image (zoom, letterbox), plus its offset.
+// Off the image, none.
+@(test)
+test_game_view_label_position :: proc(t: ^testing.T) {
+	v := handles_test_view() // 800x600, the origin at its center
+	l := engine.Gizmo_Label{pos = {0, 0, 0}, offset_px = {3, -2}}
+	p, ok := editor.game_label_pos(v, {5, 5}, {400, 300}, l)
+	testing.expectf(t, ok && linalg.length(p - [2]f32{208, 153}) < 0.01, "center of a half-size image, got %v", p)
+	l.pos = {100, 0, 0} // far to the right, off the image
+	_, ok = editor.game_label_pos(v, {5, 5}, {400, 300}, l)
+	testing.expect(t, !ok, "off the image")
 }

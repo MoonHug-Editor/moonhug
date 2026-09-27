@@ -80,7 +80,7 @@ Names group by family:
 - Capsules, cylinders and cones take the two points of their axis. Circles and arcs take a center and a normal.
 - Solids are unlit color, alpha allowed.
 - A solid volume (box, sphere, capsule, cylinder, cone, frustum) drawn without depth test keeps only the faces turned to the camera, each shaded by how much it faces it. Nothing sorts the triangles, so a back face would otherwise paint over the front. This needs the current view (`set_view`, which the scene view calls before its hooks), so draw those from a view's hooks.
-- Labels show in views that draw text: the scene view today. They are never depth-tested.
+- Labels show in the editor's scene and game views, drawn over the view's image and never depth-tested. Each view shows the labels of the channels it draws, projected with its own camera. The standalone app draws no text yet.
 - An icon records as data (position, pixel size, image, colors, owner). Each view builds it when it draws, facing that view's camera at that view's pixel size, so icons face the game camera in the game view. The scene view picks the owner on a click inside it (`icons()` returns this frame's). `handles.icon` draws the editor's (docs/Handles.md).
 - An icon's image is a symbol (a proc drawing with shapes), a glyph (a codepoint of the editor's icon font) or a texture asset. A glyph or texture draws as a quad over the backdrop. Glyphs come from the glyph source the editor installs (`set_glyph_source`): without one, a glyph icon fails loudly, so the standalone app cannot draw them.
 - `helper_pixel` and `helper_project` measure against the current view, so they belong in a view's hooks too.
@@ -108,4 +108,4 @@ The innermost scope wins, and either one takes precedence over the fixed tick li
 ## Not yet
 
 - Line width.
-- Labels in the game view and the standalone app: those views draw no text yet.
+- Labels in the standalone app: it draws no text yet.

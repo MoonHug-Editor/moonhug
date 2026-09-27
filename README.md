@@ -175,10 +175,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
   - use bit set + procs, instead of direct bool change
   - consider making transform regular component (required or optional), node will hold all components
 
-- gizmo drawing follow-ups (see [Gizmos](docs/Gizmos.md))
-  - line width - the one item with real renderer cost, since lines become quads
-  - labels in the game view and the standalone app (no text path there yet)
-
 - improve default types inspector UX
 
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)

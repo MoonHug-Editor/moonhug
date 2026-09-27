@@ -7,6 +7,10 @@ import "core:testing"
 import "moonhug:engine"
 import "moonhug:engine/gizmos"
 import editor "moonhug:editor"
+import "moonhug:editor/handles"
+import "moonhug:editor/undo"
+import im "moonhug:external/odin-imgui"
+import mhgui_editor "moonhug:packages/mhgui/editor"
 import mhgui "moonhug:packages/mhgui"
 import common "moonhug:tests/common"
 
@@ -700,4 +704,110 @@ test_scene_view_picks_ui :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "beside it, nothing")
 	band := editor.scene_view_band_query(view, at - 5, at + 5)
 	testing.expect(t, len(band) >= 1 && band[0] == image, "box select takes it")
+}
+
+// --- Rect tool and transform tool on UI --------------------------------------------------
+
+// A canvas with one Image: anchors at the parent point (50, 50), the pivot 30
+// to the right at (80, 50), the rect (30..130, 0..100) in the scene view.
+@(private = "file")
+_UI_Case :: struct {
+	rt:    ^engine.RectTransform,
+	image: engine.Transform_Handle,
+	view:  engine.Render_View,
+}
+
+@(private = "file")
+_ui_case :: proc() -> _UI_Case {
+	canvas := engine.transform_new("Canvas")
+	_add(canvas, .Canvas)
+	image := engine.transform_new("Image", canvas)
+	rt := cast(^engine.RectTransform)_add(image, .RectTransform)
+	_add(image, .CanvasRenderer)
+	_add(image, .Image)
+	mhgui.mhgui_package_init()
+	engine.canvas_set_game_viewport({200, 100})
+	rt.anchor_min, rt.anchor_max = {0.25, 0.5}, {0.25, 0.5}
+	rt.anchored_position = {30, 0, 0}
+	eye := [3]f32{100, 50, 300}
+	view := engine.render_view_make(linalg.matrix4_look_at_f32(eye, {100, 50, 0}, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
+	return {rt = rt, image = image, view = view}
+}
+
+@(private = "file")
+_rect_tool :: proc(user: rawptr) {
+	c := cast(^_UI_Case)user
+	mhgui_editor.rect_transform_handles(c.rt, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Handles})
+}
+
+// With snapping on (a 10 unit step), the rect tool's body moves by whole
+// steps, while the anchors and the pivot, fractions of a rect, follow the
+// pointer exactly.
+@(test)
+test_rect_tool_snaps_moves_not_fractions :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	ictx := im.CreateContext()
+	defer im.DestroyContext(ictx)
+	s := new(undo.Undo_Stack)
+	undo.init(s)
+	undo.install(s)
+	defer free(s)
+	defer undo.destroy(s)
+
+	c := _ui_case()
+	keys := common.Handles_Keys{snap = 10}
+	base := c.rt^
+
+	// The body: 13 units right snaps to 10.
+	common.handles_drag(c.view, {110, 80, 0}, {123, 80, 0}, _rect_tool, &c, keys)
+	testing.expectf(t, abs(c.rt.anchored_position.x - 40) < 1e-3, "the move snaps, got %v", c.rt.anchored_position)
+
+	// The pivot: 13 units right is 0.13 of the 100 wide rect, unsnapped.
+	c.rt^ = base
+	common.handles_drag(c.view, {80, 50, 0}, {93, 50, 0}, _rect_tool, &c, keys)
+	testing.expectf(t, abs(c.rt.pivot.x - 0.63) < 0.005, "the pivot follows the pointer, got %v", c.rt.pivot)
+
+	// The bottom-left anchor, grabbed inside its triangle a few pixels from
+	// its tip: 13 units right is 0.065 of the 200 wide canvas, unsnapped.
+	c.rt^ = base
+	grab := [3]f32{47.8, 47.8, 0}
+	common.handles_drag(c.view, grab, grab + {13, 0, 0}, _rect_tool, &c, keys)
+	testing.expectf(t, abs(c.rt.anchor_min.x - 0.315) < 0.003, "the anchor follows the pointer, got %v", c.rt.anchor_min)
+}
+
+// W on a UI element moves its RectTransform, and one undo step puts it back.
+@(test)
+test_move_tool_on_ui_undoes :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+	s := new(undo.Undo_Stack)
+	undo.init(s)
+	undo.install(s)
+	defer free(s)
+	defer undo.destroy(s)
+	defer editor.sel_scene_clear()
+	prev_mode := editor.gizmo_mode
+	defer editor.gizmo_mode = prev_mode
+
+	c := _ui_case()
+	editor.sel_scene_only(c.image)
+	editor.gizmo_mode = .Translate
+	origin := engine.transform_world_position(c.image)
+	view := engine.render_view_make(linalg.matrix4_look_at_f32(origin + {0, 0, 10}, origin, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
+	before := c.rt.anchored_position
+	steps := s.top
+
+	body :: proc(user: rawptr) { editor.gizmo_tool_frame() }
+	common.handles_drag(view, origin + {0.75, 0, 0}, origin + {1.75, 0, 0}, body, nil)
+	testing.expectf(t, c.rt.anchored_position.x > before.x + 0.5, "the element moved right, got %v from %v", c.rt.anchored_position, before)
+	testing.expect_value(t, s.top, steps + 1)
+	undo.apply_undo(s)
+	testing.expect_value(t, c.rt.anchored_position, before)
 }

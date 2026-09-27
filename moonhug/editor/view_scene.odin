@@ -262,11 +262,11 @@ _update_frame_tween :: proc(dt: f32) {
 	if _frame_tween_t >= 1 do _frame_tween_active = false
 }
 
-// A handle label at `p` (screen), shadowed. A rotated label is drawn glyph
-// by glyph from the font atlas, turned 90 degrees clockwise so it reads top
-// to bottom with the glyph tops facing right: imgui has no rotated text of
-// its own.
-@(private = "file")
+// A gizmo label at `p` (screen), shadowed, for the scene and game views. A
+// rotated label is drawn glyph by glyph from the font atlas, turned 90
+// degrees clockwise so it reads top to bottom with the glyph tops facing
+// right: imgui has no rotated text of its own.
+@(private)
 _draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: engine.Gizmo_Label) {
 	c := strings.clone_to_cstring(l.text, context.temp_allocator)
 	size := im.CalcTextSize(c)
