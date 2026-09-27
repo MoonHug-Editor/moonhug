@@ -14,7 +14,7 @@ package editor
 //   scene view closed.
 //
 // Pixel-sized gizmos measure against the scene view's camera while it is on
-// screen, else the game view's.
+// screen, else the game view's, else the scene camera's at its last size.
 
 import "menu"
 import "../engine"
@@ -60,6 +60,10 @@ gizmo_pass :: proc() {
 		gizmo_tool_frame()
 	} else if v, ok := _game_gizmo_view(); ok {
 		gizmos.set_view(v)
+	} else {
+		// No game camera view yet: pixel-sized gizmos measure against the
+		// scene camera, so they always have a view.
+		gizmos.set_view(scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1)))
 	}
 	gizmos.with_channel(.Editor)
 	__draw_gizmos()

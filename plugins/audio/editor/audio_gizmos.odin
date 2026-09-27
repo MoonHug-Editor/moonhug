@@ -1,0 +1,61 @@
+package audio_editor
+
+// AudioSource gizmos and handles, for sources in the selection
+// (docs/Handles.md): the min and max distance as wire spheres around the
+// source, each with a radius handle on the world axes, in every tool.
+// Dragging the min distance past the max pushes the max out with it, and the
+// max below the min pulls the min in.
+
+import "moonhug:engine"
+import "moonhug:engine/gizmos"
+import "moonhug:editor/handles"
+import "moonhug:editor/undo"
+import audio "moonhug:packages/audio"
+
+AUDIO_GIZMO_COLOR :: [4]f32{0.5, 0.7, 1, 0.5}
+AUDIO_HANDLE_COLOR :: [4]f32{0.5, 0.7, 1, 1}
+
+@(private = "file")
+_edit: undo.Edit_Session
+
+// Both distances at grab: the one not dragged goes back when the other
+// retreats.
+@(private = "file")
+_grab_min, _grab_max: f32
+
+@(on_draw_gizmos={component=AudioSource})
+audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+	if .In_Selection not_in ctx.state do return
+	pos := engine.transform_world_position(a.owner)
+	gizmos.with_color(AUDIO_GIZMO_COLOR)
+	gizmos.wire_sphere(pos, a.min_distance)
+	gizmos.wire_sphere(pos, a.max_distance)
+}
+
+@(on_scene_handles={component=AudioSource})
+audio_source_handles :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
+	h, ok := engine.comp_handle_of(&a.base)
+	if !ok do return
+	pos := engine.transform_world_position(a.owner)
+	lo, hi := a.min_distance, a.max_distance
+	dmin := handles.radius_handle(handles.id_of(h, 1), pos, &lo, color = AUDIO_HANDLE_COLOR)
+	dmax := handles.radius_handle(handles.id_of(h, 2), pos, &hi, color = AUDIO_HANDLE_COLOR)
+	if dmin.started || dmax.started {
+		undo.edit_session_end(&_edit) // a drag whose release never came
+		_grab_min, _grab_max = a.min_distance, a.max_distance
+		targets := [?]undo.Edit_Target{
+			undo.edit_target_pooled(h, &a.min_distance, typeid_of(f32)),
+			undo.edit_target_pooled(h, &a.max_distance, typeid_of(f32)),
+		}
+		_edit = undo.edit_session_begin(targets[:], "Edit Audio Source")
+	}
+	if (dmin.dragging || dmin.released) && lo != a.min_distance {
+		a.min_distance = lo
+		a.max_distance = max(_grab_max, lo)
+	}
+	if (dmax.dragging || dmax.released) && hi != a.max_distance {
+		a.max_distance = hi
+		a.min_distance = min(_grab_min, hi)
+	}
+	if dmin.released || dmax.released do undo.edit_session_end(&_edit)
+}

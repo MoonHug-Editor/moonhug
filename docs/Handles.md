@@ -1,6 +1,6 @@
 # Handles
 
-`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool and the physics collider bounds use it.
+`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
 
 ## Where handles live
 
@@ -92,19 +92,29 @@ Every handle snaps its own drag while snapping is on. Callers never snap:
 
 Composites made of sliders that resize a shape. Each edits the values passed by pointer while one of its dots drags, and returns one `Drag` for all of its dots:
 
-- `box_bounds(id, &center, &size, axes, color)` — a dot on each face.
+- `box_bounds(id, &center, &size, axes, color, fixed_center)` — a dot on each face.
 - `sphere_bounds(id, &center, &radius, axes, color)` — a dot at each end of every axis.
 - `capsule_bounds(id, &center, &radius, &height, axis, axes, color)` — the dots on `axis` change the height (caps included), the others the radius.
+- `radius_handle(id, center, &radius, axes, color)` — a dot at each end of every axis that changes the radius around a fixed center.
+- `cone_handle(id, apex, dir, &range, &angle, color)` — a cone from `apex` along `dir`: the tip dot changes `range` (the length of the edges), four rim dots change `angle` (the full apex angle, radians, 1 to 179 degrees).
+- `frustum_handle(id, base, dir, &radius, &angle, length, color)` — a cone frustum: four dots on the base circle change the radius, four on the far rim `length` along change `angle` (radians from the axis, 0 to 89 degrees).
 
 Behavior:
 
-- Dragging a face moves it and keeps the opposite face in place: the center moves by half the change. Alt moves both faces and keeps the center. Shift (box) scales the other axes by the same ratio.
+- Dragging a face moves it and keeps the opposite face in place: the center moves by half the change. Alt moves both faces and keeps the center, and so does a box with `fixed_center` (a shape with no offset of its own). Shift (box) scales the other axes by the same ratio.
+- Distances snap to the move step and angles to the rotate step, both as steps from the grab-time value, so a click without a move changes nothing.
 - Sizes stop at zero. A capsule's height never goes below its diameter, and a radius past half the height pushes the height out.
 - `axes` limits the dots: 2D shapes pass `{.X, .Y}`.
 - Dots on faces turned away from the camera draw faint and lose the pointer to front dots at the same spot.
 - The procs draw only the dots. The shape is the component's gizmo.
 
 The physics colliders use them: box, sphere and capsule in physics3d, box, circle and capsule in physics2d (the 2D capsule's size is its bounding box, so it takes box bounds). They work on the scaled sizes inside the collider's space, then write each field back divided by the scale, on the axes the drag changed only.
+
+Other users, each one undo step per drag:
+
+- Lights (`editor/light_gizmos.odin`), in every tool: a point light's range with a radius handle on the world axes, a spot light's range and spot angle with a cone handle along its forward (-Z). The gizmo draws the range sphere, the spot cone out to the range, or a directional light's ring of rays. The cone angle is `max(spot_angle, inner_spot_angle)`, the one the renderer uses.
+- Audio sources (the audio plugin's `audio_gizmos.odin`), in every tool: the min and max distance, each a wire sphere with a radius handle on the world axes. The min distance past the max pushes the max out, and the max below the min pulls the min in.
+- Particle shapes (the particles plugin's `particles_gizmos.odin`), in the Handles tool (T) only, like the colliders: a cone's base radius and angle with a frustum handle, a sphere's, hemisphere's, circle's or edge's radius, a box's size around its center.
 
 ## Transform handles
 

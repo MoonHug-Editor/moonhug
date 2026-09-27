@@ -347,3 +347,90 @@ test_handles_vanished_handle_does_not_block :: proc(t: ^testing.T) {
 	testing.expect(t, !handles.consumes_mouse(), "nothing under the pointer calls in")
 	handles_frame(v, {3, 3, 0})
 }
+
+// --- Radius, cone and frustum -------------------------------------------------------------
+
+@(private = "file")
+_Shape_Case :: struct {
+	kind:           enum {Radius, Cone, Frustum, Fixed_Box},
+	radius, angle:  f32,
+	size:           [3]f32,
+	center:         [3]f32,
+}
+
+@(private = "file")
+_shape_body :: proc(user: rawptr) {
+	c := cast(^_Shape_Case)user
+	switch c.kind {
+	case .Radius:    handles.radius_handle(8, {0, 0, 0}, &c.radius)
+	case .Cone:      handles.cone_handle(8, {0, 0, 0}, {1, 0, 0}, &c.radius, &c.angle)
+	case .Frustum:   handles.frustum_handle(8, {0, 0, 0}, {1, 0, 0}, &c.radius, &c.angle, 1)
+	case .Fixed_Box: handles.box_bounds(8, &c.center, &c.size, fixed_center = true)
+	}
+}
+
+@(test)
+test_radius_handle_keeps_the_center :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+
+	c := _Shape_Case{kind = .Radius, radius = 1}
+	handles_drag(v, {-1, 0, 0}, {-2, 0, 0}, _shape_body, &c)
+	testing.expectf(t, abs(c.radius - 2) < 1e-3, "the -X dot moved out by 1, got %v", c.radius)
+
+	b := _Shape_Case{kind = .Fixed_Box, size = {2, 2, 2}}
+	handles_drag(v, {1, 0, 0}, {2, 0, 0}, _shape_body, &b)
+	testing.expectf(t, _near(b.size, {4, 2, 2}) && _near(b.center, {0, 0, 0}), "fixed center: %v %v", b.size, b.center)
+}
+
+// A cone along +X from the origin, range 2 and 60 degrees: its tip at
+// (2, 0, 0), its +Y rim dot at (1.732, 1, 0).
+@(test)
+test_cone_handle_range_and_angle :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+	sixty := math.to_radians(f32(60))
+
+	c := _Shape_Case{kind = .Cone, radius = 2, angle = sixty}
+	handles_drag(v, {2, 0, 0}, {3, 0, 0}, _shape_body, &c)
+	testing.expectf(t, abs(c.radius - 3) < 1e-3 && abs(c.angle - sixty) < 1e-5, "the tip changes the range only: %v %v", c.radius, c.angle)
+
+	// The rim 1.732 off the axis at 1.732 along it: 45 degrees each side.
+	c = _Shape_Case{kind = .Cone, radius = 2, angle = sixty}
+	handles_drag(v, {1.732, 1, 0}, {1.732, 1.732, 0}, _shape_body, &c)
+	testing.expectf(t, abs(math.to_degrees(c.angle) - 90) < 0.1 && abs(c.radius - 2) < 1e-5, "the rim widens the angle: %v %v", math.to_degrees(c.angle), c.radius)
+
+	// 17.9 degrees wider snaps to 15.
+	c = _Shape_Case{kind = .Cone, radius = 2, angle = sixty}
+	handles_drag(v, {1.732, 1, 0}, {1.732, 1.4, 0}, _shape_body, &c, Handles_Keys{snap = 0.5, snap_angle = math.PI / 12})
+	testing.expectf(t, abs(math.to_degrees(c.angle) - 75) < 0.01, "got %v", math.to_degrees(c.angle))
+}
+
+// A frustum along +X: base radius 0.5, 0.3 radians, length 1. Its +Y base dot
+// is at (0, 0.5, 0), its +Y far dot at (1, 0.809, 0).
+@(test)
+test_frustum_handle_radius_and_angle :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	v := handles_test_view()
+
+	c := _Shape_Case{kind = .Frustum, radius = 0.5, angle = 0.3}
+	handles_drag(v, {0, 0.5, 0}, {0, 1, 0}, _shape_body, &c)
+	testing.expectf(t, abs(c.radius - 1) < 1e-3 && abs(c.angle - 0.3) < 1e-6, "the base dot changes the radius: %v %v", c.radius, c.angle)
+
+	c = _Shape_Case{kind = .Frustum, radius = 0.5, angle = 0.3}
+	far := 0.5 + math.tan(f32(0.3))
+	handles_drag(v, {1, far, 0}, {1, 1, 0}, _shape_body, &c)
+	testing.expectf(t, abs(c.angle - math.atan(f32(0.5))) < 1e-3 && abs(c.radius - 0.5) < 1e-6, "the far rim opens the angle: %v %v", c.angle, c.radius)
+}

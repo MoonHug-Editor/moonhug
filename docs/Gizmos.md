@@ -40,7 +40,7 @@ The editor's gizmo pass (editor/gizmo_pass.odin) records the hooks once per fram
 
 - The selection outline, the `@(on_scene_handles)` procs and then the transform gizmo record first, into `.Tools`, while the scene view is on screen. An edit from a handle or the gizmo then shows in the same frame's gizmos and render.
 - The `@(on_draw_gizmos)` procs record into `.Editor` while the scene view is on screen or the game view shows gizmos. The game view has them with the scene view closed.
-- Pixel-sized gizmos measure against the scene view's camera while the scene view is on screen, else the game view's camera. With both open, a pixel-sized gizmo in the game view has the scene view's size.
+- Pixel-sized gizmos measure against the scene view's camera while the scene view is on screen, else the game view's camera, else the scene camera at its last size (the game view has not rendered yet). With both open, a pixel-sized gizmo in the game view has the scene view's size.
 
 ## Scopes
 

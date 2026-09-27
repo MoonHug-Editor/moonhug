@@ -208,7 +208,9 @@ their guid string, `shader_unregister` enables hot reload). All shaders share
 the `Vertex` format and the vertex UBO layout (`_Uniform`: view_proj, model,
 tint) — that contract is what lets `pass_end` switch shaders per draw.
 
-Still deferred: light gizmos (range sphere, spot cone), shadows, per-draw
+Light gizmos and handles (range sphere, spot cone) live in the editor: docs/Handles.md.
+
+Still deferred: shadows, per-draw
 light culling (all 8 lights reach every draw), imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
 instead), engine-level IBL (pbr.glsl samples an equirect environment via its
 `env_tex` row — `assets/textures/studio_env.png` ships as a starter; no

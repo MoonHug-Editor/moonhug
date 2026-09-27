@@ -1,14 +1,19 @@
 package particles_editor
 
-// Emission shape gizmo (Unity's): the selected ParticleSystem draws its
-// shape as wireframe lines in the emitter's world frame — emission is along
-// local +Z, scale is ignored exactly like the sim's shape sampling. Drawn with
+// Emission shape gizmo: the selected ParticleSystem draws its shape as
+// wireframe lines in the emitter's world frame — emission is along local +Z,
+// scale is ignored exactly like the sim's shape sampling. Drawn with
 // engine/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
+//
+// In the Handles tool (T), shape handles edit it (docs/Handles.md), one undo
+// step per drag: a cone's base radius and angle, a sphere's, hemisphere's,
+// circle's or edge's radius, a box's size around its center.
 
 import "core:math"
 import "moonhug:engine"
 import "moonhug:engine/gizmos"
 import "moonhug:editor/handles"
+import "moonhug:editor/undo"
 import particles "moonhug:packages/particles"
 
 SHAPE_GIZMO_COLOR :: [4]f32{0.4, 0.75, 1, 1}
@@ -58,4 +63,46 @@ particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_
 	case .Box:
 		gizmos.wire_box({}, ps.shape_box)
 	}
+}
+
+@(private = "file")
+_edit: undo.Edit_Session
+
+@(on_scene_handles={component=ParticleSystem})
+particle_shape_handles :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
+	if ctx.tool != .Handles do return
+	h, ok := engine.comp_handle_of(&ps.base)
+	if !ok do return
+	gizmos.in_local_space(engine.Transform_Handle(ps.owner), use_scale = false)
+	id := handles.id_of(h)
+	r := ps.shape_radius
+	a0 := math.to_radians(ps.shape_angle)
+	a := a0
+	center: [3]f32
+	box := ps.shape_box
+	d: handles.Drag
+	switch ps.shape {
+	case .Point:
+	case .Cone:       d = handles.frustum_handle(id, {}, {0, 0, 1}, &r, &a, _SHAPE_GIZMO_LENGTH)
+	case .Sphere:     d = handles.radius_handle(id, {}, &r)
+	case .Hemisphere: d = handles.radius_handle(id, {}, &r, {.X, .Y})
+	case .Circle:     d = handles.radius_handle(id, {}, &r, {.X, .Y})
+	case .Edge:       d = handles.radius_handle(id, {}, &r, {.X})
+	case .Box:        d = handles.box_bounds(id, &center, &box, fixed_center = true)
+	}
+	if d.started {
+		undo.edit_session_end(&_edit) // a drag whose release never came
+		targets := [?]undo.Edit_Target{
+			undo.edit_target_pooled(h, &ps.shape_radius, typeid_of(f32)),
+			undo.edit_target_pooled(h, &ps.shape_angle, typeid_of(f32)),
+			undo.edit_target_pooled(h, &ps.shape_box, typeid_of([3]f32)),
+		}
+		_edit = undo.edit_session_begin(targets[:], "Edit Particle Shape")
+	}
+	if d.dragging || d.released {
+		if r != ps.shape_radius do ps.shape_radius = r
+		if a != a0 do ps.shape_angle = math.to_degrees(a)
+		if box != ps.shape_box do ps.shape_box = box
+	}
+	if d.released do undo.edit_session_end(&_edit)
 }

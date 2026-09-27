@@ -1,23 +1,28 @@
 package handles
 
 // Bounds handles: slider dots on the faces of a box, sphere or capsule that
-// resize it (docs/Handles.md). Each proc edits the values it is given while
-// one of its dots drags, and reports the drag: the caller opens an undo
+// resize it, a radius around a fixed center, and the dots of a cone and a
+// cone frustum (docs/Handles.md). Each proc edits the values it is given
+// while one of its dots drags, and reports the drag: the caller opens an undo
 // session on `started`, writes the values back while `dragging` or on
 // `released`, and closes the session on `released`.
 //
 // - Dragging a face moves it and keeps the opposite face in place: the center
 //   moves by half the change.
-// - Alt moves the opposite face too: the center stays.
+// - Alt moves the opposite face too: the center stays. So does a box with
+//   `fixed_center` and a radius handle.
 // - Shift (box only) scales the other axes by the same ratio.
 // - Sizes never go below zero. A capsule's height never goes below its
 //   diameter.
+// - Distances snap to the move step, angles to the rotate step, both as
+//   steps from the grab-time value.
 // - Values are in the current gizmos space, so a collider calls these inside
 //   the same in_local_space as its wires.
 // - Dots on faces turned away from the camera draw faint and lose the pointer
 //   to front dots at the same spot.
 // - The procs draw only the dots: the shape itself is the caller's gizmo.
 
+import "core:math"
 import "core:math/linalg"
 
 Axis :: enum {
@@ -41,14 +46,16 @@ _Bounds_Grab :: struct {
 	center:         [3]f32,
 	size:           [3]f32,
 	radius, height: f32,
+	angle:          f32,
 }
 
 @(private = "file")
 _grab_bounds: _Bounds_Grab
 
 // Six face dots that resize a box around `center` with `size` (full extents).
-// `axes` limits the dots: 2D shapes pass {.X, .Y}.
-box_bounds :: proc(id: u64, center, size: ^[3]f32, axes := ALL_AXES, color := COLOR_HANDLE) -> Drag {
+// `axes` limits the dots: 2D shapes pass {.X, .Y}. With `fixed_center` both
+// faces move and the center stays (a box with no offset of its own).
+box_bounds :: proc(id: u64, center, size: ^[3]f32, axes := ALL_AXES, color := COLOR_HANDLE, fixed_center := false) -> Drag {
 	out: Drag
 	for axis in axes {
 		i := int(axis)
@@ -60,7 +67,7 @@ box_bounds :: proc(id: u64, center, size: ^[3]f32, axes := ALL_AXES, color := CO
 				g := _grab_bounds
 				a := linalg.dot(d.delta, dir)
 				c, s := g.center, g.size
-				if _frame.input.alt {
+				if fixed_center || _frame.input.alt {
 					s[i] = max(g.size[i] + 2 * a, 0)
 				} else {
 					s[i] = max(g.size[i] + a, 0)
@@ -99,6 +106,24 @@ sphere_bounds :: proc(id: u64, center: ^[3]f32, radius: ^f32, axes := ALL_AXES, 
 				}
 				center^, radius^ = c, r
 			}
+			_merge(&out, d)
+		}
+	}
+	return out
+}
+
+// A dot at each end of every axis in `axes`, `radius` from `center`, that
+// changes the radius and keeps the center: a light's range, an audio
+// source's distances, a round emitter.
+radius_handle :: proc(id: u64, center: [3]f32, radius: ^f32, axes := ALL_AXES, color := COLOR_HANDLE) -> Drag {
+	out: Drag
+	for axis in axes {
+		i := int(axis)
+		for side in ([2]f32{-1, 1}) {
+			dir := _axis_dir(i, side)
+			d := _face_dot(_face_id(id, i, side), center + dir * radius^, dir, color)
+			if d.started do _grab_bounds = {radius = radius^}
+			if d.dragging || d.released do radius^ = max(_grab_bounds.radius + linalg.dot(d.delta, dir), 0)
 			_merge(&out, d)
 		}
 	}
@@ -144,6 +169,94 @@ capsule_bounds :: proc(id: u64, center: ^[3]f32, radius, height: ^f32, axis: Axi
 		}
 	}
 	return out
+}
+
+// A cone with its apex at `apex`, opening along `dir` (a spot light). The dot
+// at the tip changes `range`, the length of the cone's edges. The four dots on
+// the rim change `angle`, the full apex angle in radians, kept in 1 to 179
+// degrees: dragging one away from the axis widens the cone.
+cone_handle :: proc(id: u64, apex, dir: [3]f32, range, angle: ^f32, color := COLOR_HANDLE) -> Drag {
+	out: Drag
+	d := linalg.normalize0(dir)
+	if d == {} do return out
+	// The tip is a plain slider: it never faces away, and where a rim dot
+	// lands on it on screen, the nearer one takes the pointer.
+	td := slider(id_of(id, 101), apex + d * range^, d, color = color)
+	if td.started do _grab_bounds = {radius = range^, angle = angle^}
+	if td.dragging || td.released do range^ = max(_grab_bounds.radius + linalg.dot(td.delta, d), 0)
+	_merge(&out, td)
+
+	h := angle^ * 0.5
+	for p, k in _rim_dirs(d) {
+		rd: Drag
+		{
+			with_snap(false) // the angle snaps, not the distance
+			rd = _face_dot(id_of(id, u64(102 + k)), apex + (d * math.cos(h) + p * math.sin(h)) * range^, p, color)
+		}
+		if rd.started do _grab_bounds = {radius = range^, angle = angle^}
+		if rd.dragging || rd.released {
+			g := _grab_bounds
+			if moved := linalg.dot(rd.delta, p); moved != 0 {
+				// The rim's new distance from the axis, at the grab-time
+				// distance along it.
+				gh := g.angle * 0.5
+				full := 2 * math.atan2(max(g.radius * math.sin(gh) + moved, 0), g.radius * math.cos(gh))
+				angle^ = clamp(g.angle + snap_angle(full - g.angle), math.to_radians(f32(1)), math.to_radians(f32(179)))
+			} else {
+				angle^ = g.angle
+			}
+		}
+		_merge(&out, rd)
+	}
+	return out
+}
+
+// A cone frustum along `dir` (a particle system's cone): the base circle of
+// `radius` at `base`, and sides opening at `angle` (radians from the axis)
+// out to a far circle `length` along. Four dots on the base circle change the
+// radius. Four on the far rim change the angle, kept in 0 to 89 degrees.
+frustum_handle :: proc(id: u64, base, dir: [3]f32, radius, angle: ^f32, length: f32, color := COLOR_HANDLE) -> Drag {
+	out: Drag
+	d := linalg.normalize0(dir)
+	if d == {} do return out
+	rims := _rim_dirs(d)
+	for p, k in rims {
+		bd := _face_dot(id_of(id, u64(111 + k)), base + p * radius^, p, color)
+		if bd.started do _grab_bounds = {radius = radius^, angle = angle^}
+		if bd.dragging || bd.released do radius^ = max(_grab_bounds.radius + linalg.dot(bd.delta, p), 0)
+		_merge(&out, bd)
+	}
+	for p, k in rims {
+		far := radius^ + math.tan(angle^) * length
+		ad: Drag
+		{
+			with_snap(false) // the angle snaps, not the distance
+			ad = _face_dot(id_of(id, u64(121 + k)), base + d * length + p * far, p, color)
+		}
+		if ad.started do _grab_bounds = {radius = radius^, angle = angle^}
+		if ad.dragging || ad.released {
+			g := _grab_bounds
+			if moved := linalg.dot(ad.delta, p); moved != 0 && length > 0 {
+				// The far rim's new distance past the base radius.
+				a := math.atan2(math.tan(g.angle) * length + moved, length)
+				angle^ = clamp(g.angle + snap_angle(a - g.angle), 0, math.to_radians(f32(89)))
+			} else {
+				angle^ = g.angle
+			}
+		}
+		_merge(&out, ad)
+	}
+	return out
+}
+
+// Four unit directions across `d`, a quarter turn apart. Along Z they are
+// the X and Y axes.
+@(private = "file")
+_rim_dirs :: proc(d: [3]f32) -> [4][3]f32 {
+	ref := [3]f32{0, 1, 0} if abs(d.y) < 0.99 else [3]f32{1, 0, 0}
+	u := linalg.normalize(linalg.cross(ref, d))
+	v := linalg.cross(d, u)
+	return {u, v, -u, -v}
 }
 
 @(private = "file")

@@ -175,6 +175,11 @@ view — cone base + spread silhouette, sphere/hemisphere circles, circle,
 edge line, box, point cross (`editor/particles_gizmos.odin`, the
 `@(on_draw_gizmos)` hook, for systems in the selection).
 
+In the Handles tool (T), shape handles edit it (the `@(on_scene_handles)`
+hook, docs/Handles.md): a cone's base radius and angle, the radius of a
+sphere, hemisphere, circle or edge, a box's size around its center. One
+drag is one undo step.
+
 ## Edit-mode preview
 
 The inspected EFFECT plays in edit mode, like Unity's scene-view particle
