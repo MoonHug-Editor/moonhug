@@ -163,7 +163,38 @@ _package_gens_refresh :: proc() -> (changed: bool) {
 	return true
 }
 
+// Every installed plugin's hard dependencies are installed
+// (gen_facts.plugin_missing_deps). Otherwise it names each missing plugin and
+// the imports that need it, before anything compiles: the Odin build would
+// only report a path that does not exist.
+_check_plugin_deps :: proc() -> bool {
+	names: [dynamic]string
+	defer { for n in names do delete(n); delete(names) }
+	_package_dir_names(&names)
+
+	missing := make([dynamic]gen_facts.Plugin_Missing_Dep, context.temp_allocator)
+	for name in names do gen_facts.plugin_missing_deps(name, &missing)
+	if len(missing) == 0 do return true
+
+	slice.sort_by(missing[:], proc(a, b: gen_facts.Plugin_Missing_Dep) -> bool {
+		if a.plugin != b.plugin do return a.plugin < b.plugin
+		if a.needs != b.needs do return a.needs < b.needs
+		if a.file != b.file do return a.file < b.file
+		return a.line < b.line
+	})
+	fmt.eprintln("prebuild: installed plugins need plugins that are not installed")
+	for m, i in missing {
+		if i == 0 || m.plugin != missing[i - 1].plugin || m.needs != missing[i - 1].needs {
+			fmt.eprintf("  %s needs %s\n", m.plugin, m.needs)
+		}
+		fmt.eprintf("    %s:%d\n", m.file, m.line)
+	}
+	fmt.eprintln("Install the missing plugin (mh setup relinks every committed plugin), or uninstall the plugin that needs it (docs/Plugins.md).")
+	return false
+}
+
 main :: proc() {
+	if !_check_plugin_deps() do os.exit(1)
 	if _package_gens_refresh() {
 		fmt.eprintln("prebuild: package generator set changed — run prebuild again")
 		os.exit(2)
