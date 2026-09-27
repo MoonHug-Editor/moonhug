@@ -1,3 +1,15 @@
+## [0.110.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.109.1...v0.110.0) (2026-09-27)
+
+### Features
+
+* gizmo handles icons ([71f3bc2](https://github.com/MoonHug-Editor/moonhug/commit/71f3bc2d2fb462a567582874b7339cc97402ff3d))
+* light and particles reuse handles ([cf6cf59](https://github.com/MoonHug-Editor/moonhug/commit/cf6cf59b3f3dee5f8315a8ebce36b152aa230706))
+
+### Bug Fixes
+
+* gizmo icon box-selection ([507a6b4](https://github.com/MoonHug-Editor/moonhug/commit/507a6b480b4e0576b4ac58f87fb56e793e1cd748))
+* sdl.SetGPUAllowedFramesInFlight(_gfx.device, 1) ([acbee58](https://github.com/MoonHug-Editor/moonhug/commit/acbee58f762611899f3e70301de6c6ec6be75430))
+
 ## [0.109.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.109.0...v0.109.1) (2026-09-27)
 
 ### Bug Fixes
