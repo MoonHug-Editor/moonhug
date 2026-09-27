@@ -1,3 +1,9 @@
+## [0.109.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.109.0...v0.109.1) (2026-09-27)
+
+### Bug Fixes
+
+* pick handle on same frame ([73e9c82](https://github.com/MoonHug-Editor/moonhug/commit/73e9c82b7ccc2176302fc6ce4238f42e19ff3ba5))
+
 ## [0.109.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.108.0...v0.109.0) (2026-09-26)
 
 ### Features
