@@ -57,7 +57,8 @@ _settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> a
     if !tok do return {}
     guid, gerr := uuid.read(string(tg))
     if gerr != nil do return {}
-    if get_typeid_by_guid(guid) == nil do return {}
+    // A type no installed plugin declares is dangling data, not a bug.
+    if _, known := get_typeid_by_guid_ok(guid); !known do return {}
     context.allocator = allocator
     settings := create_instance_by_guid(guid)
     if settings.data == nil do return {}

@@ -87,6 +87,11 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
         return any{}, false
     }
 
+    // A type no installed plugin declares: the asset's plugin is missing.
+    if _, known := engine.get_typeid_by_guid_ok(guid); !known {
+        log.error(fmt.tprintf("Unknown __typ_guid %s: no installed plugin declares this asset type", guid_str))
+        return any{}, false
+    }
     instance := engine.create_instance_by_guid(guid)
     pointer_typeid, _ := engine.get_pointer_typeid_by_typeid(instance.id)
     temp_ptr := instance.data

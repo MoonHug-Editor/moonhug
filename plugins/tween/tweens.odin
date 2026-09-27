@@ -47,15 +47,12 @@ tween_has_delay :: proc(base: ^Tween, delta_time: f32) -> bool {
 	return false
 }
 
-// Packages register their node types on this phase (fired by each runnable
-// binary next to .SerializationInit). The stock nodes below register through
-// the SAME public path at order=0, so foreign registrations may assume the
-// runtime is up.
-Phase_Extra :: enum {
-	TweenNodesInit,
-}
-
-@(phase={key=TweenNodesInit, order=0})
+// Packages register their node types on the SerializationInit phase, which
+// every runnable binary and the tests fire: the node registry is what reads
+// authored trees back. The stock nodes below register through the SAME
+// public path. The registry is up from program start, so registration order
+// does not matter.
+@(phase={key=SerializationInit, order=1})
 register_builtin_nodes :: proc() {
 	register_node(Parallel, tick_Parallel)
 	register_node(Sequence, tick_Sequence)

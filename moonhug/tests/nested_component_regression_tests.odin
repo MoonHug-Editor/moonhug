@@ -21,9 +21,9 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 	meta := strings.concatenate({dir, "/s.scene.meta"}, context.temp_allocator)
 	defer { os.remove(path); os.remove(meta); os.remove(dir) }
 
-	// SpriteRenderer(10) with a MALFORMED sprite guid — registered type,
+	// MeshFilter(10) with a MALFORMED mesh guid — registered type,
 	// but the record won't parse. Plus a genuinely unknown type(11).
-	SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
+	MESH_FILTER_GUID :: "32f52908-51a9-4f3b-819b-fc9d8cbc5972"
 	FAKE_GUID :: "deadbeef-0000-4000-8000-000000000042"
 	scene_json := fmt.tprintf(`{{
   "root": 1, "next_local_id": 20,
@@ -35,10 +35,10 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {{"__type": "%s", "base": {{"local_id": 10, "enabled": true}}, "sprite": {{"guid": "not-a-guid", "local_id": 0}}, "color": [1,0,0,1]}},
+    {{"__type": "%s", "base": {{"local_id": 10, "enabled": true}}, "mesh": {{"guid": "not-a-guid", "local_id": 0}}}},
     {{"__type": "%s", "base": {{"local_id": 11, "enabled": true}}, "mystery": 7}}
   ]
-}}`, SPRITE_GUID, FAKE_GUID)
+}}`, MESH_FILTER_GUID, FAKE_GUID)
 	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
 	testing.expect(t, os.write_entire_file(meta, transmute([]byte)string(`{"guid": "abcd1234-0000-4000-8000-000000000002"}`)) == nil)
 
@@ -72,7 +72,7 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 // EXACT editor repro: a host that NESTS a prefab is open first — the editor
 // auto-loads it from settings. The user then opens the prefab directly
 // (single load unloads the host, recycling its pool slots into the prefab's)
-// and saves. Every component must survive. The prefab carries THREE sprites
+// and saves. Every component must survive. The prefab carries THREE lights
 // so a partial drop is distinguishable from a total one.
 @(test)
 test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
@@ -89,7 +89,7 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
 		os.remove(dir)
 	}
 
-	// Prefab: root + three sprite children.
+	// Prefab: root + three light children.
 	p_json := `{
   "root": 1,
   "next_local_id": 20,
@@ -126,15 +126,15 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+    {"__type": "` + FIXTURE_LIGHT_GUID + `",
      "base": {"local_id": 12, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000", "color": [1, 0, 0, 1]},
-    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "color": [1, 0, 0, 1]},
+    {"__type": "` + FIXTURE_LIGHT_GUID + `",
      "base": {"local_id": 13, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 1, 0, 1]},
-    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+     "color": [0, 1, 0, 1]},
+    {"__type": "` + FIXTURE_LIGHT_GUID + `",
      "base": {"local_id": 14, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 0, 1, 1]}
+     "color": [0, 0, 1, 1]}
   ]
 }`
 	testing.expect(t, os.write_entire_file(p_path, transmute([]byte)p_json) == nil, "write prefab")
@@ -174,9 +174,9 @@ test_open_host_then_open_prefab_and_save :: proc(t: ^testing.T) {
 
 	testing.expect(t, engine.scene_save(s, tmp), "save")
 	saved, _ := os.read_entire_file(tmp, context.temp_allocator)
-	n_sprites := strings.count(string(saved), FIXTURE_SPRITE_GUID)
-	fmt.printf("[REPRO] saved sprites=%d\n", n_sprites)
-	testing.expect_value(t, n_sprites, 3)
+	n_lights := strings.count(string(saved), FIXTURE_LIGHT_GUID)
+	fmt.printf("[REPRO] saved lights=%d\n", n_lights)
+	testing.expect_value(t, n_lights, 3)
 }
 
 // Resaving a scene with preserved unknown records must not GROW the owning

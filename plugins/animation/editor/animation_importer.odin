@@ -35,6 +35,23 @@ animation_importers_init :: proc() {
 	// The mesh importer hands every glTF animation here, so a model's clips
 	// bake to its own artifacts and need no extraction to be played.
 	asset_pipeline.gltf_clip_baker = bake_gltf_clip
+	asset_pipeline.gltf_clip_extractor = {write = _extract_gltf_clip, decorate = _play_extracted_clip}
+}
+
+// One glTF animation as a standalone .anim, for extraction: the curves only.
+// Its settings live in the .meta beside it, like any .anim.
+@(private = "file")
+_extract_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool {
+	clip, ok := anim.animation_clip_from_gltf(data, an)
+	if !ok do return false
+	return serialization.write_asset_to_path(out_path, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip)
+}
+
+// An Animation component playing `clip` on the root of the extracted scene.
+@(private = "file")
+_play_extracted_clip :: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID) {
+	_, a_raw := engine.transform_add_comp(root, .Animation)
+	(cast(^anim.Animation)a_raw).clip = clip
 }
 
 // One glTF animation to one clip artifact, the same bytes _import_animation

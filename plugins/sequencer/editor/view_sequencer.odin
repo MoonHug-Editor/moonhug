@@ -858,15 +858,10 @@ _sq_inspector_pane :: proc(tracks: []seq.Track_View) {
 	}
 }
 
+// The kind's own color (Track_Desc.color): the window names no kind.
 @(private = "file")
 _sq_track_color :: proc(kind: engine.TypeKey) -> im.Vec4 {
-	#partial switch kind {
-	case .TrackAnimation:  return {0.30, 0.50, 0.80, 0.9}
-	case .TrackAudio:      return {0.75, 0.55, 0.25, 0.9}
-	case .TrackActivation: return {0.40, 0.70, 0.40, 0.9}
-	case .TrackParticles:  return {0.65, 0.40, 0.75, 0.9}
-	case .TrackControl:    return {0.35, 0.65, 0.70, 0.9}
-	}
+	if desc, has := seq.track_desc(kind); has && desc.color != {} do return im.Vec4(desc.color)
 	return {0.5, 0.5, 0.5, 0.9}
 }
 

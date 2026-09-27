@@ -1,7 +1,6 @@
 package tests
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 
 import "core:fmt"
@@ -137,21 +136,21 @@ test_save_load_scene_with_transform :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_save_load_scene_with_sprite_renderer :: proc(t: ^testing.T) {
+test_save_load_scene_with_component :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_sprite_renderer.scene")
+	setup(tc_mem, "moonhug/tests/fixtures/_test_scene_component.scene")
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
 	tH := engine.transform_new("Player")
 	engine.scene_set_root(tc_mem.scene, tH)
 
-	_, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-	testing.expect(t, sr != nil, "SpriteRenderer should be added")
-	if sr == nil do return
-	sr.color = {1, 0, 0.5, 1}
-	sr.enabled = true
+	_, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	testing.expect(t, lt != nil, "Light should be added")
+	if lt == nil do return
+	lt.color = {1, 0, 0.5, 1}
+	lt.enabled = true
 
 	ok := engine.scene_save(tc_mem.scene, tc_mem.path)
 	testing.expect(t, ok, "scene_save should succeed")
@@ -169,12 +168,12 @@ test_save_load_scene_with_sprite_renderer :: proc(t: ^testing.T) {
 	testing.expect_value(t, loaded_t.name, "Player")
 	testing.expect_value(t, len(loaded_t.components), 1)
 
-	_, loaded_sr := engine.transform_get_comp(engine.Transform_Handle(loaded.root.handle), sprites.SpriteRenderer)
-	testing.expect(t, loaded_sr != nil, "loaded SpriteRenderer should exist")
-	if loaded_sr == nil do return
-	testing.expect_value(t, loaded_sr.color, [4]f32{1, 0, 0.5, 1})
-	testing.expect_value(t, loaded_sr.enabled, true)
-	testing.expect(t, loaded_sr.owner == engine.Transform_Handle(loaded.root.handle), "SpriteRenderer owner should point to loaded transform")
+	_, loaded_lt := engine.transform_get_comp(engine.Transform_Handle(loaded.root.handle), engine.Light)
+	testing.expect(t, loaded_lt != nil, "loaded Light should exist")
+	if loaded_lt == nil do return
+	testing.expect_value(t, loaded_lt.color, [4]f32{1, 0, 0.5, 1})
+	testing.expect_value(t, loaded_lt.enabled, true)
+	testing.expect(t, loaded_lt.owner == engine.Transform_Handle(loaded.root.handle), "Light owner should point to loaded transform")
 }
 
 @(test)
@@ -187,10 +186,10 @@ test_instantiate_twice_no_local_id_collision :: proc(t: ^testing.T) {
 
 	parentH := engine.transform_new("Parent")
 	childH := engine.transform_new("Child", parentH)
-	_, sr := engine.transform_get_or_add_comp(childH, sprites.SpriteRenderer)
-	if sr == nil do return
-	sr.color = {1, 0, 0, 1}
-	sr.enabled = true
+	_, lt := engine.transform_get_or_add_comp(childH, engine.Light)
+	if lt == nil do return
+	lt.color = {1, 0, 0, 1}
+	lt.enabled = true
 
 	data := engine.scene_copy_subtree(parentH)
 	defer delete(data)
@@ -246,9 +245,9 @@ test_instantiate_preserves_internal_cross_refs :: proc(t: ^testing.T) {
 	parentH := engine.transform_new("Parent")
 	c1H := engine.transform_new("Child1", parentH)
 	_ = engine.transform_new("Child2", parentH)
-	_, sr := engine.transform_get_or_add_comp(c1H, sprites.SpriteRenderer)
-	if sr == nil do return
-	sr.enabled = true
+	_, lt := engine.transform_get_or_add_comp(c1H, engine.Light)
+	if lt == nil do return
+	lt.enabled = true
 
 	data := engine.scene_copy_subtree(parentH)
 	defer delete(data)
@@ -281,11 +280,11 @@ test_instantiate_preserves_internal_cross_refs :: proc(t: ^testing.T) {
 	testing.expect_value(t, child1.parent.handle, engine.Handle(inst))
 	testing.expect_value(t, child2.parent.handle, engine.Handle(inst))
 
-	_, inst_sr := engine.transform_get_comp(engine.Transform_Handle(child1_h), sprites.SpriteRenderer)
-	testing.expect(t, inst_sr != nil, "instantiated SpriteRenderer should exist")
-	if inst_sr == nil do return
-	testing.expect_value(t, inst_sr.enabled, true)
-	testing.expect(t, inst_sr.owner == engine.Transform_Handle(child1_h), "SpriteRenderer owner should point to instantiated child")
+	_, inst_lt := engine.transform_get_comp(engine.Transform_Handle(child1_h), engine.Light)
+	testing.expect(t, inst_lt != nil, "instantiated Light should exist")
+	if inst_lt == nil do return
+	testing.expect_value(t, inst_lt.enabled, true)
+	testing.expect(t, inst_lt.owner == engine.Transform_Handle(child1_h), "Light owner should point to instantiated child")
 }
 
 @(test)
@@ -298,8 +297,8 @@ test_scene_file_remap_produces_unique_ids :: proc(t: ^testing.T) {
 
 	parentH := engine.transform_new("A")
 	childH := engine.transform_new("B", parentH)
-	_, sr := engine.transform_get_or_add_comp(childH, sprites.SpriteRenderer)
-	if sr == nil do return
+	_, lt := engine.transform_get_or_add_comp(childH, engine.Light)
+	if lt == nil do return
 
 	data := engine.scene_copy_subtree(parentH)
 	defer delete(data)
@@ -546,14 +545,14 @@ test_revert_override_scoped_to_owning_instance :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids :: proc(t: ^testing.T) {
+test_revert_nested_light_respects_transform_scope_for_duplicate_comp_local_ids :: proc(t: ^testing.T) {
 	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_dup_sprite_revert_scope.scene")
+	setup(tc_mem, "moonhug/tests/fixtures/_test_dup_light_revert_scope.scene")
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 
@@ -573,10 +572,10 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	testing.expect(t, slot_h != {} && a_h != {} && b_h != {})
 	if slot_h == {} || a_h == {} || b_h == {} do return
 
-	_, sr_a := engine.transform_get_comp(a_h, sprites.SpriteRenderer)
-	_, sr_b := engine.transform_get_comp(b_h, sprites.SpriteRenderer)
-	testing.expect(t, sr_a != nil && sr_b != nil)
-	if sr_a == nil || sr_b == nil do return
+	_, lt_a := engine.transform_get_comp(a_h, engine.Light)
+	_, lt_b := engine.transform_get_comp(b_h, engine.Light)
+	testing.expect(t, lt_a != nil && lt_b != nil)
+	if lt_a == nil || lt_b == nil do return
 
 	owning_ns: ^engine.NestedScene
 	for &ns in loaded.nested_scenes {
@@ -591,11 +590,11 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 	// Override targets are SOURCE-namespace lids; live entities carry composed
 	// instance lids. Forge a live-lid duplicate anyway — the composed-id bimap
 	// must still bind the revert to exactly the targeted component.
-	dup_lid, dup_ok := owning_ns.source_of_inst[sr_a.local_id]
-	testing.expect(t, dup_ok, "live sprite lid should be in the instance correspondence map")
+	dup_lid, dup_ok := owning_ns.source_of_inst[lt_a.local_id]
+	testing.expect(t, dup_ok, "live light lid should be in the instance correspondence map")
 	if !dup_ok do return
-	sr_b.local_id = sr_a.local_id
-	sr_a.color = {0.9, 0.4, 0.1, 1}
+	lt_b.local_id = lt_a.local_id
+	lt_a.color = {0.9, 0.4, 0.1, 1}
 
 	ov_val: json.Value
 	json_err := json.unmarshal_string("[0.9,0.4,0.1,1]", &ov_val)
@@ -608,10 +607,10 @@ test_revert_nested_sprite_respects_transform_scope_for_duplicate_comp_local_ids 
 		engine.Override{target = dup_target, property_path = strings.clone("color"), value = json.clone_value(ov_val)},
 	)
 
-	engine.nested_scene_revert_override(loaded, owning_ns, dup_target, "color", rawptr(&sr_a.color))
+	engine.nested_scene_revert_override(loaded, owning_ns, dup_target, "color", rawptr(&lt_a.color))
 
-	testing.expect_value(t, sr_a.color, [4]f32{1, 0, 0, 1})
-	testing.expect_value(t, sr_b.color, [4]f32{0, 1, 0, 1})
+	testing.expect_value(t, lt_a.color, [4]f32{1, 0, 0, 1})
+	testing.expect_value(t, lt_b.color, [4]f32{0, 1, 0, 1})
 }
 
 // Per docs/PrefabsSpec.md §3.2, an outer prefab's overrides on its inner prefab
@@ -2392,7 +2391,7 @@ test_variant_root_override_round_trip :: proc(t: ^testing.T) {
 	testing.expect_value(t, rt2.position, [3]f32{12, 34, 56})
 }
 
-// An override on a COMPONENT of the variant's root (e.g. SpriteRenderer.color)
+// An override on a COMPONENT of the variant's root (e.g. Light.color)
 // must persist across save+reload — the root's inherited components are baked
 // baseline, so changes to them are overrides like any nested content.
 @(test)
@@ -2412,25 +2411,25 @@ test_variant_root_component_override_round_trip :: proc(t: ^testing.T) {
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
-	// The variant overrides the root SpriteRenderer color to blue at load.
+	// The variant overrides the root Light color to blue at load.
 	root_tH := engine.Transform_Handle(loaded.root.handle)
-	_, sr := engine.transform_get_comp(root_tH, sprites.SpriteRenderer)
-	testing.expect(t, sr != nil, "variant root should carry the inherited SpriteRenderer")
-	if sr == nil do return
-	testing.expect_value(t, sr.color, [4]f32{0, 0, 1, 1})
+	_, lt := engine.transform_get_comp(root_tH, engine.Light)
+	testing.expect(t, lt != nil, "variant root should carry the inherited Light")
+	if lt == nil do return
+	testing.expect_value(t, lt.color, [4]f32{0, 0, 1, 1})
 
 	// Override it again (green) and round-trip.
-	sr.color = {0, 1, 0, 1}
+	lt.color = {0, 1, 0, 1}
 	testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
 	reloaded := engine.scene_load_single_path(tc_mem.path)
 	testing.expect(t, reloaded != nil)
 	if reloaded == nil do return
 	tc_mem.scene = reloaded
-	_, sr2 := engine.transform_get_comp(engine.Transform_Handle(reloaded.root.handle), sprites.SpriteRenderer)
-	testing.expect(t, sr2 != nil)
-	if sr2 == nil do return
-	testing.expect_value(t, sr2.color, [4]f32{0, 1, 0, 1})
+	_, lt2 := engine.transform_get_comp(engine.Transform_Handle(reloaded.root.handle), engine.Light)
+	testing.expect(t, lt2 != nil)
+	if lt2 == nil do return
+	testing.expect_value(t, lt2.color, [4]f32{0, 1, 0, 1})
 }
 
 // Nesting a variant inside a scene, saving, and reloading must keep the nested
@@ -2853,7 +2852,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		}
 	}
 
-	// Find a SpriteRenderer on nested-owned (inherited) content and change color.
+	// Find a Light on nested-owned (inherited) content and change color.
 	edited_lid: engine.Local_ID = 0
 	new_color := [4]f32{0.123, 0.456, 0.789, 1}
 	it_e := engine.pool_iterator(&tc_mem.world.transforms)
@@ -2863,14 +2862,14 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
-		if sr != nil {
-			sr.color = new_color
+		_, lt := engine.transform_get_comp(h, engine.Light)
+		if lt != nil {
+			lt.color = new_color
 			edited_lid = tr.local_id
 			break
 		}
 	}
-	testing.expect(t, edited_lid != 0, "should find a SpriteRenderer on inherited content to edit")
+	testing.expect(t, edited_lid != 0, "should find a Light on inherited content to edit")
 	if edited_lid == 0 do return
 
 	testing.expect(t, engine.scene_save(loaded, tmp), "save should succeed")
@@ -2888,8 +2887,8 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
-		if sr != nil && sr.color == new_color do found = true
+		_, lt := engine.transform_get_comp(h, engine.Light)
+		if lt != nil && lt.color == new_color do found = true
 	}
 	testing.expect(t, found, "edited inherited-c_Variant color must persist across save+reload")
 
@@ -2934,15 +2933,15 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 		}
 		testing.expect(t, has, "the deep color override survives on the root NS")
 		if !has do return
-		sr, sr_h := fixture_find_sprite(&tc_mem.world, reloaded, nested_only = true)
-		testing.expect(t, sr != nil, "live inherited sprite")
-		if sr == nil do return
+		lt, lt_h := fixture_find_light(&tc_mem.world, reloaded, nested_only = true)
+		testing.expect(t, lt != nil, "live inherited light")
+		if lt == nil do return
 		engine.nested_scene_revert_override(reloaded, root_ns, target, "color")
-		_, sr2 := engine.transform_get_comp(sr_h, sprites.SpriteRenderer)
-		testing.expect(t, sr2 != nil)
-		if sr2 != nil {
-			testing.expect(t, fixture_color_close(sr2.color, FIXTURE_COLOR_BASE),
-				fmt.tprintf("revert must restore the exact base %v, got %v", FIXTURE_COLOR_BASE, sr2.color))
+		_, lt2 := engine.transform_get_comp(lt_h, engine.Light)
+		testing.expect(t, lt2 != nil)
+		if lt2 != nil {
+			testing.expect(t, fixture_color_close(lt2.color, FIXTURE_COLOR_BASE),
+				fmt.tprintf("revert must restore the exact base %v, got %v", FIXTURE_COLOR_BASE, lt2.color))
 		}
 	}
 
@@ -2964,7 +2963,7 @@ test_prefab_chain_authoring_semantics :: proc(t: ^testing.T) {
 	nested := engine.scene_instantiate_guid_nested(fx.bv_guid, engine.Transform_Handle(fresh.root.handle))
 	testing.expect(t, nested != {}, "nesting bullet_Variant should succeed")
 	if nested == {} do return
-	fsr, _ := fixture_find_sprite(&tc_mem.world, fresh)
+	fsr, _ := fixture_find_light(&tc_mem.world, fresh)
 	testing.expect(t, fsr != nil && fixture_color_close(fsr.color, new_color),
 		"the deep override must apply to nested content with the exact file value")
 }
@@ -3014,9 +3013,8 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {"__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
+    {"__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
      "base": {"local_id": 3, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000",
      "color": [0.5, 0, 0, 1]}
   ]
 }`
@@ -3034,15 +3032,15 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 
 	w := &tc_mem.world
 
-	find_sprite :: proc(w: ^engine.World, s: ^engine.Scene) -> ^sprites.SpriteRenderer {
+	find_light :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.Light {
 		it := engine.pool_iterator(&w.transforms)
 		for tr, ih in engine.pool_next(&it) {
 			if tr.scene != s do continue
 			th := ih
 			th.type_key = .Transform
 			h := engine.Transform_Handle(th)
-			_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
-			if sr != nil do return sr
+			_, lt := engine.transform_get_comp(h, engine.Light)
+			if lt != nil do return lt
 		}
 		return nil
 	}
@@ -3090,11 +3088,11 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 	{
 		hostH := engine.scene_instantiate_guid_nested(engine.Asset_GUID(bv_guid), engine.Transform_Handle(host.root.handle))
 		testing.expect(t, hostH != {}, "bullet_Variant should instantiate into host")
-		sr := find_sprite(w, host)
-		testing.expect(t, sr != nil, "live sprite in host")
-		if sr == nil do return
-		testing.expect(t, close_to(sr.color, COLOR_BASE), "pre-override color is the authored base")
-		sr.color = COLOR_HOST
+		lt := find_light(w, host)
+		testing.expect(t, lt != nil, "live light in host")
+		if lt == nil do return
+		testing.expect(t, close_to(lt.color, COLOR_BASE), "pre-override color is the authored base")
+		lt.color = COLOR_HOST
 		testing.expect(t, engine.scene_save(host, host_path), "save host")
 	}
 
@@ -3104,10 +3102,10 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 		testing.expect(t, bv != nil, "variant loads")
 		if bv == nil do return
 		tc_mem.scene = bv
-		sr := find_sprite(w, bv)
-		testing.expect(t, sr != nil, "live sprite in variant")
-		if sr == nil do return
-		sr.color = COLOR_VARIANT
+		lt := find_light(w, bv)
+		testing.expect(t, lt != nil, "live light in variant")
+		if lt == nil do return
+		lt.color = COLOR_VARIANT
 		testing.expect(t, engine.scene_save(bv, bv_path), "save variant")
 	}
 
@@ -3116,10 +3114,10 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 	testing.expect(t, host2 != nil, "host reloads")
 	if host2 == nil do return
 	tc_mem.scene = host2
-	sr := find_sprite(w, host2)
-	testing.expect(t, sr != nil)
-	if sr == nil do return
-	testing.expect(t, close_to(sr.color, COLOR_HOST), fmt.tprintf("host override applies after reload (got %v)", sr.color))
+	lt := find_light(w, host2)
+	testing.expect(t, lt != nil)
+	if lt == nil do return
+	testing.expect(t, close_to(lt.color, COLOR_HOST), fmt.tprintf("host override applies after reload (got %v)", lt.color))
 
 	// Revert the host override: the live value must become the variant's
 	// CURRENT baked color (COLOR_VARIANT), not the stale pre-edit base.
@@ -3138,8 +3136,8 @@ test_host_override_revert_after_source_edit :: proc(t: ^testing.T) {
 	testing.expect(t, reverted, "host should carry a color override to revert")
 	if !reverted do return
 
-	testing.expect(t, close_to(sr.color, COLOR_VARIANT),
-		fmt.tprintf("revert must restore the variant's CURRENT color %v, got %v", COLOR_VARIANT, sr.color))
+	testing.expect(t, close_to(lt.color, COLOR_VARIANT),
+		fmt.tprintf("revert must restore the variant's CURRENT color %v, got %v", COLOR_VARIANT, lt.color))
 }
 
 // Bulk Apply (the Overrides dropdown): nested_scene_apply_entries pushes the
@@ -3185,14 +3183,14 @@ test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
 	// plan shapes.
 	want_pos := [3]f32{7, 8, 9}
 	st.position = want_pos
-	_, comp_ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+	_, comp_ptr := engine.transform_add_comp(sprite_tH, .Camera)
 	testing.expect(t, comp_ptr != nil)
 	if comp_ptr == nil do return
 	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
-	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.Camera), context.temp_allocator)
 	_, rec_ok := engine.nested_scene_record_component_added(
 		loaded, inner_host, st.local_id, comp_lid, type_guid,
-		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		comp_ptr, engine.get_typeid_by_type_key(.Camera),
 	)
 	testing.expect(t, rec_ok)
 
@@ -3287,7 +3285,7 @@ test_apply_entries_shallow_field_and_added_component :: proc(t: ^testing.T) {
 		st2 := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite2))
 		n_groups := 0
 		for c in st2.components {
-			if c.handle.type_key == .SpriteSortingGroup do n_groups += 1
+			if c.handle.type_key == .Camera do n_groups += 1
 		}
 		testing.expect_value(t, n_groups, 1)
 		testing.expect_value(t, st2.position, want_pos)
@@ -3335,14 +3333,14 @@ test_apply_entries_deep_added_component :: proc(t: ^testing.T) {
 	inner_host := engine.transform_immediate_nested_host(tc_under_b1)
 	if inner_host == {} do return
 
-	_, comp_ptr := engine.transform_add_comp(tc_under_b1, .SpriteSortingGroup)
+	_, comp_ptr := engine.transform_add_comp(tc_under_b1, .Camera)
 	testing.expect(t, comp_ptr != nil)
 	if comp_ptr == nil do return
 	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
-	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.Camera), context.temp_allocator)
 	_, rec_ok := engine.nested_scene_record_component_added(
 		loaded, inner_host, t_c.local_id, comp_lid, type_guid,
-		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		comp_ptr, engine.get_typeid_by_type_key(.Camera),
 	)
 	testing.expect(t, rec_ok)
 
@@ -3416,7 +3414,7 @@ test_apply_entries_deep_added_component :: proc(t: ^testing.T) {
 		tct := engine.pool_get(&world.transforms, engine.Handle(tc))
 		n := 0
 		for c in tct.components {
-			if c.handle.type_key == .SpriteSortingGroup do n += 1
+			if c.handle.type_key == .Camera do n += 1
 		}
 		testing.expectf(t, n == 1, "%s/TransformC should carry the component once, has %d", host_name, n)
 	}
@@ -3700,14 +3698,14 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 	inner_host := engine.transform_immediate_nested_host(tc_v)
 	if inner_host == {} do return
 
-	_, comp_ptr := engine.transform_add_comp(tc_v, .SpriteSortingGroup)
+	_, comp_ptr := engine.transform_add_comp(tc_v, .Camera)
 	testing.expect(t, comp_ptr != nil)
 	if comp_ptr == nil do return
 	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
-	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.Camera), context.temp_allocator)
 	_, rec_ok := engine.nested_scene_record_component_added(
 		loaded, inner_host, st.local_id, comp_lid, type_guid,
-		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		comp_ptr, engine.get_typeid_by_type_key(.Camera),
 	)
 	testing.expect(t, rec_ok)
 
@@ -3776,7 +3774,7 @@ test_apply_variant_structural_record :: proc(t: ^testing.T) {
 		tct := engine.pool_get(&world.transforms, engine.Handle(tc))
 		n := 0
 		for c in tct.components {
-			if c.handle.type_key == .SpriteSortingGroup do n += 1
+			if c.handle.type_key == .Camera do n += 1
 		}
 		testing.expectf(t, n == 1, "TransformC_Variant should carry the component once, has %d", n)
 	}

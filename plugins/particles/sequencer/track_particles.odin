@@ -1,4 +1,4 @@
-package particles
+package particles_sequencer
 
 // The particles Control Track (docs/Sequencer.md): a timeline clip span
 // plays the bound ParticleSystem, leaving the span stops it and clears live
@@ -8,13 +8,15 @@ package particles
 // play mode shows that same frame, which is why the span clears rather than
 // letting particles age out past the clip end.
 //
-// This file is the particles package's only sequencer dependency — the
-// track registers itself, the sequencer never imports particles. Author
+// This folder is the particles plugin's only sequencer dependency, and it
+// compiles only with the sequencer installed (docs/Plugins.md). The track
+// registers itself, the sequencer never imports particles. Author
 // track-driven systems with manual_start (and a random_seed for stable
 // scrubbing): the span decides when they play.
 
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
+import particles "moonhug:packages/particles"
 
 // The kind's components: the track carries what it drives; the clip needs no
 // payload (the span itself is the instruction).
@@ -41,6 +43,7 @@ particles_track_init :: proc() {
 		track_key   = .TrackParticles,
 		clip_key    = .ClipParticles,
 		label       = "particles",
+		color       = {0.65, 0.40, 0.75, 0.9},
 		tick        = _particles_track_tick,
 		preview_end = _particles_track_preview_end,
 	})
@@ -48,12 +51,12 @@ particles_track_init :: proc() {
 
 // The ParticleSystem this track drives, or nil.
 @(private = "file")
-_particles_track_system :: proc(ctx: ^seq.Track_Ctx) -> ^ParticleSystem {
+_particles_track_system :: proc(ctx: ^seq.Track_Ctx) -> ^particles.ParticleSystem {
 	_, pt := get_comp(ctx.track.node, TrackParticles)
 	if pt == nil || pt.system.handle.type_key != .ParticleSystem do return nil
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, pt.system.handle) do return nil
-	return cast(^ParticleSystem)engine.world_pool_get(w, pt.system.handle)
+	return cast(^particles.ParticleSystem)engine.world_pool_get(w, pt.system.handle)
 }
 
 _particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
@@ -73,41 +76,41 @@ _particles_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 		// fixed steps. Editor scrubs only — play mode never sets scrub.
 		// The whole effect co-simulates: sub-emitter targets must age the
 		// particles the replay's triggers inject into them.
-		list := make([dynamic]^ParticleSystem, context.temp_allocator)
+		list := make([dynamic]^particles.ParticleSystem, context.temp_allocator)
 		_scrub_effect(ps, &list)
 		for e in list {
-			system_reset(e)
+			particles.system_reset(e)
 			e.is_sub_target = e != ps // triggers drive targets, never their own timeline
 		}
 		if active != nil {
 			// The explicit play overrides manual_start — the span IS the play.
-			system_play(ps)
+			particles.system_play(ps)
 			STEP :: f32(1.0 / 60.0)
 			local := ctx.time - active.start
 			for t := f32(0); t < local; t += STEP {
 				dt := min(STEP, local - t)
-				for e in list do system_tick(e, dt)
+				for e in list do particles.system_tick(e, dt)
 			}
 		}
 		return
 	}
 
 	if active != nil {
-		if ps.stopped || !ps.started do system_play(ps)
+		if ps.stopped || !ps.started do particles.system_play(ps)
 	} else if ps.started && !ps.stopped {
 		// Leaving the span CLEARS live particles, matching what scrubbing and
 		// the editor preview show at the same playhead position. The span is
 		// the effect's existence: a plain system_stop would let particles age
 		// out past the clip end in play mode only, so the same timeline looked
 		// different depending on how you watched it.
-		system_stop(ps, clear_particles = true)
+		particles.system_stop(ps, clear_particles = true)
 	}
 }
 
 // The bound system plus its transitive sub-emitter targets, depth-limited
 // like _sub_emit's chain guard.
 @(private = "file")
-_scrub_effect :: proc(ps: ^ParticleSystem, out: ^[dynamic]^ParticleSystem) {
+_scrub_effect :: proc(ps: ^particles.ParticleSystem, out: ^[dynamic]^particles.ParticleSystem) {
 	for e in out^ {
 		if e == ps do return
 	}
@@ -117,7 +120,7 @@ _scrub_effect :: proc(ps: ^ParticleSystem, out: ^[dynamic]^ParticleSystem) {
 	for &sub in ps.sub_emitters {
 		if sub.target.handle.type_key != .ParticleSystem do continue
 		if !engine.world_pool_valid(w, sub.target.handle) do continue
-		if target := cast(^ParticleSystem)engine.world_pool_get(w, sub.target.handle); target != nil {
+		if target := cast(^particles.ParticleSystem)engine.world_pool_get(w, sub.target.handle); target != nil {
 			_scrub_effect(target, out)
 		}
 	}
@@ -128,7 +131,7 @@ _scrub_effect :: proc(ps: ^ParticleSystem, out: ^[dynamic]^ParticleSystem) {
 _particles_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 	ps := _particles_track_system(ctx)
 	if ps == nil do return
-	list := make([dynamic]^ParticleSystem, context.temp_allocator)
+	list := make([dynamic]^particles.ParticleSystem, context.temp_allocator)
 	_scrub_effect(ps, &list)
-	for e in list do system_reset(e)
+	for e in list do particles.system_reset(e)
 }

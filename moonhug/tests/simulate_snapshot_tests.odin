@@ -1,7 +1,6 @@
 package tests
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 
 import "core:os"
 import "core:strings"
@@ -244,16 +243,16 @@ test_simulate_snapshot_preserves_nested_override :: proc(t: ^testing.T) {
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
-	sr, sr_tH := fixture_find_sprite(&tc_mem.world, loaded, nested_only = true)
-	testing.expect(t, sr != nil && sr_tH != {}, "found a sprite inside the nested instance")
-	if sr == nil || sr_tH == {} do return
+	lt, lt_tH := fixture_find_light(&tc_mem.world, loaded, nested_only = true)
+	testing.expect(t, lt != nil && lt_tH != {}, "found a light inside the nested instance")
+	if lt == nil || lt_tH == {} do return
 
 	// Author an override on prefab content, the way the inspector would.
 	override_color := [4]f32{0.25, 0.5, 0.75, 1}
-	sr.color = override_color
+	lt.color = override_color
 
 	lid: engine.Local_ID
-	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sr_tH)); tr != nil {
+	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(lt_tH)); tr != nil {
 		lid = tr.local_id
 	}
 	testing.expect(t, lid != 0)
@@ -265,7 +264,7 @@ test_simulate_snapshot_preserves_nested_override :: proc(t: ^testing.T) {
 	defer delete(snapshot)
 
 	// "Play" stomps the overridden value.
-	sr.color = {1, 0, 0, 1}
+	lt.color = {1, 0, 0, 1}
 
 	restored := engine.scene_load_single_bytes(
 		snapshot, loaded.asset_guid, loaded.path)
@@ -277,9 +276,9 @@ test_simulate_snapshot_preserves_nested_override :: proc(t: ^testing.T) {
 	testing.expect(t, found, "nested object found by lid after restore")
 	if !found do return
 
-	_, rsr := engine.transform_get_comp(rH, sprites.SpriteRenderer)
-	testing.expect(t, rsr != nil, "sprite component present after restore")
-	if rsr == nil do return
-	testing.expectf(t, fixture_color_close(rsr.color, override_color),
-		"override survives snapshot/restore, got %v want %v", rsr.color, override_color)
+	_, rlt := engine.transform_get_comp(rH, engine.Light)
+	testing.expect(t, rlt != nil, "light component present after restore")
+	if rlt == nil do return
+	testing.expectf(t, fixture_color_close(rlt.color, override_color),
+		"override survives snapshot/restore, got %v want %v", rlt.color, override_color)
 }

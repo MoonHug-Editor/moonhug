@@ -40,6 +40,19 @@ Importer_Desc :: struct {
 Gltf_Clip_Baker :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool
 gltf_clip_baker: Gltf_Clip_Baker
 
+// What the editor's glTF extraction ("Assets/Extract Assets") writes for
+// animations. Installed with the baker, by the animation package. nil procs =
+// extraction writes no clips.
+// - `write`: one glTF animation of `data` as a clip asset at `out_path`.
+//   false when the animation has no usable channels or the write failed.
+// - `decorate`: puts the component that plays `clip` on `root`, the root of
+//   the scene extraction writes.
+Gltf_Clip_Extractor :: struct {
+	write:    proc(data: ^cgltf.data, an: ^cgltf.animation, out_path: string) -> bool,
+	decorate: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID),
+}
+gltf_clip_extractor: Gltf_Clip_Extractor
+
 Phase_Extra :: enum {
 	ImportersInit,
 }

@@ -1,14 +1,15 @@
-package sprites
+package sprites_sequencer
 
-// A clip tween owned by THIS package, because the thing it poses is this
-// package's component (docs/Sequencer.md "Tweens"). It imports only
-// sequencer/core — never the sequencer — and tween_gen picks it up by the
-// embedded Clip_Tween base, adding it to TweenUnion on the next prebuild.
-// That is the whole plugin contract: no registration call, no edit to the
-// sequencer.
+// A clip tween owned by the sprites plugin, because the thing it poses is its
+// component (docs/Sequencer.md "Tweens"). It imports only sequencer/core —
+// never the sequencer — and tween_gen picks it up by the embedded Clip_Tween
+// base, adding it to TweenUnion on the next prebuild. That is the whole
+// plugin contract: no registration call, no edit to the sequencer. The
+// folder compiles only with the sequencer installed (docs/Plugins.md).
 
 import "moonhug:engine"
 import seq_core "moonhug:packages/sequencer/core"
+import sprites "moonhug:packages/sprites"
 
 // Fades the bound SpriteRenderer's alpha to `to`, keeping RGB. The start
 // alpha is captured per the base's Capture_Mode.
@@ -27,7 +28,7 @@ evaluate_TweenFadeTo :: proc(s: ^TweenFadeTo, t: f32, ctx: ^seq_core.Tween_Ctx) 
 	if h.type_key != .SpriteRenderer do return
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, h) do return
-	sr := cast(^SpriteRenderer)engine.world_pool_get(w, h)
+	sr := cast(^sprites.SpriteRenderer)engine.world_pool_get(w, h)
 	if sr == nil do return
 	if !s.captured {
 		s.captured = true

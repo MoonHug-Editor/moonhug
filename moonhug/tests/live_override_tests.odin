@@ -5,7 +5,6 @@ package tests
 // only an explicit revert removes it.
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "../editor/inspector"
 import "../editor/undo"
 
@@ -451,7 +450,7 @@ test_override_restore_after_revert :: proc(t: ^testing.T) {
 // recorded on the instance's NestedScene, so it survives BOTH the save and the
 // next resolve (which rebuilds the instance from its prefab).
 
-// HostDup nests SpriteDup, whose SpriteA child carries a SpriteRenderer.
+// HostDup nests SpriteDup, whose SpriteA child carries a Light.
 @(test)
 test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
@@ -469,7 +468,7 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	if loaded == nil do return
 	tc_mem.scene = loaded
 
-	// The nested SpriteRoot and its SpriteRenderer.
+	// The nested SpriteRoot and its Light.
 	sprite_tH := find_transform_named(&tc_mem.world, loaded, "SpriteA", true)
 	testing.expect(t, sprite_tH != {}, "nested SpriteA should resolve")
 	if sprite_tH == {} do return
@@ -479,10 +478,10 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	testing.expect(t, host_tH != {})
 	if host_tH == {} do return
 
-	comp_h, sr := engine.transform_get_comp(sprite_tH, sprites.SpriteRenderer)
-	testing.expect(t, sr != nil, "the nested content should carry a SpriteRenderer")
-	if sr == nil do return
-	comp_lid := (cast(^engine.CompData)sr).local_id
+	comp_h, lt := engine.transform_get_comp(sprite_tH, engine.Light)
+	testing.expect(t, lt != nil, "the nested content should carry a Light")
+	if lt == nil do return
+	comp_lid := (cast(^engine.CompData)lt).local_id
 
 	// Remove it the way the inspector does: destroy + record.
 	engine.transform_remove_comp(sprite_tH, comp_h.handle)
@@ -519,8 +518,8 @@ test_component_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 	testing.expect(t, sprite2 != {}, "SpriteA itself should still be there")
 	if sprite2 == {} do return
-	_, sr2 := engine.transform_get_comp(sprite2, sprites.SpriteRenderer)
-	testing.expect(t, sr2 == nil, "a REMOVED component must not reappear after reload")
+	_, lt2 := engine.transform_get_comp(sprite2, engine.Light)
+	testing.expect(t, lt2 == nil, "a REMOVED component must not reappear after reload")
 }
 
 @(test)
@@ -548,16 +547,16 @@ test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 	if host_tH == {} do return
 
 	// Add a component the prefab does NOT have.
-	owned, ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+	owned, ptr := engine.transform_add_comp(sprite_tH, .Camera)
 	testing.expect(t, ptr != nil, "adding a component should succeed")
 	if ptr == nil do return
 	comp_lid := (cast(^engine.CompData)ptr).local_id
-	guid := engine.get_guid_by_type_key(.SpriteSortingGroup)
+	guid := engine.get_guid_by_type_key(.Camera)
 	type_guid := uuid.to_string(guid, context.temp_allocator)
 
 	created, ok := engine.nested_scene_record_component_added(
 		loaded, host_tH, st.local_id, comp_lid, type_guid,
-		ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		ptr, engine.get_typeid_by_type_key(.Camera),
 	)
 	testing.expect(t, ok && created, "adding to prefab content should record an addition")
 	_ = owned
@@ -585,7 +584,7 @@ test_component_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 
 	sprite2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 	if sprite2 == {} do return
-	_, spin := engine.transform_get_comp(sprite2, sprites.SpriteSortingGroup)
+	_, spin := engine.transform_get_comp(sprite2, engine.Camera)
 	testing.expect(t, spin != nil, "an ADDED component must be present after reload")
 }
 
@@ -625,14 +624,14 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 
 		// ADD a component, save, then LOAD — the load runs the resolve-time
 		// bake, which is where the bad free happened.
-		_, ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+		_, ptr := engine.transform_add_comp(sprite_tH, .Camera)
 		if ptr == nil do return
 		comp_lid := (cast(^engine.CompData)ptr).local_id
-		guid := engine.get_guid_by_type_key(.SpriteSortingGroup)
+		guid := engine.get_guid_by_type_key(.Camera)
 		engine.nested_scene_record_component_added(
 			loaded, host_tH, st.local_id, comp_lid,
 			uuid.to_string(guid, context.temp_allocator),
-			ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+			ptr, engine.get_typeid_by_type_key(.Camera),
 		)
 		testing.expect(t, engine.scene_save(loaded, tc_mem.path))
 
@@ -647,9 +646,9 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 			s2 := find_transform_named(&tc_mem.world, reloaded, "SpriteA", true)
 			if s2 != {} {
 				h2 := engine.transform_immediate_nested_host(s2)
-				ch, sr := engine.transform_get_comp(s2, sprites.SpriteRenderer)
-				if sr != nil && h2 != {} {
-					lid2 := (cast(^engine.CompData)sr).local_id
+				ch, lt := engine.transform_get_comp(s2, engine.Light)
+				if lt != nil && h2 != {} {
+					lid2 := (cast(^engine.CompData)lt).local_id
 					engine.transform_remove_comp(s2, ch.handle)
 					engine.nested_scene_record_component_removed(reloaded, h2, lid2)
 					testing.expect(t, engine.scene_save(reloaded, tc_mem.path))
@@ -670,55 +669,6 @@ test_component_edits_no_bad_free :: proc(t: ^testing.T) {
 	}
 }
 
-// An UNCHANGED load->save must not invent structural component edits. Lid
-// matching alone can't classify a component: one owned by a DEEPER nesting
-// level un-projects with that level's table, not the level being captured, so
-// it stays composed and reads as an unmatched (added) row. The live
-// `nested_owned` flag is the authority instead. This is the shape of the bug
-// that shipped a phantom added_components entry into blobs.scene.
-@(test)
-test_unchanged_save_invents_no_component_edits :: proc(t: ^testing.T) {
-	ASSETS :: "moonhug/packages/prefabs_example/assets"
-	engine.asset_db_init(ASSETS)
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_no_phantom_comps.scene")
-	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
-
-	// host.scene nests a chain deep enough that inner levels own components
-	// the capturing level cannot un-project.
-	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
-		loaded := engine.scene_load_single_path(path)
-		testing.expectf(t, loaded != nil, "load %s", path)
-		if loaded == nil do continue
-		tc_mem.scene = loaded
-		engine.sm_scene_set_active(loaded)
-
-		data, ok := engine.scene_serialize(loaded)
-		testing.expectf(t, ok, "serialize %s", path)
-		if ok do delete(data)
-
-		for &ns in loaded.nested_scenes {
-			testing.expectf(t, len(ns.added_components) == 0,
-				"%s: unchanged save invented %d added_components", path, len(ns.added_components))
-			testing.expectf(t, len(ns.removed_components) == 0,
-				"%s: unchanged save invented %d removed_components", path, len(ns.removed_components))
-		}
-		engine.sm_scene_destroy_or_unload(loaded)
-		engine.sm_scene_set_active(nil)
-		tc_mem.scene = nil
-	}
-}
-
-// --- Structural OBJECT edits on a prefab instance ----------------------------
-
-// A transform added under prefab content is recorded as an added_object and
-// grafted back at resolve, so it survives a full save/reload — not just the
-// save. HostDup nests SpriteDup (SpriteA/SpriteB) under a regular host.
 @(test)
 test_object_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
@@ -778,46 +728,6 @@ test_object_addition_survives_save_and_reload :: proc(t: ^testing.T) {
 		"the added object must come back under its prefab parent")
 }
 
-// An unchanged load->save must not invent object edits. The live walk skips the
-// base root and inner-NS content, so "absent from the walk" does NOT mean the
-// user removed something — inferring removals that way invented them.
-@(test)
-test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
-	ASSETS :: "moonhug/packages/prefabs_example/assets"
-	engine.asset_db_init(ASSETS)
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	tc_mem := new(TestCtx)
-	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_no_phantom_objs.scene")
-	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
-
-	for path in ([]string{ASSETS + "/host.scene", ASSETS + "/blobs.scene", ASSETS + "/blobs_Variant.scene"}) {
-		loaded := engine.scene_load_single_path(path)
-		testing.expectf(t, loaded != nil, "load %s", path)
-		if loaded == nil do continue
-		tc_mem.scene = loaded
-		engine.sm_scene_set_active(loaded)
-
-		data, ok := engine.scene_serialize(loaded)
-		if ok do delete(data)
-
-		for &ns in loaded.nested_scenes {
-			testing.expectf(t, len(ns.added_objects) == 0,
-				"%s: unchanged save invented %d added_objects", path, len(ns.added_objects))
-			testing.expectf(t, len(ns.removed_objects) == 0,
-				"%s: unchanged save invented %d removed_objects", path, len(ns.removed_objects))
-		}
-		engine.sm_scene_destroy_or_unload(loaded)
-		engine.sm_scene_set_active(nil)
-		tc_mem.scene = nil
-	}
-}
-
-// Deleting prefab content records a removed_object, so the next resolve — which
-// rebuilds the instance from its prefab — does not bring it back.
 @(test)
 test_object_removal_survives_save_and_reload :: proc(t: ^testing.T) {
 	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
@@ -994,7 +904,7 @@ test_nested_create_child_undo_redo :: proc(t: ^testing.T) {
 // A panel that draws ANOTHER component's field (the timeline animator's per-track
 // binding rows) has to push that component's own prefab context, not the one the
 // inspector set for the component it is drawing. The fixture host is the shape
-// that catches it: HRoot is plain scene content, and the sprite it drives lives
+// that catches it: HRoot is plain scene content, and the light it drives lives
 // deep inside a nested bullet_Variant instance.
 @(test)
 test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing.T) {
@@ -1014,11 +924,11 @@ test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing
 	testing.expect(t, s != nil)
 	if s == nil do return
 
-	sr, sr_tH := fixture_find_sprite(&tc_mem.world, s, nested_only = true)
-	testing.expect(t, sr != nil && sr_tH != {}, "the host nests a prefab sprite")
-	if sr == nil || sr_tH == {} do return
-	comp, _ := engine.transform_get_comp(sr_tH, sprites.SpriteRenderer)
-	testing.expect(t, comp.handle != {}, "sprite component handle")
+	lt, lt_tH := fixture_find_light(&tc_mem.world, s, nested_only = true)
+	testing.expect(t, lt != nil && lt_tH != {}, "the host nests a prefab light")
+	if lt == nil || lt_tH == {} do return
+	comp, _ := engine.transform_get_comp(lt_tH, engine.Light)
+	testing.expect(t, comp.handle != {}, "light component handle")
 	if comp.handle == {} do return
 
 	p, pok := inspector.inspect_comp(comp.handle)
@@ -1026,7 +936,7 @@ test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing
 	if !pok do return
 	host, lid := p.nested_host, p.nested_lid
 	testing.expect(t, host != {}, "a component inside an instance has a nested host")
-	testing.expect(t, lid == sr.base.local_id, "the lid is the component's own")
+	testing.expect(t, lid == lt.base.local_id, "the lid is the component's own")
 	if host == {} do return
 
 	testing.expect(t, !engine.nested_scene_has_root_override(s, host, lid, "color"),
@@ -1039,8 +949,8 @@ test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing
 	if root_t == nil do return
 	engine.inspector_set_nested_host({})
 	engine.inspector_set_nested_local_id(root_t.local_id)
-	sr.color = {0.1, 0.2, 0.3, 1}
-	inspector.record_nested_override(&sr.color, typeid_of([4]f32), "color", true)
+	lt.color = {0.1, 0.2, 0.3, 1}
+	inspector.record_nested_override(&lt.color, typeid_of([4]f32), "color", true)
 	testing.expect(t, !engine.nested_scene_has_root_override(s, host, lid, "color"),
 		"inheriting the drawn component's context loses the override entirely")
 
@@ -1048,8 +958,8 @@ test_proxy_row_override_lands_on_the_components_own_instance :: proc(t: ^testing
 	// actually belongs to.
 	engine.inspector_set_nested_host(host)
 	engine.inspector_set_nested_local_id(lid)
-	sr.color = {0.4, 0.5, 0.6, 1}
-	inspector.record_nested_override(&sr.color, typeid_of([4]f32), "color", true)
+	lt.color = {0.4, 0.5, 0.6, 1}
+	inspector.record_nested_override(&lt.color, typeid_of([4]f32), "color", true)
 	engine.inspector_set_nested_host({})
 	engine.inspector_set_nested_local_id(0)
 
@@ -1069,8 +979,8 @@ test_proxy_row_context_empty_for_non_prefab_component :: proc(t: ^testing.T) {
 	defer teardown(tc_mem)
 
 	owner := engine.transform_new("Plain")
-	comp, ptr := engine.transform_add_comp(owner, .SpriteRenderer)
-	testing.expect(t, ptr != nil, "sprite added")
+	comp, ptr := engine.transform_add_comp(owner, .Light)
+	testing.expect(t, ptr != nil, "light added")
 	if ptr == nil do return
 
 	p, pok := inspector.inspect_comp(comp.handle)

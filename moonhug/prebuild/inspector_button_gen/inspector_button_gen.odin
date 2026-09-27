@@ -143,10 +143,12 @@ generate :: proc(w: ^db.World) -> bool {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 
-	packages_used: map[string]bool
+	// Package name -> pkg_path: a subpackage imports by its folder, not its
+	// name (docs/Plugins.md).
+	packages_used: map[string]string
 	defer delete(packages_used)
 	for e in entries {
-		if e.comp_pkg != "" do packages_used[e.comp_pkg] = true
+		if e.comp_pkg != "" do packages_used[e.comp_pkg] = e.source_path
 	}
 	import_pkgs: [dynamic]string
 	defer delete(import_pkgs)
@@ -158,7 +160,7 @@ generate :: proc(w: ^db.World) -> bool {
 		if pkg == "engine" {
 			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
 		} else {
-			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
+			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, strings.trim_prefix(packages_used[pkg], "moonhug/"))
 		}
 	}
 	if len(import_pkgs) > 0 do strings.write_string(&b, "\n")

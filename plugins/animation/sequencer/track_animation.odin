@@ -1,4 +1,4 @@
-package animation
+package animation_sequencer
 
 // The animation timeline track (docs/Sequencer.md): clips are AnimationClips
 // blended on a per-track mixer, weights from their ease ramps, so overlapping
@@ -19,6 +19,7 @@ import "base:runtime"
 import "core:slice"
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
+import anim "moonhug:packages/animation"
 
 // The kind's components. The clip carries its .anim; the track carries the
 // object those clips play on.
@@ -75,6 +76,7 @@ animation_track_init :: proc() {
 		track_key   = .TrackAnimation,
 		clip_key    = .ClipAnimation,
 		label       = "animation",
+		color       = {0.30, 0.50, 0.80, 0.9},
 		build       = _animation_track_build,
 		destroy     = _animation_track_destroy,
 		tick        = _animation_track_tick,
@@ -94,7 +96,7 @@ animation_track_init :: proc() {
 // Entries are heap-allocated: a pointer into map storage dangles on rehash.
 @(private = "file")
 _Director_Arena :: struct {
-	graph:   Playable_Graph,                  // used only when `adopter` is nil
+	graph:   anim.Playable_Graph,                  // used only when `adopter` is nil
 	targets: map[engine.Transform_Handle]int, // target transform -> output index
 	refs:    int,                             // tracks attached
 
@@ -105,12 +107,12 @@ _Director_Arena :: struct {
 	// director backs, parallel to the animator's outputs, and tracks resolve
 	// their output by KEY rather than by their own target.
 	adopter: ^TimelineAnimator,
-	parents: []Playable_Handle,
+	parents: []anim.Playable_Handle,
 }
 
 // The graph a track on this director builds into.
 @(private = "file")
-_arena_graph :: proc(a: ^_Director_Arena) -> ^Playable_Graph {
+_arena_graph :: proc(a: ^_Director_Arena) -> ^anim.Playable_Graph {
 	return a.adopter != nil ? &a.adopter.graph : &a.graph
 }
 
@@ -120,7 +122,7 @@ _arena_graph :: proc(a: ^_Director_Arena) -> ^Playable_Graph {
 //
 // The adoption holds a reference of its own, so the arena survives a rebuild
 // that momentarily destroys every track.
-animation_director_adopt :: proc(director: engine.Transform_Handle, adopter: ^TimelineAnimator, parents: []Playable_Handle) {
+animation_director_adopt :: proc(director: engine.Transform_Handle, adopter: ^TimelineAnimator, parents: []anim.Playable_Handle) {
 	a := _arena_get_or_make(director)
 	if a.adopter == nil do a.refs += 1
 	a.adopter = adopter
@@ -160,7 +162,7 @@ _arena_get_or_make :: proc(director: engine.Transform_Handle) -> ^_Director_Aren
 	if a, ok := _director_arenas[director]; ok do return a
 	context.allocator = runtime.default_allocator()
 	a := new(_Director_Arena)
-	playable_graph_init(&a.graph)
+	anim.playable_graph_init(&a.graph)
 	a.targets = make(map[engine.Transform_Handle]int)
 	_director_arenas[director] = a
 	return a
@@ -180,7 +182,7 @@ _arena_release :: proc(director: engine.Transform_Handle) {
 	a.refs -= 1
 	if a.refs > 0 do return
 	context.allocator = runtime.default_allocator()
-	playable_graph_destroy(&a.graph)
+	anim.playable_graph_destroy(&a.graph)
 	delete(a.targets)
 	delete(a.parents)
 	free(a)
@@ -192,9 +194,9 @@ _arena_release :: proc(director: engine.Transform_Handle) {
 _arena_output :: proc(a: ^_Director_Arena, target: engine.Transform_Handle) -> int {
 	if idx, ok := a.targets[target]; ok do return idx
 	context.allocator = runtime.default_allocator()
-	idx := graph_output_add(&a.graph, target)
-	root := playable_add(&a.graph, Playable_Layer_Mixer{})
-	graph_output(&a.graph, idx).root = root
+	idx := anim.graph_output_add(&a.graph, target)
+	root := anim.playable_add(&a.graph, anim.Playable_Layer_Mixer{})
+	anim.graph_output(&a.graph, idx).root = root
 	a.targets[target] = idx
 	return idx
 }
@@ -220,12 +222,12 @@ _arena_flush :: proc(a: ^_Director_Arena, idx: int) {
 	// An adopted director never applies: the animator owns the graph and
 	// flushes every output once, after every state has set its weights.
 	if a.adopter != nil do return
-	o := graph_output(&a.graph, idx)
+	o := anim.graph_output(&a.graph, idx)
 	if o == nil do return
-	scripts := make([dynamic]Script_Invocation, context.temp_allocator)
-	pose := playable_graph_evaluate(&a.graph, o.root, &o.binding, &scripts)
-	animation_pose_apply(&o.binding, pose)
-	playable_scripts_fire(scripts[:])
+	scripts := make([dynamic]anim.Script_Invocation, context.temp_allocator)
+	pose := anim.playable_graph_evaluate(&a.graph, o.root, &o.binding, &scripts)
+	anim.animation_pose_apply(&o.binding, pose)
+	anim.playable_scripts_fire(scripts[:])
 }
 
 // One track: a mixer fed by one clip node per timeline clip, attached to its
@@ -234,8 +236,8 @@ _arena_flush :: proc(a: ^_Director_Arena, idx: int) {
 _Anim_Track :: struct {
 	director: engine.Transform_Handle, // arena key
 	out:      int,                     // output index within that arena
-	mixer:    Playable_Handle,
-	clips:    [dynamic]Playable_Handle,
+	mixer:    anim.Playable_Handle,
+	clips:    [dynamic]anim.Playable_Handle,
 	// The transform the output was resolved for. The director's structural
 	// fingerprint does not watch a kind's own fields, so the track notices
 	// its own target moving and moves to another output.
@@ -252,21 +254,21 @@ _Anim_Track :: struct {
 // The same three levels with or without a TimelineAnimator: an animator
 // changes where the track's subtree hangs, never what it drives.
 @(private = "file")
-_animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^Animation {
+_animation_track_comp :: proc(ctx: ^seq.Track_Ctx) -> ^anim.Animation {
 	return animation_track_comp_at(ctx.track.node, ctx.owner)
 }
 
 // `_animation_track_comp` for a track node and its director, for callers that
 // hold no Track_Ctx — the animator, sizing its outputs before any track builds.
-animation_track_comp_at :: proc(node, director: engine.Transform_Handle) -> ^Animation {
+animation_track_comp_at :: proc(node, director: engine.Transform_Handle) -> ^anim.Animation {
 	w := engine.ctx_world()
 	if _, at := get_comp(node, TrackAnimation); at != nil {
 		if engine.world_pool_valid(w, at.target.handle) && at.target.handle.type_key == .Animation {
-			return cast(^Animation)engine.world_pool_get(w, at.target.handle)
+			return cast(^anim.Animation)engine.world_pool_get(w, at.target.handle)
 		}
 	}
 	// Unset: the director's own Animation, when it has one.
-	_, a := get_comp(director, Animation)
+	_, a := get_comp(director, anim.Animation)
 	return a
 }
 
@@ -289,7 +291,7 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 	st.root = _animation_track_root(ctx)
 	a := _arena_acquire(ctx.owner)
 	g := _arena_graph(a)
-	parent: Playable_Handle
+	parent: anim.Playable_Handle
 	if a.adopter != nil {
 		// Adopted: the output is the animator's one for this track's own
 		// target, and the subtree hangs under the state's mixer for it. A
@@ -298,20 +300,20 @@ _animation_track_build :: proc(ctx: ^seq.Track_Ctx) -> rawptr {
 		st.out = _ta_track_output(a, ctx)
 		if st.out < 0 || st.out >= len(a.parents) {
 			st.out = -1
-			st.clips = make([dynamic]Playable_Handle)
+			st.clips = make([dynamic]anim.Playable_Handle)
 			return st
 		}
 		parent = a.parents[st.out]
 	} else {
 		st.out = _arena_output(a, st.root)
-		parent = graph_output(g, st.out).root
+		parent = anim.graph_output(g, st.out).root
 	}
-	st.mixer = playable_add(g, Playable_Mixer{})
-	playable_connect(g, parent, st.mixer, 1)
-	st.clips = make([dynamic]Playable_Handle, 0, len(ctx.track.clips))
+	st.mixer = anim.playable_add(g, anim.Playable_Mixer{})
+	anim.playable_connect(g, parent, st.mixer, 1)
+	st.clips = make([dynamic]anim.Playable_Handle, 0, len(ctx.track.clips))
 	for &c in ctx.track.clips {
-		node := playable_add(g, Playable_Clip{clip = _anim_clip_asset(&c)})
-		playable_connect(g, st.mixer, node, 0)
+		node := anim.playable_add(g, anim.Playable_Clip{clip = _anim_clip_asset(&c)})
+		anim.playable_connect(g, st.mixer, node, 0)
 		append(&st.clips, node)
 	}
 	return st
@@ -322,8 +324,8 @@ _animation_track_destroy :: proc(state: rawptr) {
 	st := cast(^_Anim_Track)state
 	if a, ok := _director_arenas[st.director]; ok {
 		g := _arena_graph(a)
-		for h in st.clips do playable_remove(g, h)
-		playable_remove(g, st.mixer)
+		for h in st.clips do anim.playable_remove(g, h)
+		anim.playable_remove(g, st.mixer)
 	}
 	delete(st.clips)
 	_arena_release(st.director)
@@ -354,25 +356,25 @@ _animation_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 	if arena.adopter == nil {
 		if root := _animation_track_root(ctx); root != st.root {
 			old := st.out
-			if o := graph_output(g, old); o != nil do playable_disconnect(g, o.root, st.mixer)
+			if o := anim.graph_output(g, old); o != nil do anim.playable_disconnect(g, o.root, st.mixer)
 			_arena_flush(arena, old)
 			st.root = root
 			st.out = _arena_output(arena, root)
-			playable_connect(g, graph_output(g, st.out).root, st.mixer, 1)
+			anim.playable_connect(g, anim.graph_output(g, st.out).root, st.mixer, 1)
 		}
 	}
 	for &c, ci in ctx.track.clips {
 		if ci >= len(st.clips) do break
 		w := seq.track_clip_weight(ctx.track.clips, ci, ctx.time)
-		playable_set_input_weight(g, st.mixer, st.clips[ci], w)
+		anim.playable_set_input_weight(g, st.mixer, st.clips[ci], w)
 		if w <= 0 do continue
-		n := playable_node(g, st.clips[ci])
+		n := anim.playable_node(g, st.clips[ci])
 		if n == nil do continue
 		local := (ctx.time - c.start) * (c.speed if c.speed > 0 else 1)
 		// A source clip shorter than the timeline clip wraps by its own wrap
 		// mode (Unity loops the source).
-		if src, sok := animation_clip_load(_anim_clip_asset(&c)); sok {
-			local, _ = animation_wrap_time(local, src.length, src.wrap)
+		if src, sok := anim.animation_clip_load(_anim_clip_asset(&c)); sok {
+			local, _ = anim.animation_wrap_time(local, src.length, src.wrap)
 		}
 		n.time = local
 	}
@@ -386,8 +388,8 @@ _animation_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 	st := cast(^_Anim_Track)ctx.state
 	if st == nil do return
 	if a, ok := _director_arenas[st.director]; ok {
-		if o := graph_output(&a.graph, st.out); o != nil {
-			animation_binding_write_defaults(&o.binding)
+		if o := anim.graph_output(&a.graph, st.out); o != nil {
+			anim.animation_binding_write_defaults(&o.binding)
 		}
 	}
 	// Hand the object back to its component.
@@ -396,18 +398,18 @@ _animation_track_preview_end :: proc(ctx: ^seq.Track_Ctx) {
 
 // The track's binding, for the editor's preview bracket: poses are captured
 // before evaluation and restored after the render.
-animation_track_binding :: proc(state: rawptr) -> ^Animation_Binding {
+animation_track_binding :: proc(state: rawptr) -> ^anim.Animation_Binding {
 	st := cast(^_Anim_Track)state
 	if st == nil do return nil
 	a, ok := _director_arenas[st.director]
 	if !ok do return nil
-	o := graph_output(&a.graph, st.out)
+	o := anim.graph_output(&a.graph, st.out)
 	return o != nil ? &o.binding : nil
 }
 
 // The graph a director's animation tracks build into, or nil. An adopted
 // director reports its ADOPTER's graph, which is the one actually evaluated.
-animation_director_graph :: proc(director: engine.Transform_Handle) -> ^Playable_Graph {
+animation_director_graph :: proc(director: engine.Transform_Handle) -> ^anim.Playable_Graph {
 	a, ok := _director_arenas[director]
 	if !ok do return nil
 	return _arena_graph(a)

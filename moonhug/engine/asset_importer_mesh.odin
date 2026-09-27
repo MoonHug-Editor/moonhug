@@ -58,8 +58,9 @@ MeshSettings :: struct {
     // (entry i names part artifact _m<i>.bin). First mint is index + 1.
     parts: [dynamic]Mesh_Part,
     // Identity table, not a setting: shown and edited through the selected
-    // clip's own section (editor/model_subassets.odin). The reflected drawer
-    // must not walk it, since each entry's settings is a raw JSON value.
+    // clip's own section (the animation package, editor/model_clips.odin).
+    // The reflected drawer must not walk it, since each entry's settings is a
+    // raw JSON value.
     clips: [dynamic]Mesh_Clip `inspect:"-"`,
 }
 

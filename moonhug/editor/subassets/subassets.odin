@@ -5,7 +5,8 @@ package subassets
 // editor half registers a provider for its extensions at EditorInit; the
 // project view asks the registry, so the editor root never imports the
 // package. A sub-asset is addressed as PPtr{asset guid, local_id} — the id
-// comes from the provider (persistent, minted by the asset's importer).
+// comes from the provider (persistent, minted by the asset's importer). The
+// clip sampler below is the same kind of seam for a model's clips.
 
 import "base:runtime"
 import "core:fmt"
@@ -51,3 +52,14 @@ find :: proc(ext: string) -> (Provider, bool) {
 	p, ok := _providers[ext]
 	return p, ok
 }
+
+// --- Model clips ------------------------------------------------------------------
+
+// Poses the node hierarchy under `root` by the clip asset `clip` at `t`
+// seconds and returns the clip's length. The Preview pane and the thumbnail
+// of a clip inside a model pose the model's rig with it. The animation
+// package installs it at EditorInit. nil: a model's clips have no preview and
+// no thumbnail.
+Clip_Sampler :: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID, t: f32) -> (length: f32, ok: bool)
+
+clip_sampler: Clip_Sampler

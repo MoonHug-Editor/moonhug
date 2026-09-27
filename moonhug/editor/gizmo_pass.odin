@@ -55,7 +55,10 @@ gizmo_pass :: proc() {
 		})
 		gizmos.set_view(view)
 		gizmos.with_channel(.Tools)
-		for h in sel_scene_items() do draw_selection_outline(h)
+		if len(sel_scene_items()) > 0 {
+			quads := drawn_quads(view)
+			for h in sel_scene_items() do draw_selection_outline(h, quads)
+		}
 		__scene_handles()
 		gizmo_tool_frame()
 		if scene_gizmos {

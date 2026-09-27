@@ -98,8 +98,9 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     guid, guid_err := uuid.read(guid_str)
     if guid_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
 
-    tid := engine.get_typeid_by_guid(guid)
-    if tid == nil do return json.Unmarshal_Data_Error.Invalid_Data
+    // A variant no installed plugin declares is dangling data, not a bug.
+    tid, known := engine.get_typeid_by_guid_ok(guid)
+    if !known do return json.Unmarshal_Data_Error.Invalid_Data
 
     data_bytes, marshal_err := json.marshal(root, allocator = context.temp_allocator)
     if marshal_err != nil do return json.Unmarshal_Data_Error.Invalid_Data

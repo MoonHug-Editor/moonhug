@@ -16,7 +16,7 @@ package timeline_sample
 
 import "core:log"
 import "moonhug:engine"
-import anim "moonhug:packages/animation"
+import anim_seq "moonhug:packages/animation/sequencer"
 
 @(component={menu="Demo/TimelineAnimatorDemo"})
 @(typ_guid={guid = "7c7a5a92-7ea8-4409-a913-2252a0f48a21"})
@@ -42,8 +42,8 @@ reset_TimelineAnimatorDemo :: proc(d: ^TimelineAnimatorDemo) {
 
 // The TimelineAnimator on the same object, or nil.
 @(private = "file")
-_tad_animator :: proc(d: ^TimelineAnimatorDemo) -> ^anim.TimelineAnimator {
-	_, a := engine.transform_get_comp(d.owner, anim.TimelineAnimator)
+_tad_animator :: proc(d: ^TimelineAnimatorDemo) -> ^anim_seq.TimelineAnimator {
+	_, a := engine.transform_get_comp(d.owner, anim_seq.TimelineAnimator)
 	return a
 }
 
@@ -54,12 +54,12 @@ _tad_play :: proc(d: ^TimelineAnimatorDemo, name: string) {
 		log.warn("[TimelineAnimatorDemo] no TimelineAnimator on this object")
 		return
 	}
-	id, ok := anim.animator_find(a, name)
+	id, ok := anim_seq.animator_find(a, name)
 	if !ok {
 		log.warnf("[TimelineAnimatorDemo] no state named %q", name)
 		return
 	}
-	anim.animator_play(a, id, d.fade)
+	anim_seq.animator_play(a, id, d.fade)
 }
 
 @(inspector_button={label="Idle", row=0})
@@ -75,7 +75,7 @@ tad_swing :: proc(d: ^TimelineAnimatorDemo) {
 
 @(inspector_button={label="Stop", row=-1})
 tad_stop :: proc(d: ^TimelineAnimatorDemo) {
-	if a := _tad_animator(d); a != nil do anim.animator_stop(a)
+	if a := _tad_animator(d); a != nil do anim_seq.animator_stop(a)
 }
 
 // Idle loops and keeps running until a button says otherwise. Swing plays ONCE,
@@ -92,16 +92,16 @@ timeline_animator_demo_tick :: proc(dt: f32) {
 		a := _tad_animator(d)
 		if a == nil do continue
 
-		idle, has_idle := anim.animator_find(a, "Idle")
+		idle, has_idle := anim_seq.animator_find(a, "Idle")
 		if !has_idle do continue
 
 		if !d.started && d.auto_start {
-			anim.animator_play(a, idle, 0) // a cut: nothing to fade from
+			anim_seq.animator_play(a, idle, 0) // a cut: nothing to fade from
 			d.started = true
 			continue
 		}
 
-		cur, _, done := anim.animator_state(a)
+		cur, _, done := anim_seq.animator_state(a)
 		if cur == idle {
 			d.returning = false
 			continue
@@ -109,7 +109,7 @@ timeline_animator_demo_tick :: proc(dt: f32) {
 		// A Once state that has finished hands back to Idle.
 		if done && !d.returning {
 			d.returning = true
-			anim.animator_play(a, idle)
+			anim_seq.animator_play(a, idle)
 		}
 	}
 }

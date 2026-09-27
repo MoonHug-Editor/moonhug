@@ -12,6 +12,10 @@ import common "common"
 TestCtx :: common.TestCtx
 setup :: common.setup
 teardown :: common.teardown
+setup_undo :: common.setup_undo
+teardown_undo :: common.teardown_undo
+find_transform_named :: common.find_transform_named
+_remove_tree :: common.remove_tree
 
 // The field-row harness (common/field_row_harness.odin) lives there for the
 // same reason: a package's custom rows are tested with the package.

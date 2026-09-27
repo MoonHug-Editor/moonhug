@@ -685,6 +685,7 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 				engine.sort_key_depth(view, wp), seq)
 			append(out, engine.Render_Command{
 				key     = key,
+				owner   = engine.Transform_Handle(ps.owner),
 				variant = engine.Draw_Quad{
 					texture  = ps.sprite.guid,
 					material = ps.material,
@@ -743,6 +744,7 @@ _collect_particles :: proc(view: engine.Render_View, out: ^[dynamic]engine.Rende
 						engine.sort_key_depth(view, (a + b) * 0.5), seq)
 					append(out, engine.Render_Command{
 						key     = tkey,
+						owner   = engine.Transform_Handle(ps.owner),
 						variant = engine.Draw_Quad{
 							texture  = t_guid,
 							material = t_mat,

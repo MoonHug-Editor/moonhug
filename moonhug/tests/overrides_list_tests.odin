@@ -339,13 +339,13 @@ test_override_baseline_materializes_prefab_values :: proc(t: ^testing.T) {
 		testing.expect(t, base.tid == typeid_of(engine.Transform), "baseline names its type")
 	}
 
-	// COMPONENT baseline: SpriteA carries a SpriteRenderer in SpriteDup.scene.
-	comp_key := engine.TypeKey.SpriteRenderer
+	// COMPONENT baseline: SpriteA carries a Light in SpriteDup.scene.
+	comp_key := engine.TypeKey.Light
 	comp_h := engine.Handle{}
 	for c in at.components {
 		if c.handle.type_key == comp_key do comp_h = c.handle
 	}
-	testing.expect(t, comp_h != {}, "SpriteA should carry a SpriteRenderer")
+	testing.expect(t, comp_h != {}, "SpriteA should carry a Light")
 	if comp_h == {} do return
 
 	raw := engine.world_pool_get(&tc_mem.world, comp_h)

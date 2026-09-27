@@ -1,15 +1,16 @@
-package tests
+package sprites_tests
 
 // Sprite sort key tests (engine/sprite_sort.odin): Unity semantics —
 // sorting_layer -> order_in_layer -> view depth back-to-front -> tree order —
 // with SpriteSortingGroup subtrees sorting as one unit against outsiders.
 // Pure data tests: build a scene tree, run the key pass, assert key ordering.
 
-import "../engine"
+import "moonhug:engine"
 import sprites "moonhug:packages/sprites"
 
 import "core:math/linalg"
 import "core:testing"
+import common "moonhug:tests/common"
 
 // Camera at +Z looking at the origin: a transform's view depth equals its
 // distance along -Z from the camera (z=0 => depth 10, z=5 => depth 5).
@@ -52,11 +53,11 @@ _draws_before :: proc(t: ^testing.T, keys: map[engine.Transform_Handle]engine.So
 
 @(test)
 test_sprite_sort_layer_order_depth_tree :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem)
+	common.setup(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 
@@ -83,11 +84,11 @@ test_sprite_sort_layer_order_depth_tree :: proc(t: ^testing.T) {
 
 @(test)
 test_sprite_sorting_group_is_atomic :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem)
+	common.setup(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 
@@ -119,11 +120,11 @@ test_sprite_sorting_group_is_atomic :: proc(t: ^testing.T) {
 
 @(test)
 test_sprite_sorting_group_nesting_and_disable :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem)
+	common.setup(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 
@@ -151,11 +152,11 @@ test_sprite_sorting_group_nesting_and_disable :: proc(t: ^testing.T) {
 
 @(test)
 test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem, "moonhug/tests/fixtures/_test_sort_group_load.scene")
+	common.setup(tc_mem, "moonhug/tests/fixtures/_test_sort_group_load.scene")
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 	group := _group_at(rootH, "grp", 0, order = 1)
@@ -169,9 +170,9 @@ test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
 	tc_mem.scene = loaded
 
 	w := engine.ctx_world()
-	l_group := find_transform_named(w, loaded, "grp", false)
-	l_member := find_transform_named(w, loaded, "member", false)
-	l_outsider := find_transform_named(w, loaded, "outsider", false)
+	l_group := common.find_transform_named(w, loaded, "grp", false)
+	l_member := common.find_transform_named(w, loaded, "member", false)
+	l_outsider := common.find_transform_named(w, loaded, "outsider", false)
 	testing.expect(t, l_member != {} && l_outsider != {} && l_group != {}, "loaded transforms found")
 
 	keys := sprites.sprite_sort_build_keys(_sort_test_view())
@@ -189,11 +190,11 @@ test_sprite_sort_group_survives_scene_load :: proc(t: ^testing.T) {
 // ungrouped orphan keys and groups interleave.
 @(test)
 test_sprite_sort_group_reaches_children_with_stale_handles :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	setup(tc_mem)
+	common.setup(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown(tc_mem)
+	defer common.teardown(tc_mem)
 
 	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
 	group := _group_at(rootH, "grp", 0, order = 1)

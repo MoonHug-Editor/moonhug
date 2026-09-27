@@ -117,6 +117,10 @@ mapPropertyDrawerOrigin: map[typeid]string
 // draws (the audio Play/Stop buttons are the reference).
 mapAssetPreview: map[string]proc(path: string)
 
+// The selected sub-asset of `path` (0 = none), for Asset_Ctx.sub. The editor
+// installs it: the project selection lives there.
+selected_sub: proc(path: string) -> engine.Local_ID
+
 init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
     mapPropertyDrawerOrigin = make(map[typeid]string)
@@ -434,6 +438,7 @@ _draw_import_settings_inspector :: proc() {
         actx := Asset_Ctx{
             path     = inspectorData.filePath,
             guid     = guid,
+            sub      = selected_sub(inspectorData.filePath) if selected_sub != nil else 0,
             settings = doc.data,
             _chain   = chain,
         }

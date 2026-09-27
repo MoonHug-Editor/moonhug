@@ -1,43 +1,11 @@
 package tests
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "../editor/undo"
 
 import "core:os"
 import "core:strings"
 import "core:testing"
-
-@(private)
-_undo_pointer_types_registered: bool
-
-@(private)
-setup_undo :: proc(tc: ^TestCtx) -> ^undo.Undo_Stack {
-	setup(tc, "")
-	context.user_ptr = &tc.uc
-	if !_undo_pointer_types_registered {
-		engine.register_pointer_type(bool)
-		engine.register_pointer_type(int)
-		engine.register_pointer_type(i32)
-		engine.register_pointer_type(u32)
-		engine.register_pointer_type(f32)
-		engine.register_pointer_type(string)
-		engine.register_pointer_type(engine.Ref)
-		_undo_pointer_types_registered = true
-	}
-
-	s := new(undo.Undo_Stack)
-	undo.init(s)
-	undo.install(s)
-	return s
-}
-
-@(private)
-teardown_undo :: proc(tc: ^TestCtx, s: ^undo.Undo_Stack) {
-	undo.destroy(s)
-	free(s)
-	teardown(tc)
-}
 
 @(test)
 test_undo_value_transform_position :: proc(t: ^testing.T) {
@@ -80,23 +48,23 @@ test_undo_value_component_field :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-	testing.expect(t, sr != nil, "sprite renderer exists")
-	if sr == nil do return
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	testing.expect(t, lt != nil, "light exists")
+	if lt == nil do return
 
-	target := undo.make_component_target(owned.handle, offset_of(sprites.SpriteRenderer, color), typeid_of([4]f32))
-	old_json := undo.capture_json(&sr.color, typeid_of([4]f32))
-	sr.color = {1, 0.5, 0.25, 1}
-	new_json := undo.capture_json(&sr.color, typeid_of([4]f32))
+	target := undo.make_component_target(owned.handle, offset_of(engine.Light, color), typeid_of([4]f32))
+	old_json := undo.capture_json(&lt.color, typeid_of([4]f32))
+	lt.color = {1, 0.5, 0.25, 1}
+	new_json := undo.capture_json(&lt.color, typeid_of([4]f32))
 	undo.push_value(s, target, old_json, new_json)
 
 	ok := undo.apply_undo(s)
 	testing.expect(t, ok, "undo succeeded")
-	testing.expect_value(t, sr.color, [4]f32{1, 1, 1, 1})
+	testing.expect_value(t, lt.color, [4]f32{1, 1, 1, 1})
 
 	ok = undo.apply_redo(s)
 	testing.expect(t, ok, "redo succeeded")
-	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
+	testing.expect_value(t, lt.color, [4]f32{1, 0.5, 0.25, 1})
 }
 
 @(test)
@@ -228,9 +196,9 @@ test_undo_add_component :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_add_comp(tH, .SpriteRenderer)
-	testing.expect(t, sr != nil, "sprite renderer added")
-	if sr == nil do return
+	owned, lt := engine.transform_add_comp(tH, .Light)
+	testing.expect(t, lt != nil, "light added")
+	if lt == nil do return
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
 
@@ -243,7 +211,7 @@ test_undo_add_component :: proc(t: ^testing.T) {
 
 	undo.apply_redo(s)
 	testing.expect_value(t, len(tr.components), 1)
-	testing.expect(t, tr.components[0].handle.type_key == .SpriteRenderer, "component is sprite renderer")
+	testing.expect(t, tr.components[0].handle.type_key == .Light, "component is the light")
 }
 
 @(test)
@@ -255,10 +223,10 @@ test_undo_remove_component :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-	if sr == nil do return
-	sr.color = {0.1, 0.2, 0.3, 1}
-	sr.enabled = true
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	if lt == nil do return
+	lt.color = {0.1, 0.2, 0.3, 1}
+	lt.enabled = true
 
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
@@ -275,7 +243,7 @@ test_undo_remove_component :: proc(t: ^testing.T) {
 	undo.apply_undo(s)
 	testing.expect_value(t, len(tr.components), 1)
 
-	_, restored := engine.transform_get_comp(tH, sprites.SpriteRenderer)
+	_, restored := engine.transform_get_comp(tH, engine.Light)
 	testing.expect(t, restored != nil, "component restored")
 	if restored == nil do return
 	testing.expect_value(t, restored.color, [4]f32{0.1, 0.2, 0.3, 1})
@@ -293,12 +261,12 @@ test_undo_reorder_components :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	engine.transform_add_comp(tH, .SpriteRenderer)
+	engine.transform_add_comp(tH, .Light)
 	engine.transform_add_comp(tH, .Camera)
 
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
-	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.SpriteRenderer)
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Light)
 	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Camera)
 
 	entry := tr.components[0]
@@ -307,15 +275,15 @@ test_undo_reorder_components :: proc(t: ^testing.T) {
 	undo.record_reorder_components(tH, 0, 1)
 
 	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Camera)
-	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.SpriteRenderer)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Light)
 
 	undo.apply_undo(s)
-	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.SpriteRenderer)
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Light)
 	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Camera)
 
 	undo.apply_redo(s)
 	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Camera)
-	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.SpriteRenderer)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Light)
 }
 
 @(test)

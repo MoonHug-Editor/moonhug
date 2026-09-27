@@ -21,7 +21,7 @@ test_asset_catalog_round_trip :: proc(t: ^testing.T) {
 	png :: src_dir + "/probe.png"
 	cat :: src_dir + "/catalog.json"
 	os.make_directory(src_dir)
-	data, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(png, data) == nil)
@@ -78,7 +78,7 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 	png :: src_dir + "/probe.png"
 	data_dir :: src_dir + "_data"
 	os.make_directory(src_dir)
-	data, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(png, data) == nil)
@@ -154,7 +154,7 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	data_dir :: src_dir + "_data"
 	os.make_directory(src_dir)
 	os.make_directory(res_dir)
-	png, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	png, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	for p in ([]string{used, by_path}) do testing.expect(t, os.write_entire_file(p, png) == nil)
@@ -226,7 +226,7 @@ test_asset_catalog_export_rejects_unknown_boot_scene :: proc(t: ^testing.T) {
 	png :: src_dir + "/probe.png"
 	data_dir :: src_dir + "_data"
 	os.make_directory(src_dir)
-	data, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(png, data) == nil)

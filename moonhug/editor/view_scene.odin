@@ -7,7 +7,6 @@ import "menu"
 import "core:math"
 import "core:math/linalg"
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "inspector"
 import "moonhug:engine/gizmos"
 import "core:strings"
@@ -223,9 +222,10 @@ scene_frame_selected :: proc() {
 	w := engine.ctx_world()
 	first := true
 	cmin, cmax: [3]f32
+	quads := drawn_quads(scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1)))
 	for h in sel_scene_items() {
 		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
-		c, r := _selection_bounds(h)
+		c, r := _selection_bounds(h, quads)
 		lo := c - r
 		hi := c + r
 		if first {
@@ -355,9 +355,10 @@ _skinned_world_aabb :: proc(tH: engine.Transform_Handle) -> (lo, hi: [3]f32, ok:
 }
 
 // Bounding sphere of the selection: skinned mesh from its posed world bounds,
-// mesh AABB through the world transform, sprite quad, or a default radius
-// around the position (mirrors the shapes draw_selection_outline draws).
-_selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32) {
+// mesh AABB through the world transform, the quads a package renderer draws
+// (`quads` is drawn_quads), or a default radius around the position
+// (mirrors the shapes draw_selection_outline draws).
+_selection_bounds :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) -> (center: [3]f32, radius: f32) {
 	if c, r, ok := _ui_bounds(tH); ok do return c, r
 	tw := engine.transform_world(tH)
 	center = tw.position
@@ -397,17 +398,28 @@ _selection_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radiu
 		}
 	}
 
-	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
-	if sr != nil && !engine.asset_guid_is_empty(sr.sprite.guid) {
-		if tex, ok := engine.texture_load(sr.sprite.guid); ok {
-			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
-				cmin := vmin(vmin(c[0], c[1]), vmin(c[2], c[3]))
-				cmax := vmax(vmax(c[0], c[1]), vmax(c[2], c[3]))
-				center = (cmin + cmax) * 0.5
-				radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
-				return
-			}
+	if n, _, lo, hi := _owner_quads(tH, quads); n > 0 {
+		center = (lo + hi) * 0.5
+		radius = max(linalg.length(hi - lo) * 0.5, 0.1)
+	}
+	return
+}
+
+// The quads `tH`'s own renderers draw, from drawn_quads: how many, the
+// first, and the world box around all of them.
+_owner_quads :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) -> (count: int, first: [4][3]f32, lo, hi: [3]f32) {
+	for c in quads {
+		if c.owner != tH do continue
+		q := c.variant.(engine.Draw_Quad)
+		if count == 0 {
+			first = q.corners
+			lo, hi = q.corners[0], q.corners[0]
 		}
+		for p in q.corners {
+			lo = linalg.min(lo, p)
+			hi = linalg.max(hi, p)
+		}
+		count += 1
 	}
 	return
 }
@@ -462,8 +474,11 @@ render_scene_rt :: proc(w, h: i32) {
 }
 
 // Orange wireframe on the selected object: mesh → its local AABB edges
-// through the world transform; sprite → its exact world quad; neither → a
-// small axis cross at the position.
+// through the world transform; a package renderer → the quad it draws (a
+// sprite), or the box around its quads when it draws several (particles);
+// neither → a small axis cross at the position. `quads` is drawn_quads.
+// A UI node gets the cross: its rect is its selection shape, and the rect
+// tool draws that.
 //
 // A SKINNED mesh deliberately gets no box. Its mesh aabb is the bind pose in
 // the rig's own space, so the box below swings with the animated root while
@@ -473,7 +488,7 @@ render_scene_rt :: proc(w, h: i32) {
 // gizmo and the axis cross still mark the selection. `_selection_bounds` does
 // use the posed world bounds, so framing the selection still frames the
 // character where it actually is.
-draw_selection_outline :: proc(tH: engine.Transform_Handle) {
+draw_selection_outline :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) {
 	gizmos.with_color({1, 0.6, 0.1, 1})
 	tw := engine.transform_world(tH)
 
@@ -489,13 +504,15 @@ draw_selection_outline :: proc(tH: engine.Transform_Handle) {
 		}
 	}
 
-	_, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer)
-	if sr != nil && !engine.asset_guid_is_empty(sr.sprite.guid) {
-		if tex, ok := engine.texture_load(sr.sprite.guid); ok {
-			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
-				gizmos.wire_quad(c)
-				return
-			}
+	if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt == nil {
+		n, first, lo, hi := _owner_quads(tH, quads)
+		if n == 1 {
+			gizmos.wire_quad(first)
+			return
+		}
+		if n > 1 {
+			gizmos.wire_box((lo + hi) * 0.5, hi - lo)
+			return
 		}
 	}
 

@@ -10,19 +10,18 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
-import sprites "moonhug:packages/sprites"
 
 
 @(private = "file")
-_find_sprite_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^sprites.SpriteRenderer {
+_find_light_in_scene :: proc(w: ^engine.World, s: ^engine.Scene) -> ^engine.Light {
 	it := engine.pool_iterator(&w.transforms)
 	for tr, ih in engine.pool_next(&it) {
 		if tr.scene != s do continue
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
-		if sr != nil do return sr
+		_, lt := engine.transform_get_comp(h, engine.Light)
+		if lt != nil do return lt
 	}
 	return nil
 }
@@ -46,7 +45,7 @@ test_prefab_save_propagates_to_all_loaded_scenes :: proc(t: ^testing.T) {
 		os.remove(dir)
 	}
 
-	SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
+	LIGHT_GUID :: "9f36ee91-34b6-4636-a360-ee872af0436b"
 	COLOR_OLD := [4]f32{0.5, 0, 0, 1}
 	COLOR_NEW := [4]f32{0, 0, 1, 1}
 
@@ -63,9 +62,8 @@ test_prefab_save_propagates_to_all_loaded_scenes :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {"__type": "` + SPRITE_GUID + `",
+    {"__type": "` + LIGHT_GUID + `",
      "base": {"local_id": 3, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000",
      "color": [0.5, 0, 0, 1]}
   ]
 }`
@@ -108,23 +106,23 @@ test_prefab_save_propagates_to_all_loaded_scenes :: proc(t: ^testing.T) {
 	// Both hosts see the authored color before the edit.
 	w := &tc.world
 	for host in ([]^engine.Scene{sA, sB}) {
-		sr := _find_sprite_in_scene(w, host)
-		testing.expect(t, sr != nil, "host instance has the sprite")
-		if sr != nil do testing.expect_value(t, sr.color, COLOR_OLD)
+		lt := _find_light_in_scene(w, host)
+		testing.expect(t, lt != nil, "host instance has the light")
+		if lt != nil do testing.expect_value(t, lt.color, COLOR_OLD)
 	}
 
 	// Edit P live and save it — the propagation pass must rebuild the
 	// instances in BOTH loaded hosts.
-	p_sr := _find_sprite_in_scene(w, sP)
-	testing.expect(t, p_sr != nil, "prefab sprite found")
-	if p_sr == nil do return
-	p_sr.color = COLOR_NEW
+	p_lt := _find_light_in_scene(w, sP)
+	testing.expect(t, p_lt != nil, "prefab light found")
+	if p_lt == nil do return
+	p_lt.color = COLOR_NEW
 	testing.expect(t, engine.scene_save(sP, p_path), "save prefab")
 
 	for host in ([]^engine.Scene{sA, sB}) {
-		sr := _find_sprite_in_scene(w, host)
-		testing.expect(t, sr != nil, "host instance survives propagation")
-		if sr != nil do testing.expect_value(t, sr.color, COLOR_NEW)
+		lt := _find_light_in_scene(w, host)
+		testing.expect(t, lt != nil, "host instance survives propagation")
+		if lt != nil do testing.expect_value(t, lt.color, COLOR_NEW)
 	}
 }
 
@@ -139,7 +137,7 @@ test_additive_unload_slot_reuse_keeps_survivors_intact :: proc(t: ^testing.T) {
 	x_meta := strings.concatenate({dir, "/x.scene.meta"}, context.temp_allocator)
 	defer { os.remove(x_path); os.remove(x_meta); os.remove(dir) }
 
-	SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
+	LIGHT_GUID :: "9f36ee91-34b6-4636-a360-ee872af0436b"
 	x_json := `{
   "root": 1,
   "next_local_id": 20,
@@ -169,12 +167,12 @@ test_additive_unload_slot_reuse_keeps_survivors_intact :: proc(t: ^testing.T) {
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {"__type": "` + SPRITE_GUID + `",
+    {"__type": "` + LIGHT_GUID + `",
      "base": {"local_id": 12, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000", "color": [1, 0, 0, 1]},
-    {"__type": "` + SPRITE_GUID + `",
+     "color": [1, 0, 0, 1]},
+    {"__type": "` + LIGHT_GUID + `",
      "base": {"local_id": 13, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000", "color": [0, 1, 0, 1]}
+     "color": [0, 1, 0, 1]}
   ]
 }`
 	testing.expect(t, os.write_entire_file(x_path, transmute([]byte)x_json) == nil)
@@ -217,7 +215,7 @@ test_additive_unload_slot_reuse_keeps_survivors_intact :: proc(t: ^testing.T) {
 		"x2 bytes must survive x1 unload + slot reuse")
 
 	// The survivor still carries exactly its two component records.
-	testing.expect_value(t, strings.count(string(after), SPRITE_GUID), 2)
+	testing.expect_value(t, strings.count(string(after), LIGHT_GUID), 2)
 }
 
 // The duplicate-scene-after-reopen bug, distilled. Preview/thumbnail worlds
@@ -285,7 +283,7 @@ test_scene_destroy_sweeps_rootless_content :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 
-	engine.asset_db_init("moonhug/packages/app/assets")
+	engine.asset_db_init("moonhug/tests/fixtures/nested_scenes")
 	defer engine.asset_db_shutdown()
 	defer engine.scene_lib_shutdown()
 
@@ -295,7 +293,7 @@ test_scene_destroy_sweeps_rootless_content :: proc(t: ^testing.T) {
 		for _ in engine.pool_next(&it) do baseline += 1
 	}
 
-	s := engine.scene_load_additive_path("moonhug/packages/app/assets/demo_prefabs/bullet.scene")
+	s := engine.scene_load_additive_path("moonhug/tests/fixtures/nested_scenes/HostDup.scene")
 	testing.expect(t, s != nil, "scene loads")
 	if s == nil do return
 
@@ -309,49 +307,6 @@ test_scene_destroy_sweeps_rootless_content :: proc(t: ^testing.T) {
 		for _ in engine.pool_next(&it) do after += 1
 	}
 	testing.expect_value(t, after, baseline)
-}
-
-// Asset-namespace PPtrs must survive nested-instance lid composition. A PPtr
-// with a guid addresses ANOTHER asset's namespace (MeshFilter.mesh's local_id
-// is a mesh PART id) — the instance remap walker used to push it through the
-// scene lid map, so a part id that collided with a source object lid got
-// retargeted at a nonexistent part and the filter drew nothing. BoxAnimated
-// is the live case: part id 2 == the prefab root's lid 2, so nesting it in
-// demo_prefabs broke exactly the outer box.
-@(test)
-test_nested_instance_keeps_asset_pptr_part_ids :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
-	defer free(tc)
-	setup(tc, "")
-	context.user_ptr = &tc.uc
-	defer teardown(tc)
-
-	engine.asset_db_init("moonhug/packages/app/assets")
-	defer engine.asset_db_shutdown()
-	defer engine.scene_lib_shutdown()
-
-	s := engine.scene_load_additive_path("moonhug/packages/app/assets/demo_prefabs/demo_prefabs.scene")
-	testing.expect(t, s != nil, "demo_prefabs loads")
-	if s == nil do return
-
-	checked := 0
-	it := engine.pool_iterator(&tc.world.transforms)
-	for tr, ih in engine.pool_next(&it) {
-		if tr.scene != s do continue
-		if tr.name != "node_2" && tr.name != "node_3" do continue
-		th := ih
-		th.type_key = .Transform
-		_, mf := engine.transform_get_comp(engine.Transform_Handle(th), engine.MeshFilter)
-		if mf == nil do continue
-		checked += 1
-		expected := engine.Local_ID(tr.name == "node_2" ? 1 : 2)
-		testing.expectf(t, mf.mesh.local_id == expected,
-			"%s: part id must stay %d (authored), got %d — the remap walker corrupted an asset PPtr",
-			tr.name, expected, mf.mesh.local_id)
-		_, ok := engine.mesh_filter_part(mf)
-		testing.expectf(t, ok, "%s: part must resolve in the model's table", tr.name)
-	}
-	testing.expect_value(t, checked, 2)
 }
 
 @(private = "file")

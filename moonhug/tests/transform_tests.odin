@@ -1,7 +1,6 @@
 package tests
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 
 import "core:testing"
 
@@ -126,16 +125,16 @@ test_transform_add_comp :: proc(t: ^testing.T) {
     context.user_ptr = &tc_mem.uc
     defer teardown(tc_mem)
 
-    tH := engine.transform_new("WithSpriteRenderer")
-    owned, ptr := engine.transform_add_comp(tH, .SpriteRenderer)
+    tH := engine.transform_new("WithLight")
+    owned, ptr := engine.transform_add_comp(tH, .Light)
     testing.expect(t, ptr != nil, "component pointer should be non-nil")
-    testing.expect(t, owned.handle.type_key == .SpriteRenderer, "owned type_key should be SpriteRenderer")
+    testing.expect(t, owned.handle.type_key == .Light, "owned type_key should be Light")
 
     tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
     testing.expect(t, tr != nil, "transform should exist")
     if tr == nil do return
     testing.expect_value(t, len(tr.components), 1)
-    testing.expect(t, tr.components[0].handle.type_key == .SpriteRenderer, "component should be SpriteRenderer")
+    testing.expect(t, tr.components[0].handle.type_key == .Light, "component should be Light")
 }
 
 @(test)
@@ -146,8 +145,8 @@ test_transform_remove_comp :: proc(t: ^testing.T) {
     context.user_ptr = &tc_mem.uc
     defer teardown(tc_mem)
 
-    tH := engine.transform_new("WithSpriteRenderer")
-    owned, _ := engine.transform_add_comp(tH, .SpriteRenderer)
+    tH := engine.transform_new("WithLight")
+    owned, _ := engine.transform_add_comp(tH, .Light)
 
     engine.transform_remove_comp(tH, owned.handle)
 
@@ -165,12 +164,12 @@ test_transform_get_comp :: proc(t: ^testing.T) {
     context.user_ptr = &tc_mem.uc
     defer teardown(tc_mem)
 
-    tH := engine.transform_new("WithSpriteRenderer")
-    engine.transform_add_comp(tH, .SpriteRenderer)
+    tH := engine.transform_new("WithLight")
+    engine.transform_add_comp(tH, .Light)
 
-    owned, spriteRenderer := engine.transform_get_comp(tH, sprites.SpriteRenderer)
-    testing.expect(t, spriteRenderer != nil, "should find SpriteRenderer component")
-    testing.expect(t, owned.handle.type_key == .SpriteRenderer, "owned type_key should be SpriteRenderer")
+    owned, light := engine.transform_get_comp(tH, engine.Light)
+    testing.expect(t, light != nil, "should find Light component")
+    testing.expect(t, owned.handle.type_key == .Light, "owned type_key should be Light")
 
     // A type the object does not have.
     _, camera := engine.transform_get_comp(tH, engine.Camera)
@@ -187,12 +186,12 @@ test_transform_get_or_add_comp :: proc(t: ^testing.T) {
 
     tH := engine.transform_new("Node")
 
-    _, spriteRenderer1 := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-    testing.expect(t, spriteRenderer1 != nil, "should create SpriteRenderer")
+    _, light1 := engine.transform_get_or_add_comp(tH, engine.Light)
+    testing.expect(t, light1 != nil, "should create Light")
 
-    _, spriteRenderer2 := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-    testing.expect(t, spriteRenderer2 != nil, "should return existing SpriteRenderer")
-    testing.expect(t, spriteRenderer1 == spriteRenderer2, "should return same pointer")
+    _, light2 := engine.transform_get_or_add_comp(tH, engine.Light)
+    testing.expect(t, light2 != nil, "should return existing Light")
+    testing.expect(t, light1 == light2, "should return same pointer")
 
     tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
     testing.expect(t, tr != nil, "transform should exist")
@@ -209,9 +208,9 @@ test_transform_destroy_comp :: proc(t: ^testing.T) {
     defer teardown(tc_mem)
 
     tH := engine.transform_new("Node")
-    engine.transform_add_comp(tH, .SpriteRenderer)
+    engine.transform_add_comp(tH, .Light)
 
-    engine.transform_destroy_comp(tH, sprites.SpriteRenderer)
+    engine.transform_destroy_comp(tH, engine.Light)
 
     tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
     testing.expect(t, tr != nil, "transform should exist")

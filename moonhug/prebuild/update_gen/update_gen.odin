@@ -71,6 +71,7 @@ _PACKAGES_PREFIX :: "moonhug/packages/"
 _UpdateRow :: struct {
 	name:    string,
 	pkg:     string, // "" for app procs; package name for packages: imports
+	path:    string, // pkg_path: a subpackage imports by its folder, not its name
 	order:   int,
 	divisor: int,
 }
@@ -93,6 +94,7 @@ generate :: proc(w: ^db.World) -> bool {
 		row := _UpdateRow{
 			name    = decl.name,
 			pkg     = decl.pkg.name,
+			path    = decl.pkg_path,
 			order   = update.order,
 			divisor = update.divisor,
 		}
@@ -138,21 +140,21 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 
 	// Package ticks call through aliased collection imports, interleaved with
 	// the host's own ticks by order (docs/Plugins.md).
-	imports: [dynamic]string
+	imports: [dynamic]_UpdateRow
 	defer delete(imports)
-	_collect_imports :: proc(imports: ^[dynamic]string, rows: []_UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) {
+	_collect_imports :: proc(imports: ^[dynamic]_UpdateRow, rows: []_UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) {
 		for e in rows {
 			if e.pkg == host || !_included(e, host, runnables) do continue
 			found := false
-			for p in imports^ do if p == e.pkg { found = true; break }
-			if !found do append(imports, e.pkg)
+			for p in imports^ do if p.pkg == e.pkg { found = true; break }
+			if !found do append(imports, e)
 		}
 	}
 	_collect_imports(&imports, frame_rows, host.name, runnables)
 	_collect_imports(&imports, fixed_rows, host.name, runnables)
-	slice.sort(imports[:])
+	slice.sort_by(imports[:], proc(a, b: _UpdateRow) -> bool { return a.pkg < b.pkg })
 	for p in imports {
-		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p, p)
+		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
 	}
 	// Divisor guards read the engine tick counter.
 	needs_engine := false

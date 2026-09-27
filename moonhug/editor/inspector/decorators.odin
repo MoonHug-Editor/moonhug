@@ -238,6 +238,20 @@ decorators_shutdown :: proc() {
 	_button_owner_warned = {}
 }
 
+// Not generic, so the imports they use count as used with no button declared.
+@(private = "file")
+_button_owner_warn :: proc(action: rawptr, label: cstring, owner, wanted: typeid) {
+	if _button_owner_warned[action] do return
+	_button_owner_warned[action] = true
+	log.warningf("decor:button \"%s\": field belongs to %v but the proc takes ^%v — button hidden (use the owning struct's type, or proc())",
+		label, owner, wanted)
+}
+
+@(private = "file")
+_button_id :: proc(label: cstring, row, n: int) -> cstring {
+	return fmt.ctprintf("%s##btn_%d_%d", label, row, n)
+}
+
 decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), row := 0, weight := f32(1))
 	where intrinsics.type_is_proc(P) {
 	if !ctx.is_visible do return
@@ -247,12 +261,7 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 
 	when intrinsics.type_proc_parameter_count(P) > 0 {
 		if ctx.owner_type != typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))) {
-			akey := transmute(rawptr)action
-			if !_button_owner_warned[akey] {
-				_button_owner_warned[akey] = true
-				log.warningf("decor:button \"%s\": field belongs to %v but the proc takes ^%v — button hidden (use the owning struct's type, or proc())",
-					label, ctx.owner_type, typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))))
-			}
+			_button_owner_warn(transmute(rawptr)action, label, ctx.owner_type, typeid_of(intrinsics.type_elem_type(intrinsics.type_proc_parameter_type(P, 0))))
 			return
 		}
 	}
@@ -282,8 +291,7 @@ decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), ro
 	spacing := im.GetStyle().ItemSpacing.x
 	width := (st.row_avail - spacing * f32(total_n - 1)) * weight / total_w
 
-	id := fmt.ctprintf("%s##btn_%d_%d", label, row, st.accum_n)
-	if im.Button(id, im.Vec2{width, 0}) {
+	if im.Button(_button_id(label, row, st.accum_n), im.Vec2{width, 0}) {
 		sess := structural_edit_begin(string(label))
 		when intrinsics.type_proc_parameter_count(P) == 2 {
 			CompPtr :: intrinsics.type_proc_parameter_type(P, 0)

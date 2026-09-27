@@ -813,7 +813,7 @@ _finalize_quat :: proc(acc: [4]f32, w: f32, def: [4]f32) -> [4]f32 {
 
 // --- Who owns a graph -----------------------------------------------------------------
 //
-// Several things own a Playable_Graph now: an Animation component, a
+// Several things own a Playable_Graph: an Animation component, a
 // TimelineAnimator, the arena shared by one director's animation tracks, and
 // the editor's scrub preview. A viewer should not name any of them — it asks
 // which graph belongs to a selected object and shows what it gets.
@@ -859,31 +859,19 @@ playable_graph_for_object :: proc(owner: engine.Transform_Handle) -> (Graph_Sour
 	return best, found
 }
 
-// The runtime graphs this package owns. The editor registers its own for the
-// scrub preview and the authored shape.
+// The runtime graph this package owns. The sequencer integration
+// (animation/sequencer) registers the TimelineAnimator's (order 10) and the
+// director arena's (order 30), the editor its own for the scrub preview and
+// the authored shape.
 @(phase={key=ImportersInit, order=5})
 playable_graph_providers_init :: proc() {
 	@(static) done := false
 	if done do return
 	done = true
 
-	// A TimelineAnimator outranks an Animation on the same object: it is the
-	// more concrete driver, so it is the one actually posing.
-	playable_graph_register_provider(10, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
-		_, a := engine.transform_get_comp(owner, TimelineAnimator)
-		if a == nil || !a.graph_ready do return {}, false
-		return {graph = &a.graph, label = "TimelineAnimator (live)", live = true}, true
-	})
 	playable_graph_register_provider(20, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
 		_, a := engine.transform_get_comp(owner, Animation)
 		if a == nil || !a.graph_ready do return {}, false
 		return {graph = &a.graph, label = "Animation runtime graph (live)", live = true}, true
-	})
-	// A director's animation tracks share one arena, which is where a
-	// standalone timeline's blending actually happens.
-	playable_graph_register_provider(30, proc(owner: engine.Transform_Handle) -> (Graph_Source, bool) {
-		g := animation_director_graph(owner)
-		if g == nil do return {}, false
-		return {graph = g, label = "timeline tracks (live)", live = true}, true
 	})
 }

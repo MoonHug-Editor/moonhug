@@ -1,4 +1,4 @@
-package audio
+package audio_sequencer
 
 // The audio Control Track (docs/Sequencer.md): a clip span plays its asset on
 // the bound AudioSource. The track owns ONE VOICE PER ACTIVE CLIP — a mixer
@@ -12,13 +12,15 @@ package audio
 // inside it, a scrub-then-play, a loop wrap landing in it) starts the voice
 // at the clip-local offset, and crossing a clip's start restarts it.
 //
-// This file is the audio package's only sequencer dependency — the track
-// registers itself, the sequencer never imports audio. Author track-driven
-// sources with play_on_awake off: the span decides when they play.
+// This folder is the audio plugin's only sequencer dependency, and it compiles
+// only with the sequencer installed (docs/Plugins.md). The track registers
+// itself, the sequencer never imports audio. Author track-driven sources with
+// play_on_awake off: the span decides when they play.
 
 import "moonhug:engine"
 import mix "vendor:sdl3/mixer"
 import seq "moonhug:packages/sequencer"
+import audio "moonhug:packages/audio"
 
 // The kind's components: the track carries what it drives, the clip carries
 // its payload. `ref:`/`ext:` tags drive the inspector's pickers, so the
@@ -51,6 +53,7 @@ audio_track_init :: proc() {
 		track_key   = .TrackAudio,
 		clip_key    = .ClipAudio,
 		label       = "audio",
+		color       = {0.75, 0.55, 0.25, 0.9},
 		build       = _audio_track_build,
 		destroy     = _audio_track_destroy,
 		tick        = _audio_track_tick,
@@ -61,12 +64,12 @@ audio_track_init :: proc() {
 
 // The AudioSource this track drives, or nil.
 @(private = "file")
-_audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^AudioSource {
+_audio_track_source :: proc(ctx: ^seq.Track_Ctx) -> ^audio.AudioSource {
 	_, at := get_comp(ctx.track.node, TrackAudio)
 	if at == nil || at.source.handle.type_key != .AudioSource do return nil
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, at.source.handle) do return nil
-	return cast(^AudioSource)engine.world_pool_get(w, at.source.handle)
+	return cast(^audio.AudioSource)engine.world_pool_get(w, at.source.handle)
 }
 
 // Per-(director, track) state: the voice each active clip plays through,
@@ -139,13 +142,13 @@ _audio_track_tick :: proc(ctx: ^seq.Track_Ctx) {
 			}
 			_voice_drop(st, c.node)
 			speed := c.speed if c.speed > 0 else 1
-			voice = voice_start(asset, (ctx.time - c.start) * speed)
+			voice = audio.voice_start(asset, (ctx.time - c.start) * speed)
 			if voice == nil do continue
 			st.voices[c.node] = voice
 		}
 		// The clip weight is the volume multiplier: overlaps crossfade, eases
 		// fade, and a lone clip plays at the source's volume.
-		source_apply_gains(voice, src, seq.track_clip_weight(ctx.track.clips, i, ctx.time))
+		audio.source_apply_gains(voice, src, seq.track_clip_weight(ctx.track.clips, i, ctx.time))
 	}
 }
 
@@ -169,7 +172,7 @@ audio_track_voice_playing :: proc(state: rawptr, clip: engine.Transform_Handle) 
 audio_track_voice_position :: proc(state: rawptr, clip: engine.Transform_Handle) -> f32 {
 	st := cast(^Audio_Track_State)state
 	if st == nil do return 0
-	return voice_position(st.voices[clip] or_else nil)
+	return audio.voice_position(st.voices[clip] or_else nil)
 }
 
 audio_track_voice_gain :: proc(state: rawptr, clip: engine.Transform_Handle) -> f32 {

@@ -2,7 +2,7 @@ package plugin_example
 
 // A tween node declared outside the tween package — the working example of
 // open tween extension (docs/Tweens.md). A variant package imports tween
-// directly and registers its node type on the TweenNodesInit phase. No
+// directly and registers its node type on the SerializationInit phase. No
 // codegen, no import restrictions — composites with children would work the
 // same way (`children: [dynamic]tween.Node_Handle` with json:"-").
 
@@ -22,7 +22,7 @@ TweenSpinnerSpeed :: struct {
 	from:    [3]f32 `json:"-"`,
 }
 
-@(phase={key=TweenNodesInit, order=1})
+@(phase={key=SerializationInit, order=2})
 spinner_tween_nodes_init :: proc() {
 	tween.register_node(TweenSpinnerSpeed, tick_TweenSpinnerSpeed)
 }

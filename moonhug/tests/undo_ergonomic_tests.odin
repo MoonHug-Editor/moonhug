@@ -1,7 +1,6 @@
 package tests
 
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "../editor/undo"
 
 import "core:strings"
@@ -72,22 +71,22 @@ test_undo_edit_component_begin_commit :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-	if sr == nil do return
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	if lt == nil do return
 
 	{
-		e := undo.edit_begin(owned.handle, &sr.color, typeid_of([4]f32))
-		sr.color = {1, 0.5, 0.25, 1}
+		e := undo.edit_begin(owned.handle, &lt.color, typeid_of([4]f32))
+		lt.color = {1, 0.5, 0.25, 1}
 		undo.edit_end(&e)
 	}
 
-	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
+	testing.expect_value(t, lt.color, [4]f32{1, 0.5, 0.25, 1})
 
 	undo.apply_undo(s)
-	testing.expect_value(t, sr.color, [4]f32{1, 1, 1, 1})
+	testing.expect_value(t, lt.color, [4]f32{1, 1, 1, 1})
 
 	undo.apply_redo(s)
-	testing.expect_value(t, sr.color, [4]f32{1, 0.5, 0.25, 1})
+	testing.expect_value(t, lt.color, [4]f32{1, 0.5, 0.25, 1})
 }
 
 @(test)
@@ -219,9 +218,9 @@ test_undo_record_remove_component_fused :: proc(t: ^testing.T) {
 	defer teardown_undo(tc_mem, s)
 
 	tH := engine.transform_new("N")
-	owned, sr := engine.transform_get_or_add_comp(tH, sprites.SpriteRenderer)
-	if sr == nil do return
-	sr.color = {0.1, 0.2, 0.3, 1}
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	if lt == nil do return
+	lt.color = {0.1, 0.2, 0.3, 1}
 
 	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
 	if tr == nil do return
@@ -231,7 +230,7 @@ test_undo_record_remove_component_fused :: proc(t: ^testing.T) {
 
 	undo.apply_undo(s)
 	testing.expect_value(t, len(tr.components), 1)
-	_, restored := engine.transform_get_comp(tH, sprites.SpriteRenderer)
+	_, restored := engine.transform_get_comp(tH, engine.Light)
 	testing.expect(t, restored != nil, "component restored")
 	if restored == nil do return
 	testing.expect_value(t, restored.color, [4]f32{0.1, 0.2, 0.3, 1})

@@ -1,4 +1,4 @@
-package tests
+package prefabs_example_tests
 
 // Object additions must survive save+reload at EVERY nesting depth, including
 // a parent that lives inside a prefab nested within the instance. Unity records
@@ -11,9 +11,10 @@ package tests
 // exposed every bug here, and look-alike names across levels (three different
 // "Transform" rows) are exactly what mis-targeted the capture.
 
-import engine "../engine"
+import engine "moonhug:engine"
 import "core:strings"
 import "core:testing"
+import common "moonhug:tests/common"
 
 @(test)
 test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
@@ -31,8 +32,8 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 	for c in cases {
 		engine.asset_db_init("moonhug/packages/prefabs_example/assets")
 
-		tc_mem := new(TestCtx)
-		setup(tc_mem, "moonhug/tests/fixtures/_test_depth_added.scene")
+		tc_mem := new(common.TestCtx)
+		common.setup(tc_mem, "moonhug/tests/fixtures/_test_depth_added.scene")
 		context.user_ptr = &tc_mem.uc
 
 		src := strings.concatenate(
@@ -59,14 +60,14 @@ test_object_addition_survives_at_every_depth :: proc(t: ^testing.T) {
 				testing.expectf(t, reloaded != nil, "%v: reload", c.scene)
 
 				if reloaded != nil {
-					back := find_transform_named(&tc_mem.world, reloaded, "DepthAddedChild", false)
+					back := common.find_transform_named(&tc_mem.world, reloaded, "DepthAddedChild", false)
 					testing.expectf(t, back != {},
 						"%v: child added under %v must come back after reload", c.scene, c.parent)
 				}
 			}
 		}
 
-		teardown(tc_mem)
+		common.teardown(tc_mem)
 		free(tc_mem)
 		engine.asset_db_shutdown()
 		engine.scene_lib_shutdown()

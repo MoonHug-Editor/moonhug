@@ -23,7 +23,6 @@ import "core:fmt"
 import "core:os"
 import strings "core:strings"
 import engine "../../engine"
-import anim "moonhug:packages/animation"
 import ser "../../engine/serialization"
 import "../../engine/log"
 import "../undo"
@@ -48,6 +47,22 @@ Doc_Key :: struct {
 
 @(private)
 _docs: map[Doc_Key]^Asset_Doc
+
+// Pushes an asset document's values into the runtime cache its asset is
+// sampled from (engine.material_preview for materials), so an undone or redone
+// document shows before it is saved. Materials are built in, a package
+// registers one for its asset type at EditorInit.
+Doc_Preview :: proc(guid: engine.Asset_GUID, data: rawptr)
+
+@(private)
+_doc_previews: map[typeid]Doc_Preview
+
+// Process-global registry: never borrows the caller's allocator.
+doc_preview_register :: proc(tid: typeid, p: Doc_Preview) {
+    context.allocator = runtime.default_allocator()
+    if _doc_previews == nil do _doc_previews = make(map[typeid]Doc_Preview)
+    _doc_previews[tid] = p
+}
 
 // The open document for a path — reused if already loaded (unsaved edits
 // survive clicking away and back), loaded from disk otherwise. nil on load
@@ -164,12 +179,9 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
         _ = engine.material_sync_properties(mat)
         engine.material_preview(doc.guid, mat^)
     }
-    // Same live-preview contract for clips: an undone/redone clip document
-    // must reach the clip cache the scrub preview and runtime sample from.
-    if tid == typeid_of(anim.AnimationClip) {
-        clip := cast(^anim.AnimationClip)doc.data.data
-        anim.animation_clip_preview(doc.guid, clip^)
-    }
+    // Same live-preview contract for package asset types (clips: the cache
+    // the scrub preview and runtime sample from).
+    if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data.data)
     return true
 }
 

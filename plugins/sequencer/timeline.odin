@@ -139,6 +139,7 @@ Track_Desc :: struct {
 	track_key: engine.TypeKey,
 	clip_key:  engine.TypeKey,
 	label:     string, // menu/UI name
+	color:     [4]f32, // the track's row in the sequencer window, zero = gray
 
 	// Per-director lifecycle. `build` runs once per (director, track) and
 	// returns the kind's own state — nil when it needs none; `destroy` frees
@@ -301,6 +302,7 @@ register_builtin_tracks :: proc() {
 		track_key   = .TrackActivation,
 		clip_key    = .ClipActivation,
 		label       = "activation",
+		color       = {0.40, 0.70, 0.40, 0.9},
 		build       = _activation_track_build,
 		destroy     = _activation_track_destroy,
 		tick        = _activation_track_tick,
@@ -310,6 +312,7 @@ register_builtin_tracks :: proc() {
 		track_key   = .TrackControl,
 		clip_key    = .ClipControl,
 		label       = "control",
+		color       = {0.35, 0.65, 0.70, 0.9},
 		tick        = _control_track_tick,
 		preview_end = _control_track_preview_end,
 	})

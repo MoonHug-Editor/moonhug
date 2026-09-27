@@ -11,6 +11,10 @@ package packages_gen
 //                  package's generated register_<name>_components().
 //                moonhug/editor/packages_generated.odin — one blank import
 //                  per editor/ subpackage, editor binary only.
+//              Integration subpackages (a plugin subfolder importing another
+//              plugin, scanned only while that plugin is installed) count
+//              too: their components register, their editor/ and tests/
+//              import like a root's.
 //
 // Presence in packages/ = compiled + registered, independent of whether user
 // code imports the package (a component placed in a scene must load in the
@@ -63,14 +67,22 @@ _expected_sub_pkg_name :: proc(name, sub: string) -> string {
 	return fmt.tprintf("%s_%s", name, flat)
 }
 
+Sub_Pkg :: struct {
+	root:            string, // the plugin: moonhug/packages/<root>/...
+	alias:           string, // the declared package name
+	path:            string, // pkg_path
+	with_components: bool,
+}
+
 generate :: proc(w: ^db.World) -> bool {
 	decls := db.get_comps_DeclInfo()
 	comps := db.get_comps(w, components_gen.Component_GenComp)
 
 	runtime_pkgs: [dynamic]string // package names, deduped
-	editor_pkgs: [dynamic]string
+	editor_pkgs: [dynamic]string // editor/ subpackage paths below moonhug/packages/
 	with_components: [dynamic]string
-	defer { delete(runtime_pkgs); delete(editor_pkgs); delete(with_components) }
+	sub_pkgs: [dynamic]Sub_Pkg // non-editor subpackages
+	defer { delete(runtime_pkgs); delete(editor_pkgs); delete(with_components); delete(sub_pkgs) }
 
 	_append_unique :: proc(list: ^[dynamic]string, name: string) {
 		for n in list^ do if n == name do return
@@ -91,11 +103,22 @@ generate :: proc(w: ^db.World) -> bool {
 				fmt.eprintf("packages_gen: %s declares 'package %s' — must be 'package %s'\n", decl.pkg_path, decl.pkg.name, expect)
 				return false
 			}
-			if sub == "editor" {
-				_append_unique(&editor_pkgs, name)
+			if sub == "editor" || strings.has_suffix(sub, "/editor") {
+				_append_unique(&editor_pkgs, decl.pkg_path[len(PACKAGES_PREFIX):])
+				continue
 			}
-			// Library subpackages need no import lines of their own: their
-			// root package imports them.
+			// A library subpackage needs no import line of its own (its root
+			// imports it) unless it declares components, which register here.
+			// An integration subpackage is one of these too.
+			found := false
+			for &sp in sub_pkgs do if sp.path == decl.pkg_path {
+				found = true
+				if comps != nil && db.has(comps, entity) && db.get(comps, entity).kind == .Component do sp.with_components = true
+			}
+			if !found {
+				has_comp := comps != nil && db.has(comps, entity) && db.get(comps, entity).kind == .Component
+				append(&sub_pkgs, Sub_Pkg{root = name, alias = decl.pkg.name, path = decl.pkg_path, with_components = has_comp})
+			}
 			continue
 		}
 		if decl.pkg.name != name {
@@ -112,6 +135,7 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	slice.sort(runtime_pkgs[:])
 	slice.sort(editor_pkgs[:])
+	slice.sort_by(sub_pkgs[:], proc(a, b: Sub_Pkg) -> bool { return a.path < b.path })
 
 	runnables := gen_facts.runnable_packages(w)
 	defer delete(runnables)
@@ -121,7 +145,7 @@ generate :: proc(w: ^db.World) -> bool {
 	// must work with zero runnable packages), and one INSIDE each runnable
 	// package (its own registration unqualified, library packages imported,
 	// other runnable packages excluded — they're separate programs).
-	_write_register :: proc(w: ^db.World, pkg_name, out_dir, host_name: string, runtime_pkgs, with_components: [dynamic]string, runnables: []gen_facts.Runnable_Pkg) {
+	_write_register :: proc(w: ^db.World, pkg_name, out_dir, host_name: string, runtime_pkgs, with_components: [dynamic]string, sub_pkgs: []Sub_Pkg, runnables: []gen_facts.Runnable_Pkg) {
 		_has :: proc(list: [dynamic]string, name: string) -> bool {
 			for n in list do if n == name do return true
 			return false
@@ -143,6 +167,10 @@ generate :: proc(w: ^db.World) -> bool {
 				fmt.sbprintf(&b, "import _ \"moonhug:packages/%s\"\n", name)
 			}
 		}
+		for sp in sub_pkgs {
+			if !sp.with_components || !included(sp.root, host_name, runnables) do continue
+			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", sp.alias, sp.path[len("moonhug/"):])
+		}
 		if len(runtime_pkgs) > 0 do strings.write_string(&b, "\n")
 		strings.write_string(&b, "register_packages :: proc() {\n")
 		for name in runtime_pkgs {
@@ -155,13 +183,17 @@ generate :: proc(w: ^db.World) -> bool {
 				}
 			}
 		}
+		for sp in sub_pkgs {
+			if !sp.with_components || !included(sp.root, host_name, runnables) do continue
+			fmt.sbprintf(&b, "\t%s.register_%s_components()\n", sp.alias, sp.alias)
+		}
 		strings.write_string(&b, "}\n")
 		db.emit(w, fmt.tprintf("%s/packages_generated.odin", out_dir), strings.to_string(b))
 	}
 
-	_write_register(w, "registration", "moonhug/engine/registration", "", runtime_pkgs, with_components, runnables[:])
+	_write_register(w, "registration", "moonhug/engine/registration", "", runtime_pkgs, with_components, sub_pkgs[:], runnables[:])
 	for host in runnables {
-		_write_register(w, host.name, host.path, host.name, runtime_pkgs, with_components, runnables[:])
+		_write_register(w, host.name, host.path, host.name, runtime_pkgs, with_components, sub_pkgs[:], runnables[:])
 	}
 
 	// Tests side: each package's tests/ suite imports into the central suite,
@@ -181,6 +213,14 @@ generate :: proc(w: ^db.World) -> bool {
 				fmt.sbprintf(&b, "import _ \"moonhug:packages/%s/tests\"\n", name)
 			}
 		}
+		// An integration's tests may need more plugins than the integration
+		// itself: they are left out while one is missing, like the folder.
+		for sp in sub_pkgs {
+			tests_dir := fmt.tprintf("%s/tests", sp.path)
+			if !_dir_has_odin(tests_dir) do continue
+			if _, missing := gen_facts.plugin_dir_missing_dep(tests_dir); missing do continue
+			fmt.sbprintf(&b, "import _ \"moonhug:%s\"\n", tests_dir[len("moonhug/"):])
+		}
 		db.emit(w, "moonhug/tests/packages_tests_generated.odin", strings.to_string(b))
 	}
 
@@ -191,8 +231,8 @@ generate :: proc(w: ^db.World) -> bool {
 		strings.write_string(&b, "package editor\n\n")
 		strings.write_string(&b, "// Code generated by packages_gen. Do not edit.\n")
 		strings.write_string(&b, "// Editor halves of installed packages — see docs/Plugins.md.\n\n")
-		for name in editor_pkgs {
-			fmt.sbprintf(&b, "import _ \"moonhug:packages/%s/editor\"\n", name)
+		for path in editor_pkgs {
+			fmt.sbprintf(&b, "import _ \"moonhug:packages/%s\"\n", path)
 		}
 		db.emit(w, "moonhug/editor/packages_generated.odin", strings.to_string(b))
 	}

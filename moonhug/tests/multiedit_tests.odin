@@ -43,22 +43,22 @@ test_multi_common_components_intersects_by_type :: proc(t: ^testing.T) {
 	a := engine.transform_new("A")
 	b := engine.transform_new("B")
 
-	// A: SpriteRenderer + SpriteSortingGroup. B: SpriteRenderer only.
-	engine.transform_add_comp(a, .SpriteRenderer)
-	engine.transform_add_comp(a, .SpriteSortingGroup)
-	engine.transform_add_comp(b, .SpriteRenderer)
+	// A: Light + Camera. B: Light only.
+	engine.transform_add_comp(a, .Light)
+	engine.transform_add_comp(a, .Camera)
+	engine.transform_add_comp(b, .Light)
 
 	sel := []engine.Transform_Handle{a, b}
 	common := editor.multi_common_components(a, sel)
 
-	// Only the shared type survives — SpriteSortingGroup is missing on B.
+	// Only the shared type survives — Camera is missing on B.
 	testing.expect_value(t, len(common), 1)
 	if len(common) != 1 do return
 
 	w := engine.ctx_world()
 	ta := engine.pool_get(&w.transforms, engine.Handle(a))
 	shared_key := ta.components[common[0].comp_index].handle.type_key
-	testing.expect_value(t, shared_key, engine.TypeKey.SpriteRenderer)
+	testing.expect_value(t, shared_key, engine.TypeKey.Light)
 	testing.expect_value(t, len(common[0].peers), 1)
 }
 
@@ -75,9 +75,9 @@ test_multi_common_components_matches_duplicates_by_ordinal :: proc(t: ^testing.T
 
 	// Two of the same type on A, but only one on B: the second has no
 	// counterpart, so only the first pairs up.
-	engine.transform_add_comp(a, .SpriteSortingGroup)
-	engine.transform_add_comp(a, .SpriteSortingGroup)
-	_, b_ptr := engine.transform_add_comp(b, .SpriteSortingGroup)
+	engine.transform_add_comp(a, .Camera)
+	engine.transform_add_comp(a, .Camera)
+	_, b_ptr := engine.transform_add_comp(b, .Camera)
 
 	sel := []engine.Transform_Handle{a, b}
 	common := editor.multi_common_components(a, sel)

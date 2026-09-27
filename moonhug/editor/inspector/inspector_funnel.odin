@@ -54,6 +54,7 @@ Component_Wrapper :: proc(ctx: ^Component_Ctx)
 Asset_Ctx :: struct {
 	path:     string,
 	guid:     engine.Asset_GUID,
+	sub:      engine.Local_ID, // the selected sub-asset (a model's part or clip), 0 = the asset itself
 	settings: any, // the typed settings instance being edited
 	_chain:   []Asset_Wrapper,
 	_index:   int,

@@ -687,6 +687,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 				}
 				append(out, Render_Command{
 					key     = key,
+					owner   = n.tH,
 					variant = Draw_Quad{
 						texture  = q.texture,
 						material = g.material,

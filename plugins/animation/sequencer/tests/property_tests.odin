@@ -1,4 +1,4 @@
-package tests
+package animation_sequencer_tests
 
 // inspector.property (docs/InspectorProperty.md): a field addressed from an
 // owner and a dotted path. The resolver is what an MCP property write and the
@@ -8,30 +8,31 @@ package tests
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "../engine"
-import "../editor/inspector"
-import "../editor/undo"
-import anim "moonhug:packages/animation"
+import "moonhug:engine"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
+import common "moonhug:tests/common"
+import anim_seq "moonhug:packages/animation/sequencer"
 
 @(private = "file")
-_animator_with_states :: proc() -> (^anim.TimelineAnimator, engine.Handle) {
+_animator_with_states :: proc() -> (^anim_seq.TimelineAnimator, engine.Handle) {
 	owner := engine.transform_new("Animator")
 	comp, ptr := engine.transform_add_comp(owner, .TimelineAnimator)
-	a := cast(^anim.TimelineAnimator)ptr
-	a.layers = make([dynamic]anim.Animator_Layer)
-	append(&a.layers, anim.Animator_Layer{weight = 1, states = make([dynamic]anim.Timeline_State)})
-	append(&a.layers[0].states, anim.Timeline_State{id = 1, speed = 1})
-	append(&a.layers[0].states, anim.Timeline_State{id = 2, speed = 2})
+	a := cast(^anim_seq.TimelineAnimator)ptr
+	a.layers = make([dynamic]anim_seq.Animator_Layer)
+	append(&a.layers, anim_seq.Animator_Layer{weight = 1, states = make([dynamic]anim_seq.Timeline_State)})
+	append(&a.layers[0].states, anim_seq.Timeline_State{id = 1, speed = 1})
+	append(&a.layers[0].states, anim_seq.Timeline_State{id = 2, speed = 2})
 	return a, comp.handle
 }
 
 @(test)
 test_property_plain_field_names_itself :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	setup(tc, "")
+	common.setup(tc, "")
 	context.user_ptr = &tc.uc
-	defer teardown(tc)
+	defer common.teardown(tc)
 
 	a, comp := _animator_with_states()
 	p, ok := inspector.inspect_comp(comp)
@@ -41,22 +42,22 @@ test_property_plain_field_names_itself :: proc(t: ^testing.T) {
 	w, err := inspector.property(p, "layers")
 	testing.expect_value(t, err, inspector.Resolve_Error.None)
 	testing.expect(t, w.ptr == rawptr(&a.layers), "the pointer is the field")
-	testing.expect(t, w.tid == typeid_of([dynamic]anim.Animator_Layer))
+	testing.expect(t, w.tid == typeid_of([dynamic]anim_seq.Animator_Layer))
 	testing.expect_value(t, w.record.path, "layers")
 	testing.expect(t, w.record.ptr == w.ptr, "a plain field's override is the field")
 	testing.expect(t, w.owner.handle == comp, "the owner is the component")
-	testing.expect_value(t, w.offset, uintptr(offset_of(anim.TimelineAnimator, layers)))
+	testing.expect_value(t, w.offset, uintptr(offset_of(anim_seq.TimelineAnimator, layers)))
 }
 
 // The two addresses: the VALUE is the element's field, the OVERRIDE stops at
 // the array, because an override is the whole array.
 @(test)
 test_property_array_index_keeps_override_on_the_array :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	setup(tc, "")
+	common.setup(tc, "")
 	context.user_ptr = &tc.uc
-	defer teardown(tc)
+	defer common.teardown(tc)
 
 	a, comp := _animator_with_states()
 	p, _ := inspector.inspect_comp(comp)
@@ -68,7 +69,7 @@ test_property_array_index_keeps_override_on_the_array :: proc(t: ^testing.T) {
 	testing.expect(t, sp.tid == typeid_of(f32))
 	testing.expect_value(t, sp.record.path, "layers")
 	testing.expect(t, sp.record.ptr == rawptr(&a.layers), "the override names the outer array")
-	testing.expect(t, sp.record.tid == typeid_of([dynamic]anim.Animator_Layer))
+	testing.expect(t, sp.record.tid == typeid_of([dynamic]anim_seq.Animator_Layer))
 
 	// Chaining narrows the same way as one path.
 	l, _ := inspector.property(p, "layers[0]")
@@ -79,11 +80,11 @@ test_property_array_index_keeps_override_on_the_array :: proc(t: ^testing.T) {
 
 @(test)
 test_property_errors_are_reported_not_fatal :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	setup(tc, "")
+	common.setup(tc, "")
 	context.user_ptr = &tc.uc
-	defer teardown(tc)
+	defer common.teardown(tc)
 
 	_, comp := _animator_with_states()
 	p, _ := inspector.inspect_comp(comp)
@@ -109,11 +110,11 @@ test_property_errors_are_reported_not_fatal :: proc(t: ^testing.T) {
 // A fixed array is an array too: the override stays on it.
 @(test)
 test_property_fixed_array_index :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	setup(tc, "")
+	common.setup(tc, "")
 	context.user_ptr = &tc.uc
-	defer teardown(tc)
+	defer common.teardown(tc)
 
 	tH := engine.transform_new("T")
 	p, ok := inspector.inspect_transform(tH)
@@ -135,11 +136,11 @@ test_property_fixed_array_index :: proc(t: ^testing.T) {
 // in the field, exactly as a row commit would.
 @(test)
 test_property_set_json_is_one_undo_step :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	u := setup_undo(tc)
+	u := common.setup_undo(tc)
 	context.user_ptr = &tc.uc
-	defer teardown_undo(tc, u)
+	defer common.teardown_undo(tc, u)
 
 	a, comp := _animator_with_states()
 	p, _ := inspector.inspect_comp(comp)
@@ -165,11 +166,11 @@ test_property_set_json_is_one_undo_step :: proc(t: ^testing.T) {
 // the state's timeline admits a PlayableDirector and nothing else.
 @(test)
 test_property_set_json_enforces_ref_tag :: proc(t: ^testing.T) {
-	tc := new(TestCtx)
+	tc := new(common.TestCtx)
 	defer free(tc)
-	u := setup_undo(tc)
+	u := common.setup_undo(tc)
 	context.user_ptr = &tc.uc
-	defer teardown_undo(tc, u)
+	defer common.teardown_undo(tc, u)
 
 	a, comp := _animator_with_states()
 	root := engine.Transform_Handle(tc.scene.root.handle)

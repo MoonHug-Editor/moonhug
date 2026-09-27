@@ -147,7 +147,6 @@ app_init :: proc() {
     register_type_guids()
     phase_run(.SerializationInit)
     phase_run(.ImportersInit)
-    phase_run(.TweenNodesInit)
     // The app ALWAYS runs the catalog pipeline — the editor maintains
     // library/catalog.json (dev runs read it in place), exports carry their
     // own. There is no scan mode: scanning and importing are editor machinery

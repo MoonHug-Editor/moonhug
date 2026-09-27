@@ -1,15 +1,16 @@
-package tests
+package text_tests
 
 // The Text component's custom rows (text area, style toggles) through the
 // real field row: a string and a bit_set field must record undo steps like
 // any generic row.
 
 import "core:strings"
-import "../editor/inspector"
+import "moonhug:editor/inspector"
 import "core:testing"
-import "../editor/undo"
-import "../engine"
+import "moonhug:editor/undo"
+import "moonhug:engine"
 import text "moonhug:packages/text"
+import common "moonhug:tests/common"
 
 @(private = "file")
 _write_hello :: proc(field_ptr: rawptr) {
@@ -25,11 +26,11 @@ _write_bold :: proc(field_ptr: rawptr) {
 
 @(test)
 test_text_rows_record_undo_steps :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	s := setup_undo(tc_mem)
+	s := common.setup_undo(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown_undo(tc_mem, s)
+	defer common.teardown_undo(tc_mem, s)
 
 	a := engine.transform_new("A")
 	_, ptr := engine.transform_add_comp(a, .Text)
@@ -41,25 +42,25 @@ test_text_rows_record_undo_steps :: proc(t: ^testing.T) {
 
 	// Typing into the text area: focus, keystrokes, blur.
 	before := s.top
-	h := Row_Harness{field_ptr = &tx.text, field_tid = typeid_of(string), offset = offset_of(text.Text, text), label = "text"}
-	frames := []Frame{frame_press(), frame_drag(_write_hello), frame_drag(), frame_release()}
-	finishes := row_replay(&h, frames)
+	h := common.Row_Harness{field_ptr = &tx.text, field_tid = typeid_of(string), offset = offset_of(text.Text, text), label = "text"}
+	frames := []common.Frame{common.frame_press(), common.frame_drag(_write_hello), common.frame_drag(), common.frame_release()}
+	finishes := common.row_replay(&h, frames)
 	testing.expect_value(t, finishes, 1)
 	testing.expect_value(t, tx.text, "hello")
 	testing.expect_value(t, s.top, before + 1)
 
 	// A style toggle: one click is a whole gesture.
 	before = s.top
-	hs := Row_Harness{field_ptr = &tx.font_style, field_tid = typeid_of(text.Font_Style), offset = offset_of(text.Text, font_style), label = "font_style"}
-	finishes = row_replay(&hs, []Frame{Frame{activated = true, deactivated = true, write = _write_bold}})
+	hs := common.Row_Harness{field_ptr = &tx.font_style, field_tid = typeid_of(text.Font_Style), offset = offset_of(text.Text, font_style), label = "font_style"}
+	finishes = common.row_replay(&hs, []common.Frame{common.Frame{activated = true, deactivated = true, write = _write_bold}})
 	testing.expect_value(t, finishes, 1)
 	testing.expect(t, .Bold in tx.font_style)
 	testing.expect_value(t, s.top, before + 1)
 
 	// A generic bool row (auto_size): press, release.
 	before = s.top
-	hb := Row_Harness{field_ptr = &tx.auto_size, field_tid = typeid_of(bool), offset = offset_of(text.Text, auto_size), label = "auto_size"}
-	finishes = row_replay(&hb, []Frame{frame_press(), Frame{deactivated = true, write = proc(p: rawptr) { (cast(^bool)p)^ = true }}})
+	hb := common.Row_Harness{field_ptr = &tx.auto_size, field_tid = typeid_of(bool), offset = offset_of(text.Text, auto_size), label = "auto_size"}
+	finishes = common.row_replay(&hb, []common.Frame{common.frame_press(), common.Frame{deactivated = true, write = proc(p: rawptr) { (cast(^bool)p)^ = true }}})
 	testing.expect_value(t, finishes, 1)
 	testing.expect_value(t, s.top, before + 1)
 	undo.apply_undo(s)
@@ -85,11 +86,11 @@ _set_true :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // record while the two custom rows sit idle above it.
 @(test)
 test_text_inspector_row_order_keeps_generic_undo :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	s := setup_undo(tc_mem)
+	s := common.setup_undo(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown_undo(tc_mem, s)
+	defer common.teardown_undo(tc_mem, s)
 
 	a := engine.transform_new("A")
 	_, ptr := engine.transform_add_comp(a, .Text)
@@ -135,11 +136,11 @@ _pick_center :: proc(field_ptr: rawptr) {
 // frames of the row open no session that could cut another row's gesture.
 @(test)
 test_enum_row_records_popup_write_and_stays_idle :: proc(t: ^testing.T) {
-	tc_mem := new(TestCtx)
+	tc_mem := new(common.TestCtx)
 	defer free(tc_mem)
-	s := setup_undo(tc_mem)
+	s := common.setup_undo(tc_mem)
 	context.user_ptr = &tc_mem.uc
-	defer teardown_undo(tc_mem, s)
+	defer common.teardown_undo(tc_mem, s)
 
 	a := engine.transform_new("A")
 	_, ptr := engine.transform_add_comp(a, .Text)
@@ -148,11 +149,22 @@ test_enum_row_records_popup_write_and_stays_idle :: proc(t: ^testing.T) {
 	defer undo.pop_owner()
 	before := s.top
 
-	h := Row_Harness{field_ptr = &tx.horizontal_alignment, field_tid = typeid_of(text.Horizontal_Alignment), offset = offset_of(text.Text, horizontal_alignment), label = "horizontal_alignment"}
-	finishes := row_replay(&h, []Frame{frame_idle(), frame_idle(), frame_popup_write(_pick_center), frame_idle()})
+	h := common.Row_Harness{field_ptr = &tx.horizontal_alignment, field_tid = typeid_of(text.Horizontal_Alignment), offset = offset_of(text.Text, horizontal_alignment), label = "horizontal_alignment"}
+	finishes := common.row_replay(&h, []common.Frame{common.frame_idle(), common.frame_idle(), common.frame_popup_write(_pick_center), common.frame_idle()})
 	testing.expect_value(t, finishes, 1)
 	testing.expect_value(t, tx.horizontal_alignment, text.Horizontal_Alignment.Center)
 	testing.expect_value(t, s.top, before + 1)
 	undo.apply_undo(s)
 	testing.expect_value(t, tx.horizontal_alignment, text.Horizontal_Alignment.Left)
+}
+
+@(private = "file")
+_comp_handle :: proc(tH: engine.Transform_Handle, key: engine.TypeKey) -> engine.Handle {
+	w := engine.ctx_world()
+	t := engine.pool_get(&w.transforms, engine.Handle(tH))
+	if t == nil do return {}
+	for comp in t.components {
+		if comp.handle.type_key == key do return comp.handle
+	}
+	return {}
 }

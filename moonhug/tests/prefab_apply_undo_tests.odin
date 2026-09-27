@@ -47,14 +47,14 @@ test_prefab_apply_undoes_and_redoes :: proc(t: ^testing.T) {
 	if st == nil || inner_host == {} do return
 	want_pos := [3]f32{7, 8, 9}
 	st.position = want_pos
-	_, comp_ptr := engine.transform_add_comp(sprite_tH, .SpriteSortingGroup)
+	_, comp_ptr := engine.transform_add_comp(sprite_tH, .Camera)
 	testing.expect(t, comp_ptr != nil, "adds the component")
 	if comp_ptr == nil do return
 	comp_lid := (cast(^engine.CompData)comp_ptr).local_id
-	type_guid := uuid.to_string(engine.get_guid_by_type_key(.SpriteSortingGroup), context.temp_allocator)
+	type_guid := uuid.to_string(engine.get_guid_by_type_key(.Camera), context.temp_allocator)
 	_, rec_ok := engine.nested_scene_record_component_added(
 		loaded, inner_host, st.local_id, comp_lid, type_guid,
-		comp_ptr, engine.get_typeid_by_type_key(.SpriteSortingGroup),
+		comp_ptr, engine.get_typeid_by_type_key(.Camera),
 	)
 	testing.expect(t, rec_ok)
 	testing.expect(t, engine.scene_save(loaded, host_path))

@@ -151,8 +151,9 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "package editor\n\n")
 	// Own alias for the load call: a tab owned by the engine package would
-	// otherwise collide with the packages_used "engine" import.
-	strings.write_string(&b, "import __engine \"../engine\"\n")
+	// otherwise collide with the packages_used "engine" import. No entries
+	// (no package declares settings) means no call, so no import.
+	if len(entries) > 0 do strings.write_string(&b, "import __engine \"../engine\"\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
 	}

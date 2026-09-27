@@ -1,4 +1,4 @@
-package animation_editor
+package animation_sequencer_editor
 
 // The TimelineAnimator's OUTPUTS and STATES, drawn as the lists they are
 // (docs/TimelineAnimator.md): the objects its timelines drive, then one section
@@ -26,15 +26,17 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/preview"
 import "moonhug:editor/widgets"
 import engine "moonhug:engine"
-import anim "moonhug:packages/animation"
+import animation_editor "moonhug:packages/animation/editor"
+import anim_seq "moonhug:packages/animation/sequencer"
 import seq "moonhug:packages/sequencer"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
 timeline_animator_inspector_install :: proc() {
-	inspector.add_component_wrapper(typeid_of(anim.TimelineAnimator), _timeline_animator_inspector)
+	inspector.add_component_wrapper(typeid_of(anim_seq.TimelineAnimator), _timeline_animator_inspector)
 	_ta_alt_open_pending = make(map[i32]bool, 16, runtime.default_allocator())
 }
 
+@(phase={key=engine.Phase.EditorShutdown, order=1, mode=Editor})
 shutdown_timeline_animator_inspector :: proc() {
 	delete(_ta_alt_open_pending)
 	_ta_alt_open_pending = nil
@@ -43,7 +45,7 @@ shutdown_timeline_animator_inspector :: proc() {
 @(private = "file")
 _timeline_animator_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	inspector.draw(ctx) // speed
-	a := cast(^anim.TimelineAnimator)ctx.ptr
+	a := cast(^anim_seq.TimelineAnimator)ctx.ptr
 	if a == nil do return
 	_ta_states_section(a)
 }
@@ -110,7 +112,7 @@ _ta_wrap_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // --- Sections -------------------------------------------------------------------
 
 @(private = "file")
-_ta_states_section :: proc(a: ^anim.TimelineAnimator) {
+_ta_states_section :: proc(a: ^anim_seq.TimelineAnimator) {
 	im.SeparatorText("States")
 
 	// The tree is single-object: a row names a state by id, and two selected
@@ -130,11 +132,11 @@ _ta_states_section :: proc(a: ^anim.TimelineAnimator) {
 
 	if im.Button("Add Layer") {
 		sess := inspector.structural_edit_begin("Add Layer")
-		if a.layers == nil do a.layers = make([dynamic]anim.Animator_Layer)
-		append(&a.layers, anim.Animator_Layer{
+		if a.layers == nil do a.layers = make([dynamic]anim_seq.Animator_Layer)
+		append(&a.layers, anim_seq.Animator_Layer{
 			name   = strings.clone(fmt.tprintf("Layer %d", len(a.layers))),
 			weight = 1, // zero-neutral: a layer added here starts at full strength
-			states = make([dynamic]anim.Timeline_State),
+			states = make([dynamic]anim_seq.Timeline_State),
 		})
 		inspector.structural_edit_end(&sess)
 	}
@@ -153,7 +155,7 @@ _ta_states_section :: proc(a: ^anim.TimelineAnimator) {
 }
 
 @(private = "file")
-_ta_layer_rows :: proc(a: ^anim.TimelineAnimator, li: int) {
+_ta_layer_rows :: proc(a: ^anim_seq.TimelineAnimator, li: int) {
 	l := &a.layers[li]
 
 	// AllowOverlap: the node's frame spans the row, so without it the node
@@ -195,7 +197,7 @@ _ta_layer_rows :: proc(a: ^anim.TimelineAnimator, li: int) {
 // One state row. Returns false when the state was REMOVED, so the caller knows
 // the array shifted under it.
 @(private = "file")
-_ta_state_row :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
+_ta_state_row :: proc(a: ^anim_seq.TimelineAnimator, li, si: int) -> bool {
 	st := &a.layers[li].states[si]
 	im.PushIDInt(st.id)
 	defer im.PopID()
@@ -245,7 +247,7 @@ _ta_state_row :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 // component, so undo lands there and a prefab override records against the
 // track's own instance. Editing here is editing the track.
 @(private = "file")
-_ta_track_bindings :: proc(st: ^anim.Timeline_State) {
+_ta_track_bindings :: proc(st: ^anim_seq.Timeline_State) {
 	w := engine.ctx_world()
 	if !engine.world_pool_valid(w, st.timeline.handle) do return
 	base := cast(^engine.CompData)engine.world_pool_get(w, st.timeline.handle)
@@ -305,12 +307,12 @@ ta_preview_install :: proc() {
 ta_preview_play :: proc(owner: engine.Transform_Handle, id: i32) {
 	// Two posers previewing at once is confusing even though the preview stack
 	// unwinds correctly, and both buttons mean "show me this animation".
-	animation_preview_stop()
+	animation_editor.animation_preview_stop()
 	_ta_pv.owner = owner
 	_ta_pv.state = id
-	_, a := engine.transform_get_comp(owner, anim.TimelineAnimator)
+	_, a := engine.transform_get_comp(owner, anim_seq.TimelineAnimator)
 	if a == nil do return
-	anim.animator_play(a, anim.State_Id(id))
+	anim_seq.animator_play(a, anim_seq.State_Id(id))
 }
 
 // The state being previewed on `owner`, or 0.
@@ -321,9 +323,9 @@ ta_preview_state :: proc(owner: engine.Transform_Handle) -> i32 {
 
 ta_preview_stop :: proc() {
 	if _ta_pv.state == 0 do return
-	if _, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator); a != nil {
-		anim.animator_stop(a)
-		anim.timeline_animator_release(a)
+	if _, a := engine.transform_get_comp(_ta_pv.owner, anim_seq.TimelineAnimator); a != nil {
+		anim_seq.animator_stop(a)
+		anim_seq.timeline_animator_release(a)
 	}
 	_ta_pv.state = 0
 	_ta_pv.applied = false
@@ -343,7 +345,7 @@ _ta_preview_apply :: proc() {
 		_ta_pv.state = 0
 		return
 	}
-	_, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator)
+	_, a := engine.transform_get_comp(_ta_pv.owner, anim_seq.TimelineAnimator)
 	if a == nil {
 		_ta_pv.state = 0
 		return
@@ -351,9 +353,9 @@ _ta_preview_apply :: proc() {
 
 	// Build first: refreshing defaults needs bindings, and the graph is what
 	// holds them.
-	anim.timeline_animator_ensure_graph(a)
-	anim.timeline_animator_refresh_defaults(a)
-	anim.timeline_animator_step(a, im.GetIO().DeltaTime, .Preview_Play)
+	anim_seq.timeline_animator_ensure_graph(a)
+	anim_seq.timeline_animator_refresh_defaults(a)
+	anim_seq.timeline_animator_step(a, im.GetIO().DeltaTime, .Preview_Play)
 	_ta_pv.applied = true
 }
 
@@ -361,14 +363,14 @@ _ta_preview_apply :: proc() {
 _ta_preview_restore :: proc() {
 	if !_ta_pv.applied do return
 	_ta_pv.applied = false
-	if _, a := engine.transform_get_comp(_ta_pv.owner, anim.TimelineAnimator); a != nil {
-		anim.timeline_animator_write_defaults(a)
+	if _, a := engine.transform_get_comp(_ta_pv.owner, anim_seq.TimelineAnimator); a != nil {
+		anim_seq.timeline_animator_write_defaults(a)
 	}
 }
 
 // Play and remove, right-aligned. Returns true when the state was removed.
 @(private = "file")
-_ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
+_ta_row_buttons :: proc(a: ^anim_seq.TimelineAnimator, li, si: int) -> bool {
 	style := im.GetStyle()
 	btn := im.GetFrameHeight()
 	im.SameLine()
@@ -382,7 +384,7 @@ _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 	previewing := !playing && ta_preview_state(a.owner) == id
 	if im.Button(previewing ? icons.ICON_MD_STOP : icons.ICON_MD_PLAY_ARROW, im.Vec2{btn, btn}) {
 		switch {
-		case playing:    anim.animator_play(a, anim.State_Id(id))
+		case playing:    anim_seq.animator_play(a, anim_seq.State_Id(id))
 		case previewing: ta_preview_stop()
 		case:            ta_preview_play(a.owner, id)
 		}
@@ -402,7 +404,7 @@ _ta_row_buttons :: proc(a: ^anim.TimelineAnimator, li, si: int) -> bool {
 // names the whole `layers` field — the granularity the undo step records too.
 @(private = "file")
 _ta_row :: proc(
-	a: ^anim.TimelineAnimator,
+	a: ^anim_seq.TimelineAnimator,
 	ptr: rawptr,
 	tid: typeid,
 	label: string,
@@ -410,7 +412,7 @@ _ta_row :: proc(
 	draw_label: cstring,
 ) {
 	inspector.custom_field_row(ptr, tid, label, drawer, draw_label,
-		{&a.layers, typeid_of([dynamic]anim.Animator_Layer), "layers"})
+		{&a.layers, typeid_of([dynamic]anim_seq.Animator_Layer), "layers"})
 }
 
 // Click-to-rename, shared by layer and state rows. `key` identifies which row
@@ -449,13 +451,13 @@ _ta_rename_commit :: proc(name: ^string) {
 }
 
 @(private = "file")
-_ta_state_add :: proc(a: ^anim.TimelineAnimator, li: int) {
+_ta_state_add :: proc(a: ^anim_seq.TimelineAnimator, li: int) {
 	sess := inspector.structural_edit_begin("Add State")
 	defer inspector.structural_edit_end(&sess)
 
-	if a.layers[li].states == nil do a.layers[li].states = make([dynamic]anim.Timeline_State)
-	id := anim.animator_state_next_id(a)
-	append(&a.layers[li].states, anim.Timeline_State{
+	if a.layers[li].states == nil do a.layers[li].states = make([dynamic]anim_seq.Timeline_State)
+	id := anim_seq.animator_state_next_id(a)
+	append(&a.layers[li].states, anim_seq.Timeline_State{
 		id    = id,
 		name  = strings.clone(fmt.tprintf("State %d", id)),
 		speed = 1, // 0 also runs at 1, but an authored state should read as it plays
@@ -463,7 +465,7 @@ _ta_state_add :: proc(a: ^anim.TimelineAnimator, li: int) {
 }
 
 @(private = "file")
-_ta_state_remove :: proc(a: ^anim.TimelineAnimator, li, si: int) {
+_ta_state_remove :: proc(a: ^anim_seq.TimelineAnimator, li, si: int) {
 	sess := inspector.structural_edit_begin("Remove State")
 	defer inspector.structural_edit_end(&sess)
 

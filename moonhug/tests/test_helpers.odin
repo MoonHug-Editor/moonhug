@@ -8,23 +8,6 @@ import "core:strings"
 // Shared helpers used by multiple test files. Keep procs small and parameterised
 // so each test file can stay focused on assertions rather than pool walking.
 
-find_transform_named :: proc(
-	w: ^engine.World,
-	s: ^engine.Scene,
-	name: string,
-	nested_owned: bool,
-) -> engine.Transform_Handle {
-	it := engine.pool_iterator(&w.transforms)
-	for tr, h in engine.pool_next(&it) {
-		if tr.scene != s || tr.nested_owned != nested_owned do continue
-		if strings.compare(tr.name, name) != 0 do continue
-		th := h
-		th.type_key = .Transform
-		return engine.Transform_Handle(th)
-	}
-	return {}
-}
-
 find_nested_named_under_host :: proc(
 	w: ^engine.World,
 	s: ^engine.Scene,

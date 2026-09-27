@@ -120,7 +120,9 @@ plugins/
   `foo_util`, prebuild lints it). The root reaches it via
   `import "moonhug:packages/<name>/<sub>"`. Generated imports never target
   subpackages directly except where a generator's output needs their types
-  (type registration).
+  (type registration, component registration, dispatchers).
+- **Integration subpackages** — a subfolder that imports ANOTHER plugin, named after it (`audio/sequencer`, declaring `audio_sequencer`). It holds what the plugin adds to the other one through attributes: the audio track, the sprites fade tween, the TimelineAnimator. Prebuild scans it only while every plugin its files import is installed, and prints `prebuild: <dir> skipped, needs the <x> plugin` otherwise. Its own `editor/` and `tests/` go with it, and its `tests/` are also left out while a plugin they import is missing. Nothing in the plugin's root imports it, so the plugin builds without the other one. The plugin's own `editor/` is part of the plugin like its root and is never skipped. Components, phases, `@(update)` procs and union variants in it register like the root's.
+- **Dependency rule** — a plugin's root never imports a plugin that extends it through attributes (the sequencer imports none of animation, audio, particles or sprites). The extending plugin puts that code in an integration subpackage. An import of another plugin from a root or its `editor/` is a hard dependency, and the build fails without it: games and samples (`app`, `timeline_sample`) and libraries (`node_graph`, which the Tween Graph window in `tween/editor` draws with) are the cases. The editor and the engine import no plugin, and the core tests (`moonhug/tests`) test core only: they build and pass with no plugin installed.
 - **`gen/`** — a prebuild generator shipped by the package (`package
   <name>_gen`, `packages/tween/gen` is the reference). ANY installed package
   can ship one: prebuild discovers `packages/*/gen` itself, no prebuild
@@ -237,6 +239,7 @@ carries no special scan status), then generates:
   ```
   moonhug/packages/app/packages_generated.odin   imports + register_packages()
   moonhug/editor/packages_generated.odin         import _ "moonhug:packages/<name>/editor"
+                                                 (and <name>/<integration>/editor)
   ```
 
   `register_packages()` is called from `app_init`/`editor_init` right after

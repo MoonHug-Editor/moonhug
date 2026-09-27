@@ -43,7 +43,7 @@ test_ref_tag_resolves_a_capability :: proc(t: ^testing.T) {
 
 	keys := inspector.ref_target_keys("@Output")
 	testing.expect(t, _has(keys, .Animation), "Animation carries ref_tags=Output")
-	testing.expect(t, !_has(keys, .PlayableDirector), "an untagged type stays out")
+	testing.expect(t, !_has(keys, .Camera), "an untagged type stays out")
 }
 
 // A list unions its items and names each key once, however many items admit it.
@@ -55,9 +55,9 @@ test_ref_tag_list_unions_without_duplicates :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer common.teardown(tc)
 
-	keys := inspector.ref_target_keys(" Animation , @Output, PlayableDirector ")
+	keys := inspector.ref_target_keys(" Animation , @Output, Camera ")
 	testing.expect(t, _has(keys, .Animation), "list includes the named type")
-	testing.expect(t, _has(keys, .PlayableDirector), "list includes every named type")
+	testing.expect(t, _has(keys, .Camera), "list includes every named type")
 	seen := 0
 	for k in keys do if k == .Animation do seen += 1
 	testing.expect_value(t, seen, 1)

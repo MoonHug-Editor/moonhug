@@ -4,6 +4,9 @@ package animation_tests
 // entry tree, the 1D weight rule, and the shared phase that keeps children of
 // different lengths in step.
 
+import "core:encoding/json"
+import "core:encoding/uuid"
+import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:engine"
@@ -526,4 +529,24 @@ test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 	anim.animation_clip_apply_settings(&once, {wrap = .Once, cycle_offset = 0.25})
 	testing.expectf(t, abs(anim.animation_clip_sample_time(&once, 0)) < 0.001,
 		"Once ignores the offset, got %v", anim.animation_clip_sample_time(&once, 0))
+}
+
+@(private = "file")
+// Read a .anim and its .meta straight into the clip cache, bypassing the asset
+// DB. Only for tests that load shipped sample assets by path.
+_load_sample_clip :: proc(path: string) {
+	meta_path := strings.concatenate({path, ".meta"}, context.temp_allocator)
+	meta_bytes, merr := os.read_entire_file(meta_path, context.temp_allocator)
+	if merr != nil do return
+	Meta :: struct { guid: string }
+	meta: Meta
+	if json.unmarshal(meta_bytes, &meta, .JSON, context.temp_allocator) != nil do return
+	id, err := uuid.read(meta.guid)
+	if err != nil do return
+
+	data, derr := os.read_entire_file(path, context.temp_allocator)
+	if derr != nil do return
+	clip: anim.AnimationClip
+	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil do return
+	anim.animation_clip_cache[engine.Asset_GUID(id)] = clip
 }

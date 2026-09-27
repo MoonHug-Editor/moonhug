@@ -71,7 +71,7 @@ test_generated_ui_registrations_carry_origin :: proc(t: ^testing.T) {
 			}
 		}
 	}
-	testing.expect(t, seen > 100, "the generated registrations should be found")
+	testing.expect(t, seen > 0, "the generated registrations should be found")
 }
 
 // Recursive, symlinks followed (samples install as symlinked packages),

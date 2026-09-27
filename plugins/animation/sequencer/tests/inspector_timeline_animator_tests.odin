@@ -1,4 +1,4 @@
-package animation_tests
+package animation_sequencer_tests
 
 // Undo for the TimelineAnimator's States tree
 // (editor/inspector_timeline_animator.odin).
@@ -18,9 +18,9 @@ package animation_tests
 import "core:testing"
 import undo "moonhug:editor/undo"
 import "moonhug:engine"
-import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"
+import anim_seq "moonhug:packages/animation/sequencer"
 
 @(private = "file")
 _ta_handle :: proc(owner: engine.Transform_Handle) -> engine.Handle {
@@ -35,15 +35,15 @@ _ta_handle :: proc(owner: engine.Transform_Handle) -> engine.Handle {
 
 // One layer holding one state, the smallest tree with every row kind on it.
 @(private = "file")
-_animator_with_state :: proc() -> (^anim.TimelineAnimator, engine.Handle) {
+_animator_with_state :: proc() -> (^anim_seq.TimelineAnimator, engine.Handle) {
 	owner := engine.transform_new("Animator")
 	_, ptr := engine.transform_add_comp(owner, .TimelineAnimator)
 	if ptr == nil do return nil, {}
-	a := cast(^anim.TimelineAnimator)ptr
+	a := cast(^anim_seq.TimelineAnimator)ptr
 
-	a.layers = make([dynamic]anim.Animator_Layer)
-	append(&a.layers, anim.Animator_Layer{weight = 1, states = make([dynamic]anim.Timeline_State)})
-	append(&a.layers[0].states, anim.Timeline_State{
+	a.layers = make([dynamic]anim_seq.Animator_Layer)
+	append(&a.layers, anim_seq.Animator_Layer{weight = 1, states = make([dynamic]anim_seq.Timeline_State)})
+	append(&a.layers[0].states, anim_seq.Timeline_State{
 		id    = 1,
 		speed = 1,
 		fade  = 0.25,
@@ -53,7 +53,7 @@ _animator_with_state :: proc() -> (^anim.TimelineAnimator, engine.Handle) {
 }
 
 @(private = "file")
-_state :: proc(a: ^anim.TimelineAnimator) -> ^anim.Timeline_State {
+_state :: proc(a: ^anim_seq.TimelineAnimator) -> ^anim_seq.Timeline_State {
 	return &a.layers[0].states[0]
 }
 
@@ -207,9 +207,9 @@ test_animator_state_ids_are_unique_on_add :: proc(t: ^testing.T) {
 	a, _ := _animator_with_state()
 	if a == nil do return
 
-	first := anim.animator_state_next_id(a)
-	append(&a.layers[0].states, anim.Timeline_State{id = first})
-	second := anim.animator_state_next_id(a)
+	first := anim_seq.animator_state_next_id(a)
+	append(&a.layers[0].states, anim_seq.Timeline_State{id = first})
+	second := anim_seq.animator_state_next_id(a)
 
 	testing.expect(t, first != second, "a second added state takes a different id")
 	testing.expect_value(t, second, first + 1)

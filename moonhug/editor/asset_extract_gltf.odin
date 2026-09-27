@@ -4,10 +4,10 @@ package editor
 // assets (docs/Materials.md). Embedded images are written as PLAIN FILES next
 // to the model, one .mat per glTF material is created with its slots wired
 // (albedo → texture; metal-rough/normal/ao/emissive → pbr.glsl rows when that
-// shader asset exists, built-in Lit otherwise), one .anim AnimationClip per
-// glTF animation (played by the Animation component), and one .scene
-// mirroring the node hierarchy with all of the above referenced — the Unity
-// model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
+// shader asset exists, built-in Lit otherwise), one clip per glTF animation
+// (with the animation package installed: asset_pipeline.gltf_clip_extractor),
+// and one .scene mirroring the node hierarchy with all of the above
+// referenced — the Unity model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
 // everything extracted is an ordinary editable asset, and existing files are
 // SKIPPED — re-running never overwrites user edits. Acts on
 // projectViewData.selectedFile, like Create/Scene Variant.
@@ -19,7 +19,6 @@ import "core:path/filepath"
 import "core:strings"
 import engine "../engine"
 import "moonhug:engine_editor/asset_pipeline"
-import anim "moonhug:packages/animation"
 import "../engine/serialization"
 
 @(menu_separator={path="Assets", order=-45})
@@ -160,26 +159,25 @@ extract_gltf_assets :: proc(model_path: string) {
 		}
 		mats_written += 1
 	}
-	// 3) One .anim AnimationClip per glTF animation. Channel targets are the
-	// glTF node-name paths ("Root/Bone"), matching child transforms under the
-	// object that carries the Animation component (Unity's curve bindings).
+	// 3) One .anim clip per glTF animation, from the animation package.
+	// Channel targets are the glTF node-name paths ("Root/Bone"), matching
+	// child transforms under the object that plays the clip (Unity's curve
+	// bindings).
 	anims_written := 0
-	for &an, ai in data.animations {
-		// REPLACED, not skipped: a clip is a generated file, and re-exporting
-		// the model has to be able to refresh its curves. What an author set —
-		// wrap, frame rate, cycle offset, trim — lives in the .meta beside it
-		// and rides through untouched.
-		out := _gltf_anim_out_path(dir, stem, &an, ai)
-		clip, ok := anim.animation_clip_from_gltf(data, &an)
-		if !ok {
-			fmt.printf("[Editor] Extract: no usable channels in %s\n", out)
-			continue
+	clips := asset_pipeline.gltf_clip_extractor
+	if clips.write != nil {
+		for &an, ai in data.animations {
+			// REPLACED, not skipped: a clip is a generated file, and
+			// re-exporting the model has to be able to refresh its curves.
+			// What an author set — wrap, frame rate, cycle offset, trim —
+			// lives in the .meta beside it and rides through untouched.
+			out := _gltf_anim_out_path(dir, stem, &an, ai)
+			if !clips.write(data, &an, out) {
+				fmt.printf("[Editor] Extract: %s not written (no usable channels, or the write failed)\n", out)
+				continue
+			}
+			anims_written += 1
 		}
-		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip) {
-			fmt.printf("[Editor] Extract: failed to write %s\n", out)
-			continue
-		}
-		anims_written += 1
 	}
 	asset_pipeline.asset_db_refresh()
 
@@ -206,21 +204,20 @@ extract_gltf_assets :: proc(model_path: string) {
 			append(&mats, path_guid(_gltf_mat_out_path(dir, stem, &m, mi)))
 		}
 
-		// The engine authors the scene; the Animation component comes from the
-		// animation package, wired onto the root here (scene_from_gltf's
-		// decorate_root seam).
+		// The engine authors the scene. The component that plays the first
+		// clip comes from the animation package, wired onto the root here
+		// (scene_from_gltf's decorate_root seam).
 		clip_guid: engine.Asset_GUID
-		if len(data.animations) > 0 {
+		if len(data.animations) > 0 && clips.decorate != nil {
 			clip_guid = path_guid(_gltf_anim_out_path(dir, stem, &data.animations[0], 0))
 		}
-		add_animation := proc(root: engine.Transform_Handle, user: rawptr) {
+		play_first_clip := proc(root: engine.Transform_Handle, user: rawptr) {
 			clip := (cast(^engine.Asset_GUID)user)^
 			if clip == {} do return
-			_, a_raw := engine.transform_add_comp(root, .Animation)
-			(cast(^anim.Animation)a_raw).clip = clip
+			asset_pipeline.gltf_clip_extractor.decorate(root, clip)
 		}
 
-		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], scene_out, add_animation, &clip_guid) {
+		if engine.scene_from_gltf(data, stem, mesh_guid, mats[:], scene_out, play_first_clip, &clip_guid) {
 			scenes_written += 1
 		} else {
 			fmt.printf("[Editor] Extract: failed to write %s\n", scene_out)

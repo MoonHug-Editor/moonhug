@@ -5,16 +5,16 @@ package tests
 // dir — no test reads shipped package assets (those move and get edited, so
 // tests against them drift; a fixture is stable and self-describing).
 //
-//   c.scene         CRoot > C [SpriteRenderer, FIXTURE_COLOR_BASE]
+//   c.scene         CRoot > C [Light, FIXTURE_COLOR_BASE]
 //   c_Variant       variant of c (scene_create_variant_file)
 //   bullet.scene    BRoot > [c_Variant instance, A, B]
 //   bullet_Variant  variant of bullet, carrying a DEEP override on its root
-//                   variant NS: the inherited C sprite color =
+//                   variant NS: the inherited C light color =
 //                   FIXTURE_COLOR_DEEP (authored the editor way — open the
-//                   variant, edit the inherited sprite, save)
+//                   variant, edit the inherited light, save)
 //   host.scene      HRoot > bullet_Variant instance
 //
-// c.scene is raw JSON with a MINIMAL sprite record (texture + color only):
+// c.scene is raw JSON with a MINIMAL light record (color only):
 // prefabs authored before a component gained fields omit those keys, and the
 // save-time capture diff must not read the omissions as overrides. Keep it
 // minimal — that gap is what the spurious-override regression test needs.
@@ -24,10 +24,9 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "moonhug:engine_editor/asset_pipeline"
 
-FIXTURE_SPRITE_GUID :: "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"
+FIXTURE_LIGHT_GUID :: "9f36ee91-34b6-4636-a360-ee872af0436b"
 FIXTURE_COLOR_BASE :: [4]f32{0.5, 0, 0, 1}
 FIXTURE_COLOR_DEEP :: [4]f32{0, 1, 1, 0.686}
 
@@ -56,9 +55,9 @@ fixture_write_empty_scene :: proc(path: string, root_name: string) -> bool {
 	return os.write_entire_file(path, transmute([]byte)j) == nil
 }
 
-// First SpriteRenderer in `s` (optionally only on nested-owned/inherited
+// First Light in `s` (optionally only on nested-owned/inherited
 // content), with its owning transform.
-fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^sprites.SpriteRenderer, engine.Transform_Handle) {
+fixture_find_light :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := false) -> (^engine.Light, engine.Transform_Handle) {
 	it := engine.pool_iterator(&w.transforms)
 	for tr, ih in engine.pool_next(&it) {
 		if tr.scene != s do continue
@@ -66,8 +65,8 @@ fixture_find_sprite :: proc(w: ^engine.World, s: ^engine.Scene, nested_only := f
 		th := ih
 		th.type_key = .Transform
 		h := engine.Transform_Handle(th)
-		_, sr := engine.transform_get_comp(h, sprites.SpriteRenderer)
-		if sr != nil do return sr, h
+		_, lt := engine.transform_get_comp(h, engine.Light)
+		if lt != nil do return lt, h
 	}
 	return nil, {}
 }
@@ -109,9 +108,8 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
   ],
   "nested_scenes": [], "breadcrumbs": [],
   "components": [
-    {"__type": "` + FIXTURE_SPRITE_GUID + `",
+    {"__type": "` + FIXTURE_LIGHT_GUID + `",
      "base": {"local_id": 3, "enabled": true},
-     "texture": "00000000-0000-0000-0000-000000000000",
      "color": [0.5, 0, 0, 1]}
   ]
 }`
@@ -161,17 +159,17 @@ fixture_chain_author :: proc(t: ^testing.T, tc: ^TestCtx, dir: string) -> (fx: F
 	fx.bv_guid = engine.Asset_GUID(bv_guid)
 
 	// The deep override, authored the editor way: open the variant, edit the
-	// INHERITED sprite (nested-owned content from c via bullet), save — the
+	// INHERITED light (nested-owned content from c via bullet), save — the
 	// capture lands on the variant's root NS.
 	bv := engine.scene_load_single_path(fx.bv_path)
 	testing.expect(t, bv != nil, "fixture: bullet_Variant loads")
 	if bv == nil do return fx, false
 	tc.scene = bv
 	engine.sm_scene_set_active(bv)
-	sr, _ := fixture_find_sprite(&tc.world, bv, nested_only = true)
-	testing.expect(t, sr != nil, "fixture: inherited sprite in bullet_Variant")
-	if sr == nil do return fx, false
-	sr.color = FIXTURE_COLOR_DEEP
+	lt, _ := fixture_find_light(&tc.world, bv, nested_only = true)
+	testing.expect(t, lt != nil, "fixture: inherited light in bullet_Variant")
+	if lt == nil do return fx, false
+	lt.color = FIXTURE_COLOR_DEEP
 	if !engine.scene_save(bv, fx.bv_path) {
 		testing.expect(t, false, "fixture: save bullet_Variant override")
 		return fx, false

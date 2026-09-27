@@ -277,6 +277,7 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
 
         // Identity model: skin matrices already produced world space.
         append(out, Render_Command{
+            owner   = Transform_Handle(smr.owner),
             variant = Draw_Mesh{
                 mesh      = mf.mesh.guid,
                 part      = part,

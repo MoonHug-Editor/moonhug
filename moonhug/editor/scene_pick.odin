@@ -1,11 +1,11 @@
 package editor
 
-// Scene-view click picking (docs/SDL3Renderer.md #7). CPU tests — sprites
-// against their exact world quads (the SAME corners the renderer draws, via
-// sprites.sprite_quad), meshes against their import-time AABB in local
-// space, skinned meshes against the world bounds of the pose they last drew.
-// Nearest hit wins. The editor ignores render layer masks — you can pick
-// anything you can see.
+// Scene-view click picking (docs/SDL3Renderer.md #7). CPU tests — the quads
+// package renderers draw (sprites, particles: the render commands the scene
+// view collects, so the SAME corners the renderer draws), meshes against
+// their import-time AABB in local space, skinned meshes against the world
+// bounds of the pose they last drew. Nearest hit wins. The editor ignores
+// render layer masks — you can pick anything you can see.
 //
 // Each renderer is tested the way it is DRAWN. That is the rule that matters:
 // a skinned mesh draws posed world vertices under an identity model, so a
@@ -14,9 +14,24 @@ package editor
 
 import "core:math/linalg"
 import "../engine"
-import sprites "moonhug:packages/sprites"
 import "moonhug:editor/handles"
 import "moonhug:engine/gizmos"
+
+// Every quad `view` draws, with its owner: what the package renderers
+// registered with engine.render_register_collector draw, and UI graphics
+// (temp). Meshes are left out: the callers test those from their components,
+// and collecting a skinned mesh would pose it before this frame's edits.
+drawn_quads :: proc(view: engine.Render_View) -> []engine.Render_Command {
+	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+	engine.render_collect_commands(view, &cmds, meshes = false)
+	n := 0
+	for c in cmds {
+		if _, is_quad := c.variant.(engine.Draw_Quad); !is_quad || c.owner == {} do continue
+		cmds[n] = c
+		n += 1
+	}
+	return cmds[:n]
+}
 
 // px, py in viewport pixels relative to the scene image's top-left.
 scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
@@ -40,25 +55,14 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 	}
 	if found do return best, true
 
-	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
-	for sr, _ in engine.pool_next(&sr_it) {
-		if !sr.enabled || engine.asset_guid_is_empty(sr.sprite.guid) do continue
-		if !engine.transform_active_in_hierarchy(sr.owner) do continue
-		tex, ok := engine.texture_load(sr.sprite.guid)
-		if !ok do continue
-
-		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c, _, cok := sprites.sprite_quad(sr, tw, tex)
-		if !cok do continue
-		if t, hit := engine.ray_hit_triangle(ray, c[0], c[1], c[2]); hit && t < best_t {
-			best_t = t
-			best = engine.Transform_Handle(sr.owner)
-			found = true
-		}
-		if t, hit := engine.ray_hit_triangle(ray, c[0], c[2], c[3]); hit && t < best_t {
-			best_t = t
-			best = engine.Transform_Handle(sr.owner)
-			found = true
+	for c in drawn_quads(view) {
+		q := c.variant.(engine.Draw_Quad)
+		for tri in ([2][3]int{{0, 1, 2}, {0, 2, 3}}) {
+			if t, hit := engine.ray_hit_triangle(ray, q.corners[tri[0]], q.corners[tri[1]], q.corners[tri[2]]); hit && t < best_t {
+				best_t = t
+				best = c.owner
+				found = true
+			}
 		}
 	}
 
@@ -146,18 +150,9 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 
-	sr_it := engine.pool_iterator(sprites.sprite_renderers(w))
-	for sr, _ in engine.pool_next(&sr_it) {
-		if !sr.enabled || engine.asset_guid_is_empty(sr.sprite.guid) do continue
-		if !engine.transform_active_in_hierarchy(sr.owner) do continue
-		tex, ok := engine.texture_load(sr.sprite.guid)
-		if !ok do continue
-		tw := engine.transform_world(engine.Transform_Handle(sr.owner))
-		c, _, cok := sprites.sprite_quad(sr, tw, tex)
-		if !cok do continue
-		if _rect_hits_points(view, rmin, rmax, c[:]) {
-			append(&out, engine.Transform_Handle(sr.owner))
-		}
+	for c in drawn_quads(view) {
+		q := c.variant.(engine.Draw_Quad)
+		if _rect_hits_points(view, rmin, rmax, q.corners[:]) do append(&out, c.owner)
 	}
 
 	// UI: every drawn graphic's rect, where the canvas sits (all render modes).

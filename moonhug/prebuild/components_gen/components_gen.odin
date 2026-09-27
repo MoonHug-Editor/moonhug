@@ -102,13 +102,6 @@ _pluralize :: proc(s: string) -> string {
 	return strings.concatenate({s, "s"})
 }
 
-_pkg_name :: proc(pkg_path: string) -> string {
-	if i := strings.last_index(pkg_path, "/"); i >= 0 && i + 1 < len(pkg_path) {
-		return pkg_path[i + 1:]
-	}
-	return pkg_path
-}
-
 // EVERY component goes through the runtime
 // component registry (registry pools + guid-tagged records in scene files) —
 // engine components included; only @(poolable) types (Transform, TweenUnion)
@@ -178,7 +171,7 @@ provide :: proc(w: ^db.World) -> bool {
 				snake_name      = snake,
 				plural          = plural,
 				menu_path       = menu_path,
-				pkg             = _pkg_name(decl.pkg_path),
+				pkg             = decl.pkg.name,
 				pkg_path        = decl.pkg_path,
 				max             = gen_facts.attr_int(args, "max"),
 				has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
@@ -906,17 +899,24 @@ generate_ext_components :: proc(w: ^db.World) -> bool {
 	// Collect distinct non-engine packages, keeping entry order. Keyed by
 	// pkg_path: the generated file lands INSIDE the owning package (thunks
 	// need the concrete type), wherever that package lives.
+	// The declared package name, not the folder: a subpackage declares
+	// <name>_<sub> (docs/Plugins.md).
 	pkgs: [dynamic]string
+	pkg_names: [dynamic]string
 	defer delete(pkgs)
+	defer delete(pkg_names)
 	for e in data.entries {
 		if _is_engine(e) do continue
 		found := false
 		for p in pkgs do if p == e.pkg_path { found = true; break }
-		if !found do append(&pkgs, e.pkg_path)
+		if !found {
+			append(&pkgs, e.pkg_path)
+			append(&pkg_names, e.pkg)
+		}
 	}
 
-	for pkg_path in pkgs {
-		pkg := _pkg_name(pkg_path)
+	for pkg_path, pi in pkgs {
+		pkg := pkg_names[pi]
 		b := strings.builder_make()
 		defer strings.builder_destroy(&b)
 

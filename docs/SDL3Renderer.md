@@ -162,11 +162,15 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
   that lets renderer components live in packages: a package owns its component
   pool and emits commands from the engine's vocabulary (`Draw_Quad`,
   `Draw_Mesh`, plus a lexicographic `Sort_Key` for alpha-blended ordering).
+  Every command names its `owner`, the transform whose renderer emits it. The
+  editor picks, box-selects, outlines and frames package renderers by the
+  quads they draw (`editor.drawn_quads`), so a renderer package adds no editor
+  code for them.
 - Sprites are the first package consumer: `packages/sprites` owns
   SpriteRenderer, SpriteSortingGroup, the sort-key pass (sprite_sort.odin) and
   the collector, registered at ImportersInit. `sprite_quad` (corners + uvs +
-  pivot, one resolve) is shared by collection, the editor's scene picking,
-  selection outlines and thumbnails.
+  pivot, one resolve) feeds the collector, and the editor's picking,
+  selection outlines, framing and thumbnails read the commands it emits.
 - `packages/particles` is the second collector: ParticleSystem simulates on
   the CPU (@(update)) and emits billboarded Draw_Quad commands keyed with
   `engine.sort_key_word`, so particles interleave with sprites by
@@ -299,8 +303,9 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] `engine/raycast.odin` — `ray_hit_aabb` (slab, unnormalized-direction
       safe for local-space picking), `ray_hit_triangle` (Möller–Trumbore,
       double-sided); engine-side because game code shares `camera_screen_ray`
-- [x] `editor/scene_pick.odin` — sprites via `sprite_world_corners` + 2 triangle
-      tests; meshes via ray→local space + artifact AABB; nearest t wins; editor
+- [x] `editor/scene_pick.odin` — package renderers' drawn quads (the owner on
+      each render command) + 2 triangle tests; meshes via ray→local space +
+      artifact AABB; nearest t wins; editor
       ignores layer mask (Unity behavior); packages add shapes through
       `handles.pick_register` (docs/Handles.md). CPU picking, NOT GPU id-buffer
       (hundreds of objects; id-buffer = extra pipeline + readback for no gain)

@@ -2,7 +2,7 @@ package tween
 
 // The transform-targeting leaf nodes. Any package declares its own the same
 // way (plugin_example is the reference): a struct embedding Tween, a tick
-// over the concrete type, one register_node call on the TweenNodesInit
+// over the concrete type, one register_node call on the SerializationInit
 // phase (register_builtin_nodes here).
 
 import "core:math/linalg"

@@ -98,6 +98,9 @@ Draw_Mesh :: struct {
 
 Render_Command :: struct {
 	key:     Sort_Key, // alpha-blended quads only; zero for meshes
+	// The transform whose renderer emits the command. The editor picks,
+	// outlines and frames package renderers by the quads they draw.
+	owner:   Transform_Handle,
 	variant: union #no_nil {
 		Draw_Mesh,
 		Draw_Quad,
@@ -207,10 +210,14 @@ render_register_collector :: proc(c: Render_Collector) {
 }
 
 // Appends commands for every renderer visible to `view`: the engine's
-// built-in collectors, then every registered one.
-render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command) {
-	_collect_mesh_renderers(view, out)
-	skinned_mesh_collect(out, view) // component_SkinnedMeshRenderer.odin
+// built-in collectors, then every registered one. meshes=false leaves out the
+// engine's mesh and skinned mesh renderers: the editor's quad queries need
+// neither, and collecting skinned meshes poses them for the frame.
+render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command, meshes := true) {
+	if meshes {
+		_collect_mesh_renderers(view, out)
+		skinned_mesh_collect(out, view) // component_SkinnedMeshRenderer.odin
+	}
 	canvas_collect_graphics(view, out) // the canvas tree (ui_canvas.odin)
 	for c in _render_collectors do c(view, out)
 }
@@ -232,6 +239,7 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 
 		tw := transform_world(Transform_Handle(mr.owner))
 		append(out, Render_Command{
+			owner   = Transform_Handle(mr.owner),
 			variant = Draw_Mesh{
 				mesh      = mf.mesh.guid,
 				part      = part,

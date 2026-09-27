@@ -16,30 +16,13 @@ import "core:testing"
 import "../engine"
 import "moonhug:engine_editor/asset_pipeline"
 
-// Shared with asset_catalog_tests (both sweep a fixture library/).
-_remove_tree :: proc(dir: string) {
-	handle, err := os.open(dir)
-	if err != nil do return
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	os.close(handle)
-	if rerr != nil do return
-	for entry in entries {
-		full := strings.concatenate({dir, "/", entry.name}, context.temp_allocator)
-		if entry.type == .Directory {
-			_remove_tree(full)
-		} else {
-			os.remove(full)
-		}
-	}
-	os.remove(dir)
-}
 
 @(test)
 test_artifact_content_addressing :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_pipeline_tmp"
 	png :: src_dir + "/probe.png"
 	os.make_directory(src_dir)
-	data, rerr := os.read_entire_file("moonhug/packages/app/assets/textures/circle-256.png", context.temp_allocator)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(png, data) == nil)
@@ -125,7 +108,7 @@ test_shader_failed_import_keeps_last_good_artifact :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_pipeline_tmp"
 	glsl :: src_dir + "/probe.glsl"
 	os.make_directory(src_dir)
-	data, rerr := os.read_entire_file("moonhug/packages/app/assets/shaders/stripes.glsl", context.temp_allocator)
+	data, rerr := os.read_entire_file("moonhug/tests/fixtures/shaders/test.glsl", context.temp_allocator)
 	testing.expect(t, rerr == nil)
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(glsl, data) == nil)

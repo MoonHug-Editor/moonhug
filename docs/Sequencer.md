@@ -26,9 +26,10 @@ packages/sequencer/                 ← knows only the engine
   director.odin                     ← subtree walk, evaluation, modes
   editor/view_sequencer.odin        ← the window
 
-packages/animation/track_animation.odin  ← "animation" track (owns its graph)
-packages/audio/track_audio.odin          ← "audio" track
-packages/particles/track_particles.odin  ← "particles" track
+packages/animation/sequencer/track_animation.odin  ← "animation" track (owns its graph)
+packages/audio/sequencer/track_audio.odin          ← "audio" track
+packages/particles/sequencer/track_particles.odin  ← "particles" track
+packages/sprites/sequencer/tween_fade.odin         ← TweenFadeTo, a TweenUnion variant
 ```
 ---
 
@@ -213,9 +214,10 @@ ship a package importing `moonhug:packages/sequencer/core`, declare a
 `@(typ_guid)` struct embedding the base, write the procs IN THE SAME FILE
 (prebuild is syntax-only — `FileHasProc` is file-scoped and the base is
 matched by written name), and run prebuild. `TweenFadeTo` in
-`packages/sprites` is the live proof: it poses a SpriteRenderer, so it lives
-in sprites, and it reaches `TweenUnion` without the sequencer importing
-sprites or naming the type.
+`packages/sprites/sequencer` is the live proof: it poses a SpriteRenderer, so
+it lives in sprites, and it reaches `TweenUnion` without the sequencer
+importing sprites or naming the type. The folder is an integration
+subpackage (docs/Plugins.md): sprites builds without the sequencer.
 
 Naming: abstract first, concrete later — `Tween<Aspect><Space><Detail>`:
 `TweenMoveLocalFromTo` (explicit pair, fully stateless), `TweenMoveLocalTo`,
@@ -226,9 +228,9 @@ global.
 - `sequencer/core` — the floor: `Tween_Ctx`, the `Clip_Tween` base
   (`captured`). Variant packages import this, never the sequencer.
 - `sequencer/tweens` — the built-in variants. A variant that poses a
-  package-owned component lives in THAT package (`TweenFadeTo` belongs to
-  sprites — color is SpriteRenderer's) and joins the union once the
-  generator owns the import list.
+  package-owned component lives in THAT package's sequencer integration
+  (`TweenFadeTo` belongs to sprites — color is SpriteRenderer's) and joins the
+  union once the generator owns the import list.
 
 The visible difference between the modes at a loop's seam is AUTHORITY, not
 a bug: in edit mode the timeline owns the pose everywhere, so the object

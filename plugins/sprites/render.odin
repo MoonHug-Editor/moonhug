@@ -7,9 +7,8 @@ package sprites
 
 import "moonhug:engine"
 
-// The world-space quad and uvs a SpriteRenderer covers: bl, br, tr, tl. One
-// resolve shared by command collection, scene picking and thumbnails so they
-// can't diverge. Sprites are transform-oriented (not billboards), sized
+// The world-space quad and uvs a SpriteRenderer covers: bl, br, tr, tl. The
+// editor picks, outlines and frames sprites by the commands this feeds. Sprites are transform-oriented (not billboards), sized
 // px/pixels_per_unit — the texture's import setting (Unity's Pixels Per
 // Unit, default 100). sprite.local_id == 0 covers the whole texture
 // (Unity's Single mode, center pivot). An id that no slice carries returns
@@ -75,6 +74,7 @@ _collect_sprites :: proc(view: engine.Render_View, out: ^[dynamic]engine.Render_
 		if !in_tree do key = sprite_sort_orphan_key(view, sr)
 		append(out, engine.Render_Command{
 			key     = key,
+			owner   = engine.Transform_Handle(sr.owner),
 			variant = engine.Draw_Quad{
 				texture  = sr.sprite.guid,
 				material = sr.material,

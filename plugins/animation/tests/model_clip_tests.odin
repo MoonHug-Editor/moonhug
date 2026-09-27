@@ -1,4 +1,4 @@
-package tests
+package animation_tests
 
 // Clips inside a model (docs/AnimationComponent.md "Clips inside a model"):
 // the mesh importer bakes every glTF animation to the model's _a<i>.bin
@@ -13,12 +13,13 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../engine"
-import "../engine/catalog"
+import "moonhug:engine"
+import "moonhug:engine/catalog"
 import "moonhug:engine_editor/asset_pipeline"
 import anim "moonhug:packages/animation"
 import animation_editor "moonhug:packages/animation/editor"
 import mesh_editor "moonhug:engine_editor/mesh_editor"
+import common "moonhug:tests/common"
 
 BOX_ANIM_GLTF :: "moonhug/tests/fixtures/meshes/box_animated.gltf"
 
@@ -87,9 +88,9 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	// Placeholder so the scan registers the scene, rewritten once the clip guid exists.
 	testing.expect(t, os.write_entire_file(scene, transmute([]byte)string("{}")) == nil)
 	defer {
-		_remove_tree(src_dir)
-		_remove_tree(data_dir)
-		_remove_tree("library")
+		common.remove_tree(src_dir)
+		common.remove_tree(data_dir)
+		common.remove_tree("library")
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -170,8 +171,8 @@ test_model_provider_lists_parts_then_clips :: proc(t: ^testing.T) {
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
-		_remove_tree(src_dir)
-		_remove_tree("library")
+		common.remove_tree(src_dir)
+		common.remove_tree("library")
 	}
 
 	asset_pipeline.asset_pipeline_init()
@@ -211,8 +212,8 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
-		_remove_tree(src_dir)
-		_remove_tree("library")
+		common.remove_tree(src_dir)
+		common.remove_tree("library")
 	}
 
 	engine.mesh_cache_init()
@@ -257,8 +258,8 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	if rerr != nil do return
 	testing.expect(t, os.write_entire_file(gltf, bytes) == nil)
 	defer {
-		_remove_tree(src_dir)
-		_remove_tree("library")
+		common.remove_tree(src_dir)
+		common.remove_tree("library")
 	}
 
 	asset_pipeline.asset_pipeline_init()

@@ -1,4 +1,4 @@
-package animation
+package animation_sequencer
 
 // TimelineAnimator (docs/TimelineAnimator.md): an animation state machine one
 // level above clips, where a state plays a whole TIMELINE instead of a single
@@ -16,6 +16,7 @@ package animation
 
 import "moonhug:engine"
 import seq "moonhug:packages/sequencer"
+import anim "moonhug:packages/animation"
 
 // One authored layer. Layer order is override order: a higher layer replaces a
 // lower one wherever it animates a channel, which is what
@@ -62,7 +63,7 @@ Timeline_State :: struct {
 // A layer's presence in the graph: one mixer per output, parallel to
 // `graph.outputs`. States attach to these.
 Animator_Layer_Runtime :: struct {
-	mixers: [dynamic]Playable_Handle,
+	mixers: [dynamic]anim.Playable_Handle,
 	states: [dynamic]Animator_State_Runtime,
 }
 
@@ -73,7 +74,7 @@ Animator_State_Runtime :: struct {
 	id:     i32,                     // the authored state's id, what State_Id names
 	root:   engine.Transform_Handle, // the timeline's root
 	dir:    engine.Handle,           // its PlayableDirector
-	mixers: [dynamic]Playable_Handle, // parallel to graph.outputs
+	mixers: [dynamic]anim.Playable_Handle, // parallel to graph.outputs
 	time:   f32,
 	weight: f32,
 	// Weight moves linearly from `fade_from` toward `fade_target` over
@@ -98,7 +99,7 @@ TimelineAnimator :: struct {
 
 	// Runtime, built lazily by _ta_ensure_graph and guarded by graph_ready, so
 	// a component that never ticked owns nothing and cleanup frees nothing.
-	graph:       Playable_Graph `json:"-" inspect:"-"`,
+	graph:       anim.Playable_Graph `json:"-" inspect:"-"`,
 	rt:          [dynamic]Animator_Layer_Runtime `json:"-" inspect:"-"`,
 	// Parallel to `graph.outputs`: the object each pose output writes to. An
 	// adopted track finds its output by the object it drives on its own.
@@ -123,7 +124,7 @@ cleanup_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 		// Hand every claimed target back first: a component destroyed while
 		// holding them would leave them suppressed forever.
 		_ta_claim_outputs(a, false)
-		playable_graph_destroy(&a.graph)
+		anim.playable_graph_destroy(&a.graph)
 		for &l in a.rt {
 			for &st in l.states {
 				animation_director_unadopt(st.root)
@@ -192,7 +193,7 @@ _ta_layer_weight :: proc(l: ^Animator_Layer) -> f32 {
 _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 	if a.graph_ready do return
 	_ta_ensure_ids(a)
-	playable_graph_init(&a.graph)
+	anim.playable_graph_init(&a.graph)
 	a.rt = make([dynamic]Animator_Layer_Runtime)
 	a.out_object = make([dynamic]engine.Transform_Handle)
 
@@ -202,9 +203,9 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 	// deterministic moment. A non-pose track (audio) needs no output — it
 	// plays through its own target and never enters the graph.
 	for root in _ta_collect_pose_roots(a) {
-		idx := graph_output_add(&a.graph, root)
-		mixer := playable_add(&a.graph, Playable_Layer_Mixer{})
-		graph_output(&a.graph, idx).root = mixer
+		idx := anim.graph_output_add(&a.graph, root)
+		mixer := anim.playable_add(&a.graph, anim.Playable_Layer_Mixer{})
+		anim.graph_output(&a.graph, idx).root = mixer
 		append(&a.out_object, root)
 	}
 
@@ -212,11 +213,11 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 	// IS layer order, so a later layer overrides an earlier one.
 	for &l in a.layers {
 		lr := Animator_Layer_Runtime{
-			mixers = make([dynamic]Playable_Handle, 0, len(a.graph.outputs)),
+			mixers = make([dynamic]anim.Playable_Handle, 0, len(a.graph.outputs)),
 		}
 		for oi in 0 ..< len(a.graph.outputs) {
-			m := playable_add(&a.graph, Playable_Mixer{})
-			playable_connect(&a.graph, graph_output(&a.graph, oi).root, m, _ta_layer_weight(&l))
+			m := anim.playable_add(&a.graph, anim.Playable_Mixer{})
+			anim.playable_connect(&a.graph, anim.graph_output(&a.graph, oi).root, m, _ta_layer_weight(&l))
 			append(&lr.mixers, m)
 		}
 		lr.states = make([dynamic]Animator_State_Runtime, 0, len(l.states))
@@ -236,14 +237,14 @@ _ta_ensure_graph :: proc(a: ^TimelineAnimator) {
 // An empty or unloadable timeline yields a state with no instance, which stays
 // silent rather than failing the build.
 @(private = "file")
-_ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixers: []Playable_Handle) -> Animator_State_Runtime {
+_ta_build_state :: proc(a: ^TimelineAnimator, desc: ^Timeline_State, layer_mixers: []anim.Playable_Handle) -> Animator_State_Runtime {
 	st := Animator_State_Runtime{
 		id     = desc.id,
-		mixers = make([dynamic]Playable_Handle, 0, len(layer_mixers)),
+		mixers = make([dynamic]anim.Playable_Handle, 0, len(layer_mixers)),
 	}
 	for lm in layer_mixers {
-		m := playable_add(&a.graph, Playable_Mixer{})
-		playable_connect(&a.graph, lm, m, 0)
+		m := anim.playable_add(&a.graph, anim.Playable_Mixer{})
+		anim.playable_connect(&a.graph, lm, m, 0)
 		append(&st.mixers, m)
 	}
 	st.root = _ta_state_root(a, desc)
@@ -272,7 +273,7 @@ _ta_state_root :: proc(a: ^TimelineAnimator, desc: ^Timeline_State) -> engine.Tr
 // which changes the output set and the mixer shape.
 timeline_animator_rebuild :: proc(a: ^TimelineAnimator) {
 	if !a.graph_ready do return
-	playable_graph_destroy(&a.graph)
+	anim.playable_graph_destroy(&a.graph)
 	for &l in a.rt {
 		for &st in l.states {
 			animation_director_unadopt(st.root)
@@ -289,7 +290,7 @@ timeline_animator_rebuild :: proc(a: ^TimelineAnimator) {
 }
 
 // The mixer a state on `layer` attaches to for `output`.
-timeline_animator_layer_mixer :: proc(a: ^TimelineAnimator, layer, output: int) -> Playable_Handle {
+timeline_animator_layer_mixer :: proc(a: ^TimelineAnimator, layer, output: int) -> anim.Playable_Handle {
 	if layer < 0 || layer >= len(a.rt) do return {}
 	lr := &a.rt[layer]
 	if output < 0 || output >= len(lr.mixers) do return {}
@@ -303,7 +304,7 @@ timeline_animator_layer_mixer :: proc(a: ^TimelineAnimator, layer, output: int) 
 @(private = "file")
 _ta_has_content :: proc(a: ^TimelineAnimator) -> bool {
 	for &lr in a.rt {
-		for &st in lr.states do if st.weight > PLAYABLE_WEIGHT_EPS do return true
+		for &st in lr.states do if st.weight > anim.PLAYABLE_WEIGHT_EPS do return true
 	}
 	return false
 }
@@ -316,9 +317,9 @@ _ta_sync_layer_weights :: proc(a: ^TimelineAnimator) {
 		if li >= len(a.rt) do break
 		w := _ta_layer_weight(&l)
 		for m, oi in a.rt[li].mixers {
-			o := graph_output(&a.graph, oi)
+			o := anim.graph_output(&a.graph, oi)
 			if o == nil do continue
-			playable_set_input_weight(&a.graph, o.root, m, w)
+			anim.playable_set_input_weight(&a.graph, o.root, m, w)
 		}
 	}
 }
@@ -338,7 +339,7 @@ _ta_claim_outputs :: proc(a: ^TimelineAnimator, claim: bool) {
 		if !engine.pool_valid(&w.transforms, engine.Handle(tH)) do continue
 		// The Animation on the posed object, when it has one — a track driving
 		// a bare transform claims nothing.
-		if _, comp := engine.transform_get_comp(tH, Animation); comp != nil {
+		if _, comp := engine.transform_get_comp(tH, anim.Animation); comp != nil {
 			comp.timeline_driven = claim
 		}
 	}
@@ -360,7 +361,7 @@ _ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32, mode: seq.Track_Mode) 
 		for &st, si in lr.states {
 			if si >= len(a.layers[li].states) do continue
 			desc := &a.layers[li].states[si]
-			if st.weight <= PLAYABLE_WEIGHT_EPS do continue
+			if st.weight <= anim.PLAYABLE_WEIGHT_EPS do continue
 			if st.root == {} do continue
 			if !engine.world_pool_valid(w, st.dir) do continue
 			d := cast(^seq.PlayableDirector)engine.world_pool_get(w, st.dir)
@@ -413,7 +414,7 @@ timeline_animator_step :: proc(a: ^TimelineAnimator, dt: f32, mode := seq.Track_
 	_ta_claim_outputs(a, active)
 	if !active do return
 	_ta_advance_states(a, dt, mode)
-	playable_graph_tick(&a.graph)
+	anim.playable_graph_tick(&a.graph)
 }
 
 @(update={order=2})
@@ -442,12 +443,12 @@ timeline_animator_ensure_graph :: proc(a: ^TimelineAnimator) {
 // was built and the user has since edited.
 timeline_animator_refresh_defaults :: proc(a: ^TimelineAnimator) {
 	if !a.graph_ready do return
-	for &o in a.graph.outputs do animation_binding_refresh_defaults(&o.binding)
+	for &o in a.graph.outputs do anim.animation_binding_refresh_defaults(&o.binding)
 }
 
 timeline_animator_write_defaults :: proc(a: ^TimelineAnimator) {
 	if !a.graph_ready do return
-	for &o in a.graph.outputs do animation_binding_write_defaults(&o.binding)
+	for &o in a.graph.outputs do anim.animation_binding_write_defaults(&o.binding)
 }
 
 // Hands every posed object back to itself. A preview that just stopped must
@@ -549,7 +550,7 @@ _ta_push_weight :: proc(a: ^TimelineAnimator, li: int, st: ^Animator_State_Runti
 	lr := &a.rt[li]
 	for m, oi in st.mixers {
 		if oi >= len(lr.mixers) do break
-		playable_set_input_weight(&a.graph, lr.mixers[oi], m, st.weight)
+		anim.playable_set_input_weight(&a.graph, lr.mixers[oi], m, st.weight)
 	}
 }
 
@@ -667,9 +668,9 @@ animator_layer_weight :: proc(a: ^TimelineAnimator, layer: int, w: f32) {
 	if layer < 0 || layer >= len(a.rt) do return
 	lr := &a.rt[layer]
 	for m, oi in lr.mixers {
-		o := graph_output(&a.graph, oi)
+		o := anim.graph_output(&a.graph, oi)
 		if o == nil do continue
-		playable_set_input_weight(&a.graph, o.root, m, w)
+		anim.playable_set_input_weight(&a.graph, o.root, m, w)
 	}
 	if layer < len(a.layers) do a.layers[layer].weight = w
 }
@@ -733,4 +734,28 @@ timeline_animator_problems :: proc(a: ^TimelineAnimator, allocator := context.te
 		}
 	}
 	return out[:]
+}
+
+// The graphs this folder owns, for the Playable Graph window
+// (anim.playable_graph_for_object).
+@(phase={key=ImportersInit, order=5})
+animation_sequencer_graph_providers_init :: proc() {
+	@(static) done := false
+	if done do return
+	done = true
+
+	// A TimelineAnimator outranks an Animation on the same object (order 20):
+	// it is the more concrete driver, so it is the one actually posing.
+	anim.playable_graph_register_provider(10, proc(owner: engine.Transform_Handle) -> (anim.Graph_Source, bool) {
+		_, a := get_comp(owner, TimelineAnimator)
+		if a == nil || !a.graph_ready do return {}, false
+		return {graph = &a.graph, label = "TimelineAnimator (live)", live = true}, true
+	})
+	// A director's animation tracks share one arena, which is where a
+	// standalone timeline's blending actually happens.
+	anim.playable_graph_register_provider(30, proc(owner: engine.Transform_Handle) -> (anim.Graph_Source, bool) {
+		g := animation_director_graph(owner)
+		if g == nil do return {}, false
+		return {graph = g, label = "timeline tracks (live)", live = true}, true
+	})
 }

@@ -34,7 +34,6 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import engine "../engine"
-import sprites "moonhug:packages/sprites"
 import gfx "../engine/gfx"
 import "subassets"
 
@@ -476,17 +475,20 @@ _thumb_set_layer :: proc(tH: engine.Transform_Handle) {
 	}
 }
 
-// World bounds of a subtree: mesh AABBs and sprite corners where present,
-// transform positions otherwise.
+// World bounds of a subtree on the thumbnail layer: mesh AABBs and the quads
+// package renderers draw where present, transform positions otherwise. The
+// quads come from a collect with a stand-in view: a quad's corners are world
+// space, whatever the camera.
 _thumb_bounds :: proc(tH: engine.Transform_Handle) -> (bmin, bmax: [3]f32, ok: bool) {
 	bmin = {max(f32), max(f32), max(f32)}
 	bmax = {min(f32), min(f32), min(f32)}
-	_thumb_bounds_walk(tH, &bmin, &bmax, &ok)
+	probe := engine.render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, _THUMB_SIZE, _THUMB_SIZE, _THUMB_LAYER, .Preview)
+	_thumb_bounds_walk(tH, drawn_quads(probe), &bmin, &bmax, &ok)
 	return
 }
 
 @(private = "file")
-_thumb_bounds_walk :: proc(tH: engine.Transform_Handle, bmin, bmax: ^[3]f32, any_point: ^bool) {
+_thumb_bounds_walk :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command, bmin, bmax: ^[3]f32, any_point: ^bool) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -513,18 +515,13 @@ _thumb_bounds_walk :: proc(tH: engine.Transform_Handle, bmin, bmax: ^[3]f32, any
 			}
 		}
 	}
-	if _, sr := engine.transform_get_comp(tH, sprites.SpriteRenderer); sr != nil && !engine.asset_guid_is_empty(sr.sprite.guid) {
-		if tex, tok := engine.texture_load(sr.sprite.guid); tok {
-			if c, _, cok := sprites.sprite_quad(sr, tw, tex); cok {
-				for p in c {
-					grow(bmin, bmax, any_point, p)
-				}
-			}
-		}
+	for c in quads {
+		if c.owner != tH do continue
+		for p in c.variant.(engine.Draw_Quad).corners do grow(bmin, bmax, any_point, p)
 	}
 	grow(bmin, bmax, any_point, tw.position)
 
 	for child in t.children {
-		_thumb_bounds_walk(engine.Transform_Handle(child.handle), bmin, bmax, any_point)
+		_thumb_bounds_walk(engine.Transform_Handle(child.handle), quads, bmin, bmax, any_point)
 	}
 }

@@ -2,8 +2,10 @@
 
 > Design, except TODO item 1 (the graph's output list), which is implemented
 > in packages/animation/playable_graph.odin. The rest builds on the animation
-> track (packages/animation/track_animation.odin) and the director
-> (packages/sequencer/director.odin).
+> track (packages/animation/sequencer/track_animation.odin) and the director
+> (packages/sequencer/director.odin). The component and its track live in
+> animation's sequencer integration (docs/Plugins.md), so the animation plugin
+> builds without the sequencer.
 
 An animation state machine one abstraction level above clips. A state plays a
 whole TIMELINE instead of a single clip, so a state can carry several tracks,
@@ -270,7 +272,7 @@ change.
 
 ## The States tree
 
-`plugins/animation/editor/inspector_timeline_animator.odin` draws `layers` in
+`plugins/animation/sequencer/editor/inspector_timeline_animator.odin` draws `layers` in
 the inspector, and the field is `inspect:"-"` so the reflected field loop skips
 it. It is the same tree the Animation component gets
 (docs/AnimationComponent.md, "The States tree"), one level shallower: a
@@ -612,7 +614,7 @@ In dependency order. Each MVP item is a prerequisite of the ones under it.
    comes from the animator instead of being created per director. Same
    package, so that stays internal too.
 3. ~~**The component and its graph skeleton.**~~ DONE.
-   `plugins/animation/component_TimelineAnimator.odin` — fields, `reset_`,
+   `plugins/animation/sequencer/component_TimelineAnimator.odin` — fields, `reset_`,
    `cleanup_`, a lazily built graph guarded by `graph_ready`, and the tick. One
    output per bound target, a layer mixer at each output's root, one mixer per
    layer under it, layer weights pushed every tick since they are authored

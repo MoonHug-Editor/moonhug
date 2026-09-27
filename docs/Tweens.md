@@ -16,9 +16,9 @@ composites — with no codegen and no import restrictions.
 ## Usage
 
 ```odin
-// Initialization: stock nodes register on the TweenNodesInit phase (fired by
-// runnable binaries next to SerializationInit); tween_init() covers callers
-// outside that flow (tests).
+// Initialization: stock nodes register on the SerializationInit phase (fired
+// by runnable binaries and the test bootstrap); tween_init() covers callers
+// outside that flow.
 tween_init()
 tween_tick_running(dt, {})   // main loop
 
@@ -49,7 +49,7 @@ MyShake :: struct {
     // children: [dynamic]tween.Node_Handle `json:"-"`,
 }
 
-@(phase={key=TweenNodesInit, order=1})
+@(phase={key=SerializationInit, order=2})
 my_tween_nodes_init :: proc() {
     tween.register_node(MyShake, tick_MyShake)
 }
@@ -80,7 +80,7 @@ packages/tween/tests   the suite
 ```
 
 The stock nodes register through the same public path foreign packages use
-(a TweenNodesInit phase subscriber calling register_node).
+(a SerializationInit phase subscriber calling register_node).
 
 ## Semantics
 

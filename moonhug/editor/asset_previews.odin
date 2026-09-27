@@ -18,7 +18,6 @@ import "inspector"
 import "subassets"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
-import anim "moonhug:packages/animation"
 
 _register_asset_previews :: proc() {
 	for ext in ([]string{".png", ".jpg", ".jpeg", ".bmp"}) {
@@ -29,6 +28,10 @@ _register_asset_previews :: proc() {
 	}
 	inspector.mapAssetPreview[".scene"] = _preview_scene
 	inspector.mapAssetPreview[".mat"] = _preview_thumb
+	inspector.selected_sub = proc(path: string) -> engine.Local_ID {
+		s, _ := _preview_selected_sub(path)
+		return s.id
+	}
 }
 
 asset_previews_shutdown :: proc() {
@@ -37,10 +40,8 @@ asset_previews_shutdown :: proc() {
 	// Reaching into the world here would rebuild it after it was torn down.
 	_scene_pv_root = {}
 	_scene_pv_guid = {}
-	// Same for the clip rig's transforms. Its graph is heap state of its own
-	// and goes here.
-	_clip_pv.rig.root = {}
-	anim.playable_graph_destroy(&_clip_pv.rig.graph)
+	// Same for the clip rig's transforms.
+	_clip_pv.rig = {}
 	if _mesh_pv_rt != nil {
 		gfx.rt_destroy(_mesh_pv_rt)
 		_mesh_pv_rt = nil
@@ -291,6 +292,10 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 
 	if owner != _clip_pv.owner || clip_id != _clip_pv.id || _clip_pv.rig.root == {} {
 		_clip_pv_release()
+		if subassets.clip_sampler == nil {
+			im.TextDisabled("Clips preview with the animation plugin installed.")
+			return
+		}
 		rig, ok := model_clip_rig_build(path, owner, clip_id, preview_world_root())
 		if !ok {
 			im.TextDisabled("clip not loadable")

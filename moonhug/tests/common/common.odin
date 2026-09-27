@@ -16,10 +16,9 @@ package tests_common
 
 import "base:runtime"
 import "core:os"
+import "core:strings"
 import "../../engine"
 import "moonhug:engine_editor/asset_pipeline"
-import app "moonhug:packages/app"
-import tween "moonhug:packages/tween"
 import "../../engine/registration"
 
 TestCtx :: struct {
@@ -31,9 +30,6 @@ TestCtx :: struct {
 
 @(private)
 _serializers_registered: bool
-
-@(private)
-_tween_initialized: bool
 
 // The one-time registrations run at program start, before any test body. Many
 // tests call engine.asset_db_init BEFORE setup, and that scan needs the
@@ -54,11 +50,10 @@ _register_once :: proc() {
 	// all-packages generated bundle the editor uses), so tests never
 	// depend on a specific runnable package being installed.
 	registration.register_packages()
-	app.phase_run(.SerializationInit)
-	app.phase_run(.ImportersInit)
-	app.phase_run(.TweenNodesInit)
+	registration.phase_run(.SerializationInit)
+	registration.phase_run(.ImportersInit)
 	// The import stack is editor-side (mode=Editor phases, absent from
-	// the app dispatcher above) — tests import like the editor does.
+	// the dispatcher above) — tests import like the editor does.
 	// Package importers register from the package's OWN tests (this
 	// package never imports moonhug:packages).
 	asset_pipeline.register_builtin_importers()
@@ -79,10 +74,6 @@ _register_once :: proc() {
 setup :: proc(tc: ^TestCtx, path: string = "") {
 	registration.register_type_guids()
 	_register_once() // done at start (_register_at_start), a no-op here
-	if !_tween_initialized {
-		tween.tween_init()
-		_tween_initialized = true
-	}
 	engine.w_init(&tc.world)
 	tc.uc.world = &tc.world
 	// Tests exercise editor behaviour: nested-prefab resolve is gated on
@@ -105,4 +96,23 @@ teardown :: proc(tc: ^TestCtx) {
 	engine.world_destroy_all(&tc.world)
 	engine.gizmo_buffer_destroy(&tc.uc.gizmos)
 	if tc.path != "" do os.remove(tc.path)
+}
+
+// Deletes `dir` and everything under it (a fixture library/, a temp source
+// folder).
+remove_tree :: proc(dir: string) {
+	handle, err := os.open(dir)
+	if err != nil do return
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	os.close(handle)
+	if rerr != nil do return
+	for entry in entries {
+		full := strings.concatenate({dir, "/", entry.name}, context.temp_allocator)
+		if entry.type == .Directory {
+			remove_tree(full)
+		} else {
+			os.remove(full)
+		}
+	}
+	os.remove(dir)
 }

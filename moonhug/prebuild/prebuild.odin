@@ -22,7 +22,7 @@ import db "gen_db"
 
 // Importing each module pulls in its @(init) system registration. The blank
 // reference keeps the import alive without needing a symbol from each package.
-import _ "gen_facts"
+import "gen_facts"
 import _ "menu_gen"
 import _ "phase_gen"
 import _ "property_drawer_gen"
@@ -175,6 +175,21 @@ main :: proc() {
 }
 
 _discover :: proc(list: ^[dynamic]string, dir: string) {
+	// An integration subpackage (a plugin subfolder importing another plugin)
+	// joins the scan only while that plugin is installed. Its subfolders go
+	// with it. The plugin's own editor/ is part of the plugin like its root: a
+	// missing import there is a build error (docs/Plugins.md).
+	if rest := strings.trim_prefix(dir, PACKAGES_DIR + "/"); rest != dir {
+		parts := strings.split(rest, "/", context.temp_allocator)
+		is_sub := len(parts) > 1
+		own_editor := len(parts) == 2 && parts[1] == "editor"
+		if is_sub && !own_editor {
+			if missing, is_missing := gen_facts.plugin_dir_missing_dep(dir); is_missing {
+				fmt.printf("prebuild: %s skipped, needs the %s plugin\n", dir, missing)
+				return
+			}
+		}
+	}
 	if _dir_has_odin(dir) do append(list, dir)
 	handle, err := os.open(dir)
 	if err != nil do return
