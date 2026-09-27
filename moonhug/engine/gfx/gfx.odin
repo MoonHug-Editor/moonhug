@@ -74,6 +74,12 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	if !sdl.ClaimWindowForGPUDevice(_gfx.device, _platform.window) do return false
 	_gfx.swapchain_format = sdl.GetGPUSwapchainTextureFormat(_gfx.device, _platform.window)
 	_ = sdl.SetGPUSwapchainParameters(_gfx.device, _platform.window, .SDR, .VSYNC)
+	// One frame in flight: the CPU starts a frame once the GPU has finished
+	// the last one, so the screen shows input a frame sooner (hover
+	// highlights, drags). SDL's default of 2 overlaps CPU and GPU work for
+	// throughput, which a light renderer does not need. The swapchain acquire
+	// (pass.odin) waits for the GPU instead of dropping the frame.
+	if !sdl.SetGPUAllowedFramesInFlight(_gfx.device, 1) do return false
 	_fence_probe()
 
 	sampler_info := sdl.GPUSamplerCreateInfo{
