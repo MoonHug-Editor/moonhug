@@ -1,3 +1,9 @@
+## [0.113.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.112.1...v0.113.0) (2026-09-27)
+
+### Features
+
+* plugins import dependencies check before build ([e1b3f87](https://github.com/MoonHug-Editor/moonhug/commit/e1b3f874fcb1b60296d4ffd03bb00d13ce9d8df3))
+
 ## [0.112.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.112.0...v0.112.1) (2026-09-27)
 
 ### Bug Fixes
