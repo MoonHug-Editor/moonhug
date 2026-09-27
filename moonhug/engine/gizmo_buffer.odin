@@ -18,6 +18,10 @@ import "core:time"
 Gizmo_Prim_Kind :: enum u8 {
 	Line,
 	Triangle,
+	// A triangle of a convex solid, wound so its normal points out. A view
+	// drawing it without depth test keeps it only when it faces that view's
+	// camera, shaded by how much (gizmos.helper_face).
+	Face,
 }
 
 Gizmo_Prim :: struct {
@@ -59,12 +63,15 @@ Gizmo_Label :: struct {
 	offset_px: [2]f32,
 }
 
-// Who a shape is for, drawn in this order. The scene view draws all three, the
-// game view .Game and, with its Gizmos toggle, .Editor.
+// Who a shape is for, drawn in this order. The scene view draws .Game, .Editor
+// and .Tools, the game view .Game and .Editor_Game. The @(on_draw_gizmos)
+// procs record once per view, with that view's camera, so pixel sizes and
+// camera-facing parts fit the view that shows them.
 Gizmo_Channel :: enum u8 {
-	Game,   // gameplay and @(debug_draw) code
-	Editor, // @(on_draw_gizmos) hooks
-	Tools,  // handles, the transform gizmo, the selection outline: scene view only
+	Game,        // gameplay and @(debug_draw) code
+	Editor,      // @(on_draw_gizmos) procs, recorded with the scene camera
+	Editor_Game, // the same procs recorded with the game camera
+	Tools,       // handles, the transform gizmo, the selection outline: scene view only
 }
 
 // How long a shape stays. .Fixed_Tick: recorded during a fixed tick, kept

@@ -120,8 +120,9 @@ _restore_depth_test :: proc(prev: bool) {
 }
 
 // Who the shapes are for: .Game (default) shows in the game view and the scene
-// view, .Editor only in the scene view. The editor sets .Editor around its
-// gizmo hooks, so hook code never calls this.
+// view. The editor records its @(on_draw_gizmos) procs into .Editor for the
+// scene view and into .Editor_Game for the game view, so their code never
+// calls this.
 @(deferred_out = _restore_channel)
 with_channel :: proc(channel: engine.Gizmo_Channel) -> engine.Gizmo_Channel {
 	prev := _s.channel
@@ -323,10 +324,31 @@ icons :: proc(channels: bit_set[engine.Gizmo_Channel]) -> []engine.Gizmo_Icon {
 _draw_prims :: proc(prims: []engine.Gizmo_Prim, depth_test: bool) {
 	for p in prims {
 		switch p.kind {
-		case .Line:     gfx.draw_line(p.p[0], p.p[1], p.color, depth_test = depth_test)
-		case .Triangle: gfx.draw_triangle(p.p[0], p.p[1], p.p[2], p.color, depth_test = depth_test)
+		case .Line:
+			gfx.draw_line(p.p[0], p.p[1], p.color, depth_test = depth_test)
+		case .Triangle:
+			gfx.draw_triangle(p.p[0], p.p[1], p.p[2], p.color, depth_test = depth_test)
+		case .Face:
+			color := p.color
+			if !depth_test && _s.has_view {
+				shade, visible := helper_face(_s.view, p)
+				if !visible do continue
+				color = {color.r * shade, color.g * shade, color.b * shade, color.a}
+			}
+			gfx.draw_triangle(p.p[0], p.p[1], p.p[2], color, depth_test = depth_test)
 		}
 	}
+}
+
+// How a solid's face shows without depth test in view `v`: visible when it
+// faces the camera (a back face would paint over the front ones, nothing
+// sorts them), and its shade, from 0.55 edge-on to 1 facing the camera.
+helper_face :: proc(v: engine.Render_View, p: engine.Gizmo_Prim) -> (shade: f32, visible: bool) {
+	n := linalg.cross(p.p[1] - p.p[0], p.p[2] - p.p[0])
+	mid := (p.p[0] + p.p[1] + p.p[2]) / 3
+	facing := linalg.dot(linalg.normalize0(n), linalg.normalize0(v.cam_pos - mid))
+	if facing <= 0 do return 0, false
+	return 0.55 + 0.45 * facing, true
 }
 
 // Shapes of the icon being drawn. Default allocator: it outlives the frame.

@@ -9,6 +9,7 @@ import gfx "../engine/gfx"
 import input "../engine/input"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
+import "moonhug:engine/gizmos"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import "inspector"
@@ -239,6 +240,9 @@ main :: proc() {
         // run (view_game.odin); the tick is the game scope, editor views
         // read outside it.
         game_view_frame_begin()
+        // Gameplay gizmos measure against the game camera: the sim draws them
+        // once, and the game view is the one they are for (docs/Gizmos.md).
+        if v, ok := _game_gizmo_view(); ok do gizmos.set_view(v)
         input.set_app_focused(!sim_is_active() || game_view_focused)
         input.set_game_scope(true)
         sim_tick(gfx.delta_time())

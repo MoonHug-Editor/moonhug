@@ -154,7 +154,7 @@ audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 ```
 
 - A click inside the badge selects `owner`, over any geometry, since icons draw over everything. Box select takes an icon whose center is inside the rect.
-- Icons are gizmos (the `.Editor` channel): handles and the transform gizmo draw over them, and the game view shows them with its Gizmos toggle. Each view draws them facing its own camera.
+- Icons are gizmos (the `.Editor` channel, `.Editor_Game` for the game view): handles and the transform gizmo draw over them, and the game view shows them with its Gizmos toggle. Each view draws them facing its own camera.
 - An owner inactive in the hierarchy gets no icon.
 - Built in: lights (a bulb in the light's color), cameras, audio sources (a speaker), particle systems (the "snowing" glyph, `'\ue80f'`).
 - Glyphs rasterize once per codepoint (`GLYPH_PX`, 64) from the font the editor hands over at startup (`icon_font_set`). A codepoint the font does not have fails loudly. `glyph_bitmap` returns a glyph's pixels.

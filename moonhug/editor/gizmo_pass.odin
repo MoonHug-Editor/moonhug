@@ -9,12 +9,12 @@ package editor
 //   before the gizmo hooks, so an edit shows in this frame's gizmos and
 //   render. The draw order does not depend on it:
 //   .Tools always draws over .Editor.
-// - Every @(on_draw_gizmos) proc, into .Editor, while a view on screen shows
-//   gizmos (its Gizmos toggle, gizmo_settings.odin), so the game view has them
-//   with the scene view closed. The gizmo settings apply per component type.
-//
-// Pixel-sized gizmos measure against the scene view's camera while it is on
-// screen, else the game view's, else the scene camera's at its last size.
+// - Every @(on_draw_gizmos) proc, once per view that shows gizmos (its
+//   Gizmos toggle, gizmo_settings.odin): into .Editor with the scene camera,
+//   into .Editor_Game with the game camera. Pixel sizes and camera-facing
+//   parts fit each view, and the game view has gizmos with the scene view
+//   closed. With both views showing gizmos the procs run twice a frame. The
+//   gizmo settings apply per component type.
 
 import "menu"
 import "../engine"
@@ -58,17 +58,20 @@ gizmo_pass :: proc() {
 		for h in sel_scene_items() do draw_selection_outline(h)
 		__scene_handles()
 		gizmo_tool_frame()
-	} else if v, ok := _game_gizmo_view(); ok {
-		gizmos.set_view(v)
-	} else {
-		// No game camera view yet: pixel-sized gizmos measure against the
-		// scene camera, so they always have a view.
-		gizmos.set_view(scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1)))
+		if scene_gizmos {
+			gizmos.with_channel(.Editor)
+			__draw_gizmos()
+		}
 	}
-	// The gizmo hooks, for the views whose Gizmos toggle is on.
-	if (scene_live && scene_gizmos) || game_live {
-		gizmos.with_channel(.Editor)
-		__draw_gizmos()
+	// The same procs again with the game camera, for the game view: each view
+	// gets gizmos built for its own camera, pixel sizes included. With no
+	// camera the game view shows none.
+	if game_live {
+		if v, ok := _game_gizmo_view(); ok {
+			gizmos.with_view(v)
+			gizmos.with_channel(.Editor_Game)
+			__draw_gizmos()
+		}
 	}
 }
 

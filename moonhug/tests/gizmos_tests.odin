@@ -143,8 +143,9 @@ test_gizmo_shapes_geometry :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 
+	// A solid volume's triangles record as faces: they count as triangles.
 	count :: proc(tc: ^TestCtx, kind: engine.Gizmo_Prim_Kind) -> (n: int) {
-		for p in _prims(tc) do if p.kind == kind do n += 1
+		for p in _prims(tc) do if p.kind == kind || (kind == .Triangle && p.kind == .Face) do n += 1
 		return
 	}
 	check :: proc(t: ^testing.T, tc: ^TestCtx, name: string, lines, triangles: int, loc := #caller_location) {
@@ -207,14 +208,28 @@ test_gizmo_overlay_solids_keep_camera_facing_faces :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 
-	gizmos.set_view(engine.Render_View{cam_pos = {0, 0, 10}}) // straight in front of the +Z face
 	{
 		gizmos.with_depth_test(false)
 		gizmos.solid_box({}, {1, 1, 1})
 	}
 	gizmos.solid_box({}, {1, 1, 1})
-	testing.expect_value(t, len(_prims(tc, depth_tested = false)), 2)
+	// Every face records, with no view: each view culls for its own camera.
+	testing.expect_value(t, len(_prims(tc, depth_tested = false)), 12)
 	testing.expect_value(t, len(_prims(tc)), 12)
+
+	visible :: proc(tc: ^TestCtx, cam: [3]f32) -> (n: int, normal: [3]f32) {
+		for p in _prims(tc, depth_tested = false) {
+			if _, ok := gizmos.helper_face(engine.Render_View{cam_pos = cam}, p); ok {
+				n += 1
+				normal = linalg.normalize(linalg.cross(p.p[1] - p.p[0], p.p[2] - p.p[0]))
+			}
+		}
+		return
+	}
+	front, fn := visible(tc, {0, 0, 10}) // straight in front of the +Z face
+	side, sn := visible(tc, {10, 0, 0}) // in front of the +X face
+	testing.expect(t, front == 2 && _near(fn, {0, 0, 1}), "the +Z face for a camera on +Z")
+	testing.expect(t, side == 2 && _near(sn, {1, 0, 0}), "the +X face for a camera on +X")
 }
 
 // What a gizmo or handles hook is told: the selected object is Selected, Active
@@ -319,6 +334,11 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 		editor.game_gizmos = prev_toggle
 	}
 
+	prev_rt := editor.game_rt
+	defer editor.game_rt = prev_rt
+	rt := gfx.Render_Target{width = 800, height = 600} // the game view's size, no GPU needed
+	editor.game_rt = &rt
+
 	cam_t := engine.transform_new("Camera")
 	_, cam_ptr := engine.transform_add_comp(cam_t, .Camera)
 	cam := cast(^engine.Camera)cam_ptr
@@ -329,13 +349,14 @@ test_gizmo_pass_records_for_the_game_view_alone :: proc(t: ^testing.T) {
 	menu.show_game = true
 	editor.game_gizmos = true
 	editor.gizmo_pass()
-	testing.expect(t, _count(tc, .Editor) > 0, "the selected camera's frustum records for the game view")
+	testing.expect(t, _count(tc, .Editor_Game) > 0, "the selected camera's frustum records for the game view")
+	testing.expect_value(t, _count(tc, .Editor), 0)
 	testing.expect_value(t, _count(tc, .Tools), 0)
 
 	gizmos.frame_end()
 	editor.game_gizmos = false
 	editor.gizmo_pass()
-	testing.expect_value(t, _count(tc, .Editor), 0)
+	testing.expect_value(t, _count(tc, .Editor_Game), 0)
 }
 
 // --- Scene icons -------------------------------------------------------------------------
@@ -492,7 +513,14 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	menu.show_scene = false
 	menu.show_game = true
 	editor.game_gizmos = true
-	gizmos.set_view(handles_test_view())
+	prev_rt := editor.game_rt
+	defer editor.game_rt = prev_rt
+	rt := gfx.Render_Target{width = 800, height = 600}
+	editor.game_rt = &rt
+	cam_t := engine.transform_new("Camera")
+	engine.transform_set_world_position(cam_t, {0, 0, 10})
+	_, cam_raw := engine.transform_add_comp(cam_t, .Camera)
+	(cast(^engine.Camera)cam_raw).enabled = true
 
 	lamp := engine.transform_new("Lamp")
 	_, raw := engine.transform_add_comp(lamp, .Light)
@@ -501,20 +529,21 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	l.type = .Point
 	editor.sel_scene_only(lamp)
 
-	pass :: proc(tc: ^TestCtx) -> (shapes, icons: int) {
+	pass :: proc(tc: ^TestCtx, lamp: engine.Transform_Handle) -> (shapes, icons: int) {
 		gizmos.frame_end()
 		editor.gizmo_pass()
-		return _count(tc, .Editor), len(gizmos.icons({.Editor}))
+		for ic in gizmos.icons({.Editor_Game}) do if ic.owner == lamp do icons += 1
+		return _count(tc, .Editor_Game), icons
 	}
-	shapes, icons := pass(tc)
+	shapes, icons := pass(tc, lamp)
 	testing.expect(t, shapes > 0 && icons == 1, "both by default")
 
 	editor.gizmo_type_set("Light", .Gizmo, false)
-	shapes, icons = pass(tc)
+	shapes, icons = pass(tc, lamp)
 	testing.expect(t, shapes == 0 && icons == 1, "the gizmo hidden, the icon stays")
 
 	editor.gizmo_type_set("Light", .Icon, false)
-	shapes, icons = pass(tc)
+	shapes, icons = pass(tc, lamp)
 	testing.expect(t, shapes == 0 && icons == 0, "both hidden")
 	testing.expect(t, editor.gizmo_type_shown("Camera") == {.Icon, .Gizmo}, "other types keep theirs")
 	gizmos.frame_end()
@@ -716,4 +745,69 @@ test_game_view_label_position :: proc(t: ^testing.T) {
 	l.pos = {100, 0, 0} // far to the right, off the image
 	_, ok = editor.game_label_pos(v, {5, 5}, {400, 300}, l)
 	testing.expect(t, !ok, "off the image")
+}
+
+// With both views showing gizmos, the @(on_draw_gizmos) procs record once per
+// camera: a pixel-sized gizmo (a directional light's rays) is built for each
+// view's own camera, three times bigger for a game camera three times farther.
+@(test)
+test_gizmos_record_per_camera :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+	ictx := im.CreateContext()
+	defer im.DestroyContext(ictx)
+	defer editor.sel_scene_clear()
+
+	prev_scene, prev_game, prev_toggle := menu.show_scene, menu.show_game, editor.game_gizmos
+	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._scene_rendered_frame, editor._scene_view_size
+	prev_cam, prev_target, prev_rt := editor.scene_cam_pos, editor.scene_cam_target, editor.game_rt
+	defer {
+		menu.show_scene = prev_scene
+		menu.show_game = prev_game
+		editor.game_gizmos = prev_toggle
+		gfx.frame_index = prev_frame
+		editor._scene_rendered_frame = prev_rendered
+		editor._scene_view_size = prev_size
+		editor.scene_cam_pos = prev_cam
+		editor.scene_cam_target = prev_target
+		editor.game_rt = prev_rt
+	}
+	// The scene view on screen, its camera 10 away.
+	menu.show_scene = true
+	editor.scene_cam_pos = {0, 0, 10}
+	editor.scene_cam_target = {0, 0, 0}
+	gfx.frame_index += 1
+	editor._scene_rendered_frame = gfx.frame_index - 1
+	editor._scene_view_size = {800, 600}
+	// The game view showing gizmos, its camera 30 away.
+	menu.show_game = true
+	editor.game_gizmos = true
+	rt := gfx.Render_Target{width = 800, height = 600}
+	editor.game_rt = &rt
+	cam_t := engine.transform_new("Camera")
+	engine.transform_set_world_position(cam_t, {0, 0, 30})
+	_, cam_raw := engine.transform_add_comp(cam_t, .Camera)
+	(cast(^engine.Camera)cam_raw).enabled = true
+
+	sun := engine.transform_new("Sun")
+	_, raw := engine.transform_add_comp(sun, .Light)
+	l := cast(^engine.Light)raw
+	l.enabled = true
+	l.type = .Directional
+	editor.sel_scene_only(sun)
+
+	editor.gizmo_pass()
+	extent :: proc(tc: ^TestCtx, ch: engine.Gizmo_Channel) -> (r: f32) {
+		for depth in ([2]bool{true, false}) {
+			for p in _prims(tc, ch = ch, depth_tested = depth) do r = max(r, linalg.length(p.p[0].xy), linalg.length(p.p[1].xy))
+		}
+		return
+	}
+	scene, game := extent(tc, .Editor), extent(tc, .Editor_Game)
+	testing.expect(t, scene > 0 && game > 0, "both views recorded the rays")
+	testing.expectf(t, game > scene * 2, "each built for its own camera: %v in the scene view, %v in the game view", scene, game)
+	gizmos.frame_end()
 }

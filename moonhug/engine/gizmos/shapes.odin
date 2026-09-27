@@ -7,8 +7,8 @@ package gizmos
 // - wire_* / solid_*: areas and volumes, always as a pair. Solids are unlit
 //   color, alpha allowed. A solid volume drawn without depth test shows only
 //   its camera-facing faces, shaded by how much each faces the camera, so it
-//   reads as 3D over everything (the transform gizmo's arrowheads). That needs
-//   the current view (set_view), so draw those from a view's hooks.
+//   reads as 3D over everything (the transform gizmo's arrowheads). Each view
+//   culls and shades them for its own camera when it draws.
 // Angles are radians. rect and grid lie in the local XY plane: rotate them
 // with with_matrix.
 
@@ -396,24 +396,16 @@ solid_frustum :: proc(near, far: [4][3]f32) {
 
 // --- Internals ----------------------------------------------------------------------
 
-// A local-space triangle of a convex solid whose world-space center is `wc`.
-// Without depth test and with a view set, a face turned away from the camera
-// is skipped (it would paint over the front faces) and the rest are shaded by
-// how much they face the camera. Otherwise every face is drawn flat.
+// A local-space triangle of a convex solid whose world-space center is `wc`,
+// recorded as a Face wound so its normal points away from the center. The
+// view that draws it culls and shades it (helper_face), so the recording
+// needs no view.
 @(private)
 _vtri :: proc(bt: ^_Batch, wc, a, b, c: [3]f32) {
+	if !_s.shapes do return
 	wa, wb, w3 := _xf(a), _xf(b), _xf(c)
-	color := _s.color
-	if !_s.depth_test && _s.has_view {
-		n := linalg.cross(wb - wa, w3 - wa)
-		mid := (wa + wb + w3) / 3
-		if linalg.dot(n, mid - wc) < 0 do n = -n
-		facing := linalg.dot(linalg.normalize0(n), linalg.normalize0(_s.view.cam_pos - mid))
-		if facing <= 0 do return
-		shade := 0.55 + 0.45 * facing
-		color = {color.r * shade, color.g * shade, color.b * shade, color.a}
-	}
-	append(&bt.prims, engine.Gizmo_Prim{p = {wa, wb, w3}, color = color, kind = .Triangle})
+	if linalg.dot(linalg.cross(wb - wa, w3 - wa), (wa + wb + w3) / 3 - wc) < 0 do wb, w3 = w3, wb
+	append(&bt.prims, engine.Gizmo_Prim{p = {wa, wb, w3}, color = _s.color, kind = .Face})
 }
 
 // Two unit vectors perpendicular to `n` and to each other.

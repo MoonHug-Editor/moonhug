@@ -4,6 +4,7 @@ package app
 import "moonhug:engine"
 import tween "moonhug:packages/tween"
 import gfx "moonhug:engine/gfx"
+import "moonhug:engine/gizmos"
 import input "moonhug:engine/input"
 import "core:os"
 import "core:fmt"
@@ -94,6 +95,13 @@ main :: proc() {
     for !gfx.quit_requested() {
         gfx.poll_events()
         if !gfx.frame_begin() do continue
+
+        // Gameplay gizmos measure against the camera they show in: the one
+        // render_world_cameras draws last, at the window size (docs/Gizmos.md).
+        if cam := engine.camera_active(); cam != nil {
+            ws := gfx.window_size()
+            gizmos.set_view(engine.camera_render_view(cam, f32(ws.x), f32(ws.y)))
+        }
 
         // Fixed-rate sim ticks first (0..k this frame, accumulator-driven —
         // docs/FixedTick.md), then the per-frame view tick.

@@ -130,11 +130,12 @@ shutdown_game_view :: proc() {
 	game_rt = nil
 }
 
-// The channels the game view draws: gizmos and icons (.Editor) with its
-// Gizmos toggle, gameplay shapes (.Game) with the toggle or debug drawing on.
+// The channels the game view draws: gizmos and icons recorded with its camera
+// (.Editor_Game) with its Gizmos toggle, gameplay shapes (.Game) with the
+// toggle or debug drawing on.
 game_gizmo_channels :: proc() -> bit_set[engine.Gizmo_Channel] {
 	channels: bit_set[engine.Gizmo_Channel]
-	if game_gizmos do channels += {.Game, .Editor}
+	if game_gizmos do channels += {.Game, .Editor_Game}
 	if engine.debug_draw_enabled do channels += {.Game}
 	return channels
 }

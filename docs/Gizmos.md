@@ -31,16 +31,17 @@ A gizmo call records world-space lines, triangles and labels into the current co
 Channels say who a shape is for, and draw in this order:
 
 - `.Game` — gameplay and `@(debug_draw)` code. The scene view shows it, the game view with Gizmos on in its ⋮ menu or with debug drawing on, the standalone app with debug drawing on (F3).
-- `.Editor` — `@(on_draw_gizmos)` hooks. The scene view shows it, the game view with Gizmos on in its ⋮ menu.
+- `.Editor` — the `@(on_draw_gizmos)` procs, recorded with the scene camera. The scene view shows it.
+- `.Editor_Game` — the same procs recorded with the game camera. The game view shows it with Gizmos on in its ⋮ menu.
 - `.Tools` — handles, the transform gizmo, the selection outline. Scene view only.
 
 A view draws depth-tested shapes first, then the ones drawn over everything, each channel in that order, so tools always paint over gizmos, whatever order they were recorded in.
 
-The editor's gizmo pass (editor/gizmo_pass.odin) records the hooks once per frame, after the sim tick and before any view renders, so every view draws the same shapes:
+The editor's gizmo pass (editor/gizmo_pass.odin) records once per frame, after the sim tick and before any view renders:
 
 - The selection outline, the `@(on_scene_handles)` procs and then the transform gizmo record first, into `.Tools`, while the scene view is on screen. An edit from a handle or the gizmo then shows in the same frame's gizmos and render.
-- The `@(on_draw_gizmos)` procs record into `.Editor` while the scene view is on screen or the game view shows gizmos. The game view has them with the scene view closed.
-- Pixel-sized gizmos measure against the scene view's camera while the scene view is on screen, else the game view's camera, else the scene camera at its last size (the game view has not rendered yet). With both open, a pixel-sized gizmo in the game view has the scene view's size.
+- The `@(on_draw_gizmos)` procs record once per view that shows gizmos, with that view's camera: into `.Editor` for the scene view, into `.Editor_Game` for the game view. Pixel sizes and camera-facing parts fit the view that shows them, and the scene view never affects what the game view shows. With both views showing gizmos the procs run twice a frame, so code with side effects (a log) sees both runs. The game view has gizmos with the scene view closed, and none without a camera.
+- Gameplay code (update, fixed ticks) records once, measured against the game camera: the editor sets its view before the sim tick, the standalone app before its update. The scene view shows those shapes too.
 
 ## Scopes
 
@@ -53,7 +54,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `with_view(v)` — `v` is the current view until the end of the block, then the previous one comes back. The game view draws with its camera's view this way.
 - `with_shapes(enabled)` and `with_icons(enabled)` — off, lines, triangles and labels (or icons) record nothing. The gizmo settings hide a component type this way around its hook.
 - `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything.
-- `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets `.Editor` around its hooks, handles and the transform gizmo, shown in the scene view only. Hook code never calls it.
+- `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets the channel around its `@(on_draw_gizmos)` procs, handles and the transform gizmo, so their code never calls it.
 
 ```odin
 {
@@ -79,11 +80,11 @@ Names group by family:
 - Angles are radians. `rect` and `line_grid` lie in the local XY plane: rotate them with `with_matrix`.
 - Capsules, cylinders and cones take the two points of their axis. Circles and arcs take a center and a normal.
 - Solids are unlit color, alpha allowed.
-- A solid volume (box, sphere, capsule, cylinder, cone, frustum) drawn without depth test keeps only the faces turned to the camera, each shaded by how much it faces it. Nothing sorts the triangles, so a back face would otherwise paint over the front. This needs the current view (`set_view`, which the scene view calls before its hooks), so draw those from a view's hooks.
+- A solid volume (box, sphere, capsule, cylinder, cone, frustum) drawn without depth test keeps only the faces turned to the camera, each shaded by how much it faces it. Nothing sorts the triangles, so a back face would otherwise paint over the front. The faces record as data (`.Face`, wound outward), and each view culls and shades them for its own camera when it draws (`helper_face`), so recording one needs no view.
 - Labels show in the editor's scene and game views, drawn over the view's image and never depth-tested. Each view shows the labels of the channels it draws, projected with its own camera. The standalone app draws no text yet.
 - An icon records as data (position, pixel size, image, colors, owner). Each view builds it when it draws, facing that view's camera at that view's pixel size, so icons face the game camera in the game view. The scene view picks the owner on a click inside it (`icons()` returns this frame's). `handles.icon` draws the editor's (docs/Handles.md).
 - An icon's image is a symbol (a proc drawing with shapes), a glyph (a codepoint of the editor's icon font) or a texture asset. A glyph or texture draws as a quad over the backdrop. Glyphs come from the glyph source the editor installs (`set_glyph_source`): without one, a glyph icon fails loudly, so the standalone app cannot draw them.
-- `helper_pixel` and `helper_project` measure against the current view, so they belong in a view's hooks too.
+- `helper_pixel` and `helper_project` measure against the current view: the view the `@(on_draw_gizmos)` procs record for, or the game camera for gameplay code.
 
 ## Gizmo settings
 
