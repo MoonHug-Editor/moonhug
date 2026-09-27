@@ -1,3 +1,9 @@
+## [0.112.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.111.0...v0.112.0) (2026-09-27)
+
+### Features
+
+* gizmo labels visible in game view ([8f539f6](https://github.com/MoonHug-Editor/moonhug/commit/8f539f6e5967e5a91d9860629e3c585e040617f5))
+
 ## [0.111.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.110.0...v0.111.0) (2026-09-27)
 
 ### Features
