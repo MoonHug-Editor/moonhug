@@ -67,6 +67,7 @@ _transform_destroy_comp_registered :: proc(tH: Transform_Handle, $T: typeid) {
     for c, idx in t.components {
         if !_type_key_valid(c.handle.type_key) do continue
         if get_typeid_by_type_key(c.handle.type_key) != T do continue
+        if ptr := world_pool_get(w, c.handle); ptr != nil do component_on_destroy(c.handle.type_key, ptr)
         world_pool_destroy(w, c.handle)
         ordered_remove(&t.components, idx)
         return
@@ -91,44 +92,30 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
         if c.handle.index == comp_handle.index && c.handle.generation == comp_handle.generation && c.handle.type_key == comp_handle.type_key {
             // An unknown component's entry has no instance (its package is
             // missing): the record goes with transform_remove_unknown_comp.
-            if world_pool_valid(w, comp_handle) do world_pool_destroy(w, comp_handle)
+            if world_pool_valid(w, comp_handle) {
+                if ptr := world_pool_get(w, comp_handle); ptr != nil do component_on_destroy(comp_handle.type_key, ptr)
+                world_pool_destroy(w, comp_handle)
+            }
             ordered_remove(&t.components, i)
             return
         }
     }
 }
 
-type_reset_procs: [TypeKey]proc(rawptr)
-
-type_reset :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := type_reset_procs[key]; fn != nil do fn(ptr)
-}
-
-type_cleanup_procs: [TypeKey]proc(rawptr)
-
-type_cleanup :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := type_cleanup_procs[key]; fn != nil do fn(ptr)
-}
+// The lifecycle tables (reset, cleanup, on_validate) are core's
+// (core/type_lifecycle.odin): any @(typ_guid) type has them.
 
 @(cleanup={type=string, priority=0})
 type_cleanup_string_field :: proc(s: ^string) {
 	delete(s^)
 }
 
-type_cleanup_by_typeid :: proc(tid: typeid, ptr: rawptr) {
-	if key, ok := get_type_key_by_typeid(tid); ok {
-		type_cleanup(key, ptr)
-	}
-}
-
-component_on_validate_procs: [TypeKey]proc(rawptr)
-
-component_on_validate :: proc(key: TypeKey, ptr: rawptr) {
-	if fn := component_on_validate_procs[key]; fn != nil do fn(ptr)
-}
-
 component_on_destroy_procs: [TypeKey]proc(rawptr)
 
+// A component instance leaves the world: its on_destroy_T (a physics body
+// released, a voice stopped), then its cleanup_T frees what it owns. Runs on
+// destroy and on removal, before the pool slot goes.
 component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
 	if fn := component_on_destroy_procs[key]; fn != nil do fn(ptr)
+	type_cleanup(key, ptr)
 }

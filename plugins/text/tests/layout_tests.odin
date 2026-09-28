@@ -286,8 +286,7 @@ test_collector_emits_glyph_quads_through_any_backend :: proc(t: ^testing.T) {
 	_, txp := engine.transform_add_comp(node, .Text)
 	tx := cast(^text.Text)txp
 	tx.enabled = true
-	tx.text = strings.clone("hi")
-	defer delete(tx.text) // world_destroy_all frees pools, not component-owned strings
+	tx.text = strings.clone("hi") // cleanup_Text frees it on destroy
 	tx.font = _font()
 	tx.font_size = 12
 	tx.color = {0, 1, 0, 1}

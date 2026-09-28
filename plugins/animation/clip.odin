@@ -60,7 +60,7 @@ animation_channel_is_property :: proc(ch: ^Animation_Channel) -> bool {
 	return len(ch.component) > 0
 }
 
-@(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", makeProcName=make_pAnimationClip, menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
+@(typ_guid={guid = "0a4f3b1c-8e57-4c2d-9b6a-5d1e7f2c8a90", menu_assets_create = {menu_name = "Animation", file_name = "New Animation.anim", order = -5}})
 AnimationClip :: struct {
 	length:   f32, // seconds; set from the last keyframe at import
 	// Baked from the .meta's Animation_Clip_Settings at import — authored
@@ -114,11 +114,9 @@ animation_key_bounds :: proc(times: []f32, selected: []bool, k: int, length: f32
 	return
 }
 
-make_pAnimationClip :: proc() -> any {
-	c := new(AnimationClip)
+reset_AnimationClip :: proc(c: ^AnimationClip) {
 	c.length = 1
 	c.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
-	return c^
 }
 
 // --- Cache (mirrors material.odin) ------------------------------------------------

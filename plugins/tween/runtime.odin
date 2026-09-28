@@ -20,6 +20,7 @@ package tween
 import "base:runtime"
 import "core:encoding/json"
 import "core:encoding/uuid"
+import "core:fmt"
 import "core:mem"
 import "core:reflect"
 import "core:strings"
@@ -44,12 +45,11 @@ Authored :: struct {
 
 Node_Desc :: struct {
 	tid:             typeid,
+	key:             core.TypeKey,
 	pool:            rawptr,
 	entry:           core.Pool_Entry,
 	tick_raw:        rawptr, // the typed tick proc, cast back by tick_thunk
 	tick_thunk:      proc(tick_raw: rawptr, node: rawptr, dt: f32, ctx: TweenContext) -> Status,
-	cleanup_raw:     rawptr, // optional typed cleanup (node-owned heap)
-	cleanup_thunk:   proc(cleanup_raw: rawptr, node: rawptr),
 	children_offset: int, // byte offset of `children: [dynamic]Node_Handle`, -1 = leaf
 }
 
@@ -64,15 +64,17 @@ _registry_init :: proc "contextless" () {
 	_desc_by_tid = make(map[typeid]int, alloc)
 }
 
-// Registers a tween node type. $T must embed Tween at offset 0.
-// `cleanup` frees node-owned heap beyond the children array (which the
-// runtime frees itself). Idempotent per type.
+// Registers a tween node type. $T must embed Tween at offset 0 and carry
+// @(typ_guid). A node that owns heap beyond the children array (which the
+// runtime frees itself) declares cleanup_T next to itself
+// (docs/Components.md, "Lifecycle procs"). Idempotent per type.
 register_node :: proc(
 	$T: typeid,
 	tick: proc(self: ^T, dt: f32, ctx: TweenContext) -> Status,
-	cleanup: proc(self: ^T) = nil,
 ) {
 	if T in _desc_by_tid do return
+	key, kok := core.get_type_key_by_typeid(T)
+	fmt.assertf(kok, "tween.register_node: %v needs @(typ_guid) (registered before this call)", typeid_of(T))
 	// Process-global registry and pools: never on a caller's scoped allocator.
 	context.allocator = runtime.default_allocator()
 
@@ -89,6 +91,7 @@ register_node :: proc(
 
 	desc := Node_Desc{
 		tid             = T,
+		key             = key,
 		pool            = pool,
 		entry           = core.pool_make_entry(pool),
 		tick_raw        = rawptr(tick),
@@ -97,13 +100,6 @@ register_node :: proc(
 			return t(cast(^T)node, dt, ctx)
 		},
 		children_offset = children_offset,
-	}
-	if cleanup != nil {
-		desc.cleanup_raw = rawptr(cleanup)
-		desc.cleanup_thunk = proc(cleanup_raw: rawptr, node: rawptr) {
-			c := cast(proc(self: ^T))cleanup_raw
-			c(cast(^T)node)
-		}
 	}
 	_desc_by_tid[T] = len(_descs)
 	append(&_descs, desc)
@@ -155,7 +151,7 @@ node_destroy :: proc(h: Node_Handle) {
 		delete(children^)
 		children^ = nil
 	}
-	if desc.cleanup_thunk != nil do desc.cleanup_thunk(desc.cleanup_raw, ptr)
+	core.type_cleanup(desc.key, ptr)
 	desc.entry.destroy_fn(desc.pool, _core_handle(h))
 }
 

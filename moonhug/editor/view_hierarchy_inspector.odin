@@ -1121,7 +1121,7 @@ _draw_component_overflow_menu :: proc(
 		im.OpenPopup(popup_id)
 	}
 	if im.BeginPopup(popup_id) {
-		if engine.type_reset_procs[comp.handle.type_key] != nil {
+		if engine.type_has_reset(comp.handle.type_key) {
 			if im.MenuItem("Reset") {
 				e := undo.edit_begin(comp.handle, comp_tid, "Reset Component")
 				engine.type_reset(comp.handle.type_key, comp_ptr)
@@ -1301,7 +1301,7 @@ _draw_components_section :: proc(
 		if header_open {
 			inspector.consume_inspector_changed()
 			defer if inspector.consume_inspector_changed() {
-				engine.component_on_validate(comp.handle.type_key, comp_ptr)
+				engine.type_on_validate(comp.handle.type_key, comp_ptr)
 			}
 			undo.push_component_owner(comp.handle)
 			defer undo.pop_owner()
@@ -1501,7 +1501,7 @@ _draw_components_section_nested_rows :: proc(
 		if header_open {
 			inspector.consume_inspector_changed()
 			defer if inspector.consume_inspector_changed() {
-				engine.component_on_validate(comp.handle.type_key, comp_ptr)
+				engine.type_on_validate(comp.handle.type_key, comp_ptr)
 			}
 			undo.push_component_owner(comp.handle)
 			defer undo.pop_owner()

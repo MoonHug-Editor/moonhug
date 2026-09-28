@@ -1369,7 +1369,7 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 
 	if vc.target.kind == .Pooled && vc.target.handle.type_key != .Transform {
 		if base, h, ok := resolve_pooled_base(vc.target); ok {
-			engine.component_on_validate(h.type_key, base)
+			engine.type_on_validate(h.type_key, base)
 		}
 	}
 }
@@ -1643,7 +1643,7 @@ _do_add_component :: proc(v: Add_Component_Command) {
 			if s := resolve_scene(v.scene); s != nil {
 				engine._resolve_refs_in_value(ptr, type_info_of(tid), s, nil, false, true)
 			}
-			engine.component_on_validate(v.type_key, ptr)
+			engine.type_on_validate(v.type_key, ptr)
 		}
 	}
 

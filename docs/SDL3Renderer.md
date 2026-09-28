@@ -312,7 +312,10 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
       threshold, no Alt) → `inspector_request_select`; miss clears selection.
       Cmd (Ctrl) + right-click opens the pick menu: every object under the
-      pointer (`scene_view_pick_all`), nearest first, a row selects it
+      pointer (`scene_view_pick_all`), nearest first, a row selects it.
+      A right-click that does not look or fly opens the context menu on
+      release: the picked object's hierarchy-row menu (selecting it unless it
+      is already selected), or the create and view items on empty space
 - [x] Checkpoint: raycast unit tests green (127 tests); in-editor — click
       sprite → hierarchy selects; rotated cube selects; sky click clears;
       nearest of overlapping wins (VERIFY IN EDITOR)

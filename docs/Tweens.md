@@ -65,8 +65,9 @@ tick_MyShake :: proc(self: ^MyShake, dt: f32, ctx: tween.TweenContext) -> tween.
 
 - The struct embeds `tween.Tween` at offset 0 (the `using base` field).
 - Runtime-only fields carry `json:"-"` — authored blobs never store them.
-- `register_node` takes an optional `cleanup: proc(^T)` for node-owned heap
-  beyond the children array.
+- A node that owns heap beyond the children array declares `cleanup_<Name>`
+  next to itself, and `node_destroy` runs it (docs/Components.md, "Lifecycle
+  procs").
 - The type guid is the on-disk identity — never change it.
 
 ## Package layout

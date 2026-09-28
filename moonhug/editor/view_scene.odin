@@ -674,8 +674,51 @@ draw_scene_view :: proc() {
 			_update_rubber_band()
 		}
 		_draw_pick_menu()
+		_draw_scene_context_menu()
 	}
 	im.End()
+}
+
+// --- Context menu ----------------------------------------------------------------------
+// A right-click opens the object's menu, the hierarchy row's own (the Edit
+// selection band and the GameObject bands, every registered item), and
+// selects the object first unless it is already in the selection. On empty
+// space it opens the hierarchy background's menu: create and view items.
+
+// Pointer travel, in pixels, under which a right-click still counts as a
+// click and not a look.
+CONTEXT_CLICK_SLOP_PX :: f32(3)
+
+@(private = "file") _ctx_click_pending: bool
+@(private = "file") _ctx_click_pos: [2]f32 // scene-image pixels at the press
+@(private = "file") _ctx_click_travel: f32
+@(private = "file") _ctx_menu_target: engine.Transform_Handle // {} = empty space
+
+@(private = "file")
+_scene_context_menu_open :: proc(view: engine.Render_View, px, py: f32) {
+	tH, hit := scene_view_pick(view, px, py)
+	_ctx_menu_target = tH if hit else {}
+	if hit && !sel_scene_is(tH) do engine.inspector_request_select(tH)
+	im.OpenPopup("##scene_context_menu")
+}
+
+@(private = "file")
+_draw_scene_context_menu :: proc() {
+	if !im.BeginPopup("##scene_context_menu") do return
+	defer im.EndPopup()
+	w := engine.ctx_world()
+	if _ctx_menu_target != {} && engine.pool_valid(&w.transforms, engine.Handle(_ctx_menu_target)) {
+		menu.draw_menu_sections({
+			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
+			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
+			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),
+		})
+	} else {
+		menu.draw_menu_sections({
+			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
+			menu.section("GameObject", min_order = menu.GO_SECTION_VIEW),
+		})
+	}
 }
 
 // --- Pick menu -----------------------------------------------------------------------
@@ -891,6 +934,24 @@ handle_scene_input :: proc() {
 		_pick_menu_open(view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
 	}
 
+	// A right-click that neither turns, flies nor pans the camera opens the
+	// context menu when the button comes up. The flythrough still starts on
+	// the press: moving the mouse or the camera drops the menu.
+	if im.IsMouseClicked(.Right) && !cmd && !alt_down && !overlay_wants_mouse() && scene_rt != nil {
+		mp := im.GetMousePos()
+		_ctx_click_pos = {mp.x - _scene_img_min.x, mp.y - _scene_img_min.y}
+		_ctx_click_travel = 0
+		_ctx_click_pending = _ctx_click_pos.x >= 0 && _ctx_click_pos.y >= 0 && _ctx_click_pos.x < f32(scene_rt.width) && _ctx_click_pos.y < f32(scene_rt.height)
+	}
+	if _ctx_click_pending && (rmb_dragging || alt_down || cmd) do _ctx_click_pending = false
+	if _ctx_click_pending && im.IsMouseReleased(.Right) {
+		_ctx_click_pending = false
+		if scene_rt != nil {
+			view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
+			_scene_context_menu_open(view, _ctx_click_pos.x, _ctx_click_pos.y)
+		}
+	}
+
 	// Flythrough latches on entry (RMB pressed over the view) and holds until
 	// RMB releases. Relative mouse mode hides and PINS the cursor while SDL
 	// keeps streaming raw deltas — without it the visible cursor stalls the
@@ -926,6 +987,10 @@ handle_scene_input :: proc() {
 		// Mouse moves the TARGET; the camera exponentially chases it, which
 		// smooths sensor jitter into a short, frame-rate-independent glide.
 		delta := input.mouse_delta()
+		// The pointer moved or the camera flew: the right-click is a look,
+		// not a click for the context menu.
+		_ctx_click_travel += abs(delta.x) + abs(delta.y)
+		if _ctx_click_travel > CONTEXT_CLICK_SLOP_PX || input.wheel() != 0 do _ctx_click_pending = false
 		_fly_yaw_target += delta.x * LOOK_SENSITIVITY
 		_fly_pitch_target = clamp(_fly_pitch_target - delta.y * LOOK_SENSITIVITY, -PITCH_LIMIT, PITCH_LIMIT)
 		look_k := 1 - math.exp(-dt / FLY_LOOK_SMOOTH_TAU)
@@ -946,6 +1011,7 @@ handle_scene_input :: proc() {
 		if input.key_down(.A) do move -= right
 		if input.key_down(.E) do move += [3]f32{0, 1, 0}
 		if input.key_down(.Q) do move -= [3]f32{0, 1, 0}
+		if move != {} do _ctx_click_pending = false
 
 		// Target velocity from the keys; the smoothed velocity chases it so
 		// starts, stops, and direction changes ease instead of stepping.

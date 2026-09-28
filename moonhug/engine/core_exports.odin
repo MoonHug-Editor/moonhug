@@ -37,6 +37,7 @@ get_factory_by_type_key      :: core.get_factory_by_type_key
 get_typeMeta_by_type_key     :: core.get_typeMeta_by_type_key
 get_pointerType_by_type_key  :: core.get_pointerType_by_type_key
 get_type_key_by_typeid       :: core.get_type_key_by_typeid
+type_keys_registered         :: core.type_keys_registered
 get_guid_by_typeid           :: core.get_guid_by_typeid
 get_typeid_by_guid           :: core.get_typeid_by_guid
 get_typeid_by_guid_ok        :: core.get_typeid_by_guid_ok
@@ -44,6 +45,15 @@ get_pointer_typeid_by_typeid :: core.get_pointer_typeid_by_typeid
 create_instance_by_type_key  :: core.create_instance_by_type_key
 create_instance_by_guid      :: core.create_instance_by_guid
 create_instance              :: core.create_instance
+type_register_reset          :: core.type_register_reset
+type_register_cleanup        :: core.type_register_cleanup
+type_register_on_validate    :: core.type_register_on_validate
+type_has_reset               :: core.type_has_reset
+type_has_cleanup             :: core.type_has_cleanup
+type_reset                   :: core.type_reset
+type_cleanup                 :: core.type_cleanup
+type_cleanup_by_typeid       :: core.type_cleanup_by_typeid
+type_on_validate             :: core.type_on_validate
 generate_type_info           :: core.generate_type_info
 typeid_to_u16                :: core.typeid_to_u16
 

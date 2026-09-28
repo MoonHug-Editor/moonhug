@@ -36,7 +36,6 @@ test_text_rows_record_undo_steps :: proc(t: ^testing.T) {
 	_, ptr := engine.transform_add_comp(a, .Text)
 	tx := cast(^text.Text)ptr
 	tx.text = strings.clone("")
-	defer delete(tx.text)
 	undo.push_component_owner(_comp_handle(a, .Text))
 	defer undo.pop_owner()
 
@@ -96,7 +95,6 @@ test_text_inspector_row_order_keeps_generic_undo :: proc(t: ^testing.T) {
 	_, ptr := engine.transform_add_comp(a, .Text)
 	tx := cast(^text.Text)ptr
 	tx.text = strings.clone("x")
-	defer delete(tx.text)
 	undo.push_component_owner(_comp_handle(a, .Text))
 	defer undo.pop_owner()
 	before := s.top

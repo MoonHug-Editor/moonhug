@@ -349,11 +349,13 @@ main :: proc() {
 @(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
     registration.register_packages()
+    // Type keys before the phases, the same order as the app and the tests:
+    // SerializationInit subscribers look them up.
+    registration.register_type_guids()
     inspector.init()
     phase_editor_run(.SerializationInit)
     phase_editor_run(.ImportersInit)
     clip.init()
-    registration.register_type_guids()
     _init_context_menu_registry()
     _register_asset_previews()
     init_project_view()

@@ -297,8 +297,10 @@ on the `ImportersInit` phase (`moonhug/packages/audio` is the reference —
 settings type, defaults and logic all in the package):
 
 ```odin
-@(typ_guid={guid="...", makeProcName=make_pAudioSettings})
+@(typ_guid={guid="..."})
 AudioSettings :: struct { volume: f32 }
+
+reset_AudioSettings :: proc(s: ^AudioSettings) { s.volume = 1 } // the defaults
 
 @(phase={key=ImportersInit, order=1})
 audio_importers_init :: proc() {
@@ -316,9 +318,10 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings defaults come from the type's `makeProcName` factory. The
-  pipeline creates a defaulted instance and overlays the meta's settings
-  object, so fields absent from old metas keep their defaults.
+- Settings defaults come from the type's `reset_<Type>` (docs/Components.md,
+  "Lifecycle procs"). The pipeline creates a defaulted instance and overlays
+  the meta's settings object, so fields absent from old metas keep their
+  defaults.
 
 ## Asset types
 

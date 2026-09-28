@@ -3,7 +3,7 @@ package sequencer_scripts
 // The built-in script variants. A variant is a @(typ_guid) struct (the
 // authored payload — the guid keys serialization, so never change it) plus
 // whichever lifecycle procs it implements: enter_<Name>, tick_<Name>,
-// exit_<Name>, and destroy_<Name> when it owns heap. All are OPTIONAL —
+// exit_<Name>, and cleanup_<Name> when it owns heap. All are OPTIONAL —
 // ScriptUnion (sequencer/script_union.odin) routes only to the procs a
 // variant declares.
 //
@@ -70,7 +70,7 @@ exit_ScriptLog :: proc(s: ^ScriptLog, ctx: ^core.Script_Ctx) {
 	if s.exit != "" do log.info(s.exit)
 }
 
-destroy_ScriptLog :: proc(s: ^ScriptLog) {
+cleanup_ScriptLog :: proc(s: ^ScriptLog) {
 	// Component strings live on context.allocator, like every other
 	// component field: scene load, the union unmarshaler, the inspector's
 	// string drawer and undo's apply all allocate with it.

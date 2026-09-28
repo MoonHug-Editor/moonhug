@@ -2,7 +2,7 @@ package tests
 
 // Every component that OWNS heap memory must have a cleanup proc registered.
 //
-// `engine.type_cleanup` dispatches through `type_cleanup_procs[key]`, which the
+// `engine.type_cleanup` dispatches through core's lifecycle table, which the
 // generator fills from a proc named `cleanup_<TypeName>`. A component holding a
 // [dynamic] or a string without one leaks that memory every time its value is
 // replaced underneath it — undo calls type_cleanup before unmarshalling a
@@ -88,7 +88,7 @@ test_every_owning_component_has_cleanup :: proc(t: ^testing.T) {
 		if !_embeds_comp_data(ti) do continue
 		if !_type_owns_heap(ti) do continue
 
-		if engine.type_cleanup_procs[key] == nil {
+		if !engine.type_has_cleanup(key) {
 			append(&missing, fmt.tprintf("%v", tid))
 		}
 	}

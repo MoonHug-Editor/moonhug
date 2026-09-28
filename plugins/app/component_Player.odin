@@ -18,7 +18,7 @@ Player :: struct {
 }
 
 reset_Player :: proc(p: ^Player) {
-	cleanup_Player(p)
+    cleanup_Player(p)
     p.speed = 5
 
     p.colors = make([dynamic][4]f32)
@@ -27,9 +27,6 @@ reset_Player :: proc(p: ^Player) {
     append(&p.colors, [4]f32{0, 0, 1, 1})
 }
 
-on_destroy_Player :: proc(p: ^Player) {
-	cleanup_Player(p)
-}
 
 cleanup_Player :: proc(p: ^Player) {
 	if p.colors != nil do delete(p.colors)

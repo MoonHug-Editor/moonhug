@@ -34,10 +34,9 @@ Component_Desc :: struct {
 	make_entry:   proc(pool: rawptr) -> Pool_Entry,
 	each_alive:   proc(pool: rawptr, fn: proc(comp: rawptr)),
 
-	// lifecycle thunks (nil = component doesn't provide it)
-	reset:       proc(comp: rawptr),
-	cleanup:     proc(comp: rawptr),
-	on_validate: proc(comp: rawptr),
+	// Leaving the world, nil = none. reset_T, cleanup_T and on_validate_T are
+	// not here: the type tables (core/type_lifecycle.odin) hold them for every
+	// @(typ_guid) type, filled by register_type_guids.
 	on_destroy:  proc(comp: rawptr),
 
 	// Capability tags a reference field can name with `ref:"@Tag"` instead of
@@ -96,11 +95,6 @@ component_register :: proc(desc: Component_Desc) {
 		component_registry[desc.type_key] = desc
 		_component_registry_by_guid[desc.type_guid] = desc.type_key
 
-		// External components participate in the same runtime lifecycle tables the
-		// engine's generated init fills for engine components.
-		if desc.reset != nil do type_reset_procs[desc.type_key] = desc.reset
-		if desc.cleanup != nil do type_cleanup_procs[desc.type_key] = desc.cleanup
-		if desc.on_validate != nil do component_on_validate_procs[desc.type_key] = desc.on_validate
 		if desc.on_destroy != nil do component_on_destroy_procs[desc.type_key] = desc.on_destroy
 	}
 
@@ -319,7 +313,7 @@ _scene_file_remap_ext_finish :: proc(temps: [dynamic]_Ext_Remap_Temp, remap: ^ma
 			json.destroy_value(t.val^)
 			t.val^ = v
 		}
-		if t.desc.cleanup != nil do t.desc.cleanup(t.ptr)
+		type_cleanup(t.desc.type_key, t.ptr)
 		mem.free(t.ptr)
 	}
 }

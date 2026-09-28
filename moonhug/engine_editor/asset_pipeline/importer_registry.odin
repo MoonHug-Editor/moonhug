@@ -14,8 +14,8 @@ package asset_pipeline
 // - `extensions` are ".png"-style, lowercase. Desc strings and slices need
 //   process lifetime (package-level variables or literals).
 // - `settings_tid` is the importer's settings struct, declared in the
-//   importer's own package with @(typ_guid={..., makeProcName=make_pX}).
-//   The factory provides defaults: the pipeline creates instances through
+//   importer's own package with @(typ_guid) and a reset_X next to it. That
+//   provides the defaults: the pipeline creates instances through
 //   create_instance_by_type_key and overlays the meta's settings object, so
 //   fields absent from old metas keep their defaults. `run` receives a
 //   pointer to that instance (nil when the meta's importer mismatches).

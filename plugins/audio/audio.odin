@@ -11,7 +11,7 @@ import "core:strings"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
 
-@(typ_guid={guid="ec017cc2-7267-45b4-ae80-d6861094d27a", makeProcName=make_pAudioSettings})
+@(typ_guid={guid="ec017cc2-7267-45b4-ae80-d6861094d27a"})
 AudioSettings :: struct {
 	// Gain baked into the artifact's PCM at import (1 = unchanged). Mastering
 	// knob — per-instance mixing volume lives on AudioSource.
@@ -20,10 +20,8 @@ AudioSettings :: struct {
 	normalize: bool,
 }
 
-make_pAudioSettings :: proc() -> any {
-	p := new(AudioSettings)
+reset_AudioSettings :: proc(p: ^AudioSettings) {
 	p.volume = 1.0
-	return p^
 }
 
 // Decode any supported source into interleaved float32 PCM at its native

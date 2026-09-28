@@ -17,7 +17,7 @@ package animation
 //   do not add.
 // Each becomes worth adding the day the system behind it exists.
 
-@(typ_guid={guid = "6b1f9d3a-7c42-4e85-b0a6-1d28e5f47c93", makeProcName=make_pAnimation_Clip_Settings})
+@(typ_guid={guid = "6b1f9d3a-7c42-4e85-b0a6-1d28e5f47c93", })
 Animation_Clip_Settings :: struct {
 	// Once holds the final pose, Loop restarts. Every state defaults to this
 	// and may override it per state (Animation_Entry.wrap).
@@ -40,10 +40,8 @@ Animation_Clip_Settings :: struct {
 	trim_stop:  f32,
 }
 
-make_pAnimation_Clip_Settings :: proc() -> any {
-	p := new(Animation_Clip_Settings)
+reset_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
 	p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
-	return p^
 }
 
 // The sample time for a clip node: the driver's time, shifted by the clip's

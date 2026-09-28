@@ -28,6 +28,7 @@ BoxCollider :: struct {
 }
 
 reset_BoxCollider :: proc(comp: ^BoxCollider) {
+	cleanup_BoxCollider(comp)
 	comp.size = {1, 1, 1}
 	comp.density = 1
 	comp.friction = 0.6
@@ -54,6 +55,7 @@ SphereCollider :: struct {
 }
 
 reset_SphereCollider :: proc(comp: ^SphereCollider) {
+	cleanup_SphereCollider(comp)
 	comp.radius = 0.5
 	comp.density = 1
 	comp.friction = 0.6
@@ -89,6 +91,7 @@ CapsuleCollider :: struct {
 }
 
 reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
+	cleanup_CapsuleCollider(comp)
 	comp.radius = 0.5
 	comp.height = 2
 	comp.direction = .Y_Axis

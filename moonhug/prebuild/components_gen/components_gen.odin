@@ -15,10 +15,7 @@ ComponentEntry :: struct {
 	pkg:             string, // package name ("engine", "app", ...)
 	pkg_path:        string, // scan path ("moonhug/app", "moonhug/packages/x")
 	max:             int,
-	has_on_validate: bool,
 	has_on_destroy:  bool,
-	has_reset:       bool,
-	has_cleanup:     bool,
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -51,10 +48,7 @@ Component_GenComp :: struct {
 	pkg:             string,
 	pkg_path:        string,
 	max:             int,
-	has_on_validate: bool,
 	has_on_destroy:  bool,
-	has_reset:       bool,
-	has_cleanup:     bool,
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,
@@ -157,14 +151,10 @@ provide :: proc(w: ^db.World) -> bool {
 			}
 			menu_path := args.fields["menu"]
 			if menu_path == "" do menu_path = type_name
-			on_validate_name := strings.concatenate({"on_validate_", type_name})
-			defer delete(on_validate_name)
+			// reset_T, cleanup_T and on_validate_T are type_guid_gen's: one
+			// source for every @(typ_guid) type, component or not.
 			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
 			defer delete(on_destroy_name)
-			reset_name := strings.concatenate({"reset_", type_name})
-			defer delete(reset_name)
-			cleanup_name := strings.concatenate({"cleanup_", type_name})
-			defer delete(cleanup_name)
 			field_types := _collect_field_types(entity, decl.pkg_path, fields, struct_by_name)
 			db.set(_components, entity, Component_GenComp{
 				kind            = .Component,
@@ -174,10 +164,7 @@ provide :: proc(w: ^db.World) -> bool {
 				pkg             = decl.pkg.name,
 				pkg_path        = decl.pkg_path,
 				max             = gen_facts.attr_int(args, "max"),
-				has_on_validate = gen_core.FileHasProc(decl.file, on_validate_name),
 				has_on_destroy  = gen_core.FileHasProc(decl.file, on_destroy_name),
-				has_reset       = gen_core.FileHasProc(decl.file, reset_name),
-				has_cleanup     = gen_core.FileHasProc(decl.file, cleanup_name),
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
@@ -248,10 +235,7 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				pkg             = component.pkg,
 				pkg_path        = component.pkg_path,
 				max             = component.max,
-				has_on_validate = component.has_on_validate,
 				has_on_destroy  = component.has_on_destroy,
-				has_reset       = component.has_reset,
-				has_cleanup     = component.has_cleanup,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
@@ -347,15 +331,6 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		fmt.sbprintf(b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
 		fmt.sbprintf(b, "\t\t\tmake_entry = proc(pool: rawptr) -> %sPool_Entry {{ return %spool_make_entry(cast(^%s)pool) }},\n", qual, qual, pool_t)
 		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(data)\n\t\t\t}},\n", qual, pool_t, qual)
-		if e.has_reset {
-			fmt.sbprintf(b, "\t\t\treset = proc(ptr: rawptr) {{ reset_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
-		}
-		if e.has_cleanup {
-			fmt.sbprintf(b, "\t\t\tcleanup = proc(ptr: rawptr) {{ cleanup_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
-		}
-		if e.has_on_validate {
-			fmt.sbprintf(b, "\t\t\ton_validate = proc(ptr: rawptr) {{ on_validate_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
-		}
 		if e.has_on_destroy {
 			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
@@ -500,6 +475,7 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	strings.write_string(&b, "\t__type_resets_init()\n")
 	strings.write_string(&b, "\t__type_cleanups_init()\n")
+	strings.write_string(&b, "\t__type_on_validates_init()\n")
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 	}
@@ -567,7 +543,7 @@ generate :: proc(w: ^db.World) -> bool {
 		} else {
 			fmt.sbprintf(&b, "\telse when T == %s ", e.type_name)
 		}
-		fmt.sbprintf(&b, "{{\n\t\towned, idx := transform_find_comp(t, .%s)\n\t\tif idx < 0 do return\n\t\tworld_pool_destroy(w, owned.handle)\n\t\tordered_remove(&t.components, idx)\n\t\treturn\n\t}}\n", e.type_name)
+		fmt.sbprintf(&b, "{{\n\t\towned, idx := transform_find_comp(t, .%s)\n\t\tif idx < 0 do return\n\t\tif ptr := world_pool_get(w, owned.handle); ptr != nil do component_on_destroy(owned.handle.type_key, ptr)\n\t\tworld_pool_destroy(w, owned.handle)\n\t\tordered_remove(&t.components, idx)\n\t\treturn\n\t}}\n", e.type_name)
 	}
 	strings.write_string(&b, "\t// Registry fallback, same contract as transform_get_comp's.\n")
 	strings.write_string(&b, "\t_transform_destroy_comp_registered(tH, T)\n")

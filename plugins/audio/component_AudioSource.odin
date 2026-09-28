@@ -29,6 +29,7 @@ AudioSource :: struct {
 }
 
 reset_AudioSource :: proc(comp: ^AudioSource) {
+	cleanup_AudioSource(comp)
 	comp.volume = 1
 	comp.pitch = 1
 	comp.play_on_awake = true

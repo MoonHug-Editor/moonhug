@@ -192,11 +192,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
 
 - bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](docs/Components.md) "Two data regimes"
 
-- modularize packages
-  - core (TypeKey, Ref, Handle, etc.)
-  - tweens
-  - etc.
-
 - come up with more TODO and Considered features
 
 - clear clipboard completely on each copy call
@@ -224,8 +219,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - popup manager
   - show serialized or in-memory asset inspector as popup with custom title
     - override property drawer for custom popup look
-
-- convert tween_free to cleanup_T
 
 - generalized serialization of Owned and Ref
 - generic Handle resolve and reset Handle when resolve fails

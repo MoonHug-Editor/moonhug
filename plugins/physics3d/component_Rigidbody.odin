@@ -25,6 +25,7 @@ Rigidbody :: struct {
 }
 
 reset_Rigidbody :: proc(comp: ^Rigidbody) {
+	cleanup_Rigidbody(comp)
 	comp.use_gravity = true
 }
 

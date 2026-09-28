@@ -108,6 +108,7 @@ TimelineAnimator :: struct {
 }
 
 reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
+	cleanup_TimelineAnimator(a)
 	a.speed = 1
 }
 

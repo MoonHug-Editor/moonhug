@@ -731,7 +731,7 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
         elem_size = int(info.elem.size)
         is_dyn_array = true
     }
-    if key, ok := engine.get_type_key_by_typeid(check_tid); ok && engine.type_reset_procs[key] != nil {
+    if key, ok := engine.get_type_key_by_typeid(check_tid); ok && engine.type_has_reset(key) {
         if im.MenuItem("Reset", nil, false, !readonly) {
             u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
             if is_fixed_array {

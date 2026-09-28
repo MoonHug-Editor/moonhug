@@ -18,7 +18,7 @@ import "moonhug:engine"
 import gfx "moonhug:engine/gfx"
 
 // Import settings on a font file (the meta). Baked into the artifact.
-@(typ_guid={guid="33026060-aac7-4df7-a6d4-ae9f7b863264", makeProcName=make_pFontSettings})
+@(typ_guid={guid="33026060-aac7-4df7-a6d4-ae9f7b863264"})
 FontSettings :: struct {
 	sampling_size: f32, // glyph height the field is sampled at, px; the shader scales from here
 	padding:       i32, // px of distance field around each glyph: the reach of outlines and shadows
@@ -26,13 +26,11 @@ FontSettings :: struct {
 	latin1:        bool, // bake U+00A0..U+00FF too (ASCII is always baked); anything else is added at runtime from the font file
 }
 
-make_pFontSettings :: proc() -> any {
-	s := new(FontSettings)
+reset_FontSettings :: proc(s: ^FontSettings) {
 	s.sampling_size = 64
 	s.padding = 8
 	s.atlas_size = 1024
 	s.latin1 = true
-	return s^
 }
 
 // --- Artifact ---------------------------------------------------------------------------------
@@ -516,7 +514,7 @@ font_import :: proc(source_path, artifact_path: string, settings: rawptr) -> boo
 	if settings != nil {
 		s = (cast(^FontSettings)settings)^
 	} else {
-		s = make_pFontSettings().(FontSettings)
+		reset_FontSettings(&s)
 	}
 	ttf, rerr := os.read_entire_file(source_path, context.temp_allocator)
 	if rerr != nil do return false

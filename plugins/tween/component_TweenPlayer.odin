@@ -15,9 +15,6 @@ TweenPlayer :: struct {
     animations: [dynamic]Authored,
 }
 
-on_destroy_TweenPlayer :: proc(p: ^TweenPlayer) {
-	cleanup_TweenPlayer(p)
-}
 
 cleanup_TweenPlayer :: proc(p: ^TweenPlayer) {
 	if p.animations != nil {

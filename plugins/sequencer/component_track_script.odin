@@ -30,9 +30,6 @@ ClipScript :: struct {
 	scripts: [dynamic]ScriptUnion,
 }
 
-on_destroy_ClipScript :: proc(c: ^ClipScript) {
-	cleanup_ClipScript(c)
-}
 
 cleanup_ClipScript :: proc(c: ^ClipScript) {
 	for &s in c.scripts do script_destroy(&s)

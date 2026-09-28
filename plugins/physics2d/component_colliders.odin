@@ -28,6 +28,7 @@ BoxCollider2D :: struct {
 }
 
 reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
+	cleanup_BoxCollider2D(comp)
 	comp.size = {1, 1}
 	comp.density = 1
 	comp.friction = 0.6
@@ -54,6 +55,7 @@ CircleCollider2D :: struct {
 }
 
 reset_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
+	cleanup_CircleCollider2D(comp)
 	comp.radius = 0.5
 	comp.density = 1
 	comp.friction = 0.6
@@ -86,6 +88,7 @@ CapsuleCollider2D :: struct {
 }
 
 reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
+	cleanup_CapsuleCollider2D(comp)
 	comp.size = {1, 2}
 	comp.density = 1
 	comp.friction = 0.6

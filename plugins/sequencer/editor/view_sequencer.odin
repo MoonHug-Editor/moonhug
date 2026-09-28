@@ -254,7 +254,7 @@ _sq_draw_kind_component :: proc(node: engine.Transform_Handle, key: engine.TypeK
 
 	inspector.consume_inspector_changed()
 	defer if inspector.consume_inspector_changed() {
-		engine.component_on_validate(key, raw)
+		engine.type_on_validate(key, raw)
 	}
 	// Ref pickers mint local ids against the owner's root scene, which they
 	// read from the inspector owner stack — and the rows record their undo

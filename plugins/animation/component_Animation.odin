@@ -206,6 +206,7 @@ Animation :: struct {
 // variants' pointer types come with their @(typ_guid).
 
 reset_Animation :: proc(comp: ^Animation) {
+	cleanup_Animation(comp)
 	comp.play_automatically = true
 	comp.speed = 1
 }

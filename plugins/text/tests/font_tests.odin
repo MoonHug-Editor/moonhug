@@ -6,8 +6,10 @@ package text_tests
 // metrics and glyph placement do not.
 
 import "core:os"
+import "core:strings"
 import "core:testing"
 import "moonhug:engine"
+import common "moonhug:tests/common"
 import text "moonhug:packages/text"
 
 @(private = "file")
@@ -126,4 +128,32 @@ test_sdf_backend_adds_glyphs_outside_the_bake :: proc(t: ^testing.T) {
 	question, _ := b.glyph(guid, 32, '?')
 	testing.expect(t, sok)
 	testing.expect_value(t, snowman.uvs, question.uvs) // not in Roboto: the fallback
+}
+
+// A new settings instance gets its defaults from reset_<Type>, through the
+// generated registration.
+@(test)
+test_font_settings_instance_has_defaults :: proc(t: ^testing.T) {
+	inst := engine.create_instance_by_type_key(.FontSettings)
+	defer free(inst.data)
+	s := cast(^text.FontSettings)inst.data
+	testing.expect_value(t, s.sampling_size, 64)
+	testing.expect_value(t, s.atlas_size, 1024)
+	testing.expect(t, s.latin1, "latin1 on by default")
+}
+
+// reset_T on a live value: it runs cleanup_T first, then the defaults. The
+// test context's tracking allocator reports a leak if the old string survives.
+@(test)
+test_type_reset_frees_then_defaults :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	tx := text.Text{text = strings.clone("old"), font_size = 7}
+	engine.type_reset(.Text, &tx)
+	testing.expect_value(t, tx.text, "")
+	testing.expect_value(t, tx.font_size, 36)
 }

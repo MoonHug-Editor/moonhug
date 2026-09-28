@@ -45,6 +45,7 @@ PlayableDirector :: struct {
 }
 
 reset_PlayableDirector :: proc(d: ^PlayableDirector) {
+	cleanup_PlayableDirector(d)
 	d.speed = 1
 	d.wrap = .Loop
 }

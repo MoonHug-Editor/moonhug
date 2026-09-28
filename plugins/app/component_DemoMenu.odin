@@ -18,9 +18,6 @@ reset_DemoMenu :: proc(comp: ^DemoMenu) {
     comp.demos = make([dynamic]engine.Asset_GUID)
 }
 
-on_destroy_DemoMenu :: proc(comp: ^DemoMenu) {
-    cleanup_DemoMenu(comp)
-}
 
 cleanup_DemoMenu :: proc(comp: ^DemoMenu) {
     if comp.demos != nil do delete(comp.demos)

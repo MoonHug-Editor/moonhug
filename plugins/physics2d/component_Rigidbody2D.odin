@@ -30,6 +30,7 @@ Rigidbody2D :: struct {
 }
 
 reset_Rigidbody2D :: proc(comp: ^Rigidbody2D) {
+	cleanup_Rigidbody2D(comp)
 	comp.gravity_scale = 1
 }
 

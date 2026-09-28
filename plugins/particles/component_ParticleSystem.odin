@@ -256,6 +256,7 @@ ParticleSystem :: struct {
 }
 
 reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
+	cleanup_ParticleSystem(ps)
 	ps.duration = 5
 	ps.looping = true
 	ps.start_lifetime = engine.minmax_constant(5)
@@ -271,12 +272,6 @@ reset_ParticleSystem :: proc(ps: ^ParticleSystem) {
 	ps.shape_radius = 1
 	ps.shape_angle = 25
 	ps.shape_box = {1, 1, 1}
-}
-
-// The destroy path runs on_destroy (component removal, scene close, play-stop
-// teardown) — without this, every destroyed system leaks its arrays.
-on_destroy_ParticleSystem :: proc(ps: ^ParticleSystem) {
-	cleanup_ParticleSystem(ps)
 }
 
 cleanup_ParticleSystem :: proc(ps: ^ParticleSystem) {

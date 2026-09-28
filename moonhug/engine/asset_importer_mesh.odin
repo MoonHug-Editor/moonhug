@@ -51,7 +51,7 @@ Mesh_Clip :: struct {
     orphan: bool,
 }
 
-@(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631", makeProcName=make_pMeshSettings})
+@(typ_guid={guid="fadd5659-ad40-4e00-95c7-908efc8e8631"})
 MeshSettings :: struct {
     scale: f32, // uniform import scale
     // Importer-maintained id table, one entry per glTF mesh IN FILE ORDER
@@ -68,10 +68,8 @@ default_mesh_settings :: proc() -> MeshSettings {
     return MeshSettings{scale = 1}
 }
 
-make_pMeshSettings :: proc() -> any {
-    p := new(MeshSettings)
+reset_MeshSettings :: proc(p: ^MeshSettings) {
     p^ = default_mesh_settings()
-    return p^
 }
 
 // Artifact layout (little-endian), see also _mesh_artifact_parse:

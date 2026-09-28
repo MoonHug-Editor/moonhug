@@ -30,7 +30,7 @@ Sprite_Import_Mode :: enum u8 {
     Multiple, // `sprites` lists the slices
 }
 
-@(typ_guid={guid="21d45bcf-2bd8-44db-b780-953c2f8b610f", makeProcName=make_pTextureSettings})
+@(typ_guid={guid="21d45bcf-2bd8-44db-b780-953c2f8b610f"})
 TextureSettings :: struct {
     filter:   TextureFilterMode,
     wrap:     TextureWrapMode,
@@ -61,10 +61,8 @@ default_texture_settings :: proc() -> TextureSettings {
     }
 }
 
-make_pTextureSettings :: proc() -> any {
-    p := new(TextureSettings)
+reset_TextureSettings :: proc(p: ^TextureSettings) {
     p^ = default_texture_settings()
-    return p^
 }
 
 

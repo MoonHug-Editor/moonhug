@@ -41,6 +41,7 @@ Text :: struct {
 }
 
 reset_Text :: proc(t: ^Text) {
+	cleanup_Text(t)
 	t.font_size = 36
 	t.auto_size_min = 18
 	t.auto_size_max = 72

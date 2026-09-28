@@ -37,7 +37,7 @@ Material_Texture :: struct {
 	texture: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 }
 
-@(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", makeProcName=make_pMaterial, menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
+@(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
 Material :: struct {
 	shader:        Material_Shader,
 	custom_shader: Asset_GUID `ext:"glsl"`, // user .glsl asset; overrides `shader` when set
@@ -49,11 +49,9 @@ Material :: struct {
 
 // A new material is Lit, like Unity's. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
-make_pMaterial :: proc() -> any {
-	m := new(Material)
+reset_Material :: proc(m: ^Material) {
 	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
-	return m^
 }
 
 // gfx shader-set name for draw_mesh. Returned strings are literals — safe to
@@ -334,7 +332,7 @@ _material_equal :: proc(a, b: Material) -> bool {
 // the unknown key. Fields absent from the file keep the defaults set here.
 // Allocates with context.allocator (properties live in the cache).
 _material_parse :: proc(data: []byte) -> (Material, bool) {
-	// The same defaults as make_pMaterial, for a hand-written file that
+	// The same defaults as reset_Material, for a hand-written file that
 	// leaves a field out.
 	mat := Material{shader = .Lit, color = {1, 1, 1, 1}}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {

@@ -389,6 +389,10 @@ _write_dispatcher :: proc(
 		if e.key_name != current_key {
 			current_key = e.key_name
 			fmt.sbprintf(b, "\tcase .%s:\n", current_key)
+			if current_key == "SerializationInit" {
+				// Every host registers type keys first: subscribers look them up.
+				strings.write_string(b, "\t\tassert(engine.type_keys_registered(), \"SerializationInit before register_type_guids\")\n")
+			}
 		}
 		strings.write_string(b, "\t\t")
 		is_guarded := false

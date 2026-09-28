@@ -42,9 +42,6 @@ ClipTween :: struct {
 	tweens: [dynamic]TweenUnion,
 }
 
-on_destroy_ClipTween :: proc(c: ^ClipTween) {
-	cleanup_ClipTween(c)
-}
 
 cleanup_ClipTween :: proc(c: ^ClipTween) {
 	for &tw in c.tweens do tween_destroy(&tw)

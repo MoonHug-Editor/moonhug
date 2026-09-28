@@ -43,11 +43,9 @@ Button_Item :: struct {
 }
 
 reset_ButtonsExample :: proc(comp: ^ButtonsExample) {
+	cleanup_ButtonsExample(comp)
 }
 
-on_destroy_ButtonsExample :: proc(b: ^ButtonsExample) {
-    cleanup_ButtonsExample(b)
-}
 
 // Frees what the component owns. Every component holding a [dynamic] or a
 // string needs this, and needs it under exactly this name: type_cleanup

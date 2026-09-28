@@ -8,6 +8,17 @@ The component data layer and its access contract. The contract is deliberately n
 - A `Handle` (index + generation + type key) is the durable reference. Generations catch stale handles after a slot is recycled.
 - `Transform` owns the hierarchy and the per-object component list (`Owned` entries). Component structs embed `CompData` (owner, local id, enabled).
 
+## Lifecycle procs
+
+A `@(typ_guid)` type declares its lifecycle procs by name in its own file. Prebuild finds them there (same file only, the scan is syntax-only) and the generated registration puts them in the engine's tables by `TypeKey` (`core/type_lifecycle.odin`). Nothing is passed by hand.
+
+- `reset_T :: proc(t: ^T)` calls `cleanup_T` first when the type has one, then sets the defaults, so a reset on a live value frees what it owned and a direct `reset_T` call is safe anywhere. `create_instance_by_type_key` runs it on a new zeroed instance (import settings, assets, components on add), and the inspector's Reset runs it on a live value.
+- `cleanup_T :: proc(t: ^T)` frees what a `T` owns (strings, arrays, authored blobs) and leaves the value zeroed. It does not free `t`. It runs when a component leaves the world, when a union variant goes (`tween_destroy`, `script_destroy`), when a tween node is destroyed, and through `type_cleanup(key, ptr)` for anything else that holds a value.
+- `on_validate_T :: proc(t: ^T)` runs after an inspector edit, to keep the value consistent.
+- `on_destroy_T :: proc(t: ^T)` is a component's only: the instance leaves the world, before its pool slot goes (a physics body released, a voice stopped). The engine runs `cleanup_T` right after it, on destroy and on removal, so a component never forwards one to the other.
+
+`type_reset`, `type_cleanup` and `type_on_validate` take a `TypeKey` and a pointer, `type_has_reset` says whether Reset applies. The procs are explicit: a `cleanup_T` frees its own fields, and calls `type_cleanup` on a field of another type when that type owns something. Nothing walks fields on its own, since the tables cannot know which allocator a nested value came from.
+
 ## Access contract
 
 **Handles are what you store. Pointers are what you use, this frame only.**

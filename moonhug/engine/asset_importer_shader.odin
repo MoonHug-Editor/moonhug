@@ -17,13 +17,8 @@ package engine
 
 import "core:strings"
 
-@(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad", makeProcName=make_pShaderSettings})
+@(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad"})
 ShaderSettings :: struct {
-}
-
-make_pShaderSettings :: proc() -> any {
-    p := new(ShaderSettings)
-    return p^
 }
 
 // Fragment UBO slot the property block binds to (slot 0 is the LightUBO).

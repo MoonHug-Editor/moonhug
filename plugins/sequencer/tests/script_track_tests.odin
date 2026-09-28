@@ -338,3 +338,18 @@ test_script_clip_undo_apply_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, ok2, "variant survives the apply")
 	if ok2 do testing.expect_value(t, lg2.enter, "before")
 }
+
+// A script's cleanup_<Name> reaches the engine's lifecycle table through the
+// generated registration, so any holder of a value can free it by TypeKey.
+@(test)
+test_type_cleanup_runs_a_script_cleanup :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	s := scripts.ScriptLog{enter = _own("in"), tick = _own("on"), exit = _own("out")}
+	engine.type_cleanup(.ScriptLog, &s)
+	testing.expect(t, s.enter == "" && s.tick == "" && s.exit == "", "cleanup frees the strings and zeroes the value")
+}
