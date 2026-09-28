@@ -1,3 +1,9 @@
+## [0.114.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.113.0...v0.114.0) (2026-09-28)
+
+### Features
+
+* mh_plugin.json ([dcfdfe2](https://github.com/MoonHug-Editor/moonhug/commit/dcfdfe20590fa159d75c0c25fba70023be9866d6))
+
 ## [0.113.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.112.1...v0.113.0) (2026-09-27)
 
 ### Features
