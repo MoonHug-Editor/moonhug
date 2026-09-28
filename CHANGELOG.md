@@ -1,3 +1,9 @@
+## [0.115.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.114.0...v0.115.0) (2026-09-28)
+
+### Features
+
+* typ_guid cleanup_*, reset_*, on_validate_* , right click menu in scene view ([2c13cb0](https://github.com/MoonHug-Editor/moonhug/commit/2c13cb0d91543add29f7d0c16e2aa38c6086059b))
+
 ## [0.114.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.113.0...v0.114.0) (2026-09-28)
 
 ### Features
