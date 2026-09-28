@@ -43,8 +43,8 @@ _edit: undo.Edit_Session
 
 @(private = "file")
 _edit_begin :: proc(targets: []undo.Edit_Target, label: string) {
-	undo.edit_session_end(&_edit) // a drag whose release never came
 	_edit = undo.edit_session_begin(targets, label)
+	handles.on_drag_lost(proc(_: rawptr) { undo.edit_session_end(&_edit) })
 }
 
 @(private = "file")

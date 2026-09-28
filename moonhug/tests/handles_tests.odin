@@ -434,3 +434,54 @@ test_frustum_handle_radius_and_angle :: proc(t: ^testing.T) {
 	handles_drag(v, {1, far, 0}, {1, 1, 0}, _shape_body, &c)
 	testing.expectf(t, abs(c.angle - math.atan(f32(0.5))) < 1e-3 && abs(c.radius - 0.5) < 1e-6, "the far rim opens the angle: %v %v", c.angle, c.radius)
 }
+
+// --- Lost drags -----------------------------------------------------------------------
+
+@(private = "file")
+_lost_calls: int
+
+@(private = "file")
+_lost_body :: proc(user: rawptr) {
+	c := cast(^_Slider_Case)user
+	d := handles.slider(1, c.pos, c.dir)
+	if d.started {
+		c.started = true
+		handles.on_drag_lost(proc(_: rawptr) { _lost_calls += 1 })
+	}
+	if d.dragging || d.released do c.last = d
+}
+
+// A handle that stops calling in mid-drag (its object deselected) ends the
+// drag without a release frame, and on_drag_lost runs once there, so the
+// caller's undo session closes. A drag that releases never runs it.
+@(test)
+test_handles_lost_drag_runs_the_callback_once :: proc(t: ^testing.T) {
+	tc := new(TestCtx)
+	defer free(tc)
+	setup(tc)
+	context.user_ptr = &tc.uc
+	defer teardown(tc)
+
+	v := handles_test_view()
+	c := _Slider_Case{space = 1, pos = {0, 0, 0}, dir = {1, 0, 0}}
+	_lost_calls = 0
+	handles_step(v, {0, 0, 0}, _lost_body, &c)
+	handles_step(v, {0, 0, 0}, _lost_body, &c, down = true, clicked = true)
+	handles_step(v, {1, 0, 0}, _lost_body, &c, down = true)
+	testing.expect(t, c.started && handles.dragging(), "the drag is in progress")
+	// Two frames the handle does not call in: the first still counts its
+	// last call, the second drops the drag.
+	handles_frame(v, {1, 0, 0}, down = true)
+	handles_frame(v, {1, 0, 0}, down = true)
+	testing.expect(t, !handles.dragging(), "the drag ends when its handle stops calling in")
+	testing.expect_value(t, _lost_calls, 1)
+	testing.expect(t, !c.last.released, "no release frame came")
+
+	// A completed drag drops the callback unrun.
+	_lost_calls = 0
+	c = _Slider_Case{space = 1, pos = {0, 0, 0}, dir = {1, 0, 0}}
+	handles_drag(v, {0, 0, 0}, {1, 0, 0}, _lost_body, &c)
+	testing.expect(t, c.last.released, "the drag released")
+	handles_frame(v, {1, 0, 0})
+	testing.expect_value(t, _lost_calls, 0)
+}

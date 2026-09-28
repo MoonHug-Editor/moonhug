@@ -488,7 +488,7 @@ _thumb_bounds :: proc(tH: engine.Transform_Handle) -> (bmin, bmax: [3]f32, ok: b
 }
 
 @(private = "file")
-_thumb_bounds_walk :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command, bmin, bmax: ^[3]f32, any_point: ^bool) {
+_thumb_bounds_walk :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads, bmin, bmax: ^[3]f32, any_point: ^bool) {
 	w := engine.ctx_world()
 	t := engine.pool_get(&w.transforms, engine.Handle(tH))
 	if t == nil do return
@@ -515,9 +515,8 @@ _thumb_bounds_walk :: proc(tH: engine.Transform_Handle, quads: []engine.Render_C
 			}
 		}
 	}
-	for c in quads {
-		if c.owner != tH do continue
-		for p in c.variant.(engine.Draw_Quad).corners do grow(bmin, bmax, any_point, p)
+	for i in quads.by_owner[tH] or_else nil {
+		for p in quads.all[i].variant.(engine.Draw_Quad).corners do grow(bmin, bmax, any_point, p)
 	}
 	grow(bmin, bmax, any_point, tw.position)
 

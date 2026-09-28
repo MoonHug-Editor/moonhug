@@ -89,7 +89,9 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
     for i in 0 ..< len(t.components) {
         c := t.components[i]
         if c.handle.index == comp_handle.index && c.handle.generation == comp_handle.generation && c.handle.type_key == comp_handle.type_key {
-            world_pool_destroy(w, comp_handle)
+            // An unknown component's entry has no instance (its package is
+            // missing): the record goes with transform_remove_unknown_comp.
+            if world_pool_valid(w, comp_handle) do world_pool_destroy(w, comp_handle)
             ordered_remove(&t.components, i)
             return
         }

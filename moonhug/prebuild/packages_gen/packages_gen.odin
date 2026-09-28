@@ -218,7 +218,10 @@ generate :: proc(w: ^db.World) -> bool {
 		for sp in sub_pkgs {
 			tests_dir := fmt.tprintf("%s/tests", sp.path)
 			if !_dir_has_odin(tests_dir) do continue
-			if _, missing := gen_facts.plugin_dir_missing_dep(tests_dir); missing do continue
+			if dep, missing := gen_facts.plugin_dir_missing_dep(tests_dir); missing {
+				fmt.printf("prebuild: %s skipped, needs the %s plugin\n", tests_dir, dep)
+				continue
+			}
 			fmt.sbprintf(&b, "import _ \"moonhug:%s\"\n", tests_dir[len("moonhug/"):])
 		}
 		db.emit(w, "moonhug/tests/packages_tests_generated.odin", strings.to_string(b))

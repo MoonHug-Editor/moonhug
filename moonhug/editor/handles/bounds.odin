@@ -79,7 +79,7 @@ box_bounds :: proc(id: u64, center, size: ^[3]f32, axes := ALL_AXES, color := CO
 				}
 				center^, size^ = c, s
 			}
-			_merge(&out, d)
+			_merge_drag(&out, d)
 		}
 	}
 	return out
@@ -106,7 +106,7 @@ sphere_bounds :: proc(id: u64, center: ^[3]f32, radius: ^f32, axes := ALL_AXES, 
 				}
 				center^, radius^ = c, r
 			}
-			_merge(&out, d)
+			_merge_drag(&out, d)
 		}
 	}
 	return out
@@ -124,7 +124,7 @@ radius_handle :: proc(id: u64, center: [3]f32, radius: ^f32, axes := ALL_AXES, c
 			d := _face_dot(_face_id(id, i, side), center + dir * radius^, dir, color)
 			if d.started do _grab_bounds = {radius = radius^}
 			if d.dragging || d.released do radius^ = max(_grab_bounds.radius + linalg.dot(d.delta, dir), 0)
-			_merge(&out, d)
+			_merge_drag(&out, d)
 		}
 	}
 	return out
@@ -165,7 +165,7 @@ capsule_bounds :: proc(id: u64, center: ^[3]f32, radius, height: ^f32, axis: Axi
 				}
 				center^, radius^, height^ = c, r, h
 			}
-			_merge(&out, d)
+			_merge_drag(&out, d)
 		}
 	}
 	return out
@@ -184,7 +184,7 @@ cone_handle :: proc(id: u64, apex, dir: [3]f32, range, angle: ^f32, color := COL
 	td := slider(id_of(id, 101), apex + d * range^, d, color = color)
 	if td.started do _grab_bounds = {radius = range^, angle = angle^}
 	if td.dragging || td.released do range^ = max(_grab_bounds.radius + linalg.dot(td.delta, d), 0)
-	_merge(&out, td)
+	_merge_drag(&out, td)
 
 	h := angle^ * 0.5
 	for p, k in _rim_dirs(d) {
@@ -206,7 +206,7 @@ cone_handle :: proc(id: u64, apex, dir: [3]f32, range, angle: ^f32, color := COL
 				angle^ = g.angle
 			}
 		}
-		_merge(&out, rd)
+		_merge_drag(&out, rd)
 	}
 	return out
 }
@@ -224,7 +224,7 @@ frustum_handle :: proc(id: u64, base, dir: [3]f32, radius, angle: ^f32, length: 
 		bd := _face_dot(id_of(id, u64(111 + k)), base + p * radius^, p, color)
 		if bd.started do _grab_bounds = {radius = radius^, angle = angle^}
 		if bd.dragging || bd.released do radius^ = max(_grab_bounds.radius + linalg.dot(bd.delta, p), 0)
-		_merge(&out, bd)
+		_merge_drag(&out, bd)
 	}
 	for p, k in rims {
 		far := radius^ + math.tan(angle^) * length
@@ -244,7 +244,7 @@ frustum_handle :: proc(id: u64, base, dir: [3]f32, radius, angle: ^f32, length: 
 				angle^ = g.angle
 			}
 		}
-		_merge(&out, ad)
+		_merge_drag(&out, ad)
 	}
 	return out
 }
@@ -279,17 +279,4 @@ _face_dot :: proc(id: u64, pos, dir: [3]f32, color: [4]f32) -> Drag {
 	col := color
 	if !front do col.a *= BACK_FACE_ALPHA
 	return slider(id, pos, dir, color = col, prio = 1 if front else 0)
-}
-
-// One summary for a composite: the dragged dot's state wins.
-@(private = "file")
-_merge :: proc(out: ^Drag, d: Drag) {
-	out.hot = out.hot || d.hot
-	out.started = out.started || d.started
-	out.released = out.released || d.released
-	if d.dragging || d.released {
-		out.dragging = out.dragging || d.dragging
-		out.delta = d.delta
-		out.point = d.point
-	}
 }

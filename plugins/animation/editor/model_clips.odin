@@ -31,8 +31,8 @@ import anim "moonhug:packages/animation"
 model_clips_install :: proc() {
 	inspector.add_asset_wrapper("mesh", _model_clip_section)
 	subassets.clip_sampler = _sample_clip
-	inspector.doc_preview_register(typeid_of(anim.AnimationClip), proc(guid: engine.Asset_GUID, data: rawptr) {
-		anim.animation_clip_preview(guid, (cast(^anim.AnimationClip)data)^)
+	inspector.doc_preview_register(typeid_of(anim.AnimationClip), proc(guid: engine.Asset_GUID, doc: any) {
+		anim.animation_clip_preview(guid, doc.(anim.AnimationClip))
 	})
 }
 

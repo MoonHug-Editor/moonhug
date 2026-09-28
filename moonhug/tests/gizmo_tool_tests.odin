@@ -13,7 +13,6 @@ import "../engine"
 import "../editor"
 import "../editor/handles"
 import "../editor/undo"
-import "moonhug:engine/gizmos"
 
 @(private = "file")
 _Tool_Saved :: struct {
@@ -281,12 +280,13 @@ test_tool_scale_uniform_from_the_center :: proc(t: ^testing.T) {
 	editor.sel_scene_only(obj)
 	editor.gizmo_mode = .Scale
 	v := handles_test_view()
-	// 40 pixels to the right of the center cube.
-	right := [3]f32{gizmos.helper_pixel_in(v, {0, 0, 0}, 40), 0, 0}
-	handles_drag(v, {0, 0, 0}, right, _tool_body, nil)
+	// Half the handle's length to the right of the center cube: the factor is
+	// the pointer's screen move over the handle's screen length.
+	size := linalg.length(v.cam_pos) * editor._GIZMO_SIZE_FACTOR
+	handles_drag(v, {0, 0, 0}, {size * 0.5, 0, 0}, _tool_body, nil)
 
 	sc := _scale(obj)
-	testing.expectf(t, _close(sc, {1.2, 1.2, 1.2}, 0.01), "right grows every axis, got %v", sc)
+	testing.expectf(t, _close(sc, {1.5, 1.5, 1.5}, 0.01), "right grows every axis, got %v", sc)
 }
 
 @(test)

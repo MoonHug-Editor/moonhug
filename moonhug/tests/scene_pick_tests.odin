@@ -155,3 +155,27 @@ test_pick_provider_takes_click_and_box :: proc(t: ^testing.T) {
 	band := editor.scene_view_band_query(v, {0, 0}, {800, 600})
 	testing.expect(t, len(band) == 1 && band[0] == _fake_tH, "so does box select")
 }
+
+// The pick menu lists every object under the pointer, nearest first, each
+// once: a mesh behind another is reachable through it, and the two triangles
+// of one quad make one entry.
+@(test)
+test_pick_all_lists_every_hit_nearest_first :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+
+	view := _pick_view()
+	far := _posed_skinned("Far", {-1, -1, -3}, {1, 1, -2})
+	near := _posed_skinned("Near", {-1, -1, 0}, {1, 1, 1})
+	_ = _posed_skinned("Aside", {5, 5, 0}, {6, 6, 1})
+
+	hits := editor.scene_view_pick_all(view, 50, 50)
+	testing.expect_value(t, len(hits), 2)
+	if len(hits) != 2 do return
+	testing.expect_value(t, hits[0].tH, near)
+	testing.expect_value(t, hits[1].tH, far)
+	testing.expect(t, hits[0].t < hits[1].t, "nearest first")
+}

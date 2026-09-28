@@ -1222,7 +1222,7 @@ _draw_components_section :: proc(
 	w := engine.ctx_world()
 	if len(t.components) == 0 do return
 
-	_comp_pending_remove = {}
+	_comp_pending_remove = {type_key = engine.INVALID_TYPE_KEY} // a zero handle is TypeKey 0, a real type
 	_comp_pending_move_from = -1
 	_comp_pending_move_to = -1
 
@@ -1422,7 +1422,7 @@ _draw_components_section_nested_rows :: proc(
 	common: []Multi_Component,
 	multi: bool,
 ) {
-	_comp_pending_remove = {}
+	_comp_pending_remove = {type_key = engine.INVALID_TYPE_KEY} // a zero handle is TypeKey 0, a real type
 	_comp_pending_move_from = -1
 	_comp_pending_move_to = -1
 	comp_count := len(t.components)

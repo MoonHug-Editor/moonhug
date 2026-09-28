@@ -60,6 +60,18 @@ test_unparseable_component_preserved :: proc(t: ^testing.T) {
 	// Both records are unresolvable-into-type here → both stashed.
 	testing.expect_value(t, len(s.unknown_components), 2)
 
+	// Their list entries carry no instance, so the handle must read as no
+	// type at all: a zero handle is TypeKey 0, a real component type, and
+	// selecting the object crashed on removing "component {}" from it.
+	root_t := engine.pool_get(&tc.world.transforms, s.root.handle)
+	testing.expect(t, root_t != nil)
+	if root_t == nil do return
+	for c in root_t.components {
+		testing.expect_value(t, c.handle.type_key, engine.INVALID_TYPE_KEY)
+	}
+	engine.transform_remove_comp(engine.Transform_Handle(s.root.handle), {})
+	testing.expect_value(t, len(root_t.components), 2)
+
 	testing.expect(t, engine.scene_save(s, path), "save")
 	saved, _ := os.read_entire_file(path, context.temp_allocator)
 

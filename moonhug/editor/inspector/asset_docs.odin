@@ -51,8 +51,9 @@ _docs: map[Doc_Key]^Asset_Doc
 // Pushes an asset document's values into the runtime cache its asset is
 // sampled from (engine.material_preview for materials), so an undone or redone
 // document shows before it is saved. Materials are built in, a package
-// registers one for its asset type at EditorInit.
-Doc_Preview :: proc(guid: engine.Asset_GUID, data: rawptr)
+// registers one for its asset type at EditorInit. `doc` is the document's
+// typed value, the registered typeid.
+Doc_Preview :: proc(guid: engine.Asset_GUID, doc: any)
 
 @(private)
 _doc_previews: map[typeid]Doc_Preview
@@ -181,7 +182,7 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
     }
     // Same live-preview contract for package asset types (clips: the cache
     // the scrub preview and runtime sample from).
-    if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data.data)
+    if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data)
     return true
 }
 

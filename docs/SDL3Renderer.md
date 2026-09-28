@@ -310,7 +310,9 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       `handles.pick_register` (docs/Handles.md). CPU picking, NOT GPU id-buffer
       (hundreds of objects; id-buffer = extra pipeline + readback for no gain)
 - [x] LMB click hook in `handle_scene_input` (pressed+released under a 4px drag
-      threshold, no Alt) → `inspector_request_select`; miss clears selection
+      threshold, no Alt) → `inspector_request_select`; miss clears selection.
+      Cmd (Ctrl) + right-click opens the pick menu: every object under the
+      pointer (`scene_view_pick_all`), nearest first, a row selects it
 - [x] Checkpoint: raycast unit tests green (127 tests); in-editor — click
       sprite → hierarchy selects; rotated cube selects; sky click clears;
       nearest of overlapping wins (VERIFY IN EDITOR)

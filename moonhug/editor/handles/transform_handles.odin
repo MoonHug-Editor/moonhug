@@ -130,7 +130,7 @@ position_handle :: proc(id: u64, pos: ^[3]f32, rotation := quaternion128(1), siz
 			if k < 3 do _grab.s = _closest_axis_param(o, dirs[k], _frame.ray)
 		}
 		if p.dragging || p.released do active = k
-		_merge_part(&out, p)
+		_merge_drag(&out, p)
 	}
 	if active >= 0 {
 		g := _grab
@@ -223,8 +223,9 @@ rotation_handle :: proc(id: u64, rot: ^quaternion128, pos: [3]f32, size: f32 = 1
 			_grab = {part = _part(id, 11 + k), origin = o, axis = dirs[k], vec = vec, rot = rot^}
 		}
 		if p.dragging || p.released do active = k
-		_merge_part(&out, p)
+		_merge_drag(&out, p)
 	}
+	out = _drag_from_world(s, out) // the parts report world space
 	cur: [3]f32
 	cur_ok := false
 	if active >= 0 {
@@ -263,8 +264,10 @@ rotation_handle :: proc(id: u64, rot: ^quaternion128, pos: [3]f32, size: f32 = 1
 
 // Three arrows with cube tips that scale `scale` along the axes `rotation`
 // gives, and a center cube that scales every axis (drag right or up to grow).
-// An arrow's factor is how far along it the pointer moved, over `size`. The
-// factor snaps to SNAP_SCALE_STEP and never goes below 0.01.
+// A factor is how far the pointer moved over `size`: along the arrow for an
+// arrow, on screen for the center cube, so dragging the cube by an arrow's
+// length on screen doubles the scale on any display. The factor snaps to
+// SNAP_SCALE_STEP and never goes below 0.01.
 scale_handle :: proc(id: u64, scale: ^[3]f32, pos: [3]f32, rotation := quaternion128(1), size: f32 = 1, prio := 1) -> Drag {
 	s := _space()
 	o := _to_world(s, pos)
@@ -284,14 +287,16 @@ scale_handle :: proc(id: u64, scale: ^[3]f32, pos: [3]f32, rotation := quaternio
 			if k < 3 do _grab.s = _closest_axis_param(o, dirs[k], _frame.ray)
 		}
 		if p.dragging || p.released do active = k
-		_merge_part(&out, p)
+		_merge_drag(&out, p)
 	}
+	out = _drag_from_world(s, out) // the parts report world space
 	if active >= 0 {
 		g := _grab
 		factor: f32
 		if active == 3 {
 			m := _frame.input.mouse
-			factor = max(1 + ((m.x - g.px.x) - (m.y - g.px.y)) * 0.005, 0.01)
+			size_px := size / max(gizmos.helper_pixel_in(_frame.view, g.origin, 1), 1e-9)
+			factor = max(1 + ((m.x - g.px.x) - (m.y - g.px.y)) / size_px, 0.01)
 		} else {
 			factor = max(1 + (_closest_axis_param(g.origin, g.dirs[active], _frame.ray) - g.s) / size, 0.01)
 		}
@@ -332,15 +337,6 @@ _cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32) {
 }
 
 // --- Shared --------------------------------------------------------------------------
-
-// One summary for a composite: the dragged part's state wins.
-@(private = "file")
-_merge_part :: proc(out: ^Drag, d: Drag) {
-	out.hot = out.hot || d.hot
-	out.started = out.started || d.started
-	out.dragging = out.dragging || d.dragging
-	out.released = out.released || d.released
-}
 
 // Parameter of the point on the line (origin + s*axis) nearest to `ray`.
 // 0 when the ray runs along the line.

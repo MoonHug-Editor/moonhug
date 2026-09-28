@@ -283,6 +283,9 @@ _apply_scene_light :: proc() {
 }
 
 render_execute :: proc(view: Render_View, commands: []Render_Command) {
+	// A command without its owner is a collector's bug: the editor could
+	// neither pick nor outline what it draws.
+	for c in commands do assert(c.owner != {}, "render_execute: a render command names no owner (its collector must set Render_Command.owner)")
 	_apply_scene_light()
 	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
 		am, a_mesh := a.variant.(Draw_Mesh)

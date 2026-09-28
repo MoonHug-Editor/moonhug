@@ -134,7 +134,7 @@ transform_restore_unknown_comp :: proc(tH: Transform_Handle, comp_local_id: Loca
 	})
 	idx := list_index
 	if idx < 0 || idx > len(t.components) do idx = len(t.components)
-	inject_at(&t.components, idx, Owned{local_id = comp_local_id})
+	inject_at(&t.components, idx, Owned{handle = {type_key = INVALID_TYPE_KEY}, local_id = comp_local_id})
 }
 
 // Authored lids are minted RANDOMLY in [1, 2^52) — Unity's fileID model.

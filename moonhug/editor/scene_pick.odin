@@ -13,55 +13,75 @@ package editor
 // authored rather than where it is on screen.
 
 import "core:math/linalg"
+import "core:slice"
 import "../engine"
 import "moonhug:editor/handles"
 import "moonhug:engine/gizmos"
 
-// Every quad `view` draws, with its owner: what the package renderers
-// registered with engine.render_register_collector draw, and UI graphics
-// (temp). Meshes are left out: the callers test those from their components,
-// and collecting a skinned mesh would pose it before this frame's edits.
-drawn_quads :: proc(view: engine.Render_View) -> []engine.Render_Command {
-	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(view, &cmds, meshes = false)
-	n := 0
-	for c in cmds {
-		if _, is_quad := c.variant.(engine.Draw_Quad); !is_quad || c.owner == {} do continue
-		cmds[n] = c
-		n += 1
-	}
-	return cmds[:n]
+// Every quad `view` draws (temp): what the package renderers registered with
+// engine.render_register_collector draw, and UI graphics. Meshes are left
+// out: the callers test those from their components, and collecting a skinned
+// mesh would pose it before this frame's edits.
+Drawn_Quads :: struct {
+	all:      []engine.Render_Command,
+	by_owner: map[engine.Transform_Handle][dynamic]int, // indices into `all`
 }
 
-// px, py in viewport pixels relative to the scene image's top-left.
+drawn_quads :: proc(view: engine.Render_View) -> Drawn_Quads {
+	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+	engine.render_collect_commands(view, &cmds, meshes = false)
+	out := Drawn_Quads{by_owner = make(map[engine.Transform_Handle][dynamic]int, context.temp_allocator)}
+	n := 0
+	for c in cmds {
+		if _, is_quad := c.variant.(engine.Draw_Quad); !is_quad do continue
+		cmds[n] = c
+		list, has := &out.by_owner[c.owner]
+		if !has {
+			out.by_owner[c.owner] = make([dynamic]int, context.temp_allocator)
+			list = &out.by_owner[c.owner]
+		}
+		append(list, n)
+		n += 1
+	}
+	out.all = cmds[:n]
+	return out
+}
+
+// One object under the pointer.
+Scene_Hit :: struct {
+	tH: engine.Transform_Handle,
+	t:  f32, // along the ray
+}
+
+// The object under the pointer: the first of scene_view_pick_all. px, py in
+// viewport pixels relative to the scene image's top-left.
 scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transform_Handle, bool) {
+	hits := scene_view_pick_all(view, px, py)
+	if len(hits) == 0 do return {}, false
+	return hits[0].tH, true
+}
+
+// Every object under the pointer, nearest first, each once (temp): a click
+// takes the first, the pick menu (Cmd + right-click) lists them all. Scene
+// icons (handles.icon) draw over everything, so they come before any
+// geometry, nearest icon first.
+scene_view_pick_all :: proc(view: engine.Render_View, px, py: f32) -> []Scene_Hit {
 	ray := engine.render_view_screen_ray(view, px, py)
 	w := engine.ctx_world()
+	icons := make([dynamic]Scene_Hit, context.temp_allocator)
+	geo := make([dynamic]Scene_Hit, context.temp_allocator)
 
-	best_t := f32(1e30)
-	best: engine.Transform_Handle
-	found := false
-
-	// Scene icons (handles.icon) draw over everything, so one under the
-	// pointer wins over any geometry: the nearest along the ray.
 	for ic in gizmos.icons(scene_gizmo_channels()) {
 		sp, ok := gizmos.helper_project_in(view, ic.pos)
 		if !ok || linalg.length(sp - [2]f32{px, py}) > ic.px * 0.5 do continue
-		if t := linalg.dot(ic.pos - ray.origin, ray.direction); t < best_t {
-			best_t = t
-			best = ic.owner
-			found = true
-		}
+		append(&icons, Scene_Hit{ic.owner, linalg.dot(ic.pos - ray.origin, ray.direction)})
 	}
-	if found do return best, true
 
-	for c in drawn_quads(view) {
+	for c in drawn_quads(view).all {
 		q := c.variant.(engine.Draw_Quad)
 		for tri in ([2][3]int{{0, 1, 2}, {0, 2, 3}}) {
-			if t, hit := engine.ray_hit_triangle(ray, q.corners[tri[0]], q.corners[tri[1]], q.corners[tri[2]]); hit && t < best_t {
-				best_t = t
-				best = c.owner
-				found = true
+			if t, hit := engine.ray_hit_triangle(ray, q.corners[tri[0]], q.corners[tri[1]], q.corners[tri[2]]); hit {
+				append(&geo, Scene_Hit{c.owner, t})
 			}
 		}
 	}
@@ -83,10 +103,8 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		local_d := inv * [4]f32{ray.direction.x, ray.direction.y, ray.direction.z, 0}
 		local_ray := engine.Ray{origin = local_o.xyz, direction = local_d.xyz}
 
-		if t, hit := engine.ray_hit_aabb(local_ray, mesh.aabb_min, mesh.aabb_max); hit && t < best_t {
-			best_t = t
-			best = engine.Transform_Handle(mr.owner)
-			found = true
+		if t, hit := engine.ray_hit_aabb(local_ray, mesh.aabb_min, mesh.aabb_max); hit {
+			append(&geo, Scene_Hit{engine.Transform_Handle(mr.owner), t})
 		}
 	}
 
@@ -100,10 +118,8 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 		if !engine.transform_active_in_hierarchy(smr.owner) do continue
 		lo, hi, ok := engine.skinned_mesh_world_bounds(smr)
 		if !ok do continue
-		if t, hit := engine.ray_hit_aabb(ray, lo, hi); hit && t < best_t {
-			best_t = t
-			best = engine.Transform_Handle(smr.owner)
-			found = true
+		if t, hit := engine.ray_hit_aabb(ray, lo, hi); hit {
+			append(&geo, Scene_Hit{engine.Transform_Handle(smr.owner), t})
 		}
 	}
 
@@ -121,25 +137,33 @@ scene_view_pick :: proc(view: engine.Render_View, px, py: f32) -> (engine.Transf
 			if _, _, _, ok := engine.node_graphic(n.tH); !ok do continue
 			c := engine.rect_corners(n.rect, n.xform)
 			for tri in ([2][3]int{{0, 1, 2}, {0, 2, 3}}) {
-				if t, hit := engine.ray_hit_triangle(ray, c[tri[0]], c[tri[1]], c[tri[2]]); hit && t < best_t {
-					best_t = t
-					best = n.tH
-					found = true
+				if t, hit := engine.ray_hit_triangle(ray, c[tri[0]], c[tri[1]], c[tri[2]]); hit {
+					append(&geo, Scene_Hit{n.tH, t})
 				}
 			}
 		}
 	}
 
-	// Package shapes (handles.pick_register): nearest wins across all sources.
+	// Package shapes (handles.pick_register).
 	for provider in handles.pick_providers() {
-		if tH, t, ok := provider.click(view, ray); ok && t < best_t {
-			best_t = t
-			best = tH
-			found = true
-		}
+		if tH, t, ok := provider.click(view, ray); ok do append(&geo, Scene_Hit{tH, t})
 	}
 
-	return best, found
+	nearest_first :: proc(a, b: Scene_Hit) -> bool { return a.t < b.t }
+	slice.sort_by(icons[:], nearest_first)
+	slice.sort_by(geo[:], nearest_first)
+	out := make([dynamic]Scene_Hit, 0, len(icons) + len(geo), context.temp_allocator)
+	for h in icons do _add_hit(&out, h)
+	for h in geo do _add_hit(&out, h)
+	return out[:]
+}
+
+// Appends `h` unless its object is listed: an object hit twice (both
+// triangles of a quad, a mesh and its icon) is one entry, at its first place.
+@(private = "file")
+_add_hit :: proc(out: ^[dynamic]Scene_Hit, h: Scene_Hit) {
+	for have in out do if have.tH == h.tH do return
+	append(out, h)
 }
 
 // Rubber-band counterpart of scene_view_pick: every enabled renderer (on an
@@ -150,7 +174,7 @@ scene_view_band_query :: proc(view: engine.Render_View, rmin, rmax: [2]f32) -> [
 	out := make([dynamic]engine.Transform_Handle, context.temp_allocator)
 	w := engine.ctx_world()
 
-	for c in drawn_quads(view) {
+	for c in drawn_quads(view).all {
 		q := c.variant.(engine.Draw_Quad)
 		if _rect_hits_points(view, rmin, rmax, q.corners[:]) do append(&out, c.owner)
 	}

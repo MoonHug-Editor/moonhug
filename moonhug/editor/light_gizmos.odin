@@ -101,12 +101,12 @@ light_handles :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
 		d = handles.cone_handle(handles.id_of(h), {}, _FORWARD, &range, &angle, LIGHT_HANDLE_COLOR)
 	}
 	if d.started {
-		undo.edit_session_end(&_light_edit) // a drag whose release never came
 		targets := [?]undo.Edit_Target{
 			undo.edit_target_pooled(h, &l.range, typeid_of(f32)),
 			undo.edit_target_pooled(h, &l.spot_angle, typeid_of(f32)),
 		}
 		_light_edit = undo.edit_session_begin(targets[:], "Edit Light")
+		handles.on_drag_lost(proc(_: rawptr) { undo.edit_session_end(&_light_edit) })
 	}
 	if d.dragging || d.released {
 		if range != l.range do l.range = range

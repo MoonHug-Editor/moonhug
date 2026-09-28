@@ -57,13 +57,13 @@ audio_source_handles :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) 
 	dmin := handles.radius_handle(handles.id_of(h, 1), pos, &lo, color = AUDIO_HANDLE_COLOR)
 	dmax := handles.radius_handle(handles.id_of(h, 2), pos, &hi, color = AUDIO_HANDLE_COLOR)
 	if dmin.started || dmax.started {
-		undo.edit_session_end(&_edit) // a drag whose release never came
 		_grab_min, _grab_max = a.min_distance, a.max_distance
 		targets := [?]undo.Edit_Target{
 			undo.edit_target_pooled(h, &a.min_distance, typeid_of(f32)),
 			undo.edit_target_pooled(h, &a.max_distance, typeid_of(f32)),
 		}
 		_edit = undo.edit_session_begin(targets[:], "Edit Audio Source")
+		handles.on_drag_lost(proc(_: rawptr) { undo.edit_session_end(&_edit) })
 	}
 	if (dmin.dragging || dmin.released) && lo != a.min_distance {
 		a.min_distance = lo

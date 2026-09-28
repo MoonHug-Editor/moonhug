@@ -15,7 +15,9 @@ package handles
 //   plane handles per axis, sliders along their line. Callers never snap.
 //   A handle whose values are not distances turns it off with `with_snap`.
 // - Undo is the caller's: open an undo session on `started`, close it on
-//   `released`, so one drag is one undo step.
+//   `released`, so one drag is one undo step. A drag can end without a
+//   release frame when its handle stops calling in (its object was
+//   deselected or destroyed): on_drag_lost closes the session then.
 
 import "base:runtime"
 import "core:hash"
@@ -104,6 +106,12 @@ _active_seen: bool
 _grab:        [3]f32 // plane point at grab, world
 _grab_origin: [3]f32 // drag plane origin, world
 _grab_normal: [3]f32 // drag plane normal, world
+_lost_cb:     Drag_Lost_Proc // runs when the active drag is dropped (on_drag_lost)
+_lost_user:   rawptr
+
+// What a caller does when its drag is dropped without a release: close the
+// undo session it opened on `started`.
+Drag_Lost_Proc :: proc(user: rawptr)
 
 // One handle's state for this frame.
 Drag :: struct {
@@ -131,7 +139,13 @@ frame_begin :: proc(view: engine.Render_View, input: Input) {
 		ray   = engine.render_view_screen_ray(view, input.mouse.x, input.mouse.y),
 		valid = true,
 	}
-	if _active != 0 && !_active_seen do _active = 0 // its owner went away mid-drag
+	if _active != 0 && !_active_seen { // its owner went away mid-drag
+		_active = 0
+		if cb := _lost_cb; cb != nil {
+			_lost_cb = nil
+			cb(_lost_user)
+		}
+	}
 	_active_seen = false
 	// A drag in progress owns the pointer: nothing else is hot.
 	_hot = _pick() if _active == 0 else 0
@@ -155,9 +169,22 @@ dragging :: proc() -> bool {
 }
 
 // Ends the drag in progress now, with no release frame: for a caller whose
-// drag lost its target (the transform tool on a mode switch mid-drag).
+// drag lost its target (the transform tool on a mode switch mid-drag). The
+// caller ends it, so on_drag_lost does not run.
 end_drag :: proc() {
 	_active = 0
+	_lost_cb = nil
+}
+
+// `cb` runs once if the drag started this frame is dropped without a release
+// frame: its handle stopped calling in because its object was deselected or
+// destroyed, or its caller drew another handle instead. Call it in the
+// `started` frame, after opening the undo session, and close the session in
+// `cb`. A release or end_drag drops it unrun.
+on_drag_lost :: proc(cb: Drag_Lost_Proc, user: rawptr = nil) {
+	assert(_active != 0, "handles.on_drag_lost: no drag in progress (call it on `started`)")
+	_lost_cb = cb
+	_lost_user = user
 }
 
 // Handles inside the scope snap (true, the default) or not. A handle whose
@@ -638,6 +665,7 @@ _interact :: proc(id: u64, hit: Hit, prio: int, plane_origin, normal: [3]f32) ->
 		} else {
 			d.released = true
 			_active = 0
+			_lost_cb = nil
 		}
 		return d
 	}
@@ -648,6 +676,7 @@ _interact :: proc(id: u64, hit: Hit, prio: int, plane_origin, normal: [3]f32) ->
 	if d.hot && _frame.input.clicked {
 		_active = id
 		_active_seen = true
+		_lost_cb = nil
 		_grab_origin = plane_origin
 		_grab_normal = normal
 		if p, ok := ray_plane(_frame.ray, plane_origin, normal); ok {
@@ -660,6 +689,20 @@ _interact :: proc(id: u64, hit: Hit, prio: int, plane_origin, normal: [3]f32) ->
 		d.dragging = true
 	}
 	return d
+}
+
+// One Drag for a composite handle (the bounds dots, the transform handles):
+// the flags of every part, and the dragged part's delta and point.
+@(private)
+_merge_drag :: proc(out: ^Drag, d: Drag) {
+	out.hot = out.hot || d.hot
+	out.started = out.started || d.started
+	out.released = out.released || d.released
+	if d.dragging || d.released {
+		out.dragging = out.dragging || d.dragging
+		out.delta = d.delta
+		out.point = d.point
+	}
 }
 
 // A draggable point on the plane through `pos` with `normal`, drawn as a

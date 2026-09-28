@@ -1,5 +1,6 @@
 package editor
 
+import "base:runtime"
 import gfx "../engine/gfx"
 import input "../engine/input"
 import im "moonhug:external/odin-imgui"
@@ -134,6 +135,8 @@ init_scene_view :: proc() {
 shutdown_scene_view :: proc() {
 	gizmo_shutdown()
 	_band_shutdown()
+	delete(_pick_menu)
+	_pick_menu = nil
 	overlays_shutdown()
 	gfx.rt_destroy(scene_rt)
 	scene_rt = nil
@@ -358,7 +361,7 @@ _skinned_world_aabb :: proc(tH: engine.Transform_Handle) -> (lo, hi: [3]f32, ok:
 // mesh AABB through the world transform, the quads a package renderer draws
 // (`quads` is drawn_quads), or a default radius around the position
 // (mirrors the shapes draw_selection_outline draws).
-_selection_bounds :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) -> (center: [3]f32, radius: f32) {
+_selection_bounds :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) -> (center: [3]f32, radius: f32) {
 	if c, r, ok := _ui_bounds(tH); ok do return c, r
 	tw := engine.transform_world(tH)
 	center = tw.position
@@ -407,10 +410,9 @@ _selection_bounds :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Co
 
 // The quads `tH`'s own renderers draw, from drawn_quads: how many, the
 // first, and the world box around all of them.
-_owner_quads :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) -> (count: int, first: [4][3]f32, lo, hi: [3]f32) {
-	for c in quads {
-		if c.owner != tH do continue
-		q := c.variant.(engine.Draw_Quad)
+_owner_quads :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) -> (count: int, first: [4][3]f32, lo, hi: [3]f32) {
+	for i in quads.by_owner[tH] or_else nil {
+		q := quads.all[i].variant.(engine.Draw_Quad)
 		if count == 0 {
 			first = q.corners
 			lo, hi = q.corners[0], q.corners[0]
@@ -488,7 +490,7 @@ render_scene_rt :: proc(w, h: i32) {
 // gizmo and the axis cross still mark the selection. `_selection_bounds` does
 // use the posed world bounds, so framing the selection still frames the
 // character where it actually is.
-draw_selection_outline :: proc(tH: engine.Transform_Handle, quads: []engine.Render_Command) {
+draw_selection_outline :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) {
 	gizmos.with_color({1, 0.6, 0.1, 1})
 	tw := engine.transform_world(tH)
 
@@ -671,8 +673,42 @@ draw_scene_view :: proc() {
 		if _band_active {
 			_update_rubber_band()
 		}
+		_draw_pick_menu()
 	}
 	im.End()
+}
+
+// --- Pick menu -----------------------------------------------------------------------
+// Cmd (Ctrl) + right-click lists every object under the pointer, nearest
+// first, and a row selects it: the way to reach an object a nearer one
+// covers. The list is taken at the click, so it stays put while the menu is
+// open.
+
+@(private = "file")
+_pick_menu: [dynamic]engine.Transform_Handle // cross-frame: default allocator
+
+@(private = "file")
+_pick_menu_open :: proc(view: engine.Render_View, px, py: f32) {
+	if _pick_menu == nil do _pick_menu = make([dynamic]engine.Transform_Handle, runtime.default_allocator())
+	clear(&_pick_menu)
+	for h in scene_view_pick_all(view, px, py) do append(&_pick_menu, h.tH)
+	if len(_pick_menu) > 0 do im.OpenPopup("##scene_pick_menu")
+}
+
+@(private = "file")
+_draw_pick_menu :: proc() {
+	if !im.BeginPopup("##scene_pick_menu") do return
+	w := engine.ctx_world()
+	for h in _pick_menu {
+		t := engine.pool_get(&w.transforms, engine.Handle(h))
+		if t == nil do continue // gone since the click
+		im.PushIDInt(i32(h.index))
+		if im.MenuItem(strings.clone_to_cstring(t.name, context.temp_allocator)) {
+			engine.inspector_request_select(h)
+		}
+		im.PopID()
+	}
+	im.EndPopup()
 }
 
 _update_rubber_band :: proc() {
@@ -845,6 +881,15 @@ handle_scene_input :: proc() {
 	rmb_dragging := im.IsMouseDragging(.Right, 1)
 	mmb_dragging := im.IsMouseDragging(.Middle, 1)
 	lmb_dragging := im.IsMouseDragging(.Left, 1)
+	cmd := io.KeyCtrl || io.KeySuper
+
+	// Cmd (Ctrl) + right-click: the pick menu, every object under the
+	// pointer. It takes the click from the flythrough.
+	if cmd && im.IsMouseClicked(.Right) && !alt_down && !overlay_wants_mouse() && scene_rt != nil {
+		mp := im.GetMousePos()
+		view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
+		_pick_menu_open(view, mp.x - _scene_img_min.x, mp.y - _scene_img_min.y)
+	}
 
 	// Flythrough latches on entry (RMB pressed over the view) and holds until
 	// RMB releases. Relative mouse mode hides and PINS the cursor while SDL
@@ -855,7 +900,7 @@ handle_scene_input :: proc() {
 		scene_flythrough_active = false
 		input.set_mouse_relative(false)
 	}
-	if !scene_flythrough_active && rmb_down && !alt_down && scene_view_hovered && !scene_2d_mode {
+	if !scene_flythrough_active && rmb_down && !alt_down && !cmd && scene_view_hovered && !scene_2d_mode {
 		scene_flythrough_active = true
 		input.set_mouse_relative(true)
 		// Smoothing state starts at rest so entry doesn't inherit stale lag.
@@ -991,7 +1036,6 @@ handle_scene_input :: proc() {
 			// selection (no hierarchy reveal); plain click selects only it.
 			// Clicking empty space clears — unless toggling, where a miss
 			// shouldn't nuke the set being built.
-			cmd := io.KeyCtrl || io.KeySuper
 			if tH, hit := scene_view_pick(view, px, py); hit {
 				if cmd {
 					sel_scene_toggle(tH)
