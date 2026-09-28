@@ -7,21 +7,44 @@ package gen_facts
 //   folder, and packages_gen skips its tests, when plugin_dir_missing_dep
 //   reports a missing plugin.
 // - Hard dependency: an import of another plugin from a plugin's root, its
-//   editor/, its tests/ or a library subpackage those import. Prebuild checks
-//   them before anything compiles (plugin_missing_deps), so a missing plugin
-//   is named instead of failing the Odin build on a path.
+//   editor/, its tests/ or a subpackage those import (plugin_walk). Prebuild
+//   checks them, and the dependencies each mh_plugin.json declares, before
+//   anything compiles, so a missing plugin is named instead of failing the
+//   Odin build on a path.
 
+import "core:encoding/json"
 import "core:os"
 import "core:slice"
 import "core:strings"
 
 PLUGINS_ROOT :: "moonhug/packages"
 
+// Every plugin's manifest, at its root: identity and the plugins it needs.
+// `mh deps` gathers the dependencies, a person may edit them.
+PLUGIN_MANIFEST :: "mh_plugin.json"
+
+Plugin_Manifest :: struct {
+	name:         string,
+	guid:         string, // the plugin's identity, minted when the manifest is made
+	description:  string,
+	dependencies: []string,
+}
+
 // One `import "moonhug:packages/..."` line.
 Plugin_Import :: struct {
 	file: string, // the importing file, "<dir>/<name>.odin"
 	line: int, // 1-based
 	path: string, // after "moonhug:packages/": "sequencer" or "sequencer/core"
+}
+
+// A reason `plugin` needs `needs`: an import at file:line, or content (`why`
+// says what it uses).
+Plugin_Dep_Use :: struct {
+	plugin: string,
+	needs:  string,
+	file:   string,
+	line:   int, // 0 for content and for a declaration in the manifest
+	why:    string,
 }
 
 // The plugin an import path names: its first segment.
@@ -34,28 +57,31 @@ plugin_installed :: proc(name: string, root := PLUGINS_ROOT) -> bool {
 	return os.is_dir(strings.join({root, name}, "/", context.temp_allocator))
 }
 
-// Every plugin import in `dir`'s own .odin files, in file order (temp).
-// Generated files are prebuild's own output from the last run, rewritten after
-// this check: they are not read.
-plugin_dir_imports :: proc(dir: string) -> [dynamic]Plugin_Import {
-	out := make([dynamic]Plugin_Import, context.temp_allocator)
+// `dir`'s own hand-written .odin files, sorted (temp). Generated files are
+// prebuild's own output from the last run, rewritten after the checks that
+// read these: they are left out.
+plugin_dir_odin_files :: proc(dir: string) -> [dynamic]string {
+	files := make([dynamic]string, context.temp_allocator)
 	handle, err := os.open(dir)
-	if err != nil do return out
+	if err != nil do return files
 	defer os.close(handle)
 	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return out
+	if rerr != nil do return files
 	defer os.file_info_slice_delete(entries, context.temp_allocator)
-
-	files := make([dynamic]string, context.temp_allocator)
 	for entry in entries {
 		if entry.type == .Directory || !strings.has_suffix(entry.name, ".odin") do continue
 		if strings.has_suffix(entry.name, "_generated.odin") do continue
 		append(&files, strings.join({dir, entry.name}, "/", context.temp_allocator))
 	}
 	slice.sort(files[:])
+	return files
+}
 
+// Every plugin import in `dir`'s own .odin files, in file order (temp).
+plugin_dir_imports :: proc(dir: string) -> [dynamic]Plugin_Import {
+	out := make([dynamic]Plugin_Import, context.temp_allocator)
 	PREFIX :: "\"moonhug:packages/"
-	for path in files {
+	for path in plugin_dir_odin_files(dir) {
 		data, ferr := os.read_entire_file(path, context.temp_allocator)
 		if ferr != nil do continue
 		for line, i in strings.split_lines(string(data), context.temp_allocator) {
@@ -82,36 +108,51 @@ plugin_dir_missing_dep :: proc(dir: string) -> (missing: string, is_missing: boo
 	return "", false
 }
 
-Plugin_Missing_Dep :: struct {
-	plugin: string, // the installed plugin that needs it
-	needs:  string, // the plugin that is not installed
-	file:   string,
-	line:   int,
+// The folder a package import path lives in, from `dirs` (package name -> its
+// folder). ok=false when the package is not in `dirs`.
+plugin_path_dir :: proc(dirs: map[string]string, path: string) -> (dir: string, ok: bool) {
+	name := plugin_import_name(path)
+	base, has := dirs[name]
+	if !has do return "", false
+	if path == name do return base, true
+	return strings.join({base, path[len(name) + 1:]}, "/", context.temp_allocator), true
 }
 
-// The hard dependencies of installed plugin `name` that are not installed,
-// appended to `out` (strings temp). Walked: the plugin's root, editor/ and
-// tests/, then every subpackage those import, transitively. That includes
-// another plugin's subpackage (a sample importing animation/sequencer needs
-// the sequencer). The plugin's own integration subpackages are not walked:
+// Plugin `name`'s hard dependencies from code, one use per import (temp), and
+// the folders the walk read. Walked: the plugin's root, editor/ and tests/,
+// then every subpackage those import, transitively. That includes another
+// plugin's subpackage (a sample importing animation/sequencer needs the
+// sequencer). The plugin's own integration subpackages are not reached:
 // nothing of the plugin imports them. Another plugin's root is not walked
-// either: its own check covers it.
-plugin_missing_deps :: proc(name: string, out: ^[dynamic]Plugin_Missing_Dep, root := PLUGINS_ROOT) {
-	base := strings.join({root, name}, "/", context.temp_allocator)
+// either: that plugin's own dependencies cover it. `dirs` maps package names
+// to folders, and a package missing from it is not walked.
+plugin_walk :: proc(name: string, dirs: map[string]string) -> (uses: [dynamic]Plugin_Dep_Use, reached: map[string]bool) {
+	uses = make([dynamic]Plugin_Dep_Use, context.temp_allocator)
+	reached = make(map[string]bool, context.temp_allocator)
+	base, has := dirs[name]
+	if !has do return
 	queue := make([dynamic]string, context.temp_allocator)
 	append(&queue, base, strings.join({base, "editor"}, "/", context.temp_allocator), strings.join({base, "tests"}, "/", context.temp_allocator))
-	seen := make(map[string]bool, context.temp_allocator)
 	for len(queue) > 0 {
 		dir := pop_front(&queue)
-		if seen[dir] do continue
-		seen[dir] = true
+		if reached[dir] do continue
+		reached[dir] = true
 		for imp in plugin_dir_imports(dir) {
 			dep := plugin_import_name(imp.path)
-			if dep != name && !plugin_installed(dep, root) {
-				append(out, Plugin_Missing_Dep{plugin = name, needs = dep, file = imp.file, line = imp.line})
-				continue
-			}
-			if imp.path != dep do append(&queue, strings.join({root, imp.path}, "/", context.temp_allocator))
+			if dep != name do append(&uses, Plugin_Dep_Use{plugin = name, needs = dep, file = imp.file, line = imp.line})
+			if imp.path == dep do continue
+			if sub, ok := plugin_path_dir(dirs, imp.path); ok do append(&queue, sub)
 		}
 	}
+	return
+}
+
+// The manifest in `dir` (strings on `allocator`). found=false when there is
+// none, ok=false when it does not parse.
+plugin_manifest_read :: proc(dir: string, allocator := context.temp_allocator) -> (m: Plugin_Manifest, found: bool, ok: bool) {
+	path := strings.join({dir, PLUGIN_MANIFEST}, "/", context.temp_allocator)
+	data, err := os.read_entire_file(path, context.temp_allocator)
+	if err != nil do return {}, false, false
+	if json.unmarshal(data, &m, allocator = allocator) != nil do return {}, true, false
+	return m, true, true
 }

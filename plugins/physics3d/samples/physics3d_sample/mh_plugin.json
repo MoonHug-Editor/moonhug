@@ -1,0 +1,6 @@
+{
+  "name": "physics3d_sample",
+  "guid": "b6e75346-0b1b-45f5-9b29-0386644988e2",
+  "description": "",
+  "dependencies": ["essentials", "physics3d"]
+}

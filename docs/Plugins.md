@@ -90,6 +90,7 @@ plugins/
     physics.odin
     component_Rigidbody2D.odin
     components_ext_generated.odin  ← emitted by prebuild: component registration
+    mh_plugin.json          ← identity + dependencies (see Plugin manifest), `mh deps` gathers them
     editor/                 ← OPTIONAL editor-only package:  import "moonhug:packages/physics2d/editor"
       gizmos.odin
     assets/                 ← the ONLY subtree the asset db scans. Visible in project view (auto-created)
@@ -216,6 +217,36 @@ Install/remove changes what gets compiled, so it takes a prebuild + rebuild
 (`mh run`). Static compilation is deliberate: Odin has no useful dylib story
 (no stable ABI, `typeid` identity breaks across boundaries), and static keeps
 plugin code debuggable and optimizable like first-party code.
+
+## Plugin manifest
+
+Every plugin and every sample has an `mh_plugin.json` at its root:
+
+```json
+{
+  "name": "prefabs_example",
+  "guid": "5f0c…",
+  "description": "",
+  "dependencies": ["app", "sprites"]
+}
+```
+
+- `name` is the folder name, the same name the link in `packages/` carries. Prebuild stops on a mismatch.
+- `guid` is the plugin's identity, minted when the manifest is made. Nothing reads it yet.
+- `dependencies` are the plugins this one needs, integrations left out (an integration subpackage is optional by design).
+
+`mh deps` (or `make deps`) gathers the dependencies of every plugin and sample in `plugins/`, installed or not. `mh deps <name> ...` gathers only those. It finds them two ways:
+
+- Code: an import of another plugin from the root, `editor/` or `tests/`, or from a subpackage those import.
+- Content: a guid in the plugin's `assets/` or non-test code that another plugin owns. A type guid (`@(typ_guid)`) belongs to the plugin declaring the type, an asset guid to the plugin whose `.meta` holds it. A type from an integration subpackage also needs what that folder imports: a scene with an audio track needs audio and the sequencer. The plugin's own samples live in its folder and never count.
+
+It prints each dependency it adds with the first file that needs it. It merges into the manifest and never removes an entry: one nothing uses is kept and reported as written by hand, so removing it is a manual edit. A plugin without a manifest gets one. Editing the file by hand is fine, `mh deps` keeps what it finds there.
+
+Prebuild reads the manifests on every build:
+
+- A code dependency that is not installed stops the build (Dependency rule above).
+- A declared dependency that is not installed and that no import needs is a warning: content that uses it will not load, the build goes on.
+- An import the manifest does not list, or a plugin without a manifest, is a warning that names the `mh deps` command that fixes it.
 
 ## Code
 Prebuild scans `packages/*` and `packages/*/editor` (the app included — it

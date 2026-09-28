@@ -1,0 +1,6 @@
+{
+  "name": "app",
+  "guid": "e6c11db5-4e01-4e2b-b0b9-fc28aa485540",
+  "description": "",
+  "dependencies": ["animation", "audio", "essentials", "mhgui", "particles_sample", "sprites", "text", "tween"]
+}

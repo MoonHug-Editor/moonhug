@@ -163,33 +163,75 @@ _package_gens_refresh :: proc() -> (changed: bool) {
 	return true
 }
 
-// Every installed plugin's hard dependencies are installed
-// (gen_facts.plugin_missing_deps). Otherwise it names each missing plugin and
+// Every installed plugin's code dependencies are installed (the plugins it
+// imports, gen_facts.plugin_walk). Otherwise it names each missing plugin and
 // the imports that need it, before anything compiles: the Odin build would
-// only report a path that does not exist.
+// only report a path that does not exist. Warnings, which let the build go on:
+// - a dependency the plugin's mh_plugin.json declares and no import needs is
+//   not installed (content: its scenes use that plugin's components or assets,
+//   which will not load)
+// - an import the manifest does not declare, or a plugin without a manifest,
+//   with the command that fixes it
 _check_plugin_deps :: proc() -> bool {
 	names: [dynamic]string
 	defer { for n in names do delete(n); delete(names) }
 	_package_dir_names(&names)
+	dirs := make(map[string]string, context.temp_allocator)
+	for n in names do dirs[n] = _join({PACKAGES_DIR, n}, context.temp_allocator)
 
-	missing := make([dynamic]gen_facts.Plugin_Missing_Dep, context.temp_allocator)
-	for name in names do gen_facts.plugin_missing_deps(name, &missing)
-	if len(missing) == 0 do return true
-
-	slice.sort_by(missing[:], proc(a, b: gen_facts.Plugin_Missing_Dep) -> bool {
-		if a.plugin != b.plugin do return a.plugin < b.plugin
-		if a.needs != b.needs do return a.needs < b.needs
-		if a.file != b.file do return a.file < b.file
-		return a.line < b.line
-	})
-	fmt.eprintln("prebuild: installed plugins need plugins that are not installed")
-	for m, i in missing {
-		if i == 0 || m.plugin != missing[i - 1].plugin || m.needs != missing[i - 1].needs {
-			fmt.eprintf("  %s needs %s\n", m.plugin, m.needs)
+	missing := make([dynamic]gen_facts.Plugin_Dep_Use, context.temp_allocator)
+	errors := make([dynamic]string, context.temp_allocator)
+	warnings := make([dynamic]string, context.temp_allocator)
+	for name in names {
+		manifest_path := _join({dirs[name], gen_facts.PLUGIN_MANIFEST}, context.temp_allocator)
+		m, found, ok := gen_facts.plugin_manifest_read(dirs[name])
+		if found && !ok {
+			append(&errors, fmt.tprintf("%s does not parse as a plugin manifest", manifest_path))
+		} else if found && m.name != name {
+			append(&errors, fmt.tprintf("%s names the plugin %q, its folder is %q", manifest_path, m.name, name))
+		} else if !found {
+			append(&warnings, fmt.tprintf("%s has no %s (mh deps %s makes it)", name, gen_facts.PLUGIN_MANIFEST, name))
 		}
-		fmt.eprintf("    %s:%d\n", m.file, m.line)
+
+		uses, _ := gen_facts.plugin_walk(name, dirs)
+		undeclared := make(map[string]bool, context.temp_allocator)
+		for u in uses {
+			if !gen_facts.plugin_installed(u.needs) {
+				append(&missing, u)
+			} else if found && ok && !slice.contains(m.dependencies, u.needs) && !undeclared[u.needs] {
+				undeclared[u.needs] = true
+				append(&warnings, fmt.tprintf("%s imports %s, which its %s does not list (%s:%d, mh deps %s adds it)", name, u.needs, gen_facts.PLUGIN_MANIFEST, u.file, u.line, name))
+			}
+		}
+		for d in m.dependencies {
+			if gen_facts.plugin_installed(d) do continue
+			needed_by_code := false
+			for u in uses do if u.needs == d { needed_by_code = true; break }
+			if !needed_by_code {
+				append(&warnings, fmt.tprintf("%s needs %s, which is not installed (declared in %s): what it uses from %s will not load", name, d, manifest_path, d))
+			}
+		}
 	}
-	fmt.eprintln("Install the missing plugin (mh setup relinks every committed plugin), or uninstall the plugin that needs it (docs/Plugins.md).")
+	for w in warnings do fmt.eprintfln("prebuild: warning: %s", w)
+	if len(missing) == 0 && len(errors) == 0 do return true
+
+	for e in errors do fmt.eprintfln("prebuild: %s", e)
+	if len(missing) > 0 {
+		slice.sort_by(missing[:], proc(a, b: gen_facts.Plugin_Dep_Use) -> bool {
+			if a.plugin != b.plugin do return a.plugin < b.plugin
+			if a.needs != b.needs do return a.needs < b.needs
+			if a.file != b.file do return a.file < b.file
+			return a.line < b.line
+		})
+		fmt.eprintln("prebuild: installed plugins need plugins that are not installed")
+		for m, i in missing {
+			if i == 0 || m.plugin != missing[i - 1].plugin || m.needs != missing[i - 1].needs {
+				fmt.eprintf("  %s needs %s\n", m.plugin, m.needs)
+			}
+			fmt.eprintf("    %s:%d\n", m.file, m.line)
+		}
+		fmt.eprintln("Install the missing plugin (mh setup relinks every committed plugin), or uninstall the plugin that needs it (docs/Plugins.md).")
+	}
 	return false
 }
 

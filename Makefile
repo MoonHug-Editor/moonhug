@@ -6,11 +6,12 @@
 #
 #   odin run tools/mh -- <command>
 #
-# make test NAME=pkg.test_name runs a single test.
+# make test NAME=pkg.test_name runs a single test. make deps NAME=<plugin>
+# gathers one plugin's dependencies.
 
 MH := odin run tools/mh --
 
-.PHONY: help setup run debug build app test prebuild shaders mcp clean distclean
+.PHONY: help setup run debug build app test prebuild deps shaders mcp clean distclean
 
 help:      ; @$(MH) help
 setup:     ; @$(MH) setup
@@ -19,6 +20,7 @@ debug:     ; @$(MH) debug
 build:     ; @$(MH) build
 app:       ; @$(MH) app
 prebuild:  ; @$(MH) prebuild
+deps:      ; @$(MH) deps $(NAME)
 shaders:   ; @$(MH) shaders
 mcp:       ; @$(MH) mcp
 clean:     ; @$(MH) clean

@@ -1,0 +1,6 @@
+{
+  "name": "animation_sample",
+  "guid": "b3963311-7720-4b30-b57b-d6803f55b6a8",
+  "description": "",
+  "dependencies": ["animation"]
+}

@@ -102,6 +102,17 @@ cmd_prebuild :: proc(args: []string) -> int {
 	return 0 if prebuild() else 1
 }
 
+// Gathers dependencies into each plugin's mh_plugin.json (docs/Plugins.md,
+// "Plugin manifest"). The work lives beside prebuild, which reads the same
+// imports: this tool imports nothing from the moonhug collection.
+cmd_deps :: proc(args: []string) -> int {
+	cmd := make([dynamic]string, context.temp_allocator)
+	// Into builds/: odin run keeps the executable when it exits non-zero.
+	append(&cmd, "odin", "run", "moonhug/prebuild/gather_plugin_deps", COLLECTION, fmt.tprintf("-out:builds/gather_plugin_deps%s", EXE), "--")
+	append(&cmd, ..args)
+	return 0 if step("deps", ..cmd[:]) else 1
+}
+
 // The game, through its run config (docs/Plugins.md) — the same path the
 // editor's Play button takes, so a terminal run and a Play run agree.
 cmd_app :: proc(args: []string) -> int {

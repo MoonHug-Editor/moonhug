@@ -40,6 +40,7 @@ COMMANDS := []Command {
 	{"app", "build and run the game (packages/app)", cmd_app, true},
 	{"test", "run the test suite (--name=pkg.test runs one)", cmd_test, true},
 	{"prebuild", "run the code generators only", cmd_prebuild, true},
+	{"deps", "gather plugin dependencies into mh_plugin.json (names: only those)", cmd_deps, true},
 	{"shaders", "recompile the built-in GLSL shaders", cmd_shaders, true},
 	{"mcp", "build and run the MCP stdio shim", cmd_mcp, true},
 	{"clean", "remove builds/ (--all also removes the library cache)", cmd_clean, true},
