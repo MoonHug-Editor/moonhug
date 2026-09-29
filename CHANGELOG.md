@@ -1,3 +1,14 @@
+## [0.116.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.115.0...v0.116.0) (2026-09-29)
+
+### Features
+
+* improve plugin inspector, show dependencies and used by ([df764c9](https://github.com/MoonHug-Editor/moonhug/commit/df764c9075db8644208b224148d2794934add598))
+* plugin types guid to name for better logs ([852eb53](https://github.com/MoonHug-Editor/moonhug/commit/852eb53ae33dbe73cab23ae8cd15807ed73f598d))
+
+### Bug Fixes
+
+* type instance lifetime proc fixes ([1ec3720](https://github.com/MoonHug-Editor/moonhug/commit/1ec37209ea1a55feedd594d2a94b8bd6e943065e))
+
 ## [0.115.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.114.0...v0.115.0) (2026-09-28)
 
 ### Features
