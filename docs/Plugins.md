@@ -556,7 +556,8 @@ node and its direct children (the package
 rows) are special the way the Assets root already is: non-renameable,
 non-deletable, no file ops on the rows themselves. Selecting a package —
 the left-pane node or the right-pane row — opens the package inspector:
-name, content root, asset count, and the Samples section.
+name, asset count, the manifest and the Samples foldout.
+The manifest part reads the package's `mh_plugin.json`: its description, a Dependencies foldout, a table of each dependency with a dot under Compile (an import, the build stops without it), Tests (an import from `tests/` only, the test build stops) or Content (a guid in `assets/` or code, what uses it does not load) for what needs it, none for an entry written by hand, and the ones not installed marked, and a Used by foldout, the same table for the installed packages whose manifest lists this one. Both tables sort by a header click. Clicking a row pings that package in the project view, a double click selects it. A package without a manifest says which `mh deps` command makes it.
 
 ## Samples
 - `samples/` itself is never scanned by AssetDb, so the originals' guids don't exist until installed.

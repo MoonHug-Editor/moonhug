@@ -30,34 +30,22 @@ import "moonhug:prebuild/gen_facts"
 
 PLUGINS_DIR :: "plugins"
 
-Package :: struct {
-	name: string,
-	dir:  string, // plugins/<name> or plugins/<plugin>/samples/<name>
-}
-
 // Who owns a guid.
-Owner :: struct {
-	pkg:  string,
-	what: string, // a type name or an asset path
-	dir:  string, // the declaring folder, for a type
-	type: bool,
-}
-
 main :: proc() {
 	// Kept for the whole run: each package's gather frees the temp allocator.
 	pkgs := _packages()
 	dirs := make(map[string]string)
 	for p in pkgs do dirs[p.name] = p.dir
-	owners := _owners(pkgs[:])
+	owners := gen_facts.plugin_owners(pkgs[:])
 
-	targets := make([dynamic]Package)
+	targets := make([dynamic]gen_facts.Plugin_Folder)
 	for arg in os.args[1:] {
 		dir, has := dirs[arg]
 		if !has {
 			fmt.eprintfln("mh deps: no plugin or sample named %q in %s/", arg, PLUGINS_DIR)
 			os.exit(1)
 		}
-		append(&targets, Package{name = arg, dir = dir})
+		append(&targets, gen_facts.Plugin_Folder{name = arg, dir = dir})
 	}
 	if len(targets) == 0 do append(&targets, ..pkgs[:])
 
@@ -69,131 +57,22 @@ main :: proc() {
 	os.exit(1 if failed else 0)
 }
 
-// Every plugin and sample folder under plugins/, sorted by name.
-_packages :: proc() -> [dynamic]Package {
-	out := make([dynamic]Package)
-	for name in gen_facts.plugin_subdirs(PLUGINS_DIR) {
-		dir := strings.join({PLUGINS_DIR, name}, "/")
-		append(&out, Package{name = strings.clone(name), dir = dir})
-		samples := strings.join({dir, "samples"}, "/", context.temp_allocator)
-		for sample in gen_facts.plugin_subdirs(samples) {
-			append(&out, Package{name = strings.clone(sample), dir = strings.join({samples, sample}, "/")})
-		}
-	}
-	slice.sort_by(out[:], proc(a, b: Package) -> bool { return a.name < b.name })
+// Every plugin and sample folder under plugins/, sorted by name. Kept for the
+// whole run, so the names and dirs are cloned off the temp allocator.
+_packages :: proc() -> [dynamic]gen_facts.Plugin_Folder {
+	out := make([dynamic]gen_facts.Plugin_Folder)
+	for p in gen_facts.plugin_folders(PLUGINS_DIR) do append(&out, gen_facts.Plugin_Folder{name = strings.clone(p.name), dir = strings.clone(p.dir)})
 	return out
 }
 
 
 
-// The guids every package owns: asset guids from .meta files, type guids from
-// @(typ_guid) declarations. A plugin's samples/ belong to the samples.
-_owners :: proc(pkgs: []Package) -> map[string]Owner {
-	owners := make(map[string]Owner)
-	for p in pkgs {
-		files := make([dynamic]string, context.temp_allocator)
-		gen_facts.plugin_files(p.dir, {"samples", "tests", "gen"}, &files)
-		for f in files {
-			if strings.has_suffix(f, ".meta") {
-				data, err := os.read_entire_file(f, context.temp_allocator)
-				if err != nil do continue
-				ids := make([dynamic]string, context.temp_allocator)
-				_scan_meta_guids(string(data), &ids)
-				asset := strings.clone(f[len(p.dir) + 1:len(f) - len(".meta")])
-				for id in ids do if id not_in owners do owners[strings.clone(id)] = Owner{pkg = p.name, what = asset}
-			} else if strings.has_suffix(f, ".odin") && !strings.has_suffix(f, "_generated.odin") {
-				data, err := os.read_entire_file(f, context.temp_allocator)
-				if err != nil do continue
-				dir := f[:strings.last_index_byte(f, '/')]
-				decls := make([dynamic]gen_facts.Plugin_Type_Decl, context.temp_allocator)
-				gen_facts.plugin_scan_typ_guids(string(data), p.name, strings.clone(dir), &decls)
-				for d in decls do owners[strings.clone(d.guid)] = Owner{pkg = d.pkg, what = strings.clone(d.name), dir = d.dir, type = true}
-			}
-		}
-	}
-	return owners
-}
 
-// The guids a .meta owns: the values of its "guid" keys (the asset's, and a
-// sub-asset's, a model clip's). Other uuids in it are not the asset's: the
-// settings' __type_guid names an engine type.
-_scan_meta_guids :: proc(src: string, out: ^[dynamic]string) {
-	KEY :: "\"guid\""
-	rest := src
-	for {
-		at := strings.index(rest, KEY)
-		if at < 0 do break
-		rest = rest[at + len(KEY):]
-		ids := make([dynamic]string, context.temp_allocator)
-		gen_facts.plugin_scan_uuids(rest[:min(len(rest), 48)], &ids)
-		if len(ids) > 0 do append(out, ids[0])
-	}
-}
 
-// A text file's contents, or ok=false for a binary or oversized one.
-_read_text :: proc(path: string) -> (string, bool) {
-	MAX :: 64 * 1024 * 1024
-	info, serr := os.stat(path, context.temp_allocator)
-	if serr != nil || info.size > MAX do return "", false
-	data, err := os.read_entire_file(path, context.temp_allocator)
-	if err != nil do return "", false
-	head := data[:min(len(data), 8192)]
-	if slice.contains(head, 0) do return "", false
-	return string(data), true
-}
 
-// The plugins, other than `owner`, a folder's own files import: what a type
-// declared there needs beyond its plugin.
-_folder_needs :: proc(dir, owner: string) -> [dynamic]string {
-	out := make([dynamic]string, context.temp_allocator)
-	for imp in gen_facts.plugin_dir_imports(dir) {
-		dep := gen_facts.plugin_import_name(imp.path)
-		if dep != owner && !slice.contains(out[:], dep) do append(&out, dep)
-	}
-	return out
-}
 
-_gather :: proc(p: Package, dirs: map[string]string, owners: map[string]Owner) -> bool {
-	uses, reached := gen_facts.plugin_walk(p.name, dirs)
-
-	// Content: the package's assets and the code the walk read, tests left
-	// out (their inline scenes point at textures they never load).
-	files := make([dynamic]string, context.temp_allocator)
-	gen_facts.plugin_files(strings.join({p.dir, "assets"}, "/", context.temp_allocator), {}, &files)
-	tests_dir := strings.join({p.dir, "tests"}, "/", context.temp_allocator)
-	for dir in reached {
-		if !strings.has_prefix(dir, p.dir) || strings.has_prefix(dir, tests_dir) do continue
-		append(&files, ..gen_facts.plugin_dir_odin_files(dir)[:])
-	}
-	slice.sort(files[:])
-	reached_by := make(map[string]map[string]bool, context.temp_allocator)
-	for f in files {
-		text, ok := _read_text(f)
-		if !ok do continue
-		ids := make([dynamic]string, context.temp_allocator)
-		gen_facts.plugin_scan_uuids(text, &ids)
-		for id in ids {
-			o, owned := owners[id]
-			if !owned do continue
-			// The package's own samples live in its folder: always present.
-			if strings.has_prefix(dirs[o.pkg], strings.concatenate({p.dir, "/"}, context.temp_allocator)) do continue
-			if o.pkg != p.name {
-				append(&uses, gen_facts.Plugin_Dep_Use{plugin = p.name, needs = o.pkg, file = f, why = fmt.tprintf("uses %s", o.what)})
-			}
-			if !o.type do continue
-			// A type from an integration subpackage (one its own plugin does
-			// not import) also needs what that folder imports.
-			if o.pkg not_in reached_by {
-				_, r := gen_facts.plugin_walk(o.pkg, dirs)
-				reached_by[o.pkg] = r
-			}
-			if reached_by[o.pkg][o.dir] do continue
-			for dep in _folder_needs(o.dir, o.pkg) {
-				if dep == p.name do continue
-				append(&uses, gen_facts.Plugin_Dep_Use{plugin = p.name, needs = dep, file = f, why = fmt.tprintf("uses %s from %s", o.what, o.dir)})
-			}
-		}
-	}
+_gather :: proc(p: gen_facts.Plugin_Folder, dirs: map[string]string, owners: map[string]gen_facts.Plugin_Owner) -> bool {
+	uses := gen_facts.plugin_all_uses(p, dirs, owners)
 
 	// The first reason per dependency, in file order.
 	found := make([dynamic]string, context.temp_allocator)

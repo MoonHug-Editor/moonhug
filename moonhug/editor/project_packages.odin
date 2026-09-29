@@ -12,6 +12,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "../engine"
 import "moonhug:editor/icons"
+import "moonhug:editor/inspector"
 
 _PROJECT_PACKAGES_PATH :: "packages"
 
@@ -182,6 +183,7 @@ _project_draw_packages_list :: proc() {
 			im.SetScrollHereY()
 			_project_scroll_to_list_sel = false
 		}
+		_project_item_ping_flash(pkg.assets_path)
 	}
 }
 
@@ -192,4 +194,17 @@ _project_package_asset_count :: proc(assets_path: string) -> int {
 		if strings.has_prefix(path, prefix) do count += 1
 	}
 	return count
+}
+
+// The package inspector's dependency rows: a click pings the package's row
+// under the Packages node, a double click selects it (which inspects it).
+package_reveal :: proc(pkg: string, select: bool) {
+	_project_reveal_path(strings.join({_PROJECT_PACKAGES_PATH, pkg, "assets"}, "/", context.temp_allocator), select)
+}
+
+// The inspector package can't import the editor root (cycle), so the editor
+// injects it, the way the samples section is.
+@(init)
+_package_reveal_hook :: proc "contextless" () {
+	inspector.package_reveal = package_reveal
 }

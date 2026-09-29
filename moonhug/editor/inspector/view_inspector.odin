@@ -101,6 +101,7 @@ InspectorData :: struct {
     settingsDoc: ^Asset_Doc, // .ImportSettings mode: the asset's import settings document (registry-owned)
     packageName: string, // .Package mode (owned)
     packageAssetCount: int,
+    packageManifest: Plugin_Manifest_View, // .Package mode (owned, plugin_manifest.odin)
 }
 
 MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
@@ -223,11 +224,21 @@ load_package :: proc(name: string, assets_path: string, asset_count: int) {
     delete(inspectorData.packageName)
     inspectorData.packageName = strings.clone(name)
     inspectorData.packageAssetCount = asset_count
+    plugin_manifest_free(&inspectorData.packageManifest)
+    inspectorData.packageManifest = plugin_manifest_load(name)
     inspectorData.fileData = {}
     inspectorData.doc = nil
     inspectorData.settingsDoc = nil
     inspectorData.mode = .Package
     _set_status("")
+}
+
+// Re-reads the shown package's manifest: its dependencies' installed marks
+// and its Used by change when a sample is installed or removed.
+package_manifest_reload :: proc() {
+    if inspectorData.mode != .Package do return
+    plugin_manifest_free(&inspectorData.packageManifest)
+    inspectorData.packageManifest = plugin_manifest_load(inspectorData.packageName)
 }
 
 // Shows nothing ("No file loaded"): the file the inspector showed left the
@@ -336,17 +347,120 @@ _asset_preview_drawer :: proc() -> proc(path: string) {
 // and dir cache live there, and this package can't import the editor root).
 package_samples_draw: proc(pkg_name: string)
 
+// Reveal a package in the project view, injected the same way: select=false
+// pings its row, select=true selects it.
+package_reveal: proc(pkg_name: string, select: bool)
+
 // Package inspector (docs/Plugins.md): shown when a package is selected in
 // the project view's Packages section (left-pane node or right-pane row).
 _draw_package_inspector :: proc() {
-    im.Text(strings.clone_to_cstring(fmt.tprintf("Package: %s", inspectorData.packageName), context.temp_allocator))
+    tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
+    im.Text(tc(fmt.tprintf("Package: %s", inspectorData.packageName)))
     im.Separator()
-    im.Text(strings.clone_to_cstring(fmt.tprintf("Content root: %s", inspectorData.filePath), context.temp_allocator))
-    im.Text(strings.clone_to_cstring(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount), context.temp_allocator))
-    im.TextDisabled("Installed package (moonhug/packages) - remove the folder to uninstall.")
+    im.Text(tc(fmt.tprintf("Assets: %d", inspectorData.packageAssetCount)))
+    _draw_package_manifest(&inspectorData.packageManifest)
     if package_samples_draw != nil {
         package_samples_draw(inspectorData.packageName)
     }
+}
+
+// The manifest section (docs/Plugins.md, "Plugin manifest"): what `mh deps`
+// gathered as a table (name, and a dot under Compile, Tests or Content for
+// what needs it, none for a hand-written entry), and the installed plugins that use
+// this one. Two foldouts, open by default. A row pings its package in the
+// project view, a double click selects it.
+@(private = "file")
+_draw_package_manifest :: proc(m: ^Plugin_Manifest_View) {
+    tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
+    if !m.found {
+        im.TextDisabled(tc(fmt.tprintf("No mh_plugin.json (mh deps %s makes it)", inspectorData.packageName)))
+        return
+    }
+    if !m.ok {
+        im.TextColored({1, 0.4, 0.4, 1}, "mh_plugin.json does not parse")
+        return
+    }
+    if m.description != "" do im.TextWrapped(tc(m.description))
+    im.Spacing()
+
+    missing := 0
+    for d in m.dependencies do if !d.installed do missing += 1
+    im.SetNextItemOpen(true, .Once)
+    label := fmt.tprintf("Dependencies (%d)###pkg_deps", len(m.dependencies))
+    if missing > 0 do label = fmt.tprintf("%s Dependencies (%d, %d not installed)###pkg_deps", icons.ICON_MD_WARNING, len(m.dependencies), missing)
+    if im.CollapsingHeader(tc(label)) do _draw_dependency_table("##pkg_deps_table", m.dependencies)
+
+    im.SetNextItemOpen(true, .Once)
+    if im.CollapsingHeader(tc(fmt.tprintf("Used by (%d)###pkg_used_by", len(m.used_by)))) do _draw_dependency_table("##pkg_used_by_table", m.used_by)
+}
+
+// Name, Compile, Tests, Content: a dot under what needs the row's plugin,
+// the headers say what missing it costs. Headers sort, once per click
+// (imgui's sort specs).
+@(private = "file")
+_draw_dependency_table :: proc(id: cstring, rows: []Plugin_Dependency) {
+    tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
+    if len(rows) == 0 {
+        im.Indent()
+        im.TextDisabled("none")
+        im.Unindent()
+        return
+    }
+    if !im.BeginTable(id, 4, im.TableFlags_SizingFixedFit | im.TableFlags_RowBg | im.TableFlags_BordersInnerH | im.TableFlags_Sortable) do return
+    im.TableSetupColumn("Name", im.TableColumnFlags{.WidthStretch, .DefaultSort})
+    im.TableSetupColumn("Compile")
+    im.TableSetupColumn("Tests")
+    im.TableSetupColumn("Content")
+    // Headers by hand, so each carries its tooltip.
+    im.TableNextRow({.Headers})
+    im.TableSetColumnIndex(0)
+    im.TableHeader("Name")
+    im.TableSetColumnIndex(1)
+    im.TableHeader("Compile")
+    widgets.tooltip("An import from the plugin's code. The build stops without it.")
+    im.TableSetColumnIndex(2)
+    im.TableHeader("Tests")
+    widgets.tooltip("An import from tests/ only. The test build stops without it, the editor and the game are fine.")
+    im.TableSetColumnIndex(3)
+    im.TableHeader("Content")
+    widgets.tooltip("A guid the plugin owns, in an asset or in code. What uses it does not load without it, the build is fine.")
+    if specs := im.TableGetSortSpecs(); specs != nil && specs.SpecsDirty {
+        if specs.SpecsCount > 0 {
+            plugin_dependencies_sort(rows, int(specs.Specs.ColumnIndex), specs.Specs.SortDirection == .Descending)
+        }
+        specs.SpecsDirty = false
+    }
+    for d in rows {
+        im.TableNextRow()
+        im.TableNextColumn()
+        if d.installed {
+            // Click pings the package's row in the project view, double click
+            // selects it.
+            if im.Selectable(tc(fmt.tprintf("%s##dep_%s", d.name, d.name)), false, {.SpanAllColumns, .AllowDoubleClick}) && package_reveal != nil {
+                package_reveal(d.name, im.IsMouseDoubleClicked(.Left))
+            }
+        } else {
+            im.TextColored({1, 0.75, 0.3, 1}, tc(fmt.tprintf("%s %s", icons.ICON_MD_WARNING, d.name)))
+            widgets.tooltip("Not installed: what this plugin uses from it will not load. mh setup relinks every committed plugin.")
+        }
+        if !d.compile && !d.tests && !d.content do widgets.tooltip("Written by hand: nothing on disk needs it.")
+        im.TableNextColumn()
+        if d.compile do _dot()
+        im.TableNextColumn()
+        if d.tests do _dot()
+        im.TableNextColumn()
+        if d.content do _dot()
+    }
+    im.EndTable()
+}
+
+// A dot centered in its column.
+@(private = "file")
+_dot :: proc() {
+    DOT :: "\u2022"
+    w := im.CalcTextSize(DOT).x
+    im.SetCursorPosX(im.GetCursorPosX() + (im.GetContentRegionAvail().x - w) * 0.5)
+    im.Text(DOT)
 }
 
 // The open file, by NAME. The full path is a folder listing the project view

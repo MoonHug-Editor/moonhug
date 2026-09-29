@@ -107,6 +107,8 @@ _sample_copy_recursive :: proc(src, dst: string) -> bool {
 _sample_after_change :: proc(verb, name: string) {
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
+	// The shown package's Used by and installed marks change with the sample.
+	inspector.package_manifest_reload()
 	fmt.printf("[Editor] %s sample %s - code changes need a prebuild + rebuild (mh run)\n", verb, name)
 }
 
@@ -171,7 +173,9 @@ package_samples_draw :: proc(pkg: string) {
 	samples := package_samples_list(pkg)
 	if len(samples) == 0 do return
 
-	im.SeparatorText("Samples")
+	// A foldout like the manifest's, open by default, a stable id across packages.
+	im.SetNextItemOpen(true, .Once)
+	if !im.CollapsingHeader(strings.clone_to_cstring(fmt.tprintf("Samples (%d)###pkg_samples", len(samples)), context.temp_allocator)) do return
 	style := im.GetStyle()
 	btn_w :: proc(label: cstring) -> f32 {
 		return im.CalcTextSize(label).x + im.GetStyle().FramePadding.x * 2

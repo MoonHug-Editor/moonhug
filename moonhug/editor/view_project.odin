@@ -1332,6 +1332,8 @@ _project_reveal_path :: proc(path: string, select: bool) {
     if parent == "" {
         parent = projectViewData.rootPath
     }
+    // A package root's row is under the Packages node, not its own folder.
+    if project_path_is_package_root(path) do parent = _PROJECT_PACKAGES_PATH
     _project_set_current(parent)
     if select {
         _project_set_selected(path)
