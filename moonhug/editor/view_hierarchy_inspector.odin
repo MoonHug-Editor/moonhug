@@ -1352,11 +1352,15 @@ _draw_missing_components :: proc(t: ^engine.Transform, tH: engine.Transform_Hand
 			if gs, gok := obj[engine.EXT_TYPE_KEY].(json.String); gok do guid_str = string(gs)
 		}
 
-		header := strings.clone_to_cstring(
-			fmt.tprintf("%s Missing Component (%s)##missing_%d", icons.ICON_MD_WARNING, guid_str, uc.local_id),
-			context.temp_allocator,
-		)
+		// The type and its plugin when a plugin on disk declares the guid
+		// (plugin_types.odin), the guid otherwise.
+		title := fmt.tprintf("%s Missing Component (%s)", icons.ICON_MD_WARNING, guid_str)
+		if pt, known := plugin_type_of_guid(guid_str); known {
+			title = fmt.tprintf("%s Missing Component: %s (%s, not installed)", icons.ICON_MD_WARNING, pt.name, pt.plugin)
+		}
+		header := strings.clone_to_cstring(fmt.tprintf("%s##missing_%d", title, uc.local_id), context.temp_allocator)
 		header_open := im.CollapsingHeader(header, {.AllowOverlap})
+		widgets.tooltip(strings.clone_to_cstring(guid_str, context.temp_allocator))
 
 		// Overflow menu in the same spot as live components'.
 		popup_id := strings.clone_to_cstring(fmt.tprintf("##MissCtx_%d", uc.local_id), context.temp_allocator)

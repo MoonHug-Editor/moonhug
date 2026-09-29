@@ -72,11 +72,11 @@ main :: proc() {
 // Every plugin and sample folder under plugins/, sorted by name.
 _packages :: proc() -> [dynamic]Package {
 	out := make([dynamic]Package)
-	for name in _subdirs(PLUGINS_DIR) {
+	for name in gen_facts.plugin_subdirs(PLUGINS_DIR) {
 		dir := strings.join({PLUGINS_DIR, name}, "/")
 		append(&out, Package{name = strings.clone(name), dir = dir})
 		samples := strings.join({dir, "samples"}, "/", context.temp_allocator)
-		for sample in _subdirs(samples) {
+		for sample in gen_facts.plugin_subdirs(samples) {
 			append(&out, Package{name = strings.clone(sample), dir = strings.join({samples, sample}, "/")})
 		}
 	}
@@ -84,38 +84,7 @@ _packages :: proc() -> [dynamic]Package {
 	return out
 }
 
-_subdirs :: proc(dir: string) -> [dynamic]string {
-	out := make([dynamic]string, context.temp_allocator)
-	handle, err := os.open(dir)
-	if err != nil do return out
-	defer os.close(handle)
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return out
-	for e in entries {
-		if e.type == .Directory && !strings.has_prefix(e.name, ".") do append(&out, strings.clone(e.name, context.temp_allocator))
-	}
-	slice.sort(out[:])
-	return out
-}
 
-// Every file under `dir`, recursively, leaving out hidden folders and the
-// named ones (temp).
-_files :: proc(dir: string, skip: []string, out: ^[dynamic]string) {
-	handle, err := os.open(dir)
-	if err != nil do return
-	defer os.close(handle)
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return
-	for e in entries {
-		if strings.has_prefix(e.name, ".") do continue
-		full := strings.join({dir, e.name}, "/", context.temp_allocator)
-		if e.type == .Directory {
-			if !slice.contains(skip, e.name) do _files(full, skip, out)
-			continue
-		}
-		append(out, full)
-	}
-}
 
 // The guids every package owns: asset guids from .meta files, type guids from
 // @(typ_guid) declarations. A plugin's samples/ belong to the samples.
@@ -123,7 +92,7 @@ _owners :: proc(pkgs: []Package) -> map[string]Owner {
 	owners := make(map[string]Owner)
 	for p in pkgs {
 		files := make([dynamic]string, context.temp_allocator)
-		_files(p.dir, {"samples", "tests", "gen"}, &files)
+		gen_facts.plugin_files(p.dir, {"samples", "tests", "gen"}, &files)
 		for f in files {
 			if strings.has_suffix(f, ".meta") {
 				data, err := os.read_entire_file(f, context.temp_allocator)
@@ -136,31 +105,13 @@ _owners :: proc(pkgs: []Package) -> map[string]Owner {
 				data, err := os.read_entire_file(f, context.temp_allocator)
 				if err != nil do continue
 				dir := f[:strings.last_index_byte(f, '/')]
-				_scan_typ_guids(string(data), p.name, strings.clone(dir), &owners)
+				decls := make([dynamic]gen_facts.Plugin_Type_Decl, context.temp_allocator)
+				gen_facts.plugin_scan_typ_guids(string(data), p.name, strings.clone(dir), &decls)
+				for d in decls do owners[strings.clone(d.guid)] = Owner{pkg = d.pkg, what = strings.clone(d.name), dir = d.dir, type = true}
 			}
 		}
 	}
 	return owners
-}
-
-// @(typ_guid={guid = "..."}) followed, past attributes and comments, by the
-// declaration it tags.
-_scan_typ_guids :: proc(src, pkg, dir: string, owners: ^map[string]Owner) {
-	lines := strings.split_lines(src, context.temp_allocator)
-	for line, i in lines {
-		if !strings.contains(line, "typ_guid") do continue
-		ids := make([dynamic]string, context.temp_allocator)
-		_scan_uuids(line, &ids)
-		if len(ids) == 0 do continue
-		name := "?"
-		for next in lines[i + 1:] {
-			l := strings.trim_space(next)
-			if l == "" || strings.has_prefix(l, "@(") || strings.has_prefix(l, "//") do continue
-			if at := strings.index(l, " ::"); at > 0 do name = l[:at]
-			break
-		}
-		owners[strings.clone(ids[0])] = Owner{pkg = pkg, what = strings.clone(name), dir = dir, type = true}
-	}
 }
 
 // The guids a .meta owns: the values of its "guid" keys (the asset's, and a
@@ -174,38 +125,8 @@ _scan_meta_guids :: proc(src: string, out: ^[dynamic]string) {
 		if at < 0 do break
 		rest = rest[at + len(KEY):]
 		ids := make([dynamic]string, context.temp_allocator)
-		_scan_uuids(rest[:min(len(rest), 48)], &ids)
+		gen_facts.plugin_scan_uuids(rest[:min(len(rest), 48)], &ids)
 		if len(ids) > 0 do append(out, ids[0])
-	}
-}
-
-// Every uuid in `src` (8-4-4-4-12 hex), lowercased (temp).
-_scan_uuids :: proc(src: string, out: ^[dynamic]string) {
-	is_hex :: proc(c: u8) -> bool {
-		return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
-	}
-	UUID_LEN :: 36
-	i := 0
-	for i + UUID_LEN <= len(src) {
-		if i > 0 && is_hex(src[i - 1]) {
-			i += 1
-			continue
-		}
-		ok := true
-		for k in 0 ..< UUID_LEN {
-			c := src[i + k]
-			dash := k == 8 || k == 13 || k == 18 || k == 23
-			if dash ? c != '-' : !is_hex(c) {
-				ok = false
-				break
-			}
-		}
-		if ok && (i + UUID_LEN == len(src) || !is_hex(src[i + UUID_LEN])) {
-			append(out, strings.to_lower(src[i:i + UUID_LEN], context.temp_allocator))
-			i += UUID_LEN
-			continue
-		}
-		i += 1
 	}
 }
 
@@ -238,7 +159,7 @@ _gather :: proc(p: Package, dirs: map[string]string, owners: map[string]Owner) -
 	// Content: the package's assets and the code the walk read, tests left
 	// out (their inline scenes point at textures they never load).
 	files := make([dynamic]string, context.temp_allocator)
-	_files(strings.join({p.dir, "assets"}, "/", context.temp_allocator), {}, &files)
+	gen_facts.plugin_files(strings.join({p.dir, "assets"}, "/", context.temp_allocator), {}, &files)
 	tests_dir := strings.join({p.dir, "tests"}, "/", context.temp_allocator)
 	for dir in reached {
 		if !strings.has_prefix(dir, p.dir) || strings.has_prefix(dir, tests_dir) do continue
@@ -250,7 +171,7 @@ _gather :: proc(p: Package, dirs: map[string]string, owners: map[string]Owner) -
 		text, ok := _read_text(f)
 		if !ok do continue
 		ids := make([dynamic]string, context.temp_allocator)
-		_scan_uuids(text, &ids)
+		gen_facts.plugin_scan_uuids(text, &ids)
 		for id in ids {
 			o, owned := owners[id]
 			if !owned do continue
