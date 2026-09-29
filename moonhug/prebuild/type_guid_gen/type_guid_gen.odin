@@ -399,7 +399,12 @@ _write_registration :: proc(entries: []_TypeGuidRow, w: ^db.World, pkg_name, out
 		}
 		fmt.sbprintf(&b, "\t\tengine.register_type_key(%s, engine.TypeKey.%s)\n", type_arg, e.type_name)
 	}
-	// Package types' lifecycle procs (engine types: type_procs_generated.odin).
+	// The lifecycle tables, engine types first (type_procs_generated.odin),
+	// then the package types'. Here, not in w_init: a type's procs exist as
+	// soon as its key does.
+	strings.write_string(&b, "\t\tengine.__type_resets_init()\n")
+	strings.write_string(&b, "\t\tengine.__type_cleanups_init()\n")
+	strings.write_string(&b, "\t\tengine.__type_on_validates_init()\n")
 	for e in entries {
 		if !included(e, host_name, runnables) || e.pkg_name == "engine" do continue
 		t := fmt.tprintf("%s.%s", e.pkg_name, e.type_name)

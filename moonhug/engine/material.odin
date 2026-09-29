@@ -50,6 +50,7 @@ Material :: struct {
 // A new material is Lit, like Unity's. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
 reset_Material :: proc(m: ^Material) {
+	cleanup_Material(m)
 	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
 }
@@ -236,7 +237,7 @@ material_cache_init :: proc() {
 
 material_cache_shutdown :: proc() {
 	for _, &mat in material_cache {
-		_material_destroy(&mat)
+		cleanup_Material(&mat)
 	}
 	delete(material_cache)
 	material_cache = nil
@@ -264,7 +265,7 @@ material_load :: proc(guid: Asset_GUID) -> (^Material, bool) {
 
 material_unload :: proc(guid: Asset_GUID) {
 	if mat, ok := &material_cache[guid]; ok {
-		_material_destroy(mat)
+		cleanup_Material(mat)
 		delete_key(&material_cache, guid)
 	}
 }
@@ -276,7 +277,7 @@ material_preview :: proc(guid: Asset_GUID, mat: Material) {
 	if !_material_cache_ready do return
 	if existing, ok := &material_cache[guid]; ok {
 		if _material_equal(existing^, mat) do return
-		_material_destroy(existing)
+		cleanup_Material(existing)
 	}
 	material_cache[guid] = _material_clone(mat)
 }
@@ -290,7 +291,9 @@ material_path_changed :: proc(path: string) {
 	}
 }
 
-_material_destroy :: proc(mat: ^Material) {
+// Frees what a material owns and leaves it zeroed (docs/Components.md,
+// "Lifecycle procs").
+cleanup_Material :: proc(mat: ^Material) {
 	for &prop in mat.properties {
 		delete(prop.name)
 	}
@@ -336,7 +339,7 @@ _material_parse :: proc(data: []byte) -> (Material, bool) {
 	// leaves a field out.
 	mat := Material{shader = .Lit, color = {1, 1, 1, 1}}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {
-		_material_destroy(&mat)
+		cleanup_Material(&mat)
 		return {}, false
 	}
 	return mat, true

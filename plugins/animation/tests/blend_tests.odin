@@ -494,7 +494,7 @@ test_clip_settings_trim_keeps_the_edges :: proc(t: ^testing.T) {
 	// 1s. The cut falls BETWEEN keys, so the trimmed clip has to start and end
 	// on interpolated values rather than on the nearest key.
 	clip := _ramp_clip(.Position, {0, 0, 0, 0}, {10, 0, 0, 0}, 2.0, .Loop)
-	defer anim.animation_clip_destroy(&clip)
+	defer anim.cleanup_AnimationClip(&clip)
 
 	anim.animation_clip_apply_settings(&clip, {wrap = .Loop, trim_start = 0.5, trim_stop = 1.5})
 
@@ -513,7 +513,7 @@ test_clip_settings_trim_keeps_the_edges :: proc(t: ^testing.T) {
 @(test)
 test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 	clip := _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Loop)
-	defer anim.animation_clip_destroy(&clip)
+	defer anim.cleanup_AnimationClip(&clip)
 	anim.animation_clip_apply_settings(&clip, {wrap = .Loop, cycle_offset = 0.25})
 
 	testing.expectf(t, abs(anim.animation_clip_sample_time(&clip, 0) - 0.25) < 0.001,
@@ -525,7 +525,7 @@ test_clip_cycle_offset_shifts_a_loop :: proc(t: ^testing.T) {
 	// A Once clip has no cycle to offset: starting it mid-way would just skip
 	// its beginning, so the setting is ignored rather than half-honoured.
 	once := _ramp_clip(.Position, {0, 0, 0, 0}, {1, 0, 0, 0}, 1.0, .Once)
-	defer anim.animation_clip_destroy(&once)
+	defer anim.cleanup_AnimationClip(&once)
 	anim.animation_clip_apply_settings(&once, {wrap = .Once, cycle_offset = 0.25})
 	testing.expectf(t, abs(anim.animation_clip_sample_time(&once, 0)) < 0.001,
 		"Once ignores the offset, got %v", anim.animation_clip_sample_time(&once, 0))

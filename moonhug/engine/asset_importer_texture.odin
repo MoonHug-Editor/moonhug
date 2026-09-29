@@ -61,7 +61,14 @@ default_texture_settings :: proc() -> TextureSettings {
     }
 }
 
+cleanup_TextureSettings :: proc(s: ^TextureSettings) {
+    for &r in s.sprites do delete(r.name)
+    delete(s.sprites)
+    s^ = {}
+}
+
 reset_TextureSettings :: proc(p: ^TextureSettings) {
+    cleanup_TextureSettings(p)
     p^ = default_texture_settings()
 }
 

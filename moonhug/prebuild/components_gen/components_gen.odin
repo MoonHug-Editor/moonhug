@@ -330,7 +330,7 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		fmt.sbprintf(b, "\t\t\tpool_create = proc() -> rawptr {{ p := new(%s); %spool_init(p); return p }},\n", pool_t, qual)
 		fmt.sbprintf(b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
 		fmt.sbprintf(b, "\t\t\tmake_entry = proc(pool: rawptr) -> %sPool_Entry {{ return %spool_make_entry(cast(^%s)pool) }},\n", qual, qual, pool_t)
-		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(data)\n\t\t\t}},\n", qual, pool_t, qual)
+		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(key: %sTypeKey, comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(.%s, data)\n\t\t\t}},\n", qual, qual, pool_t, qual, e.type_name)
 		if e.has_on_destroy {
 			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
 		}
@@ -473,9 +473,6 @@ generate :: proc(w: ^db.World) -> bool {
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tpool_init(&w.%s)\n", e.plural)
 	}
-	strings.write_string(&b, "\t__type_resets_init()\n")
-	strings.write_string(&b, "\t__type_cleanups_init()\n")
-	strings.write_string(&b, "\t__type_on_validates_init()\n")
 	for e in data.poolable_entries {
 		fmt.sbprintf(&b, "\tw.pool_table[TypeKey.%s] = pool_make_entry(&w.%s)\n", e.type_name, e.plural)
 	}
@@ -563,6 +560,8 @@ generate :: proc(w: ^db.World) -> bool {
 		strings.write_string(&b, "}\n\n")
 	}
 
+	strings.write_string(&b, "// Every component still alive leaves the world (on_destroy_T, then\n")
+	strings.write_string(&b, "// cleanup_T) with its pool, then the transforms' own heap goes.\n")
 	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
 	strings.write_string(&b, "\t_world_destroy_ext(w)\n")
 	strings.write_string(&b, "\tit := pool_iterator(&w.transforms)\n")
@@ -838,6 +837,12 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tdelete(sf.nested_scenes)\n")
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
 	strings.write_string(&b, "\t_scene_file_destroy_ext(sf)\n")
+	strings.write_string(&b, "}\n\n")
+	// The lifecycle name (docs/Components.md), so type_cleanup covers a
+	// SceneFile like any other owning type.
+	strings.write_string(&b, "cleanup_SceneFile :: proc(sf: ^SceneFile) {\n")
+	strings.write_string(&b, "\tscene_file_destroy(sf)\n")
+	strings.write_string(&b, "\tsf^ = {}\n")
 	strings.write_string(&b, "}\n")
 
 	strings.write_string(&b, "\n")

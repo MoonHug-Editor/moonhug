@@ -17,9 +17,19 @@ A :: struct {
     c: string,
 }
 
+cleanup_A :: proc(a: ^A) {
+    delete(a.c)
+    a^ = {}
+}
+
 @(typ_guid={guid = "f50ac13b-63cc-4374-a567-0e02b2c3d479"})
 B :: struct {
     b_string: string,
+}
+
+cleanup_B :: proc(b: ^B) {
+    delete(b.b_string)
+    b^ = {}
 }
 
 @(typ_guid={guid = "f51ac13b-63cc-4374-a567-0e02b2c3d479"})

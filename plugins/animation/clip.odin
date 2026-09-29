@@ -115,6 +115,7 @@ animation_key_bounds :: proc(times: []f32, selected: []bool, k: int, length: f32
 }
 
 reset_AnimationClip :: proc(c: ^AnimationClip) {
+	cleanup_AnimationClip(c)
 	c.length = 1
 	c.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 }
@@ -140,7 +141,7 @@ animation_clip_cache_init :: proc() {
 
 animation_clip_cache_shutdown :: proc() {
 	for _, &clip in animation_clip_cache {
-		_animation_clip_destroy(&clip)
+		cleanup_AnimationClip(&clip)
 	}
 	delete(animation_clip_cache)
 	animation_clip_cache = nil
@@ -202,7 +203,7 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 
 	clip: AnimationClip
 	if json.unmarshal(data, &clip, .JSON, context.allocator) != nil {
-		_animation_clip_destroy(&clip)
+		cleanup_AnimationClip(&clip)
 		return nil, false
 	}
 	animation_clip_cache[guid] = clip
@@ -211,7 +212,7 @@ animation_clip_load :: proc(guid: engine.Asset_GUID) -> (^AnimationClip, bool) {
 
 animation_clip_unload :: proc(guid: engine.Asset_GUID) {
 	if clip, ok := &animation_clip_cache[guid]; ok {
-		_animation_clip_destroy(clip)
+		cleanup_AnimationClip(clip)
 		delete_key(&animation_clip_cache, guid)
 	}
 }
@@ -233,7 +234,7 @@ animation_clip_preview :: proc(guid: engine.Asset_GUID, clip: AnimationClip) {
 	wrap, rate, offset := clip.wrap, clip.frame_rate, clip.cycle_offset
 	if old, ok := &animation_clip_cache[guid]; ok {
 		wrap, rate, offset = old.wrap, old.frame_rate, old.cycle_offset
-		_animation_clip_destroy(old)
+		cleanup_AnimationClip(old)
 	}
 	cp := AnimationClip{length = clip.length, wrap = wrap, frame_rate = rate, cycle_offset = offset}
 	cp.channels = make([dynamic]Animation_Channel, 0, len(clip.channels))
@@ -262,12 +263,6 @@ animation_clip_path_changed :: proc(path: string) {
 	}
 }
 
-// Public for the importer, which parses a clip, bakes settings into it and
-// frees it again.
-animation_clip_destroy :: proc(clip: ^AnimationClip) {
-	_animation_clip_destroy(clip)
-}
-
 // A reimported clip drops its cached copy, so the next load picks up the new
 // artifact — settings changed in the inspector apply without a restart.
 animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
@@ -281,7 +276,9 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 	for k in owned do animation_clip_unload(k)
 }
 
-_animation_clip_destroy :: proc(clip: ^AnimationClip) {
+// Frees what a clip owns and leaves it zeroed (docs/Components.md,
+// "Lifecycle procs").
+cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {
 		delete(ch.target)
 		delete(ch.component)

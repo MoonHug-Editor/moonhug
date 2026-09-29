@@ -11,6 +11,13 @@ Parallel :: struct {
     children: [dynamic]Node_Handle `json:"-" inspect:"-"`,
 }
 
+// The runtime frees and nils children before this runs (node_destroy), so
+// this only matters for a value outside a pool.
+cleanup_Parallel :: proc(p: ^Parallel) {
+    delete(p.children)
+    p^ = {}
+}
+
 tick_Parallel :: proc(self: ^Parallel, delta_time: f32, ctx: TweenContext) -> TweenStatus {
     if tween_has_delay(&self.base, delta_time) do return .Running
 
@@ -30,6 +37,11 @@ tick_Parallel :: proc(self: ^Parallel, delta_time: f32, ctx: TweenContext) -> Tw
 Sequence :: struct {
     using base : Tween `inline:""`,
     children: [dynamic]Node_Handle `json:"-" inspect:"-"`,
+}
+
+cleanup_Sequence :: proc(s: ^Sequence) {
+    delete(s.children)
+    s^ = {}
 }
 
 tick_Sequence :: proc(self: ^Sequence, delta_time: f32, ctx: TweenContext) -> TweenStatus {

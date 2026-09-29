@@ -68,7 +68,19 @@ default_mesh_settings :: proc() -> MeshSettings {
     return MeshSettings{scale = 1}
 }
 
+cleanup_MeshSettings :: proc(s: ^MeshSettings) {
+    for &p in s.parts do delete(p.name)
+    delete(s.parts)
+    for &c in s.clips {
+        delete(c.name)
+        if c.settings != nil do json.destroy_value(c.settings)
+    }
+    delete(s.clips)
+    s^ = {}
+}
+
 reset_MeshSettings :: proc(p: ^MeshSettings) {
+    cleanup_MeshSettings(p)
     p^ = default_mesh_settings()
 }
 

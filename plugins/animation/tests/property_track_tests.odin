@@ -200,7 +200,7 @@ test_property_channel_direct_apply :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	clip := _prop_clip(_camera_guid_str(), "fov", {42, 0, 0, 0})
-	defer anim._animation_clip_destroy(&clip)
+	defer anim.cleanup_AnimationClip(&clip)
 	anim.animation_clip_apply(&clip, pt.owner, 0)
 	testing.expect(t, abs(pt.camera.fov - 42) < 0.001, "the legacy direct apply path honors property channels")
 }
@@ -213,14 +213,14 @@ test_property_channel_json_round_trip :: proc(t: ^testing.T) {
 	defer _prop_teardown(&pt)
 
 	clip := _prop_clip(_camera_guid_str(), "clear_color", {0, 1, 0, 1})
-	defer anim._animation_clip_destroy(&clip)
+	defer anim.cleanup_AnimationClip(&clip)
 
 	data, merr := json.marshal(clip, {}, context.temp_allocator)
 	testing.expect(t, merr == nil, "clip marshals")
 
 	loaded: anim.AnimationClip
 	uerr := json.unmarshal(data, &loaded, .JSON, context.allocator)
-	defer anim._animation_clip_destroy(&loaded)
+	defer anim.cleanup_AnimationClip(&loaded)
 	testing.expect(t, uerr == nil, "clip unmarshals")
 	testing.expect(t, len(loaded.channels) == 1, "channel survives")
 	testing.expect(t, loaded.channels[0].component == clip.channels[0].component, "component guid round-trips")

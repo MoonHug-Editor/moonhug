@@ -1,12 +1,14 @@
 package tests
 
-// Every component that OWNS heap memory must have a cleanup proc registered.
+// Every @(typ_guid) type that OWNS heap memory must have a cleanup proc
+// registered: components, assets and settings alike.
 //
 // `engine.type_cleanup` dispatches through core's lifecycle table, which the
-// generator fills from a proc named `cleanup_<TypeName>`. A component holding a
+// generator fills from a proc named `cleanup_<TypeName>`. A type holding a
 // [dynamic] or a string without one leaks that memory every time its value is
 // replaced underneath it — undo calls type_cleanup before unmarshalling a
-// restored value, so a single edit-then-undo cycle orphans the old allocation.
+// restored value, reset_T calls it before the defaults, and the inspector's
+// documents call it when a document is rebuilt or closed.
 //
 // The leak is silent: nothing fails, the allocation is simply never returned.
 // It surfaces only as a "+++ leak" line in the test runner's memory report, on
@@ -51,19 +53,8 @@ _type_owns_heap :: proc(ti: ^runtime.Type_Info, depth := 0) -> bool {
 	return false
 }
 
-// A component embeds CompData as its first field. Assets and settings structs
-// are registered types too, but they are not components and are freed by their
-// own subsystems.
-@(private)
-_embeds_comp_data :: proc(ti: ^runtime.Type_Info) -> bool {
-	base := runtime.type_info_base(ti)
-	s, is_struct := base.variant.(runtime.Type_Info_Struct)
-	if !is_struct || s.field_count == 0 do return false
-	return s.offsets[0] == 0 && s.types[0].id == typeid_of(engine.CompData)
-}
-
 @(test)
-test_every_owning_component_has_cleanup :: proc(t: ^testing.T) {
+test_every_owning_type_has_cleanup :: proc(t: ^testing.T) {
 	tc_mem := new(TestCtx)
 	defer free(tc_mem)
 	setup(tc_mem, "")
@@ -80,12 +71,8 @@ test_every_owning_component_has_cleanup :: proc(t: ^testing.T) {
 		ti := type_info_of(tid)
 		if ti == nil do continue
 		if !reflect.is_struct(runtime.type_info_base(ti)) do continue
-		// COMPONENTS only. Assets, settings structs and serialization fixtures
-		// are also registered here, but they are freed through their own
-		// lifetimes (asset unload, settings reload) rather than type_cleanup.
-		// A component is what embeds CompData at offset 0 — the same shape
-		// comp_zero requires.
-		if !_embeds_comp_data(ti) do continue
+		// A transform is not a value: transform_destroy frees it.
+		if key == .Transform do continue
 		if !_type_owns_heap(ti) do continue
 
 		if !engine.type_has_cleanup(key) {
@@ -96,7 +83,7 @@ test_every_owning_component_has_cleanup :: proc(t: ^testing.T) {
 	if len(missing) > 0 {
 		testing.expectf(
 			t, false,
-			"components own heap memory but have no cleanup_<Type> proc, so undo leaks their allocations on every restore: %v",
+			"types own heap memory but have no cleanup_<Type> proc, so undo, reset and document release leak their allocations: %v",
 			missing[:],
 		)
 	}

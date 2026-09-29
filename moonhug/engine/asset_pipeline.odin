@@ -36,8 +36,9 @@ ImportMeta :: struct {
 }
 
 // Overlays a parsed settings object onto a typed instance: present keys
-// overwrite, absent keys keep the instance's defaults (this is what lets old
-// metas pick up defaults for fields added later).
+// overwrite, absent keys keep what the instance holds. The instance is a
+// zeroed one or a hand-seeded scalar struct, never a reset_T value: a reset
+// may allocate and the unmarshal allocates over it.
 _settings_overlay :: proc(settings: any, v: json.Value) -> bool {
     bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
     if merr != nil do return false
@@ -47,9 +48,9 @@ _settings_overlay :: proc(settings: any, v: json.Value) -> bool {
     return json.unmarshal_any(bytes, any{&pp, ptr_tid}) == nil
 }
 
-// A typed settings instance from a guid-tagged settings JSON object:
-// defaults first (the type's registered factory), then overlay. Empty `any`
-// when the object carries no known __type_guid.
+// A typed settings instance from a guid-tagged settings JSON object: zeroed,
+// then the object on top. Empty `any` when the object carries no known
+// __type_guid.
 _settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> any {
     obj, is_obj := v.(json.Object)
     if !is_obj do return {}
@@ -60,9 +61,9 @@ _settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> a
     // A type no installed plugin declares is dangling data, not a bug.
     if _, known := get_typeid_by_guid_ok(guid); !known do return {}
     context.allocator = allocator
-    settings := create_instance_by_guid(guid)
-    if settings.data == nil do return {}
+    settings := create_zero_instance_by_guid(guid)
     _settings_overlay(settings, v)
+    type_on_validate_by_typeid(settings.id, settings.data)
     return settings
 }
 

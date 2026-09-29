@@ -9,6 +9,12 @@ PlayerSettings :: struct {
 }
 
 reset_PlayerSettings :: proc(p: ^PlayerSettings) {
+    cleanup_PlayerSettings(p)
     p.speed = 30
+}
+
+cleanup_PlayerSettings :: proc(p: ^PlayerSettings) {
+    delete(p.name)
+    p^ = {}
 }
 

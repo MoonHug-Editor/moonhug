@@ -161,11 +161,10 @@ get_type_key_by_typeid :: proc(T: typeid) -> (TypeKey, bool) {
     return key, ok
 }
 
-// A new instance on context.allocator: zeroed, then the type's reset_T
-// (type_lifecycle.odin) for its defaults.
-create_instance_by_type_key :: proc(key: TypeKey) -> any {
-    factory := type_key_to_factory_arr[key]
-    if factory != nil do return factory()
+// A zeroed instance on context.allocator, for hydration: JSON goes on top
+// and absent fields stay zero. Never reset_T first, it may allocate and the
+// unmarshal would allocate over it.
+create_zero_instance_by_type_key :: proc(key: TypeKey) -> any {
     tid := type_key_to_typeid_arr[key]
     ti := type_info_of(tid)
     ptr, err := mem.alloc(ti.size, ti.align)
@@ -173,16 +172,35 @@ create_instance_by_type_key :: proc(key: TypeKey) -> any {
         panic(fmt.tprintf("Failed to allocate memory for type '%v'", tid))
     }
     mem.zero(ptr, ti.size)
-    type_reset(key, ptr)
     return any{ ptr, tid }
 }
 
+create_zero_instance_by_guid :: proc(guid: uuid.Identifier) -> any {
+    return create_zero_instance_by_type_key(_type_key_of_guid(guid))
+}
+
+// A new instance on context.allocator: zeroed, then the type's reset_T
+// (type_lifecycle.odin) for its defaults. For a value that is new, not one
+// loaded from data (create_zero_instance_*).
+create_instance_by_type_key :: proc(key: TypeKey) -> any {
+    factory := type_key_to_factory_arr[key]
+    if factory != nil do return factory()
+    inst := create_zero_instance_by_type_key(key)
+    type_reset(key, inst.data)
+    return inst
+}
+
 create_instance_by_guid :: proc(guid: uuid.Identifier) -> any {
+    return create_instance_by_type_key(_type_key_of_guid(guid))
+}
+
+@(private = "file")
+_type_key_of_guid :: proc(guid: uuid.Identifier) -> TypeKey {
     tid := get_typeid_by_guid(guid)
     key, ok := typeid_to_type_key_map[tid]
     // A missing key would read as TypeKey(0), another type.
-    fmt.assertf(ok, "create_instance_by_guid: %v has no TypeKey (register_type_key)", tid)
-    return create_instance_by_type_key(key)
+    fmt.assertf(ok, "%v has no TypeKey (register_type_key)", tid)
+    return key
 }
 
 create_instance :: proc($T: typeid) -> T {

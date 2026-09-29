@@ -92,7 +92,8 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
         log.error(fmt.tprintf("Unknown __typ_guid %s: no installed plugin declares this asset type", guid_str))
         return any{}, false
     }
-    instance := engine.create_instance_by_guid(guid)
+    // Zeroed, then the file: a field the file lacks is zero.
+    instance := engine.create_zero_instance_by_guid(guid)
     pointer_typeid, _ := engine.get_pointer_typeid_by_typeid(instance.id)
     temp_ptr := instance.data
     target := any{ &temp_ptr, pointer_typeid }
@@ -102,6 +103,7 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
         return any{}, false
     }
 
+    engine.type_on_validate_by_typeid(instance.id, instance.data)
     result := instance
     if cb, ok := mapAfterDeserialize[result.id]; ok {
         cb(result.data, result.id)

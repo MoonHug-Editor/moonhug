@@ -29,7 +29,7 @@ _make_test_clip :: proc(alloc := context.allocator) -> anim.AnimationClip {
 	append(&clip.channels, pos)
 
 	arm := anim.Animation_Channel{path = .Scale, step = true}
-	// Cloned, not a literal: _animation_clip_destroy deletes channel targets.
+	// Cloned, not a literal: cleanup_AnimationClip deletes channel targets.
 	arm.target = strings.clone("Arm", alloc)
 	arm.times = make([dynamic]f32, alloc)
 	arm.values = make([dynamic][4]f32, alloc)

@@ -57,15 +57,16 @@ _play_extracted_clip :: proc(root: engine.Transform_Handle, clip: engine.Asset_G
 // One glTF animation to one clip artifact, the same bytes _import_animation
 // writes for a standalone .anim, so the runtime loader reads both alike.
 // `settings` is the clip's entry in the model's meta (engine.Mesh_Clip), a
-// JSON value because the type is this package's. Overlaid on defaults, so an
-// entry from before a field existed still picks up that field's default.
+// JSON value because the type is this package's. Zeroed, the entry on top,
+// then on_validate: a field the entry lacks is zero, and zero means default.
 bake_gltf_clip :: proc(data: ^cgltf.data, an: ^cgltf.animation, settings: json.Value, out_path: string) -> bool {
 	clip, ok := anim.animation_clip_from_gltf(data, an)
 	if !ok do return false
-	s := anim.Animation_Clip_Settings{frame_rate = anim.ANIMATION_FRAME_RATE_DEFAULT}
+	s: anim.Animation_Clip_Settings
 	if settings != nil {
 		engine._settings_overlay(any{&s, typeid_of(anim.Animation_Clip_Settings)}, settings)
 	}
+	anim.on_validate_Animation_Clip_Settings(&s)
 	anim.animation_clip_apply_settings(&clip, s)
 	return serialization.write_asset_to_path(
 		out_path, engine.get_guid_by_type_key(engine.TypeKey.AnimationClip), clip)
@@ -84,7 +85,7 @@ _import_animation :: proc(source_path, artifact_path: string, settings: rawptr) 
 		log.errorf("[Pipeline] Failed to parse clip: %s", source_path)
 		return false
 	}
-	defer anim.animation_clip_destroy(&clip)
+	defer anim.cleanup_AnimationClip(&clip)
 
 	// Settings are absent for a clip whose meta predates them: the defaults
 	// then apply, which is the clip as authored.

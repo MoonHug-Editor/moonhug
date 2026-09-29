@@ -11,7 +11,9 @@ package core
 // - cleanup_T:     frees what a value owns and leaves it zeroed. Runs when a
 //                  component is destroyed, when a union variant goes, when a
 //                  tween node is destroyed.
-// - on_validate_T: after an inspector edit, to keep the value consistent.
+// - on_validate_T: after an inspector edit and after a value is loaded from
+//                  data, to keep the value consistent (a zero that means
+//                  "default" becomes the default here).
 //
 // on_destroy_T stays a component's (engine/components.odin): it is about
 // leaving a world, not about the value.
@@ -54,4 +56,8 @@ type_cleanup_by_typeid :: proc(tid: typeid, ptr: rawptr) {
 
 type_on_validate :: proc(key: TypeKey, ptr: rawptr) {
 	if fn := type_on_validate_procs[key]; fn != nil do fn(ptr)
+}
+
+type_on_validate_by_typeid :: proc(tid: typeid, ptr: rawptr) {
+	if key, ok := get_type_key_by_typeid(tid); ok do type_on_validate(key, ptr)
 }

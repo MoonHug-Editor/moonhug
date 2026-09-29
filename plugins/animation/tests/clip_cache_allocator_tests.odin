@@ -41,7 +41,7 @@ test_clip_cache_does_not_borrow_caller_allocator :: proc(t: ^testing.T) {
 	defer anim.animation_clip_cache_shutdown()
 
 	doc := _const_clip(.Position, {7, 0, 0, 0}, length = 2)
-	defer anim._animation_clip_destroy(&doc)
+	defer anim.cleanup_AnimationClip(&doc)
 
 	guid := _clip_guid(77)
 	{

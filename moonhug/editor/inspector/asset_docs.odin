@@ -137,10 +137,9 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 }
 
 // Undo hook: replace the document's payload with the given JSON (a full
-// capture_json of the document struct). A fresh zeroed instance is
-// unmarshalled so dynamic arrays never merge with stale contents. The old
-// instance is intentionally leaked — there is no generic deep-destroy for
-// asset types (parity with the pre-registry reload-on-click behavior).
+// capture_json of the document struct). Zero → JSON → on_validate into a
+// fresh instance, so dynamic arrays never merge with stale contents. The old
+// instance goes through its cleanup_T.
 asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
     if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
     context.allocator = runtime.default_allocator()
@@ -154,7 +153,7 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
 
     tid := doc.data.id
     type_guid := engine.get_guid_by_typeid(tid)
-    fresh := engine.create_instance_by_guid(type_guid)
+    fresh := engine.create_zero_instance_by_guid(type_guid)
     ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
     if !ptr_ok {
         log.error(fmt.tprintf("asset_docs: no pointer typeid for %v", tid))
@@ -166,7 +165,9 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
         return false
     }
     ser.Run_After_Deserialize(fresh.data, tid)
+    engine.type_on_validate_by_typeid(tid, fresh.data)
 
+    doc_data_release(doc.data)
     doc.data = fresh
     doc.dirty = true
     // The inspector may be showing this doc — repoint its view.
@@ -205,15 +206,22 @@ _asset_doc_gone :: proc(guid: engine.Asset_GUID, path: string) {
     }
 }
 
-// Shallow: a document's nested allocations live for the session (there is no
-// generic deep-destroy for asset and settings types).
+// A document's typed instance: what it owns through its cleanup_T, then
+// the instance. Documents live on the default allocator.
+doc_data_release :: proc(data: any) {
+    if data.data == nil do return
+    context.allocator = runtime.default_allocator()
+    engine.type_cleanup_by_typeid(data.id, data.data)
+    free(data.data)
+}
+
 @(private="file")
 _asset_doc_free :: proc(doc: ^Asset_Doc) {
     context.allocator = runtime.default_allocator()
     delete(doc.path)
     delete(doc.baseline)
     delete(doc.applied)
-    free(doc.data.data)
+    doc_data_release(doc.data)
     free(doc)
 }
 

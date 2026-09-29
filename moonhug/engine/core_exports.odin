@@ -42,6 +42,8 @@ get_guid_by_typeid           :: core.get_guid_by_typeid
 get_typeid_by_guid           :: core.get_typeid_by_guid
 get_typeid_by_guid_ok        :: core.get_typeid_by_guid_ok
 get_pointer_typeid_by_typeid :: core.get_pointer_typeid_by_typeid
+create_zero_instance_by_type_key   :: core.create_zero_instance_by_type_key
+create_zero_instance_by_guid       :: core.create_zero_instance_by_guid
 create_instance_by_type_key  :: core.create_instance_by_type_key
 create_instance_by_guid      :: core.create_instance_by_guid
 create_instance              :: core.create_instance
@@ -54,6 +56,7 @@ type_reset                   :: core.type_reset
 type_cleanup                 :: core.type_cleanup
 type_cleanup_by_typeid       :: core.type_cleanup_by_typeid
 type_on_validate             :: core.type_on_validate
+type_on_validate_by_typeid   :: core.type_on_validate_by_typeid
 generate_type_info           :: core.generate_type_info
 typeid_to_u16                :: core.typeid_to_u16
 

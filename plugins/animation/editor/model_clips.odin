@@ -72,10 +72,11 @@ _clip_edit_load :: proc(path: string, clip: ^engine.Mesh_Clip) {
 	delete(_clip_edit.path)
 	_clip_edit.path = strings.clone(path)
 	_clip_edit.id = clip.id
-	_clip_edit.s = anim.Animation_Clip_Settings{frame_rate = anim.ANIMATION_FRAME_RATE_DEFAULT}
+	_clip_edit.s = {}
 	if clip.settings != nil {
 		engine._settings_overlay(any{&_clip_edit.s, typeid_of(anim.Animation_Clip_Settings)}, clip.settings)
 	}
+	anim.on_validate_Animation_Clip_Settings(&_clip_edit.s)
 	_clip_edit.valid = true
 }
 

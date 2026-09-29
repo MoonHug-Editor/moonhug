@@ -32,7 +32,7 @@ Component_Desc :: struct {
 	pool_create:  proc() -> rawptr,
 	pool_destroy: proc(pool: rawptr),
 	make_entry:   proc(pool: rawptr) -> Pool_Entry,
-	each_alive:   proc(pool: rawptr, fn: proc(comp: rawptr)),
+	each_alive:   proc(pool: rawptr, fn: proc(key: TypeKey, comp: rawptr)),
 
 	// Leaving the world, nil = none. reset_T, cleanup_T and on_validate_T are
 	// not here: the type tables (core/type_lifecycle.odin) hold them for every
@@ -133,9 +133,7 @@ _world_destroy_ext :: proc(w: ^World) {
 		if desc.tid == nil do continue
 		pool := w.ext_pools[key]
 		if pool == nil do continue
-		if desc.on_destroy != nil && desc.each_alive != nil {
-			desc.each_alive(pool, desc.on_destroy)
-		}
+		if desc.each_alive != nil do desc.each_alive(pool, component_on_destroy)
 		if desc.pool_destroy != nil do desc.pool_destroy(pool)
 		w.ext_pools[key] = nil
 		w.pool_table[key] = {}
@@ -160,12 +158,15 @@ _ext_desc_for_value :: proc(v: json.Value) -> (Component_Desc, bool) {
 }
 
 // json.Value -> typed component memory (ptr must point at a T of desc.tid).
+// Zero → JSON → on_validate_T: absent keys stay what the memory holds, and
+// the type's on_validate makes the result consistent (docs/Components.md).
 _ext_value_into :: proc(desc: Component_Desc, v: json.Value, ptr: rawptr) -> bool {
 	bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
 	if merr != nil do return false
 	pp := ptr
-	uerr := json.unmarshal_any(bytes, any{&pp, desc.ptr_tid})
-	return uerr == nil
+	if json.unmarshal_any(bytes, any{&pp, desc.ptr_tid}) != nil do return false
+	type_on_validate(desc.type_key, ptr)
+	return true
 }
 
 // typed component memory -> fresh json.Value.

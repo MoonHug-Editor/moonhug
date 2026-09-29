@@ -44,6 +44,11 @@ reset_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
 	p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
 }
 
+// A zero frame rate (an entry from before the field, or typed) is the default.
+on_validate_Animation_Clip_Settings :: proc(p: ^Animation_Clip_Settings) {
+	if p.frame_rate <= 0 do p.frame_rate = ANIMATION_FRAME_RATE_DEFAULT
+}
+
 // The sample time for a clip node: the driver's time, shifted by the clip's
 // cycle offset and wrapped back into the clip.
 //

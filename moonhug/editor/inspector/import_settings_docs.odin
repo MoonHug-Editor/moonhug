@@ -98,6 +98,7 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 	settings, ok := engine.asset_pipeline_get_settings(doc.path, runtime.default_allocator())
 	if !ok do return
 	before := _settings_json(doc.data, context.allocator)
+	doc_data_release(doc.data)
 	doc.data = settings
 	after := _settings_json(doc.data, context.allocator)
 	undo.push_value(undo.get(), undo.make_asset_target(doc.guid, doc.data.id, .Import_Settings), before, after, "Revert Import Settings")
@@ -113,6 +114,7 @@ _import_settings_reimported :: proc(guid: engine.Asset_GUID) {
 	if !found || doc.dirty do return
 	settings, ok := engine.asset_pipeline_get_settings(doc.path)
 	if !ok do return
+	doc_data_release(doc.data)
 	doc.data = settings
 	delete(doc.applied)
 	doc.applied = _settings_json(doc.data)
@@ -161,7 +163,7 @@ _import_settings_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte)
 		if doc == nil do return false
 	}
 	tid := doc.data.id
-	fresh := engine.create_instance_by_guid(engine.get_guid_by_typeid(tid))
+	fresh := engine.create_zero_instance_by_guid(engine.get_guid_by_typeid(tid))
 	ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
 	if fresh.data == nil || !ptr_ok {
 		log.error(fmt.tprintf("import settings: cannot rebuild %v", tid))
@@ -172,6 +174,8 @@ _import_settings_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte)
 		log.error(fmt.tprintf("import settings: unmarshal failed for %s: %v", doc.path, err))
 		return false
 	}
+	engine.type_on_validate_by_typeid(tid, fresh.data)
+	doc_data_release(doc.data)
 	doc.data = fresh
 	_import_settings_rebaseline(doc)
 	return true
