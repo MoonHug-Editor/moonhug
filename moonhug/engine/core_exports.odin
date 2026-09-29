@@ -25,7 +25,6 @@ application_is_focused       :: core.application_is_focused
 // Type keys and the type registry.
 TypeKey                      :: core.TypeKey
 INVALID_TYPE_KEY             :: core.INVALID_TYPE_KEY
-Factory                      :: core.Factory
 TypeMeta                     :: core.TypeMeta
 FieldInfo                    :: core.FieldInfo
 register_type                :: core.register_type
@@ -33,7 +32,6 @@ register_pointer_type        :: core.register_pointer_type
 register_type_key            :: core.register_type_key
 get_typeid_by_type_key       :: core.get_typeid_by_type_key
 get_guid_by_type_key         :: core.get_guid_by_type_key
-get_factory_by_type_key      :: core.get_factory_by_type_key
 get_typeMeta_by_type_key     :: core.get_typeMeta_by_type_key
 get_pointerType_by_type_key  :: core.get_pointerType_by_type_key
 get_type_key_by_typeid       :: core.get_type_key_by_typeid
@@ -46,7 +44,6 @@ create_zero_instance_by_type_key   :: core.create_zero_instance_by_type_key
 create_zero_instance_by_guid       :: core.create_zero_instance_by_guid
 create_instance_by_type_key  :: core.create_instance_by_type_key
 create_instance_by_guid      :: core.create_instance_by_guid
-create_instance              :: core.create_instance
 type_register_reset          :: core.type_register_reset
 type_register_cleanup        :: core.type_register_cleanup
 type_register_on_validate    :: core.type_register_on_validate

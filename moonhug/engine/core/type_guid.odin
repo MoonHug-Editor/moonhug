@@ -6,26 +6,20 @@ import "base:runtime"
 import "core:reflect"
 import "core:encoding/uuid"
 
-Factory :: proc() -> any
 Guid_Type_Map :: map[uuid.Identifier]typeid
 Type_Guid_Map :: map[typeid]uuid.Identifier
 Type_PointerType_Map :: map[typeid]typeid
-Guid_Factory_Map :: map[uuid.Identifier]Factory
-Typeid_Factory_Map :: map[typeid]Factory
 Guid_TypeMeta_Map :: map[uuid.Identifier]TypeMeta
 Typeid_TypeMeta_Map :: map[typeid]TypeMeta
 
 guid_to_type: Guid_Type_Map
 typeid_to_guid: Type_Guid_Map
-guid_to_factory: Guid_Factory_Map
-typeid_to_factory: Typeid_Factory_Map
 guid_to_typeMeta : Guid_TypeMeta_Map
 typeid_to_typeMeta : Typeid_TypeMeta_Map
 typeid_to_pointerType : Type_PointerType_Map
 
 type_key_to_typeid_arr:      [TypeKey]typeid
 type_key_to_guid_arr:        [TypeKey]uuid.Identifier
-type_key_to_factory_arr:     [TypeKey]Factory
 type_key_to_typeMeta_arr:    [TypeKey]TypeMeta
 type_key_to_pointerType_arr: [TypeKey]typeid
 typeid_to_type_key_map: map[typeid]TypeKey
@@ -36,8 +30,6 @@ _type_guid_maps_init :: proc "contextless" () {
 	alloc := runtime.default_allocator()
 	guid_to_type           = make(Guid_Type_Map,        alloc)
 	typeid_to_guid         = make(Type_Guid_Map,        alloc)
-	guid_to_factory        = make(Guid_Factory_Map,     alloc)
-	typeid_to_factory      = make(Typeid_Factory_Map,   alloc)
 	guid_to_typeMeta       = make(Guid_TypeMeta_Map,    alloc)
 	typeid_to_typeMeta     = make(Typeid_TypeMeta_Map,  alloc)
 	typeid_to_pointerType  = make(Type_PointerType_Map, alloc)
@@ -91,7 +83,7 @@ generate_type_info :: proc($T: typeid) -> TypeMeta {
     return info;
 }
 
-register_type :: proc($T: typeid, guid: uuid.Identifier, factory: Factory = nil) {
+register_type :: proc($T: typeid, guid: uuid.Identifier) {
     if T in typeid_to_guid {
         panic("Type '?' is already registered.")
     }
@@ -101,8 +93,6 @@ register_type :: proc($T: typeid, guid: uuid.Identifier, factory: Factory = nil)
 
     guid_to_type[guid] = T
     typeid_to_guid[T] = guid
-    guid_to_factory[guid] = factory
-    typeid_to_factory[T] = factory
     typeMeta := generate_type_info(T)
     typeid_to_typeMeta[T] = typeMeta
     guid_to_typeMeta[guid] = typeMeta
@@ -124,7 +114,6 @@ register_pointer_type :: proc($T: typeid) {
 register_type_key :: proc($T: typeid, key: TypeKey) {
     type_key_to_typeid_arr[key]      = T
     type_key_to_guid_arr[key]        = typeid_to_guid[T]
-    type_key_to_factory_arr[key]     = typeid_to_factory[T]
     type_key_to_typeMeta_arr[key]    = typeid_to_typeMeta[T]
     type_key_to_pointerType_arr[key] = typeid_to_pointerType[T]
     typeid_to_type_key_map[T]        = key
@@ -142,10 +131,6 @@ get_typeid_by_type_key :: proc(key: TypeKey) -> typeid {
 
 get_guid_by_type_key :: proc(key: TypeKey) -> uuid.Identifier {
     return type_key_to_guid_arr[key]
-}
-
-get_factory_by_type_key :: proc(key: TypeKey) -> Factory {
-    return type_key_to_factory_arr[key]
 }
 
 get_typeMeta_by_type_key :: proc(key: TypeKey) -> TypeMeta {
@@ -183,8 +168,6 @@ create_zero_instance_by_guid :: proc(guid: uuid.Identifier) -> any {
 // (type_lifecycle.odin) for its defaults. For a value that is new, not one
 // loaded from data (create_zero_instance_*).
 create_instance_by_type_key :: proc(key: TypeKey) -> any {
-    factory := type_key_to_factory_arr[key]
-    if factory != nil do return factory()
     inst := create_zero_instance_by_type_key(key)
     type_reset(key, inst.data)
     return inst
@@ -201,27 +184,6 @@ _type_key_of_guid :: proc(guid: uuid.Identifier) -> TypeKey {
     // A missing key would read as TypeKey(0), another type.
     fmt.assertf(ok, "%v has no TypeKey (register_type_key)", tid)
     return key
-}
-
-create_instance :: proc($T: typeid) -> T {
-    if T not_in typeid_to_guid {
-        panic(fmt.tprintf("Type '%v' is not registered with the type system"))
-    }
-
-    factory := typeid_to_factory[T]
-    if factory == nil {
-        panic("No factory found for type")
-    }
-
-    v := factory()
-    if v == nil {
-        panic(fmt.tprintf("Factory for type '%v' returned nil"))
-    }
-
-    if result, ok := v.(T); ok {
-        return result
-    }
-    panic(fmt.tprintf("Factory for type '%v' returned incorrect type"))
 }
 
 get_guid_by_typeid :: proc(T: typeid) -> uuid.Identifier {
