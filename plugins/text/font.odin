@@ -33,6 +33,12 @@ reset_FontSettings :: proc(s: ^FontSettings) {
 	s.latin1 = true
 }
 
+// Zero sizes are no value (a meta predating the field): the defaults.
+on_validate_FontSettings :: proc(s: ^FontSettings) {
+	if s.sampling_size == 0 do s.sampling_size = 64
+	if s.atlas_size == 0 do s.atlas_size = 1024
+}
+
 // --- Artifact ---------------------------------------------------------------------------------
 
 FONT_MAGIC :: "MHFT"

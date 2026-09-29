@@ -497,6 +497,7 @@ _node_editor :: proc(owner: engine.Handle, root_idx: int, path: []i32, v: json.V
 		if merr != nil do return
 		pp := inst
 		if json.unmarshal_any(bytes, any{&pp, ptr_tid}) != nil do return
+		engine.type_on_validate_by_typeid(tid, inst)
 		instance = inst
 		pb, perr := json.marshal(any{instance, tid}, {spec = .JSON}, context.temp_allocator)
 		if perr != nil do return

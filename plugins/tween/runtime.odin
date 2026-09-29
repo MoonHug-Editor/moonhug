@@ -350,6 +350,7 @@ _instantiate :: proc(v: json.Value) -> (Node_Handle, bool) {
 			_ = json.unmarshal_any(bytes, any{&pp, ptr_tid})
 		}
 	}
+	core.type_on_validate(desc.key, ptr)
 
 	// Two lists in play: the AUTHORED children (json) being instantiated, and
 	// the node's own runtime handle list they land in.

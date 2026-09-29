@@ -127,6 +127,8 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
         return uerr
     }
 
+    // Zero → JSON → on_validate, the same as every other load.
+    engine.type_on_validate_by_typeid(tid, variant_ptr)
     mem.copy(v.data, variant_ptr, ti.size)
     reflect.set_union_variant_typeid(v, tid)
     mem.free(variant_ptr, context.allocator)

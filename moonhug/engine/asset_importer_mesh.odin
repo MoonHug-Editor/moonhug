@@ -42,8 +42,8 @@ Mesh_Clip :: struct {
     guid: Asset_GUID,
     // The clip's import settings (the animation package's
     // Animation_Clip_Settings), kept as a JSON value because that type is the
-    // package's, not the engine's. The baker overlays it on its defaults.
-    // Absent or null = defaults.
+    // package's, not the engine's. The baker reads it zero → JSON →
+    // on_validate. Absent or null = defaults.
     settings: json.Value,
     // The model no longer has a clip by this name. The entry stays so the
     // guid keeps resolving and the user can remap it to a renamed clip
@@ -66,6 +66,11 @@ MeshSettings :: struct {
 
 default_mesh_settings :: proc() -> MeshSettings {
     return MeshSettings{scale = 1}
+}
+
+// A zero scale is no value (a meta predating the field): the default.
+on_validate_MeshSettings :: proc(s: ^MeshSettings) {
+    if s.scale == 0 do s.scale = 1
 }
 
 cleanup_MeshSettings :: proc(s: ^MeshSettings) {
