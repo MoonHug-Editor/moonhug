@@ -227,26 +227,28 @@ Every plugin and every sample has an `mh_plugin.json` at its root:
   "name": "prefabs_example",
   "guid": "5f0c…",
   "description": "",
-  "dependencies": ["app", "sprites"]
+  "dependencies": ["sprites"],
+  "dependencies_custom": []
 }
 ```
 
 - `name` is the folder name, the same name the link in `packages/` carries. Prebuild stops on a mismatch.
 - `guid` is the plugin's identity, minted when the manifest is made. Nothing reads it yet.
-- `dependencies` are the plugins this one needs, integrations left out (an integration subpackage is optional by design).
+- `dependencies` are the plugins the scan finds this one needs, integrations left out (an integration subpackage is optional by design). The tools rewrite the list in full, an entry nothing needs any more goes.
+- `dependencies_custom` are yours. The tools never touch the list. A plugin needs both lists.
 
-`mh deps` (or `make deps`) gathers the dependencies of every plugin and sample in `plugins/`, installed or not. `mh deps <name> ...` gathers only those. It finds them two ways:
+Prebuild syncs `dependencies` on every build, from the same scan that builds the package inspector's table, and prints one line per manifest it changed. `mh deps` (or `make deps`) does the same on demand for every plugin and sample in `plugins/`, installed or not, and prints why each entry is there. `mh deps <name> ...` does only those. The scan finds a dependency two ways:
 
 - Code: an import of another plugin from the root, `editor/` or `tests/`, or from a subpackage those import.
 - Content: a guid in the plugin's `assets/` or non-test code that another plugin owns. A type guid (`@(typ_guid)`) belongs to the plugin declaring the type, an asset guid to the plugin whose `.meta` holds it. A type from an integration subpackage also needs what that folder imports: a scene with an audio track needs audio and the sequencer. The plugin's own samples live in its folder and never count.
 
-It prints each dependency it adds with the first file that needs it. It merges into the manifest and never removes an entry: one nothing uses is kept and reported as written by hand, so removing it is a manual edit. A plugin without a manifest gets one. Editing the file by hand is fine, `mh deps` keeps what it finds there.
+`mh deps` prints each dependency it adds with the first file that needs it, and each one it removes. A plugin without a manifest gets one.
 
 Prebuild reads the manifests on every build:
 
 - A code dependency that is not installed stops the build (Dependency rule above).
 - A declared dependency that is not installed and that no import needs is a warning: content that uses it will not load, the build goes on.
-- An import the manifest does not list, or a plugin without a manifest, is a warning that names the `mh deps` command that fixes it.
+- A plugin without a manifest is a warning that names the `mh deps` command that makes it.
 
 ## Code
 Prebuild scans `packages/*` and `packages/*/editor` (the app included — it

@@ -2,5 +2,6 @@
   "name": "prefabs_example",
   "guid": "ea7e2130-c824-4b48-a3e3-e49bed449534",
   "description": "",
-  "dependencies": ["app", "sprites"]
+  "dependencies": ["essentials", "sprites"],
+  "dependencies_custom": []
 }

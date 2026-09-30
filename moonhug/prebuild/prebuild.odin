@@ -199,12 +199,12 @@ _check_plugin_deps :: proc() -> bool {
 		for u in uses {
 			if !gen_facts.plugin_installed(u.needs) {
 				append(&missing, u)
-			} else if found && ok && !slice.contains(m.dependencies, u.needs) && !undeclared[u.needs] {
+			} else if found && ok && !slice.contains(gen_facts.plugin_manifest_declared(m), u.needs) && !undeclared[u.needs] {
 				undeclared[u.needs] = true
-				append(&warnings, fmt.tprintf("%s imports %s, which its %s does not list (%s:%d, mh deps %s adds it)", name, u.needs, gen_facts.PLUGIN_MANIFEST, u.file, u.line, name))
+				append(&warnings, fmt.tprintf("%s imports %s, which its %s does not list (%s:%d)", name, u.needs, gen_facts.PLUGIN_MANIFEST, u.file, u.line))
 			}
 		}
-		for d in m.dependencies {
+		for d in gen_facts.plugin_manifest_declared(m) {
 			if gen_facts.plugin_installed(d) do continue
 			needed_by_code := false
 			for u in uses do if u.needs == d { needed_by_code = true; break }
@@ -237,6 +237,9 @@ _check_plugin_deps :: proc() -> bool {
 }
 
 main :: proc() {
+	// The manifests' `dependencies` follow the source (docs/Plugins.md), so
+	// the check below reads current lists and a stale entry never lingers.
+	if !gen_facts.plugin_manifests_sync_all("prebuild: ") do os.exit(1)
 	if !_check_plugin_deps() do os.exit(1)
 	if _package_gens_refresh() {
 		fmt.eprintln("prebuild: package generator set changed — run prebuild again")

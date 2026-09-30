@@ -24,10 +24,19 @@ PLUGINS_ROOT :: "moonhug/packages"
 PLUGIN_MANIFEST :: "mh_plugin.json"
 
 Plugin_Manifest :: struct {
-	name:         string,
-	guid:         string, // the plugin's identity, minted when the manifest is made
-	description:  string,
-	dependencies: []string,
+	name:                string,
+	guid:                string, // the plugin's identity, minted when the manifest is made
+	description:         string,
+	dependencies:        []string, // the scan's, rewritten in full (plugin_manifest_sync)
+	dependencies_custom: []string, // written by hand, never touched by the tools
+}
+
+// Both lists: what the manifest declares.
+plugin_manifest_declared :: proc(m: Plugin_Manifest) -> []string {
+	out := make([dynamic]string, context.temp_allocator)
+	append(&out, ..m.dependencies)
+	for c in m.dependencies_custom do if !slice.contains(out[:], c) do append(&out, c)
+	return out[:]
 }
 
 // One `import "moonhug:packages/..."` line.

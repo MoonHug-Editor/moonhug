@@ -2,5 +2,6 @@
   "name": "physics2d_sample",
   "guid": "c54ae32d-848c-492f-8a76-12ad0e768592",
   "description": "",
-  "dependencies": ["app", "physics2d", "sprites"]
+  "dependencies": ["app", "essentials", "physics2d", "sprites"],
+  "dependencies_custom": []
 }

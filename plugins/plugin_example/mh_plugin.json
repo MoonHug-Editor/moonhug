@@ -2,5 +2,6 @@
   "name": "plugin_example",
   "guid": "bb677d1b-9069-433c-b198-644bfc3a13e6",
   "description": "",
-  "dependencies": ["tween"]
+  "dependencies": ["tween"],
+  "dependencies_custom": []
 }

@@ -20,6 +20,7 @@ _MANIFEST :: "mh_plugin.json"
 Plugin_Dependency :: struct {
 	name:      string,
 	installed: bool,
+	custom:    bool, // from dependencies_custom, written by hand
 	compile:   bool, // what needs it (plugin_dep_kind)
 	tests:     bool,
 	content:   bool,
@@ -53,10 +54,11 @@ Plugin_Manifest_View :: struct {
 
 @(private = "file")
 _Manifest :: struct {
-	name:         string,
-	guid:         string,
-	description:  string,
-	dependencies: []string,
+	name:                string,
+	guid:                string,
+	description:         string,
+	dependencies:        []string,
+	dependencies_custom: []string,
 }
 
 // The manifest of the installed package `name`, owned by the caller
@@ -69,16 +71,20 @@ plugin_manifest_load :: proc(name: string) -> (v: Plugin_Manifest_View) {
 	v.guid = strings.clone(m.guid)
 	v.description = strings.clone(m.description)
 	deps := make([dynamic]Plugin_Dependency)
-	for d in m.dependencies {
-		compile, tests, content := plugin_dep_kind(name, d)
-		append(&deps, Plugin_Dependency{
+	add :: proc(deps: ^[dynamic]Plugin_Dependency, plugin, d: string, custom: bool) {
+		for e in deps do if e.name == d do return
+		compile, tests, content := plugin_dep_kind(plugin, d)
+		append(deps, Plugin_Dependency{
 			name      = strings.clone(d),
 			installed = os.exists(strings.join({_PACKAGES_DIR, d}, "/", context.temp_allocator)),
+			custom    = custom,
 			compile   = compile,
 			tests     = tests,
 			content   = content,
 		})
 	}
+	for d in m.dependencies do add(&deps, name, d, false)
+	for d in m.dependencies_custom do add(&deps, name, d, true)
 	v.dependencies = deps[:]
 
 	needed := make([dynamic]Plugin_Dependency)
@@ -88,7 +94,7 @@ plugin_manifest_load :: proc(name: string) -> (v: Plugin_Manifest_View) {
 			for e in entries {
 				if e.name == name || strings.has_prefix(e.name, ".") do continue
 				other, _, ook := _read(e.name)
-				if ook && slice.contains(other.dependencies, name) {
+				if ook && (slice.contains(other.dependencies, name) || slice.contains(other.dependencies_custom, name)) {
 					compile, tests, content := plugin_dep_kind(e.name, name)
 					append(&needed, Plugin_Dependency{name = strings.clone(e.name), installed = true, compile = compile, tests = tests, content = content})
 				}

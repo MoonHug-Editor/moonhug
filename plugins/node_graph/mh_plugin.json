@@ -2,5 +2,6 @@
   "name": "node_graph",
   "guid": "d377271b-3edd-499c-b82f-3fe9f8cd1d5f",
   "description": "",
-  "dependencies": []
+  "dependencies": [],
+  "dependencies_custom": []
 }

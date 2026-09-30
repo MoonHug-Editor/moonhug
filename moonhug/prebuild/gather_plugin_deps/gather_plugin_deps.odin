@@ -19,9 +19,6 @@ package main
 // for is kept (it was written by hand) and reported, so removing one is a
 // manual edit. A package without a manifest gets one, with a new guid.
 
-import "core:crypto"
-import "core:encoding/json"
-import "core:encoding/uuid"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -82,66 +79,19 @@ _gather :: proc(p: gen_facts.Plugin_Folder, dirs: map[string]string, owners: map
 		append(&found, u.needs)
 		reason[u.needs] = u.line > 0 ? fmt.tprintf("%s:%d imports it", u.file, u.line) : fmt.tprintf("%s %s", u.file, u.why)
 	}
-	slice.sort(found[:])
 
-	m, has_manifest, ok := gen_facts.plugin_manifest_read(p.dir)
-	path := strings.join({p.dir, gen_facts.PLUGIN_MANIFEST}, "/", context.temp_allocator)
-	if has_manifest && !ok {
-		fmt.eprintfln("mh deps: %s does not parse, fix or delete it", path)
-		return false
+	r, changed, ok := gen_facts.plugin_manifest_sync(p, found[:])
+	if !ok do return false
+	if r.made {
+		fmt.printfln("%s: made %s", p.name, r.path)
+		return true
 	}
-	if !has_manifest {
-		context.random_generator = crypto.random_generator()
-		m = gen_facts.Plugin_Manifest{name = p.name, guid = uuid.to_string(uuid.generate_v4(), context.temp_allocator)}
-	}
-	if m.name != p.name {
-		fmt.eprintfln("mh deps: %s names the plugin %q, its folder is %q", path, m.name, p.name)
-		return false
-	}
-
-	merged := make([dynamic]string, context.temp_allocator)
-	append(&merged, ..m.dependencies)
-	added := make([dynamic]string, context.temp_allocator)
-	for d in found do if !slice.contains(m.dependencies, d) {
-		append(&merged, d)
-		append(&added, d)
-	}
-	slice.sort(merged[:])
-	kept := make([dynamic]string, context.temp_allocator)
-	for d in m.dependencies do if !slice.contains(found[:], d) do append(&kept, d)
-
-	if !has_manifest {
-		fmt.printfln("%s: made %s", p.name, path)
-	} else if len(added) == 0 && len(kept) == 0 {
+	if !changed {
 		fmt.printfln("%s: up to date", p.name)
 		return true
-	} else {
-		fmt.printfln("%s:", p.name)
 	}
-	for d in added do fmt.printfln("  + %s  (%s)", d, reason[d])
-	for d in kept do fmt.printfln("  = %s  (nothing found uses it, kept as written)", d)
-	if has_manifest && len(added) == 0 do return true
-
-	m.dependencies = merged[:]
-	if !_write(path, m) {
-		fmt.eprintfln("mh deps: failed to write %s", path)
-		return false
-	}
+	fmt.printfln("%s:", p.name)
+	for d in r.added do fmt.printfln("  + %s  (%s)", d, reason[d])
+	for d in r.removed do fmt.printfln("  - %s  (nothing found uses it)", d)
 	return true
-}
-
-// The manifest in a fixed key order, one dependency list per line.
-_write :: proc(path: string, m: gen_facts.Plugin_Manifest) -> bool {
-	quote :: proc(s: string) -> string {
-		data, err := json.marshal(s, allocator = context.temp_allocator)
-		return string(data) if err == nil else "\"\""
-	}
-	b := strings.builder_make(context.temp_allocator)
-	fmt.sbprintf(&b, "{{\n  \"name\": %s,\n  \"guid\": %s,\n  \"description\": %s,\n  \"dependencies\": [", quote(m.name), quote(m.guid), quote(m.description))
-	for d, i in m.dependencies {
-		if i > 0 do strings.write_string(&b, ", ")
-		strings.write_string(&b, quote(d))
-	}
-	strings.write_string(&b, "]\n}\n")
-	return os.write_entire_file(path, transmute([]byte)strings.to_string(b)) == nil
 }

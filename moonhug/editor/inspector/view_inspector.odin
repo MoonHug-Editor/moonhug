@@ -394,9 +394,9 @@ _draw_package_manifest :: proc(m: ^Plugin_Manifest_View) {
     if im.CollapsingHeader(tc(fmt.tprintf("Used by (%d)###pkg_used_by", len(m.used_by)))) do _draw_dependency_table("##pkg_used_by_table", m.used_by)
 }
 
-// Name, Compile, Tests, Content: a dot under what needs the row's plugin,
-// the headers say what missing it costs. Headers sort, once per click
-// (imgui's sort specs).
+// Name, then Compile, Tests, Content for the scopes some row marks: a dot
+// under what needs the row's plugin, the headers say what missing it costs.
+// Headers sort, once per click (imgui's sort specs).
 @(private = "file")
 _draw_dependency_table :: proc(id: cstring, rows: []Plugin_Dependency) {
     tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
@@ -406,27 +406,53 @@ _draw_dependency_table :: proc(id: cstring, rows: []Plugin_Dependency) {
         im.Unindent()
         return
     }
-    if !im.BeginTable(id, 4, im.TableFlags_SizingFixedFit | im.TableFlags_RowBg | im.TableFlags_BordersInnerH | im.TableFlags_Sortable) do return
+    // The scope columns, only those some row marks. The sort maps a visible
+    // column back to its scope (1 compile, 2 tests, 3 content).
+    Scope :: struct {
+        scope: int,
+        label: cstring,
+        tip:   cstring,
+    }
+    all := [?]Scope{
+        {1, "Compile", "An import from the plugin's code. The build stops without it."},
+        {2, "Tests", "An import from tests/ only. The test build stops without it, the editor and the game are fine."},
+        {3, "Content", "A guid the plugin owns, in an asset or in code. What uses it does not load without it, the build is fine."},
+    }
+    marked :: proc(d: Plugin_Dependency, scope: int) -> bool {
+        switch scope {
+        case 1: return d.compile
+        case 2: return d.tests
+        case 3: return d.content
+        }
+        return false
+    }
+    shown: [3]Scope
+    n := 0
+    for sc in all {
+        for d in rows do if marked(d, sc.scope) {
+            shown[n] = sc
+            n += 1
+            break
+        }
+    }
+
+    if !im.BeginTable(id, i32(1 + n), im.TableFlags_SizingFixedFit | im.TableFlags_RowBg | im.TableFlags_BordersInnerH | im.TableFlags_Sortable) do return
     im.TableSetupColumn("Name", im.TableColumnFlags{.WidthStretch, .DefaultSort})
-    im.TableSetupColumn("Compile")
-    im.TableSetupColumn("Tests")
-    im.TableSetupColumn("Content")
+    for sc in shown[:n] do im.TableSetupColumn(sc.label)
     // Headers by hand, so each carries its tooltip.
     im.TableNextRow({.Headers})
     im.TableSetColumnIndex(0)
     im.TableHeader("Name")
-    im.TableSetColumnIndex(1)
-    im.TableHeader("Compile")
-    widgets.tooltip("An import from the plugin's code. The build stops without it.")
-    im.TableSetColumnIndex(2)
-    im.TableHeader("Tests")
-    widgets.tooltip("An import from tests/ only. The test build stops without it, the editor and the game are fine.")
-    im.TableSetColumnIndex(3)
-    im.TableHeader("Content")
-    widgets.tooltip("A guid the plugin owns, in an asset or in code. What uses it does not load without it, the build is fine.")
+    for sc, i in shown[:n] {
+        im.TableSetColumnIndex(i32(i + 1))
+        im.TableHeader(sc.label)
+        widgets.tooltip(sc.tip)
+    }
     if specs := im.TableGetSortSpecs(); specs != nil && specs.SpecsDirty {
         if specs.SpecsCount > 0 {
-            plugin_dependencies_sort(rows, int(specs.Specs.ColumnIndex), specs.Specs.SortDirection == .Descending)
+            col := int(specs.Specs.ColumnIndex)
+            scope := 0 if col == 0 else shown[col - 1].scope
+            plugin_dependencies_sort(rows, scope, specs.Specs.SortDirection == .Descending)
         }
         specs.SpecsDirty = false
     }
@@ -443,13 +469,11 @@ _draw_dependency_table :: proc(id: cstring, rows: []Plugin_Dependency) {
             im.TextColored({1, 0.75, 0.3, 1}, tc(fmt.tprintf("%s %s", icons.ICON_MD_WARNING, d.name)))
             widgets.tooltip("Not installed: what this plugin uses from it will not load. mh setup relinks every committed plugin.")
         }
-        if !d.compile && !d.tests && !d.content do widgets.tooltip("Written by hand: nothing on disk needs it.")
-        im.TableNextColumn()
-        if d.compile do _dot()
-        im.TableNextColumn()
-        if d.tests do _dot()
-        im.TableNextColumn()
-        if d.content do _dot()
+        if d.custom do widgets.tooltip("Custom: written by hand in mh_plugin.json (dependencies_custom).")
+        for sc in shown[:n] {
+            im.TableNextColumn()
+            if marked(d, sc.scope) do _dot()
+        }
     }
     im.EndTable()
 }

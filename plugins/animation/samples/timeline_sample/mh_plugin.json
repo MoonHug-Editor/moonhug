@@ -2,5 +2,6 @@
   "name": "timeline_sample",
   "guid": "e12a9e98-a6f4-4b20-b554-f4f9ca67b7f1",
   "description": "",
-  "dependencies": ["animation", "app", "audio", "essentials", "particles", "sequencer", "sprites"]
+  "dependencies": ["animation", "app", "audio", "essentials", "particles", "sequencer", "sprites"],
+  "dependencies_custom": []
 }

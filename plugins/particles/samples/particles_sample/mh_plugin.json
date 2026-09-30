@@ -2,5 +2,6 @@
   "name": "particles_sample",
   "guid": "006f08ea-5853-44b0-b69b-ba7457bbcbb0",
   "description": "",
-  "dependencies": ["essentials", "particles"]
+  "dependencies": ["essentials", "particles"],
+  "dependencies_custom": []
 }
