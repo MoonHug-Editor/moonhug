@@ -25,6 +25,7 @@ import strings "core:strings"
 import engine "../../engine"
 import ser "../../engine/serialization"
 import "../../engine/log"
+import gfx "../../engine/gfx"
 import "../undo"
 
 Asset_Doc :: struct {
@@ -139,7 +140,7 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 // Undo hook: replace the document's payload with the given JSON (a full
 // capture_json of the document struct). Zero → JSON → on_validate into a
 // fresh instance, so dynamic arrays never merge with stale contents. The old
-// instance goes through its cleanup_T.
+// instance is retired (doc_data_retire): a wrapper may still draw it this frame.
 asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
     if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
     context.allocator = runtime.default_allocator()
@@ -167,9 +168,42 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
     ser.Run_After_Deserialize(fresh.data, tid)
     engine.type_on_validate_by_typeid(tid, fresh.data)
 
-    doc_data_release(doc.data)
+    _doc_replace(doc, fresh, dirty = true)
+    return true
+}
+
+// Revert: the document back to its file, as one undo step. Nothing to do
+// when it is not dirty.
+asset_doc_revert :: proc(doc: ^Asset_Doc) {
+    if doc == nil || !doc.dirty do return
+    // The document lives on the default allocator, the undo entry on the
+    // caller's: undo frees an entry with the allocator that made it.
+    fresh: any
+    ok: bool
+    {
+        context.allocator = runtime.default_allocator()
+        fresh, ok = ser.load_from_file(doc.path)
+    }
+    if !ok {
+        log.error(fmt.tprintf("asset_docs: revert could not load %s", doc.path))
+        return
+    }
+    tid := doc.data.id
+    before := undo.capture_json(doc.data.data, tid)
+    after := undo.capture_json(fresh.data, tid)
+    _doc_replace(doc, fresh, dirty = false)
+    undo.push_value(undo.get(), undo.make_asset_target(doc.guid, tid, .File), before, after, fmt.tprintf("Revert %s", filepath_base(doc.path)))
+}
+
+// A document's new instance takes over: the old one retires, the inspector
+// and the live previews follow. Document state is on the default allocator.
+@(private = "file")
+_doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
+    context.allocator = runtime.default_allocator()
+    tid := fresh.id
+    doc_data_retire(doc.data)
     doc.data = fresh
-    doc.dirty = true
+    doc.dirty = dirty
     // The inspector may be showing this doc — repoint its view.
     if inspectorData.doc == doc {
         inspectorData.fileData = doc.data
@@ -184,7 +218,6 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
     // Same live-preview contract for package asset types (clips: the cache
     // the scrub preview and runtime sample from).
     if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data)
-    return true
 }
 
 // The asset left the project (engine asset-gone hook, fired by a refresh
@@ -215,6 +248,44 @@ doc_data_release :: proc(data: any) {
     free(data.data)
 }
 
+// A replaced instance waits a frame before doc_data_release: the replacement
+// happens mid-frame (a Revert button, an undo from the history view, a
+// reimport) while a funnel wrapper above the button still holds the old
+// pointer in its Asset_Ctx for the rest of the draw.
+@(private = "file")
+_Retired :: struct {
+    data:  any,
+    frame: u64,
+}
+
+@(private = "file")
+_retired: [dynamic]_Retired
+
+doc_data_retire :: proc(data: any) {
+    if data.data == nil do return
+    context.allocator = runtime.default_allocator()
+    _doc_retired_drain(false)
+    append(&_retired, _Retired{data = data, frame = gfx.frame_index})
+}
+
+// Frees what was retired in an earlier frame, or everything (shutdown).
+@(private = "file")
+_doc_retired_drain :: proc(all: bool) {
+    context.allocator = runtime.default_allocator()
+    for i := 0; i < len(_retired); {
+        if !all && _retired[i].frame == gfx.frame_index {
+            i += 1
+            continue
+        }
+        doc_data_release(_retired[i].data)
+        unordered_remove(&_retired, i)
+    }
+    if all {
+        delete(_retired)
+        _retired = nil
+    }
+}
+
 @(private="file")
 _asset_doc_free :: proc(doc: ^Asset_Doc) {
     context.allocator = runtime.default_allocator()
@@ -233,6 +304,7 @@ _asset_docs_register :: proc "contextless" () {
 
 asset_docs_shutdown :: proc() {
     context.allocator = runtime.default_allocator()
+    _doc_retired_drain(true)
     for _, doc in _docs do _asset_doc_free(doc)
     delete(_docs)
     _docs = nil

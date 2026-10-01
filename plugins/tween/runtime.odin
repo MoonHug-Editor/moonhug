@@ -396,11 +396,17 @@ tween_init :: proc() {
 	register_builtin_nodes()
 }
 
+// Registers a prototype under `key`, replacing one already there: a
+// re-registration after an edit (every Simulate) takes the new value.
 tween_register :: proc(key: string, a: ^Authored) {
-	if key in _lib do return
 	context.allocator = runtime.default_allocator()
 	data, err := json.marshal(a.value, {spec = .JSON})
 	if err != nil do return
+	if old, has := _lib[key]; has {
+		delete(old)
+		_lib[key] = data
+		return
+	}
 	_lib[strings.clone(key)] = data
 }
 

@@ -202,7 +202,7 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - Node graph editor for different use-cases
   - VFX graph
 
-- undo follow-ups: asset doc Revert button, import settings onto the asset doc model
+- undo follow-ups: import settings onto the asset doc model
 - multiselection follow-ups: multi-path drag-drop, multiedit for prefab-instance selections
 
 ### Considered Features
@@ -210,8 +210,6 @@ Everything under `library/` is derived data — never a source of truth, safe to
 - preview section in hierarchy inspector (project inspector has one)
 
 - Task tracking with backlog, todo, etc.
-
-- some kind of type defaults fill only what json serialized data doesn't cover
 
 - doc generation
 

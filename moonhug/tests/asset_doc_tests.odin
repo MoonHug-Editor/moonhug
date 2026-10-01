@@ -129,3 +129,39 @@ test_saving_an_asset_deleted_on_disk_does_not_write_it_back :: proc(t: ^testing.
 	testing.expect(t, saved == 0 && failed == 1, "the save reports the missing file")
 	testing.expect(t, !os.exists(path), "the file is not written back")
 }
+
+// Revert puts the file's values back as one undo step: the document is clean
+// after it, undo brings the edit (and the dirty mark) back.
+@(test)
+test_revert_restores_the_file_and_undoes :: proc(t: ^testing.T) {
+	path :: _DIR + "/Reverted.mat"
+	os.make_directory(_DIR)
+	defer {
+		_remove_tree(_DIR)
+		_remove_tree("library")
+	}
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+
+	doc := _edited_material(t, s, path)
+	if doc == nil do return
+	inspector.load_from_file(path)
+
+	inspector.asset_doc_revert(doc)
+	testing.expect(t, !doc.dirty, "revert leaves the document clean")
+	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
+	testing.expect_value(t, len(s.items), 2)
+	testing.expect(t, inspector.inspectorData.fileData.data == doc.data.data, "the inspector follows the new instance")
+
+	undo.apply_undo(s)
+	testing.expect(t, doc.dirty, "undo of a revert is an unsaved edit again")
+	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 0, 0, 1})
+
+	undo.apply_redo(s)
+	testing.expect_value(t, (^engine.Material)(doc.data.data).color, [4]f32{1, 1, 1, 1})
+}

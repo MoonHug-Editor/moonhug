@@ -505,12 +505,20 @@ _draw_asset_inspector :: proc() {
     }
 
     // No Save button: File/Save (Ctrl+S) writes every dirty document and
-    // scene, and the star after the path is the pending mark.
+    // scene, and the star after the path is the pending mark. Revert is the
+    // other way out of a dirty document, live only while it is dirty.
     if inspectorData.statusMessage != "" {
         im.Text(strings.clone_to_cstring(inspectorData.statusMessage, context.temp_allocator))
         im.Separator()
     }
 
+    if inspectorData.doc != nil {
+        im.BeginDisabled(!inspectorData.doc.dirty)
+        if im.Button("Revert", im.Vec2{60, 0}) do asset_doc_revert(inspectorData.doc)
+        im.EndDisabled()
+        widgets.tooltip("Back to the file on disk, as one undo step.")
+        im.SameLine()
+    }
     if inspectorData.filePath != "" {
         _draw_file_row(inspectorData.doc != nil && inspectorData.doc.dirty)
     } else {

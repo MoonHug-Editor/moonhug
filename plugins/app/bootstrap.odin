@@ -19,3 +19,10 @@ game_bootstrap :: proc() {
 scene_loaded :: proc() {
     setup_player_animations()
 }
+
+// The editor's Simulate: the open scene is already live when play starts,
+// so no load calls scene_loaded. Runs only while app is the simulated host.
+@(phase={key=Phase.EnteredPlayMode})
+game_entered_play_mode :: proc() {
+    scene_loaded()
+}

@@ -90,22 +90,22 @@ import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	return true
 }
 
-// Revert: back to the .meta, as one undo step. The replaced instance is not
-// freed: the caller may be drawing it this frame (a Revert button inside the
-// drawer), the same reason undo leaves the old instance of an asset document.
+// Revert: back to the .meta, as one undo step. The replaced instance is
+// retired, not freed: the caller may be drawing it this frame (a Revert button
+// inside the drawer), the same as undo's rebuild of an asset document.
 import_settings_revert :: proc(doc: ^Asset_Doc) {
 	if doc == nil do return
 	settings, ok := engine.asset_pipeline_get_settings(doc.path, runtime.default_allocator())
 	if !ok do return
 	before := _settings_json(doc.data, context.allocator)
-	doc_data_release(doc.data)
+	doc_data_retire(doc.data)
 	doc.data = settings
 	after := _settings_json(doc.data, context.allocator)
 	undo.push_value(undo.get(), undo.make_asset_target(doc.guid, doc.data.id, .Import_Settings), before, after, "Revert Import Settings")
 	_import_settings_rebaseline(doc)
 }
 
-// After any reimport of the asset. The replaced instance is not freed, for the
+// After any reimport of the asset. The replaced instance is retired, for the
 // same reason as in Revert.
 @(private = "file")
 _import_settings_reimported :: proc(guid: engine.Asset_GUID) {
@@ -114,7 +114,7 @@ _import_settings_reimported :: proc(guid: engine.Asset_GUID) {
 	if !found || doc.dirty do return
 	settings, ok := engine.asset_pipeline_get_settings(doc.path)
 	if !ok do return
-	doc_data_release(doc.data)
+	doc_data_retire(doc.data)
 	doc.data = settings
 	delete(doc.applied)
 	doc.applied = _settings_json(doc.data)
@@ -175,7 +175,7 @@ _import_settings_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte)
 		return false
 	}
 	engine.type_on_validate_by_typeid(tid, fresh.data)
-	doc_data_release(doc.data)
+	doc_data_retire(doc.data)
 	doc.data = fresh
 	_import_settings_rebaseline(doc)
 	return true
