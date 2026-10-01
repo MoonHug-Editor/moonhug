@@ -1,3 +1,14 @@
+## [0.117.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.116.0...v0.117.0) (2026-10-01)
+
+### Features
+
+* auto dependencies refresh on rebuild, dependencies_custom stay ([3206951](https://github.com/MoonHug-Editor/moonhug/commit/3206951fd331cdf2d5201a790930ad51bd1e049b))
+* reuse tools builds to save ~2s compilation time ([a9f07c1](https://github.com/MoonHug-Editor/moonhug/commit/a9f07c14bbbf6d58594bfbb32987c327c22d2083))
+
+### Bug Fixes
+
+* allocation fixes ([568d733](https://github.com/MoonHug-Editor/moonhug/commit/568d733656b092ef4b6befed880c138d16bd50aa))
+
 ## [0.116.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.115.0...v0.116.0) (2026-09-29)
 
 ### Features
