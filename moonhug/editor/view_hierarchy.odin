@@ -1,5 +1,6 @@
 package editor
 
+import "base:runtime"
 import "core:fmt"
 import "core:strings"
 import "core:mem"
@@ -75,6 +76,13 @@ _hierarchy_pointer_over_row: bool
 
 @(private)
 _hierarchy_alt_open_pending: map[engine.Transform_Handle]bool
+
+// Editor-wide state: pinned to the default allocator, whoever first touches it.
+@(init)
+_hierarchy_alt_open_pending_init :: proc "contextless" () {
+	context = runtime.default_context()
+	_hierarchy_alt_open_pending = make(map[engine.Transform_Handle]bool, runtime.default_allocator())
+}
 
 @(private)
 _hierarchy_nav_list: [dynamic]engine.Transform_Handle

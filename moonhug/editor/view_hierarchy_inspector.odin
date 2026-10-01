@@ -1,5 +1,6 @@
 package editor
 
+import "base:runtime"
 import "core:strings"
 import "core:mem"
 import "core:c"
@@ -873,7 +874,7 @@ _rotation_apply_to_peers :: proc(
 	peers := inspector.multi_peers()
 	if len(peers) == 0 do return
 	if _rotation_peer_start == nil {
-		_rotation_peer_start = make(map[engine.Transform_Handle][4]f32)
+		_rotation_peer_start = make(map[engine.Transform_Handle][4]f32, runtime.default_allocator())
 	}
 
 	for peer in peers {

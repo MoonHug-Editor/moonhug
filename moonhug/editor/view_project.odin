@@ -87,7 +87,7 @@ init_project_view :: proc() {
     // The asset DB is rooted at "assets" (relative to the normalized moonhug/
     // cwd); the project window mirrors it so paths line up with asset lookups.
     projectViewData.rootPath = strings.clone("assets")
-    projectViewData.currentPath = strings.clone("assets")
+    projectViewData.currentPath = strings.clone("assets", runtime.default_allocator()) // see _project_set_current
     // Start with the root folder expanded (one-shot; consumed on first draw).
     _project_tree_request_open(projectViewData.rootPath, true)
 }
@@ -97,7 +97,7 @@ shutdown_project_view :: proc() {
     project_package_samples_shutdown()
     project_dir_cache_shutdown()
     delete(projectViewData.rootPath)
-    delete(projectViewData.currentPath)
+    delete(projectViewData.currentPath, runtime.default_allocator()) // see _project_set_current
     if projectViewData.selectedFile != "" {
         delete(projectViewData.selectedFile, runtime.default_allocator()) // see _project_set_active
     }
@@ -156,6 +156,8 @@ _project_key_up_level :: proc() -> bool {
 }
 
 _project_set_current :: proc(path: string) {
+    // Editor-wide state: allocated and freed under one allocator, whoever calls.
+    context.allocator = runtime.default_allocator()
     // Clone before delete: callers may pass a slice of the current string.
     new_path := strings.clone(path)
     delete(projectViewData.currentPath)

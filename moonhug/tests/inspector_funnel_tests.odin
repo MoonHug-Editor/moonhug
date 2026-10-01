@@ -6,6 +6,7 @@ package tests
 // the component base is reached through a registered custom drawer, so
 // no imgui context is needed.
 
+import "base:runtime"
 import "core:strings"
 import "core:testing"
 import inspector "../editor/inspector"
@@ -47,7 +48,7 @@ _replace :: proc(ctx: ^inspector.Component_Ctx) {
 @(test)
 test_funnel_component_chain_order_and_base :: proc(t: ^testing.T) {
 	if inspector.mapPropertyDrawer == nil {
-		inspector.mapPropertyDrawer = make(inspector.MapPropertyDrawer)
+		inspector.mapPropertyDrawer = make(inspector.MapPropertyDrawer, runtime.default_allocator())
 	}
 	inspector.mapPropertyDrawer[typeid_of(_Funnel_Probe)] =
 		proc(ptr: rawptr, tid: typeid, label: cstring) { append(&_funnel_log, "base") }

@@ -46,7 +46,8 @@ test_overrides_list_covers_every_record_kind :: proc(t: ^testing.T) {
 	// 1. A field override.
 	at := engine.pool_get(&tc_mem.world.transforms, engine.Handle(sprite_a))
 	if at == nil do return
-	at.name = "Renamed"
+	delete(at.name)
+	at.name = strings.clone("Renamed")
 	_, rec_ok := engine.nested_scene_record_override_for_host(
 		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
 	)
@@ -117,7 +118,8 @@ test_overrides_revert_removes_only_the_named_record :: proc(t: ^testing.T) {
 
 	// Two field overrides on the same object, so reverting one must leave the
 	// other — the dropdown reverts per row, not per object.
-	at.name = "Renamed"
+	delete(at.name)
+	at.name = strings.clone("Renamed")
 	engine.nested_scene_record_override_for_host(
 		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
 	)
@@ -202,7 +204,8 @@ test_overrides_dropdown_revert_is_undoable :: proc(t: ^testing.T) {
 
 	// A field override AND a structural one, so the group mixes kinds the way
 	// "Revert Selected" over several rows does.
-	at.name = "Renamed"
+	delete(at.name)
+	at.name = strings.clone("Renamed")
 	engine.nested_scene_record_override_for_host(
 		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
 	)
@@ -325,7 +328,8 @@ test_override_baseline_materializes_prefab_values :: proc(t: ^testing.T) {
 	target := engine.PPtr{guid = ns.source_prefab, local_id = src_lid}
 
 	// TRANSFORM baseline: overriding the live name must NOT move the baseline.
-	at.name = "Renamed"
+	delete(at.name)
+	at.name = strings.clone("Renamed")
 	engine.nested_scene_record_override_for_host(
 		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
 	)
@@ -402,7 +406,8 @@ test_override_tree_groups_rows_by_component :: proc(t: ^testing.T) {
 	if at == nil do return
 
 	// THREE separate transform-field overrides on one object.
-	at.name = "Renamed"
+	delete(at.name)
+	at.name = strings.clone("Renamed")
 	engine.nested_scene_record_override_for_host(
 		loaded, host_tH, at.local_id, "name", &at.name, typeid_of(string),
 	)
