@@ -1,3 +1,9 @@
+## [0.118.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.117.0...v0.118.0) (2026-10-01)
+
+### Features
+
+* revert button for material and other assets. fix keys in tick_player demo tweens ([b80ae53](https://github.com/MoonHug-Editor/moonhug/commit/b80ae534b949035882c639344958c302b9414c41))
+
 ## [0.117.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.116.0...v0.117.0) (2026-10-01)
 
 ### Features
