@@ -9,20 +9,26 @@
 # make test NAME=pkg.test_name runs a single test. make deps NAME=<plugin>
 # gathers one plugin's dependencies.
 
-MH := odin run tools/mh --
+# mh itself is compiled once into builds/tools/ and rebuilt when its sources
+# change (Odin has no build cache, `odin run` recompiled it on every make).
+MH_BIN := builds/tools/mh
+MH := $(MH_BIN)
+
+$(MH_BIN): $(wildcard tools/mh/*.odin)
+	@mkdir -p builds/tools && odin build tools/mh -out:$@
 
 .PHONY: help setup run debug build app test prebuild deps shaders mcp clean distclean
 
-help:      ; @$(MH) help
-setup:     ; @$(MH) setup
-run:       ; @$(MH) run
-debug:     ; @$(MH) debug
-build:     ; @$(MH) build
-app:       ; @$(MH) app
-prebuild:  ; @$(MH) prebuild
-deps:      ; @$(MH) deps $(NAME)
-shaders:   ; @$(MH) shaders
-mcp:       ; @$(MH) mcp
-clean:     ; @$(MH) clean
-distclean: ; @$(MH) clean --all
-test:      ; @$(MH) test $(if $(NAME),--name=$(NAME),)
+help:      $(MH_BIN) ; @$(MH) help
+setup:     $(MH_BIN) ; @$(MH) setup
+run:       $(MH_BIN) ; @$(MH) run
+debug:     $(MH_BIN) ; @$(MH) debug
+build:     $(MH_BIN) ; @$(MH) build
+app:       $(MH_BIN) ; @$(MH) app
+prebuild:  $(MH_BIN) ; @$(MH) prebuild
+deps:      $(MH_BIN) ; @$(MH) deps $(NAME)
+shaders:   $(MH_BIN) ; @$(MH) shaders
+mcp:       $(MH_BIN) ; @$(MH) mcp
+clean:     $(MH_BIN) ; @$(MH) clean
+distclean: $(MH_BIN) ; @$(MH) clean --all
+test:      $(MH_BIN) ; @$(MH) test $(if $(NAME),--name=$(NAME),)

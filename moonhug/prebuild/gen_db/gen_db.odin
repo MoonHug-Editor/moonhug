@@ -42,7 +42,10 @@ package gen_db
 // `get_comps(w, Foo_GenComp)` in the generator (or in ANY other module's
 // generator). No private store, no setup proc, no capacity - a map just grows.
 
+import "base:runtime"
 import "core:fmt"
+import "core:os"
+import "core:time"
 import "core:slice"
 import "core:strings"
 import "core:odin/ast"
@@ -411,14 +414,35 @@ run_all :: proc(packages: []string) -> bool {
 	return true
 }
 
+// A system that takes longer than this prints its time, so a slow one shows
+// in every build log and the fast ones stay quiet. MH_PREBUILD_TIMING=1
+// prints them all.
+TIMING_THRESHOLD_MS :: 20.0
+
+timing_all := false
+
+@(init)
+_timing_init :: proc "contextless" () {
+	context = runtime.default_context()
+	timing_all = os.get_env("MH_PREBUILD_TIMING", context.temp_allocator) != ""
+}
+
+// Prints a step's time when it is worth seeing (TIMING_THRESHOLD_MS).
+timing_report :: proc(name: string, start: time.Tick) {
+	ms := time.duration_milliseconds(time.tick_since(start))
+	if timing_all || ms > TIMING_THRESHOLD_MS do fmt.printf("timing: %-40s %6.1f ms\n", name, ms)
+}
+
 @(private)
 _run_stage :: proc(w: ^World, systems: []System, stage: Stage) -> bool {
 	for sys in systems {
 		if sys.stage != stage do continue
+		start := time.tick_now()
 		if !sys.run(w) {
 			fmt.eprintf("gen_db: system '%s' failed\n", sys.name)
 			return false
 		}
+		timing_report(sys.name, start)
 	}
 	return true
 }

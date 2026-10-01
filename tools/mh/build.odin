@@ -14,9 +14,14 @@ MCP_BIN :: "builds/mcp_shim" + EXE
 // Code generation, always before a build. Two steps: prune imports of removed
 // package generators first — a stale one fails the prebuild compile before
 // prebuild can heal the file itself — then run the generators.
+// Both are compiled once into builds/tools/ and reused while unchanged
+// (tools_cache.odin). Prebuild also depends on the package generators it
+// compiles in, so their gen/ folders count as its sources.
 prebuild :: proc() -> bool {
-	if !step("prune", "odin", "run", "moonhug/prebuild/prune_package_gens") do return false
-	if !step("prebuild", "odin", "run", "moonhug/prebuild", COLLECTION) do return false
+	prune, pok := tool_bin("prune_package_gens", "moonhug/prebuild/prune_package_gens", {})
+	if !pok || !step("prune", prune) do return false
+	gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
+	if !gok || !step("prebuild", gen) do return false
 	return true
 }
 
@@ -106,9 +111,10 @@ cmd_prebuild :: proc(args: []string) -> int {
 // "Plugin manifest"). The work lives beside prebuild, which reads the same
 // imports: this tool imports nothing from the moonhug collection.
 cmd_deps :: proc(args: []string) -> int {
+	bin, ok := tool_bin("gather_plugin_deps", "moonhug/prebuild/gather_plugin_deps", {"moonhug/prebuild/gen_facts"}, COLLECTION)
+	if !ok do return 1
 	cmd := make([dynamic]string, context.temp_allocator)
-	// Into builds/: odin run keeps the executable when it exits non-zero.
-	append(&cmd, "odin", "run", "moonhug/prebuild/gather_plugin_deps", COLLECTION, fmt.tprintf("-out:builds/gather_plugin_deps%s", EXE), "--")
+	append(&cmd, bin)
 	append(&cmd, ..args)
 	return 0 if step("deps", ..cmd[:]) else 1
 }

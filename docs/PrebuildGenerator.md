@@ -5,8 +5,10 @@ The prebuild step (`moonhug/prebuild`) scans the Odin source for attribute marke
 files the engine/editor/app depend on. It runs once before a build:
 
 ```sh
-odin run moonhug/prebuild     # invoked by `mh` before the editor build
+odin run moonhug/prebuild     # invoked by `mh` before the editor build when rebuild is needed, otherwise runs binary from builds/tools/
 ```
+
+Prebuild prints its total time and any step or generator over 20 ms. `MH_PREBUILD_TIMING=1` in the environment prints them all.
 
 ## Architecture
 

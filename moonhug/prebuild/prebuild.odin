@@ -18,6 +18,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "core:time"
 import db "gen_db"
 
 // Importing each module pulls in its @(init) system registration. The blank
@@ -237,18 +238,29 @@ _check_plugin_deps :: proc() -> bool {
 }
 
 main :: proc() {
+	total := time.tick_now()
+	lap := total
+	step :: proc(lap: ^time.Tick, name: string) {
+		db.timing_report(name, lap^)
+		lap^ = time.tick_now()
+	}
 	// The manifests' `dependencies` follow the source (docs/Plugins.md), so
 	// the check below reads current lists and a stale entry never lingers.
 	if !gen_facts.plugin_manifests_sync_all("prebuild: ") do os.exit(1)
+	step(&lap, "prebuild/manifest sync")
 	if !_check_plugin_deps() do os.exit(1)
+	step(&lap, "prebuild/dependency check")
 	if _package_gens_refresh() {
 		fmt.eprintln("prebuild: package generator set changed — run prebuild again")
 		os.exit(2)
 	}
+	step(&lap, "prebuild/package gens")
 	all: [dynamic]string
 	for root in SCAN_ROOTS do _discover(&all, root)
 	_installed_packages(&all)
+	step(&lap, "prebuild/discover")
 	if !db.run_all(all[:]) do os.exit(1)
+	fmt.printf("prebuild: %.0f ms\n", time.duration_milliseconds(time.tick_since(total)))
 }
 
 _discover :: proc(list: ^[dynamic]string, dir: string) {

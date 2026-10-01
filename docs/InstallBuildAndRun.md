@@ -46,9 +46,10 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 
 ## Commands
 
-`odin run tools/mh -- <command>` works anywhere Odin does and needs nothing
-else installed. With `make` present, `make <command>` is the same thing —
-the Makefile only forwards, it holds no build knowledge of its own.
+`odin run tools/mh -- <command>` works anywhere Odin does and needs nothing else installed.
+`make` has some advantages over usual calls:
+- `make <command>` runs same commands and is shorter to write. The Makefile mostly forwards, it holds no build knowledge of its own.
+- `make` builds `mh` once and reuses the binary, `odin run` compiles `mh` on every call (about 0.5 s).
 
 | command | what it does |
 |---------|--------------|
@@ -70,6 +71,11 @@ config, `setup --force` rebuilds vendored libraries that are already built.
 
 Commands run from the repo root whatever directory invoked them. `help` and
 `setup` work outside a checkout — `setup` only touches the Odin installation.
+
+### Tool binaries are cached in `builds/tools/`
+- Odin has no build cache, `odin run` will compile a tool on every call, about 0.5 s each.
+- `mh` builds prebuild, the generator pruner and the dependency gatherer once and rebuilds one when a source file is newer than its binary. Prebuild's sources include every installed package's `gen/`.
+- `mh clean` empties `builds/`. The next command rebuilds the tools.
 
 ## What a build does
 
