@@ -40,9 +40,17 @@ user_settings_file :: proc(name: string) -> string {
     return strings.concatenate({USER_SETTINGS_DIR, "/", slug, ".json"}, context.temp_allocator)
 }
 
+// Persists a package-level struct variable per developer, in
+// UserSettings/<slug>.json.
+//
+// `name` names the file. The editor loads it at startup and saves it at exit,
+// and the folder is not committed, so each developer keeps their own values.
+// For preferences: values the team shares belong in @(project_settings).
+//
 // Reads the file into the settings struct. A missing or unreadable file leaves
 // the struct as-is — its var initializer is the default — so a fresh checkout,
 // a deleted UserSettings/ and a first run all behave the same.
+@(extension_point={attribute="user_settings", target="var", fields="name"})
 user_settings_load :: proc(name: string, v: ^$T) -> bool {
     if v == nil do return false
     data, read_err := os.read_entire_file(user_settings_file(name), context.temp_allocator)

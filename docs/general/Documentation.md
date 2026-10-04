@@ -37,4 +37,23 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 
 ## Generated pages
 
-`docs/reference/` is written on every build and gitignored: attribute pages by `moonhug/prebuild/docs_gen`, one `odin doc` page per engine and editor package by `mh docs` (`tools/mh/docs.odin`).
+`docs/reference/` is generated and gitignored, in two parts: `attributes/`, one page per attribute written on every build by `moonhug/prebuild/attributes_gen`, and `packages/`, one `odin doc` page per engine and editor package written by `mh docs` (`tools/mh/docs.odin`).
+
+## Attributes
+
+Attributes are how code extends the engine and the editor, so each one is declared, and the declaration is what its reference page is made from. The declaration sits on the declaration that receives the attribute's registrations, in the package the attribute extends:
+
+```odin
+// Adds a widget to the editor toolbar, in its left, center or right zone.
+//
+// `zone` is "left", "center" or "right", and `order` sorts items inside a zone. ...
+@(extension_point={attribute="toolbar", target="proc", fields="zone order"})
+toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin := "") {
+```
+
+- The doc comment is the attribute's explanation, and its first sentence is the summary on the index.
+- The package the declaration sits in is the package the attribute extends, and the index groups attributes by it.
+- `fields` lists the keys the attribute takes. A trailing `*` matches by prefix, as in `param_*`.
+- `target` says what the attribute goes on (`proc`, `var`, `type`). It is documentation only.
+
+The prebuild checks every attribute in the scanned code against these declarations and stops on an attribute that is neither Odin's nor declared, or on a field its declaration does not list. The build passes `-ignore-unknown-attributes`, so without this check a misspelled `@(menu_iten)` or `ordr=` compiles and silently does nothing. A new attribute, from the engine or from a plugin's `gen/`, needs its `@(extension_point)` in the same change.

@@ -4,6 +4,12 @@ import "../engine"
 
 ContextMenuAction :: proc(comp_ptr: rawptr)
 
+// Adds an item to a component's overflow menu, the menu button on its header
+// in the inspector.
+//
+// `type` is the component type, `menu` the item's label and `order` its place.
+// The proc takes the component as a rawptr.
+@(extension_point={attribute="context_menu", target="proc", fields="type menu order"})
 ContextMenuEntry :: struct {
 	label: string,
 	action: ContextMenuAction,

@@ -41,9 +41,16 @@ _registry: [dynamic]_Registered
 _open_windows: [dynamic]_Open
 _focus_request: int = -1 // registry index to focus next frame
 
+// Declares a dockable editor window whose content the proc draws.
+//
+// `id` identifies it in imgui.ini. `title` and `icon` (a Material Symbols name
+// without ICON_MD_) label its tab, `width` and `height` size its first
+// appearance. Open it with window.open(id), usually from a @(menu_item).
+//
 // Called by the generated _register_editor_windows (editor_window_gen). The
 // imgui window name is "<icon> <title>###<id>": the icon and title show, the
 // id stays the imgui id whatever they are.
+@(extension_point={attribute="editor_window", target="proc", fields="id title icon width height"})
 register :: proc(id: string, title: string, icon: string, draw: Draw_Proc, width, height: f32, origin := "") {
 	for &r in _registry {
 		if r.id == id {

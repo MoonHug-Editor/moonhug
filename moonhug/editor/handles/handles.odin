@@ -43,8 +43,15 @@ Gizmo_State :: enum {
 	In_Selection, // it or an ancestor is selected
 }
 
+// Adds interactive scene view handles for every instance of a component.
+//
+// `component` is the type. The proc takes the component and this context and
+// calls the handles API (docs/core/Handles.md). Drawing that does not react to
+// input belongs in @(on_draw_gizmos).
+//
 // What an @(on_draw_gizmos) or @(on_scene_handles) proc is told about the
 // instance it draws (docs/core/Gizmos.md, docs/core/Handles.md).
+@(extension_point={attribute="on_scene_handles", target="proc", fields="component"})
 Gizmo_Context :: struct {
 	state: bit_set[Gizmo_State],
 	tool:  Tool,

@@ -198,8 +198,16 @@ overlay_set_transparent :: proc(overlay_id: cstring) {
 	}
 }
 
+// Adds an item to a scene view overlay, the panels the user drags between the
+// view's edges, corners and strips.
+//
+// Items with the same `id` share one overlay and sort by `order`. The proc takes
+// `vertical: bool`, true when the overlay sits in a side strip, and calls
+// im.SameLine between its own widgets when it is false.
+//
 // Add an item to overlay `overlay_id`, creating the overlay on first use
 // (overlays stack in their dock zone in creation order). Items sort by order.
+@(extension_point={attribute="scene_overlay", target="proc", fields="id order"})
 overlay_add_item :: proc(overlay_id: cstring, draw: proc(vertical: bool), order: int, origin := "") {
 	ov: ^Overlay
 	for &o in _overlays {

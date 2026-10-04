@@ -52,9 +52,19 @@ _settings_filter: [64]byte
 @(private = "file")
 _settings_split_ratio: f32 = 0.28
 
+// Adds a section to the Project Settings window, editing a package-level struct
+// variable.
+//
+// `name` titles the section and names its file, ProjectSettings/<slug>.json,
+// which is committed and shared by the team. The window edits the variable
+// through the inspector, with undo. The system that owns the variable loads the
+// file itself with engine.project_settings_load, so the game reads the same
+// values.
+//
 // Registers one tab. The generated _register_project_settings loads the var's
 // persisted values (a typed engine.project_settings_load) right before this
 // call, so the editor session starts from the file.
+@(extension_point={attribute="project_settings", target="var", fields="name"})
 settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid, origin := "") {
 	append(&_settings_tabs, _Settings_Tab{
 		name = name, ptr = ptr, tid = tid, origin = origin,

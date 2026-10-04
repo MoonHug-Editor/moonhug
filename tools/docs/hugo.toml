@@ -47,6 +47,9 @@ displayTitle = true
 displayLogo = false
 [params.footer]
 width = 'full'
+# No "Powered by Hextra" line. The copyright line is off by default, so the
+# block it sits in goes with it.
+displayPoweredBy = false
 [params.sidebar]
 toc = true
 [params.toc]

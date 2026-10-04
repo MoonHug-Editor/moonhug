@@ -20,10 +20,16 @@ Handle :: struct {
     type_key:   TypeKey,
 }
 
+// Gives a struct or union a pool in every world, addressed by handles.
+//
+// `max` caps the pool. A @(component) is pooled already, so this is for pooled
+// types that are not components, like Transform.
+//
 // Pool internals (_-prefixed fields) are private: the slot layout is an
 // implementation detail that may change (e.g. SoA columns), so nothing
 // outside this file touches them. Consumers hold Handles and reach data
 // through pool_get / pool_iterator — see docs/core/Components.md for the contract.
+@(extension_point={attribute="poolable", target="type", fields="max"})
 Pool :: struct($T: typeid, $N: int = MAX) {
     _slots:     [N]struct {
         generation: u16,

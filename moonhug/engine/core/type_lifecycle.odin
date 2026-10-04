@@ -19,6 +19,14 @@ package core
 // leaving a world, not about the value.
 
 type_reset_procs:       [TypeKey]proc(rawptr)
+// Registers the proc that frees one field type when the struct holding it is
+// destroyed.
+//
+// `type` is the field type ("string", Curve) and the proc takes a pointer to
+// the field. `priority` decides which of two procs for one type is used. This
+// is how heap-owning fields inside components are released without
+// per-component code.
+@(extension_point={attribute="cleanup", target="proc", fields="type priority"})
 type_cleanup_procs:     [TypeKey]proc(rawptr)
 type_on_validate_procs: [TypeKey]proc(rawptr)
 

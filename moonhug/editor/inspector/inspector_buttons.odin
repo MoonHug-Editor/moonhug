@@ -24,7 +24,15 @@ Inspector_Button :: struct {
 	invoke:   proc(comp: rawptr),
 }
 
+// Adds a button to a component's inspector that calls the proc.
+//
+// The proc's first parameter selects the component type. `label` is the button
+// text. Rows of 0 and above stack above the fields, negative rows below them.
+// `weight` sizes it against the other buttons in its row, and
+// `show_in_array = false` hides it where the type is drawn as an array element.
+//
 // typeid -> buttons sorted by (row, label) at generation time.
+@(extension_point={attribute="inspector_button", target="proc", fields="label row weight show_in_array"})
 inspector_buttons: map[typeid][]Inspector_Button
 
 // True while the inspector draws inside an ARRAY ELEMENT (set by

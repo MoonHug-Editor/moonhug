@@ -99,3 +99,20 @@ fixed_reset :: proc() {
 		gizmo_buffer_clear_clock(&uc.gizmos, .Game)
 	}
 }
+
+// Runs a proc every frame, with the frame's delta time in seconds.
+//
+// `order` sorts procs across all packages. For view-side work: tweens, camera,
+// UI. Simulation belongs in @(fixed_update).
+//
+// The signatures of the procs the two tick attributes run.
+@(extension_point={attribute="update", target="proc", fields="order"})
+Update_Proc :: proc(dt: f32)
+
+// Runs a proc on the fixed simulation tick, with the fixed step in seconds.
+//
+// `order` sorts procs across all packages, and `divisor = N` runs it on every
+// Nth tick only, for coarse systems. The tick rate is one project setting,
+// Project Settings > Time.
+@(extension_point={attribute="fixed_update", target="proc", fields="order divisor"})
+Fixed_Update_Proc :: proc(fixed_dt: f32)

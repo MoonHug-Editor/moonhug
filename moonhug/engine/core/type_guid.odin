@@ -83,6 +83,13 @@ generate_type_info :: proc($T: typeid) -> TypeMeta {
     return info;
 }
 
+// Gives a type a stable guid, which scene and asset files store instead of its
+// name, so renaming the type breaks nothing.
+//
+// `guid` is the identity. `menu_assets_create = {menu_name, file_name, order}`
+// adds an Assets > Create entry that makes a new asset of the type, and
+// `makeProcName` names the proc that makes its default instance.
+@(extension_point={attribute="typ_guid", target="type", fields="guid makeProcName menu_assets_create"})
 register_type :: proc($T: typeid, guid: uuid.Identifier) {
     if T in typeid_to_guid {
         panic("Type '?' is already registered.")

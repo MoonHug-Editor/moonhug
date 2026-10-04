@@ -22,6 +22,12 @@ InspectorMode :: enum {
     Package,
 }
 
+// Replaces how the inspector draws every field of one type.
+//
+// `type` is the field type. The proc takes the field's pointer, its typeid and
+// its label, and draws the whole row. `priority` decides which of two drawers
+// for one type is used.
+@(extension_point={attribute="property_drawer", target="proc", fields="type priority"})
 mapPropertyDrawer: MapPropertyDrawer
 inspectorData: InspectorData
 inspector_changed: bool

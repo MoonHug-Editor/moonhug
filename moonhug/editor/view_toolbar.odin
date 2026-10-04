@@ -151,8 +151,17 @@ Toolbar_Item :: struct {
 
 @(private = "file") _toolbar_items: [dynamic]Toolbar_Item
 
+// Adds a widget to the editor toolbar, in its left, center or right zone.
+//
+// `zone` is "left", "center" or "right", and `order` sorts items inside a zone.
+// The proc draws the widget with imgui. Zones are measured by drawing their
+// items off-screen once per frame, so an item declares no width but should keep
+// it fixed across states. The simulate controls, run buttons and relaunch are
+// registered the same way.
+//
 // Registered once at startup from view_chrome_generated.odin. Process-global,
 // so never borrows the caller's allocator.
+@(extension_point={attribute="toolbar", target="proc", fields="zone order"})
 toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin := "") {
     context.allocator = runtime.default_allocator()
     append(&_toolbar_items, Toolbar_Item{zone = zone, draw = draw, order = order, origin = origin})

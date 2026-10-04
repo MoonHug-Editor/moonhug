@@ -13,7 +13,20 @@ TYPE_GUID_KEY :: "__type_guid"
 BeforeSerializeProc :: proc(ptr: rawptr, tid: typeid, is_cleanup: bool)
 AfterDeserializeProc :: proc(ptr: rawptr, tid: typeid)
 
+// Runs a proc on every value of one type around its serialization.
+//
+// `type` selects the type and `priority` decides which of two procs is used.
+// The proc takes the value's pointer, its typeid and `is_cleanup`: false right
+// before the value is written, true right after, so it can prepare the value
+// and then undo the preparation.
+@(extension_point={attribute="before_serialize", target="proc", fields="type priority"})
 mapBeforeSerialize: map[typeid]BeforeSerializeProc
+// Runs a proc on every value of one type right after it is read from a file, to
+// rebuild what the file does not store.
+//
+// `type` selects the type and `priority` decides which of two procs is used.
+// The proc takes the value's pointer and its typeid.
+@(extension_point={attribute="after_deserialize", target="proc", fields="type priority"})
 mapAfterDeserialize: map[typeid]AfterDeserializeProc
 
 @(phase={key=SerializationInit, order=-200})

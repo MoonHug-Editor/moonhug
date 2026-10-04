@@ -78,6 +78,14 @@ EXT_TYPE_KEY :: "__type"
 component_registry: [TypeKey]Component_Desc
 _component_registry_by_guid: map[uuid.Identifier]TypeKey
 
+// Makes a struct a component: pooled in every world, attached to transforms,
+// saved in scenes and listed in Add Component.
+//
+// `menu` is its path in the Component menu ("Rendering/Camera"). `ref_tags`
+// names capability tags that a `has:"@Tag"` reference field matches, and `max`
+// caps the pool. The struct also carries @(typ_guid), its identity in scene
+// files.
+@(extension_point={attribute="component", target="type", fields="menu ref_tags max"})
 component_register :: proc(desc: Component_Desc) {
 	{
 		// The registry is process-global: it must never borrow the caller's

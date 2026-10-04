@@ -27,6 +27,14 @@ import "moonhug:engine/gizmos"
 _scene_rendered_frame: u64
 _scene_view_size: [2]f32
 
+// Draws gizmos for every enabled instance of a component, each frame, in the
+// scene view.
+//
+// `component` is the type. The proc takes the component and a
+// handles.Gizmo_Context and draws through the gizmos API. The scene view's
+// Gizmos menu shows or hides them per type. Anything that reacts to the mouse
+// belongs in @(on_scene_handles).
+@(extension_point={attribute="on_draw_gizmos", target="proc", fields="component"})
 gizmo_pass :: proc() {
 	sel_scene_prune()
 	scene_live := menu.show_scene && _scene_rendered_frame + 1 == gfx.frame_index && _scene_view_size.x > 0 && _scene_view_size.y > 0

@@ -286,6 +286,12 @@ Mcp_Error :: struct {
 	message: string,
 }
 
+// Exposes a proc as a tool of the editor's MCP bridge, so an agent can call it.
+//
+// `description` is what the agent reads. Each `param_<name>` field declares one
+// parameter as "type:description". The proc takes the request id and the
+// params object and returns the result as JSON, or an Mcp_Error.
+@(extension_point={attribute="mcp_tool", target="proc", fields="description param_*"})
 Mcp_Tool_Def :: struct {
 	name:        string,
 	description: string,

@@ -60,8 +60,16 @@ _view_menu_tree :: proc(view: string) -> ^menu.MenuNode {
 	return t
 }
 
+// Adds an item to a view's menu, the ⋮ button in its dock tab bar.
+//
+// `view` is the view's id, the text after ### in its window title ("Scene",
+// "Animation"), and `label` is the item's path inside that menu. On a proc the
+// item is an action, on a bool variable a toggle. `order`, `enabled` and
+// `checked` work as on @(menu_item).
+//
 // Registered once at startup from view_chrome_generated.odin. Process-global,
 // so never borrows the caller's allocator.
+@(extension_point={attribute="view_menu", target="proc var", fields="view label order enabled checked"})
 view_menu_add_action :: proc(
     view, label: string,
     action: proc(),
@@ -86,6 +94,12 @@ view_menu_add_dynamic :: proc(view, label: string, draw: proc(), order := 0, ori
 	menu.tree_add_dynamic(_view_menu_tree(view), label, draw, order, origin)
 }
 
+// Adds a widget to a view's dock tab bar, left of its ⋮ menu button.
+//
+// `view` is the view's id, the text after ### in its window title, and items
+// sort by `order`. The proc draws the widget with imgui and should keep a fixed
+// width. The bar belongs to the dock node, so the view itself needs no code.
+@(extension_point={attribute="view_tab_bar", target="proc", fields="view order"})
 view_tab_bar_add_item :: proc(view: string, draw: proc(), order := 0, origin := "") {
 	context.allocator = runtime.default_allocator()
 	append(&_view_tab_bar_items, View_Tab_Bar_Item{view = view, draw = draw, order = order, origin = origin})

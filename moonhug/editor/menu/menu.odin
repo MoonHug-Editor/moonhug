@@ -210,12 +210,21 @@ draw_menu_sections :: proc(sections: []Menu_Section) {
 	}
 }
 
+// Adds an item to the editor's main menu bar.
+//
+// On a proc the item is an action that calls it, on a bool variable a toggle
+// that flips it. `path` is "Menu/Submenu/Item", `order` sorts siblings (lower
+// first), `shortcut` is a chord like "Ctrl+S". `enabled` and `checked` name
+// procs in the same package, polled each frame: one greys the item out, the
+// other draws a tick, for computed toggles and radio groups.
+//
 // path format: "RootItem/NodeItem1/NodeItem2/LeafItem"
 // add_menu_item adds an action at the given path. When selected, action is called.
 // enabled (optional) is polled at draw time; nil means always enabled.
 // checked (optional) is polled the same way and draws the item with a tick —
 // for a toggle whose state is computed, and for radio groups, where each option
 // is an action that sets the state and reports whether it is the current one.
+@(extension_point={attribute="menu_item", target="proc var", fields="path order shortcut enabled checked"})
 add_menu_item :: proc(path: string, shortcut: string, action: proc(), order: int = ORDER_DEFAULT, enabled: proc() -> bool = nil, checked: proc() -> bool = nil, origin := "") {
 	tree_add_item(_menu_root, path, shortcut, action, order, enabled, checked, origin)
 }
@@ -261,9 +270,16 @@ tree_add_toggle :: proc(root: ^MenuNode, path: string, value: ^bool, order: int 
 	node.origin = origin
 }
 
-// add_menu_separator adds a separator in the menu at the given path (path = parent menu, e.g. "File").
+// Adds a submenu whose items a proc draws each frame it is open.
+//
+// For item sets that exist only at runtime, like Recent Scenes. The proc emits
+// plain im.MenuItem calls, `path` and `order` place the submenu. Its items
+// cannot be listed or invoked by path over MCP, nor bound to a shortcut, so
+// @(menu_item) stays the form for anything known at build time.
+//
 // A submenu at `path` whose contents `draw` emits each frame it is open, with
 // plain im.MenuItem calls. See MenuEntryKind.Dynamic for what it gives up.
+@(extension_point={attribute="menu_dynamic", target="proc", fields="path order"})
 add_menu_dynamic :: proc(path: string, draw: proc(), order: int = ORDER_DEFAULT, origin := "") {
 	tree_add_dynamic(_menu_root, path, draw, order, origin)
 }
@@ -276,6 +292,14 @@ tree_add_dynamic :: proc(root: ^MenuNode, path: string, draw: proc(), order: int
 	node.origin = origin
 }
 
+// Adds a separator line to the menu at `path`, the parent menu ("File").
+//
+// It goes on an empty proc. `order` places it among the menu's items, after
+// the items that share its order. Several separators at one path are how a
+// menu is split into sections.
+//
+// add_menu_separator adds a separator in the menu at the given path (path = parent menu, e.g. "File").
+@(extension_point={attribute="menu_separator", target="proc", fields="path order"})
 add_menu_separator :: proc(path: string, order: int = ORDER_DEFAULT) {
 	tree_add_separator(_menu_root, path, order)
 }
