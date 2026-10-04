@@ -42,12 +42,15 @@ cmd_docs :: proc(args: []string) -> int {
 		// index with fetch(), which browsers refuse on a file:// page, and over
 		// http nothing needs patching. Reading without search is the file:
 		// double-click builds/docs/index.html.
+		// Rendered to memory: by default the server writes into publishDir,
+		// the same folder the build above produced, and a running server and
+		// a later `mh docs` then overwrite each other's pages.
 		// The config's baseURL is '/' for file:// reading, which makes the
 		// server announce itself as "//localhost:1313" and the browser opener
 		// treat that as a path. The server gets a URL with a scheme and no
 		// port: Hugo appends whichever port it actually binds, so a busy 1313
 		// does not leave the links pointing at the wrong one.
-		return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--openBrowser")
+		return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--renderToMemory", "--openBrowser")
 	}
 	return 0
 }

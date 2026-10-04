@@ -1,0 +1,5 @@
+{{- /* The theme's hook for extra <head> content, shipped empty for this.
+     params.page.width = 'full' widens the page container, but the article
+     column keeps --hextra-max-content-width (72rem, not configurable), so text
+     and tables would still sit in a narrow column. The column follows the page. */ -}}
+<style>:root { --hextra-max-content-width: 100%; }</style>

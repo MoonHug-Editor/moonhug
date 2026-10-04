@@ -8,9 +8,11 @@
 baseURL = '/'
 relativeURLs = true
 uglyURLs = true
-title = 'MoonHug'
+title = 'MoonHug Editor'
 theme = 'hextra'
 themesDir = 'tools/docs/themes'
+# One file in here: the theme's custom/head-end.html hook, see docs/general/Documentation.md.
+layoutDir = 'tools/docs/layouts'
 publishDir = 'builds/docs'
 disableKinds = ['rss', 'sitemap']
 enableGitInfo = false
@@ -34,9 +36,17 @@ kind = 'section'
 unsafe = true
 
 [params]
+# Every page uses the full window width. The article column's own cap is
+# lifted in layouts/_partials/custom/head-end.html, the theme has no setting for it.
+[params.page]
+width = 'full'
+# The navbar and footer have width settings of their own, separate from the page.
 [params.navbar]
+width = 'full'
 displayTitle = true
 displayLogo = false
+[params.footer]
+width = 'full'
 [params.sidebar]
 toc = true
 [params.toc]

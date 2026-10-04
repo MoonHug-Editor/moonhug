@@ -5,12 +5,13 @@ weight: 15
 tags: ["build", "contributing", "prebuild"]
 ---
 
-`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272 (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works.
+`mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272, rendering to memory so the server never writes into `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works.
 
 ## What is here
 
 - `hugo.toml` is the site config. Every path in it is relative to the repo root, because `mh docs` runs Hugo with `--source .`.
 - `themes/hextra` is the theme, a git submodule. A fresh clone needs `git submodule update --init`.
+- `layouts/_partials/custom/head-end.html` fills one of the theme's empty hook partials: it lifts the article column's fixed 72rem cap, so with `params.page.width = 'full'` in the config every page uses the whole window. No theme file is copied.
 
 ## How the content is assembled
 
