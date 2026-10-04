@@ -1,3 +1,9 @@
+## [0.119.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.118.0...v0.119.0) (2026-10-04)
+
+### Features
+
+* docs generation via hugo ([0c91de1](https://github.com/MoonHug-Editor/moonhug/commit/0c91de1171050abbc87ebe1b45acaee81d9424a1))
+
 ## [0.118.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.117.0...v0.118.0) (2026-10-01)
 
 ### Features
