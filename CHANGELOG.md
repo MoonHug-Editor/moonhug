@@ -1,3 +1,9 @@
+## [0.119.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.119.0...v0.119.1) (2026-10-04)
+
+### Bug Fixes
+
+* amend ([63dc03e](https://github.com/MoonHug-Editor/moonhug/commit/63dc03e82bcd3b122e1def0771e1a733914dbead))
+
 ## [0.119.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.118.0...v0.119.0) (2026-10-04)
 
 ### Features
