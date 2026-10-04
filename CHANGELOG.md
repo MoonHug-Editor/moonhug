@@ -1,3 +1,9 @@
+## [0.120.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.119.1...v0.120.0) (2026-10-04)
+
+### Features
+
+* improved attributes doc ([c217894](https://github.com/MoonHug-Editor/moonhug/commit/c2178946ace8499f37bcf129b699f5a27f1a387e))
+
 ## [0.119.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.119.0...v0.119.1) (2026-10-04)
 
 ### Bug Fixes
