@@ -1,6 +1,6 @@
 package inspector
 
-// A plugin's manifest in the package inspector (docs/Plugins.md, "Plugin
+// A plugin's manifest in the package inspector (docs/core/Plugins.md, "Plugin
 // manifest"): its description, the plugins it needs and whether each is
 // installed, and the installed plugins that use it. Read from
 // packages/<name>/mh_plugin.json when a package is selected.

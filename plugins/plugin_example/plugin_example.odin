@@ -1,6 +1,6 @@
 package plugin_example
 
-// Example plugin package (docs/Plugins.md). Demonstrates the whole surface:
+// Example plugin package (docs/core/Plugins.md). Demonstrates the whole surface:
 // a component (inspector + serialization come from the attribute), an
 // @(update) tick, an editor-only subpackage with a menu item (editor/), and
 // mounted content (assets/). Everything registers through prebuild — no

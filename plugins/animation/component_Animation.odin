@@ -2,7 +2,7 @@ package animation
 
 // Plays clips on this transform's hierarchy through a PlayableGraph
 // (playable_graph.odin) — play, cross-fade, queued play, per-layer stacking,
-// and 1D blends. See docs/AnimationComponent.md.
+// and 1D blends. See plugins/animation/docs/AnimationComponent.md.
 //
 // No state machine: what follows what is ordinary gameplay code calling this
 // API. What the component holds is the list of states that CAN be played.

@@ -1,6 +1,6 @@
 package particles_sequencer
 
-// The particles Control Track (docs/Sequencer.md): a timeline clip span
+// The particles Control Track (plugins/sequencer/docs/Sequencer.md): a timeline clip span
 // plays the bound ParticleSystem, leaving the span stops it and clears live
 // particles. Scrubbing rides the restart-to-time contract: system_reset +
 // fixed seed + fixed-step advance to the clip-local time, so a seeded system
@@ -9,7 +9,7 @@ package particles_sequencer
 // letting particles age out past the clip end.
 //
 // This folder is the particles plugin's only sequencer dependency, and it
-// compiles only with the sequencer installed (docs/Plugins.md). The track
+// compiles only with the sequencer installed (docs/core/Plugins.md). The track
 // registers itself, the sequencer never imports particles. Author
 // track-driven systems with manual_start (and a random_seed for stable
 // scrubbing): the span decides when they play.

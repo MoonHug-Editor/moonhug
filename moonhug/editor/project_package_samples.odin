@@ -1,6 +1,6 @@
 package editor
 
-// Samples section of the package inspector (docs/Plugins.md). A sample lives
+// Samples section of the package inspector (docs/core/Plugins.md). A sample lives
 // in packages/<pkg>/samples/<sample> and installs as a SIBLING package:
 // - Copy: packages/<pkg>/samples/<sample> -> packages/<sample>, .meta files
 //   included — a sample ships pre-authored assets whose guids must survive
@@ -52,7 +52,7 @@ project_package_samples_shutdown :: proc() {
 	_sample_confirm_dst = ""
 }
 
-// Temp-allocated. Presence of packages/<name> = installed (docs/Plugins.md
+// Temp-allocated. Presence of packages/<name> = installed (docs/core/Plugins.md
 // install model — the editor only ever sees a directory).
 package_samples_list :: proc(pkg: string) -> []Package_Sample {
 	samples_dir := fmt.tprintf("%s/%s/samples", _PROJECT_PACKAGES_PATH, pkg)
@@ -78,7 +78,7 @@ package_samples_list :: proc(pkg: string) -> []Package_Sample {
 }
 
 // Recursive copy KEEPING .meta files — sample guids are committed with the
-// package and must be identical in every install (docs/Plugins.md#Assets).
+// package and must be identical in every install (docs/core/Plugins.md#Assets).
 @(private = "file")
 _sample_copy_recursive :: proc(src, dst: string) -> bool {
 	if os.is_dir(src) {

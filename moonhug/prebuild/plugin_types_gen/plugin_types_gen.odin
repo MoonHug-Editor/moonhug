@@ -1,7 +1,7 @@
 package plugin_types_gen
 
 // plugin_types_gen: the editor's table of every type any plugin on disk
-// declares (docs/Plugins.md), installed or not.
+// declares (docs/core/Plugins.md), installed or not.
 //
 //   generate - moonhug/editor/plugin_types_generated.odin: `plugin_types`, one
 //              row per @(typ_guid) under plugins/, by guid.

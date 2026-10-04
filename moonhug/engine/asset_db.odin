@@ -11,7 +11,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "log"
 
-// Which pipeline feeds the AssetDB (docs/AssetPipeline.md "Asset catalog and
+// Which pipeline feeds the AssetDB (docs/core/AssetPipeline.md "Asset catalog and
 // builds"). Both end at the same loaders — they differ in where content
 // comes from.
 Asset_Pipeline_Kind :: enum {
@@ -45,7 +45,7 @@ AssetDB :: struct {
     // the catalog pipeline when no scene argument is given.
     boot_scene:   Asset_GUID,
 
-    // Root-info index for the object picker (docs/ObjectPicker.md): per scene
+    // Root-info index for the object picker (docs/core/ObjectPicker.md): per scene
     // asset, its root transform; assets_by_type answers "scene assets whose
     // ROOT has component X" without parsing files. TypeKey keys are safe here
     // because the index is runtime-only, rebuilt from type GUIDs on change.
@@ -82,7 +82,7 @@ MetaFile :: struct {
     guid: string,
 }
 
-// Installed packages (docs/Plugins.md): every folder in packages/ (a cwd
+// Installed packages (docs/core/Plugins.md): every folder in packages/ (a cwd
 // sibling of the assets root) is an installed package, and its assets/
 // subtree is an additional asset-db root. The assets/ folder is ENSURED
 // (created if missing) so package roots always resolve.

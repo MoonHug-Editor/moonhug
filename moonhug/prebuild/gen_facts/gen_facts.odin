@@ -202,7 +202,7 @@ _pkg_constants :: proc(cache: ^map[string]map[string]string, pkg_path: string, p
 }
 
 // ---------------------------------------------------------------------------
-// Runnable packages ("app-like", docs/Plugins.md): an installed package whose
+// Runnable packages ("app-like", docs/core/Plugins.md): an installed package whose
 // ROOT declares `main :: proc()`. Each one hosts its own generated dispatcher
 // set (update_gen, phase_gen, type_guid_gen, packages_gen) and builds as an
 // executable. 0..N of them may be installed — the editor depends on none.

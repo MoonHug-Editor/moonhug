@@ -1,6 +1,6 @@
 package animation_sequencer
 
-// The animation timeline track (docs/Sequencer.md): clips are AnimationClips
+// The animation timeline track (plugins/sequencer/docs/Sequencer.md): clips are AnimationClips
 // blended on a per-track mixer, weights from their ease ramps, so overlapping
 // clips crossfade. The track drives an ANIMATION COMPONENT (Unity's model:
 // the timeline takes over the Animator): its target names the Animation to

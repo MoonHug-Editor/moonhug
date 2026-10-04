@@ -1,6 +1,6 @@
 package tests
 
-// Undo rework coverage (docs/Undo.md): purge instead of clear,
+// Undo rework coverage (docs/core/Undo.md): purge instead of clear,
 // selection steps, .Asset targets routed through the apply hook.
 
 import "../engine"

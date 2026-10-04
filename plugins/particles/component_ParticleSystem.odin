@@ -4,7 +4,7 @@ package particles
 // start value is a min/max (or color a/b) pair, over-lifetime modules are
 // engine.Curve / engine.Gradient. Simulation runs on the CPU per frame
 // (@(update) in particles.odin), rendering goes through the renderer seam as
-// billboarded Draw_Quad commands. docs/ParticleSystem.md describes the modules.
+// billboarded Draw_Quad commands. plugins/particles/docs/ParticleSystem.md describes the modules.
 //
 // Serialized fields are ZERO-NEUTRAL: a scene saved before a field existed
 // loads it as zero, so zero must mean "off" or "no change" for every field

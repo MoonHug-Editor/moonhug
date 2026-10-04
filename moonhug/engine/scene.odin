@@ -206,7 +206,7 @@ _scene_find_transform_local_id :: proc(s: ^Scene, id: Local_ID, include_nested: 
 		if tr.scene != s do continue
 		if tr.nested_owned {
 			// Composed contents carry deterministic host-namespace lids
-			// (docs/NestedPrefabs.md), so matching them can't collide with
+			// (docs/core/NestedPrefabs.md), so matching them can't collide with
 			// outer lids. Their scene_asset_guid is the SOURCE scene's — the
 			// mismatch filter below only applies to outer transforms.
 			if !include_nested do continue

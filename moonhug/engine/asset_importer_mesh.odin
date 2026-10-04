@@ -1,6 +1,6 @@
 package engine
 
-// glTF mesh importer (docs/SDL3Renderer.md #5, docs/Meshes.md). One import
+// glTF mesh importer (docs/core/SDL3Renderer.md #5, docs/core/Meshes.md). One import
 // writes:
 // - the WHOLE-MODEL artifact (<guid>.bin): every node's world transform baked
 //   into one vertex blob — what MeshFilter.part == 0 draws;
@@ -35,7 +35,7 @@ Mesh_Part :: struct {
 // .anim. The guid lives in the model's .meta and is committed with it, the
 // data stays in library/. Ids share the model's sub-asset id space with parts
 // and, like parts, are matched by name across reimports, so a clip added in
-// the DCC tool never renumbers the rest (docs/AnimationComponent.md).
+// the DCC tool never renumbers the rest (plugins/animation/docs/AnimationComponent.md).
 Mesh_Clip :: struct {
     id:   Local_ID,
     name: string,

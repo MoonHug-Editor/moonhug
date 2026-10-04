@@ -1,6 +1,6 @@
 package run
 
-// The app's run configuration (docs/AssetPipeline.md "Asset catalog and
+// The app's run configuration (docs/core/AssetPipeline.md "Asset catalog and
 // builds"): build the game, stage builds/app_data from the editor-maintained
 // catalog, run the binary against it, the shipping shape. Alt: dev run
 // against the live catalog, no export. Shift: run the last build. Alt+Shift:

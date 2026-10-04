@@ -1,6 +1,6 @@
 package engine
 
-// Project settings persistence (docs/Plugins.md "Project settings").
+// Project settings persistence (docs/core/Plugins.md "Project settings").
 //
 // A project setting is a package-level struct var marked
 // @(project_settings={name="Tab Name"}). The editor's Project Settings window
@@ -53,13 +53,13 @@ project_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
 // --- Time -------------------------------------------------------------------
 
 Time_Settings :: struct {
-    fixed_rate: f32 `decor:min(1)`, // fixed simulation ticks per second (docs/FixedTick.md)
+    fixed_rate: f32 `decor:min(1)`, // fixed simulation ticks per second (docs/core/FixedTick.md)
 }
 
 @(project_settings={name="Time"})
 time_settings := Time_Settings{fixed_rate = FIXED_RATE_DEFAULT}
 
-// The editor's MCP bridge (docs/McpBridge.md): a single on/off switch for the
+// The editor's MCP bridge (docs/core/McpBridge.md): a single on/off switch for the
 // whole endpoint. Off means the editor does not listen at all, so no agent can
 // reach the editor by any tool — enforceable with no per-tool knowledge.
 // There is deliberately no read/write split: a per-tool "does this mutate"

@@ -2,7 +2,7 @@ package physics2d_tests
 
 // End-to-end physics2d package test: authored components -> box2d sync ->
 // step -> transform write-back, through the same path the app takes.
-// Ships WITH the package (docs/Plugins.md) — `mh test` runs every
+// Ships WITH the package (docs/core/Plugins.md) — `mh test` runs every
 // packages/*/tests suite after the central one.
 
 import "core:testing"
@@ -148,7 +148,7 @@ physics2d_kinematic_body_pushes_dynamic :: proc(t: ^testing.T) {
 	testing.expect(t, x > 2.8, "kinematic pusher should shove the dynamic crate along +x")
 }
 
-// Snapshot/restore (docs/Simulate.md) must leave no box2d bodies behind.
+// Snapshot/restore (docs/core/Simulate.md) must leave no box2d bodies behind.
 // Restore destroys every object in the scene, which fires on_destroy_* the same
 // way a manual delete does; this pins that the physics side really is released.
 @(test)

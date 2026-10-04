@@ -1,6 +1,6 @@
 package animation_sample
 
-// Sample gameplay for the Animation component (docs/AnimationComponent.md).
+// Sample gameplay for the Animation component (plugins/animation/docs/AnimationComponent.md).
 //
 // assets/animation_demo.scene is the imported character: a skinned mesh posed by
 // SkinnedMeshRenderer, its armature, and an Animation component whose layer holds

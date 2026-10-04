@@ -1,7 +1,7 @@
 package audio_editor
 
 // AudioSource gizmos and handles, for sources in the selection
-// (docs/Handles.md): the min and max distance as wire spheres around the
+// (docs/core/Handles.md): the min and max distance as wire spheres around the
 // source, each with a radius handle on the world axes, in every tool. Every
 // source also gets a scene icon, a speaker.
 // Dragging the min distance past the max pushes the max out with it, and the

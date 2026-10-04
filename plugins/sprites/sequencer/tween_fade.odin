@@ -1,11 +1,11 @@
 package sprites_sequencer
 
 // A clip tween owned by the sprites plugin, because the thing it poses is its
-// component (docs/Sequencer.md "Tweens"). It imports only sequencer/core —
+// component (plugins/sequencer/docs/Sequencer.md "Tweens"). It imports only sequencer/core —
 // never the sequencer — and tween_gen picks it up by the embedded Clip_Tween
 // base, adding it to TweenUnion on the next prebuild. That is the whole
 // plugin contract: no registration call, no edit to the sequencer. The
-// folder compiles only with the sequencer installed (docs/Plugins.md).
+// folder compiles only with the sequencer installed (docs/core/Plugins.md).
 
 import "moonhug:engine"
 import seq_core "moonhug:packages/sequencer/core"

@@ -1,6 +1,6 @@
 package tests
 
-// The asset catalog round trip (docs/AssetPipeline.md "Asset catalog"):
+// The asset catalog round trip (docs/core/AssetPipeline.md "Asset catalog"):
 // the auto-written catalog restores the AssetDB + artifact index under the
 // catalog pipeline, catalog.export_from stages a self-contained relocatable data dir
 // (boot scene stamped), and under the catalog pipeline refresh no-ops and runtime

@@ -1,6 +1,6 @@
 package editor
 
-// Gizmo settings (docs/Gizmos.md): which gizmos the scene and game views
+// Gizmo settings (docs/core/Gizmos.md): which gizmos the scene and game views
 // show, from their view menus.
 //
 // - Each view's "Gizmos" toggle shows or hides every gizmo and icon in it.

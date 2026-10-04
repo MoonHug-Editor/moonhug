@@ -1,6 +1,6 @@
 package engine
 
-// Unity-style Material asset (docs/Materials.md): picks a shader (built-in
+// Unity-style Material asset (docs/core/Materials.md): picks a shader (built-in
 // enum or a custom .glsl asset) and supplies its property block — texture,
 // color, and named properties for custom shaders. Materials are JSON files
 // under assets/ ("Assets/Create/Material" writes New Material.mat) and
@@ -291,7 +291,7 @@ material_path_changed :: proc(path: string) {
 	}
 }
 
-// Frees what a material owns and leaves it zeroed (docs/Components.md,
+// Frees what a material owns and leaves it zeroed (docs/core/Components.md,
 // "Lifecycle procs").
 cleanup_Material :: proc(mat: ^Material) {
 	for &prop in mat.properties {

@@ -1,6 +1,6 @@
 package text
 
-// Text for the canvas tree (docs/Text.md), TextMeshPro-shaped: a graphic
+// Text for the canvas tree (plugins/text/docs/Text.md), TextMeshPro-shaped: a graphic
 // whose font is an SDF artifact baked at import and whose glyphs go through
 // an SDF material (assets/materials/TextSDF.mat), so it stays sharp at any
 // size and gets outline, underlay shadow, dilation and softness from the

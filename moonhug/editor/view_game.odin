@@ -100,7 +100,7 @@ game_min_scale :: proc(avail: im.Vec2) -> f32 {
 	return min(1, min(avail.x / e.w, avail.y / e.h))
 }
 
-// Whether the game receives input during a simulation (docs/Simulate.md):
+// Whether the game receives input during a simulation (docs/core/Simulate.md):
 // Play focuses the view, a click on its image focuses it, a click anywhere
 // else unfocuses it. main.odin blocks the game's input reads while unfocused.
 game_view_focused: bool

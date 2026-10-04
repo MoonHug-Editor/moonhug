@@ -1,6 +1,6 @@
 package window
 
-// Plugin-openable editor windows (docs/Plugins.md). A window is DECLARED with
+// Plugin-openable editor windows (docs/core/Plugins.md). A window is DECLARED with
 // @(editor_window={id, title, width, height}) on its content-draw proc —
 // prebuild registers every declaration here — and OPENED by id, usually from a
 // @(menu_item) proc, the way Unity's [MenuItem] calls EditorWindow.GetWindow.

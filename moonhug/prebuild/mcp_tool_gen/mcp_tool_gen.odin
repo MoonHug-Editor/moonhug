@@ -1,6 +1,6 @@
 package mcp_tool_gen
 
-// mcp_tool_gen: MCP bridge tools (docs/McpBridge.md).
+// mcp_tool_gen: MCP bridge tools (docs/core/McpBridge.md).
 //
 //   @(mcp_tool={description="What the agent sees"})
 //   mcp_tool_set_name :: proc(p: json.Object) -> (string, Mcp_Error) { ... }

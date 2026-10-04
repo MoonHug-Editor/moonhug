@@ -1,6 +1,6 @@
 package tests
 
-// Crash journal (docs/CrashJournal.md). The signal path itself can't be
+// Crash journal (docs/general/CrashJournal.md). The signal path itself can't be
 // exercised in-process — a real SIGSEGV would take the test runner down —
 // so `moonhug_editor --crash-test` covers that end to end. These cover the
 // journal-writing path and the breadcrumb, which is where the content bugs

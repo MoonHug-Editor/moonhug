@@ -1,7 +1,7 @@
 package animation_editor
 
 // Animation window — clip authoring on the PlayableGraph scrub path
-// (docs/AnimationComponent.md steps 5+6): scrub preview plus dopesheet and curve
+// (plugins/animation/docs/AnimationComponent.md steps 5+6): scrub preview plus dopesheet and curve
 // editing for the clips on the selected object's Animation component.
 //
 // PREVIEW (step 5): never leaks into saved data. Each frame:
@@ -403,7 +403,7 @@ _pv_doc :: proc() -> (doc: ^inspector.Asset_Doc, clip: ^anim.AnimationClip) {
 
 // The animation view edits a document across frames (dragging a keyframe), so
 // its edit is a session like any other — opened when the gesture starts, closed
-// when it ends. See docs/Undo.md.
+// when it ends. See docs/core/Undo.md.
 @(private = "file")
 _pv_session: undo.Edit_Session
 

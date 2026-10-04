@@ -3,7 +3,7 @@ package app_tests
 // Lifetime round-trips as an ext record (regression: it vanished from scenes
 // resaved by an editor binary that predated its registry entry — unknown ext
 // guids are silently dropped on load, see the missing-component note in
-// docs/Plugins.md).
+// docs/core/Plugins.md).
 
 import app "moonhug:packages/app"
 import "moonhug:engine"

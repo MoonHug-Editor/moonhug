@@ -14,7 +14,7 @@ import "moonhug:engine/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
-// The catalog to boot from (docs/AssetPipeline.md "Asset catalog and
+// The catalog to boot from (docs/core/AssetPipeline.md "Asset catalog and
 // builds"): --catalog[=path] overrides, default = the editor-maintained
 // in-place catalog. The app has no scan mode.
 _catalog_path: string
@@ -97,14 +97,14 @@ main :: proc() {
         if !gfx.frame_begin() do continue
 
         // Gameplay gizmos measure against the camera they show in: the one
-        // render_world_cameras draws last, at the window size (docs/Gizmos.md).
+        // render_world_cameras draws last, at the window size (docs/core/Gizmos.md).
         if cam := engine.camera_active(); cam != nil {
             ws := gfx.window_size()
             gizmos.set_view(engine.camera_render_view(cam, f32(ws.x), f32(ws.y)))
         }
 
         // Fixed-rate sim ticks first (0..k this frame, accumulator-driven —
-        // docs/FixedTick.md), then the per-frame view tick.
+        // docs/core/FixedTick.md), then the per-frame view tick.
         steps := engine.fixed_frame_ticks(gfx.delta_time())
         for _ in 0 ..< steps {
             engine.fixed_tick_begin()

@@ -1,6 +1,6 @@
 package editor
 
-// The editor's gizmo pass (docs/Gizmos.md): once per frame, after the sim tick
+// The editor's gizmo pass (docs/core/Gizmos.md): once per frame, after the sim tick
 // and the preview pose, before any view renders. It records what the scene
 // and game views then draw:
 //

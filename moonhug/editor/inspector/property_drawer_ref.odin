@@ -12,7 +12,7 @@ import "moonhug:editor/widgets"
 // pick stores {root component local_id, asset guid} with an UNRESOLVED handle:
 // the target asset isn't loaded, game code must treat the handle as optional
 // (Unity's model). `pick:"scene"` / `pick:"project"` field tags limit which
-// tab is assignable. See docs/ObjectPicker.md.
+// tab is assignable. See docs/core/ObjectPicker.md.
 @(property_drawer={type = engine.Ref, priority = 0})
 draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	ref_ptr := cast(^engine.Ref)ptr

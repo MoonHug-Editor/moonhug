@@ -144,7 +144,7 @@ generate :: proc(w: ^db.World) -> bool {
 	defer strings.builder_destroy(&b)
 
 	// Package name -> pkg_path: a subpackage imports by its folder, not its
-	// name (docs/Plugins.md).
+	// name (docs/core/Plugins.md).
 	packages_used: map[string]string
 	defer delete(packages_used)
 	for e in entries {

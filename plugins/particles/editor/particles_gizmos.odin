@@ -6,7 +6,7 @@ package particles_editor
 // engine/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
 // Every system also gets a scene icon, the "snowing" glyph.
 //
-// In the Handles tool (T), shape handles edit it (docs/Handles.md), one undo
+// In the Handles tool (T), shape handles edit it (docs/core/Handles.md), one undo
 // step per drag: a cone's base radius and angle, a sphere's, hemisphere's,
 // circle's or edge's radius, a box's size around its center.
 

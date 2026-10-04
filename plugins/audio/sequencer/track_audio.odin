@@ -1,6 +1,6 @@
 package audio_sequencer
 
-// The audio Control Track (docs/Sequencer.md): a clip span plays its asset on
+// The audio Control Track (plugins/sequencer/docs/Sequencer.md): a clip span plays its asset on
 // the bound AudioSource. The track owns ONE VOICE PER ACTIVE CLIP — a mixer
 // track of its own, not the source's — so two clips overlapping on one track
 // play at once, each at its clip weight (track_clip_weight): the overlap IS
@@ -13,7 +13,7 @@ package audio_sequencer
 // at the clip-local offset, and crossing a clip's start restarts it.
 //
 // This folder is the audio plugin's only sequencer dependency, and it compiles
-// only with the sequencer installed (docs/Plugins.md). The track registers
+// only with the sequencer installed (docs/core/Plugins.md). The track registers
 // itself, the sequencer never imports audio. Author track-driven sources with
 // play_on_awake off: the span decides when they play.
 

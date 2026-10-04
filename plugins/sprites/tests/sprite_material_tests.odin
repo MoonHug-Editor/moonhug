@@ -1,6 +1,6 @@
 package sprites_tests
 
-// SpriteRenderer.material serialization round-trip (docs/Materials.md).
+// SpriteRenderer.material serialization round-trip (docs/core/Materials.md).
 // Rendering (shader/tint/properties applied per sprite) needs a GPU and is
 // verified in-editor.
 

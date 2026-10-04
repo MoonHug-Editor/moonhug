@@ -1,6 +1,6 @@
 package animation_editor
 
-// Clips inside a model (docs/AnimationComponent.md): what this package adds
+// Clips inside a model (plugins/animation/docs/AnimationComponent.md): what this package adds
 // to the editor's model rows.
 //
 // - The selected clip's section in the Project Inspector: its settings, or a

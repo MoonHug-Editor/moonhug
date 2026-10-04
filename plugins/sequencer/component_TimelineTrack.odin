@@ -1,6 +1,6 @@
 package sequencer
 
-// Timeline-as-prefab (docs/Sequencer.md): a timeline is a TRANSFORM SUBTREE.
+// Timeline-as-prefab (plugins/sequencer/docs/Sequencer.md): a timeline is a TRANSFORM SUBTREE.
 // The director's node holds track nodes as children; each track node holds
 // clip nodes. Everything the prefab system does — nesting, variants,
 // overrides, lids, undo, pickers — applies to timelines because they are

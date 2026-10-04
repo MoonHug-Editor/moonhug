@@ -1,6 +1,6 @@
 package animation
 
-// Import settings for a clip (docs/AnimationComponent.md). These live in the
+// Import settings for a clip (plugins/animation/docs/AnimationComponent.md). These live in the
 // asset's .meta, never in the .anim itself, because a clip extracted from a
 // model is a GENERATED file: re-extracting rewrites it, and anything authored
 // must survive that. The meta is a separate file, so it does.

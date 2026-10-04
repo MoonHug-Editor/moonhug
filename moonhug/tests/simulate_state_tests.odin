@@ -6,7 +6,7 @@ import "core:os"
 
 import "core:testing"
 
-// The Simulate state machine (docs/Simulate.md), reachable because the logic lives
+// The Simulate state machine (docs/core/Simulate.md), reachable because the logic lives
 // in editor/simulate, a subpackage with no imgui or view dependencies.
 
 // A host whose ticks only count, so tests can assert what advanced.

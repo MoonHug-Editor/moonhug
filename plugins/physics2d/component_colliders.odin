@@ -3,7 +3,7 @@ package physics2d
 // Unity-literal 2D colliders. A collider attaches to the nearest ancestor
 // Rigidbody2D (its own transform included) as a shape — Unity's compound-body
 // rule — or, with no rigidbody anywhere above, to its own implicit STATIC
-// body. Sizes are in world units (1 unit = 1 m = 100 px, docs/FixedTick.md).
+// body. Sizes are in world units (1 unit = 1 m = 100 px, docs/core/FixedTick.md).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
 // edits don't live-sync (the editor doesn't simulate); runtime code mutates

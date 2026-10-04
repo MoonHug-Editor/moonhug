@@ -101,7 +101,7 @@ test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
 // rebuilds the instance from its prefab — does not bring it back.
 
 // Undo of a revert on a variant ROOT must restore the override record AND the
-// value (docs/PrefabsSpec.md §4.7 + §8.2). The property menu's Revert pairs a
+// value (docs/core/PrefabsSpec.md §4.7 + §8.2). The property menu's Revert pairs a
 // Value_Command with record bookkeeping; both halves have to survive undo.
 @(test)
 test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {

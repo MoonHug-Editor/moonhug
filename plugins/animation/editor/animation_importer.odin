@@ -1,6 +1,6 @@
 package animation_editor
 
-// The .anim importer (docs/AnimationComponent.md).
+// The .anim importer (plugins/animation/docs/AnimationComponent.md).
 //
 // A clip needs no format conversion — the source is already the runtime shape —
 // so this exists for its SETTINGS. Making the clip importer-backed is what puts

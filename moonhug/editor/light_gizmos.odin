@@ -1,6 +1,6 @@
 package editor
 
-// Light gizmos and handles, for lights in the selection (docs/Handles.md). Every
+// Light gizmos and handles, for lights in the selection (docs/core/Handles.md). Every
 // light also gets a scene icon, a bulb in its color.
 //
 // - Point: the range as a wire sphere, with a radius handle on the world

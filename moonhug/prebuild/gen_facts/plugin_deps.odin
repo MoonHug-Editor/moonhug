@@ -1,6 +1,6 @@
 package gen_facts
 
-// Plugin dependencies (docs/Plugins.md), read from import lines:
+// Plugin dependencies (docs/core/Plugins.md), read from import lines:
 //
 // - Integration subpackage: a plugin's subfolder that imports another plugin
 //   compiles only while that plugin is installed. The prebuild scan skips the

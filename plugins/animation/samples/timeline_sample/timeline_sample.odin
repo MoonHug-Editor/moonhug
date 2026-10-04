@@ -1,6 +1,6 @@
 package timeline_sample
 
-// Sample content for the sequencer (docs/Sequencer.md):
+// Sample content for the sequencer (plugins/sequencer/docs/Sequencer.md):
 // assets/timeline_demo.scene is a fireworks show driven by a PlayableDirector
 // — a manual-start rocket system (Death sub emitter into spinning star
 // sparks, comet trails) played by a particles track, plus an audio track.

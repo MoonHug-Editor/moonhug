@@ -1,6 +1,6 @@
 package editor_window_gen
 
-// editor_window_gen: plugin-declared editor windows (docs/Plugins.md).
+// editor_window_gen: plugin-declared editor windows (docs/core/Plugins.md).
 //
 //   @(editor_window={id="physics2d", title="Physics 2D", width=420, height=240})
 //   draw_physics_debug :: proc() { ... }   // window CONTENT only

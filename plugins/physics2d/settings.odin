@@ -3,7 +3,7 @@ package physics2d
 import "moonhug:engine"
 
 // Physics 2D project settings — a tab in the editor's Project Settings window
-// (docs/Plugins.md "Project settings"). Consumed by polling in physics_step:
+// (docs/core/Plugins.md "Project settings"). Consumed by polling in physics_step:
 // an edit, undo or redo reaches the live world on the next step, and the game
 // binary reads the same ProjectSettings/physics_2d.json.
 

@@ -5,7 +5,7 @@ package crash_journal
 import "base:runtime"
 
 // Non-POSIX stub: the crash journal needs sigaction + an alternate signal
-// stack (docs/CrashJournal.md). Windows would use SetUnhandledExceptionFilter.
+// stack (docs/general/CrashJournal.md). Windows would use SetUnhandledExceptionFilter.
 
 init :: proc(version := "") {}
 assertion_failure :: proc(prefix, message: string, loc: runtime.Source_Code_Location) -> ! {

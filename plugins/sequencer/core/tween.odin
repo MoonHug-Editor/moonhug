@@ -1,7 +1,7 @@
 package sequencer_core
 
 // The clip-tween vocabulary — the floor TWEEN PACKAGES build on
-// (docs/Sequencer.md "Tweens"). A clip tween is a plain struct with a
+// (plugins/sequencer/docs/Sequencer.md "Tweens"). A clip tween is a plain struct with a
 // @(typ_guid), an embedded Clip_Tween base and one evaluate_<Name>(t) proc:
 // PURE pose as a function of clip-normalized time, which is what makes the
 // same tween exact under Play, scrubbing and the edit-mode preview alike.

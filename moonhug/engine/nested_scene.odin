@@ -40,9 +40,6 @@ Override :: struct {
 //     names the deepest prefab; resolution searches s.nested_scenes for an NS
 //     descending from scene_instance whose source_prefab matches and contains
 //     the target.
-// LIMITATION: Same-prefab-instantiated-twice along one chain ambiguates. This
-// matches Unity's model only when XOR projection is added (planned migration
-// stages 2-3, see docs/UnityStyleMigration.md).
 Breadcrumb :: struct {
     local_id:           Local_ID,  // referrer will use this local_id for resolving
     scene_source:       PPtr,      // final destination: (deepest prefab guid, local_id in that prefab)
@@ -1356,7 +1353,7 @@ scene_nested_hosts_map :: proc(s: ^Scene, allocator := context.temp_allocator) -
 // base resolved + the variant's own overrides baked in + the variant's added
 // transforms merged — a normal flat scene file. Recurses for variant-of-variant.
 // `owned` is true when the returned slice is freshly allocated (caller frees).
-// The XOR projection key for an NS. The invariant (docs/NestedPrefabs.md) is
+// The XOR projection key for an NS. The invariant (docs/core/NestedPrefabs.md) is
 // local_id_in_parent == local_id for native NSs; some older files were authored
 // with local_id_in_parent == 0 (invalid — lids start at 1), which breaks
 // (un)projection. Fall back to local_id so deep-override lids round-trip.
@@ -1573,7 +1570,7 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
 
 	// Structural component edits ride on top of the field patches, so the
 	// materialized instance is missing removed components and carries added
-	// ones (docs/NestedPrefabs.md).
+	// ones (docs/core/NestedPrefabs.md).
 	baked := nested_scene_apply_component_edits(
 		field_baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
 		ns.removed_objects[:], ns.added_objects[:],
@@ -1718,7 +1715,7 @@ nested_scene_resolve :: proc(host_tH: Transform_Handle) {
     }
 
     // Apply deep overrides (those whose breadcrumb has a scene_path through
-    // inner prefabs) by patching the live tree directly. Per docs/NestedPrefabs.md
+    // inner prefabs) by patching the live tree directly. Per docs/core/NestedPrefabs.md
     // overrides live at the root scene level only; inner NS records carry their
     // own prefab-baked overrides but never copies of root's. We locate each
     // deep target via reflection over the materialized subtree, then run
@@ -1886,7 +1883,7 @@ nested_scene_has_override :: proc(ns: ^NestedScene, target: PPtr, property_path:
 // STICKY, like Unity: an entry, once recorded, is only removed by an explicit
 // nested_scene_revert_override. Setting a field back to its base value by hand
 // KEEPS the override — membership is never recomputed from a comparison
-// (docs/PrefabsSpec.md §4.1: overrides grow only).
+// (docs/core/PrefabsSpec.md §4.1: overrides grow only).
 //
 // `field_ptr`/`field_tid` name the live field; its current value is marshaled
 // as the override value. Same-(target, path) entries are replaced in place, so

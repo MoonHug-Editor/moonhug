@@ -1,7 +1,7 @@
 package handles
 
 // Interactive scene-view handles for editor code and package editors
-// (docs/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
+// (docs/core/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
 // proc draws itself (through engine/gizmos), reports hover, and when the user
 // drags it, reports the drag as an offset on a plane. The editor's gizmo pass
 // publishes the scene view's frame (view, pointer, keys) before the handle
@@ -44,7 +44,7 @@ Gizmo_State :: enum {
 }
 
 // What an @(on_draw_gizmos) or @(on_scene_handles) proc is told about the
-// instance it draws (docs/Gizmos.md, docs/Handles.md).
+// instance it draws (docs/core/Gizmos.md, docs/core/Handles.md).
 Gizmo_Context :: struct {
 	state: bit_set[Gizmo_State],
 	tool:  Tool,

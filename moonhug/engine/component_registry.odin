@@ -159,7 +159,7 @@ _ext_desc_for_value :: proc(v: json.Value) -> (Component_Desc, bool) {
 
 // json.Value -> typed component memory (ptr must point at a T of desc.tid).
 // Zero → JSON → on_validate_T: absent keys stay what the memory holds, and
-// the type's on_validate makes the result consistent (docs/Components.md).
+// the type's on_validate makes the result consistent (docs/core/Components.md).
 _ext_value_into :: proc(desc: Component_Desc, v: json.Value, ptr: rawptr) -> bool {
 	bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
 	if merr != nil do return false

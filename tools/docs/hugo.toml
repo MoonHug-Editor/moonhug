@@ -1,0 +1,62 @@
+# The documentation site. Run through `mh docs`, which passes this file with
+# `--source .` so every path below is relative to the repo root, plus a
+# generated mounts file naming the content folders.
+#
+# The site is read from the file system: `open builds/docs/index.html`. That is
+# why relativeURLs is on, uglyURLs gives every page a .html the browser can
+# open directly, and the absolute-URL outputs (rss, sitemap) are off.
+baseURL = '/'
+relativeURLs = true
+uglyURLs = true
+title = 'MoonHug'
+theme = 'hextra'
+themesDir = 'tools/docs/themes'
+publishDir = 'builds/docs'
+disableKinds = ['rss', 'sitemap']
+enableGitInfo = false
+
+[taxonomies]
+tag = 'tags'
+
+# Every page and section renders with the theme's docs layout. Tag pages are
+# left out, they have layouts of their own.
+[[cascade]]
+type = 'docs'
+[cascade._target]
+kind = 'page'
+[[cascade]]
+type = 'docs'
+[cascade._target]
+kind = 'section'
+
+[markup.goldmark.renderer]
+# The pages are ours and a few use inline HTML (details, tables, br).
+unsafe = true
+
+[params]
+[params.navbar]
+displayTitle = true
+displayLogo = false
+[params.sidebar]
+toc = true
+[params.toc]
+displayTags = true
+[params.search]
+enable = true
+type = 'flexsearch'
+[params.search.flexsearch]
+index = 'content'
+
+[markup.highlight]
+noClasses = false
+
+# The navbar search box. The theme renders it only for a menu entry of this
+# type, there is no params switch for it.
+[[menu.main]]
+name = 'Search'
+weight = 100
+[menu.main.params]
+type = 'search'
+
+# Content mounts are written by `mh docs` into builds/docs-mounts.toml, which
+# is passed beside this file. See docs_write_plugin_mounts for why none sit here.

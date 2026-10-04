@@ -1,6 +1,6 @@
 package audio_editor
 
-// Audio importer registration + run proc (editor-side, docs/Audio.md):
+// Audio importer registration + run proc (editor-side, plugins/audio/docs/Audio.md):
 // decodes the source to float32 PCM (audio.decode_file_f32), applies the
 // import settings (volume gain, normalize) and writes a float32 WAV
 // artifact — playback loads the ARTIFACT, so every consumer hears the

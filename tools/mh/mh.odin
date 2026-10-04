@@ -43,6 +43,7 @@ COMMANDS := []Command {
 	{"deps", "gather plugin dependencies into mh_plugin.json (names: only those)", cmd_deps, true},
 	{"shaders", "recompile the built-in GLSL shaders", cmd_shaders, true},
 	{"mcp", "build and run the MCP stdio shim", cmd_mcp, true},
+	{"docs", "build the documentation site into builds/docs (--open opens it)", cmd_docs, true},
 	{"clean", "remove builds/ (--all also removes the library cache)", cmd_clean, true},
 	{"help", "list these commands", cmd_help, false},
 }

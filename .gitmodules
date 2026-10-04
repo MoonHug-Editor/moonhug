@@ -1,3 +1,6 @@
 [submodule "external/odin-imgui"]
 	path = moonhug/external/odin-imgui
 	url = https://gitlab.com/L-4/odin-imgui.git
+[submodule "tools/docs/themes/hextra"]
+	path = tools/docs/themes/hextra
+	url = https://github.com/imfing/hextra.git

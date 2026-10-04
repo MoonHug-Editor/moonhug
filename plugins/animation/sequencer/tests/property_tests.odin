@@ -1,6 +1,6 @@
 package animation_sequencer_tests
 
-// inspector.property (docs/InspectorProperty.md): a field addressed from an
+// inspector.property (docs/core/InspectorProperty.md): a field addressed from an
 // owner and a dotted path. The resolver is what an MCP property write and the
 // timeline animator's proxy rows share, so the path grammar and the two
 // addresses — the value, and the array an override names — are pinned here.

@@ -1,7 +1,7 @@
 package mcp
 
 // Wire protocol shared by the editor's MCP bridge and the mcp_shim binary
-// (docs/McpBridge.md). The editor listens on loopback TCP and speaks a plain
+// (docs/core/McpBridge.md). The editor listens on loopback TCP and speaks a plain
 // envelope — the shim translates it to MCP proper for the client.
 //
 // Wire format, both directions after the handshake:

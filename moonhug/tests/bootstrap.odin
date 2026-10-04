@@ -1,7 +1,7 @@
 package tests
 
 // Shared world bootstrap lives in tests/common so per-package test suites
-// (moonhug/packages/<name>/tests — docs/Plugins.md) can import it too. The
+// (moonhug/packages/<name>/tests — docs/core/Plugins.md) can import it too. The
 // central suite keeps the short names through these aliases.
 //
 // RULE: this package never imports "moonhug:packages/..." — core tests test core;

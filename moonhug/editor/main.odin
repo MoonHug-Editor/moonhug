@@ -51,7 +51,7 @@ main :: proc() {
     engine.project_chdir_root()
 
     // Before anything that can fault: from here on a crash lands in
-    // logs/crash_<pid>.log with a stack (docs/CrashJournal.md).
+    // logs/crash_<pid>.log with a stack (docs/general/CrashJournal.md).
     crash_journal.init(VERSION)
     // Must be set HERE, not inside init: assertion_failure_proc lives on the
     // context, so it only persists in the scope that assigns it.
@@ -162,7 +162,7 @@ main :: proc() {
     defer thumbnails_shutdown()
     defer asset_previews_shutdown()
     defer preview_world_shutdown()
-    mcp_bridge_init() // agent bridge on loopback TCP (docs/McpBridge.md)
+    mcp_bridge_init() // agent bridge on loopback TCP (docs/core/McpBridge.md)
     defer mcp_bridge_shutdown()
 
     for !menu.quit_requested && !gfx.quit_requested() {
@@ -241,7 +241,7 @@ main :: proc() {
         // read outside it.
         game_view_frame_begin()
         // Gameplay gizmos measure against the game camera: the sim draws them
-        // once, and the game view is the one they are for (docs/Gizmos.md).
+        // once, and the game view is the one they are for (docs/core/Gizmos.md).
         if v, ok := _game_gizmo_view(); ok do gizmos.set_view(v)
         input.set_app_focused(!sim_is_active() || game_view_focused)
         input.set_game_scope(true)
@@ -301,7 +301,7 @@ main :: proc() {
             draw_output_view()
         }
 
-        // Plugin-opened windows (editor/window, docs/Plugins.md).
+        // Plugin-opened windows (editor/window, docs/core/Plugins.md).
         wnd.draw_all()
 
         draw_about_popup()

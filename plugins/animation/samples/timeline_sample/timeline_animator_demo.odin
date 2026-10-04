@@ -1,6 +1,6 @@
 package timeline_sample
 
-// Sample gameplay for TimelineAnimator (docs/TimelineAnimator.md).
+// Sample gameplay for TimelineAnimator (plugins/animation/docs/TimelineAnimator.md).
 //
 // assets/timeline_animator_demo.scene has one Body with an Animation
 // component, two timelines that each lean it one way, and a TimelineAnimator binding the key

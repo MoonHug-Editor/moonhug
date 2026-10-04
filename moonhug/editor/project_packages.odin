@@ -1,6 +1,6 @@
 package editor
 
-// Packages section of the project view (docs/Plugins.md). Each installed
+// Packages section of the project view (docs/core/Plugins.md). Each installed
 // package's assets/ folder is an ADDITIONAL ROOT, the same concept as the
 // Assets root: label = package name, path = packages/<name>/assets. The
 // Packages node and the package rows are special the way the Assets root is —

@@ -1,6 +1,6 @@
 package engine
 
-// GUID-keyed user-shader cache (docs/Materials.md): artifact blobs →
+// GUID-keyed user-shader cache (docs/core/Materials.md): artifact blobs →
 // gfx.shader_register_fragment, keyed in gfx by the guid string, plus the
 // reflected material property layout (name → UBO offset). Materials
 // reference a shader asset via Material.custom_shader; resolution happens in

@@ -1,7 +1,7 @@
 package sequencer_core
 
 // The script vocabulary — the floor SCRIPT PACKAGES build on
-// (docs/Sequencer.md "Scripts"). A script is a plain struct with a
+// (plugins/sequencer/docs/Sequencer.md "Scripts"). A script is a plain struct with a
 // @(typ_guid) and OPTIONAL lifecycle procs — enter_<Name>, tick_<Name>,
 // exit_<Name> — called when playback crosses into its clip's span, every
 // tick inside it, and when it leaves. ScriptUnion in the sequencer package

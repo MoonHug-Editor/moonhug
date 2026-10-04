@@ -43,7 +43,7 @@ _input: struct {
 	viewport_pos:    [2]f32,
 	viewport_size:   [2]f32,
 	viewport_custom: bool,
-	// Application focus (core.application_is_focused, docs/Simulate.md):
+	// Application focus (core.application_is_focused, docs/core/Simulate.md):
 	// the window's focus standalone, the Game view's in the editor, which
 	// sets it itself (focus_custom). Game reads report nothing while the
 	// application is unfocused and inside the game scope; the editor's own
@@ -54,7 +54,7 @@ _input: struct {
 	unfocused_mouse: [2]f32, // the mouse where focus left; mouse_position holds it
 	relative:        bool,   // relative mouse mode: the global cursor is meaningless
 
-	// Fixed-tick input latching (docs/FixedTick.md): edges ACCUMULATE across
+	// Fixed-tick input latching (docs/core/FixedTick.md): edges ACCUMULATE across
 	// frames and are consumed once per fixed tick (fixed_latch), so a press
 	// shorter than a tick still registers on the next tick. The non-accum
 	// fields are the latched view fixed-update code reads.
@@ -347,7 +347,7 @@ debug_counters :: proc() -> (key_down_events, key_up_events, focus_gained_events
 	return _input.dbg_key_down, _input.dbg_key_up, _input.dbg_focus_gained, _input.dbg_focus_lost
 }
 
-// --- Fixed-tick input (docs/FixedTick.md) -----------------------------------
+// --- Fixed-tick input (docs/core/FixedTick.md) -----------------------------------
 // Call once at the START of every fixed tick: moves the accumulated edges
 // into the latched view and clears the accumulators. With several ticks in
 // one frame the first tick consumes the edges (a press fires once); with

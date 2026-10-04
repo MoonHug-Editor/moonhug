@@ -215,7 +215,7 @@ load_import_settings :: proc(filepath: string) {
     }
 }
 
-// Package selected in the project view's Packages section (docs/Plugins.md):
+// Package selected in the project view's Packages section (docs/core/Plugins.md):
 // shows the package inspector instead of an asset document.
 load_package :: proc(name: string, assets_path: string, asset_count: int) {
     context.allocator = runtime.default_allocator()
@@ -351,7 +351,7 @@ package_samples_draw: proc(pkg_name: string)
 // pings its row, select=true selects it.
 package_reveal: proc(pkg_name: string, select: bool)
 
-// Package inspector (docs/Plugins.md): shown when a package is selected in
+// Package inspector (docs/core/Plugins.md): shown when a package is selected in
 // the project view's Packages section (left-pane node or right-pane row).
 _draw_package_inspector :: proc() {
     tc :: proc(s: string) -> cstring { return strings.clone_to_cstring(s, context.temp_allocator) }
@@ -364,7 +364,7 @@ _draw_package_inspector :: proc() {
     }
 }
 
-// The manifest section (docs/Plugins.md, "Plugin manifest"): what `mh deps`
+// The manifest section (docs/core/Plugins.md, "Plugin manifest"): what `mh deps`
 // gathered as a table (name, and a dot under Compile, Tests or Content for
 // what needs it, none for a hand-written entry), and the installed plugins that use
 // this one. Two foldouts, open by default. A row pings its package in the
@@ -952,7 +952,7 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
             w := engine.ctx_world()
             ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
             if ht != nil {
-                // Per docs/PrefabsSpec.md §3.2, overrides live at the root scene
+                // Per docs/core/PrefabsSpec.md §3.2, overrides live at the root scene
                 // level only. Walk up to the root native NS and look for the
                 // breadcrumb-keyed override that root holds for this field.
                 root_ns, root_target, ok := engine.nested_scene_locate_root_override(ht.scene, host_tH, nested_lid)

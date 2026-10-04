@@ -1,6 +1,6 @@
 package inspector
 
-// An ADDRESSED FIELD (docs/InspectorProperty.md): a field on an object,
+// An ADDRESSED FIELD (docs/core/InspectorProperty.md): a field on an object,
 // resolved from the owner and a dotted path, carrying everything a write or a
 // row needs — the value, the undo owner, the prefab instance an override lands
 // on, and the field the override names. Built and discarded within a frame.

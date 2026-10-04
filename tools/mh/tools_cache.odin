@@ -32,7 +32,7 @@ tool_bin :: proc(name, src: string, deps: []string, args: ..string) -> (bin: str
 }
 
 // The gen/ folder of every installed package: the generators prebuild
-// compiles in (docs/Plugins.md, "Package generators").
+// compiles in (docs/core/Plugins.md, "Package generators").
 package_gen_dirs :: proc() -> []string {
 	out := make([dynamic]string, context.temp_allocator)
 	handle, err := os.open("moonhug/packages")

@@ -106,7 +106,7 @@ _Gizmo_Target :: struct {
 _gizmo_targets: [dynamic]_Gizmo_Target
 
 // One transaction for the whole drag, however many objects it moves. Opened
-// at grab, closed at release (docs/Undo.md): the session captures every
+// at grab, closed at release (docs/core/Undo.md): the session captures every
 // target's before-state at one instant and emits a single grouped action.
 @(private)
 _gizmo_edit: undo.Edit_Session

@@ -4,7 +4,7 @@ import "core:math"
 import gfx "gfx"
 
 // Light consumed by the built-in lit shader and custom lit shaders
-// (docs/Materials.md). Directional, Point or Spot — Unity's Light.type model.
+// (docs/core/Materials.md). Directional, Point or Spot — Unity's Light.type model.
 // Up to 8 enabled lights render per pass (the pool max). Directional light
 // travels along the transform's forward (-Z), like a camera; point and spot
 // sit at the transform's position, spot aiming along forward.

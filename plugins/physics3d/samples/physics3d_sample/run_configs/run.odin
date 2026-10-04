@@ -1,6 +1,6 @@
 package run
 
-// Run configuration (docs/Plugins.md): one call does it all. Plain: build the
+// Run configuration (docs/core/Plugins.md): one call does it all. Plain: build the
 // app runner as builds/physics3d_sample, export the physics3d sample's data dir, run the export. Alt: dev run against the
 // editor's live catalog. Shift: run the last build. Alt+Shift: build only.
 // The editor's Play passes its live-scene snapshot as the program argument,

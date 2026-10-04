@@ -1,6 +1,6 @@
 package text
 
-// SDF fonts (docs/Text.md): a font file imports into an artifact holding a
+// SDF fonts (plugins/text/docs/Text.md): a font file imports into an artifact holding a
 // signed-distance-field atlas plus glyph metrics and kerning, baked once at a
 // sampling size and padding. At runtime the atlas becomes a texture and the
 // glyph table feeds the layout through a Backend value (backend.odin).

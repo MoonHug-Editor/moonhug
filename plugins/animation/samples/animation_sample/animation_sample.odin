@@ -1,6 +1,6 @@
 package animation_sample
 
-// Sample content for the Animation component (docs/AnimationComponent.md) and
+// Sample content for the Animation component (plugins/animation/docs/AnimationComponent.md) and
 // SkinnedMeshRenderer:
 // assets/animation_demo.scene is an imported glTF character — a skinned mesh
 // deformed by its armature, and an Animation component whose layer holds a

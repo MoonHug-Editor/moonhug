@@ -122,11 +122,11 @@ provide :: proc(w: ^db.World) -> bool {
 			guid, make_proc, create, has_create_menu, found := _has_typ_guid_attr(attr_set, decl)
 			if found {
 				if make_proc != "" {
-					fmt.eprintf("type_guid_gen: %s.%s: makeProcName is gone, write reset_%s next to the type for its defaults (docs/Components.md)\n", pkg_name, type_name, type_name)
+					fmt.eprintf("type_guid_gen: %s.%s: makeProcName is gone, write reset_%s next to the type for its defaults (docs/core/Components.md)\n", pkg_name, type_name, type_name)
 					return false
 				}
 				// The lifecycle procs, by name in the type's own file
-				// (docs/Components.md, "Lifecycle procs").
+				// (docs/core/Components.md, "Lifecycle procs").
 				reset_name       := strings.concatenate({"reset_",       type_name})
 				cleanup_name     := strings.concatenate({"cleanup_",     type_name})
 				on_validate_name := strings.concatenate({"on_validate_", type_name})
@@ -317,7 +317,7 @@ _generate_type_key :: proc(entries: []_TypeGuidRow, w: ^db.World) -> bool {
 
 _PACKAGES_PREFIX :: "moonhug/packages/"
 
-// register_type_guids copies (docs/Plugins.md): one in the shared
+// register_type_guids copies (docs/core/Plugins.md): one in the shared
 // `registration` package (ALL types — imported by the editor and the tests
 // bootstrap, which must work with zero runnable packages), plus one INSIDE
 // each runnable package (its own types + engine + library packages; other
@@ -354,7 +354,7 @@ _write_registration :: proc(entries: []_TypeGuidRow, w: ^db.World, pkg_name, out
 	fmt.sbprintf(&b, "import \"%s\"\n", engine_rel)
 	strings.write_string(&b, "import \"core:sync\"\n")
 	// Types declared by installed packages are reached through the moonhug:
-	// collection (docs/Plugins.md). Import path comes from the pkg_path —
+	// collection (docs/core/Plugins.md). Import path comes from the pkg_path —
 	// subpackages (foo/util) live below their folder name — with the
 	// declared package name as the alias.
 	_Pkg_Import :: struct {

@@ -37,7 +37,7 @@ is_importable_extension :: proc(ext: string) -> bool {
 
 // Fresh default-valued settings instance for an importer, allocated on
 // `allocator`. Defaults come from the settings type's reset_<T>
-// (docs/Components.md, "Lifecycle procs") — none = zeroed.
+// (docs/core/Components.md, "Lifecycle procs") — none = zeroed.
 _settings_new :: proc(importer: string, allocator := context.allocator) -> (settings: any, ok: bool) {
 	desc, has := _importers[importer]
 	if !has || desc.settings_tid == nil do return {}, false

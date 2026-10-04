@@ -422,7 +422,7 @@ _collect_nested_owned_subtree :: proc(
 	// Nested-owned components are the instance's prefab content. NON-owned
 	// components on nested-owned content are host ADDITIONS — they are
 	// collected too, so override capture can see them and record them as
-	// added_components (docs/NestedPrefabs.md); without them the working copy
+	// added_components (docs/core/NestedPrefabs.md); without them the working copy
 	// would look identical to the prefab and the addition would be lost.
 	t_copy.components = make([dynamic]Owned, 0, len(t.components))
 	if !is_inner_boundary {
@@ -1151,7 +1151,7 @@ scene_serialize :: proc(s: ^Scene) -> ([]byte, bool) {
 	if s == nil do return nil, false
 	w := ctx_world()
 
-	// Per docs/PrefabsSpec.md §3.2, overrides live at the root scene level only.
+	// Per docs/core/PrefabsSpec.md §3.2, overrides live at the root scene level only.
 	// Capture writes directly onto each chain's native NS; inner-NS records
 	// keep the overrides they loaded from their inner-prefab files (those are
 	// runtime-only — used by per-level shallow bake during resolve, never
@@ -1434,7 +1434,7 @@ scene_save :: proc(s: ^Scene, path: string) -> bool {
 	}
 	s.dirty = false
 
-	// Per docs/NestedPrefabs.md "Changes propagation": saving a prefab walks
+	// Per docs/core/NestedPrefabs.md "Changes propagation": saving a prefab walks
 	// all live `NestedScene` records whose `source_prefab` GUID matches the
 	// saved asset and reloads them. Refresh `scene_lib`'s cached bytes for
 	// this asset, drop the unpacked-snapshot cache, and re-resolve every

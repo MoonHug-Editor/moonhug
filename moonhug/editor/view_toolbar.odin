@@ -48,7 +48,7 @@ Play_Phase :: enum i32 {
 _play_phase: Play_Phase
 
 // A run configuration = one Odin PROGRAM in a package's run_configs/ folder
-// (docs/Plugins.md). The Play button compiles the selected one and runs it from
+// (docs/core/Plugins.md). The Play button compiles the selected one and runs it from
 // the REPO ROOT with the scene snapshot path as its argument; the config builds
 // and runs the game, forwarding that argument. Odin rather than sh because Odin
 // is already a hard dependency, so configs work on every OS the editor does.

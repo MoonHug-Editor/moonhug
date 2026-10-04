@@ -1,7 +1,7 @@
 package animation_tests
 
 // The `ref:` field tag as a list, and the `@Tag` capability form
-// (editor/inspector/ref_target.odin, docs/ObjectPicker.md).
+// (editor/inspector/ref_target.odin, docs/core/ObjectPicker.md).
 //
 // Lives with the animation package because Animation is the type that carries
 // `ref_tags="Output"`, so `@Output` resolving to it is the end-to-end fact:

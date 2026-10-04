@@ -1,6 +1,6 @@
 package animation
 
-// PlayableGraph (docs/PlayableGraph.md): the animation evaluation layer.
+// PlayableGraph (plugins/animation/docs/PlayableGraph.md): the animation evaluation layer.
 //
 // A graph of nodes — clip leaves sample AnimationClips, mixers blend their
 // inputs by weight, a layer mixer stacks layer results over the default pose —
@@ -267,7 +267,7 @@ Prop_Slot :: struct {
 
 // One bound channel target. `animated` records which properties any clip ever
 // bound — only those are ever written back, and only those default-fill.
-// Defaults are CAPTURED AT BIND TIME (docs/PlayableGraph.md default pose rule).
+// Defaults are CAPTURED AT BIND TIME (plugins/animation/docs/PlayableGraph.md default pose rule).
 Binding_Slot :: struct {
 	path:        string, // owned copy of the channel target path
 	target:      engine.Transform_Handle,

@@ -1,7 +1,7 @@
 package simulate
 
 // In-editor simulation: tick the open scene in place, then roll it back.
-// See docs/Simulate.md.
+// See docs/core/Simulate.md.
 //
 // Logic only, with no imgui or view dependency, so tests and tools drive a
 // simulation without the editor root. Toolbar: editor/simulate_view.odin.

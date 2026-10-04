@@ -276,7 +276,7 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 	for k in owned do animation_clip_unload(k)
 }
 
-// Frees what a clip owns and leaves it zeroed (docs/Components.md,
+// Frees what a clip owns and leaves it zeroed (docs/core/Components.md,
 // "Lifecycle procs").
 cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {

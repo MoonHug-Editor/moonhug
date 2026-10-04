@@ -1,6 +1,6 @@
 package animation_sequencer
 
-// TimelineAnimator (docs/TimelineAnimator.md): an animation state machine one
+// TimelineAnimator (plugins/animation/docs/TimelineAnimator.md): an animation state machine one
 // level above clips, where a state plays a whole TIMELINE instead of a single
 // clip.
 //
@@ -397,7 +397,7 @@ _ta_advance_states :: proc(a: ^TimelineAnimator, dt: f32, mode: seq.Track_Mode) 
 //
 // `mode` is how the timelines read the advance: .Play at runtime,
 // .Preview_Play for the editor, where crossings and audio are real but game
-// scripts stay silent (docs/Sequencer.md, Track_Mode).
+// scripts stay silent (plugins/sequencer/docs/Sequencer.md, Track_Mode).
 timeline_animator_step :: proc(a: ^TimelineAnimator, dt: f32, mode := seq.Track_Mode.Play) {
 	if !a.enabled {
 		// A disabled animator owns nothing, so whatever it held plays
@@ -431,7 +431,7 @@ timeline_animator_tick :: proc(dt: f32) {
 // --- Editor preview support -----------------------------------------------------------
 //
 // An edit-mode preview poses the world for the scene render and puts it back
-// after (docs/PlayableGraph.md step 5), so it needs the graph built before it
+// after (plugins/animation/docs/PlayableGraph.md step 5), so it needs the graph built before it
 // can capture what to put back, and the bindings of EVERY output — one
 // animator poses as many objects as its timelines drive.
 

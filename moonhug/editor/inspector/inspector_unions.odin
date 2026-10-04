@@ -58,7 +58,7 @@ _union_index_for_tag :: proc(info: runtime.Type_Info_Union, tag: i64) -> int {
 // different under the new tag, and reading them as the new type is garbage.
 //
 // The session covers the ACTIVE object only. Unions are not multi-edited (see
-// docs/Multiselection.md) — the same bytes mean different things when peers hold
+// docs/core/Multiselection.md) — the same bytes mean different things when peers hold
 // different variants — so there is no peer write to record.
 union_set_variant :: proc(ptr: rawptr, tag_ptr: rawptr, info: runtime.Type_Info_Union, variant_index: int, record_undo := true) {
 	if ptr == nil || tag_ptr == nil do return

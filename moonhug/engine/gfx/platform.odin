@@ -3,7 +3,7 @@
 // through `import "engine/input"` and never touch SDL directly.
 //
 // gfx never imports engine: it knows nothing about assets, scenes, or
-// components. See docs/SDL3Renderer.md.
+// components. See docs/core/SDL3Renderer.md.
 package gfx
 
 import sdl "vendor:sdl3"

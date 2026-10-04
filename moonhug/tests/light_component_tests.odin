@@ -1,6 +1,6 @@
 package tests
 
-// Light component serialization round-trip (docs/Materials.md). The light's
+// Light component serialization round-trip (docs/core/Materials.md). The light's
 // effect on shading needs a GPU and is verified in-editor.
 
 import "core:testing"

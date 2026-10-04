@@ -2,7 +2,7 @@ package sprites_editor
 
 // Editor-only half of the sprites package: compiled into the editor binary,
 // never the app. May import engine, imgui and the editor's subpackages —
-// never the editor root (docs/Plugins.md layering rule).
+// never the editor root (docs/core/Plugins.md layering rule).
 
 import "base:runtime"
 import "core:path/filepath"

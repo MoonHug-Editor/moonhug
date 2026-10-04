@@ -1,6 +1,6 @@
 package physics2d_sample
 
-// Sample content for the physics2d package (docs/Plugins.md):
+// Sample content for the physics2d package (docs/core/Plugins.md):
 // assets/physics2d_sample.scene drops dynamic bodies onto a static ground
 // and a tilted ramp, run_configs/run.odin plays it through the app runner
 // (F3 in the app toggles collider wireframes). The package ships no code.

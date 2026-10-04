@@ -1,7 +1,7 @@
 package sprites
 
 // The sprite render collector — the first package consumer of the renderer
-// seam (engine.render_register_collector, docs/SDL3Renderer.md "Render
+// seam (engine.render_register_collector, docs/core/SDL3Renderer.md "Render
 // commands"). The package owns the SpriteRenderer pool and emits Draw_Quad
 // commands; the engine sorts and submits them.
 

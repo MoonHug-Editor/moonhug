@@ -1,7 +1,7 @@
 package editor
 
 // "Assets/Extract Assets" — turns a downloaded .glb/.gltf into ready-to-use
-// assets (docs/Materials.md). Embedded images are written as PLAIN FILES next
+// assets (docs/core/Materials.md). Embedded images are written as PLAIN FILES next
 // to the model, one .mat per glTF material is created with its slots wired
 // (albedo → texture; metal-rough/normal/ao/emissive → pbr.glsl rows when that
 // shader asset exists, built-in Lit otherwise), one clip per glTF animation

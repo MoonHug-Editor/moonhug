@@ -1,6 +1,6 @@
 package engine
 
-// Camera + render-command pipeline on the gfx package (docs/SDL3Renderer.md).
+// Camera + render-command pipeline on the gfx package (docs/core/SDL3Renderer.md).
 // Cameras collect per-frame command lists (temp allocator) from the world's
 // renderer pools and execute them through gfx draws. The editor scene view
 // reuses the SAME collect/execute path with its own (non-component) camera,

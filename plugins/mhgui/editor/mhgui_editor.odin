@@ -2,7 +2,7 @@ package mhgui_editor
 
 // Editor half of mhgui: the GameObject > UI menu, scene-view picking of UI
 // rects, and the rect tool drawn on the selected RectTransform (built on
-// editor/handles, docs/Handles.md). Each menu action and each drag is one
+// editor/handles, docs/core/Handles.md). Each menu action and each drag is one
 // undo step.
 
 import "core:fmt"

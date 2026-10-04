@@ -1,6 +1,6 @@
 package tests
 
-// Edit sessions (docs/Undo.md). These pin the three properties the
+// Edit sessions (docs/core/Undo.md). These pin the three properties the
 // older entry points failed to hold, each of which was a real reported bug:
 //
 //   - N targets in one gesture produce ONE undo step, and undoing it reverts

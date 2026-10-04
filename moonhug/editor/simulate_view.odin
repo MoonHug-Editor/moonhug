@@ -1,6 +1,6 @@
 package editor
 
-// Toolbar and shortcuts for in-editor simulation (docs/Simulate.md). The state
+// Toolbar and shortcuts for in-editor simulation (docs/core/Simulate.md). The state
 // machine lives in editor/simulate; this file is its view plus the hooks that
 // give it access to editor-root state (selection, phases, settings).
 

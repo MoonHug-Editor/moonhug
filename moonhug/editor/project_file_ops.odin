@@ -15,7 +15,7 @@ package editor
 //   (recoverable together).
 //
 // Deletes go to the OS Trash (project_os_darwin.odin), never permanent.
-// File operations are NOT undoable (see docs/Undo.md non-goals).
+// File operations are NOT undoable (see docs/core/Undo.md non-goals).
 
 import "base:runtime"
 import "core:fmt"

@@ -1,6 +1,6 @@
 package particles_sample
 
-// Sample content for the particles package (docs/Plugins.md):
+// Sample content for the particles package (docs/core/Plugins.md):
 // assets/particles_museum.scene is a museum scene — one exhibit per feature
 // (fountain, burst, smoke, snow), each a ParticleSystem showing a different
 // shape/space/over-lifetime setup. run_configs/run.odin plays it through the

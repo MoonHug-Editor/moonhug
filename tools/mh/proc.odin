@@ -46,6 +46,21 @@ run :: proc(command: ..string) -> int {
 	return state.exit_code
 }
 
+// run_capture is `run` with both streams captured instead of shown, for a
+// tool whose output is the product (odin doc). Captured stderr is printed
+// when the command fails, so a failure is still readable. `out` is on the
+// context allocator and the caller deletes it.
+run_capture :: proc(command: ..string) -> (out: string, code: int) {
+	state, stdout, stderr, err := os.process_exec({command = command}, context.allocator)
+	defer delete(stderr)
+	if err != nil {
+		fmt.eprintfln("mh: cannot run %s: %v", command[0], err)
+		return "", -1
+	}
+	if state.exit_code != 0 && len(stderr) > 0 do fmt.eprint(string(stderr))
+	return string(stdout), state.exit_code
+}
+
 // run_env is `run` with an explicit environment, for launching the editor
 // with the variables it reads back (MH_LAUNCH, see launch_editor).
 run_env :: proc(env: []string, command: ..string) -> int {

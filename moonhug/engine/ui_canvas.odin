@@ -1,6 +1,6 @@
 package engine
 
-// The canvas tree: the layout half of UI (docs/Gui.md). RectTransform lays a
+// The canvas tree: the layout half of UI (plugins/mhgui/docs/Gui.md). RectTransform lays a
 // node out inside its parent's rect, Canvas roots a tree on the game
 // viewport, CanvasScaler sets how many screen pixels a canvas unit is, and
 // CanvasRenderer marks a node as drawing. What a node draws is a graphic

@@ -23,7 +23,7 @@ Handle :: struct {
 // Pool internals (_-prefixed fields) are private: the slot layout is an
 // implementation detail that may change (e.g. SoA columns), so nothing
 // outside this file touches them. Consumers hold Handles and reach data
-// through pool_get / pool_iterator — see docs/Components.md for the contract.
+// through pool_get / pool_iterator — see docs/core/Components.md for the contract.
 Pool :: struct($T: typeid, $N: int = MAX) {
     _slots:     [N]struct {
         generation: u16,

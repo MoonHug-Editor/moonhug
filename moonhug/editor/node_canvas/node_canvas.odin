@@ -1,6 +1,6 @@
 package node_canvas
 
-// Shared node-graph canvas (docs/PlayableGraph.md, Graph UI) — an editor
+// Shared node-graph canvas (plugins/animation/docs/PlayableGraph.md, Graph UI) — an editor
 // subpackage like inspector/menu/undo, so package editors can draw with it:
 // pan/zoom grid,
 // node chrome with ports, bezier edge routing, node dragging and selection.

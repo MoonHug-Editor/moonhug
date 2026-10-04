@@ -2,7 +2,7 @@ package handles
 
 // Bounds handles: slider dots on the faces of a box, sphere or capsule that
 // resize it, a radius around a fixed center, and the dots of a cone and a
-// cone frustum (docs/Handles.md). Each proc edits the values it is given
+// cone frustum (docs/core/Handles.md). Each proc edits the values it is given
 // while one of its dots drags, and reports the drag: the caller opens an undo
 // session on `started`, writes the values back while `dragging` or on
 // `released`, and closes the session on `released`.

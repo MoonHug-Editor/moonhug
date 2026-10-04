@@ -1,6 +1,6 @@
 package tests
 
-// Material asset parsing + cache behavior (docs/Materials.md). Materials are
+// Material asset parsing + cache behavior (docs/core/Materials.md). Materials are
 // GPU-free, so unlike textures/meshes the cache itself is fully testable
 // headless.
 

@@ -1,6 +1,6 @@
 package animation_tests
 
-// PlayableGraph evaluation (docs/PlayableGraph.md): pose blending against the
+// PlayableGraph evaluation (plugins/animation/docs/PlayableGraph.md): pose blending against the
 // bind-time default pose, mixer and layer-mixer semantics, script collection —
 // and the Animation component milestone on top: layers, cross-fade,
 // interruption, queued play.

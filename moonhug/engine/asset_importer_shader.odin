@@ -1,6 +1,6 @@
 package engine
 
-// User shader importer (docs/Materials.md). A `.glsl` asset is a FRAGMENT
+// User shader importer (docs/core/Materials.md). A `.glsl` asset is a FRAGMENT
 // shader only — the vertex stage is always the built-in world vertex shader,
 // since the vertex format and UBO layout are fixed engine contracts. Import
 // shells out to the same toolchain as `mh shaders` (glslc → SPIR-V,

@@ -107,7 +107,7 @@ cmd_prebuild :: proc(args: []string) -> int {
 	return 0 if prebuild() else 1
 }
 
-// Gathers dependencies into each plugin's mh_plugin.json (docs/Plugins.md,
+// Gathers dependencies into each plugin's mh_plugin.json (docs/core/Plugins.md,
 // "Plugin manifest"). The work lives beside prebuild, which reads the same
 // imports: this tool imports nothing from the moonhug collection.
 cmd_deps :: proc(args: []string) -> int {
@@ -119,7 +119,7 @@ cmd_deps :: proc(args: []string) -> int {
 	return 0 if step("deps", ..cmd[:]) else 1
 }
 
-// The game, through its run config (docs/Plugins.md) — the same path the
+// The game, through its run config (docs/core/Plugins.md) — the same path the
 // editor's Play button takes, so a terminal run and a Play run agree.
 cmd_app :: proc(args: []string) -> int {
 	if !prebuild() do return 1
@@ -141,7 +141,7 @@ cmd_test :: proc(args: []string) -> int {
 	return run(..cmd[:])
 }
 
-// The MCP stdio server the client spawns (.mcp.json, docs/McpBridge.md).
+// The MCP stdio server the client spawns (.mcp.json, docs/core/McpBridge.md).
 // Build diagnostics go to stderr so stdout stays a clean JSON-RPC stream.
 cmd_mcp :: proc(args: []string) -> int {
 	os.make_directory_all("builds")

@@ -1,7 +1,7 @@
 package physics3d
 
 // 3D physics on vendor:box3d with Unity-literal authoring — the 3D sibling
-// of packages/physics2d, same architecture (docs/Plugins.md):
+// of packages/physics2d, same architecture (docs/core/Plugins.md):
 //
 // - Components are plain data; this fixed step syncs them to box3d. The
 //   editor never simulates — bodies exist only while the app runs.

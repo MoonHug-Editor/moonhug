@@ -1,6 +1,6 @@
 package animation_tests
 
-// Blend1D on the Animation component (docs/AnimationComponent.md): the authored
+// Blend1D on the Animation component (plugins/animation/docs/AnimationComponent.md): the authored
 // entry tree, the 1D weight rule, and the shared phase that keeps children of
 // different lengths in step.
 

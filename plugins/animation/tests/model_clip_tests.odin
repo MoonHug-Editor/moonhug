@@ -1,6 +1,6 @@
 package animation_tests
 
-// Clips inside a model (docs/AnimationComponent.md "Clips inside a model"):
+// Clips inside a model (plugins/animation/docs/AnimationComponent.md "Clips inside a model"):
 // the mesh importer bakes every glTF animation to the model's _a<i>.bin
 // fan-out and lists it in the model's settings with a stable id and its own
 // guid, the AssetDB resolves that guid to the model, the clip loader reads

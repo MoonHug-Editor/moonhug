@@ -17,7 +17,7 @@ MH := $(MH_BIN)
 $(MH_BIN): $(wildcard tools/mh/*.odin)
 	@mkdir -p builds/tools && odin build tools/mh -out:$@
 
-.PHONY: help setup run debug build app test prebuild deps shaders mcp clean distclean
+.PHONY: help setup run debug build app test prebuild deps shaders docs mcp clean distclean
 
 help:      $(MH_BIN) ; @$(MH) help
 setup:     $(MH_BIN) ; @$(MH) setup
@@ -28,6 +28,8 @@ app:       $(MH_BIN) ; @$(MH) app
 prebuild:  $(MH_BIN) ; @$(MH) prebuild
 deps:      $(MH_BIN) ; @$(MH) deps $(NAME)
 shaders:   $(MH_BIN) ; @$(MH) shaders
+# make cannot take --open itself, so `make docs OPEN=1` serves and opens.
+docs:      $(MH_BIN) ; @$(MH) docs $(if $(OPEN),--open,)
 mcp:       $(MH_BIN) ; @$(MH) mcp
 clean:     $(MH_BIN) ; @$(MH) clean
 distclean: $(MH_BIN) ; @$(MH) clean --all

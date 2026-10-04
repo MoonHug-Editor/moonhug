@@ -2,7 +2,7 @@
 package crash_journal
 
 // Crash journal: a signal-safe last-words file for crashes that can't be
-// reproduced on demand (docs/CrashJournal.md).
+// reproduced on demand (docs/general/CrashJournal.md).
 //
 // On SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGABRT — or a panic/assert — the handler
 // writes logs/crash_<pid>.log with the reason, faulting address, breadcrumb

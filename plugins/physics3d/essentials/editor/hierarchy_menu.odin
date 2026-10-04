@@ -6,7 +6,7 @@ package physics3d_essentials_editor
 // match the mesh sizes exactly: cube 1x1x1, sphere r=0.5, capsule r=0.5 h=2.
 // Everything lands as ONE undo step; component payloads are recorded AFTER
 // their fields are set, so redo restores the mesh reference. The folder
-// compiles only with essentials installed (docs/Plugins.md).
+// compiles only with essentials installed (docs/core/Plugins.md).
 
 import "core:encoding/uuid"
 import "core:fmt"

@@ -1,7 +1,7 @@
 package animation_sequencer_editor
 
 // The TimelineAnimator's OUTPUTS and STATES, drawn as the lists they are
-// (docs/TimelineAnimator.md): the objects its timelines drive, then one section
+// (plugins/animation/docs/TimelineAnimator.md): the objects its timelines drive, then one section
 // per layer holding the states gameplay plays — a whole timeline each.
 //
 // The same tree the Animation component gets (inspector_animation.odin), one
@@ -283,7 +283,7 @@ _ta_track_bindings :: proc(st: ^anim_seq.Timeline_State) {
 // Nothing ticks a TimelineAnimator outside simulation — timeline_animator_tick
 // is an @(update) proc. So the States tree's play button drives a preview
 // instead: pose the world right before the scene render, put it back right
-// after (docs/PlayableGraph.md step 5, moonhug:editor/preview). The world
+// after (plugins/animation/docs/PlayableGraph.md step 5, moonhug:editor/preview). The world
 // holds authored values for the rest of the frame, so saves, undo and the
 // inspector never see the pose.
 //

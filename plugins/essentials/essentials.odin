@@ -1,6 +1,6 @@
 package essentials
 
-// Reusable engine essentials shipped as package content (docs/Plugins.md):
+// Reusable engine essentials shipped as package content (docs/core/Plugins.md):
 // primitive meshes in assets/, referenced by these guid constants (the guids
 // live in the committed .meta files and are stable in every project).
 // Consumers: physics3d's GameObject/3D Object items today, anything needing

@@ -1436,7 +1436,7 @@ draw_project_view :: proc() {
         // the rename entry points (it's the project root).
         _project_draw_tree_node(projectViewData.rootPath, filepath.base(projectViewData.rootPath))
         // Installed packages: additional roots under a Packages node
-        // (docs/Plugins.md — label = package name, path = its assets dir).
+        // (docs/core/Plugins.md — label = package name, path = its assets dir).
         _project_draw_packages_tree()
         // Reveal requests from the right pane were consumed by this draw.
         _project_tree_reveal = false

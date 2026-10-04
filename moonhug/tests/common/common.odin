@@ -2,7 +2,7 @@ package tests_common
 
 // Shared test-world bootstrap: registrations, world init, active scene,
 // teardown. Lives in its own package so per-package test suites
-// (moonhug/packages/<name>/tests — docs/Plugins.md) can import it alongside
+// (moonhug/packages/<name>/tests — docs/core/Plugins.md) can import it alongside
 // the central moonhug/tests suite (which re-exports the short names).
 //
 // Usage (the context does NOT survive the setup() call — set user_ptr in the

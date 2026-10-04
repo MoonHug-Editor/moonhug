@@ -1,7 +1,7 @@
 package tests
 
 // Reverting an override on a Prefab Variant's ROOT content must restore the
-// field VALUE, not just drop the record (docs/PrefabsSpec.md §4.7).
+// field VALUE, not just drop the record (docs/core/PrefabsSpec.md §4.7).
 //
 // A root variant is the case where the base prefab's root IS the variant's root
 // (§6.2), so the overridden object is the scene root itself rather than a child.

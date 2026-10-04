@@ -110,7 +110,7 @@ test_live_override_is_sticky_at_base_value :: proc(t: ^testing.T) {
 	base_scale := ct.scale
 
 	// Edit, then hand-set the field BACK to its baseline value. Unity keeps the
-	// override (docs/PrefabsSpec.md §4.1: overrides grow only); only an explicit
+	// override (docs/core/PrefabsSpec.md §4.1: overrides grow only); only an explicit
 	// revert clears it.
 	ct.scale = {3, 3, 3}
 	_record_live(loaded, host, lid, "scale", &ct.scale, typeid_of([3]f32))
@@ -446,7 +446,7 @@ test_override_restore_after_revert :: proc(t: ^testing.T) {
 }
 
 // --- Structural component edits on a prefab instance -------------------------
-// docs/PrefabsSpec.md §4.2-4.3: removing/adding a component on nested content is
+// docs/core/PrefabsSpec.md §4.2-4.3: removing/adding a component on nested content is
 // recorded on the instance's NestedScene, so it survives BOTH the save and the
 // next resolve (which rebuilds the instance from its prefab).
 

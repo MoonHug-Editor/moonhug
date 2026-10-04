@@ -1,6 +1,6 @@
 package tests
 
-// glTF mesh importer tests (docs/SDL3Renderer.md #5). Headless: they exercise
+// glTF mesh importer tests (docs/core/SDL3Renderer.md #5). Headless: they exercise
 // import + artifact parsing only — GPU upload (mesh_load) needs a device and
 // is covered by using the editor. cube.glb is a generated 24-vert/36-index
 // unit cube with normals + uvs.

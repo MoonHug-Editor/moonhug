@@ -1,7 +1,7 @@
 package mcp_shim
 
 // MCP stdio server bridging Claude Code (or any MCP client) to the MoonHug
-// editor's TCP bridge (docs/McpBridge.md). Speaks newline-delimited JSON-RPC
+// editor's TCP bridge (docs/core/McpBridge.md). Speaks newline-delimited JSON-RPC
 // 2.0 on stdin/stdout — the small MCP surface an agent needs: initialize,
 // tools/list, tools/call, ping. The editor side is moonhug/editor/
 // mcp_bridge.odin, the shared wire protocol moonhug/editor/mcp.

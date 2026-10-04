@@ -20,7 +20,7 @@ VERSION :: #load("../version", string)
 // and someone else's window position lands in an unrelated commit.
 //
 // The other half is engine.PROJECT_SETTINGS_DIR: settings about the PROJECT,
-// committed, read by the game too (docs/Plugins.md "Project settings").
+// committed, read by the game too (docs/core/Plugins.md "Project settings").
 USER_SETTINGS_DIR :: "UserSettings"
 EDITOR_SETTINGS_FILE :: USER_SETTINGS_DIR + "/editor_settings.json"
 

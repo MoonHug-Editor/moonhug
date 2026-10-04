@@ -1,6 +1,6 @@
 package tests
 
-// MeshFilter/MeshRenderer serialization round-trip (docs/SDL3Renderer.md #6).
+// MeshFilter/MeshRenderer serialization round-trip (docs/core/SDL3Renderer.md #6).
 // Rendering itself needs a GPU device and is verified in-editor.
 
 import "core:encoding/uuid"

@@ -1,6 +1,6 @@
 package engine
 
-// Fixed-rate simulation tick (docs/FixedTick.md). ONE project tick rate — no
+// Fixed-rate simulation tick (docs/core/FixedTick.md). ONE project tick rate — no
 // independent per-system rates; coarse systems schedule with the divisor on
 // their @(fixed_update) attribute instead. The app loop drives the generated
 // __fixed_update through fixed_frame_ticks (classic accumulator):

@@ -1,6 +1,6 @@
 package editor
 
-// MCP bridge (docs/McpBridge.md): a loopback TCP endpoint inside the editor
+// MCP bridge (docs/core/McpBridge.md): a loopback TCP endpoint inside the editor
 // that the mcp_shim binary translates to MCP for agent clients. Threadless —
 // mcp_bridge_tick polls a non-blocking socket once per frame, right after
 // gfx.frame_begin, so tools run on the main thread with every editor and

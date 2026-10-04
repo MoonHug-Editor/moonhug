@@ -1,7 +1,7 @@
 package project_settings_gen
 
 // project_settings_gen: settings tabs for the editor's Project Settings
-// window (docs/Plugins.md "Project settings").
+// window (docs/core/Plugins.md "Project settings").
 //
 //   @(project_settings={name="Physics 2D"})
 //   physics2d_settings := Physics2D_Settings{gravity = GRAVITY_DEFAULT}

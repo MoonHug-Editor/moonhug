@@ -1,7 +1,7 @@
 package plugin_example
 
 // A tween node declared outside the tween package — the working example of
-// open tween extension (docs/Tweens.md). A variant package imports tween
+// open tween extension (plugins/tween/docs/Tweens.md). A variant package imports tween
 // directly and registers its node type on the SerializationInit phase. No
 // codegen, no import restrictions — composites with children would work the
 // same way (`children: [dynamic]tween.Node_Handle` with json:"-").

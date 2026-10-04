@@ -207,7 +207,7 @@ _draw_readonly_asset_ref :: proc(label: string, guid: engine.Asset_GUID, id: cst
 // without hunting field by field.
 //
 // Shown on the instance ROOT only (Unity puts it on the root GameObject), and
-// only for a NATIVE NS: inner NSs never hold records (docs/PrefabsSpec.md §3.2),
+// only for a NATIVE NS: inner NSs never hold records (docs/core/PrefabsSpec.md §3.2),
 // so a nested-owned row deeper in the chain has nothing of its own to list.
 @(private)
 // Returns whether it drew anything, so a caller laying out a row with SameLine
@@ -688,7 +688,7 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 
 	inspector.multi_clear_mixed()
 
-	// The gesture, stated rather than inferred (docs/Undo.md). The
+	// The gesture, stated rather than inferred (docs/core/Undo.md). The
 	// session covers the active object and every peer, so one drag is one undo
 	// step and peers track the drag live without any preview/rewind dance.
 	if inspector.field_edit_row_started() {
@@ -1457,7 +1457,7 @@ _draw_components_section_nested_rows :: proc(
 		type_name := fmt.tprintf("%v", comp_tid)
 		c_type_name := strings.clone_to_cstring(type_name, context.temp_allocator)
 
-		// Per docs/PrefabsSpec.md §3.2, only root scene's overrides should color
+		// Per docs/core/PrefabsSpec.md §3.2, only root scene's overrides should color
 		// the component header. Walk up to the root NS and check if it has
 		// any override targeting this component (directly via lid for native
 		// hosts, or via a breadcrumb for deep ones).

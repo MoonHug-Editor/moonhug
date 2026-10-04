@@ -1,6 +1,6 @@
 package core
 
-// Per-type lifecycle procs (docs/Components.md, "Lifecycle procs"): a
+// Per-type lifecycle procs (docs/core/Components.md, "Lifecycle procs"): a
 // @(typ_guid) type declares them by name in its own file, and the generated
 // registration (type_guid_gen) puts them in these tables by TypeKey.
 //

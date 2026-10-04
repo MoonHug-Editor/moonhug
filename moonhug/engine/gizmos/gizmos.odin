@@ -1,6 +1,6 @@
 package gizmos
 
-// Debug and editor shape drawing (docs/Gizmos.md): one API for @(on_draw_gizmos)
+// Debug and editor shape drawing (docs/core/Gizmos.md): one API for @(on_draw_gizmos)
 // hooks, handles, the transform gizmo and in-game @(debug_draw) code.
 //
 // - Calls record world-space shapes into the context's buffer

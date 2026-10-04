@@ -13,7 +13,7 @@ import "core:testing"
 //
 // Reference: Unity's stripped-object encoding combines fileIDs via XOR + mask
 // to keep the result positive within an i64. See:
-//   moonhug-editor/docs/NestedPrefabs.md (Stripped-object section)
+//   moonhug-editor/docs/core/NestedPrefabs.md (Stripped-object section)
 // and Unity manual:
 //   https://docs.unity3d.com/6000.6/Documentation/Manual/yaml-prefab-serialization.html
 

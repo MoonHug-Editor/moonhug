@@ -38,7 +38,7 @@ TextureSettings :: struct {
     max_size: u16,
     // Unity's Pixels Per Unit: a sprite's world size = pixel size / this.
     // 100 (the default) makes 100 px = 1 world unit = 1 m, the physics
-    // convention (docs/FixedTick.md). 0 means the default: a meta predating
+    // convention (docs/core/FixedTick.md). 0 means the default: a meta predating
     // the field reads 0, and on_validate_TextureSettings makes it 100.
     pixels_per_unit: f32,
     // Unity's TextureImporter.spriteImportMode: slicing is importer data, so

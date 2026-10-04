@@ -1,6 +1,6 @@
 package asset_pipeline
 
-// glTF mesh importer (docs/SDL3Renderer.md #5, docs/Meshes.md). One import
+// glTF mesh importer (docs/core/SDL3Renderer.md #5, docs/core/Meshes.md). One import
 // writes:
 // - the WHOLE-MODEL artifact (<guid>.bin): every node's world transform baked
 //   into one vertex blob — what MeshFilter.part == 0 draws;

@@ -1,7 +1,7 @@
 package gizmos_gen
 
-// gizmos_gen: the scene-view gizmo and handles hooks (docs/Gizmos.md,
-// docs/Handles.md).
+// gizmos_gen: the scene-view gizmo and handles hooks (docs/core/Gizmos.md,
+// docs/core/Handles.md).
 //
 //   @(on_draw_gizmos={component=BoxCollider2D})   // drawing, every enabled instance
 //   @(on_scene_handles={component=RectTransform}) // interaction, selected objects
@@ -22,7 +22,7 @@ package gizmos_gen
 //              not selected themselves. Procs draw with engine/gizmos.
 //
 // The dispatcher lives in the editor root and calls INTO plugin editor
-// packages — the legal layering direction (docs/Plugins.md).
+// packages — the legal layering direction (docs/core/Plugins.md).
 
 import "core:fmt"
 import "core:slice"

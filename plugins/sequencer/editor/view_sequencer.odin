@@ -1,6 +1,6 @@
 package sequencer_editor
 
-// Sequencer window (docs/Sequencer.md) — Unity's Timeline window on the
+// Sequencer window (plugins/sequencer/docs/Sequencer.md) — Unity's Timeline window on the
 // director scrub path, laid out after ImGuizmo's ImSequencer: a legend
 // column (mute, track name, target, add-clip) beside a scrollable canvas
 // (seconds ruler + playhead + clip blocks with move/resize grips), an

@@ -1,6 +1,6 @@
 package tests
 
-// User shader importer tests (docs/Materials.md). The compile tests need the
+// User shader importer tests (docs/core/Materials.md). The compile tests need the
 // optional toolchain (glslc + spirv-cross) and self-skip when it's absent —
 // artifact parsing is covered toolchain-free.
 

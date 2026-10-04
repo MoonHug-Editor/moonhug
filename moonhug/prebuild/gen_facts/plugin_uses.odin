@@ -1,6 +1,6 @@
 package gen_facts
 
-// Why a plugin needs another (docs/Plugins.md, "Plugin manifest"), from the
+// Why a plugin needs another (docs/core/Plugins.md, "Plugin manifest"), from the
 // source on disk: an import (plugin_walk) or a guid in its assets or code
 // that another plugin owns. `mh deps` writes the result into the manifests,
 // plugin_types_gen turns it into the editor's dependency table.

@@ -25,7 +25,7 @@ asset_db_refresh :: proc() {
 	walk.metas = make([dynamic]string, context.temp_allocator)
 	_db_walk(engine.asset_db.root_path, &walk)
 	// Installed packages: each packages/<name>/assets is a further root,
-	// scanned by the same machinery (docs/Plugins.md).
+	// scanned by the same machinery (docs/core/Plugins.md).
 	for root in engine.asset_db_package_roots() {
 		_db_walk(root.assets_path, &walk)
 	}

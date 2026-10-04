@@ -1,6 +1,6 @@
 package animation_sequencer_tests
 
-// TimelineAnimator (docs/TimelineAnimator.md): the component's graph skeleton —
+// TimelineAnimator (plugins/animation/docs/TimelineAnimator.md): the component's graph skeleton —
 // one output per object its timelines' tracks drive, a layer mixer at each
 // output's root, one mixer per layer under it.
 //

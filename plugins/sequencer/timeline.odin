@@ -1,6 +1,6 @@
 package sequencer
 
-// The sequencer's vocabulary (docs/Sequencer.md). A timeline is a TRANSFORM
+// The sequencer's vocabulary (plugins/sequencer/docs/Sequencer.md). A timeline is a TRANSFORM
 // SUBTREE — a PlayableDirector node with track child nodes holding clip
 // nodes — so there is no timeline document format: prefabs are the asset
 // form, nesting is composition, variants and overrides are the tweak

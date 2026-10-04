@@ -1,6 +1,6 @@
 package editor
 
-// Scene-view click picking (docs/SDL3Renderer.md #7). CPU tests — the quads
+// Scene-view click picking (docs/core/SDL3Renderer.md #7). CPU tests — the quads
 // package renderers draw (sprites, particles: the render commands the scene
 // view collects, so the SAME corners the renderer draws), meshes against
 // their import-time AABB in local space, skinned meshes against the world

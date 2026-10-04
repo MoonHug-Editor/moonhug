@@ -1,6 +1,6 @@
 package handles
 
-// Move, rotate and scale handles (docs/Handles.md): the transform tool's
+// Move, rotate and scale handles (docs/core/Handles.md): the transform tool's
 // parts, for any code that edits a point, a rotation or a scale in the scene.
 // Each edits the value it is given while one of its parts drags and returns
 // one Drag for all of its parts, like the bounds handles.

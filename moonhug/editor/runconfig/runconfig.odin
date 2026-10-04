@@ -1,6 +1,6 @@
 package runconfig
 
-// Support library for run configurations (docs/Plugins.md). A run config is an
+// Support library for run configurations (docs/core/Plugins.md). A run config is an
 // Odin PROGRAM, not a shell script: the editor compiles it with the host
 // toolchain and runs it from the REPO ROOT, passing the live-scene snapshot
 // path as an argument.

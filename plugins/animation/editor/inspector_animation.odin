@@ -1,7 +1,7 @@
 package animation_editor
 
 // The Animation component's STATES, drawn as the tree they are
-// (docs/AnimationComponent.md): one section per layer, each holding the states
+// (plugins/animation/docs/AnimationComponent.md): one section per layer, each holding the states
 // gameplay plays — a clip, or a Blend1D with its children under it.
 //
 // This replaces the generic array rows `layers` would otherwise get. A tree of

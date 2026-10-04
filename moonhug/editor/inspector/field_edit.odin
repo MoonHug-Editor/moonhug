@@ -4,7 +4,7 @@ package inspector
 //
 // One row's edit is a gesture: it starts when the widget is activated, runs for
 // however many frames the user drags or types, and ends on release. This wraps
-// that gesture in an undo session (docs/Undo.md) covering the active
+// that gesture in an undo session (docs/core/Undo.md) covering the active
 // object AND every multi-selected peer, so the whole thing is one Ctrl+Z and
 // every object's before-state is captured at the same instant.
 //

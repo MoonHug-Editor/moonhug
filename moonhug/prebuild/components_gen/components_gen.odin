@@ -838,7 +838,7 @@ generate_scene_file :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "\tdelete(sf.breadcrumbs)\n")
 	strings.write_string(&b, "\t_scene_file_destroy_ext(sf)\n")
 	strings.write_string(&b, "}\n\n")
-	// The lifecycle name (docs/Components.md), so type_cleanup covers a
+	// The lifecycle name (docs/core/Components.md), so type_cleanup covers a
 	// SceneFile like any other owning type.
 	strings.write_string(&b, "cleanup_SceneFile :: proc(sf: ^SceneFile) {\n")
 	strings.write_string(&b, "\tscene_file_destroy(sf)\n")
@@ -885,7 +885,7 @@ generate_ext_components :: proc(w: ^db.World) -> bool {
 	// pkg_path: the generated file lands INSIDE the owning package (thunks
 	// need the concrete type), wherever that package lives.
 	// The declared package name, not the folder: a subpackage declares
-	// <name>_<sub> (docs/Plugins.md).
+	// <name>_<sub> (docs/core/Plugins.md).
 	pkgs: [dynamic]string
 	pkg_names: [dynamic]string
 	defer delete(pkgs)

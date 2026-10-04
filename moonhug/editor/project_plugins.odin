@@ -2,7 +2,7 @@ package editor
 
 // Project Settings > Plugins. Lists every folder in plugins/ (repository root,
 // one level above the working directory) with a toggle: on means a symlink to
-// it exists in packages/, which is what enables a plugin (docs/Plugins.md,
+// it exists in packages/, which is what enables a plugin (docs/core/Plugins.md,
 // Folder structure). The filesystem IS the state, so nothing persists here.
 //
 // Code changes apply on the next build: the tab offers Relaunch once a toggle

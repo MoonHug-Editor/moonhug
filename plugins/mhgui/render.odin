@@ -1,6 +1,6 @@
 package mhgui
 
-// mhgui — the drawing half of UI (docs/Gui.md). The canvas tree (Canvas,
+// mhgui — the drawing half of UI (plugins/mhgui/docs/Gui.md). The canvas tree (Canvas,
 // RectTransform, CanvasRenderer, CanvasScaler, the rect walk and the canvas
 // collector) is engine vocabulary (engine/ui_canvas.odin); this package owns
 // graphics: Image, registered as a graphic type, and the LayoutGroup

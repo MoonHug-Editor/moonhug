@@ -1,6 +1,6 @@
 package main
 
-// `mh deps [name ...]` (docs/Plugins.md, "Plugin manifest"): gathers each
+// `mh deps [name ...]` (docs/core/Plugins.md, "Plugin manifest"): gathers each
 // package's dependencies into its mh_plugin.json. Packages are the plugins in
 // plugins/ and the samples in plugins/<name>/samples/, installed or not. With
 // names, only those.

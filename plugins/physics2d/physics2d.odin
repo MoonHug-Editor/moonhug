@@ -1,6 +1,6 @@
 package physics2d
 
-// 2D physics on vendor:box2d with Unity-literal authoring (docs/Plugins.md
+// 2D physics on vendor:box2d with Unity-literal authoring (docs/core/Plugins.md
 // picked the surface, memory holds the decisions):
 //
 // - Components are plain data; this fixed step syncs them to box2d. The
