@@ -1,0 +1,63 @@
+{{- $dest := .Destination -}}
+{{- $url := urls.Parse "" -}}
+{{- $parsedURL := false -}}
+{{- with try (urls.Parse $dest) -}}
+  {{- with .Err -}}
+  {{- else -}}
+    {{- $url = .Value -}}
+    {{- $parsedURL = true -}}
+  {{- end -}}
+{{- end -}}
+{{- $query := cond $url.RawQuery (printf "?%s" $url.RawQuery) "" -}}
+{{- $fragment := cond $url.Fragment (printf "#%s" $url.Fragment) "" -}}
+{{- $resolvedPage := false -}}
+
+{{/* Resolve local Markdown page links to Hugo clean URLs before falling back to static/resource handling. */}}
+{{- if and $parsedURL $dest (not $url.IsAbs) $url.Path (strings.HasSuffix $url.Path ".md") -}}
+  {{- $pagePath := strings.TrimSuffix ".md" $url.Path -}}
+  {{- if hasPrefix $pagePath "/" -}}
+    {{- $pagePath = strings.TrimPrefix "/" $pagePath -}}
+  {{- else -}}
+    {{- $pagePath = path.Join .PageInner.File.Dir $pagePath -}}
+  {{- end -}}
+  {{- /* OVERRIDE (tools/docs): links are written as REPO paths, so they work on
+       GitHub, and translated to SITE paths here. The site drops the docs/
+       prefix (docs/core is /core) and a plugin's docs/ folder (plugins/x/docs
+       is /plugins/x). A relative link that climbs above the content root can
+       only mean the repo root, so its leading ../ are dropped first.
+       Everything else in this file is the theme's hook, unchanged. */ -}}
+  {{- $pagePath = path.Clean $pagePath -}}
+  {{- $pagePath = replaceRE `^/+` "" $pagePath -}}
+  {{- $pagePath = replaceRE `^(\.\./)+` "" $pagePath -}}
+  {{- $pagePath = replaceRE `^docs/` "" $pagePath -}}
+  {{- $pagePath = replaceRE `^plugins/([^/]+)/docs/` "plugins/$1/" $pagePath -}}
+  {{- /* The README is the home page. */ -}}
+  {{- $pagePath = replaceRE `^README$` "" $pagePath -}}
+  {{- /* Looked up from the site root: after the join above the path is
+       root-relative, and a relative lookup would try the page's own folder first. */ -}}
+  {{- with .PageInner.GetPage (printf "/%s" $pagePath) -}}
+    {{- $dest = printf "%s%s%s" .RelPermalink $query $fragment -}}
+    {{- $resolvedPage = true -}}
+  {{- end -}}
+{{- end -}}
+
+{{- if and $parsedURL (not $resolvedPage) $dest (hasPrefix $dest "/") -}}
+  {{- with or (.PageInner.GetPage $url.Path) (.PageInner.Resources.Get $url.Path) (resources.Get $url.Path) -}}
+    {{- $dest = printf "%s%s%s" .RelPermalink $query $fragment -}}
+  {{- else -}}
+    {{- $hasBasePrefix := and (ne site.Home.RelPermalink "/") (hasPrefix $dest site.Home.RelPermalink) -}}
+    {{- if not $hasBasePrefix -}}
+      {{- $dest = (relURL (strings.TrimPrefix "/" $dest)) -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- with . -}}
+  {{- $isExternal := strings.HasPrefix .Destination "http" -}}
+  <a href="{{ $dest | safeURL }}"{{ with .Title }} title="{{ . }}"{{ end }}{{ if $isExternal }} target="_blank" rel="noopener"{{ end }}>
+    {{- .Text | safeHTML -}}
+    {{- if and .Page.Site.Params.externalLinkDecoration $isExternal -}}
+      {{- partial "utils/icon.html" (dict "name" "arrow-up-right" "attributes" `class="hx:inline hx:rtl:rotate-270 hx:align-baseline" height="1em" aria-hidden="true"`) -}}
+    {{- end -}}
+  </a>
+{{- end -}}

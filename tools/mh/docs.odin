@@ -235,9 +235,9 @@ _collect_packages :: proc(dir: string, out: ^[dynamic]string) {
 
 // The README is the home page. It is copied rather than mounted directly so
 // it can carry frontmatter: an empty title, because the README has its own
-// heading and the theme prints the title as one. Its links are repo paths,
-// rewritten to the site's: docs/<section>/ loses the docs/ prefix and
-// plugins/<name>/docs/ loses the docs/ folder.
+// heading and the theme prints the title as one. Its links are repo paths
+// like every page's, which the site's link hook translates
+// (tools/docs/layouts/_markup/render-link.html).
 docs_write_home :: proc(plugins: []string) -> bool {
 	data, rerr := os.read_entire_file("README.md", context.temp_allocator)
 	if rerr != nil {
@@ -245,12 +245,6 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		return false
 	}
 	body := string(data)
-	for n in plugins {
-		body, _ = strings.replace_all(body, fmt.tprintf("plugins/%s/docs/", n), fmt.tprintf("plugins/%s/", n), context.temp_allocator)
-	}
-	for sec in ([]string{"general", "core", "reference"}) {
-		body, _ = strings.replace_all(body, fmt.tprintf("docs/%s/", sec), fmt.tprintf("%s/", sec), context.temp_allocator)
-	}
 	// Rebuilt whole: a page this stops writing must not survive from an
 	// earlier build, it would still be mounted into the site.
 	os.remove_all(DOCS_HOME_DIR)
@@ -263,7 +257,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// The Plugins section index. The repo has no plugins/docs folder to hold
 	// one, the section exists only on the site, so it is written here.
 	os.make_directory(fmt.tprintf("%s/plugins", DOCS_HOME_DIR))
-	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\nweight: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](../core/Plugins.md), and how this site is put together in [Documentation](../general/Documentation.md).\n"
+	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\nweight: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
 	if err := os.write_entire_file(fmt.tprintf("%s/plugins/_index.md", DOCS_HOME_DIR), transmute([]byte)sec); err != nil {
 		fmt.eprintfln("mh: cannot write plugins/_index.md: %v", err)
 		return false

@@ -1,7 +1,7 @@
 ---
 title: "Plugins (Packages)"
 description: "Plugin packages: folder layout, manifest, install model, and extension points for importers, windows and settings"
-weight: 210
+weight: 4 
 tags: ["plugins", "build", "editor", "engine"]
 ---
 
@@ -110,6 +110,8 @@ plugins/
     run_configs/            ← OPTIONAL runnable-package programs (see Run configurations)
       run.odin
       run_debug.odin
+    docs/                   ← OPTIONAL documentation pages, shown on the site under Plugins/physics2d
+      Physics2D.md
 ```
 
 - **Package root = the runtime Odin package.** Compiled into BOTH binaries
@@ -160,6 +162,7 @@ plugins/
   package and die with it on uninstall — the central suite only reaches
   `moonhug:packages/` through that generated file.
 - **`run_configs/`** — Odin programs that build+run the package as a program (see Run configurations)
+- **`docs/`** — the plugin's documentation pages, collected into the documentation site under `plugins/<name>` (see [Documentation](../general/Documentation.md)).
 - Other subfolders are just folders with no special meaning.
 
 ## Run configurations

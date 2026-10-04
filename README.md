@@ -4,13 +4,20 @@
 # Generic game engine editor inspired by Unity Editor
 
 ## State
-Vertical Slice Experimental.
-</br>Project has only started, there are frequent API changes, bugs, non-implemented features.
+</br>Project has reached plugin architecture — features are developed as self-contained plugins that hook into the editor through attributes.
+</br>Code consists of two main parts - core (engine, editor) and plugins, all other parts serve these two.
+
+</br>There are still frequent API changes, bugs, non-implemented features.
 </br>Good moment to add contribution and influence how Editor shapes up.
 
 ## Goals
 - highly and easily extensible level editor
 - allow differently skilled people combine resources together into interactive elements
+
+### Optional Goal
+- extensible editor without any engine code to help visualizing odin packages
+  - would remove dependency onto engine codebase
+  - can be done in MoonHug Editor or as separate project
 
 ## Key Ideas
 - Editor should be user-friendly

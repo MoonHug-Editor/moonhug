@@ -11,13 +11,22 @@ tags: ["build", "contributing", "prebuild"]
 
 - `hugo.toml` is the site config. Every path in it is relative to the repo root, because `mh docs` runs Hugo with `--source .`.
 - `themes/hextra` is the theme, a git submodule. A fresh clone needs `git submodule update --init`.
+- `layouts/_markup/render-link.html` is the theme's link hook with one addition: it translates repo paths into site paths, see Links below.
 - `layouts/_partials/custom/head-end.html` fills one of the theme's empty hook partials: it lifts the article column's fixed 72rem cap, so with `params.page.width = 'full'` in the config every page uses the whole window. No theme file is copied.
 
 ## How the content is assembled
 
 The site follows the repo one level down: `docs/general` is `/general`, `docs/core` is `/core`, `docs/reference` is `/reference`, each `plugins/<name>/docs/` is `/plugins/<name>`, and the README is the home page. The navbar search box is a `[[menu.main]]` entry with `params.type = 'search'`, which is the only way the theme renders one. `mh docs` writes every Hugo mount into `builds/docs-mounts.toml`, because a later config file replaces an earlier one's mounts array rather than adding to it, so they all have to come from one place.
 
-`mh docs` also writes `builds/docs-home/`, every page that exists only on the site: a copy of the README with frontmatter (an empty title, since the README has its own heading and the theme prints the title as one), the notices file it links, the Plugins section index, and a landing page per plugin titled from `mh_plugin.json`. Nothing hand-written lives outside `docs/` and the plugins' `docs/` folders. The README's links are repo paths and are rewritten to the site's: `docs/<section>/` loses the `docs/` prefix and `plugins/<name>/docs/` loses the `docs/` folder.
+`mh docs` also writes `builds/docs-home/`, every page that exists only on the site: a copy of the README with frontmatter (an empty title, since the README has its own heading and the theme prints the title as one), the notices file it links, the Plugins section index, and a landing page per plugin titled from `mh_plugin.json`. Nothing hand-written lives outside `docs/` and the plugins' `docs/` folders. The README's links are repo paths like every page's, and the link hook resolves them.
+
+## Links
+
+Links are relative paths in the repo, so they work on GitHub and on the site alike: `[Undo](Undo.md)` within a section, `[Concepts](../general/Concepts.md)` across sections.
+
+A plugin page linking into `docs/` starts the path at the repo root instead, since its relative path would climb three levels: `[Undo](/docs/core/Undo.md)`. GitHub reads a leading `/` as the repository root.
+
+On the site, `layouts/_markup/render-link.html` maps a repo path to the site path before looking the page up: `docs/<section>/` loses its `docs/` prefix, `plugins/<name>/docs/` loses its `docs/` folder, and `README.md` is the home page. A link it cannot resolve stays a `.md` link, which is how a broken one shows up.
 
 ## Reading from the file system
 
