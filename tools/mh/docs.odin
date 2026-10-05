@@ -188,6 +188,13 @@ docs_write_package_pages :: proc() -> bool {
 		slug, _ := strings.replace_all(p[len("moonhug/"):], "/", "_", context.temp_allocator)
 		// Text output goes to stdout only: `-out:` applies to -doc-format.
 		data, code := run_capture("odin", "doc", p, "-collection:moonhug=moonhug", "-ignore-unknown-attributes")
+		if code != 0 {
+			// odin doc has crashed intermittently (exit 11) on a package it
+			// documents fine on the next run, so one retry before failing.
+			delete(data)
+			fmt.eprintfln("mh: odin doc failed for %s (exit %d), retrying once", p, code)
+			data, code = run_capture("odin", "doc", p, "-collection:moonhug=moonhug", "-ignore-unknown-attributes")
+		}
 		defer delete(data)
 		if code != 0 {
 			fmt.eprintfln("mh: odin doc failed for %s (exit %d)", p, code)
@@ -245,6 +252,10 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		return false
 	}
 	body := string(data)
+	// LICENSE is a repo file with no page, so the README's link to it would be
+	// dead on the site. The site gets a License page (written below), and the
+	// site's copy of the README links there. GitHub keeps the plain link.
+	body, _ = strings.replace_all(body, "](LICENSE)", "](docs/general/License.md)", context.temp_allocator)
 	// Rebuilt whole: a page this stops writing must not survive from an
 	// earlier build, it would still be mounted into the site.
 	os.remove_all(DOCS_HOME_DIR)
@@ -252,6 +263,19 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	page := strings.concatenate({"---\ntitle: \"\"\ntype: \"docs\"\n---\n\n", body}, context.temp_allocator)
 	if err := os.write_entire_file(DOCS_HOME_DIR + "/_index.md", transmute([]byte)page); err != nil {
 		fmt.eprintfln("mh: cannot write %s/_index.md: %v", DOCS_HOME_DIR, err)
+		return false
+	}
+	// The License page the README's link points at, under General beside the
+	// third-party notices.
+	license, lerr := os.read_entire_file("LICENSE", context.temp_allocator)
+	if lerr != nil {
+		fmt.eprintfln("mh: cannot read LICENSE: %v", lerr)
+		return false
+	}
+	os.make_directory(fmt.tprintf("%s/general", DOCS_HOME_DIR))
+	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\nweight: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
+	if err := os.write_entire_file(fmt.tprintf("%s/general/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
+		fmt.eprintfln("mh: cannot write the License page: %v", err)
 		return false
 	}
 	// The Plugins section index. The repo has no plugins/docs folder to hold

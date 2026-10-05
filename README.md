@@ -7,28 +7,32 @@
 </br>Project has reached plugin architecture — features are developed as self-contained plugins that hook into the editor through attributes.
 </br>Code consists of two main parts - core (engine, editor) and plugins, all other parts serve these two.
 
-</br>There are still frequent API changes, bugs, non-implemented features.
-</br>Good moment to add contribution and influence how Editor shapes up.
+> There are still frequent API changes, bugs, non-implemented features.
+> </br>Good moment to add contribution and influence how Editor shapes up.
+
+## Installation
+To build and run the editor, see [Install, Build and Run](docs/general/InstallBuildAndRun.md).
 
 ## Goals
 - highly and easily extensible level editor
 - allow differently skilled people combine resources together into interactive elements
 
-### Optional Goal
+#### Optional Extra Goal
 - extensible editor without any engine code to help visualizing odin packages
   - would remove dependency onto engine codebase
   - can be done in MoonHug Editor or as separate project
-
-## Key Ideas
-- Editor should be user-friendly
-  - easier for users familiar with Unity Editor, for this it should provide similar features when possible but not limited to them
-- Editor should provide convenient access to editing assets and/or redirect into external apps
 
 ### UX Features
 - Editor UX happens through features
   - Each feature provides specific UX solution with optional extensibility
 
 - On top level UX features are represented by window views
+
+> - Editor should be user-friendly
+>   - easier for users familiar with Unity Editor, for this it should provide similar features when possible but not limited to them
+> - Editor should provide convenient access to editing assets and/or redirect into external apps
+
+#### Contribution
 
 For more details see [Contribution](docs/general/Contribution.md)
 
@@ -38,9 +42,6 @@ For more details see [Contribution](docs/general/Contribution.md)
 ## Updates video
 [![](http://img.youtube.com/vi/MEHnLMaGiEo/0.jpg)](https://www.youtube.com/watch?v=MEHnLMaGiEo)
 
-## Contribution
-- [Contribution](docs/general/Contribution.md)
-
 ## Community
 - [Discord](https://discord.gg/HTpBmhESwW)
 
@@ -48,22 +49,7 @@ For more details see [Contribution](docs/general/Contribution.md)
 zlib — see [LICENSE](LICENSE). Games built with MoonHug carry no notice
 obligation from MoonHug itself; bundled third-party components and what they
 require are listed in [THIRD_PARTY_NOTICES.md](docs/general/THIRD_PARTY_NOTICES.md).
-Contributions are accepted under the same license
-(see [Contribution](docs/general/Contribution.md)).
-
-## Building
-
-Install [Odin](https://odin-lang.org/docs/install/) and SDL3 (`brew install sdl3`), then, in a fresh clone:
-
-```sh
-odin run tools/mh -- setup
-```
-```sh
-odin run tools/mh -- run
-```
-
-`make setup` and `make run` do the same when make is installed. Every command,
-dependency and build step: [Install, Build and Run](docs/general/InstallBuildAndRun.md).
+Contributions are accepted under the same license.
 
 ## Build/run/workflow stages
 - PrebuildStage - generates code for other stages
@@ -72,38 +58,12 @@ dependency and build step: [Install, Build and Run](docs/general/InstallBuildAnd
 - BuildStage - converting app code & resources into shippable Build product
 - RuntimeStage - app running
 
-## Folder structure
-- prebuild - generator folder
-  - separate program that runs even before anything compiles
-- editor, *_editor - editor folders
-  - editor is top level package with dependencies on everything else
-  - engine_editor is the engine's editor half — subpackages pairing with engine ones (engine_editor/asset_pipeline is the write side of engine/asset_pipeline.odin: importers, import drivers, AssetDB scanning, meta writing) — never linked into game binaries (the app runs the catalog pipeline only)
-- app folder - game code
-  - app package should not have any editor dependencies
-- engine - core dependency for app and editor
-- builds folder - build results with runnable application
-- external - external dependencies folder
-- library - derived-data cache (Unity's Library model, see [library](#library)). Safe to delete, rebuilt on the next run
-- ProjectSettings - settings about the PROJECT, committed: `mcp.json` and one `<slug>.json` per @(project_settings) tab
-- UserSettings - per-developer editor state, never committed (Unity's UserSettings): window geometry, open scenes and windows, panel visibility, theme, grid and snap, selected run config. Safe to delete, the editor writes defaults on the next run
-
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
 - SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/core/SDL3Renderer.md))
 - vendored C libraries Odin ships as source (stb, cgltf, box2d, box3d), all built by `mh setup`
 
 Full list and what needs them: [Install, Build and Run](docs/general/InstallBuildAndRun.md#dependencies).
-
-## library
-
-Everything under `library/` is derived data — never a source of truth, safe to delete, rebuilt from assets + metas on the next run (Unity's Library contract).
-
-- `library/artifacts/<xx>/<key>.bin` - import artifacts, **content-addressed**: the 128-bit key hashes every input that shapes the importer's output — source bytes, import settings, the importer's version constant, the artifact format version. Invalidation is automatic (any changed input is a different key), toggling a setting back is a cache hit on the old artifact instead of a re-import, and keys are machine-independent (a shared team cache stays possible). `<xx>` is the key's first two hex chars (Unity's fan-out layout)
-- `library/artifact_db.json` - the index: guid → current artifact key + source file stamp + settings hash, so an unchanged file costs one stat per scan, never a rehash
-- `library/thumbnails/<xx>/<guid>.thumb` - project view thumbnails (raw RGBA + a stamp header), guid-keyed so a changed asset overwrites its entry in place. Written asynchronously after generation (fence-polled GPU readback, no sync stalls), loaded instead of re-rendering on the next session. Deleted assets' entries are pruned at editor startup
-- `library/state_cache/` - editor session state (the Play button's live-scene snapshot)
-- garbage collection runs with the import pass: artifact files no index entry references are deleted
-- importers carry a version constant (`_importer_version`) — bump it when an importer's output changes and exactly its artifacts re-import, nothing else
 
 ## Features
 - menu bar - customizable via @(menu_item=...). Attribute on a proc it is an action, on a bool variable it is a toggle. `checked=<proc>` draws a tick from computed state, can be used for a radio group. `enabled=<proc>` greys an item out
