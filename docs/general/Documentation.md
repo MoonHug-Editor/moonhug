@@ -37,7 +37,12 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 
 ## Generated pages
 
-`docs/reference/` is generated and gitignored, in two parts: `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written on every build by `moonhug/prebuild/attributes_gen`, and `packages/`, one `odin doc` page per engine and editor package written by `mh docs` (`tools/mh/docs.odin`).
+`docs/reference/` is generated and gitignored, in four parts:
+
+- `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written on every build by `moonhug/prebuild/attributes_gen`.
+- `field_tags/<layer>/`, the same layout with one page per field tag key, written on every build by `moonhug/prebuild/field_tags_gen`.
+- `naming/<layer>/`, the same layout with one page per naming convention, written on every build by `moonhug/prebuild/naming_gen`.
+- `packages/`, one `odin doc` page per engine and editor package, written by `mh docs` (`tools/mh/docs.odin`).
 
 ## Attributes
 
@@ -57,3 +62,82 @@ toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin :=
 - `target` says what the attribute goes on (`proc`, `var`, `type`). It is documentation only.
 
 The prebuild checks every attribute in the scanned code against these declarations and stops on an attribute that is neither Odin's nor declared, or on a field its declaration does not list. The build passes `-ignore-unknown-attributes`, so without this check a misspelled `@(menu_iten)` or `ordr=` compiles and silently does nothing. A new attribute, from the engine or from a plugin's `gen/`, needs its `@(extension_point)` in the same change.
+
+## Field tags
+
+A struct field's tag tells the inspector how to draw the field and what it accepts: `ref:"Transform"`, `ext:"mat" expand`, `decor:min(0)`. Field tags are not attributes. Each key is declared as a value, a `Field_Tag` constant in the package that reads it, and the declaration is what its reference page is made from:
+
+```odin
+// Limits an Asset_GUID field to files with the given extensions.
+//
+// A comma list without dots: `ext:"glb,gltf"`. ...
+TAG_EXT :: Field_Tag{key = "ext", form = .Value}
+```
+
+- The doc comment is the key's explanation, and its first sentence is the summary on the index.
+- `form` is how the key is written: `.Value` is `key:"text"`, `.Flag` is a bare `key` (`key:""` reads the same), `.Call` is `key:name(args)`, and only a Call key may appear several times in one tag, as `decor` does.
+- The package the constant sits in decides its layer on the index: `host`, `editor`, then each plugin by name.
+
+The `decor` page also lists every decorator, each a `decorator_<name>` proc in `moonhug:editor/inspector`, with its parameters and its number of uses.
+
+`Field_Tag`, `Field_Tag_Form`, the editor's own keys and the readers are in `moonhug/editor/inspector/field_tags.odin`. Code reads a key through its constant rather than a string literal:
+
+- `tag_value(tag, TAG_EXT)` returns a Value key's text, or a Call key's first call as written (`min(0.5)`), and whether the tag carries the key.
+- `tag_has(tag, TAG_EXPAND)` says whether the tag carries the key, in any spelling its form accepts.
+
+A plugin declares its own keys the same way, in its `editor/` part, which imports `moonhug:editor/inspector`, and reads them with the same procs:
+
+```odin
+import "moonhug:editor/inspector"
+
+// Draws the field as a layer mask, with one toggle per layer the project names.
+TAG_LAYERS :: inspector.Field_Tag{key = "layers", form = .Flag}
+```
+
+Value keys come first in a tag. Odin's `reflect.struct_tag_lookup`, which `tag_value` and `core:encoding/json` both use, stops reading at the first bare word, call or line break.
+
+The prebuild checks every struct field tag in the scanned code against the declarations and stops on:
+
+- a key no declaration names, with the nearest declared key as a suggestion
+- a key written in another form than its declaration's, as `expand:"x"` or a bare `ref`
+- a Value key after a bare word, a call or a line break, where it is never read
+- a Value or Flag key that appears twice in one tag
+- a tag it cannot split into keys, as an unclosed quote or parenthesis
+- a key declared twice, a declaration without `key`, and a `form` that is not `.Value`, `.Flag` or `.Call`
+
+A declared key no field uses is a warning. Generated files and test packages are not checked. Without the check a misspelled `exapnd` compiles and silently does nothing, so a new key needs its `Field_Tag` constant in the same change.
+
+## Naming
+
+Some procs are called because of their name. `cleanup_Camera` runs because type_guid_gen looks for `cleanup_<T>` in the file of every `@(typ_guid)` type, `decorator_min` because a field says `decor:min(...)`, `apply_Value_Command` because the undo command dispatch calls it. Naming conventions are neither attributes nor field tags. Each belongs to the generator that resolves it, which declares it at `@(init)` and records its subjects in its provide step:
+
+```odin
+gen_facts.register_naming({
+	key     = "clip_tween",
+	title   = "Clip tween procs",
+	subject = "a type embedding `base: Clip_Tween`",
+	layer   = "sequencer",
+	owner   = "tween_gen",
+	scope   = .Subject_File,
+	procs   = {
+		{prefix = "evaluate_", signature = "proc(v: ^T, t: f32, ctx: ^core.Tween_Ctx)", summary = "Poses the target at clip-normalized time t."},
+	},
+	doc     = "...",
+})
+
+// In provide, for every variant found:
+gen_facts.naming_subject("clip_tween", decl.name, decl.file_path, where_)
+```
+
+- `procs` lists the names the convention resolves, `<prefix><Subject>`, with their signature and whether every subject must have one.
+- `scope` is where the owner looks: `.Subject_File` (the file that declares the subject), `.Package` (one package, `package_path`) or `.Any`.
+- `unclaimed` decides what a proc with the prefix and no subject behind it is: `.Near_Miss` (the default, an error only when it is a typo of a subject), `.Warn` or `.Error` for a convention that owns its prefix, as `decorator_` and `mcp_tool_` do.
+- `layer` places the convention on the index: `host`, `editor`, or the plugin whose `gen/` declares it.
+
+The types and the registry are in `moonhug/prebuild/gen_facts/naming.odin`. The prebuild stops on:
+
+- a proc that names a subject but is not where the owner looks, so it is never called: `on_validate_Camera` in another file than `Camera`
+- a proc that is a near miss of a subject, with the subject as a suggestion: `cleanup_Camra`
+- for a convention with `unclaimed = .Error`, a proc with its prefix that is not one of its subjects: `mcp_tool_probe` without `@(mcp_tool)`
+
+With `unclaimed = .Warn` such a proc is a warning instead, as an unused decorator is. Missing required procs are the owner's error, since the owner knows what it cannot generate without them. A generator that finds code by name declares its convention in the same change.

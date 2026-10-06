@@ -72,23 +72,12 @@ Field_Tags :: struct {
 // there, for field_tags_restore.
 field_tags_set :: proc(tag: reflect.Struct_Tag) -> (prev: Field_Tags) {
     prev = {current_field_ref_target, current_field_pick_mode, current_field_ext_filter, current_field_has_filter, current_field_expand}
-    current_field_ref_target, _ = reflect.struct_tag_lookup(tag, "ref")
-    current_field_pick_mode, _ = reflect.struct_tag_lookup(tag, "pick")
-    current_field_ext_filter, _ = reflect.struct_tag_lookup(tag, "ext")
-    current_field_has_filter, _ = reflect.struct_tag_lookup(tag, "has")
-    current_field_expand = _tag_has_flag(tag, "expand")
+    current_field_ref_target, _ = tag_value(tag, TAG_REF)
+    current_field_pick_mode, _ = tag_value(tag, TAG_PICK)
+    current_field_ext_filter, _ = tag_value(tag, TAG_EXT)
+    current_field_has_filter, _ = tag_value(tag, TAG_HAS)
+    current_field_expand = tag_has(tag, TAG_EXPAND)
     return prev
-}
-
-// A flag tag is a bare word: `ext:"mat" expand`. reflect.struct_tag_lookup
-// only reads key:"value" pairs, so the word is matched as its own token, and
-// the key:"" spelling is accepted as well.
-_tag_has_flag :: proc(tag: reflect.Struct_Tag, name: string) -> bool {
-    if _, has := reflect.struct_tag_lookup(tag, name); has do return true
-    for tok in strings.fields(string(tag), context.temp_allocator) {
-        if tok == name do return true
-    }
-    return false
 }
 
 field_tags_restore :: proc(prev: Field_Tags) {
@@ -1040,11 +1029,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
 
     for i in 0..<count {
         field_info := reflect.struct_field_at(tid, i)
-        inspect_val, has_inspect := reflect.struct_tag_lookup(field_info.tag, "inspect")
+        inspect_val, has_inspect := tag_value(field_info.tag, TAG_INSPECT)
         if has_inspect && inspect_val == "-" {
             continue
         }
-        json_val, has_json := reflect.struct_tag_lookup(field_info.tag, "json")
+        json_val, has_json := tag_value(field_info.tag, TAG_JSON)
         if !has_inspect && has_json && json_val == "-" {
             continue
         }
@@ -1170,7 +1159,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 // carries the accumulated offset rather than the raw pointer.
                 prev_off := multi_push_offset(uintptr(field_ptr) - uintptr(ptr))
                 defer multi_pop_offset(prev_off)
-                _, is_inline := reflect.struct_tag_lookup(field_info.tag, "inline")
+                is_inline := tag_has(field_info.tag, TAG_INLINE)
                 if is_inline {
                     draw_inspector(field_val, "", full_path)
                     row_popup_done = true

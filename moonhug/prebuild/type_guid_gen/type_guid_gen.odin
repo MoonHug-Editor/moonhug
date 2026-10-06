@@ -11,6 +11,7 @@ package type_guid_gen
 // No package is special except core: the engine's types register like any
 // installed package's, so the output compiles with no plugin installed.
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:slice"
@@ -63,6 +64,21 @@ Cleanup_GenComp :: struct {
 _register :: proc "contextless" () {
 	db.provider("type_guid/provide", provide)
 	db.generator("type_guid/generate", generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key     = "type_lifecycle",
+		title   = "Type lifecycle procs",
+		subject = "a type with @(typ_guid)",
+		layer   = "host",
+		owner   = "type_guid_gen",
+		scope   = .Subject_File,
+		procs   = {
+			{prefix = "reset_", signature = "proc(v: ^T)", summary = "Sets a fresh instance to its defaults: Reset in the inspector, Add Component, a new asset."},
+			{prefix = "cleanup_", signature = "proc(v: ^T)", summary = "Frees what the instance owns. Runs before undo, reset and document release overwrite it, and must be safe to call twice."},
+			{prefix = "on_validate_", signature = "proc(v: ^T)", summary = "Runs after a value is written into the instance: an inspector edit, undo, a load."},
+		},
+		doc     = "The type registry calls these for every registered type, so a component, an asset type or a plain data type gets defaults, cleanup and validation by declaring them next to itself. A cleanup can also come from `@(cleanup)` on a proc of any name.",
+	})
 }
 
 // provide_synthetic lets a sibling module register a type it emits as a
@@ -133,6 +149,7 @@ provide :: proc(w: ^db.World) -> bool {
 				reset_name       := strings.concatenate({"reset_",       type_name})
 				cleanup_name     := strings.concatenate({"cleanup_",     type_name})
 				on_validate_name := strings.concatenate({"on_validate_", type_name})
+				gen_facts.naming_subject("type_lifecycle", type_name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 				tag := TypeGuid_GenComp{
 					pkg_name        = pkg_name,
 					pkg_path        = decl.pkg_path,

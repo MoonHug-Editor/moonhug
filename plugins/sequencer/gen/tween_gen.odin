@@ -11,6 +11,7 @@ package sequencer_gen
 // tween_base is generated too: it hands back the embedded Clip_Tween of the
 // active variant, which is how the track clears captures generically.
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -30,6 +31,20 @@ Tween_GenComp :: struct {
 _register_tween :: proc "contextless" () {
 	db.provider("sequencer/tween/provide", tween_provide)
 	db.generator("sequencer/tween/generate", tween_generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key     = "clip_tween",
+		title   = "Clip tween procs",
+		subject = "a type embedding `base: Clip_Tween`",
+		layer   = "sequencer",
+		owner   = "tween_gen",
+		scope   = .Subject_File,
+		procs   = {
+			{prefix = "evaluate_", signature = "proc(v: ^T, t: f32, ctx: ^core.Tween_Ctx)", summary = "Poses the target at clip-normalized time t, as a pure function of t."},
+			{prefix = "cleanup_", signature = "proc(v: ^T)", summary = "Frees what the variant owns."},
+		},
+		doc     = "Every struct embedding `base: Clip_Tween` is a variant of the generated `TweenUnion`, and the generated dispatch calls these by name. A variant without an evaluate proc does nothing.",
+	})
 }
 
 tween_provide :: proc(w: ^db.World) -> bool {
@@ -47,6 +62,7 @@ tween_provide :: proc(w: ^db.World) -> bool {
 		if !_has_base(fields.fields, "Clip_Tween") do continue
 
 		eval_name := strings.concatenate({"evaluate_", decl.name}, context.temp_allocator)
+		gen_facts.naming_subject("clip_tween", decl.name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 		cleanup_name := strings.concatenate({"cleanup_", decl.name}, context.temp_allocator)
 		db.set(tweens, entity, Tween_GenComp{
 			has_evaluate = gen_core.FileHasProc(decl.file, eval_name),

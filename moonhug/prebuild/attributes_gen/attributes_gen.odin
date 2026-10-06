@@ -15,8 +15,9 @@ package attributes_gen
 //   generate - docs/reference/attributes/: one page per declared attribute
 //              (explanation, extended package, fields, then every declaration
 //              using it), and an index grouped by extended package. Also the
-//              Reference section's own index, docs/reference/_index.md. Rewritten every build and
-//              gitignored, since file:line changes on most edits.
+//              Reference section's own index, docs/reference/_index.md, which
+//              links the field tag pages field_tags_gen writes. Rewritten every
+//              build and gitignored, since file:line changes on most edits.
 //
 // `target` is documentation only ("proc", "var", "type"), it is not checked.
 
@@ -94,7 +95,7 @@ generate :: proc(w: ^db.World) -> bool {
 				attribute = name, target = args.fields["target"],
 				fields = strings.fields(args.fields["fields"], context.temp_allocator),
 				anchor = decl.name, pkg_path = decl.pkg_path, where_ = where_,
-				doc = _doc_markdown(decl),
+				doc = gen_facts.doc_markdown(decl),
 				uses = make([dynamic]Use, context.temp_allocator),
 			}
 			declared[name] = d
@@ -102,6 +103,8 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 
 	// Pass 2: every use, checked against its declaration.
+	names := make([dynamic]string, context.temp_allocator)
+	for name in declared do append(&names, name)
 	m2 := db.all_of(db.r(decls), db.r(attrs)); defer db.matcher_destroy(&m2)
 	for entity in db.matched(w, &m2) {
 		decl := db.get(decls, entity)
@@ -112,7 +115,7 @@ generate :: proc(w: ^db.World) -> bool {
 			d, ok := declared[args.key]
 			if !ok {
 				hint := ""
-				if near := _nearest(args.key, declared); near != "" do hint = fmt.tprintf(", did you mean @(%s)?", near)
+				if near := gen_facts.nearest_name(args.key, names[:]); near != "" do hint = fmt.tprintf(", did you mean @(%s)?", near)
 				append(&errors, fmt.tprintf("%s: unknown attribute @(%s) on %s%s", where_, args.key, decl.name, hint))
 				continue
 			}
@@ -144,8 +147,8 @@ generate :: proc(w: ^db.World) -> bool {
 	// Grouped by layer (Host, Editor, then each plugin by name), by extending
 	// package inside a layer, attributes by name inside a package.
 	slice.sort_by(list[:], proc(a, b: ^Declaration) -> bool {
-		la, oa := _layer(a.pkg_path)
-		lb, ob := _layer(b.pkg_path)
+		la, oa := gen_facts.pkg_layer(a.pkg_path)
+		lb, ob := gen_facts.pkg_layer(b.pkg_path)
 		if oa != ob do return oa < ob
 		if la != lb do return la < lb
 		if a.pkg_path != b.pkg_path do return a.pkg_path < b.pkg_path
@@ -154,7 +157,7 @@ generate :: proc(w: ^db.World) -> bool {
 	os.make_directory(REFERENCE_DIR)
 	os.make_directory(OUT_DIR)
 	_sweep_stale(list[:])
-	db.emit(w, REFERENCE_DIR + "/_index.md", "---\ntitle: \"Reference\"\ndescription: \"Generated from the source: every attribute and every engine and editor package\"\nweight: 40\n---\n\nGenerated, not edited by hand and not committed.\n\n- [Attributes](attributes/_index.md) — how code extends the editor, grouped by the layer and the package that declare each attribute. Written on every build.\n- [Packages](packages/_index.md) — every public declaration of each engine and editor package, from `odin doc`. Written by `mh docs`.\n")
+	db.emit(w, REFERENCE_DIR + "/_index.md", "---\ntitle: \"Reference\"\ndescription: \"Generated from the source: every attribute, field tag and naming convention, and every package\"\nweight: 40\n---\n\nGenerated, not edited by hand and not committed.\n\n- [Attributes](attributes/_index.md) — how code extends the editor, grouped by the layer and the package that declare each attribute. Written on every build.\n- [Field tags](field_tags/_index.md) — the struct field tag keys the inspector reads, grouped by the layer that declares each key. Written on every build.\n- [Naming](naming/_index.md) — the procs generators find by their name, grouped by the layer whose generator declares the convention. Written on every build.\n- [Packages](packages/_index.md) — every public declaration of each engine and editor package, from `odin doc`. Written by `mh docs`.\n")
 	index := strings.builder_make()
 	defer strings.builder_destroy(&index)
 	strings.write_string(&index, "---\ntitle: \"Attributes\"\ndescription: \"Every attribute, the package it extends, and what is registered through it\"\nweight: 10\n---\n\n")
@@ -176,7 +179,7 @@ generate :: proc(w: ^db.World) -> bool {
 		strings.builder_reset(b)
 	}
 	for d, i in list {
-		if l, o := _layer(d.pkg_path); l != layer {
+		if l, o := gen_facts.pkg_layer(d.pkg_path); l != layer {
 			flush_layer(w, layer, &layer_index)
 			if layer != "" do fmt.sbprintf(&index, "- [%s](%s/_index.md) — %d attributes\n", layer, layer, layer_count)
 			layer = l
@@ -184,14 +187,14 @@ generate :: proc(w: ^db.World) -> bool {
 			layer_count = 0
 			group = ""
 			os.make_directory(fmt.tprintf("%s/%s", OUT_DIR, layer))
-			fmt.sbprintf(&layer_index, "---\ntitle: \"%s\"\ndescription: \"Attributes declared by %s, by the package each one extends\"\nweight: %d\n---\n\nGenerated on every build by `moonhug/prebuild/attributes_gen`. Not edited by hand and not committed.\n", layer, _layer_noun(layer, layer_order), (layer_order + 1) * 10 + (0 if layer_order < 2 else _plugin_rank(list[:], l)))
+			fmt.sbprintf(&layer_index, "---\ntitle: \"%s\"\ndescription: \"Attributes declared by %s, by the package each one extends\"\nweight: %d\n---\n\nGenerated on every build by `moonhug/prebuild/attributes_gen`. Not edited by hand and not committed.\n", layer, gen_facts.layer_noun(layer, layer_order), (layer_order + 1) * 10 + (0 if layer_order < 2 else _plugin_rank(list[:], l)))
 		}
 		if d.pkg_path != group {
 			group = d.pkg_path
-			fmt.sbprintf(&layer_index, "\n## `%s`\n\n", _import_path(group))
+			fmt.sbprintf(&layer_index, "\n## `%s`\n\n", gen_facts.pkg_import_path(group))
 		}
 		layer_count += 1
-		fmt.sbprintf(&layer_index, "- [@(%s)](%s.md) — %s (%d)\n", d.attribute, d.attribute, _first_sentence(d.doc), len(d.uses))
+		fmt.sbprintf(&layer_index, "- [@(%s)](%s.md) — %s (%d)\n", d.attribute, d.attribute, gen_facts.first_sentence(d.doc), len(d.uses))
 		_emit_page(w, d, (i + 1) * 10)
 	}
 	flush_layer(w, layer, &layer_index)
@@ -201,15 +204,6 @@ generate :: proc(w: ^db.World) -> bool {
 }
 
 
-@(private = "file")
-_layer_noun :: proc(layer: string, order: int) -> string {
-	switch order {
-	case 0: return "the host packages"
-	case 1: return "the editor shell"
-	}
-	return fmt.tprintf("the %s plugin", layer)
-}
-
 // Plugins sort after the host and the editor, by name: their index weight is
 // the position among the plugins that declare attributes.
 @(private = "file")
@@ -217,7 +211,7 @@ _plugin_rank :: proc(list: []^Declaration, layer: string) -> int {
 	rank := 0
 	seen := ""
 	for d in list {
-		l, o := _layer(d.pkg_path)
+		l, o := gen_facts.pkg_layer(d.pkg_path)
 		if o != 2 || l == seen do continue
 		seen = l
 		rank += 1
@@ -230,9 +224,9 @@ _plugin_rank :: proc(list: []^Declaration, layer: string) -> int {
 _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
-	desc, _ := strings.replace_all(_first_sentence(d.doc), "\"", "\\\"", context.temp_allocator)
+	desc, _ := strings.replace_all(gen_facts.first_sentence(d.doc), "\"", "\\\"", context.temp_allocator)
 	fmt.sbprintf(&b, "---\ntitle: \"@(%s)\"\ndescription: \"%s\"\nweight: %d\ntags: [\"reference\", \"%s\"]\n---\n\n", d.attribute, desc, weight, d.attribute)
-	pkg := _import_path(d.pkg_path)
+	pkg := gen_facts.pkg_import_path(d.pkg_path)
 	if slug, ok := _package_page(d.pkg_path); ok {
 		fmt.sbprintf(&b, "**Extends** [`%s`](../../packages/%s.md)", pkg, slug)
 	} else {
@@ -250,9 +244,9 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 		strings.write_string(&b, "Nothing uses it yet.\n")
 	} else {
 		strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
-		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, _cell(u.attr), _cell(u.summary))
+		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
 	}
-	layer, _ := _layer(d.pkg_path)
+	layer, _ := gen_facts.pkg_layer(d.pkg_path)
 	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, layer, d.attribute), strings.to_string(b))
 }
 
@@ -266,14 +260,14 @@ _sweep_stale :: proc(list: []^Declaration) {
 	keep := make(map[string]bool, context.temp_allocator)
 	layers := make(map[string]bool, context.temp_allocator)
 	for d in list {
-		layer, _ := _layer(d.pkg_path)
+		layer, _ := gen_facts.pkg_layer(d.pkg_path)
 		layers[layer] = true
 		keep[fmt.tprintf("%s/%s.md", layer, d.attribute)] = true
 	}
 	// Pages directly in the reference or attributes folder are from older
 	// layouts, a layer folder this build does not write is gone whole.
 	for dir in ([]string{OUT_DIR, REFERENCE_DIR}) {
-		for e in _entries(dir) {
+		for e in gen_facts.dir_entries(dir) {
 			path := fmt.tprintf("%s/%s", dir, e.name)
 			if e.type == .Directory {
 				if dir == OUT_DIR && !layers[e.name] do os.remove_all(path)
@@ -285,22 +279,12 @@ _sweep_stale :: proc(list: []^Declaration) {
 	}
 	for slug in layers {
 		dir := fmt.tprintf("%s/%s", OUT_DIR, slug)
-		for e in _entries(dir) {
+		for e in gen_facts.dir_entries(dir) {
 			if e.type == .Directory || e.name == "_index.md" do continue
 			if keep[fmt.tprintf("%s/%s", slug, e.name)] do continue
 			os.remove(fmt.tprintf("%s/%s", dir, e.name))
 		}
 	}
-}
-
-@(private = "file")
-_entries :: proc(dir: string) -> []os.File_Info {
-	handle, oerr := os.open(dir)
-	if oerr != nil do return nil
-	defer os.close(handle)
-	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-	if rerr != nil do return nil
-	return entries
 }
 
 @(private = "file")
@@ -311,27 +295,6 @@ _check_field :: proc(d: ^Declaration, key: string, name: string, where_: string,
 	}
 	known := strings.join(d.fields, ", ", context.temp_allocator)
 	append(errors, fmt.tprintf("%s: @(%s) on %s has no field `%s` (its fields: %s)", where_, d.attribute, name, key, known))
-}
-
-// "moonhug/editor/inspector" -> "moonhug:editor/inspector".
-@(private = "file")
-// The layer a package belongs to, named like its folder (host, editor, the
-// plugin's name), and the order layers are listed in: host, editor, then
-// every plugin by name.
-_layer :: proc(pkg_path: string) -> (name: string, order: int) {
-	if strings.has_prefix(pkg_path, "moonhug/host") || strings.has_prefix(pkg_path, "moonhug/registration") do return "host", 0
-	if strings.has_prefix(pkg_path, "moonhug/editor") do return "editor", 1
-	if strings.has_prefix(pkg_path, "moonhug/packages/") {
-		rest := pkg_path[len("moonhug/packages/"):]
-		if slash := strings.index_byte(rest, '/'); slash >= 0 do rest = rest[:slash]
-		return rest, 2
-	}
-	return pkg_path, 3
-}
-
-_import_path :: proc(pkg_path: string) -> string {
-	if strings.has_prefix(pkg_path, "moonhug/") do return fmt.tprintf("moonhug:%s", pkg_path[len("moonhug/"):])
-	return pkg_path
 }
 
 // The `odin doc` page `mh docs` writes for this package, when it writes one:
@@ -347,74 +310,7 @@ _package_page :: proc(pkg_path: string) -> (slug: string, ok: bool) {
 	return "", false
 }
 
-// The closest declared name, for a typo. "" when nothing is close.
-@(private = "file")
-_nearest :: proc(key: string, declared: map[string]^Declaration) -> string {
-	best, best_d := "", 3
-	for name in declared {
-		if d := _distance(key, name); d < best_d do best, best_d = name, d
-	}
-	return best
-}
-
-@(private = "file")
-_distance :: proc(a, b: string) -> int {
-	prev := make([]int, len(b) + 1, context.temp_allocator)
-	cur := make([]int, len(b) + 1, context.temp_allocator)
-	for j in 0 ..= len(b) do prev[j] = j
-	for i in 1 ..= len(a) {
-		cur[0] = i
-		for j in 1 ..= len(b) {
-			cost := a[i - 1] == b[j - 1] ? 0 : 1
-			cur[j] = min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost)
-		}
-		prev, cur = cur, prev
-	}
-	return prev[len(b)]
-}
-
-// The doc comment as markdown: markers stripped, a blank comment line is a
-// paragraph break, other lines join with a space.
-@(private = "file")
-_doc_markdown :: proc(decl: ^db.DeclInfo) -> string {
-	if decl.decl == nil || decl.decl.docs == nil do return ""
-	b := strings.builder_make(context.temp_allocator)
-	para := false
-	for tok in decl.decl.docs.list {
-		line := tok.text
-		if strings.has_prefix(line, "//") do line = line[2:]
-		if strings.has_prefix(line, "/*") do line = line[2:]
-		if strings.has_suffix(line, "*/") do line = line[:len(line) - 2]
-		line = strings.trim_space(line)
-		if line == "" {
-			if para do strings.write_string(&b, "\n\n")
-			para = false
-			continue
-		}
-		if para do strings.write_byte(&b, ' ')
-		strings.write_string(&b, line)
-		para = true
-	}
-	return strings.trim_space(strings.to_string(b))
-}
-
-@(private = "file")
-_first_sentence :: proc(text: string) -> string {
-	s := text
-	if p := strings.index(s, "\n\n"); p >= 0 do s = s[:p]
-	if dot := strings.index(s, ". "); dot >= 0 do s = s[:dot + 1]
-	return s
-}
-
 @(private = "file")
 _doc_summary :: proc(decl: ^db.DeclInfo) -> string {
-	return _first_sentence(_doc_markdown(decl))
-}
-
-// A markdown table cell: no pipes, no newlines.
-@(private = "file")
-_cell :: proc(s: string) -> string {
-	out, _ := strings.replace_all(s, "|", "\\|", context.temp_allocator)
-	out, _ = strings.replace_all(out, "\n", " ", context.temp_allocator)
-	return out
+	return gen_facts.first_sentence(gen_facts.doc_markdown(decl))
 }

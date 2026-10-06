@@ -11,6 +11,7 @@ import "moonhug:host/log"
 Min_Value :: union { int, f64 }
 
 
+// Holds an int, f32 or f64 field at `min_value` or above.
 decorator_min :: proc(ctx: ^DrawContext, min_value: Min_Value) {
 	if !ctx.is_visible || ctx.is_pre do return
 	if ctx.field_ptr == nil do return
@@ -40,9 +41,10 @@ decorator_min :: proc(ctx: ^DrawContext, min_value: Min_Value) {
 	}
 }
 
-// `decor:range(min, max)` — Unity's [Range]: the field draws as a slider with
-// a value box (widgets.slider_float) instead of a drag field, and the value is
-// held inside the range. int and f32 fields; anything else is left alone.
+// Draws the field as a slider with a value box and holds it inside the range.
+//
+// widgets.slider_float replaces the drag field. int and f32 fields, anything
+// else is left alone.
 decorator_range :: proc(ctx: ^DrawContext, min_value: Min_Value, max_value: Min_Value) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
@@ -78,6 +80,7 @@ decorator_range :: proc(ctx: ^DrawContext, min_value: Min_Value, max_value: Min_
 	ctx.handled_draw = true
 }
 
+// Draws `text` as a heading with a separator above the field.
 decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
 	if !ctx.is_visible || !ctx.is_pre do return
 
@@ -86,6 +89,7 @@ decorator_header :: proc(ctx: ^DrawContext, text:cstring = "") {
     im.Separator()
 }
 
+// Shows `desc` as the field's tooltip.
 decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
 	if !ctx.is_visible || ctx.is_pre do return
 
@@ -94,11 +98,13 @@ decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
 	widgets.tooltip(desc)
 }
 
+// Draws a separator line above the field.
 decorator_separator :: proc(ctx: ^DrawContext) {
 	if ctx == nil do return
 	if ctx.is_visible && ctx.is_pre do im.Separator()
 }
 
+// Hides the field from the inspector.
 decorator_hide :: proc(ctx: ^DrawContext)
 {
 	if(ctx.is_pre)
@@ -107,6 +113,7 @@ decorator_hide :: proc(ctx: ^DrawContext)
 	}
 }
 
+// Draws the field disabled: it shows its value and cannot be edited.
 decorator_readonly :: proc(ctx: ^DrawContext) {
 	if ctx.is_pre {
 		im.BeginDisabled()
@@ -116,6 +123,7 @@ decorator_readonly :: proc(ctx: ^DrawContext) {
     }
 }
 
+// Draws a [4]f32 or [3]f32 field as a color swatch with a popup picker.
 decorator_color :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
@@ -151,6 +159,7 @@ _color_popup_hold :: proc(row_label: cstring) {
 	if open do field_edit_row_hold()
 }
 
+// Edits a quaternion field ([4]f32) as XYZ Euler angles in degrees.
 decorator_euler :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
@@ -168,6 +177,7 @@ decorator_euler :: proc(ctx: ^DrawContext) {
 	ctx.handled_draw = true
 }
 
+// Draws a [4]f32 or [3]f32 field as a color picker shown in place.
 decorator_color_picker :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return
@@ -252,6 +262,8 @@ _button_id :: proc(label: cstring, row, n: int) -> cstring {
 	return fmt.ctprintf("%s##btn_%d_%d", label, row, n)
 }
 
+// Draws a button on the field's row that calls `action`, placed by `row` and
+// sized by `weight` (see the comment above _Button_Row_State).
 decorator_button :: proc(ctx: ^DrawContext, action: $P, label := cstring(""), row := 0, weight := f32(1))
 	where intrinsics.type_is_proc(P) {
 	if !ctx.is_visible do return

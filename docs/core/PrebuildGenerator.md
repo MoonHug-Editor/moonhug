@@ -50,8 +50,8 @@ components. Every `*_gen` module then works against those components and **never
 | Package      | Role                                                                    |
 |--------------|-------------------------------------------------------------------------|
 | `gen_db`     | The database: entities, the component registry, queries, the pipeline.  |
-| `gen_core`   | The typed AST facade — the only place that speaks `core:odin/ast`. Turns declarations into plain data: `DeclAttrs` (→ `Attr_Args`), `StructFields` (→ `Struct_Field`), `RenderValue`, `EnumFieldNames`, plus `ParsePackage` / file helpers. |
-| `gen_facts`  | Runs `gen_core` once per decl and stores the result as shared components: `Kind_GenComp`, `Proc_GenComp`, `Struct_GenComp`, `Attrs_GenComp`, `Fields_GenComp`. Every module reads these instead of re-walking the AST. It also holds `Component_GenComp`, which the engine's components generator provides and `packages_gen` reads. |
+| `gen_core`   | The typed AST facade — the only place that speaks `core:odin/ast`. Turns declarations into plain data: `DeclAttrs` (→ `Attr_Args`), `StructFields` (→ `Struct_Field`), `ConstLit` (→ `Const_Lit`, a constant compound literal), `ProcParams`, `RenderValue`, `EnumFieldNames`, plus `ParsePackage` / file helpers. |
+| `gen_facts`  | Runs `gen_core` once per decl and stores the result as shared components: `Kind_GenComp`, `Proc_GenComp`, `Struct_GenComp`, `Attrs_GenComp`, `Fields_GenComp`. Every module reads these instead of re-walking the AST. It also holds `Component_GenComp`, which the engine's components generator provides and `packages_gen` reads, and the helpers the two reference generators share (`reference.odin`: `pkg_layer`, `doc_markdown`, `nearest_name`, `const_lit`, `proc_params`). |
 | `*_gen`      | One module per output concern (`menu_gen`, `type_guid_gen`, …). Self-registering. None import `core:odin/ast`. `moonhug/prebuild` holds the host and shell generators. A plugin's generators live in its `gen/` folder (docs/core/Plugins.md), the engine's in `plugins/engine/gen` (components, gizmos, context menu, update). |
 
 The host and shell generators name no plugin. Their output compiles with an empty `moonhug/packages`, and a plugin's package is imported only when its declarations were scanned. `type_guid_gen` is the model:
@@ -62,6 +62,14 @@ The host and shell generators name no plugin. Their output compiles with an empt
 - `moonhug/editor/create_asset_menus_generated.odin`: the Assets/Create entries, through `core` only.
 
 `provider_install_gen` is the one shell generator that writes into the test package. It collects every `@(provider_install)` proc and emits the same `install_providers` proc twice: `moonhug/editor/providers_generated.odin`, called by `editor_init` right after `inspector.init`, and `moonhug/tests/common/providers_generated.odin`, called by the tests' shared init. The calls are explicit, not a phase, because a generated `@(phase)` proc is one prebuild behind. A marked proc in the `moonhug/editor` package itself stops the build, since the tests' shared package does not import the editor root.
+
+Two generators write no Odin. They check declarations the compiler cannot and write the generated reference pages (docs/general/Documentation.md):
+
+- `attributes_gen` checks every attribute against its `@(extension_point)` declaration and writes `docs/reference/attributes/` and the Reference index.
+- `field_tags_gen` checks every struct field tag against the `Field_Tag` constants that declare its keys (`moonhug/editor/inspector/field_tags.odin`) and writes `docs/reference/field_tags/`. The `decor` page also lists every `decorator_<name>` proc `decorator_gen` resolves.
+- `naming_gen` checks every proc that follows a naming convention against the subjects the convention's owner recorded, and writes `docs/reference/naming/`. A generator that finds code by name declares the convention with `gen_facts.register_naming` at `@(init)` and records its subjects with `gen_facts.naming_subject` in its provide step (`moonhug/prebuild/gen_facts/naming.odin`).
+
+A failed check prints each error with its file and line and stops the prebuild.
 
 ## How a module is structured
 

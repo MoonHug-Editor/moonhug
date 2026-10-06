@@ -11,7 +11,7 @@ import common "moonhug:tests/common"
 
 @(private = "file")
 _tool :: proc(t: ^testing.T, name: string, params: json.Object) -> (json.Object, bool) {
-	out, err := editor.mcp_tool_for_test(name, params)
+	out, err := editor.run_mcp_tool_for_test(name, params)
 	if err.code != "" {
 		testing.expectf(t, false, "%s failed: %s: %s", name, err.code, err.message)
 		return nil, false

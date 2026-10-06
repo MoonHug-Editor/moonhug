@@ -295,7 +295,7 @@ _mcp_invoke :: proc(id: i64, tool: string, params: json.Object) -> (string, Mcp_
 // Runs a tool by name the way a client call does, for tests. The handlers are
 // where the behaviour is, and reaching them through the socket would need a
 // live editor.
-mcp_tool_for_test :: proc(tool: string, params: json.Object) -> (string, Mcp_Error) {
+run_mcp_tool_for_test :: proc(tool: string, params: json.Object) -> (string, Mcp_Error) {
 	return _mcp_invoke(0, tool, params)
 }
 

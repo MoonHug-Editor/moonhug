@@ -1,5 +1,6 @@
 package engine_gen
 
+import "base:runtime"
 import "core:fmt"
 import "core:os"
 import "core:strings"
@@ -48,6 +49,19 @@ _register_components :: proc "contextless" () {
 	db.generator("components/scene", generate_scene_file)
 	db.generator("components/menus", generate_component_menus)
 	db.generator("components/ext", generate_ext_components)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key     = "component_destroy",
+		title   = "Component destroy procs",
+		subject = "a type with @(component)",
+		layer   = "engine",
+		owner   = "components_gen",
+		scope   = .Subject_File,
+		procs   = {
+			{prefix = "on_destroy_", signature = "proc(c: ^T)", summary = "Runs when an instance is removed from its pool: the component is removed, its object destroyed, or its scene unloaded."},
+		},
+		doc     = "The component registry calls it before the instance's cleanup. Defaults, cleanup and validation are the type lifecycle procs every `@(typ_guid)` type has.",
+	})
 }
 
 
@@ -140,6 +154,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 			// reset_T, cleanup_T and on_validate_T are type_guid_gen's: one
 			// source for every @(typ_guid) type, component or not.
 			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
+			gen_facts.naming_subject("component_destroy", type_name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 			defer delete(on_destroy_name)
 			field_types := _collect_field_types(entity, decl.pkg_path, fields, struct_by_name)
 			// The guid is written into the Component_Desc as a literal, so the

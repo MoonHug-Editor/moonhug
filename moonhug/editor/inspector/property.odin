@@ -265,7 +265,7 @@ _reference_admitted :: proc(p: Property) -> (why: string, ok: bool) {
     case:
         return "", true
     }
-    ref_spec, has_ref := reflect.struct_tag_lookup(p.tag, "ref")
+    ref_spec, has_ref := tag_value(p.tag, TAG_REF)
     if !has_ref || ref_spec == "" do return "", true
     if h == {} do return "local_id names nothing in this scene", false
 
@@ -276,7 +276,7 @@ _reference_admitted :: proc(p: Property) -> (why: string, ok: bool) {
         return fmt.tprintf("field admits %s, got %v", ref_spec, h.type_key), false
     }
 
-    has_spec, has_has := reflect.struct_tag_lookup(p.tag, "has")
+    has_spec, has_has := tag_value(p.tag, TAG_HAS)
     if !has_has || has_spec == "" do return "", true
     need := ref_target_keys(has_spec)
     if len(need) == 0 do return "", true

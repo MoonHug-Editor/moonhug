@@ -11,7 +11,6 @@ package animation_sequencer_tests
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
-import "core:reflect"
 import "core:strings"
 import "core:testing"
 import inspector "moonhug:editor/inspector"
@@ -927,7 +926,7 @@ test_track_binding_resolves_from_struct :: proc(t: ^testing.T) {
 	testing.expect(t, b.tid == typeid_of(engine.Ref_Local), "the type is the field's")
 	testing.expect_value(t, b.record.path, "target")
 	testing.expect(t, b.owner.handle == track_owned.handle, "undo owner is the track component")
-	ref, has_ref := reflect.struct_tag_lookup(b.tag, "ref")
+	ref, has_ref := inspector.tag_value(b.tag, inspector.TAG_REF)
 	testing.expect(t, has_ref && ref == "Animation", "the picker tag is the struct's, not a copy")
 }
 

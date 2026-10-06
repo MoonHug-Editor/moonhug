@@ -17,6 +17,7 @@ package sequencer_gen
 // matched by written name and a variant's procs must live in the SAME FILE
 // as its struct (FileHasProc is file-scoped). Both are the plugin contract.
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -40,6 +41,22 @@ Script_GenComp :: struct {
 _register_script :: proc "contextless" () {
 	db.provider("sequencer/script/provide", script_provide)
 	db.generator("sequencer/script/generate", script_generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key     = "clip_script",
+		title   = "Clip script procs",
+		subject = "a type embedding `base: Clip_Script`",
+		layer   = "sequencer",
+		owner   = "script_gen",
+		scope   = .Subject_File,
+		procs   = {
+			{prefix = "enter_", signature = "proc(v: ^T, ctx: ^core.Script_Ctx)", summary = "Runs when the playhead enters the clip."},
+			{prefix = "tick_", signature = "proc(v: ^T, ctx: ^core.Script_Ctx)", summary = "Runs every frame the playhead is inside the clip."},
+			{prefix = "exit_", signature = "proc(v: ^T, ctx: ^core.Script_Ctx)", summary = "Runs when the playhead leaves the clip."},
+			{prefix = "cleanup_", signature = "proc(v: ^T)", summary = "Frees what the variant owns."},
+		},
+		doc     = "Every struct embedding `base: Clip_Script` is a variant of the generated `ScriptUnion`, and the generated dispatch calls these by name. All four are optional.",
+	})
 }
 
 // The marker base, written either bare (same package as core, via import) or
@@ -68,6 +85,7 @@ script_provide :: proc(w: ^db.World) -> bool {
 		if !_has_base(fields.fields, "Clip_Script") do continue
 
 		enter_name := strings.concatenate({"enter_", decl.name}, context.temp_allocator)
+		gen_facts.naming_subject("clip_script", decl.name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 		tick_name := strings.concatenate({"tick_", decl.name}, context.temp_allocator)
 		exit_name := strings.concatenate({"exit_", decl.name}, context.temp_allocator)
 		cleanup_name := strings.concatenate({"cleanup_", decl.name}, context.temp_allocator)

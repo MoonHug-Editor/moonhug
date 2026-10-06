@@ -403,6 +403,66 @@ StructFields :: proc(v_decl: ^ast.Value_Decl) -> []Struct_Field {
 	return out[:]
 }
 
+// Const_Lit is a constant whose value is a compound literal of a named type,
+// as plain data: `TAG_REF :: Field_Tag{key = "ref", form = .Value}` gives
+// type "Field_Tag" and fields {key = "ref", form = "Value"}. Values are
+// rendered by RenderValue. Positional elements are not recorded.
+Const_Lit :: struct {
+	type:   string,
+	fields: map[string]string,
+}
+
+// ConstLit reads a `NAME :: Type{...}` declaration. ok is false for a variable,
+// for any other value, and for a literal without a written type.
+ConstLit :: proc(v_decl: ^ast.Value_Decl, allocator := context.temp_allocator) -> (lit: Const_Lit, ok: bool) {
+	if v_decl == nil || v_decl.is_mutable || len(v_decl.values) != 1 do return {}, false
+	comp, is_comp := v_decl.values[0].derived.(^ast.Comp_Lit)
+	if !is_comp || comp.type == nil do return {}, false
+	lit.type = RenderValue(comp.type)
+	if lit.type == "" do return {}, false
+	lit.fields = make(map[string]string, allocator)
+	for elem in comp.elems {
+		k, v, kv_ok := AttrElemKeyValue(elem)
+		if kv_ok do lit.fields[k] = RenderValue(v)
+	}
+	return lit, true
+}
+
+// FileImportPath is the import path `alias` names in `file`, without quotes:
+// "moonhug:editor/inspector" for `import "moonhug:editor/inspector"` (alias
+// "inspector", the path's last segment) or `import ins "moonhug:editor/inspector"`.
+FileImportPath :: proc(file: ^ast.File, alias: string) -> (path: string, ok: bool) {
+	if file == nil do return "", false
+	for imp in file.imports {
+		p := imp.fullpath
+		if len(p) >= 2 && (p[0] == '"' || p[0] == '`') do p = p[1:len(p) - 1]
+		name := imp.name.text
+		if name == "" {
+			name = p
+			if colon := strings.last_index_byte(name, ':'); colon >= 0 do name = name[colon + 1:]
+			if slash := strings.last_index_byte(name, '/'); slash >= 0 do name = name[slash + 1:]
+		}
+		if name == alias do return p, true
+	}
+	return "", false
+}
+
+// ProcParams is each parameter of a proc declaration as written in `src`, the
+// file's source: {"ctx: ^DrawContext", "min_value: Min_Value"}. Empty for a
+// declaration that is not a proc literal.
+ProcParams :: proc(v_decl: ^ast.Value_Decl, src: string, allocator := context.temp_allocator) -> []string {
+	out := make([dynamic]string, allocator)
+	if v_decl == nil || len(v_decl.values) == 0 do return out[:]
+	lit, is_proc := v_decl.values[0].derived.(^ast.Proc_Lit)
+	if !is_proc || lit.type == nil || lit.type.params == nil do return out[:]
+	for f in lit.type.params.list {
+		lo, hi := f.pos.offset, f.end.offset
+		if lo < 0 || hi > len(src) || lo >= hi do continue
+		append(&out, strings.trim_space(src[lo:hi]))
+	}
+	return out[:]
+}
+
 // AttrOrigin renders where one registration came from, in the form
 //
 //   @(view_tab_bar view="Inspector" order=0)  moonhug/editor/inspector_lock.odin:31  _inspector_lock_button

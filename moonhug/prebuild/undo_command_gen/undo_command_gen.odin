@@ -18,6 +18,7 @@ package undo_command_gen
 // Group is the one that cannot be written anywhere else, since it recurses
 // into the generated dispatch. A missing required proc fails the prebuild.
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -37,6 +38,25 @@ Undo_Command_GenComp :: struct {
 _register :: proc "contextless" () {
 	db.provider("undo_command/provide", provide)
 	db.generator("undo_command/generate", generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key     = "undo_command",
+		title   = "Undo command procs",
+		subject = "a type with @(undo_command)",
+		layer   = "editor",
+		owner   = "undo_command_gen",
+		scope   = .Subject_File,
+		procs   = {
+			{prefix = "apply_", signature = "proc(v: ^T)", required = true, summary = "Redo: applies the command."},
+			{prefix = "revert_", signature = "proc(v: ^T)", required = true, summary = "Undo: reverts the command."},
+			{prefix = "destroy_", signature = "proc(v: ^T)", required = true, summary = "Frees what the command owns when the entry leaves the stack."},
+			{prefix = "label_", signature = "proc(v: ^T) -> string", required = true, summary = "The history row's default label."},
+			{prefix = "scenes_", signature = "proc(v: ^T, out: ^[dynamic]core.Scene_Ref)", summary = "The scenes the command edits: dirtied when it runs, purged with the scene."},
+			{prefix = "assets_", signature = "proc(v: ^T, out: ^[dynamic]core.Asset_GUID)", summary = "The assets the command edits: purged with the asset."},
+			{prefix = "describe_", signature = "proc(v: ^T, b: ^strings.Builder, depth: int)", summary = "The detail lines the history view shows for the entry."},
+		},
+		doc     = "Every type marked `@(undo_command)` joins the undo stack's `Command` union, and the generated dispatch calls these by name. A command's package must not import `moonhug:editor/undo`, since the generated union imports it.",
+	})
 }
 
 provide :: proc(w: ^db.World) -> bool {
@@ -51,6 +71,7 @@ provide :: proc(w: ^db.World) -> bool {
 		marked := false
 		for args in db.get(attrs, entity).attrs do if args.key == "undo_command" { marked = true; break }
 		if !marked do continue
+		gen_facts.naming_subject("undo_command", decl.name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 		has := make(map[string]bool)
 		for p in REQUIRED {
 			name := strings.concatenate({p, "_", decl.name}, context.temp_allocator)

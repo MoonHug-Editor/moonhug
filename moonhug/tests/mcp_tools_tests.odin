@@ -15,7 +15,7 @@ import "moonhug:packages/engine"
 
 @(private = "file")
 _tool :: proc(t: ^testing.T, name: string, params: json.Object) -> (json.Object, bool) {
-	out, err := editor.mcp_tool_for_test(name, params)
+	out, err := editor.run_mcp_tool_for_test(name, params)
 	if err.code != "" {
 		testing.expectf(t, false, "%s failed: %s: %s", name, err.code, err.message)
 		return nil, false
@@ -125,7 +125,7 @@ test_scene_dump_full_is_size_capped :: proc(t: ^testing.T) {
 	engine.sm_scene_set_active(tc.scene)
 	_scene_with_objects(tc, 50)
 
-	_, err := editor.mcp_tool_for_test("scene_dump", _params(
+	_, err := editor.run_mcp_tool_for_test("scene_dump", _params(
 		{"full", json.Boolean(true)}, {"max_bytes", json.Integer(200)}))
 	testing.expect_value(t, err.code, "too_large")
 
@@ -247,7 +247,7 @@ test_batch_failure_modes :: proc(t: ^testing.T) {
 	// Over the cap the whole batch is refused, so nothing runs by halves.
 	too_many := make(json.Array, 0, 101, context.temp_allocator)
 	for _ in 0 ..< 101 do append(&too_many, json.Value(good))
-	_, err := editor.mcp_tool_for_test("batch", _params({"commands", too_many}))
+	_, err := editor.run_mcp_tool_for_test("batch", _params({"commands", too_many}))
 	testing.expect_value(t, err.code, "bad_request")
 }
 
@@ -259,10 +259,10 @@ test_describe_type_rejects_what_does_not_exist :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 
-	_, e1 := editor.mcp_tool_for_test("describe_type", _params({"type", json.String("NotAComponent")}))
+	_, e1 := editor.run_mcp_tool_for_test("describe_type", _params({"type", json.String("NotAComponent")}))
 	testing.expect_value(t, e1.code, "not_found")
 
-	_, e2 := editor.mcp_tool_for_test("describe_type", _params(
+	_, e2 := editor.run_mcp_tool_for_test("describe_type", _params(
 		{"type", json.String("Canvas")}, {"path", json.String("render_camera.nope")}))
 	testing.expect_value(t, e2.code, "bad_path")
 }
@@ -306,6 +306,6 @@ test_list_objects_filters_by_component :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(nobjs), 0)
 
 	// A component that does not exist is a typo, not an empty result.
-	_, err := editor.mcp_tool_for_test("list_objects", _params({"component", json.String("Lite")}))
+	_, err := editor.run_mcp_tool_for_test("list_objects", _params({"component", json.String("Lite")}))
 	testing.expect_value(t, err.code, "not_found")
 }

@@ -85,7 +85,7 @@ Two rules keep that from being the bridge's dominant cost:
 - **argv mode on the shim** (`mh mcp <tool>` over the same socket)
   - Small to build. Nobody needs it:
     - an agent already has the tools, each with its own schema
-    - tests call every handler in process (`mcp_tool_for_test`), so they need no
+    - tests call every handler in process (`run_mcp_tool_for_test`), so they need no
       socket and no window
     - the one generated scene in the repo is written by a script that produces
       JSON directly, not by driving the editor

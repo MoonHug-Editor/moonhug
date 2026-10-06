@@ -173,7 +173,7 @@ _describe_fields_json :: proc(tid: typeid) -> string {
 		}
 		// A field the serializer skips can be written, but the write does not
 		// survive a save — worth knowing before setting one.
-		if j, has_j := reflect.struct_tag_lookup(f.tag, "json"); has_j && j == "-" {
+		if j, has_j := inspector.tag_value(f.tag, inspector.TAG_JSON); has_j && j == "-" {
 			strings.write_string(&b, `,"serialized":false`)
 		}
 		strings.write_string(&b, "}")

@@ -11,6 +11,7 @@ package decorator_gen
 //
 // String-building output is identical to the previous collect/generate version.
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:strconv"
@@ -54,6 +55,21 @@ Decorator_GenComp :: struct {
 _register :: proc "contextless" () {
 	db.provider("decorator/provide", provide)
 	db.generator("decorator/generate", generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key          = "decorator",
+		title        = "Decorator procs",
+		subject      = "a decorator name written after `decor:`",
+		layer        = "editor",
+		owner        = "decorator_gen",
+		scope        = .Package,
+		package_path = "moonhug/editor/inspector",
+		unclaimed    = .Warn,
+		procs        = {
+			{prefix = "decorator_", signature = "proc(ctx: ^DrawContext, args...)", required = true, summary = "Draws the decoration. `decor:min(0.5)` calls `decorator_min(ctx, 0.5)`, the arguments being the parameters after `ctx`."},
+		},
+		doc          = "decorator_gen writes the calls into a generated file in package inspector, so a decorator is a proc in that package. The `decor` field tag page lists every decorator with its uses.",
+	})
 }
 
 
@@ -210,6 +226,12 @@ provide :: proc(w: ^db.World) -> bool {
 			if sf.name == "" do continue
 			calls, raw := _parse_decor_calls_from_tag(sf.tag, decl.pkg.name)
 			defer delete(calls)
+			for c in calls {
+				// "decorator_min(ctx, 0.5)": the name between the prefix and the paren.
+				name := strings.trim_prefix(c.call_with_ctx, "decorator_")
+				if paren := strings.index_byte(name, '('); paren >= 0 do name = name[:paren]
+				gen_facts.naming_subject("decorator", name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
+			}
 			if len(calls) == 0 {
 				append(&fields, FieldDecorators{field_name = sf.name})
 				continue

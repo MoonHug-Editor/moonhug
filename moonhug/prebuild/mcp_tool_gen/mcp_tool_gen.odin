@@ -23,6 +23,7 @@ package mcp_tool_gen
 // touches: the bridge is enabled or disabled as a whole (Mcp_Settings), so no
 // hand-classified read/write flag can be forgotten or get out of date.
 
+import "base:runtime"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
@@ -58,6 +59,20 @@ _PARAM_PREFIX :: "param_"
 _register :: proc "contextless" () {
 	db.provider("mcp_tool/provide", provide)
 	db.generator("mcp_tool/generate", generate)
+	context = runtime.default_context()
+	gen_facts.register_naming({
+		key       = "mcp_tool",
+		title     = "MCP tool procs",
+		subject   = "a proc with @(mcp_tool)",
+		layer     = "editor",
+		owner     = "mcp_tool_gen",
+		scope     = .Any,
+		unclaimed = .Error,
+		procs     = {
+			{prefix = _PROC_PREFIX, signature = "proc(args: json.Object) -> (json.Value, mcp.Tool_Error)", required = true, summary = "The tool's handler. The name after the prefix is the tool name an agent calls."},
+		},
+		doc       = "A proc marked `@(mcp_tool)` is a tool of the editor's MCP bridge, and its name gives the tool's name. A proc with the prefix and no `@(mcp_tool)` is a tool nobody registered.",
+	})
 }
 
 // "string!:Menu path to invoke" -> (string, true, "Menu path to invoke")
@@ -103,6 +118,7 @@ provide :: proc(w: ^db.World) -> bool {
 				fmt.eprintf("mcp_tool: %s.%s must be named %s<tool_name>\n", decl.pkg.name, decl.name, _PROC_PREFIX)
 				continue
 			}
+			gen_facts.naming_subject("mcp_tool", decl.name[len(_PROC_PREFIX):], decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
 			description := args.fields["description"]
 			if description == "" {
 				fmt.eprintf("mcp_tool: %s.%s needs description=\"...\" (the agent reads it)\n", decl.pkg.name, decl.name)
