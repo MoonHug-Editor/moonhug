@@ -61,7 +61,7 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 | `run` | build and launch the editor |
 | `debug` | the same with `-debug` |
 | `build` | build the editor without launching it |
-| `app` | build and run the game (`packages/app`) |
+| `play` | run a package's run configuration, the editor's Play button from the terminal (`play app:run`, `play` alone when one package ships them) |
 | `test` | run the test suite |
 | `prebuild` | run the code generators only |
 | `shaders` | recompile the built-in GLSL shaders |
@@ -71,8 +71,8 @@ shows the exact command it runs. `odin` has to be on the editor's PATH.
 | `help` | list the commands |
 
 Options: `test --name=pkg.test_name` runs a single test (`make test NAME=...`),
-`build --debug` builds without launching, `app --debug` picks the debug run
-config, `setup --force` rebuilds vendored libraries that are already built,
+`build --debug` builds the editor with `-debug`, `build --no-plugins` proves the shell builds with no plugin installed (`make build NOPLUGINS=1`),
+`play <pkg>:<config> --dev|--run-only|--build-only` are the Play button's modifier keys Alt, Shift and Alt+Shift (`make play PKG=app:run FLAGS=--build-only`), `setup --force` rebuilds vendored libraries that are already built,
 `docs --open` serves the site with search and opens the browser (`make docs OPEN=1`).
 
 Commands run from the repo root whatever directory invoked them. `help` and
