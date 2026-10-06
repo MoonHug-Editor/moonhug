@@ -42,7 +42,7 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 - `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written on every build by `moonhug/prebuild/attributes_gen`.
 - `field_tags/<layer>/`, the same layout with one page per field tag key, written on every build by `moonhug/prebuild/field_tags_gen`.
 - `naming/<layer>/`, the same layout with one page per naming convention, written on every build by `moonhug/prebuild/naming_gen`.
-- `packages/`, one `odin doc` page per engine and editor package, written by `mh docs` (`tools/mh/docs.odin`).
+- `packages/<layer>/`, the same layout with one page per package of the host, the editor and every installed plugin, written by `mh docs` (`tools/mh/package_docs.odin`). `mh docs` writes an entry file that imports every package, runs `odin doc -doc-format` on it once, and reads the binary `.odin-doc` file Odin writes (`core:odin/doc-format`), the way pkg.odin-lang.org documents Odin's own libraries. Each page lists the package's public declarations by kind, with signatures whose types link to the declaring package's page, attributes linked to their reference pages, the doc comment and `file:line`. `_name` and `@(private)` declarations are left out.
 
 ## Attributes
 

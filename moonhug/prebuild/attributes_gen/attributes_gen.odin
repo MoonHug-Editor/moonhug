@@ -227,8 +227,8 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 	desc, _ := strings.replace_all(gen_facts.first_sentence(d.doc), "\"", "\\\"", context.temp_allocator)
 	fmt.sbprintf(&b, "---\ntitle: \"@(%s)\"\ndescription: \"%s\"\nweight: %d\ntags: [\"reference\", \"%s\"]\n---\n\n", d.attribute, desc, weight, d.attribute)
 	pkg := gen_facts.pkg_import_path(d.pkg_path)
-	if slug, ok := _package_page(d.pkg_path); ok {
-		fmt.sbprintf(&b, "**Extends** [`%s`](../../packages/%s.md)", pkg, slug)
+	if page, ok := gen_facts.pkg_page(d.pkg_path); ok {
+		fmt.sbprintf(&b, "**Extends** [`%s`](../../%s)", pkg, page)
 	} else {
 		fmt.sbprintf(&b, "**Extends** `%s`", pkg)
 	}
@@ -295,19 +295,6 @@ _check_field :: proc(d: ^Declaration, key: string, name: string, where_: string,
 	}
 	known := strings.join(d.fields, ", ", context.temp_allocator)
 	append(errors, fmt.tprintf("%s: @(%s) on %s has no field `%s` (its fields: %s)", where_, d.attribute, name, key, known))
-}
-
-// The `odin doc` page `mh docs` writes for this package, when it writes one:
-// the engine plugin's, host, registration and editor packages only.
-@(private = "file")
-_package_page :: proc(pkg_path: string) -> (slug: string, ok: bool) {
-	for root in ([]string{"moonhug/packages/engine", "moonhug/host", "moonhug/registration", "moonhug/editor"}) {
-		if pkg_path == root || strings.has_prefix(pkg_path, fmt.tprintf("%s/", root)) {
-			s, _ := strings.replace_all(pkg_path[len("moonhug/"):], "/", "_", context.temp_allocator)
-			return s, true
-		}
-	}
-	return "", false
 }
 
 @(private = "file")

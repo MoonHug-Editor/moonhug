@@ -89,6 +89,32 @@ first_sentence :: proc(text: string) -> string {
 	return s
 }
 
+// The Packages reference page of a package, relative to the reference root:
+// moonhug/host/core is packages/host/core.md, moonhug/editor/undo is
+// packages/editor/undo.md, moonhug/packages/engine/editor/undo is
+// packages/engine/editor_undo.md. mh docs writes the pages (tools/mh/
+// package_docs.odin, pkg_page there is the same rule, keep the two in step).
+pkg_page :: proc(pkg_path: string) -> (path: string, ok: bool) {
+	under :: proc(path, root: string) -> (rest: string, ok: bool) {
+		if path == root do return "", true
+		if strings.has_prefix(path, root) && path[len(root)] == '/' do return path[len(root) + 1:], true
+		return "", false
+	}
+	flat :: proc(s: string) -> string {
+		out, _ := strings.replace_all(s, "/", "_", context.temp_allocator)
+		return out
+	}
+	if rest, in_host := under(pkg_path, "moonhug/host"); in_host do return fmt.tprintf("packages/host/%s.md", rest == "" ? "host" : flat(rest)), true
+	if _, in_reg := under(pkg_path, "moonhug/registration"); in_reg do return "packages/host/registration.md", true
+	if rest, in_editor := under(pkg_path, "moonhug/editor"); in_editor do return fmt.tprintf("packages/editor/%s.md", rest == "" ? "editor" : flat(rest)), true
+	if rest, in_pkgs := under(pkg_path, "moonhug/packages"); in_pkgs {
+		name, sub := rest, ""
+		if slash := strings.index_byte(rest, '/'); slash >= 0 do name, sub = rest[:slash], rest[slash + 1:]
+		return fmt.tprintf("packages/%s/%s.md", name, sub == "" ? name : flat(sub)), true
+	}
+	return "", false
+}
+
 // The closest of `names` to `key`, for a typo. "" when nothing is close.
 nearest_name :: proc(key: string, names: []string) -> string {
 	best, best_d := "", 3
