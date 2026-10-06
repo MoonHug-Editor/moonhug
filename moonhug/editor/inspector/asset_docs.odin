@@ -22,14 +22,15 @@ import "core:encoding/uuid"
 import "core:fmt"
 import "core:os"
 import strings "core:strings"
-import engine "../../engine"
-import ser "../../engine/serialization"
-import "../../engine/log"
-import gfx "../../engine/gfx"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
+import ser "moonhug:host/serialization"
+import "moonhug:host/log"
+import gfx "moonhug:host/gfx"
 import "../undo"
 
 Asset_Doc :: struct {
-    guid:  engine.Asset_GUID,
+    guid:  core.Asset_GUID,
     kind:  undo.Doc_Kind,
     path:  string, // owned
     data:  any,
@@ -42,7 +43,7 @@ Asset_Doc :: struct {
 }
 
 Doc_Key :: struct {
-    guid: engine.Asset_GUID,
+    guid: core.Asset_GUID,
     kind: undo.Doc_Kind,
 }
 
@@ -50,11 +51,11 @@ Doc_Key :: struct {
 _docs: map[Doc_Key]^Asset_Doc
 
 // Pushes an asset document's values into the runtime cache its asset is
-// sampled from (engine.material_preview for materials), so an undone or redone
-// document shows before it is saved. Materials are built in, a package
-// registers one for its asset type at EditorInit. `doc` is the document's
-// typed value, the registered typeid.
-Doc_Preview :: proc(guid: engine.Asset_GUID, doc: any)
+// sampled from (the engine's material cache for materials), so an undone or
+// redone document shows before it is saved. The engine and packages register
+// one for their asset types at EditorInit. `doc` is the document's typed
+// value, the registered typeid.
+Doc_Preview :: proc(guid: core.Asset_GUID, doc: any)
 
 @(private)
 _doc_previews: map[typeid]Doc_Preview
@@ -71,9 +72,9 @@ doc_preview_register :: proc(tid: typeid, p: Doc_Preview) {
 // failure or when the file isn't in the asset db.
 asset_doc_get :: proc(path: string) -> ^Asset_Doc {
     context.allocator = runtime.default_allocator()
-    raw_guid, ok := engine.asset_db_get_guid(path)
+    raw_guid, ok := assets.asset_db_get_guid(path)
     if !ok do return nil
-    guid := engine.Asset_GUID(raw_guid)
+    guid := core.Asset_GUID(raw_guid)
 
     if doc, found := _docs[Doc_Key{guid, .File}]; found {
         // Follow renames: guid is stable, path may have changed.
@@ -107,7 +108,7 @@ asset_doc_save :: proc(doc: ^Asset_Doc) -> bool {
     // An import settings document written here would land on the asset file
     // itself: those commit through import_settings_apply.
     assert(doc.kind == .File, "asset_doc_save: import settings commit through import_settings_apply")
-    path, known := engine.asset_db_get_path(uuid.Identifier(doc.guid))
+    path, known := assets.asset_db_get_path(uuid.Identifier(doc.guid))
     if !known || !os.exists(path) {
         log.error(fmt.tprintf("asset_docs: %s is no longer in the project, not saved", doc.path))
         return false
@@ -141,21 +142,21 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 // capture_json of the document struct). Zero → JSON → on_validate into a
 // fresh instance, so dynamic arrays never merge with stale contents. The old
 // instance is retired (doc_data_retire): a wrapper may still draw it this frame.
-asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
+asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
     if kind == .Import_Settings do return _import_settings_apply_json(guid, json_bytes)
     context.allocator = runtime.default_allocator()
     doc, found := _docs[Doc_Key{guid, .File}]
     if !found {
-        path, path_ok := engine.asset_db_get_path(uuid.Identifier(guid))
+        path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
         if !path_ok do return false
         doc = asset_doc_get(path)
         if doc == nil do return false
     }
 
     tid := doc.data.id
-    type_guid := engine.get_guid_by_typeid(tid)
-    fresh := engine.create_zero_instance_by_guid(type_guid)
-    ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
+    type_guid := core.get_guid_by_typeid(tid)
+    fresh := core.create_zero_instance_by_guid(type_guid)
+    ptr_tid, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
     if !ptr_ok {
         log.error(fmt.tprintf("asset_docs: no pointer typeid for %v", tid))
         return false
@@ -166,7 +167,7 @@ asset_doc_apply_json :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind, json_
         return false
     }
     ser.Run_After_Deserialize(fresh.data, tid)
-    engine.type_on_validate_by_typeid(tid, fresh.data)
+    core.type_on_validate_by_typeid(tid, fresh.data)
 
     _doc_replace(doc, fresh, dirty = true)
     return true
@@ -208,15 +209,9 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
     if inspectorData.doc == doc {
         inspectorData.fileData = doc.data
     }
-    // Live preview only syncs the DISPLAYED doc each frame; a material undone
-    // while another asset is shown must still reach the engine cache.
-    if tid == typeid_of(engine.Material) {
-        mat := cast(^engine.Material)doc.data.data
-        _ = engine.material_sync_properties(mat)
-        engine.material_preview(doc.guid, mat^)
-    }
-    // Same live-preview contract for package asset types (clips: the cache
-    // the scrub preview and runtime sample from).
+    // Live preview only syncs the DISPLAYED doc each frame. A document undone
+    // while another asset is shown must still reach its runtime cache (the
+    // material cache, the clip cache the scrub preview samples from).
     if preview, has := _doc_previews[tid]; has do preview(doc.guid, doc.data)
 }
 
@@ -224,7 +219,7 @@ _doc_replace :: proc(doc: ^Asset_Doc, fresh: any, dirty: bool) {
 // after a delete, never for a rename). Its undo steps go first, then the
 // document. The inspector lets go of the file if it shows it.
 @(private="file")
-_asset_doc_gone :: proc(guid: engine.Asset_GUID, path: string) {
+_asset_doc_gone :: proc(guid: core.Asset_GUID, path: string) {
     // Before the pin: undo entries free with the allocator that made them, the
     // caller's, like every purge.
     undo.purge_asset(undo.get(), guid)
@@ -244,7 +239,7 @@ _asset_doc_gone :: proc(guid: engine.Asset_GUID, path: string) {
 doc_data_release :: proc(data: any) {
     if data.data == nil do return
     context.allocator = runtime.default_allocator()
-    engine.type_cleanup_by_typeid(data.id, data.data)
+    core.type_cleanup_by_typeid(data.id, data.data)
     free(data.data)
 }
 
@@ -299,7 +294,7 @@ _asset_doc_free :: proc(doc: ^Asset_Doc) {
 @(init)
 _asset_docs_register :: proc "contextless" () {
     context = runtime.default_context()
-    engine.asset_db_add_asset_gone_hook(_asset_doc_gone)
+    assets.asset_db_add_asset_gone_hook(_asset_doc_gone)
 }
 
 asset_docs_shutdown :: proc() {
@@ -312,7 +307,7 @@ asset_docs_shutdown :: proc() {
 
 // The live document payload for a guid, for undo's asset targets. The undo
 // package cannot import this one, so it is installed as a hook at init.
-asset_doc_payload_ptr :: proc(guid: engine.Asset_GUID, kind: undo.Doc_Kind) -> rawptr {
+asset_doc_payload_ptr :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind) -> rawptr {
     doc, found := _docs[Doc_Key{guid, kind}]
     if !found || doc == nil do return nil
     return doc.data.data

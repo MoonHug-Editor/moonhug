@@ -10,9 +10,9 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "../engine"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
+import assets "moonhug:host/assets"
 
 _PROJECT_PACKAGES_PATH :: "packages"
 
@@ -190,7 +190,7 @@ _project_draw_packages_list :: proc() {
 _project_package_asset_count :: proc(assets_path: string) -> int {
 	prefix := fmt.tprintf("%s/", assets_path)
 	count := 0
-	for path in engine.asset_db.path_to_guid {
+	for path in assets.asset_db.path_to_guid {
 		if strings.has_prefix(path, prefix) do count += 1
 	}
 	return count

@@ -20,7 +20,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "menu"
-import "../engine/log"
+import "moonhug:host/log"
 
 RELAUNCH_MARKER :: "builds/relaunch_ready" // relative to the repository root
 

@@ -238,10 +238,10 @@ _import_path :: proc(pkg_path: string) -> string {
 }
 
 // The `odin doc` page `mh docs` writes for this package, when it writes one:
-// engine, editor and engine_editor packages only.
+// the engine plugin's, host, registration and editor packages only.
 @(private = "file")
 _package_page :: proc(pkg_path: string) -> (slug: string, ok: bool) {
-	for root in ([]string{"moonhug/engine", "moonhug/editor", "moonhug/engine_editor"}) {
+	for root in ([]string{"moonhug/packages/engine", "moonhug/host", "moonhug/registration", "moonhug/editor"}) {
 		if pkg_path == root || strings.has_prefix(pkg_path, fmt.tprintf("%s/", root)) {
 			s, _ := strings.replace_all(pkg_path[len("moonhug/"):], "/", "_", context.temp_allocator)
 			return s, true

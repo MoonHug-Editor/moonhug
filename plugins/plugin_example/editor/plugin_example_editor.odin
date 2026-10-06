@@ -4,7 +4,7 @@ package plugin_example_editor
 // the app. May import engine, imgui and the editor's subpackages (menu,
 // inspector, undo) — never the editor root (docs/core/Plugins.md layering rule).
 
-import "moonhug:engine/log"
+import "moonhug:host/log"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import wnd "moonhug:editor/window"

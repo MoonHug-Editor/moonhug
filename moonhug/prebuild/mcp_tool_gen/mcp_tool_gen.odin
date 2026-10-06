@@ -3,11 +3,13 @@ package mcp_tool_gen
 // mcp_tool_gen: MCP bridge tools (docs/core/McpBridge.md).
 //
 //   @(mcp_tool={description="What the agent sees"})
-//   mcp_tool_set_name :: proc(p: json.Object) -> (string, Mcp_Error) { ... }
+//   mcp_tool_set_name :: proc(id: i64, p: json.Object) -> (string, mcp.Tool_Error) { ... }
 //
 //   generate - moonhug/editor/mcp_tools_generated.odin:
 //              _mcp_tool_table() returning one Mcp_Tool_Def per declaration
-//              (name, description, schema JSON, handler, write flag).
+//              (name, description, schema JSON, handler). A tool declared in
+//              another package (the engine's editor/mcp_tools, a plugin) is
+//              qualified by its package and imported through the collection.
 //
 // The tool NAME is the proc name minus the `mcp_tool_` prefix. Parameters are
 // declared with `param:` fields on the attribute — one per parameter, value
@@ -195,6 +197,10 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	if strings.has_prefix(source_path, out_dir_slash) {
 		return source_path[len(out_dir_slash):]
 	}
+	// Anything in the moonhug tree imports through the collection, so the
+	// import survives a package move (the engine's editor tools live in
+	// plugins/engine/editor/mcp_tools).
+	if strings.has_prefix(source_path, "moonhug/") do return strings.concatenate({"moonhug:", source_path[len("moonhug/"):]}, context.temp_allocator)
 	out_parts := strings.split(out_dir, "/", context.temp_allocator)
 	src_parts := strings.split(source_path, "/", context.temp_allocator)
 	common := 0

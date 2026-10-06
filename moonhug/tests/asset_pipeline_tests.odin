@@ -13,8 +13,8 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
 
 
 @(test)

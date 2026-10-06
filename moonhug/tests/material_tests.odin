@@ -1,13 +1,13 @@
 package tests
 
-// Material asset parsing + cache behavior (docs/core/Materials.md). Materials are
+// Material asset parsing + cache behavior (plugins/engine/docs/Materials.md). Materials are
 // GPU-free, so unlike textures/meshes the cache itself is fully testable
 // headless.
 
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 // The exact shape write_asset_to_path produces: __type_guid first, then the
 // marshaled fields. The unknown key must be tolerated.

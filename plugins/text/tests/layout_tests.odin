@@ -9,7 +9,7 @@ package text_tests
 import "core:testing"
 import "core:math/linalg"
 import "core:strings"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import text "moonhug:packages/text"
 import common "moonhug:tests/common"
 

@@ -4,25 +4,26 @@ import "core:fmt"
 import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
 import "moonhug:editor/widgets"
+import core "moonhug:host/core"
+import assets "moonhug:host/assets"
 
-// engine.Ref (PPtr): local OR cross-asset reference — both picker tabs are
+// core.Ref (PPtr): local OR cross-asset reference — both picker tabs are
 // assignable. A Scene pick stores {local_id, guid: 0} + live handle; a Project
 // pick stores {root component local_id, asset guid} with an UNRESOLVED handle:
 // the target asset isn't loaded, game code must treat the handle as optional
 // (Unity's model). `pick:"scene"` / `pick:"project"` field tags limit which
 // tab is assignable. See docs/core/ObjectPicker.md.
-@(property_drawer={type = engine.Ref, priority = 0})
+@(property_drawer={type = core.Ref, priority = 0})
 draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	ref_ptr := cast(^engine.Ref)ptr
+	ref_ptr := cast(^core.Ref)ptr
 	spec := current_field_ref_target
 	keys := ref_target_keys(spec)
 
 	allow_scene := current_field_pick_mode != "project"
 	allow_project := current_field_pick_mode != "scene"
 
-	is_asset_ref := !engine.asset_guid_is_empty(ref_ptr.pptr.guid)
+	is_asset_ref := !core.asset_guid_is_empty(ref_ptr.pptr.guid)
 	has_value := ref_ptr.pptr.local_id != 0 || ref_ptr.handle != {} || is_asset_ref
 
 	owner_root_scene := ref_local_owner_root_scene()
@@ -33,22 +34,22 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	)
 
 	value_clicked, value_double, cleared: bool
-	if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
+	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
 		im.OpenPopup(popup_id)
 	}
 	// Single click pings, double click opens/selects — routed by what the ref
 	// points at (asset vs scene object).
 	if value_double {
 		if is_asset_ref {
-			engine.inspector_request_open_asset(ref_ptr.pptr.guid)
+			core.inspector_request_open_asset(ref_ptr.pptr.guid)
 		} else if tH, ok := _ref_local_target_transform({ref_ptr.pptr.local_id, ref_ptr.handle}); ok {
-			engine.inspector_request_select(tH)
+			core.inspector_request_select(tH)
 		}
 	} else if value_clicked {
 		if is_asset_ref {
-			engine.inspector_request_ping_asset(ref_ptr.pptr.guid)
+			core.inspector_request_ping_asset(ref_ptr.pptr.guid)
 		} else if tH, ok := _ref_local_target_transform({ref_ptr.pptr.local_id, ref_ptr.handle}); ok {
-			engine.inspector_request_ping(tH)
+			core.inspector_request_ping(tH)
 		}
 	}
 	if cleared {
@@ -60,7 +61,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		if len(keys) == 0 {
 			im.TextDisabled("Add `ref:\"TypeName\"` or `ref:\"@Tag\"` field tag to enable picker")
 		} else {
-			search := _picker_search_bar()
+			search := picker_search_bar()
 			if im.Selectable("None") {
 				ref_ptr^ = {}
 				mark_inspector_changed()
@@ -85,7 +86,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 							if im.Selectable(row) {
 								ref_ptr.handle = obj.handle
 								ref_ptr.pptr = {
-									local_id = engine.sm_local_id_get_or_mint(owner_root_scene, obj.handle),
+									local_id = object_mint_local_id(owner_root_scene, obj.handle),
 									guid     = {},
 								}
 								mark_inspector_changed()
@@ -107,7 +108,7 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 					if !allow_project {
 						im.TextDisabled("pick:\"scene\" - this field takes scene objects only")
 					} else {
-						picked: engine.PPtr
+						picked: core.PPtr
 						if _picker_asset_rows_of_types(keys, search, &picked) {
 							// The pick IS the persistent pointer; the handle
 							// stays unresolved until the asset is loaded.
@@ -126,15 +127,15 @@ draw_ref_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 }
 
 @(private)
-_ref_display :: proc(r: engine.Ref, spec: string) -> string {
-	if !engine.asset_guid_is_empty(r.pptr.guid) {
+_ref_display :: proc(r: core.Ref, spec: string) -> string {
+	if !core.asset_guid_is_empty(r.pptr.guid) {
 		// Cross-asset: name it from the AssetDB (never requires the asset
 		// to be loaded).
-		path, has_path := engine.asset_db_get_path(uuid.Identifier(r.pptr.guid))
+		path, has_path := assets.asset_db_get_path(uuid.Identifier(r.pptr.guid))
 		if !has_path {
 			return "[missing asset]"
 		}
-		if info, ok := engine.asset_db_get_root_info(r.pptr.guid); ok && info.root_name != "" {
+		if info, ok := assets.asset_db_get_root_info(r.pptr.guid); ok && info.root_name != "" {
 			return fmt.tprintf("%s (%s)", info.root_name, filepath_base(path))
 		}
 		return filepath_base(path)

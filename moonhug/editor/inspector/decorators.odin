@@ -5,8 +5,8 @@ import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import engine "../../engine"
-import "../../engine/log"
+import core "moonhug:host/core"
+import "moonhug:host/log"
 
 Min_Value :: union { int, f64 }
 
@@ -157,10 +157,10 @@ decorator_euler :: proc(ctx: ^DrawContext) {
 	if ctx.field_type != typeid_of([4]f32) do return
 
 	quat_ptr := cast(^[4]f32)ctx.field_ptr
-	euler := engine.quat_to_euler_xyz(quat_ptr^)
+	euler := core.quat_to_euler_xyz(quat_ptr^)
 	label := ctx.field_label
 	if drag_float3(field_row(label), &euler, 0.1) {
-		quat_ptr^ = engine.quat_from_euler_xyz(euler.x, euler.y, euler.z)
+		quat_ptr^ = core.quat_from_euler_xyz(euler.x, euler.y, euler.z)
 		mark_inspector_changed()
 	}
 

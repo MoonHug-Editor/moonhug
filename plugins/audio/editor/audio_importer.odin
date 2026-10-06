@@ -9,8 +9,8 @@ package audio_editor
 // in game binaries too.
 
 import "core:fmt"
-import "moonhug:engine_editor/asset_pipeline"
-import engine "moonhug:engine"
+import asset_pipeline "moonhug:editor/assets"
+import engine "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
 
 _AUDIO_EXTS := []string{".mp3", ".wav", ".ogg"}

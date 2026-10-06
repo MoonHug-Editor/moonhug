@@ -4,7 +4,7 @@ package audio
 // relative to the first enabled listener's world transform (usually the
 // camera). No fields — the transform is the data.
 
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 @(component={menu="Audio/AudioListener"})
 @(typ_guid={guid="14a605d8-3796-467b-8f9f-76dadf3baa73"})

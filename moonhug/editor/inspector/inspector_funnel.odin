@@ -30,7 +30,7 @@ package inspector
 
 import "base:runtime"
 import "core:slice"
-import engine "../../engine"
+import core "moonhug:host/core"
 
 ORDER_OUTER :: -1000 // outermost frames (headers, foldouts, banners)
 ORDER_MIDDLE :: 0 // ordinary prepend/append rows
@@ -53,8 +53,8 @@ Component_Wrapper :: proc(ctx: ^Component_Ctx)
 
 Asset_Ctx :: struct {
 	path:     string,
-	guid:     engine.Asset_GUID,
-	sub:      engine.Local_ID, // the selected sub-asset (a model's part or clip), 0 = the asset itself
+	guid:     core.Asset_GUID,
+	sub:      core.Local_ID, // the selected sub-asset (a model's part or clip), 0 = the asset itself
 	settings: any, // the typed settings instance being edited
 	_chain:   []Asset_Wrapper,
 	_index:   int,

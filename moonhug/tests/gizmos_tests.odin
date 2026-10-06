@@ -1,6 +1,6 @@
 package tests
 
-// engine/gizmos: calls record world-space shapes into the context's buffer,
+// host/gizmos: calls record world-space shapes into the context's buffer,
 // scopes undo themselves at the end of the block, and lifetimes follow the
 // frame or the fixed tick.
 
@@ -11,10 +11,12 @@ import "core:time"
 import "../editor"
 import "../editor/menu"
 import "../editor/handles"
-import "../engine"
-import gfx "../engine/gfx"
+import "moonhug:packages/engine"
+import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine/gizmos"
+import "moonhug:host/gizmos"
+import "moonhug:packages/engine/editor/scene_tools"
+import "moonhug:editor/viewport"
 
 @(private = "file")
 _prims :: proc(tc: ^TestCtx, lt: engine.Gizmo_Lifetime = .Frame, ch: engine.Gizmo_Channel = .Game, depth_tested := true) -> []engine.Gizmo_Prim {
@@ -244,21 +246,21 @@ test_gizmo_context_selection_state :: proc(t: ^testing.T) {
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
 	defer editor.sel_scene_clear()
-	prev_mode := editor.gizmo_mode
-	defer editor.gizmo_mode = prev_mode
+	prev_mode := viewport.gizmo_mode
+	defer viewport.gizmo_mode = prev_mode
 
 	parent := engine.transform_new("Parent")
 	child := engine.transform_new("Child", parent)
 	other := engine.transform_new("Other")
 	editor.sel_scene_only(parent)
-	editor.gizmo_mode = .Handles
-	editor.gizmo_marks_rebuild()
+	viewport.gizmo_mode = .Handles
+	scene_tools.gizmo_marks_rebuild()
 
-	p := editor.gizmo_context(parent)
+	p := scene_tools.gizmo_context(parent)
 	testing.expect(t, p.state == {.Selected, .Active, .In_Selection}, "the selected object")
 	testing.expect(t, p.tool == .Handles, "the scene view's tool")
-	testing.expect(t, editor.gizmo_context(child).state == {.In_Selection}, "a child of the selection")
-	testing.expect(t, editor.gizmo_context(other).state == {}, "outside the selection")
+	testing.expect(t, scene_tools.gizmo_context(child).state == {.In_Selection}, "a child of the selection")
+	testing.expect(t, scene_tools.gizmo_context(other).state == {}, "outside the selection")
 }
 
 // The marks come out the same whichever of a parent and its child is selected
@@ -279,11 +281,11 @@ test_gizmo_marks_selection_order_and_slot_reuse :: proc(t: ^testing.T) {
 	other := engine.transform_new("Other")
 
 	check :: proc(t: ^testing.T, parent, child, grandchild, other: engine.Transform_Handle, order: string) {
-		editor.gizmo_marks_rebuild()
-		testing.expectf(t, .Selected in editor.gizmo_context(parent).state, "%s: parent selected", order)
-		testing.expectf(t, editor.gizmo_context(child).state >= {.Selected, .In_Selection}, "%s: child selected", order)
-		testing.expectf(t, editor.gizmo_context(grandchild).state == {.In_Selection}, "%s: grandchild in the selection", order)
-		testing.expectf(t, editor.gizmo_context(other).state == {}, "%s: other outside", order)
+		scene_tools.gizmo_marks_rebuild()
+		testing.expectf(t, .Selected in scene_tools.gizmo_context(parent).state, "%s: parent selected", order)
+		testing.expectf(t, scene_tools.gizmo_context(child).state >= {.Selected, .In_Selection}, "%s: child selected", order)
+		testing.expectf(t, scene_tools.gizmo_context(grandchild).state == {.In_Selection}, "%s: grandchild in the selection", order)
+		testing.expectf(t, scene_tools.gizmo_context(other).state == {}, "%s: other outside", order)
 	}
 	editor.sel_scene_only(child)
 	editor.sel_scene_add(parent)
@@ -294,10 +296,10 @@ test_gizmo_marks_selection_order_and_slot_reuse :: proc(t: ^testing.T) {
 
 	// A mark from an earlier rebuild does not count once the selection moved on.
 	editor.sel_scene_only(other)
-	editor.gizmo_marks_rebuild()
+	scene_tools.gizmo_marks_rebuild()
 	editor.sel_scene_only(parent)
-	editor.gizmo_marks_rebuild()
-	testing.expect(t, editor.gizmo_context(other).state == {}, "no stale mark from an earlier selection")
+	scene_tools.gizmo_marks_rebuild()
+	testing.expect(t, scene_tools.gizmo_context(other).state == {}, "no stale mark from an earlier selection")
 
 	// Destroy the marked grandchild: a transform created in its slot gets a new
 	// generation, so it is not marked until a rebuild says so.
@@ -305,7 +307,7 @@ test_gizmo_marks_selection_order_and_slot_reuse :: proc(t: ^testing.T) {
 	engine.transform_destroy(grandchild)
 	fresh := engine.transform_new("Fresh")
 	testing.expect(t, engine.Handle(fresh).index == old.index, "the new transform reuses the slot (test precondition)")
-	testing.expect(t, editor.gizmo_context(fresh).state == {}, "a reused slot does not inherit the mark")
+	testing.expect(t, scene_tools.gizmo_context(fresh).state == {}, "a reused slot does not inherit the mark")
 }
 
 // --- Gizmo pass ------------------------------------------------------------------------
@@ -420,15 +422,15 @@ test_icon_picking :: proc(t: ^testing.T) {
 	_, raw := engine.transform_add_comp(lamp, .Light)
 	l := cast(^engine.Light)raw
 	l.enabled = true
-	editor.light_gizmos(l, handles.Gizmo_Context{})
+	scene_tools.light_gizmos(l, handles.Gizmo_Context{})
 	testing.expect_value(t, len(gizmos.icons({.Game, .Editor, .Tools})), 1)
 
 	at, _ := gizmos.helper_project_in(v, {1, 0, 0})
-	picked, ok := editor.scene_view_pick(v, at.x + 5, at.y)
+	picked, ok := scene_tools.scene_view_pick(v, at.x + 5, at.y)
 	testing.expect(t, ok && picked == lamp, "a click inside the icon picks the light")
-	_, ok = editor.scene_view_pick(v, at.x + 40, at.y)
+	_, ok = scene_tools.scene_view_pick(v, at.x + 40, at.y)
 	testing.expect(t, !ok, "outside the icon, nothing")
-	band := editor.scene_view_band_query(v, at - 10, at + 10)
+	band := scene_tools.scene_view_band_query(v, at - 10, at + 10)
 	testing.expect(t, len(band) == 1 && band[0] == lamp, "box select takes it")
 	gizmos.frame_end()
 }
@@ -507,8 +509,8 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 		menu.show_scene = prev_scene
 		menu.show_game = prev_game
 		editor.game_gizmos = prev_toggle
-		editor.gizmo_type_set("Light", .Icon, true)
-		editor.gizmo_type_set("Light", .Gizmo, true)
+		gizmos.gizmo_type_set("Light", .Icon, true)
+		gizmos.gizmo_type_set("Light", .Gizmo, true)
 	}
 	menu.show_scene = false
 	menu.show_game = true
@@ -538,14 +540,14 @@ test_gizmo_settings_hide_per_type :: proc(t: ^testing.T) {
 	shapes, icons := pass(tc, lamp)
 	testing.expect(t, shapes > 0 && icons == 1, "both by default")
 
-	editor.gizmo_type_set("Light", .Gizmo, false)
+	gizmos.gizmo_type_set("Light", .Gizmo, false)
 	shapes, icons = pass(tc, lamp)
 	testing.expect(t, shapes == 0 && icons == 1, "the gizmo hidden, the icon stays")
 
-	editor.gizmo_type_set("Light", .Icon, false)
+	gizmos.gizmo_type_set("Light", .Icon, false)
 	shapes, icons = pass(tc, lamp)
 	testing.expect(t, shapes == 0 && icons == 0, "both hidden")
-	testing.expect(t, editor.gizmo_type_shown("Camera") == {.Icon, .Gizmo}, "other types keep theirs")
+	testing.expect(t, gizmos.gizmo_type_shown("Camera") == {.Icon, .Gizmo}, "other types keep theirs")
 	gizmos.frame_end()
 }
 
@@ -558,7 +560,7 @@ test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 	setup(tc)
 	context.user_ptr = &tc.uc
 	defer teardown(tc)
-	defer editor.scene_gizmos = true
+	defer gizmos.scene_gizmos = true
 	v := handles_test_view()
 	gizmos.set_view(v)
 
@@ -568,24 +570,24 @@ test_scene_gizmos_toggle :: proc(t: ^testing.T) {
 	l.enabled = true
 	{
 		gizmos.with_channel(.Editor)
-		editor.light_gizmos(l, handles.Gizmo_Context{})
+		scene_tools.light_gizmos(l, handles.Gizmo_Context{})
 	}
 	at, _ := gizmos.helper_project_in(v, {0, 0, 0})
-	_, ok := editor.scene_view_pick(v, at.x, at.y)
+	_, ok := scene_tools.scene_view_pick(v, at.x, at.y)
 	testing.expect(t, ok, "the icon picks with gizmos on")
 
-	editor.scene_gizmos = false
-	testing.expect(t, editor.scene_gizmo_channels() == {.Game, .Tools}, "no .Editor channel")
-	_, ok = editor.scene_view_pick(v, at.x, at.y)
+	gizmos.scene_gizmos = false
+	testing.expect(t, gizmos.scene_gizmo_channels() == {.Game, .Tools}, "no .Editor channel")
+	_, ok = scene_tools.scene_view_pick(v, at.x, at.y)
 	testing.expect(t, !ok, "a hidden icon does not pick")
 	gizmos.frame_end()
 }
 
 @(test)
 test_gizmo_type_labels :: proc(t: ^testing.T) {
-	testing.expect_value(t, editor.gizmo_type_label("BoxCollider2D"), "Box Collider 2D")
-	testing.expect_value(t, editor.gizmo_type_label("AudioSource"), "Audio Source")
-	testing.expect_value(t, editor.gizmo_type_label("Camera"), "Camera")
+	testing.expect_value(t, gizmos.gizmo_type_label("BoxCollider2D"), "Box Collider 2D")
+	testing.expect_value(t, gizmos.gizmo_type_label("AudioSource"), "Audio Source")
+	testing.expect_value(t, gizmos.gizmo_type_label("Camera"), "Camera")
 }
 
 // --- Lifetimes beyond a frame -----------------------------------------------------------------
@@ -703,7 +705,7 @@ test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
 
 	prev_scene, prev_game := menu.show_scene, menu.show_game
 	prev_frame, prev_rendered, prev_size := gfx.frame_index, editor._scene_rendered_frame, editor._scene_view_size
-	prev_cam, prev_target, prev_mode := editor.scene_cam_pos, editor.scene_cam_target, editor.gizmo_mode
+	prev_cam, prev_target, prev_mode := editor.scene_cam_pos, editor.scene_cam_target, viewport.gizmo_mode
 	defer {
 		menu.show_scene = prev_scene
 		menu.show_game = prev_game
@@ -712,13 +714,13 @@ test_gizmo_pass_records_tools_for_the_scene_view :: proc(t: ^testing.T) {
 		editor._scene_view_size = prev_size
 		editor.scene_cam_pos = prev_cam
 		editor.scene_cam_target = prev_target
-		editor.gizmo_mode = prev_mode
+		viewport.gizmo_mode = prev_mode
 	}
 	menu.show_scene = true
 	menu.show_game = false
 	editor.scene_cam_pos = {0, 0, 10}
 	editor.scene_cam_target = {0, 0, 0}
-	editor.gizmo_mode = .Translate
+	viewport.gizmo_mode = .Translate
 	gfx.frame_index += 1
 	editor._scene_rendered_frame = gfx.frame_index - 1
 	editor._scene_view_size = {800, 600}

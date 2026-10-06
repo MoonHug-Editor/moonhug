@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import sprites "moonhug:packages/sprites"
-import log "moonhug:engine/log"
+import log "moonhug:host/log"
 
 //@(property_drawer={type=app.ButtonsExample, priority = 10})
 draw_A_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {

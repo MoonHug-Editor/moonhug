@@ -5,7 +5,7 @@ package handles
 // instance, selected or not. An icon is a dark round badge icon_px wide
 // facing the camera, showing one of:
 //
-// - a symbol: a proc that draws with engine/gizmos shapes (the built-in
+// - a symbol: a proc that draws with host/gizmos shapes (the built-in
 //   icons for lights, cameras and audio sources)
 // - a glyph of the editor's icon font, by its Material Symbols codepoint
 //   (external/fonts/material/MaterialSymbolsOutlined.codepoints)
@@ -21,17 +21,18 @@ import "base:runtime"
 import "core:c"
 import "core:fmt"
 import stbtt "vendor:stb/truetype"
-import "moonhug:engine"
-import gfx "moonhug:engine/gfx"
-import "moonhug:engine/gizmos"
+import core "moonhug:host/core"
+import "moonhug:editor/inspector"
+import gfx "moonhug:host/gfx"
+import "moonhug:host/gizmos"
 
 // An icon's width on screen: the gizmo settings' Icon Size.
 ICON_PX_DEFAULT :: f32(28)
 icon_px := ICON_PX_DEFAULT
 
-// Draws a symbol with engine/gizmos in the badge's space: -1..1 spans the
+// Draws a symbol with host/gizmos in the badge's space: -1..1 spans the
 // badge, +X right and +Y up on screen, in the current color.
-Icon_Symbol :: engine.Gizmo_Symbol
+Icon_Symbol :: core.Gizmo_Symbol
 
 // A glyph's texture size in pixels: twice the icon, so it stays sharp on a
 // high-density screen.
@@ -47,24 +48,24 @@ icon :: proc {
 	icon_texture,
 }
 
-icon_symbol :: proc(pos: [3]f32, owner: engine.Transform_Handle, symbol: Icon_Symbol, color := COLOR_HANDLE) {
+icon_symbol :: proc(pos: [3]f32, owner: core.Transform_Handle, symbol: Icon_Symbol, color := COLOR_HANDLE) {
 	_icon(pos, owner, symbol, color)
 }
 
 // `glyph` is a Material Symbols codepoint: '\ue90f' (lightbulb), for example.
-icon_glyph :: proc(pos: [3]f32, owner: engine.Transform_Handle, glyph: rune, color := COLOR_HANDLE) {
+icon_glyph :: proc(pos: [3]f32, owner: core.Transform_Handle, glyph: rune, color := COLOR_HANDLE) {
 	_icon(pos, owner, glyph, color)
 }
 
 // `texture` is a texture asset's guid (a component field picked in the
 // inspector). White keeps its colors.
-icon_texture :: proc(pos: [3]f32, owner: engine.Transform_Handle, texture: engine.Asset_GUID, color := [4]f32{1, 1, 1, 1}) {
+icon_texture :: proc(pos: [3]f32, owner: core.Transform_Handle, texture: core.Asset_GUID, color := [4]f32{1, 1, 1, 1}) {
 	_icon(pos, owner, texture, color)
 }
 
 @(private = "file")
-_icon :: proc(pos: [3]f32, owner: engine.Transform_Handle, image: engine.Gizmo_Icon_Image, color: [4]f32) {
-	if !engine.transform_active_in_hierarchy(owner) do return
+_icon :: proc(pos: [3]f32, owner: core.Transform_Handle, image: core.Gizmo_Icon_Image, color: [4]f32) {
+	if !inspector.object_active(owner) do return
 	gizmos.with_depth_test(false)
 	gizmos.icon(pos, icon_px, owner, image, color, backdrop = COLOR_SHADOW)
 }

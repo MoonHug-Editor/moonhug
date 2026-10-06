@@ -8,17 +8,26 @@ tags: ["build", "assets"]
 ## Folders
 - prebuild - generator folder
   - separate program that runs even before anything compiles
-- editor, *_editor - editor folders
-  - editor is top level package with dependencies on everything else
-  - engine_editor is the engine's editor half — subpackages pairing with engine ones (engine_editor/asset_pipeline is the write side of engine/asset_pipeline.odin: importers, import drivers, AssetDB scanning, meta writing) — never linked into game binaries (the app runs the catalog pipeline only)
-- app folder - game code
-  - app package should not have any editor dependencies
-- engine - core dependency for app and editor
+- editor - the editor shell
+  - editor is the top level package, composed with the installed plugins through generated files and `moonhug:registration`, its subpackages are the shell's mechanisms (inspector, undo, viewport, assets, menus)
+- packages - one link per installed plugin into `plugins/` at the repo root, the plugin reached as `moonhug:packages/<name>`
+- host - the packages the game and the editor both stand on, none of them imports the engine
+  - core, log, serialization, gizmos, gfx, input, assets, catalog, crash_journal, imported as `moonhug:host/<name>`
+- registration - generated only: the registration bundle (packages, phases, type registration) the editor and the tests import as `moonhug:registration`
 - builds folder - build results with runnable application
 - external - external dependencies folder
 - library - derived-data cache (Unity's Library model, see [library](#library)). Safe to delete, rebuilt on the next run
 - ProjectSettings - settings about the PROJECT, committed: `mcp.json` and one `<slug>.json` per @(project_settings) tab
 - UserSettings - per-developer editor state, never committed (Unity's UserSettings): window geometry, open scenes and windows, panel visibility, theme, grid and snap, selected run config. Safe to delete, the editor writes defaults on the next run
+
+The folders above are inside `moonhug/`. Next to it, at the repo root:
+
+- plugins - every plugin, enabled by its link in `moonhug/packages/` ([Plugins](Plugins.md))
+  - engine - the engine plugin: scenes, transforms, components, rendering, `package engine`, imported as `moonhug:packages/engine` by the game and the editor
+    - editor - the engine's editor half, one subpackage per folder (scene_views, scene_tools, drawers, importers, previews, undo, undo_ops, sim_world, mcp_tools, mesh_editor, host), never linked into game binaries (the app runs the catalog pipeline only). The write side of the asset pipeline is the shell's editor/assets over the host package host/assets, `editor/importers` holds the engine's importers
+    - gen - the engine's generators, compiled into the prebuild
+    - docs - the engine's documentation pages, mounted on the site at `/plugins/engine` ([Components](../../plugins/engine/docs/Components.md) is the first)
+  - app - the game: a runnable plugin with no editor dependencies outside its own `editor/`
 
 ## Library
 

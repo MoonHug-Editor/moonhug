@@ -9,7 +9,7 @@ import "moonhug:editor/widgets"
 // Roboto Medium (shipped with imgui under misc/fonts, Apache-2.0) is the base
 // UI font. 15px is the size imgui's own font notes recommend for it on a 1x
 // display and matches the x-height of the old 13px ProggyClean rows.
-FONT_SIZE :: 15
+FONT_SIZE :: widgets.FONT_SIZE
 
 ROBOTO_FONT_DATA := #load("moonhug:external/odin-imgui/imgui/misc/fonts/Roboto-Medium.ttf")
 
@@ -102,4 +102,5 @@ editor_fonts_init :: proc() {
 		&icon_ranges[0],
 	)
 	widgets.dialog_icon_font = editor_icon_font_lg
+	widgets.icon_font_lg = editor_icon_font_lg
 }

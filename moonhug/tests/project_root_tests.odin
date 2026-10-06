@@ -8,7 +8,7 @@ package tests
 import "core:os"
 import "core:path/filepath"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(private = "file")
 _ROOT_TMP :: "moonhug/tests/fixtures/_project_root_tmp"

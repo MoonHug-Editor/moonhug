@@ -14,7 +14,8 @@ package inspector
 
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
-import engine "../../engine"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
 import "moonhug:editor/widgets"
 
 EXPAND_BTN_W :: f32(24)
@@ -22,7 +23,7 @@ EXPAND_BTN_W :: f32(24)
 // The arrow at the end of the reference row. Open state lives in imgui's
 // window storage under the row's id, the way TreeNode keeps its own, so it
 // survives reselection and needs no map here. Disabled for an empty slot.
-expand_arrow :: proc(guid: engine.Asset_GUID) -> (open: bool) {
+expand_arrow :: proc(guid: core.Asset_GUID) -> (open: bool) {
 	storage := im.GetStateStorage()
 	key := im.GetID("##expand")
 	open = im.Storage_GetBool(storage, key)
@@ -41,9 +42,9 @@ expand_arrow :: proc(guid: engine.Asset_GUID) -> (open: bool) {
 // opened. No header: the row above already names the asset. An edit here
 // marks the document dirty, and File/Save writes every dirty document
 // (asset_docs_save_dirty), so there is no per-foldout Save either.
-draw_expanded_asset :: proc(guid: engine.Asset_GUID) {
+draw_expanded_asset :: proc(guid: core.Asset_GUID) {
 	if guid == {} do return
-	path, ok := engine.asset_db_get_path(uuid.Identifier(guid))
+	path, ok := assets.asset_db_get_path(uuid.Identifier(guid))
 	if !ok do return
 	doc := asset_doc_get(path)
 	if doc == nil do return
@@ -57,10 +58,10 @@ draw_expanded_asset :: proc(guid: engine.Asset_GUID) {
 	// peers, and no prefab host to record overrides on.
 	mprev := multi_suspend()
 	defer multi_resume(mprev)
-	prev_host := engine.inspector_set_nested_host({})
-	defer engine.inspector_set_nested_host(prev_host)
-	prev_lid := engine.inspector_set_nested_local_id(0)
-	defer engine.inspector_set_nested_local_id(prev_lid)
+	prev_host := core.inspector_set_nested_host({})
+	defer core.inspector_set_nested_host(prev_host)
+	prev_lid := core.inspector_set_nested_local_id(0)
+	defer core.inspector_set_nested_local_id(prev_lid)
 	prev_path := field_edit_set_path("")
 	defer field_edit_set_path(prev_path)
 

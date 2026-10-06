@@ -24,7 +24,7 @@ import "core:fmt"
 import "core:mem"
 import "core:reflect"
 import "core:strings"
-import core "moonhug:engine/core"
+import core "moonhug:host/core"
 
 _POOL_MAX :: 256
 
@@ -67,7 +67,7 @@ _registry_init :: proc "contextless" () {
 // Registers a tween node type. $T must embed Tween at offset 0 and carry
 // @(typ_guid). A node that owns heap beyond the children array (which the
 // runtime frees itself) declares cleanup_T next to itself
-// (docs/core/Components.md, "Lifecycle procs"). Idempotent per type.
+// (plugins/engine/docs/Components.md, "Lifecycle procs"). Idempotent per type.
 register_node :: proc(
 	$T: typeid,
 	tick: proc(self: ^T, dt: f32, ctx: TweenContext) -> Status,

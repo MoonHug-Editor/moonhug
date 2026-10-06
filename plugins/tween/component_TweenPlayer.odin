@@ -6,7 +6,7 @@ package tween
 // package's components. Scene records live in ext_components keyed by the
 // type guid below — never change it.
 
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 @(component={max=64, menu="Tween/TweenPlayer"})
 @(typ_guid={guid = "a66f5292-813a-493f-91c4-05eb5e4e4d97"})

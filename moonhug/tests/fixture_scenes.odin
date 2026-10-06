@@ -23,8 +23,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
 
 FIXTURE_LIGHT_GUID :: "9f36ee91-34b6-4636-a360-ee872af0436b"
 FIXTURE_COLOR_BASE :: [4]f32{0.5, 0, 0, 1}

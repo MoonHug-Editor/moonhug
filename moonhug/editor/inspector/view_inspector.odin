@@ -9,11 +9,12 @@ import "core:encoding/uuid"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import ser "../../engine/serialization"
-import engine "../../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import ser "moonhug:host/serialization"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
+import asset_pipeline "moonhug:editor/assets"
 import clip "../clipboard"
-import "../undo"
+import undo "moonhug:editor/undo"
 import "moonhug:editor/icons"
 
 InspectorMode :: enum {
@@ -37,7 +38,7 @@ inspector_changed: bool
 // Currently used by the Ref_Local / Ref pickers to read `ref:"TypeName"`.
 current_field_ref_target: string
 // `pick:"scene"` / `pick:"project"` limits which picker tabs are assignable
-// for engine.Ref fields (no tag = both).
+// for core.Ref fields (no tag = both).
 current_field_pick_mode: string
 // Comma-separated allowed extensions from the field's `ext:"..."` tag; limits
 // the Asset_GUID picker + drag-drop to matching files ("" = everything).
@@ -112,6 +113,15 @@ InspectorData :: struct {
 
 MapPropertyDrawer :: map[typeid]proc(ptr: rawptr, tid: typeid, label: cstring)
 
+// Registers a drawer for a typeid the attribute parser cannot name, such as a
+// container type. Call after init, from an EditorInit phase proc at order 1
+// or later. `origin` is what debug tooltips show for the drawer.
+add_property_drawer :: proc(tid: typeid, fn: proc(ptr: rawptr, tid: typeid, label: cstring), loc := #caller_location) {
+	assert(_registries_ready, "add_property_drawer before inspector.init")
+	mapPropertyDrawer[tid] = fn
+	mapPropertyDrawerOrigin[tid] = fmt.tprintf("built-in %s:%d", loc.file_path, loc.line)
+}
+
 // The @(property_drawer) behind each entry of mapPropertyDrawer, with its file
 // and line, as rendered by the generator. A drawer owns the whole field row,
 // so debug tooltips show this while the row draws. Filled by
@@ -126,30 +136,33 @@ mapAssetPreview: map[string]proc(path: string)
 
 // The selected sub-asset of `path` (0 = none), for Asset_Ctx.sub. The editor
 // installs it: the project selection lives there.
-selected_sub: proc(path: string) -> engine.Local_ID
+selected_sub: proc(path: string) -> core.Local_ID
 
 init :: proc() {
     mapPropertyDrawer = make(MapPropertyDrawer)
     mapPropertyDrawerOrigin = make(map[typeid]string)
+    asset_doc_hooks = make(map[typeid]Asset_Doc_Hook)
     mapAssetPreview = make(map[string]proc(path: string))
     decorator_registry = make(DecoratorsMap)
     decorator_origin_registry = make(map[typeid][]string)
     init_property_drawer_map()
-    // Manual registration: the prebuild attribute parser takes plain type
-    // names, not container type expressions.
-    mapPropertyDrawer[typeid_of([dynamic]engine.Material_Property)] = draw_material_properties
-    mapPropertyDrawer[typeid_of([dynamic]engine.Material_Texture)] = draw_material_textures
     init_decorators()
     inspector_buttons = make(map[typeid][]Inspector_Button)
     _register_inspector_buttons()
     undo.set_asset_apply(asset_doc_apply_json)
     undo.set_asset_doc_lookup(asset_doc_payload_ptr)
+    _registries_ready = true
 }
+
+// Set by init. A map compares equal to nil until its first insert, so the
+// registration procs check this instead of the maps.
+@(private) _registries_ready: bool
 
 shutdown_registries :: proc() {
     multi_shutdown()
     delete(mapPropertyDrawer)
     delete(mapPropertyDrawerOrigin)
+    delete(asset_doc_hooks)
     delete(mapAssetPreview)
     for _, v in decorator_registry {
         delete(v)
@@ -547,9 +560,8 @@ _draw_asset_inspector :: proc() {
 // both edit the same document and an unsaved change shows in both.
 draw_asset_doc :: proc(doc: ^Asset_Doc) {
     if doc == nil || doc.data.data == nil do return
-    if doc.data.id == typeid_of(engine.Material) {
-        current_material = cast(^engine.Material)doc.data.data
-    }
+    hook := asset_doc_hooks[doc.data.id]
+    if hook.before != nil do hook.before(doc)
     // Whole-document undo: _undo_finalize_widget after each drawer snapshots
     // and commits against this owner, exactly like the component inspector.
     undo.push_asset_owner(doc.guid, doc.data.data, doc.data.id)
@@ -559,20 +571,21 @@ draw_asset_doc :: proc(doc: ^Asset_Doc) {
     if inspector_changed do doc.dirty = true
     inspector_changed |= prev_changed
     undo.pop_owner()
-    _material_live_preview(doc)
-    current_material = nil
+    if hook.after != nil do hook.after(doc)
 }
 
-// Material edits render live (Unity-style): the open .mat's values are
-// pushed into the engine material cache every frame, saved or not. Save
-// persists them to disk; unsaved edits revert on the next editor run.
-// Property rows for the assigned custom shader auto-populate from its
-// reflected UBO members, so names never have to be typed by hand.
-_material_live_preview :: proc(doc: ^Asset_Doc) {
-    if doc.data.id != typeid_of(engine.Material) do return
-    mat := cast(^engine.Material)doc.data.data
-    _ = engine.material_sync_properties(mat)
-    engine.material_preview(doc.guid, mat^)
+// Runs around draw_asset_doc for one document type: `before` sees the
+// document before its fields draw, `after` sees it after every edit of the
+// frame. Engine-side packages register theirs at EditorInit order 1 or later.
+Asset_Doc_Hook :: struct {
+	before, after: proc(doc: ^Asset_Doc),
+}
+
+asset_doc_hooks: map[typeid]Asset_Doc_Hook
+
+add_asset_doc_hook :: proc(tid: typeid, hook: Asset_Doc_Hook) {
+	assert(_registries_ready, "add_asset_doc_hook before inspector.init")
+	asset_doc_hooks[tid] = hook
 }
 
 _draw_import_settings_inspector :: proc() {
@@ -583,9 +596,9 @@ _draw_import_settings_inspector :: proc() {
     // keyed by the importer owning this asset's extension.
     ext := strings.to_lower(filepath.ext(inspectorData.filePath), context.temp_allocator)
     if chain, has := _asset_chain(asset_pipeline.importer_for_extension(ext)); has {
-        guid: engine.Asset_GUID
-        if g, ok := engine.asset_db_get_guid(inspectorData.filePath); ok {
-            guid = engine.Asset_GUID(g)
+        guid: core.Asset_GUID
+        if g, ok := assets.asset_db_get_guid(inspectorData.filePath); ok {
+            guid = core.Asset_GUID(g)
         }
         actx := Asset_Ctx{
             path     = inspectorData.filePath,
@@ -656,9 +669,9 @@ is_changed_flag_set :: proc() -> bool {
 // Rows whose value lands from a popup with no gesture on the row itself:
 // asset and reference pickers, and enum combos.
 _is_picker_type :: proc(tid: typeid) -> bool {
-    return tid == typeid_of(engine.Asset_GUID) ||
-           tid == typeid_of(engine.Ref) ||
-           tid == typeid_of(engine.Ref_Local) ||
+    return tid == typeid_of(core.Asset_GUID) ||
+           tid == typeid_of(core.Ref) ||
+           tid == typeid_of(core.Ref_Local) ||
            is_enum_type(tid)
 }
 
@@ -679,13 +692,10 @@ Override_Field :: struct {
 // Tints the label when the ambient prefab context overrides `path`. Pair with
 // override_marker_pop.
 override_marker_push :: proc(path: string) -> bool {
-    host_tH := engine.inspector_get_nested_host()
-    nested_lid := engine.inspector_get_nested_local_id()
+    host_tH := core.inspector_get_nested_host()
+    nested_lid := core.inspector_get_nested_local_id()
     if host_tH == {} || nested_lid == 0 || path == "" do return false
-    w := engine.ctx_world()
-    ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-    if ht == nil do return false
-    if !engine.nested_scene_has_root_override(ht.scene, host_tH, nested_lid, path) do return false
+    if !override_is_overridden(host_tH, nested_lid, path) do return false
     im.PushStyleColorImVec4(im.Col.Text, OVERRIDE_TEXT_COLOR)
     return true
 }
@@ -734,12 +744,8 @@ custom_field_row :: proc(
 // A component outside any instance yields a zero host, which makes
 // record_nested_override a no-op — the right outcome for plain scene content,
 // and for a component ADDED to an instance, which is not prefab content either.
-nested_context_for_comp :: proc(comp: engine.Handle) -> (host: engine.Transform_Handle, lid: engine.Local_ID) {
-    raw := engine.world_pool_get(engine.ctx_world(), comp)
-    if raw == nil do return {}, 0
-    base := cast(^engine.CompData)raw
-    if !base.nested_owned do return {}, 0
-    return engine.transform_immediate_nested_host(base.owner), base.local_id
+nested_context_for_comp :: proc(comp: core.Handle) -> (host: core.Transform_Handle, lid: core.Local_ID) {
+    return override_component_context(comp)
 }
 
 // Records a prefab-instance override for a field whose edit just committed, so
@@ -757,17 +763,11 @@ nested_context_for_comp :: proc(comp: engine.Handle) -> (host: engine.Transform_
 record_nested_override :: proc(field_ptr: rawptr, field_tid: typeid, property_path: string, committed: bool) {
     if !committed || property_path == "" || field_ptr == nil do return
 
-    host_tH := engine.inspector_get_nested_host()
-    nested_lid := engine.inspector_get_nested_local_id()
+    host_tH := core.inspector_get_nested_host()
+    nested_lid := core.inspector_get_nested_local_id()
     if host_tH == {} || nested_lid == 0 do return
 
-    w := engine.ctx_world()
-    ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-    if ht == nil do return
-    created, ok := engine.nested_scene_record_override_for_host(ht.scene, host_tH, nested_lid, property_path, field_ptr, field_tid)
-    if ok && created {
-        undo.record_override_created(ht.scene, host_tH, nested_lid, property_path)
-    }
+    override_record(host_tH, nested_lid, property_path, field_ptr, field_tid)
 }
 
 // THE commit predicate for an inspector field widget, in one place. Every
@@ -817,17 +817,16 @@ draw_default_inspector :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     draw_inspector(a, label, "")
 }
 
-@(private)
-_FieldMenuUndo :: struct {
+Field_Undo :: struct {
     active: bool,
     sess:   undo.Edit_Session,
 }
 
-// Reset / Paste from the field's context menu. These write from a popup rather
-// than a drag, so the whole write is bracketed here in one call - the session
-// picks field or whole-owner granularity from where field_ptr lands.
-@(private)
-_field_menu_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) -> _FieldMenuUndo {
+// Reset / Paste / Revert from the field's context menu. These write from a
+// popup rather than a drag, so the whole write is bracketed here in one call -
+// the session picks field or whole-owner granularity from where field_ptr
+// lands. The override provider brackets its Revert with these too.
+field_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: string) -> Field_Undo {
     targets := make([dynamic]undo.Edit_Target, 0, multi_peer_count() + 1, context.temp_allocator)
     if o, ok := undo.current_owner(); ok {
         switch o.kind {
@@ -847,11 +846,10 @@ _field_menu_undo_begin :: proc(field_ptr: rawptr, field_tid: typeid, label: stri
         }
     }
     if len(targets) == 0 do return {}
-    return _FieldMenuUndo{active = true, sess = undo.edit_session_begin(targets[:], label)}
+    return Field_Undo{active = true, sess = undo.edit_session_begin(targets[:], label)}
 }
 
-@(private)
-_field_menu_undo_end :: proc(u: _FieldMenuUndo) {
+field_undo_end :: proc(u: Field_Undo) {
     if !u.active do return
     s := u.sess
     undo.edit_session_end(&s)
@@ -883,24 +881,24 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
         elem_size = int(info.elem.size)
         is_dyn_array = true
     }
-    if key, ok := engine.get_type_key_by_typeid(check_tid); ok && engine.type_has_reset(key) {
+    if key, ok := core.get_type_key_by_typeid(check_tid); ok && core.type_has_reset(key) {
         if im.MenuItem("Reset", nil, false, !readonly) {
-            u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
+            u := field_undo_begin(field_ptr, field_tid, "Reset")
             if is_fixed_array {
                 for i in 0 ..< fixed_count {
                     p := rawptr(uintptr(field_ptr) + uintptr(i * elem_size))
-                    engine.type_reset(key, p)
+                    core.type_reset(key, p)
                 }
             } else if is_dyn_array {
                 da := (^runtime.Raw_Dynamic_Array)(field_ptr)
                 for i in 0 ..< da.len {
                     p := rawptr(uintptr(da.data) + uintptr(i * elem_size))
-                    engine.type_reset(key, p)
+                    core.type_reset(key, p)
                 }
             } else {
-                engine.type_reset(key, field_ptr)
+                core.type_reset(key, field_ptr)
             }
-            _field_menu_undo_end(u)
+            field_undo_end(u)
             // Reset is an ordinary value edit: on prefab-instance content it
             // creates an override like typing a value would.
             record_nested_override(record.ptr, record.tid, record.path, true)
@@ -911,12 +909,12 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
     if reflect.is_integer(check_ti) || reflect.is_float(check_ti) || reflect.is_boolean(check_ti) ||
        reflect.is_enum(check_ti) {
         if im.MenuItem("Reset", nil, false, !readonly) {
-            u := _field_menu_undo_begin(field_ptr, field_tid, "Reset")
+            u := field_undo_begin(field_ptr, field_tid, "Reset")
             if is_fixed_array {
                 if record.path == "scale" && check_tid == typeid_of(f32) && fixed_count == 3 {
                     (cast(^[3]f32)(field_ptr))^ = {1, 1, 1}
                 } else if record.path == "rotation" && check_tid == typeid_of(f32) && fixed_count == 4 {
-                    (cast(^[4]f32)(field_ptr))^ = engine.QUAT_IDENTITY
+                    (cast(^[4]f32)(field_ptr))^ = core.QUAT_IDENTITY
                 } else {
                     mem.zero(field_ptr, full_ti.size)
                 }
@@ -928,7 +926,7 @@ _draw_field_context_menu_reset :: proc(field_ptr: rawptr, field_tid: typeid, rea
             } else {
                 mem.zero(field_ptr, full_ti.size)
             }
-            _field_menu_undo_end(u)
+            field_undo_end(u)
             // Reset is an ordinary value edit: on prefab-instance content it
             // creates an override like typing a value would.
             record_nested_override(record.ptr, record.tid, record.path, true)
@@ -947,64 +945,43 @@ draw_field_context_menu :: proc(field_ptr: rawptr, field_tid: typeid, property_p
     popup_id := strings.clone_to_cstring(fmt.tprintf("##vcp_%x", uintptr(field_ptr)), context.temp_allocator)
     im.OpenPopupOnItemClick(popup_id, im.PopupFlags_MouseButtonRight)
     if im.BeginPopup(popup_id) {
-        readonly := engine.inspector_is_readonly()
+        readonly := core.inspector_is_readonly()
         if _draw_field_context_menu_reset(field_ptr, field_tid, readonly, record) {
             im.Separator()
         }
 
-        host_tH := engine.inspector_get_nested_host()
-        nested_lid := engine.inspector_get_nested_local_id()
+        host_tH := core.inspector_get_nested_host()
+        nested_lid := core.inspector_get_nested_local_id()
         if host_tH != {} && nested_lid != 0 && property_path != "" {
-            w := engine.ctx_world()
-            ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-            if ht != nil {
-                // Per docs/core/PrefabsSpec.md §3.2, overrides live at the root scene
-                // level only. Walk up to the root native NS and look for the
-                // breadcrumb-keyed override that root holds for this field.
-                root_ns, root_target, ok := engine.nested_scene_locate_root_override(ht.scene, host_tH, nested_lid)
-                is_overridden := ok && engine.nested_scene_has_override(root_ns, root_target, property_path)
-                if is_overridden {
-	                if im.MenuItem("Revert", nil, false, is_overridden) {
-	                    // Snapshot the entries BEFORE the revert deletes them;
-	                    // they are attached to the undo step after it commits,
-	                    // so the record undoes together with the value.
-	                    snap := undo.override_removal_snapshot(root_ns, root_target, property_path)
-	                    u := _field_menu_undo_begin(record.ptr, record.tid, "Revert")
-	                    engine.nested_scene_revert_override(ht.scene, root_ns, root_target, property_path, record.ptr)
-	                    _field_menu_undo_end(u)
-	                    undo.record_override_removed(ht.scene, host_tH, nested_lid, property_path, snap)
-	                    mark_inspector_changed()
-	                }
-	                // Apply pushes the override into a prefab on the field's chain.
-	                // Unity-style: flat menu items (not a submenu), one per target,
-	                // ordered closest -> base. The last target is the file that
-	                // owns the row — applying there bakes the value in ("Apply to
-	                // Scene X"); every other target records an override in that
-	                // prefab ("Apply as Override in X"), variants included.
-	                targets := engine.nested_scene_apply_targets(ht.scene, root_ns, root_target)
-	                for tgt in targets {
-	                    name := "scene"
-	                    if p, pok := engine.asset_db_get_path(uuid.Identifier(tgt.guid)); pok {
-	                        name = filepath.stem(p)
-	                    }
-	                    text := tgt.is_owner \
-	                        ? fmt.tprintf("Apply to Scene '%s'", name) \
-	                        : fmt.tprintf("Apply as Override in '%s'", name)
-	                    label := strings.clone_to_cstring(text, context.temp_allocator)
-	                    if im.MenuItem(label, nil, false, true) {
-	                        entry := engine.Override_Entry{
-	                            kind          = .Modified_Property,
-	                            target        = root_target,
-	                            property_path = property_path,
-	                        }
-	                        root_host := engine.Transform_Handle(
-	                            engine.nested_scene_resolve_host_handle(ht.scene, root_ns))
-	                        undo.apply_to_prefab(ht.scene, root_host, tgt.guid, {entry})
-	                        mark_inspector_changed()
-	                    }
-	                }
-	                im.Separator()
+            // Per plugins/engine/docs/PrefabsSpec.md §3.2, overrides live at the root scene
+            // level only. The provider walks up to the root native NS and looks
+            // for the breadcrumb-keyed override that root holds for this field.
+            if override_is_overridden(host_tH, nested_lid, property_path) {
+                if im.MenuItem("Revert", nil, false, true) {
+                    override_revert(host_tH, nested_lid, property_path, record.ptr, record.tid)
+                    mark_inspector_changed()
                 }
+                // Apply pushes the override into a prefab on the field's chain.
+                // Flat menu items (not a submenu), one per target, ordered
+                // closest -> base. The last target is the file that owns the
+                // row — applying there bakes the value in ("Apply to Scene X").
+                // Every other target records an override in that prefab ("Apply
+                // as Override in X"), variants included.
+                for tgt in override_apply_targets(host_tH, nested_lid) {
+                    name := "scene"
+                    if p, pok := assets.asset_db_get_path(uuid.Identifier(tgt.guid)); pok {
+                        name = filepath.stem(p)
+                    }
+                    text := tgt.is_owner \
+                        ? fmt.tprintf("Apply to Scene '%s'", name) \
+                        : fmt.tprintf("Apply as Override in '%s'", name)
+                    label := strings.clone_to_cstring(text, context.temp_allocator)
+                    if im.MenuItem(label, nil, false, true) {
+                        override_apply(host_tH, nested_lid, property_path, tgt.guid)
+                        mark_inspector_changed()
+                    }
+                }
+                im.Separator()
             }
         }
 
@@ -1082,15 +1059,11 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
 
         full_path := path_prefix == "" ? field_name : strings.concatenate({path_prefix, ".", field_name}, context.temp_allocator)
 
-        nested_lid := engine.inspector_get_nested_local_id()
-        host_tH := engine.inspector_get_nested_host()
+        nested_lid := core.inspector_get_nested_local_id()
+        host_tH := core.inspector_get_nested_host()
         is_field_overridden := false
         if nested_lid != 0 && host_tH != {} {
-            w := engine.ctx_world()
-            ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-            if ht != nil {
-                is_field_overridden = engine.nested_scene_has_root_override(ht.scene, host_tH, nested_lid, full_path)
-            }
+            is_field_overridden = override_is_overridden(host_tH, nested_lid, full_path)
         }
 
 		ctx := DrawContext{is_visible = true, is_pre = true, field_ptr = field_ptr, field_type = field_type.id, field_label = c_field_name, owner_ptr = ptr, owner_type = tid}
@@ -1143,7 +1116,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 // Ref_Local: picker button + "X" clear) and OpenPopupOnItemClick
                 // only tests the last one — right-click would then work only on
                 // the tiny X (or only when no value meant no X).
-                expands := current_field_expand && field_type.id == typeid_of(engine.Asset_GUID)
+                expands := current_field_expand && field_type.id == typeid_of(core.Asset_GUID)
                 if expands do current_field_trailing_w = EXPAND_BTN_W
                 im.BeginGroup()
                 // The whole transaction, shared with the array-element path so
@@ -1161,7 +1134,7 @@ draw_inspector_default :: proc(ptr: rawptr, tid: typeid, label: cstring, path_pr
                 // document draws below, outside the row's transaction: its
                 // rows must not read as edits of this reference field.
                 if expands {
-                    guid := (^engine.Asset_GUID)(field_ptr)^
+                    guid := (^core.Asset_GUID)(field_ptr)^
                     im.SameLine(0, 0)
                     if expand_arrow(guid) do draw_expanded_asset(guid)
                 }

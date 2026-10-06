@@ -1,15 +1,15 @@
 package undo
 
 import "base:runtime"
-import engine "../../engine"
+import core "moonhug:host/core"
 
 Inspector_Owner :: struct {
 	kind:       Owner_Kind,
 	scene:      Scene_Ref,
-	local_id:   engine.Local_ID,
-	handle:     engine.Handle,
+	local_id:   core.Local_ID,
+	handle:     core.Handle,
 	base_ptr:   rawptr,
-	asset_guid: engine.Asset_GUID, // .Asset only
+	asset_guid: core.Asset_GUID, // .Asset only
 	asset_tid:  typeid,            // .Asset only: the document's typeid
 	asset_doc:  Doc_Kind,          // .Asset only
 	raw_tid:    typeid,            // .Raw only: enables whole-owner snapshots
@@ -43,45 +43,31 @@ current_owner :: proc() -> (Inspector_Owner, bool) {
 	return _owner_stack[len(_owner_stack) - 1], true
 }
 
-push_pooled_owner :: proc(h: engine.Handle) {
+push_pooled_owner :: proc(h: core.Handle) {
 	push_owner(pooled_owner(h))
 }
 
 // The owner record for a pooled transform or component, without pushing it —
 // for a caller that carries the owner around (inspector.Property) and pushes
 // it only while a row draws. `.None` when the handle is dead.
-pooled_owner :: proc(h: engine.Handle) -> Inspector_Owner {
-	w := engine.ctx_world()
-	if w == nil do return Inspector_Owner{kind = .None}
-	base := engine.world_pool_get(w, h)
-	if base == nil do return Inspector_Owner{kind = .None}
-	scene: ^engine.Scene
-	lid: engine.Local_ID
-	if h.type_key == .Transform {
-		t := cast(^engine.Transform)base
-		scene = t.scene
-		lid = t.local_id
-	} else {
-		cbase := cast(^engine.CompData)base
-		lid = cbase.local_id
-		if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
-			scene = t.scene
-		}
-	}
+pooled_owner :: proc(h: core.Handle) -> Inspector_Owner {
+	t := make_pooled_target(h, 0, nil)
+	base, _, ok := resolve_pooled_base(t)
+	if !ok do return Inspector_Owner{kind = .None}
 	return Inspector_Owner{
 		kind = .Pooled,
-		scene = scene_ref(scene),
-		local_id = lid,
+		scene = t.scene,
+		local_id = t.local_id,
 		handle = h,
 		base_ptr = base,
 	}
 }
 
-push_transform_owner :: proc(tH: engine.Transform_Handle) {
-	push_pooled_owner(engine.Handle(tH))
+push_transform_owner :: proc(tH: core.Transform_Handle) {
+	push_pooled_owner(core.Handle(tH))
 }
 
-push_component_owner :: proc(comp_handle: engine.Handle) {
+push_component_owner :: proc(comp_handle: core.Handle) {
 	push_pooled_owner(comp_handle)
 }
 
@@ -98,7 +84,7 @@ push_raw_owner :: proc(base_ptr: rawptr, tid: typeid) {
 
 // Asset document (project inspector): whole-document snapshots, applied back
 // through the asset hook by guid — the doc pointer may be swapped by undo.
-push_asset_owner :: proc(guid: engine.Asset_GUID, base_ptr: rawptr, tid: typeid, doc := Doc_Kind.File) {
+push_asset_owner :: proc(guid: core.Asset_GUID, base_ptr: rawptr, tid: typeid, doc := Doc_Kind.File) {
 	push_owner(Inspector_Owner{
 		kind = .Asset,
 		base_ptr = base_ptr,

@@ -8,7 +8,7 @@ tags: ["inspector", "assets", "editor"]
 Unity-style picker popup for reference fields in the inspector. One shared
 popup with **Scene** and **Project** tabs; which tabs are shown depends on
 what the field's type can physically reference (see
-[ReferenceHandles](ReferenceHandles.md)).
+[ReferenceHandles](../../plugins/engine/docs/ReferenceHandles.md)).
 
 ## Current state
 

@@ -8,12 +8,12 @@ package tests
 // its own inputs to `field_edit_row` and never exercised the caller. Everything
 // asserting rotation behaviour goes through `rotation_row_drive_for_test`.
 
-import "../editor"
 import "../editor/inspector"
 import "../editor/undo"
-import "../engine"
+import "moonhug:packages/engine"
 
 import "core:testing"
+import "moonhug:packages/engine/editor/scene_views"
 
 // Turning Y must not make X and Z jump to a different SPELLING of the same
 // orientation.
@@ -49,9 +49,9 @@ test_rotation_row_euler_spelling_is_stable_through_90 :: proc(t: ^testing.T) {
 	ys := []f32{30, 60, 85, 89, 90, 91, 100, 120}
 	for y in ys {
 		_rot_test_target_y = y
-		editor.rotation_row_drive_for_test(a, _rot_test_write_y)
+		scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
 
-		cache := editor.rotation_euler_cache_for_test()
+		cache := scene_views.rotation_euler_cache_for_test()
 		// X and Z must stay where the user left them for EVERY step, including
 		// the ones straddling 90.
 		testing.expectf(
@@ -107,8 +107,8 @@ test_rotation_row_multi_records_every_object :: proc(t: ^testing.T) {
 
 	// Drag Y over several frames, then a frame that reports the release.
 	_rot_test_target_y = 25
-	editor.rotation_row_drive_for_test(a, _rot_test_write_y)
-	editor.rotation_row_drive_for_test(a, _rot_test_write_y)
+	scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
+	scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
 
 	// Both objects took the edited axis and kept their own X and Z.
 	ea := engine.quat_to_euler_xyz(ta.rotation)
@@ -147,9 +147,9 @@ test_rotation_row_euler_stable_toward_minus_180 :: proc(t: ^testing.T) {
 	ys := []f32{-30, -60, -89, -90, -91, -120, -150, -175, -179, -180}
 	for y in ys {
 		_rot_test_target_y = y
-		editor.rotation_row_drive_for_test(a, _rot_test_write_y)
+		scene_views.rotation_row_drive_for_test(a, _rot_test_write_y)
 
-		cache := editor.rotation_euler_cache_for_test()
+		cache := scene_views.rotation_euler_cache_for_test()
 		testing.expectf(t, abs(cache[0]) < 1,
 			"X drifted to %v while dragging Y to %v", cache[0], y)
 		testing.expectf(t, abs(cache[2]) < 1,

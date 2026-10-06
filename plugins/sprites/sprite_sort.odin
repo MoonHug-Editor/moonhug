@@ -15,7 +15,7 @@ package sprites
 // Resolution is ONE scene-tree pass per view (sprite_sort_build_keys), called
 // by the sprite collector — O(n), no per-sprite ancestor walks.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Level words pack with the shared transparent-sort convention
 // (engine.sort_key_word).

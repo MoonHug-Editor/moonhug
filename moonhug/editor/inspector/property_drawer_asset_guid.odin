@@ -5,23 +5,25 @@ import "core:slice"
 import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
 import "moonhug:editor/widgets"
+import assets "moonhug:host/assets"
+import "moonhug:editor/subassets"
+import core "moonhug:host/core"
 
-@(property_drawer={type = engine.Asset_GUID, priority = 0})
+@(property_drawer={type = core.Asset_GUID, priority = 0})
 draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-    guid_ptr := cast(^engine.Asset_GUID)ptr
+    guid_ptr := cast(^core.Asset_GUID)ptr
     guid_val := uuid.Identifier(guid_ptr^)
     has_value := guid_val != (uuid.Identifier{})
 
-    // Mixed multi-selections are substituted inside _picker_field_row, so every
+    // Mixed multi-selections are substituted inside picker_field_row, so every
     // reference drawer gets the dash without repeating the check.
     display: string
     if !has_value {
         display = "None"
     } else if sub_label, is_sub := _sub_asset_label(guid_ptr^); is_sub {
         display = sub_label
-    } else if path, ok := engine.asset_db_get_path(guid_val); ok {
+    } else if path, ok := assets.asset_db_get_path(guid_val); ok {
         display = filepath_base(path)
     } else {
         display = fmt.tprintf("%v", guid_val)
@@ -33,16 +35,16 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 
     value_clicked, value_double, cleared: bool
     dropped: string
-    dropped_pptr: engine.PPtr
+    dropped_pptr: core.PPtr
     dropped_pptr_ok: bool
-    if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_pptr, &dropped_pptr_ok) {
+    if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double, &dropped, &dropped_pptr, &dropped_pptr_ok) {
         im.OpenPopup(popup_id)
     }
     // A sub-asset row dragged from the project view carries (owner, id). The
     // clip's own guid is what the field stores.
     if dropped_pptr_ok && dropped_pptr.local_id != 0 {
-        if sub_guid, sok := engine.asset_db_sub_guid(dropped_pptr.guid, dropped_pptr.local_id); sok {
-            if ref, rok := engine.asset_db_get_sub(sub_guid); rok && _ext_allowed(ref.kind) {
+        if sub_guid, sok := assets.asset_db_sub_guid(dropped_pptr.guid, dropped_pptr.local_id); sok {
+            if ref, rok := assets.asset_db_get_sub(sub_guid); rok && _ext_allowed(ref.kind) {
                 guid_ptr^ = sub_guid
                 mark_inspector_changed()
             }
@@ -51,24 +53,24 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     // Single click: ping (project view navigates to + selects the asset).
     // Double click: OPEN it (scene loads, .asset goes to the inspector).
     if value_double && has_value {
-        engine.inspector_request_open_asset(guid_ptr^)
+        core.inspector_request_open_asset(guid_ptr^)
     } else if value_clicked && has_value {
-        engine.inspector_request_ping_asset(guid_ptr^)
+        core.inspector_request_ping_asset(guid_ptr^)
     }
     if cleared {
         guid_ptr^ = {}
         mark_inspector_changed()
     }
     if dropped != "" && _ext_filter_matches(dropped) {
-        if new_guid, ok := engine.asset_db_get_guid(dropped); ok {
-            guid_ptr^ = engine.Asset_GUID(new_guid)
+        if new_guid, ok := assets.asset_db_get_guid(dropped); ok {
+            guid_ptr^ = core.Asset_GUID(new_guid)
             mark_inspector_changed()
         }
     }
 
     if im.BeginPopup(popup_id) {
-        search := _picker_search_bar()
-        // Single Project tab: a plain guid can only name an asset (engine.Ref
+        search := picker_search_bar()
+        // Single Project tab: a plain guid can only name an asset (core.Ref
         // fields are the ones with both sources).
         if im.BeginTabBar("##picker_tabs") {
             if im.BeginTabItem("Project") {
@@ -82,7 +84,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
                 // the admitted components (AssetDB inverted index). Untagged:
                 // every asset.
                 keys := ref_target_keys(current_field_ref_target)
-                picked: engine.PPtr
+                picked: core.PPtr
                 if _picker_asset_rows_of_types(keys, search, &picked) {
                     guid_ptr^ = picked.guid
                     mark_inspector_changed()
@@ -99,8 +101,8 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 // is the plain call, several are drawn one after another — an asset whose root
 // carries two admitted components lists once per component, as the scene
 // picker does.
-_picker_asset_rows_of_types :: proc(keys: []engine.TypeKey, search: []string, picked: ^engine.PPtr) -> bool {
-    if len(keys) == 0 do return _picker_asset_rows(engine.INVALID_TYPE_KEY, search, picked)
+_picker_asset_rows_of_types :: proc(keys: []core.TypeKey, search: []string, picked: ^core.PPtr) -> bool {
+    if len(keys) == 0 do return _picker_asset_rows(core.INVALID_TYPE_KEY, search, picked)
     clicked := false
     for k in keys {
         if _picker_asset_rows(k, search, picked) do clicked = true
@@ -111,33 +113,33 @@ _picker_asset_rows_of_types :: proc(keys: []engine.TypeKey, search: []string, pi
 // Rows of scene assets whose root carries `key` (INVALID_TYPE_KEY: every
 // asset, pptr local_id 0), name-filtered by `search`. Returns true and writes
 // `picked` when a row is clicked (picked may be nil for display-only lists).
-_picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engine.PPtr) -> bool {
+_picker_asset_rows :: proc(key: core.TypeKey, search: []string, picked: ^core.PPtr) -> bool {
     Candidate :: struct {
         path:  string, // sort key
         label: string, // row text: the file name, or "Model / Clip" for a sub-asset
         kind:  string, // what the ext filter tests: the file's extension, or the sub-asset's kind
-        entry: engine.PPtr,
+        entry: core.PPtr,
     }
     candidates := make([dynamic]Candidate, context.temp_allocator)
-    if key != engine.INVALID_TYPE_KEY {
-        for entry in engine.asset_db_assets_with_root_type(key) {
-            if path, pok := engine.asset_db_get_path(uuid.Identifier(entry.guid)); pok {
+    if key != core.INVALID_TYPE_KEY {
+        for entry in assets.asset_db_assets_with_root_type(key) {
+            if path, pok := assets.asset_db_get_path(uuid.Identifier(entry.guid)); pok {
                 append(&candidates, Candidate{path = path, label = filepath_base(path), kind = _path_ext(path), entry = entry})
             }
         }
     } else {
-        for path, guid in engine.asset_db.path_to_guid {
-            append(&candidates, Candidate{path = path, label = filepath_base(path), kind = _path_ext(path), entry = {guid = engine.Asset_GUID(guid)}})
+        for path, guid in assets.asset_db.path_to_guid {
+            append(&candidates, Candidate{path = path, label = filepath_base(path), kind = _path_ext(path), entry = {guid = core.Asset_GUID(guid)}})
         }
         // Sub-assets with their own guid (a model's clips) are assignable
         // wherever their kind is. They sort under their owner's path.
-        for guid, ref in engine.asset_db.subs {
-            if owner_path, clip_name, ok := _sub_asset_parts(engine.Asset_GUID(guid)); ok {
+        for guid, ref in assets.asset_db.subs {
+            if owner_path, clip_name, ok := _sub_asset_parts(core.Asset_GUID(guid)); ok {
                 append(&candidates, Candidate{
                     path  = fmt.tprintf("%s/%s", owner_path, clip_name),
                     label = fmt.tprintf("%s / %s", _stem(owner_path), clip_name),
                     kind  = ref.kind,
-                    entry = {guid = engine.Asset_GUID(guid)},
+                    entry = {guid = core.Asset_GUID(guid)},
                 })
             }
         }
@@ -162,7 +164,7 @@ _picker_asset_rows :: proc(key: engine.TypeKey, search: []string, picked: ^engin
         }
     }
     if shown == 0 {
-        im.TextDisabled("(no assets with this root component)" if key != engine.INVALID_TYPE_KEY else "(no matches)")
+        im.TextDisabled("(no assets with this root component)" if key != core.INVALID_TYPE_KEY else "(no matches)")
     }
     return result
 }
@@ -197,20 +199,23 @@ _ext_allowed :: proc(ext: string) -> bool {
 
 // The owner's path and the clip's name for a guid that names a sub-asset.
 @(private = "file")
-_sub_asset_parts :: proc(guid: engine.Asset_GUID) -> (owner_path, name: string, ok: bool) {
-    ref, is_sub := engine.asset_db_get_sub(guid)
+_sub_asset_parts :: proc(guid: core.Asset_GUID) -> (owner_path, name: string, ok: bool) {
+    ref, is_sub := assets.asset_db_get_sub(guid)
     if !is_sub do return
-    owner_path, ok = engine.asset_db_get_path(uuid.Identifier(ref.owner))
+    owner_path, ok = assets.asset_db_get_path(uuid.Identifier(ref.owner))
     if !ok do return
-    for c in engine.mesh_clips(ref.owner) {
-        if c.id == ref.id do return owner_path, c.name, true
+    // The owner's sub-asset provider names the sub (a model lists its clips).
+    if provider, has := subassets.find(strings.concatenate({".", _path_ext(owner_path)}, context.temp_allocator)); has && provider.list != nil {
+        for s in provider.list(owner_path, context.temp_allocator) {
+            if s.id == ref.id do return owner_path, s.name, true
+        }
     }
     return owner_path, fmt.tprintf("#%d", i64(ref.id)), true
 }
 
 // "Model / Clip", so a clip field never reads as the model file it lives in.
 @(private = "file")
-_sub_asset_label :: proc(guid: engine.Asset_GUID) -> (string, bool) {
+_sub_asset_label :: proc(guid: core.Asset_GUID) -> (string, bool) {
     owner_path, name, ok := _sub_asset_parts(guid)
     if !ok do return "", false
     return fmt.tprintf("%s / %s", _stem(owner_path), name), true

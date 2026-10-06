@@ -1,11 +1,11 @@
 package tests
 
-import "../engine"
-import "../editor/undo"
+import "moonhug:packages/engine"
 
 import "core:os"
 import "core:strings"
 import "core:testing"
+import undo "moonhug:packages/engine/editor/undo"
 
 @(test)
 test_undo_value_transform_position :: proc(t: ^testing.T) {

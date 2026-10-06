@@ -11,7 +11,7 @@ package editor
 
 import "core:time"
 import sdl "vendor:sdl3"
-import gfx "../engine/gfx"
+import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"

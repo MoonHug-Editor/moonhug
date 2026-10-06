@@ -1,14 +1,17 @@
 package editor
 
-import gfx "../engine/gfx"
+import gfx "moonhug:host/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
 import "menu"
 import wnd "window"
 import "moonhug:editor/handles"
-import "../engine"
-import "../engine/log"
+import "moonhug:editor/viewport"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
+import "moonhug:host/log"
+import "moonhug:host/gizmos"
 
 WINDOW_TITLE :: "MoonHug Editor"
 VERSION :: #load("../version", string)
@@ -19,13 +22,13 @@ VERSION :: #load("../version", string)
 // setup — sharing it means every developer's git status is dirty after a run
 // and someone else's window position lands in an unrelated commit.
 //
-// The other half is engine.PROJECT_SETTINGS_DIR: settings about the PROJECT,
+// The other half is core.PROJECT_SETTINGS_DIR: settings about the PROJECT,
 // committed, read by the game too (docs/core/Plugins.md "Project settings").
 USER_SETTINGS_DIR :: "UserSettings"
 EDITOR_SETTINGS_FILE :: USER_SETTINGS_DIR + "/editor_settings.json"
 
 // Read once at startup to migrate a pre-split checkout, then ignored.
-LEGACY_EDITOR_SETTINGS_FILE :: engine.PROJECT_SETTINGS_DIR + "/editor_settings.json"
+LEGACY_EDITOR_SETTINGS_FILE :: core.PROJECT_SETTINGS_DIR + "/editor_settings.json"
 
 EditorSettings :: struct {
     width:                    i32,
@@ -61,7 +64,7 @@ EditorSettings :: struct {
     game_scale:               f32,                      // game view zoom (view_game.odin)
     game_size_flipped:        bool,                     // game view size width/height swap (view_game.odin)
     game_gizmos:              bool,                     // game view Gizmos toggle (view_game.odin)
-    scene_gizmos_off:         bool,                     // scene view Gizmos toggle, inverted so an older file keeps it on (gizmo_settings.odin)
+    scene_gizmos_off:         bool,                     // scene view Gizmos toggle, inverted so an older file keeps it on (gizmos.scene_gizmos)
     gizmo_icon_px:            f32,                      // gizmo settings' Icon Size, 0 = the default
     gizmo_hidden_icons:       [dynamic]string,          // component types whose icon the gizmo settings hide
     gizmo_hidden_gizmos:      [dynamic]string,          // component types whose gizmo the gizmo settings hide
@@ -95,10 +98,10 @@ load_editor_settings :: proc() -> (w, h, x, y: i32) {
             if editor_settings.game_scale > 0 do game_scale = editor_settings.game_scale
             game_size_flipped = editor_settings.game_size_flipped
             game_gizmos = editor_settings.game_gizmos
-            scene_gizmos = !editor_settings.scene_gizmos_off
+            gizmos.scene_gizmos = !editor_settings.scene_gizmos_off
             if editor_settings.gizmo_icon_px > 0 do handles.icon_px = editor_settings.gizmo_icon_px
-            for name in editor_settings.gizmo_hidden_icons do gizmo_type_set(name, .Icon, false)
-            for name in editor_settings.gizmo_hidden_gizmos do gizmo_type_set(name, .Gizmo, false)
+            for name in editor_settings.gizmo_hidden_icons do gizmos.gizmo_type_set(name, .Icon, false)
+            for name in editor_settings.gizmo_hidden_gizmos do gizmos.gizmo_type_set(name, .Gizmo, false)
             if editor_settings.scene_2d do _scene_2d_pending = true
             if editor_settings.has_view_state {
                 menu.show_inspector         = editor_settings.show_inspector
@@ -171,21 +174,18 @@ save_editor_settings :: proc() {
     editor_settings.game_scale = game_scale
     editor_settings.game_size_flipped = game_size_flipped
     editor_settings.game_gizmos = game_gizmos
-    editor_settings.scene_gizmos_off = !scene_gizmos
+    editor_settings.scene_gizmos_off = !gizmos.scene_gizmos
     editor_settings.gizmo_icon_px = handles.icon_px
     delete(editor_settings.gizmo_hidden_icons)
     delete(editor_settings.gizmo_hidden_gizmos)
-    editor_settings.gizmo_hidden_icons = gizmo_types_hiding(.Icon)
-    editor_settings.gizmo_hidden_gizmos = gizmo_types_hiding(.Gizmo)
+    editor_settings.gizmo_hidden_icons = gizmos.gizmo_types_hiding(.Icon)
+    editor_settings.gizmo_hidden_gizmos = gizmos.gizmo_types_hiding(.Gizmo)
 
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
 
-    sm := engine.ctx_scene_manager()
-    for i in 0..<sm.count {
-        scene := sm.loaded[i]
-        if scene == nil || !engine.sm_scene_is_valid(scene) || len(scene.path) == 0 do continue
-        if guid, ok := engine.asset_db_get_guid(scene.path); ok {
+    for path in viewport.document_open_paths() {
+        if guid, ok := assets.asset_db_get_guid(path); ok {
             guid_str := uuid.to_string(guid, context.temp_allocator)
             append(&editor_settings.open_scene_guids, guid_str)
         }

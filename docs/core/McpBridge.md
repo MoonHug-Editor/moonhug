@@ -7,7 +7,7 @@ tags: ["mcp", "editor"]
 
 Agent access to the running editor over [MCP](https://modelcontextprotocol.io). Two processes, no external dependencies:
 
-- **Editor side** (`editor/mcp_bridge.odin`) — a loopback TCP endpoint inside the editor. Threadless: `mcp_bridge_tick` polls a non-blocking socket once per frame right after `gfx.frame_begin`, so every tool runs on the main thread with full editor/engine API access. Listens on the first free port from 6600, writes `library/state_cache/mcp_bridge.json` (port, pid, auth token) and removes it on shutdown.
+- **Editor side** (`editor/mcp_bridge.odin`) — a loopback TCP endpoint inside the editor. The file holds the transport and the shell's own tools (console, menus, dialogs, settings, screenshots, the project view). The tools that read or edit the world are the engine's, in `plugins/engine/editor/mcp_tools`. Threadless: `mcp_bridge_tick` polls a non-blocking socket once per frame right after `gfx.frame_begin`, so every tool runs on the main thread with full editor/engine API access. Listens on the first free port from 6600, writes `library/state_cache/mcp_bridge.json` (port, pid, auth token) and removes it on shutdown.
 - **Shim** (`mcp_shim/`, built to `builds/mcp_shim`) — an MCP stdio server the client spawns (`.mcp.json` → `mh mcp`). It discovers the editor through the bridge file, authenticates with the token, and translates MCP JSON-RPC to the wire protocol. The shim owns session stability: when the editor is down or restarts, tool calls return a retry hint and the MCP session survives.
 
 ## Wire protocol (`editor/mcp`)
@@ -16,7 +16,7 @@ Length-prefixed frames (4-byte big-endian size + JSON, 16 MB cap) after a `WELCO
 
 ## Declaring a tool
 
-`mcp_tool_gen` scans the attribute and emits `mcp_tools_generated.odin`, so the schema the agent reads comes from the same declaration:
+`mcp_tool_gen` scans the attribute in every package and emits `editor/mcp_tools_generated.odin`, so the schema the agent reads comes from the same declaration. A tool outside the editor package (`plugins/engine/editor/mcp_tools`, a plugin) is imported through the `moonhug:` collection and qualified by its package:
 
 ```odin
 @(mcp_tool={
@@ -24,15 +24,17 @@ Length-prefixed frames (4-byte big-endian size + JSON, 16 MB cap) after a `WELCO
     param_local_id="integer:Object local_id from list_objects",
     param_new_name="string!:The new name",
 })
-mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) { ... }
+mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, mcp.Tool_Error) { ... }
 ```
 
 - `mcp_tool_<name>` — the tool name is the proc name minus prefix
 - `param_<name>` — field is `"<string|integer|number|boolean>[!]:<description>"`, where `!` marks it required. Append `[]` to the type for an array (`"integer[]:..."`, also `"object[]"` for a list of records), which emits the JSON Schema `items` sub-object.
-- handler returns marshaled JSON (`_mcp_ok`) or an error (`_mcp_fail`).
-- returning `MCP_DEFERRED` means the handler answers later itself (screenshots do this while the GPU readback fence settles).
+- handler returns marshaled JSON (`mcp.tool_ok`) or an error (`mcp.tool_fail`). The handler vocabulary (`mcp.Tool_Error`, `mcp.json_int`, `mcp.json_f32`) is in `editor/mcp`, which every package can import.
+- returning `mcp.DEFERRED` means the handler answers later itself (screenshots do this while the GPU readback fence settles).
 
 ## Tools
+
+The shell's tools (`editor/mcp_bridge.odin`) are `read_log`, `batch`, `list_menus`, `invoke_menu`, `dialog`, `open_scene`, `ping_asset`, `editor_setting` and `screenshot`. The engine's (`plugins/engine/editor/mcp_tools`) are `editor_state`, `scene_dump`, `list_objects`, `describe_type`, `select`, `set_transform`, `rename_object`, `get_property` and `set_property`. `open_scene` runs the project view's open flow and reads the active scene through `viewport.Document_Actions`.
 
 - `editor_state` — active scene, simulate state, selection (names and `local_id`s, since names repeat)
 - `read_log` — recent console entries
@@ -55,7 +57,7 @@ Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambi
 
 ## Enabling
 
-One switch, Edit ▸ Project Settings ▸ MCP (`enabled`, persisted to `ProjectSettings/mcp.json`, on by default, applied at editor start). Off means the editor never opens the socket and removes its bridge file, so no agent can reach it by any tool — enforceable with no per-tool knowledge and nothing a developer can forget to declare.
+One switch, Edit ▸ Project Settings ▸ MCP (`mcp.mcp_settings` in `editor/mcp/settings.odin`, field `enabled`, persisted to `ProjectSettings/mcp.json`, on by default, applied at editor start). Off means the editor never opens the socket and removes its bridge file, so no agent can reach it by any tool — enforceable with no per-tool knowledge and nothing a developer can forget to declare.
 
 Editing tools go through the editor's own undo stack, so an agent edit is Ctrl+Z-able and indistinguishable from a manual one. Combined with loopback-only binding and a per-session token, anything it touches is visible and reversible.
 

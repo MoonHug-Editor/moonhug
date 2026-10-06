@@ -457,7 +457,7 @@ TagOrigin :: proc(tag_text: string, file_path: string, line: int, decl_name: str
 }
 
 // WriteGeneratedFile writes content to path (creating the parent directory —
-// e.g. moonhug/engine/registration exists only as generated output) and reports
+// e.g. moonhug/registration exists only as generated output) and reports
 // errors. Returns false on failure.
 WriteGeneratedFile :: proc(path: string, content: string) -> bool {
 	// filepath.dir returns a view into path — nothing to free.
@@ -470,4 +470,15 @@ WriteGeneratedFile :: proc(path: string, content: string) -> bool {
 	}
 	fmt.println("gen_core: wrote", path)
 	return true
+}
+
+// RemoveStaleFile deletes a generated file a checkout can still hold at a path
+// no generator writes any more (generated files are not committed), then its
+// directory when that is left empty. Removing a directory fails unless it is
+// empty, so a directory with other content stays.
+RemoveStaleFile :: proc(path: string) {
+	if !os.exists(path) do return
+	_ = os.remove(path)
+	fmt.println("gen_core: removed stale", path)
+	if dir := filepath.dir(path); dir != "." do _ = os.remove(dir)
 }

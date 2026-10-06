@@ -25,7 +25,6 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import db "../gen_db"
-import "../components_gen"
 import "../gen_facts"
 
 PACKAGES_PREFIX :: "moonhug/packages/"
@@ -49,7 +48,8 @@ _dir_has_odin :: proc(dir: string) -> bool {
 }
 
 // "moonhug/packages/foo" -> ("foo", ""). "moonhug/packages/foo/editor" ->
-// ("foo", "editor"). Any other sub ("foo/nodes") is a library subpackage.
+// ("foo", "editor"). A sub below editor/ ("editor/scene_views") is an editor
+// half too. Any other sub ("foo/nodes") is a library subpackage.
 package_name_of :: proc(pkg_path: string) -> (name: string, sub: string, ok: bool) {
 	if !strings.has_prefix(pkg_path, PACKAGES_PREFIX) do return "", "", false
 	rest := pkg_path[len(PACKAGES_PREFIX):]
@@ -76,7 +76,7 @@ Sub_Pkg :: struct {
 
 generate :: proc(w: ^db.World) -> bool {
 	decls := db.get_comps_DeclInfo()
-	comps := db.get_comps(w, components_gen.Component_GenComp)
+	comps := db.get_comps(w, gen_facts.Component_GenComp)
 
 	runtime_pkgs: [dynamic]string // package names, deduped
 	editor_pkgs: [dynamic]string // editor/ subpackage paths below moonhug/packages/
@@ -97,13 +97,18 @@ generate :: proc(w: ^db.World) -> bool {
 		// Lint: generated imports address packages by folder name, so the
 		// declared package name must match — <name> for the root,
 		// <name>_<sub> for subpackages (tween_editor, foo_util).
+		// The subpackages below a plugin's editor/ (the engine's
+		// editor/scene_views) are editor halves too. They are imported blank
+		// here and by their declared name everywhere else, so the lint leaves
+		// their names alone: the declaration alone keeps them unique.
 		if sub != "" {
+			below_editor := strings.has_prefix(sub, "editor/")
 			expect := _expected_sub_pkg_name(name, sub)
-			if decl.pkg.name != expect {
+			if !below_editor && decl.pkg.name != expect {
 				fmt.eprintf("packages_gen: %s declares 'package %s' — must be 'package %s'\n", decl.pkg_path, decl.pkg.name, expect)
 				return false
 			}
-			if sub == "editor" || strings.has_suffix(sub, "/editor") {
+			if below_editor || sub == "editor" || strings.has_suffix(sub, "/editor") {
 				_append_unique(&editor_pkgs, decl.pkg_path[len(PACKAGES_PREFIX):])
 				continue
 			}
@@ -191,7 +196,7 @@ generate :: proc(w: ^db.World) -> bool {
 		db.emit(w, fmt.tprintf("%s/packages_generated.odin", out_dir), strings.to_string(b))
 	}
 
-	_write_register(w, "registration", "moonhug/engine/registration", "", runtime_pkgs, with_components, sub_pkgs[:], runnables[:])
+	_write_register(w, "registration", "moonhug/registration", "", runtime_pkgs, with_components, sub_pkgs[:], runnables[:])
 	for host in runnables {
 		_write_register(w, host.name, host.path, host.name, runtime_pkgs, with_components, sub_pkgs[:], runnables[:])
 	}

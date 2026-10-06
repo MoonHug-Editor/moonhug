@@ -43,15 +43,15 @@ view_history focused:
 ## Core concepts
 
 - Undo_Stack        — ordered history of commands with top for redo. ONE stack for the whole editor: scene edits, asset edits and selection changes share the timeline
-- Command           — union of the command kinds below
+- Command           — union of the command kinds below, generated from every type marked `@(undo_command)`. The shell's own kinds live in `editor/undo`, the engine's in `plugins/engine/editor/undo_ops`, and `plugins/engine/editor/undo` records them
   - Value_Command   — change to a single field (old_json / new_json payloads). An `.Asset`-kind target holds a whole asset document
-  - Structural_Command — hierarchy mutation (reparent, create, delete, add/remove/reorder component)
+  - Reparent_, Create_Subtree_, Delete_Subtree_, Add_Component_, Remove_Component_, Reorder_Components_, Remove_Unknown_Component_Command — hierarchy mutations, one command each
   - Group_Command   — multiple sub-commands under one undo step (multi-field edits)
   - Selection_Command — a selection change (before/after states), Unity's "Selection Change" steps
-  - Prefab_Apply_Command — a Prefab Apply: the prefab files it wrote (bytes before/after) and the instance's records (before/after). Undo and redo write one side back and re-propagate the prefab (docs/core/NestedPrefabs.md)
+  - Prefab_Apply_Command — a Prefab Apply: the prefab files it wrote (bytes before/after) and the instance's records (before/after). Undo and redo write one side back and re-propagate the prefab (plugins/engine/docs/NestedPrefabs.md)
 - Property_Target   — robust identifier for a field (Owner_Kind + Scene_Ref + Local_ID + Handle + offset + typeid, or asset guid for `.Asset`)
 - Edit_Session      — a bracketed transaction over N targets: before-state captured at open, one grouped action recorded at close (see "Edit sessions")
-- Scene_Ref         — scene identity: the scene's `session_id`, which an in-place reload (Stop after Play, revert) keeps (`resolve_scene`). Not a pointer (a reload frees the struct) and not the asset guid (one file can be loaded twice, an unsaved scene has none)
+- Scene_Ref         — scene identity: the scene's `session_id`, which an in-place reload (Stop after Play, revert) keeps (`undo.resolve_scene`). Not a pointer (a reload frees the struct) and not the asset guid (one file can be loaded twice, an unsaved scene has none)
 - Inspector_Owner   — current Transform/Component/Asset-document frame the inspector is drawing. Pushed by the inspector before drawing so nested drawers can resolve it
 
 ## `Property_Target` for targets to survive pool reallocation
@@ -351,7 +351,7 @@ element so a change in one element doesn't trigger a premature commit in the nex
 Transform fields (`name`, `position`, `rotation`, `scale`) are fixed-layout
 primitives with stable offsets, so their session records the field rather than
 the whole transform. `_wrap_transform_field_override`
-(`editor/view_hierarchy_inspector.odin`) is the bracket, because transform rows
+(`plugins/engine/editor/scene_views/view_hierarchy_inspector.odin`) is the bracket, because transform rows
 bypass the generic field loop and also record prefab-instance overrides.
 
 For custom inspector UI outside the field loop (e.g. the `enabled` checkbox on the component header), use the ergonomic `edit_begin` / `edit_end` — an `Edit_Scope` IS a one-target `Edit_Session`, so it is the same mechanism with a two-line spelling.

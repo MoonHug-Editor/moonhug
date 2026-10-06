@@ -11,9 +11,9 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
-import "../engine/catalog"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:host/catalog"
 
 @(test)
 test_asset_catalog_round_trip :: proc(t: ^testing.T) {

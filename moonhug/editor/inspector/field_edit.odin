@@ -19,8 +19,8 @@ package inspector
 
 import "core:slice"
 import im "moonhug:external/odin-imgui"
-import engine "../../engine"
-import "../undo"
+import core "moonhug:host/core"
+import undo "moonhug:editor/undo"
 
 // An in-flight row edit. Zero value means "not editing", and every proc below
 // tolerates that.
@@ -169,7 +169,7 @@ _field_edit_capture_start :: proc(field_ptr: rawptr, field_tid: typeid, before_j
 		// Decode into a scratch of the field's own type, so the start image is
 		// the value as it was before this frame's write.
 		scratch: [FIELD_EDIT_START_MAX]byte
-		if undo.write_json_value(rawptr(&scratch), field_tid, before_json, nil) {
+		if undo.write_json_value(rawptr(&scratch), field_tid, before_json, {}) {
 			copy(_field_edit.start[:n], scratch[:n])
 			_field_edit.start_len = n
 			return
@@ -196,13 +196,13 @@ _rollback: _Rollback
 @(private = "file")
 _rollback_to_before :: proc(user: rawptr) {
 	if _rollback.field_ptr == nil || _rollback.before == nil do return
-	undo.write_json_value(_rollback.field_ptr, _rollback.field_tid, _rollback.before, nil)
+	undo.write_json_value(_rollback.field_ptr, _rollback.field_tid, _rollback.before, {})
 }
 
 @(private = "file")
 _rollback_to_after :: proc(user: rawptr) {
 	if _rollback.field_ptr == nil || _rollback.after == nil do return
-	undo.write_json_value(_rollback.field_ptr, _rollback.field_tid, _rollback.after, nil)
+	undo.write_json_value(_rollback.field_ptr, _rollback.field_tid, _rollback.after, {})
 }
 
 // Closes the transaction, recording one grouped action for every object whose
@@ -459,11 +459,11 @@ _changed_since :: proc(field_ptr: rawptr, tid: typeid, before: []byte) -> bool {
 _peer_record_override :: proc(peer: Multi_Peer, ptr: rawptr, tid: typeid, property_path: string) {
 	if peer.nested_host == {} || peer.nested_lid == 0 do return
 	if property_path == "" || ptr == nil do return
-	prev_host := engine.inspector_set_nested_host(peer.nested_host)
-	prev_lid := engine.inspector_set_nested_local_id(peer.nested_lid)
+	prev_host := core.inspector_set_nested_host(peer.nested_host)
+	prev_lid := core.inspector_set_nested_local_id(peer.nested_lid)
 	record_nested_override(ptr, tid, property_path, true)
-	engine.inspector_set_nested_local_id(prev_lid)
-	engine.inspector_set_nested_host(prev_host)
+	core.inspector_set_nested_local_id(prev_lid)
+	core.inspector_set_nested_host(prev_host)
 }
 
 // For rows that write their peers themselves (the RectTransform inspector's
@@ -531,7 +531,7 @@ field_edit_apply_to_peers :: proc(field_ptr: rawptr, field_tid: typeid, offset: 
 // memory (string, dynamic array, a Ref with a resolved handle) gives each peer
 // its OWN copy rather than a shared backing pointer.
 @(private = "file")
-_write_value :: proc(dst, src: rawptr, tid: typeid, scene: ^engine.Scene) {
+_write_value :: proc(dst, src: rawptr, tid: typeid, scene: core.Scene_Ref) {
 	json_bytes := undo.capture_json(src, tid)
 	if json_bytes == nil do return
 	defer delete(json_bytes)

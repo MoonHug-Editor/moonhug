@@ -126,7 +126,7 @@ The check compares a shader against its own source only — if these ever gain
 `#include`s, it needs to learn about them.
 
 The `.glsl` ASSET importer runs the same two tools with different flags
-(`engine_editor/asset_pipeline/importer_shader.odin` adds `--reflect` for
+(`plugins/engine/editor/importers/importer_shader.odin` adds `--reflect` for
 binding indices). They stay separate: same tools, different output contracts.
 
 ## Derived data

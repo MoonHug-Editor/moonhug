@@ -1,15 +1,16 @@
 package editor
 
 import "base:runtime"
-import gfx "../engine/gfx"
-import input "../engine/input"
+import gfx "moonhug:host/gfx"
+import input "moonhug:host/input"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import "core:math"
 import "core:math/linalg"
-import "../engine"
 import "inspector"
-import "moonhug:engine/gizmos"
+import core "moonhug:host/core"
+import "moonhug:host/gizmos"
+import "moonhug:editor/viewport"
 import "core:strings"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -79,7 +80,7 @@ scene_set_2d :: proc(on: bool) {
 // (so orbit/pan drags never select). Set in draw_scene_view / handle_scene_input.
 _scene_img_min: im.Vec2
 // The view the scene image was last rendered with: labels project through it.
-_scene_view_last: engine.Render_View
+_scene_view_last: core.Render_View
 _scene_click_pos: im.Vec2
 _scene_click_pending: bool
 
@@ -90,7 +91,7 @@ _scene_click_pending: bool
 _band_active: bool
 _band_anchor: im.Vec2 // screen coords
 _band_additive: bool  // cmd/ctrl held at band start: adds to the base set
-_band_base: [dynamic]engine.Transform_Handle // selection at band start
+_band_base: [dynamic]core.Transform_Handle // selection at band start
 
 scene_band_selecting :: proc() -> bool {
 	return _band_active
@@ -133,7 +134,7 @@ init_scene_view :: proc() {
 }
 
 shutdown_scene_view :: proc() {
-	gizmo_shutdown()
+	viewport.tools_shutdown()
 	_band_shutdown()
 	delete(_pick_menu)
 	_pick_menu = nil
@@ -222,13 +223,12 @@ edit_frame_selected_menu :: proc() {
 
 scene_frame_selected :: proc() {
 	// Union over ALL selected objects (Unity frames the whole selection).
-	w := engine.ctx_world()
 	first := true
 	cmin, cmax: [3]f32
-	quads := drawn_quads(scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1)))
+	view := scene_render_view(max(_scene_view_size.x, 1), max(_scene_view_size.y, 1))
 	for h in sel_scene_items() {
-		if !engine.pool_valid(&w.transforms, engine.Handle(h)) do continue
-		c, r := _selection_bounds(h, quads)
+		c, r, ok := viewport.object_bounds(view, h)
+		if !ok do continue
 		lo := c - r
 		hi := c + r
 		if first {
@@ -270,7 +270,7 @@ _update_frame_tween :: proc(dt: f32) {
 // degrees clockwise so it reads top to bottom with the glyph tops facing
 // right: imgui has no rotated text of its own.
 @(private)
-_draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: engine.Gizmo_Label) {
+_draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: core.Gizmo_Label) {
 	c := strings.clone_to_cstring(l.text, context.temp_allocator)
 	size := im.CalcTextSize(c)
 	if !l.rotated {
@@ -305,127 +305,6 @@ _draw_handle_label :: proc(dl: ^im.DrawList, p: im.Vec2, l: engine.Gizmo_Label) 
 	draw(dl, font, baked, origin, size.y, l.text, im.ColorConvertFloat4ToU32(l.color))
 }
 
-// UI bounds: a Canvas frames its whole rect, a RectTransform its resolved
-// corners in canvas (world) space — the Transform position of a UI node means
-// nothing, so framing it would go to the origin.
-_ui_bounds :: proc(tH: engine.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool) {
-	corners: [4][3]f32
-	if _, cv := engine.transform_get_comp(tH, engine.Canvas); cv != nil {
-		root, xform, _ := engine.canvas_placement(tH, engine.canvas_game_viewport())
-		corners = engine.rect_corners(root, xform)
-	} else if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt != nil {
-		canvas := engine.canvas_of(tH)
-		if canvas == {} do return {}, 0, false
-		nodes := make([dynamic]engine.Node_Rect, context.temp_allocator)
-		engine.canvas_resolve_placed(canvas, &nodes)
-		found := false
-		for n in nodes {
-			if n.tH == tH {
-				corners = engine.rect_corners(n.rect, n.xform)
-				found = true
-				break
-			}
-		}
-		if !found do return {}, 0, false
-	} else {
-		return {}, 0, false
-	}
-	lo, hi := corners[0], corners[0]
-	for c in corners[1:] {
-		lo = {min(lo.x, c.x), min(lo.y, c.y), min(lo.z, c.z)}
-		hi = {max(hi.x, c.x), max(hi.y, c.y), max(hi.z, c.z)}
-	}
-	return (lo + hi) * 0.5, max(linalg.length(hi - lo) * 0.5, 0.1), true
-}
-
-// World bounds of a skinned mesh, for the selection shapes below.
-//
-// A skinned mesh is posed straight into WORLD space
-// (component_SkinnedMeshRenderer.odin), so its box is axis-aligned and takes
-// no model matrix. The MeshFilter path below is wrong for one twice over: the
-// mesh aabb is the BIND pose in the rig's own space, and pushing it through
-// the owner's transform makes a box that swings with the animated root while
-// the character deforms independently inside it — which reads as a shaky box
-// at a strange angle.
-//
-// nil when the renderer has never been skinned: there is no pose to bound yet,
-// and the callers fall through to the shapes they already drew.
-@(private = "file")
-_skinned_world_aabb :: proc(tH: engine.Transform_Handle) -> (lo, hi: [3]f32, ok: bool) {
-	_, smr := engine.transform_get_comp(tH, engine.SkinnedMeshRenderer)
-	if smr == nil do return {}, {}, false
-	return engine.skinned_mesh_world_bounds(smr)
-}
-
-// Bounding sphere of the selection: skinned mesh from its posed world bounds,
-// mesh AABB through the world transform, the quads a package renderer draws
-// (`quads` is drawn_quads), or a default radius around the position
-// (mirrors the shapes draw_selection_outline draws).
-_selection_bounds :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) -> (center: [3]f32, radius: f32) {
-	if c, r, ok := _ui_bounds(tH); ok do return c, r
-	tw := engine.transform_world(tH)
-	center = tw.position
-	radius = 1.5
-
-	vmin :: proc(a, b: [3]f32) -> [3]f32 {return {min(a.x, b.x), min(a.y, b.y), min(a.z, b.z)}}
-	vmax :: proc(a, b: [3]f32) -> [3]f32 {return {max(a.x, b.x), max(a.y, b.y), max(a.z, b.z)}}
-
-	// Before the MeshFilter branch: a skinned character carries both, and only
-	// this one describes where it currently is.
-	if lo, hi, ok := _skinned_world_aabb(tH); ok {
-		center = (lo + hi) * 0.5
-		radius = max(linalg.length(hi - lo) * 0.5, 0.1)
-		return
-	}
-
-	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
-	if mf != nil && mf.mesh != {} {
-		if mesh, ok := engine.mesh_load_filter(mf); ok {
-			model := engine.trs_matrix(tw.position, tw.rotation, tw.scale)
-			lo, hi := mesh.aabb_min, mesh.aabb_max
-			cmin, cmax: [3]f32
-			for i in 0 ..< 8 {
-				local := [4]f32{
-					i & 1 == 0 ? lo.x : hi.x,
-					i & 2 == 0 ? lo.y : hi.y,
-					i & 4 == 0 ? lo.z : hi.z,
-					1,
-				}
-				p := (model * local).xyz
-				cmin = i == 0 ? p : vmin(cmin, p)
-				cmax = i == 0 ? p : vmax(cmax, p)
-			}
-			center = (cmin + cmax) * 0.5
-			radius = max(linalg.length(cmax - cmin) * 0.5, 0.1)
-			return
-		}
-	}
-
-	if n, _, lo, hi := _owner_quads(tH, quads); n > 0 {
-		center = (lo + hi) * 0.5
-		radius = max(linalg.length(hi - lo) * 0.5, 0.1)
-	}
-	return
-}
-
-// The quads `tH`'s own renderers draw, from drawn_quads: how many, the
-// first, and the world box around all of them.
-_owner_quads :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) -> (count: int, first: [4][3]f32, lo, hi: [3]f32) {
-	for i in quads.by_owner[tH] or_else nil {
-		q := quads.all[i].variant.(engine.Draw_Quad)
-		if count == 0 {
-			first = q.corners
-			lo, hi = q.corners[0], q.corners[0]
-		}
-		for p in q.corners {
-			lo = linalg.min(lo, p)
-			hi = linalg.max(hi, p)
-		}
-		count += 1
-	}
-	return
-}
-
 // Half the visible height at the anchor: what the perspective view shows at
 // scene_cam_dist, and the orthographic view's half height.
 scene_cam_half_height :: proc() -> f32 {
@@ -433,7 +312,7 @@ scene_cam_half_height :: proc() -> f32 {
 }
 
 // The scene view's Render_View — also the basis for picking rays later.
-scene_render_view :: proc(w, h: f32) -> engine.Render_View {
+scene_render_view :: proc(w, h: f32) -> core.Render_View {
 	view := linalg.matrix4_look_at_f32(scene_cam_pos, scene_cam_target, {0, 1, 0})
 	aspect := w / max(h, 1)
 	proj: matrix[4, 4]f32
@@ -446,7 +325,7 @@ scene_render_view :: proc(w, h: f32) -> engine.Render_View {
 	} else {
 		proj = gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
 	}
-	return engine.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
+	return core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
 }
 
 render_scene_rt :: proc(w, h: i32) {
@@ -459,9 +338,7 @@ render_scene_rt :: proc(w, h: i32) {
 	draw_grid()
 	draw_axis_lines()
 
-	commands := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(view, &commands)
-	engine.render_execute(view, commands[:])
+	viewport.render(view)
 
 	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles, the
 	// transform gizmo and the gizmo hooks before this render. The next pass reads the view's size
@@ -471,54 +348,8 @@ render_scene_rt :: proc(w, h: i32) {
 	gizmos.set_view(view)
 	_scene_view_last = view
 	// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
-	gizmos.draw(scene_gizmo_channels())
+	gizmos.draw(gizmos.scene_gizmo_channels())
 	gfx.pass_end()
-}
-
-// Orange wireframe on the selected object: mesh → its local AABB edges
-// through the world transform; a package renderer → the quad it draws (a
-// sprite), or the box around its quads when it draws several (particles);
-// neither → a small axis cross at the position. `quads` is drawn_quads.
-// A UI node gets the cross: its rect is its selection shape, and the rect
-// tool draws that.
-//
-// A SKINNED mesh deliberately gets no box. Its mesh aabb is the bind pose in
-// the rig's own space, so the box below swings with the animated root while
-// the character deforms independently inside it. The box is a stand-in for a
-// silhouette outline, which is what an editor draws here when it can, and a
-// box at the wrong angle is further from that than nothing — the transform
-// gizmo and the axis cross still mark the selection. `_selection_bounds` does
-// use the posed world bounds, so framing the selection still frames the
-// character where it actually is.
-draw_selection_outline :: proc(tH: engine.Transform_Handle, quads: Drawn_Quads) {
-	gizmos.with_color({1, 0.6, 0.1, 1})
-	tw := engine.transform_world(tH)
-
-	_, skinned := engine.transform_get_comp(tH, engine.SkinnedMeshRenderer)
-
-	_, mf := engine.transform_get_comp(tH, engine.MeshFilter)
-	if skinned == nil && mf != nil && mf.mesh != {} {
-		if mesh, ok := engine.mesh_load_filter(mf); ok {
-			gizmos.in_local_space(tH)
-			lo, hi := mesh.aabb_min, mesh.aabb_max
-			gizmos.wire_box((lo + hi) * 0.5, hi - lo)
-			return
-		}
-	}
-
-	if _, rt := engine.transform_get_comp(tH, engine.RectTransform); rt == nil {
-		n, first, lo, hi := _owner_quads(tH, quads)
-		if n == 1 {
-			gizmos.wire_quad(first)
-			return
-		}
-		if n > 1 {
-			gizmos.wire_box((lo + hi) * 0.5, hi - lo)
-			return
-		}
-	}
-
-	gizmos.line_cross(tw.position, 0.8)
 }
 
 // Scene grid: per-plane toggles + cell layout, edited via the Grid overlay
@@ -622,7 +453,7 @@ draw_scene_view :: proc() {
 	// A star on the tab while the active scene has unsaved edits. Only the
 	// text after ### is the window id, so the label can change freely.
 	scene_title: cstring = icons.TITLE_SCENE
-	if active := engine.sm_scene_get_active(); active != nil && active.dirty {
+	if viewport.dirty() {
 		scene_title = icons.ICON_MD_LANDSCAPE + " Scene *###Scene"
 	}
 	open := im.Begin(scene_title, &menu.show_scene, {.NoCollapse, .NoScrollbar, .NoScrollWithMouse})
@@ -654,7 +485,7 @@ draw_scene_view :: proc() {
 			// Gizmo labels (anchor percentages and such) over the image,
 			// shadowed so they read on any background.
 			dl := im.GetWindowDrawList()
-			for l in gizmos.labels(scene_gizmo_channels()) {
+			for l in gizmos.labels(gizmos.scene_gizmo_channels()) {
 				px, ok := gizmos.helper_project_in(_scene_view_last, l.pos)
 				if !ok do continue
 				_draw_handle_label(dl, _scene_img_min + px + l.offset_px, l)
@@ -692,13 +523,13 @@ CONTEXT_CLICK_SLOP_PX :: f32(3)
 @(private = "file") _ctx_click_pending: bool
 @(private = "file") _ctx_click_pos: [2]f32 // scene-image pixels at the press
 @(private = "file") _ctx_click_travel: f32
-@(private = "file") _ctx_menu_target: engine.Transform_Handle // {} = empty space
+@(private = "file") _ctx_menu_target: core.Transform_Handle // {} = empty space
 
 @(private = "file")
-_scene_context_menu_open :: proc(view: engine.Render_View, px, py: f32) {
-	tH, hit := scene_view_pick(view, px, py)
+_scene_context_menu_open :: proc(view: core.Render_View, px, py: f32) {
+	tH, hit := viewport.pick(view, px, py)
 	_ctx_menu_target = tH if hit else {}
-	if hit && !sel_scene_is(tH) do engine.inspector_request_select(tH)
+	if hit && !sel_scene_is(tH) do core.inspector_request_select(tH)
 	im.OpenPopup("##scene_context_menu")
 }
 
@@ -706,8 +537,7 @@ _scene_context_menu_open :: proc(view: engine.Render_View, px, py: f32) {
 _draw_scene_context_menu :: proc() {
 	if !im.BeginPopup("##scene_context_menu") do return
 	defer im.EndPopup()
-	w := engine.ctx_world()
-	if _ctx_menu_target != {} && engine.pool_valid(&w.transforms, engine.Handle(_ctx_menu_target)) {
+	if _, alive := inspector.object_owner_of(core.Handle(_ctx_menu_target)); _ctx_menu_target != {} && alive {
 		menu.draw_menu_sections({
 			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
@@ -728,26 +558,24 @@ _draw_scene_context_menu :: proc() {
 // open.
 
 @(private = "file")
-_pick_menu: [dynamic]engine.Transform_Handle // cross-frame: default allocator
+_pick_menu: [dynamic]core.Transform_Handle // cross-frame: default allocator
 
 @(private = "file")
-_pick_menu_open :: proc(view: engine.Render_View, px, py: f32) {
-	if _pick_menu == nil do _pick_menu = make([dynamic]engine.Transform_Handle, runtime.default_allocator())
+_pick_menu_open :: proc(view: core.Render_View, px, py: f32) {
+	if _pick_menu == nil do _pick_menu = make([dynamic]core.Transform_Handle, runtime.default_allocator())
 	clear(&_pick_menu)
-	for h in scene_view_pick_all(view, px, py) do append(&_pick_menu, h.tH)
+	for h in viewport.pick_all(view, px, py) do append(&_pick_menu, h)
 	if len(_pick_menu) > 0 do im.OpenPopup("##scene_pick_menu")
 }
 
 @(private = "file")
 _draw_pick_menu :: proc() {
 	if !im.BeginPopup("##scene_pick_menu") do return
-	w := engine.ctx_world()
 	for h in _pick_menu {
-		t := engine.pool_get(&w.transforms, engine.Handle(h))
-		if t == nil do continue // gone since the click
+		if _, alive := inspector.object_owner_of(core.Handle(h)); !alive do continue // gone since the click
 		im.PushIDInt(i32(h.index))
-		if im.MenuItem(strings.clone_to_cstring(t.name, context.temp_allocator)) {
-			engine.inspector_request_select(h)
+		if im.MenuItem(strings.clone_to_cstring(inspector.object_name(h), context.temp_allocator)) {
+			core.inspector_request_select(h)
 		}
 		im.PopID()
 	}
@@ -767,7 +595,7 @@ _update_rubber_band :: proc() {
 		view := scene_render_view(f32(scene_rt.width), f32(scene_rt.height))
 		vmin := [2]f32{rmin.x - _scene_img_min.x, rmin.y - _scene_img_min.y}
 		vmax := [2]f32{rmax.x - _scene_img_min.x, rmax.y - _scene_img_min.y}
-		hits := scene_view_band_query(view, vmin, vmax)
+		hits := viewport.band_query(view, vmin, vmax)
 		sel_scene_clear()
 		if _band_additive {
 			for h in _band_base do sel_scene_add(h)
@@ -785,10 +613,10 @@ _update_rubber_band :: proc() {
 // flythrough's WASD). Widgets set their own tooltips, so no attribute tooltip.
 @(scene_overlay={id="Tools", order=0})
 draw_tools_overlay :: proc(vertical: bool) {
-	mode_button :: proc(icon: cstring, tooltip: cstring, mode: Gizmo_Mode, vertical: bool, first := false) {
+	mode_button :: proc(icon: cstring, tooltip: cstring, mode: viewport.Gizmo_Mode, vertical: bool, first := false) {
 		if !vertical && !first do im.SameLine()
-		if overlay_tool_button(icon, tooltip, gizmo_mode == mode) {
-			gizmo_mode = mode
+		if overlay_tool_button(icon, tooltip, viewport.gizmo_mode == mode) {
+			viewport.gizmo_mode = mode
 		}
 	}
 	mode_button(icons.ICON_MD_ARROW_SELECTOR, "Picker (Q)", .Picker, vertical, first = true)
@@ -816,23 +644,23 @@ draw_pivot_overlay :: proc(vertical: bool) {
 	// Vertical dock: icon-only square buttons (the words won't fit the column).
 	pivot_label: cstring
 	if vertical {
-		pivot_label = gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN : icons.ICON_MD_CENTER_FOCUS
+		pivot_label = viewport.gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN : icons.ICON_MD_CENTER_FOCUS
 	} else {
-		pivot_label = gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN + " Pivot" : icons.ICON_MD_CENTER_FOCUS + "Center"
+		pivot_label = viewport.gizmo_pivot == .Pivot ? icons.ICON_MD_TRIP_ORIGIN + " Pivot" : icons.ICON_MD_CENTER_FOCUS + "Center"
 	}
 	if overlay_tool_button(pivot_label, "Gizmo position: active object's pivot vs the selection center", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
-		gizmo_pivot = gizmo_pivot == .Pivot ? .Center : .Pivot
+		viewport.gizmo_pivot = viewport.gizmo_pivot == .Pivot ? .Center : .Pivot
 	}
 
 	if !vertical do im.SameLine()
 	label: cstring
 	if vertical {
-		label = gizmo_space == .Global ? icons.ICON_MD_PUBLIC : icons.ICON_MD_DEPLOYED_CODE
+		label = viewport.gizmo_space == .Global ? icons.ICON_MD_PUBLIC : icons.ICON_MD_DEPLOYED_CODE
 	} else {
-		label = gizmo_space == .Global ? icons.ICON_MD_PUBLIC + " World" : icons.ICON_MD_DEPLOYED_CODE + " Local"
+		label = viewport.gizmo_space == .Global ? icons.ICON_MD_PUBLIC + " World" : icons.ICON_MD_DEPLOYED_CODE + " Local"
 	}
 	if overlay_tool_button(label, "Gizmo orientation: world axes vs the object's axes (scale is always local)", false, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
-		gizmo_space = gizmo_space == .Global ? .Local : .Global
+		viewport.gizmo_space = viewport.gizmo_space == .Global ? .Local : .Global
 	}
 }
 
@@ -1042,18 +870,18 @@ handle_scene_input :: proc() {
 	// Gizmo mode shortcuts (Unity's Q/W/E/R/T) — not during flythrough, whose
 	// WASDQE movement owns these keys.
 	if !rmb_down {
-		if im.IsKeyPressed(.Q) do gizmo_mode = .Picker
-		if im.IsKeyPressed(.W) do gizmo_mode = .Translate
-		if im.IsKeyPressed(.E) do gizmo_mode = .Rotate
-		if im.IsKeyPressed(.R) do gizmo_mode = .Scale
-		if im.IsKeyPressed(.T) do gizmo_mode = .Handles
+		if im.IsKeyPressed(.Q) do viewport.gizmo_mode = .Picker
+		if im.IsKeyPressed(.W) do viewport.gizmo_mode = .Translate
+		if im.IsKeyPressed(.E) do viewport.gizmo_mode = .Rotate
+		if im.IsKeyPressed(.R) do viewport.gizmo_mode = .Scale
+		if im.IsKeyPressed(.T) do viewport.gizmo_mode = .Handles
 		if im.IsKeyPressed(.F) do scene_frame_selected()
 	}
 
 	// Escape drops the selection (not mid-drag: the drag teardown in
 	// gizmo_tool_frame would leave its undo step open). During a
 	// band it cancels the band and restores the pre-band selection instead.
-	if im.IsKeyPressed(.Escape) && !scene_tools_dragging() {
+	if im.IsKeyPressed(.Escape) && !viewport.tools_dragging() {
 		if _band_active {
 			_band_active = false
 			sel_scene_clear()
@@ -1067,11 +895,11 @@ handle_scene_input :: proc() {
 	// Click-to-pick: LMB press + release within a few pixels (and no Alt —
 	// Alt+LMB orbits; not on the gizmo — grabs must not select-through; and
 	// not on an overlay — button clicks must not pick behind them).
-	if im.IsMouseClicked(.Left) && !alt_down && !scene_tools_consume_mouse() && !overlay_wants_mouse() {
+	if im.IsMouseClicked(.Left) && !alt_down && !viewport.tools_consume_mouse() && !overlay_wants_mouse() {
 		_scene_click_pos = im.GetMousePos()
 		_scene_click_pending = true
 	}
-	if _scene_click_pending && scene_tools_consume_mouse() {
+	if _scene_click_pending && viewport.tools_consume_mouse() {
 		_scene_click_pending = false
 	}
 	// An armed click that travels beyond the click threshold becomes a rubber
@@ -1102,11 +930,11 @@ handle_scene_input :: proc() {
 			// selection (no hierarchy reveal); plain click selects only it.
 			// Clicking empty space clears — unless toggling, where a miss
 			// shouldn't nuke the set being built.
-			if tH, hit := scene_view_pick(view, px, py); hit {
+			if tH, hit := viewport.pick(view, px, py); hit {
 				if cmd {
 					sel_scene_toggle(tH)
 				} else {
-					engine.inspector_request_select(tH)
+					core.inspector_request_select(tH)
 				}
 			} else if !cmd {
 				sel_scene_clear()

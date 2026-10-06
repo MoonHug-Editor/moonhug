@@ -1,6 +1,6 @@
 package sprites
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 @(component={menu="Rendering/SpriteRenderer"})
 @(typ_guid={guid = "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f"})

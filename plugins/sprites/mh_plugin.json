@@ -2,6 +2,6 @@
   "name": "sprites",
   "guid": "eaba9a17-7568-425d-91cd-590bd6578516",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

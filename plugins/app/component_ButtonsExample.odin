@@ -19,8 +19,8 @@ package app
 //                                   show_in_array=false hides per element)
 //   Log State                      (component row -1)
 
-import "moonhug:engine"
-import "moonhug:engine/log"
+import "moonhug:packages/engine"
+import "moonhug:host/log"
 
 @(component={menu="Demo/ButtonsExample"})
 @(typ_guid={guid = "c9fc78b6-6022-4723-8dea-6b2544b6480d"})

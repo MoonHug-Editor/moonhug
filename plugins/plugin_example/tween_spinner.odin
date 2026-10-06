@@ -6,8 +6,8 @@ package plugin_example
 // codegen, no import restrictions — composites with children would work the
 // same way (`children: [dynamic]tween.Node_Handle` with json:"-").
 
-import engine "moonhug:engine"
-import log "moonhug:engine/log"
+import engine "moonhug:packages/engine"
+import log "moonhug:host/log"
 import tween "moonhug:packages/tween"
 
 // Eases the subject's Spinner `speed` toward `speed` over `duration` —

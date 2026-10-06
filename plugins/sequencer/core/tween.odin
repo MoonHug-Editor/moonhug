@@ -12,7 +12,7 @@ package sequencer_core
 // self-ticking graph tweens): the two may unify later, and the union +
 // dispatch is the seam that keeps both directions open.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // When a to-style tween's captured `from` refreshes. The capture's natural
 // lifetime is the PERFORMANCE: .Play captures once per play session — kept

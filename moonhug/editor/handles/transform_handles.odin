@@ -18,8 +18,8 @@ package handles
 
 import "core:math"
 import "core:math/linalg"
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import core "moonhug:host/core"
+import "moonhug:host/gizmos"
 
 // Axis colors: X red, Y green, Z blue.
 COLOR_AXES :: [3][4]f32{
@@ -341,7 +341,7 @@ _cube :: proc(center: [3]f32, axes: [3][3]f32, r: f32) {
 // Parameter of the point on the line (origin + s*axis) nearest to `ray`.
 // 0 when the ray runs along the line.
 @(private = "file")
-_closest_axis_param :: proc(origin, axis: [3]f32, ray: engine.Ray) -> f32 {
+_closest_axis_param :: proc(origin, axis: [3]f32, ray: core.Ray) -> f32 {
 	w0 := origin - ray.origin
 	a := linalg.dot(axis, axis)
 	b := linalg.dot(axis, ray.direction)
@@ -355,7 +355,7 @@ _closest_axis_param :: proc(origin, axis: [3]f32, ray: engine.Ray) -> f32 {
 
 // The unit direction from `origin` to where the ray meets the plane.
 @(private = "file")
-_ray_plane_dir :: proc(ray: engine.Ray, origin, n: [3]f32) -> ([3]f32, bool) {
+_ray_plane_dir :: proc(ray: core.Ray, origin, n: [3]f32) -> ([3]f32, bool) {
 	hit, _, ok := _ray_plane_ahead(ray, origin, n)
 	if !ok do return {}, false
 	v := hit - origin

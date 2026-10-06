@@ -1,11 +1,12 @@
 package editor
 
-import gfx "../engine/gfx"
+import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
-import "../engine"
-import "moonhug:engine/gizmos"
-import "../engine/input"
+import core "moonhug:host/core"
+import "moonhug:editor/viewport"
+import "moonhug:host/gizmos"
+import "moonhug:host/input"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 
@@ -133,10 +134,10 @@ shutdown_game_view :: proc() {
 // The channels the game view draws: gizmos and icons recorded with its camera
 // (.Editor_Game) with its Gizmos toggle, gameplay shapes (.Game) with the
 // toggle or debug drawing on.
-game_gizmo_channels :: proc() -> bit_set[engine.Gizmo_Channel] {
-	channels: bit_set[engine.Gizmo_Channel]
+game_gizmo_channels :: proc() -> bit_set[core.Gizmo_Channel] {
+	channels: bit_set[core.Gizmo_Channel]
 	if game_gizmos do channels += {.Game, .Editor_Game}
-	if engine.debug_draw_enabled do channels += {.Game}
+	if viewport.debug_draw() do channels += {.Game}
 	return channels
 }
 
@@ -144,7 +145,7 @@ game_gizmo_channels :: proc() -> bit_set[engine.Gizmo_Channel] {
 // view `v` into the render target's pixels, scaled onto the image at
 // `img_min` sized `img_size` (zoom and letterboxing), plus its own screen
 // offset. ok=false behind the camera or off the image.
-game_label_pos :: proc(v: engine.Render_View, img_min, img_size: [2]f32, l: engine.Gizmo_Label) -> ([2]f32, bool) {
+game_label_pos :: proc(v: core.Render_View, img_min, img_size: [2]f32, l: core.Gizmo_Label) -> ([2]f32, bool) {
 	px, ok := gizmos.helper_project_in(v, l.pos)
 	if !ok do return {}, false
 	p := img_min + px * (img_size / [2]f32{max(v.width, 1), max(v.height, 1)})
@@ -155,9 +156,8 @@ game_label_pos :: proc(v: engine.Render_View, img_min, img_size: [2]f32, l: engi
 render_game_rt :: proc(w, h: i32) -> bool {
 	if w < 1 || h < 1 do return false
 	gfx.rt_resize(game_rt, w, h)
-	had_camera := engine.camera_active() != nil
 	// Begins the pass (black clear when no camera) and leaves it open.
-	engine.render_world_cameras(game_rt)
+	had_camera := viewport.render_game(game_rt)
 	// What the gizmo pass recorded this frame (gizmo_pass.odin): gizmos with
 	// the view menu toggle, gameplay shapes with the toggle or debug drawing on.
 	// Icons draw facing the game camera.

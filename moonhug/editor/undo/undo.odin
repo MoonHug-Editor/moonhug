@@ -1,14 +1,12 @@
 package undo
 
 import "core:encoding/json"
-import "core:encoding/uuid"
 import "core:fmt"
-import "core:os"
 import "core:slice"
 import "core:strings"
 import "base:builtin"
-import engine "../../engine"
-import "../../engine/log"
+import core "moonhug:host/core"
+import "moonhug:host/log"
 
 MAX_ENTRIES :: 128
 
@@ -19,30 +17,8 @@ Owner_Kind :: enum {
 	Asset, // serialized asset document (.mat/.asset), identified by asset guid
 }
 
-// Scene identity that survives scene reloads: the pointer is the fast path
-// while the scene stays loaded; the asset guid re-finds the reloaded scene
-// afterwards (empty for never-saved scenes — those can't outlive an unload,
-// purge_* removes their entries).
-// A scene as an undo entry remembers it: its session id, which an in-place
-// reload (Stop after Play, revert) keeps.
-// - Not a pointer: a reload frees the Scene struct, and a stale pointer can
-//   match another scene allocated at the same address.
-// - Not the asset guid: the same file can be loaded twice (Open Scene
-//   Additive), and an unsaved scene has none.
-// Every path that replaces a scene with a NEW one (open, nested edit, unload)
-// purges its entries first, so nothing needs to find a scene across that.
-Scene_Ref :: struct {
-	id: u32, // engine.Scene.session_id
-}
-
-scene_ref :: proc(s: ^engine.Scene) -> Scene_Ref {
-	if s == nil do return {}
-	return Scene_Ref{id = s.session_id}
-}
-
-resolve_scene :: proc(r: Scene_Ref) -> ^engine.Scene {
-	return engine.sm_scene_find_by_session_id(r.id)
-}
+// The scene identity an undo entry records (core.Scene_Ref: the session id).
+Scene_Ref :: core.Scene_Ref
 
 // Which document of an asset an .Asset target edits: the asset's own file
 // (.mat, .asset) or its import settings (the .meta, committed by Apply).
@@ -54,103 +30,103 @@ Doc_Kind :: enum u8 {
 Property_Target :: struct {
 	kind:       Owner_Kind,
 	scene:      Scene_Ref,
-	local_id:   engine.Local_ID,
-	handle:     engine.Handle,
+	local_id:   core.Local_ID,
+	handle:     core.Handle,
 	offset:     u32,
 	type_id:    typeid,
 	raw_ptr:    rawptr,
-	asset_guid: engine.Asset_GUID, // .Asset only
+	asset_guid: core.Asset_GUID, // .Asset only
 	asset_doc:  Doc_Kind,          // .Asset only
 }
 
+@(undo_command)
 Value_Command :: struct {
 	target:   Property_Target,
 	old_json: []byte,
 	new_json: []byte,
 }
 
-Reparent_Command :: struct {
-	scene:                Scene_Ref,
-	node_local_id:        engine.Local_ID,
-	old_parent_local_id:  engine.Local_ID,
-	new_parent_local_id:  engine.Local_ID,
-	old_index:            int,
-	new_index:            int,
+apply_Value_Command :: proc(v: ^Value_Command) {
+	_value_apply(v^, v.new_json)
 }
 
-Create_Subtree_Command :: struct {
-	scene:               Scene_Ref,
-	parent_local_id:     engine.Local_ID,
-	root_local_id:       engine.Local_ID,
-	sibling_index:       int,
-	payload:             []byte,
+revert_Value_Command :: proc(v: ^Value_Command) {
+	_value_apply(v^, v.old_json)
 }
 
-Delete_Subtree_Command :: struct {
-	scene:               Scene_Ref,
-	parent_local_id:     engine.Local_ID,
-	root_local_id:       engine.Local_ID,
-	sibling_index:       int,
-	payload:             []byte,
-	// The subtree was PREFAB CONTENT (nested_owned). Restoring it has to put
-	// that back, or the next save would treat the restored rows as a host
-	// addition and emit them into the host file.
-	nested_owned:        bool,
+destroy_Value_Command :: proc(v: ^Value_Command) {
+	delete(v.old_json)
+	delete(v.new_json)
 }
 
-Add_Component_Command :: struct {
-	scene:               Scene_Ref,
-	owner_local_id:      engine.Local_ID,
-	type_key:            engine.TypeKey,
-	comp_local_id:       engine.Local_ID,
-	payload:             []byte,
-	list_index:          int,
+label_Value_Command :: proc(v: ^Value_Command) -> string {
+	switch v.target.kind {
+	case .None:   return "Edit Value"
+	case .Pooled: return v.target.handle.type_key == core.transform_type_key ? "Edit Transform" : "Edit Component"
+	case .Raw:    return "Edit"
+	case .Asset:  return v.target.asset_doc == .Import_Settings ? "Edit Import Settings" : "Edit Asset"
+	}
+	return "Edit Value"
 }
 
-Remove_Component_Command :: struct {
-	scene:               Scene_Ref,
-	owner_local_id:      engine.Local_ID,
-	type_key:            engine.TypeKey,
-	comp_local_id:       engine.Local_ID,
-	payload:             []byte,
-	list_index:          int,
+scenes_Value_Command :: proc(v: ^Value_Command, out: ^[dynamic]core.Scene_Ref) {
+	if v.target.kind == .Pooled do append(out, v.target.scene)
 }
 
-Reorder_Components_Command :: struct {
-	scene:               Scene_Ref,
-	owner_local_id:      engine.Local_ID,
-	old_index:           int,
-	new_index:           int,
+assets_Value_Command :: proc(v: ^Value_Command, out: ^[dynamic]core.Asset_GUID) {
+	if v.target.kind == .Asset do append(out, v.target.asset_guid)
 }
 
-// Removal of a PRESERVED unknown-component record (the component's package
-// isn't compiled in — no type_key, no live pool instance). `payload` is the
-// marshaled record; undo re-stashes it verbatim.
-Remove_Unknown_Component_Command :: struct {
-	scene:               Scene_Ref,
-	owner_local_id:      engine.Local_ID,
-	comp_local_id:       engine.Local_ID,
-	payload:             []byte,
-	list_index:          int,
+describe_Value_Command :: proc(v: ^Value_Command, b: ^strings.Builder, depth: int) {
+	indent := _indent(depth)
+	fmt.sbprintf(b, "%sValue edit\n", indent)
+	_append_target(b, v.target, depth + 1)
+	fmt.sbprintf(b, "%s  old: %s\n", indent, _truncate(string(v.old_json), 512))
+	fmt.sbprintf(b, "%s  new: %s\n", indent, _truncate(string(v.new_json), 512))
 }
 
-Structural_Command :: union {
-	Reparent_Command,
-	Create_Subtree_Command,
-	Delete_Subtree_Command,
-	Add_Component_Command,
-	Remove_Component_Command,
-	Reorder_Components_Command,
-	Remove_Unknown_Component_Command,
-}
-
+@(undo_command)
 Group_Command :: struct {
 	subs: [dynamic]Command,
 }
 
+// Sub-commands apply in order and revert in reverse.
+apply_Group_Command :: proc(v: ^Group_Command) {
+	for i in 0 ..< len(v.subs) {
+		_apply_command(&v.subs[i])
+	}
+}
+
+revert_Group_Command :: proc(v: ^Group_Command) {
+	for i := len(v.subs) - 1; i >= 0; i -= 1 {
+		_revert_command(&v.subs[i])
+	}
+}
+
+destroy_Group_Command :: proc(v: ^Group_Command) {
+	_group_destroy(v)
+}
+
+label_Group_Command :: proc(v: ^Group_Command) -> string {
+	return "Group"
+}
+
+scenes_Group_Command :: proc(v: ^Group_Command, out: ^[dynamic]core.Scene_Ref) {
+	for i in 0 ..< len(v.subs) do _command_scenes(&v.subs[i], out)
+}
+
+assets_Group_Command :: proc(v: ^Group_Command, out: ^[dynamic]core.Asset_GUID) {
+	for i in 0 ..< len(v.subs) do _command_assets(&v.subs[i], out)
+}
+
+describe_Group_Command :: proc(v: ^Group_Command, b: ^strings.Builder, depth: int) {
+	fmt.sbprintf(b, "%sGroup (%d sub-commands)\n", _indent(depth), len(v.subs))
+	for i in 0 ..< len(v.subs) do describe(&v.subs[i], b, depth + 1)
+}
+
 Selection_Scene_Item :: struct {
 	scene:    Scene_Ref,
-	local_id: engine.Local_ID,
+	local_id: core.Local_ID,
 }
 
 // Snapshot of the editor selection (both domains, ordered, last = active).
@@ -159,7 +135,7 @@ Selection_Scene_Item :: struct {
 // sub-asset (a sprite slice).
 Selection_State :: struct {
 	scene: []Selection_Scene_Item,
-	proj:  []engine.PPtr,
+	proj:  []core.PPtr,
 	// While the project holds the selection, the objects the Inspector keeps
 	// showing (the editor's two-inspector layout). Restored with the rest, so
 	// an undo brings back what both panels showed. Not part of equality: it
@@ -170,97 +146,49 @@ Selection_State :: struct {
 // A selection change as its own undo step (Unity model): undo applies
 // `before`, redo applies `after`. Restoration goes through the editor-side
 // hook installed with set_selection_hooks.
+@(undo_command)
 Selection_Command :: struct {
 	before: Selection_State,
 	after:  Selection_State,
 }
 
-// Bookkeeping for the prefab override that a live edit CREATED (see
-// engine.nested_scene_record_override). Paired in a group with the
-// Value_Command that changed the field: undoing the value must also take the
-// override record away, or the field would read as overridden while holding
-// its baseline value. Only ever recorded for a NEW entry — an edit that
-// updated a pre-existing override leaves that override alone on undo.
-// Which way the override record moved, so undo/redo can invert it. An edit
-// that CREATED an override and a Revert that REMOVED one are the same
-// bookkeeping in opposite directions.
-Override_Record_Op :: enum {
-	Created, // apply: record exists   / revert(undo): remove it
-	Removed, // apply: record is gone  / revert(undo): put it back
-	// Structural component edits on a prefab instance. The LIVE component is
-	// created/destroyed by the paired Add_/Remove_Component_Command; these ops
-	// only keep the NestedScene bookkeeping in step, so the edit also survives
-	// the next resolve (which rebuilds the instance from its prefab).
-	Comp_Removed, // apply: removal recorded / undo: retract the removal
-	Comp_Added,   // apply: addition recorded / undo: retract the addition
-	Obj_Removed,  // same, for an OBJECT (transform subtree) the instance lacks
+apply_Selection_Command :: proc(v: ^Selection_Command) {
+	_selection_apply(v.after)
 }
 
-Record_Override_Command :: struct {
-	scene:         Scene_Ref,
-	host_local_id: engine.Local_ID, // NS host transform, resolved on apply
-	target_lid:    engine.Local_ID, // live lid of the overridden row
-	property_path: string,          // owned
-	op:            Override_Record_Op,
-	// .Removed only: the entries Revert deleted, verbatim, so undo restores
-	// them exactly (a revert can clear several paths under one field).
-	removed:       []Removed_Override, // owned
-	// .Comp_Added only: what rebuilding the addition record needs on redo. The
-	// live component is re-created by the paired Add_Component_Command; these
-	// carry the data the NestedScene record itself needs.
-	owner_lid:       engine.Local_ID,
-	comp_type_guid:  string, // owned
-	comp_json:       string, // owned
+revert_Selection_Command :: proc(v: ^Selection_Command) {
+	_selection_apply(v.before)
 }
 
-Removed_Override :: struct {
-	target:        engine.PPtr,
-	property_path: string,     // owned
-	value_json:    []byte,     // owned; the override's value re-marshaled
+destroy_Selection_Command :: proc(v: ^Selection_Command) {
+	selection_state_destroy(&v.before)
+	selection_state_destroy(&v.after)
 }
 
-// One row reverted from the Overrides dropdown. Unlike Record_Override_Command
-// this stands ALONE: the dropdown drops a record without a paired live-world
-// command, so undo has to rebuild the record from a snapshot rather than lean
-// on a Value_/Add_/Remove_ command to restore the world half.
-//
-// Field rows still carry `removed` (the value must come back with the record);
-// structural rows carry the engine snapshot of the record itself.
-Dropdown_Revert_Command :: struct {
-	scene:         Scene_Ref,
-	host_local_id: engine.Local_ID,
-	kind:          engine.Override_Entry_Kind,
-	// Modified_Property
-	target:        engine.PPtr,
-	property_path: string,             // owned
-	removed:       []Removed_Override, // owned
-	// structural kinds
-	snapshot:      engine.Override_Snapshot, // owns its clones
+label_Selection_Command :: proc(v: ^Selection_Command) -> string {
+	return "Select"
 }
 
-// A Prefab Apply (apply_to_prefab): prefab files changed on disk, and the
-// instance's records lost what went into them. Undo writes the old bytes back
-// and restores the old records, redo the new ones. Either way every instance
-// of each prefab then re-resolves (engine.prefab_propagate), so instances in
-// other loaded scenes follow the files too.
-Prefab_Apply_Command :: struct {
-	scene:         Scene_Ref,
-	host_local_id: engine.Local_ID,
-	files:         []engine.Applied_File,  // owned
-	before:        engine.Nested_Records,  // owned
-	after:         engine.Nested_Records,  // owned
+// The scenes the selection names. A selection step is purged with them, but
+// never dirties them (_mark_scenes_dirty skips selection steps).
+scenes_Selection_Command :: proc(v: ^Selection_Command, out: ^[dynamic]core.Scene_Ref) {
+	for it in v.before.scene do append(out, it.scene)
+	for it in v.after.scene do append(out, it.scene)
 }
 
-Command :: union {
-	Value_Command,
-	Structural_Command,
-	Group_Command,
-	Selection_Command,
-	Record_Override_Command,
-	Dropdown_Revert_Command,
-	Prefab_Apply_Command,
+describe_Selection_Command :: proc(v: ^Selection_Command, b: ^strings.Builder, depth: int) {
+	fmt.sbprintf(b, "%sSelection change\n", _indent(depth))
+	_append_selection_state(b, "before", v.before, depth + 1)
+	_append_selection_state(b, "after", v.after, depth + 1)
 }
 
+// Marks a type as an undo command: a struct with apply_<Name>, revert_<Name>,
+// destroy_<Name> and label_<Name> procs in its file, and optional
+// scenes_<Name>, assets_<Name> and describe_<Name>. The prebuild joins every
+// marked type into Command and writes the dispatch
+// (undo_command_generated.odin). A command's package works on its own world
+// and must not import undo, the stack drives it.
+@(extension_point={attribute="undo_command", target="type", fields=""})
 Entry :: struct {
 	label:   string,
 	cmd:     Command,
@@ -329,16 +257,27 @@ is_applying :: proc(s: ^Undo_Stack) -> bool {
 	return s != nil && s.applying
 }
 
+// Where the current stack is kept. The owner of the user context installs it
+// (scene_undo keeps one stack per engine user context). Without it there is
+// no current stack: get returns nil and install does nothing.
+@(private) _stack_slot: proc() -> ^rawptr
+
+set_stack_slot :: proc(fn: proc() -> ^rawptr) {
+	_stack_slot = fn
+}
+
 get :: proc() -> ^Undo_Stack {
-	uc := engine.ctx_get()
-	if uc == nil do return nil
-	return (^Undo_Stack)(uc.undo)
+	if _stack_slot == nil do return nil
+	slot := _stack_slot()
+	if slot == nil do return nil
+	return (^Undo_Stack)(slot^)
 }
 
 install :: proc(s: ^Undo_Stack) {
-	uc := engine.ctx_get()
-	if uc == nil do return
-	uc.undo = rawptr(s)
+	if _stack_slot == nil do return
+	slot := _stack_slot()
+	if slot == nil do return
+	slot^ = rawptr(s)
 }
 
 push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
@@ -368,7 +307,8 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 
 	effective_label := label
 	if effective_label == "" {
-		effective_label = default_label(cmd)
+		c := cmd
+		effective_label = default_label(&c)
 	}
 	append(&s.items, Entry{label = strings.clone(effective_label), cmd = cmd, in_play = s.playing})
 	s.top = len(s.items)
@@ -381,32 +321,18 @@ push :: proc(s: ^Undo_Stack, cmd: Command, label := "") {
 // been unloaded since is skipped by the validity check.
 @(private)
 _mark_scenes_dirty :: proc(cmd: ^Command) {
-	mark :: proc(r: Scene_Ref) {
-		if s := resolve_scene(r); s != nil do s.dirty = true
-	}
-	switch v in cmd {
-	case Value_Command:
-		if v.target.kind == .Pooled do mark(v.target.scene)
-	case Structural_Command:
-		switch sv in v {
-		case Reparent_Command:                 mark(sv.scene)
-		case Create_Subtree_Command:           mark(sv.scene)
-		case Delete_Subtree_Command:           mark(sv.scene)
-		case Add_Component_Command:            mark(sv.scene)
-		case Remove_Component_Command:         mark(sv.scene)
-		case Reorder_Components_Command:       mark(sv.scene)
-		case Remove_Unknown_Component_Command: mark(sv.scene)
-		}
-	case Dropdown_Revert_Command:
-		mark(v.scene)
-	case Prefab_Apply_Command:
-		mark(v.scene)
+	// A selection step names scenes but edits none. A group walks its subs so
+	// that a selection inside it is skipped the same way.
+	#partial switch &v in cmd {
+	case Selection_Command:
+		return
 	case Group_Command:
 		for i in 0 ..< len(v.subs) do _mark_scenes_dirty(&v.subs[i])
-	case Selection_Command:
-	case Record_Override_Command:
-		mark(v.scene)
+		return
 	}
+	refs := make([dynamic]core.Scene_Ref, context.temp_allocator)
+	_command_scenes(cmd, &refs)
+	for r in refs do scene_mark_dirty(r)
 }
 
 jump_to :: proc(s: ^Undo_Stack, target_top: int) -> bool {
@@ -426,43 +352,6 @@ jump_to :: proc(s: ^Undo_Stack, target_top: int) -> bool {
 		if !apply_redo(s) do return false
 	}
 	return true
-}
-
-default_label :: proc(cmd: Command) -> string {
-	switch v in cmd {
-	case Value_Command:
-		switch v.target.kind {
-		case .None:   return "Edit Value"
-		case .Pooled: return v.target.handle.type_key == .Transform ? "Edit Transform" : "Edit Component"
-		case .Raw:    return "Edit"
-		case .Asset:  return v.target.asset_doc == .Import_Settings ? "Edit Import Settings" : "Edit Asset"
-		}
-		return "Edit Value"
-	case Dropdown_Revert_Command:
-		return "Revert Override"
-	case Prefab_Apply_Command:
-		return "Apply Overrides"
-	case Record_Override_Command:
-		// Never the label of a step on its own — it always rides the value
-		// command's group, which supplies the label.
-		return "Prefab Override"
-	case Structural_Command:
-		switch sv in v {
-		case Reparent_Command:           return "Reparent"
-		case Create_Subtree_Command:     return "Create"
-		case Delete_Subtree_Command:     return "Delete"
-		case Add_Component_Command:      return "Add Component"
-		case Remove_Component_Command:   return "Remove Component"
-		case Reorder_Components_Command: return "Reorder Components"
-		case Remove_Unknown_Component_Command: return "Remove Missing Component"
-		}
-		return "Structural"
-	case Group_Command:
-		return "Group"
-	case Selection_Command:
-		return "Select"
-	}
-	return ""
 }
 
 begin_group_command :: proc(s: ^Undo_Stack, label := "") {
@@ -558,7 +447,7 @@ play_end :: proc(s: ^Undo_Stack) {
 		e := &s.items[i]
 		if !e.in_play do continue
 		e.in_play = false
-		if !_command_refs_scene(&e.cmd, nil, true) do continue
+		if !_command_refs_scene(&e.cmd, {}, true) do continue
 		_entry_destroy(e)
 		ordered_remove(&s.items, i)
 		if i < s.top do s.top -= 1
@@ -592,610 +481,9 @@ apply_redo :: proc(s: ^Undo_Stack) -> bool {
 }
 
 @(private)
-_apply_command :: proc(cmd: ^Command) {
-	_mark_scenes_dirty(cmd)
-	switch v in cmd {
-	case Value_Command:
-		_value_apply(v, v.new_json)
-	case Structural_Command:
-		_structural_apply(v)
-	case Group_Command:
-		for i in 0 ..< len(v.subs) {
-			_apply_command(&v.subs[i])
-		}
-	case Selection_Command:
-		_selection_apply(v.after)
-	case Record_Override_Command:
-		// REDO: put the record back the way the original action left it.
-		switch v.op {
-		case .Created:
-			// The value sub-command restored the edited value, so the record
-			// comes back with it.
-			_override_record_reapply(v)
-		case .Removed:
-			_override_record_rerevert(v)
-		case .Comp_Removed:
-			_comp_removal_record(v)
-		case .Comp_Added:
-			_comp_addition_record(v)
-		case .Obj_Removed:
-			_obj_removal_record(v)
-		}
-	case Dropdown_Revert_Command:
-		_dropdown_revert_apply(v) // REDO: drop the record again
-	case Prefab_Apply_Command:
-		_prefab_apply_set(v, true)
-	}
-}
-
-@(private)
-_revert_command :: proc(cmd: ^Command) {
-	_mark_scenes_dirty(cmd)
-	switch v in cmd {
-	case Value_Command:
-		_value_apply(v, v.old_json)
-	case Structural_Command:
-		_structural_revert(v)
-	case Group_Command:
-		for i := len(v.subs) - 1; i >= 0; i -= 1 {
-			_revert_command(&v.subs[i])
-		}
-	case Selection_Command:
-		_selection_apply(v.before)
-	case Record_Override_Command:
-		// UNDO: invert whatever the action did to the record.
-		switch v.op {
-		case .Created:
-			// Drop the override this edit introduced — the paired
-			// Value_Command puts the old value back, so leaving the record
-			// would mark the field overridden while it holds its baseline.
-			_override_record_remove(v)
-		case .Removed:
-			// Undo of a Revert: the value command restores the overridden
-			// value, so the record must come back too.
-			_override_record_restore(v)
-		case .Comp_Removed:
-			// The paired Remove_Component_Command re-created the component;
-			// retract the removal so a resolve keeps it.
-			_comp_removal_retract(v)
-		case .Comp_Added:
-			// The paired Add_Component_Command destroyed the component;
-			// retract the addition record with it.
-			_comp_addition_retract(v)
-		case .Obj_Removed:
-			// The paired Delete_Subtree_Command restored the subtree; retract
-			// the suppression so a resolve keeps it.
-			_obj_removal_retract(v)
-		}
-	case Dropdown_Revert_Command:
-		_dropdown_revert_undo(v)
-	case Prefab_Apply_Command:
-		_prefab_apply_set(v, false)
-	}
-}
-
-@(private)
-_override_host :: proc(v: Record_Override_Command) -> (^engine.Scene, engine.Transform_Handle, bool) {
-	s := resolve_scene(v.scene)
-	if s == nil do return nil, {}, false
-	if h, ok := engine.bimap_get(&s.local_ids, v.host_local_id); ok && h.type_key == .Transform {
-		return s, engine.Transform_Handle(h), true
-	}
-	// A ROOT VARIANT's base content is loaded with lid registration skipped, so
-	// the base root — which IS the scene root — has no bimap entry. Match it
-	// directly rather than failing, or undo of a revert silently does nothing.
-	if rt := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(s.root.handle));
-	   rt != nil && rt.local_id == v.host_local_id {
-		return s, engine.Transform_Handle(s.root.handle), true
-	}
-	return nil, {}, false
-}
-
-// The NS the dropdown's rows came from. Resolved on each apply/undo rather
-// than stored, because a scene reload replaces the NestedScene values.
-@(private)
-_dropdown_revert_ns :: proc(v: Dropdown_Revert_Command) -> (^engine.Scene, ^engine.NestedScene, bool) {
-	s := resolve_scene(v.scene)
-	if s == nil do return nil, nil, false
-	h, ok := engine.bimap_get(&s.local_ids, v.host_local_id)
-	if !ok || h.type_key != .Transform do return nil, nil, false
-	ns := engine.scene_find_nested_scene_for_host(s, engine.Transform_Handle(h))
-	if ns == nil do return nil, nil, false
-	return s, ns, true
-}
-
-// REDO: re-run the revert.
-@(private)
-_dropdown_revert_apply :: proc(v: Dropdown_Revert_Command) {
-	s, ns, ok := _dropdown_revert_ns(v)
-	if !ok do return
-	if v.kind == .Modified_Property {
-		engine.nested_scene_revert_override(s, ns, v.target, v.property_path)
-		return
-	}
-	engine.nested_override_entry_revert(s, ns, engine.Override_Entry{
-		kind     = v.kind,
-		target   = v.snapshot.target,
-		owner    = v.snapshot.owner,
-		local_id = v.snapshot.local_id,
-	})
-}
-
-// UNDO: put the reverted record back. A field row restores its value entries
-// verbatim (a revert can clear several paths under one field); a structural row
-// rebuilds from the engine snapshot.
-@(private)
-_dropdown_revert_undo :: proc(v: Dropdown_Revert_Command) {
-	s, ns, ok := _dropdown_revert_ns(v)
-	if !ok do return
-	if v.kind == .Modified_Property {
-		for r in v.removed {
-			engine.nested_override_restore_field(s, ns, r.target, r.property_path, r.value_json)
-		}
-		return
-	}
-	engine.nested_override_snapshot_restore(ns, v.snapshot)
-}
-
-@(private)
-_command_destroy_dropdown_revert :: proc(v: ^Dropdown_Revert_Command) {
-	delete(v.property_path)
-	discard_override_removal(v.removed)
-	v.removed = nil
-	engine.nested_override_snapshot_destroy(&v.snapshot)
-}
-
-// Records a dropdown revert as its own undo step. `snap` and `removed` transfer
-// ownership — on a stack that is not recording they are freed here.
-record_dropdown_revert :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	kind: engine.Override_Entry_Kind,
-	target: engine.PPtr,
-	property_path: string,
-	removed: []Removed_Override,
-	snap: engine.Override_Snapshot,
-) {
-	snap := snap
-	u := get()
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if u == nil || !u.recording || u.applying || ht == nil {
-		discard_override_removal(removed)
-		engine.nested_override_snapshot_destroy(&snap)
-		return
-	}
-	push(u, Dropdown_Revert_Command{
-		scene         = scene_ref(s),
-		host_local_id = ht.local_id,
-		kind          = kind,
-		target        = target,
-		property_path = strings.clone(property_path),
-		removed       = removed,
-		snapshot      = snap,
-	}, "Revert Override")
-}
-
-// Runs a Prefab Apply (engine.nested_scene_apply_entries) and records it as one
-// undo step: the files it wrote with their bytes before and after, and the
-// instance's records before and after. Returns whether the apply ran.
-apply_to_prefab :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	target_guid: engine.Asset_GUID,
-	entries: []engine.Override_Entry,
-	which: ^map[int]bool = nil,
-) -> bool {
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	ns := engine.scene_find_nested_scene_for_host(s, host_tH)
-	if ht == nil || ns == nil do return false
-	host_lid := ht.local_id
-	before := engine.nested_records_capture(ns)
-	files := make([dynamic]engine.Applied_File)
-	if !engine.nested_scene_apply_entries(s, host_tH, target_guid, entries, which, &files) {
-		engine.nested_records_destroy(&before)
-		engine.applied_files_destroy(files[:])
-		delete(files)
-		return false
-	}
-	// The apply re-resolved the instance, so its record is found again by id.
-	u := get()
-	after_ns := _prefab_apply_ns(scene_ref(s), host_lid)
-	if u == nil || !u.recording || u.applying || after_ns == nil {
-		engine.nested_records_destroy(&before)
-		engine.applied_files_destroy(files[:])
-		delete(files)
-		return true
-	}
-	push(u, Prefab_Apply_Command{
-		scene         = scene_ref(s),
-		host_local_id = host_lid,
-		files         = files[:],
-		before        = before,
-		after         = engine.nested_records_capture(after_ns),
-	})
-	return true
-}
-
-@(private)
-_prefab_apply_ns :: proc(r: Scene_Ref, host_lid: engine.Local_ID) -> ^engine.NestedScene {
-	sc := resolve_scene(r)
-	if sc == nil do return nil
-	h, ok := engine.bimap_get(&sc.local_ids, host_lid)
-	if !ok || h.type_key != .Transform do return nil
-	return engine.scene_find_nested_scene_for_host(sc, engine.Transform_Handle(h))
-}
-
-// Puts one side of a Prefab Apply in place: `after` for redo, the state from
-// before for undo.
-@(private)
-_prefab_apply_set :: proc(v: Prefab_Apply_Command, after: bool) {
-	// A file that changed on disk since the step (edited outside the editor)
-	// is not overwritten: that would lose the change. The step does nothing.
-	for f in v.files {
-		path, ok := engine.asset_db_get_path(uuid.Identifier(f.guid))
-		cur, err := os.read_entire_file(path, context.temp_allocator)
-		expect := after ? f.before : f.after
-		if !ok || err != nil || string(cur) != string(expect) {
-			log.error(fmt.tprintf("undo: %s changed on disk since the Apply, left as it is", path))
-			return
-		}
-	}
-	for f in v.files {
-		if !engine.prefab_file_write(f.guid, after ? f.after : f.before) {
-			log.error(fmt.tprintf("undo: could not write prefab %v", f.guid))
-			return
-		}
-	}
-	if ns := _prefab_apply_ns(v.scene, v.host_local_id); ns != nil {
-		engine.nested_records_restore(ns, after ? v.after : v.before)
-	}
-	for f in v.files do engine.prefab_propagate(f.guid)
-}
-
-@(private)
-_override_record_remove :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_unrecord_override_for_host(s, host, v.target_lid, v.property_path)
-}
-
-@(private)
-_override_record_reapply :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	// Re-record from the live field, which the paired Value_Command has
-	// already restored to the overridden value by now (subs apply in order).
-	ptr, tid, found := engine.nested_scene_find_live_field(s, host, v.target_lid, v.property_path)
-	if !found || ptr == nil do return
-	engine.nested_scene_record_override_for_host(s, host, v.target_lid, v.property_path, ptr, tid)
-}
-
-// Puts back exactly the entries a Revert deleted (captured at revert time).
-@(private)
-_override_record_restore :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	root_ns, _, loc_ok := engine.nested_scene_locate_root_override(s, host, v.target_lid)
-	if !loc_ok || root_ns == nil do return
-	for r in v.removed {
-		engine.nested_scene_restore_override(root_ns, r.target, r.property_path, r.value_json)
-	}
-}
-
-// --- Structural component-edit bookkeeping ------------------------------------
-// The live component is handled by the paired Add_/Remove_Component_Command;
-// these only add or retract the NestedScene record, so the edit survives the
-// next resolve.
-
-@(private)
-_comp_removal_record :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_record_component_removed(s, host, v.target_lid)
-}
-
-@(private)
-_comp_removal_retract :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_unrecord_component_removed(s, host, v.target_lid)
-}
-
-@(private)
-_obj_removal_record :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_record_object_removed(s, host, v.target_lid)
-}
-
-@(private)
-_obj_removal_retract :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_unrecord_object_removed(s, host, v.target_lid)
-}
-
-@(private)
-_comp_addition_record :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	root_ns, owner_target, loc_ok := engine.nested_scene_locate_root_override(s, host, v.owner_lid)
-	if !loc_ok || root_ns == nil do return
-	engine.nested_scene_restore_component_added(
-		root_ns, owner_target, v.target_lid, v.comp_type_guid, v.comp_json,
-	)
-}
-
-@(private)
-_comp_addition_retract :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	engine.nested_scene_unrecord_component_added(s, host, v.target_lid)
-}
-
-// Re-runs the Revert's record removal (redo of a Revert).
-@(private)
-_override_record_rerevert :: proc(v: Record_Override_Command) {
-	s, host, ok := _override_host(v)
-	if !ok do return
-	root_ns, _, loc_ok := engine.nested_scene_locate_root_override(s, host, v.target_lid)
-	if !loc_ok || root_ns == nil do return
-	for r in v.removed {
-		engine.nested_scene_unrecord_override(root_ns, r.target, r.property_path)
-	}
-}
-
-@(private)
 _entry_destroy :: proc(e: ^Entry) {
 	delete(e.label)
 	_command_destroy(&e.cmd)
-}
-
-@(private)
-_command_destroy :: proc(cmd: ^Command) {
-	switch v in cmd {
-	case Value_Command:
-		vc := v
-		delete(vc.old_json)
-		delete(vc.new_json)
-	case Structural_Command:
-		sc := v
-		_structural_destroy(&sc)
-	case Group_Command:
-		gc := v
-		_group_destroy(&gc)
-	case Selection_Command:
-		sel := v
-		selection_state_destroy(&sel.before)
-		selection_state_destroy(&sel.after)
-	case Record_Override_Command:
-		roc := v
-		_command_destroy_override(&roc)
-	case Dropdown_Revert_Command:
-		drc := v
-		_command_destroy_dropdown_revert(&drc)
-	case Prefab_Apply_Command:
-		pac := v
-		engine.applied_files_destroy(pac.files)
-		delete(pac.files)
-		engine.nested_records_destroy(&pac.before)
-		engine.nested_records_destroy(&pac.after)
-	}
-}
-
-// Attaches "this edit created a prefab override" to the undo step that just
-// recorded the value change, so undoing the edit also removes the record (and
-// redo puts it back). Call right after the engine reports created == true.
-//
-// Field edits push their Value_Command standalone rather than inside a
-// transaction, so this FOLDS the top entry and the override bookkeeping into
-// one Group_Command — the two must be inseparable, or a value undo would
-// strand a record marking the field overridden while it holds its baseline.
-record_override_created :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	target_lid: engine.Local_ID,
-	property_path: string,
-) {
-	u := get()
-	if u == nil || !u.recording || u.applying do return
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil do return
-
-	_override_cmd_attach(u, Record_Override_Command{
-		scene         = scene_ref(s),
-		host_local_id = ht.local_id,
-		target_lid    = target_lid,
-		property_path = strings.clone(property_path),
-		op            = .Created,
-	})
-}
-
-// Attaches "this edit removed a prefab-instance component" to the undo step
-// that just recorded the component removal, so undo retracts the removal record
-// along with re-creating the component.
-record_component_removed_on_instance :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	comp_lid: engine.Local_ID,
-) {
-	u := get()
-	if u == nil || !u.recording || u.applying do return
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil do return
-	_override_cmd_attach(u, Record_Override_Command{
-		scene         = scene_ref(s),
-		host_local_id = ht.local_id,
-		target_lid    = comp_lid,
-		op            = .Comp_Removed,
-	})
-}
-
-// Attaches "this edit added a component to a prefab instance" to the undo step
-// that just recorded the component add. `type_guid`/`comp_json` let redo rebuild
-// the NestedScene record for the re-created component.
-record_component_added_on_instance :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	owner_lid: engine.Local_ID,
-	comp_lid: engine.Local_ID,
-	type_guid: string,
-	comp_json: string,
-) {
-	u := get()
-	if u == nil || !u.recording || u.applying do return
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil do return
-	_override_cmd_attach(u, Record_Override_Command{
-		scene          = scene_ref(s),
-		host_local_id  = ht.local_id,
-		target_lid     = comp_lid,
-		op             = .Comp_Added,
-		owner_lid      = owner_lid,
-		comp_type_guid = strings.clone(type_guid),
-		comp_json      = strings.clone(comp_json),
-	})
-}
-
-// Attaches "this delete removed a prefab-instance object" to the undo step
-// that just recorded the subtree deletion, so undo retracts the suppression
-// along with restoring the subtree.
-record_object_removed_on_instance :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	obj_lid: engine.Local_ID,
-) {
-	u := get()
-	if u == nil || !u.recording || u.applying do return
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil do return
-	_override_cmd_attach(u, Record_Override_Command{
-		scene         = scene_ref(s),
-		host_local_id = ht.local_id,
-		target_lid    = obj_lid,
-		op            = .Obj_Removed,
-	})
-}
-
-// Copies the override entries a Revert is about to delete. Call BEFORE
-// nested_scene_revert_override — afterwards they are gone. Hand the result to
-// record_override_removed once the Revert's own undo step has committed.
-// Owned: record_override_removed takes it over, or discard_override_removal
-// frees it.
-override_removal_snapshot :: proc(
-	ns: ^engine.NestedScene,
-	target: engine.PPtr,
-	property_path: string,
-) -> []Removed_Override {
-	targets, paths, values := engine.nested_scene_overrides_covered_by(ns, target, property_path)
-	if len(paths) == 0 do return nil
-	out := make([]Removed_Override, len(paths))
-	for i in 0 ..< len(paths) {
-		out[i] = Removed_Override{
-			target        = targets[i],
-			property_path = strings.clone(paths[i]),
-			value_json    = slice_clone_bytes(values[i]),
-		}
-	}
-	return out
-}
-
-discard_override_removal :: proc(snap: []Removed_Override) {
-	for r in snap {
-		delete(r.property_path)
-		delete(r.value_json)
-	}
-	if snap != nil do delete(snap)
-}
-
-// Attaches a snapshot of Revert-deleted override entries to the undo step that
-// just recorded the Revert's value change, so undoing the Revert restores both
-// the value (its own Value_Command) and the record.
-record_override_removed :: proc(
-	s: ^engine.Scene,
-	host_tH: engine.Transform_Handle,
-	target_lid: engine.Local_ID,
-	property_path: string,
-	snap: []Removed_Override,
-) {
-	if len(snap) == 0 do return
-	u := get()
-	if u == nil || !u.recording || u.applying {
-		discard_override_removal(snap)
-		return
-	}
-	w := engine.ctx_world()
-	ht := engine.pool_get(&w.transforms, engine.Handle(host_tH))
-	if ht == nil {
-		discard_override_removal(snap)
-		return
-	}
-
-	_override_cmd_attach(u, Record_Override_Command{
-		scene         = scene_ref(s),
-		host_local_id = ht.local_id,
-		target_lid    = target_lid,
-		property_path = strings.clone(property_path),
-		op            = .Removed,
-		removed       = snap,
-	})
-}
-
-@(private)
-slice_clone_bytes :: proc(src: []byte) -> []byte {
-	out := make([]byte, len(src))
-	copy(out, src)
-	return out
-}
-
-// Attaches override bookkeeping to the CURRENT undo step. Value edits and the
-// Revert menu both push their Value_Command standalone rather than inside a
-// transaction, so this FOLDS the top entry and the bookkeeping into one
-// Group_Command — the two must be inseparable, or a value undo would leave the
-// record disagreeing with the value it describes.
-@(private)
-_override_cmd_attach :: proc(u: ^Undo_Stack, cmd: Record_Override_Command) {
-	cmd := cmd
-	// Inside a transaction (multi-field edits, gizmo drags): just join it.
-	if len(u.txn_stack) > 0 {
-		g := &u.txn_stack[len(u.txn_stack) - 1]
-		append(&g.subs, Command(cmd))
-		return
-	}
-
-	// Standalone: fold with the value entry that was pushed a moment ago.
-	if u.top <= 0 || u.top > len(u.items) {
-		c := cmd
-		_command_destroy_override(&c)
-		return
-	}
-	e := &u.items[u.top - 1]
-	if grp, is_group := &e.cmd.(Group_Command); is_group {
-		append(&grp.subs, Command(cmd))
-		return
-	}
-	subs := make([dynamic]Command)
-	append(&subs, e.cmd)
-	append(&subs, Command(cmd))
-	e.cmd = Group_Command{subs = subs}
-}
-
-@(private)
-_command_destroy_override :: proc(v: ^Record_Override_Command) {
-	delete(v.property_path)
-	delete(v.comp_type_guid)
-	delete(v.comp_json)
-	for r in v.removed {
-		delete(r.property_path)
-		delete(r.value_json)
-	}
-	if v.removed != nil do delete(v.removed)
 }
 
 @(private)
@@ -1204,24 +492,6 @@ _group_destroy :: proc(g: ^Group_Command) {
 		_command_destroy(&g.subs[i])
 	}
 	delete(g.subs)
-}
-
-@(private)
-_structural_destroy :: proc(sc: ^Structural_Command) {
-	switch v in sc {
-	case Reparent_Command:
-	case Create_Subtree_Command:
-		if v.payload != nil do delete(v.payload)
-	case Delete_Subtree_Command:
-		if v.payload != nil do delete(v.payload)
-	case Add_Component_Command:
-		if v.payload != nil do delete(v.payload)
-	case Remove_Component_Command:
-		if v.payload != nil do delete(v.payload)
-	case Reorder_Components_Command:
-	case Remove_Unknown_Component_Command:
-		if v.payload != nil do delete(v.payload)
-	}
 }
 
 resolve_target_ptr :: proc(t: Property_Target) -> rawptr {
@@ -1241,55 +511,30 @@ resolve_target_ptr :: proc(t: Property_Target) -> rawptr {
 	return nil
 }
 
-resolve_pooled_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool) {
-	if t.kind != .Pooled do return nil, {}, false
-	w := engine.ctx_world()
-	if w == nil do return nil, {}, false
-	h := t.handle
-	if !engine.world_pool_valid(w, h) {
-		sc := resolve_scene(t.scene)
-		if sc == nil || t.local_id == 0 do return nil, {}, false
-		resolved: engine.Handle
-		ok: bool
-		if h.type_key == .Transform {
-			resolved, ok = scene_find_transform_by_local_id(sc, t.local_id)
-		} else {
-			resolved, ok = scene_find_component_by_local_id(sc, t.local_id)
-		}
-		if !ok do return nil, {}, false
-		h = resolved
-	}
-	base := engine.world_pool_get(w, h)
-	if base == nil do return nil, h, false
-	return base, h, true
+// The live base pointer of a pooled target, through the installed resolver
+// (target_resolver.odin).
+resolve_pooled_base :: proc(t: Property_Target) -> (rawptr, core.Handle, bool) {
+	if t.kind != .Pooled || _resolver.pooled_base == nil do return nil, {}, false
+	return _resolver.pooled_base(t)
 }
 
-resolve_component_base :: proc(t: Property_Target) -> (rawptr, engine.Handle, bool) {
-	if t.kind != .Pooled || t.handle.type_key == .Transform do return nil, {}, false
+resolve_component_base :: proc(t: Property_Target) -> (rawptr, core.Handle, bool) {
+	if t.kind != .Pooled || t.handle.type_key == core.transform_type_key do return nil, {}, false
 	return resolve_pooled_base(t)
 }
 
-make_pooled_target :: proc(h: engine.Handle, offset: uintptr, tid: typeid) -> Property_Target {
-	w := engine.ctx_world()
-	scene: ^engine.Scene
-	lid: engine.Local_ID
-	if h.type_key == .Transform {
-		if t := engine.pool_get(&w.transforms, h); t != nil {
-			scene = t.scene
-			lid = t.local_id
-		}
-	} else {
-		if base := engine.world_pool_get(w, h); base != nil {
-			cbase := cast(^engine.CompData)base
-			lid = cbase.local_id
-			if t := engine.pool_get(&w.transforms, engine.Handle(cbase.owner)); t != nil {
-				scene = t.scene
-			}
+make_pooled_target :: proc(h: core.Handle, offset: uintptr, tid: typeid) -> Property_Target {
+	scene: core.Scene_Ref
+	lid: core.Local_ID
+	if _resolver.pooled_identity != nil {
+		if sc, l, ok := _resolver.pooled_identity(h); ok {
+			scene = sc
+			lid = l
 		}
 	}
 	return Property_Target{
 		kind = .Pooled,
-		scene = scene_ref(scene),
+		scene = scene,
 		local_id = lid,
 		handle = h,
 		offset = u32(offset),
@@ -1297,11 +542,11 @@ make_pooled_target :: proc(h: engine.Handle, offset: uintptr, tid: typeid) -> Pr
 	}
 }
 
-make_transform_target :: proc(tH: engine.Transform_Handle, offset: uintptr, tid: typeid) -> Property_Target {
-	return make_pooled_target(engine.Handle(tH), offset, tid)
+make_transform_target :: proc(tH: core.Transform_Handle, offset: uintptr, tid: typeid) -> Property_Target {
+	return make_pooled_target(core.Handle(tH), offset, tid)
 }
 
-make_component_target :: proc(comp_handle: engine.Handle, offset: uintptr, tid: typeid) -> Property_Target {
+make_component_target :: proc(comp_handle: core.Handle, offset: uintptr, tid: typeid) -> Property_Target {
 	return make_pooled_target(comp_handle, offset, tid)
 }
 
@@ -1363,13 +608,13 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 		log.error(fmt.tprintf("undo: failed to resolve target for value command (tid=%v)", vc.target.type_id))
 		return
 	}
-	if !write_json_value(ptr, vc.target.type_id, json_bytes, resolve_scene(vc.target.scene)) {
+	if !write_json_value(ptr, vc.target.type_id, json_bytes, vc.target.scene) {
 		return
 	}
 
-	if vc.target.kind == .Pooled && vc.target.handle.type_key != .Transform {
+	if vc.target.kind == .Pooled && vc.target.handle.type_key != core.transform_type_key {
 		if base, h, ok := resolve_pooled_base(vc.target); ok {
-			engine.type_on_validate(h.type_key, base)
+			core.type_on_validate(h.type_key, base)
 		}
 	}
 }
@@ -1380,8 +625,9 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 // destination shares no backing storage with the source — and rebinds any
 // reference handles inside it.
 //
-// `s` is the scene the field lives in, for that rebinding. A nil scene skips it,
-// which is right for values that hold no references.
+// `scene` is the scene the field lives in, for that rebinding, done by the
+// installed resolver. A zero scene skips it, which is right for values that
+// hold no references.
 //
 // Used by undo to apply a Value_Command, and by multi-edit to copy one committed
 // field onto the rest of a selection. Both need identical semantics, and having
@@ -1391,9 +637,9 @@ _value_apply :: proc(vc: Value_Command, json_bytes: []byte) {
 // captured from a live field, so it cannot legitimately fail to decode. A
 // caller whose bytes come from outside (an MCP property write) passes `quiet`
 // and reports the refusal itself — a bad value there is input, not a fault.
-write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engine.Scene, quiet := false) -> bool {
+write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, scene: core.Scene_Ref, quiet := false) -> bool {
 	if ptr == nil || tid == nil || json_bytes == nil do return false
-	ptr_tid, ok := engine.get_pointer_typeid_by_typeid(tid)
+	ptr_tid, ok := core.get_pointer_typeid_by_typeid(tid)
 	if !ok {
 		log.error(fmt.tprintf("undo: no pointer typeid registered for %v — call engine.register_pointer_type during init", tid))
 		return false
@@ -1413,8 +659,8 @@ write_json_value :: proc(ptr: rawptr, tid: typeid, json_bytes: []byte, s: ^engin
 	// load, RESOLVED after a prior undo). Authoritative mode derives handles
 	// entirely from the payload: bound when the lid resolves, cleared when
 	// the payload says none.
-	if s != nil {
-		engine._resolve_refs_in_value(ptr, type_info_of(tid), s, nil, false, true)
+	if scene.id != 0 && _resolver.fixup_refs != nil {
+		_resolver.fixup_refs(ptr, tid, scene)
 	}
 	return true
 }
@@ -1428,326 +674,9 @@ _cleanup_before_unmarshal :: proc(ptr: rawptr, tid: typeid) {
 		s^ = ""
 		return
 	}
-	if key, ok := engine.get_type_key_by_typeid(tid); ok {
-		engine.type_cleanup(key, ptr)
+	if key, ok := core.get_type_key_by_typeid(tid); ok {
+		core.type_cleanup(key, ptr)
 	}
-}
-
-scene_find_transform_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engine.Handle, bool) {
-	tH, ok := engine.scene_find_outer_transform_local_id(s, id)
-	if !ok do return {}, false
-	return engine.Handle(tH), true
-}
-
-scene_find_component_by_local_id :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engine.Handle, bool) {
-	if s == nil || id == 0 do return {}, false
-	w := engine.ctx_world()
-	if w == nil do return {}, false
-	it := engine.pool_iterator(&w.transforms)
-	for t, _ in engine.pool_next(&it) {
-		if t.scene != s do continue
-		if t.nested_owned do continue
-		for c in t.components {
-			if c.local_id == id && c.handle.type_key != engine.INVALID_TYPE_KEY {
-				raw := engine.world_pool_get(w, c.handle)
-				if raw != nil {
-					base := cast(^engine.CompData)raw
-					if base.nested_owned do continue
-				}
-				return c.handle, true
-			}
-		}
-	}
-	return {}, false
-}
-
-@(private)
-_structural_apply :: proc(sc: Structural_Command) {
-	switch v in sc {
-	case Reparent_Command:
-		_do_reparent(resolve_scene(v.scene), v.node_local_id, v.new_parent_local_id, v.new_index)
-	case Create_Subtree_Command:
-		_do_create_subtree(v)
-	case Delete_Subtree_Command:
-		_do_delete_subtree(v)
-	case Add_Component_Command:
-		_do_add_component(v)
-	case Remove_Component_Command:
-		_do_remove_component(v)
-	case Reorder_Components_Command:
-		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.old_index, v.new_index)
-	case Remove_Unknown_Component_Command:
-		_do_remove_unknown_component(v)
-	}
-}
-
-@(private)
-_structural_revert :: proc(sc: Structural_Command) {
-	switch v in sc {
-	case Reparent_Command:
-		_do_reparent(resolve_scene(v.scene), v.node_local_id, v.old_parent_local_id, v.old_index)
-	case Create_Subtree_Command:
-		_undo_create_subtree(v)
-	case Delete_Subtree_Command:
-		_undo_delete_subtree(v)
-	case Add_Component_Command:
-		_undo_add_component(v)
-	case Remove_Component_Command:
-		_undo_remove_component(v)
-	case Reorder_Components_Command:
-		_do_reorder_components(resolve_scene(v.scene), v.owner_local_id, v.new_index, v.old_index)
-	case Remove_Unknown_Component_Command:
-		_undo_remove_unknown_component(v)
-	}
-}
-
-@(private)
-_do_reparent :: proc(s: ^engine.Scene, node_id: engine.Local_ID, new_parent_id: engine.Local_ID, new_index: int) {
-	node_h, ok := scene_find_transform_by_local_id(s, node_id)
-	if !ok do return
-	parent_h: engine.Handle
-	if new_parent_id != 0 {
-		p, pok := scene_find_transform_by_local_id(s, new_parent_id)
-		if !pok do return
-		parent_h = p
-	} else {
-		if s == nil do return
-		parent_h = s.root.handle
-	}
-	engine.transform_set_parent(engine.Transform_Handle(node_h), engine.Transform_Handle(parent_h), new_index)
-}
-
-@(private)
-_do_create_subtree :: proc(v: Create_Subtree_Command) {
-	parent_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.parent_local_id)
-	if !ok do return
-	_paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
-}
-
-@(private)
-_undo_create_subtree :: proc(v: Create_Subtree_Command) {
-	node_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.root_local_id)
-	if !ok do return
-	engine.transform_destroy(engine.Transform_Handle(node_h))
-}
-
-@(private)
-_do_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	node_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.root_local_id)
-	if !ok do return
-	engine.transform_destroy(engine.Transform_Handle(node_h))
-}
-
-// Transform lookup for undo/redo of structural edits. PREFAB CONTENT is not in
-// the scene bimap — composed instance lids belong to the instance, not the host
-// — and neither is a host object created under prefab content, so the bimap
-// lookup alone silently no-ops every nested structural redo. Falls back to a
-// live scan of the scene's transforms.
-@(private)
-_find_transform_for_undo :: proc(s: ^engine.Scene, id: engine.Local_ID) -> (engine.Handle, bool) {
-	if h, ok := scene_find_transform_by_local_id(s, id); ok do return h, true
-	if s == nil || id == 0 do return {}, false
-	w := engine.ctx_world()
-	if w == nil do return {}, false
-	it := engine.pool_iterator(&w.transforms)
-	for t, h in engine.pool_next(&it) {
-		if t.scene != s || t.local_id != id do continue
-		h := h
-		h.type_key = .Transform
-		return h, true
-	}
-	return {}, false
-}
-
-@(private)
-_undo_delete_subtree :: proc(v: Delete_Subtree_Command) {
-	parent_h, ok := _find_transform_for_undo(resolve_scene(v.scene), v.parent_local_id)
-	if !ok do return
-	root := _paste_subtree_preserve_ids(v.payload, engine.Transform_Handle(parent_h), v.sibling_index)
-	if v.nested_owned && root != {} {
-		engine.transform_mark_subtree_nested_owned(root)
-	}
-}
-
-@(private)
-_paste_subtree_preserve_ids :: proc(payload: []byte, parent: engine.Transform_Handle, sibling_index: int) -> engine.Transform_Handle {
-	if payload == nil || len(payload) == 0 do return {}
-	sf: engine.SceneFile
-	if err := json.unmarshal(payload, &sf); err != nil {
-		log.error(fmt.tprintf("undo: unmarshal subtree failed: %v", err))
-		return {}
-	}
-	defer engine.scene_file_destroy(&sf)
-
-	w := engine.ctx_world()
-	parent_scene: ^engine.Scene
-	if p := engine.pool_get(&w.transforms, engine.Handle(parent)); p != nil {
-		parent_scene = p.scene
-	}
-
-	root_tH := engine._scene_load_as_child(&sf, parent, parent_scene)
-	if root_tH == {} do return {}
-
-	p := engine.pool_get(&w.transforms, engine.Handle(parent))
-	if p != nil && sibling_index >= 0 {
-		current_idx := -1
-		for i in 0 ..< len(p.children) {
-			if p.children[i].handle == engine.Handle(root_tH) {
-				current_idx = i
-				break
-			}
-		}
-		if current_idx >= 0 && current_idx != sibling_index {
-			entry := p.children[current_idx]
-			ordered_remove(&p.children, current_idx)
-			idx := sibling_index
-			if idx > len(p.children) do idx = len(p.children)
-			inject_at(&p.children, idx, entry)
-		}
-	}
-
-	if engine.application_is_editor() {
-		engine._scene_resolve_nested_in_subtree(root_tH)
-	}
-
-	// Components OUTSIDE the restored subtree may reference INTO it (a Tank on
-	// the root pointing at a deleted-then-restored Turret) — their handles are
-	// dead and only a scene-wide rebind reaches them. The loader re-registered
-	// the restored lids (dead-entry repair), so the sweep binds them live.
-	engine.scene_rebind_unbound_refs(parent_scene)
-
-	return root_tH
-}
-
-@(private)
-_do_add_component :: proc(v: Add_Component_Command) {
-	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
-	if !ok do return
-	tH := engine.Transform_Handle(owner_h)
-
-	owned, ptr := engine.transform_add_comp(tH, v.type_key)
-	if ptr == nil do return
-
-	if v.payload != nil && len(v.payload) > 0 {
-		tid := engine.get_typeid_by_type_key(v.type_key)
-		ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
-		if ptr_ok {
-			target_ptr := ptr
-			if err := json.unmarshal_any(v.payload, any{&target_ptr, ptr_tid}, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
-				log.error(fmt.tprintf("undo: unmarshal component failed: %v", err))
-			}
-			base := cast(^engine.CompData)ptr
-			base.owner = tH
-			base.local_id = v.comp_local_id
-			// Handles are json:"-" — rebind the payload's Refs (see _value_apply).
-			if s := resolve_scene(v.scene); s != nil {
-				engine._resolve_refs_in_value(ptr, type_info_of(tid), s, nil, false, true)
-			}
-			engine.type_on_validate(v.type_key, ptr)
-		}
-	}
-
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, engine.Handle(owner_h))
-	if t != nil && v.list_index >= 0 && v.list_index < len(t.components) {
-		last := len(t.components) - 1
-		if last != v.list_index {
-			entry := t.components[last]
-			ordered_remove(&t.components, last)
-			inject_at(&t.components, v.list_index, entry)
-		}
-	}
-
-	base := cast(^engine.CompData)ptr
-	base.local_id = v.comp_local_id
-	// transform_add_comp minted (and registered) a throwaway lid — the restored
-	// component answers to its RECORDED lid, so point the live index at it and
-	// rebind any refs that dangled while the component was gone.
-	if s := resolve_scene(v.scene); s != nil {
-		engine.bimap_insert(&s.local_ids, v.comp_local_id, owned.handle)
-		engine.scene_rebind_unbound_refs(s)
-	}
-	if t != nil {
-		for i in 0 ..< len(t.components) {
-			if t.components[i].handle == owned.handle {
-				t.components[i].local_id = v.comp_local_id
-				break
-			}
-		}
-	}
-}
-
-@(private)
-_undo_add_component :: proc(v: Add_Component_Command) {
-	sc := resolve_scene(v.scene)
-	comp_h, ok := scene_find_component_by_local_id(sc, v.comp_local_id)
-	if !ok do return
-	owner_h, oh_ok := scene_find_transform_by_local_id(sc, v.owner_local_id)
-	if !oh_ok do return
-	engine.transform_remove_comp(engine.Transform_Handle(owner_h), comp_h)
-}
-
-@(private)
-_do_remove_component :: proc(v: Remove_Component_Command) {
-	sc := resolve_scene(v.scene)
-	comp_h, ok := scene_find_component_by_local_id(sc, v.comp_local_id)
-	if !ok do return
-	owner_h, oh_ok := scene_find_transform_by_local_id(sc, v.owner_local_id)
-	if !oh_ok do return
-	engine.transform_remove_comp(engine.Transform_Handle(owner_h), comp_h)
-}
-
-@(private)
-_undo_remove_component :: proc(v: Remove_Component_Command) {
-	add: Add_Component_Command = {
-		scene = v.scene,
-		owner_local_id = v.owner_local_id,
-		type_key = v.type_key,
-		comp_local_id = v.comp_local_id,
-		payload = v.payload,
-		list_index = v.list_index,
-	}
-	_do_add_component(add)
-}
-
-@(private)
-_do_remove_unknown_component :: proc(v: Remove_Unknown_Component_Command) {
-	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
-	if !ok do return
-	engine.transform_remove_unknown_comp(engine.Transform_Handle(owner_h), v.comp_local_id)
-}
-
-@(private)
-_undo_remove_unknown_component :: proc(v: Remove_Unknown_Component_Command) {
-	owner_h, ok := scene_find_transform_by_local_id(resolve_scene(v.scene), v.owner_local_id)
-	if !ok do return
-	val, perr := json.parse(v.payload, .JSON, true, context.temp_allocator)
-	if perr != nil do return
-	// transform_restore_unknown_comp clones `val` — the temp parse dies with the frame.
-	engine.transform_restore_unknown_comp(engine.Transform_Handle(owner_h), v.comp_local_id, val, v.list_index)
-}
-
-@(private)
-_do_reorder_components :: proc(s: ^engine.Scene, owner_local_id: engine.Local_ID, from, to: int) {
-	owner_h, ok := scene_find_transform_by_local_id(s, owner_local_id)
-	if !ok do return
-	w := engine.ctx_world()
-	t := engine.pool_get(&w.transforms, owner_h)
-	if t == nil do return
-	if from < 0 || from >= len(t.components) do return
-	if to < 0 || to >= len(t.components) do return
-	if from == to do return
-	entry := t.components[from]
-	ordered_remove(&t.components, from)
-	inject_at(&t.components, to, entry)
-}
-
-capture_transform_subtree :: proc(tH: engine.Transform_Handle) -> []byte {
-	return engine.scene_copy_subtree(tH)
-}
-
-capture_component_json :: proc(ptr: rawptr, tid: typeid) -> []byte {
-	return capture_json(ptr, tid)
 }
 
 // --- Editor hooks -------------------------------------------------------------
@@ -1757,7 +686,7 @@ capture_component_json :: proc(ptr: rawptr, tid: typeid) -> []byte {
 
 @(private) _selection_capture_hook: proc() -> Selection_State
 @(private) _selection_apply_hook:   proc(state: Selection_State)
-@(private) _asset_apply_hook:       proc(guid: engine.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool
+@(private) _asset_apply_hook:       proc(guid: core.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool
 
 set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(state: Selection_State)) {
 	_selection_capture_hook = capture
@@ -1766,7 +695,7 @@ set_selection_hooks :: proc(capture: proc() -> Selection_State, apply: proc(stat
 
 // cb replaces the whole asset document identified by guid with the given
 // JSON payload (installed by the project inspector's doc registry).
-set_asset_apply :: proc(cb: proc(guid: engine.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool) {
+set_asset_apply :: proc(cb: proc(guid: core.Asset_GUID, doc: Doc_Kind, json_bytes: []byte) -> bool) {
 	_asset_apply_hook = cb
 }
 
@@ -1775,7 +704,7 @@ _selection_apply :: proc(state: Selection_State) {
 	if _selection_apply_hook != nil do _selection_apply_hook(state)
 }
 
-make_asset_target :: proc(guid: engine.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Property_Target {
+make_asset_target :: proc(guid: core.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Property_Target {
 	return Property_Target{kind = .Asset, asset_guid = guid, asset_doc = doc, type_id = tid}
 }
 
@@ -1876,67 +805,97 @@ amend_top_selection :: proc(s: ^Undo_Stack, before, after: Selection_State) {
 	e.cmd = Command(grp)
 }
 
+// --- History view details ------------------------------------------------------
+
+@(private)
+_append_selection_state :: proc(b: ^strings.Builder, name: string, st: Selection_State, depth: int) {
+	indent := _indent(depth)
+	fmt.sbprintf(b, "%s%s: %d scene, %d project\n", indent, name, len(st.scene), len(st.proj))
+	for it in st.scene {
+		resolved := "unresolved"
+		if n, ok := object_name(it.scene, it.local_id); ok do resolved = n
+		fmt.sbprintf(b, "%s  local_id=%d  %s\n", indent, i64(it.local_id), resolved)
+	}
+	for r in st.proj {
+		path := "(deleted)"
+		if p, ok := asset_path(r.guid); ok do path = p
+		if r.local_id != 0 {
+			fmt.sbprintf(b, "%s  %s : sub %d\n", indent, path, i64(r.local_id))
+		} else {
+			fmt.sbprintf(b, "%s  %s\n", indent, path)
+		}
+	}
+}
+
+@(private)
+_append_target :: proc(b: ^strings.Builder, t: Property_Target, depth: int) {
+	indent := _indent(depth)
+	kind_str: string
+	switch t.kind {
+	case .None:   kind_str = "None"
+	case .Pooled: kind_str = t.handle.type_key == core.transform_type_key ? "Transform" : "Component"
+	case .Raw:    kind_str = "Raw"
+	case .Asset:  kind_str = "Asset"
+	}
+	fmt.sbprintf(b, "%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v\n",
+		indent, kind_str, i64(t.local_id),
+		t.handle.index, t.handle.generation, t.handle.type_key,
+		t.offset, t.type_id)
+
+	resolved := "unresolved"
+	switch t.kind {
+	case .None:
+	case .Raw:
+		if t.raw_ptr != nil do resolved = "raw"
+	case .Asset:
+		if path, ok := asset_path(t.asset_guid); ok do resolved = path
+	case .Pooled:
+		// The resolver re-finds the object by scene and local id, so entries
+		// stay resolvable after undo/redo recreated it under a fresh handle.
+		if n, ok := target_name(t); ok do resolved = n
+	}
+	fmt.sbprintf(b, "%s  resolved: %s\n", indent, resolved)
+}
+
+@(private)
+_indent :: proc(depth: int) -> string {
+	b: strings.Builder
+	strings.builder_init(&b, context.temp_allocator)
+	for _ in 0 ..< depth {
+		strings.write_string(&b, "  ")
+	}
+	return strings.to_string(b)
+}
+
+@(private)
+_truncate :: proc(s: string, max: int) -> string {
+	if len(s) <= max do return s
+	return fmt.tprintf("%s ...(%d bytes)", s[:max], len(s))
+}
+
 // --- Purge ----------------------------------------------------------------------
 // Scene load/unload no longer wipes the whole history: only entries that
 // reference the affected scene(s) are dropped. Asset edits and pure project
 // selection steps survive scene navigation.
 
+// Whether the command touches the scene `r` (any scene at all with
+// `any_scene`).
 @(private)
-_scene_ref_matches :: proc(r: Scene_Ref, ptr: ^engine.Scene, any_scene: bool) -> bool {
-	if r.id == 0 do return false
-	if any_scene do return true
-	return ptr != nil && r.id == ptr.session_id
-}
-
-@(private)
-_selection_state_refs_scene :: proc(st: Selection_State, ptr: ^engine.Scene, any_scene: bool) -> bool {
-	for it in st.scene {
-		if _scene_ref_matches(it.scene, ptr, any_scene) do return true
+_command_refs_scene :: proc(cmd: ^Command, r: core.Scene_Ref, any_scene: bool) -> bool {
+	refs := make([dynamic]core.Scene_Ref, context.temp_allocator)
+	_command_scenes(cmd, &refs)
+	for ref in refs {
+		if ref.id == 0 do continue
+		if any_scene || ref.id == r.id do return true
 	}
 	return false
 }
 
 @(private)
-_command_refs_scene :: proc(cmd: ^Command, ptr: ^engine.Scene, any_scene: bool) -> bool {
-	switch v in cmd {
-	case Value_Command:
-		if v.target.kind != .Pooled do return false
-		return _scene_ref_matches(v.target.scene, ptr, any_scene)
-	case Structural_Command:
-		r: Scene_Ref
-		switch sv in v {
-		case Reparent_Command:           r = sv.scene
-		case Create_Subtree_Command:     r = sv.scene
-		case Delete_Subtree_Command:     r = sv.scene
-		case Add_Component_Command:      r = sv.scene
-		case Remove_Component_Command:   r = sv.scene
-		case Reorder_Components_Command: r = sv.scene
-		case Remove_Unknown_Component_Command: r = sv.scene
-		}
-		return _scene_ref_matches(r, ptr, any_scene)
-	case Dropdown_Revert_Command:
-		return _scene_ref_matches(v.scene, ptr, any_scene)
-	case Prefab_Apply_Command:
-		return _scene_ref_matches(v.scene, ptr, any_scene)
-	case Group_Command:
-		for i in 0 ..< len(v.subs) {
-			if _command_refs_scene(&v.subs[i], ptr, any_scene) do return true
-		}
-		return false
-	case Record_Override_Command:
-		return _scene_ref_matches(v.scene, ptr, any_scene)
-	case Selection_Command:
-		return _selection_state_refs_scene(v.before, ptr, any_scene) ||
-			_selection_state_refs_scene(v.after, ptr, any_scene)
-	}
-	return false
-}
-
-@(private)
-_purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, any_scene: bool) {
+_purge :: proc(s: ^Undo_Stack, r: core.Scene_Ref, any_scene: bool) {
 	if s == nil do return
 	for i := len(s.items) - 1; i >= 0; i -= 1 {
-		if !_command_refs_scene(&s.items[i].cmd, ptr, any_scene) do continue
+		if !_command_refs_scene(&s.items[i].cmd, r, any_scene) do continue
 		e := &s.items[i]
 		_entry_destroy(e)
 		ordered_remove(&s.items, i)
@@ -1946,39 +905,31 @@ _purge :: proc(s: ^Undo_Stack, ptr: ^engine.Scene, any_scene: bool) {
 	s.disturbed = true
 }
 
-// Drop entries that reference this scene. Call BEFORE unloading, while the
-// pointer is still valid.
-purge_scene :: proc(s: ^Undo_Stack, scene: ^engine.Scene) {
-	if scene == nil do return
-	_purge(s, scene, false)
+// Drop entries that reference this scene. Call BEFORE unloading.
+purge_scene :: proc(s: ^Undo_Stack, r: core.Scene_Ref) {
+	if r.id == 0 do return
+	_purge(s, r, false)
 }
 
 // Drop entries that reference ANY scene (single-scene loads unload everything);
 // asset edits and project-only selection steps survive.
 purge_scenes :: proc(s: ^Undo_Stack) {
-	_purge(s, nil, true)
+	_purge(s, {}, true)
 }
 
 @(private)
-_command_refs_asset :: proc(cmd: ^Command, guid: engine.Asset_GUID) -> bool {
-	#partial switch v in cmd {
-	case Value_Command:
-		return v.target.kind == .Asset && v.target.asset_guid == guid
-	case Prefab_Apply_Command:
-		for f in v.files do if f.guid == guid do return true
-	case Group_Command:
-		for i in 0 ..< len(v.subs) {
-			if _command_refs_asset(&v.subs[i], guid) do return true
-		}
-	}
+_command_refs_asset :: proc(cmd: ^Command, guid: core.Asset_GUID) -> bool {
+	guids := make([dynamic]core.Asset_GUID, context.temp_allocator)
+	_command_assets(cmd, &guids)
+	for g in guids do if g == guid do return true
 	return false
 }
 
 // Drop entries that edit this asset's document. Call when the asset left the
 // project: undoing one would bring back a document for a missing file. A
 // group goes whole if any sub-command edits the asset, like purge_scene.
-purge_asset :: proc(s: ^Undo_Stack, guid: engine.Asset_GUID) {
-	if s == nil || engine.asset_guid_is_empty(guid) do return
+purge_asset :: proc(s: ^Undo_Stack, guid: core.Asset_GUID) {
+	if s == nil || core.asset_guid_is_empty(guid) do return
 	removed := false
 	for i := len(s.items) - 1; i >= 0; i -= 1 {
 		if !_command_refs_asset(&s.items[i].cmd, guid) do continue

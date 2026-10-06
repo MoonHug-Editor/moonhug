@@ -2,6 +2,6 @@
   "name": "mhgui",
   "guid": "f960721f-e671-460b-a8a2-46da0cbd152c",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

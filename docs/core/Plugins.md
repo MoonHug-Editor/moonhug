@@ -23,8 +23,8 @@ and receives its OWN generated dispatcher set (`__update`, `phase_run`,
 
 Each dispatcher is emitted per runnable package under a fixed name, which is
 unambiguous inside a game binary — it contains one host. The EDITOR links all of
-them, so it also gets a table naming them: `editor/sim_hosts_generated.odin`, one row
-per runnable package with its `__update` / `__fixed_update`. That is how the
+them, so it also gets a table naming them: `registration/sim_hosts_generated.odin`, one row
+per runnable package with its `__update` / `__fixed_update`, which sim_world converts and hands to `editor/simulate`. That is how the
 editor's Simulate (docs/core/Simulate.md) knows which game to tick, and what its Sim
 Host dropdown lists.
 
@@ -122,7 +122,10 @@ plugins/
 - **`editor/`** — editor-only code (gizmos, custom inspectors, menu items).
   Compiled into the editor binary only, never the app. Declares
   `package <name>_editor` — every plugin's folder is named `editor/`, so the
-  declaration carries uniqueness (prebuild lints it).
+  declaration carries uniqueness (prebuild lints it). `editor/` may also hold
+  subpackages, one folder each, which are editor-only like `editor/` itself
+  and declare any program-wide unique name (the engine's `editor/scene_views`
+  declares `scene_views`).
 - **Library subpackages** — any other subfolder with Odin code is scanned
   like the root and declares `package <name>_<sub>` (`foo/util` declares
   `foo_util`, prebuild lints it). The root reaches it via
@@ -130,7 +133,7 @@ plugins/
   subpackages directly except where a generator's output needs their types
   (type registration, component registration, dispatchers).
 - **Integration subpackages** — a subfolder that imports ANOTHER plugin, named after it (`audio/sequencer`, declaring `audio_sequencer`). It holds what the plugin adds to the other one through attributes: the audio track, the sprites fade tween, the TimelineAnimator. Prebuild scans it only while every plugin its files import is installed, and prints `prebuild: <dir> skipped, needs the <x> plugin` otherwise. Its own `editor/` and `tests/` go with it, and its `tests/` are also left out while a plugin they import is missing. Nothing in the plugin's root imports it, so the plugin builds without the other one. The plugin's own `editor/` is part of the plugin like its root and is never skipped. Components, phases, `@(update)` procs and union variants in it register like the root's.
-- **Dependency rule** — a plugin's root never imports a plugin that extends it through attributes (the sequencer imports none of animation, audio, particles or sprites). The extending plugin puts that code in an integration subpackage. An import of another plugin from a root, its `editor/` or `tests/`, or a subpackage those import is a hard dependency: games and samples (`app`, `timeline_sample`) and libraries (`node_graph`, which the Tween Graph window in `tween/editor` draws with) are the cases. Prebuild checks hard dependencies before anything compiles. A missing one stops it with the plugin that needs it and the imports that do, for example `tween needs node_graph` over `moonhug/packages/tween/editor/tween_view.odin:28`. That includes a dependency reached through another plugin's integration subpackage: `timeline_sample` imports `animation/sequencer`, so it needs the sequencer. The editor and the engine import no plugin, and the core tests (`moonhug/tests`) test core only: they build and pass with no plugin installed.
+- **Dependency rule** — a plugin's root never imports a plugin that extends it through attributes (the sequencer imports none of animation, audio, particles or sprites). The extending plugin puts that code in an integration subpackage. An import of another plugin from a root, its `editor/` or `tests/`, or a subpackage those import is a hard dependency: games and samples (`app`, `timeline_sample`) and libraries (`node_graph`, which the Tween Graph window in `tween/editor` draws with) are the cases. Prebuild checks hard dependencies before anything compiles. A missing one stops it with the plugin that needs it and the imports that do, for example `tween needs node_graph` over `moonhug/packages/tween/editor/tween_view.odin:28`. That includes a dependency reached through another plugin's integration subpackage: `timeline_sample` imports `animation/sequencer`, so it needs the sequencer. The editor shell imports no plugin, and the engine imports no other plugin. The core tests (`moonhug/tests`) test the shell and the engine: they need the engine plugin and no other.
 - **`gen/`** — a prebuild generator shipped by the package (`package
   <name>_gen`, `packages/tween/gen` is the reference). ANY installed package
   can ship one: prebuild discovers `packages/*/gen` itself, no prebuild
@@ -145,7 +148,7 @@ plugins/
   disappears, the run scripts prune the stale import before compiling
   (`odin run moonhug/prebuild/prune_package_gens` — a standalone program, so
   it works on every platform). gen/ is excluded from the attribute scan — it
-  is prebuild-side code.
+  is prebuild-side code. The engine's own generators ship this way: `plugins/engine/gen` holds components, gizmos, context menu, sim host and update generation, and `moonhug/prebuild` holds only the host and shell generators.
 - **`assets/`** — live content: mounted, browsable, editable, referenced by
   guid like any project asset. Content outside `assets/` doesn't exist to the
   editor — the rule is structural, no filters needed. The editor ENSURES this
@@ -247,7 +250,7 @@ Every plugin and every sample has an `mh_plugin.json` at its root:
 
 Prebuild syncs `dependencies` on every build, from the same scan that builds the package inspector's table, and prints one line per manifest it changed. `mh deps` (or `make deps`) does the same on demand for every plugin and sample in `plugins/`, installed or not, and prints why each entry is there. `mh deps <name> ...` does only those. The scan finds a dependency two ways:
 
-- Code: an import of another plugin from the root, `editor/` or `tests/`, or from a subpackage those import.
+- Code: an import of another plugin from the root, `editor/` (and the folders below it) or `tests/`, or from a subpackage those import. The engine is a plugin like any other, so a plugin importing `moonhug:packages/engine` lists `engine`. Imports of the shell (`moonhug:editor/...`) and the host (`moonhug:host/...`) are not plugins and never count.
 - Content: a guid in the plugin's `assets/` or non-test code that another plugin owns. A type guid (`@(typ_guid)`) belongs to the plugin declaring the type, an asset guid to the plugin whose `.meta` holds it. A type from an integration subpackage also needs what that folder imports: a scene with an audio track needs audio and the sequencer. The plugin's own samples live in its folder and never count.
 
 `mh deps` prints each dependency it adds with the first file that needs it, and each one it removes. A plugin without a manifest gets one.
@@ -271,7 +274,7 @@ carries no special scan status), then generates:
   lands in the editor's menu registration the same way. `@phase` subscribers
   work from packages too (editor-side ones must declare `mode=Editor`) — the
   `Phase` enum plus a subscriber table live in
-  `engine/core/phases_generated.odin`. In the editor dispatcher
+  `host/core/phases_generated.odin`. In the editor dispatcher
   (`phase_editor_run`), entries owned by a runnable package run only when that
   package is the active sim host — subscribers from several hosts interleave by
   `order`, and the guard skips the inactive ones.
@@ -286,18 +289,19 @@ carries no special scan status), then generates:
   `register_packages()` is called from `app_init`/`editor_init` right after
   `register_app_components()`.
 
-An editor package may import its own runtime package, `engine`,
-`engine_editor`, imgui and the editor's subpackages (`menu`, `inspector`,
+An editor package may import its own runtime package, the engine plugin
+(`moonhug:packages/engine` and its `editor/` subpackages, declared as a
+dependency), imgui and the editor's subpackages (`menu`, `inspector`,
 `undo`, `window`). Never the editor root — that's a cycle, the root imports
 plugin editor packages. Editor integration goes through attributes.
 
-`moonhug:engine/core` holds the dependency-free vocabulary — `Handle`,
+`moonhug:host/core` holds the dependency-free vocabulary — `Handle`,
 `TypeKey`, `Pool`, `Ref`/`PPtr`, `CompData`, the type registries — and any
 package may import it without importing the engine. The engine aliases the
-core names it uses in `engine/core_exports.odin`, so `engine.Handle` and
+core names it uses in `plugins/engine/core_exports.odin`, so `engine.Handle` and
 `core.Handle` are the same type. Prebuild discovers scan targets by walking
-`moonhug/editor`, `moonhug/engine` and the installed packages (symlinks
-followed, `tests/` skipped), so a new subpackage joins the attribute scan
+`moonhug/editor`, `moonhug/host`, `moonhug/registration` and the installed
+packages, the engine among them (symlinks followed, `tests/` skipped), so a new subpackage joins the attribute scan
 with no prebuild edit.
 
 ## Asset importers
@@ -328,7 +332,7 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings defaults come from the type's `reset_<Type>` (docs/core/Components.md,
+- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md,
   "Lifecycle procs"). The pipeline creates a defaulted instance and overlays
   the meta's settings object, so fields absent from old metas keep their
   defaults.

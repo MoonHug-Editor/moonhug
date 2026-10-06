@@ -4,7 +4,7 @@ package tests
 
 import "core:math/linalg"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 // cam_pos must round-trip through render_view_make: build a look_at view from
 // a known eye and expect it back (specular shaders depend on it being the

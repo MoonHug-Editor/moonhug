@@ -27,7 +27,7 @@ package undo
 // step and needs no group around it.
 
 import "core:slice"
-import engine "../../engine"
+import core "moonhug:host/core"
 
 // One thing being edited. The three kinds cover every call site in the editor:
 // pooled components and transforms, plain editor-owned structs, and asset
@@ -36,14 +36,14 @@ Edit_Target :: struct {
 	kind: Owner_Kind,
 
 	// .Pooled — a component or transform in a world pool.
-	handle: engine.Handle,
+	handle: core.Handle,
 
 	// .Raw — a struct the editor owns (import settings, project settings).
 	raw_ptr: rawptr,
 	raw_tid: typeid,
 
 	// .Asset — a document in the asset registry.
-	asset_guid: engine.Asset_GUID,
+	asset_guid: core.Asset_GUID,
 	asset_tid:  typeid,
 	asset_doc:  Doc_Kind,
 
@@ -54,20 +54,20 @@ Edit_Target :: struct {
 }
 
 // Convenience constructors — the shapes call sites actually have.
-edit_target_pooled :: proc(h: engine.Handle, field_ptr: rawptr, field_tid: typeid) -> Edit_Target {
+edit_target_pooled :: proc(h: core.Handle, field_ptr: rawptr, field_tid: typeid) -> Edit_Target {
 	return Edit_Target{kind = .Pooled, handle = h, field_ptr = field_ptr, field_tid = field_tid}
 }
 
-edit_target_transform :: proc(tH: engine.Transform_Handle, field_ptr: rawptr, field_tid: typeid) -> Edit_Target {
-	return edit_target_pooled(engine.Handle(tH), field_ptr, field_tid)
+edit_target_transform :: proc(tH: core.Transform_Handle, field_ptr: rawptr, field_tid: typeid) -> Edit_Target {
+	return edit_target_pooled(core.Handle(tH), field_ptr, field_tid)
 }
 
 // The whole component/transform, for structural edits that no offset can name.
-edit_target_whole :: proc(h: engine.Handle) -> Edit_Target {
+edit_target_whole :: proc(h: core.Handle) -> Edit_Target {
 	return Edit_Target{kind = .Pooled, handle = h}
 }
 
-edit_target_asset :: proc(guid: engine.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Edit_Target {
+edit_target_asset :: proc(guid: core.Asset_GUID, tid: typeid, doc := Doc_Kind.File) -> Edit_Target {
 	return Edit_Target{kind = .Asset, asset_guid = guid, asset_tid = tid, asset_doc = doc}
 }
 
@@ -281,11 +281,11 @@ _entry_begin :: proc(t: Edit_Target) -> (_Edit_Entry, bool) {
 		}, true
 
 	case .Pooled:
-		w := engine.ctx_world()
-		if w == nil do return {}, false
-		base := engine.world_pool_get(w, t.handle)
-		if base == nil do return {}, false
-		owner_tid := engine.get_typeid_by_type_key(t.handle.type_key)
+		// The live base of the handle as it is now. A stale handle does not
+		// resolve: no scene or local id is set to re-find it by.
+		base, _, base_ok := resolve_pooled_base(Property_Target{kind = .Pooled, handle = t.handle})
+		if !base_ok || base == nil do return {}, false
+		owner_tid := core.get_typeid_by_type_key(t.handle.type_key)
 		if owner_tid == nil do return {}, false
 
 		field_ptr := t.field_ptr
@@ -333,7 +333,7 @@ _ptr_within :: proc(base: rawptr, base_tid: typeid, field: rawptr, field_tid: ty
 // The live document pointer for an asset guid, via the same hook the asset
 // apply path uses. nil when the inspector has no document open for it.
 @(private = "file")
-_asset_doc_ptr :: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr {
+_asset_doc_ptr :: proc(guid: core.Asset_GUID, doc: Doc_Kind) -> rawptr {
 	if _asset_doc_lookup == nil do return nil
 	return _asset_doc_lookup(guid, doc)
 }
@@ -341,8 +341,8 @@ _asset_doc_ptr :: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr {
 // Installed by the inspector at init, like set_asset_apply — the undo package
 // cannot import the inspector.
 @(private)
-_asset_doc_lookup: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr
+_asset_doc_lookup: proc(guid: core.Asset_GUID, doc: Doc_Kind) -> rawptr
 
-set_asset_doc_lookup :: proc(fn: proc(guid: engine.Asset_GUID, doc: Doc_Kind) -> rawptr) {
+set_asset_doc_lookup :: proc(fn: proc(guid: core.Asset_GUID, doc: Doc_Kind) -> rawptr) {
 	_asset_doc_lookup = fn
 }

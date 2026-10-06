@@ -5,7 +5,7 @@ package animation
 // to the mesh importer's cgltf use so it's testable without the editor.
 
 import cgltf "vendor:cgltf"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "core:strings"
 
 // AnimationClip (temp-allocated) from a glTF animation: every TRS channel

@@ -9,7 +9,7 @@ package audio
 
 import "core:math"
 import "core:math/linalg"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 Spatial_Gains :: struct {
 	gain:  f32, // distance attenuation, multiply into the track gain

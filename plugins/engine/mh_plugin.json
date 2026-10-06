@@ -1,0 +1,7 @@
+{
+  "name": "engine",
+  "guid": "e1af7b23-6db1-4fff-a2e0-9624c134e571",
+  "description": "The engine: scenes, transforms, components, rendering, and the editor's scene views",
+  "dependencies": [],
+  "dependencies_custom": []
+}

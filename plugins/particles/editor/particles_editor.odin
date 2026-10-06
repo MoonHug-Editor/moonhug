@@ -13,8 +13,9 @@ package particles_editor
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/inspector"
+import "moonhug:packages/engine/editor/drawers"
 import "moonhug:editor/undo"
 import particles "moonhug:packages/particles"
 
@@ -746,7 +747,7 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 			_ps_field(ps, &ps.trail_width_over, typeid_of(engine.Curve), "Width over Trail", "trail_width_over")
 			_ps_field(ps, &ps.trail_color_over, typeid_of(engine.Gradient), "Color over Trail", "trail_color_over")
 			// The ribbon's own look (empty = the particle's sprite/material).
-			if inspector.sprite_ref_row("Trail Sprite", &ps.trail_sprite) {
+			if drawers.sprite_ref_row("Trail Sprite", &ps.trail_sprite) {
 				inspector.mark_inspector_changed()
 				inspector.record_nested_override(&ps.trail_sprite, typeid_of(engine.PPtr), "trail_sprite", true)
 			}
@@ -757,7 +758,7 @@ _particle_system_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	}
 
 	if open, _ := _module("Renderer"); open {
-		if inspector.sprite_ref_row("Sprite", &ps.sprite) {
+		if drawers.sprite_ref_row("Sprite", &ps.sprite) {
 			inspector.mark_inspector_changed()
 			inspector.record_nested_override(&ps.sprite, typeid_of(engine.PPtr), "sprite", true)
 		}

@@ -9,7 +9,7 @@ package mhgui
 // game code polls button_clicked. The node needs a graphic with
 // raycast_target on (Image or Text) to be hit at all.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 Selectable_Transition :: enum u8 {
 	None,

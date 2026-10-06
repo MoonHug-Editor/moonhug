@@ -5,7 +5,7 @@ package app
 // records live in ext_components keyed by the type guid, so the guid below is
 // the on-disk identity and must never change.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 @(component={menu="Demo/Lifetime"})
 @(typ_guid={guid = "c3a1e4f2-7b8d-4a2e-9c5f-1d6e3b0f7a8c"})

@@ -11,7 +11,7 @@ package prefabs_example_tests
 // exposed every bug here, and look-alike names across levels (three different
 // "Transform" rows) are exactly what mis-targeted the capture.
 
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 import "core:strings"
 import "core:testing"
 import common "moonhug:tests/common"

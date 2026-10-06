@@ -29,7 +29,7 @@ package inspector
 
 import "base:runtime"
 import "core:slice"
-import engine "../../engine"
+import core "moonhug:host/core"
 import "../undo"
 
 // One selected object's counterpart of the object currently being drawn: the
@@ -46,8 +46,8 @@ import "../undo"
 // `data` from it at the moment of use — see multi_peer_ptr.
 Multi_Peer :: struct {
 	base:   rawptr,         // component/transform base pointer
-	handle: engine.Handle,  // undo target for edits propagated here
-	scene:  ^engine.Scene,  // for rebinding reference handles after a write
+	handle: core.Handle,  // undo target for edits propagated here
+	scene:  core.Scene_Ref, // for rebinding reference handles after a write
 
 	// Set only on peers rebased onto a dynamic array's elements.
 	in_dynamic_array:  bool,
@@ -60,8 +60,8 @@ Multi_Peer :: struct {
 	// what lets a selection mix plain objects and prefab content: each peer's
 	// override lands on its own instance instead of the active object's.
 	// Zero for plain scene objects, which record no override.
-	nested_host: engine.Transform_Handle,
-	nested_lid:  engine.Local_ID,
+	nested_host: core.Transform_Handle,
+	nested_lid:  core.Local_ID,
 }
 
 // Where this peer's copy of the field at `offset` lives, right now.

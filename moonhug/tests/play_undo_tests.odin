@@ -14,7 +14,7 @@ import "../editor"
 import "../editor/menu"
 import "../editor/simulate"
 import "../editor/undo"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(private = "file")
 _hosts := [1]simulate.Host{{name = "play_undo_test", update = proc(dt: f32) {}, fixed_update = proc(dt: f32) {}}}

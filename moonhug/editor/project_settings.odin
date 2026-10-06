@@ -21,7 +21,7 @@ import "core:c"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "../engine"
+import core "moonhug:host/core"
 import "inspector"
 import "undo"
 import wnd "moonhug:editor/window"
@@ -58,11 +58,11 @@ _settings_split_ratio: f32 = 0.28
 // `name` titles the section and names its file, ProjectSettings/<slug>.json,
 // which is committed and shared by the team. The window edits the variable
 // through the inspector, with undo. The system that owns the variable loads the
-// file itself with engine.project_settings_load, so the game reads the same
+// file itself with core.project_settings_load, so the game reads the same
 // values.
 //
 // Registers one tab. The generated _register_project_settings loads the var's
-// persisted values (a typed engine.project_settings_load) right before this
+// persisted values (a typed core.project_settings_load) right before this
 // call, so the editor session starts from the file.
 @(extension_point={attribute="project_settings", target="var", fields="name"})
 settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid, origin := "") {
@@ -109,7 +109,7 @@ _settings_persist :: proc(tab: ^_Settings_Tab) {
 		delete(cur)
 		return
 	}
-	engine.project_settings_save(tab.name, tab.ptr, tab.tid)
+	core.project_settings_save(tab.name, tab.ptr, tab.tid)
 	delete(tab.last_json)
 	tab.last_json = cur
 }

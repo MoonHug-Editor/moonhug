@@ -20,7 +20,7 @@ import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "inspector"
-import "moonhug:engine_editor/asset_pipeline"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 

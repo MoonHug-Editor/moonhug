@@ -1,14 +1,14 @@
 package inspector
 
-// Property drawer for engine.Gradient — Unity's gradient field with linear
+// Property drawer for core.Gradient — Unity's gradient field with linear
 // blending. The row shows the gradient bar, clicking it opens the editor
 // popup: markers under the bar select/drag keys, double-click the bar adds
 // one, the selected key edits color and t. Applies to ANY component field of
-// type engine.Gradient.
+// type core.Gradient.
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
+import core "moonhug:host/core"
 
 @(private = "file") _grad_sel: int = -1
 @(private = "file") _grad_dragging: bool
@@ -20,7 +20,7 @@ _grad_col32 :: proc(c: [4]f32) -> u32 {
 
 // The bar: one horizontal multi-color fill per segment, flat ends.
 @(private = "file")
-_grad_bar :: proc(g: ^engine.Gradient, p0, p1: im.Vec2) {
+_grad_bar :: proc(g: ^core.Gradient, p0, p1: im.Vec2) {
 	dl := im.GetWindowDrawList()
 	im.DrawList_AddRectFilled(dl, p0, p1, im.GetColorU32(.FrameBg), 2)
 	x_at :: proc(t: f32, p0, p1: im.Vec2) -> f32 { return p0.x + (p1.x - p0.x) * clamp(t, 0, 1) }
@@ -41,9 +41,9 @@ _grad_bar :: proc(g: ^engine.Gradient, p0, p1: im.Vec2) {
 	im.DrawList_AddRectFilled(dl, im.Vec2{x_at(last.t, p0, p1), p0.y}, p1, _grad_col32(last.color))
 }
 
-@(property_drawer={type = engine.Gradient, priority = 0})
+@(property_drawer={type = core.Gradient, priority = 0})
 draw_gradient_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	g := cast(^engine.Gradient)ptr
+	g := cast(^core.Gradient)ptr
 	field_row(label)
 
 	w := im.GetContentRegionAvail().x
@@ -65,7 +65,7 @@ draw_gradient_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 }
 
 @(private = "file")
-_gradient_editor :: proc(g: ^engine.Gradient) {
+_gradient_editor :: proc(g: ^core.Gradient) {
 	BW :: f32(320)
 	BH :: f32(26)
 	MARKER_H :: f32(12)
@@ -107,7 +107,7 @@ _gradient_editor :: proc(g: ^engine.Gradient) {
 		t := clamp((mouse.x - p0.x) / BW, 0, 1)
 		at := len(g.keys)
 		for k, i in g.keys do if k.t > t { at = i; break }
-		inject_at(&g.keys, at, engine.Gradient_Key{t = t, color = engine.gradient_eval(g, t)})
+		inject_at(&g.keys, at, core.Gradient_Key{t = t, color = core.gradient_eval(g, t)})
 		_grad_sel = at
 		changed = true
 	}

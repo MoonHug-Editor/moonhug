@@ -30,10 +30,6 @@ import _ "property_drawer_gen"
 import _ "serialization_gen"
 import _ "type_guid_gen"
 import _ "decorator_gen"
-import _ "components_gen"
-import _ "context_menu_gen"
-import _ "update_gen"
-import _ "sim_host_gen"
 import _ "plugin_types_gen"
 import _ "editor_window_gen"
 import _ "attributes_gen"
@@ -43,9 +39,10 @@ import _ "scene_overlay_gen"
 import _ "view_chrome_gen"
 import _ "inspector_button_gen"
 import _ "packages_gen"
-import _ "gizmos_gen"
 import _ "mcp_tool_gen"
 import _ "union_gen"
+import _ "undo_command_gen"
+import _ "sim_host_gen"
 // Package-shipped generators (moonhug/packages/<name>/gen) are imported by
 // the generated package_gens_generated.odin next to this file.
 
@@ -56,8 +53,8 @@ import _ "union_gen"
 // generators import test packages back, a cycle.
 SCAN_ROOTS := []string{
 	"moonhug/editor",
-	"moonhug/engine",
-	"moonhug/engine_editor",
+	"moonhug/host",
+	"moonhug/registration",
 }
 
 // Installed packages (docs/core/Plugins.md): presence in moonhug/packages/ is the
@@ -66,7 +63,7 @@ SCAN_ROOTS := []string{
 // with `main`, 0..N of them, the app included) each receive their own
 // generated dispatcher set (__update, phase_run, register_type_guids,
 // register_packages); the shared all-packages copy lands in
-// moonhug/engine/registration for the editor and tests.
+// moonhug/registration for the editor and tests.
 PACKAGES_DIR :: "moonhug/packages"
 
 // Joins path elements with "/" on every host. NOT filepath.join: that emits
@@ -268,11 +265,12 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 	// An integration subpackage (a plugin subfolder importing another plugin)
 	// joins the scan only while that plugin is installed. Its subfolders go
 	// with it. The plugin's own editor/ is part of the plugin like its root: a
-	// missing import there is a build error (docs/core/Plugins.md).
+	// missing import there is a build error (docs/core/Plugins.md). So are
+	// the subpackages below editor/ (the engine's editor/scene_views).
 	if rest := strings.trim_prefix(dir, PACKAGES_DIR + "/"); rest != dir {
 		parts := strings.split(rest, "/", context.temp_allocator)
 		is_sub := len(parts) > 1
-		own_editor := len(parts) == 2 && parts[1] == "editor"
+		own_editor := len(parts) >= 2 && parts[1] == "editor"
 		if is_sub && !own_editor {
 			if missing, is_missing := gen_facts.plugin_dir_missing_dep(dir); is_missing {
 				fmt.printf("prebuild: %s skipped, needs the %s plugin\n", dir, missing)
@@ -295,12 +293,16 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 		// tests: scanning them would let generators import test packages back,
 		// a cycle. samples: their contents install as symlinked sibling
 		// packages, so scanning the source dir would scan the same files
-		// twice. assets: no Odin code. run_configs: one standalone file per
+		// twice. assets: a plugin's asset root, no Odin code (in the scan
+		// roots `assets` is a code package, moonhug/host/assets and
+		// moonhug/editor/assets). run_configs: one standalone file per
 		// configuration, not a package. gen: prebuild-side code compiled into
 		// THIS program, not the binaries (docs/core/Plugins.md).
 		switch entry.name {
-		case "tests", "samples", "assets", "run_configs", "gen":
+		case "tests", "samples", "run_configs", "gen":
 			continue
+		case "assets":
+			if strings.has_prefix(dir, PACKAGES_DIR) do continue
 		}
 		// A symlinked subpackage reads as .Symlink — follow it so its code
 		// compiles like any package (docs/core/Plugins.md).

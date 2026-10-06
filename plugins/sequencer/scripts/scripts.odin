@@ -11,8 +11,8 @@ package sequencer_scripts
 // and engine only, exactly like a plugin's script package would, so the
 // built-ins prove the same path plugins take.
 
-import "moonhug:engine"
-import "moonhug:engine/log"
+import "moonhug:packages/engine"
+import "moonhug:host/log"
 import core "moonhug:packages/sequencer/core"
 
 @(typ_guid={guid = "32417493-2d60-4e02-9551-8a28a9d17c8a"})

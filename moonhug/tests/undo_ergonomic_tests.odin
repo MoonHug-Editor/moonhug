@@ -1,10 +1,10 @@
 package tests
 
-import "../engine"
-import "../editor/undo"
+import "moonhug:packages/engine"
 
 import "core:strings"
 import "core:testing"
+import undo "moonhug:packages/engine/editor/undo"
 
 @(test)
 test_undo_edit_transform_begin_commit :: proc(t: ^testing.T) {

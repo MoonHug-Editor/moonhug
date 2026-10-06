@@ -3,9 +3,9 @@ package clipboard
 import "core:encoding/json"
 import "core:fmt"
 import "core:reflect"
-import engine "../../engine"
-import ser "../../engine/serialization"
-import "../../engine/log"
+import core "moonhug:host/core"
+import ser "moonhug:host/serialization"
+import "moonhug:host/log"
 
 Clipboard :: struct {
 	json_data:      [dynamic]byte,
@@ -78,9 +78,9 @@ paste :: proc(dst: any) -> bool {
 	}
 	ptr := x.data
 	tid := x.id
-	ptr_tid, ptr_tid_ok := engine.get_pointer_typeid_by_typeid(tid)
+	ptr_tid, ptr_tid_ok := core.get_pointer_typeid_by_typeid(tid)
 	if !ptr_tid_ok {
-		log.error(fmt.tprintf("clipboard.paste: no pointer typeid registered for %v — call engine.register_pointer_type($T) during init", tid))
+		log.error(fmt.tprintf("clipboard.paste: no pointer typeid registered for %v — call core.register_pointer_type($T) during init", tid))
 		return false
 	}
 	target := any{data = &ptr, id = ptr_tid}

@@ -4,7 +4,7 @@ package audio_tests
 // hook: the min distance pushes the max out and lets it back, one undo step.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import audio "moonhug:packages/audio"

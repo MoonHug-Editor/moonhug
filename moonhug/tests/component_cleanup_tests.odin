@@ -20,7 +20,7 @@ import "core:fmt"
 import "core:reflect"
 import "core:testing"
 
-import "../engine"
+import "moonhug:packages/engine"
 
 // Whether a type transitively owns heap memory: a dynamic array, a map, or a
 // string anywhere inside it. Fixed arrays and nested structs are searched

@@ -1,0 +1,80 @@
+package engine
+
+
+TextureFilterMode :: enum {
+    Linear,
+    Nearest,
+}
+
+TextureWrapMode :: enum {
+    Repeat,
+    Clamp,
+    Mirror,
+}
+
+// One slice of a texture (Unity's Sprite sub-asset, importer-owned): a pixel
+// rect plus a pivot. Renderers reference a slice as PPtr{texture guid,
+// slice id} — Unity's guid+fileID. The id is the persistent identity, minted
+// by the slicer and kept across renames and reslicing (the meta's slice list
+// doubles as Unity's internalIDToNameTable). The name is a view detail.
+Sprite_Rect :: struct {
+    id:    Local_ID,
+    name:  string,
+    rect:  [4]f32, // x, y, w, h in pixels; origin top-left, y down (stb rows)
+    pivot: [2]f32, // normalized within the rect, {0, 0} = bottom-left, {0.5, 0.5} = center
+    border: [4]f32, // 9-slice borders in pixels: left, bottom, right, top (Unity's Sprite.border)
+}
+
+Sprite_Import_Mode :: enum u8 {
+    Single,   // the whole texture is one sprite
+    Multiple, // `sprites` lists the slices
+}
+
+@(typ_guid={guid="21d45bcf-2bd8-44db-b780-953c2f8b610f"})
+TextureSettings :: struct {
+    filter:   TextureFilterMode,
+    wrap:     TextureWrapMode,
+    srgb:     bool,
+    max_size: u16,
+    // Unity's Pixels Per Unit: a sprite's world size = pixel size / this.
+    // 100 (the default) makes 100 px = 1 world unit = 1 m, the physics
+    // convention (plugins/engine/docs/FixedTick.md). 0 means the default: a meta predating
+    // the field reads 0, and on_validate_TextureSettings makes it 100.
+    pixels_per_unit: f32,
+    // Unity's TextureImporter.spriteImportMode: slicing is importer data, so
+    // it bakes into the catalog with the rest of the settings and reaches
+    // game builds with no extra pipeline.
+    sprite_mode: Sprite_Import_Mode,
+    sprites:     [dynamic]Sprite_Rect,
+    // Single mode's 9-slice borders in pixels: left, bottom, right, top
+    // (Unity's spriteBorder). Multiple mode keeps them per slice.
+    sprite_border: [4]f32,
+}
+
+default_texture_settings :: proc() -> TextureSettings {
+    return TextureSettings{
+        filter   = .Linear,
+        wrap     = .Repeat,
+        srgb     = true,
+        max_size = 0,
+        pixels_per_unit = PIXELS_PER_UNIT,
+    }
+}
+
+// A zero PPU is no value (a meta predating the field): the default.
+on_validate_TextureSettings :: proc(s: ^TextureSettings) {
+    if s.pixels_per_unit <= 0 do s.pixels_per_unit = PIXELS_PER_UNIT
+}
+
+cleanup_TextureSettings :: proc(s: ^TextureSettings) {
+    for &r in s.sprites do delete(r.name)
+    delete(s.sprites)
+    s^ = {}
+}
+
+reset_TextureSettings :: proc(p: ^TextureSettings) {
+    cleanup_TextureSettings(p)
+    p^ = default_texture_settings()
+}
+
+

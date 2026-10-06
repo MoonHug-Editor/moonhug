@@ -18,7 +18,7 @@ package sequencer
 import "base:runtime"
 import "core:math"
 import "core:slice"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 @(update={order=2})
 directors_tick :: proc(dt: f32) {

@@ -22,17 +22,17 @@ package inspector
 
 import "core:reflect"
 import "core:strings"
-import engine "../../engine"
+import core "moonhug:host/core"
 
 // The component keys `spec` admits, in first-mention order with duplicates
 // removed. Empty for an empty spec, and for a spec naming nothing that exists —
 // the drawers show "no picker" for that rather than an empty list, so a typo
 // in a tag is visible instead of silent.
-ref_target_keys :: proc(spec: string, allocator := context.temp_allocator) -> []engine.TypeKey {
-	out := make([dynamic]engine.TypeKey, allocator)
+ref_target_keys :: proc(spec: string, allocator := context.temp_allocator) -> []core.TypeKey {
+	out := make([dynamic]core.TypeKey, allocator)
 	if strings.trim_space(spec) == "" do return out[:]
 
-	add :: proc(out: ^[dynamic]engine.TypeKey, k: engine.TypeKey) {
+	add :: proc(out: ^[dynamic]core.TypeKey, k: core.TypeKey) {
 		for have in out do if have == k do return
 		append(out, k)
 	}
@@ -41,10 +41,10 @@ ref_target_keys :: proc(spec: string, allocator := context.temp_allocator) -> []
 		item := strings.trim_space(raw)
 		if item == "" do continue
 		if strings.has_prefix(item, "@") {
-			for k in engine.component_keys_with_ref_tag(item[1:]) do add(&out, k)
+			for k in object_keys_with_ref_tag(item[1:]) do add(&out, k)
 			continue
 		}
-		if k, ok := reflect.enum_from_name(engine.TypeKey, item); ok {
+		if k, ok := reflect.enum_from_name(core.TypeKey, item); ok {
 			add(&out, k)
 		}
 	}

@@ -95,8 +95,8 @@ tween_generate :: proc(w: ^db.World) -> bool {
 	defer strings.builder_destroy(&b)
 	strings.write_string(&b, "package sequencer\n\n")
 	strings.write_string(&b, "import \"base:runtime\"\n")
-	strings.write_string(&b, "import \"moonhug:engine\"\n")
-	strings.write_string(&b, "import serialization \"moonhug:engine/serialization\"\n")
+	strings.write_string(&b, "import \"moonhug:packages/engine\"\n")
+	strings.write_string(&b, "import serialization \"moonhug:host/serialization\"\n")
 	strings.write_string(&b, "import core \"moonhug:packages/sequencer/core\"\n")
 	{
 		imported: [dynamic]string

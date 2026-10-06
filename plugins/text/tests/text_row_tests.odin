@@ -8,7 +8,7 @@ import "core:strings"
 import "moonhug:editor/inspector"
 import "core:testing"
 import "moonhug:editor/undo"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import text "moonhug:packages/text"
 import common "moonhug:tests/common"
 

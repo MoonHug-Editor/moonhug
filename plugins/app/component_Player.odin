@@ -4,7 +4,7 @@ package app
 // animations wired by setup_player_animations). App-level: scene records live
 // in ext_components keyed by the type guid below — never change it.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 
 @(component={max=10, menu="Demo/Player"})

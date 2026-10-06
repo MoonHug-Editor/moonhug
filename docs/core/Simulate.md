@@ -97,7 +97,7 @@ path a manual delete does: `transform_destroy` fires each component's
 `on_destroy_*`, releasing subsystem state (box2d bodies, audio voices, animation
 runners). `physics2d/tests` covers this for physics.
 
-Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`).
+Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`, called from the engine's world provider).
 The restored scene keeps its slot and its active-scene status, so the editor
 carries on editing what it was editing. The scene SET is restored as well:
 scenes the run loaded additively are unloaded, and scenes the run unloaded
@@ -130,7 +130,7 @@ fixed ticks (0..k this frame, accumulator-driven)  →  __fixed_update
 per-frame tick                                    →  __update
 ```
 
-Same procs, same order as that game's own loop (see [FixedTick.md](FixedTick.md)),
+Same procs, same order as that game's own loop (see [FixedTick.md](../../plugins/engine/docs/FixedTick.md)),
 so a component behaves identically in Simulate and standalone. The editor has no
 dispatcher of its own to drift out of sync — `@(update)` and
 `@(fixed_update)` subscribers are picked up automatically, including those from
@@ -143,8 +143,8 @@ toolbar's Sim Host dropdown, right of the Simulate controls, chooses which
 host's update code Simulate runs.
 
 The list is generated, not configured. Prebuild emits one row per runnable
-package into `editor/sim_hosts_generated.odin`, each carrying that host's
-`__update` / `__fixed_update`. Install a second game and it appears; there is
+package into `registration/sim_hosts_generated.odin`, each carrying that host's
+`__update` / `__fixed_update`, and sim_world converts the rows and hands them to Simulate in `EditorInit`. Install a second game and it appears; there is
 nothing to register.
 
 With one sim host the dropdown is **disabled but still visible**, reading out that
@@ -166,7 +166,7 @@ world one tick at a time.
 ## Input
 
 Application focus (`engine.application_is_focused`, Unity's
-Application.isFocused, stored in `engine/core` so every layer can ask) gates
+Application.isFocused, stored in `host/core` so every layer can ask) gates
 the game's input. Standalone it is the window's focus. In the editor it is
 the Game view's focus during a run: Play focuses the view (and brings its tab
 forward), a click on the view's image focuses it, a click anywhere else in
@@ -247,11 +247,13 @@ sim host.
 ## Code layout
 
 ```
-editor/simulate/          state machine: start/stop/pause/step, host selection
-editor/simulate_view.odin toolbar, shortcuts, and the hooks into editor state
+editor/simulate/simulate.odin    state machine: start/stop/pause/step, host selection
+editor/simulate/world.odin       Simulate_World, the provider for the world being simulated
+editor/simulate_view.odin        toolbar, shortcuts, and the hooks into editor state
+plugins/engine/editor/sim_world/ the engine's Simulate_World: snapshot, scene set, fixed ticks
 ```
 
-The state machine is a subpackage with no imgui or view dependencies, so tests and
+The state machine is a subpackage with no imgui, view or engine dependencies, so tests and
 tools drive a simulation without the editor root. Editor-owned state (selection,
 phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an
-unset hook is a no-op.
+unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `tick` runs the fixed ticks and then the frame tick, `select_restored` resolves a selected id in the restored scene. With no world installed a run captures nothing and ticks only the `@(update)` procs.

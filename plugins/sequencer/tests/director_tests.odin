@@ -10,7 +10,7 @@ package sequencer_tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"
 // Build a track NODE with clip NODES under `owner` — what the window's Add

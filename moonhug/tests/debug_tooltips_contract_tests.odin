@@ -17,7 +17,7 @@ import "core:testing"
 
 // Mirrors prebuild.SCAN_ROOTS plus PACKAGES_DIR. Kept literal here: the
 // prebuild is a separate program and cannot be imported.
-_CONTRACT_ROOTS := []string{"moonhug/editor", "moonhug/engine", "moonhug/engine_editor", "moonhug/packages"}
+_CONTRACT_ROOTS := []string{"moonhug/editor", "moonhug/packages"}
 
 // A call that truly cannot go through widgets.tooltip carries this on the
 // line above. None today, so every use is visible in review.

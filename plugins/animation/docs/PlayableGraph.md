@@ -327,7 +327,7 @@ See **plugins/animation/docs/AnimationComponent.md** for the component itself: s
 fades, layers, the API, its inspector tree and the Animation window.
 
 - `animation_tick` stays `@(update)` per-frame (animation belongs in Update, not
-  FixedUpdate — docs/core/FixedTick.md keeps view-side work per-frame).
+  FixedUpdate — plugins/engine/docs/FixedTick.md keeps view-side work per-frame).
 - The graph stays agnostic about who advances time. That property is what the
   editor scrubber rides on.
 - The component owns its graph, pooled like everything else.

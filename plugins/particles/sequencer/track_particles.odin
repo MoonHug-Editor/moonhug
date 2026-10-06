@@ -14,7 +14,7 @@ package particles_sequencer
 // track-driven systems with manual_start (and a random_seed for stable
 // scrubbing): the span decides when they play.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import particles "moonhug:packages/particles"
 

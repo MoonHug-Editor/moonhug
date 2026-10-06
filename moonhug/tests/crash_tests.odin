@@ -9,7 +9,7 @@ package tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import crash_journal "../engine/crash_journal"
+import crash_journal "moonhug:host/crash_journal"
 
 @(test)
 test_crash_journal_writes_reason_and_breadcrumb :: proc(t: ^testing.T) {

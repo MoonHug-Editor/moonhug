@@ -14,12 +14,15 @@ import "core:time"
 import im "moonhug:external/odin-imgui"
 import "inspector"
 import "menu"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import asset_pipeline "moonhug:editor/assets"
 import "subassets"
+import "moonhug:editor/thumbnails"
 import "undo"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
+import "moonhug:editor/viewport"
 
 ProjectViewData :: struct {
     currentPath: string,
@@ -450,8 +453,8 @@ _project_file_icon :: proc(path: string) -> string {
     case ".scene":
         // Variant assets get the variant glyph — detection is a reliable
         // AssetDB root-info lookup (file inherits a base), not a name check.
-        if guid, ok := engine.asset_db_get_guid(path); ok {
-            if info, iok := engine.asset_db_get_root_info(engine.Asset_GUID(guid)); iok && info.is_variant {
+        if guid, ok := assets.asset_db_get_guid(path); ok {
+            if info, iok := assets.asset_db_get_root_info(core.Asset_GUID(guid)); iok && info.is_variant {
                 return icons.ICON_MD_STACKS_VARIANT
             }
         }
@@ -860,8 +863,8 @@ _project_draw_grid :: proc(path: string, cell: f32) {
             if !entry.is_dir && _project_expanded[entry_path] {
                 sub, provider := _project_sub_assets(entry_path, false)
                 if len(sub) > 0 {
-                    if raw_guid, gok := engine.asset_db_get_guid(entry_path); gok {
-                        guid := engine.Asset_GUID(raw_guid)
+                    if raw_guid, gok := assets.asset_db_get_guid(entry_path); gok {
+                        guid := core.Asset_GUID(raw_guid)
                         for s, si in sub {
                             if col > 0 do im.SameLine()
                             else do im.SetCursorPosX(im.GetCursorPosX() + lead)
@@ -875,7 +878,7 @@ _project_draw_grid :: proc(path: string, cell: f32) {
     }
 }
 
-_project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID, s: subassets.Sub_Asset, index: int, provider: subassets.Provider, cell: f32) {
+_project_draw_grid_sub_cell :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, index: int, provider: subassets.Provider, cell: f32) {
     label_h := im.GetTextLineHeightWithSpacing()
     // ID scope by parent + INDEX — the sub-asset id is data (pre-heal metas
     // carry id 0 on every slice).
@@ -890,7 +893,7 @@ _project_draw_grid_sub_cell :: proc(parent_path: string, guid: engine.Asset_GUID
     _project_sub_asset_drag(guid, s, fmt.ctprintf("%s%s", icons.ICON_MD_IMAGE, s.name))
 
     dl := im.GetWindowDrawList()
-    if tid, uv0, uv1, tok := thumbnail_get_sub(parent_path, s); tok {
+    if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
         // Aspect-fit: crops know their pixel size, rendered thumbs are square.
         w := s.size.x > 0 ? s.size.x : 1
         h := s.size.y > 0 ? s.size.y : 1
@@ -1016,7 +1019,7 @@ _project_draw_grid_cell :: proc(display: string, full_path: string, is_dir: bool
 _project_grid_cell_art :: proc(full_path: string, is_dir: bool, rect_min: im.Vec2, cell: f32, dim: bool, is_link := false) {
     dl := im.GetWindowDrawList()
     if !is_dir {
-        if id, ok := thumbnail_get(full_path); ok {
+        if id, ok := thumbnails.get(full_path); ok {
             inset := cell * 0.04
             im.DrawList_AddImage(dl,
                 im.TextureRef{_TexID = im.TextureID(uintptr(id))},
@@ -1091,7 +1094,7 @@ _project_draw_list_row :: proc(display: string, full_path: string, is_dir: bool,
     _project_item_ping_flash(full_path)
     _project_item_extras(full_path, is_dir, label)
     if !is_dir {
-        if tid, tok := thumbnail_get(full_path); tok {
+        if tid, tok := thumbnails.get(full_path); tok {
             _project_row_preview(tid, {0, 0}, {1, 1}, 1, 1)
         }
     }
@@ -1142,7 +1145,7 @@ _project_sub_assets :: proc(path: string, is_dir: bool) -> ([]subassets.Sub_Asse
 // Sub-asset click: a REAL selection entry {path, sub_id} — one set, one undo
 // path with the rest of the selection. The active file stays the owning
 // asset (its import settings inspect).
-_project_sub_asset_clicked :: proc(parent_path: string, guid: engine.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider) {
+_project_sub_asset_clicked :: proc(parent_path: string, guid: core.Asset_GUID, s: subassets.Sub_Asset, provider: subassets.Provider) {
     sel_proj_only(parent_path, s.id)
     _project_set_active(parent_path)
     _project_inspect_path(parent_path)
@@ -1151,19 +1154,19 @@ _project_sub_asset_clicked :: proc(parent_path: string, guid: engine.Asset_GUID,
     }
 }
 
-_project_sub_asset_drag :: proc(guid: engine.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
+_project_sub_asset_drag :: proc(guid: core.Asset_GUID, s: subassets.Sub_Asset, drag_label: cstring) {
     if im.BeginDragDropSource({}) {
-        payload := engine.PPtr{guid = guid, local_id = s.id}
-        im.SetDragDropPayload("ASSET_PPTR", &payload, size_of(engine.PPtr))
+        payload := core.PPtr{guid = guid, local_id = s.id}
+        im.SetDragDropPayload("ASSET_PPTR", &payload, size_of(core.PPtr))
         im.Text(drag_label)
         im.EndDragDropSource()
     }
 }
 
 _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_Asset, provider: subassets.Provider, indent: f32) {
-    raw_guid, gok := engine.asset_db_get_guid(parent_path)
+    raw_guid, gok := assets.asset_db_get_guid(parent_path)
     if !gok do return
-    guid := engine.Asset_GUID(raw_guid)
+    guid := core.Asset_GUID(raw_guid)
 
     im.Indent(indent * 2)
     // ID scope by parent + list INDEX — never by the sub-asset id, which is
@@ -1177,7 +1180,7 @@ _project_draw_sub_asset_rows :: proc(parent_path: string, sub: []subassets.Sub_A
             _project_sub_asset_clicked(parent_path, guid, s, provider)
         }
         _project_sub_asset_drag(guid, s, label)
-        if tid, uv0, uv1, tok := thumbnail_get_sub(parent_path, s); tok {
+        if tid, uv0, uv1, tok := thumbnails.get_sub(parent_path, s); tok {
             _project_row_preview(tid, uv0, uv1, s.size.x, s.size.y)
         }
         im.PopID()
@@ -1269,7 +1272,7 @@ _project_draw_search_results :: proc(query: string) -> int {
     terms := widgets.search_terms(query)
 
     matches := make([dynamic]string, context.temp_allocator)
-    for path in engine.asset_db.path_to_guid {
+    for path in assets.asset_db.path_to_guid {
         name := filepath.base(path)
         if widgets.search_match(name, terms) {
             append(&matches, path)
@@ -1298,7 +1301,7 @@ create_scene_variant :: proc(base_path: string) {
     variant_name := strings.concatenate({stem, "_Variant.scene"}, context.temp_allocator)
     variant_path, _ := filepath.join({dir, variant_name}, context.temp_allocator)
 
-    if !engine.scene_create_variant_file(base_path, variant_path) {
+    if !asset_pipeline.asset_create_variant(base_path, variant_path) {
         fmt.printf("[Editor] Failed to create scene variant from %s\n", base_path)
         return
     }
@@ -1306,9 +1309,8 @@ create_scene_variant :: proc(base_path: string) {
     asset_pipeline.asset_db_refresh()
 
     undo.purge_scenes(undo.get())
-    hierarchy_edit_stack_clear()
-    scene := engine.scene_load_single_path(variant_path)
-    engine.sm_scene_set_active(scene)
+    viewport.edit_stack_clear()
+    asset_pipeline.asset_open(variant_path)
 }
 
 // Leave search mode and open the asset's folder, revealed in the tree.
@@ -1373,18 +1375,18 @@ _PROJECT_MIN_PANE :: f32(120)
 draw_project_view :: proc() {
     // Drain cross-package asset requests (inspector value-button clicks):
     // ping = reveal + flash; open = reveal + select + activate (double click).
-    if ping_guid, ok := engine.inspector_take_pending_ping_asset(); ok {
-        if path, pok := engine.asset_db_get_path(uuid.Identifier(ping_guid)); pok {
+    if ping_guid, ok := core.inspector_take_pending_ping_asset(); ok {
+        if path, pok := assets.asset_db_get_path(uuid.Identifier(ping_guid)); pok {
             _project_reveal_path(path, select = false)
         }
     }
-    if sel_guid, ok := engine.inspector_take_pending_select_asset(); ok {
-        if path, pok := engine.asset_db_get_path(uuid.Identifier(sel_guid)); pok {
+    if sel_guid, ok := core.inspector_take_pending_select_asset(); ok {
+        if path, pok := assets.asset_db_get_path(uuid.Identifier(sel_guid)); pok {
             _project_reveal_path(path, select = true)
         }
     }
-    if open_guid, ok := engine.inspector_take_pending_open_asset(); ok {
-        if path, pok := engine.asset_db_get_path(uuid.Identifier(open_guid)); pok {
+    if open_guid, ok := core.inspector_take_pending_open_asset(); ok {
+        if path, pok := assets.asset_db_get_path(uuid.Identifier(open_guid)); pok {
             _project_reveal_path(path, select = true)
             _project_activate_file(path)
         }

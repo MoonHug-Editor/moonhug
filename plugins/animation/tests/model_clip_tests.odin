@@ -13,12 +13,13 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
-import "moonhug:engine/catalog"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import "moonhug:host/catalog"
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:packages/engine/editor/importers"
 import anim "moonhug:packages/animation"
 import animation_editor "moonhug:packages/animation/editor"
-import mesh_editor "moonhug:engine_editor/mesh_editor"
+import mesh_editor "moonhug:packages/engine/editor/mesh_editor"
 import common "moonhug:tests/common"
 
 BOX_ANIM_GLTF :: "moonhug/tests/fixtures/meshes/box_animated.gltf"
@@ -32,9 +33,9 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 	defer os.remove(part0)
 	defer os.remove(clip0)
 
-	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	ms := engine.MeshSettings{scale = 1}
-	testing.expect(t, asset_pipeline._import_mesh(BOX_ANIM_GLTF, artifact, &ms), "import failed")
+	testing.expect(t, importers._import_mesh(BOX_ANIM_GLTF, artifact, &ms), "import failed")
 	testing.expect(t, len(ms.clips) >= 1, "the animated box lists at least one clip")
 	if len(ms.clips) == 0 do return
 	testing.expect(t, os.exists(clip0), "clip 0 baked to the _a0 fan-out")
@@ -47,7 +48,7 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 
 	// A reimport keeps id AND guid, matched by name — the guid is what scenes hold.
 	first := ms.clips[0]
-	testing.expect(t, asset_pipeline._import_mesh(BOX_ANIM_GLTF, artifact, &ms), "reimport failed")
+	testing.expect(t, importers._import_mesh(BOX_ANIM_GLTF, artifact, &ms), "reimport failed")
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].id == first.id, "clip id survives reimport")
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].guid == first.guid, "clip guid survives reimport")
 	testing.expect(t, len(ms.clips) >= 1 && ms.clips[0].name == first.name, "clip name survives reimport")
@@ -61,7 +62,7 @@ test_mesh_import_bakes_clips_with_stable_identity :: proc(t: ^testing.T) {
 	loop_v, perr := json.parse(transmute([]byte)string(`{"wrap": 1}`), .JSON, true, context.temp_allocator)
 	testing.expect(t, perr == nil)
 	append(&ms2.clips, engine.Mesh_Clip{id = 9, name = first.name, guid = first.guid, settings = loop_v})
-	testing.expect(t, asset_pipeline._import_mesh(BOX_ANIM_GLTF, artifact, &ms2), "import with settings failed")
+	testing.expect(t, importers._import_mesh(BOX_ANIM_GLTF, artifact, &ms2), "import with settings failed")
 	testing.expect(t, len(ms2.clips) == 2, "one real clip, one orphan")
 	if len(ms2.clips) == 2 {
 		testing.expect(t, ms2.clips[0].name == first.name && ms2.clips[0].id == 9 && ms2.clips[0].guid == first.guid && !ms2.clips[0].orphan, "the real clip keeps its identity, first")
@@ -94,7 +95,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 	}
 
 	asset_pipeline.asset_pipeline_init()
-	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	engine.asset_db_init(src_dir)
 	_ = asset_pipeline.asset_pipeline_import_asset(gltf)
 
@@ -158,7 +159,7 @@ test_model_clip_resolves_loads_and_exports :: proc(t: ^testing.T) {
 }
 
 // The project view lists a model's sub-assets through the ONE model provider
-// (engine_editor/mesh_editor): its parts, then its clips. The failure it
+// (plugins/engine/editor/mesh_editor): its parts, then its clips. The failure it
 // guards: a second provider for .glb replaced this one, and the clips never
 // showed while the parts did.
 @(test)
@@ -176,7 +177,7 @@ test_model_provider_lists_parts_then_clips :: proc(t: ^testing.T) {
 	}
 
 	asset_pipeline.asset_pipeline_init()
-	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	engine.asset_db_init(src_dir)
 	defer engine.asset_db_shutdown()
 	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")
@@ -219,7 +220,7 @@ test_model_clip_list_refreshes_after_reimport :: proc(t: ^testing.T) {
 	engine.mesh_cache_init()
 	defer engine.mesh_cache_shutdown()
 	asset_pipeline.asset_pipeline_init()
-	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	engine.asset_db_init(src_dir)
 	defer engine.asset_db_shutdown()
 
@@ -263,7 +264,7 @@ test_stale_artifact_sweep_keeps_clip_fan_out :: proc(t: ^testing.T) {
 	}
 
 	asset_pipeline.asset_pipeline_init()
-	asset_pipeline.gltf_clip_baker = animation_editor.bake_gltf_clip
+	importers.gltf_clip_baker = animation_editor.bake_gltf_clip
 	engine.asset_db_init(src_dir)
 	defer engine.asset_db_shutdown()
 	testing.expect(t, asset_pipeline.asset_pipeline_import_asset(gltf), "import")

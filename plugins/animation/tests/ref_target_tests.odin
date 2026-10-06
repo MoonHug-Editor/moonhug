@@ -9,7 +9,7 @@ package animation_tests
 
 import "core:testing"
 import "moonhug:editor/inspector"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 
 @(private = "file")

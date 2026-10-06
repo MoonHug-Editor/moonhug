@@ -5,11 +5,11 @@ import "core:fmt"
 // from reading it as unused in a release build.
 @(require) import "core:mem"
 import sdl "vendor:sdl3"
-import gfx "../engine/gfx"
-import input "../engine/input"
+import gfx "moonhug:host/gfx"
+import input "moonhug:host/input"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine/gizmos"
+import "moonhug:host/gizmos"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import "inspector"
@@ -19,15 +19,17 @@ import "undo"
 import wnd "moonhug:editor/window"
 import "moonhug:editor/widgets"
 import "moonhug:editor/preview"
-import "../engine/registration"
+import "moonhug:editor/thumbnails"
+import "moonhug:registration"
 import "core:os"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import core "moonhug:host/core"
+import asset_pipeline "moonhug:editor/assets"
+import assets "moonhug:host/assets"
 import "moonhug:editor/progress"
-import crash_journal "../engine/crash_journal"
-import "core:path/filepath"
-import "../engine/log"
+import crash_journal "moonhug:host/crash_journal"
+import "moonhug:host/log"
 import "core:encoding/uuid"
+import "moonhug:editor/viewport"
 
 main :: proc() {
     when ODIN_DEBUG {
@@ -47,8 +49,8 @@ main :: proc() {
     }
 
     // Anchor at moonhug/ before anything reads a relative path. Detection is
-    // by directory content, not folder name (engine/project_root.odin).
-    engine.project_chdir_root()
+    // by directory content, not folder name (host/assets/project_root.odin).
+    assets.project_chdir_root()
 
     // Before anything that can fault: from here on a crash lands in
     // logs/crash_<pid>.log with a stack (docs/general/CrashJournal.md).
@@ -120,14 +122,9 @@ main :: proc() {
     // of a black window (progress_overlay.odin).
     progress_overlay_install()
 
-    // Init user context and world
-    uc := new(engine.UserContext)
-    context.user_ptr = uc
-    uc.is_editor = true // engine.application_is_editor; never changes at runtime
-
-    w := new(engine.World)
-    engine.w_init(w)
-    engine.ctx_get().world = w
+    // The installed engine's user context and world (viewport.Host_Lifecycle),
+    // nil with no engine.
+    context.user_ptr = viewport.host_boot()
 
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
@@ -137,8 +134,7 @@ main :: proc() {
     defer selection_undo_shutdown()
     defer { undo.destroy(undo_stack); free(undo_stack) }
 
-    defer { engine.world_destroy_all(w); free(w) }
-    defer free(uc)
+    defer viewport.host_release()
 
     progress.begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
@@ -147,9 +143,9 @@ main :: proc() {
     queue_scenes_from_settings()
     frames_presented := 0
 
-    // Resolve which host Simulate ticks, from the generated table
-    // (sim_hosts_generated.odin) and the persisted setting. Must follow
-    // load_editor_settings.
+    // Resolve which host Simulate ticks, from the generated table sim_world
+    // set in EditorInit and the persisted setting. Must follow
+    // load_editor_settings and EditorInit.
     simulate_init()
     defer simulate_shutdown()
     // Reopen what was open last session — declarations must exist first.
@@ -159,9 +155,7 @@ main :: proc() {
     _register_project_settings() // @(project_settings) vars -> settings tabs
     project_plugins_register()   // the Plugins tab: plugins/ with a link toggle each
     defer settings_shutdown()
-    defer thumbnails_shutdown()
-    defer asset_previews_shutdown()
-    defer preview_world_shutdown()
+    defer thumbnails.shutdown()
     mcp_bridge_init() // agent bridge on loopback TCP (docs/core/McpBridge.md)
     defer mcp_bridge_shutdown()
 
@@ -194,16 +188,16 @@ main :: proc() {
         progress_overlay_frame_scope(true)
 
         // Publish the selection for package editor windows (the read side of
-        // the UserContext inspector channel — engine/user_context.odin).
+        // the UserContext inspector channel — plugins/engine/user_context.odin).
         // Once per frame rather than at every mutation site: selection moves
         // from clicks, picking, pending-select and undo restore alike.
-        engine.inspector_set_active_selection(sel_scene_active())
-        engine.inspector_set_inspected_selection(inspector_active_target())
+        core.inspector_set_active_selection(sel_scene_active())
+        core.inspector_set_inspected_selection(inspector_active_target())
 
         // Thumbnail generation before ANY view draws: scene previews spawn and
         // destroy live content within this call, so nothing leaks into the
-        // frame's visible rendering (thumbnails.odin).
-        thumbnails_tick()
+        // frame's visible rendering (editor/thumbnails).
+        thumbnails.tick()
 
         // Agent bridge: before views draw, so screenshot readbacks see the
         // PREVIOUS frame's submitted render targets (mcp_bridge.odin).
@@ -213,7 +207,7 @@ main :: proc() {
         im_sdlgpu.NewFrame()
         im_sdl.NewFrame()
         im.NewFrame()
-        text_input_escape_frame() // Escape commits text fields (text_input.odin)
+        widgets.text_input_escape_frame() // Escape commits text fields (widgets/text_input.odin)
 
         menu.draw_menu_bar()
         draw_tool_bar()
@@ -250,7 +244,7 @@ main :: proc() {
 
         // ImGui UI
         if menu.show_inspector {
-            draw_hierarchy_inspector()
+            viewport.inspector_draw()
         }
 
         if menu.show_project_inspector {
@@ -270,7 +264,7 @@ main :: proc() {
         }
 
         if menu.show_hierarchy {
-            draw_hierarchy_view()
+            viewport.hierarchy_draw()
         }
 
         // Package editor views (animation, playable graph, ...) — each owns
@@ -346,7 +340,7 @@ main :: proc() {
     settings_save_all()
 }
 
-@(phase={key=engine.Phase.EditorInit, order=0, mode=Editor})
+@(phase={key=core.Phase.EditorInit, order=0, mode=Editor})
 editor_init :: proc() {
     registration.register_packages()
     // Type keys before the phases, the same order as the app and the tests:
@@ -356,19 +350,15 @@ editor_init :: proc() {
     phase_editor_run(.SerializationInit)
     phase_editor_run(.ImportersInit)
     clip.init()
-    _init_context_menu_registry()
-    _register_asset_previews()
+    inspector.selected_sub = sel_proj_active_sub
     init_project_view()
     progress.report("Scanning assets")
-    engine.asset_catalog_auto = true // editor maintains library/catalog.json
+    assets.asset_catalog_auto = true // editor maintains library/catalog.json
     asset_pipeline.asset_pipeline_init()
-    engine.asset_db_init("assets")
+    assets.asset_db_init("assets")
     asset_pipeline.asset_pipeline_import_all()
     progress.report("Initializing caches")
-    engine.texture_cache_init()
-    engine.mesh_cache_init()
-    engine.material_cache_init()
-    engine.shader_cache_init()
+    viewport.host_init()
 
     init_scene_view()
     init_game_view()
@@ -381,7 +371,7 @@ editor_init :: proc() {
         _register_view_chrome()
         _load_user_settings() // @(user_settings) vars -> UserSettings/*.json
         register_create_asset_menus()
-        register_component_menus()
+        viewport.scene_views_register_menus()
 
         top_order := make(map[string]int)
         defer delete(top_order)
@@ -416,7 +406,7 @@ queue_scenes_from_settings :: proc() {
     for guid_str in editor_settings.open_scene_guids {
         guid, err := uuid.read(guid_str)
         if err != nil do continue
-        path, ok := engine.asset_db_get_path(guid)
+        path, ok := assets.asset_db_get_path(guid)
         if !ok do continue
         append(&_pending_scene_loads, strings.clone(path))
     }
@@ -433,7 +423,7 @@ load_next_pending_scene :: proc() {
     // No pumped frames here — an overlay-only frame would blank the views.
     progress_overlay_frame_scope(true)
     defer progress_overlay_frame_scope(false)
-    engine.scene_load_additive_path(path)
+    asset_pipeline.asset_open_additive(path)
 }
 
 // Drawn as part of the NORMAL frame while scene loads are pending — the
@@ -455,21 +445,16 @@ draw_pending_scene_overlay :: proc() {
     im.End()
 }
 
-@(phase={key=engine.Phase.EditorShutdown, order=0, mode=Editor})
+@(phase={key=core.Phase.EditorShutdown, order=0, mode=Editor})
 editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_view()
     shutdown_scene_view()
-    engine.texture_cache_shutdown()
-    engine.mesh_cache_shutdown()
-    engine.material_cache_shutdown()
-    engine.shader_cache_shutdown()
-    engine.asset_db_shutdown()
-    engine.sm_shutdown()
-    engine.scene_lib_shutdown()
-    _shutdown_context_menu_registry()
+    viewport.host_shutdown()
+    assets.asset_db_shutdown()
     inspector.shutdown_registries()
-    shutdown_hierarchy_views()
+    viewport.scene_views_shutdown()
+    selection_shutdown()
     shutdown_project_view()
     _save_user_settings()
     menu.shutdown_menu()
@@ -477,21 +462,6 @@ editor_shutdown :: proc() {
     inspector_lock_shutdown()
     log.info("Editor Shutdown")
     log.shutdown()
-}
-
-// Saves the active scene to its file (the hierarchy header menu's Save).
-@(menu_item={path="File/Save Scene", order=1, shortcut=""})
-scene_save_menu :: proc() {
-	scene := engine.sm_scene_get_active()
-	if scene == nil || len(scene.path) == 0 do return
-	engine.scene_save(scene, scene.path)
-}
-
-@(menu_item={path="Assets/Create/Scene", order=0, shortcut=""})
-scene_create_menu :: proc() {
-	scene := engine.scene_new()
-	save_path, _ := filepath.join({projectViewData.currentPath, "Scene.scene"}, context.temp_allocator)
-	engine.scene_save(scene, save_path)
 }
 
 // Creates a prefab variant of the currently-selected scene asset, written
@@ -532,7 +502,7 @@ _frame_may_finish_edit :: proc() -> bool {
 }
 
 // Ctrl+Z / Ctrl+Shift+Z live on the Edit/Undo and Edit/Redo menu items
-// (hierarchy_menu.odin) — only the Ctrl+Y redo alias is handled here.
+// (edit_menu.odin) — only the Ctrl+Y redo alias is handled here.
 _process_undo_shortcuts :: proc() {
 	s := undo.get()
 	if s == nil do return

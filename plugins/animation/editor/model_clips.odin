@@ -11,7 +11,7 @@ package animation_editor
 //   clip reaches the clip cache (inspector.doc_preview_register).
 //
 // The clip rows themselves come from the model provider in
-// engine_editor/mesh_editor, which lists parts and clips. A clip row drags as
+// plugins/engine/editor/mesh_editor, which lists parts and clips. A clip row drags as
 // (model guid, clip id), which a clip field turns back into the clip's own
 // guid (property_drawer_asset_guid.odin), so a clip is assigned straight from
 // the model without extracting anything.
@@ -21,7 +21,7 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/inspector"
 import "moonhug:editor/subassets"
 import "moonhug:editor/widgets"

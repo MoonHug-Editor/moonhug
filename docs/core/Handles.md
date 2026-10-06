@@ -5,7 +5,7 @@ weight: 160
 tags: ["handles", "gizmos", "editor"]
 ---
 
-`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `engine/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
+`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `host/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
 
 ## Where handles live
 
@@ -117,7 +117,7 @@ The physics colliders use them: box, sphere and capsule in physics3d, box, circl
 
 Other users, each one undo step per drag:
 
-- Lights (`editor/light_gizmos.odin`), in every tool: a point light's range with a radius handle on the world axes, a spot light's range and spot angle with a cone handle along its forward (-Z). The gizmo draws the range sphere, the spot cone out to the range, or a directional light's ring of rays. The cone angle is `max(spot_angle, inner_spot_angle)`, the one the renderer uses.
+- Lights (`plugins/engine/editor/scene_tools/light_gizmos.odin`), in every tool: a point light's range with a radius handle on the world axes, a spot light's range and spot angle with a cone handle along its forward (-Z). The gizmo draws the range sphere, the spot cone out to the range, or a directional light's ring of rays. The cone angle is `max(spot_angle, inner_spot_angle)`, the one the renderer uses.
 - Audio sources (the audio plugin's `audio_gizmos.odin`), in every tool: the min and max distance, each a wire sphere with a radius handle on the world axes. The min distance past the max pushes the max out, and the max below the min pulls the min in.
 - Particle shapes (the particles plugin's `particles_gizmos.odin`), in the Handles tool (T) only, like the colliders: a cone's base radius and angle with a frustum handle, a sphere's, hemisphere's, circle's or edge's radius, a box's size around its center.
 
@@ -137,7 +137,7 @@ Behavior:
 - During a move, the parts that are not moving draw faint. A square drag lights its square and its two arrows.
 - Each composite salts its part ids differently, so switching tools mid-drag never hands the drag to another composite.
 
-The transform tool (`editor/gizmo.odin`) keeps only what a drag does: it applies the move, turn or scale factor to every selected top-level object from their grab-time states, orbits and scales their offsets around the pivot, and makes the drag one undo step. For the turn and the factor it hands the rotate and scale handles a value that starts at identity at every grab.
+The transform tool (`plugins/engine/editor/scene_tools/gizmo.odin`) keeps only what a drag does: it applies the move, turn or scale factor to every selected top-level object from their grab-time states, orbits and scales their offsets around the pivot, and makes the drag one undo step. For the turn and the factor it hands the rotate and scale handles a value that starts at identity at every grab.
 
 ## Scene icons
 
@@ -145,7 +145,7 @@ The transform tool (`editor/gizmo.odin`) keeps only what a drag does: it applies
 
 - a glyph of the editor's icon font: a Material Symbols codepoint such as `'\ue90f'` (lightbulb). The names and codepoints are in `external/fonts/material/MaterialSymbolsOutlined.codepoints`.
 - a texture asset: its guid, usually a component field picked in the inspector. `color` multiplies it, white by default.
-- a symbol: a proc that draws with engine/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
+- a symbol: a proc that draws with host/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
 
 `color` tints a glyph or a symbol. Call it from an `@(on_draw_gizmos)` hook, before the selection check, so every instance shows one:
 
@@ -171,7 +171,7 @@ Undo is the caller's. Open an undo session on `started`, edit on `dragging`, clo
 
 ## Drawing
 
-Plain shapes and labels come from `engine/gizmos` (docs/core/Gizmos.md). Handles add the chrome a handle needs, drawn over everything and styled to read on any background with a dark half-transparent line one pixel off each edge:
+Plain shapes and labels come from `host/gizmos` (docs/core/Gizmos.md). Handles add the chrome a handle needs, drawn over everything and styled to read on any background with a dark half-transparent line one pixel off each edge:
 
 - `rect_outlined`, `circle_outlined`, `dot_outlined`
 - camera-facing caps: `square`, `square_outline`, `triangle`, `triangle_outline`, with `triangle_points` for a hit area that matches the drawing

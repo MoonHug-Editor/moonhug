@@ -6,7 +6,7 @@ package plugin_example
 // mounted content (assets/). Everything registers through prebuild — no
 // source edits outside this folder.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Spins its transform by `speed` degrees per second around each local axis
 // (Unity rotator style: rotation += speed * dt), in playmode.

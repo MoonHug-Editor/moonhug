@@ -4,7 +4,7 @@ package physics3d_tests
 // step -> transform write-back, through the same path the app takes.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 import physics3d ".."
 

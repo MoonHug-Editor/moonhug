@@ -1,8 +1,7 @@
 package editor
 
-import gfx "../engine/gfx"
+import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
-import "../engine"
 import "menu"
 
 ABOUT_POPUP_ID :: "About"
@@ -15,7 +14,7 @@ draw_about_popup :: proc() {
     if menu.show_about {
         menu.show_about = false
 
-        about_logo_tex, _ = engine.texture_load_file(ABOUT_LOGO_PATH)
+        about_logo_tex, _ = gfx.texture_load_file(ABOUT_LOGO_PATH)
 
         im.OpenPopup(ABOUT_POPUP_ID, {})
     }

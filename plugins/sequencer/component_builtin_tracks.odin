@@ -5,7 +5,7 @@ package sequencer
 // targets carry a `ref:` tag so the inspector's picker filters itself, and a
 // kind that needs no target simply has no field.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Activation: the bound transform is active while a clip covers the time.
 @(component={menu="Playables/Tracks/TrackActivation"})

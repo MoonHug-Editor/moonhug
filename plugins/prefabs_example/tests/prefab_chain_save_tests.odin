@@ -5,8 +5,8 @@ package prefabs_example_tests
 // reverts through undo, the asset db links a variant to its base.
 
 import "core:testing"
-import "moonhug:engine"
-import "moonhug:editor/undo"
+import "moonhug:packages/engine"
+import undo "moonhug:packages/engine/editor/undo"
 import common "moonhug:tests/common"
 
 // An UNCHANGED load->save must not invent structural component edits. Lid
@@ -101,7 +101,7 @@ test_unchanged_save_invents_no_object_edits :: proc(t: ^testing.T) {
 // rebuilds the instance from its prefab — does not bring it back.
 
 // Undo of a revert on a variant ROOT must restore the override record AND the
-// value (docs/core/PrefabsSpec.md §4.7 + §8.2). The property menu's Revert pairs a
+// value (plugins/engine/docs/PrefabsSpec.md §4.7 + §8.2). The property menu's Revert pairs a
 // Value_Command with record bookkeeping; both halves have to survive undo.
 @(test)
 test_variant_root_revert_undo_restores_override :: proc(t: ^testing.T) {

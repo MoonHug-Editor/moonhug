@@ -9,7 +9,7 @@ package sequencer
 // play-on-awake, speed 0 runs at 1, duration 0 is computed from the last
 // clip end.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 Timeline_Wrap :: enum u8 {
 	Once,

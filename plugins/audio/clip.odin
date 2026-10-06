@@ -9,7 +9,7 @@ import "core:encoding/uuid"
 import "core:strings"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 Audio_Clip :: struct {
 	guid:        engine.Asset_GUID,

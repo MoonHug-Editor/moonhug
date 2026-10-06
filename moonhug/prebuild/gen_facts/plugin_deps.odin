@@ -7,7 +7,8 @@ package gen_facts
 //   folder, and packages_gen skips its tests, when plugin_dir_missing_dep
 //   reports a missing plugin.
 // - Hard dependency: an import of another plugin from a plugin's root, its
-//   editor/, its tests/ or a subpackage those import (plugin_walk). Prebuild
+//   editor/ (and the folders below it), its tests/ or a subpackage those
+//   import (plugin_walk). Prebuild
 //   checks them, and the dependencies each mh_plugin.json declares, before
 //   anything compiles, so a missing plugin is named instead of failing the
 //   Odin build on a path.
@@ -128,8 +129,9 @@ plugin_path_dir :: proc(dirs: map[string]string, path: string) -> (dir: string, 
 }
 
 // Plugin `name`'s hard dependencies from code, one use per import (temp), and
-// the folders the walk read. Walked: the plugin's root, editor/ and tests/,
-// then every subpackage those import, transitively. That includes another
+// the folders the walk read. Walked: the plugin's root, editor/ with every
+// folder below it, and tests/, then every subpackage those import,
+// transitively. That includes another
 // plugin's subpackage (a sample importing animation/sequencer needs the
 // sequencer). The plugin's own integration subpackages are not reached:
 // nothing of the plugin imports them. Another plugin's root is not walked
@@ -141,11 +143,16 @@ plugin_walk :: proc(name: string, dirs: map[string]string) -> (uses: [dynamic]Pl
 	base, has := dirs[name]
 	if !has do return
 	queue := make([dynamic]string, context.temp_allocator)
-	append(&queue, base, strings.join({base, "editor"}, "/", context.temp_allocator), strings.join({base, "tests"}, "/", context.temp_allocator))
+	editor := strings.join({base, "editor"}, "/", context.temp_allocator)
+	append(&queue, base, editor, strings.join({base, "tests"}, "/", context.temp_allocator))
 	for len(queue) > 0 {
 		dir := pop_front(&queue)
 		if reached[dir] do continue
 		reached[dir] = true
+		// The subpackages below editor/ are the plugin's own, like editor/.
+		if dir == editor || strings.has_prefix(dir, strings.concatenate({editor, "/"}, context.temp_allocator)) {
+			for sub in plugin_subdirs(dir) do append(&queue, strings.join({dir, sub}, "/", context.temp_allocator))
+		}
 		for imp in plugin_dir_imports(dir) {
 			dep := plugin_import_name(imp.path)
 			if dep != name do append(&uses, Plugin_Dep_Use{plugin = name, needs = dep, file = imp.file, line = imp.line})

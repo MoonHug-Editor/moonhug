@@ -24,18 +24,21 @@ package editor
 // own part of it, and the next free under another allocator corrupts the heap.
 
 import "base:runtime"
+import "core:path/filepath"
 import "core:strings"
-import engine "../engine"
+import core "moonhug:host/core"
+import "moonhug:editor/inspector"
+import "subassets"
 
 // --- Scene selection ---------------------------------------------------------
 
 @(private)
-_sel_scene: [dynamic]engine.Transform_Handle // click order; last = active
+_sel_scene: [dynamic]core.Transform_Handle // click order; last = active
 
 // The scene selection as it was when the project selection took over: what
 // the Inspector keeps showing. Empty while the scene set is live.
 @(private)
-_sel_scene_last: [dynamic]engine.Transform_Handle
+_sel_scene_last: [dynamic]core.Transform_Handle
 
 // An explicit clear (Escape, a click on empty space, a delete) empties the
 // Inspector too.
@@ -74,17 +77,15 @@ sel_in_project :: proc() -> bool {
 
 // The objects the Inspector shows: the scene selection, or, while the
 // project holds the selection, the objects it took over.
-sel_scene_inspected :: proc() -> []engine.Transform_Handle {
+sel_scene_inspected :: proc() -> []core.Transform_Handle {
 	if len(_sel_scene) > 0 do return _sel_scene[:]
 	return _sel_scene_last[:]
 }
 
-sel_scene_inspected_active :: proc() -> engine.Transform_Handle {
-	w := engine.ctx_world()
-	if w == nil do return _HANDLE_NONE
+sel_scene_inspected_active :: proc() -> core.Transform_Handle {
 	items := sel_scene_inspected()
 	for i := len(items) - 1; i >= 0; i -= 1 {
-		if engine.pool_valid(&w.transforms, engine.Handle(items[i])) do return items[i]
+		if _object_alive(items[i]) do return items[i]
 	}
 	return _HANDLE_NONE
 }
@@ -100,7 +101,7 @@ _sel_restore_begin :: proc() {
 }
 
 @(private)
-_sel_restore_kept :: proc(tH: engine.Transform_Handle) {
+_sel_restore_kept :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	if tH == _HANDLE_NONE do return
 	for h in _sel_scene_last do if h == tH do return
@@ -108,27 +109,27 @@ _sel_restore_kept :: proc(tH: engine.Transform_Handle) {
 }
 
 @(private)
-_sel_restore_scene :: proc(tH: engine.Transform_Handle) {
+_sel_restore_scene :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	if tH == _HANDLE_NONE || sel_scene_is(tH) do return
 	append(&_sel_scene, tH)
 }
 
 @(private)
-_sel_restore_proj :: proc(path: string, sub_id: engine.Local_ID) {
+_sel_restore_proj :: proc(path: string, sub_id: core.Local_ID) {
 	context.allocator = runtime.default_allocator()
 	if path == "" do return
 	append(&_sel_proj, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
 }
 
-sel_scene_is :: proc(tH: engine.Transform_Handle) -> bool {
+sel_scene_is :: proc(tH: core.Transform_Handle) -> bool {
 	for h in _sel_scene {
 		if h == tH do return true
 	}
 	return false
 }
 
-sel_scene_only :: proc(tH: engine.Transform_Handle) {
+sel_scene_only :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	clear(&_sel_scene)
 	if tH == _HANDLE_NONE {
@@ -140,7 +141,7 @@ sel_scene_only :: proc(tH: engine.Transform_Handle) {
 }
 
 // Add if absent, MOVE to the end (= make active) if present.
-sel_scene_add :: proc(tH: engine.Transform_Handle) {
+sel_scene_add :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	if tH == _HANDLE_NONE do return
 	_sel_take_scene()
@@ -153,7 +154,7 @@ sel_scene_add :: proc(tH: engine.Transform_Handle) {
 	append(&_sel_scene, tH)
 }
 
-sel_scene_remove :: proc(tH: engine.Transform_Handle) {
+sel_scene_remove :: proc(tH: core.Transform_Handle) {
 	context.allocator = runtime.default_allocator()
 	for h, i in _sel_scene {
 		if h == tH {
@@ -164,7 +165,7 @@ sel_scene_remove :: proc(tH: engine.Transform_Handle) {
 }
 
 // Cmd/ctrl-click: in → out, out → in (and active).
-sel_scene_toggle :: proc(tH: engine.Transform_Handle) {
+sel_scene_toggle :: proc(tH: core.Transform_Handle) {
 	if sel_scene_is(tH) {
 		sel_scene_remove(tH)
 	} else {
@@ -176,21 +177,15 @@ sel_scene_toggle :: proc(tH: engine.Transform_Handle) {
 // Views call this once per frame before reading the selection.
 sel_scene_prune :: proc() {
 	context.allocator = runtime.default_allocator()
-	w := engine.ctx_world()
-	if w == nil {
-		clear(&_sel_scene)
-		clear(&_sel_scene_last)
-		return
-	}
 	for i := 0; i < len(_sel_scene); {
-		if !engine.pool_valid(&w.transforms, engine.Handle(_sel_scene[i])) {
+		if !_object_alive(_sel_scene[i]) {
 			ordered_remove(&_sel_scene, i)
 			continue
 		}
 		i += 1
 	}
 	for i := 0; i < len(_sel_scene_last); {
-		if !engine.pool_valid(&w.transforms, engine.Handle(_sel_scene_last[i])) {
+		if !_object_alive(_sel_scene_last[i]) {
 			ordered_remove(&_sel_scene_last, i)
 			continue
 		}
@@ -198,20 +193,18 @@ sel_scene_prune :: proc() {
 	}
 }
 
-sel_scene_active :: proc() -> engine.Transform_Handle {
-	w := engine.ctx_world()
-	if w == nil do return _HANDLE_NONE
+sel_scene_active :: proc() -> core.Transform_Handle {
 	// Walk from the back so a stale (deleted) most-recent entry falls through
 	// to the previous still-valid one without requiring a prune first.
 	for i := len(_sel_scene) - 1; i >= 0; i -= 1 {
-		if engine.pool_valid(&w.transforms, engine.Handle(_sel_scene[i])) {
+		if _object_alive(_sel_scene[i]) {
 			return _sel_scene[i]
 		}
 	}
 	return _HANDLE_NONE
 }
 
-sel_scene_items :: proc() -> []engine.Transform_Handle {
+sel_scene_items :: proc() -> []core.Transform_Handle {
 	return _sel_scene[:]
 }
 
@@ -223,8 +216,8 @@ sel_scene_count :: proc() -> int {
 // structural actions (delete, duplicate) operate on, so a parent and its
 // child being both selected doesn't delete/duplicate the child twice.
 // Temp-allocated.
-sel_scene_top_level :: proc() -> []engine.Transform_Handle {
-	out := make([dynamic]engine.Transform_Handle, 0, len(_sel_scene), context.temp_allocator)
+sel_scene_top_level :: proc() -> []core.Transform_Handle {
+	out := make([dynamic]core.Transform_Handle, 0, len(_sel_scene), context.temp_allocator)
 	outer: for h in _sel_scene {
 		for other in _sel_scene {
 			if other != h && _is_ancestor(other, h) do continue outer
@@ -241,7 +234,7 @@ sel_scene_top_level :: proc() -> []engine.Transform_Handle {
 // the pair as PPtr{guid, sub_id}.
 Proj_Sel :: struct {
 	path:   string, // owned clone
-	sub_id: engine.Local_ID,
+	sub_id: core.Local_ID,
 }
 
 @(private)
@@ -262,7 +255,7 @@ sel_proj_is :: proc(path: string) -> bool {
 	return false
 }
 
-sel_proj_is_sub :: proc(path: string, sub_id: engine.Local_ID) -> bool {
+sel_proj_is_sub :: proc(path: string, sub_id: core.Local_ID) -> bool {
 	for e in _sel_proj {
 		if e.sub_id == sub_id && e.path == path do return true
 	}
@@ -271,7 +264,7 @@ sel_proj_is_sub :: proc(path: string, sub_id: engine.Local_ID) -> bool {
 
 // Select-only. Callers go through _project_set_selected (which keeps
 // projectViewData.selectedFile — the active path — in sync).
-sel_proj_only :: proc(path: string, sub_id: engine.Local_ID = 0) {
+sel_proj_only :: proc(path: string, sub_id: core.Local_ID = 0) {
 	context.allocator = runtime.default_allocator()
 	sel_proj_clear()
 	if path == "" do return
@@ -280,7 +273,7 @@ sel_proj_only :: proc(path: string, sub_id: engine.Local_ID = 0) {
 }
 
 // Add if absent, move to the end (= active) if present.
-sel_proj_add :: proc(path: string, sub_id: engine.Local_ID = 0) {
+sel_proj_add :: proc(path: string, sub_id: core.Local_ID = 0) {
 	context.allocator = runtime.default_allocator()
 	if path == "" do return
 	_sel_take_project()
@@ -294,7 +287,7 @@ sel_proj_add :: proc(path: string, sub_id: engine.Local_ID = 0) {
 	append(&_sel_proj, Proj_Sel{path = strings.clone(path), sub_id = sub_id})
 }
 
-sel_proj_remove :: proc(path: string, sub_id: engine.Local_ID = 0) {
+sel_proj_remove :: proc(path: string, sub_id: core.Local_ID = 0) {
 	context.allocator = runtime.default_allocator()
 	for e, i in _sel_proj {
 		if e.path == path && e.sub_id == sub_id {
@@ -320,6 +313,22 @@ sel_proj_entries :: proc() -> []Proj_Sel {
 	return _sel_proj[:]
 }
 
+// The active selection's sub-asset id for `path`, 0 when the active entry is
+// another asset, the asset itself, or a sub-asset its provider no longer
+// lists. Installed as inspector.selected_sub.
+sel_proj_active_sub :: proc(path: string) -> core.Local_ID {
+	if len(_sel_proj) == 0 do return 0
+	active := _sel_proj[len(_sel_proj) - 1]
+	if active.sub_id == 0 || active.path != path do return 0
+	ext := strings.to_lower(filepath.ext(path), context.temp_allocator)
+	provider, ok := subassets.find(ext)
+	if !ok do return 0
+	for s in provider.list(path, context.temp_allocator) {
+		if s.id == active.sub_id do return s.id
+	}
+	return 0
+}
+
 sel_proj_count :: proc() -> int {
 	return len(_sel_proj)
 }
@@ -337,4 +346,24 @@ selection_shutdown :: proc() {
 	delete(_sel_scene_last)
 	sel_proj_clear()
 	delete(_sel_proj)
+}
+
+_HANDLE_NONE :: core.Transform_Handle{}
+
+// `potential_ancestor` is a strict ancestor of `node`, walking the object
+// provider's parents.
+_is_ancestor :: proc(potential_ancestor: core.Transform_Handle, node: core.Transform_Handle) -> bool {
+	current, ok := inspector.object_parent(node)
+	for ok {
+		if current == potential_ancestor do return true
+		current, ok = inspector.object_parent(current)
+	}
+	return false
+}
+
+// The object behind a selected handle still exists (the object provider knows
+// its owner). False for every handle when no provider is installed.
+_object_alive :: proc(tH: core.Transform_Handle) -> bool {
+	_, ok := inspector.object_owner_of(core.Handle(tH))
+	return ok
 }

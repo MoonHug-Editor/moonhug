@@ -4,7 +4,7 @@ package animation_tests
 // and multi-key drag are built on.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
 

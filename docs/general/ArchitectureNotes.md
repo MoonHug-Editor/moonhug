@@ -35,7 +35,7 @@ Good architecture is an investment in speed, not a shipping requirement. Everyth
 ## Data
 
 - Each package defines and owns its data types.
-- Component storage is behind a narrow access contract (handles + iterator, pool internals private) so the layout can change without touching consumers — see [Components](../core/Components.md).
+- Component storage is behind a narrow access contract (handles + iterator, pool internals private) so the layout can change without touching consumers — see [Components](../../plugins/engine/docs/Components.md).
 - Immutable data (balancing, translations, content) lives OUTSIDE code, in a database the packages read (assets, spreadsheets, scriptable objects).
 - If it is game-designed together, store it together — one place per concern, not values scattered across prefabs/scenes, when possible.
 - Database-first workflow: design data structures, then the packages that consume them, then the glue.
@@ -55,7 +55,7 @@ Good architecture is an investment in speed, not a shipping requirement. Everyth
 
 ## moonhug mapping
 
-- Leaf packages: `engine/gfx`, `engine/log`, `engine/serialization`* — no game knowledge.
+- Leaf packages: `host/gfx`, `host/log`, `host/serialization`* — no game knowledge.
 - `engine` is a glue parent: imports gfx + asset pipeline + components and wires them (materials resolve assets INTO gfx draws).
 - `app` and `editor` are top glue: own the frame loop (time enters at the root — `render_world_cameras` is a plain call, not a callback).
 - Database: AssetDb pipeline (.mat/.asset/.scene/.meta, guid refs).

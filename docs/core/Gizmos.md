@@ -5,13 +5,13 @@ weight: 170
 tags: ["gizmos", "handles", "engine", "editor"]
 ---
 
-`engine/gizmos` draws debug and editor shapes: collider wires, a camera frustum, handle chrome, the transform gizmo, a raycast from gameplay code. One API serves the editor's gizmo hooks, `editor/handles` and in-game debug drawing.
+`host/gizmos` draws debug and editor shapes: collider wires, a camera frustum, handle chrome, the transform gizmo, a raycast from gameplay code. One API serves the editor's gizmo hooks, `editor/handles` and in-game debug drawing.
 
 ## Where to draw from
 
 - `@(on_draw_gizmos={component=T})` runs for every enabled `T` each frame, from the editor's gizmo pass (see Recording). It draws only. The proc takes `(c: ^T, ctx: handles.Gizmo_Context)` and decides from `ctx.state` what to draw: `.Selected` (this object), `.Active` (the active object of the selection), `.In_Selection` (it or an ancestor is selected). A gizmo that shows only for the selection starts with `if .In_Selection not_in ctx.state do return`.
 - `@(on_scene_handles={component=T})` takes the same parameters and runs for selected objects, in every tool: interactive handles go there (docs/core/Handles.md).
-- A `@(phase={key=DebugDraw, mode=App})` subscriber runs in the standalone app while debug drawing is on (F3). `engine/gizmos` subscribes too, at order 1000, and draws the gameplay shapes after the others recorded theirs.
+- A `@(phase={key=DebugDraw, mode=App})` subscriber runs in the standalone app while debug drawing is on (F3). `host/gizmos` subscribes too, at order 1000, and draws the gameplay shapes after the others recorded theirs.
 - Any other code (`update`, `fixed_update`, an editor tool) can draw too. Nothing needs an open render pass.
 
 ```odin

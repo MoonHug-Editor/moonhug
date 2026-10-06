@@ -2,7 +2,7 @@ package handles
 
 // Interactive scene-view handles for editor code and package editors
 // (docs/core/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
-// proc draws itself (through engine/gizmos), reports hover, and when the user
+// proc draws itself (through host/gizmos), reports hover, and when the user
 // drags it, reports the drag as an offset on a plane. The editor's gizmo pass
 // publishes the scene view's frame (view, pointer, keys) before the handle
 // hooks run, and the scene view asks `consumes_mouse` before picking or
@@ -24,10 +24,10 @@ import "core:hash"
 import "core:math"
 import "core:math/linalg"
 import "core:mem"
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import core "moonhug:host/core"
+import "moonhug:host/gizmos"
 
-// The scene view's tool: Q W E R T. The editor's gizmo_mode holds it, and
+// The scene view's tool: Q W E R T. viewport.gizmo_mode holds it, and
 // gizmo and handles hooks read it from their context.
 Tool :: enum {
 	Picker,    // Q: selection only
@@ -88,9 +88,9 @@ Input :: struct {
 }
 
 Frame :: struct {
-	view:  engine.Render_View,
+	view:  core.Render_View,
 	input: Input,
-	ray:   engine.Ray,
+	ray:   core.Ray,
 	valid: bool,
 }
 
@@ -139,11 +139,11 @@ rect_raw_edit: bool
 // The editor's gizmo pass calls this once per frame for the scene view,
 // before the handle hooks. It picks this frame's hot handle from the shapes
 // the handles recorded last frame. Nothing needs a render pass open.
-frame_begin :: proc(view: engine.Render_View, input: Input) {
+frame_begin :: proc(view: core.Render_View, input: Input) {
 	_frame = Frame{
 		view  = view,
 		input = input,
-		ray   = engine.render_view_screen_ray(view, input.mouse.x, input.mouse.y),
+		ray   = core.render_view_screen_ray(view, input.mouse.x, input.mouse.y),
 		valid = true,
 	}
 	if _active != 0 && !_active_seen { // its owner went away mid-drag
@@ -316,7 +316,7 @@ _finish_plane :: proc(s: _Space, d: Drag, normal: [3]f32) -> Drag {
 
 // Ray against the plane through `origin` with `normal`. ok=false when the
 // ray runs parallel to the plane. Plain math: no space applies.
-ray_plane :: proc(ray: engine.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: bool) {
+ray_plane :: proc(ray: core.Ray, origin, normal: [3]f32) -> (p: [3]f32, ok: bool) {
 	denom := linalg.dot(ray.direction, normal)
 	if abs(denom) < 1e-6 do return {}, false
 	t := linalg.dot(origin - ray.origin, normal) / denom
@@ -351,7 +351,7 @@ _to_camera :: proc(p: [3]f32) -> [3]f32 {
 // --- Drawing: handle chrome ---------------------------------------------------------
 // Handle shapes over everything (no depth test), styled to read on any
 // background: a dark half-transparent line one pixel off each edge. Plain
-// shapes come from engine/gizmos directly.
+// shapes come from host/gizmos directly.
 
 // A rect outline with the dark line one pixel INSIDE each edge, so the
 // outline still marks the exact edge (the rect tool). bl, br, tr, tl or any
@@ -600,8 +600,8 @@ _hit_test :: proc(h: Hit) -> (hit: bool, dist: f32) {
 		inside := m.x >= lo.x - 1 && m.x <= hi.x + 1 && m.y >= lo.y - 1 && m.y <= hi.y + 1
 		return inside, linalg.length(m - (lo + hi) * 0.5)
 	case Hit_Quad:
-		t0, h0 := engine.ray_hit_triangle(_frame.ray, s.c[0], s.c[1], s.c[2])
-		t1, h1 := engine.ray_hit_triangle(_frame.ray, s.c[0], s.c[2], s.c[3])
+		t0, h0 := core.ray_hit_triangle(_frame.ray, s.c[0], s.c[1], s.c[2])
+		t1, h1 := core.ray_hit_triangle(_frame.ray, s.c[0], s.c[2], s.c[3])
 		if !h0 && !h1 do return false, 0
 		return true, min(t0 if h0 else math.F32_MAX, t1 if h1 else math.F32_MAX)
 	case Hit_Square:
@@ -616,7 +616,7 @@ _hit_test :: proc(h: Hit) -> (hit: bool, dist: f32) {
 // Ray against a plane, in front of the ray only: the hit and its ray
 // parameter.
 @(private)
-_ray_plane_ahead :: proc(ray: engine.Ray, origin, n: [3]f32) -> (hit: [3]f32, t: f32, ok: bool) {
+_ray_plane_ahead :: proc(ray: core.Ray, origin, n: [3]f32) -> (hit: [3]f32, t: f32, ok: bool) {
 	denom := linalg.dot(ray.direction, n)
 	if abs(denom) < 1e-6 do return {}, 0, false
 	t = linalg.dot(origin - ray.origin, n) / denom
@@ -802,10 +802,10 @@ quad :: proc(id: u64, c: [4][3]f32, normal: [3]f32) -> Drag {
 Pick_Provider :: struct {
 	// The nearest hit along `ray`: (transform, ray parameter). The editor's
 	// pick takes the nearest over icons, renderers, UI and every provider.
-	click: proc(view: engine.Render_View, ray: engine.Ray) -> (tH: engine.Transform_Handle, t: f32, ok: bool),
+	click: proc(view: core.Render_View, ray: core.Ray) -> (tH: core.Transform_Handle, t: f32, ok: bool),
 	// Every transform whose shape meets the viewport-pixel rect rmin..rmax,
 	// appended to `out`. Duplicates are fine.
-	band:  proc(view: engine.Render_View, rmin, rmax: [2]f32, out: ^[dynamic]engine.Transform_Handle),
+	band:  proc(view: core.Render_View, rmin, rmax: [2]f32, out: ^[dynamic]core.Transform_Handle),
 }
 
 _pick_providers: [dynamic]Pick_Provider

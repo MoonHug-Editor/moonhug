@@ -13,11 +13,11 @@ package sequencer_tests
 
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
-import "moonhug:engine/log"
+import "moonhug:packages/engine"
+import "moonhug:host/log"
 import seq "moonhug:packages/sequencer"
 import scripts "moonhug:packages/sequencer/scripts"
-import undo "moonhug:editor/undo"
+import undo "moonhug:packages/engine/editor/undo"
 import common "moonhug:tests/common"
 
 @(private = "file")
@@ -332,7 +332,7 @@ test_script_clip_undo_apply_roundtrip :: proc(t: ^testing.T) {
 
 	// Undo: apply the before-image over the live component. This is the call
 	// the editor crashed in.
-	testing.expect(t, undo.write_json_value(sc, typeid_of(seq.ClipScript), old_bytes, tc.scene),
+	testing.expect(t, undo.write_json_value(sc, typeid_of(seq.ClipScript), old_bytes, undo.scene_ref(tc.scene)),
 		"undo apply must succeed")
 	lg2, ok2 := sc.scripts[0].(scripts.ScriptLog)
 	testing.expect(t, ok2, "variant survives the apply")

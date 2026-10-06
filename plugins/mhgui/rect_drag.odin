@@ -1,6 +1,6 @@
 package mhgui
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Rect tool edits on a RectTransform (the scene-view gizmo in editor/, the
 // tests here). Pure: they touch only the component's fields.

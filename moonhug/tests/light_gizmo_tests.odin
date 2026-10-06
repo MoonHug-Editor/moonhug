@@ -1,20 +1,20 @@
 package tests
 
-// Light handles (editor/light_gizmos.odin) through the real hook: a spot
+// Light handles (plugins/engine/editor/scene_tools/light_gizmos.odin) through the real hook: a spot
 // light's cone handle changes range and spot angle in any tool, one undo step
 // per drag.
 
 import "core:math"
 import "core:math/linalg"
 import "core:testing"
-import "../engine"
-import "../editor"
+import "moonhug:packages/engine"
 import "../editor/handles"
 import "../editor/undo"
+import "moonhug:packages/engine/editor/scene_tools"
 
 @(private = "file")
 _light_body :: proc(user: rawptr) {
-	editor.light_handles(cast(^engine.Light)user, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Translate})
+	scene_tools.light_handles(cast(^engine.Light)user, handles.Gizmo_Context{state = {.Selected, .Active, .In_Selection}, tool = .Translate})
 }
 
 // Turned so its forward (-Z) points along +X: range 2 puts the tip at

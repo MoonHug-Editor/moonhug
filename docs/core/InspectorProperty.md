@@ -29,7 +29,7 @@ in scope as it walks, so it never names them together:
 
 Paths are EMITTED by that walk, never RESOLVED: nothing turns `"meta.color.g"`
 back into a pointer. `_json_get_path` / `_json_set_path`
-(engine/nested_scene.odin) resolve dotted paths in JSON only, for applying and
+(plugins/engine/nested_scene.odin) resolve dotted paths in JSON only, for applying and
 reverting overrides. So a field can be addressed only while the loop is
 drawing it, and anything else has to reproduce the five facts by hand.
 
@@ -115,7 +115,7 @@ property(p, "layers[0].states[2].speed")
 ```
 
 **The override path stops at the first array index.** An override is the whole
-array, atomically, never an element (`docs/core/PrefabsSpec.md`,
+array, atomically, never an element (`plugins/engine/docs/PrefabsSpec.md`,
 `test_diff_overrides_array_atomic`). Revert on that speed row restores all of
 `layers`, and the marker lights on every row inside it. A fixed array is an
 array too: `position[1]` records against `position`.

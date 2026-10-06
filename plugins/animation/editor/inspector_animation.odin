@@ -27,7 +27,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 
 @(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
@@ -44,7 +44,7 @@ shutdown_animation_inspector :: proc() {
 }
 
 // Alt-click on a foldout applies to the whole subtree, as in the hierarchy
-// (editor/view_hierarchy.odin): the click toggles the row itself, and every row
+// (plugins/engine/editor/scene_views/view_hierarchy.odin): the click toggles the row itself, and every row
 // under it is queued to take the same state when it next draws. Queued rather
 // than applied directly, because imgui owns a node's open state and the only
 // way to set it is SetNextItemOpen before that node draws.

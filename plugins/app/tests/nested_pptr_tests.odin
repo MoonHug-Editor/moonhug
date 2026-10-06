@@ -1,7 +1,7 @@
 package app_tests
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 
 // Asset-namespace PPtrs must survive nested-instance lid composition. A PPtr

@@ -1,20 +1,20 @@
 package inspector
 
-// Property drawer for engine.MinMax_Curve — Unity's MinMaxCurve field: a
+// Property drawer for core.MinMax_Curve — Unity's MinMaxCurve field: a
 // small mode button (▾ popup: Constant / Random Between Two Constants /
 // Curve / Random Between Two Curves) followed by the mode's widgets — drags
 // for constants, clickable curve plots (the shared curve editor popup) for
-// curves. Applies to ANY component field of type engine.MinMax_Curve.
+// curves. Applies to ANY component field of type core.MinMax_Curve.
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
+import core "moonhug:host/core"
 import "moonhug:editor/widgets"
 
 @(private = "file") ICON_MD_EXPAND_MORE :: "\ue5cf" // the editor's dropdown glyph
 
 @(private = "file")
-_mm_mode_names := [engine.MinMax_Mode]cstring{
+_mm_mode_names := [core.MinMax_Mode]cstring{
 	.Constant             = "Constant",
 	.Random_Two_Constants = "Random Between Two Constants",
 	.Curve                = "Curve",
@@ -23,7 +23,7 @@ _mm_mode_names := [engine.MinMax_Mode]cstring{
 
 // One clickable curve plot with its own editor popup.
 @(private = "file")
-_mm_curve_cell :: proc(c: ^engine.Curve, id: cstring, w: f32) {
+_mm_curve_cell :: proc(c: ^core.Curve, id: cstring, w: f32) {
 	h := im.GetFrameHeight()
 	p0 := im.GetCursorScreenPos()
 	popup_id := fmt.ctprintf("mm_curve_edit%s", id)
@@ -37,9 +37,9 @@ _mm_curve_cell :: proc(c: ^engine.Curve, id: cstring, w: f32) {
 	}
 }
 
-@(property_drawer={type = engine.MinMax_Curve, priority = 0})
+@(property_drawer={type = core.MinMax_Curve, priority = 0})
 draw_minmax_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	mm := cast(^engine.MinMax_Curve)ptr
+	mm := cast(^core.MinMax_Curve)ptr
 	field_row(label)
 
 	// Mode selector, Unity's little dropdown at the field's edge.

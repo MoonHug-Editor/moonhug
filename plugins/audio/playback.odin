@@ -11,7 +11,7 @@ import "base:runtime"
 import "core:fmt"
 import sdl "vendor:sdl3"
 import mix "vendor:sdl3/mixer"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 _audio_state: struct {
 	lib_ready: bool,

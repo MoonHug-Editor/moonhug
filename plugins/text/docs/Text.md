@@ -109,7 +109,7 @@ collector through a fake monospace backend, which is the template.
 ## Shader
 
 `assets/shaders/text_sdf.glsl`, a user shader through the material system
-(docs/core/Materials.md). It thresholds the field at 0.5 with an anti-aliasing
+(plugins/engine/docs/Materials.md). It thresholds the field at 0.5 with an anti-aliasing
 width taken from the field's screen-space derivative, so the edge is one
 pixel soft at every size. Material properties, all in field units unless
 noted:

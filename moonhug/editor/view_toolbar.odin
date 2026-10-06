@@ -13,8 +13,8 @@ import "core:thread"
 import "core:time"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/runconfig"
-import "../engine"
-import "../engine/log"
+import "moonhug:editor/viewport"
+import "moonhug:host/log"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 
@@ -650,9 +650,9 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
     run_parts := make([dynamic]string, context.temp_allocator)
     append(&run_parts, config_exe_abs)
     if with_current_scene {
-        if scene := engine.sm_scene_get_active(); scene != nil {
-            play_path := scene.path
-            if snapshot, sok := engine.scene_serialize(scene); sok {
+        if scene_path, snapshot, open := viewport.document_snapshot_active(); open {
+            play_path := scene_path
+            if snapshot != nil {
                 defer delete(snapshot)
                 os.make_directory("library") // library/ is gitignored; fresh clones lack it
                 os.make_directory("library/state_cache")

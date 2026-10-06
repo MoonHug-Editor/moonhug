@@ -163,17 +163,19 @@ docs_write_plugin_mounts :: proc() -> bool {
 	return true
 }
 
-// One page per package under the engine and editor trees, holding what
-// `odin doc` says about it: every public declaration with its comment. The
-// prebuild's attributes_gen writes the attribute pages beside these, so the whole
-// reference section is built, not written. tests/ folders are not packages a
-// plugin imports, and external/ is not ours.
+// One page per package under the engine plugin, host and editor trees, holding
+// what `odin doc` says about it: every public declaration with its comment.
+// The engine is read through its moonhug/packages link, so its pages carry the
+// import path a plugin writes. The prebuild's attributes_gen writes the
+// attribute pages beside these, so the whole reference section is built, not
+// written. tests/ folders are not packages a plugin imports, gen/ is compiled
+// into the prebuild, and external/ is not ours.
 //
 // One `odin doc` run per package, each a parse and check of that package and
 // everything it imports, so this is the slow part of `mh docs`.
 docs_write_package_pages :: proc() -> bool {
 	pkgs := make([dynamic]string, context.temp_allocator)
-	for root in ([]string{"moonhug/engine", "moonhug/editor", "moonhug/engine_editor"}) {
+	for root in ([]string{"moonhug/packages/engine", "moonhug/host", "moonhug/registration", "moonhug/editor"}) {
 		_collect_packages(root, &pkgs)
 	}
 	slice.sort(pkgs[:])
@@ -231,7 +233,7 @@ _collect_packages :: proc(dir: string, out: ^[dynamic]string) {
 	has_odin := false
 	for e in entries {
 		if e.type == .Directory {
-			if e.name == "tests" || e.name == "external" || strings.has_prefix(e.name, ".") do continue
+			if e.name == "tests" || e.name == "gen" || e.name == "external" || strings.has_prefix(e.name, ".") do continue
 			_collect_packages(fmt.tprintf("%s/%s", dir, e.name), out)
 		} else if strings.has_suffix(e.name, ".odin") {
 			has_odin = true

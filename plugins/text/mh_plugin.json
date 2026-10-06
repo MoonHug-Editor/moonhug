@@ -2,6 +2,6 @@
   "name": "text",
   "guid": "331a50d0-3f46-45b8-9b10-0143379827b9",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

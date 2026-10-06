@@ -5,10 +5,10 @@ package physics3d
 // view — the DebugDraw phase subscriber draws EVERY enabled collider when
 // engine.debug_draw_enabled is on. Full 3D: shapes go through the owner's
 // world position and rotation (scale ignored, matching the sync: the sizes
-// are scaled already). Drawn through engine/gizmos.
+// are scaled already). Drawn through host/gizmos.
 
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 
 // Unity's collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}

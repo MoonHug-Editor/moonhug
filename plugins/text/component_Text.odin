@@ -9,7 +9,7 @@ package text
 
 import "base:runtime"
 import "core:strings"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 @(component={menu="UI/Text"})
 @(typ_guid={guid = "32d4e528-8898-4fd3-9fc4-2ac0cc34609e"})

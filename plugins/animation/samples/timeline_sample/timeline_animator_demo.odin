@@ -15,7 +15,7 @@ package timeline_sample
 // inspector edit rather than a code change.
 
 import "core:log"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim_seq "moonhug:packages/animation/sequencer"
 
 @(component={menu="Demo/TimelineAnimatorDemo"})

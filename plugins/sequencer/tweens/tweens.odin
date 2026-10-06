@@ -17,7 +17,7 @@ package sequencer_tweens
 // once the generator owns the import list.)
 
 import "core:math/linalg"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import core "moonhug:packages/sequencer/core"
 
 // The subject a variant poses: its own target when set, else the track's.

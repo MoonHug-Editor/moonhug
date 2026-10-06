@@ -9,8 +9,8 @@ import "core:math"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
 import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import audio "moonhug:packages/audio"
@@ -324,7 +324,7 @@ test_audio_binding_survives_serialize_roundtrip :: proc(t: ^testing.T) {
 	testing.expect(t, picker_scene != nil, "the picker must resolve a scene from the owner stack")
 	empty_stack_scene := inspector.ref_local_owner_root_scene()
 	testing.expect(t, empty_stack_scene == nil, "no owner pushed = no scene = no local_id minted")
-	minted := engine.sm_local_id_get_or_mint(picker_scene, owned.handle)
+	minted := engine.sm_local_id_get_or_mint(cast(^engine.Scene)picker_scene, owned.handle)
 	testing.expect_value(t, minted, want_lid)
 	_mk_audio_track(root, {local_id = minted, handle = owned.handle}, {},
 		seq.Clip_View{start = 0, duration = 1})

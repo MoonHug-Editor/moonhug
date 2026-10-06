@@ -2,10 +2,8 @@ package editor
 
 import "core:fmt"
 import "core:strings"
-import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import "menu"
-import engine "../engine"
 import "undo"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
@@ -160,195 +158,12 @@ draw_history_view :: proc() {
 _draw_history_entry_details :: proc(entry: ^undo.Entry) {
 	b := strings.builder_make(context.temp_allocator)
 	fmt.sbprintf(&b, "Label: %s\n", entry.label)
-	_append_command_details(&b, &entry.cmd, 0)
+	undo.describe(&entry.cmd, &b, 0)
 
 	text := strings.to_string(b)
 	buf := strings.clone_to_cstring(text, context.temp_allocator)
 	im.InputTextMultiline("##history_detail_text", buf, uint(len(text) + 1),
 		im.Vec2{-1, -1}, {.ReadOnly, .WordWrap})
-}
-
-@(private="file")
-_append_command_details :: proc(b: ^strings.Builder, cmd: ^undo.Command, depth: int) {
-	switch v in cmd {
-	case undo.Value_Command:
-		_append_value_details(b, v, depth)
-	case undo.Structural_Command:
-		_append_structural_details(b, v, depth)
-	case undo.Group_Command:
-		fmt.sbprintf(b, "%sGroup (%d sub-commands)\n", _indent(depth), len(v.subs))
-		for i in 0 ..< len(v.subs) {
-			sub := v.subs[i]
-			_append_command_details(b, &sub, depth + 1)
-		}
-	case undo.Selection_Command:
-		fmt.sbprintf(b, "%sSelection change\n", _indent(depth))
-		_append_selection_state(b, "before", v.before, depth + 1)
-		_append_selection_state(b, "after", v.after, depth + 1)
-	case undo.Dropdown_Revert_Command:
-		fmt.sbprintf(b, "%sOverride reverted (%v): %q\n",
-			_indent(depth), v.kind, v.property_path)
-	case undo.Record_Override_Command:
-		fmt.sbprintf(b, "%sPrefab override created: lid %v %q\n",
-			_indent(depth), v.target_lid, v.property_path)
-	case undo.Prefab_Apply_Command:
-		fmt.sbprintf(b, "%sOverrides applied to %d prefab file(s), instance lid %v\n",
-			_indent(depth), len(v.files), v.host_local_id)
-	}
-}
-
-@(private="file")
-_append_selection_state :: proc(b: ^strings.Builder, name: string, st: undo.Selection_State, depth: int) {
-	indent := _indent(depth)
-	fmt.sbprintf(b, "%s%s: %d scene, %d project\n", indent, name, len(st.scene), len(st.proj))
-	for it in st.scene {
-		resolved := "unresolved"
-		if sc := undo.resolve_scene(it.scene); sc != nil {
-			if tH, ok := engine.scene_find_selectable_transform_local_id(sc, it.local_id); ok {
-				w := engine.ctx_world()
-				if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil do resolved = t.name
-			}
-		}
-		fmt.sbprintf(b, "%s  local_id=%d  %s\n", indent, i64(it.local_id), resolved)
-	}
-	for r in st.proj {
-		path := "(deleted)"
-		if p, ok := engine.asset_db_get_path(uuid.Identifier(r.guid)); ok do path = p
-		if r.local_id != 0 {
-			fmt.sbprintf(b, "%s  %s : sub %d\n", indent, path, i64(r.local_id))
-		} else {
-			fmt.sbprintf(b, "%s  %s\n", indent, path)
-		}
-	}
-}
-
-@(private="file")
-_append_value_details :: proc(b: ^strings.Builder, v: undo.Value_Command, depth: int) {
-	indent := _indent(depth)
-	fmt.sbprintf(b, "%sValue edit\n", indent)
-	_append_target(b, v.target, depth + 1)
-	fmt.sbprintf(b, "%s  old: %s\n", indent, _truncate(string(v.old_json), 512))
-	fmt.sbprintf(b, "%s  new: %s\n", indent, _truncate(string(v.new_json), 512))
-}
-
-@(private="file")
-_append_target :: proc(b: ^strings.Builder, t: undo.Property_Target, depth: int) {
-	indent := _indent(depth)
-	kind_str: string
-	switch t.kind {
-	case .None:   kind_str = "None"
-	case .Pooled: kind_str = t.handle.type_key == .Transform ? "Transform" : "Component"
-	case .Raw:    kind_str = "Raw"
-	case .Asset:  kind_str = "Asset"
-	}
-	fmt.sbprintf(b, "%starget: kind=%s local_id=%d handle=%d:%d:%d offset=%d type=%v\n",
-		indent, kind_str, i64(t.local_id),
-		t.handle.index, t.handle.generation, t.handle.type_key,
-		t.offset, t.type_id)
-
-	w := engine.ctx_world()
-	resolved := "unresolved"
-	if w != nil {
-		switch t.kind {
-		case .None:
-		case .Raw:
-			if t.raw_ptr != nil do resolved = "raw"
-		case .Asset:
-			if path, ok := engine.asset_db_get_path(uuid.Identifier(t.asset_guid)); ok {
-				resolved = path
-			}
-		case .Pooled:
-			// resolve_pooled_base falls back to a scene local_id scan, so
-			// entries stay resolvable after undo/redo recreated the object
-			// under a fresh handle.
-			if base, h, ok := undo.resolve_pooled_base(t); ok {
-				if h.type_key == .Transform {
-					tr := cast(^engine.Transform)base
-					resolved = tr.name
-				} else {
-					c := cast(^engine.CompData)base
-					if ot := engine.pool_get(&w.transforms, engine.Handle(c.owner)); ot != nil {
-						resolved = ot.name
-					}
-				}
-			}
-		}
-	}
-	fmt.sbprintf(b, "%s  resolved: %s\n", indent, resolved)
-}
-
-@(private="file")
-_append_structural_details :: proc(b: ^strings.Builder, sc: undo.Structural_Command, depth: int) {
-	indent := _indent(depth)
-	switch v in sc {
-	case undo.Reparent_Command:
-		fmt.sbprintf(b, "%sReparent: node=%d  old_parent=%d -> new_parent=%d  (idx %d -> %d)" + "\n",
-			indent,
-			i64(v.node_local_id),
-			i64(v.old_parent_local_id),
-			i64(v.new_parent_local_id),
-			v.old_index,
-			v.new_index)
-	case undo.Create_Subtree_Command:
-		fmt.sbprintf(b, "%sCreate: parent=%d  root=%d  idx=%d  payload=%d bytes" + "\n",
-			indent,
-			i64(v.parent_local_id),
-			i64(v.root_local_id),
-			v.sibling_index,
-			len(v.payload))
-	case undo.Delete_Subtree_Command:
-		fmt.sbprintf(b, "%sDelete: parent=%d  root=%d  idx=%d  payload=%d bytes" + "\n",
-			indent,
-			i64(v.parent_local_id),
-			i64(v.root_local_id),
-			v.sibling_index,
-			len(v.payload))
-	case undo.Add_Component_Command:
-		fmt.sbprintf(b, "%sAdd Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
-			indent,
-			i64(v.owner_local_id),
-			v.type_key,
-			i64(v.comp_local_id),
-			v.list_index,
-			len(v.payload))
-	case undo.Remove_Component_Command:
-		fmt.sbprintf(b, "%sRemove Component: owner=%d  type=%v  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
-			indent,
-			i64(v.owner_local_id),
-			v.type_key,
-			i64(v.comp_local_id),
-			v.list_index,
-			len(v.payload))
-	case undo.Reorder_Components_Command:
-		fmt.sbprintf(b, "%sReorder Components: owner=%d  %d -> %d" + "\n",
-			indent,
-			i64(v.owner_local_id),
-			v.old_index,
-			v.new_index)
-	case undo.Remove_Unknown_Component_Command:
-		fmt.sbprintf(b, "%sRemove Missing Component: owner=%d  comp_local_id=%d  idx=%d  payload=%d bytes" + "\n",
-			indent,
-			i64(v.owner_local_id),
-			i64(v.comp_local_id),
-			v.list_index,
-			len(v.payload))
-	}
-}
-
-@(private="file")
-_indent :: proc(depth: int) -> string {
-	b: strings.Builder
-	strings.builder_init(&b, context.temp_allocator)
-	for _ in 0 ..< depth {
-		strings.write_string(&b, "  ")
-	}
-	return strings.to_string(b)
-}
-
-@(private="file")
-_truncate :: proc(s: string, max: int) -> string {
-	if len(s) <= max do return s
-	return fmt.tprintf("%s ...(%d bytes)", s[:max], len(s))
 }
 
 @(private="file")

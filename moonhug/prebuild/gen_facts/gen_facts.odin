@@ -128,6 +128,32 @@ Struct_GenComp :: struct {
 	is_union: bool, // false => struct
 }
 
+// Component_GenComp marks a DeclInfo entity as either an @(component) struct or a
+// @(poolable) struct/union. The engine's components generator
+// (plugins/engine/gen) provides it, and packages_gen reads it to find the
+// packages that register components, so it lives here, below both. `kind`
+// selects which entry list the generators put it in. The type name lives on
+// the entity's DeclInfo.
+ComponentKind :: enum {
+	Component,
+	Poolable,
+}
+
+Component_GenComp :: struct {
+	kind:            ComponentKind,
+	snake_name:      string,
+	plural:          string,
+	menu_path:       string,
+	pkg:             string,
+	pkg_path:        string,
+	max:             int,
+	has_on_destroy:  bool,
+	field_types:     []string,
+	ref_tags:        []string,
+	origin:          string,
+	guid:            string, // the type's @(typ_guid) guid, written into its Component_Desc
+}
+
 @(init)
 _register :: proc "contextless" () {
 	// order -1: runs before all default (order 0) providers, so any provider

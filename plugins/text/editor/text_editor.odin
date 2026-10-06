@@ -6,10 +6,10 @@ package text_editor
 
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/inspector"
-import "moonhug:editor/undo"
+import undo "moonhug:packages/engine/editor/undo"
 import text "moonhug:packages/text"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}

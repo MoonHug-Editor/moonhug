@@ -1,6 +1,6 @@
 package animation_sequencer_tests
 
-// The MCP describe_type tool (editor/mcp_bridge.odin) on a plugin component
+// The MCP describe_type tool (plugins/engine/editor/mcp_tools) on a plugin component
 // with nested arrays and ref: tags (TimelineAnimator).
 
 import "core:encoding/json"

@@ -4,7 +4,7 @@ package audio
 // controls. The live SDL3_mixer track is runtime-only.
 
 import mix "vendor:sdl3/mixer"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 // ref_tags="Output": something a timeline track can drive. A `has:"@Output"`
 // picker offers objects carrying one.

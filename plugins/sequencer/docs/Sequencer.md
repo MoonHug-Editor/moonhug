@@ -170,7 +170,7 @@ Feature-package kinds:
 
 A script is a `@(typ_guid)` struct plus whichever lifecycle procs it
 implements — `enter_<Name>`, `tick_<Name>`, `exit_<Name>`, all optional, and
-a `cleanup_<Name>` when it owns heap (docs/core/Components.md, "Lifecycle procs"). `ScriptUnion`
+a `cleanup_<Name>` when it owns heap (plugins/engine/docs/Components.md, "Lifecycle procs"). `ScriptUnion`
 (`sequencer/script_union.odin`) names every variant and dispatches each
 phase with an exhaustive switch — a variant without its cases is a compile
 error, not a clip that silently does nothing.
@@ -189,7 +189,7 @@ scripts are structurally identical:
   It finds variants by the embedded `Clip_Script` base and probes each
   lifecycle proc by name, so a variant missing a phase gets an empty case.
 
-Persistence is guid-keyed (`engine/serialization` union marshalers): union
+Persistence is guid-keyed (`host/serialization` union marshalers): union
 tags are positional and shift when a variant is added, so the wire format
 carries the variant's type guid instead. `Ref_Local` fields inside a variant
 rebind on load like any component field — the resolve walk descends into

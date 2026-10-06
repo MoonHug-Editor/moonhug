@@ -1,13 +1,13 @@
 package tests
 
-import "../engine"
+import "moonhug:packages/engine"
 
 import "core:os"
 import "core:strings"
 import "core:testing"
 
 // The snapshot/restore mechanism behind the editor's in-editor Simulate
-// (editor/simulate.odin). Simulate captures with engine.scene_serialize and
+// (plugins/engine/editor/sim_world). Simulate captures with engine.scene_serialize and
 // restores with engine.scene_load_single_bytes, so revert-after-play is only as
 // good as that pair — these tests pin the pair, not the UI.
 //
@@ -51,7 +51,7 @@ test_simulate_snapshot_restores_mutated_values :: proc(t: ^testing.T) {
 	tc_mem.scene = restored
 
 	// Re-resolve by local id — handles do not survive the reload, which is why
-	// simulate.odin snapshots selection as lids.
+	// Simulate snapshots selection as lids.
 	rH, found := engine.scene_find_selectable_transform_local_id(restored, lid)
 	testing.expect(t, found, "object found again by local id after restore")
 	if !found do return

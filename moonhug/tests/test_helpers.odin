@@ -1,6 +1,6 @@
 package tests
 
-import "../engine"
+import "moonhug:packages/engine"
 
 import "core:encoding/json"
 import "core:strings"

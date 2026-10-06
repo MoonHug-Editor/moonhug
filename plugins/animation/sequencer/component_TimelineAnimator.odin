@@ -14,7 +14,7 @@ package animation_sequencer
 // bind-time default pose. Two timelines evaluating and applying separately do
 // not cross-fade, the second write replaces the first.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import anim "moonhug:packages/animation"
 

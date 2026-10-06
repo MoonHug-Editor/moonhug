@@ -9,7 +9,7 @@ package sequencer
 // A zero-duration clip is an instant: enter and exit fire together on the
 // tick that passes over it; an empty span has no inside, so tick never runs.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import core "moonhug:packages/sequencer/core"
 
 @(component={menu="Playables/Tracks/TrackScript"})

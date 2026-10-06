@@ -7,9 +7,9 @@ package tests
 import "core:encoding/uuid"
 import "core:os"
 import "core:testing"
-import "../editor/undo"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
+import undo "moonhug:packages/engine/editor/undo"
 
 @(test)
 test_prefab_apply_undoes_and_redoes :: proc(t: ^testing.T) {

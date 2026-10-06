@@ -19,7 +19,7 @@ package animation_tests
 
 import "core:testing"
 import undo "moonhug:editor/undo"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
 

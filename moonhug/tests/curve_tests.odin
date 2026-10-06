@@ -3,7 +3,7 @@ package tests
 // engine.Curve / engine.Gradient evaluation: empty defaults (module off),
 // endpoint clamping, linear interpolation, key order.
 
-import "../engine"
+import "moonhug:packages/engine"
 import "core:testing"
 
 @(test)

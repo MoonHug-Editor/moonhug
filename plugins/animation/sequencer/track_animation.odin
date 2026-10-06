@@ -17,7 +17,7 @@ package animation_sequencer
 
 import "base:runtime"
 import "core:slice"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import anim "moonhug:packages/animation"
 

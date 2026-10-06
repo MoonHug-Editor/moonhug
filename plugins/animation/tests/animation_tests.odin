@@ -11,7 +11,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "core:math"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import common "moonhug:tests/common"
 

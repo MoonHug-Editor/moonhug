@@ -12,7 +12,7 @@ package tests
 import "base:runtime"
 import "../editor/inspector"
 import "../editor/undo"
-import "../engine"
+import "moonhug:packages/engine"
 
 import "core:testing"
 

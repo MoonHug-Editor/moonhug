@@ -12,7 +12,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine_editor/asset_pipeline"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 

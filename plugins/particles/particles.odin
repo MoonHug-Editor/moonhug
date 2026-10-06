@@ -9,7 +9,7 @@ package particles
 import "core:math"
 import "core:math/linalg"
 import "core:math/rand"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // ImportersInit is the asset-layer init phase both binaries run — the same
 // slot the sprites and animation packages use for their registrations.

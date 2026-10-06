@@ -3,7 +3,7 @@ package animation_sequencer_tests
 // Directors playing animation tracks (animation/sequencer).
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"

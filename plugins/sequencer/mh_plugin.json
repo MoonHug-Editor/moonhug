@@ -2,6 +2,6 @@
   "name": "sequencer",
   "guid": "39f7025d-bd1f-4b70-8c43-3eefc8e2ff75",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

@@ -15,7 +15,7 @@ package resave_scenes
 import "core:fmt"
 import "core:os"
 import "core:strings"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 
 // Every directory the asset db can mount. Each is inited separately so guid

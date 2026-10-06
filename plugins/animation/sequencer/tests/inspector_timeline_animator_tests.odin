@@ -17,7 +17,7 @@ package animation_sequencer_tests
 
 import "core:testing"
 import undo "moonhug:editor/undo"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import common "moonhug:tests/common"
 import anim_seq "moonhug:packages/animation/sequencer"

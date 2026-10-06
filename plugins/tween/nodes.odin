@@ -6,7 +6,7 @@ package tween
 // phase (register_builtin_nodes here).
 
 import "core:math/linalg"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 
 @(typ_guid={guid="aa1970c6-51d2-4d27-9dc8-718ad1e51160"})
 TweenScaleToLocal :: struct {

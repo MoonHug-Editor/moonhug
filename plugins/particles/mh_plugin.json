@@ -2,6 +2,6 @@
   "name": "particles",
   "guid": "6d814299-4ab5-48bf-a806-92dd1631cd77",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

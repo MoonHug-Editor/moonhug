@@ -1,7 +1,7 @@
 package tests
 
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(test)
 test_ray_hit_aabb :: proc(t: ^testing.T) {

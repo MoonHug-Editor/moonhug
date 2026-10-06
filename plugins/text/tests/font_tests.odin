@@ -8,7 +8,7 @@ package text_tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 import text "moonhug:packages/text"
 

@@ -6,7 +6,7 @@ package physics3d_tests
 
 import "core:math/linalg"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import common "moonhug:tests/common"

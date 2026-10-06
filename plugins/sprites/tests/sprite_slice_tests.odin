@@ -1,6 +1,6 @@
 package sprites_tests
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 import "core:testing"
 

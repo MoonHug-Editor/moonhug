@@ -4,7 +4,7 @@ package tween_tests
 // pooled nodes, composites gate their children, finished runs free their
 // trees (the test allocator would flag a leaked node's heap).
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"

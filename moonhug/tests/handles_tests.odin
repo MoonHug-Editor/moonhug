@@ -7,8 +7,8 @@ package tests
 import "core:math"
 import "core:math/linalg"
 import "core:testing"
-import "../engine"
-import "../engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 import "../editor/handles"
 
 @(test)

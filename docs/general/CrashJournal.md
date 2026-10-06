@@ -22,7 +22,7 @@ stack:
 
 ## Using it
 
-Lives in its own package, `engine/crash_journal` — no engine state, pure infrastructure. Nothing to enable, the editor installs it before anything that can fault. After a crash, read `moonhug/logs/crash_<pid>.log` (the editor chdirs into `moonhug/`, so the file lands beside the project). `logs/` is gitignored.
+Lives in its own package, `host/crash_journal` — no engine state, pure infrastructure. Nothing to enable, the editor installs it before anything that can fault. After a crash, read `moonhug/logs/crash_<pid>.log` (the editor chdirs into `moonhug/`, so the file lands beside the project). `logs/` is gitignored.
 
 Breadcrumbs are opt-in and nothing uses them by default — the journal is complete without one. Add one only when a real crash turns out to be ambiguous from its stack alone:
 

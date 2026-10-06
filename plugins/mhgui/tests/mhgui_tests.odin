@@ -4,8 +4,8 @@ package mhgui_tests
 
 import "core:math/linalg"
 import "core:testing"
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 import editor "moonhug:editor"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
@@ -13,6 +13,8 @@ import im "moonhug:external/odin-imgui"
 import mhgui_editor "moonhug:packages/mhgui/editor"
 import mhgui "moonhug:packages/mhgui"
 import common "moonhug:tests/common"
+import "moonhug:packages/engine/editor/scene_tools"
+import "moonhug:editor/viewport"
 
 @(private = "file")
 _add :: proc(tH: engine.Transform_Handle, key: engine.TypeKey) -> rawptr {
@@ -698,11 +700,11 @@ test_scene_view_picks_ui :: proc(t: ^testing.T) {
 	eye := [3]f32{100, 50, 300}
 	view := engine.render_view_make(linalg.matrix4_look_at_f32(eye, {100, 50, 0}, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
 	at, _ := gizmos.helper_project_in(view, {100, 50, 0})
-	picked, ok := editor.scene_view_pick(view, at.x, at.y)
+	picked, ok := scene_tools.scene_view_pick(view, at.x, at.y)
 	testing.expect(t, ok && picked == image, "a click on the image picks it")
-	_, ok = editor.scene_view_pick(view, at.x + 300, at.y)
+	_, ok = scene_tools.scene_view_pick(view, at.x + 300, at.y)
 	testing.expect(t, !ok, "beside it, nothing")
-	band := editor.scene_view_band_query(view, at - 5, at + 5)
+	band := scene_tools.scene_view_band_query(view, at - 5, at + 5)
 	testing.expect(t, len(band) >= 1 && band[0] == image, "box select takes it")
 }
 
@@ -793,18 +795,18 @@ test_move_tool_on_ui_undoes :: proc(t: ^testing.T) {
 	defer free(s)
 	defer undo.destroy(s)
 	defer editor.sel_scene_clear()
-	prev_mode := editor.gizmo_mode
-	defer editor.gizmo_mode = prev_mode
+	prev_mode := viewport.gizmo_mode
+	defer viewport.gizmo_mode = prev_mode
 
 	c := _ui_case()
 	editor.sel_scene_only(c.image)
-	editor.gizmo_mode = .Translate
+	viewport.gizmo_mode = .Translate
 	origin := engine.transform_world_position(c.image)
 	view := engine.render_view_make(linalg.matrix4_look_at_f32(origin + {0, 0, 10}, origin, {0, 1, 0}), linalg.matrix4_perspective_f32(1, 800.0 / 600.0, 0.1, 1000), 800, 600, ~u32(0), .SceneView)
 	before := c.rt.anchored_position
 	steps := s.top
 
-	body :: proc(user: rawptr) { editor.gizmo_tool_frame() }
+	body :: proc(user: rawptr) { scene_tools.gizmo_tool_frame() }
 	common.handles_drag(view, origin + {0.75, 0, 0}, origin + {1.75, 0, 0}, body, nil)
 	testing.expectf(t, c.rt.anchored_position.x > before.x + 0.5, "the element moved right, got %v from %v", c.rt.anchored_position, before)
 	testing.expect_value(t, s.top, steps + 1)

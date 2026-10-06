@@ -1,8 +1,8 @@
 package menu
 import im "moonhug:external/odin-imgui"
 import "../inspector"
-import "moonhug:engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:editor/viewport"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 
 Theme :: enum {
@@ -173,13 +173,7 @@ file_save_menu :: proc()
     // document, and every loaded scene edited since its last save. One
     // shortcut, no per-view Save buttons.
     inspector.save_to_file()
-    sm := engine.ctx_scene_manager()
-    if sm == nil do return
-    for i in 0 ..< sm.count {
-        scene := sm.loaded[i]
-        if scene == nil || !scene.dirty || len(scene.path) == 0 do continue
-        engine.scene_save(scene, scene.path)
-    }
+    viewport.document_save_all()
 }
 
 @(menu_separator={path="File", order=5})

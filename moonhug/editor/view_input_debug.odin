@@ -14,9 +14,10 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import input "../engine/input"
+import input "moonhug:host/input"
 import "menu"
 import "moonhug:editor/icons"
+import "moonhug:editor/viewport"
 
 @(private="file")
 _dbg_text :: proc(format: string, args: ..any) {
@@ -50,7 +51,7 @@ draw_input_debug :: proc() {
 
 	im.SeparatorText("editor gates")
 	_dbg_text("any item active: %v (stuck true blocks every view's key handling)", im.IsAnyItemActive())
-	_dbg_text("hierarchy rename active: %v", _hierarchy_rename_target != _HANDLE_NONE)
+	_dbg_text("hierarchy rename active: %v", viewport.hierarchy_rename_active())
 	_dbg_text("project rename active: %v", _project_rename_active)
 	_dbg_text("scene view hovered: %v", scene_view_hovered)
 
@@ -59,9 +60,8 @@ draw_input_debug :: proc() {
 		// Mouse-only rescue: clear every editor-side state machine that can
 		// gate keyboard handling. If this revives the keyboard, the culprit
 		// was one of the gates above; if not, the problem is SDL/imgui-side.
-		_hierarchy_rename_target = _HANDLE_NONE
+		viewport.reset_input_gates()
 		_project_rename_active = false
 		_project_rename_just_finished = false
-		_hierarchy_rename_just_finished = false
 	}
 }

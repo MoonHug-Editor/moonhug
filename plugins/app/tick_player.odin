@@ -1,10 +1,10 @@
 package app
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 import audio "moonhug:packages/audio"
 import tween "moonhug:packages/tween"
-import input "moonhug:engine/input"
+import input "moonhug:host/input"
 import "core:encoding/uuid"
 import "core:math/rand"
 

@@ -1,16 +1,16 @@
 #+feature dynamic-literals
 package app
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
-import gfx "moonhug:engine/gfx"
-import "moonhug:engine/gizmos"
-import input "moonhug:engine/input"
+import gfx "moonhug:host/gfx"
+import "moonhug:host/gizmos"
+import input "moonhug:host/input"
 import "core:os"
 import "core:fmt"
 import "core:strings"
 import "core:encoding/uuid"
-import "moonhug:engine/log"
+import "moonhug:host/log"
 
 MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
 
@@ -104,7 +104,7 @@ main :: proc() {
         }
 
         // Fixed-rate sim ticks first (0..k this frame, accumulator-driven —
-        // docs/core/FixedTick.md), then the per-frame view tick.
+        // plugins/engine/docs/FixedTick.md), then the per-frame view tick.
         steps := engine.fixed_frame_ticks(gfx.delta_time())
         for _ in 0 ..< steps {
             engine.fixed_tick_begin()
@@ -150,7 +150,7 @@ app_init :: proc() {
     // The app ALWAYS runs the catalog pipeline — the editor maintains
     // library/catalog.json (dev runs read it in place), exports carry their
     // own. There is no scan mode: scanning and importing are editor machinery
-    // (engine_editor), not linked into this binary.
+    // (plugins/engine/editor), not linked into this binary.
     if _catalog_path == "" do _catalog_path = engine.ASSET_CATALOG_PATH
     if !engine.asset_db_init_from_catalog(_catalog_path) {
         log.errorf("no catalog at %s — run the editor once (it maintains library/catalog.json) or pass --catalog=<path>", _catalog_path)

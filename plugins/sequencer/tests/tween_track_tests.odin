@@ -9,7 +9,7 @@ package sequencer_tests
 // round trip with runtime capture state excluded.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import tweens "moonhug:packages/sequencer/tweens"
 import common "moonhug:tests/common"

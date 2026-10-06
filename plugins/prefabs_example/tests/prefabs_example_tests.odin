@@ -16,7 +16,7 @@ import "core:encoding/json"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 import common "moonhug:tests/common"
 

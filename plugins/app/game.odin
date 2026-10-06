@@ -6,8 +6,8 @@ package app
 // nothing in scenes without one.
 
 import "core:math"
-import "moonhug:engine"
-import input "moonhug:engine/input"
+import "moonhug:packages/engine"
+import input "moonhug:host/input"
 
 TANK_SPEED :: f32(5)
 

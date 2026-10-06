@@ -9,11 +9,12 @@ import "core:fmt"
 import "core:math"
 import "core:math/linalg"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/handles"
-import "moonhug:engine/gizmos"
+import "moonhug:host/gizmos"
 import "moonhug:editor/inspector"
-import "moonhug:editor/undo"
+import "moonhug:packages/engine/editor/drawers"
+import undo "moonhug:packages/engine/editor/undo"
 import mhgui "moonhug:packages/mhgui"
 
 @(private = "file") _NONE :: engine.Transform_Handle{}
@@ -141,7 +142,7 @@ ui_menu_button :: proc() {
 _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	inspector.draw(ctx)
 	img := cast(^mhgui.Image)ctx.ptr
-	if inspector.sprite_ref_row("Sprite", &img.sprite) {
+	if drawers.sprite_ref_row("Sprite", &img.sprite) {
 		inspector.mark_inspector_changed()
 		inspector.record_nested_override(&img.sprite, typeid_of(engine.PPtr), "sprite", true)
 	}

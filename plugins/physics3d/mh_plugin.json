@@ -2,6 +2,6 @@
   "name": "physics3d",
   "guid": "c09c3411-f32a-47f8-a342-ac7391da45d3",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

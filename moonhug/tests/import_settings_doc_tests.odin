@@ -9,8 +9,8 @@ import "core:strings"
 import "core:testing"
 import "../editor/inspector"
 import "../editor/undo"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
 
 @(private = "file")
 _DIR :: "moonhug/tests/fixtures/_import_settings_doc_tmp"

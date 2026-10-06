@@ -24,7 +24,7 @@ import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "moonhug:engine/catalog"
+import "moonhug:host/catalog"
 
 // Appended to every `out` path, so one config source names one binary on every
 // platform and nothing depends on whether the compiler adds a suffix itself.

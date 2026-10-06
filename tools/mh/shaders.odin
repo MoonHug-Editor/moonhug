@@ -9,7 +9,7 @@ package mh
 // missing. Toolchain: brew install shaderc spirv-cross
 //
 // The .glsl ASSET importer runs the same two tools with different flags
-// (moonhug/engine_editor/asset_pipeline/importer_shader.odin adds --reflect
+// (plugins/engine/editor/importers/importer_shader.odin adds --reflect
 // for binding indices). They stay separate: same tools, different output
 // contracts.
 
@@ -18,7 +18,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-SHADER_DIR :: "moonhug/engine/gfx/shaders"
+SHADER_DIR :: "moonhug/host/gfx/shaders"
 
 // Stage comes from the second extension: "world.vert" -> vert.
 SHADERS := []string{"world.vert", "world.frag", "lit.frag"}

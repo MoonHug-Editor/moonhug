@@ -10,8 +10,9 @@ import "core:os"
 import "core:testing"
 import "../editor"
 import "../editor/undo"
-import "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:packages/engine/editor/scene_views"
 
 // Every test here touches editor-wide selection state, so each starts and ends
 // from nothing.
@@ -95,7 +96,7 @@ test_create_selects_and_one_undo_restores_the_old_selection :: proc(t: ^testing.
 	editor.selection_undo_track() // first frame: baseline only
 	entries_before := len(s.items)
 
-	editor.hierarchy_create_empty_menu()
+	scene_views.hierarchy_create_empty_menu()
 	editor.selection_undo_track() // the same frame's end: attaches the selection
 	testing.expect_value(t, len(s.items), entries_before + 1)
 	created := editor.sel_scene_active()
@@ -201,7 +202,7 @@ test_undo_restores_the_inspectors_kept_object :: proc(t: ^testing.T) {
 	editor.selection_undo_track()
 	testing.expect(t, editor.sel_scene_inspected_active() == a, "the Inspector keeps A while the asset is selected")
 
-	editor.hierarchy_create_empty_menu()
+	scene_views.hierarchy_create_empty_menu()
 	editor.selection_undo_track()
 
 	testing.expect(t, undo.apply_undo(s), "undo the create")

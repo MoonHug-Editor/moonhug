@@ -7,7 +7,7 @@ import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "../../engine"
+import core "moonhug:host/core"
 
 ICON_MD_DRAG_INDICATOR :: "\ue945" // drag_indicator (array row reorder grip)
 
@@ -130,7 +130,7 @@ draw_fixed_array :: proc(ptr: rawptr, count: int, elem_ti: ^runtime.Type_Info, f
 	defer im.TreePop()
 	im.TextDisabled("Fixed size: %d", count)
 
-	readonly := engine.inspector_is_readonly()
+	readonly := core.inspector_is_readonly()
 	_reorder_apply_if_released(ptr, ptr, elem_ti.size, count)
 
 	// The storage IS the field, and the length is fixed by the type, so every
@@ -198,7 +198,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		im.TextDisabled("Size: %d", da.len)
 	}
 
-	readonly := engine.inspector_is_readonly()
+	readonly := core.inspector_is_readonly()
 
 	// Reorder stays single-object: it permutes rows, and a permutation of one
 	// array means nothing on a peer whose contents differ. Unity suppresses drag
@@ -219,7 +219,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		elem_ptr := rawptr(uintptr(da.data) + uintptr(i * elem_ti.size))
 		// The remove button and, with `expand` on the array field, the arrow
 		// take their width from the element, not from the row.
-		expands := current_field_expand && elem_ti.id == typeid_of(engine.Asset_GUID)
+		expands := current_field_expand && elem_ti.id == typeid_of(core.Asset_GUID)
 		trailing := ARRAY_REMOVE_BTN_W + (expands ? EXPAND_BTN_W : 0)
 		current_field_trailing_w = trailing
 		im.SetNextItemWidth(im.GetContentRegionAvail().x - trailing)
@@ -228,7 +228,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		open := false
 		if expands {
 			im.SameLine(0, 0)
-			open = expand_arrow((^engine.Asset_GUID)(elem_ptr)^)
+			open = expand_arrow((^core.Asset_GUID)(elem_ptr)^)
 		}
 		im.SameLine(0, 0)
 		if readonly {
@@ -240,7 +240,7 @@ draw_dynamic_array :: proc(da: ^runtime.Raw_Dynamic_Array, elem_ti: ^runtime.Typ
 		if readonly {
 			im.EndDisabled()
 		}
-		if open do draw_expanded_asset((^engine.Asset_GUID)(elem_ptr)^)
+		if open do draw_expanded_asset((^core.Asset_GUID)(elem_ptr)^)
 		im.PopID()
 	}
 	_draw_reorder_tail(field_ptr, draw_count)

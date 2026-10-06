@@ -3,7 +3,7 @@ package tests_common
 // setup + an installed undo stack, for tests that record undo steps. Set
 // context.user_ptr = &tc.uc in the test body afterwards, like after setup.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/undo"
 
 @(private)

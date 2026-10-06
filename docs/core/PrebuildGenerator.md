@@ -51,8 +51,15 @@ components. Every `*_gen` module then works against those components and **never
 |--------------|-------------------------------------------------------------------------|
 | `gen_db`     | The database: entities, the component registry, queries, the pipeline.  |
 | `gen_core`   | The typed AST facade — the only place that speaks `core:odin/ast`. Turns declarations into plain data: `DeclAttrs` (→ `Attr_Args`), `StructFields` (→ `Struct_Field`), `RenderValue`, `EnumFieldNames`, plus `ParsePackage` / file helpers. |
-| `gen_facts`  | Runs `gen_core` once per decl and stores the result as shared components: `Kind_GenComp`, `Proc_GenComp`, `Struct_GenComp`, `Attrs_GenComp`, `Fields_GenComp`. Every module reads these instead of re-walking the AST. |
-| `*_gen`      | One module per output concern (`tween_gen`, `menu_gen`, …). Self-registering. None import `core:odin/ast`. |
+| `gen_facts`  | Runs `gen_core` once per decl and stores the result as shared components: `Kind_GenComp`, `Proc_GenComp`, `Struct_GenComp`, `Attrs_GenComp`, `Fields_GenComp`. Every module reads these instead of re-walking the AST. It also holds `Component_GenComp`, which the engine's components generator provides and `packages_gen` reads. |
+| `*_gen`      | One module per output concern (`menu_gen`, `type_guid_gen`, …). Self-registering. None import `core:odin/ast`. `moonhug/prebuild` holds the host and shell generators. A plugin's generators live in its `gen/` folder (docs/core/Plugins.md), the engine's in `plugins/engine/gen` (components, gizmos, context menu, update). |
+
+The host and shell generators name no plugin. Their output compiles with an empty `moonhug/packages`, and a plugin's package is imported only when its declarations were scanned. `type_guid_gen` is the model:
+
+- `moonhug/host/core/type_key_generated.odin`: the `TypeKey` enum over every `@(typ_guid)` type.
+- `moonhug/host/core/type_procs_generated.odin`: `core.__type_procs_init`, the lifecycle procs (`reset_T`, `cleanup_T`, `on_validate_T`, `@(cleanup)` bindings) of core's own types.
+- `type_registration_generated.odin` in `moonhug/registration` and in each runnable package: `register_type_guids`, which registers each type with its guid written as a literal, calls `core.__type_procs_init`, then registers the lifecycle procs of every other package's types, the engine's included. A `@(cleanup)` proc must be declared in the package of the type it frees.
+- `moonhug/editor/create_asset_menus_generated.odin`: the Assets/Create entries, through `core` only.
 
 ## How a module is structured
 
@@ -109,7 +116,7 @@ generate :: proc(w: ^db.World) -> bool {
         tween := db.get(tweens, entity)
         // ...build source text...
     }
-    db.emit(w, "moonhug/engine/tween_generated.odin", /* contents */)
+    db.emit(w, "moonhug/packages/engine/tween_generated.odin", /* contents */)
     return true
 }
 ```
@@ -224,7 +231,7 @@ and mints its own typed component.
 
 ## Adding a new generator
 
-1. Create a `moonhug/prebuild/yourthing_gen/` package.
+1. Create a `moonhug/prebuild/yourthing_gen/` package for a host or shell attribute. A generator for an attribute a plugin declares goes in that plugin's `gen/` folder instead (docs/core/Plugins.md), and step 4 does not apply.
 2. Define a public component type for the facts you extract.
 3. In `@(init)`, register a `provider` (tags entities) and a `generator` (emits a file).
    In the provider, read `gen_facts.Attrs_GenComp` / `Fields_GenComp` for the decl data

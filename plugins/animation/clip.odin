@@ -14,7 +14,7 @@ package animation
 
 import "base:runtime"
 import "core:encoding/json"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "core:encoding/uuid"
 import "core:math"
 import "core:math/linalg"
@@ -276,7 +276,7 @@ animation_clip_reimported :: proc(guid: engine.Asset_GUID) {
 	for k in owned do animation_clip_unload(k)
 }
 
-// Frees what a clip owns and leaves it zeroed (docs/core/Components.md,
+// Frees what a clip owns and leaves it zeroed (plugins/engine/docs/Components.md,
 // "Lifecycle procs").
 cleanup_AnimationClip :: proc(clip: ^AnimationClip) {
 	for &ch in clip.channels {

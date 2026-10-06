@@ -11,7 +11,7 @@ package animation_sample
 // clip can be repointed in the inspector without touching this file.
 
 import "core:log"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 
 @(component={menu="Demo/AnimationDemo"})

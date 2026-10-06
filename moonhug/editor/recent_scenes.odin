@@ -14,9 +14,11 @@ import "core:encoding/uuid"
 import "core:path/filepath"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:engine"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
+import assets "moonhug:host/assets"
+import "moonhug:editor/viewport"
 
 RECENT_SCENES_MAX :: 10
 
@@ -24,15 +26,13 @@ RECENT_SCENES_MAX :: 10
 // the scenes being replaced is purged, and the scene becomes active.
 editor_open_scene :: proc(path: string) {
 	undo.purge_scenes(undo.get())
-	hierarchy_edit_stack_clear()
-	scene := engine.scene_load_single_path(path)
-	engine.sm_scene_set_active(scene)
-	if scene != nil do _recent_scenes_push(path)
+	viewport.edit_stack_clear()
+	if asset_pipeline.asset_open(path) do _recent_scenes_push(path)
 }
 
 @(private = "file")
 _recent_scenes_push :: proc(path: string) {
-	guid, ok := engine.asset_db_get_guid(path)
+	guid, ok := assets.asset_db_get_guid(path)
 	if !ok do return
 	// The list is loaded by json.unmarshal under the default allocator and
 	// saved from here, so every string in it is owned by that one allocator.
@@ -59,7 +59,7 @@ _recent_scenes_menu :: proc() {
 	for guid_str in list {
 		guid, perr := uuid.read(guid_str)
 		if perr != nil do continue
-		path, ok := engine.asset_db_get_path(guid)
+		path, ok := assets.asset_db_get_path(guid)
 		if !ok do continue // deleted since: skipped, dropped on the next push
 		label := strings.clone_to_cstring(strings.trim_suffix(filepath.base(path), ".scene"), context.temp_allocator)
 		im.PushIDInt(i32(shown))

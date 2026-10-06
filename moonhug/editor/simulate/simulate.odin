@@ -6,14 +6,12 @@ package simulate
 // Logic only, with no imgui or view dependency, so tests and tools drive a
 // simulation without the editor root. Toolbar: editor/simulate_view.odin.
 //
-// The snapshot is the same bytes a save writes: capture is scene_serialize,
-// restore is scene_reload_in_place_bytes.
+// The world being simulated is a provider (world.odin): the engine captures
+// and restores its scenes and runs the fixed ticks.
 
 import "base:runtime"
-import "core:strings"
-import "moonhug:engine"
-import "moonhug:engine/log"
-import input "moonhug:engine/input"
+import core "moonhug:host/core"
+import "moonhug:host/log"
 import "moonhug:editor/undo"
 
 State :: enum {
@@ -23,7 +21,8 @@ State :: enum {
 }
 
 // One runnable package the editor can tick. Rows come from the generated table
-// (editor/sim_hosts_generated.odin), passed to install.
+// (moonhug/registration/sim_hosts_generated.odin), which sim_world converts and
+// passes to set_hosts.
 Host :: struct {
     name:         string,
     path:         string,
@@ -35,9 +34,9 @@ Host :: struct {
 // persisted host name live in the root, which this package cannot import. An
 // unset hook makes its step a no-op.
 Hooks :: struct {
-    selection_ids:     proc() -> []engine.Local_ID, // ids to restore after Stop
+    selection_ids:     proc() -> []core.Local_ID, // ids to restore after Stop
     selection_clear:   proc(),
-    selection_add_id:  proc(s: ^engine.Scene, id: engine.Local_ID),
+    selection_add_id:  proc(scene: core.Scene_Ref, id: core.Local_ID),
     phase:             proc(p: Phase),
     host_name_load:    proc() -> string,
     host_name_store:   proc(name: string),
@@ -57,31 +56,29 @@ _hooks: Hooks
 _hosts: []Host
 _host: int
 
-// The scene at Start, in the on-disk scene format, held in memory. Scenes are
-// remembered by session id, not pointer: a scene unloaded during the run frees
-// its struct, and a later scene can be allocated at the same address.
+// The world at Start, as the world provider encoded it, and the scene a Stop
+// restores. The scene is remembered by session id, not pointer: a scene
+// unloaded during the run frees its struct, and a later scene can be
+// allocated at the same address.
 _snapshot: []byte
-_scene_id: u32
-_scene_path: string
-
-// The scene set at Start: Stop unloads what the run loaded on top and reloads
-// from disk what the run unloaded, so the editor sees the same scenes again.
-_Loaded_Scene :: struct {
-    id:   u32, // engine.Scene.session_id
-    path: string,
-}
-_loaded_at_start: [dynamic]_Loaded_Scene
+_scene: core.Scene_Ref
 
 // Ids of the objects selected at Start. Handles hold a pool slot + generation and
 // restore re-creates every object, so ids are what survives.
 // Like every global here it outlives the caller, so it pins the default allocator.
-_selection: [dynamic]engine.Local_ID
+_selection: [dynamic]core.Local_ID
 
 // Set by step, consumed by the next tick: advance one frame, then hold.
 _step_pending: bool
 
 install :: proc(hooks: Hooks, hosts: []Host) {
     _hooks = hooks
+    set_hosts(hosts)
+}
+
+// The table is borrowed, not copied: the caller keeps it alive while it is
+// installed. Picks the host the host_name_load hook names, row 0 otherwise.
+set_hosts :: proc(hosts: []Host) {
     _hosts = hosts
     _host = 0
     if _hooks.host_name_load == nil do return
@@ -109,10 +106,10 @@ is_active :: proc() -> bool {
     return _state != .Stopped
 }
 
-// The scene captured at Start, or nil when stopped. The hierarchy asks so it
-// can keep Unload off the one scene a Stop has to restore.
-scene :: proc() -> ^engine.Scene {
-    return _state != .Stopped ? engine.sm_scene_find_by_session_id(_scene_id) : nil
+// The scene captured at Start, or the zero ref when stopped. The hierarchy
+// asks so it can keep Unload off the one scene a Stop has to restore.
+scene :: proc() -> core.Scene_Ref {
+    return _state != .Stopped ? _scene : {}
 }
 
 // True while the scene advances. Paused holds the world without leaving.
@@ -159,32 +156,11 @@ start :: proc(paused := false) -> bool {
         return false
     }
 
-    scene := engine.sm_scene_get_active()
-    if scene == nil {
-        log.error("Simulate: no active scene")
-        return false
-    }
-
-    snapshot, ok := engine.scene_serialize(scene)
-    if !ok {
-        log.error("Simulate: failed to capture scene snapshot")
-        return false
-    }
-
-    // The snapshot outlives this call by the whole length of the run, so it
-    // cannot keep the CALLER's allocator: scene_serialize hands back memory
-    // from context.allocator, and whoever pressed Play may be running on a
-    // scoped or per-frame one. Reusing that memory rewrites bytes inside the
-    // snapshot, which shows up as "snapshot restore failed" on Stop with the
-    // scene left in its simulated state — a lost edit, at the point the user
-    // is least expecting one. Pin it to the default allocator, like every
-    // other global here.
-    _snapshot = make([]byte, len(snapshot), runtime.default_allocator())
-    copy(_snapshot, snapshot)
-    delete(snapshot)
-    _scene_id = scene.session_id
-    _scene_path = strings.clone(scene.path, runtime.default_allocator())
-    _record_loaded_scenes()
+    // The world logs why a capture fails (no active scene, serialize error).
+    snapshot, captured, ok := world_capture()
+    if !ok do return false
+    _snapshot = snapshot
+    _scene = captured
 
     {
         context.allocator = runtime.default_allocator()
@@ -199,7 +175,7 @@ start :: proc(paused := false) -> bool {
     undo.play_begin(undo.get())
     _state = paused ? .Paused : .Running
     _sync_context()
-    engine.fixed_reset()
+    world_reset_time()
     _fire(.EnteredPlayMode)
     return true
 }
@@ -220,26 +196,26 @@ stop :: proc() {
     // the restored scene. Asset edits stay.
     undo.play_end(undo.get())
 
-    _restore_scene_set()
-    restored := false
-    if target := engine.sm_scene_find_by_session_id(_scene_id); _snapshot != nil && target != nil {
-        restored = _restore(target)
+    // Back to the scene set of Start, then the captured scene reverts. Objects
+    // the game destroyed are absent from the restored scene too, so they do
+    // not resolve and drop out of the selection.
+    if _snapshot != nil {
+        if restored, ok := world_restore(_snapshot); ok {
+            if _hooks.selection_add_id != nil {
+                for id in _selection do _hooks.selection_add_id(restored, id)
+            }
+            clear(&_selection)
+        } else {
+            log.error("Simulate: snapshot restore failed - the scene was NOT restored; reopen it from Project")
+        }
+        world_release(_snapshot)
     }
-    if !restored && _snapshot != nil {
-        log.error("Simulate: snapshot restore failed - the scene was NOT restored; reopen it from Project")
-    }
-
-    delete(_snapshot, runtime.default_allocator())
     _snapshot = nil
-    _scene_id = 0
-    if _scene_path != "" {
-        delete(_scene_path, runtime.default_allocator())
-        _scene_path = ""
-    }
+    _scene = {}
 
     _state = .Stopped
     _sync_context()
-    engine.fixed_reset()
+    world_reset_time()
     _fire(.EnteredEditMode)
 }
 
@@ -285,16 +261,7 @@ tick :: proc(dt: f32) {
 
     host, ok := active_host()
     if !ok do return
-
-    fdt := engine.fixed_dt()
-    steps := 1 if step else engine.fixed_frame_ticks(dt)
-    for _ in 0 ..< steps {
-        engine.fixed_tick_begin()
-        input.fixed_latch()
-        if host.fixed_update != nil do host.fixed_update(fdt)
-        engine.fixed_tick_advance()
-    }
-    if host.update != nil do host.update(fdt if step else dt)
+    world_tick(dt, step, host.fixed_update, host.update)
 }
 
 hosts :: proc() -> []Host {
@@ -334,67 +301,9 @@ available :: proc() -> bool {
     return ok
 }
 
-_record_loaded_scenes :: proc() {
-    context.allocator = runtime.default_allocator()
-    _clear_loaded_scenes()
-    sm := engine.ctx_scene_manager()
-    for i in 0 ..< sm.count {
-        sc := sm.loaded[i]
-        if sc == nil do continue
-        append(&_loaded_at_start, _Loaded_Scene{id = sc.session_id, path = strings.clone(sc.path)})
-    }
-}
-
-_clear_loaded_scenes :: proc() {
-    context.allocator = runtime.default_allocator()
-    for l in _loaded_at_start do delete(l.path)
-    clear(&_loaded_at_start)
-}
-
-// Back to the scene set of Start: scenes the run loaded additively go, scenes
-// it unloaded come back from disk (their in-memory state at Start is not
-// kept; the simulated scene's is, through the snapshot).
-_restore_scene_set :: proc() {
-    sm := engine.ctx_scene_manager()
-    for i := 0; i < sm.count; i += 1 {
-        sc := sm.loaded[i]
-        if sc == nil do continue
-        known := false
-        for l in _loaded_at_start do if l.id == sc.session_id { known = true; break }
-        if !known do engine.sm_scene_unload(sc)
-    }
-    for l in _loaded_at_start {
-        if engine.sm_scene_find_by_session_id(l.id) != nil || l.path == "" do continue
-        engine.scene_load_additive_path(l.path)
-    }
-    _clear_loaded_scenes()
-}
-
-// Deserialize the snapshot back over the simulated scene, then re-resolve
-// selection by id. Scoped to that one scene, keeping its slot and active status;
-// additively loaded scenes are untouched.
-//
-// Not atomic: on failure the target scene is already destroyed.
-_restore :: proc(target: ^engine.Scene) -> bool {
-    scene := engine.scene_reload_in_place_bytes(
-        target, _snapshot, target.asset_guid, _scene_path)
-    if scene == nil do return false
-
-    // Objects the game destroyed are absent from the restored scene too, so they
-    // do not resolve and drop out of the selection.
-    if _hooks.selection_add_id != nil {
-        for id in _selection do _hooks.selection_add_id(scene, id)
-    }
-    clear(&_selection)
-    return true
-}
-
-// Feeds engine.application_is_playing(). True from Start to Stop, paused
-// included.
+// Feeds the world's "is playing". True from Start to Stop, paused included.
 _sync_context :: proc() {
-    if uc := engine.ctx_get(); uc != nil {
-        uc.is_playing = _state != .Stopped
-    }
+    world_set_playing(_state != .Stopped)
 }
 
 _fire :: proc(p: Phase) {

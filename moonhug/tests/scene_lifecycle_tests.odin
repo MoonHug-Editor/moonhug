@@ -9,7 +9,7 @@ package tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 
 @(private = "file")

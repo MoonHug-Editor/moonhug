@@ -20,7 +20,7 @@ import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/menu"
 import nc "moonhug:editor/node_canvas"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import "moonhug:editor/icons"
 

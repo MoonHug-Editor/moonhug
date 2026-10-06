@@ -157,7 +157,7 @@ main :: proc() {
 - `rc.play` is `rc.build`, `rc.export_data`, `rc.run_build` in a row, and the toolbar modifiers turn the same call into a dev run, a run of the last build, or a build with no run, so one config and one button cover every way of playing. The three steps stay public for a config that needs something between them
 - `rc.export_data` stages `<out>_data` beside the binary — Unity's
   `Game` + `Game_Data` layout — from the editor-maintained catalog
-  (`catalog.export_from`, moonhug:engine/catalog — a leaf package, so config
+  (`catalog.export_from`, moonhug:host/catalog — a leaf package, so config
   binaries stay small): the boot scene's DEPENDENCY CLOSURE (every asset it
   references, transitively) and a RELOCATABLE catalog whose paths and `artifacts/` fan-out resolve
   relative to its own directory. The data dir moves as one unit and is
@@ -205,23 +205,36 @@ import pipeline exists only inside the editor.
 
 ## Read/write split
 
-The pipeline's WRITE half lives in `moonhug:engine_editor/asset_pipeline`
-and never links
-into a game binary: importer registry + built-in importers (texture, mesh,
-shader), the import drivers (`asset_pipeline_import_all/import_asset/
+The pipeline's WRITE half lives in the editor shell, `moonhug:editor/assets`
+(package `asset_pipeline`), and never links into a game binary: the importer
+registry, the import drivers (`asset_pipeline_import_all/import_asset/
 reimport`), the AssetDB scan (`asset_db_refresh` — tree walk, meta minting,
 orphan pruning), meta writing, import-settings saving. The progress API is
 its own editor subpackage (`moonhug:editor/progress` —
-`progress.begin/report/end`).
+`progress.begin/report/end`). The engine's importers (texture, mesh,
+shader) and the glTF clip hooks are `moonhug:packages/engine/editor/importers`, which
+registers them at ImportersInit like any package importer. The mesh and material assets they produce are described in [Meshes](../../plugins/engine/docs/Meshes.md) and [Materials](../../plugins/engine/docs/Materials.md).
 Package importers follow the same split — the audio importer lives in
 `packages/audio/editor/`, its settings type stays in the runtime package so
 the catalog pipeline materializes settings in game binaries too (settings
 objects carry `__type_guid`, read registry-free via `_settings_from_value`).
 
-The engine keeps the READ half: the AssetDB storage and lookups (guid↔path
-maps, root-info index, meta primitives), the artifact index, artifact path
-resolution, meta/settings reading, catalog init. Three seams connect the
-halves, all installed at the editor's ImportersInit and nil in the app:
+The READ half is the host package `moonhug:host/assets`, which the game and
+the editor both stand on: the AssetDB storage and lookups (guid↔path maps,
+root-info index, meta primitives), the artifact index, artifact path
+resolution, meta/settings reading, catalog init. It imports core and no
+engine, and the engine re-exports it by alias (`engine.asset_db_get_path`).
+The database variable has no alias, code reads it as `assets.asset_db`. The
+database knows no asset type, the engine registers what it knows:
+
+- `asset_db_add_indexer(ext, proc)`: fills the root-info index from a file's bytes through `asset_db_index_set`. The engine registers `.scene` (`plugins/engine/scene_asset_index.odin`). `asset_db_reindex` reads a changed file only when an indexer matches its extension.
+- `asset_db_add_evict_hook(proc)`: drops a cache entry for a changed or removed path. The material and shader caches register here.
+- `asset_db_set_subs(path, kind, subs)`: the sub-asset guids an asset declares. An importer calls it through its `Importer_Desc.sub_assets` hook (the mesh importer registers model clips).
+- `Importer_Desc.artifacts`: every artifact file an importer wrote for one source, so the pipeline moves fan-out files (mesh parts and clips) with the main artifact.
+
+The project view opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active.
+
+Seams connect the halves, all installed at the editor's ImportersInit and nil in the app:
 
 - `asset_db_set_refresh_proc` — engine code requests a scan through it:
   `asset_db_init` (storage init, paired with `asset_db_shutdown` in the

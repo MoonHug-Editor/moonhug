@@ -16,7 +16,7 @@ package sequencer
 // Node names carry track and clip names. Track order is sibling order; clip
 // order derives from start times.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // The universal half of a track: everything a timeline needs regardless of
 // what the track drives.

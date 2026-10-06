@@ -9,7 +9,7 @@ package tests
 
 import "../editor/inspector"
 import "../editor/undo"
-import "../engine"
+import "moonhug:packages/engine"
 
 import "core:testing"
 
@@ -368,7 +368,7 @@ test_row_rotation_euler_is_fieldwise :: proc(t: ^testing.T) {
 	// The peer points at ITS cache, and the undo target is its QUATERNION —
 	// exactly the split the wrapper sets up.
 	peers := []inspector.Multi_Peer{
-		{base = rawptr(&euler_b), handle = engine.Handle(b), scene = tb.scene},
+		{base = rawptr(&euler_b), handle = engine.Handle(b), scene = _scene_of(b)},
 	}
 	prev := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev)

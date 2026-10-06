@@ -4,7 +4,7 @@ package plugin_example_tests
 // package, outside packages/tween) joins the generated union and dispatches
 // through the emitted adapter to ease a Spinner's speed.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import plugin_example "moonhug:packages/plugin_example"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"

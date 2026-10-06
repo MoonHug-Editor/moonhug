@@ -120,7 +120,7 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	return strings.to_string(b)
 }
 
-_OUT_DIR :: "moonhug/engine/serialization"
+_OUT_DIR :: "moonhug/host/serialization"
 
 _SerializationRow :: struct {
 	kind:        SerializationCallbackKind,
@@ -191,8 +191,8 @@ generate :: proc(w: ^db.World) -> bool {
 	for pkg in import_pkgs {
 		if path := packages_used[pkg]; path != "" {
 			fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, path)
-		} else if pkg == "engine" || pkg == "editor" {
-			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		} else if pkg == "editor" {
+			fmt.sbprintf(&b, "import \"moonhug:%s\"\n", pkg)
 		} else {
 			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
 		}
@@ -218,6 +218,6 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "}\n")
 
-	db.emit(w, "moonhug/engine/serialization/serialization_generated.odin", strings.to_string(b))
+	db.emit(w, "moonhug/host/serialization/serialization_generated.odin", strings.to_string(b))
 	return true
 }

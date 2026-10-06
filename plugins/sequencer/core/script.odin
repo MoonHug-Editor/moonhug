@@ -9,7 +9,7 @@ package sequencer_core
 // never the sequencer: the union sits above them, so first-party scripts
 // (sequencer/scripts) and plugin scripts are structurally identical.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Embedded by every script variant: `using base: Clip_Script`. Empty — its
 // job is to MARK the struct as a script so script_gen finds it. Prebuild is

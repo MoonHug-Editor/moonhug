@@ -1,11 +1,11 @@
 package tests
 
-// MeshFilter/MeshRenderer serialization round-trip (docs/core/SDL3Renderer.md #6).
+// MeshFilter/MeshRenderer serialization round-trip (plugins/engine/docs/SDL3Renderer.md #6).
 // Rendering itself needs a GPU device and is verified in-editor.
 
 import "core:encoding/uuid"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(test)
 test_save_load_scene_with_mesh_components :: proc(t: ^testing.T) {

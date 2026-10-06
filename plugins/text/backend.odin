@@ -12,7 +12,7 @@ package text
 // package's (ImportersInit order > 2), and the rest of the plugin is
 // unchanged: the tests drive layout through a fake monospace backend.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Line metrics in canvas units for a font at a size. All positive:
 // `descent` is how far below the baseline glyphs reach.

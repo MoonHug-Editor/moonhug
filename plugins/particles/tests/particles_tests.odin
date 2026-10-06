@@ -10,7 +10,7 @@ import "core:math/linalg"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import particles "moonhug:packages/particles"
 import common "moonhug:tests/common"
 _make_system :: proc(tc: ^common.TestCtx) -> ^particles.ParticleSystem {

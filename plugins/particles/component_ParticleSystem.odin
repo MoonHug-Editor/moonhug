@@ -11,7 +11,7 @@ package particles
 // (simulation_speed is the one exception — zero falls back to 1).
 
 import "core:math/rand"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Trail points are recorded in WORLD space (a trail stays behind in the
 // world even for local-space sims). A fixed ring per particle: the oldest

@@ -5,7 +5,7 @@ package tests
 
 import "core:math"
 import "core:testing"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(private = "file")
 _v3_close :: proc(a, b: [3]f32, eps: f32 = 1e-4) -> bool {

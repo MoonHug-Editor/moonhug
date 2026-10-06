@@ -1,0 +1,218 @@
+package engine_gen
+
+// context_menu_gen: ECS prebuild module.
+//
+//   provide  - walk the decls, recognise proc decls with an @context_menu
+//              attribute, tag them with ContextMenu_GenComp (carrying the entry fields).
+//   generate - join {decls, ContextMenu_GenComp}, sort, build context_menu_generated.odin,
+//              emit it as a GeneratedFile (gen_db writes it to disk).
+//
+// String-building output is identical to the previous collect/generate version.
+
+import "core:fmt"
+import "core:os"
+import "core:strings"
+import "core:slice"
+import db "moonhug:prebuild/gen_db"
+import "moonhug:prebuild/gen_facts"
+
+// Output path built on the engine paths in components_gen.odin.
+_CONTEXT_MENU_OUT_DIR :: _ENGINE_EDITOR_PKG_PATH + "/scene_views"
+
+ContextMenuEntry :: struct {
+	type_name:   string,
+	menu_label:  string,
+	proc_name:   string,
+	order:       int,
+	source_pkg:  string,
+	source_path: string,
+	// Where the entry was declared, rendered by gen_facts.attr_origin. Emitted
+	// into the registration and shown in the item's tooltip with debug tooltips on.
+	origin:      string,
+}
+
+// ContextMenu_GenComp marks a DeclInfo entity as a context-menu proc and carries the
+// facts the generator needs.
+ContextMenu_GenComp :: struct {
+	type_name:   string,
+	menu_label:  string,
+	proc_name:   string,
+	order:       int,
+	source_pkg:  string,
+	source_path: string,
+	origin:      string,
+}
+
+
+@(init)
+_register_context_menu :: proc "contextless" () {
+	db.provider("context_menu/provide", context_menu_provide)
+	db.generator("context_menu/generate", context_menu_generate)
+}
+
+
+context_menu_provide :: proc(w: ^db.World) -> bool {
+	_menus := db.get_or_create_comps(w, ContextMenu_GenComp)
+	decls := db.get_comps_DeclInfo()
+	procs := db.get_comps(w, gen_facts.Proc_GenComp)
+	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
+
+	m := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		decl := db.get(decls, entity)
+		ident_name := decl.name
+		if ident_name == "" do continue
+
+		attr_set := db.get(attrs, entity)
+		args, found := gen_facts.attr_find(attr_set, "context_menu")
+		if !found do continue
+
+		type_name := args.fields["type"]
+		if type_name == "" do continue
+		menu_label := args.fields["menu"]
+		if menu_label == "" do menu_label = ident_name
+
+		db.set(_menus, entity, ContextMenu_GenComp{
+			type_name   = type_name,
+			menu_label  = menu_label,
+			proc_name   = ident_name,
+			order       = gen_facts.attr_int(args, "order"),
+			source_pkg  = decl.pkg.name,
+			source_path = decl.pkg_path,
+			origin      = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, ident_name),
+		})
+	}
+	return true
+}
+
+_relative_import_path :: proc(out_dir: string, source_path: string) -> string {
+	out_dir_slash := strings.concatenate({out_dir, "/"})
+	if strings.has_prefix(source_path, out_dir_slash) {
+		return source_path[len(out_dir_slash):]
+	}
+	// The output lives inside the engine plugin, reached through the
+	// moonhug/packages link, so a relative path would climb out of the link's
+	// target. Anything in the moonhug tree imports through the collection.
+	if strings.has_prefix(source_path, "moonhug/") do return strings.concatenate({"moonhug:", source_path[len("moonhug/"):]})
+	out_parts := strings.split(out_dir, "/")
+	src_parts := strings.split(source_path, "/")
+	common := 0
+	for common < len(out_parts) && common < len(src_parts) && out_parts[common] == src_parts[common] {
+		common += 1
+	}
+	ups := len(out_parts) - common
+	b := strings.builder_make()
+	for _ in 0 ..< ups {
+		strings.write_string(&b, "../")
+	}
+	for i in common ..< len(src_parts) {
+		if i > common do strings.write_string(&b, "/")
+		strings.write_string(&b, src_parts[i])
+	}
+	return strings.to_string(b)
+}
+
+// Generated files are not committed, so a checkout can still hold the copy an
+// older prebuild wrote into the editor root. It names procs that no longer
+// live there and fails the editor build, so generate removes it.
+_CONTEXT_MENU_STALE_FILE :: "moonhug/editor/context_menu_generated.odin"
+
+context_menu_generate :: proc(w: ^db.World) -> bool {
+	entries: [dynamic]ContextMenuEntry
+	defer delete(entries)
+
+	decls := db.get_comps_DeclInfo()
+	_menus := db.get_comps(w, ContextMenu_GenComp)
+	m := db.all_of(db.r(decls), db.r(_menus)); defer db.matcher_destroy(&m)
+	for entity in db.matched(w, &m) {
+		menu := db.get(_menus, entity)
+		append(&entries, ContextMenuEntry{
+			type_name   = menu.type_name,
+			menu_label  = menu.menu_label,
+			proc_name   = menu.proc_name,
+			order       = menu.order,
+			source_pkg  = menu.source_pkg,
+			source_path = menu.source_path,
+			origin      = menu.origin,
+		})
+	}
+
+	// Preserve previous collect_finalize ordering.
+	slice.sort_by(entries[:], proc(a, b: ContextMenuEntry) -> bool {
+		if a.type_name != b.type_name do return a.type_name < b.type_name
+		if a.order != b.order do return a.order < b.order
+		return a.proc_name < b.proc_name
+	})
+
+	// Beside its consumer, the component inspector's overflow menu.
+	pkg_name := "scene_views"
+	out_dir := _CONTEXT_MENU_OUT_DIR
+
+	b := strings.builder_make()
+	defer strings.builder_destroy(&b)
+
+	packages_used: map[string]string
+	defer delete(packages_used)
+	for e in entries {
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
+			if e.source_pkg not_in packages_used {
+				packages_used[e.source_pkg] = _relative_import_path(out_dir, e.source_path)
+			}
+		}
+	}
+
+	import_pkgs: [dynamic]string
+	defer delete(import_pkgs)
+	for pkg in packages_used {
+		if pkg == "engine" do continue
+		append(&import_pkgs, pkg)
+	}
+	slice.sort(import_pkgs[:])
+
+	strings.write_string(&b, "package ")
+	strings.write_string(&b, pkg_name)
+	strings.write_string(&b, "\n\n")
+
+	fmt.sbprintf(&b, "import engine \"%s\"\n", _ENGINE_IMPORT)
+	for pkg in import_pkgs {
+		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
+	}
+	strings.write_string(&b, "\n")
+
+	strings.write_string(&b, "// Code generated by context_menu_gen. Do not edit.\n\n")
+
+	strings.write_string(&b, "_init_context_menu_registry :: proc() {\n")
+	strings.write_string(&b, "\t_context_menu_registry = make(map[engine.TypeKey][dynamic]ContextMenuEntry)\n")
+
+	for e in entries {
+		qualified := e.proc_name
+		if e.source_pkg != "" && e.source_pkg != pkg_name {
+			qualified = fmt.tprintf("%s.%s", e.source_pkg, e.proc_name)
+		}
+		// The annotation's type may be package-qualified (sprites.SpriteRenderer).
+		// TypeKey enumerators carry the bare type name, so resolve through the
+		// enum — compile-checked, and no import of the qualifier's package.
+		key_name := e.type_name
+		if dot := strings.last_index_byte(key_name, '.'); dot >= 0 {
+			key_name = key_name[dot + 1:]
+		}
+		fmt.sbprintf(&b, "\t{{\n")
+		fmt.sbprintf(&b, "\t\tkey := engine.TypeKey.%s\n", key_name)
+		fmt.sbprintf(&b, "\t\tif key not_in _context_menu_registry do _context_menu_registry[key] = make([dynamic]ContextMenuEntry)\n")
+		fmt.sbprintf(&b, "\t\tappend(&_context_menu_registry[key], ContextMenuEntry{{label = \"%s\", action = %s, origin = %q}})\n", e.menu_label, qualified, e.origin)
+		fmt.sbprintf(&b, "\t}}\n")
+	}
+
+	strings.write_string(&b, "}\n\n")
+
+	strings.write_string(&b, "_get_context_menu_entries :: proc(key: engine.TypeKey) -> []ContextMenuEntry {\n")
+	strings.write_string(&b, "\tif entries, ok := _context_menu_registry[key]; ok {\n")
+	strings.write_string(&b, "\t\treturn entries[:]\n")
+	strings.write_string(&b, "\t}\n")
+	strings.write_string(&b, "\treturn {}\n")
+	strings.write_string(&b, "}\n")
+
+	db.emit(w, _CONTEXT_MENU_OUT_DIR + "/context_menu_generated.odin", strings.to_string(b))
+	if os.exists(_CONTEXT_MENU_STALE_FILE) do _ = os.remove(_CONTEXT_MENU_STALE_FILE)
+	return true
+}

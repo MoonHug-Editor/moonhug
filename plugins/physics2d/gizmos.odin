@@ -5,12 +5,12 @@ package physics2d
 // view — the DebugDraw phase subscriber draws EVERY enabled collider when
 // engine.debug_draw_enabled is on. Outlines in the XY plane at the owner's
 // z, turned by its world z rotation only, matching the sync's v1 rules.
-// Drawn through engine/gizmos.
+// Drawn through host/gizmos.
 
 import "core:math"
 import "core:math/linalg"
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 
 // Unity's 2D collider gizmo green.
 COLLIDER_GIZMO_COLOR :: [4]f32{0.57, 0.96, 0.55, 1}

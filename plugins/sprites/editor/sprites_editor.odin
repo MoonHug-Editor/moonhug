@@ -7,10 +7,11 @@ package sprites_editor
 import "base:runtime"
 import "core:path/filepath"
 import "core:strings"
-import "moonhug:engine"
-import gfx "moonhug:engine/gfx"
+import "moonhug:packages/engine"
+import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
+import "moonhug:packages/engine/editor/drawers"
 import "moonhug:editor/subassets"
 import sprites "moonhug:packages/sprites"
 
@@ -62,13 +63,13 @@ _open_sprite_editor_at :: proc(path: string, guid: engine.Asset_GUID, id: engine
 	sprite_editor_open_at(path, guid, id)
 }
 
-// Default fields, then the Sprite object row (inspector.sprite_ref_row —
+// Default fields, then the Sprite object row (drawers.sprite_ref_row —
 // Unity's sprite picker, shared with the particles package). The `sprite`
 // field itself is inspect:"-" — this row is its only editor.
 _sprite_renderer_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 	inspector.draw(ctx)
 	sr := cast(^sprites.SpriteRenderer)ctx.ptr
-	if inspector.sprite_ref_row("Sprite", &sr.sprite) {
+	if drawers.sprite_ref_row("Sprite", &sr.sprite) {
 		inspector.mark_inspector_changed()
 		inspector.record_nested_override(&sr.sprite, typeid_of(engine.PPtr), "sprite", true)
 	}

@@ -1,7 +1,7 @@
 package sequencer_tests
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import tweens "moonhug:packages/sequencer/tweens"
 import common "moonhug:tests/common"

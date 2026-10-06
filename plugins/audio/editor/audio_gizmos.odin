@@ -8,8 +8,8 @@ package audio_editor
 // max below the min pulls the min in.
 
 import "core:math"
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import audio "moonhug:packages/audio"

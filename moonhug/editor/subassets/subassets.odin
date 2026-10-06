@@ -10,10 +10,10 @@ package subassets
 
 import "base:runtime"
 import "core:fmt"
-import "moonhug:engine"
+import core "moonhug:host/core"
 
 Sub_Asset :: struct {
-	id:   engine.Local_ID,
+	id:   core.Local_ID,
 	name: string, // borrowed from the provider's cache — use within the frame
 	// Optional grid-cell preview: an imgui texture id plus this sub-asset's
 	// uv rect within it, and its pixel size for aspect-fit. nil image = the
@@ -28,7 +28,7 @@ Provider :: struct {
 	// asset has none right now (no fold arrow).
 	list: proc(path: string, allocator: runtime.Allocator) -> []Sub_Asset,
 	// Double-click on a sub-asset row (open the owning editor on it).
-	open: proc(path: string, guid: engine.Asset_GUID, id: engine.Local_ID),
+	open: proc(path: string, guid: core.Asset_GUID, id: core.Local_ID),
 }
 
 // Extension (lowercase, with dot: ".png") -> provider.
@@ -60,6 +60,6 @@ find :: proc(ext: string) -> (Provider, bool) {
 // of a clip inside a model pose the model's rig with it. The animation
 // package installs it at EditorInit. nil: a model's clips have no preview and
 // no thumbnail.
-Clip_Sampler :: proc(root: engine.Transform_Handle, clip: engine.Asset_GUID, t: f32) -> (length: f32, ok: bool)
+Clip_Sampler :: proc(root: core.Transform_Handle, clip: core.Asset_GUID, t: f32) -> (length: f32, ok: bool)
 
 clip_sampler: Clip_Sampler

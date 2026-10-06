@@ -7,8 +7,9 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "../engine"
-import "../engine/input"
+import core "moonhug:host/core"
+import "moonhug:host/input"
+import "inspector"
 import sim "./simulate"
 import "moonhug:editor/icons"
 import "widgets"
@@ -19,14 +20,9 @@ SIM_ACCENT         :: im.Vec4{0.85, 0.42, 0.10, 1.00}
 SIM_ACCENT_HOVERED :: im.Vec4{0.95, 0.52, 0.16, 1.00}
 SIM_ACCENT_ACTIVE  :: im.Vec4{0.72, 0.34, 0.06, 1.00}
 
+// The host table is already set (sim_world's EditorInit phase), install keeps it
+// and resolves the persisted host name against it.
 simulate_init :: proc() {
-    hosts := make([]sim.Host, len(sim_hosts))
-    for h, i in sim_hosts {
-        hosts[i] = sim.Host{
-            name = h.name, path = h.path,
-            update = h.update, fixed_update = h.fixed_update,
-        }
-    }
     sim.install(sim.Hooks{
         selection_ids    = _sim_selection_ids,
         selection_clear  = sel_scene_clear,
@@ -34,12 +30,11 @@ simulate_init :: proc() {
         phase            = _sim_fire_phase,
         host_name_load   = _sim_host_name_load,
         host_name_store  = _sim_host_name_store,
-    }, hosts)
+    }, sim.hosts())
 }
 
 simulate_shutdown :: proc() {
     sim.shutdown()
-    delete(sim.hosts())
 }
 
 // True when `name` is the active sim host. Generated host-owned phase entries
@@ -63,19 +58,20 @@ sim_is_active :: proc() -> bool {
 }
 
 @(private="file")
-_sim_selection_ids :: proc() -> []engine.Local_ID {
-    out := make([dynamic]engine.Local_ID, context.temp_allocator)
+_sim_selection_ids :: proc() -> []core.Local_ID {
+    out := make([dynamic]core.Local_ID, context.temp_allocator)
     for tH in sel_scene_items() {
-        if t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(tH)); t != nil {
-            append(&out, t.local_id)
+        if id, ok := inspector.object_local_id(tH); ok {
+            append(&out, id)
         }
     }
     return out[:]
 }
 
+// The world resolves the id to a selectable object in the restored scene.
 @(private="file")
-_sim_selection_add_id :: proc(s: ^engine.Scene, id: engine.Local_ID) {
-    if tH, ok := engine.scene_find_selectable_transform_local_id(s, id); ok {
+_sim_selection_add_id :: proc(scene: core.Scene_Ref, id: core.Local_ID) {
+    if tH, ok := sim.world_select_restored(scene, id); ok {
         sel_scene_add(tH)
     }
 }

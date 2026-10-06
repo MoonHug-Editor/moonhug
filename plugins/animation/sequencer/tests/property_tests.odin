@@ -8,7 +8,7 @@ package animation_sequencer_tests
 import "core:fmt"
 import "core:strings"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import common "moonhug:tests/common"

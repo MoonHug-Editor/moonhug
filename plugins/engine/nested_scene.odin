@@ -1,0 +1,3956 @@
+package engine
+
+import "core:encoding/json"
+import "core:slice"
+import "core:strings"
+import "base:runtime"
+import "core:reflect"
+import "core:os"
+import "core:fmt"
+import "core:encoding/uuid"
+
+// Unity-style override target: a PPtr directly carrying (deepest_prefab_guid,
+// projected_lid). The owning NestedScene supplies the implicit `scene_instance`,
+// matching Unity's PrefabInstance.m_Modifications[i].target = {fileID, guid}.
+//
+// For shallow overrides (the target lives in `ns.source_prefab`), `target.guid`
+// equals `ns.source_prefab` and `target.local_id` is the row's lid in that prefab.
+//
+// For deep overrides (target lives N levels below `ns.source_prefab`),
+// `target.guid` names the deepest prefab and `target.local_id` is the leaf
+// prefab-namespace lid XOR-projected through every inner NS's
+// `local_id_in_parent` on the way up. Same-prefab-instantiated-twice yields
+// distinct projected lids per outer instance.
+Override :: struct {
+    target:        PPtr,
+    property_path: string,
+    value:         json.Value,
+}
+
+// Breadcrumb is a stripped placeholder modeled after Unity's stripped objects.
+// Each instance of a cross-scene Handle reference (deep override target,
+// Ref_Local picker into a nested-owned object, NS host peg) gets a Breadcrumb
+// in the host scene file. Resolution at load:
+//   * (scene_instance, scene_source) → walk the runtime NS tree from the
+//     anchor to find the matching destination.
+//   * For depth-1 (target lives directly in scene_instance's source_prefab),
+//     scene_source.guid == that prefab's GUID and scene_source.local_id is the
+//     prefab-namespace lid.
+//   * For depth-N (target lives N levels deep through inner NSs), scene_source
+//     names the deepest prefab; resolution searches s.nested_scenes for an NS
+//     descending from scene_instance whose source_prefab matches and contains
+//     the target.
+Breadcrumb :: struct {
+    local_id:           Local_ID,  // referrer will use this local_id for resolving
+    scene_source:       PPtr,      // final destination: (deepest prefab guid, local_id in that prefab)
+    scene_instance:     Local_ID,  // local_id of NestedScene record this breadcrumb is anchored to
+}
+
+pptr_guid_is_empty :: proc(g: Asset_GUID) -> bool {
+    return g == Asset_GUID{}
+}
+
+pptr_equals :: proc(a, b: PPtr) -> bool {
+	return a.local_id == b.local_id && a.guid == b.guid
+}
+
+// Reads `local_id` directly off `obj`, falling back to `obj.base.local_id` when
+// the row stores its identity under a wrapper. Used by overrides apply/diff,
+// unknown-component preservation, and any other code walking serialized
+// scene-section arrays.
+_json_local_id_of :: proc(obj: json.Object) -> (Local_ID, bool) {
+	from_value :: proc(v: json.Value) -> (Local_ID, bool) {
+		if f, ok := v.(json.Float);   ok do return Local_ID(f), true
+		if i, ok := v.(json.Integer); ok do return Local_ID(i), true
+		return 0, false
+	}
+	if v, ok := obj["local_id"]; ok do return from_value(v)
+	if bv, ok := obj["base"]; ok {
+		if bo, ok2 := bv.(json.Object); ok2 {
+			if v, ok3 := bo["local_id"]; ok3 do return from_value(v)
+		}
+	}
+	return 0, false
+}
+
+scene_file_remap_merge_metadata :: proc(sf: ^SceneFile, s: ^Scene) {
+	if s == nil do return
+	used := make(map[Local_ID]bool, context.temp_allocator)
+	for lid, _ in s.local_ids.forward {
+		used[lid] = true
+	}
+	for lid, _ in s.breadcrumb_data {
+		used[lid] = true
+	}
+	for ns in s.nested_scenes {
+		used[ns.local_id] = true
+	}
+
+	ns_remap := make(map[Local_ID]Local_ID, context.temp_allocator)
+	for &ns in sf.nested_scenes {
+		old := ns.local_id
+		// Capture the file-stable lid before any potential remap. For NSs
+		// loaded from a prefab file this preserves the prefab-namespace lid
+		// used as the projection key in deep-target XOR encoding. For NSs
+		// already carrying a non-zero local_id_in_parent (round-tripped via
+		// outer scene file), keep the existing value.
+		if ns.local_id_in_parent == 0 {
+			ns.local_id_in_parent = old
+		}
+		if used[old] {
+			new_id := scene_new_lid(s)
+			ns_remap[old] = new_id
+			ns.local_id = new_id
+			used[new_id] = true
+		} else {
+			used[old] = true
+		}
+	}
+
+	for &bc in sf.breadcrumbs {
+		if new_inst, ok := ns_remap[bc.scene_instance]; ok {
+			bc.scene_instance = new_inst
+		}
+	}
+
+	bc_remap := make(map[Local_ID]Local_ID, context.temp_allocator)
+	for &bc in sf.breadcrumbs {
+		old := bc.local_id
+		if used[old] {
+			new_id := scene_new_lid(s)
+			bc_remap[old] = new_id
+			bc.local_id = new_id
+			used[new_id] = true
+		} else {
+			used[old] = true
+		}
+	}
+
+	for &ns in sf.nested_scenes {
+		if new_bid, ok := bc_remap[ns.host_breadcrumb_id]; ok {
+			ns.host_breadcrumb_id = new_bid
+		}
+	}
+}
+
+_json_get_path :: proc(obj: json.Object, path: string) -> (json.Value, bool) {
+    dot := strings.index_byte(path, '.')
+    key := path if dot < 0 else path[:dot]
+    val, ok := obj[key]
+    if !ok do return nil, false
+    if dot < 0 do return val, true
+    sub, is_obj := val.(json.Object)
+    if !is_obj do return nil, false
+    return _json_get_path(sub, path[dot+1:])
+}
+
+_json_set_path :: proc(obj: ^json.Object, path: string, value: json.Value, allocator := context.allocator) {
+    dot := strings.index_byte(path, '.')
+    if dot < 0 {
+        if existing, ok := obj[path]; ok {
+            json.destroy_value(existing)
+            obj[path] = json.clone_value(value, allocator)
+        } else {
+            obj[strings.clone(path, allocator)] = json.clone_value(value, allocator)
+        }
+        return
+    }
+    key := path[:dot]
+    sub_val, has_sub := obj[key]
+    sub_obj: json.Object
+    if has_sub {
+        if so, is_obj := sub_val.(json.Object); is_obj {
+            sub_obj = so
+        } else {
+            json.destroy_value(sub_val)
+            sub_obj = make(json.Object, 4, allocator)
+        }
+    } else {
+        sub_obj = make(json.Object, 4, allocator)
+    }
+    _json_set_path(&sub_obj, path[dot+1:], value, allocator)
+    if has_sub {
+        obj[key] = sub_obj
+    } else {
+        obj[strings.clone(key, allocator)] = sub_obj
+    }
+}
+
+// Bakes shallow overrides into `raw` (the JSON bytes for the prefab whose GUID
+// is `prefab_guid`). Deep overrides (those whose `target.guid` names some
+// deeper prefab) are skipped — they get applied at the bake of their own
+// level. If `prefab_guid` is the empty GUID, every override is treated as
+// matching (used by tests that bake without an asset context).
+nested_scene_apply_overrides :: proc(raw: []byte, overrides: []Override, prefab_guid: Asset_GUID = {}) -> []byte {
+	if len(overrides) == 0 do return raw
+
+	raw_copy := make([]byte, len(raw))
+	defer delete(raw_copy)
+	copy(raw_copy, raw)
+
+	root_val: json.Value
+	err := json.unmarshal_string(string(raw_copy), &root_val)
+    if err != nil do return raw
+    defer json.destroy_value(root_val)
+
+    root_obj, is_obj := root_val.(json.Object)
+    if !is_obj do return raw
+
+    skip_filter := asset_guid_is_empty(prefab_guid)
+    for ov in overrides {
+        if !skip_filter && ov.target.guid != prefab_guid do continue
+        for key, section_val in root_obj {
+            arr, is_arr := section_val.(json.Array)
+            if !is_arr do continue
+            for item, idx in arr {
+                obj, ok := item.(json.Object)
+                if !ok do continue
+                lid, lid_ok := _json_local_id_of(obj)
+                if !lid_ok || lid != ov.target.local_id do continue
+                _json_set_path(&obj, ov.property_path, ov.value)
+                arr[idx] = obj
+                root_obj[key] = arr
+                break
+            }
+        }
+    }
+
+    opts := json.Marshal_Options{spec = .JSON, pretty = false}
+    data, merr := json.marshal(root_obj, opts)
+    if merr != nil do return raw
+    return data
+}
+
+// Structural edits on an instance's components, baked into the prefab bytes
+// before deserialization so the materialized instance simply doesn't have the
+// removed components and does have the added ones. Both lists are filtered to
+// `prefab_guid` the way overrides are — deeper targets belong to inner levels.
+//
+// Runs after nested_scene_apply_overrides (field patches address prefab rows;
+// removing a row first would drop patches that still name it).
+nested_scene_apply_component_edits :: proc(
+    raw: []byte,
+    removed: []Removed_Component,
+    added: []Added_Component,
+    prefab_guid: Asset_GUID = {},
+    removed_objs: []Removed_Object = nil,
+    added_objs: []Added_Object = nil,
+) -> []byte {
+    if len(removed) == 0 && len(added) == 0 && len(removed_objs) == 0 && len(added_objs) == 0 do return raw
+
+    // Everything below allocates on TEMP: the parsed tree plus the values the
+    // edit passes insert into it (cloned strings, new json.Objects). Mixing
+    // allocators inside one tree and then destroy_value-ing it is a bad free —
+    // same rule as _normalize_component_records. The frame's free_all releases
+    // it; the returned bytes are the only default-allocated result.
+    prev_alloc := context.allocator
+    context.allocator = context.temp_allocator
+    defer context.allocator = prev_alloc
+
+    raw_copy := make([]byte, len(raw), context.temp_allocator)
+    copy(raw_copy, raw)
+
+    root_val: json.Value
+    if json.unmarshal_string(string(raw_copy), &root_val) != nil do return raw
+    root_obj, is_obj := root_val.(json.Object)
+    if !is_obj do return raw
+
+    skip_filter := asset_guid_is_empty(prefab_guid)
+
+    // --- Removals: drop the component record AND the owner's components entry.
+    for rc in removed {
+        if !skip_filter && rc.target.guid != prefab_guid do continue
+        _json_remove_component_row(root_obj, rc.target.local_id)
+    }
+
+    // --- Additions: append the record and link it under its owner transform.
+    for ac in added {
+        if !skip_filter && ac.owner.guid != prefab_guid do continue
+        _json_add_component_row(root_obj, ac)
+    }
+
+    // --- Removed objects: drop the subtree and unlink it from its parent.
+    for ro in removed_objs {
+        if !skip_filter && ro.target.guid != prefab_guid do continue
+        _json_remove_object_subtree(root_obj, ro.target.local_id)
+    }
+
+    // --- Added objects: graft the stored subtree under its prefab parent.
+    for ao in added_objs {
+        if !skip_filter && ao.parent.guid != prefab_guid do continue
+        _json_add_object_subtree(root_obj, ao)
+    }
+
+    // Result on the CALLER's allocator (it owns/frees the bytes), not temp.
+    opts := json.Marshal_Options{spec = .JSON, pretty = false}
+    data, merr := json.marshal(root_obj, opts, prev_alloc)
+    if merr != nil do return raw
+    return data
+}
+
+// Removes transform `lid` and its whole descendant subtree: their rows, their
+// component records, and the surviving parent's child link. A removed object
+// takes its children with it — the prefab's structure decides what is below it.
+@(private)
+_json_remove_object_subtree :: proc(root_obj: json.Object, lid: Local_ID) {
+    root_obj := root_obj
+    trs, has_trs := root_obj["transforms"].(json.Array)
+    if !has_trs do return
+
+    // The subtree, by transitive closure over the file's parent links.
+    doomed := make(map[Local_ID]bool, 0, context.temp_allocator)
+    doomed[lid] = true
+    for {
+        grew := false
+        for item in trs {
+            t_obj, ok := item.(json.Object)
+            if !ok do continue
+            tlid, lok := _json_local_id_of(t_obj)
+            if !lok || tlid in doomed do continue
+            if p := _json_parent_lid_of(t_obj); p != 0 && p in doomed {
+                doomed[tlid] = true
+                grew = true
+            }
+        }
+        if !grew do break
+    }
+
+    // Their components go with them.
+    doomed_comps := make(map[Local_ID]bool, 0, context.temp_allocator)
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || !(tlid in doomed) do continue
+        if list, has := t_obj["components"].(json.Array); has {
+            for entry in list {
+                if e_obj, e_ok := entry.(json.Object); e_ok {
+                    if clid, cok := _json_local_id_of(e_obj); cok do doomed_comps[clid] = true
+                }
+            }
+        }
+    }
+    if comps, has := root_obj["components"].(json.Array); has {
+        w := 0
+        for item in comps {
+            keep := true
+            if rec, ok := item.(json.Object); ok {
+                if l := _json_component_lid_of(rec); l != 0 && l in doomed_comps do keep = false
+            }
+            if keep {
+                comps[w] = item
+                w += 1
+            }
+        }
+        resize(&comps, w)
+        root_obj["components"] = comps
+    }
+
+    // Unlink from the surviving parent, then drop the rows themselves.
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || tlid in doomed do continue
+        list, has := t_obj["children"].(json.Array)
+        if !has do continue
+        cw := 0
+        for entry in list {
+            drop := false
+            if e_obj, e_ok := entry.(json.Object); e_ok {
+                if clid := _json_ref_lid_of(e_obj); clid != 0 && clid in doomed do drop = true
+            }
+            if !drop {
+                list[cw] = entry
+                cw += 1
+            }
+        }
+        resize(&list, cw)
+        t_obj["children"] = list
+    }
+    tw := 0
+    for item in trs {
+        keep := true
+        if t_obj, ok := item.(json.Object); ok {
+            if tlid, lok := _json_local_id_of(t_obj); lok && tlid in doomed do keep = false
+        }
+        if keep {
+            trs[tw] = item
+            tw += 1
+        }
+    }
+    resize(&trs, tw)
+    root_obj["transforms"] = trs
+}
+
+// Grafts `ao`'s stored subtree into the doc and links its root under the
+// prefab transform named by `ao.parent`.
+@(private)
+_json_add_object_subtree :: proc(root_obj: json.Object, ao: Added_Object) {
+    root_obj := root_obj
+    frag_val: json.Value
+    if json.unmarshal_string(ao.json, &frag_val) != nil do return
+    frag, is_obj := frag_val.(json.Object)
+    if !is_obj do return
+
+    trs, _ := root_obj["transforms"].(json.Array)
+    if frag_trs, has := frag["transforms"].(json.Array); has {
+        for item in frag_trs {
+            // The fragment was collected from the LIVE world, so its root row's
+            // `parent` holds the instance's composed lid — meaningless in the
+            // prefab's own namespace we are grafting into. `ao.parent` carries
+            // the un-projected source lid, so restate it here. Inner rows point
+            // at their siblings inside the fragment and stay as authored.
+            if t_obj, ok := item.(json.Object); ok {
+                if tlid, lok := _json_local_id_of(t_obj); lok && tlid == ao.local_id {
+                    pptr := make(json.Object)
+                    pptr["local_id"] = json.Value(json.Integer(ao.parent.local_id))
+                    parent := make(json.Object)
+                    parent["pptr"] = json.Value(pptr)
+                    t_obj["parent"] = json.Value(parent)
+                }
+            }
+            append(&trs, item)
+        }
+    }
+    root_obj["transforms"] = trs
+
+    comps, _ := root_obj["components"].(json.Array)
+    if frag_comps, has := frag["components"].(json.Array); has {
+        for item in frag_comps do append(&comps, item)
+    }
+    root_obj["components"] = comps
+
+    // Add the reciprocal child entry the loader walks.
+    for item in trs {
+        t_obj, ok := item.(json.Object)
+        if !ok do continue
+        tlid, lok := _json_local_id_of(t_obj)
+        if !lok || tlid != ao.parent.local_id do continue
+        list, _ := t_obj["children"].(json.Array)
+        entry := make(json.Object)
+        pptr := make(json.Object)
+        pptr["local_id"] = json.Value(json.Integer(ao.local_id))
+        entry["pptr"] = json.Value(pptr)
+        append(&list, json.Value(entry))
+        t_obj["children"] = list
+        return
+    }
+}
+
+// A transform row's parent lid (`parent: {pptr: {local_id}}`).
+@(private)
+_json_parent_lid_of :: proc(t_obj: json.Object) -> Local_ID {
+    p, has := t_obj["parent"].(json.Object)
+    if !has do return 0
+    return _json_ref_lid_of(p)
+}
+
+// The lid inside a `{pptr: {local_id}}` or bare `{local_id}` reference.
+@(private)
+_json_ref_lid_of :: proc(obj: json.Object) -> Local_ID {
+    if pptr, has := obj["pptr"].(json.Object); has {
+        if lid, ok := _json_local_id_of(pptr); ok do return lid
+    }
+    if lid, ok := _json_local_id_of(obj); ok do return lid
+    return 0
+}
+
+// Removes the component record with `lid` from "components" and the matching
+// {local_id} entry from whichever transform lists it.
+@(private)
+_json_remove_component_row :: proc(root_obj: json.Object, lid: Local_ID) {
+    root_obj := root_obj
+    comps, has_comps := root_obj["components"].(json.Array)
+    if has_comps {
+        for item, idx in comps {
+            obj, is_o := item.(json.Object)
+            if !is_o do continue
+            if _json_component_lid_of(obj) != lid do continue
+            ordered_remove(&comps, idx) // temp-allocated; freed with the tree
+            root_obj["components"] = comps
+            break
+        }
+    }
+    if trs, ok := root_obj["transforms"].(json.Array); ok {
+        for t_item in trs {
+            t_obj, is_o := t_item.(json.Object)
+            if !is_o do continue
+            list, has := t_obj["components"].(json.Array)
+            if !has do continue
+            for entry, ei in list {
+                e_obj, e_ok := entry.(json.Object)
+                if !e_ok do continue
+                if elid, lok := _json_local_id_of(e_obj); !lok || elid != lid do continue
+                ordered_remove(&list, ei) // temp-allocated; freed with the tree
+                t_obj["components"] = list
+                return
+            }
+        }
+    }
+}
+
+// Appends `ac`'s record to "components" and links it under the owner transform.
+@(private)
+_json_add_component_row :: proc(root_obj: json.Object, ac: Added_Component) {
+    rec_val: json.Value
+    if json.unmarshal_string(ac.json, &rec_val) != nil do return
+    rec, is_obj := rec_val.(json.Object)
+    if !is_obj do return // temp-allocated; freed with the tree
+    // The record must carry its type tag and lid — the loader keys on both.
+    rec["__type"] = json.Value(strings.clone(ac.type_guid))
+    base, has_base := rec["base"].(json.Object)
+    if !has_base {
+        base = make(json.Object)
+    }
+    base["local_id"] = json.Value(json.Integer(ac.local_id))
+    rec["base"] = base
+
+    root_obj := root_obj
+    comps, _ := root_obj["components"].(json.Array)
+    append(&comps, json.Value(rec))
+    root_obj["components"] = comps
+
+    if trs, ok := root_obj["transforms"].(json.Array); ok {
+        for t_item in trs {
+            t_obj, is_o := t_item.(json.Object)
+            if !is_o do continue
+            tlid, lok := _json_local_id_of(t_obj)
+            if !lok || tlid != ac.owner.local_id do continue
+            list, _ := t_obj["components"].(json.Array)
+            entry := make(json.Object)
+            entry["local_id"] = json.Value(json.Integer(ac.local_id))
+            append(&list, json.Value(entry))
+            t_obj["components"] = list
+            return
+        }
+    }
+}
+
+// Component-set difference between a prefab baseline and an instance's live
+// content, both as scene-file JSON in the SAME namespace (the caller
+// un-projects the working copy first, as override capture does).
+//
+// A component in `base` but not in `work` was REMOVED from the instance; one in
+// `work` but not in `base` was ADDED. Identity is the component's own lid,
+// which survives materialization — nested content keeps its prefab lid.
+// `prefab_guid` tags the produced targets, matching Override.target encoding.
+//
+// Results are temp-allocated; the caller clones what it stores.
+// `live_added` is the set of host-ADDED component lids, classified from the
+// LIVE world (_live_component_sets) rather than from the docs: whether a
+// component is prefab content is a live fact, and JSON lid matching cannot
+// substitute — one owned by a DEEPER nesting level un-projects with that
+// level's table, not this one's, so it stays composed and would read as an
+// unmatched, i.e. added, row.
+nested_scene_diff_component_sets :: proc(
+    base_raw, work_raw: []byte,
+    prefab_guid: Asset_GUID,
+    live_added: ^map[Local_ID]bool,
+) -> (removed: []Removed_Component, added: []Added_Component, ok: bool) {
+    base_val, work_val: json.Value
+    if json.unmarshal(base_raw, &base_val, .JSON, context.temp_allocator) != nil do return nil, nil, false
+    if json.unmarshal(work_raw, &work_val, .JSON, context.temp_allocator) != nil do return nil, nil, false
+    base_obj, b_ok := base_val.(json.Object)
+    work_obj, w_ok := work_val.(json.Object)
+    if !b_ok || !w_ok do return nil, nil, false
+
+    base_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+    work_lids := make(map[Local_ID]bool, 0, context.temp_allocator)
+    _json_collect_component_lids(base_obj, &base_lids)
+    _json_collect_component_lids(work_obj, &work_lids)
+
+    rem := make([dynamic]Removed_Component, context.temp_allocator)
+    for lid in base_lids {
+        if lid in work_lids do continue
+        append(&rem, Removed_Component{target = PPtr{guid = prefab_guid, local_id = lid}})
+    }
+
+    add := make([dynamic]Added_Component, context.temp_allocator)
+    if comps, has := work_obj["components"].(json.Array); has {
+        for item in comps {
+            rec, is_o := item.(json.Object)
+            if !is_o do continue
+            lid := _json_component_lid_of(rec)
+            if lid == 0 || lid in base_lids do continue
+            // Only genuine host additions (live-classified).
+            if live_added != nil && !(lid in live_added^) do continue
+            type_guid := ""
+            if tg, tok := rec["__type"].(json.String); tok do type_guid = string(tg)
+            if type_guid == "" do continue
+            owner_lid := _json_owner_of_component(work_obj, lid)
+            if owner_lid == 0 do continue
+            bytes, merr := json.marshal(rec, {spec = .JSON}, context.temp_allocator)
+            if merr != nil do continue
+            append(&add, Added_Component{
+                owner     = PPtr{guid = prefab_guid, local_id = owner_lid},
+                local_id  = lid,
+                type_guid = type_guid,
+                json      = string(bytes),
+            })
+        }
+    }
+    return rem[:], add[:], true
+}
+
+@(private)
+_json_collect_component_lids :: proc(root_obj: json.Object, out: ^map[Local_ID]bool) {
+    comps, has := root_obj["components"].(json.Array)
+    if !has do return
+    for item in comps {
+        rec, is_o := item.(json.Object)
+        if !is_o do continue
+        if lid := _json_component_lid_of(rec); lid != 0 do out^[lid] = true
+    }
+}
+
+// The transform whose `components` list names `comp_lid`.
+@(private)
+_json_owner_of_component :: proc(root_obj: json.Object, comp_lid: Local_ID) -> Local_ID {
+    trs, has := root_obj["transforms"].(json.Array)
+    if !has do return 0
+    for t_item in trs {
+        t_obj, is_o := t_item.(json.Object)
+        if !is_o do continue
+        list, l_ok := t_obj["components"].(json.Array)
+        if !l_ok do continue
+        for entry in list {
+            e_obj, e_ok := entry.(json.Object)
+            if !e_ok do continue
+            if elid, lok := _json_local_id_of(e_obj); lok && elid == comp_lid {
+                if tlid, tok := _json_local_id_of(t_obj); tok do return tlid
+                return 0
+            }
+        }
+    }
+    return 0
+}
+
+// A component record's own lid, from `base.local_id` (records nest their
+// CompData under "base"; a bare "local_id" is the transform-entry form).
+@(private)
+_json_component_lid_of :: proc(obj: json.Object) -> Local_ID {
+    if base, ok := obj["base"].(json.Object); ok {
+        if lid, lok := _json_local_id_of(base); lok do return lid
+    }
+    if lid, lok := _json_local_id_of(obj); lok do return lid
+    return 0
+}
+
+_json_values_equal :: proc(a, b: json.Value) -> bool {
+    switch av in a {
+    case json.Null:
+        _, ok := b.(json.Null)
+        return ok
+    case json.Boolean:
+        bv, ok := b.(json.Boolean)
+        return ok && av == bv
+    case json.Integer:
+        #partial switch bv in b {
+        case json.Integer: return av == bv
+        case json.Float:   return f64(av) == bv
+        }
+        return false
+    case json.Float:
+        #partial switch bv in b {
+        case json.Float:   return av == bv
+        case json.Integer: return av == f64(bv)
+        }
+        return false
+    case json.String:
+        bv, ok := b.(json.String)
+        return ok && av == bv
+    case json.Array:
+        bv, ok := b.(json.Array)
+        if !ok || len(av) != len(bv) do return false
+        for i in 0..<len(av) {
+            if !_json_values_equal(av[i], bv[i]) do return false
+        }
+        return true
+    case json.Object:
+        bv, ok := b.(json.Object)
+        if !ok || len(av) != len(bv) do return false
+        for k, v in av {
+            bval, has := bv[k]
+            if !has || !_json_values_equal(v, bval) do return false
+        }
+        return true
+    }
+    return false
+}
+
+_DIFF_TOP_EXCLUDED :: []string{"parent", "children", "components"}
+// A record's IDENTITY lives at exactly these paths ("local_id" on transforms,
+// "base.local_id" on components) — never diff those. Matching by key name at
+// any depth would also swallow Ref_Local VALUES ({"local_id": N}), making every
+// reference field invisible to override capture.
+_DIFF_EXCLUDED_PATHS :: []string{"local_id", "base.local_id"}
+
+_json_diff_objects :: proc(base_obj, work_obj: json.Object, prefix: string, target: PPtr, out: ^[dynamic]Override) {
+    for key, work_val in work_obj {
+        if prefix == "" {
+            excluded := false
+            for ek in _DIFF_TOP_EXCLUDED {
+                if key == ek { excluded = true; break }
+            }
+            if excluded do continue
+        }
+
+        base_val, has_base := base_obj[key]
+        full_path := prefix == "" ? key : strings.concatenate({prefix, ".", key}, context.temp_allocator)
+        {
+            excluded := false
+            for ep in _DIFF_EXCLUDED_PATHS {
+                if full_path == ep { excluded = true; break }
+            }
+            if excluded do continue
+        }
+
+        if !has_base {
+            append(out, Override{
+                target        = target,
+                property_path = strings.clone(full_path),
+                value         = json.clone_value(work_val),
+            })
+            continue
+        }
+
+        _, work_is_arr := work_val.(json.Array)
+        _, base_is_arr := base_val.(json.Array)
+        if work_is_arr || base_is_arr {
+            if !_json_values_equal(base_val, work_val) {
+                append(out, Override{
+                    target        = target,
+                    property_path = strings.clone(full_path),
+                    value         = json.clone_value(work_val),
+                })
+            }
+            continue
+        }
+
+        work_sub, work_is_obj := work_val.(json.Object)
+        base_sub, base_is_obj := base_val.(json.Object)
+        if work_is_obj && base_is_obj {
+            _json_diff_objects(base_sub, work_sub, full_path, target, out)
+            continue
+        }
+
+        if !_json_values_equal(base_val, work_val) {
+            append(out, Override{
+                target        = target,
+                property_path = strings.clone(full_path),
+                value         = json.clone_value(work_val),
+            })
+        }
+    }
+}
+
+nested_scene_diff_overrides :: proc(base_raw: []byte, work_raw: []byte, prefab_guid: Asset_GUID = {}) -> [dynamic]Override {
+	out := make([dynamic]Override)
+
+	base_copy := make([]byte, len(base_raw))
+	defer delete(base_copy)
+	copy(base_copy, base_raw)
+	work_copy := make([]byte, len(work_raw))
+	defer delete(work_copy)
+	copy(work_copy, work_raw)
+
+	base_val: json.Value
+	work_val: json.Value
+	if json.unmarshal_string(string(base_copy), &base_val) != nil do return out
+	if json.unmarshal_string(string(work_copy), &work_val) != nil {
+		json.destroy_value(base_val)
+		return out
+	}
+    defer json.destroy_value(base_val)
+    defer json.destroy_value(work_val)
+
+    base_root, base_ok := base_val.(json.Object)
+    work_root, work_ok := work_val.(json.Object)
+    if !base_ok || !work_ok do return out
+
+    get_array :: proc(obj: json.Object, key: string) -> json.Array {
+        v, ok := obj[key]
+        if !ok do return nil
+        arr, _ := v.(json.Array)
+        return arr
+    }
+
+    // Diff every array section (components incl. ext_components + transforms).
+    // NS records and breadcrumbs have their own machinery — never diffed here.
+    for section_key, section_val in work_root {
+        if section_key == "nested_scenes" || section_key == "breadcrumbs" do continue
+        if _, is_arr := section_val.(json.Array); !is_arr do continue
+        base_arr := get_array(base_root, section_key)
+        work_arr := get_array(work_root, section_key)
+        if len(work_arr) == 0 do continue
+        for work_item in work_arr {
+            wo, ok := work_item.(json.Object)
+            if !ok do continue
+            tid, tid_ok := _json_local_id_of(wo)
+            if !tid_ok do continue
+            for base_item in base_arr {
+                bo, bok := base_item.(json.Object)
+                if !bok do continue
+                bid, bid_ok := _json_local_id_of(bo)
+                if !bid_ok || bid != tid do continue
+                _json_diff_objects(bo, wo, "", PPtr{guid = prefab_guid, local_id = tid}, &out)
+                break
+            }
+        }
+    }
+
+    // The walk above iterates json.Object MAPS (root sections, record fields),
+    // so append order varies with map layout history — an unchanged scene
+    // would capture the same overrides in a different order from one session
+    // to the next. At most one override exists per (target, property_path),
+    // so sorting is purely cosmetic and makes serialization byte-stable.
+    slice.sort_by(out[:], proc(a, b: Override) -> bool {
+        if a.target.local_id != b.target.local_id do return a.target.local_id < b.target.local_id
+        ga := transmute(u128be)a.target.guid
+        gb := transmute(u128be)b.target.guid
+        if ga != gb do return ga < gb
+        return a.property_path < b.property_path
+    })
+
+    return out
+}
+
+NestedScene :: struct {
+    local_id:             Local_ID,
+    // For native NSs this equals `local_id`. For inner NSs this is the NS's
+    // file-stable lid in its parent prefab file (before any host-scene remap).
+    // Used as the projection key for Unity-style XOR-encoded deep-target
+    // disambiguation: same-prefab-instantiated-twice yields different
+    // local_id_in_parent values across the two outer-prefab PrefabInstances,
+    // so projecting a deep object's lid through them produces unique results.
+    local_id_in_parent:   Local_ID,
+    source_prefab:        Asset_GUID,
+    transform_parent:     Local_ID,
+    host_breadcrumb_id:   Local_ID,
+    sibling_index:        int,
+    source_root_id:       Local_ID `json:"-"`,
+    expand_parent:        Transform_Handle `json:"-"`,
+    overrides:            [dynamic]Override,
+    // Components removed from / added to this instance's content. Separate
+    // lists rather than Override entries (Unity's m_RemovedComponents /
+    // m_AddedComponents): an Override names a FIELD to patch, which cannot
+    // express "this component is not here" or "this component is extra".
+    removed_components:   [dynamic]Removed_Component,
+    added_components:     [dynamic]Added_Component,
+    removed_objects:      [dynamic]Removed_Object,
+    added_objects:        [dynamic]Added_Object,
+    // Runtime instance-lid -> source-prefab-lid map, rebuilt on every resolve
+    // (Unity: m_CorrespondingSourceObject). Instance lids are composed
+    // deterministically (nested_lid_compose) so source->instance needs no map;
+    // this is the inverse for override capture, which must write source lids.
+    source_of_inst:       map[Local_ID]Local_ID `json:"-"`,
+}
+
+// Frees everything a NestedScene record owns. One proc so a new owned list
+// (removed/added components) can't be missed at one of the teardown sites.
+// `source_of_inst` is NOT freed here — some callers purge instance lids
+// through it first and delete it themselves.
+nested_scene_free_owned :: proc(ns: ^NestedScene) {
+    if ns == nil do return
+    for &ov in ns.overrides {
+        delete(ov.property_path)
+        json.destroy_value(ov.value)
+    }
+    delete(ns.overrides)
+    ns.overrides = nil
+    delete(ns.removed_components)
+    ns.removed_components = nil
+    for &ac in ns.added_components {
+        delete(ac.type_guid)
+        delete(ac.json)
+    }
+    delete(ns.added_components)
+    ns.added_components = nil
+    delete(ns.removed_objects)
+    ns.removed_objects = nil
+    for &ao in ns.added_objects {
+        delete(ao.json)
+    }
+    delete(ns.added_objects)
+    ns.added_objects = nil
+}
+
+// What an instance records on top of its prefab: the five owned lists of a
+// NestedScene, deep-copied. The editor's Prefab Apply undo keeps one from
+// before and one from after an Apply, and puts the right one back.
+Nested_Records :: struct {
+    overrides:          [dynamic]Override,
+    removed_components: [dynamic]Removed_Component,
+    added_components:   [dynamic]Added_Component,
+    removed_objects:    [dynamic]Removed_Object,
+    added_objects:      [dynamic]Added_Object,
+}
+
+nested_records_capture :: proc(ns: ^NestedScene) -> Nested_Records {
+    if ns == nil do return {}
+    return _nested_records_clone(Nested_Records{
+        overrides          = ns.overrides,
+        removed_components = ns.removed_components,
+        added_components   = ns.added_components,
+        removed_objects    = ns.removed_objects,
+        added_objects      = ns.added_objects,
+    })
+}
+
+// Replaces the record's lists with copies of `r` (r stays owned by the caller).
+nested_records_restore :: proc(ns: ^NestedScene, r: Nested_Records) {
+    if ns == nil do return
+    nested_scene_free_owned(ns)
+    c := _nested_records_clone(r)
+    ns.overrides          = c.overrides
+    ns.removed_components = c.removed_components
+    ns.added_components   = c.added_components
+    ns.removed_objects    = c.removed_objects
+    ns.added_objects      = c.added_objects
+}
+
+nested_records_destroy :: proc(r: ^Nested_Records) {
+    tmp := NestedScene{
+        overrides          = r.overrides,
+        removed_components = r.removed_components,
+        added_components   = r.added_components,
+        removed_objects    = r.removed_objects,
+        added_objects      = r.added_objects,
+    }
+    nested_scene_free_owned(&tmp)
+    r^ = {}
+}
+
+@(private = "file")
+_nested_records_clone :: proc(r: Nested_Records) -> (c: Nested_Records) {
+    c.overrides = make([dynamic]Override, len(r.overrides))
+    for ov, i in r.overrides {
+        c.overrides[i] = Override{
+            target        = ov.target,
+            property_path = strings.clone(ov.property_path),
+            value         = json.clone_value(ov.value),
+        }
+    }
+    c.removed_components = make([dynamic]Removed_Component, len(r.removed_components))
+    copy(c.removed_components[:], r.removed_components[:])
+    c.added_components = make([dynamic]Added_Component, len(r.added_components))
+    for ac, i in r.added_components {
+        c.added_components[i] = Added_Component{
+            owner     = ac.owner,
+            local_id  = ac.local_id,
+            type_guid = strings.clone(ac.type_guid),
+            json      = strings.clone(ac.json),
+        }
+    }
+    c.removed_objects = make([dynamic]Removed_Object, len(r.removed_objects))
+    copy(c.removed_objects[:], r.removed_objects[:])
+    c.added_objects = make([dynamic]Added_Object, len(r.added_objects))
+    for ao, i in r.added_objects {
+        c.added_objects[i] = Added_Object{
+            parent   = ao.parent,
+            local_id = ao.local_id,
+            json     = strings.clone(ao.json),
+        }
+    }
+    return
+}
+
+// A component the prefab declares that this instance does NOT have. `target`
+// names the component row in the prefab it lives in, encoded exactly like
+// Override.target (deep targets XOR-projected up the chain), so one resolution
+// rule serves both.
+Removed_Component :: struct {
+    target: PPtr,
+}
+
+// A component this instance has that its prefab does not. The component data
+// is carried as a serialized record so it survives without a row in any prefab
+// file; `owner` names the prefab transform it hangs off (Override.target
+// encoding), and `local_id` is the lid its record uses within this scene file.
+Added_Component :: struct {
+    owner:    PPtr,
+    local_id: Local_ID,
+    type_guid: string,
+    json:      string, // the component's serialized fields
+}
+
+// An OBJECT the prefab declares that this instance does NOT have. Removing an
+// object takes its whole subtree with it — the prefab's own structure decides
+// what "below" means (Unity: m_RemovedGameObjects).
+Removed_Object :: struct {
+    target: PPtr,
+}
+
+// A transform subtree the host added under this instance's prefab content
+// (Unity: m_AddedGameObjects). It has no row in any prefab file, so it carries
+// its own content as a serialized SceneFile fragment.
+//
+// Lids inside the fragment are host-authored (scene_new_lid: random in
+// [1, 2^52)) — random identity is collision-free by construction, which is why
+// added content needs no lid band of its own alongside authored and composed.
+Added_Object :: struct {
+    parent:   PPtr,      // the prefab transform the subtree hangs off
+    local_id: Local_ID,  // the subtree root's lid
+    json:     string,    // SceneFile fragment: transforms + their components
+}
+
+// Deterministic instance lid for one object of a materialized prefab instance —
+// Unity computes instanced-object fileIDs the same way (a hash of the source
+// fileID and the PrefabInstance id). Determinism is what lets references into
+// nested content be plain lids that survive save/reload. The result is tagged
+// with bit 52 (never collides with counter-minted authored lids) and kept
+// below 2^53 so a lid survives any f64/json round-trip exactly.
+INSTANCE_LID_BIT :: Local_ID(1) << 52
+
+nested_lid_compose :: proc(instance_key: Local_ID, source_lid: Local_ID) -> Local_ID {
+    h := u64(instance_key) * 0x9E3779B97F4A7C15
+    h ~= u64(source_lid) + 0x9E3779B97F4A7C15 + (h << 6) + (h >> 2)
+    h *= 0xBF58476D1CE4E5B9
+    h ~= h >> 27
+    return Local_ID(i64(h) & ((1 << 52) - 1)) | INSTANCE_LID_BIT
+}
+
+// The runtime lid of `source_lid` inside `ns`'s materialized instance. The
+// prefab's root is absorbed into the host transform, so it maps to the host's
+// own lid rather than a composed one.
+nested_scene_instance_lid :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Local_ID {
+    if source_lid == ns.source_root_id {
+        w := ctx_world()
+        host_tH := nested_scene_resolve_host_handle(s, ns)
+        if host_t := pool_get(&w.transforms, Handle(host_tH)); host_t != nil {
+            return host_t.local_id
+        }
+    }
+    // A ROOT VARIANT loads its base directly into this scene, keeping the base's
+    // own lids (_variant_materialize_root) — no projection runs, so
+    // source_of_inst stays empty and source lid IS live lid. Composing here
+    // would invent a lid nothing is registered under, and every lookup keyed
+    // through this proc (revert, override display) would silently miss.
+    if nested_scene_is_root_variant(s, ns) do return source_lid
+    return nested_lid_compose(ns.local_id, source_lid)
+}
+
+// Remove a torn-down instance's composed lids from the scene bimap (the host
+// lid stays — it is host-authored). Stale entries would dangle on destroyed
+// handles until the next resolve overwrote them.
+_ns_purge_instance_lids :: proc(s: ^Scene, ns: ^NestedScene) {
+    if s == nil || ns == nil do return
+    for lid in ns.source_of_inst {
+        if lid & INSTANCE_LID_BIT != 0 do bimap_remove_by_key(&s.local_ids, lid)
+    }
+}
+
+transform_is_nested_owned :: proc(tH: Transform_Handle) -> bool {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return false
+    return t.nested_owned
+}
+
+transform_find_nested_host :: proc(tH: Transform_Handle) -> Transform_Handle {
+    w := ctx_world()
+    current := tH
+    for pool_valid(&w.transforms, Handle(current)) {
+        t := pool_get(&w.transforms, Handle(current))
+        if t == nil do return {}
+        if !t.nested_owned {
+            if scene_find_nested_scene_for_host(t.scene, current) != nil {
+                return current
+            }
+        }
+        current = Transform_Handle(t.parent.handle)
+    }
+    return {}
+}
+
+// Walks `tH` and its ancestors and returns the nearest one that is the host of
+// some NestedScene record, regardless of `nested_owned`. Differs from
+// `transform_find_nested_host` (which only stops at NON-nested-owned hosts and
+// thus returns the outermost native host) — for a transform 2+ prefab levels
+// deep in a nested chain, this returns its *own* enclosing inner-NS host, which
+// is the record that owns overrides for that transform's content.
+transform_immediate_nested_host :: proc(tH: Transform_Handle) -> Transform_Handle {
+    w := ctx_world()
+    current := tH
+    for pool_valid(&w.transforms, Handle(current)) {
+        t := pool_get(&w.transforms, Handle(current))
+        if t == nil do return {}
+        if scene_find_nested_scene_for_host(t.scene, current) != nil {
+            return current
+        }
+        current = Transform_Handle(t.parent.handle)
+    }
+    return {}
+}
+
+transform_nested_enclosing_host :: proc(tH: Transform_Handle) -> Transform_Handle {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return {}
+    if !t.nested_owned {
+        if scene_find_nested_scene_for_host(t.scene, tH) != nil {
+            return tH
+        }
+        return {}
+    }
+    current := Transform_Handle(t.parent.handle)
+    for pool_valid(&w.transforms, Handle(current)) {
+        ct := pool_get(&w.transforms, Handle(current))
+        if ct == nil do return {}
+        if !ct.nested_owned {
+            if scene_find_nested_scene_for_host(ct.scene, current) != nil {
+                return current
+            }
+            return {}
+        }
+        current = Transform_Handle(ct.parent.handle)
+    }
+    return {}
+}
+
+// Single pass over transform slots: returns (first matching handle, count).
+// Replaces the previous _count + _first pair which scanned the same slots twice.
+_nested_scene_find_outer_non_nested :: proc(s: ^Scene, id: Local_ID) -> (Transform_Handle, int) {
+	if s == nil || id == 0 do return {}, 0
+	w := ctx_world()
+	first: Transform_Handle = {}
+	n := 0
+	it := pool_iterator(&w.transforms)
+	for tt, h in pool_next(&it) {
+		if tt.scene != s || tt.local_id != id do continue
+		if tt.nested_owned do continue
+		if n == 0 {
+			h := h
+			h.type_key = .Transform
+			first = Transform_Handle(h)
+		}
+		n += 1
+	}
+	return first, n
+}
+
+@(private = "file")
+_transform_is_descendant_or_self :: proc(tH, ancestorH: Transform_Handle) -> bool {
+	w := ctx_world()
+	h := tH
+	for _ in 0 ..< 4096 {
+		if h == ancestorH do return true
+		t := pool_get(&w.transforms, Handle(h))
+		if t == nil do return false
+		if t.parent.handle == {} do return false
+		h = Transform_Handle(t.parent.handle)
+	}
+	return false
+}
+
+@(private = "file")
+_nested_scene_scan_hosts_for_lid :: proc(s: ^Scene, ns: ^NestedScene, lid: Local_ID) -> (Transform_Handle, int) {
+	if s == nil || ns == nil || lid == 0 do return {}, 0
+	if ns.host_breadcrumb_id != 0 {
+		bc, ok := breadcrumb_get(s, ns.host_breadcrumb_id)
+		if !ok || bc.scene_instance != ns.local_id do return {}, 0
+		if !pptr_guid_is_empty(bc.scene_source.guid) do return {}, 0
+		if bc.scene_source.local_id != lid do return {}, 0
+	}
+	w := ctx_world()
+	first: Transform_Handle = {}
+	n := 0
+	it := pool_iterator(&w.transforms)
+	for tt, h in pool_next(&it) {
+		if tt.scene != s || tt.local_id != lid do continue
+		h := h
+		h.type_key = .Transform
+		tH := Transform_Handle(h)
+		if ns.expand_parent != {} {
+			if !tt.nested_owned do continue
+			if !_transform_is_descendant_or_self(tH, ns.expand_parent) do continue
+		} else {
+			// A native NS's host is host-authored — never nested_owned. Without
+			// this filter, absorbed prefab content whose (prefab-namespace) lid
+			// happens to equal the host's lid makes the scan ambiguous (n > 1)
+			// and host identification fails.
+			if tt.nested_owned do continue
+		}
+		if n == 0 do first = tH
+		n += 1
+	}
+	return first, n
+}
+
+nested_row_direct_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -> ^NestedScene {
+	ht := pool_get(&ctx_world().transforms, Handle(host_tH))
+	if ht == nil || ht.scene != s || ht.nested_owned do return nil
+	for &on in s.nested_scenes {
+		if on.transform_parent == ht.local_id {
+			return &on
+		}
+	}
+	return nil
+}
+
+nested_scene_hosts_transform :: proc(s: ^Scene, ns: ^NestedScene, host_tH: Transform_Handle) -> bool {
+	if s == nil do return false
+	t := pool_get(&ctx_world().transforms, Handle(host_tH))
+	if t == nil || t.scene != s do return false
+	if ns.expand_parent != {} {
+		if !_transform_is_descendant_or_self(host_tH, ns.expand_parent) {
+			return false
+		}
+	}
+	if ns.host_breadcrumb_id != 0 {
+		bc, ok := breadcrumb_get(s, ns.host_breadcrumb_id)
+		if !ok || bc.scene_instance != ns.local_id do return false
+		if !pptr_guid_is_empty(bc.scene_source.guid) do return false
+		lid := bc.scene_source.local_id
+
+		if !t.nested_owned {
+			if dir := nested_row_direct_for_host(s, host_tH); dir != nil {
+				if ns.source_prefab != dir.source_prefab {
+					return false
+				}
+			}
+		}
+
+		if t.nested_owned && t.local_id == lid {
+			if ns.expand_parent != {} {
+				// The descendant-or-self check at the top of this proc already
+				// scoped host_tH to ns.expand_parent's subtree. Within that
+				// subtree, the breadcrumb's scene_source.local_id uniquely
+				// identifies the host transform (each inner NS in the parent
+				// prefab has a distinct transform_parent). transform_find_nested_host
+				// would walk past the immediate inner host all the way to the
+				// outermost native host, which gave wrong answers for chains
+				// 3+ levels deep — so don't use it here.
+				return true
+			}
+			if dir := nested_row_direct_for_host(s, transform_find_nested_host(host_tH)); dir != nil {
+				return ns.source_prefab != dir.source_prefab
+			}
+			return false
+		}
+
+		if h, ok2 := bimap_get(&s.local_ids, lid); ok2 {
+			return h == Handle(host_tH)
+		}
+		want, n := _nested_scene_scan_hosts_for_lid(s, ns, lid)
+		return n == 1 && want == host_tH
+	}
+	if ns.transform_parent != t.local_id do return false
+	if h, ok2 := bimap_get(&s.local_ids, ns.transform_parent); ok2 {
+		return h == Handle(host_tH)
+	}
+	want, n := _nested_scene_scan_hosts_for_lid(s, ns, ns.transform_parent)
+	return n == 1 && want == host_tH
+}
+
+// On-disk / freshly-loaded marker for a variant's root NestedScene:
+// transform_parent == 0 (no host transform in the file) and native
+// (expand_parent == {}). At load this is rebound to a synthesized placeholder
+// host so resolution/inspector/save treat it as an ordinary hosted NS; save
+// writes transform_parent back to 0.
+nested_scene_is_root :: proc(ns: ^NestedScene) -> bool {
+	return ns != nil && ns.transform_parent == 0 && ns.expand_parent == {}
+}
+
+// Runtime marker for a loaded variant's root NS: a native NS (expand_parent
+// == {}) whose host transform IS the scene root (the synthesized placeholder).
+// Used by save to write transform_parent back to 0 and to avoid emitting the
+// placeholder as a transform.
+nested_scene_is_root_variant :: proc(s: ^Scene, ns: ^NestedScene) -> bool {
+	if s == nil || ns == nil || ns.expand_parent != {} do return false
+	if s.root.handle == {} do return false
+	host := nested_scene_resolve_host_handle(s, ns)
+	return host != {} && Handle(host) == s.root.handle
+}
+
+nested_scene_resolve_host_handle :: proc(s: ^Scene, ns: ^NestedScene) -> Transform_Handle {
+	if s == nil || ns == nil do return {}
+
+	lid := ns.transform_parent
+	if ns.host_breadcrumb_id != 0 {
+		bc, ok := breadcrumb_get(s, ns.host_breadcrumb_id)
+		if !ok || bc.scene_instance != ns.local_id do return {}
+		if !pptr_guid_is_empty(bc.scene_source.guid) do return {}
+		lid = bc.scene_source.local_id
+	}
+
+	if ns.expand_parent != {} {
+		first, n := _nested_scene_scan_hosts_for_lid(s, ns, lid)
+		if n == 1 do return first
+		return {}
+	}
+
+	if h, ok2 := bimap_get(&s.local_ids, lid); ok2 {
+		cand := Transform_Handle(h)
+		if nested_scene_hosts_transform(s, ns, cand) do return cand
+	}
+	first, n := _nested_scene_scan_hosts_for_lid(s, ns, lid)
+	if n == 1 do return first
+	return {}
+}
+
+nested_scene_attach_host_breadcrumb :: proc(s: ^Scene, ns: ^NestedScene, host_local_id: Local_ID) -> bool {
+    if s == nil || ns == nil || host_local_id == 0 do return false
+    peg := scene_new_lid(s)
+    if !scene_breadcrumb_put(
+        s,
+        Breadcrumb{
+            local_id       = peg,
+            scene_source   = PPtr{local_id = host_local_id, guid = Asset_GUID{}},
+            scene_instance = ns.local_id,
+        },
+    ) {
+        return false
+    }
+    ns.host_breadcrumb_id = peg
+    return true
+}
+
+nested_scene_ensure_host_pegs :: proc(s: ^Scene) {
+    if s == nil do return
+    for &ns in s.nested_scenes {
+        if ns.host_breadcrumb_id != 0 do continue
+        if ns.transform_parent == 0 do continue
+        nested_scene_attach_host_breadcrumb(s, &ns, ns.transform_parent)
+    }
+}
+
+scene_find_nested_scene_for_host :: proc(s: ^Scene, host_tH: Transform_Handle) -> ^NestedScene {
+	if s == nil do return nil
+	w := ctx_world()
+	t := pool_get(&w.transforms, Handle(host_tH))
+	if t == nil || t.scene != s do return nil
+	for &ns in s.nested_scenes {
+		if nested_scene_hosts_transform(s, &ns, host_tH) do return &ns
+	}
+	return nil
+}
+
+// Deterministic host->NS map, built from the NS side: each record resolves
+// ITS OWN host (nested_scene_resolve_host_handle scopes lids to the record's
+// subtree and demands uniqueness). The reverse question — "which NS hosts this
+// transform?" (scene_find_nested_scene_for_host) — scans records and takes the
+// FIRST fuzzy lid match, so look-alike lids across unprojected variant
+// namespaces can cross-match and the winner depends on record order. Use this
+// map when iterating many rows (hierarchy): one pass, order-independent.
+// Pointers are into s.nested_scenes — valid until records are added/removed.
+scene_nested_hosts_map :: proc(s: ^Scene, allocator := context.temp_allocator) -> map[Transform_Handle]^NestedScene {
+	out := make(map[Transform_Handle]^NestedScene, allocator)
+	if s == nil do return out
+	for &ns in s.nested_scenes {
+		h := nested_scene_resolve_host_handle(s, &ns)
+		if h == {} do continue
+		if _, taken := out[h]; taken do continue
+		out[h] = &ns
+	}
+	return out
+}
+
+// Returns the prefab's bytes with variant inheritance flattened: for a flat
+// prefab, its raw bytes (owned=false, an alias of scene_lib); for a variant
+// (a file whose nested_scenes hold a record with transform_parent == 0), the
+// base resolved + the variant's own overrides baked in + the variant's added
+// transforms merged — a normal flat scene file. Recurses for variant-of-variant.
+// `owned` is true when the returned slice is freshly allocated (caller frees).
+// The XOR projection key for an NS. The invariant (plugins/engine/docs/NestedPrefabs.md) is
+// local_id_in_parent == local_id for native NSs; some older files were authored
+// with local_id_in_parent == 0 (invalid — lids start at 1), which breaks
+// (un)projection. Fall back to local_id so deep-override lids round-trip.
+_ns_projection_key :: proc(ns: ^NestedScene) -> Local_ID {
+    if ns.local_id_in_parent != 0 do return ns.local_id_in_parent
+    return ns.local_id
+}
+
+_prefab_resolved_bytes :: proc(guid: Asset_GUID, depth := 0) -> (out: []byte, owned: bool) {
+    if depth > 32 do return nil, false
+    raw, has := scene_lib[guid]
+    if !has {
+        if !scene_lib_register(guid) do return nil, false
+        raw, has = scene_lib[guid]
+        if !has do return nil, false
+    }
+
+    vf: SceneFile
+    {
+        cpy := make([]byte, len(raw), context.temp_allocator)
+        copy(cpy, raw)
+        if scene_file_unmarshal(cpy, &vf) != nil do return nil, false
+    }
+    root_ns_idx := -1
+    for ns, i in vf.nested_scenes {
+        if ns.transform_parent == 0 {
+            root_ns_idx = i
+            break
+        }
+    }
+    if root_ns_idx < 0 {
+        scene_file_destroy(&vf)
+        return raw, false   // flat prefab — raw bytes are already resolved
+    }
+
+    root_ns := vf.nested_scenes[root_ns_idx]
+
+    // Resolve the base (recursively flatten if it too is a variant), then bake
+    // this variant's overrides onto it.
+    base_bytes, base_owned := _prefab_resolved_bytes(root_ns.source_prefab, depth + 1)
+    if base_bytes == nil {
+        scene_file_destroy(&vf)
+        return nil, false
+    }
+    field_baked := nested_scene_apply_overrides(base_bytes, root_ns.overrides[:], root_ns.source_prefab)
+    field_owned := raw_data(field_baked) != raw_data(base_bytes)
+    // The variant's structural records (components/objects added to or removed
+    // from base content) bake in too, so they hold when the variant nests.
+    baked := nested_scene_apply_component_edits(
+        field_baked, root_ns.removed_components[:], root_ns.added_components[:], root_ns.source_prefab,
+        root_ns.removed_objects[:], root_ns.added_objects[:])
+    struct_owned := raw_data(baked) != raw_data(field_baked)
+    if struct_owned && field_owned do delete(field_baked)
+    baked_owned := field_owned || struct_owned
+    if base_owned && baked_owned do delete(base_bytes)
+
+    base_sf: SceneFile
+    {
+        cpy := make([]byte, len(baked), context.temp_allocator)
+        copy(cpy, baked)
+        ok := scene_file_unmarshal(cpy, &base_sf) == nil
+        if baked_owned do delete(baked)
+        else if base_owned do delete(base_bytes)
+        if !ok {
+            scene_file_destroy(&vf)
+            return nil, false
+        }
+    }
+
+    // Merge the variant's own additions (transforms + components + inner NSs)
+    // into the base. Their parent lids already reference the base root lid
+    // (== base_sf.root), so no rewrite is needed; transfer ownership and clear
+    // vf's containers so scene_file_destroy(&vf) doesn't double-free. Also link
+    // each addition into its parent's `children` list (the base file's parent
+    // transform doesn't list the variant's additions), so the load materializes
+    // them under the base rather than orphaning them.
+    for t in vf.transforms {
+        append(&base_sf.transforms, t)
+        for &bt in base_sf.transforms {
+            if bt.local_id == t.parent.pptr.local_id {
+                append(&bt.children, Ref{ pptr = PPtr{local_id = t.local_id} })
+                break
+            }
+        }
+    }
+    for v in vf.components   do append(&base_sf.components, v)
+    for ns, i in vf.nested_scenes {
+        if i == root_ns_idx do continue
+        append(&base_sf.nested_scenes, ns)
+    }
+
+    // DEEP overrides on the variant's root NS target content INSIDE the base's
+    // own nested prefabs (target.guid != root_ns.source_prefab), so they weren't
+    // baked by nested_scene_apply_overrides above (which only matches shallow
+    // targets in the base's namespace). Carry each forward onto the matching
+    // inner NS record, un-projecting the lid by that NS's local_id_in_parent, so
+    // it applies when this flattened prefab is loaded and its inner NSs resolve.
+    // (Matches the live-patch DFS, but persisted into the flattened bytes — this
+    // is what makes a variant's deep override render when it is NESTED, not just
+    // when opened top-level.)
+    for ov in root_ns.overrides {
+        if ov.target.guid == root_ns.source_prefab do continue   // shallow, already baked
+        if asset_guid_is_empty(ov.target.guid) do continue
+        // Push onto EVERY inner NS that could host the target (same guid),
+        // un-projecting by each one's own projection key. Only the NS whose
+        // subtree actually contains the un-projected lid applies it at resolve
+        // time; the rest are harmless no-ops (no matching lid). Picking a single
+        // candidate is unsafe — same-prefab-instantiated-twice means the first
+        // guid match may be the wrong instance.
+        for &inner in base_sf.nested_scenes {
+            if inner.source_prefab != ov.target.guid do continue
+            unprojected := local_id_unproject(_ns_projection_key(&inner), ov.target.local_id)
+            append(&inner.overrides, Override{
+                target        = PPtr{guid = ov.target.guid, local_id = unprojected},
+                property_path = strings.clone(ov.property_path),
+                value         = json.clone_value(ov.value),
+            })
+        }
+    }
+
+    for bc in vf.breadcrumbs do append(&base_sf.breadcrumbs, bc)
+    // base_sf.root stays the base root lid. Detach moved containers from vf so
+    // scene_file_destroy(&vf) below doesn't double-free their elements (the
+    // root NS's overrides were consumed into the bake and are freed with vf).
+    {
+        // Free only the root NS's owned payloads (field overrides AND the
+        // structural lists the bake consumed); the other NS records were moved.
+        nested_scene_free_owned(&vf.nested_scenes[root_ns_idx])
+    }
+    delete(vf.transforms); vf.transforms = nil
+    delete(vf.nested_scenes); vf.nested_scenes = nil
+    delete(vf.breadcrumbs); vf.breadcrumbs = nil
+    delete(vf.components); vf.components = nil
+
+    opts := json.Marshal_Options{spec = .JSON, pretty = false}
+    data, merr := json.marshal(base_sf, opts)
+    scene_file_destroy(&base_sf)
+    if merr != nil do return nil, false
+    return data, true
+}
+
+// Guids currently being resolved up the active resolve stack. A prefab that
+// (directly or via a variant chain) nests itself would otherwise recurse
+// forever; we detect the repeat and skip it instead of crashing.
+@(private = "file")
+_resolve_guid_stack: [dynamic]Asset_GUID
+
+// Rewrite refs bound to a destroyed prefab-root handle across a transform's
+// components and its whole subtree (see call site in nested_scene_resolve).
+@(private)
+_nested_rewrite_root_handle :: proc(tH: Transform_Handle, old_h: Handle, new_h: Handle) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(tH))
+    if t == nil do return
+    for c in t.components {
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        tid := get_typeid_by_type_key(c.handle.type_key)
+        if tid == nil do continue
+        _rewrite_handle_refs_in_value(raw, type_info_of(tid), old_h, new_h)
+    }
+    for child in t.children {
+        _nested_rewrite_root_handle(Transform_Handle(child.handle), old_h, new_h)
+    }
+}
+
+nested_scene_resolve :: proc(host_tH: Transform_Handle) {
+    w := ctx_world()
+    host_t := pool_get(&w.transforms, Handle(host_tH))
+    if host_t == nil do return
+
+    _nested_scene_unresolve(host_tH)
+
+    ns := scene_find_nested_scene_for_host(host_t.scene, host_tH)
+    if ns == nil do return
+    guid := ns.source_prefab
+    empty_guid := Asset_GUID{}
+    if guid == empty_guid do return
+
+    // Cycle guard: if this prefab is already being resolved higher on the stack,
+    // a nesting cycle exists (e.g. a prefab that nests its own variant). Skip it
+    // — the host stays an unresolved nested-scene placeholder rather than
+    // overflowing the stack.
+    for g in _resolve_guid_stack {
+        if g == guid {
+            fmt.printf("[NestedScene] cycle detected resolving %v; skipping to avoid infinite nesting\n", guid)
+            return
+        }
+    }
+    append(&_resolve_guid_stack, guid)
+    defer {
+        pop(&_resolve_guid_stack)
+        if len(_resolve_guid_stack) == 0 {
+            delete(_resolve_guid_stack)
+            _resolve_guid_stack = nil
+        }
+    }
+
+    // The prefab bytes, with any variant inheritance resolved to a flat scene
+    // file (base + the variant's own overrides + additions). For a flat prefab
+    // this is just its raw bytes. This makes a variant nest exactly like any
+    // other prefab — its own overrides are baked into this baked baseline, so
+    // only the HOST scene's overrides remain editable (Unity's model).
+    resolved, resolved_owned := _prefab_resolved_bytes(guid)
+    if resolved == nil do return
+    defer if resolved_owned do delete(resolved)
+
+	// NOTE: a `defer` closes over the VARIABLE, so each stage's bytes get their
+	// own name — reassigning one shared `baked` would make the first defer free
+	// whatever the last stage produced (double free + leak).
+	field_baked := nested_scene_apply_overrides(resolved, ns.overrides[:], ns.source_prefab)
+	field_baked_owned := len(ns.overrides) > 0 && raw_data(field_baked) != raw_data(resolved)
+	defer if field_baked_owned do delete(field_baked)
+
+	// Structural component edits ride on top of the field patches, so the
+	// materialized instance is missing removed components and carries added
+	// ones (plugins/engine/docs/NestedPrefabs.md).
+	baked := nested_scene_apply_component_edits(
+		field_baked, ns.removed_components[:], ns.added_components[:], ns.source_prefab,
+		ns.removed_objects[:], ns.added_objects[:],
+	)
+	structural_owned := raw_data(baked) != raw_data(field_baked)
+	defer if structural_owned do delete(baked)
+
+    sf: SceneFile
+    if err := scene_file_unmarshal(baked, &sf); err != nil do return
+    defer scene_file_destroy(&sf)
+
+    host_scene := host_t.scene
+    ns.source_root_id = sf.root
+
+    // Project the instance into the host namespace (Unity: instanced objects
+    // get deterministic fileIDs composed from source fileID x PrefabInstance).
+    // The prefab root maps to the host transform's own lid — the root is
+    // absorbed into the host, so refs to it resolve to the host naturally.
+    // Everything else composes via nested_lid_compose; the generated remap
+    // rewrites all records, refs, and NS/breadcrumb metadata in one walk.
+    // After this, the instance's lids are unique scene-wide and register in
+    // the host bimap like any authored content.
+    _Project_Ctx :: struct {
+        key:      Local_ID,
+        root:     Local_ID,
+        host_lid: Local_ID,
+        ns:       ^NestedScene,
+        scene:    ^Scene,
+    }
+    _project_mapper :: proc(user: rawptr, old: Local_ID) -> Local_ID {
+        c := cast(^_Project_Ctx)user
+        new_id := old == c.root ? c.host_lid : nested_lid_compose(c.key, old)
+        // The 52-bit hash makes collisions astronomically unlikely, but a silent
+        // one would corrupt the bimap and be near-impossible to trace — so check
+        // both ways it could happen and log loudly. This instance's own lids were
+        // purged just before the remap, so any bimap hit is foreign content.
+        if prev, dup := c.ns.source_of_inst[new_id]; dup && prev != old {
+            fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v sources %v and %v both hash to %v — overrides/refs will mis-target", c.key, prev, old, new_id)
+        } else if old != c.root {
+            if _, taken := bimap_get(&c.scene.local_ids, new_id); taken {
+                fmt.printfln("[Scene] COMPOSED LID COLLISION: instance %v source %v hashes to %v, already registered to other scene content — overrides/refs will mis-target", c.key, old, new_id)
+            }
+        }
+        c.ns.source_of_inst[new_id] = old
+        return new_id
+    }
+    _ns_purge_instance_lids(host_scene, ns)
+    delete(ns.source_of_inst)
+    ns.source_of_inst = make(map[Local_ID]Local_ID)
+    pctx := _Project_Ctx{key = ns.local_id, root = sf.root, host_lid = host_t.local_id, ns = ns, scene = host_scene}
+    _scene_file_remap_local_ids(&sf, host_scene, _project_mapper, &pctx)
+    // Inner NS records: local_id_in_parent is the XOR projection key for deep
+    // override targets and must stay the FILE-stable lid. Older files carry 0
+    // (the key then fell back to local_id, which was the file lid before this
+    // projection existed) — pin it to the pre-projection lid.
+    for &insf in sf.nested_scenes {
+        if insf.local_id_in_parent == 0 {
+            insf.local_id_in_parent = ns.source_of_inst[insf.local_id]
+        }
+    }
+
+    // The host transform must be reachable by lid before the instance's refs
+    // resolve (refs to the prefab root now carry the host's lid). File-loaded
+    // hosts are already registered; runtime-instantiated ones are not.
+    if _, reg := bimap_get(&host_scene.local_ids, host_t.local_id); !reg {
+        bimap_insert(&host_scene.local_ids, host_t.local_id, Handle(host_tH))
+    }
+
+    nested_before := len(host_scene.nested_scenes)
+    nested_root_tH := _scene_load_as_child(&sf, host_tH, host_scene, ns.source_prefab)
+
+    for i in nested_before..<len(host_scene.nested_scenes) {
+        if host_scene.nested_scenes[i].expand_parent == {} {
+            host_scene.nested_scenes[i].expand_parent = host_tH
+        }
+    }
+
+    if nested_root_tH == {} do return
+
+    nested_root := pool_get(&w.transforms, Handle(nested_root_tH))
+    if nested_root == nil do return
+
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+
+    for i in 0..<len(host_t.children) {
+        if host_t.children[i].handle == Handle(nested_root_tH) {
+            ordered_remove(&host_t.children, i)
+            break
+        }
+    }
+
+    for &c in nested_root.components {
+        if world_pool_valid(w, c.handle) {
+            raw_c := world_pool_get(w, c.handle)
+            if raw_c != nil {
+                base := cast(^CompData)raw_c
+                base.owner = host_tH
+                base.nested_owned = true
+            }
+        }
+        append(&host_t.components, c)
+    }
+    clear(&nested_root.components)
+
+    // Host additions grafted into the bake are instance content but not PREFAB
+    // content — they must stay host-authored so the next save re-captures them.
+    // Their file lids went through the same projection as everything else.
+    added_live := make(map[Local_ID]bool, 0, context.temp_allocator)
+    for ao in ns.added_objects {
+        added_live[nested_lid_compose(ns.local_id, ao.local_id)] = true
+    }
+
+    for child in nested_root.children {
+        ct := pool_get(&w.transforms, child.handle)
+        if ct == nil do continue
+        ct.parent = make_transform_ref(host_tH)
+        append(&host_t.children, child)
+        _mark_subtree_nested_owned(Transform_Handle(child.handle), &added_live)
+    }
+    clear(&nested_root.children)
+
+    transform_destroy(nested_root_tH)
+
+    // The prefab's root transform is gone — the host transform took its place.
+    // Any Ref/Ref_Local in the absorbed components that resolved to the prefab
+    // root (e.g. a component on the root referencing its own transform) must be
+    // redirected to the host, or it dangles on a destroyed handle.
+    _nested_rewrite_root_handle(host_tH, Handle(nested_root_tH), Handle(host_tH))
+
+    // Resolve nested scenes within the absorbed (now nested-owned) base content.
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+    if host_t != nil {
+        children_copy := make([]Ref, len(host_t.children), context.temp_allocator)
+        copy(children_copy, host_t.children[:])
+        for child in children_copy {
+            ct := pool_get(&w.transforms, child.handle)
+            if ct == nil do continue
+            if ct.nested_owned {
+                _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+            }
+        }
+    }
+
+    // Apply deep overrides (those whose breadcrumb has a scene_path through
+    // inner prefabs) by patching the live tree directly. Per plugins/engine/docs/NestedPrefabs.md
+    // overrides live at the root scene level only; inner NS records carry their
+    // own prefab-baked overrides but never copies of root's. We locate each
+    // deep target via reflection over the materialized subtree, then run
+    // type_cleanup_by_typeid on the live field to free what's there before
+    // unmarshaling the new JSON value into the same slot.
+    //
+    // Re-fetch `ns`: the recursive resolve above appends to s.nested_scenes,
+    // which can reallocate the dynamic array and dangle the `ns` captured at the
+    // top of this proc (EXC_BAD_ACCESS when iterating ns.overrides otherwise).
+    ns = scene_find_nested_scene_for_host(host_scene, host_tH)
+    if ns == nil do return
+    _nested_scene_apply_deep_overrides_live(host_tH, ns)
+}
+
+// Re-marks a restored subtree as prefab content. Undo of a nested delete needs
+// this: the payload round-trips through the loader, which creates plain
+// host-authored rows, and without the flag the next save would emit them into
+// the host file as an addition.
+transform_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle) {
+    _mark_subtree_nested_owned(root_tH)
+}
+
+// `skip` holds the live lids of host-added subtree roots grafted into this
+// instance. They sit inside the materialized tree but are NOT prefab content:
+// marking them owned would hide them from the next save's capture walk, so the
+// addition would vanish from the file on the following write. Their whole
+// subtree is skipped — everything under a host addition is host-authored too.
+_mark_subtree_nested_owned :: proc(root_tH: Transform_Handle, skip: ^map[Local_ID]bool = nil) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(root_tH))
+    if t == nil do return
+    if skip != nil && t.local_id in skip^ do return
+    t.nested_owned = true
+    for &c in t.components {
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        base := cast(^CompData)raw
+        base.nested_owned = true
+    }
+    for child in t.children {
+        _mark_subtree_nested_owned(Transform_Handle(child.handle), skip)
+    }
+}
+
+_nested_scene_unresolve :: proc(host_tH: Transform_Handle) {
+    w := ctx_world()
+    host_t := pool_get(&w.transforms, Handle(host_tH))
+    if host_t == nil do return
+    s := host_t.scene
+
+    to_destroy_children := make([dynamic]Transform_Handle, 0, len(host_t.children), context.temp_allocator)
+    for child in host_t.children {
+        ct := pool_get(&w.transforms, child.handle)
+        if ct == nil do continue
+        if ct.nested_owned {
+            append(&to_destroy_children, Transform_Handle(child.handle))
+        }
+    }
+    for tH in to_destroy_children {
+        transform_destroy(tH)
+    }
+
+    host_t = pool_get(&w.transforms, Handle(host_tH))
+    if host_t == nil do return
+
+    to_remove_comps := make([dynamic]Handle, 0, len(host_t.components), context.temp_allocator)
+    for c in host_t.components {
+        if !world_pool_valid(w, c.handle) do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        base := cast(^CompData)raw
+        if base.nested_owned {
+            append(&to_remove_comps, c.handle)
+        }
+    }
+    for h in to_remove_comps {
+        transform_remove_comp(host_tH, h)
+    }
+
+    // Drop inner NS records whose expand_parent was in the subtree we just
+    // destroyed. Without this, _scene_load_as_child will re-clone fresh inner
+    // NS records (with new expand_parent values) on the next resolve, leaving
+    // the old ones as zombies in s.nested_scenes — they'd shadow the fresh
+    // ones in chain walks and break subsequent resolves.
+    if s != nil {
+        write := 0
+        for i in 0 ..< len(s.nested_scenes) {
+            ns := s.nested_scenes[i]
+            // Native NS records (expand_parent == {}) are persistent metadata —
+            // never drop them here.
+            if ns.expand_parent == {} {
+                s.nested_scenes[write] = ns
+                write += 1
+                continue
+            }
+            // Stale if the host transform it was anchored to no longer exists
+            // (its subtree was destroyed above), OR if it was anchored directly
+            // at `host_tH` — those inner records belong to THIS instance's
+            // expansion, which we just tore down. host_tH itself stays valid on
+            // a re-resolve (only its nested-owned children are destroyed), so
+            // the `!ep_valid` check alone misses them, leaving stale records
+            // that shadow the fresh clones in chain walks and corrupt sibling
+            // instances of the same prefab.
+            ep := ns.expand_parent
+            ep_valid := pool_valid(&w.transforms, Handle(ep))
+            if !ep_valid || ep == host_tH {
+                breadcrumb_clear_for_nested_scene(s, ns.local_id)
+                _ns_purge_instance_lids(s, &ns)
+                delete(ns.source_of_inst)
+                nested_scene_free_owned(&ns)
+                continue
+            }
+            s.nested_scenes[write] = ns
+            write += 1
+        }
+        resize(&s.nested_scenes, write)
+    }
+}
+
+_scene_resolve_nested_in_subtree :: proc(root_tH: Transform_Handle) {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(root_tH))
+    if t == nil do return
+
+    if scene_find_nested_scene_for_host(t.scene, root_tH) != nil {
+        nested_scene_resolve(root_tH)
+        return
+    }
+
+    children_copy := make([]Ref, len(t.children), context.temp_allocator)
+    copy(children_copy, t.children[:])
+    for child in children_copy {
+        _scene_resolve_nested_in_subtree(Transform_Handle(child.handle))
+    }
+}
+
+scene_resolve_all_nested :: proc(root_tH: Transform_Handle) {
+    _scene_resolve_nested_in_subtree(root_tH)
+}
+
+// True when an override stored at `ov_path` affects the field drawn at
+// `field_path`: exact match, or the override targets a sub-property of the
+// field. The inspector draws struct-valued fields (e.g. a Ref_Local) as ONE
+// widget at "turret" while the diff stores the change at "turret.local_id" —
+// Unity likewise marks a parent property overridden when any child is.
+override_path_covers :: proc(field_path: string, ov_path: string) -> bool {
+    if ov_path == field_path do return true
+    return len(ov_path) > len(field_path) + 1 &&
+        strings.has_prefix(ov_path, field_path) &&
+        ov_path[len(field_path)] == '.'
+}
+
+nested_scene_has_override :: proc(ns: ^NestedScene, target: PPtr, property_path: string) -> bool {
+    if ns == nil do return false
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) do return true
+    }
+    return false
+}
+
+// Records an override from a LIVE edit, so the blue marker, Revert and Apply
+// work the instant a field changes instead of only after a save (the save-time
+// diff in _capture_overrides_to_native is the other producer).
+//
+// STICKY, like Unity: an entry, once recorded, is only removed by an explicit
+// nested_scene_revert_override. Setting a field back to its base value by hand
+// KEEPS the override — membership is never recomputed from a comparison
+// (plugins/engine/docs/PrefabsSpec.md §4.1: overrides grow only).
+//
+// `field_ptr`/`field_tid` name the live field; its current value is marshaled
+// as the override value. Same-(target, path) entries are replaced in place, so
+// repeated edits to one field never accumulate duplicates.
+//
+// `created` distinguishes a NEW entry from an update of an existing one, so
+// undo can remove exactly the override its edit introduced and leave a
+// pre-existing one alone (see undo's Record_Override_Command).
+nested_scene_record_override :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    field_ptr: rawptr,
+    field_tid: typeid,
+) -> (created: bool, ok: bool) {
+    if s == nil || ns == nil || field_ptr == nil || property_path == "" do return false, false
+
+    bytes, merr := json.marshal(any{field_ptr, field_tid}, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false, false
+    val: json.Value
+    if json.unmarshal(bytes, &val) != nil do return false, false
+
+    // Replace an existing exact entry rather than appending a second one.
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        json.destroy_value(ov.value)
+        ov.value = val
+        return false, true
+    }
+
+    // A coarser entry already covering this path (e.g. "turret" vs
+    // "turret.local_id") keeps ownership — the capture pass records whichever
+    // granularity the diff produces, and two overlapping entries would apply
+    // twice with an undefined winner.
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
+            json.destroy_value(val)
+            return false, false
+        }
+    }
+
+    append(&ns.overrides, Override{
+        target        = target,
+        property_path = strings.clone(property_path),
+        value         = val,
+    })
+    return true, true
+}
+
+// The live field behind `(host, target_lid, property_path)`, for undo's redo
+// path (re-record an override from the value the undo stack just restored).
+//
+// `target_lid` is a LIVE lid, the way the inspector reports it — NOT a
+// source-namespace lid. The two coincide for a shallow instance but diverge in
+// a deep chain, where live lids are composed with INSTANCE_LID_BIT, so the
+// bimap is consulted directly and the source-namespace resolve (which composes
+// the lid before looking up) is only the fallback.
+nested_scene_find_live_field :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+) -> (rawptr, typeid, bool) {
+    if s == nil do return nil, nil, false
+
+    if h, ok := bimap_get(&s.local_ids, target_lid); ok {
+        if ptr, tid, found := _nested_live_field_on_handle(h, property_path); found {
+            return ptr, tid, true
+        }
+    }
+
+    leaf_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
+    if leaf_ns == nil do return nil, nil, false
+    return _nested_find_revert_target(s, leaf_ns, target_lid, property_path, nil)
+}
+
+// Field resolution on an already-resolved entity: a transform target also
+// searches its attached components, since a transform-targeted override may
+// address a component on it (mirrors _nested_find_revert_target).
+@(private)
+_nested_live_field_on_handle :: proc(h: Handle, property_path: string) -> (rawptr, typeid, bool) {
+    w := ctx_world()
+    if h == {} do return nil, nil, false
+
+    if h.type_key == .Transform {
+        t := pool_get(&w.transforms, h)
+        if t == nil do return nil, nil, false
+        if fp, ftid, ok := _nested_revert_field_ptr(t, Transform, property_path); ok {
+            return fp, ftid, true
+        }
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            comp_ptr := world_pool_get(w, c.handle)
+            if comp_ptr == nil do continue
+            comp_tid := get_typeid_by_type_key(c.handle.type_key)
+            if comp_tid == nil do continue
+            if fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path); ok {
+                return fp, ftid, true
+            }
+        }
+        return nil, nil, false
+    }
+
+    comp_ptr := world_pool_get(w, h)
+    if comp_ptr == nil do return nil, nil, false
+    comp_tid := get_typeid_by_type_key(h.type_key)
+    if comp_tid == nil do return nil, nil, false
+    return _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+}
+
+// Drops the exact `(target, property_path)` entry — the bookkeeping inverse of
+// nested_scene_record_override, for undo of the edit that CREATED an override.
+// Unlike nested_scene_revert_override this only removes the record: the caller
+// (undo) restores the field value itself. Returns true when an entry went away.
+nested_scene_unrecord_override :: proc(ns: ^NestedScene, target: PPtr, property_path: string) -> bool {
+    if ns == nil do return false
+    for i in 0 ..< len(ns.overrides) {
+        ov := ns.overrides[i]
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        delete(ov.property_path)
+        json.destroy_value(ov.value)
+        ordered_remove(&ns.overrides, i)
+        return true
+    }
+    return false
+}
+
+nested_scene_unrecord_override_for_host :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+) -> bool {
+    root_ns, target, ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !ok || root_ns == nil do return false
+    return nested_scene_unrecord_override(root_ns, target, property_path)
+}
+
+// --- Structural component edits on a prefab instance -------------------------
+// Live counterparts of the removed_components / added_components records: the
+// editor mutates the world, these keep the NS bookkeeping in step so the edit
+// survives save AND the next resolve (which rebuilds from the prefab).
+
+// Marks `comp_lid` (a live component lid on nested content) as removed from the
+// instance. Returns false when the component isn't prefab content — a host
+// ADDITION is removed by simply deleting it (and dropping its added_components
+// entry), never by recording a removal.
+nested_scene_record_component_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    // An added component is not prefab content: retract the addition instead.
+    for i in 0 ..< len(root_ns.added_components) {
+        if root_ns.added_components[i].local_id != target.local_id do continue
+        ac := root_ns.added_components[i]
+        delete(ac.type_guid)
+        delete(ac.json)
+        ordered_remove(&root_ns.added_components, i)
+        return false, true
+    }
+
+    for rc in root_ns.removed_components {
+        if pptr_equals(rc.target, target) do return false, true // already recorded
+    }
+    append(&root_ns.removed_components, Removed_Component{target = target})
+    return true, true
+}
+
+// Records that this instance does NOT have the prefab object `obj_lid`. The
+// live transform is destroyed by the caller; this is the bookkeeping that makes
+// the deletion survive the next resolve.
+//
+// Deleting an ADDED object retracts the addition instead — it was never prefab
+// content, so there is nothing to suppress.
+nested_scene_record_object_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    obj_lid: Local_ID,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, obj_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    for i in 0 ..< len(root_ns.added_objects) {
+        if root_ns.added_objects[i].local_id != obj_lid do continue
+        delete(root_ns.added_objects[i].json)
+        ordered_remove(&root_ns.added_objects, i)
+        return false, true
+    }
+
+    for ro in root_ns.removed_objects {
+        if pptr_equals(ro.target, target) do return false, true // already recorded
+    }
+    append(&root_ns.removed_objects, Removed_Object{target = target})
+    return true, true
+}
+
+// Drops an object-removal record (undo of a delete). The caller restores the
+// live transform subtree itself.
+nested_scene_unrecord_object_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    obj_lid: Local_ID,
+) -> bool {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, obj_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.removed_objects) {
+        if !pptr_equals(root_ns.removed_objects[i].target, target) do continue
+        ordered_remove(&root_ns.removed_objects, i)
+        return true
+    }
+    return false
+}
+
+// Drops a removal record, restoring the component to prefab-supplied content
+// (undo of a remove). The caller re-creates the live component itself.
+nested_scene_unrecord_component_removed :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> bool {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.removed_components) {
+        if !pptr_equals(root_ns.removed_components[i].target, target) do continue
+        ordered_remove(&root_ns.removed_components, i)
+        return true
+    }
+    return false
+}
+
+// Records a component the editor just added to nested content, so it survives
+// the next resolve. `owner_lid` is the live lid of the transform it hangs off,
+// `comp_ptr`/`comp_tid` the live component, `type_guid` its registered type id.
+nested_scene_record_component_added :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    owner_lid: Local_ID,
+    comp_lid: Local_ID,
+    type_guid: string,
+    comp_ptr: rawptr,
+    comp_tid: typeid,
+) -> (created: bool, ok: bool) {
+    if comp_ptr == nil || type_guid == "" do return false, false
+    root_ns, owner_target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, owner_lid)
+    if !loc_ok || root_ns == nil do return false, false
+
+    bytes, merr := json.marshal(any{comp_ptr, comp_tid}, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false, false
+
+    for &ac in root_ns.added_components {
+        if ac.local_id != comp_lid do continue
+        delete(ac.json)
+        ac.json = strings.clone(string(bytes))
+        return false, true
+    }
+    append(&root_ns.added_components, Added_Component{
+        owner     = owner_target,
+        local_id  = comp_lid,
+        type_guid = strings.clone(type_guid),
+        json      = strings.clone(string(bytes)),
+    })
+    return true, true
+}
+
+// Re-adds an addition record from saved data, for redo of an add (the live
+// component is re-created by the caller, which mints a fresh lid — pass it).
+nested_scene_restore_component_added :: proc(
+    ns: ^NestedScene,
+    owner: PPtr,
+    comp_lid: Local_ID,
+    type_guid: string,
+    comp_json: string,
+) -> bool {
+    if ns == nil || type_guid == "" do return false
+    for &ac in ns.added_components {
+        if ac.local_id != comp_lid do continue
+        delete(ac.json)
+        ac.json = strings.clone(comp_json)
+        return true
+    }
+    append(&ns.added_components, Added_Component{
+        owner     = owner,
+        local_id  = comp_lid,
+        type_guid = strings.clone(type_guid),
+        json      = strings.clone(comp_json),
+    })
+    return true
+}
+
+// Drops an addition record (undo of an add). The caller destroys the live
+// component itself.
+nested_scene_unrecord_component_added :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    comp_lid: Local_ID,
+) -> bool {
+    root_ns, _, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, comp_lid)
+    if !loc_ok || root_ns == nil do return false
+    for i in 0 ..< len(root_ns.added_components) {
+        if root_ns.added_components[i].local_id != comp_lid do continue
+        ac := root_ns.added_components[i]
+        delete(ac.type_guid)
+        delete(ac.json)
+        ordered_remove(&root_ns.added_components, i)
+        return true
+    }
+    return false
+}
+
+// Puts an override entry back verbatim, for undo of a Revert. `value_json` is
+// the entry's value as JSON (undo captured it before the revert deleted it).
+// Replaces a same-(target, path) entry rather than duplicating it.
+nested_scene_restore_override :: proc(
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    value_json: []byte,
+) -> bool {
+    if ns == nil || property_path == "" do return false
+    val: json.Value
+    if json.unmarshal(value_json, &val) != nil do return false
+
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) || ov.property_path != property_path do continue
+        json.destroy_value(ov.value)
+        ov.value = val
+        return true
+    }
+    append(&ns.overrides, Override{
+        target        = target,
+        property_path = strings.clone(property_path),
+        value         = val,
+    })
+    return true
+}
+
+// The override entries matching `(target, property_path)` under path-covering
+// rules — what a Revert at `property_path` will remove. Undo captures these
+// before reverting so it can restore them. Values are marshaled into
+// `context.temp_allocator`; the caller clones what it keeps.
+nested_scene_overrides_covered_by :: proc(
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+) -> (targets: []PPtr, paths: []string, values: [][]byte) {
+    if ns == nil do return nil, nil, nil
+    t_out := make([dynamic]PPtr, context.temp_allocator)
+    p_out := make([dynamic]string, context.temp_allocator)
+    v_out := make([dynamic][]byte, context.temp_allocator)
+    for &ov in ns.overrides {
+        if !pptr_equals(ov.target, target) do continue
+        if !override_path_covers(property_path, ov.property_path) do continue
+        bytes, merr := json.marshal(ov.value, {spec = .JSON}, context.temp_allocator)
+        if merr != nil do continue
+        append(&t_out, ov.target)
+        append(&p_out, ov.property_path)
+        append(&v_out, bytes)
+    }
+    return t_out[:], p_out[:], v_out[:]
+}
+
+// Live-edit recording keyed the way the inspector sees the world: the host
+// transform of the nested instance plus the live local_id of the edited row.
+// Resolves to the ROOT scene's NS and the correctly projected target (deep
+// chains included) via the same locate the marker and Revert use, so all
+// three agree by construction.
+nested_scene_record_override_for_host :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+    field_ptr: rawptr,
+    field_tid: typeid,
+) -> (created: bool, ok: bool) {
+    root_ns, target, loc_ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !loc_ok || root_ns == nil do return false, false
+    return nested_scene_record_override(s, root_ns, target, property_path, field_ptr, field_tid)
+}
+
+// Walks from `inner_host_tH` up the chain of expand_parent hosts to the root
+// native NS, collecting (prefab_guid, transform_parent) hops along the way.
+// Returns the root NS and the chain hops (top-down: chain[0] is the hop from
+// the root NS into the next inner level; chain[last] is the hop into
+// `inner_host_tH`'s NS). For native hosts (no chain) returns chain==nil.
+//
+// Like _nested_chain_to_root but collects each inner NS's
+// local_id_in_parent (the projection key) instead of (transform_parent, guid).
+// Top-down: chain[0] is the outermost inner NS's lid, chain[last] is the
+// inner NS hosting `inner_host_tH`. Used to forward-project a target lid into
+// the encoding stored in breadcrumbs (locate path) and to un-project it
+// during resolution. Empty chain means inner_host_tH is native.
+@(private = "file")
+_nested_chain_to_root_lids :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    allocator := context.temp_allocator,
+) -> (^NestedScene, [dynamic]Local_ID, bool) {
+    if s == nil do return nil, nil, false
+    inner_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
+    if inner_ns == nil do return nil, nil, false
+    if inner_ns.expand_parent == {} {
+        return inner_ns, nil, true
+    }
+    chain := make([dynamic]Local_ID, 0, 4, allocator)
+    cur := inner_ns
+    for _ in 0 ..< 64 {
+        append(&chain, cur.local_id_in_parent)
+        ep := cur.expand_parent
+        if ep == {} do break
+        outer := scene_find_nested_scene_for_host(s, ep)
+        if outer == nil do return nil, chain, false
+        if outer.expand_parent == {} {
+            n := len(chain)
+            for i in 0 ..< n / 2 {
+                chain[i], chain[n - 1 - i] = chain[n - 1 - i], chain[i]
+            }
+            return outer, chain, true
+        }
+        cur = outer
+    }
+    return nil, chain, false
+}
+
+// Caller owns the returned dynamic array (allocated in `allocator`).
+@(private = "file")
+_nested_chain_to_root :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    allocator := context.temp_allocator,
+) -> (^NestedScene, [dynamic]PPtr, bool) {
+    if s == nil do return nil, nil, false
+    inner_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
+    if inner_ns == nil do return nil, nil, false
+    if inner_ns.expand_parent == {} {
+        return inner_ns, nil, true
+    }
+    chain := make([dynamic]PPtr, 0, 4, allocator)
+    cur := inner_ns
+    for _ in 0 ..< 64 {
+        append(&chain, PPtr{guid = cur.source_prefab, local_id = cur.transform_parent})
+        ep := cur.expand_parent
+        if ep == {} do break
+        outer := scene_find_nested_scene_for_host(s, ep)
+        if outer == nil do return nil, chain, false
+        if outer.expand_parent == {} {
+            // outer is native — reverse chain to top-down and return.
+            n := len(chain)
+            for i in 0 ..< n / 2 {
+                chain[i], chain[n - 1 - i] = chain[n - 1 - i], chain[i]
+            }
+            return outer, chain, true
+        }
+        cur = outer
+    }
+    return nil, chain, false
+}
+
+// For a UI context where the user is inspecting a transform/component inside a
+// nested-owned subtree, returns the root native NS and the (guid, projected lid)
+// that root would hold as `Override.target` for `target_lid` in
+// `inner_host_tH`'s prefab namespace. For native hosts the target is
+// `(root_ns.source_prefab, target_lid)` — no projection needed. For deep hosts
+// the target's guid names the leaf prefab and its lid is `target_lid` projected
+// through every inner NS's `local_id_in_parent` on the way up. Caller compares
+// the returned target against existing `ov.target` values via `pptr_equals`.
+nested_scene_locate_root_override :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+) -> (^NestedScene, PPtr, bool) {
+    if s == nil do return nil, {}, false
+    root_ns, _, ok := _nested_chain_to_root(s, inner_host_tH)
+    if !ok || root_ns == nil do return nil, {}, false
+
+    leaf_ns := scene_find_nested_scene_for_host(s, inner_host_tH)
+    if leaf_ns == nil do return nil, {}, false
+
+    // Callers pass LIVE lids; override targets are SOURCE-namespace (file
+    // format). Un-map through the leaf instance's correspondence table first.
+    tlid := target_lid
+    if src_lid, has_src := leaf_ns.source_of_inst[tlid]; has_src {
+        tlid = src_lid
+    }
+
+    // Native host case: target lid is directly in the root NS prefab namespace.
+    if leaf_ns.expand_parent == {} {
+        return root_ns, PPtr{guid = root_ns.source_prefab, local_id = tlid}, true
+    }
+
+    _, lid_chain, lok := _nested_chain_to_root_lids(s, inner_host_tH)
+    if !lok do return nil, {}, false
+
+    // Forward-project the source lid through the chain (top-down): for each NS
+    // from root to leaf, XOR the running value by that NS's local_id_in_parent.
+    projected := tlid
+    for i := len(lid_chain) - 1; i >= 0; i -= 1 {
+        projected = local_id_project(lid_chain[i], projected)
+    }
+
+    return root_ns, PPtr{guid = leaf_ns.source_prefab, local_id = projected}, true
+}
+
+// Checks whether root scene has an override on (target_lid, property_path) for
+// a transform/component that lives inside `inner_host_tH`'s nested subtree.
+nested_scene_has_root_override :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+    property_path: string,
+) -> bool {
+    root_ns, target, ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !ok || root_ns == nil do return false
+    return nested_scene_has_override(root_ns, target, property_path)
+}
+
+// Like nested_scene_has_root_override but returns true if the root NS has ANY
+// override on `target_lid` regardless of property_path. Used for the "is any
+// field on this transform/component overridden by root scene" check that
+// drives component-header coloring.
+nested_scene_has_any_root_override_for_target :: proc(
+    s: ^Scene,
+    inner_host_tH: Transform_Handle,
+    target_lid: Local_ID,
+) -> bool {
+    root_ns, target, ok := nested_scene_locate_root_override(s, inner_host_tH, target_lid)
+    if !ok || root_ns == nil do return false
+    for &ov in root_ns.overrides {
+        if pptr_equals(ov.target, target) do return true
+    }
+    return false
+}
+
+_nested_revert_field_ptr :: proc(ptr: rawptr, tid: typeid, path: string) -> (rawptr, typeid, bool) {
+    dot := strings.index_byte(path, '.')
+    key := path if dot < 0 else path[:dot]
+    names := reflect.struct_field_names(tid)
+    types := reflect.struct_field_types(tid)
+    offsets := reflect.struct_field_offsets(tid)
+    for i in 0..<len(names) {
+        if names[i] != key do continue
+        field_ptr := rawptr(uintptr(ptr) + offsets[i])
+        if dot < 0 do return field_ptr, types[i].id, true
+        return _nested_revert_field_ptr(field_ptr, types[i].id, path[dot+1:])
+    }
+    return nil, nil, false
+}
+
+// Locates the live field pointer for `(target_id, property_path)` inside
+// `ns`'s instance: composed-lid bimap lookup, then field resolution on the
+// entity (a transform target also searches its attached components — a
+// root-targeted override may address a component on the absorbed root).
+// `revert_field_ptr`, when set, must match the located pointer (the inspector
+// passes the field it is drawing as a consistency guard).
+// Public wrapper: the Overrides dropdown wraps its revert in an undo
+// Value_Command, which needs the live field pointer up front — the same one
+// nested_scene_revert_override will write through.
+// Also returns the HANDLE that owns the field (the transform, or the component
+// it lives on) — undo's Value_Command is keyed by owner, so the caller has to
+// push that owner before opening the edit scope.
+nested_scene_find_revert_target :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+) -> (rawptr, typeid, Handle, bool) {
+    if s == nil || ns == nil do return nil, nil, {}, false
+    leaf_ns := ns
+    leaf_lid := target.local_id
+    if !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab {
+        host := nested_scene_resolve_host_handle(s, ns)
+        if _, lns, lid := _nested_walk_override_target(s, host, target); lns != nil {
+            leaf_ns = lns
+            leaf_lid = lid
+        }
+    }
+    fp, ftid, ok := _nested_find_revert_target(s, leaf_ns, leaf_lid, property_path, nil)
+    if !ok do return nil, nil, {}, false
+    return fp, ftid, _nested_field_owner_handle(s, leaf_ns, leaf_lid, fp), true
+}
+
+// Which live object physically contains `field_ptr`: the transform itself, or
+// one of its components.
+@(private = "file")
+_nested_field_owner_handle :: proc(s: ^Scene, ns: ^NestedScene, lid: Local_ID, field_ptr: rawptr) -> Handle {
+    w := ctx_world()
+    h := _find_source_handle_in_instance(s, ns, lid)
+    if h == {} do return {}
+    if h.type_key != .Transform do return h
+
+    t := pool_get(&w.transforms, h)
+    if t == nil do return {}
+    fp := uintptr(field_ptr)
+    if tp := uintptr(rawptr(t)); fp >= tp && fp < tp + uintptr(size_of(Transform)) do return h
+    for c in t.components {
+        if c.handle.type_key == INVALID_TYPE_KEY do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        ti := type_info_of(get_typeid_by_type_key(c.handle.type_key))
+        if ti == nil do continue
+        cp := uintptr(raw)
+        if fp >= cp && fp < cp + uintptr(ti.size) do return c.handle
+    }
+    return h
+}
+
+@(private = "file")
+_nested_find_revert_target :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target_id: Local_ID,
+    property_path: string,
+    revert_field_ptr: rawptr,
+) -> (rawptr, typeid, bool) {
+    w := ctx_world()
+    h := _find_source_handle_in_instance(s, ns, target_id)
+    if h == {} do return nil, nil, false
+
+    try :: proc(fp: rawptr, ftid: typeid, ok: bool, want: rawptr) -> (rawptr, typeid, bool) {
+        if ok && (want == nil || uintptr(want) == uintptr(fp)) do return fp, ftid, true
+        return nil, nil, false
+    }
+
+    if h.type_key == .Transform {
+        t := pool_get(&w.transforms, h)
+        if t == nil do return nil, nil, false
+        fp, ftid, ok := _nested_revert_field_ptr(t, Transform, property_path)
+        if rp, rtid, rok := try(fp, ftid, ok, revert_field_ptr); rok do return rp, rtid, true
+        for c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            comp_ptr := world_pool_get(w, c.handle)
+            if comp_ptr == nil do continue
+            comp_tid := get_typeid_by_type_key(c.handle.type_key)
+            if comp_tid == nil do continue
+            cfp, cftid, cok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+            if rp, rtid, rok := try(cfp, cftid, cok, revert_field_ptr); rok do return rp, rtid, true
+        }
+        return nil, nil, false
+    }
+
+    comp_ptr := world_pool_get(w, h)
+    if comp_ptr == nil do return nil, nil, false
+    comp_tid := get_typeid_by_type_key(h.type_key)
+    if comp_tid == nil do return nil, nil, false
+    fp, ftid, ok := _nested_revert_field_ptr(comp_ptr, comp_tid, property_path)
+    return try(fp, ftid, ok, revert_field_ptr)
+}
+
+// Locates the leaf NS host for an Override.target (a PPtr carrying
+// (deepest_prefab_guid, projected_lid)) plus the un-projected lid within that
+// leaf's prefab namespace. DFS through inner NSs descending from native_host,
+// un-projecting target.local_id by each visited NS's local_id_in_parent. At a
+// candidate whose source_prefab matches target.guid, verify by checking the
+// candidate's resolved subtree contains the un-projected lid. Returns
+// ({}, nil, 0) if not found.
+// Public wrapper: the overrides list resolves each row's target to a live
+// object the same way revert does, so the label names what the revert touches.
+nested_scene_walk_override_target :: proc(
+    s: ^Scene,
+    native_host_tH: Transform_Handle,
+    target: PPtr,
+) -> (Transform_Handle, ^NestedScene, Local_ID) {
+    return _nested_walk_override_target(s, native_host_tH, target)
+}
+
+@(private = "file")
+_nested_walk_override_target :: proc(
+    s: ^Scene,
+    native_host_tH: Transform_Handle,
+    target: PPtr,
+) -> (Transform_Handle, ^NestedScene, Local_ID) {
+    if s == nil do return {}, nil, 0
+    if pptr_guid_is_empty(target.guid) do return {}, nil, 0
+
+    // Single-level: target lives directly inside native_host's expansion.
+    // No projection chain — the lid is already in target.guid's namespace.
+    native_ns := scene_find_nested_scene_for_host(s, native_host_tH)
+    if native_ns != nil && native_ns.source_prefab == target.guid {
+        return native_host_tH, native_ns, target.local_id
+    }
+
+    // Multi-level: descend, un-projecting at each NS level.
+    return _find_descendant_ns_by_projection(s, native_host_tH, target.guid, target.local_id)
+}
+
+// DFS through inner NSs descending from start_host_tH, looking for one whose
+// source_prefab matches target_guid where the un-projected lid resolves to a
+// real entity in the candidate's subtree. At each NS level the projected value
+// is XORed by that NS's local_id_in_parent to peel off one level.
+@(private = "file")
+_find_descendant_ns_by_projection :: proc(
+    s: ^Scene,
+    start_host_tH: Transform_Handle,
+    target_guid: Asset_GUID,
+    projected: Local_ID,
+) -> (Transform_Handle, ^NestedScene, Local_ID) {
+    for &cand in s.nested_scenes {
+        if cand.expand_parent != start_host_tH do continue
+        cand_host := nested_scene_resolve_host_handle(s, &cand)
+        if cand_host == {} do continue
+
+        // Un-project one level using this candidate's projection key.
+        next_projected := local_id_unproject(_ns_projection_key(&cand), projected)
+
+        if cand.source_prefab == target_guid {
+            // Verify next_projected resolves in this candidate's instance.
+            if _find_source_handle_in_instance(s, &cand, next_projected) != {} {
+                return cand_host, &cand, next_projected
+            }
+            // Wrong branch: continue searching.
+        }
+        if h, n, lid := _find_descendant_ns_by_projection(s, cand_host, target_guid, next_projected); n != nil {
+            return h, n, lid
+        }
+    }
+    return {}, nil, 0
+}
+
+@(private = "file")
+ChainHop :: struct { guid: Asset_GUID, lid_in_parent: Local_ID }
+
+// Builds the hop chain from `start_host_tH` down to (and including) the first
+// inner NS whose source_prefab == target_guid. Each hop entry carries:
+// (next_prefab_guid, host_transform_lid_in_outer_prefab_namespace,
+//  next_NS's local_id_in_parent). Top-down. The lid_in_parent values are the
+// XOR projection keys used to un-project deep target lids.
+// Returns false if not found.
+@(private = "file")
+_collect_chain_to_prefab :: proc(s: ^Scene, start_host_tH: Transform_Handle, target_guid: Asset_GUID, out: ^[dynamic]ChainHop) -> bool {
+    for &cand in s.nested_scenes {
+        if cand.expand_parent != start_host_tH do continue
+        cand_host := nested_scene_resolve_host_handle(s, &cand)
+        if cand_host == {} do continue
+        append(out, ChainHop{guid = cand.source_prefab, lid_in_parent = _ns_projection_key(&cand)})
+        if cand.source_prefab == target_guid do return true
+        if _collect_chain_to_prefab(s, cand_host, target_guid, out) do return true
+        // Backtrack — wrong branch.
+        if len(out^) > 0 do pop(out)
+    }
+    return false
+}
+
+// Resolves a breadcrumb to the real runtime Handle of its target. For deep
+// breadcrumbs (scene_path non-empty) walks the chain to find the leaf NS host
+// then locates the target by prefab-namespaced lid in the host's nested-owned
+// subtree. For depth-1 (path empty) the leaf is the native NS host itself.
+// Returns {} when any step fails (chain stale, NS not yet materialized, target
+// not found). Used by load-time resolution to migrate breadcrumb bimap
+// entries from synthetic placeholders to the real target handle.
+nested_resolve_breadcrumb_to_handle :: proc(s: ^Scene, bc: Breadcrumb) -> Handle {
+    if s == nil do return {}
+    // Find the native NS this breadcrumb is anchored to.
+    native_ns: ^NestedScene = nil
+    for &ns in s.nested_scenes {
+        if ns.expand_parent != {} do continue
+        if ns.local_id == bc.scene_instance {
+            native_ns = &ns
+            break
+        }
+    }
+    if native_ns == nil do return {}
+
+    native_host := nested_scene_resolve_host_handle(s, native_ns)
+    if native_host == {} do return {}
+
+    // Determine if target is in the native NS's own prefab (depth-1) or
+    // deeper. If scene_source.guid matches native_ns.source_prefab, depth-1.
+    leaf_host: Transform_Handle
+    leaf_ns: ^NestedScene
+    leaf_lid: Local_ID
+    if pptr_guid_is_empty(bc.scene_source.guid) || bc.scene_source.guid == native_ns.source_prefab {
+        leaf_host = native_host
+        leaf_ns = native_ns
+        leaf_lid = bc.scene_source.local_id
+    } else {
+        leaf_host, leaf_ns, leaf_lid = _nested_walk_override_target(s, native_host, bc.scene_source)
+        if leaf_host == {} || leaf_ns == nil do return {}
+    }
+
+    return _find_source_handle_in_instance(s, leaf_ns, leaf_lid)
+}
+
+// The live handle of a source-prefab lid inside `ns`'s materialized instance.
+// Instance lids are registered scene-wide, so this is a composed-lid bimap
+// lookup — no subtree walking.
+// Public wrapper: the overrides list resolves rows to live objects with the
+// same rule revert uses, so a row's label names exactly what its revert touches.
+nested_scene_find_source_handle :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Handle {
+    return _find_source_handle_in_instance(s, ns, source_lid)
+}
+
+@(private = "file")
+_find_source_handle_in_instance :: proc(s: ^Scene, ns: ^NestedScene, source_lid: Local_ID) -> Handle {
+    if s == nil || ns == nil do return {}
+    if h, ok := bimap_get(&s.local_ids, nested_scene_instance_lid(s, ns, source_lid)); ok {
+        return h
+    }
+    // A ROOT VARIANT's base content is loaded with registration SKIPPED
+    // (_variant_materialize_root), so the variant's own authored lids keep the
+    // namespace and the base's lids collide with nothing. Nothing is registered
+    // under them, so the bimap cannot answer — walk the live subtree instead and
+    // match on the lid each object carries.
+    if nested_scene_is_root_variant(s, ns) {
+        return _find_lid_in_subtree(nested_scene_resolve_host_handle(s, ns), source_lid)
+    }
+    return {}
+}
+
+// Depth-first search for the transform or component carrying `lid`. Used where
+// the scene bimap has no entry — see _find_source_handle_in_instance.
+@(private = "file")
+_find_lid_in_subtree :: proc(root_tH: Transform_Handle, lid: Local_ID) -> Handle {
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(root_tH))
+    if t == nil do return {}
+    if t.local_id == lid do return Handle(root_tH)
+    for c in t.components {
+        if c.handle.type_key == INVALID_TYPE_KEY do continue
+        raw := world_pool_get(w, c.handle)
+        if raw == nil do continue
+        if (cast(^CompData)raw).local_id == lid do return c.handle
+    }
+    for child in t.children {
+        if h := _find_lid_in_subtree(Transform_Handle(child.handle), lid); h != {} do return h
+    }
+    return {}
+}
+
+// Patches the live field at `(target_id, property_path)` inside `ns`'s
+// instance using `value` JSON. `cleanup_T` (registered as `type_cleanup_by_typeid`)
+// is contracted to free + zero the field, so unmarshal_any sees a valid empty
+// slot. Returns true on success. Logs and returns false when the locate fails
+// or the field type has no registered pointer typeid.
+// Public wrapper: undo of a dropdown revert has to restore the live value as
+// well as the record (see nested_override_restore_field).
+nested_scene_patch_live_field :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target_id: Local_ID,
+    property_path: string,
+    value: json.Value,
+) -> bool {
+    return _nested_patch_live_field(s, ns, target_id, property_path, value)
+}
+
+@(private = "file")
+_nested_patch_live_field :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target_id: Local_ID,
+    property_path: string,
+    value: json.Value,
+) -> bool {
+    live_ptr, live_tid, found := _nested_find_revert_target(s, ns, target_id, property_path, nil)
+    if !found || live_ptr == nil do return false
+
+    field_bytes, merr := json.marshal(value, {spec = .JSON}, context.temp_allocator)
+    if merr != nil do return false
+
+    type_cleanup_by_typeid(live_tid, live_ptr)
+    ptr_tid, ptr_ok := get_pointer_typeid_by_typeid(live_tid)
+    if !ptr_ok do return false
+    if uerr := json.unmarshal_any(field_bytes, any{&live_ptr, ptr_tid}); uerr != nil do return false
+    // Override values may hold Ref_Local source lids — bind them into the
+    // instance namespace (composed lid + live handle).
+    _nested_bind_source_refs_in_value(live_ptr, type_info_of(live_tid), s, ns)
+    return true
+}
+
+// Iterates root NS's `overrides`, applies the deep ones (target.guid points to
+// some prefab deeper than ns.source_prefab) by patching the live tree. Shallow
+// overrides (target.guid == ns.source_prefab) were already folded in by
+// `nested_scene_apply_overrides` during bake.
+// Package-visible entry for the variant-root load path (scene_manager): the
+// materialized variant root never goes through nested_scene_resolve, so its
+// deep overrides must be applied explicitly after its subtree resolves.
+nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^NestedScene) {
+    _nested_scene_apply_deep_overrides_live(host_tH, ns)
+}
+
+@(private = "file")
+_nested_scene_apply_deep_overrides_live :: proc(host_tH: Transform_Handle, ns: ^NestedScene) {
+    if ns == nil do return
+    w := ctx_world()
+    host_t := pool_get(&w.transforms, Handle(host_tH))
+    if host_t == nil do return
+    s := host_t.scene
+    if s == nil do return
+
+    for &ov in ns.overrides {
+        if pptr_guid_is_empty(ov.target.guid) do continue
+        if ov.target.guid == ns.source_prefab do continue
+
+        // Deep: descend from native_host, un-projecting through each inner NS
+        // by its local_id_in_parent.
+        leaf_host, leaf_ns, leaf_lid := _nested_walk_override_target(s, host_tH, ov.target)
+        if leaf_host == {} || leaf_ns == nil do continue
+        _nested_patch_live_field(s, leaf_ns, leaf_lid, ov.property_path, ov.value)
+    }
+
+    _nested_apply_deep_added_objects_live(s, host_tH, ns)
+}
+
+// Grafts additions whose parent lives inside a prefab nested WITHIN this
+// instance. The shallow graft works on the source prefab's bytes, where such a
+// parent does not exist — the inner prefab has not been expanded at that point.
+// These records address their parent by the XOR-composed lid (Unity's
+// nested_PrefabInstance ^ object fileID), so they resolve only once the whole
+// chain is materialized, which is here.
+@(private = "file")
+_nested_apply_deep_added_objects_live :: proc(s: ^Scene, host_tH: Transform_Handle, ns: ^NestedScene) {
+    w := ctx_world()
+    for &ao in ns.added_objects {
+        // Shallow records (parent in this instance's own prefab) were already
+        // grafted into the bytes — re-adding them here would duplicate.
+        if ao.parent.guid == ns.source_prefab do continue
+        if pptr_guid_is_empty(ao.parent.guid) do continue
+
+        _, leaf_ns, leaf_lid := _nested_walk_override_target(s, host_tH, ao.parent)
+        if leaf_ns == nil do continue
+        parent_tH := _find_source_handle_in_instance(s, leaf_ns, leaf_lid)
+        if parent_tH == {} do continue
+        // Already present from an earlier resolve of this same instance.
+        if _, live := bimap_get(&s.local_ids, ao.local_id); live do continue
+
+        sf: SceneFile
+        if scene_file_unmarshal(transmute([]byte)ao.json, &sf) != nil do continue
+        defer scene_file_destroy(&sf)
+        added_tH := _scene_load_as_child(&sf, Transform_Handle(parent_tH), s)
+        if added_tH == {} do continue
+        // Host-authored content inside prefab material: leave it un-owned so
+        // the next save re-captures it (see _mark_subtree_nested_owned).
+        if at := pool_get(&w.transforms, Handle(added_tH)); at != nil do at.nested_owned = false
+    }
+}
+
+// The revert baseline: the value of `property_path` at row `leaf_lid` in
+// `leaf_ns`'s chain-baked base — the leaf prefab with EVERY ancestor prefab's
+// NS-for-child overrides applied and all variant inheritance flattened, but
+// WITHOUT the open scene's own overrides (those live on the scene, not the
+// prefab files). This is exactly the value the field reverts to, for shallow
+// AND deep. Reuses `chain_baked_base_for_ns` (the same baseline the override
+// CAPTURE diffs against), so capture and revert agree.
+@(private = "file")
+_nested_resolved_field_json :: proc(s: ^Scene, leaf_ns: ^NestedScene, leaf_lid: Local_ID, property_path: string) -> (json.Value, bool) {
+    raw, ok := chain_baked_base_for_ns(s, leaf_ns)
+    if !ok do return nil, false
+    defer delete(raw)
+
+    cpy := make([]byte, len(raw), context.temp_allocator)
+    copy(cpy, raw)
+    root_val: json.Value
+    if json.unmarshal_string(string(cpy), &root_val) != nil do return nil, false
+    defer json.destroy_value(root_val)
+    root_obj, is_obj := root_val.(json.Object)
+    if !is_obj do return nil, false
+
+    for _, section_val in root_obj {
+        arr, is_arr := section_val.(json.Array)
+        if !is_arr do continue
+        for item in arr {
+            obj, ok := item.(json.Object)
+            if !ok do continue
+            lid, lid_ok := _json_local_id_of(obj)
+            if !lid_ok || lid != leaf_lid do continue
+            field_val, fok := _json_get_path(obj, property_path)
+            if !fok do return nil, false
+            return json.clone_value(field_val), true
+        }
+    }
+    return nil, false
+}
+
+nested_scene_revert_override :: proc(
+    s: ^Scene,
+    ns: ^NestedScene,
+    target: PPtr,
+    property_path: string,
+    revert_field_ptr: rawptr = nil,
+) {
+    if s == nil || ns == nil do return
+
+    has_match := false
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
+            has_match = true
+            break
+        }
+    }
+    if !has_match do return
+
+    // Locate the live field AND the leaf prefab the field lives in. The same
+    // walk used by deep-override APPLY recovers the leaf NS + leaf-prefab lid;
+    // reuse it so revert and apply agree on the target. For a shallow override
+    // the leaf prefab is ns.source_prefab and the lid is target.local_id.
+    native_host_tH := nested_scene_resolve_host_handle(s, ns)
+    leaf_target := target.local_id
+    leaf_ns := ns
+
+    is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
+    if is_deep {
+        lh, lns, lid := _nested_walk_override_target(s, native_host_tH, target)
+        if lh != {} && lns != nil {
+            leaf_target = lid
+            leaf_ns = lns
+        }
+    }
+
+    live_ptr, live_tid, found := _nested_find_revert_target(s, leaf_ns, leaf_target, property_path, revert_field_ptr)
+    if found && live_ptr != nil {
+        // Baseline = the field in leaf_ns's chain-baked base (every ancestor
+        // prefab's overrides applied, variants flattened, but NOT the open
+        // scene's own overrides). Same baseline the capture diffs against, for
+        // both shallow and deep.
+        baseline, ok := _nested_resolved_field_json(s, leaf_ns, leaf_target, property_path)
+        if ok {
+            defer json.destroy_value(baseline)
+            field_bytes, merr := json.marshal(baseline, {spec = .JSON}, context.temp_allocator)
+            if merr == nil {
+                type_cleanup_by_typeid(live_tid, live_ptr)
+                if ptr_tid, ptr_ok := get_pointer_typeid_by_typeid(live_tid); ptr_ok {
+                    json.unmarshal_any(field_bytes, any{&live_ptr, ptr_tid})
+                    // The baseline's Ref_Local lids are source-namespace — bind
+                    // them to instance lids + live handles.
+                    _nested_bind_source_refs_in_value(live_ptr, type_info_of(live_tid), s, leaf_ns)
+                }
+            }
+        }
+    }
+
+    // Remove ALL covered entries (sub-property overrides of a struct-valued
+    // field revert together with it; duplicates from stale data go too) —
+    // leaving any behind would keep the field visually flagged as overridden
+    // and require another revert click.
+    write := 0
+    for i in 0..<len(ns.overrides) {
+        ov := ns.overrides[i]
+        if pptr_equals(ov.target, target) && override_path_covers(property_path, ov.property_path) {
+            delete(ov.property_path)
+            json.destroy_value(ov.value)
+            continue
+        }
+        ns.overrides[write] = ov
+        write += 1
+    }
+    resize(&ns.overrides, write)
+}
+
+// Walks a value freshly unmarshaled from SOURCE-namespace JSON (an override
+// value or a revert baseline) and binds every Ref/Ref_Local into `ns`'s
+// instance: source lid -> composed instance lid + live handle from the bimap.
+// Lids already carrying INSTANCE_LID_BIT (or pointing outside the prefab, e.g.
+// host lids in ref-override values) resolve through the bimap as-is.
+_nested_bind_source_refs_in_value :: proc(ptr: rawptr, ti: ^runtime.Type_Info, s: ^Scene, ns: ^NestedScene) {
+    if ptr == nil || ti == nil || s == nil || ns == nil do return
+    base := runtime.type_info_base(ti)
+    if base == nil do return
+
+    bind :: proc(s: ^Scene, ns: ^NestedScene, lid: ^Local_ID, handle: ^Handle) {
+        if lid^ == 0 do return
+        inst := lid^
+        if inst & INSTANCE_LID_BIT == 0 {
+            if candidate := nested_scene_instance_lid(s, ns, lid^); candidate != 0 {
+                if _, ok := bimap_get(&s.local_ids, candidate); ok {
+                    inst = candidate
+                }
+            }
+        }
+        if h, ok := bimap_get(&s.local_ids, inst); ok {
+            lid^ = inst
+            handle^ = h
+        }
+    }
+
+    #partial switch info in base.variant {
+    case runtime.Type_Info_Struct:
+        tid := ti.id
+        if tid == typeid_of(PPtr) do return
+        if tid == typeid_of(Ref) {
+            ref := cast(^Ref)ptr
+            if pptr_guid_is_empty(ref.pptr.guid) do bind(s, ns, &ref.pptr.local_id, &ref.handle)
+            return
+        }
+        if tid == typeid_of(Ref_Local) || tid == typeid_of(Owned) {
+            rl := cast(^Ref_Local)ptr
+            bind(s, ns, &rl.local_id, &rl.handle)
+            return
+        }
+        for i in 0..<int(info.field_count) {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(ptr) + info.offsets[i]), info.types[i], s, ns)
+        }
+    case runtime.Type_Info_Union:
+        tag_ptr := rawptr(uintptr(ptr) + info.tag_offset)
+        tag: i64
+        switch info.tag_type.size {
+        case 1: tag = i64((cast(^u8)tag_ptr)^)
+        case 2: tag = i64((cast(^u16)tag_ptr)^)
+        case 4: tag = i64((cast(^u32)tag_ptr)^)
+        case 8: tag = i64((cast(^u64)tag_ptr)^)
+        }
+        idx := tag if info.no_nil else tag - 1
+        if idx < 0 || int(idx) >= len(info.variants) do return
+        _nested_bind_source_refs_in_value(ptr, info.variants[idx], s, ns)
+    case runtime.Type_Info_Dynamic_Array:
+        dyn := cast(^runtime.Raw_Dynamic_Array)ptr
+        if dyn.data == nil || dyn.len == 0 do return
+        for i in 0..<dyn.len {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(dyn.data) + uintptr(i * info.elem_size)), info.elem, s, ns)
+        }
+    case runtime.Type_Info_Array:
+        for i in 0..<info.count {
+            _nested_bind_source_refs_in_value(rawptr(uintptr(ptr) + uintptr(i * info.elem_size)), info.elem, s, ns)
+        }
+    }
+}
+
+// ============================== Apply ========================================
+//
+// Apply pushes overrides INTO a prefab file (spec §4.8) — the mirror of revert.
+// One core (`nested_scene_apply_entries`) serves the per-field context menu and
+// the Overrides dropdown, for all five override kinds.
+//
+// The possible destinations for a subject form a chain from the instance's own
+// prefab down to the file that physically owns the row (closest → base):
+//   - each NESTING ancestor holds the value as a record on its NS-for-child,
+//   - each VARIANT in the leaf's inheritance chain holds it as a record on its
+//     root NS (a variant file has no base rows to patch),
+//   - the OWNER file gets the value baked onto its own rows.
+//
+// The write model is a resave of each touched scene file: bake edits run the
+// same procs the resolve-time bake uses, record edits mutate the typed
+// SceneFile, and the result marshals with scene_serialize's options — the file
+// comes out exactly as if the edit had been made while editing that prefab.
+
+Apply_Target :: struct {
+    guid:     Asset_GUID,
+    is_owner: bool, // bake into this file's own rows; false = recorded as override
+}
+
+@(private = "file")
+_Apply_Level :: struct {
+    guid:         Asset_GUID, // the file written at this level
+    is_owner:     bool,
+    variant_root: bool,       // record goes on the file's root NS
+    rec_child:    Asset_GUID, // nesting record identity in the file: source_prefab
+    rec_lid:      Local_ID,   //   and file-stable local_id
+    subject_guid: Asset_GUID, // guid the record names at this level
+    subject_lid:  Local_ID,   // subject lid in this level's namespace
+}
+
+// The apply chain for one subject, closest → owner. Fails when the live chain
+// or the physical row cannot be resolved (stale record). Temp-allocated.
+@(private = "file")
+_apply_chain_for_subject :: proc(s: ^Scene, ns: ^NestedScene, subject: PPtr) -> ([]_Apply_Level, bool) {
+    if s == nil || ns == nil do return nil, false
+    levels := make([dynamic]_Apply_Level, context.temp_allocator)
+
+    nesting_owner := ns.source_prefab
+    owner_lid := subject.local_id
+    is_deep := !pptr_guid_is_empty(subject.guid) && subject.guid != ns.source_prefab
+    if is_deep {
+        native_host := nested_scene_resolve_host_handle(s, ns)
+        if native_host == {} do return nil, false
+        hops := make([dynamic]ChainHop, 0, 4, context.temp_allocator)
+        if !_collect_chain_to_prefab(s, native_host, subject.guid, &hops) do return nil, false
+        n := len(hops)
+        if n == 0 do return nil, false
+
+        // Ancestor record levels, closest first (levels_up n+1 .. 2).
+        for j := n + 1; j >= 2; j -= 1 {
+            g, idir, plid, rc, tgt, rtp, ok := _apply_resolve_parent(s, ns, subject, j)
+            if !ok || idir do return nil, false
+            // A variant file carries only its own additions and records — the
+            // NS record may physically live down `g`'s base chain.
+            file_g, fok := _file_owning_ns_record(g, rc, rtp)
+            if !fok do return nil, false
+            append(&levels, _Apply_Level{
+                guid = file_g, rec_child = rc, rec_lid = rtp,
+                subject_guid = tgt, subject_lid = plid,
+            })
+        }
+        _, _, plid1, _, _, _, ok1 := _apply_resolve_parent(s, ns, subject, 1)
+        if !ok1 do return nil, false
+        nesting_owner = subject.guid
+        owner_lid = plid1
+    }
+
+    // Variant descent: the row physically lives at the bottom of the leaf's
+    // inheritance chain — every variant on the way holds the value as an
+    // override on its root NS instead. Lids pass through unchanged (the
+    // flatten preserves base lids); the record names the DIRECT base, matching
+    // what the variant's own override capture writes.
+    cur_guid := nesting_owner
+    for _ in 0 ..< 33 {
+        if _prefab_file_contains_lid(cur_guid, owner_lid) {
+            append(&levels, _Apply_Level{guid = cur_guid, is_owner = true, subject_lid = owner_lid})
+            return levels[:], true
+        }
+        info, iok := asset_db_get_root_info(cur_guid)
+        if !iok || !info.is_variant do return nil, false
+        append(&levels, _Apply_Level{
+            guid = cur_guid, variant_root = true,
+            subject_guid = info.base_prefab, subject_lid = owner_lid,
+        })
+        cur_guid = info.base_prefab
+    }
+    return nil, false
+}
+
+// A prefab's file bytes from scene_lib, registering on first touch.
+@(private = "file")
+_prefab_raw_bytes :: proc(guid: Asset_GUID) -> ([]byte, bool) {
+    raw, has := scene_lib[guid]
+    if !has {
+        if !scene_lib_register(guid) do return nil, false
+        raw, has = scene_lib[guid]
+        if !has do return nil, false
+    }
+    return raw, true
+}
+
+// A prefab's file parsed into a temp SceneFile — read-only lifetime, no destroy.
+@(private = "file")
+_prefab_file_temp :: proc(guid: Asset_GUID) -> (sf: SceneFile, ok: bool) {
+    raw, rok := _prefab_raw_bytes(guid)
+    if !rok do return {}, false
+    prev := context.allocator
+    context.allocator = context.temp_allocator
+    defer context.allocator = prev
+    cpy := make([]byte, len(raw))
+    copy(cpy, raw)
+    if scene_file_unmarshal(cpy, &sf) != nil do return {}, false
+    return sf, true
+}
+
+// Whether `guid`'s file has a row (transform or component) with `lid`.
+@(private = "file")
+_prefab_file_contains_lid :: proc(guid: Asset_GUID, lid: Local_ID) -> bool {
+    sf, ok := _prefab_file_temp(guid)
+    if !ok do return false
+    for &tr in sf.transforms {
+        if tr.local_id == lid do return true
+    }
+    for rec in sf.components {
+        obj, is_o := rec.(json.Object)
+        if !is_o do continue
+        if l, lok := _json_local_id_of(obj); lok && l == lid do return true
+    }
+    return false
+}
+
+// The file that physically holds the NS record (source_prefab == rec_child,
+// local_id == rec_lid): `guid` itself, or — when `guid` is a variant whose
+// base contributed the record — the first file down its base chain that has it.
+@(private = "file")
+_file_owning_ns_record :: proc(guid: Asset_GUID, rec_child: Asset_GUID, rec_lid: Local_ID) -> (Asset_GUID, bool) {
+    g := guid
+    for _ in 0 ..< 33 {
+        sf, ok := _prefab_file_temp(g)
+        if !ok do return {}, false
+        for &nsr in sf.nested_scenes {
+            if nsr.source_prefab == rec_child && nsr.local_id == rec_lid do return g, true
+        }
+        info, iok := asset_db_get_root_info(g)
+        if !iok || !info.is_variant do return {}, false
+        g = info.base_prefab
+    }
+    return {}, false
+}
+
+// A structural record is expressible at a level when the resolve-time bake can
+// apply it there: baked into the owner, on a variant's root NS (always shallow
+// from that file), or on a nesting record whose direct child IS the subject's
+// prefab. Deeper nesting records would need a deep structural bake pass that
+// does not exist.
+@(private = "file")
+_level_structural_ok :: proc(lv: _Apply_Level) -> bool {
+    return lv.is_owner || lv.variant_root || lv.subject_guid == lv.rec_child
+}
+
+// The user-facing target list for one subject, closest → owner. Field
+// overrides can apply at every level; pass `structural = true` to keep only
+// the levels a structural record is expressible at. Temp-allocated; empty when
+// the chain cannot be resolved.
+nested_scene_apply_targets :: proc(s: ^Scene, ns: ^NestedScene, subject: PPtr, structural := false) -> []Apply_Target {
+    out := make([dynamic]Apply_Target, context.temp_allocator)
+    chain, ok := _apply_chain_for_subject(s, ns, subject)
+    if !ok do return out[:]
+    for &lv in chain {
+        if structural && !_level_structural_ok(lv) do continue
+        append(&out, Apply_Target{guid = lv.guid, is_owner = lv.is_owner})
+    }
+    return out[:]
+}
+
+// Targets valid for EVERY chosen entry — the Overrides dropdown's Apply menu.
+// Ordered by the first entry's chain (closest → base). `is_owner` only when
+// the level bakes for all entries. Temp-allocated.
+nested_scene_apply_targets_common :: proc(
+    s: ^Scene, ns: ^NestedScene,
+    entries: []Override_Entry, which: ^map[int]bool = nil,
+) -> []Apply_Target {
+    out := make([dynamic]Apply_Target, context.temp_allocator)
+    first := true
+    for e, i in entries {
+        if which != nil && !(i in which^) do continue
+        subject := e.target
+        #partial switch e.kind {
+        case .Added_Component, .Added_Object: subject = e.owner
+        }
+        tl := nested_scene_apply_targets(s, ns, subject, e.kind != .Modified_Property)
+        if first {
+            append(&out, ..tl)
+            first = false
+            continue
+        }
+        w := 0
+        for &tg in out {
+            keep := false
+            for cand in tl {
+                if cand.guid == tg.guid {
+                    keep = true
+                    tg.is_owner = tg.is_owner && cand.is_owner
+                    break
+                }
+            }
+            if keep {
+                out[w] = tg
+                w += 1
+            }
+        }
+        resize(&out, w)
+    }
+    if first do resize(&out, 0)
+    return out[:]
+}
+
+// Per-field convenience over the core: one Modified_Property entry, target
+// picked by `levels_up` counted 1-based from the DEEP end of the chain
+// (1 = the owner file, len(targets) = the instance's own prefab).
+nested_scene_apply_override :: proc(
+    s: ^Scene, ns: ^NestedScene,
+    target: PPtr, property_path: string, levels_up: int = 1,
+) -> bool {
+    if s == nil || ns == nil || levels_up < 1 do return false
+    targets := nested_scene_apply_targets(s, ns, target)
+    if levels_up > len(targets) do return false
+    host := nested_scene_resolve_host_handle(s, ns)
+    if host == {} do return false
+    entry := Override_Entry{kind = .Modified_Property, target = target, property_path = property_path}
+    return nested_scene_apply_entries(s, Transform_Handle(host), targets[len(targets) - levels_up].guid, {entry})
+}
+
+// Determines which prefab file an Apply writes into and in what shape.
+// Level model (1-based, deepest -> shallowest):
+//   lvl 1            = the field's OWNER prefab (`target.guid` for deep, or
+//                      `ns.source_prefab` for shallow). Applied as a DIRECT
+//                      field patch (the value is baked into that prefab; it
+//                      stops being an override). "Apply to Scene <owner>".
+//   lvl 2 .. levels  = each ancestor prefab between the owner and the open
+//                      scene's direct prefab (`ns.source_prefab`). Applied as
+//                      an override RECORD in that ancestor. "Apply as Override
+//                      in <ancestor>".
+// For a SHALLOW override (`target.guid == ns.source_prefab`) the owner IS the
+// open scene's direct prefab, so there is exactly one level (bake).
+// For a DEEP override over hop chain `hops` (len n), levels = n + 1: lvl 1 bakes
+// into the leaf (`hops[n-1].guid`), lvl 2 records into `hops[n-2]`'s host …
+// lvl n+1 records into `ns.source_prefab`.
+@(private = "file")
+_apply_resolve_parent :: proc(
+    s: ^Scene, ns: ^NestedScene, target: PPtr, levels_up: int,
+) -> (parent_guid: Asset_GUID, is_direct: bool, parent_lid: Local_ID,
+      rec_child_guid: Asset_GUID, tgt_guid: Asset_GUID, rec_ns_lid: Local_ID, ok: bool) {
+    if levels_up < 1 do return {}, false, 0, {}, {}, 0, false
+
+    is_deep := !pptr_guid_is_empty(target.guid) && target.guid != ns.source_prefab
+    if !is_deep {
+        // Shallow: only level 1 (bake into ns.source_prefab's own row).
+        if levels_up != 1 do return {}, false, 0, {}, {}, 0, false
+        return ns.source_prefab, true, target.local_id, {}, {}, 0, true
+    }
+
+    native_host := nested_scene_resolve_host_handle(s, ns)
+    if native_host == {} do return {}, false, 0, {}, {}, 0, false
+
+    hops := make([dynamic]ChainHop, 0, 4, context.temp_allocator)
+    if !_collect_chain_to_prefab(s, native_host, target.guid, &hops) do return {}, false, 0, {}, {}, 0, false
+    n := len(hops)
+    if n == 0 do return {}, false, 0, {}, {}, 0, false
+    if levels_up > n + 1 do return {}, false, 0, {}, {}, 0, false
+
+    if levels_up == 1 {
+        // Bake directly into the owner (leaf) prefab. The lid is the root lid
+        // fully un-projected through every hop into the leaf's own namespace.
+        plid := target.local_id
+        for hop in hops {
+            plid = local_id_unproject(hop.lid_in_parent, plid)
+        }
+        return target.guid, true, plid, {}, {}, 0, true
+    }
+
+    // levels_up in 2..n+1 → ancestor override. Map to the host-prefab index:
+    // the ancestor stack is [hops[n-2], …, hops[0], ns.source_prefab]; the
+    // override RECORD lives in the prefab one above the record's child. Define
+    // a := levels_up-1 in 1..n (an "override depth" identical to the old model).
+    a := levels_up - 1
+    // File = stack[n-a]: ns.source_prefab when n-a == 0, else hops[n-a-1].
+    file_idx := n - a
+    file_guid := ns.source_prefab if file_idx == 0 else hops[file_idx - 1].guid
+    // Record's child NS source_prefab = hops[n-a]; override target.guid stays leaf.
+    child_hop := hops[n - a]
+
+    // Un-project the root lid through the first n-a+1 hops (hops[0 .. n-a]).
+    plid := target.local_id
+    for i in 0..=(n - a) {
+        plid = local_id_unproject(hops[i].lid_in_parent, plid)
+    }
+
+    return file_guid, false, plid, child_hop.guid, target.guid, child_hop.lid_in_parent, true
+}
+
+@(private = "file")
+_Rec_Merge :: struct {
+    variant_root:  bool,
+    rec_child:     Asset_GUID,
+    rec_lid:       Local_ID,
+    kind:          Override_Entry_Kind,
+    subject:       PPtr,
+    property_path: string,
+    value:         json.Value,
+    payload_lid:   Local_ID,
+    type_guid:     string,
+    payload_json:  string,
+}
+
+@(private = "file")
+_Rec_Clear :: struct {
+    variant_root:  bool,
+    rec_child:     Asset_GUID,
+    rec_lid:       Local_ID,
+    subject_lid:   Local_ID,
+    property_path: string,
+}
+
+// Everything one prefab file receives from an apply, so each file is written
+// exactly once however many entries land in it.
+@(private = "file")
+_File_Edit :: struct {
+    guid:     Asset_GUID,
+    bake_ovs: [dynamic]Override,
+    bake_rc:  [dynamic]Removed_Component,
+    bake_ac:  [dynamic]Added_Component,
+    bake_ro:  [dynamic]Removed_Object,
+    bake_ao:  [dynamic]Added_Object,
+    merges:   [dynamic]_Rec_Merge,
+    clears:   [dynamic]_Rec_Clear,
+}
+
+@(private = "file")
+_root_override_value :: proc(ns: ^NestedScene, target: PPtr, property_path: string) -> (json.Value, bool) {
+    for &ov in ns.overrides {
+        if pptr_equals(ov.target, target) && ov.property_path == property_path {
+            return json.clone_value(ov.value, context.temp_allocator), true
+        }
+    }
+    return nil, false
+}
+
+@(private = "file")
+_root_added_component :: proc(ns: ^NestedScene, lid: Local_ID) -> (Added_Component, bool) {
+    for &ac in ns.added_components {
+        if ac.local_id == lid do return ac, true
+    }
+    return {}, false
+}
+
+@(private = "file")
+_root_added_object :: proc(ns: ^NestedScene, lid: Local_ID) -> (Added_Object, bool) {
+    for &ao in ns.added_objects {
+        if ao.local_id == lid do return ao, true
+    }
+    return {}, false
+}
+
+// One prefab file an Apply wrote (nested_scene_apply_entries `written`).
+Applied_File :: struct {
+    guid:   Asset_GUID,
+    before: []byte,
+    after:  []byte,
+}
+
+applied_files_destroy :: proc(files: []Applied_File) {
+    for f in files {
+        delete(f.before)
+        delete(f.after)
+    }
+}
+
+// Applies the chosen entries into `target_guid` — one of the subjects' chain
+// prefabs (nested_scene_apply_targets). Field overrides also clear the same
+// field from every chain level SHALLOWER than the target, since shallower-wins
+// precedence would otherwise shadow the applied value (§4.8).
+//
+// Every destination is resolved and every file's new bytes are computed before
+// anything is written, so a failing entry aborts the whole apply with the
+// files and the live records untouched. On success the applied records drop
+// from the root NS — field values stay live, they ARE the new baseline — and
+// each touched prefab propagates once: peer instances with their own override
+// keep it, peers without pick up the new value. The editor records it as one
+// undo step (scene_undo.apply_to_prefab) from `written` and the record snapshots.
+//
+// `which` filters `entries` by index (nil = all). Triggers propagation, so
+// `ns` pointers into s.nested_scenes are invalid afterward.
+//
+// `written`, when given, receives every file the apply wrote with its bytes
+// before and after (context allocator, applied_files_destroy). The editor's
+// undo keeps them to write the old bytes back.
+nested_scene_apply_entries :: proc(
+    s: ^Scene,
+    host_tH: Transform_Handle,
+    target_guid: Asset_GUID,
+    entries: []Override_Entry,
+    which: ^map[int]bool = nil,
+    written: ^[dynamic]Applied_File = nil,
+) -> bool {
+    if s == nil do return false
+    ns := scene_find_nested_scene_for_host(s, host_tH)
+    if ns == nil || ns.expand_parent != {} do return false
+
+    _Out :: struct {
+        guid: Asset_GUID,
+        path: string,
+        data: []byte,
+    }
+    outs := make([dynamic]_Out, context.temp_allocator)
+    applied := make([dynamic]Override_Entry, context.temp_allocator)
+
+    {
+        // Planning and byte computation allocate on TEMP only (the _File_Edit
+        // arrays, parsed trees, marshaled outputs) — nothing to free on the
+        // failure paths, and the arena outlives the writes below.
+        prev_alloc := context.allocator
+        context.allocator = context.temp_allocator
+        defer context.allocator = prev_alloc
+
+        edits := make([dynamic]_File_Edit)
+        file_edit_idx :: proc(edits: ^[dynamic]_File_Edit, g: Asset_GUID) -> int {
+            for &fe, i in edits^ {
+                if fe.guid == g do return i
+            }
+            append(edits, _File_Edit{guid = g})
+            return len(edits^) - 1
+        }
+
+        for e, i in entries {
+            if which != nil && !(i in which^) do continue
+            subject := e.target
+            #partial switch e.kind {
+            case .Added_Component, .Added_Object: subject = e.owner
+            }
+            chain, cok := _apply_chain_for_subject(s, ns, subject)
+            if !cok do return false
+            tgt_idx := -1
+            for &lv, li in chain {
+                if lv.guid == target_guid {
+                    tgt_idx = li
+                    break
+                }
+            }
+            if tgt_idx < 0 do return false
+            lv := chain[tgt_idx]
+            if e.kind != .Modified_Property && !_level_structural_ok(lv) do return false
+
+            fi := file_edit_idx(&edits, lv.guid)
+            if lv.is_owner {
+                switch e.kind {
+                case .Modified_Property:
+                    val, vok := _root_override_value(ns, e.target, e.property_path)
+                    if !vok do return false
+                    append(&edits[fi].bake_ovs, Override{
+                        target        = PPtr{guid = lv.guid, local_id = lv.subject_lid},
+                        property_path = e.property_path,
+                        value         = val,
+                    })
+                case .Removed_Component:
+                    append(&edits[fi].bake_rc, Removed_Component{
+                        target = PPtr{guid = lv.guid, local_id = lv.subject_lid},
+                    })
+                case .Added_Component:
+                    ac, aok := _root_added_component(ns, e.local_id)
+                    if !aok do return false
+                    append(&edits[fi].bake_ac, Added_Component{
+                        owner     = PPtr{guid = lv.guid, local_id = lv.subject_lid},
+                        local_id  = ac.local_id,
+                        type_guid = ac.type_guid,
+                        json      = ac.json,
+                    })
+                case .Removed_Object:
+                    append(&edits[fi].bake_ro, Removed_Object{
+                        target = PPtr{guid = lv.guid, local_id = lv.subject_lid},
+                    })
+                case .Added_Object:
+                    ao, aok := _root_added_object(ns, e.local_id)
+                    if !aok do return false
+                    append(&edits[fi].bake_ao, Added_Object{
+                        parent   = PPtr{guid = lv.guid, local_id = lv.subject_lid},
+                        local_id = ao.local_id,
+                        json     = ao.json,
+                    })
+                }
+            } else {
+                m := _Rec_Merge{
+                    variant_root = lv.variant_root,
+                    rec_child = lv.rec_child, rec_lid = lv.rec_lid,
+                    kind = e.kind,
+                    subject = PPtr{guid = lv.subject_guid, local_id = lv.subject_lid},
+                    property_path = e.property_path,
+                }
+                #partial switch e.kind {
+                case .Modified_Property:
+                    val, vok := _root_override_value(ns, e.target, e.property_path)
+                    if !vok do return false
+                    m.value = val
+                case .Added_Component:
+                    ac, aok := _root_added_component(ns, e.local_id)
+                    if !aok do return false
+                    m.payload_lid = ac.local_id
+                    m.type_guid = ac.type_guid
+                    m.payload_json = ac.json
+                case .Added_Object:
+                    ao, aok := _root_added_object(ns, e.local_id)
+                    if !aok do return false
+                    m.payload_lid = ao.local_id
+                    m.payload_json = ao.json
+                }
+                append(&edits[fi].merges, m)
+            }
+
+            if e.kind == .Modified_Property {
+                for li in 0 ..< tgt_idx {
+                    clv := chain[li]
+                    ci := file_edit_idx(&edits, clv.guid)
+                    append(&edits[ci].clears, _Rec_Clear{
+                        variant_root = clv.variant_root,
+                        rec_child = clv.rec_child, rec_lid = clv.rec_lid,
+                        subject_lid = clv.subject_lid,
+                        property_path = e.property_path,
+                    })
+                }
+            }
+            append(&applied, e)
+        }
+        if len(applied) == 0 do return false
+
+        for &fe in edits {
+            data, dok := _apply_file_edit_bytes(&fe)
+            if !dok do return false
+            path, pok := asset_db_get_path(uuid.Identifier(fe.guid))
+            if !pok do return false
+            append(&outs, _Out{guid = fe.guid, path = path, data = data})
+        }
+    }
+
+    for &o in outs {
+        if written != nil {
+            before, rerr := os.read_entire_file(o.path, context.allocator)
+            if rerr != nil do return false
+            append(written, Applied_File{guid = o.guid, before = before, after = slice.clone(o.data)})
+        }
+        if os.write_entire_file(o.path, o.data) != nil do return false
+        _prefab_bytes_refresh(o.guid, o.data)
+    }
+
+    // The files now carry the applied state — drop the live records. Field
+    // records go WITHOUT touching the live value (it is the new baseline); the
+    // structural drop is the same record removal revert performs.
+    for &e in applied {
+        if e.kind == .Modified_Property {
+            write := 0
+            for i in 0 ..< len(ns.overrides) {
+                ov := ns.overrides[i]
+                if pptr_equals(ov.target, e.target) && ov.property_path == e.property_path {
+                    delete(ov.property_path)
+                    json.destroy_value(ov.value)
+                    continue
+                }
+                ns.overrides[write] = ov
+                write += 1
+            }
+            resize(&ns.overrides, write)
+        } else {
+            nested_override_entry_revert(s, ns, e)
+        }
+    }
+
+    // One propagation per touched prefab, after all files and the in-memory
+    // state agree. NOTE: this re-resolves and may reallocate s.nested_scenes,
+    // so `ns` must not be used after this point.
+    for &o in outs {
+        prefab_propagate(o.guid)
+    }
+    return true
+}
+
+// One file's new bytes: bake edits ride the resolve-time bake procs over the
+// raw bytes, record merges and clears mutate the typed SceneFile, and the
+// result marshals with scene_serialize's options. Everything temp-allocated,
+// the returned bytes included.
+@(private = "file")
+_apply_file_edit_bytes :: proc(fe: ^_File_Edit) -> ([]byte, bool) {
+    raw, rok := _prefab_raw_bytes(fe.guid)
+    if !rok do return nil, false
+
+    prev := context.allocator
+    context.allocator = context.temp_allocator
+    defer context.allocator = prev
+
+    baked := raw
+    if len(fe.bake_ovs) > 0 {
+        baked = nested_scene_apply_overrides(baked, fe.bake_ovs[:], fe.guid)
+    }
+    baked = nested_scene_apply_component_edits(
+        baked, fe.bake_rc[:], fe.bake_ac[:], fe.guid, fe.bake_ro[:], fe.bake_ao[:])
+
+    sf: SceneFile
+    cpy := make([]byte, len(baked))
+    copy(cpy, baked)
+    if scene_file_unmarshal(cpy, &sf) != nil do return nil, false
+
+    for &m in fe.merges {
+        if !_sf_merge_record(&sf, &m) do return nil, false
+    }
+    for &c in fe.clears {
+        // A missing record or override is fine — nothing shadows there.
+        _sf_clear_override(&sf, &c)
+    }
+
+    opts := json.Marshal_Options{
+        spec = .JSON, pretty = true, use_spaces = true, spaces = 2,
+        sort_maps_by_key = true,
+    }
+    marshaled, merr := json.marshal(sf, opts)
+    if merr != nil do return nil, false
+    return json_canonicalize_floats(marshaled), true
+}
+
+@(private = "file")
+_sf_find_record_ns :: proc(sf: ^SceneFile, variant_root: bool, rec_child: Asset_GUID, rec_lid: Local_ID) -> ^NestedScene {
+    for &nsr in sf.nested_scenes {
+        if variant_root {
+            if nsr.transform_parent == 0 do return &nsr
+        } else if nsr.source_prefab == rec_child && nsr.local_id == rec_lid {
+            return &nsr
+        }
+    }
+    return nil
+}
+
+// Merges one record onto the file's NS. Replace-or-append for fields, identity-
+// deduped append for the structural kinds — the shapes are the typed record
+// structs themselves, so the file comes out exactly as a save would write it.
+// Runs on a temp SceneFile: clones land on temp, nothing is destroyed.
+@(private = "file")
+_sf_merge_record :: proc(sf: ^SceneFile, m: ^_Rec_Merge) -> bool {
+    nsr := _sf_find_record_ns(sf, m.variant_root, m.rec_child, m.rec_lid)
+    if nsr == nil do return false
+    switch m.kind {
+    case .Modified_Property:
+        for &ov in nsr.overrides {
+            if pptr_equals(ov.target, m.subject) && ov.property_path == m.property_path {
+                ov.value = json.clone_value(m.value, context.temp_allocator)
+                return true
+            }
+        }
+        append(&nsr.overrides, Override{
+            target        = m.subject,
+            property_path = strings.clone(m.property_path, context.temp_allocator),
+            value         = json.clone_value(m.value, context.temp_allocator),
+        })
+    case .Removed_Component:
+        for &rc in nsr.removed_components {
+            if pptr_equals(rc.target, m.subject) do return true
+        }
+        append(&nsr.removed_components, Removed_Component{target = m.subject})
+    case .Added_Component:
+        for &ac in nsr.added_components {
+            if ac.local_id == m.payload_lid do return true
+        }
+        append(&nsr.added_components, Added_Component{
+            owner     = m.subject,
+            local_id  = m.payload_lid,
+            type_guid = strings.clone(m.type_guid, context.temp_allocator),
+            json      = strings.clone(m.payload_json, context.temp_allocator),
+        })
+    case .Removed_Object:
+        for &ro in nsr.removed_objects {
+            if pptr_equals(ro.target, m.subject) do return true
+        }
+        append(&nsr.removed_objects, Removed_Object{target = m.subject})
+    case .Added_Object:
+        for &ao in nsr.added_objects {
+            if ao.local_id == m.payload_lid do return true
+        }
+        append(&nsr.added_objects, Added_Object{
+            parent   = m.subject,
+            local_id = m.payload_lid,
+            json     = strings.clone(m.payload_json, context.temp_allocator),
+        })
+    }
+    return true
+}
+
+// Removes every (subject_lid, property_path) override from the file's NS —
+// the clear-above-target half of Apply. Matching by lid alone mirrors what the
+// level's own capture writes (one guid per lid at one level).
+@(private = "file")
+_sf_clear_override :: proc(sf: ^SceneFile, c: ^_Rec_Clear) {
+    nsr := _sf_find_record_ns(sf, c.variant_root, c.rec_child, c.rec_lid)
+    if nsr == nil do return
+    write := 0
+    for i in 0 ..< len(nsr.overrides) {
+        ov := nsr.overrides[i]
+        if ov.target.local_id == c.subject_lid && ov.property_path == c.property_path do continue
+        nsr.overrides[write] = ov
+        write += 1
+    }
+    resize(&nsr.overrides, write)
+}
+
+
+nested_scene_add :: proc(s: ^Scene, source_prefab: Asset_GUID, host_tH: Transform_Handle, sibling_index: int) -> ^NestedScene {
+    if s == nil do return nil
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(host_tH))
+    if t == nil do return nil
+    ns := NestedScene{
+        local_id         = scene_new_lid(s),
+        source_prefab    = source_prefab,
+        transform_parent = t.local_id,
+        sibling_index    = sibling_index,
+    }
+    append(&s.nested_scenes, ns)
+    ns_ptr := &s.nested_scenes[len(s.nested_scenes) - 1]
+    nested_scene_attach_host_breadcrumb(s, ns_ptr, t.local_id)
+    return ns_ptr
+}
+
+// Strips nested-scene metadata from `host_tH`'s subtree, leaving plain
+// transforms/components in place. Used for runtime instantiation: the
+// override-baked content from `nested_scene_resolve` is kept, but the
+// NestedScene records, breadcrumbs, and `nested_owned` flags are dropped so
+// the spawned subtree behaves like a flat hierarchy with no editor bookkeeping.
+nested_scene_unpack_subtree :: proc(host_tH: Transform_Handle) {
+    w := ctx_world()
+    ht := pool_get(&w.transforms, Handle(host_tH))
+    if ht == nil do return
+    s := ht.scene
+    if s == nil do return
+
+    // Clear nested-owned flags AND renumber transforms/components with fresh
+    // scene-unique local_ids. The resolved subtree carries lids from multiple
+    // prefab namespaces (e.g. bullet's "Transform" lid=2 alongside c.scene's
+    // own lid=2), which is fine while they're nested-owned because they aren't
+    // registered in s.local_ids — but scene_copy_subtree serializes them by
+    // their `local_id` field, producing JSON with duplicate ids that break
+    // _scene_file_remap_local_ids on every subsequent paste.
+    renumber :: proc(w: ^World, tH: Transform_Handle, s: ^Scene) {
+        t := pool_get(&w.transforms, Handle(tH))
+        if t == nil do return
+        t.nested_owned = false
+
+        new_lid := scene_new_lid(s)
+        bimap_remove_by_val(&s.local_ids, Handle(tH))
+        if pool_valid(&w.transforms, t.parent.handle) {
+            pt := pool_get(&w.transforms, t.parent.handle)
+            if pt != nil {
+                for &child in pt.children {
+                    if child.handle == Handle(tH) {
+                        child.pptr.local_id = new_lid
+                        break
+                    }
+                }
+            }
+        }
+        for child in t.children {
+            ct := pool_get(&w.transforms, child.handle)
+            if ct == nil do continue
+            if ct.parent.pptr.local_id == t.local_id {
+                ct.parent.pptr.local_id = new_lid
+            }
+        }
+        t.local_id = new_lid
+        bimap_insert(&s.local_ids, new_lid, Handle(tH))
+
+        for &c in t.components {
+            if c.handle.type_key == INVALID_TYPE_KEY do continue
+            if !world_pool_valid(w, c.handle) do continue
+            raw := world_pool_get(w, c.handle)
+            if raw == nil do continue
+            base := cast(^CompData)raw
+            base.nested_owned = false
+            new_clid := scene_new_lid(s)
+            bimap_remove_by_val(&s.local_ids, c.handle)
+            base.local_id = new_clid
+            c.local_id = new_clid
+            bimap_insert(&s.local_ids, new_clid, c.handle)
+        }
+
+        for child in t.children {
+            renumber(w, Transform_Handle(child.handle), s)
+        }
+    }
+    is_in_subtree :: proc(w: ^World, tH, root: Transform_Handle) -> bool {
+        cur := tH
+        for cur != {} {
+            if cur == root do return true
+            ct := pool_get(&w.transforms, Handle(cur))
+            if ct == nil do return false
+            cur = Transform_Handle(ct.parent.handle)
+        }
+        return false
+    }
+
+    // Drop the subtree's NS records BEFORE the renumber: host resolution is
+    // lid-based (host pegs, transform_parent), and the renumber re-mints every
+    // lid — after it, no record's host resolves and every record silently
+    // leaks into the scene's metadata.
+    ns_lids := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
+    for &ns in s.nested_scenes {
+        host := nested_scene_resolve_host_handle(s, &ns)
+        if host == {} do continue
+        if is_in_subtree(w, host, host_tH) {
+            append(&ns_lids, ns.local_id)
+        }
+    }
+
+    for ns_lid in ns_lids {
+        breadcrumb_clear_for_nested_scene(s, ns_lid)
+        for i in 0..<len(s.nested_scenes) {
+            if s.nested_scenes[i].local_id != ns_lid do continue
+            ns := &s.nested_scenes[i]
+            _ns_purge_instance_lids(s, ns)
+            delete(ns.source_of_inst)
+            nested_scene_free_owned(ns)
+            ordered_remove(&s.nested_scenes, i)
+            break
+        }
+    }
+
+    renumber(w, host_tH, s)
+}
+
+nested_scene_remove :: proc(s: ^Scene, host_tH: Transform_Handle) {
+    if s == nil do return
+    w := ctx_world()
+    t := pool_get(&w.transforms, Handle(host_tH))
+    if t == nil do return
+    for i in 0 ..< len(s.nested_scenes) {
+        if nested_scene_hosts_transform(s, &s.nested_scenes[i], host_tH) {
+            ns_lid := s.nested_scenes[i].local_id
+            breadcrumb_clear_for_nested_scene(s, ns_lid)
+            ordered_remove(&s.nested_scenes, i)
+            return
+        }
+    }
+}
+
+scene_nested_scene_by_local_id :: proc(s: ^Scene, ns_local_id: Local_ID) -> (^NestedScene, bool) {
+    if s == nil do return nil, false
+    for &ns in s.nested_scenes {
+        if ns.local_id == ns_local_id do return &ns, true
+    }
+    return nil, false
+}
+
+BREADCRUMB_SYNTH_HANDLE_INDEX_BASE :: u32(0x8000_0000)
+
+breadcrumb_alloc_synthetic_handle :: proc(s: ^Scene) -> Handle {
+    s.breadcrumb_synth_seq += 1
+    return Handle{
+        index      = BREADCRUMB_SYNTH_HANDLE_INDEX_BASE + s.breadcrumb_synth_seq,
+        generation = 0,
+        type_key   = INVALID_TYPE_KEY,
+    }
+}
+
+scene_breadcrumb_put :: proc(s: ^Scene, bc: Breadcrumb) -> bool {
+    if s == nil || bc.local_id == 0 do return false
+    if _, had := s.breadcrumb_data[bc.local_id]; had {
+        bimap_remove_by_key(&s.local_ids, bc.local_id)
+    }
+    h := breadcrumb_alloc_synthetic_handle(s)
+    bimap_insert(&s.local_ids, bc.local_id, h)
+    s.breadcrumb_data[bc.local_id] = bc
+    return true
+}
+
+breadcrumb_get :: proc(s: ^Scene, placeholder_local_id: Local_ID) -> (Breadcrumb, bool) {
+    if s == nil || placeholder_local_id == 0 do return {}, false
+    bc, ok := s.breadcrumb_data[placeholder_local_id]
+    return bc, ok
+}
+
+breadcrumb_placeholder :: proc(s: ^Scene, scene_instance: Local_ID, src: PPtr) -> (Local_ID, bool) {
+    if s == nil || scene_instance == 0 do return 0, false
+    for _, bc in s.breadcrumb_data {
+        if bc.scene_instance != scene_instance do continue
+        if !pptr_equals(bc.scene_source, src) do continue
+        return bc.local_id, true
+    }
+    return 0, false
+}
+
+breadcrumb_create :: proc(s: ^Scene, scene_instance: Local_ID, src: PPtr) -> (Local_ID, bool) {
+    if s == nil || scene_instance == 0 do return 0, false
+    if _, ok := scene_nested_scene_by_local_id(s, scene_instance); !ok do return 0, false
+    if ph, ok := breadcrumb_placeholder(s, scene_instance, src); ok {
+        return ph, true
+    }
+    lid := scene_new_lid(s)
+    if !scene_breadcrumb_put(s, Breadcrumb{
+        local_id       = lid,
+        scene_source   = src,
+        scene_instance = scene_instance,
+    }) {
+        return 0, false
+    }
+    return lid, true
+}
+
+breadcrumb_materialize_target :: proc(s: ^Scene, scene_instance: Local_ID, target: PPtr) -> (PPtr, bool) {
+    if s == nil || scene_instance == 0 do return {}, false
+    if pptr_guid_is_empty(target.guid) {
+        return target, true
+    }
+    peg, ok := breadcrumb_create(s, scene_instance, target)
+    if !ok do return {}, false
+    return PPtr{local_id = peg, guid = Asset_GUID{}}, true
+}
+
+breadcrumb_remove :: proc(s: ^Scene, placeholder_local_id: Local_ID) -> bool {
+    if s == nil || placeholder_local_id == 0 do return false
+    if _, ok := s.breadcrumb_data[placeholder_local_id]; !ok do return false
+    bimap_remove_by_key(&s.local_ids, placeholder_local_id)
+    delete_key(&s.breadcrumb_data, placeholder_local_id)
+    return true
+}
+
+breadcrumb_clear_for_nested_scene :: proc(s: ^Scene, scene_instance: Local_ID) {
+    if s == nil || scene_instance == 0 do return
+    to_del := make([dynamic]Local_ID, 0, 8, context.temp_allocator)
+    for _, bc in s.breadcrumb_data {
+        if bc.scene_instance == scene_instance {
+            append(&to_del, bc.local_id)
+        }
+    }
+    for lid in to_del {
+        breadcrumb_remove(s, lid)
+    }
+}
+
+breadcrumb_is_placeholder :: proc(s: ^Scene, local_id: Local_ID) -> bool {
+    if s == nil || local_id == 0 do return false
+    _, ok := s.breadcrumb_data[local_id]
+    return ok
+}

@@ -1,6 +1,6 @@
 package tests
 
-import engine "../engine"
+import engine "moonhug:packages/engine"
 
 import "core:testing"
 

@@ -1,6 +1,6 @@
 package tests
 
-// MCP tool handlers (editor/mcp_bridge.odin). The wire framing is covered by
+// MCP tool handlers (editor/mcp_bridge.odin and plugins/engine/editor/mcp_tools). The wire framing is covered by
 // mcp_protocol_tests; this is what the tools themselves answer.
 //
 // Two properties matter enough to pin: a listing is BOUNDED (a scene's worth
@@ -11,7 +11,7 @@ import "core:encoding/json"
 import "core:testing"
 import "../editor"
 import "../editor/undo"
-import "../engine"
+import "moonhug:packages/engine"
 
 @(private = "file")
 _tool :: proc(t: ^testing.T, name: string, params: json.Object) -> (json.Object, bool) {

@@ -3,14 +3,14 @@ package physics2d
 // Unity-literal 2D colliders. A collider attaches to the nearest ancestor
 // Rigidbody2D (its own transform included) as a shape — Unity's compound-body
 // rule — or, with no rigidbody anywhere above, to its own implicit STATIC
-// body. Sizes are in world units (1 unit = 1 m = 100 px, docs/core/FixedTick.md).
+// body. Sizes are in world units (1 unit = 1 m = 100 px, plugins/engine/docs/FixedTick.md).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
 // edits don't live-sync (the editor doesn't simulate); runtime code mutates
 // physics through body_of(tH) + vendor:box2d.
 
 import b2 "vendor:box2d"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 @(component={menu="Physics2D/BoxCollider2D"})
 @(typ_guid={guid = "1e2d0da1-9df6-4668-9f86-f76351378394"})

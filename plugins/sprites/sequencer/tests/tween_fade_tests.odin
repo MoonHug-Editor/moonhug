@@ -3,7 +3,7 @@ package sprites_sequencer_tests
 // The sprites fade tween (sprites/sequencer) as a TweenUnion variant.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import sprites "moonhug:packages/sprites"
 import common "moonhug:tests/common"

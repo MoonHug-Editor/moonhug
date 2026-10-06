@@ -1,11 +1,11 @@
 package sprites
 
 // The sprite render collector — the first package consumer of the renderer
-// seam (engine.render_register_collector, docs/core/SDL3Renderer.md "Render
+// seam (engine.render_register_collector, plugins/engine/docs/SDL3Renderer.md "Render
 // commands"). The package owns the SpriteRenderer pool and emits Draw_Quad
 // commands; the engine sorts and submits them.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // The world-space quad and uvs a SpriteRenderer covers: bl, br, tr, tl. The
 // editor picks, outlines and frames sprites by the commands this feeds. Sprites are transform-oriented (not billboards), sized

@@ -19,12 +19,12 @@ package editor
 import "base:runtime"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
-import "moonhug:engine"
+import core "moonhug:host/core"
 
 // --- Scene inspector ---------------------------------------------------------
 
 @(private = "file") _inspector_locked: bool
-@(private = "file") _inspector_lock_sel: [dynamic]engine.Transform_Handle
+@(private = "file") _inspector_lock_sel: [dynamic]core.Transform_Handle
 
 @(view_tab_bar={view="Inspector", order=0})
 _inspector_lock_button :: proc() {
@@ -49,12 +49,11 @@ _inspector_lock_button :: proc() {
 // (sel_scene_inspected). Dead handles are dropped, and a lock left holding
 // nothing releases itself rather than leaving the padlock on beside an empty
 // panel.
-inspector_targets :: proc() -> []engine.Transform_Handle {
+inspector_targets :: proc() -> []core.Transform_Handle {
 	if !_inspector_locked do return sel_scene_inspected()
-	w := engine.ctx_world()
 	live := 0
 	for h in _inspector_lock_sel {
-		if w != nil && engine.pool_valid(&w.transforms, engine.Handle(h)) {
+		if _object_alive(h) {
 			_inspector_lock_sel[live] = h
 			live += 1
 		}
@@ -69,7 +68,7 @@ inspector_targets :: proc() -> []engine.Transform_Handle {
 
 // The object whose components the inspector draws — the last of the targets,
 // matching the live selection's "most recent wins".
-inspector_active_target :: proc() -> engine.Transform_Handle {
+inspector_active_target :: proc() -> core.Transform_Handle {
 	if !_inspector_locked do return sel_scene_inspected_active()
 	t := inspector_targets()
 	if len(t) == 0 do return _HANDLE_NONE

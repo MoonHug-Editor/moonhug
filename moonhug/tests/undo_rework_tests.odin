@@ -3,11 +3,11 @@ package tests
 // Undo rework coverage (docs/core/Undo.md): purge instead of clear,
 // selection steps, .Asset targets routed through the apply hook.
 
-import "../engine"
-import "../editor/undo"
+import "moonhug:packages/engine"
 
 import "core:strings"
 import "core:testing"
+import undo "moonhug:packages/engine/editor/undo"
 
 @(private="file")
 _sel_state_proj :: proc(ids: ..engine.Local_ID) -> undo.Selection_State {
@@ -125,11 +125,11 @@ test_undo_purge_scene_specific :: proc(t: ^testing.T) {
 
 	// Purging an unrelated scene keeps the entry.
 	other: engine.Scene
-	undo.purge_scene(s, &other)
+	undo.purge_scene(s, undo.scene_ref(&other))
 	testing.expect_value(t, len(undo.entries(s)), 1)
 
 	// Purging the owning scene drops it.
-	undo.purge_scene(s, tr.scene)
+	undo.purge_scene(s, undo.scene_ref(tr.scene))
 	testing.expect_value(t, len(undo.entries(s)), 0)
 	testing.expect(t, !undo.can_undo(s), "nothing left to undo")
 }

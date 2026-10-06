@@ -10,7 +10,7 @@ import "base:runtime"
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
-import engine "moonhug:engine"
+import engine "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
 
 // order=1 runs after editor_init (order=0), which creates the registry maps.

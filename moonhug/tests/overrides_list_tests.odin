@@ -4,10 +4,10 @@ package tests
 // record kinds into one displayable list, and nested_override_entry_revert
 // removes whichever kind a row names.
 
-import engine "../engine"
-import "../editor/undo"
+import engine "moonhug:packages/engine"
 import "core:strings"
 import "core:testing"
+import undo "moonhug:packages/engine/editor/undo"
 
 @(test)
 test_overrides_list_covers_every_record_kind :: proc(t: ^testing.T) {

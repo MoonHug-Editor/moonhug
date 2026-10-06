@@ -1,11 +1,11 @@
 package tests
 
-// Light component serialization round-trip (docs/core/Materials.md). The light's
+// Light component serialization round-trip (plugins/engine/docs/Materials.md). The light's
 // effect on shading needs a GPU and is verified in-editor.
 
 import "core:testing"
-import "../engine"
-import gfx "../engine/gfx"
+import "moonhug:packages/engine"
+import gfx "moonhug:host/gfx"
 
 @(test)
 test_save_load_scene_with_light :: proc(t: ^testing.T) {

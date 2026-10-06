@@ -1,21 +1,21 @@
 package inspector
 
-// Property drawer for engine.Curve — a piecewise-linear curve editor
+// Property drawer for core.Curve — a piecewise-linear curve editor
 // (Unity's curve field, linear segments). The row shows a plot preview,
 // clicking it opens the editor popup: drag keys, double-click to add,
 // right-click a key to delete. Applies to ANY component field of type
-// engine.Curve.
+// core.Curve.
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
+import core "moonhug:host/core"
 
 @(private = "file") _curve_sel: int = -1
 @(private = "file") _curve_dragging: bool
 
 // Plot value range: keys padded, always containing 0..1 so flat curves read.
 @(private = "file")
-_curve_range :: proc(c: ^engine.Curve) -> (lo, hi: f32) {
+_curve_range :: proc(c: ^core.Curve) -> (lo, hi: f32) {
 	lo, hi = 0, 1
 	for k in c.keys {
 		lo = min(lo, k.value)
@@ -26,7 +26,7 @@ _curve_range :: proc(c: ^engine.Curve) -> (lo, hi: f32) {
 }
 
 // Package-visible: the MinMax_Curve drawer reuses the plot and the editor.
-_curve_plot :: proc(c: ^engine.Curve, p0, p1: im.Vec2) {
+_curve_plot :: proc(c: ^core.Curve, p0, p1: im.Vec2) {
 	dl := im.GetWindowDrawList()
 	im.DrawList_AddRectFilled(dl, p0, p1, im.GetColorU32(.FrameBg), 2)
 	lo, hi := _curve_range(c)
@@ -36,7 +36,7 @@ _curve_plot :: proc(c: ^engine.Curve, p0, p1: im.Vec2) {
 	prev: im.Vec2
 	for i in 0 ..= STEPS {
 		t := f32(i) / STEPS
-		v := engine.curve_eval(c, t)
+		v := core.curve_eval(c, t)
 		pt := im.Vec2{
 			p0.x + (p1.x - p0.x) * t,
 			p1.y - (p1.y - p0.y) * clamp((v - lo) / span, 0, 1),
@@ -46,9 +46,9 @@ _curve_plot :: proc(c: ^engine.Curve, p0, p1: im.Vec2) {
 	}
 }
 
-@(property_drawer={type = engine.Curve, priority = 0})
+@(property_drawer={type = core.Curve, priority = 0})
 draw_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	c := cast(^engine.Curve)ptr
+	c := cast(^core.Curve)ptr
 	field_row(label)
 
 	w := im.GetContentRegionAvail().x
@@ -69,7 +69,7 @@ draw_curve_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 }
 
-_curve_editor :: proc(c: ^engine.Curve) {
+_curve_editor :: proc(c: ^core.Curve) {
 	CW :: f32(340)
 	CH :: f32(160)
 	p0 := im.GetCursorScreenPos()
@@ -117,7 +117,7 @@ _curve_editor :: proc(c: ^engine.Curve) {
 		v := lo + (1 - clamp((mouse.y - p0.y) / (p1.y - p0.y), 0, 1)) * span
 		at := len(c.keys)
 		for k, i in c.keys do if k.t > t { at = i; break }
-		inject_at(&c.keys, at, engine.Curve_Key{t = t, value = v})
+		inject_at(&c.keys, at, core.Curve_Key{t = t, value = v})
 		_curve_sel = at
 		changed = true
 	}

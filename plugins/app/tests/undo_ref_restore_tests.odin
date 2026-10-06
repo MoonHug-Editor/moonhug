@@ -7,8 +7,8 @@ package app_tests
 // Tank's turret ref must bind to the NEW live handle.
 
 import app ".."
-import undo "moonhug:editor/undo"
-import "moonhug:engine"
+import undo "moonhug:packages/engine/editor/undo"
+import "moonhug:packages/engine"
 import common "moonhug:tests/common"
 
 import "core:fmt"

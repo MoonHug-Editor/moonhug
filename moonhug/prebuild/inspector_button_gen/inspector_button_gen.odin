@@ -157,8 +157,8 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "package inspector\n\n")
 	for pkg in import_pkgs {
-		if pkg == "engine" {
-			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		if pkg == "core" {
+			fmt.sbprintf(&b, "import core \"moonhug:host/core\"\n")
 		} else {
 			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, strings.trim_prefix(packages_used[pkg], "moonhug/"))
 		}

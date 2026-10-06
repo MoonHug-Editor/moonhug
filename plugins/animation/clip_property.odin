@@ -20,7 +20,7 @@ import "core:encoding/uuid"
 import "core:math"
 import "core:reflect"
 import "core:strings"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 Prop_Kind :: enum u8 {
 	F32,

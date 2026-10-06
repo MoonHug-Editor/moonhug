@@ -6,7 +6,7 @@ import "core:mem"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import engine "../../engine"
+import core "moonhug:host/core"
 import "../undo"
 
 // `record_undo=false` is for callers whose OWN transaction wraps this draw -- a
@@ -113,7 +113,7 @@ draw_union_field :: proc(ptr: rawptr, info: runtime.Type_Info_Union, label: cstr
 	combo_base := 0 if is_no_nil else 1
 	selected := c.int(current_index + combo_base)
 
-	readonly := engine.inspector_is_readonly()
+	readonly := core.inspector_is_readonly()
 	if readonly {
 		im.BeginDisabled(true)
 	}

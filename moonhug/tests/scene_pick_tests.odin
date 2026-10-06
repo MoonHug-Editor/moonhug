@@ -1,6 +1,6 @@
 package tests
 
-// Scene-view click picking (editor/scene_pick.odin).
+// Scene-view click picking (plugins/engine/editor/scene_tools/scene_pick.odin).
 //
 // Every renderer has to be tested the way it is DRAWN. A SkinnedMeshRenderer
 // draws posed world vertices under an identity model, so it needs a world-space
@@ -10,10 +10,10 @@ package tests
 // that describe the bind pose in the rig's own space.
 
 import "core:testing"
-import "../editor"
 import "../editor/handles"
-import "../engine"
-import "../engine/gfx"
+import "moonhug:packages/engine"
+import "moonhug:host/gfx"
+import "moonhug:packages/engine/editor/scene_tools"
 
 // A camera at +Z looking back at the origin, and the view it renders.
 @(private = "file")
@@ -52,7 +52,7 @@ test_pick_hits_a_posed_skinned_mesh :: proc(t: ^testing.T) {
 	tH := _posed_skinned("Character", {-1, -1, -1}, {1, 1, 1})
 
 	// Centre of the viewport: the ray runs down -Z through the box.
-	got, ok := editor.scene_view_pick(view, 50, 50)
+	got, ok := scene_tools.scene_view_pick(view, 50, 50)
 	testing.expect(t, ok, "the skinned mesh is picked")
 	testing.expect_value(t, got, tH)
 }
@@ -71,7 +71,7 @@ test_pick_misses_a_skinned_mesh_beside_the_ray :: proc(t: ^testing.T) {
 	view := _pick_view()
 	_ = _posed_skinned("Character", {20, -1, -1}, {22, 1, 1})
 
-	_, ok := editor.scene_view_pick(view, 50, 50)
+	_, ok := scene_tools.scene_view_pick(view, 50, 50)
 	testing.expect(t, !ok, "a mesh beside the ray is not picked")
 }
 
@@ -89,7 +89,7 @@ test_pick_skips_an_unskinned_mesh :: proc(t: ^testing.T) {
 	tH := engine.transform_new("Character")
 	engine.transform_add_comp(tH, .SkinnedMeshRenderer)
 
-	_, ok := editor.scene_view_pick(view, 50, 50)
+	_, ok := scene_tools.scene_view_pick(view, 50, 50)
 	testing.expect(t, !ok, "an unposed skinned mesh is not picked")
 }
 
@@ -105,7 +105,7 @@ test_band_query_finds_a_posed_skinned_mesh :: proc(t: ^testing.T) {
 	view := _pick_view()
 	tH := _posed_skinned("Character", {-1, -1, -1}, {1, 1, 1})
 
-	hits := editor.scene_view_band_query(view, {0, 0}, {100, 100})
+	hits := scene_tools.scene_view_band_query(view, {0, 0}, {100, 100})
 	found := false
 	for h in hits do if h == tH do found = true
 	testing.expect(t, found, "the skinned mesh is inside the band")
@@ -150,9 +150,9 @@ test_pick_provider_takes_click_and_box :: proc(t: ^testing.T) {
 	defer _fake_on = false
 
 	v := handles_test_view()
-	picked, ok := editor.scene_view_pick(v, 400, 300)
+	picked, ok := scene_tools.scene_view_pick(v, 400, 300)
 	testing.expect(t, ok && picked == _fake_tH, "the click asks the provider")
-	band := editor.scene_view_band_query(v, {0, 0}, {800, 600})
+	band := scene_tools.scene_view_band_query(v, {0, 0}, {800, 600})
 	testing.expect(t, len(band) == 1 && band[0] == _fake_tH, "so does box select")
 }
 
@@ -172,7 +172,7 @@ test_pick_all_lists_every_hit_nearest_first :: proc(t: ^testing.T) {
 	near := _posed_skinned("Near", {-1, -1, 0}, {1, 1, 1})
 	_ = _posed_skinned("Aside", {5, 5, 0}, {6, 6, 1})
 
-	hits := editor.scene_view_pick_all(view, 50, 50)
+	hits := scene_tools.scene_view_pick_all(view, 50, 50)
 	testing.expect_value(t, len(hits), 2)
 	if len(hits) != 2 do return
 	testing.expect_value(t, hits[0].tH, near)

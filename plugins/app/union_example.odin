@@ -1,7 +1,7 @@
 package app
 
 // Union serialization example. GameSettings carries these fields to exercise
-// the generic union marshalers (engine/serialization) and union undo through
+// the generic union marshalers (host/serialization) and union undo through
 // the inspector.
 
 UnionTest :: union #no_nil

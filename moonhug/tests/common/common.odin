@@ -17,9 +17,13 @@ package tests_common
 import "base:runtime"
 import "core:os"
 import "core:strings"
-import "../../engine"
-import "moonhug:engine_editor/asset_pipeline"
-import "../../engine/registration"
+import "moonhug:packages/engine"
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:packages/engine/editor/importers"
+import "moonhug:packages/engine/editor/drawers"
+import undo "moonhug:packages/engine/editor/undo"
+import "moonhug:packages/engine/editor/sim_world"
+import "moonhug:registration"
 
 TestCtx :: struct {
 	world: engine.World,
@@ -56,8 +60,18 @@ _register_once :: proc() {
 	// the dispatcher above) — tests import like the editor does.
 	// Package importers register from the package's OWN tests (this
 	// package never imports moonhug:packages).
-	asset_pipeline.register_builtin_importers()
+	importers.register_builtin_importers()
 	asset_pipeline.import_pipeline_install()
+	// The project view opens scenes through these, like the editor does.
+	importers.install_asset_actions()
+	// The inspector asks the engine about objects through this, like the editor does.
+	drawers.install_object_provider()
+	drawers.install_override_provider()
+	drawers.install_gizmo_sources()
+	drawers.register_material_doc_preview()
+	undo.install_target_resolver()
+	// Simulate captures, restores and ticks the world through this, like the editor does.
+	sim_world.install_simulate_world()
 	// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 	// typeids for primitive field types (position, color, scale, …) so it
 	// can hand a properly-typed `any` to json.unmarshal_any.

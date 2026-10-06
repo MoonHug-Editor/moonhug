@@ -4,8 +4,8 @@
 # Generic game engine editor inspired by Unity Editor
 
 ## State
-</br>Project has reached plugin architecture — features are developed as self-contained plugins that hook into the editor through attributes.
-</br>Code consists of two main parts - core (engine, editor) and plugins, all other parts serve these two.
+</br>The editor is a generic shell and the engine is a plugin on it — every feature, the engine included, hooks into the editor through attributes.
+</br>Code consists of three parts - host packages (moonhug/host), the editor shell (moonhug/editor) and plugins (plugins/, the engine among them), all other parts serve these three.
 
 > There are still frequent API changes, bugs, non-implemented features.
 > </br>Good moment to add contribution and influence how Editor shapes up.
@@ -60,7 +60,7 @@ Contributions are accepted under the same license.
 
 ## Dependencies
 - odin-imgui - for Editor's interface rendering
-- SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](docs/core/SDL3Renderer.md))
+- SDL3 + SDL_GPU (`brew install sdl3`) - window, input, GPU rendering (see [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md))
 - vendored C libraries Odin ships as source (stb, cgltf, box2d, box3d), all built by `mh setup`
 
 Full list and what needs them: [Install, Build and Run](docs/general/InstallBuildAndRun.md#dependencies).
@@ -80,14 +80,14 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - union serialization (#no_nil unions only)
 
 - [Asset Pipeline](docs/core/AssetPipeline.md) - asset importer/loader
-- [Components](docs/core/Components.md) - component data layer: pools, handles, iteration contract
-- [Scenes](docs/core/Scenes.md)
+- [Components](plugins/engine/docs/Components.md) - component data layer: pools, handles, iteration contract
+- [Scenes](plugins/engine/docs/Scenes.md)
 - [Tweens](plugins/tween/docs/Tweens.md)
-- [Reference Handles](docs/core/ReferenceHandles.md)
+- [Reference Handles](plugins/engine/docs/ReferenceHandles.md)
 - [Object Picker](docs/core/ObjectPicker.md) - Unity-style reference picker: Scene/Project tabs, search, ping, project picks filtered by root component or file extension
-- [SDL3 Renderer](docs/core/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
-- [Meshes](docs/core/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
-- [Materials](docs/core/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
+- [SDL3 Renderer](plugins/engine/docs/SDL3Renderer.md) - SDL3 + SDL_GPU rendering (Metal-native), per-camera render commands, scene view picking + selection outline + move/rotate/scale gizmos
+- [Meshes](plugins/engine/docs/Meshes.md) - glTF import with per-material submeshes, MeshFilter/MeshRenderer components
+- [Materials](plugins/engine/docs/Materials.md) - Material assets (built-in unlit/lit shaders + texture/color) on MeshRenderer AND SpriteRenderer, custom .glsl shaders with hot reload + property blocks + multi-texture rows, PBR/specular sample shaders (camera position + world position available to fragment shaders), directional/point/spot Light components (up to 8 per pass), live-editing inspector
 - [SpriteRenderer](plugins/sprites/docs/SpriteRenderer.md)
 - [Text](plugins/text/docs/Text.md) - TextMeshPro-shaped text plugin for the canvas tree: font files import into a signed-distance-field atlas, an SDF material shader gives outline, underlay shadow, dilation and softness, sharp at any size, backend-neutral layout with a swappable glyph source
 - [Handles](docs/core/Handles.md) - scene-view interaction layer for editor and package editors: immediate-mode drag handles on a plane or a line, bounds composites (box, sphere, capsule), snapping, overlay drawing, one drag = one undo step, picking providers
@@ -158,7 +158,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - mesh/compound colliders
   - explicit mass
 
-- bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](docs/core/Components.md) "Two data regimes"
+- bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](plugins/engine/docs/Components.md) "Two data regimes"
 
 - come up with more TODO and Considered features
 

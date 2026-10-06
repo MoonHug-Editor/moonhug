@@ -7,8 +7,8 @@ package tests_common
 // starts, moves, releases), so a test replays whole drags.
 
 import "core:math/linalg"
-import "../../engine"
-import "../../engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 import "../../editor/handles"
 
 // A perspective camera at `eye` looking at the origin, 800x600 pixels.

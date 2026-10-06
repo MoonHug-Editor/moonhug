@@ -2,12 +2,12 @@ package mhgui
 
 // mhgui — the drawing half of UI (plugins/mhgui/docs/Gui.md). The canvas tree (Canvas,
 // RectTransform, CanvasRenderer, CanvasScaler, the rect walk and the canvas
-// collector) is engine vocabulary (engine/ui_canvas.odin); this package owns
+// collector) is engine vocabulary (plugins/engine/ui_canvas.odin); this package owns
 // graphics: Image, registered as a graphic type, and the LayoutGroup
 // container.
 
 import "core:encoding/uuid"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // The package's white texture (assets/white.png, meta committed with it):
 // what an Image without a sprite draws.

@@ -21,9 +21,9 @@ package tests_common
 // transaction, the peer apply or the undo recording is reimplemented here, so a
 // test exercises the shipping code path rather than a model of it.
 
-import "../../editor"
 import "../../editor/inspector"
-import "../../engine"
+import "moonhug:packages/engine"
+import "moonhug:packages/engine/editor/scene_views"
 
 // One frame of a gesture, as the row would observe it.
 Frame :: struct {
@@ -153,5 +153,5 @@ frame_button_click :: proc() -> Frame {
 // Sets up peers from a selection, the way the inspector does before drawing.
 // Returns the previous peers so the caller can restore them.
 row_set_peers :: proc(active: engine.Transform_Handle, sel: []engine.Transform_Handle) -> []inspector.Multi_Peer {
-	return inspector.multi_set_peers(editor.multi_transform_peers(active, sel))
+	return inspector.multi_set_peers(scene_views.multi_transform_peers(active, sel))
 }

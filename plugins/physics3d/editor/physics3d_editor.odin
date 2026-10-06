@@ -9,8 +9,8 @@ package physics3d_editor
 // In the Handles tool (T), bounds handles on the selected colliders resize
 // them (@(on_scene_handles)), one undo step per drag.
 
-import "moonhug:engine"
-import "moonhug:engine/gizmos"
+import "moonhug:packages/engine"
+import "moonhug:host/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import physics3d "moonhug:packages/physics3d"

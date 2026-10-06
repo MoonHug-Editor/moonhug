@@ -3,7 +3,7 @@ package particles_sequencer_tests
 // The particles Control Track (particles/sequencer) driven through a director.
 
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import anim "moonhug:packages/animation"
 import seq "moonhug:packages/sequencer"
 import particles "moonhug:packages/particles"

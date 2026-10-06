@@ -1,6 +1,6 @@
 package physics2d
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // Physics 2D project settings — a tab in the editor's Project Settings window
 // (docs/core/Plugins.md "Project settings"). Consumed by polling in physics_step:

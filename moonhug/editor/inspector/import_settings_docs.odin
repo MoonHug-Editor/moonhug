@@ -29,9 +29,10 @@ import "core:encoding/uuid"
 import "core:fmt"
 import "core:slice"
 import "core:strings"
-import engine "../../engine"
-import "../../engine/log"
-import "moonhug:engine_editor/asset_pipeline"
+import assets "moonhug:host/assets"
+import core "moonhug:host/core"
+import "moonhug:host/log"
+import asset_pipeline "moonhug:editor/assets"
 import "../undo"
 
 // The import settings document for an asset, loaded from its .meta on first
@@ -39,9 +40,9 @@ import "../undo"
 // this frame, which is what import_settings_track looks at.
 import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 	context.allocator = runtime.default_allocator()
-	raw, ok := engine.asset_db_get_guid(path)
+	raw, ok := assets.asset_db_get_guid(path)
 	if !ok do return nil
-	key := Doc_Key{engine.Asset_GUID(raw), .Import_Settings}
+	key := Doc_Key{core.Asset_GUID(raw), .Import_Settings}
 	if doc, found := _docs[key]; found {
 		if doc.path != path {
 			delete(doc.path)
@@ -50,7 +51,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 		doc.touched = true
 		return doc
 	}
-	settings, sok := engine.asset_pipeline_get_settings(path)
+	settings, sok := assets.asset_pipeline_get_settings(path)
 	if !sok do return nil
 	doc := new(Asset_Doc)
 	doc^ = Asset_Doc{
@@ -72,7 +73,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 	context.allocator = runtime.default_allocator()
 	if doc == nil || doc.data.data == nil do return false
-	path, known := engine.asset_db_get_path(uuid.Identifier(doc.guid))
+	path, known := assets.asset_db_get_path(uuid.Identifier(doc.guid))
 	if !known do return false
 	if path != doc.path {
 		delete(doc.path)
@@ -95,7 +96,7 @@ import_settings_apply :: proc(doc: ^Asset_Doc) -> bool {
 // inside the drawer), the same as undo's rebuild of an asset document.
 import_settings_revert :: proc(doc: ^Asset_Doc) {
 	if doc == nil do return
-	settings, ok := engine.asset_pipeline_get_settings(doc.path, runtime.default_allocator())
+	settings, ok := assets.asset_pipeline_get_settings(doc.path, runtime.default_allocator())
 	if !ok do return
 	before := _settings_json(doc.data, context.allocator)
 	doc_data_retire(doc.data)
@@ -108,11 +109,11 @@ import_settings_revert :: proc(doc: ^Asset_Doc) {
 // After any reimport of the asset. The replaced instance is retired, for the
 // same reason as in Revert.
 @(private = "file")
-_import_settings_reimported :: proc(guid: engine.Asset_GUID) {
+_import_settings_reimported :: proc(guid: core.Asset_GUID) {
 	context.allocator = runtime.default_allocator()
 	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
 	if !found || doc.dirty do return
-	settings, ok := engine.asset_pipeline_get_settings(doc.path)
+	settings, ok := assets.asset_pipeline_get_settings(doc.path)
 	if !ok do return
 	doc_data_retire(doc.data)
 	doc.data = settings
@@ -124,7 +125,7 @@ _import_settings_reimported :: proc(guid: engine.Asset_GUID) {
 @(init)
 _import_settings_register :: proc "contextless" () {
 	context = runtime.default_context()
-	engine.asset_pipeline_add_reimport_hook(_import_settings_reimported)
+	assets.asset_pipeline_add_reimport_hook(_import_settings_reimported)
 }
 
 // Once per frame, after every view drew. With `check` set (the main loop's
@@ -153,18 +154,18 @@ import_settings_track :: proc(check: bool) {
 // (so dynamic arrays never merge with stale contents), then a new baseline, so
 // the tracker does not record the restore itself.
 @(private)
-_import_settings_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte) -> bool {
+_import_settings_apply_json :: proc(guid: core.Asset_GUID, json_bytes: []byte) -> bool {
 	context.allocator = runtime.default_allocator()
 	doc, found := _docs[Doc_Key{guid, .Import_Settings}]
 	if !found {
-		path, path_ok := engine.asset_db_get_path(uuid.Identifier(guid))
+		path, path_ok := assets.asset_db_get_path(uuid.Identifier(guid))
 		if !path_ok do return false
 		doc = import_settings_doc_get(path)
 		if doc == nil do return false
 	}
 	tid := doc.data.id
-	fresh := engine.create_zero_instance_by_guid(engine.get_guid_by_typeid(tid))
-	ptr_tid, ptr_ok := engine.get_pointer_typeid_by_typeid(tid)
+	fresh := core.create_zero_instance_by_guid(core.get_guid_by_typeid(tid))
+	ptr_tid, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
 	if fresh.data == nil || !ptr_ok {
 		log.error(fmt.tprintf("import settings: cannot rebuild %v", tid))
 		return false
@@ -174,7 +175,7 @@ _import_settings_apply_json :: proc(guid: engine.Asset_GUID, json_bytes: []byte)
 		log.error(fmt.tprintf("import settings: unmarshal failed for %s: %v", doc.path, err))
 		return false
 	}
-	engine.type_on_validate_by_typeid(tid, fresh.data)
+	core.type_on_validate_by_typeid(tid, fresh.data)
 	doc_data_retire(doc.data)
 	doc.data = fresh
 	_import_settings_rebaseline(doc)

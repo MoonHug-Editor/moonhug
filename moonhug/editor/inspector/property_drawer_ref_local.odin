@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import "../../engine"
+import core "moonhug:host/core"
 import "../undo"
 import "moonhug:editor/widgets"
 
@@ -20,7 +20,7 @@ _picker_search_buf: [128]byte
 
 // Draw the popup's search input (focused on open) and return the lowercase
 // query (temp-allocated).
-_picker_search_bar :: proc() -> []string {
+picker_search_bar :: proc() -> []string {
 	if im.IsWindowAppearing() {
 		mem.zero(&_picker_search_buf, len(_picker_search_buf))
 		im.SetKeyboardFocusHere()
@@ -42,7 +42,7 @@ _picker_search_bar :: proc() -> []string {
 // An EMPTY field ("None") has nothing to ping or open, so its value area acts
 // as the pick button — clicking anywhere on the row opens the picker instead of
 // hitting a dead zone.
-_picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil, dropped_pptr: ^engine.PPtr = nil, dropped_pptr_ok: ^bool = nil) -> bool {
+picker_field_row :: proc(label: cstring, display: string, has_value: bool, value_clicked: ^bool, cleared: ^bool, value_double_clicked: ^bool = nil, dropped_asset: ^string = nil, dropped_pptr: ^core.PPtr = nil, dropped_pptr_ok: ^bool = nil) -> bool {
 	display, has_value := display, has_value
 	// Every reference drawer routes its value text through here, so the mixed
 	// substitution lives here too rather than in each drawer. Showing the active
@@ -99,8 +99,8 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 			}
 		}
 		if dropped_pptr != nil {
-			if payload := im.AcceptDragDropPayload("ASSET_PPTR"); payload != nil && payload.Data != nil && payload.DataSize == size_of(engine.PPtr) {
-				dropped_pptr^ = (cast(^engine.PPtr)payload.Data)^
+			if payload := im.AcceptDragDropPayload("ASSET_PPTR"); payload != nil && payload.Data != nil && payload.DataSize == size_of(core.PPtr) {
+				dropped_pptr^ = (cast(^core.PPtr)payload.Data)^
 				if dropped_pptr_ok != nil do dropped_pptr_ok^ = true
 			}
 		}
@@ -124,9 +124,9 @@ _picker_field_row :: proc(label: cstring, display: string, has_value: bool, valu
 	return im.Button(pick_label, {BTN_W, 0}) || open_picker
 }
 
-@(property_drawer={type = engine.Ref_Local, priority = 0})
+@(property_drawer={type = core.Ref_Local, priority = 0})
 draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
-	ref_ptr := cast(^engine.Ref_Local)ptr
+	ref_ptr := cast(^core.Ref_Local)ptr
 	spec := current_field_ref_target
 	keys := ref_target_keys(spec)
 
@@ -139,18 +139,18 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	)
 
 	value_clicked, value_double, cleared: bool
-	if _picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
+	if picker_field_row(label, display, has_value, &value_clicked, &cleared, &value_double) {
 		im.OpenPopup(popup_id)
 	}
 	// Single click: ping (reveal + flash, selection untouched). Double click:
 	// select in the hierarchy.
 	if value_double {
 		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
-			engine.inspector_request_select(tH)
+			core.inspector_request_select(tH)
 		}
 	} else if value_clicked {
 		if tH, ok := _ref_local_target_transform(ref_ptr^); ok {
-			engine.inspector_request_ping(tH)
+			core.inspector_request_ping(tH)
 		}
 	}
 	if cleared {
@@ -162,9 +162,9 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		if len(keys) == 0 {
 			im.TextDisabled("Add `ref:\"TypeName\"` or `ref:\"@Tag\"` field tag to enable picker")
 		} else {
-			search := _picker_search_bar()
+			search := picker_search_bar()
 			// Single Scene tab: a Ref_Local is a same-file local_id — fields
-			// that can also reference assets use engine.Ref (PPtr).
+			// that can also reference assets use core.Ref (PPtr).
 			if im.BeginTabBar("##picker_tabs") {
 				if im.BeginTabItem("Scene") {
 					if im.Selectable("None") {
@@ -185,7 +185,7 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 						)
 						if im.Selectable(row) {
 							ref_ptr.handle = obj.handle
-							ref_ptr.local_id = engine.sm_local_id_get_or_mint(owner_root_scene, obj.handle)
+							ref_ptr.local_id = object_mint_local_id(owner_root_scene, obj.handle)
 							mark_inspector_changed()
 						}
 					}
@@ -201,61 +201,36 @@ draw_ref_local_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 	}
 }
 
-// The transform a ref points at (the component's owner for component refs).
+// The object a ref points at (the component's owner for component refs).
 @(private)
-_ref_local_target_transform :: proc(r: engine.Ref_Local) -> (engine.Transform_Handle, bool) {
-	w := engine.ctx_world()
-	if !engine.world_pool_valid(w, r.handle) do return {}, false
-	if r.handle.type_key == .Transform {
-		return engine.Transform_Handle(r.handle), true
-	}
-	raw := engine.world_pool_get(w, r.handle)
-	if raw == nil do return {}, false
-	return (cast(^engine.CompData)raw).owner, true
+_ref_local_target_transform :: proc(r: core.Ref_Local) -> (core.Transform_Handle, bool) {
+	if r.handle == {} do return {}, false
+	return object_owner_of(r.handle)
 }
 
-// The scene a picked target's local_id is minted against: the owner's root
-// scene, from the inspector owner stack. A window drawing this picker OUTSIDE
-// the inspector must push its owner (undo.push_component_owner) or nothing is
-// minted and the reference survives only until the next scene reload.
-ref_local_owner_root_scene :: proc() -> ^engine.Scene {
+// The scope a picked target's local_id is minted against: the owner's, from
+// the inspector owner stack (the owner's root scene with the engine installed).
+// A window drawing this picker OUTSIDE the inspector must push its owner
+// (undo.push_component_owner) or nothing is minted and the reference survives
+// only until the next scene reload.
+ref_local_owner_root_scene :: proc() -> rawptr {
 	o, ok := undo.current_owner()
 	if !ok || o.kind != .Pooled do return nil
-	w := engine.ctx_world()
-	owner_tH: engine.Transform_Handle
-	if o.handle.type_key == .Transform {
-		owner_tH = engine.Transform_Handle(o.handle)
-	} else {
-		raw := engine.world_pool_get(w, o.handle)
-		if raw == nil do return nil
-		base := cast(^engine.CompData)raw
-		owner_tH = base.owner
-	}
-	return engine.sm_get_root_scene_of_transform(owner_tH)
+	return object_owner_scope(o.handle)
 }
 
 @(private)
 // `spec` is the field's raw `ref:` value, for the Missing text.
-_ref_local_display :: proc(r: engine.Ref_Local, spec: string) -> string {
+_ref_local_display :: proc(r: core.Ref_Local, spec: string) -> string {
 	if r.local_id == 0 && r.handle == {} {
 		return "None"
 	}
-	w := engine.ctx_world()
-	if engine.world_pool_valid(w, r.handle) {
-		// For component types: handle points at the component, owner is on CompData.
-		// For .Transform: handle points at the Transform itself.
-		if r.handle.type_key == .Transform {
-			t := engine.pool_get(&w.transforms, r.handle)
-			if t != nil && t.name != "" do return t.name
-		} else {
-			raw := engine.world_pool_get(w, r.handle)
-			if raw != nil {
-				base := cast(^engine.CompData)raw
-				t := engine.pool_get(&w.transforms, engine.Handle(base.owner))
-				if t != nil && t.name != "" {
-					return fmt.tprintf("%s (%v)", t.name, r.handle.type_key)
-				}
-			}
+	if tH, ok := object_owner_of(r.handle); ok {
+		name := object_name(tH)
+		if name != "" {
+			// A component ref names the owner and says which component.
+			if core.Handle(tH) != r.handle do return fmt.tprintf("%s (%v)", name, r.handle.type_key)
+			return name
 		}
 	}
 	// Once-set reference whose target is gone (deleted object, dead handle):
@@ -266,15 +241,13 @@ _ref_local_display :: proc(r: engine.Ref_Local, spec: string) -> string {
 // Objects matching ANY key in `keys`, concatenated, then narrowed by the
 // field's `has:` filter. An object carrying two matching components appears
 // once per component, which is right — they are different pick targets.
-_find_objects_of_types :: proc(keys: []engine.TypeKey, root_scene: ^engine.Scene) -> []engine.Found_Object {
-	found: []engine.Found_Object
+_find_objects_of_types :: proc(keys: []core.TypeKey, scope: rawptr) -> []core.Found_Object {
+	found: []core.Found_Object
 	if len(keys) == 1 {
-		found = engine.sm_find_objects_of_type(keys[0], root_scene)
+		found = object_find(keys[0], scope)
 	} else {
-		out := make([dynamic]engine.Found_Object, context.temp_allocator)
-		for k in keys {
-			append(&out, ..engine.sm_find_objects_of_type(k, root_scene))
-		}
+		out := make([dynamic]core.Found_Object, context.temp_allocator)
+		for k in keys do append(&out, ..object_find(k, scope))
 		found = out[:]
 	}
 	return _filter_objects_has(found)
@@ -285,29 +258,17 @@ _find_objects_of_types :: proc(keys: []engine.TypeKey, root_scene: ^engine.Scene
 // a typo in `has:` then shows every object rather than none, which is the
 // visible failure.
 @(private = "file")
-_filter_objects_has :: proc(found: []engine.Found_Object) -> []engine.Found_Object {
+_filter_objects_has :: proc(found: []core.Found_Object) -> []core.Found_Object {
 	if current_field_has_filter == "" do return found
 	need := ref_target_keys(current_field_has_filter)
 	if len(need) == 0 do return found
-	w := engine.ctx_world()
-	out := make([dynamic]engine.Found_Object, 0, len(found), context.temp_allocator)
+	out := make([dynamic]core.Found_Object, 0, len(found), context.temp_allocator)
 	for obj in found {
 		// The candidate is a transform for a `ref:"Transform"` field, a
 		// component otherwise — either way, the object is the owner.
-		tH := obj.handle
-		if tH.type_key != .Transform {
-			raw := engine.world_pool_get(w, tH)
-			if raw == nil do continue
-			tH = engine.Handle((cast(^engine.CompData)raw).owner)
-		}
-		t := engine.pool_get(&w.transforms, tH)
-		if t == nil do continue
-		keep := false
-		for c in t.components {
-			for k in need do if c.handle.type_key == k { keep = true; break }
-			if keep do break
-		}
-		if keep do append(&out, obj)
+		tH, ok := object_owner_of(obj.handle)
+		if !ok do continue
+		if object_has_any(tH, need) do append(&out, obj)
 	}
 	return out[:]
 }

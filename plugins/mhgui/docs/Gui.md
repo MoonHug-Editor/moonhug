@@ -6,7 +6,7 @@ tags: ["mhgui", "ui", "rendering", "editor"]
 ---
 
 UI has two halves. The canvas tree is engine vocabulary in
-`engine/ui_canvas.odin`: Canvas, RectTransform, CanvasRenderer, CanvasScaler
+`plugins/engine/ui_canvas.odin`: Canvas, RectTransform, CanvasRenderer, CanvasScaler
 and the rect walk that resolves every node's rect. `packages/mhgui` owns what
 gets drawn: the Image graphic, the LayoutGroup container, the render
 collector that turns a canvas into `Draw_Quad` commands, and the editor
@@ -187,7 +187,7 @@ undo step. A rect a LayoutGroup lays out shows a dimmer outline and no
 handles, and its inspector greys Pos X, Pos Y, Width and Height under the
 notice "Some values driven by LayoutGroup".
 
-The RectTransform inspector (`editor/view_rect_transform.odin`) has Unity's
+The RectTransform inspector (`plugins/engine/editor/scene_views/view_rect_transform.odin`) has Unity's
 layout for a single UI node, and the Transform section is hidden for it:
 
 - The anchor preset button opens the 4 by 4 grid (left, center, right,

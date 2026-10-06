@@ -5,7 +5,7 @@ package sprites_tests
 // with SpriteSortingGroup subtrees sorting as one unit against outsiders.
 // Pure data tests: build a scene tree, run the key pass, assert key ordering.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 
 import "core:math/linalg"

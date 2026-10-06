@@ -84,6 +84,9 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	if strings.has_prefix(source_path, out_dir_slash) {
 		return source_path[len(out_dir_slash):]
 	}
+	// Anything in the moonhug tree imports through the collection, so the
+	// import survives a package move.
+	if strings.has_prefix(source_path, "moonhug/") do return strings.concatenate({"moonhug:", source_path[len("moonhug/"):]})
 	out_parts := strings.split(out_dir, "/")
 	src_parts := strings.split(source_path, "/")
 	common := 0
@@ -191,11 +194,13 @@ generate :: proc(w: ^db.World) -> bool {
 	for pkg in import_pkgs {
 		if path := packages_used[pkg]; path != "" {
 			fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, path)
-		} else if pkg == "engine" || pkg == "editor" {
-			// Editor-tree sibling.
-			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		} else if pkg == "core" {
+			fmt.sbprintf(&b, "import core \"moonhug:host/core\"\n")
+		} else if pkg == "editor" {
+			// The editor shell.
+			fmt.sbprintf(&b, "import \"moonhug:%s\"\n", pkg)
 		} else {
-			// Type-name-only package: an installed package.
+			// Type-name-only package: an installed package, the engine included.
 			fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", pkg, pkg)
 		}
 	}

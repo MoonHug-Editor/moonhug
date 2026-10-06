@@ -7,7 +7,7 @@ package sprites_sequencer
 // plugin contract: no registration call, no edit to the sequencer. The
 // folder compiles only with the sequencer installed (docs/core/Plugins.md).
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import seq_core "moonhug:packages/sequencer/core"
 import sprites "moonhug:packages/sprites"
 

@@ -281,11 +281,11 @@ generate :: proc(w: ^db.World) -> bool {
 	}
 	slice.sort(import_pkgs[:])
 	for pkg in import_pkgs {
-		// Engine sits beside the editor; every other decorated type lives in
-		// an installed package (app included) reached via the collection, at
-		// its pkg_path (subpackages live below their folder name).
-		if pkg == "engine" {
-			fmt.sbprintf(&b, "import \"../../%s\"\n", pkg)
+		// Every decorated type outside core lives in an installed package (the
+		// engine and app included) reached via the collection, at its pkg_path
+		// (subpackages live below their folder name).
+		if pkg == "core" {
+			fmt.sbprintf(&b, "import core \"moonhug:host/core\"\n")
 		} else {
 			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
 		}

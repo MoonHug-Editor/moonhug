@@ -301,7 +301,7 @@ The timeline field picks like every other reference field, filtered to
 It gets all of that from its TYPE. The field was a bare `engine.PPtr`, which
 nothing registers a drawer for, so the reflected loop recursed into it and drew
 `local_id` and `guid` as raw numbers. PPtr is the storage primitive; `Ref` and
-`Ref_Local` are the reference types built on it (docs/core/ReferenceHandles.md), and
+`Ref_Local` are the reference types built on it (plugins/engine/docs/ReferenceHandles.md), and
 only those get the reference drawer, `ref:` filtering, and handle resolution
 from the scene loader.
 
@@ -491,7 +491,7 @@ default — the timeline plays standalone and a state overrides it only when it
 wants something different.
 
 The machinery exists. `Override{target, property_path, value}` and
-`nested_scene_apply_overrides` (engine/nested_scene.odin) are a state's value
+`nested_scene_apply_overrides` (plugins/engine/nested_scene.odin) are a state's value
 list already. What this idea adds is the FILTER: prefab overrides may hit any
 property path, a published list curates a subset and gives each one a name.
 
@@ -813,7 +813,7 @@ enough to move the corruption in or out of the snapshot, which is why it looked
 like the FIELDS mattered.
 
 Fixed by pinning the snapshot and the scene path to the default allocator
-(`simulate.odin`). The user-visible bug it was causing: Stop reporting "snapshot
+(`plugins/engine/editor/sim_world`). The user-visible bug it was causing: Stop reporting "snapshot
 restore failed" and leaving the scene in its simulated state.
 
 One more symptom worth knowing: the failing test leaves

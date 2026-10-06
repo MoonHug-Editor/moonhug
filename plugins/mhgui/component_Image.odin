@@ -1,7 +1,7 @@
 package mhgui
 
 import "core:math"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // The graphic that fills a node's rect with a sprite, or with a solid color
 // when no sprite is set. The node also needs a CanvasRenderer, which is what

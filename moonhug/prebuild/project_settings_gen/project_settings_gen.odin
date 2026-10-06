@@ -93,6 +93,9 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	if strings.has_prefix(source_path, out_dir_slash) {
 		return source_path[len(out_dir_slash):]
 	}
+	// Anything in the moonhug tree imports through the collection, so the
+	// import survives a package move.
+	if strings.has_prefix(source_path, "moonhug/") do return strings.concatenate({"moonhug:", source_path[len("moonhug/"):]})
 	out_parts := strings.split(out_dir, "/")
 	src_parts := strings.split(source_path, "/")
 	common := 0
@@ -152,9 +155,10 @@ generate :: proc(w: ^db.World) -> bool {
 	slice.sort(import_pkgs[:])
 
 	strings.write_string(&b, "package editor\n\n")
-	// Own alias for the load call: a tab owned by the engine package would
-	// otherwise collide with the packages_used "engine" import.
-	strings.write_string(&b, "import __engine \"../engine\"\n")
+	// Own alias for the load call: a tab owned by the core package would
+	// otherwise collide with the packages_used "core" import. Settings
+	// persistence is core, so the shell loads tabs with no engine.
+	strings.write_string(&b, "import __core \"moonhug:host/core\"\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
 	}
@@ -162,7 +166,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "_register_project_settings :: proc() {\n")
 	for e in entries {
 		q := _qualified_name(e)
-		fmt.sbprintf(&b, "\t__engine.project_settings_load(%q, &%s)\n", e.tab_name, q)
+		fmt.sbprintf(&b, "\t__core.project_settings_load(%q, &%s)\n", e.tab_name, q)
 		fmt.sbprintf(&b, "\tsettings_add_tab(%q, &%s, typeid_of(type_of(%s)), origin = %q)\n", e.tab_name, q, q, e.origin)
 	}
 	strings.write_string(&b, "}\n")

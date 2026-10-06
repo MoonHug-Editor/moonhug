@@ -12,10 +12,11 @@ package animation_editor
 
 import "core:encoding/json"
 import "core:os"
-import "moonhug:engine"
-import "moonhug:engine/serialization"
-import "moonhug:engine_editor/asset_pipeline"
-import "moonhug:engine/log"
+import "moonhug:packages/engine"
+import "moonhug:host/serialization"
+import asset_pipeline "moonhug:editor/assets"
+import "moonhug:packages/engine/editor/importers"
+import "moonhug:host/log"
 import anim "moonhug:packages/animation"
 import cgltf "vendor:cgltf"
 
@@ -34,8 +35,8 @@ animation_importers_init :: proc() {
 	engine.asset_pipeline_add_reimport_hook(anim.animation_clip_reimported)
 	// The mesh importer hands every glTF animation here, so a model's clips
 	// bake to its own artifacts and need no extraction to be played.
-	asset_pipeline.gltf_clip_baker = bake_gltf_clip
-	asset_pipeline.gltf_clip_extractor = {write = _extract_gltf_clip, decorate = _play_extracted_clip}
+	importers.gltf_clip_baker = bake_gltf_clip
+	importers.gltf_clip_extractor = {write = _extract_gltf_clip, decorate = _play_extracted_clip}
 }
 
 // One glTF animation as a standalone .anim, for extraction: the curves only.

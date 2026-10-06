@@ -4,7 +4,7 @@ package tween_tests
 // buttons call: build a node from a registered typeid, attach and remove
 // children, and run the result.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import common "moonhug:tests/common"
 import "core:testing"

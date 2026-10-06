@@ -14,8 +14,8 @@ import "core:fmt"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
-import engine "../../engine"
-import "../undo"
+import core "moonhug:host/core"
+import undo "moonhug:editor/undo"
 
 Property :: struct {
     // What the row edits.
@@ -29,8 +29,8 @@ Property :: struct {
     offset: uintptr,
 
     // Which prefab instance an override lands on. Zero for plain content.
-    nested_host: engine.Transform_Handle,
-    nested_lid:  engine.Local_ID,
+    nested_host: core.Transform_Handle,
+    nested_lid:  core.Local_ID,
 
     // What an override NAMES. The value itself for most paths. A path through
     // an array index stops here at the array: an override is the whole array,
@@ -53,13 +53,13 @@ Resolve_Error :: enum {
 // the prefab context of the component's OWN instance, so a proxy row cannot
 // inherit the wrong one (the defect that motivated this). False when the
 // handle is dead.
-inspect_comp :: proc(comp: engine.Handle) -> (p: Property, ok: bool) {
+inspect_comp :: proc(comp: core.Handle) -> (p: Property, ok: bool) {
     o := undo.pooled_owner(comp)
     if o.kind != .Pooled do return {}, false
     p.owner = o
     p.base = o.base_ptr
     p.ptr = o.base_ptr
-    p.tid = engine.get_typeid_by_type_key(comp.type_key)
+    p.tid = core.get_typeid_by_type_key(comp.type_key)
     p.nested_host, p.nested_lid = nested_context_for_comp(comp)
     return p, true
 }
@@ -67,19 +67,14 @@ inspect_comp :: proc(comp: engine.Handle) -> (p: Property, ok: bool) {
 // A transform as an addressable object. Prefab context follows the hierarchy
 // inspector's rule: the transform is instance content when it is nested-owned
 // or is itself an instance host — a host ADDITION is neither.
-inspect_transform :: proc(tH: engine.Transform_Handle) -> (p: Property, ok: bool) {
-    o := undo.pooled_owner(engine.Handle(tH))
+inspect_transform :: proc(tH: core.Transform_Handle) -> (p: Property, ok: bool) {
+    o := undo.pooled_owner(core.Handle(tH))
     if o.kind != .Pooled do return {}, false
-    t := cast(^engine.Transform)o.base_ptr
     p.owner = o
     p.base = o.base_ptr
     p.ptr = o.base_ptr
-    p.tid = typeid_of(engine.Transform)
-    is_host := engine.scene_find_nested_scene_for_host(t.scene, tH) != nil
-    if t.nested_owned || is_host {
-        p.nested_host = engine.transform_immediate_nested_host(tH)
-        p.nested_lid = t.local_id
-    }
+    p.tid = core.get_typeid_by_type_key(core.transform_type_key)
+    p.nested_host, p.nested_lid = override_object_context(tH)
     return p, true
 }
 
@@ -129,8 +124,8 @@ property_row :: proc(
     draw_label: cstring = "",
 ) -> (finished: bool) {
     undo.push_owner(p.owner)
-    prev_host := engine.inspector_set_nested_host(p.nested_host)
-    prev_lid := engine.inspector_set_nested_local_id(p.nested_lid)
+    prev_host := core.inspector_set_nested_host(p.nested_host)
+    prev_lid := core.inspector_set_nested_local_id(p.nested_lid)
     prev_tags := field_tags_set(p.tag)
     prev_peers := multi_set_peers(nil)
 
@@ -140,8 +135,8 @@ property_row :: proc(
 
     multi_set_peers(prev_peers)
     field_tags_restore(prev_tags)
-    engine.inspector_set_nested_local_id(prev_lid)
-    engine.inspector_set_nested_host(prev_host)
+    core.inspector_set_nested_local_id(prev_lid)
+    core.inspector_set_nested_host(prev_host)
     undo.pop_owner()
     return finished
 }
@@ -241,11 +236,11 @@ property_set_json :: proc(p: Property, json_bytes: []byte, label: string) -> (ok
     }
     undo.edit_session_end(&sess)
 
-    prev_host := engine.inspector_set_nested_host(p.nested_host)
-    prev_lid := engine.inspector_set_nested_local_id(p.nested_lid)
+    prev_host := core.inspector_set_nested_host(p.nested_host)
+    prev_lid := core.inspector_set_nested_local_id(p.nested_lid)
     record_nested_override(p.record.ptr, p.record.tid, p.record.path, true)
-    engine.inspector_set_nested_local_id(prev_lid)
-    engine.inspector_set_nested_host(prev_host)
+    core.inspector_set_nested_local_id(prev_lid)
+    core.inspector_set_nested_host(prev_host)
     return true, ""
 }
 
@@ -257,15 +252,15 @@ property_set_json :: proc(p: Property, json_bytes: []byte, label: string) -> (ok
 // picker validates those against the asset index, which a live handle cannot.
 @(private = "file")
 _reference_admitted :: proc(p: Property) -> (why: string, ok: bool) {
-    h: engine.Handle
+    h: core.Handle
     switch p.tid {
-    case typeid_of(engine.Ref_Local):
-        r := cast(^engine.Ref_Local)p.ptr
+    case typeid_of(core.Ref_Local):
+        r := cast(^core.Ref_Local)p.ptr
         if r.local_id == 0 do return "", true
         h = r.handle
-    case typeid_of(engine.Ref):
-        r := cast(^engine.Ref)p.ptr
-        if r.pptr.local_id == 0 || !engine.asset_guid_is_empty(r.pptr.guid) do return "", true
+    case typeid_of(core.Ref):
+        r := cast(^core.Ref)p.ptr
+        if r.pptr.local_id == 0 || !core.asset_guid_is_empty(r.pptr.guid) do return "", true
         h = r.handle
     case:
         return "", true
@@ -285,29 +280,16 @@ _reference_admitted :: proc(p: Property) -> (why: string, ok: bool) {
     if !has_has || has_spec == "" do return "", true
     need := ref_target_keys(has_spec)
     if len(need) == 0 do return "", true
-    w := engine.ctx_world()
-    tH := h
-    if tH.type_key != .Transform {
-        raw := engine.world_pool_get(w, h)
-        if raw == nil do return "target is gone", false
-        tH = engine.Handle((cast(^engine.CompData)raw).owner)
-    }
-    t := engine.pool_get(&w.transforms, tH)
-    if t == nil do return "target is gone", false
-    for c in t.components do for k in need do if c.handle.type_key == k do return "", true
+    tH, alive := object_owner_of(h)
+    if !alive do return "target is gone", false
+    if object_has_any(tH, need) do return "", true
     return fmt.tprintf("target's object must carry %s", has_spec), false
 }
 
 // The scene the owner lives in, for rebinding reference handles after a write.
 @(private = "file")
-_property_scene :: proc(p: Property) -> ^engine.Scene {
-    w := engine.ctx_world()
-    if p.owner.handle.type_key == .Transform {
-        t := engine.pool_get(&w.transforms, p.owner.handle)
-        return t.scene if t != nil else nil
-    }
-    base := cast(^engine.CompData)p.owner.base_ptr
-    if base == nil do return nil
-    t := engine.pool_get(&w.transforms, engine.Handle(base.owner))
-    return t.scene if t != nil else nil
+_property_scene :: proc(p: Property) -> core.Scene_Ref {
+    tH, alive := object_owner_of(p.owner.handle)
+    if !alive do return {}
+    return object_scene(tH)
 }

@@ -5,7 +5,7 @@ package text
 // quads in canvas units. Pure, so the tests drive it with a fake backend.
 
 import "core:unicode"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 Horizontal_Alignment :: enum u8 {
 	Left,

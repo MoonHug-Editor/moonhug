@@ -1,12 +1,12 @@
 package sprites_tests
 
-// SpriteRenderer.material serialization round-trip (docs/core/Materials.md).
+// SpriteRenderer.material serialization round-trip (plugins/engine/docs/Materials.md).
 // Rendering (shader/tint/properties applied per sprite) needs a GPU and is
 // verified in-editor.
 
 import "core:encoding/uuid"
 import "core:testing"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import sprites "moonhug:packages/sprites"
 import common "moonhug:tests/common"
 

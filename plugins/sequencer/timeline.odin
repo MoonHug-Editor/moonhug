@@ -15,7 +15,7 @@ package sequencer
 
 import "base:runtime"
 import "core:slice"
-import "moonhug:engine"
+import "moonhug:packages/engine"
 
 // A clip as track hooks see it, materialized from a clip NODE each tick.
 // `name` borrows the node's name (markers fire it); `node` addresses the

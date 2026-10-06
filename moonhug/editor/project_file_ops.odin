@@ -25,10 +25,10 @@ import "core:slice"
 import strings "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
-import engine "../engine"
-import "moonhug:engine_editor/asset_pipeline"
+import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
+import assets "moonhug:host/assets"
 
 // --- File clipboard -----------------------------------------------------------
 
@@ -380,13 +380,13 @@ project_menu_copy_path :: proc() {
 _project_selection_has_guid :: proc() -> bool {
 	sel := projectViewData.selectedFile
 	if sel == "" do return false
-	_, ok := engine.asset_db_get_guid(sel)
+	_, ok := assets.asset_db_get_guid(sel)
 	return ok
 }
 
 @(menu_item = {path = "Assets/Copy GUID", order = -64, enabled = _project_selection_has_guid})
 project_menu_copy_uuid :: proc() {
-	guid, ok := engine.asset_db_get_guid(projectViewData.selectedFile)
+	guid, ok := assets.asset_db_get_guid(projectViewData.selectedFile)
 	if !ok do return
 	im.SetClipboardText(strings.clone_to_cstring(uuid.to_string(guid, context.temp_allocator), context.temp_allocator))
 }
@@ -395,5 +395,5 @@ project_menu_copy_uuid :: proc() {
 @(menu_item = {path = "Assets/Open Scene Additive", order = -55, enabled = _project_selection_is_scene})
 project_menu_open_scene_additive :: proc() {
 	if !_project_selection_is_scene() do return
-	engine.scene_load_additive_path(projectViewData.selectedFile)
+	asset_pipeline.asset_open_additive(projectViewData.selectedFile)
 }

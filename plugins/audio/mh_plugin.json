@@ -2,6 +2,6 @@
   "name": "audio",
   "guid": "fbf4cff2-69d3-4367-ba54-468b3e5aa45e",
   "description": "",
-  "dependencies": [],
+  "dependencies": ["engine"],
   "dependencies_custom": []
 }

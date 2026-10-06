@@ -17,7 +17,7 @@ package audio_sequencer
 // itself, the sequencer never imports audio. Author track-driven sources with
 // play_on_awake off: the span decides when they play.
 
-import "moonhug:engine"
+import "moonhug:packages/engine"
 import mix "vendor:sdl3/mixer"
 import seq "moonhug:packages/sequencer"
 import audio "moonhug:packages/audio"
