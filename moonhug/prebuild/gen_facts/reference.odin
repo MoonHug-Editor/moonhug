@@ -89,6 +89,11 @@ first_sentence :: proc(text: string) -> string {
 	return s
 }
 
+// Whether the reference generators write their pages under docs/reference.
+// Their checks run on every build, the pages only when `mh docs` passes
+// --docs to the prebuild (prebuild.odin main sets this).
+write_reference_pages: bool
+
 // The Packages reference page of a package, relative to the reference root:
 // moonhug/host/core is packages/host/core.md, moonhug/editor/undo is
 // packages/editor/undo.md, moonhug/packages/engine/editor/undo is

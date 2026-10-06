@@ -23,7 +23,7 @@ DOCS_HOME_DIR :: "builds/docs-home"
 DOCS_PORT :: "7272"
 
 cmd_docs :: proc(args: []string) -> int {
-	if !prebuild() do return 1
+	if !prebuild(docs = true) do return 1
 	if !docs_write_plugin_mounts() do return 1
 	if !docs_write_package_pages() do return 1
 	// Hugo never removes files from publishDir on its own, and its clean flag

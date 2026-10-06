@@ -17,12 +17,15 @@ MCP_BIN :: "builds/mcp_shim" + EXE
 // Both are compiled once into builds/tools/ and reused while unchanged
 // (tools_cache.odin). Prebuild also depends on the package generators it
 // compiles in, so their gen/ folders count as its sources.
-prebuild :: proc() -> bool {
+// `docs` makes the reference generators write their pages under
+// docs/reference. Their checks run either way.
+prebuild :: proc(docs := false) -> bool {
 	prune, pok := tool_bin("prune_package_gens", "moonhug/prebuild/prune_package_gens", {})
 	if !pok || !step("prune", prune) do return false
 	gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
-	if !gok || !step("prebuild", gen) do return false
-	return true
+	if !gok do return false
+	if docs do return step("prebuild", gen, "--docs")
+	return step("prebuild", gen)
 }
 
 // Compiled shader blobs are committed, so this toolchain is optional and the

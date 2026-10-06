@@ -240,6 +240,7 @@ _check_plugin_deps :: proc() -> bool {
 
 main :: proc() {
 	total := time.tick_now()
+	for a in os.args[1:] do if a == "--docs" do gen_facts.write_reference_pages = true
 	lap := total
 	step :: proc(lap: ^time.Tick, name: string) {
 		db.timing_report(name, lap^)
