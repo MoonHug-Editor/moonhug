@@ -1,14 +1,14 @@
 package scene_tools
 
-// The engine's side of viewport.Document_Actions: the open documents are the
+// The engine's side of session.Document_Actions: the open documents are the
 // scene manager's loaded scenes. Installed through @(provider_install).
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 @(provider_install)
 install_document_actions :: proc() {
-	viewport.set_document_actions({
+	session.set_document_actions({
 		save_all        = _doc_save_all,
 		open_paths      = _doc_open_paths,
 		snapshot_active = _doc_snapshot_active,

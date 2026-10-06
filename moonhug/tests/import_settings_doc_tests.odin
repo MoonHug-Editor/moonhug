@@ -7,8 +7,8 @@ package tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../editor/inspector"
-import "../editor/undo"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 

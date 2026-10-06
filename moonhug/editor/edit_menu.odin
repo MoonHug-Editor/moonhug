@@ -4,10 +4,10 @@ package editor
 // acts on the selection, wherever it is: on the selected files while the
 // project holds the selection (the operations the project view's own
 // shortcuts run), on the scene objects otherwise, through the installed scene
-// views (viewport.Scene_Views). The hierarchy's context menu mirrors the band
+// views (session.Scene_Views). The hierarchy's context menu mirrors the band
 // to its top (plugins/engine/editor/scene_views/hierarchy_menu.odin).
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import undo "moonhug:editor/undo"
 
 // --- Edit: Undo / Redo -------------------------------------------------------
@@ -38,17 +38,17 @@ edit_redo_menu :: proc() {
 // --- Edit: selection ops (Cut..Delete band, mirrored to hierarchy popup) -----
 
 @(private)
-_edit_can_cut :: proc() -> bool { return sel_in_project() || viewport.edit_can(.Cut) }
+_edit_can_cut :: proc() -> bool { return sel_in_project() || session.edit_can(.Cut) }
 @(private)
-_edit_can_copy :: proc() -> bool { return sel_in_project() || viewport.edit_can(.Copy) }
+_edit_can_copy :: proc() -> bool { return sel_in_project() || session.edit_can(.Copy) }
 @(private)
-_edit_can_paste :: proc() -> bool { return sel_in_project() ? project_ops_can_paste() : viewport.edit_can(.Paste) }
+_edit_can_paste :: proc() -> bool { return sel_in_project() ? project_ops_can_paste() : session.edit_can(.Paste) }
 @(private)
-_edit_can_duplicate :: proc() -> bool { return sel_in_project() || viewport.edit_can(.Duplicate) }
+_edit_can_duplicate :: proc() -> bool { return sel_in_project() || session.edit_can(.Duplicate) }
 @(private)
-_edit_can_rename :: proc() -> bool { return sel_in_project() ? _project_selection_renameable() : viewport.edit_can(.Rename) }
+_edit_can_rename :: proc() -> bool { return sel_in_project() ? _project_selection_renameable() : session.edit_can(.Rename) }
 @(private)
-_edit_can_delete :: proc() -> bool { return sel_in_project() || viewport.edit_can(.Delete) }
+_edit_can_delete :: proc() -> bool { return sel_in_project() || session.edit_can(.Delete) }
 
 @(menu_separator={path="Edit", order=-60})
 @(menu_item={path="Edit/Cut", order=-50, enabled=_edit_can_cut})
@@ -57,7 +57,7 @@ hierarchy_cut_menu :: proc() {
 		project_ops_cut()
 		return
 	}
-	viewport.edit_run(.Cut)
+	session.edit_run(.Cut)
 }
 
 @(menu_item={path="Edit/Copy", order=-49, enabled=_edit_can_copy})
@@ -66,7 +66,7 @@ hierarchy_copy_menu :: proc() {
 		project_ops_copy()
 		return
 	}
-	viewport.edit_run(.Copy)
+	session.edit_run(.Copy)
 }
 
 @(menu_item={path="Edit/Paste", order=-48, enabled=_edit_can_paste})
@@ -75,7 +75,7 @@ hierarchy_paste_menu :: proc() {
 		project_ops_paste()
 		return
 	}
-	viewport.edit_run(.Paste)
+	session.edit_run(.Paste)
 }
 
 @(menu_item={path="Edit/Duplicate", order=-47, enabled=_edit_can_duplicate})
@@ -84,7 +84,7 @@ hierarchy_duplicate_menu :: proc() {
 		project_ops_duplicate()
 		return
 	}
-	viewport.edit_run(.Duplicate)
+	session.edit_run(.Duplicate)
 }
 
 @(menu_item={path="Edit/Rename", order=-46, enabled=_edit_can_rename})
@@ -93,7 +93,7 @@ hierarchy_rename_menu :: proc() {
 		if _project_selection_renameable() do _project_begin_rename_selected()
 		return
 	}
-	viewport.edit_run(.Rename)
+	session.edit_run(.Rename)
 }
 
 @(menu_separator={path="Edit", order=-40})
@@ -103,5 +103,5 @@ hierarchy_delete_menu :: proc() {
 		project_ops_delete()
 		return
 	}
-	viewport.edit_run(.Delete)
+	session.edit_run(.Delete)
 }

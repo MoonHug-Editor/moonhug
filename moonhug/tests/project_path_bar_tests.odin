@@ -2,7 +2,7 @@ package tests
 
 // The project view's path bar: the current folder as clickable segments.
 
-import "../editor"
+import "moonhug:editor"
 import "core:testing"
 
 // ---------------------------------------------------------------------------

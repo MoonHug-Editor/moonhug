@@ -10,9 +10,9 @@ package scene_views
 // referenced — the Unity model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
 // everything extracted is an ordinary editable asset, and existing files are
 // SKIPPED — re-running never overwrites user edits. Acts on
-// the project view's active path (viewport.project_active), like Create/Scene Variant.
+// the project view's active path (session.project_active), like Create/Scene Variant.
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import cgltf "vendor:cgltf"
 import "core:fmt"
 import "core:os"
@@ -28,7 +28,7 @@ extract_gltf_separator :: proc() {}
 
 @(menu_item={path="Assets/Extract Assets", order=-40, shortcut=""})
 extract_gltf_menu :: proc() {
-	path := viewport.project_active()
+	path := session.project_active()
 	if !strings.has_suffix(path, ".glb") && !strings.has_suffix(path, ".gltf") {
 		fmt.println("[Editor] Extract Assets: select a .glb/.gltf asset first")
 		return

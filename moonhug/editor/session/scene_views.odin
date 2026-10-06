@@ -1,4 +1,4 @@
-package viewport
+package session
 
 // The engine's scene views as the shell calls them: the Hierarchy and the
 // Inspector windows, their menus, the Edit menu's scene half, and the

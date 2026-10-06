@@ -141,31 +141,89 @@ generate :: proc(w: ^db.World) -> bool {
 		})
 		append(&list, d)
 	}
-	// Grouped by extended package, attributes by name inside a group.
+	// Grouped by layer (Host, Editor, then each plugin by name), by extending
+	// package inside a layer, attributes by name inside a package.
 	slice.sort_by(list[:], proc(a, b: ^Declaration) -> bool {
+		la, oa := _layer(a.pkg_path)
+		lb, ob := _layer(b.pkg_path)
+		if oa != ob do return oa < ob
+		if la != lb do return la < lb
 		if a.pkg_path != b.pkg_path do return a.pkg_path < b.pkg_path
 		return a.attribute < b.attribute
 	})
 	os.make_directory(REFERENCE_DIR)
 	os.make_directory(OUT_DIR)
 	_sweep_stale(list[:])
-	db.emit(w, REFERENCE_DIR + "/_index.md", "---\ntitle: \"Reference\"\ndescription: \"Generated from the source: every attribute and every engine and editor package\"\nweight: 40\n---\n\nGenerated, not edited by hand and not committed.\n\n- [Attributes](attributes/_index.md) — how code extends the engine and the editor, grouped by the package each attribute extends. Written on every build.\n- [Packages](packages/_index.md) — every public declaration of each engine and editor package, from `odin doc`. Written by `mh docs`.\n")
+	db.emit(w, REFERENCE_DIR + "/_index.md", "---\ntitle: \"Reference\"\ndescription: \"Generated from the source: every attribute and every engine and editor package\"\nweight: 40\n---\n\nGenerated, not edited by hand and not committed.\n\n- [Attributes](attributes/_index.md) — how code extends the editor, grouped by the layer and the package that declare each attribute. Written on every build.\n- [Packages](packages/_index.md) — every public declaration of each engine and editor package, from `odin doc`. Written by `mh docs`.\n")
 	index := strings.builder_make()
 	defer strings.builder_destroy(&index)
 	strings.write_string(&index, "---\ntitle: \"Attributes\"\ndescription: \"Every attribute, the package it extends, and what is registered through it\"\nweight: 10\n---\n\n")
 	strings.write_string(&index, "Generated on every build by `moonhug/prebuild/attributes_gen`. Not edited by hand and not committed.\n\n")
-	strings.write_string(&index, "Attributes are how code extends the engine and the editor. Each is grouped under the package it extends, with its uses counted. An attribute's page explains it and lists every declaration using it.\n")
+	strings.write_string(&index, "Attributes are how code extends the editor. They are grouped by the layer that declares them, `host`, `editor` or a plugin's name, then by the package, with uses counted. An attribute's page explains it and lists every declaration using it.\n")
+	// One folder per layer, so the site's left pane shows Host, Editor and
+	// each plugin as its own group. The top index lists the layers, a layer's
+	// index lists its attributes by extending package.
+	strings.write_string(&index, "\n")
+	layer_index := strings.builder_make()
+	defer strings.builder_destroy(&layer_index)
+	layer := ""
+	layer_order := 0
+	layer_count := 0
 	group := ""
+	flush_layer :: proc(w: ^db.World, layer: string, b: ^strings.Builder) {
+		if layer == "" do return
+		db.emit(w, fmt.tprintf("%s/%s/_index.md", OUT_DIR, layer), strings.to_string(b^))
+		strings.builder_reset(b)
+	}
 	for d, i in list {
+		if l, o := _layer(d.pkg_path); l != layer {
+			flush_layer(w, layer, &layer_index)
+			if layer != "" do fmt.sbprintf(&index, "- [%s](%s/_index.md) — %d attributes\n", layer, layer, layer_count)
+			layer = l
+			layer_order = o
+			layer_count = 0
+			group = ""
+			os.make_directory(fmt.tprintf("%s/%s", OUT_DIR, layer))
+			fmt.sbprintf(&layer_index, "---\ntitle: \"%s\"\ndescription: \"Attributes declared by %s, by the package each one extends\"\nweight: %d\n---\n\nGenerated on every build by `moonhug/prebuild/attributes_gen`. Not edited by hand and not committed.\n", layer, _layer_noun(layer, layer_order), (layer_order + 1) * 10 + (0 if layer_order < 2 else _plugin_rank(list[:], l)))
+		}
 		if d.pkg_path != group {
 			group = d.pkg_path
-			fmt.sbprintf(&index, "\n## `%s`\n\n", _import_path(group))
+			fmt.sbprintf(&layer_index, "\n## `%s`\n\n", _import_path(group))
 		}
-		fmt.sbprintf(&index, "- [@(%s)](%s.md) — %s (%d)\n", d.attribute, d.attribute, _first_sentence(d.doc), len(d.uses))
+		layer_count += 1
+		fmt.sbprintf(&layer_index, "- [@(%s)](%s.md) — %s (%d)\n", d.attribute, d.attribute, _first_sentence(d.doc), len(d.uses))
 		_emit_page(w, d, (i + 1) * 10)
 	}
+	flush_layer(w, layer, &layer_index)
+	if layer != "" do fmt.sbprintf(&index, "- [%s](%s/_index.md) — %d attributes\n", layer, layer, layer_count)
 	db.emit(w, OUT_DIR + "/_index.md", strings.to_string(index))
 	return true
+}
+
+
+@(private = "file")
+_layer_noun :: proc(layer: string, order: int) -> string {
+	switch order {
+	case 0: return "the host packages"
+	case 1: return "the editor shell"
+	}
+	return fmt.tprintf("the %s plugin", layer)
+}
+
+// Plugins sort after the host and the editor, by name: their index weight is
+// the position among the plugins that declare attributes.
+@(private = "file")
+_plugin_rank :: proc(list: []^Declaration, layer: string) -> int {
+	rank := 0
+	seen := ""
+	for d in list {
+		l, o := _layer(d.pkg_path)
+		if o != 2 || l == seen do continue
+		seen = l
+		rank += 1
+		if l == layer do return rank
+	}
+	return rank
 }
 
 @(private = "file")
@@ -176,7 +234,7 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 	fmt.sbprintf(&b, "---\ntitle: \"@(%s)\"\ndescription: \"%s\"\nweight: %d\ntags: [\"reference\", \"%s\"]\n---\n\n", d.attribute, desc, weight, d.attribute)
 	pkg := _import_path(d.pkg_path)
 	if slug, ok := _package_page(d.pkg_path); ok {
-		fmt.sbprintf(&b, "**Extends** [`%s`](../packages/%s.md)", pkg, slug)
+		fmt.sbprintf(&b, "**Extends** [`%s`](../../packages/%s.md)", pkg, slug)
 	} else {
 		fmt.sbprintf(&b, "**Extends** `%s`", pkg)
 	}
@@ -194,7 +252,8 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 		strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
 		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, _cell(u.attr), _cell(u.summary))
 	}
-	db.emit(w, fmt.tprintf("%s/%s.md", OUT_DIR, d.attribute), strings.to_string(b))
+	layer, _ := _layer(d.pkg_path)
+	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, layer, d.attribute), strings.to_string(b))
 }
 
 // Removes generated pages this build no longer writes: an attribute that was
@@ -203,21 +262,45 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 // leftover would still be published.
 @(private = "file")
 _sweep_stale :: proc(list: []^Declaration) {
+	// "<layer slug>/<attribute>.md" for every page this build writes.
 	keep := make(map[string]bool, context.temp_allocator)
-	keep["_index.md"] = true
-	for d in list do keep[fmt.tprintf("%s.md", d.attribute)] = true
+	layers := make(map[string]bool, context.temp_allocator)
+	for d in list {
+		layer, _ := _layer(d.pkg_path)
+		layers[layer] = true
+		keep[fmt.tprintf("%s/%s.md", layer, d.attribute)] = true
+	}
+	// Pages directly in the reference or attributes folder are from older
+	// layouts, a layer folder this build does not write is gone whole.
 	for dir in ([]string{OUT_DIR, REFERENCE_DIR}) {
-		handle, oerr := os.open(dir)
-		if oerr != nil do continue
-		defer os.close(handle)
-		entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
-		if rerr != nil do continue
-		for e in entries {
-			if e.type == .Directory || !strings.has_suffix(e.name, ".md") || e.name == "_index.md" do continue
-			if dir == OUT_DIR && keep[e.name] do continue
+		for e in _entries(dir) {
+			path := fmt.tprintf("%s/%s", dir, e.name)
+			if e.type == .Directory {
+				if dir == OUT_DIR && !layers[e.name] do os.remove_all(path)
+				continue
+			}
+			if !strings.has_suffix(e.name, ".md") || e.name == "_index.md" do continue
+			os.remove(path)
+		}
+	}
+	for slug in layers {
+		dir := fmt.tprintf("%s/%s", OUT_DIR, slug)
+		for e in _entries(dir) {
+			if e.type == .Directory || e.name == "_index.md" do continue
+			if keep[fmt.tprintf("%s/%s", slug, e.name)] do continue
 			os.remove(fmt.tprintf("%s/%s", dir, e.name))
 		}
 	}
+}
+
+@(private = "file")
+_entries :: proc(dir: string) -> []os.File_Info {
+	handle, oerr := os.open(dir)
+	if oerr != nil do return nil
+	defer os.close(handle)
+	entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+	if rerr != nil do return nil
+	return entries
 }
 
 @(private = "file")
@@ -232,6 +315,20 @@ _check_field :: proc(d: ^Declaration, key: string, name: string, where_: string,
 
 // "moonhug/editor/inspector" -> "moonhug:editor/inspector".
 @(private = "file")
+// The layer a package belongs to, named like its folder (host, editor, the
+// plugin's name), and the order layers are listed in: host, editor, then
+// every plugin by name.
+_layer :: proc(pkg_path: string) -> (name: string, order: int) {
+	if strings.has_prefix(pkg_path, "moonhug/host") || strings.has_prefix(pkg_path, "moonhug/registration") do return "host", 0
+	if strings.has_prefix(pkg_path, "moonhug/editor") do return "editor", 1
+	if strings.has_prefix(pkg_path, "moonhug/packages/") {
+		rest := pkg_path[len("moonhug/packages/"):]
+		if slash := strings.index_byte(rest, '/'); slash >= 0 do rest = rest[:slash]
+		return rest, 2
+	}
+	return pkg_path, 3
+}
+
 _import_path :: proc(pkg_path: string) -> string {
 	if strings.has_prefix(pkg_path, "moonhug/") do return fmt.tprintf("moonhug:%s", pkg_path[len("moonhug/"):])
 	return pkg_path

@@ -23,7 +23,7 @@ package scene_views
 // gesture is one undo step over every object's changed fields. A selection
 // with a node that has no parent rect (a canvas root) draws the generic rows.
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
@@ -422,7 +422,7 @@ _rt_draw_transform_rows :: proc(tH: engine.Transform_Handle) {
 	undo.push_transform_owner(tH)
 	defer undo.pop_owner()
 	peers: []inspector.Multi_Peer
-	if _rt_multi() do peers = multi_transform_peers(tH, viewport.selection())
+	if _rt_multi() do peers = multi_transform_peers(tH, session.selection())
 	prev_peers := inspector.multi_set_peers(peers)
 	defer inspector.multi_set_peers(prev_peers)
 	drawer := inspector.resolve_property_drawer(typeid_of(^[3]f32))

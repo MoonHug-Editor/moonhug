@@ -7,7 +7,7 @@ import "core:os"
 import "menu"
 import wnd "window"
 import "moonhug:editor/handles"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import assets "moonhug:host/assets"
 import core "moonhug:host/core"
 import "moonhug:host/log"
@@ -184,7 +184,7 @@ save_editor_settings :: proc() {
     delete(editor_settings.open_scene_guids)
     editor_settings.open_scene_guids = make([dynamic]string, context.temp_allocator)
 
-    for path in viewport.document_open_paths() {
+    for path in session.document_open_paths() {
         if guid, ok := assets.asset_db_get_guid(path); ok {
             guid_str := uuid.to_string(guid, context.temp_allocator)
             append(&editor_settings.open_scene_guids, guid_str)

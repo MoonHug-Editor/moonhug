@@ -1,11 +1,11 @@
 package engine_host
 
-// The engine's side of viewport.Host_Lifecycle: the user context, the world,
+// The engine's side of session.Host_Lifecycle: the user context, the world,
 // the asset caches and the scene manager, booted and torn down by the editor's
 // main. Installed from @(init), linked through scene_views.
 
 import "base:runtime"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 @(private = "file") _uc: ^engine.UserContext
@@ -14,7 +14,7 @@ import "moonhug:packages/engine"
 @(init, private = "file")
 _install_host_lifecycle :: proc "contextless" () {
 	context = runtime.default_context()
-	viewport.set_host_lifecycle({
+	session.set_host_lifecycle({
 		boot     = _boot,
 		init     = _init,
 		shutdown = _shutdown,

@@ -8,7 +8,7 @@ package tests
 import "core:os"
 import "core:strings"
 import "core:testing"
-import "../editor"
+import "moonhug:editor"
 import "moonhug:editor/widgets"
 
 // What the chaining action saw. File-level, the same way a real dialog keeps

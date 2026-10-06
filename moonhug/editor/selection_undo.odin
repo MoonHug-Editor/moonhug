@@ -24,7 +24,7 @@ import core "moonhug:host/core"
 import "moonhug:editor/inspector"
 import "moonhug:editor/simulate"
 import undo "moonhug:editor/undo"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 
 @(private="file")
 _sel_undo_baseline: undo.Selection_State
@@ -88,11 +88,11 @@ selection_apply_state :: proc(state: undo.Selection_State) {
 		if !ok do continue
 		_sel_restore_scene(tH)
 		// Reveal: unfold every ancestor so the restored selection is visible.
-		viewport.hierarchy_reveal(tH)
+		session.hierarchy_reveal(tH)
 		restored_scene = true
 	}
 	if restored_scene {
-		viewport.hierarchy_scroll_to_selection()
+		session.hierarchy_scroll_to_selection()
 	}
 	active := ""
 	for r in state.proj {
@@ -114,7 +114,7 @@ selection_undo_track :: proc() {
 	// A select request posted this frame (a package menu that created an
 	// object) is applied before the diff, so it lands in the create's step.
 	// Here as well as in the hierarchy view, which may not be drawn at all.
-	viewport.apply_pending_select()
+	session.apply_pending_select()
 
 	s := undo.get()
 	if s == nil do return

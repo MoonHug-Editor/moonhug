@@ -9,8 +9,8 @@ package tests
 
 import "core:encoding/json"
 import "core:testing"
-import "../editor"
-import "../editor/undo"
+import "moonhug:editor"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 @(private = "file")

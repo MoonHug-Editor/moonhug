@@ -1,6 +1,6 @@
 package scene_views
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
@@ -44,7 +44,7 @@ _duplicate_with_undo :: proc(tH: engine.Transform_Handle) -> engine.Transform_Ha
 }
 
 // Selection lives in the shell (editor/selection.odin: ordered set + active),
-// reached through viewport.Selection_Source. This view owns
+// reached through session.Selection_Source. This view owns
 // the interaction: plain click = select only, cmd-click = toggle, shift-click
 // = range over the visible rows.
 
@@ -173,7 +173,7 @@ _hierarchy_enter_scene :: proc(source_path: string, source_guid: engine.Asset_GU
 		}
 	}
 	undo.purge_scenes(undo.get())
-	viewport.select_clear()
+	session.select_clear()
 	scene := engine.scene_load_single_path(source_path)
 	engine.sm_scene_set_active(scene)
 }
@@ -185,7 +185,7 @@ _hierarchy_exit_scene :: proc() {
 	frame := pop(&_edit_stack)
 	defer delete(frame.path)
 	undo.purge_scenes(undo.get())
-	viewport.select_clear()
+	session.select_clear()
 	scene := engine.scene_load_single_path(frame.path)
 	engine.sm_scene_set_active(scene)
 }
@@ -206,7 +206,7 @@ _hierarchy_discard_scene :: proc(scene: ^engine.Scene) {
 	if scene == nil || len(scene.path) == 0 do return
 	path := strings.clone(scene.path, context.temp_allocator)
 	undo.purge_scene(undo.get(), scene)
-	viewport.select_clear()
+	session.select_clear()
 	if engine.scene_reload_in_place_path(scene, path) == nil {
 		fmt.printf("[Editor] Discard: %s did not reload — the scene is gone from the hierarchy\n", path)
 	}
@@ -225,7 +225,7 @@ _save_as_pending: bool
 // selection tracker both call it, whichever runs first in the frame.
 hierarchy_apply_pending_select :: proc() {
 	if pending, ok := engine.inspector_take_pending_select(); ok {
-		viewport.select_only(pending)
+		session.select_only(pending)
 		_hierarchy_scroll_to_sel = true
 		_hierarchy_open_ancestors(pending)
 	}
@@ -295,7 +295,7 @@ draw_hierarchy_view :: proc() {
 	}
 
 	clear(&_hierarchy_nav_list)
-	viewport.prune()
+	session.prune()
 	_hierarchy_pointer_over_row = false
 
 	for i in 0..<sm.count {
@@ -315,19 +315,19 @@ draw_hierarchy_view :: proc() {
 	if _hierarchy_range_pending != _HANDLE_NONE {
 		target := _hierarchy_range_pending
 		_hierarchy_range_pending = _HANDLE_NONE
-		anchor := viewport.active()
+		anchor := session.active()
 		a_idx, t_idx := -1, -1
 		for h, i in _hierarchy_nav_list {
 			if h == anchor do a_idx = i
 			if h == target do t_idx = i
 		}
 		if a_idx == -1 || t_idx == -1 {
-			viewport.select_only(target)
+			session.select_only(target)
 		} else {
-			viewport.select_clear()
+			session.select_clear()
 			step := 1 if a_idx <= t_idx else -1
 			for i := a_idx; ; i += step {
-				viewport.select_add(_hierarchy_nav_list[i])
+				session.select_add(_hierarchy_nav_list[i])
 				if i == t_idx do break
 			}
 		}
@@ -337,7 +337,7 @@ draw_hierarchy_view :: proc() {
 		_hierarchy_rename_just_finished = false
 	} else {
 		is_not_renaming := _hierarchy_rename_target == _HANDLE_NONE
-		active_sel := viewport.active()
+		active_sel := session.active()
 		// Not while a text input (filter box) owns the keyboard.
 		if is_not_renaming && im.IsWindowFocused({}) && !im.IsAnyItemActive() {
 			if len(filter) > 0 && im.IsKeyPressed(im.Key.Escape) {
@@ -559,7 +559,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	}
 
 	has_children := len(t.children) > 0 && !filtered
-	is_selected := viewport.is_selected(tH)
+	is_selected := session.is_selected(tH)
 	is_renaming := _hierarchy_rename_target == tH
 
 	pushed_dim := !t.is_active && !parent_inactive
@@ -662,7 +662,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 
 	// In a multi-selection, outline the ACTIVE row — the one the inspector
 	// shows and single-target actions (rename, gizmo) operate on.
-	if is_selected && len(viewport.selection()) > 1 && viewport.active() == tH {
+	if is_selected && len(session.selection()) > 1 && session.active() == tH {
 		im.DrawList_AddRect(im.GetWindowDrawList(), node_rect_min, node_rect_max,
 			im.GetColorU32ImVec4(im.Vec4{1, 0.8, 0.2, 0.6}))
 	}
@@ -788,11 +788,11 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 			// cmd/ctrl toggles membership; shift ranges from the active row
 			// (deferred — the visible-row list is mid-build); plain replaces.
 			if io.KeyCtrl || io.KeySuper {
-				viewport.select_toggle(tH)
+				session.select_toggle(tH)
 			} else if io.KeyShift {
 				_hierarchy_range_pending = tH
 			} else {
-				viewport.select_only(tH)
+				session.select_only(tH)
 			}
 		}
 	}
@@ -801,7 +801,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 	// to the context menu only — it used to live here and blocked framing.
 	// Skipped when the interaction toggled the fold (arrow double-clicks).
 	if node_hovered && im.IsMouseDoubleClicked(.Left) && !is_renaming && !node_toggled {
-		viewport.frame_selected()
+		session.frame_selected()
 	}
 
 	if node_right_clicked do im.OpenPopup("##NodeContext")
@@ -812,7 +812,7 @@ _draw_hierarchy_node :: proc(tH: engine.Transform_Handle, scene: ^engine.Scene, 
 		// actions then act on the selection. The menu itself is COMPOSED from
 		// registered items (hierarchy_menu.odin + the shared GameObject
 		// bands), so plugins can extend every section.
-		if !viewport.is_selected(tH) do viewport.select_only(tH)
+		if !session.is_selected(tH) do session.select_only(tH)
 		menu.draw_menu_sections({
 			menu.section("Edit", min_order = menu.EDIT_SECTION_SELECTION_MIN, max_order = menu.EDIT_SECTION_SELECTION_MAX),
 			menu.section("GameObject", max_order = menu.GO_SECTION_PARENTING - 1),
@@ -897,7 +897,7 @@ _hierarchy_handle_is_nested :: proc(tH: engine.Transform_Handle) -> bool {
 // are skipped — deleting the ancestor removes them anyway.
 @(private)
 _delete_selected :: proc() {
-	targets := viewport.top_level()
+	targets := session.top_level()
 	w := engine.ctx_world()
 	g := undo.group_begin("Delete Selected")
 	defer undo.group_end(&g)
@@ -920,7 +920,7 @@ _delete_selected :: proc() {
 		deleted += 1
 	}
 	if deleted > 0 do undo.group_commit(&g)
-	viewport.select_clear()
+	session.select_clear()
 }
 
 // The NS bookkeeping a delete of `tH` needs, when `tH` is prefab content of a
@@ -947,7 +947,7 @@ _nested_removal_target :: proc(tH: engine.Transform_Handle) -> (host: engine.Tra
 // become the new selection.
 @(private)
 _duplicate_selected :: proc() {
-	targets := viewport.top_level()
+	targets := session.top_level()
 	w := engine.ctx_world()
 	g := undo.group_begin("Duplicate Selected")
 	defer undo.group_end(&g)
@@ -962,8 +962,8 @@ _duplicate_selected :: proc() {
 		append(&results, result)
 	}
 	if len(results) > 0 do undo.group_commit(&g)
-	viewport.select_clear()
-	for r in results do viewport.select_add(r)
+	session.select_clear()
+	for r in results do session.select_add(r)
 }
 
 @(private)
@@ -1037,7 +1037,7 @@ _create_empty_parent :: proc(tH: engine.Transform_Handle) {
 	undo.record_reparent_to(tH, new_parent)
 	undo.group_commit(&g)
 
-	viewport.select_only(new_parent)
+	session.select_only(new_parent)
 	_hierarchy_force_open = new_parent
 }
 
@@ -1182,7 +1182,7 @@ _hierarchy_drop_asset_as_child :: proc(path: string, parent_tH: engine.Transform
 	if new_tH == {} do return
 
 	undo.record_create(new_tH, parent_tH)
-	viewport.select_only(new_tH)
+	session.select_only(new_tH)
 	_hierarchy_force_open = parent_tH
 }
 
@@ -1240,7 +1240,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	nav_count := len(_hierarchy_nav_list)
 	if nav_count == 0 do return
 
-	active := viewport.active()
+	active := session.active()
 	cur_idx := -1
 	if active != _HANDLE_NONE {
 		for i in 0..<nav_count {
@@ -1253,7 +1253,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 
 	_nav_select_first :: proc(nav_count: int) {
 		if nav_count > 0 {
-			viewport.select_only(_hierarchy_nav_list[0])
+			session.select_only(_hierarchy_nav_list[0])
 		}
 	}
 
@@ -1267,9 +1267,9 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		} else if cur_idx + 1 < nav_count {
 			next := _hierarchy_nav_list[cur_idx + 1]
 			if shift {
-				viewport.select_add(next)
+				session.select_add(next)
 			} else {
-				viewport.select_only(next)
+				session.select_only(next)
 			}
 		}
 		return
@@ -1281,9 +1281,9 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		} else if cur_idx - 1 >= 0 {
 			prev := _hierarchy_nav_list[cur_idx - 1]
 			if shift {
-				viewport.select_add(prev)
+				session.select_add(prev)
 			} else {
-				viewport.select_only(prev)
+				session.select_only(prev)
 			}
 		}
 		return
@@ -1292,7 +1292,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 	// F frames the selection in the scene view (Unity), from here too so the
 	// hierarchy doesn't need a mouse trip to the scene panel.
 	if im.IsKeyPressed(im.Key.F) {
-		viewport.frame_selected()
+		session.frame_selected()
 		return
 	}
 
@@ -1314,7 +1314,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 			}
 		}
 		if cur_idx + 1 < nav_count {
-			viewport.select_only(_hierarchy_nav_list[cur_idx + 1])
+			session.select_only(_hierarchy_nav_list[cur_idx + 1])
 		}
 		return
 	}
@@ -1330,7 +1330,7 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 		}
 		parent_tH := engine.Transform_Handle(t.parent.handle)
 		if engine.pool_valid(&w.transforms, engine.Handle(parent_tH)) {
-			viewport.select_only(parent_tH)
+			session.select_only(parent_tH)
 		}
 		return
 	}
@@ -1339,15 +1339,15 @@ _handle_hierarchy_keyboard_nav :: proc(_: ^engine.SceneManager) {
 // The ACTIVE selected object (inspector target, gizmo target). With a
 // multi-selection this is the most recently selected item.
 hierarchy_get_selected :: proc() -> engine.Transform_Handle {
-	return viewport.active()
+	return session.active()
 }
 
 @(menu_item={path="Edit/Toggle Transform Active", order=0, shortcut="Alt+Shift+A"})
 hierarchy_toggle_active_menu :: proc() {
 	w := engine.ctx_world()
 	if w == nil do return
-	viewport.prune()
-	targets := viewport.selection()
+	session.prune()
+	targets := session.selection()
 	if len(targets) == 0 do return
 	g := undo.group_begin("Toggle Active")
 	defer undo.group_end(&g)

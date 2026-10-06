@@ -5,7 +5,7 @@ package tests
 // only an explicit revert removes it.
 
 import "moonhug:packages/engine"
-import "../editor/inspector"
+import "moonhug:editor/inspector"
 
 import "core:testing"
 import "core:strings"

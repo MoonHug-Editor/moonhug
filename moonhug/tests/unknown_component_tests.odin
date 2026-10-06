@@ -10,7 +10,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
-import common "common"
+import common "moonhug:tests/common"
 
 UNKNOWN_GUID :: "deadbeef-0000-4000-8000-000000000042"
 

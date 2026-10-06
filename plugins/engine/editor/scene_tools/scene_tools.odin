@@ -2,10 +2,10 @@ package scene_tools
 
 // The engine's scene tools: the transform gizmo, picking, the selection
 // outline and the engine's own gizmo hooks. They read the shell's selection
-// through viewport.Selection_Source. This file holds the per-frame entry
+// through session.Selection_Source. This file holds the per-frame entry
 // points the viewport provider (viewport_provider.odin) hands the shell.
 
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 import "moonhug:host/gizmos"
 
@@ -14,7 +14,7 @@ import "moonhug:host/gizmos"
 // @(on_scene_handles) procs, then the transform tool. The handles frame
 // (handles.frame_begin) must already be open with `view`.
 scene_tools_frame :: proc(view: engine.Render_View) {
-	if sel := viewport.selection(); len(sel) > 0 {
+	if sel := session.selection(); len(sel) > 0 {
 		quads := drawn_quads(view)
 		for h in sel do draw_selection_outline(h, quads)
 	}

@@ -10,7 +10,7 @@ package scene_views
 
 import engine "moonhug:packages/engine"
 import clip "moonhug:editor/clipboard"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import undo "moonhug:packages/engine/editor/undo"
 
 @(private)
@@ -24,7 +24,7 @@ _hierarchy_handle_valid :: proc(tH: engine.Transform_Handle) -> bool {
 // scene's root when nothing is selected (Unity).
 @(private)
 _hierarchy_active_or_root :: proc() -> engine.Transform_Handle {
-	active := viewport.active()
+	active := session.active()
 	if _hierarchy_handle_valid(active) do return active
 	scene := engine.sm_scene_get_active()
 	if scene == nil do return _HANDLE_NONE
@@ -38,7 +38,7 @@ _hierarchy_active_or_root :: proc() -> engine.Transform_Handle {
 // no override representation. The scene root is never deletable.
 @(private)
 _hierarchy_selection_deletable :: proc() -> bool {
-	for h in viewport.selection() {
+	for h in session.selection() {
 		if !_hierarchy_handle_valid(h) do continue
 		if _hierarchy_handle_is_root(h) do continue
 		return true
@@ -48,7 +48,7 @@ _hierarchy_selection_deletable :: proc() -> bool {
 
 @(private)
 _hierarchy_selection_mutable :: proc() -> bool {
-	for h in viewport.selection() {
+	for h in session.selection() {
 		if !_hierarchy_handle_valid(h) do continue
 		if _hierarchy_handle_is_root(h) || _hierarchy_handle_is_nested(h) do continue
 		return true
@@ -58,12 +58,12 @@ _hierarchy_selection_mutable :: proc() -> bool {
 
 @(private)
 _hierarchy_has_selection :: proc() -> bool {
-	return _hierarchy_handle_valid(viewport.active())
+	return _hierarchy_handle_valid(session.active())
 }
 
 // --- Edit: selection ops (Cut..Delete band, mirrored to hierarchy popup) -----
 // The shell's Edit menu (editor/edit_menu.odin) acts on the project selection
-// or calls these through viewport.Scene_Views.
+// or calls these through session.Scene_Views.
 
 // Pending Cut: pasting MOVES this subtree instead of inserting the clipboard
 // copy. Cleared by Copy, invalidated automatically if the object dies.
@@ -78,7 +78,7 @@ _hierarchy_cut_pending :: proc() -> bool {
 }
 
 // Whether the Edit menu's `op` applies to the scene selection.
-edit_can :: proc(op: viewport.Edit_Op) -> bool {
+edit_can :: proc(op: session.Edit_Op) -> bool {
 	switch op {
 	case .Cut, .Duplicate: return _hierarchy_selection_mutable()
 	case .Copy:            return _hierarchy_has_selection()
@@ -90,7 +90,7 @@ edit_can :: proc(op: viewport.Edit_Op) -> bool {
 }
 
 // Runs the Edit menu's `op` on the scene selection.
-edit_run :: proc(op: viewport.Edit_Op) {
+edit_run :: proc(op: session.Edit_Op) {
 	switch op {
 	case .Cut:       _hierarchy_cut()
 	case .Copy:      _hierarchy_copy()
@@ -103,7 +103,7 @@ edit_run :: proc(op: viewport.Edit_Op) {
 
 @(private = "file")
 _hierarchy_cut :: proc() {
-	active := viewport.active()
+	active := session.active()
 	if !_hierarchy_handle_valid(active) do return
 	if _hierarchy_handle_is_root(active) || _hierarchy_handle_is_nested(active) do return
 	_hierarchy_cut_tH = active
@@ -111,7 +111,7 @@ _hierarchy_cut :: proc() {
 
 @(private = "file")
 _hierarchy_copy :: proc() {
-	active := viewport.active()
+	active := session.active()
 	if !_hierarchy_handle_valid(active) do return
 	_hierarchy_cut_tH = _HANDLE_NONE
 	clip.copy_hierarchy(engine.scene_copy_subtree(active))
@@ -136,34 +136,34 @@ _hierarchy_paste :: proc() {
 	// selected before.
 	if _hierarchy_cut_pending() {
 		undo.record_reparent_to(_hierarchy_cut_tH, target)
-		viewport.select_only(_hierarchy_cut_tH)
+		session.select_only(_hierarchy_cut_tH)
 		_hierarchy_cut_tH = _HANDLE_NONE
 	} else {
 		result := _paste_subtree_with_undo(clip.paste_hierarchy(), target)
 		engine._transform_append_name_suffix(result, "_copy")
-		if result != _HANDLE_NONE do viewport.select_only(result)
+		if result != _HANDLE_NONE do session.select_only(result)
 	}
 	_hierarchy_force_open = target
 }
 
 @(private)
 _hierarchy_can_rename :: proc() -> bool {
-	active := viewport.active()
+	active := session.active()
 	return _hierarchy_handle_valid(active) && !_hierarchy_handle_is_nested(active)
 }
 
 @(private = "file")
 _hierarchy_rename :: proc() {
 	if !_hierarchy_can_rename() do return
-	_begin_rename(viewport.active())
+	_begin_rename(session.active())
 }
 
 @(private = "file")
 _hierarchy_delete :: proc() {
-	if _hierarchy_rename_target != _HANDLE_NONE && viewport.is_selected(_hierarchy_rename_target) {
+	if _hierarchy_rename_target != _HANDLE_NONE && session.is_selected(_hierarchy_rename_target) {
 		_hierarchy_rename_target = _HANDLE_NONE
 	}
-	if _hierarchy_cut_tH != _HANDLE_NONE && viewport.is_selected(_hierarchy_cut_tH) {
+	if _hierarchy_cut_tH != _HANDLE_NONE && session.is_selected(_hierarchy_cut_tH) {
 		_hierarchy_cut_tH = _HANDLE_NONE
 	}
 	_delete_selected()
@@ -177,13 +177,13 @@ hierarchy_create_empty_menu :: proc() {
 	if scene == nil do return
 	// What was made becomes the selection, in the create's own undo step
 	// (the selection tracker attaches it).
-	viewport.select_only(undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle)))
+	session.select_only(undo.record_create_child("Transform", engine.Transform_Handle(scene.root.handle)))
 }
 
 // Creating a child under prefab-instance content is representable as an
 // added_object, so nested targets are allowed here.
 _hierarchy_can_create_child :: proc() -> bool {
-	active := viewport.active()
+	active := session.active()
 	if !_hierarchy_handle_valid(active) do return engine.sm_scene_get_active() != nil
 	return true
 }
@@ -194,17 +194,17 @@ hierarchy_create_empty_child_menu :: proc() {
 	if parent == _HANDLE_NONE do return
 	// A child under prefab content is an added_object on the instance
 	// (plugins/engine/docs/PrefabsSpec.md §4.4) — the capture pass picks it up on save.
-	viewport.select_only(undo.record_create_child("Transform", parent))
+	session.select_only(undo.record_create_child("Transform", parent))
 	_hierarchy_force_open = parent
 }
 
 _hierarchy_can_create_parent :: proc() -> bool {
-	active := viewport.active()
+	active := session.active()
 	return _hierarchy_handle_valid(active) && !_hierarchy_handle_is_root(active) && !_hierarchy_handle_is_nested(active)
 }
 
 @(menu_item={path="GameObject/Create Empty Parent", order=-98, enabled=_hierarchy_can_create_parent})
 hierarchy_create_empty_parent_menu :: proc() {
 	if !_hierarchy_can_create_parent() do return
-	_create_empty_parent(viewport.active())
+	_create_empty_parent(session.active())
 }

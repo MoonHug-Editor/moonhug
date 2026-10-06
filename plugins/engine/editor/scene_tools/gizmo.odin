@@ -22,13 +22,14 @@ import "core:math/linalg"
 import "moonhug:editor/handles"
 import "moonhug:packages/engine"
 import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import undo "moonhug:packages/engine/editor/undo"
 
 gizmo_origin :: proc(tH: engine.Transform_Handle) -> [3]f32 {
 	if viewport.gizmo_pivot == .Center {
 		sum: [3]f32
 		n := 0
-		for h in viewport.top_level() {
+		for h in session.top_level() {
 			sum += engine.transform_world_position(h)
 			n += 1
 		}
@@ -89,7 +90,7 @@ scene_tools_dragging :: proc() -> bool {
 // gizmo on the active object in W E R, and the end of a drag whose gizmo went
 // away (Q or T pressed mid-drag, the selection emptied).
 gizmo_tool_frame :: proc() {
-	sel := viewport.active()
+	sel := session.active()
 	if viewport.gizmo_mode != .Handles && sel != {} {
 		gizmo_draw_and_handle(sel)
 	} else {
@@ -200,7 +201,7 @@ _gizmo_collect_targets :: proc() -> bool {
 	// contribute two entries.
 	edits := make([dynamic]undo.Edit_Target, 0, len(_gizmo_targets) * 2, context.temp_allocator)
 
-	for h in viewport.top_level() {
+	for h in session.top_level() {
 		t := engine.pool_get(&w.transforms, engine.Handle(h))
 		if t == nil do continue
 		append(&_gizmo_targets, _Gizmo_Target{

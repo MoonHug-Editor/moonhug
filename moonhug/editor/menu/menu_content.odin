@@ -1,7 +1,7 @@
 package menu
 import im "moonhug:external/odin-imgui"
 import "../inspector"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 
@@ -173,7 +173,7 @@ file_save_menu :: proc()
     // document, and every loaded scene edited since its last save. One
     // shortcut, no per-view Save buttons.
     inspector.save_to_file()
-    viewport.document_save_all()
+    session.document_save_all()
 }
 
 @(menu_separator={path="File", order=5})

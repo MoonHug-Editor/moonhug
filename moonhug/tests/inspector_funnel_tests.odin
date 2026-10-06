@@ -9,7 +9,7 @@ package tests
 import "base:runtime"
 import "core:strings"
 import "core:testing"
-import inspector "../editor/inspector"
+import inspector "moonhug:editor/inspector"
 
 _Funnel_Probe :: struct {
 	x: f32,

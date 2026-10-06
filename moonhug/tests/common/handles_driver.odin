@@ -9,7 +9,7 @@ package tests_common
 import "core:math/linalg"
 import "moonhug:packages/engine"
 import "moonhug:host/gizmos"
-import "../../editor/handles"
+import "moonhug:editor/handles"
 
 // A perspective camera at `eye` looking at the origin, 800x600 pixels.
 handles_test_view :: proc(eye := [3]f32{0, 0, 10}) -> engine.Render_View {

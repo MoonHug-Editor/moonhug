@@ -1,7 +1,7 @@
 package tests
 
 import "moonhug:packages/engine"
-import sim "../editor/simulate"
+import sim "moonhug:editor/simulate"
 import "core:os"
 
 import "core:testing"

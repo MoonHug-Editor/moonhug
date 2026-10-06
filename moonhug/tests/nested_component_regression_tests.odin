@@ -7,7 +7,7 @@ import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
-import common "common"
+import common "moonhug:tests/common"
 
 
 // A component whose registered type can't parse the record (corrupt/incompatible

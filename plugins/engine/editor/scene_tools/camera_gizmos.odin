@@ -10,7 +10,7 @@ import "core:math"
 import "moonhug:packages/engine"
 import "moonhug:host/gizmos"
 import "moonhug:editor/handles"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 
 CAMERA_GIZMO_COLOR :: [4]f32{0.9, 0.9, 0.9, 0.9}
 
@@ -32,7 +32,7 @@ camera_gizmos :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Context) {
 	forward := [3]f32{-rot[0, 2], -rot[1, 2], -rot[2, 2]}
 
 	aspect := f32(16.0 / 9.0)
-	if a, ok := viewport.game_aspect(); ok do aspect = a
+	if a, ok := session.game_aspect(); ok do aspect = a
 	tan_half := math.tan(math.to_radians(cam.fov) * 0.5)
 
 	rect :: proc(origin: [3]f32, right, up, forward: [3]f32, d, tan_half, aspect: f32) -> [4][3]f32 {

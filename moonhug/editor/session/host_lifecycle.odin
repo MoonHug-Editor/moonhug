@@ -1,4 +1,7 @@
-package viewport
+package session
+
+// What the shell asks the installed plugins about the editing session: the
+// host's lifecycle, the open documents, the selection and the scene views.
 
 import "base:runtime"
 import "moonhug:editor/provider"

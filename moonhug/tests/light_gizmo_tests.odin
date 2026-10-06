@@ -8,8 +8,8 @@ import "core:math"
 import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
-import "../editor/handles"
-import "../editor/undo"
+import "moonhug:editor/handles"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine/editor/scene_tools"
 
 @(private = "file")

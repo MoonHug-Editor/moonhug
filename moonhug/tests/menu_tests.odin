@@ -10,9 +10,9 @@ import "core:slice"
 import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
-import "../editor"
-import "../editor/icons"
-import "../editor/menu"
+import "moonhug:editor"
+import "moonhug:editor/icons"
+import "moonhug:editor/menu"
 
 @(private = "file") _act_ran: int
 @(private = "file") _act_flag: bool

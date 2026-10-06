@@ -4,7 +4,7 @@ package scene_views
 // Assets/Create/Scene writes a new scene into the folder the project view shows.
 
 import "core:path/filepath"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 // Saves the active scene to its file (the hierarchy header menu's Save).
@@ -18,6 +18,6 @@ scene_save_menu :: proc() {
 @(menu_item={path="Assets/Create/Scene", order=0, shortcut=""})
 scene_create_menu :: proc() {
 	scene := engine.scene_new()
-	save_path, _ := filepath.join({viewport.project_dir(), "Scene.scene"}, context.temp_allocator)
+	save_path, _ := filepath.join({session.project_dir(), "Scene.scene"}, context.temp_allocator)
 	engine.scene_save(scene, save_path)
 }

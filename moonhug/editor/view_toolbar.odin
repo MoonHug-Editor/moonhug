@@ -13,7 +13,7 @@ import "core:thread"
 import "core:time"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/runconfig"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:host/log"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
@@ -650,7 +650,7 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
     run_parts := make([dynamic]string, context.temp_allocator)
     append(&run_parts, config_exe_abs)
     if with_current_scene {
-        if scene_path, snapshot, open := viewport.document_snapshot_active(); open {
+        if scene_path, snapshot, open := session.document_snapshot_active(); open {
             play_path := scene_path
             if snapshot != nil {
                 defer delete(snapshot)

@@ -29,7 +29,7 @@ import "moonhug:editor/progress"
 import crash_journal "moonhug:host/crash_journal"
 import "moonhug:host/log"
 import "core:encoding/uuid"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 
 main :: proc() {
     when ODIN_DEBUG {
@@ -122,9 +122,9 @@ main :: proc() {
     // of a black window (progress_overlay.odin).
     progress_overlay_install()
 
-    // The installed engine's user context and world (viewport.Host_Lifecycle),
+    // The installed engine's user context and world (session.Host_Lifecycle),
     // nil with no engine.
-    context.user_ptr = viewport.host_boot()
+    context.user_ptr = session.host_boot()
 
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
@@ -134,7 +134,7 @@ main :: proc() {
     defer selection_undo_shutdown()
     defer { undo.destroy(undo_stack); free(undo_stack) }
 
-    defer viewport.host_release()
+    defer session.host_release()
 
     progress.begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
@@ -244,7 +244,7 @@ main :: proc() {
 
         // ImGui UI
         if menu.show_inspector {
-            viewport.inspector_draw()
+            session.inspector_draw()
         }
 
         if menu.show_project_inspector {
@@ -264,7 +264,7 @@ main :: proc() {
         }
 
         if menu.show_hierarchy {
-            viewport.hierarchy_draw()
+            session.hierarchy_draw()
         }
 
         // Package editor views (animation, playable graph, ...) — each owns
@@ -361,7 +361,7 @@ editor_init :: proc() {
     assets.asset_db_init("assets")
     asset_pipeline.asset_pipeline_import_all()
     progress.report("Initializing caches")
-    viewport.host_init()
+    session.host_init()
 
     init_scene_view()
     init_game_view()
@@ -374,7 +374,7 @@ editor_init :: proc() {
         _register_view_chrome()
         _load_user_settings() // @(user_settings) vars -> UserSettings/*.json
         register_create_asset_menus()
-        viewport.scene_views_register_menus()
+        session.scene_views_register_menus()
 
         top_order := make(map[string]int)
         defer delete(top_order)
@@ -453,10 +453,10 @@ editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_view()
     shutdown_scene_view()
-    viewport.host_shutdown()
+    session.host_shutdown()
     assets.asset_db_shutdown()
     inspector.shutdown_registries()
-    viewport.scene_views_shutdown()
+    session.scene_views_shutdown()
     selection_shutdown()
     shutdown_project_view()
     _save_user_settings()

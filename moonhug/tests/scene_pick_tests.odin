@@ -10,7 +10,7 @@ package tests
 // that describe the bind pose in the rig's own space.
 
 import "core:testing"
-import "../editor/handles"
+import "moonhug:editor/handles"
 import "moonhug:packages/engine"
 import "moonhug:host/gfx"
 import "moonhug:packages/engine/editor/scene_tools"

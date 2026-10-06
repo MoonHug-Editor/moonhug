@@ -18,7 +18,7 @@ import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
 import assets "moonhug:host/assets"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 
 RECENT_SCENES_MAX :: 10
 
@@ -26,7 +26,7 @@ RECENT_SCENES_MAX :: 10
 // the scenes being replaced is purged, and the scene becomes active.
 editor_open_scene :: proc(path: string) {
 	undo.purge_scenes(undo.get())
-	viewport.edit_stack_clear()
+	session.edit_stack_clear()
 	if asset_pipeline.asset_open(path) do _recent_scenes_push(path)
 }
 

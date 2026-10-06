@@ -21,7 +21,7 @@ package tests_common
 // transaction, the peer apply or the undo recording is reimplemented here, so a
 // test exercises the shipping code path rather than a model of it.
 
-import "../../editor/inspector"
+import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/scene_views"
 

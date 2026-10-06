@@ -8,8 +8,8 @@ package tests
 
 import "core:os"
 import "core:testing"
-import "../editor"
-import "../editor/undo"
+import "moonhug:editor"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/scene_views"

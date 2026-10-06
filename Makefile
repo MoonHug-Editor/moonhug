@@ -17,14 +17,13 @@ MH := $(MH_BIN)
 $(MH_BIN): $(wildcard tools/mh/*.odin)
 	@mkdir -p builds/tools && odin build tools/mh -out:$@
 
-.PHONY: help setup run debug build app test prebuild deps shaders docs mcp clean distclean
+.PHONY: help setup run debug build test prebuild deps shaders docs mcp clean distclean
 
 help:      $(MH_BIN) ; @$(MH) help
 setup:     $(MH_BIN) ; @$(MH) setup
 run:       $(MH_BIN) ; @$(MH) run
 debug:     $(MH_BIN) ; @$(MH) debug
 build:     $(MH_BIN) ; @$(MH) build $(if $(NOPLUGINS),--no-plugins,)
-app:       $(MH_BIN) ; @$(MH) app
 prebuild:  $(MH_BIN) ; @$(MH) prebuild
 deps:      $(MH_BIN) ; @$(MH) deps $(NAME)
 shaders:   $(MH_BIN) ; @$(MH) shaders

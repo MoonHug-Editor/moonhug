@@ -8,8 +8,8 @@ package tests
 // its own inputs to `field_edit_row` and never exercised the caller. Everything
 // asserting rotation behaviour goes through `rotation_row_drive_for_test`.
 
-import "../editor/inspector"
-import "../editor/undo"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 import "core:testing"

@@ -9,7 +9,7 @@ import "core:math/linalg"
 import "core:testing"
 import "moonhug:packages/engine"
 import "moonhug:host/gizmos"
-import "../editor/handles"
+import "moonhug:editor/handles"
 
 @(test)
 test_handles_ray_plane_hits_and_misses :: proc(t: ^testing.T) {

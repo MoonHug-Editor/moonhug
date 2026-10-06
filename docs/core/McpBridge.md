@@ -34,7 +34,7 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, mcp.Too
 
 ## Tools
 
-The shell's tools (`editor/mcp_bridge.odin`) are `read_log`, `batch`, `list_menus`, `invoke_menu`, `dialog`, `open_scene`, `ping_asset`, `editor_setting` and `screenshot`. The engine's (`plugins/engine/editor/mcp_tools`) are `editor_state`, `scene_dump`, `list_objects`, `describe_type`, `select`, `set_transform`, `rename_object`, `get_property` and `set_property`. `open_scene` runs the project view's open flow and reads the active scene through `viewport.Document_Actions`.
+The shell's tools (`editor/mcp_bridge.odin`) are `read_log`, `batch`, `list_menus`, `invoke_menu`, `dialog`, `open_scene`, `ping_asset`, `editor_setting` and `screenshot`. The engine's (`plugins/engine/editor/mcp_tools`) are `editor_state`, `scene_dump`, `list_objects`, `describe_type`, `select`, `set_transform`, `rename_object`, `get_property` and `set_property`. `open_scene` runs the project view's open flow and reads the active scene through `session.Document_Actions`.
 
 - `editor_state` — active scene, simulate state, selection (names and `local_id`s, since names repeat)
 - `read_log` — recent console entries

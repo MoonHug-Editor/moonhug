@@ -120,14 +120,6 @@ cmd_deps :: proc(args: []string) -> int {
 	return 0 if step("deps", ..cmd[:]) else 1
 }
 
-// The game, through its run config (docs/core/Plugins.md) — the same path the
-// editor's Play button takes, so a terminal run and a Play run agree.
-cmd_app :: proc(args: []string) -> int {
-	if !prebuild() do return 1
-	config := "run_debug.odin" if has_flag(args, "--debug") else "run.odin"
-	return run("odin", "run", fmt.tprintf("moonhug/packages/app/run_configs/%s", config), "-file", COLLECTION)
-}
-
 // -define:ODIN_TEST_THREADS=1 keeps tests serial: they share the asset db and
 // fixture files on disk. Codegen runs first: the test binary compiles the
 // generated registrations, and a stale one fails the compile against renamed

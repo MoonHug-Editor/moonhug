@@ -33,7 +33,7 @@ import core "moonhug:host/core"
 import gfx "moonhug:host/gfx"
 import "moonhug:host/log"
 import "menu"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:editor/widgets"
 
 _MCP_PORT_FIRST :: 6600
@@ -450,7 +450,7 @@ mcp_tool_open_scene :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 	}
 	// The project view's own flow, then the engine's active document.
 	_project_activate_file(string(path))
-	active, aok := viewport.document_active_path()
+	active, aok := session.document_active_path()
 	if !aok do return mcp.tool_fail("load_failed", "scene did not load")
 	return mcp.tool_ok(struct{ path: string }{path = active})
 }

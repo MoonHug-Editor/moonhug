@@ -15,6 +15,7 @@ package scene_tools
 
 import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 @(private = "file")
@@ -38,7 +39,7 @@ gizmo_marks_rebuild :: proc() {
 	w := engine.ctx_world()
 	if w == nil do return
 	stack := make([dynamic]engine.Transform_Handle, context.temp_allocator)
-	for tH in viewport.selection() {
+	for tH in session.selection() {
 		// Already In_Selection: an earlier selected root's walk reached it (a
 		// child selected along with its parent), so its subtree is marked.
 		walked := .In_Selection in _mark_of(tH)
@@ -57,7 +58,7 @@ gizmo_marks_rebuild :: proc() {
 			}
 		}
 	}
-	if active := viewport.active(); active != {} do _mark(active, {.Active})
+	if active := session.active(); active != {} do _mark(active, {.Active})
 }
 
 gizmo_context :: proc(tH: engine.Transform_Handle) -> handles.Gizmo_Context {

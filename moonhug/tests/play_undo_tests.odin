@@ -10,10 +10,10 @@ package tests
 // identity finds the right scene.
 
 import "core:testing"
-import "../editor"
-import "../editor/menu"
-import "../editor/simulate"
-import "../editor/undo"
+import "moonhug:editor"
+import "moonhug:editor/menu"
+import "moonhug:editor/simulate"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 @(private = "file")

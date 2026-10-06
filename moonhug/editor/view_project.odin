@@ -22,7 +22,7 @@ import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
 import assets "moonhug:host/assets"
 import core "moonhug:host/core"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 
 ProjectViewData :: struct {
     currentPath: string,
@@ -1309,7 +1309,7 @@ create_scene_variant :: proc(base_path: string) {
     asset_pipeline.asset_db_refresh()
 
     undo.purge_scenes(undo.get())
-    viewport.edit_stack_clear()
+    session.edit_stack_clear()
     asset_pipeline.asset_open(variant_path)
 }
 

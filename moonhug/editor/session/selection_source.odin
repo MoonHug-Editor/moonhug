@@ -1,4 +1,4 @@
-package viewport
+package session
 
 // The shell state the engine's tools and views read and change: the scene
 // selection, what the inspector shows, the project view's active path and folder,

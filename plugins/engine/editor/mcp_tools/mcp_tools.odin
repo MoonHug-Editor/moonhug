@@ -13,7 +13,7 @@ import "core:strings"
 import mcp "moonhug:editor/mcp"
 import "moonhug:editor/inspector"
 import sim "moonhug:editor/simulate"
-import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:packages/engine"
 
 Mcp_Error :: mcp.Tool_Error
@@ -24,7 +24,7 @@ Mcp_Error :: mcp.Tool_Error
 _mcp_selection_names :: proc() -> []string {
 	w := engine.ctx_world()
 	names := make([dynamic]string, context.temp_allocator)
-	for tH in viewport.selection() {
+	for tH in session.selection() {
 		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
 			append(&names, t.name)
 		}
@@ -40,8 +40,8 @@ mcp_tool_editor_state :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 	// local_ids alongside names because names repeat — the ids are what select
 	// and set_transform address, and what makes a multi-selection reproducible.
 	w := engine.ctx_world()
-	ids := make([dynamic]engine.Local_ID, 0, len(viewport.selection()), context.temp_allocator)
-	for tH in viewport.selection() {
+	ids := make([dynamic]engine.Local_ID, 0, len(session.selection()), context.temp_allocator)
+	for tH in session.selection() {
 		if t := engine.pool_get(&w.transforms, engine.Handle(tH)); t != nil {
 			append(&ids, t.local_id)
 		}
@@ -390,7 +390,7 @@ mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	if raw_ids, has_ids := params["local_ids"].(json.Array); has_ids {
 		s := engine.sm_scene_get_active()
 		if s == nil do return mcp.tool_fail("no_scene", "no active scene")
-		if !add do viewport.select_clear()
+		if !add do session.select_clear()
 
 		missing := make([dynamic]i64, 0, len(raw_ids), context.temp_allocator)
 		count := 0
@@ -403,7 +403,7 @@ mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 				append(&missing, i64(f))
 				continue
 			}
-			viewport.select_add(tH)
+			session.select_add(tH)
 			count += 1
 		}
 		if len(missing) > 0 {
@@ -414,20 +414,20 @@ mcp_tool_select :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 
 	name, has := params["name"].(json.String)
 	if !has || name == "" {
-		viewport.select_clear()
+		session.select_clear()
 		return mcp.tool_ok(struct{ selected: int }{0})
 	}
 	s := engine.sm_scene_get_active()
 	if s == nil do return mcp.tool_fail("no_scene", "no active scene")
 	w := engine.ctx_world()
-	if !add do viewport.select_clear()
+	if !add do session.select_clear()
 	count := 0
 	it := engine.pool_iterator(&w.transforms)
 	for t, h in engine.pool_next(&it) {
 		if t.scene != s || t.name != name do continue
 		h := h
 		h.type_key = .Transform
-		viewport.select_add(engine.Transform_Handle(h))
+		session.select_add(engine.Transform_Handle(h))
 		count += 1
 	}
 	if count == 0 do return mcp.tool_fail("not_found", "no object named %q — see list_objects", name)

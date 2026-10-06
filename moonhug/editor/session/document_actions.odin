@@ -1,4 +1,4 @@
-package viewport
+package session
 
 import "base:runtime"
 import "moonhug:editor/provider"

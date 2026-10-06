@@ -10,8 +10,8 @@ package tests
 //   - a gesture that ends where it started records nothing
 
 import "base:runtime"
-import "../editor/inspector"
-import "../editor/undo"
+import "moonhug:editor/inspector"
+import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 import "core:testing"

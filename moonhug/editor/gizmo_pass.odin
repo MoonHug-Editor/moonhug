@@ -24,6 +24,7 @@ import gfx "moonhug:host/gfx"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
+import "moonhug:editor/session"
 import "moonhug:host/gizmos"
 
 // The gfx frame the scene view last rendered in, and its image size then.
@@ -112,7 +113,7 @@ _gizmo_snap_angle :: proc() -> f32 {
 @(init, private = "file")
 _install_selection_source :: proc "contextless" () {
 	context = runtime.default_context()
-	viewport.set_selection_source({
+	session.set_selection_source({
 		selection        = sel_scene_items,
 		top_level        = sel_scene_top_level,
 		active           = sel_scene_active,

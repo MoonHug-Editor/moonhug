@@ -37,7 +37,7 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 
 ## Generated pages
 
-`docs/reference/` is generated and gitignored, in two parts: `attributes/`, one page per attribute written on every build by `moonhug/prebuild/attributes_gen`, and `packages/`, one `odin doc` page per engine and editor package written by `mh docs` (`tools/mh/docs.odin`).
+`docs/reference/` is generated and gitignored, in two parts: `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written on every build by `moonhug/prebuild/attributes_gen`, and `packages/`, one `odin doc` page per engine and editor package written by `mh docs` (`tools/mh/docs.odin`).
 
 ## Attributes
 
@@ -52,7 +52,7 @@ toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin :=
 ```
 
 - The doc comment is the attribute's explanation, and its first sentence is the summary on the index.
-- The package the declaration sits in is the package the attribute extends, and the index groups attributes by it.
+- The package the declaration sits in is the package the attribute extends. The index groups attributes by layer, Host, Editor, then each plugin by name, and by that package inside a layer.
 - `fields` lists the keys the attribute takes. A trailing `*` matches by prefix, as in `param_*`.
 - `target` says what the attribute goes on (`proc`, `var`, `type`). It is documentation only.
 
