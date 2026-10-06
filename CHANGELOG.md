@@ -1,3 +1,12 @@
+## [0.121.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.120.0...v0.121.0) (2026-10-06)
+
+### Features
+
+* add make(mh) play command ([d22537f](https://github.com/MoonHug-Editor/moonhug/commit/d22537fc31f4319a6f345c90ae3432f4b736e554))
+* engine as plugin ([913628e](https://github.com/MoonHug-Editor/moonhug/commit/913628e3854ff3854920f6158c9c0f1657675dff))
+* improve docs, split viewport package ([ef116ef](https://github.com/MoonHug-Editor/moonhug/commit/ef116ef08b37a2ef0ad0bb2d1161a038fa22c51a))
+* mh build noplugins=1,  @(provider_install) attr ([51ce0e3](https://github.com/MoonHug-Editor/moonhug/commit/51ce0e398a1e1cdcf640445023f1879aa99023a2))
+
 ## [0.120.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.119.1...v0.120.0) (2026-10-04)
 
 ### Features
