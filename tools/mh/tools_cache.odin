@@ -13,12 +13,34 @@ import "core:time"
 
 TOOLS_DIR :: "builds/tools"
 
+// The root of the Odin installation the tools were built with, as `odin root`
+// prints it. The Makefile writes it too. A tool binary older than the stamp is
+// rebuilt, so an Odin upgrade rebuilds every cached tool once.
+ODIN_STAMP :: TOOLS_DIR + "/.odin-root"
+
+// Rewrites the stamp when mh runs under a different Odin installation than
+// the one the stamp names. mh is always built by the current compiler (make
+// rebuilds it on a stamp change, `odin run` compiles it every time), so its
+// own ODIN_ROOT is the current one.
+refresh_odin_stamp :: proc() {
+	current, err := os.read_entire_file(ODIN_STAMP, context.temp_allocator)
+	want := fmt.tprintf("%s\n", ODIN_ROOT)
+	if err == nil && string(current) == want do return
+	os.make_directory_all(TOOLS_DIR)
+	_ = os.write_entire_file(ODIN_STAMP, transmute([]byte)want)
+}
+
 // The binary for the tool whose package is `src`, built with `args` when it
 // is missing or any .odin file under `src` or `deps` is newer than it.
 tool_bin :: proc(name, src: string, deps: []string, args: ..string) -> (bin: string, ok: bool) {
 	bin = fmt.tprintf("%s/%s%s", TOOLS_DIR, name, EXE)
 	bin_t, berr := os.modification_time_by_path(bin)
 	stale := berr != nil
+	// Built by another Odin installation: its vendor paths and runtime are gone.
+	if !stale {
+		stamp_t, serr := os.modification_time_by_path(ODIN_STAMP)
+		if serr != nil || time.diff(bin_t, stamp_t) > 0 do stale = true
+	}
 	if !stale && _any_odin_newer(src, bin_t) do stale = true
 	if !stale do for d in deps do if _any_odin_newer(d, bin_t) { stale = true; break }
 	if !stale do return bin, true

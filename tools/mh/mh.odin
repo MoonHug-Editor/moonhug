@@ -49,6 +49,7 @@ COMMANDS := []Command {
 }
 
 main :: proc() {
+	refresh_odin_stamp()
 	args := os.args[1:]
 	if len(args) == 0 {
 		os.exit(cmd_help(nil))

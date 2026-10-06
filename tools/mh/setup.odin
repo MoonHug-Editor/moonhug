@@ -11,6 +11,7 @@ package mh
 // Already-built libraries are skipped, so this is safe to re-run.
 
 import "core:fmt"
+import "core:slice"
 import "core:os"
 
 Vendor_Lib :: struct {
@@ -25,6 +26,14 @@ Vendor_Lib :: struct {
 	note:     string,
 }
 
+// A command for the table below. A `{"sh", "build.sh"}` slice literal in a
+// struct literal lives on the stack of the proc that builds the table, which
+// is gone by the time the command runs, so each command is copied out.
+@(private = "file")
+_cmd :: proc(parts: ..string) -> []string {
+	return slice.clone(parts, context.temp_allocator)
+}
+
 vendor_libs :: proc() -> []Vendor_Lib {
 	lib_dir := "darwin" when ODIN_OS == .Darwin else "linux"
 	stb_artifact := fmt.tprintf("stb/lib/%s/stb_image.a", lib_dir) if ODIN_OS != .Windows else "stb/lib/stb_image.lib"
@@ -36,32 +45,33 @@ vendor_libs :: proc() -> []Vendor_Lib {
 			name = "stb",
 			artifact = stb_artifact,
 			dir = odin_vendor("stb", "src"),
-			unix_cmd = {"make"},
-			win_cmd = {"cmd", "/C", "build.bat"},
+			unix_cmd = _cmd("make"),
+			win_cmd = _cmd("cmd", "/C", "build.bat"),
 			note = "image decoding",
 		},
 		Vendor_Lib {
 			name = "cgltf",
 			artifact = cgltf_artifact,
 			dir = odin_vendor("cgltf", "src"),
-			unix_cmd = {"make"},
-			win_cmd = {"cmd", "/C", "build.bat"},
+			unix_cmd = _cmd("make"),
+			win_cmd = _cmd("cmd", "/C", "build.bat"),
 			note = "glTF mesh import",
 		},
 		Vendor_Lib {
 			name = "box2d",
 			artifact = fmt.tprintf("box2d/lib/box2d_%s_%s.a", lib_dir, "arm64" when ODIN_ARCH == .arm64 else "amd64"),
 			dir = odin_vendor("box2d"),
-			unix_cmd = {"sh", "build_box2d.sh"},
-			win_cmd = {"cmd", "/C", "build_box2d.bat"},
+			unix_cmd = _cmd("sh", "build_box2d.sh"),
+			win_cmd = _cmd("cmd", "/C", "build_box2d.bat"),
 			note = "physics2d package, needs cmake (a WASM warning is harmless)",
 		},
 		Vendor_Lib {
 			name = "box3d",
-			artifact = fmt.tprintf("box3d/lib/%s", lib_dir),
+			// The library file, not its folder: Odin ships lib/darwin empty.
+			artifact = fmt.tprintf("box3d/lib/%s/libbox3d.a", lib_dir) if ODIN_OS == .Darwin else (fmt.tprintf("box3d/lib/linux-%s/libbox3d.a", "arm64" when ODIN_ARCH == .arm64 else "amd64") if ODIN_OS == .Linux else "box3d/lib/box3d.lib"),
 			dir = odin_vendor("box3d", "src"),
-			unix_cmd = {"sh", "build.sh"},
-			win_cmd = {"cmd", "/C", "build.bat"},
+			unix_cmd = _cmd("sh", "build.sh"),
+			win_cmd = _cmd("cmd", "/C", "build.bat"),
 			note = "physics3d package, clang only",
 		},
 	)
@@ -92,6 +102,14 @@ cmd_setup :: proc(args: []string) -> int {
 		cmd := lib.unix_cmd
 		when ODIN_OS == .Windows do cmd = lib.win_cmd
 		if code := run_in(lib.dir, ..cmd); code != 0 {
+			// Odin's scripts also build a WASM variant last, under `set -e`, and
+			// Apple's clang has no WASM target. The native library is what the
+			// editor links, so it counts once its file exists.
+			if os.exists(artifact) {
+				fmt.printfln("  %-7s built (the script exited %d after the native library, a WASM step MoonHug does not use)", lib.name, code)
+				built += 1
+				continue
+			}
 			fmt.eprintfln("  %-7s FAILED (exit %d)", lib.name, code)
 			failed += 1
 			continue

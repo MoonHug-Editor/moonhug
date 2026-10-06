@@ -11,12 +11,21 @@
 # gathers one plugin's dependencies.
 
 # mh itself is compiled once into builds/tools/ and rebuilt when its sources
-# change (Odin has no build cache, `odin run` recompiled it on every make).
+# change (Odin has no build cache, `odin run` recompiled it on every make), or
+# when the Odin installation changes: ODIN_STAMP holds `odin root` and is
+# rewritten only when that differs, so an upgrade rebuilds mh and mh rebuilds
+# its tools (tools/mh/tools_cache.odin).
 MH_BIN := builds/tools/mh
 MH := $(MH_BIN)
+ODIN_STAMP := builds/tools/.odin-root
 
-$(MH_BIN): $(wildcard tools/mh/*.odin)
+$(ODIN_STAMP): FORCE
+	@mkdir -p builds/tools && odin root | cmp -s - $@ || odin root > $@
+
+$(MH_BIN): $(wildcard tools/mh/*.odin) $(ODIN_STAMP)
 	@mkdir -p builds/tools && odin build tools/mh -out:$@
+
+FORCE:
 
 .PHONY: help setup run debug build play test prebuild deps shaders docs mcp clean distclean
 
