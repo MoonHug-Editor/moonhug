@@ -17,8 +17,8 @@ plugin_example_menu :: proc() {
 
 // Inspector-funnel demo (docs/core/Plugins.md): a wrapper around Spinner's
 // inspector — the default fields keep drawing, the package adds a row
-// under them. order=1 runs after editor_init (order=0).
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+// under them, registered from an @(provider_install) proc.
+@(provider_install)
 plugin_example_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(plugin_example.Spinner), _spinner_inspector)
 }

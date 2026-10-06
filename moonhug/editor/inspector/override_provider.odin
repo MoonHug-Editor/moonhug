@@ -8,6 +8,8 @@ package inspector
 // With no provider nothing is instance content and no row shows a marker.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 // One prefab an override can be applied to, closest first.
 Override_Apply_Target :: struct {
@@ -35,6 +37,12 @@ Override_Provider :: struct {
 }
 
 @(private) _override_provider: Override_Provider
+
+@(init)
+_register_override_provider :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Override_Provider", &_override_provider)
+}
 
 set_override_provider :: proc(p: Override_Provider) {
 	_override_provider = p

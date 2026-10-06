@@ -11,6 +11,8 @@ package inspector
 // owner's root scene in the engine. nil means no scope, nothing is minted.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 Object_Provider :: struct {
 	// The object owning a handle: the handle itself for an object, the owner for a component.
@@ -36,6 +38,12 @@ Object_Provider :: struct {
 }
 
 @(private) _object_provider: Object_Provider
+
+@(init)
+_register_object_provider :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Object_Provider", &_object_provider)
+}
 
 set_object_provider :: proc(p: Object_Provider) {
 	_object_provider = p

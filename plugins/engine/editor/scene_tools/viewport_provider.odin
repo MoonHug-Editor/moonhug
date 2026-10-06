@@ -1,15 +1,14 @@
 package scene_tools
 
 // The engine's side of the shell's viewport (moonhug/editor/viewport): render,
-// pick, frame and run the tools. Installed from @(init), so the editor and
-// the test binary both have it.
+// pick, frame and run the tools. Installed through @(provider_install).
 
-import "base:runtime"
 import "core:math/linalg"
 import "moonhug:editor/viewport"
 import "moonhug:packages/engine"
 import gfx "moonhug:host/gfx"
 
+@(provider_install)
 install_viewport_provider :: proc() {
 	viewport.set_provider({
 		render              = _vp_render,
@@ -28,12 +27,6 @@ install_viewport_provider :: proc() {
 		render_game         = _vp_render_game,
 		debug_draw          = _vp_debug_draw,
 	})
-}
-
-@(init, private = "file")
-_install_viewport_provider :: proc "contextless" () {
-	context = runtime.default_context()
-	install_viewport_provider()
 }
 
 @(private = "file")

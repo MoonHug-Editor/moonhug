@@ -27,7 +27,7 @@ _is_model_path :: proc(path: string) -> bool {
 	return false
 }
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 mesh_editor_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(engine.MeshFilter), _mesh_filter_inspector)
 	for ext in _MODEL_EXTS {

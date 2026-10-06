@@ -33,7 +33,7 @@ import "moonhug:editor/inspector"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/widgets"
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 rect_transform_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(engine.RectTransform), _rect_transform_inspector)
 }

@@ -8,6 +8,8 @@ package viewport
 // project only.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 // The Edit menu's selection operations.
 Edit_Op :: enum {
@@ -43,6 +45,12 @@ Scene_Views :: struct {
 }
 
 @(private) _scene_views: Scene_Views
+
+@(init)
+_register_scene_views :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Scene_Views", &_scene_views)
+}
 
 set_scene_views :: proc(v: Scene_Views) {
 	_scene_views = v

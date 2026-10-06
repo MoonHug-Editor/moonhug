@@ -1,13 +1,12 @@
 package scene_tools
 
 // The engine's side of viewport.Document_Actions: the open documents are the
-// scene manager's loaded scenes. Installed from @(init), so the editor and the
-// test binary both have it.
+// scene manager's loaded scenes. Installed through @(provider_install).
 
-import "base:runtime"
 import "moonhug:editor/viewport"
 import "moonhug:packages/engine"
 
+@(provider_install)
 install_document_actions :: proc() {
 	viewport.set_document_actions({
 		save_all        = _doc_save_all,
@@ -15,12 +14,6 @@ install_document_actions :: proc() {
 		snapshot_active = _doc_snapshot_active,
 		active_path     = _doc_active_path,
 	})
-}
-
-@(init, private = "file")
-_install_document_actions :: proc "contextless" () {
-	context = runtime.default_context()
-	install_document_actions()
 }
 
 @(private = "file")

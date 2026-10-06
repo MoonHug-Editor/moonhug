@@ -98,6 +98,7 @@ launch_editor :: proc(mode: string) -> int {
 }
 
 cmd_build :: proc(args: []string) -> int {
+	if has_flag(args, "--no-plugins") do return 0 if build_without_plugins() else 1
 	if !build_editor(has_flag(args, "--debug")) do return 1
 	fmt.printfln("mh: built %s", EDITOR_BIN)
 	return 0

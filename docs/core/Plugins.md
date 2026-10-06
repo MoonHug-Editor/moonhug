@@ -348,8 +348,8 @@ reference (plugins/audio/docs/Audio.md):
   (`clip_load`), mirroring the engine's texture cache. It registers an
   `engine.asset_pipeline_add_reimport_hook` to evict on artifact change —
   the same hook the texture cache uses, so settings edits apply live.
-- An editor subpackage can register `inspector.mapAssetPreview[".ext"]` on
-  the EditorInit phase — the drawer renders in the Preview section pinned
+- An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from
+  an `@(provider_install)` proc — the drawer renders in the Preview section pinned
   to the bottom of the Project Inspector when a matching asset is selected.
 - A component references the asset through a plain `engine.Asset_GUID`
   field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector
@@ -386,7 +386,7 @@ Two funnels share the mechanics:
   wraps the import-settings body. The default drawing is Apply / Revert + the reflected settings. `ctx.settings` is the asset's import settings document (docs/core/Undo.md, "Import settings"): a wrapper edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
 
 ```odin
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 my_install :: proc() {
     inspector.add_component_wrapper(typeid_of(MyComp), _my_wrapper)
     inspector.add_asset_wrapper("audio", _my_asset_rows)
@@ -511,18 +511,11 @@ scale. Size, flip and scale persist in `UserSettings/editor_settings.json`.
 
 ## Editor startup hook
 
-`@(phase={key=Phase.EditorInit, order=N, mode=Editor})` on a no-argument proc
-in an editor half runs it once at editor startup. The editor's own init is the
-order=0 subscriber of that phase, so any order above 0 runs after the editor's
-registries exist. It is how a plugin registers what has no attribute of its
-own — a property drawer inserted into `inspector.mapPropertyDrawer` at
-runtime, a hook installed into an editor subpackage. The dispatch is generated
-into the editor root (`editor/phases_generated.odin`), so plugin code can
-reach inspector internals without an import cycle.
+An editor half installs its providers and registry entries from a no-argument proc marked `@(provider_install)`. It runs once, after the inspector registries exist (`editor_init` calls it right after `inspector.init`), in the editor and in the test binary alike, so tests see the same drawers, wrappers and providers as the editor. An install proc may only set provider fields or add registry entries: it runs before the asset scan and before any world or scene exists. `provider_install_gen` collects every marked proc into the generated `install_providers` (docs/core/PrebuildGenerator.md). The proc lives in an editor half or a shell subpackage, never in the editor root package (`moonhug/editor`): the tests' shared package does not import the editor root.
 
-The Tween Graph is the working example: `packages/app/editor/tween_view.odin`
-registers a `TweenUnion` drawer that frames every tween row with a Graph
-button.
+The Tween Graph is the working example: `plugins/tween/editor/tween_view.odin` registers the `tween.Authored` drawer that frames every authored tween row with a Graph button.
+
+Startup work that is not an install (state that depends on the asset scan or a world) uses `@(phase={key=Phase.EditorInit, order=N, mode=Editor})` on a no-argument proc instead. The editor's own init is the order=0 subscriber of that phase, so any order above 0 runs after the asset scan and the editor's views exist. The dispatch is generated into the editor root (`editor/phases_generated.odin`).
 
 ## Project settings
 

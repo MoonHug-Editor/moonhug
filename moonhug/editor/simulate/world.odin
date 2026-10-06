@@ -7,6 +7,8 @@ package simulate
 // the per-frame update.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 Simulate_World :: struct {
 	// The active scene and the loaded scene set, encoded however the world
@@ -30,6 +32,12 @@ Simulate_World :: struct {
 }
 
 @(private) _world: Simulate_World
+
+@(init)
+_register_simulate_world :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Simulate_World", &_world)
+}
 
 set_world :: proc(w: Simulate_World) {
 	_world = w

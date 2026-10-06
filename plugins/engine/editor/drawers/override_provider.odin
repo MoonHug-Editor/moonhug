@@ -2,13 +2,13 @@ package drawers
 
 // The engine's answer to the inspector's Override_Provider: overrides live on
 // the root nested scene of the instance (plugins/engine/docs/PrefabsSpec.md §3.2), found
-// from the host's scene. Installed at EditorInit after inspector.init, and by
-// moonhug/tests/common for the test binary.
+// from the host's scene. Installed through @(provider_install).
 
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
 import undo "moonhug:packages/engine/editor/undo"
 
+@(provider_install)
 install_override_provider :: proc() {
 	inspector.set_override_provider({
 		is_overridden     = _ov_is_overridden,
@@ -19,11 +19,6 @@ install_override_provider :: proc() {
 		component_context = _ov_component_context,
 		object_context    = _ov_object_context,
 	})
-}
-
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-_install_override_provider_phase :: proc() {
-	install_override_provider()
 }
 
 // The scene the instance host lives in, nil when the host is gone.

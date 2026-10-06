@@ -586,9 +586,9 @@ tween_graph_window_open :: proc() {
 
 // Registers the Authored drawer at editor startup: every authored-tween row
 // in the inspector shows a summary and a Graph button (the graph panel is
-// the field editor). order=1 runs after editor_init (order=0), which creates
-// the drawer map this writes into.
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+// the field editor). @(provider_install) runs it after inspector.init, which
+// creates the drawer map this writes into.
+@(provider_install)
 tween_view_install :: proc() {
 	inspector.mapPropertyDrawer[typeid_of(tween.Authored)] = _draw_authored_row
 }

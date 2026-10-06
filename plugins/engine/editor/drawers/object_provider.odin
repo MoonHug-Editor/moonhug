@@ -2,14 +2,15 @@ package drawers
 
 // The engine's answer to the inspector's Object_Provider: objects are the
 // transforms of the active world, a component's owner is on its CompData, and
-// local ids mint against the owner's root scene. Installed at EditorInit after
-// inspector.init, and by moonhug/tests/common for the test binary.
+// local ids mint against the owner's root scene. Installed through
+// @(provider_install).
 
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
 import "moonhug:host/gizmos"
 import gfx "moonhug:host/gfx"
 
+@(provider_install)
 install_object_provider :: proc() {
 	inspector.set_object_provider({
 		owner_of          = _owner_of,
@@ -24,11 +25,6 @@ install_object_provider :: proc() {
 		keys_with_ref_tag = _keys_with_ref_tag,
 		object_active     = _object_active,
 	})
-}
-
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-_install_object_provider_phase :: proc() {
-	install_object_provider()
 }
 
 _owner_of :: proc(h: engine.Handle) -> (engine.Transform_Handle, bool) {
@@ -100,6 +96,7 @@ _object_active :: proc(tH: engine.Transform_Handle) -> bool {
 
 // The gizmos package draws in an object's space and shows asset images on
 // icons, and asks the engine for both.
+@(provider_install)
 install_gizmo_sources :: proc() {
 	gizmos.set_transform_source(proc(tH: engine.Transform_Handle) -> (position: [3]f32, rotation: [4]f32, scale: [3]f32, ok: bool) {
 		if !engine.pool_valid(&engine.ctx_world().transforms, engine.Handle(tH)) do return {}, {}, {}, false
@@ -111,9 +108,4 @@ install_gizmo_sources :: proc() {
 		if t, ok := engine.texture_load(guid); ok do return t.gfx
 		return nil
 	})
-}
-
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-_install_gizmo_sources_phase :: proc() {
-	install_gizmo_sources()
 }

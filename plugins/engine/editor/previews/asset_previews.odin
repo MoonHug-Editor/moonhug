@@ -21,7 +21,7 @@ import "moonhug:editor/widgets"
 import "moonhug:editor/thumbnails"
 
 // The inspector's previews and the thumbnail renderers, after inspector.init.
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 _register_asset_previews :: proc() {
 	register_thumbnail_renderers()
 	for ext in ([]string{".png", ".jpg", ".jpeg", ".bmp"}) {

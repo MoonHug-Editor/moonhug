@@ -1,5 +1,8 @@
 package viewport
 
+import "base:runtime"
+import "moonhug:editor/provider"
+
 // The documents the installed engine has open (scenes), as the shell's save,
 // session and run code sees them. The engine installs the procs
 // (plugins/engine/editor/scene_tools/document_actions.odin). With none
@@ -19,6 +22,12 @@ Document_Actions :: struct {
 }
 
 @(private) _document_actions: Document_Actions
+
+@(init)
+_register_document_actions :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Document_Actions", &_document_actions)
+}
 
 set_document_actions :: proc(a: Document_Actions) {
 	_document_actions = a

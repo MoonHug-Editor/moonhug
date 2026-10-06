@@ -15,14 +15,13 @@ package tests_common
 //   defer common.teardown(tc)
 
 import "base:runtime"
+import "moonhug:editor/provider"
 import "core:os"
 import "core:strings"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/importers"
-import "moonhug:packages/engine/editor/drawers"
-import undo "moonhug:packages/engine/editor/undo"
-import "moonhug:packages/engine/editor/sim_world"
+import "moonhug:editor/inspector"
 import "moonhug:registration"
 
 TestCtx :: struct {
@@ -62,16 +61,10 @@ _register_once :: proc() {
 	// package never imports moonhug:packages).
 	importers.register_builtin_importers()
 	asset_pipeline.import_pipeline_install()
-	// The project view opens scenes through these, like the editor does.
-	importers.install_asset_actions()
-	// The inspector asks the engine about objects through this, like the editor does.
-	drawers.install_object_provider()
-	drawers.install_override_provider()
-	drawers.install_gizmo_sources()
-	drawers.register_material_doc_preview()
-	undo.install_target_resolver()
-	// Simulate captures, restores and ticks the world through this, like the editor does.
-	sim_world.install_simulate_world()
+	// Like editor_init: the inspector registries, then every @(provider_install)
+	// proc (providers_generated.odin) fills them and the providers.
+	inspector.init()
+	install_providers()
 	// Mirror editor/main.odin: nested_scene_revert_override needs pointer
 	// typeids for primitive field types (position, color, scale, …) so it
 	// can hand a properly-typed `any` to json.unmarshal_any.
@@ -83,6 +76,8 @@ _register_once :: proc() {
 	engine.register_pointer_type(f64)
 	engine.register_pointer_type(string)
 	_serializers_registered = true
+	// Every provider install_providers touched must be complete (editor/provider).
+	provider.verify()
 }
 
 setup :: proc(tc: ^TestCtx, path: string = "") {

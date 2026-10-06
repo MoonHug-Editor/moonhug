@@ -43,6 +43,7 @@ import _ "mcp_tool_gen"
 import _ "union_gen"
 import _ "undo_command_gen"
 import _ "sim_host_gen"
+import _ "provider_install_gen"
 // Package-shipped generators (moonhug/packages/<name>/gen) are imported by
 // the generated package_gens_generated.odin next to this file.
 

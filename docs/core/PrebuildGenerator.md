@@ -61,6 +61,8 @@ The host and shell generators name no plugin. Their output compiles with an empt
 - `type_registration_generated.odin` in `moonhug/registration` and in each runnable package: `register_type_guids`, which registers each type with its guid written as a literal, calls `core.__type_procs_init`, then registers the lifecycle procs of every other package's types, the engine's included. A `@(cleanup)` proc must be declared in the package of the type it frees.
 - `moonhug/editor/create_asset_menus_generated.odin`: the Assets/Create entries, through `core` only.
 
+`provider_install_gen` is the one shell generator that writes into the test package. It collects every `@(provider_install)` proc and emits the same `install_providers` proc twice: `moonhug/editor/providers_generated.odin`, called by `editor_init` right after `inspector.init`, and `moonhug/tests/common/providers_generated.odin`, called by the tests' shared init. The calls are explicit, not a phase, because a generated `@(phase)` proc is one prebuild behind. A marked proc in the `moonhug/editor` package itself stops the build, since the tests' shared package does not import the editor root.
+
 ## How a module is structured
 
 A module is a package that registers a **provider** and a **generator** from an `@(init)`

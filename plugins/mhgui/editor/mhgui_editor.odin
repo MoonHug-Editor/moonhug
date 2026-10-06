@@ -105,7 +105,7 @@ ui_menu_image :: proc() {
 	engine.inspector_request_select(tH)
 }
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 mhgui_editor_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(mhgui.Image), _image_inspector)
 }

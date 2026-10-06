@@ -8,6 +8,8 @@ package undo
 // dirtied, while .Raw and .Asset targets work as before.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 Target_Resolver :: struct {
 	// The live base pointer of a pooled target, re-found through scene and
@@ -27,6 +29,12 @@ Target_Resolver :: struct {
 }
 
 @(private) _resolver: Target_Resolver
+
+@(init)
+_register_target_resolver :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Target_Resolver", &_resolver)
+}
 
 set_target_resolver :: proc(r: Target_Resolver) {
 	_resolver = r

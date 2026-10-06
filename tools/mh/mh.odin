@@ -36,7 +36,7 @@ COMMANDS := []Command {
 	{"setup", "build the vendored Odin libraries this repo links against", cmd_setup, false},
 	{"run", "build and launch the editor", cmd_run, true},
 	{"debug", "build with -debug and launch the editor", cmd_debug, true},
-	{"build", "build the editor without launching it", cmd_build, true},
+	{"build", "build the editor without launching it (--no-plugins proves the shell builds alone)", cmd_build, true},
 	{"app", "build and run the game (packages/app)", cmd_app, true},
 	{"test", "run the test suite (--name=pkg.test runs one)", cmd_test, true},
 	{"prebuild", "run the code generators only", cmd_prebuild, true},

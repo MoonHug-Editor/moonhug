@@ -86,7 +86,7 @@ ui_menu_text :: proc() {
 
 // --- Inspector ---------------------------------------------------------------------
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 text_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(text.Text), _text_inspector)
 }

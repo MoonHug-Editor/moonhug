@@ -5,6 +5,8 @@ package viewport
 // and the game view's aspect. The editor owns all of it and sets this at start.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 
 // Every field may be nil: with no source nothing is selected and the camera
 // frustum uses 16:9.
@@ -39,6 +41,12 @@ Selection_Source :: struct {
 }
 
 @(private) _selection_source: Selection_Source
+
+@(init)
+_register_selection_source :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Selection_Source", &_selection_source)
+}
 
 set_selection_source :: proc(s: Selection_Source) {
 	_selection_source = s

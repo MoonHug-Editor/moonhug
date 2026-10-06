@@ -19,7 +19,7 @@ import "moonhug:packages/engine/editor/drawers"
 import "moonhug:editor/undo"
 import particles "moonhug:packages/particles"
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 particles_inspector_install :: proc() {
 	inspector.add_component_wrapper(typeid_of(particles.ParticleSystem), _particle_system_inspector)
 }

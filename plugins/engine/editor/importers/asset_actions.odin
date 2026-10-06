@@ -1,14 +1,14 @@
 package importers
 
 // The engine's asset actions for the project view: opening a scene, opening
-// it additively, and writing a scene variant. Installed at EditorInit, and by
-// tests/common for the test binary.
+// it additively, and writing a scene variant. Installed through
+// @(provider_install).
 
 import "core:path/filepath"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
+@(provider_install)
 install_asset_actions :: proc() {
 	asset_pipeline.set_asset_actions({
 		open           = _open,

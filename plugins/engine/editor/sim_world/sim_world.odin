@@ -13,6 +13,7 @@ import "moonhug:host/input"
 import "moonhug:host/log"
 import "moonhug:registration"
 
+@(provider_install)
 install_simulate_world :: proc() {
 	simulate.set_world({
 		capture         = _capture,
@@ -23,11 +24,6 @@ install_simulate_world :: proc() {
 		reset_time      = engine.fixed_reset,
 		select_restored = _select_restored,
 	})
-}
-
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-_install_simulate_world_phase :: proc() {
-	install_simulate_world()
 	// The runnable packages, from the generated registration/sim_hosts_generated.odin.
 	simulate.set_hosts(_hosts_table())
 }

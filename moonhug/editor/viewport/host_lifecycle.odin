@@ -1,5 +1,8 @@
 package viewport
 
+import "base:runtime"
+import "moonhug:editor/provider"
+
 // The installed engine's boot and shutdown, as the editor's main calls them.
 // The engine installs the procs from @(init) (plugins/engine/editor/host).
 // With none installed the editor boots to an empty shell with no world.
@@ -21,6 +24,12 @@ Host_Lifecycle :: struct {
 }
 
 @(private) _host_lifecycle: Host_Lifecycle
+
+@(init)
+_register_host_lifecycle :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Host_Lifecycle", &_host_lifecycle)
+}
 
 set_host_lifecycle :: proc(h: Host_Lifecycle) {
 	_host_lifecycle = h

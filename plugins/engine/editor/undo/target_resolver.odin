@@ -3,7 +3,7 @@ package scene_undo
 // The engine's answer to the undo stack's Target_Resolver: pooled targets are
 // objects of the active world, re-found by local id inside their scene, and
 // scenes are the scene manager's loaded scenes, found by session id. Installed
-// at EditorInit, and by moonhug/tests/common for the test binary. The stack
+// through @(provider_install). The stack
 // itself lives on the engine's user context, wired at program start.
 
 import "base:runtime"
@@ -13,6 +13,7 @@ import shell "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/undo_ops"
 
+@(provider_install)
 install_target_resolver :: proc() {
 	shell.set_target_resolver({
 		pooled_base      = _pooled_base,
@@ -40,11 +41,6 @@ _stack_slot :: proc() -> ^rawptr {
 	uc := engine.ctx_get()
 	if uc == nil do return nil
 	return &uc.undo
-}
-
-@(phase={key=engine.Phase.EditorInit, order=1, mode=Editor})
-_install_target_resolver_phase :: proc() {
-	install_target_resolver()
 }
 
 // Drops the undo entries that reference this scene. Call BEFORE unloading it.

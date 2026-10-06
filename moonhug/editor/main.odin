@@ -347,6 +347,9 @@ editor_init :: proc() {
     // SerializationInit subscribers look them up.
     registration.register_type_guids()
     inspector.init()
+    // Every @(provider_install) proc (providers_generated.odin): they fill the
+    // registries inspector.init just created.
+    install_providers()
     phase_editor_run(.SerializationInit)
     phase_editor_run(.ImportersInit)
     clip.init()

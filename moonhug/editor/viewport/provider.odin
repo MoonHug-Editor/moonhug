@@ -7,6 +7,8 @@ package viewport
 // provider the viewport is an empty space with a grid.
 
 import core "moonhug:host/core"
+import "base:runtime"
+import "moonhug:editor/provider"
 import gfx "moonhug:host/gfx"
 
 Viewport_Provider :: struct {
@@ -37,6 +39,12 @@ Viewport_Provider :: struct {
 }
 
 @(private) _provider: Viewport_Provider
+
+@(init)
+_register_viewport_provider :: proc "contextless" () {
+	context = runtime.default_context()
+	provider.register("Viewport_Provider", &_provider)
+}
 
 set_provider :: proc(p: Viewport_Provider) {
 	_provider = p
