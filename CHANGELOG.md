@@ -1,3 +1,17 @@
+## [0.122.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.121.0...v0.122.0) (2026-10-07)
+
+### Features
+
+* add doc for field tags and special proc naming ([96797b2](https://github.com/MoonHug-Editor/moonhug/commit/96797b255c8b87fe6636729ff58ecabe2ae36cc0))
+* don't regenerate files with same contents, reserved attr, better prebuild failed handling ([753c8cf](https://github.com/MoonHug-Editor/moonhug/commit/753c8cf5a2ce50861659b811d84baec455d856db))
+* Edit Script menu item in components menu, decorator_help, help_box ([8f65b65](https://github.com/MoonHug-Editor/moonhug/commit/8f65b6502786d0fc4d4dc39a8309b33a00f8507e))
+* generate reference section docs only on make docs ([428468c](https://github.com/MoonHug-Editor/moonhug/commit/428468cb7c3b025917e466519b6bb2db2297c546))
+* improve docs Packages section ([45dffa6](https://github.com/MoonHug-Editor/moonhug/commit/45dffa636547e0e798f4b6a4552daa34502a5032))
+
+### Bug Fixes
+
+* fix build for odin version dev-2026-10:84bc3fc21 ([08b2a8e](https://github.com/MoonHug-Editor/moonhug/commit/08b2a8e07652af594dbc45485e024381ed7ee462))
+
 ## [0.121.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.120.0...v0.121.0) (2026-10-06)
 
 ### Features
