@@ -121,6 +121,7 @@ generate :: proc(w: ^db.World) -> bool {
 						append(&errors, fmt.tprintf("%s: `%s` names no %s, did you mean `%s%s`?", where_, d.name, strings.trim_prefix(c.subject, "a "), p.prefix, near))
 					}
 				case .Warn:
+					if gen_facts.is_reserved(d) do continue
 					append(&warnings, fmt.tprintf("%s: `%s` follows `%s<%s>` but nothing uses `%s`", where_, d.name, p.prefix, _subject_word(&c), rest))
 				case .Error:
 					append(&errors, fmt.tprintf("%s: `%s` follows `%s<%s>` but is not %s", where_, d.name, p.prefix, _subject_word(&c), c.subject))

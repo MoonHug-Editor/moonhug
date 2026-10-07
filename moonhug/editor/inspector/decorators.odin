@@ -105,6 +105,7 @@ decorator_separator :: proc(ctx: ^DrawContext) {
 }
 
 // Hides the field from the inspector.
+@(reserved)
 decorator_hide :: proc(ctx: ^DrawContext)
 {
 	if(ctx.is_pre)
@@ -178,6 +179,7 @@ decorator_euler :: proc(ctx: ^DrawContext) {
 }
 
 // Draws a [4]f32 or [3]f32 field as a color picker shown in place.
+@(reserved)
 decorator_color_picker :: proc(ctx: ^DrawContext) {
 	if !ctx.is_pre do return
 	if ctx.field_ptr == nil do return

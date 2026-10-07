@@ -48,7 +48,24 @@ Render :: struct {
 	page_of:  map[int]^Pkg_Page, // doc package index -> its page
 	attr_url: map[string]string, // attribute name -> its page, relative to a package page
 	current:  ^Pkg_Page,
+	// Public declarations by name, per documented package, for the doc
+	// comment links, and documented packages by their package name.
+	names:    map[int]map[string]doc.Entity_Index,
+	by_pkg_name: map[string]^Pkg_Page,
+	// Public procedures by signature (parameter and result types, no names),
+	// so a procedure type can list the procedures that have it.
+	procs_by_sig: map[string][dynamic]doc.Entity_Index,
+	// Rendering modes: `plain` writes no links and always qualifies names (a
+	// signature key), `no_names` leaves parameter names and defaults out,
+	// `wrap_params` puts a top-level proc's parameters one per line.
+	plain:       bool,
+	no_names:    bool,
+	wrap_params: bool,
 }
+
+// A signature line longer than this puts its parameters one per line.
+@(private = "file")
+WRAP_AT :: 96
 
 docs_write_package_pages :: proc() -> bool {
 	pages := _documented_packages()
@@ -98,6 +115,7 @@ docs_write_package_pages :: proc() -> bool {
 		}
 	}
 	r.attr_url = _attribute_pages()
+	_index_declarations(&r)
 
 	// Generated and gitignored: rewritten whole, so a removed package leaves no page.
 	os.remove_all(DOCS_PKG_DIR)
@@ -349,7 +367,7 @@ _write_package_page :: proc(r: ^Render, p: ^Pkg_Page, weight: int) -> bool {
 	if pkg_name != folder do fmt.sbprintf(&b, " · package `%s`", pkg_name)
 	strings.write_string(&b, "\n\n")
 	if pkg_docs != "" {
-		strings.write_string(&b, pkg_docs)
+		strings.write_string(&b, _link_code_spans(r, pkg_docs))
 		strings.write_string(&b, "\n\n")
 	}
 	titles := [Section]string{ .Types = "Types", .Procedures = "Procedures", .Constants = "Constants", .Variables = "Variables" }
@@ -395,7 +413,13 @@ _write_entity :: proc(r: ^Render, b: ^strings.Builder, ei: doc.Entity_Index) {
 	switch e.kind {
 	case .Procedure:
 		strings.write_string(b, " :: ")
-		_write_type(r, b, e.type, 0)
+		sig := _type_string(r, e.type)
+		if len(name) + 4 + _visible_len(sig) > WRAP_AT {
+			r.wrap_params = true
+			sig = _type_string(r, e.type)
+			r.wrap_params = false
+		}
+		strings.write_string(b, sig)
 		for w in _arr(r, e.where_clauses) do fmt.sbprintf(b, "\n\twhere %s", _html(_s(r, w)))
 	case .Proc_Group:
 		strings.write_string(b, " :: proc{")
@@ -445,8 +469,19 @@ _write_entity :: proc(r: ^Render, b: ^strings.Builder, ei: doc.Entity_Index) {
 	}
 	strings.write_string(b, "</code></pre>\n\n")
 	if docs := _docs_markdown(_s(r, e.docs)); docs != "" {
-		strings.write_string(b, docs)
+		strings.write_string(b, _link_code_spans(r, docs))
 		strings.write_string(b, "\n\n")
+	}
+	// An extension point's attribute page lists everything registered through it.
+	for a in _arr(r, e.attributes) {
+		if _s(r, a.name) != "extension_point" do continue
+		attr := _quoted_field(_s(r, a.value), "attribute")
+		if url, ok := r.attr_url[attr]; ok {
+			fmt.sbprintf(b, "Extension point of <a href=\"%s\"><code>@(%s)</code></a>, whose page lists every use.\n\n", url, _html(attr))
+		}
+	}
+	if e.kind == .Type_Name && .Type_Alias not_in e.flags {
+		_write_procs_of_type(r, b, e)
 	}
 	fmt.sbprintf(b, "<small><code>%s</code></small>\n\n", _html(_where(r, e.pos)))
 }
@@ -629,13 +664,13 @@ _write_type :: proc(r: ^Render, b: ^strings.Builder, ti: doc.Type_Index, depth: 
 		}
 		strings.write_string(b, "}")
 	case .Parameters:
-		_write_params(r, b, t, depth, true)
+		_write_params(r, b, t, depth, true, false)
 	case .Proc:
 		flags := transmute(doc.Type_Flags_Proc)t.flags
 		strings.write_string(b, "proc")
 		if cc := _s(r, t.calling_convention); cc != "" && cc != "odin" do fmt.sbprintf(b, " \"%s\" ", _html(cc))
 		if len(elems) > 0 {
-			_write_params(r, b, r.types[elems[0]], depth, true)
+			_write_params(r, b, r.types[elems[0]], depth, true, r.wrap_params && depth == 0)
 		} else {
 			strings.write_string(b, "()")
 		}
@@ -651,7 +686,7 @@ _write_type :: proc(r: ^Render, b: ^strings.Builder, ti: doc.Type_Index, depth: 
 				if len(rs) == 1 && !named {
 					_write_type(r, b, r.ents[rs[0]].type, depth + 1)
 				} else {
-					_write_params(r, b, results, depth, true)
+					_write_params(r, b, results, depth, true, false)
 				}
 			}
 		}
@@ -706,11 +741,16 @@ _write_type :: proc(r: ^Render, b: ^strings.Builder, ti: doc.Type_Index, depth: 
 }
 
 @(private = "file")
-_write_params :: proc(r: ^Render, b: ^strings.Builder, t: doc.Type, depth: int, parens: bool) {
+_write_params :: proc(r: ^Render, b: ^strings.Builder, t: doc.Type, depth: int, parens: bool, wrap: bool) {
 	if parens do strings.write_string(b, "(")
-	for pe, i in _arr(r, t.entities) {
+	params := _arr(r, t.entities)
+	for pe, i in params {
 		e := r.ents[pe]
-		if i > 0 do strings.write_string(b, ", ")
+		if wrap {
+			strings.write_string(b, "\n\t")
+		} else if i > 0 {
+			strings.write_string(b, ", ")
+		}
 		if .Param_Using in e.flags do strings.write_string(b, "using ")
 		if .Param_No_Alias in e.flags do strings.write_string(b, "#no_alias ")
 		if .Param_Any_Int in e.flags do strings.write_string(b, "#any_int ")
@@ -718,11 +758,13 @@ _write_params :: proc(r: ^Render, b: ^strings.Builder, t: doc.Type, depth: int, 
 		if .Param_Const in e.flags do strings.write_string(b, "#const ")
 		if .Param_CVararg in e.flags do strings.write_string(b, "#c_vararg ")
 		name := _s(r, e.name)
-		if name != "" do fmt.sbprintf(b, "%s: ", _html(name))
+		if name != "" && !r.no_names do fmt.sbprintf(b, "%s: ", _html(name))
 		if .Param_Ellipsis in e.flags do strings.write_string(b, "..")
 		if e.type != 0 do _write_type(r, b, e.type, depth + 1)
-		if init := _s(r, e.init_string); init != "" do fmt.sbprintf(b, " = %s", _html(init))
+		if init := _s(r, e.init_string); init != "" && !r.no_names do fmt.sbprintf(b, " = %s", _html(init))
+		if wrap do strings.write_string(b, ",")
 	}
+	if wrap && len(params) > 0 do strings.write_string(b, "\n")
 	if parens do strings.write_string(b, ")")
 }
 
@@ -742,8 +784,12 @@ _write_entity_ref :: proc(r: ^Render, b: ^strings.Builder, ei: doc.Entity_Index)
 	}
 	pkg_index := int(r.files[e.pos.file].pkg) if int(e.pos.file) < len(r.files) else 0
 	qual := ""
-	if pkg_index != r.current.pkg && pkg_index != 0 {
+	if pkg_index != 0 && (r.plain || r.current == nil || pkg_index != r.current.pkg) {
 		if pn := _s(r, r.pkgs[pkg_index].name); pn != "" do qual = fmt.tprintf("%s.", pn)
+	}
+	if r.plain {
+		fmt.sbprintf(b, "%s%s", qual, name)
+		return
 	}
 	page, has_page := r.page_of[pkg_index]
 	public := !strings.has_prefix(base, "_") && .Private not_in e.flags
@@ -754,6 +800,245 @@ _write_entity_ref :: proc(r: ^Render, b: ^strings.Builder, ei: doc.Entity_Index)
 	anchor := strings.to_lower(base, context.temp_allocator)
 	href := fmt.tprintf("#%s", anchor) if page == r.current else fmt.tprintf("../%s/%s.html#%s", page.layer, page.slug, anchor)
 	fmt.sbprintf(b, "<a href=\"%s\">%s%s</a>", href, _html(qual), _html(name))
+}
+
+// A type as a string, in the current rendering mode.
+@(private = "file")
+_type_string :: proc(r: ^Render, ti: doc.Type_Index) -> string {
+	tb := strings.builder_make(context.temp_allocator)
+	_write_type(r, &tb, ti, 0)
+	return strings.to_string(tb)
+}
+
+// A proc type's signature with no parameter names, defaults or links: two
+// procedures with the same key take and return the same types.
+@(private = "file")
+_sig_key :: proc(r: ^Render, ti: doc.Type_Index) -> string {
+	r.plain, r.no_names = true, true
+	defer r.plain, r.no_names = false, false
+	return _type_string(r, ti)
+}
+
+// The length of rendered HTML as the reader sees it: tags dropped, entities
+// counted as one character.
+@(private = "file")
+_visible_len :: proc(s: string) -> int {
+	n := 0
+	for i := 0; i < len(s); i += 1 {
+		switch s[i] {
+		case '<':
+			for i < len(s) && s[i] != '>' do i += 1
+		case '&':
+			for i < len(s) && s[i] != ';' do i += 1
+			n += 1
+		case '\n':
+			return n
+		case:
+			n += 1
+		}
+	}
+	return n
+}
+
+// Every documented package's public declarations by name, and its public
+// procedures by signature.
+@(private = "file")
+_index_declarations :: proc(r: ^Render) {
+	r.names = make(map[int]map[string]doc.Entity_Index, context.temp_allocator)
+	r.by_pkg_name = make(map[string]^Pkg_Page, context.temp_allocator)
+	r.procs_by_sig = make(map[string][dynamic]doc.Entity_Index, context.temp_allocator)
+	for pkg_index, page in r.page_of {
+		r.by_pkg_name[_s(r, r.pkgs[pkg_index].name)] = page
+		names := make(map[string]doc.Entity_Index, context.temp_allocator)
+		for se in _arr(r, r.pkgs[pkg_index].entries) {
+			e := r.ents[se.entity]
+			name := _s(r, e.name)
+			if name == "" || strings.has_prefix(name, "_") || .Private in e.flags do continue
+			#partial switch e.kind {
+			case .Type_Name, .Procedure, .Proc_Group, .Constant, .Variable:
+				names[name] = se.entity
+			}
+			if e.kind == .Procedure {
+				key := _sig_key(r, e.type)
+				if key not_in r.procs_by_sig do r.procs_by_sig[key] = make([dynamic]doc.Entity_Index, context.temp_allocator)
+				append(&r.procs_by_sig[key], se.entity)
+			}
+		}
+		r.names[pkg_index] = names
+	}
+}
+
+// For a named proc type, every documented procedure with its signature, the
+// way pkg.odin-lang.org lists the allocators under Allocator_Proc. For a
+// struct, the same per field whose type is written as a `proc(...)`. A field
+// typed with a named proc type gets no list: that type's entry has it.
+@(private = "file")
+_write_procs_of_type :: proc(r: ^Render, b: ^strings.Builder, e: doc.Entity) {
+	t := r.types[e.type]
+	if t.kind != .Named do return
+	base := _arr(r, t.types)
+	if len(base) == 0 do return
+	#partial switch r.types[base[0]].kind {
+	case .Proc:
+		procs := _procs_with_sig(r, base[0])
+		if len(procs) == 0 do return
+		fmt.sbprintf(b, "**Procedures of this type (%d):** ", len(procs))
+		_write_proc_list(r, b, procs)
+		strings.write_string(b, "\n\n")
+	case .Struct:
+		wrote := false
+		for f in _arr(r, r.types[base[0]].entities) {
+			fe := r.ents[f]
+			procs := _procs_with_sig(r, fe.type)
+			if len(procs) == 0 do continue
+			if !wrote do strings.write_string(b, "**Procedures with the signature of a field:**\n\n")
+			wrote = true
+			fmt.sbprintf(b, "- <code>%s</code> (%d): ", _html(_s(r, fe.name)), len(procs))
+			_write_proc_list(r, b, procs)
+			strings.write_string(b, "\n")
+		}
+		if wrote do strings.write_string(b, "\n")
+	}
+}
+
+// Every documented procedure whose signature is the proc type `ti`, sorted by
+// name. Nil for any other type, and for a proc type with no parameters and no
+// results, which every `proc()` would match.
+@(private = "file")
+_procs_with_sig :: proc(r: ^Render, ti: doc.Type_Index) -> []doc.Entity_Index {
+	pt := r.types[ti]
+	if pt.kind != .Proc do return nil
+	has_any := false
+	for side in _arr(r, pt.types) do if len(_arr(r, r.types[side].entities)) > 0 do has_any = true
+	if !has_any do return nil
+	matches, ok := r.procs_by_sig[_sig_key(r, ti)]
+	if !ok || len(matches) == 0 do return nil
+	sorted := slice.clone(matches[:], context.temp_allocator)
+	context.user_ptr = r
+	slice.sort_by(sorted, proc(a, b: doc.Entity_Index) -> bool {
+		rr := cast(^Render)context.user_ptr
+		return _s(rr, rr.ents[a].name) < _s(rr, rr.ents[b].name)
+	})
+	return sorted
+}
+
+// Links to procedures, comma separated, cut after the first 60.
+@(private = "file")
+_write_proc_list :: proc(r: ^Render, b: ^strings.Builder, procs: []doc.Entity_Index) {
+	LIMIT :: 60
+	for m, i in procs {
+		if i == LIMIT {
+			fmt.sbprintf(b, ", and %d more", len(procs) - LIMIT)
+			break
+		}
+		if i > 0 do strings.write_string(b, ", ")
+		strings.write_string(b, "<code>")
+		_write_entity_ref(r, b, m)
+		strings.write_string(b, "</code>")
+	}
+}
+
+// The `attribute` field of an attribute value: `{attribute="toolbar", ...}`.
+@(private = "file")
+_quoted_field :: proc(value, field: string) -> string {
+	// Odin writes the value back spaced: `{attribute = "toolbar", ...}`.
+	i := strings.index(value, field)
+	if i < 0 do return ""
+	rest := strings.trim_left_space(value[i + len(field):])
+	if !strings.has_prefix(rest, "=") do return ""
+	rest = strings.trim_left_space(rest[1:])
+	if !strings.has_prefix(rest, "\"") do return ""
+	rest = rest[1:]
+	end := strings.index_byte(rest, '"')
+	return rest[:end] if end >= 0 else ""
+}
+
+// Turns a `name` in a doc comment into a link when it names a declaration:
+// a public name of the current package, `pkg.Name` of a documented package,
+// either with a trailing `()`, or `@(attribute)` for an attribute page. Code
+// blocks are left alone.
+@(private = "file")
+_link_code_spans :: proc(r: ^Render, md: string) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	in_fence := false
+	rest := md
+	first := true
+	for line in strings.split_lines_iterator(&rest) {
+		if !first do strings.write_byte(&b, '\n')
+		first = false
+		if strings.has_prefix(line, "```") {
+			in_fence = !in_fence
+			strings.write_string(&b, line)
+			continue
+		}
+		if in_fence {
+			strings.write_string(&b, line)
+			continue
+		}
+		i := 0
+		for i < len(line) {
+			if line[i] != '`' {
+				strings.write_byte(&b, line[i])
+				i += 1
+				continue
+			}
+			end := strings.index_byte(line[i + 1:], '`')
+			if end < 0 {
+				strings.write_string(&b, line[i:])
+				break
+			}
+			code := line[i + 1:][:end]
+			if href, ok := _code_href(r, code); ok {
+				fmt.sbprintf(&b, "<a href=\"%s\"><code>%s</code></a>", href, _html(code))
+			} else {
+				strings.write_string(&b, line[i:][:end + 2])
+			}
+			i += end + 2
+		}
+	}
+	return strings.to_string(b)
+}
+
+@(private = "file")
+_code_href :: proc(r: ^Render, code: string) -> (string, bool) {
+	if strings.has_prefix(code, "@(") {
+		name := code[2:]
+		for c, j in name {
+			if c == '=' || c == ')' || c == ' ' || c == '{' {
+				name = name[:j]
+				break
+			}
+		}
+		url, ok := r.attr_url[name]
+		return url, ok
+	}
+	c := strings.trim_suffix(code, "()")
+	if c == "" || !_is_ident_path(c) do return "", false
+	pkg := r.current
+	name := c
+	if dot := strings.index_byte(c, '.'); dot >= 0 {
+		if strings.index_byte(c[dot + 1:], '.') >= 0 do return "", false
+		p, ok := r.by_pkg_name[c[:dot]]
+		if !ok do return "", false
+		pkg, name = p, c[dot + 1:]
+	}
+	names, has := r.names[pkg.pkg]
+	if !has do return "", false
+	if _, found := names[name]; !found do return "", false
+	anchor := strings.to_lower(name, context.temp_allocator)
+	if pkg == r.current do return fmt.tprintf("#%s", anchor), true
+	return fmt.tprintf("../%s/%s.html#%s", pkg.layer, pkg.slug, anchor), true
+}
+
+// `name` or `pkg.name`, letters, digits and underscores.
+@(private = "file")
+_is_ident_path :: proc(s: string) -> bool {
+	if s[0] >= '0' && s[0] <= '9' do return false
+	for c in transmute([]u8)s {
+		ok := c == '_' || c == '.' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+		if !ok do return false
+	}
+	return true
 }
 
 // "Pool($T=TweenPlayer, $N=64)" -> "Pool(TweenPlayer, 64)".

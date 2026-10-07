@@ -67,12 +67,14 @@ TAG_REF :: Field_Tag{key = "ref", form = .Value}
 // The same list grammar as `ref`. `ref` says what is stored, `has` says which
 // objects qualify: `ref:"Transform" has:"@Output"` stores the Transform of an
 // object that carries an Output component.
+@(reserved)
 TAG_HAS :: Field_Tag{key = "has", form = .Value}
 
 // Limits which picker tab can assign a Ref field.
 //
 // `pick:"scene"` assigns scene objects only, `pick:"project"` assets only.
 // Without it both tabs assign.
+@(reserved)
 TAG_PICK :: Field_Tag{key = "pick", form = .Value}
 
 // Limits an Asset_GUID field to files with the given extensions.

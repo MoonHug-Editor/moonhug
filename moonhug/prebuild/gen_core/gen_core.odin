@@ -518,8 +518,11 @@ TagOrigin :: proc(tag_text: string, file_path: string, line: int, decl_name: str
 
 // WriteGeneratedFile writes content to path (creating the parent directory —
 // e.g. moonhug/registration exists only as generated output) and reports
-// errors. Returns false on failure.
+// errors. A file that already holds exactly `content` is left untouched, so
+// only files that change are written and reported, and file watchers see no
+// change. Returns false on failure.
 WriteGeneratedFile :: proc(path: string, content: string) -> bool {
+	if current, err := os.read_entire_file(path, context.temp_allocator); err == nil && string(current) == content do return true
 	// filepath.dir returns a view into path — nothing to free.
 	if dir := filepath.dir(path); dir != "." {
 		os.make_directory(dir)

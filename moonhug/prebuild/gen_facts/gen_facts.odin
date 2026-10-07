@@ -81,6 +81,19 @@ decl_rel_path :: proc(d: ^db.DeclInfo) -> string {
 	return strings.concatenate({d.pkg_path, "/", base})
 }
 
+// is_reserved: the declaration carries @(reserved), which says it is kept on
+// purpose while nothing uses it yet. Generators skip their "declared but
+// unused" warning for it. Errors still apply.
+is_reserved :: proc(d: ^db.DeclInfo) -> bool {
+	if d == nil || d.decl == nil do return false
+	for attr in d.decl.attributes {
+		for elem in attr.elems {
+			if id, ok := elem.derived.(^ast.Ident); ok && id.name == "reserved" do return true
+		}
+	}
+	return false
+}
+
 // attr_nested returns a nested compound-literal member of an attribute
 // (e.g. typ_guid's "menu_assets_create"), if present.
 attr_nested :: proc(args: Attr_Args, key: string) -> (Attr_Args, bool) {

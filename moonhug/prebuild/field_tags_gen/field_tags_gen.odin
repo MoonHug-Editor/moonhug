@@ -53,6 +53,7 @@ Declaration :: struct {
 	pkg_path:   string, // the declaring package
 	where_:     string, // repo-relative file:line
 	doc:        string, // the constant's doc comment, markdown paragraphs
+	reserved:   bool,   // @(reserved): no warning while no field uses it
 	uses:       [dynamic]Use,
 }
 
@@ -123,6 +124,7 @@ generate :: proc(w: ^db.World) -> bool {
 		d^ = Declaration{
 			key = key, form = form, const_name = decl.name, pkg_path = decl.pkg_path, where_ = where_,
 			doc = gen_facts.doc_markdown(&decl),
+			reserved = gen_facts.is_reserved(&decl),
 			uses = make([dynamic]Use, context.temp_allocator),
 		}
 		declared[key] = d
@@ -186,7 +188,7 @@ generate :: proc(w: ^db.World) -> bool {
 	// Pass 3: the pages.
 	list := make([dynamic]^Declaration, context.temp_allocator)
 	for _, d in declared {
-		if len(d.uses) == 0 do fmt.eprintfln("prebuild: warning: field tag `%s` is declared at %s but no field uses it", d.key, d.where_)
+		if len(d.uses) == 0 && !d.reserved do fmt.eprintfln("prebuild: warning: field tag `%s` is declared at %s but no field uses it", d.key, d.where_)
 		slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
 			if a.pkg != b.pkg do return a.pkg < b.pkg
 			return a.field < b.field

@@ -19,6 +19,7 @@ AfterDeserializeProc :: proc(ptr: rawptr, tid: typeid)
 // The proc takes the value's pointer, its typeid and `is_cleanup`: false right
 // before the value is written, true right after, so it can prepare the value
 // and then undo the preparation.
+@(reserved)
 @(extension_point={attribute="before_serialize", target="proc", fields="type priority"})
 mapBeforeSerialize: map[typeid]BeforeSerializeProc
 // Runs a proc on every value of one type right after it is read from a file, to
@@ -26,6 +27,7 @@ mapBeforeSerialize: map[typeid]BeforeSerializeProc
 //
 // `type` selects the type and `priority` decides which of two procs is used.
 // The proc takes the value's pointer and its typeid.
+@(reserved)
 @(extension_point={attribute="after_deserialize", target="proc", fields="type priority"})
 mapAfterDeserialize: map[typeid]AfterDeserializeProc
 

@@ -22,10 +22,18 @@ MCP_BIN :: "builds/mcp_shim" + EXE
 prebuild :: proc(docs := false) -> bool {
 	prune, pok := tool_bin("prune_package_gens", "moonhug/prebuild/prune_package_gens", {})
 	if !pok || !step("prune", prune) do return false
-	gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
-	if !gok do return false
-	if docs do return step("prebuild", gen, "--docs")
-	return step("prebuild", gen)
+	// Exit 2: the set of package generators changed and the prebuild rewrote
+	// the file that imports them, so it is built again and run once more.
+	for attempt in 0 ..< 2 {
+		gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
+		if !gok do return false
+		code := run(gen, "--docs") if docs else run(gen)
+		if code == 0 do return true
+		if code == 2 && attempt == 0 do continue
+		fmt.eprintfln("mh: prebuild failed (exit %d)", code)
+		return false
+	}
+	return false
 }
 
 // Compiled shader blobs are committed, so this toolchain is optional and the

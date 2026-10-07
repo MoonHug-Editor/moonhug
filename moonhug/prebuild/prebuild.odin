@@ -253,7 +253,7 @@ main :: proc() {
 	if !_check_plugin_deps() do os.exit(1)
 	step(&lap, "prebuild/dependency check")
 	if _package_gens_refresh() {
-		fmt.eprintln("prebuild: package generator set changed — run prebuild again")
+		fmt.eprintln("prebuild: package generator set changed, build prebuild again and rerun it (mh does both)")
 		os.exit(2)
 	}
 	step(&lap, "prebuild/package gens")

@@ -58,8 +58,7 @@ _restore_links :: proc(moved: []Link_Entry) {
 		}
 	}
 	os.remove(ASIDE_DIR)
-	// Back to the installed state: generated files changed with the plugins
-	// gone, and the first pass reports that and asks for another.
+	// Back to the installed state: generated files changed with the plugins gone.
 	fmt.println("mh: links restored, regenerating the installed state")
-	if !prebuild() do _ = prebuild()
+	if !prebuild() do fmt.eprintln("mh: regenerating the installed state failed, run mh prebuild")
 }

@@ -42,7 +42,7 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 - `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written by `moonhug/prebuild/attributes_gen`.
 - `field_tags/<layer>/`, the same layout with one page per field tag key, written by `moonhug/prebuild/field_tags_gen`.
 - `naming/<layer>/`, the same layout with one page per naming convention, written by `moonhug/prebuild/naming_gen`.
-- `packages/<layer>/`, the same layout with one page per package of the host, the editor and every installed plugin, written by `mh docs` (`tools/mh/package_docs.odin`). `mh docs` writes an entry file that imports every package, runs `odin doc -doc-format` on it once, and reads the binary `.odin-doc` file Odin writes (`core:odin/doc-format`), the way pkg.odin-lang.org documents Odin's own libraries. Each page lists the package's public declarations by kind, with signatures whose types link to the declaring package's page, attributes linked to their reference pages, the doc comment and `file:line`. `_name` and `@(private)` declarations are left out.
+- `packages/<layer>/`, the same layout with one page per package of the host, the editor and every installed plugin, written by `mh docs` (`tools/mh/package_docs.odin`). `mh docs` writes an entry file that imports every package, runs `odin doc -doc-format` on it once, and reads the binary `.odin-doc` file Odin writes (`core:odin/doc-format`), the way pkg.odin-lang.org documents Odin's own libraries. Each page lists the package's public declarations by kind, with signatures whose types link to the declaring package's page, attributes linked to their reference pages, the doc comment and `file:line`. `_name` and `@(private)` declarations are left out. A signature longer than one line puts its parameters one per line. In a doc comment, a `name` in backticks links to the declaration when it names one of the package's own, `pkg.Name` of a documented package, or `@(attribute)`, so writing names in backticks is what makes them links. A named proc type lists every procedure with its signature, and a struct does the same for each field written as a `proc(...)`, such as the fields of a provider. A signature that takes and returns nothing gets no list. An extension point links to its attribute's page.
 
 ## Attributes
 
@@ -62,6 +62,8 @@ toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin :=
 - `target` says what the attribute goes on (`proc`, `var`, `type`). It is documentation only.
 
 The prebuild checks every attribute in the scanned code against these declarations and stops on an attribute that is neither Odin's nor declared, or on a field its declaration does not list. The build passes `-ignore-unknown-attributes`, so without this check a misspelled `@(menu_iten)` or `ordr=` compiles and silently does nothing. A new attribute, from the engine or from a plugin's `gen/`, needs its `@(extension_point)` in the same change.
+
+An attribute nothing uses is a warning. `@(reserved)` on a declaration says it is kept on purpose while nothing uses it yet, as `@(before_serialize)` is kept for plugins, and the prebuild skips the unused warning for it. It works the same on an attribute's declaration, a field tag constant and a proc of a naming convention, and never turns off an error.
 
 ## Field tags
 
@@ -105,7 +107,7 @@ The prebuild checks every struct field tag in the scanned code against the decla
 - a tag it cannot split into keys, as an unclosed quote or parenthesis
 - a key declared twice, a declaration without `key`, and a `form` that is not `.Value`, `.Flag` or `.Call`
 
-A declared key no field uses is a warning. Generated files and test packages are not checked. Without the check a misspelled `exapnd` compiles and silently does nothing, so a new key needs its `Field_Tag` constant in the same change.
+A declared key no field uses is a warning, unless its constant carries `@(reserved)`, as `TAG_PICK` does. Generated files and test packages are not checked. Without the check a misspelled `exapnd` compiles and silently does nothing, so a new key needs its `Field_Tag` constant in the same change.
 
 ## Naming
 
@@ -140,4 +142,4 @@ The types and the registry are in `moonhug/prebuild/gen_facts/naming.odin`. The 
 - a proc that is a near miss of a subject, with the subject as a suggestion: `cleanup_Camra`
 - for a convention with `unclaimed = .Error`, a proc with its prefix that is not one of its subjects: `mcp_tool_probe` without `@(mcp_tool)`
 
-With `unclaimed = .Warn` such a proc is a warning instead, as an unused decorator is. Missing required procs are the owner's error, since the owner knows what it cannot generate without them. A generator that finds code by name declares its convention in the same change.
+With `unclaimed = .Warn` such a proc is a warning instead, as an unused decorator is, unless the proc carries `@(reserved)`. Missing required procs are the owner's error, since the owner knows what it cannot generate without them. A generator that finds code by name declares its convention in the same change.

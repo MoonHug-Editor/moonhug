@@ -32,9 +32,11 @@ import "../gen_facts"
 REFERENCE_DIR :: "docs/reference"
 OUT_DIR :: "docs/reference/attributes"
 
-// Attributes that belong to Odin, plus the one that declares the others.
+// Attributes that belong to Odin, plus the two the generators read on any
+// declaration: extension_point declares an attribute, and reserved
+// (gen_facts.is_reserved) keeps a declaration nothing uses yet without a warning.
 BUILTIN := []string{
-	"extension_point",
+	"extension_point", "reserved",
 	"private", "test", "init", "fini", "static", "deferred_in", "deferred_out", "deferred_in_out", "deferred_none",
 	"require", "require_results", "export", "link_name", "link_prefix", "link_suffix", "link_section", "linkage",
 	"objc_class", "objc_name", "objc_type", "objc_is_class_method", "objc_implement", "objc_superclass",
@@ -52,6 +54,7 @@ Declaration :: struct {
 	pkg_path:  string,   // "moonhug/editor": the package it extends
 	where_:    string,   // repo-relative file:line
 	doc:       string,   // the anchor's doc comment, markdown paragraphs
+	reserved:  bool,     // @(reserved) on the anchor: no warning while nothing uses it
 	uses:      [dynamic]Use,
 }
 
@@ -97,6 +100,7 @@ generate :: proc(w: ^db.World) -> bool {
 				fields = strings.fields(args.fields["fields"], context.temp_allocator),
 				anchor = decl.name, pkg_path = decl.pkg_path, where_ = where_,
 				doc = gen_facts.doc_markdown(decl),
+				reserved = gen_facts.is_reserved(decl),
 				uses = make([dynamic]Use, context.temp_allocator),
 			}
 			declared[name] = d
@@ -138,7 +142,7 @@ generate :: proc(w: ^db.World) -> bool {
 	// Pass 3: the pages.
 	list := make([dynamic]^Declaration, context.temp_allocator)
 	for _, d in declared {
-		if len(d.uses) == 0 do fmt.eprintfln("prebuild: warning: @(%s) is declared at %s but nothing uses it", d.attribute, d.where_)
+		if len(d.uses) == 0 && !d.reserved do fmt.eprintfln("prebuild: warning: @(%s) is declared at %s but nothing uses it", d.attribute, d.where_)
 		slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
 			if a.pkg != b.pkg do return a.pkg < b.pkg
 			return a.name < b.name
