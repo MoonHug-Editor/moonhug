@@ -25,7 +25,10 @@ package gen_facts
 // providers read `DeclInfo.decl.attributes` directly and emit their own
 // typed components.
 
+import "core:fmt"
 import "core:odin/ast"
+import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 import "../gen_core"
@@ -79,6 +82,25 @@ decl_rel_path :: proc(d: ^db.DeclInfo) -> string {
 		}
 	}
 	return strings.concatenate({d.pkg_path, "/", base})
+}
+
+// decl_source is where the declaration is on disk, "plugins/engine/camera.odin:12":
+// decl_rel_path and the line, with a plugin's moonhug/packages/<name> link
+// replaced by the folder it points to, so an editor opens the real file.
+decl_source :: proc(d: ^db.DeclInfo) -> string {
+	path := decl_rel_path(d)
+	PACKAGES :: "moonhug/packages/"
+	if strings.has_prefix(path, PACKAGES) {
+		rest := path[len(PACKAGES):]
+		if slash := strings.index_byte(rest, '/'); slash > 0 {
+			link := path[:len(PACKAGES) + slash]
+			if target, err := os.read_link(link, context.temp_allocator); err == nil {
+				real, _ := filepath.join({filepath.dir(link), target}, context.temp_allocator)
+				path = strings.concatenate({real, rest[slash:]})
+			}
+		}
+	}
+	return fmt.tprintf("%s:%d", path, d.decl.pos.line)
 }
 
 // is_reserved: the declaration carries @(reserved), which says it is kept on

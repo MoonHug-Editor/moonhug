@@ -20,25 +20,22 @@ _console_selected_id: u64 // log.Entry.id of the row shown in the detail pane
 _console_scroll_to_sel: bool // scroll the selected row into view next frame
 _console_split_ratio: f32 = 0.72 // rows pane share of the rows/detail split
 
-// Console text colors, based on Unity's dark palette (default #D2D2D2,
-// warning #F4BC02, error #D32222) but with info nudged bluer/darker so it
-// reads against the bg, and warning toned down a touch.
+// A log level's color and icon, the same as a help box of that kind.
 _console_level_color :: proc(level: log.Level) -> im.Vec4 {
-	switch level {
-	case .Info:    return im.Vec4{0.62, 0.68, 0.78, 1}
-	case .Warning: return im.Vec4{0.83, 0.64, 0.02, 1}
-	case .Error:   return im.Vec4{0.827, 0.133, 0.133, 1}
-	}
-	return im.Vec4{1, 1, 1, 1}
+	return widgets.message_color(_console_message_kind(level))
 }
 
 _console_level_icon :: proc(level: log.Level) -> string {
+	return widgets.message_icon(_console_message_kind(level))
+}
+
+_console_message_kind :: proc(level: log.Level) -> widgets.Message_Kind {
 	switch level {
-	case .Info:    return icons.ICON_MD_INFO
-	case .Warning: return icons.ICON_MD_WARNING
-	case .Error:   return icons.ICON_MD_ERROR
+	case .Info:    return .Info
+	case .Warning: return .Warning
+	case .Error:   return .Error
 	}
-	return icons.ICON_MD_INFO
+	return .Info
 }
 
 // The raw codepoint of each level icon, for per-glyph metric lookups.

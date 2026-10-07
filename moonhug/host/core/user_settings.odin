@@ -10,7 +10,8 @@ package core
 //
 // The generator loads every marked var at editor start and saves them at
 // shutdown, so a plugin keeps a preference without the editor's own settings
-// struct having a field for it.
+// struct having a field for it. With `tab="..."` the setting is also a tab of
+// the Settings window, next to the project settings.
 //
 // WHICH ONE TO USE:
 //
@@ -43,19 +44,29 @@ user_settings_file :: proc(name: string) -> string {
 // Persists a package-level struct variable per developer, in
 // UserSettings/<slug>.json.
 //
-// `name` names the file. The editor loads it at startup and saves it at exit,
-// and the folder is not committed, so each developer keeps their own values.
+// `name` names the file. `tab` is optional: with it the setting is also a tab
+// of the Settings window, labelled `tab`. The editor loads the file at startup
+// and saves it at exit, and the folder is not committed, so each developer
+// keeps their own values.
 // For preferences: values the team shares belong in @(project_settings).
 //
 // Reads the file into the settings struct. A missing or unreadable file leaves
 // the struct as-is — its var initializer is the default — so a fresh checkout,
 // a deleted UserSettings/ and a first run all behave the same.
-@(extension_point={attribute="user_settings", target="var", fields="name"})
+@(extension_point={attribute="user_settings", target="var", fields="name tab"})
 user_settings_load :: proc(name: string, v: ^$T) -> bool {
     if v == nil do return false
     data, read_err := os.read_entire_file(user_settings_file(name), context.temp_allocator)
     if read_err != nil do return false
     return json.unmarshal(data, v) == nil
+}
+
+// Writes the settings struct when its file does not exist yet, so every
+// setting has a file to edit from the first run. The editor calls it at
+// startup, right after user_settings_load.
+user_settings_create :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {
+    if os.exists(user_settings_file(name)) do return true
+    return user_settings_save(name, ptr, tid)
 }
 
 user_settings_save :: proc(name: string, ptr: rawptr, tid: typeid) -> bool {

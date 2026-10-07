@@ -9,6 +9,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
+import core "moonhug:host/core"
 import "moonhug:packages/engine"
 import "moonhug:editor"
 import "moonhug:editor/icons"
@@ -255,6 +256,27 @@ test_user_settings_missing_file_keeps_defaults :: proc(t: ^testing.T) {
 	testing.expect(t, !engine.user_settings_load("No Such View At All", &v), "a missing file reports false")
 	// ... and changes nothing.
 	testing.expect_value(t, v, defaults)
+}
+
+// The editor writes a missing file with the defaults at startup, so every
+// setting has a file to edit, and never overwrites one that exists.
+@(test)
+test_user_settings_create_writes_only_a_missing_file :: proc(t: ^testing.T) {
+	NAME :: "Test Create View"
+	defer os.remove(core.user_settings_file(NAME))
+	os.remove(core.user_settings_file(NAME))
+
+	defaults := _Prefs{flag = true, count = 3, ratio = 1}
+	testing.expect(t, core.user_settings_create(NAME, &defaults, typeid_of(_Prefs)), "create writes")
+	read: _Prefs
+	testing.expect(t, core.user_settings_load(NAME, &read), "the created file loads")
+	testing.expect_value(t, read, defaults)
+
+	changed := _Prefs{count = 9}
+	testing.expect(t, core.user_settings_create(NAME, &changed, typeid_of(_Prefs)), "create on an existing file succeeds")
+	read = {}
+	testing.expect(t, core.user_settings_load(NAME, &read), "load reads")
+	testing.expect_value(t, read, defaults)
 }
 
 // The name is a file slug, so it survives spaces and case the way the project

@@ -17,6 +17,7 @@ import clip "moonhug:editor/clipboard"
 import undo "moonhug:packages/engine/editor/undo"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
+import "moonhug:editor/script_editor"
 
 @(private)
 _inspector_name_buf: [256]byte
@@ -1190,6 +1191,10 @@ _draw_component_overflow_menu :: proc(
 
 		if im.MenuItem("Remove Component") {
 			_comp_pending_remove = comp.handle
+		}
+		// The file that declares the component, in the developer's code editor.
+		if im.MenuItem("Edit Script", nil, false, script_editor.has_type_source(comp_tid)) {
+			script_editor.open_type_source(comp_tid)
 		}
 		ctx_entries := _get_context_menu_entries(comp.handle.type_key)
 		if len(ctx_entries) > 0 {

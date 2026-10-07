@@ -198,6 +198,7 @@ _TypeGuidRow :: struct {
 	create_order:     int,
 	create_origin:    string,
 	tid_expr:         string,
+	source:           string, // gen_facts.decl_source, for Edit Script
 }
 
 _CleanupRow :: struct {
@@ -249,6 +250,7 @@ generate :: proc(w: ^db.World) -> bool {
 				create_menu_name = guid.create_menu_name,
 				create_order     = guid.create_order,
 				create_origin    = guid.create_origin,
+				source           = gen_facts.decl_source(decl),
 			})
 		}
 	}
@@ -406,7 +408,13 @@ _write_registration :: proc(entries: []_TypeGuidRow, cleanup_bindings: []_Cleanu
 	strings.write_string(&b, "\tsync.once_do(&_register_type_guids_once, proc() {\n")
 	for e in entries {
 		if !included(e, host_name, runnables) do continue
-		fmt.sbprintf(&b, "\t\tcore.register_type(%s, uuid.read(%q) or_else uuid.Identifier{{}})\n", _qualified_type(e), e.guid)
+		// Source locations go to the editor's registration only: a game
+		// binary has no use for repo paths.
+		if host_name == "" && e.source != "" {
+			fmt.sbprintf(&b, "\t\tcore.register_type(%s, uuid.read(%q) or_else uuid.Identifier{{}}, %q)\n", _qualified_type(e), e.guid, e.source)
+		} else {
+			fmt.sbprintf(&b, "\t\tcore.register_type(%s, uuid.read(%q) or_else uuid.Identifier{{}})\n", _qualified_type(e), e.guid)
+		}
 	}
 	for e in entries {
 		if !included(e, host_name, runnables) do continue

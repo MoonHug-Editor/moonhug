@@ -5,15 +5,19 @@ package editor
 //
 // A section is a package-level struct var marked
 // @(project_settings={name="..."}) — the data IS the registration
-// (project_settings_gen emits settings_add_tab calls). The window owns what
-// every tab would otherwise hand-roll:
+// (project_settings_gen emits settings_add_tab calls). A var marked
+// @(user_settings={name="...", tab="..."}) is a section too, saved per
+// developer in UserSettings/ instead (user_settings_gen emits
+// settings_add_user_tab). The
+// window owns what every tab would otherwise hand-roll:
 //   - drawing: inspector reflection, so decorators, custom property drawers
 //     and collection editing all apply. A fully custom pane is a
 //     @(property_drawer) registered for the settings type.
 //   - undo: the tab's struct is a Raw owner, so field edits and array ops land
 //     in the global undo history like any inspector edit.
-//   - persistence: the selected tab diff-saves to ProjectSettings/<slug>.json
-//     when no widget is active; everything saves again at editor shutdown.
+//   - persistence: the selected tab diff-saves to ProjectSettings/<slug>.json,
+//     or UserSettings/<slug>.json for a user setting, when no widget is
+//     active; everything saves again at editor shutdown.
 // Owners consume their vars by polling, so an edit — typed, undone or redone —
 // reaches the runtime with no editor coupling.
 
@@ -40,6 +44,12 @@ _Settings_Tab :: struct {
 	// rendered by the generator. Shown in the tab row's tooltip with debug tooltips on.
 	// A hand-registered tab (settings_add_custom_tab) has none.
 	origin:    string,
+	// A @(user_settings) tab: saved per developer in UserSettings/, never
+	// committed, never read by the game.
+	user:      bool,
+	// A user tab's file name, its @(user_settings) `name`. A project tab's
+	// file is named after `name`, which is also its label.
+	file:      string,
 }
 
 @(private = "file")
@@ -68,6 +78,20 @@ _settings_split_ratio: f32 = 0.28
 settings_add_tab :: proc(name: string, ptr: rawptr, tid: typeid, origin := "") {
 	append(&_settings_tabs, _Settings_Tab{
 		name = name, ptr = ptr, tid = tid, origin = origin,
+		last_json = undo.capture_json(ptr, tid),
+	})
+	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
+		return a.name < b.name
+	})
+}
+
+// Registers a tab for a @(user_settings) var with `tab`. The same as
+// settings_add_tab, but labelled `tab` and saved to UserSettings/<file slug>.json,
+// which is per developer and not committed. The generated _load_user_settings
+// calls it right after loading the var.
+settings_add_user_tab :: proc(tab, file: string, ptr: rawptr, tid: typeid, origin := "") {
+	append(&_settings_tabs, _Settings_Tab{
+		name = tab, file = file, ptr = ptr, tid = tid, origin = origin, user = true,
 		last_json = undo.capture_json(ptr, tid),
 	})
 	slice.sort_by(_settings_tabs[:], proc(a, b: _Settings_Tab) -> bool {
@@ -109,7 +133,11 @@ _settings_persist :: proc(tab: ^_Settings_Tab) {
 		delete(cur)
 		return
 	}
-	core.project_settings_save(tab.name, tab.ptr, tab.tid)
+	if tab.user {
+		core.user_settings_save(tab.file, tab.ptr, tab.tid)
+	} else {
+		core.project_settings_save(tab.name, tab.ptr, tab.tid)
+	}
 	delete(tab.last_json)
 	tab.last_json = cur
 }

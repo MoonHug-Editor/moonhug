@@ -5,6 +5,8 @@ import "core:mem"
 import "base:runtime"
 import "core:reflect"
 import "core:encoding/uuid"
+import "core:strconv"
+import "core:strings"
 
 Guid_Type_Map :: map[uuid.Identifier]typeid
 Type_Guid_Map :: map[typeid]uuid.Identifier
@@ -53,6 +55,9 @@ TypeMeta :: struct
     pointer_typeId: typeid,
     size: int,
     fields: [dynamic]FieldInfo,
+    // Where the type is declared, "plugins/engine/camera.odin:12", repo-relative.
+    // The editor's registration passes it, a game build's does not.
+    source: string,
 }
 
 typeid_to_u16 :: proc($T: typeid) -> u16 {
@@ -90,7 +95,7 @@ generate_type_info :: proc($T: typeid) -> TypeMeta {
 // adds an Assets > Create entry that makes a new asset of the type, and
 // `makeProcName` names the proc that makes its default instance.
 @(extension_point={attribute="typ_guid", target="type", fields="guid makeProcName menu_assets_create"})
-register_type :: proc($T: typeid, guid: uuid.Identifier) {
+register_type :: proc($T: typeid, guid: uuid.Identifier, source := "") {
     if T in typeid_to_guid {
         panic("Type '?' is already registered.")
     }
@@ -101,6 +106,7 @@ register_type :: proc($T: typeid, guid: uuid.Identifier) {
     guid_to_type[guid] = T
     typeid_to_guid[T] = guid
     typeMeta := generate_type_info(T)
+    typeMeta.source = source
     typeid_to_typeMeta[T] = typeMeta
     guid_to_typeMeta[guid] = typeMeta
     typeid_to_pointerType[T] = ^T
@@ -146,6 +152,19 @@ get_typeMeta_by_type_key :: proc(key: TypeKey) -> TypeMeta {
 
 get_pointerType_by_type_key :: proc(key: TypeKey) -> typeid {
     return type_key_to_pointerType_arr[key]
+}
+
+// Where a registered type is declared: the repo-relative file and the line of
+// its declaration. Not ok in a game build, and for a type registered without
+// a source.
+type_source :: proc(T: typeid) -> (path: string, line: int, ok: bool) {
+    meta, found := typeid_to_typeMeta[T]
+    if !found do return
+    colon := strings.last_index_byte(meta.source, ':')
+    if colon <= 0 do return
+    n, n_ok := strconv.parse_int(meta.source[colon + 1:])
+    if !n_ok do return
+    return meta.source[:colon], n, true
 }
 
 get_type_key_by_typeid :: proc(T: typeid) -> (TypeKey, bool) {

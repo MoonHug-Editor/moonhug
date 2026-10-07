@@ -98,6 +98,20 @@ decorator_tooltip :: proc(ctx: ^DrawContext, desc:cstring) {
 	widgets.tooltip(desc)
 }
 
+// Draws `text` in a help box under the field (widgets.help_box). `kind` is
+// "info" (the default), "warning" or "error" and picks the icon and color.
+decorator_help :: proc(ctx: ^DrawContext, text: cstring, kind: cstring = "info") {
+	if !ctx.is_visible || ctx.is_pre do return
+	k: widgets.Message_Kind
+	switch string(kind) {
+	case "info":    k = .Info
+	case "warning": k = .Warning
+	case "error":   k = .Error
+	case:           fmt.panicf("decor:help kind=%q, it is info, warning or error", kind)
+	}
+	widgets.help_box(k, string(text))
+}
+
 // Draws a separator line above the field.
 decorator_separator :: proc(ctx: ^DrawContext) {
 	if ctx == nil do return
