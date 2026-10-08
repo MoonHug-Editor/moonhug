@@ -1,3 +1,13 @@
+## [0.123.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.122.0...v0.123.0) (2026-10-08)
+
+### Features
+
+* add @(update={component=* syntax sugar for update and fixed_update attributes per component or poolable ([40a46dc](https://github.com/MoonHug-Editor/moonhug/commit/40a46dc79fbabaa674508131753d30d5c9967838))
+
+### Bug Fixes
+
+* improve Uses(N) order in docs for update attributes, minor renames, move code ([136f7c9](https://github.com/MoonHug-Editor/moonhug/commit/136f7c91e73ef3f7474962d0cbdb38c98b66a825))
+
 ## [0.122.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.121.0...v0.122.0) (2026-10-07)
 
 ### Features
