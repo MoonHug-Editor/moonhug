@@ -11,6 +11,18 @@ package engine_gen
 // __update runs per frame (view-side work). __fixed_update runs per fixed
 // tick, driven by the app loop's accumulator (plugins/engine/fixed_tick.odin); a
 // subscriber's divisor=N runs it every Nth tick at fixed_dt * N.
+//
+// Both attributes take two shapes, interleaved by order in one dispatcher:
+//
+//   @(update={order=1})                     // a system: loops itself
+//   tween_tick :: proc(dt: f32)
+//
+//   @(fixed_update={component=Spinner})     // per item: the loop is generated
+//   spinner_tick :: proc(dt: f32, s: ^Spinner)
+//
+// The per-item shape names a @(component) or @(poolable) type. The generated
+// wrapper `__update_<pkg>_<proc>` iterates its pool, skips disabled components
+// (a poolable has no `enabled`, every alive item runs) and calls the proc.
 
 import "core:fmt"
 import "core:strings"
@@ -26,9 +38,10 @@ Update_Kind :: enum {
 // Update_GenComp marks a DeclInfo entity as an @update / @fixed_update proc.
 // The proc's name lives on the entity's DeclInfo.
 Update_GenComp :: struct {
-	kind:    Update_Kind,
-	order:   int,
-	divisor: int, // fixed only; run every Nth tick (>= 1)
+	kind:      Update_Kind,
+	order:     int,
+	divisor:   int,    // fixed only; run every Nth tick (>= 1)
+	component: string, // per-item shape: the unqualified type name, "" for a system
 }
 
 
@@ -57,11 +70,11 @@ update_provide :: proc(w: ^db.World) -> bool {
 		if !is_package do continue
 		attr_set := db.get(attrs, entity)
 		if args, found := gen_facts.attr_find(attr_set, "update"); found {
-			db.set(_updates, entity, Update_GenComp{kind = .Frame, order = gen_facts.attr_int(args, "order")})
+			db.set(_updates, entity, Update_GenComp{kind = .Frame, order = gen_facts.attr_int(args, "order"), component = _component_arg(args)})
 		} else if args, ffound := gen_facts.attr_find(attr_set, "fixed_update"); ffound {
 			divisor := gen_facts.attr_int(args, "divisor")
 			if divisor < 1 do divisor = 1
-			db.set(_updates, entity, Update_GenComp{kind = .Fixed, order = gen_facts.attr_int(args, "order"), divisor = divisor})
+			db.set(_updates, entity, Update_GenComp{kind = .Fixed, order = gen_facts.attr_int(args, "order"), divisor = divisor, component = _component_arg(args)})
 		}
 	}
 	return true
@@ -75,6 +88,12 @@ _UpdateRow :: struct {
 	path:    string, // pkg_path: a subpackage imports by its folder, not its name
 	order:   int,
 	divisor: int,
+	// Per-item shape, resolved from components_gen facts. component == "" is a system.
+	component:     string,
+	comp_pkg:      string, // the type's package, "" or "engine" for the engine
+	comp_pkg_path: string,
+	comp_plural:   string, // the pool accessor, or the World field for a poolable
+	comp_poolable: bool,
 }
 
 // One dispatcher file PER RUNNABLE PACKAGE (a package with `main`, 0..N of
@@ -88,16 +107,22 @@ update_generate :: proc(w: ^db.World) -> bool {
 
 	decls := db.get_comps_DeclInfo()
 	_updates := db.get_comps(w, Update_GenComp)
+	comps := db.get_comps(w, gen_facts.Component_GenComp)
 	m := db.all_of(db.r(decls), db.r(_updates)); defer db.matcher_destroy(&m)
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		update := db.get(_updates, entity)
 		row := _UpdateRow{
-			name    = decl.name,
-			pkg     = decl.pkg.name,
-			path    = decl.pkg_path,
-			order   = update.order,
-			divisor = update.divisor,
+			name      = decl.name,
+			pkg       = decl.pkg.name,
+			path      = decl.pkg_path,
+			order     = update.order,
+			divisor   = update.divisor,
+			component = update.component,
+		}
+		if row.component != "" && !_resolve_component(w, decls, comps, &row) {
+			fmt.eprintf("update_gen: %s.%s: component=%s is not a @(component) or @(poolable) type\n", decl.pkg.name, decl.name, row.component)
+			return false
 		}
 		switch update.kind {
 		case .Frame: append(&frame_rows, row)
@@ -127,6 +152,27 @@ update_generate :: proc(w: ^db.World) -> bool {
 	return true
 }
 
+// Fills the pool facts of a per-item row from components_gen's facts.
+_resolve_component :: proc(w: ^db.World, decls: ^db.Comps(db.DeclInfo), comps: ^db.Comps(gen_facts.Component_GenComp), row: ^_UpdateRow) -> bool {
+	if comps == nil do return false
+	cm := db.all_of(db.r(decls), db.r(comps)); defer db.matcher_destroy(&cm)
+	for ce in db.matched(w, &cm) {
+		cdecl := db.get(decls, ce)
+		if cdecl.name != row.component do continue
+		cc := db.get(comps, ce)
+		row.comp_plural = cc.plural
+		row.comp_poolable = cc.kind == .Poolable
+		row.comp_pkg = cc.pkg
+		row.comp_pkg_path = cc.pkg_path
+		if cc.pkg == "" || cc.pkg == "engine" {
+			row.comp_pkg = "engine"
+			row.comp_pkg_path = "moonhug/packages/engine"
+		}
+		return true
+	}
+	return false
+}
+
 _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, fixed_rows: []_UpdateRow, runnables: []gen_facts.Runnable_Pkg) {
 	// The host's slice of the rows: own entries + library packages.
 	_included :: proc(e: _UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) -> bool {
@@ -143,35 +189,44 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 	// the host's own ticks by order (docs/core/Plugins.md).
 	imports: [dynamic]_UpdateRow
 	defer delete(imports)
+	_add_import :: proc(imports: ^[dynamic]_UpdateRow, pkg, path: string) {
+		for p in imports^ do if p.pkg == pkg do return
+		append(imports, _UpdateRow{pkg = pkg, path = path})
+	}
 	_collect_imports :: proc(imports: ^[dynamic]_UpdateRow, rows: []_UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) {
 		for e in rows {
-			if e.pkg == host || !_included(e, host, runnables) do continue
-			found := false
-			for p in imports^ do if p.pkg == e.pkg { found = true; break }
-			if !found do append(imports, e)
+			if !_included(e, host, runnables) do continue
+			if e.pkg != host do _add_import(imports, e.pkg, e.path)
+			// A per-item wrapper reaches the type's pool through its package.
+			if e.component != "" && e.comp_pkg != host do _add_import(imports, e.comp_pkg, e.comp_pkg_path)
 		}
 	}
 	_collect_imports(&imports, frame_rows, host.name, runnables)
 	_collect_imports(&imports, fixed_rows, host.name, runnables)
+	// Divisor guards read the engine tick counter, wrappers the world.
+	for e in fixed_rows do if _included(e, host.name, runnables) && e.divisor > 1 { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
+	for e in frame_rows do if _included(e, host.name, runnables) && e.component != "" { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
+	for e in fixed_rows do if _included(e, host.name, runnables) && e.component != "" { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
 	slice.sort_by(imports[:], proc(a, b: _UpdateRow) -> bool { return a.pkg < b.pkg })
 	for p in imports {
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
 	}
-	// Divisor guards read the engine tick counter.
-	needs_engine := false
-	for e in fixed_rows do if _included(e, host.name, runnables) && e.divisor > 1 { needs_engine = true; break }
-	if needs_engine do fmt.sbprintf(&b, "import \"%s\"\n", _ENGINE_IMPORT)
-	if len(imports) > 0 || needs_engine do strings.write_string(&b, "\n")
+	if len(imports) > 0 do strings.write_string(&b, "\n")
 
-	_call_name :: proc(e: _UpdateRow, host: string) -> string {
+	// A system is called where it lives, a per-item proc through its wrapper.
+	_call_name :: proc(e: _UpdateRow, host: string, kind: Update_Kind) -> string {
+		if e.component != "" do return _wrapper_name(e, kind)
 		if e.pkg != host do return fmt.tprintf("%s.%s", e.pkg, e.name)
 		return e.name
 	}
 
+	for e in frame_rows do if _included(e, host.name, runnables) && e.component != "" do _write_wrapper(&b, e, host.name, .Frame)
+	for e in fixed_rows do if _included(e, host.name, runnables) && e.component != "" do _write_wrapper(&b, e, host.name, .Fixed)
+
 	strings.write_string(&b, "__update :: proc(dt: f32) {\n")
 	for e in frame_rows {
 		if !_included(e, host.name, runnables) do continue
-		fmt.sbprintf(&b, "\t%s(dt)\n", _call_name(e, host.name))
+		fmt.sbprintf(&b, "\t%s(dt)\n", _call_name(e, host.name, .Frame))
 	}
 	strings.write_string(&b, "}\n\n")
 
@@ -182,12 +237,43 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 	for e in fixed_rows {
 		if !_included(e, host.name, runnables) do continue
 		if e.divisor > 1 {
-			fmt.sbprintf(&b, "\tif engine.fixed_tick_index() %% %d == 0 do %s(fixed_dt * %d)\n", e.divisor, _call_name(e, host.name), e.divisor)
+			fmt.sbprintf(&b, "\tif engine.fixed_tick_index() %% %d == 0 do %s(fixed_dt * %d)\n", e.divisor, _call_name(e, host.name, .Fixed), e.divisor)
 		} else {
-			fmt.sbprintf(&b, "\t%s(fixed_dt)\n", _call_name(e, host.name))
+			fmt.sbprintf(&b, "\t%s(fixed_dt)\n", _call_name(e, host.name, .Fixed))
 		}
 	}
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))
+}
+
+// `__update_<pkg>_<proc>` or `__fixed_update_<pkg>_<proc>`: unique, since a
+// package declares a proc name once, and named after the proc so a profile or
+// a breakpoint reads as the proc it wraps.
+_wrapper_name :: proc(e: _UpdateRow, kind: Update_Kind) -> string {
+	prefix := "__update" if kind == .Frame else "__fixed_update"
+	return fmt.tprintf("%s_%s_%s", prefix, e.pkg, e.name)
+}
+
+// The loop a per-item proc does not write: every enabled instance of its type
+// in the current world, in pool order.
+_write_wrapper :: proc(b: ^strings.Builder, e: _UpdateRow, host: string, kind: Update_Kind) {
+	call := e.name if e.pkg == host else fmt.tprintf("%s.%s", e.pkg, e.name)
+	pool: string
+	if e.comp_poolable {
+		pool = fmt.tprintf("&w.%s", e.comp_plural)
+	} else if e.comp_pkg == host {
+		pool = fmt.tprintf("%s(w)", e.comp_plural)
+	} else {
+		pool = fmt.tprintf("%s.%s(w)", e.comp_pkg, e.comp_plural)
+	}
+	fmt.sbprintf(b, "// @(%s={{component=%s}}) %s\n", "update" if kind == .Frame else "fixed_update", e.component, call)
+	fmt.sbprintf(b, "%s :: proc(dt: f32) {{\n", _wrapper_name(e, kind))
+	strings.write_string(b, "\tw := engine.ctx_world()\n")
+	fmt.sbprintf(b, "\tit := engine.pool_iterator(%s)\n", pool)
+	strings.write_string(b, "\tfor c, _ in engine.pool_next(&it) {\n")
+	if !e.comp_poolable do strings.write_string(b, "\t\tif !c.enabled do continue\n")
+	fmt.sbprintf(b, "\t\t%s(dt, c)\n", call)
+	strings.write_string(b, "\t}\n")
+	strings.write_string(b, "}\n\n")
 }

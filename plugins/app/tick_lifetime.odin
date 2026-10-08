@@ -2,17 +2,12 @@ package app
 
 import "moonhug:packages/engine"
 
-@(fixed_update={order=-50})
-tick_lifetime :: proc(dt: f32) {
-    w := engine.ctx_world()
-    it := engine.pool_iterator(lifetimes(w))
-    for lt, _ in engine.pool_next(&it) {
-        if !lt.enabled do continue
-        lt.time_spent += dt
-        if lt.time_spent >= lt.duration {
-            t := engine.pool_get(&w.transforms, engine.Handle(lt.owner))
-            if t != nil do t.destroy = true
-        }
+@(fixed_update={order=-50, component=Lifetime})
+tick_lifetime :: proc(dt: f32, lt: ^Lifetime) {
+    lt.time_spent += dt
+    if lt.time_spent >= lt.duration {
+        t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(lt.owner))
+        if t != nil do t.destroy = true
     }
 }
 

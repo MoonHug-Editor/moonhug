@@ -2,7 +2,7 @@ package plugin_example
 
 // Example plugin package (docs/core/Plugins.md). Demonstrates the whole surface:
 // a component (inspector + serialization come from the attribute), an
-// @(update) tick, an editor-only subpackage with a menu item (editor/), and
+// @(fixed_update) tick, an editor-only subpackage with a menu item (editor/), and
 // mounted content (assets/). Everything registers through prebuild — no
 // source edits outside this folder.
 
@@ -21,16 +21,12 @@ reset_Spinner :: proc(comp: ^Spinner) {
 	comp.speed = {0, 0, 90}
 }
 
-@(fixed_update={order=0})
-spinner_tick :: proc(dt: f32) {
-	w := engine.ctx_world()
-	it := engine.pool_iterator(spinners(w))
-	for s, _ in engine.pool_next(&it) {
-		if !s.enabled do continue
-		t := engine.pool_get(&w.transforms, engine.Handle(s.owner))
-		if t == nil do continue
-		if s.speed == {} do continue
-		step := engine.quat_from_euler_xyz(s.speed.x * dt, s.speed.y * dt, s.speed.z * dt)
-		t.rotation = engine.quat_from_native(engine.quat_to_native(step) * engine.quat_to_native(t.rotation))
-	}
+// Per-item shape: the generated loop calls this for every enabled Spinner.
+@(fixed_update={component=Spinner})
+spinner_tick :: proc(dt: f32, s: ^Spinner) {
+	if s.speed == {} do return
+	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(s.owner))
+	if t == nil do return
+	step := engine.quat_from_euler_xyz(s.speed.x * dt, s.speed.y * dt, s.speed.z * dt)
+	t.rotation = engine.quat_from_native(engine.quat_to_native(step) * engine.quat_to_native(t.rotation))
 }
