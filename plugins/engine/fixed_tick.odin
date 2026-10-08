@@ -104,9 +104,9 @@ fixed_reset :: proc() {
 //
 // Two shapes. Without `component` the proc is a system, `proc(dt: f32)`, and
 // loops over what it updates itself. With `component = T`, a @(component) or
-// @(poolable) type, the proc is `proc(dt: f32, c: ^T)` and runs once per
-// enabled instance of T (every alive instance of a poolable). The generated
-// loop lives in update_generated.odin next to the dispatcher.
+// @(poolable) type, the proc is `proc(dt: f32, c: ^T)`, by convention named
+// `update_<T>`, and runs once per enabled instance of T (every alive instance of a poolable). The
+// generated loop lives in update_generated.odin next to the dispatcher.
 @(extension_point={attribute="update", target="proc", fields="order component"})
 Update_Proc :: proc(dt: f32)
 
@@ -115,6 +115,7 @@ Update_Proc :: proc(dt: f32)
 // `order` sorts procs across all packages, and `divisor = N` runs it on every
 // Nth tick only, for coarse systems. The tick rate is one project setting,
 // Project Settings > Time. `component = T` gives the per-item shape,
-// `proc(fixed_dt: f32, c: ^T)`, as for @(update).
+// `proc(fixed_dt: f32, c: ^T)` named `fixed_update_<T>` by convention, as for
+// @(update).
 @(extension_point={attribute="fixed_update", target="proc", fields="order divisor component"})
 Fixed_Update_Proc :: proc(fixed_dt: f32)

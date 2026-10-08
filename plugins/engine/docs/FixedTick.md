@@ -24,13 +24,13 @@ ai_tick :: proc(dt: f32) {}
 tween_tick :: proc(dt: f32) {}
 
 @(fixed_update={component=Spinner})   // per item: once per enabled Spinner
-spinner_tick :: proc(dt: f32, s: ^Spinner) {}
+fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {}
 ```
 
 - Works in any package's runtime code, the app included (docs/core/Plugins.md) —
   prebuild bakes every subscriber into `__fixed_update` in
   `update_generated.odin`, interleaved by order.
-- Two shapes, both on `@(update)` and `@(fixed_update)`. A system, `proc(dt)`, loops over what it updates itself, for work across several pools or none (physics, destroy pass, audio). A per-item proc names a `@(component)` or `@(poolable)` type with `component = T` and takes `proc(dt, c: ^T)`. Prebuild writes its loop as `__fixed_update_<pkg>_<proc>` in `update_generated.odin`: every alive instance in pool order, skipping disabled components (a poolable has no `enabled`). The loop fetches nothing else, the proc reads its owner's Transform itself when it needs it. A per-item proc sorts by `order` like a system, default 0.
+- Two shapes, both on `@(update)` and `@(fixed_update)`. A system, `proc(dt)`, loops over what it updates itself, for work across several pools or none (physics, destroy pass, audio). A per-item proc names a `@(component)` or `@(poolable)` type with `component = T` and takes `proc(dt, c: ^T)`. By convention it is named `update_<T>` or `fixed_update_<T>` after its attribute. Prebuild writes its loop as `__<proc>` in `update_generated.odin`: every alive instance in pool order, skipping disabled components (a poolable has no `enabled`). The loop fetches nothing else, the proc reads its owner's Transform itself when it needs it. A per-item proc sorts by `order` like a system, default 0.
 - The app loop drives it with an accumulator: consume frame dt, run 0..k
   ticks, carry the remainder. After a stall at most
   `FIXED_MAX_CATCHUP_TICKS` catch-up ticks run and the rest of the backlog is

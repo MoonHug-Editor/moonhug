@@ -64,6 +64,7 @@ Use :: struct {
 	where_:  string,
 	attr:    string, // "@(key k=v ...)" as rendered by gen_facts.attr_origin
 	summary: string,
+	order:   int,    // the use's `order` field, for attributes that have one
 }
 
 @(init)
@@ -128,7 +129,7 @@ generate :: proc(w: ^db.World) -> bool {
 			for k in args.nested do _check_field(d, k, decl.name, where_, &errors)
 			origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 			parts := strings.split(origin, "  ", context.temp_allocator)
-			append(&d.uses, Use{name = decl.name, pkg = decl.pkg.name, where_ = where_, attr = parts[0], summary = _doc_summary(decl)})
+			append(&d.uses, Use{name = decl.name, pkg = decl.pkg.name, where_ = where_, attr = parts[0], summary = _doc_summary(decl), order = gen_facts.attr_int(args, "order")})
 		}
 	}
 
@@ -143,10 +144,20 @@ generate :: proc(w: ^db.World) -> bool {
 	list := make([dynamic]^Declaration, context.temp_allocator)
 	for _, d in declared {
 		if len(d.uses) == 0 && !d.reserved do fmt.eprintfln("prebuild: warning: @(%s) is declared at %s but nothing uses it", d.attribute, d.where_)
-		slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
-			if a.pkg != b.pkg do return a.pkg < b.pkg
-			return a.name < b.name
-		})
+		// An attribute with an `order` field lists its uses as the generated
+		// dispatcher calls them: by order, then package, then name.
+		if slice.contains(d.fields, "order") {
+			slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
+				if a.order != b.order do return a.order < b.order
+				if a.pkg != b.pkg do return a.pkg < b.pkg
+				return a.name < b.name
+			})
+		} else {
+			slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
+				if a.pkg != b.pkg do return a.pkg < b.pkg
+				return a.name < b.name
+			})
+		}
 		append(&list, d)
 	}
 	// Grouped by layer (Host, Editor, then each plugin by name), by extending

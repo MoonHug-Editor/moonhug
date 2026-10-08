@@ -17,7 +17,7 @@ TANK_SPEED :: f32(5)
 _aim_dir: [2]f32 = {0, 1}
 
 @(fixed_update={order=0})
-game_tick :: proc(dt: f32) {
+fixed_update_game :: proc(dt: f32) {
     refs := scene_refs_get()
     if refs != nil && refs.enabled {
         _, tank := get_comp(engine.Transform_Handle(refs.tank.handle), Tank)
@@ -111,4 +111,9 @@ projectiles_tick :: proc(dt: f32) {
         t.position[0] += p.dir[0] * p.speed * dt
         t.position[1] += p.dir[1] * p.speed * dt
     }
+}
+
+@(fixed_update={order=9999})
+tick_destroy :: proc(dt: f32) {
+    engine.transform_tick_destroy()
 }

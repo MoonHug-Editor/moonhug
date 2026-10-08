@@ -18,11 +18,13 @@ package engine_gen
 //   tween_tick :: proc(dt: f32)
 //
 //   @(fixed_update={component=Spinner})     // per item: the loop is generated
-//   spinner_tick :: proc(dt: f32, s: ^Spinner)
+//   fixed_update_Spinner :: proc(dt: f32, s: ^Spinner)
 //
-// The per-item shape names a @(component) or @(poolable) type. The generated
-// wrapper `__update_<pkg>_<proc>` iterates its pool, skips disabled components
-// (a poolable has no `enabled`, every alive item runs) and calls the proc.
+// The per-item shape names a @(component) or @(poolable) type. By convention
+// the proc is named `update_<T>` or `fixed_update_<T>` after its attribute.
+// The generated wrapper `__<proc>` iterates its pool, skips disabled
+// components (a poolable has no `enabled`, every alive item runs) and calls
+// the proc.
 
 import "core:fmt"
 import "core:strings"
@@ -129,6 +131,19 @@ update_generate :: proc(w: ^db.World) -> bool {
 		case .Fixed: append(&fixed_rows, row)
 		}
 	}
+
+	// The wrapper is named after the proc, so two packages' per-item procs
+	// with one name would generate one wrapper twice.
+	_check_unique :: proc(rows: []_UpdateRow) -> bool {
+		for a, i in rows do for b in rows[i + 1:] {
+			if a.component != "" && b.component != "" && a.name == b.name {
+				fmt.eprintf("update_gen: %s.%s and %s.%s share a name, rename one\n", a.pkg, a.name, b.pkg, b.name)
+				return false
+			}
+		}
+		return true
+	}
+	if !_check_unique(frame_rows[:]) || !_check_unique(fixed_rows[:]) do return false
 
 	// Preserve previous collect_finalize ordering: sort by order.
 	sort_rows :: proc(rows: []_UpdateRow) {
@@ -247,12 +262,10 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))
 }
 
-// `__update_<pkg>_<proc>` or `__fixed_update_<pkg>_<proc>`: unique, since a
-// package declares a proc name once, and named after the proc so a profile or
-// a breakpoint reads as the proc it wraps.
+// `__fixed_update_Spinner` for `fixed_update_Spinner`: a profile or a
+// breakpoint reads as the proc it wraps.
 _wrapper_name :: proc(e: _UpdateRow, kind: Update_Kind) -> string {
-	prefix := "__update" if kind == .Frame else "__fixed_update"
-	return fmt.tprintf("%s_%s_%s", prefix, e.pkg, e.name)
+	return fmt.tprintf("__%s", e.name)
 }
 
 // The loop a per-item proc does not write: every enabled instance of its type
