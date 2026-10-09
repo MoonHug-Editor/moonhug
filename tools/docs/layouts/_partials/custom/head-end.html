@@ -3,3 +3,45 @@
      column keeps --hextra-max-content-width (72rem, not configurable), so text
      and tables would still sit in a narrow column. The column follows the page. */ -}}
 <style>:root { --hextra-max-content-width: 100%; }</style>
+{{- /* Every table sorts by a clicked header: ascending, descending, then back
+     to the order the page was written in, which for a generated table is the
+     order the code runs in. Numbers sort as numbers, so -100 comes before 2.
+     No dependency, so it works on a file:// build too. */ -}}
+<style>
+  table th.mh-sort { cursor: pointer; user-select: none; white-space: nowrap; }
+  table th.mh-sort::after { content: " \2195"; opacity: 0.35; }
+  table th.mh-sort.mh-asc::after { content: " \25B2"; opacity: 1; }
+  table th.mh-sort.mh-desc::after { content: " \25BC"; opacity: 1; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    document.querySelectorAll("table").forEach(function (table) {
+      var head = table.tHead, body = table.tBodies[0];
+      if (!head || !body || head.rows.length !== 1) return;
+      var original = Array.prototype.slice.call(body.rows);
+      var headers = Array.prototype.slice.call(head.rows[0].cells);
+      headers.forEach(function (th, index) {
+        th.classList.add("mh-sort");
+        th.addEventListener("click", function () {
+          var state = th.classList.contains("mh-asc") ? "desc" : th.classList.contains("mh-desc") ? "none" : "asc";
+          headers.forEach(function (h) { h.classList.remove("mh-asc", "mh-desc"); });
+          var rows;
+          if (state === "none") {
+            rows = original;
+          } else {
+            th.classList.add(state === "asc" ? "mh-asc" : "mh-desc");
+            var text = function (row) { var c = row.cells[index]; return c ? c.textContent.trim() : ""; };
+            var numeric = original.every(function (row) { var t = text(row); return t === "" || !isNaN(parseFloat(t)); });
+            rows = original.slice().sort(function (a, b) {
+              var ta = text(a), tb = text(b), r;
+              if (numeric) r = (parseFloat(ta) || 0) - (parseFloat(tb) || 0);
+              else r = ta.localeCompare(tb, undefined, { numeric: true, sensitivity: "base" });
+              return state === "asc" ? r : -r;
+            });
+          }
+          rows.forEach(function (row) { body.appendChild(row); });
+        });
+      });
+    });
+  });
+</script>

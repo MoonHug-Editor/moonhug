@@ -275,6 +275,23 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 	fmt.sbprintf(&b, "\n\nDeclared on `%s` at %s.\n\n", d.anchor, gen_core.SourceLinkAt(d.where_))
 	strings.write_string(&b, d.doc)
 	fmt.sbprintf(&b, "\n\n## Uses (%d)\n\n", len(d.uses))
+	// An attribute with an `order` field gets an Order column, so the table
+	// sorts by it (the site makes table headers clickable).
+	ordered := slice.contains(d.fields, "order")
+	_header :: proc(b: ^strings.Builder, ordered: bool) {
+		if ordered {
+			strings.write_string(b, "| Declaration | Order | Package | Where | Attribute | Summary |\n|---|---:|---|---|---|---|\n")
+		} else {
+			strings.write_string(b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
+		}
+	}
+	_row :: proc(b: ^strings.Builder, u: Use, ordered: bool) {
+		if ordered {
+			fmt.sbprintf(b, "| `%s` | %d | %s | %s | `%s` | %s |\n", u.name, u.order, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+		} else {
+			fmt.sbprintf(b, "| `%s` | %s | %s | `%s` | %s |\n", u.name, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+		}
+	}
 	if len(d.uses) == 0 {
 		strings.write_string(&b, "Nothing uses it yet.\n")
 	} else if slice.contains(d.fields, "key") {
@@ -285,13 +302,13 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 			if u.key != key {
 				key = u.key
 				fmt.sbprintf(&b, "\n### %s\n\n", key if key != "" else "(no key)")
-				strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
+				_header(&b, ordered)
 			}
-			fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` | %s |\n", u.name, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+			_row(&b, u, ordered)
 		}
 	} else {
-		strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
-		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` | %s |\n", u.name, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+		_header(&b, ordered)
+		for u in d.uses do _row(&b, u, ordered)
 	}
 	layer, _ := gen_facts.pkg_layer(d.pkg_path)
 	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, layer, d.attribute), strings.to_string(b))
