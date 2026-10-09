@@ -9,7 +9,6 @@ import "base:runtime"
 import "core:strings"
 import "moonhug:editor/simulate"
 import "moonhug:packages/engine"
-import "moonhug:host/input"
 import "moonhug:host/log"
 import "moonhug:registration"
 
@@ -20,7 +19,6 @@ install_simulate_world :: proc() {
 		restore         = _restore,
 		release         = _release,
 		set_playing     = _set_playing,
-		tick            = _tick,
 		reset_time      = engine.fixed_reset,
 		select_restored = _select_restored,
 	})
@@ -38,7 +36,7 @@ _hosts_table :: proc() -> []simulate.Host {
 	if _hosts != nil || len(registration.sim_hosts) == 0 do return _hosts
 	_hosts = make([]simulate.Host, len(registration.sim_hosts), runtime.default_allocator())
 	for h, i in registration.sim_hosts {
-		_hosts[i] = simulate.Host{name = h.name, path = h.path, update = h.update, fixed_update = h.fixed_update}
+		_hosts[i] = simulate.Host{name = h.name, path = h.path, tick = h.tick}
 	}
 	return _hosts
 }
@@ -153,22 +151,6 @@ _set_playing :: proc(playing: bool) {
 	if uc := engine.ctx_get(); uc != nil {
 		uc.is_playing = playing
 	}
-}
-
-// The app loop's order: fixed ticks from the accumulator, then the frame tick.
-// A step advances exactly one fixed tick and one frame tick, ignoring the
-// accumulator.
-@(private = "file")
-_tick :: proc(dt: f32, step: bool, fixed_update: proc(dt: f32), update: proc(dt: f32)) {
-	fdt := engine.fixed_dt()
-	steps := 1 if step else engine.fixed_frame_ticks(dt)
-	for _ in 0 ..< steps {
-		engine.fixed_tick_begin()
-		input.fixed_latch()
-		if fixed_update != nil do fixed_update(fdt)
-		engine.fixed_tick_advance()
-	}
-	if update != nil do update(fdt if step else dt)
 }
 
 @(private = "file")

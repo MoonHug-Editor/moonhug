@@ -122,19 +122,15 @@ The scene keeps its identity. Restore frees the Scene struct and loads a new one
 
 ## Ticking
 
-Simulate calls the selected sim host's generated dispatchers, reached through the
-generated table as proc pointers:
+Simulate calls the selected sim host's generated `__frame_tick`, reached through the generated table as a proc pointer. It runs `engine.frame_tick` with that host's dispatchers:
 
 ```
 fixed ticks (0..k this frame, accumulator-driven)  →  __fixed_update
 per-frame tick                                    →  __update
+late tick, before rendering                       →  __late_update
 ```
 
-Same procs, same order as that game's own loop (see [FixedTick.md](../../plugins/engine/docs/FixedTick.md)),
-so a component behaves identically in Simulate and standalone. The editor has no
-dispatcher of its own to drift out of sync — `@(update)` and
-`@(fixed_update)` subscribers are picked up automatically, including those from
-plugins.
+The game's own loop calls the same `engine.frame_tick` with the same `__ticks` (see [FixedTick.md](../../plugins/engine/docs/FixedTick.md)), so the order is written once and a component behaves identically in Simulate and standalone. The editor has no dispatcher of its own to drift out of sync — `@(update)` and `@(fixed_update)` subscribers are picked up automatically, including those from plugins.
 
 ## Which game gets ticked (the sim host)
 
@@ -144,7 +140,7 @@ host's update code Simulate runs.
 
 The list is generated, not configured. Prebuild emits one row per runnable
 package into `registration/sim_hosts_generated.odin`, each carrying that host's
-`__update` / `__fixed_update`, and sim_world converts the rows and hands them to Simulate in `EditorInit`. Install a second game and it appears; there is
+`__frame_tick`, and sim_world converts the rows and hands them to Simulate in `EditorInit`. Install a second game and it appears; there is
 nothing to register.
 
 With one sim host the dropdown is **disabled but still visible**, reading out that
@@ -250,10 +246,10 @@ sim host.
 editor/simulate/simulate.odin    state machine: start/stop/pause/step, host selection
 editor/simulate/world.odin       Simulate_World, the provider for the world being simulated
 editor/simulate_view.odin        toolbar, shortcuts, and the hooks into editor state
-plugins/engine/editor/sim_world/ the engine's Simulate_World: snapshot, scene set, fixed ticks
+plugins/engine/editor/sim_world/ the engine's Simulate_World: snapshot, scene set, host table
 ```
 
 The state machine is a subpackage with no imgui, view or engine dependencies, so tests and
 tools drive a simulation without the editor root. Editor-owned state (selection,
 phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an
-unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `tick` runs the fixed ticks and then the frame tick, `select_restored` resolves a selected id in the restored scene. With no world installed a run captures nothing and ticks only the `@(update)` procs.
+unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `select_restored` resolves a selected id in the restored scene. Ticking needs no world: the host's `tick` is the game's own generated proc. With no world installed a run captures nothing.

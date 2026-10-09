@@ -19,6 +19,13 @@ _count_update :: proc(dt: f32) { _sim_ticks += 1 }
 @(private="file")
 _count_fixed :: proc(dt: f32) { _sim_fixed_ticks += 1 }
 
+// The host's tick as update_gen generates it: the real frame_tick, so the
+// accumulator and the step path are the ones a game runs.
+@(private="file")
+_count_tick :: proc(dt: f32, step: bool) {
+	engine.frame_tick({fixed_update = _count_fixed, update = _count_update}, dt, step)
+}
+
 // Fixed storage: a dynamic array here reads stale once teardown frees the
 // per-test allocator.
 @(private="file")
@@ -61,7 +68,7 @@ _one_host_storage: [1]sim.Host
 @(private="file")
 _one_host :: proc() -> []sim.Host {
 	_one_host_storage[0] = sim.Host{
-		name = "app", update = _count_update, fixed_update = _count_fixed,
+		name = "app", tick = _count_tick,
 	}
 	return _one_host_storage[:]
 }
@@ -238,8 +245,8 @@ test_sim_host_selection :: proc(t: ^testing.T) {
 	context.user_ptr = &tc_mem.uc
 	defer teardown(tc_mem)
 	_sim_install([]sim.Host{
-		{name = "app", update = _count_update, fixed_update = _count_fixed},
-		{name = "game2", update = _count_update, fixed_update = _count_fixed},
+		{name = "app", tick = _count_tick},
+		{name = "game2", tick = _count_tick},
 	})
 	defer _sim_uninstall()
 

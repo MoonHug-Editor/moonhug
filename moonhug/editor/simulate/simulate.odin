@@ -24,10 +24,12 @@ State :: enum {
 // (moonhug/registration/sim_hosts_generated.odin), which sim_world converts and
 // passes to set_hosts.
 Host :: struct {
-    name:         string,
-    path:         string,
-    update:       proc(dt: f32),
-    fixed_update: proc(dt: f32),
+    name: string,
+    path: string,
+    // One frame of the game's simulation, the generated __frame_tick: the
+    // fixed ticks the accumulator owes, then the frame tick. `step` runs
+    // exactly one of each at the fixed delta.
+    tick: proc(dt: f32, step: bool),
 }
 
 // Editor-root state reached through callbacks: selection, phase dispatch and the
@@ -247,11 +249,9 @@ step :: proc() {
     _step_pending = true
 }
 
-// Advance the simulation for one frame, in the app loop's order: fixed ticks from
-// the accumulator, then the frame tick.
-//
-// A step advances exactly one fixed tick and one frame tick, ignoring the
-// accumulator. A normal run uses it, so gameplay speed matches standalone.
+// Advance the simulation for one frame through the host's own tick, so the
+// order is the game's. A step advances exactly one fixed tick and one frame
+// tick, ignoring the accumulator.
 tick :: proc(dt: f32) {
     if _state == .Stopped do return
 
@@ -260,8 +260,8 @@ tick :: proc(dt: f32) {
     if !is_ticking() && !step do return
 
     host, ok := active_host()
-    if !ok do return
-    world_tick(dt, step, host.fixed_update, host.update)
+    if !ok || host.tick == nil do return
+    host.tick(dt, step)
 }
 
 hosts :: proc() -> []Host {

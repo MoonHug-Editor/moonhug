@@ -21,10 +21,6 @@ Simulate_World :: struct {
 	release:         proc(snapshot: []byte),
 	// What the game sees as "playing", true from Start to Stop.
 	set_playing:     proc(playing: bool),
-	// One frame of simulation: the fixed ticks the world's accumulator owes,
-	// then the per-frame update. `step` runs exactly one fixed tick and one
-	// frame tick at the fixed delta, ignoring the accumulator.
-	tick:            proc(dt: f32, step: bool, fixed_update: proc(dt: f32), update: proc(dt: f32)),
 	// Clears the fixed-tick accumulator, at Start and at Stop.
 	reset_time:      proc(),
 	// The object a selection can hold for `id` in the restored `scene`.
@@ -59,14 +55,6 @@ world_release :: proc(snapshot: []byte) {
 
 world_set_playing :: proc(playing: bool) {
 	if _world.set_playing != nil do _world.set_playing(playing)
-}
-
-world_tick :: proc(dt: f32, step: bool, fixed_update: proc(dt: f32), update: proc(dt: f32)) {
-	if _world.tick != nil {
-		_world.tick(dt, step, fixed_update, update)
-		return
-	}
-	if update != nil do update(dt)
 }
 
 world_reset_time :: proc() {

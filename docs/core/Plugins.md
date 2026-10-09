@@ -24,7 +24,7 @@ and receives its OWN generated dispatcher set (`__update`, `phase_run`,
 Each dispatcher is emitted per runnable package under a fixed name, which is
 unambiguous inside a game binary — it contains one host. The EDITOR links all of
 them, so it also gets a table naming them: `registration/sim_hosts_generated.odin`, one row
-per runnable package with its `__update` / `__fixed_update`, which sim_world converts and hands to `editor/simulate`. That is how the
+per runnable package with its `__frame_tick`, which sim_world converts and hands to `editor/simulate`. That is how the
 editor's Simulate (docs/core/Simulate.md) knows which game to tick, and what its Sim
 Host dropdown lists.
 

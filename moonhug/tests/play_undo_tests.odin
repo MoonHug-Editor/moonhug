@@ -17,7 +17,7 @@ import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 
 @(private = "file")
-_hosts := [1]simulate.Host{{name = "play_undo_test", update = proc(dt: f32) {}, fixed_update = proc(dt: f32) {}}}
+_hosts := [1]simulate.Host{{name = "play_undo_test", tick = proc(dt: f32, step: bool) {}}}
 
 // Stands in for data Stop does not roll back (an asset, a project setting).
 @(private = "file")

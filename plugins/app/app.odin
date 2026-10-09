@@ -103,16 +103,10 @@ main :: proc() {
             gizmos.set_view(engine.camera_render_view(cam, f32(ws.x), f32(ws.y)))
         }
 
-        // Fixed-rate sim ticks first (0..k this frame, accumulator-driven —
-        // plugins/engine/docs/FixedTick.md), then the per-frame view tick.
-        steps := engine.fixed_frame_ticks(gfx.delta_time())
-        for _ in 0 ..< steps {
-            engine.fixed_tick_begin()
-            input.fixed_latch()
-            __fixed_update(engine.fixed_dt())
-            engine.fixed_tick_advance()
-        }
-        __update(gfx.delta_time())
+        // The frame's simulation: fixed ticks, then the frame tick
+        // (plugins/engine/docs/FixedTick.md). The editor's Simulate runs the
+        // same proc with the same dispatchers.
+        engine.frame_tick(__ticks, gfx.delta_time())
 
         // F3 toggles the DebugDraw phase (collider wireframes etc).
         if input.key_pressed(.F3) {

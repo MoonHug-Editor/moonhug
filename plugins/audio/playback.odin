@@ -220,7 +220,9 @@ preview_seek :: proc(frames: i64) {
 	if _preview_track != nil do _ = mix.SetTrackPlaybackPosition(_preview_track, frames)
 }
 
-@(update={order=3})
+// Late: the ear and every source spatialize from the transforms the frame
+// tick finished moving.
+@(late_update)
 audio_update :: proc(dt: f32) {
 	context.allocator = runtime.default_allocator()
 	w := engine.ctx_world()

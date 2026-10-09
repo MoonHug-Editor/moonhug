@@ -1,21 +1,44 @@
 package engine
 
 import core "moonhug:host/core"
+import "moonhug:host/input"
 
 // Fixed-rate simulation tick (plugins/engine/docs/FixedTick.md). ONE project tick rate — no
 // independent per-system rates; coarse systems schedule with the divisor on
-// their @(fixed_update) attribute instead. The app loop drives the generated
-// __fixed_update through fixed_frame_ticks (classic accumulator):
+// their @(fixed_update) attribute instead. A game's loop and the editor's
+// Simulate both run a frame's simulation through frame_tick, with the
+// dispatchers update_gen generated for that game:
 //
-//   steps := engine.fixed_frame_ticks(gfx.delta_time())
-//   for _ in 0 ..< steps {
-//       engine.fixed_tick_begin()
-//       input.fixed_latch()
-//       __fixed_update(engine.fixed_dt())
-//       engine.fixed_tick_advance()
-//   }
+//   engine.frame_tick(__ticks, gfx.delta_time())
 //
 // @(update) stays per-frame for view-side work (tweens, camera, UI).
+
+// The generated dispatchers of one runnable package, `__ticks` in its
+// update_generated.odin. A stage nobody subscribes to is an empty proc.
+Tick_Hooks :: struct {
+	fixed_update: proc(dt: f32),
+	update:       proc(dt: f32),
+	late_update:  proc(dt: f32),
+}
+
+// One frame of simulation, the only place the order is written: the fixed
+// ticks the accumulator owes (each latching input first), then the frame
+// tick, then the late tick. `step` runs exactly one fixed tick and one frame
+// tick at the fixed delta, ignoring the accumulator, for the editor's Step
+// button.
+frame_tick :: proc(hooks: Tick_Hooks, dt: f32, step := false) {
+	fdt := fixed_dt()
+	steps := 1 if step else fixed_frame_ticks(dt)
+	for _ in 0 ..< steps {
+		fixed_tick_begin()
+		input.fixed_latch()
+		if hooks.fixed_update != nil do hooks.fixed_update(fdt)
+		fixed_tick_advance()
+	}
+	frame_dt := fdt if step else dt
+	if hooks.update != nil do hooks.update(frame_dt)
+	if hooks.late_update != nil do hooks.late_update(frame_dt)
+}
 
 // 60 rather than Unity's 50: with view interpolation deferred, 60 aligns
 // 1:1 with 60 Hz displays (1:2 with 120 Hz ProMotion) so fixed-stepped
@@ -109,6 +132,15 @@ fixed_reset :: proc() {
 // generated loop lives in update_generated.odin next to the dispatcher.
 @(extension_point={attribute="update", target="proc", fields="order component"})
 Update_Proc :: proc(dt: f32)
+
+// Runs a proc every frame after every @(update) proc, the last stage before
+// the frame renders, with the frame's delta time in seconds.
+//
+// For work that reads what the frame tick produced: a camera following its
+// target, UI laid out from final transforms. `order` and `component` work as
+// for @(update).
+@(extension_point={attribute="late_update", target="proc", fields="order component"})
+Late_Update_Proc :: proc(dt: f32)
 
 // Runs a proc on the fixed simulation tick, with the fixed step in seconds.
 //

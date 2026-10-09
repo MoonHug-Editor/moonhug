@@ -23,6 +23,9 @@ ai_tick :: proc(dt: f32) {}
 @(update={order=1})                   // stays PER-FRAME: view-side work
 tween_tick :: proc(dt: f32) {}
 
+@(late_update)                        // after every @(update), before rendering
+camera_follow :: proc(dt: f32) {}
+
 @(fixed_update={component=Spinner})   // per item: once per enabled Spinner
 fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {}
 ```
@@ -30,9 +33,9 @@ fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {}
 - Works in any package's runtime code, the app included (docs/core/Plugins.md) —
   prebuild bakes every subscriber into `__fixed_update` in
   `update_generated.odin`, interleaved by order.
-- Two shapes, both on `@(update)` and `@(fixed_update)`. A system, `proc(dt)`, loops over what it updates itself, for work across several pools or none (physics, destroy pass, audio). A per-item proc names a `@(component)` or `@(poolable)` type with `component = T` and takes `proc(dt, c: ^T)`. By convention it is named `update_<T>` or `fixed_update_<T>` after its attribute. Prebuild writes its loop as `__<proc>` in `update_generated.odin`: every alive instance in pool order, skipping disabled components (a poolable has no `enabled`). The loop fetches nothing else, the proc reads its owner's Transform itself when it needs it. A per-item proc sorts by `order` like a system, default 0.
-- The app loop drives it with an accumulator: consume frame dt, run 0..k
-  ticks, carry the remainder. After a stall at most
+- `@(late_update)` runs after every `@(update)` proc, the last stage before the frame renders, for work that reads the frame's results: a camera following its target, UI laid out from final transforms. It takes `order` and `component` like `@(update)`.
+- Two shapes, on `@(update)`, `@(late_update)` and `@(fixed_update)`. A system, `proc(dt)`, loops over what it updates itself, for work across several pools or none (physics, destroy pass, audio). A per-item proc names a `@(component)` or `@(poolable)` type with `component = T` and takes `proc(dt, c: ^T)`. By convention it is named `update_<T>` or `fixed_update_<T>` after its attribute. Prebuild writes its loop as `__<proc>` in `update_generated.odin`: every alive instance in pool order, skipping disabled components (a poolable has no `enabled`). The loop fetches nothing else, the proc reads its owner's Transform itself when it needs it. A per-item proc sorts by `order` like a system, default 0.
+- `engine.frame_tick(__ticks, dt)` is the frame's simulation, written once: the accumulator consumes the frame dt, runs 0..k fixed ticks (latching input before each), carries the remainder, then runs the frame tick. The game's loop calls it, and so does the editor's Simulate through the generated `__frame_tick`, with `step = true` for one fixed tick and one frame tick. After a stall at most
   `FIXED_MAX_CATCHUP_TICKS` catch-up ticks run and the rest of the backlog is
   DROPPED (the sim jumps instead of spiraling).
 - `engine.fixed_tick_index()` is the running tick counter,

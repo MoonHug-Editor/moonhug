@@ -6,11 +6,15 @@ package engine_gen
 //              installed package's runtime package) carrying an `@update` or
 //              `@fixed_update` attribute, add Update_GenComp.
 //   generate - iterate the {decls, updates} join view, sort by order, build
-//              update_generated.odin with BOTH dispatchers, emit it.
+//              update_generated.odin with BOTH dispatchers, `__ticks` (the
+//              dispatchers as engine.Tick_Hooks) and `__frame_tick`, which runs
+//              a frame through engine.frame_tick. The game's loop and the
+//              editor's sim host table use those two, never the dispatchers.
 //
 // __update runs per frame (view-side work). __fixed_update runs per fixed
 // tick, driven by the app loop's accumulator (plugins/engine/fixed_tick.odin); a
-// subscriber's divisor=N runs it every Nth tick at fixed_dt * N.
+// subscriber's divisor=N runs it every Nth tick at fixed_dt * N. __late_update
+// runs after __update, the last stage before rendering.
 //
 // Both attributes take two shapes, interleaved by order in one dispatcher:
 //
@@ -34,6 +38,7 @@ import "moonhug:prebuild/gen_facts"
 
 Update_Kind :: enum {
 	Frame, // @(update)
+	Late,  // @(late_update)
 	Fixed, // @(fixed_update)
 }
 
@@ -73,6 +78,8 @@ update_provide :: proc(w: ^db.World) -> bool {
 		attr_set := db.get(attrs, entity)
 		if args, found := gen_facts.attr_find(attr_set, "update"); found {
 			db.set(_updates, entity, Update_GenComp{kind = .Frame, order = gen_facts.attr_int(args, "order"), component = _component_arg(args)})
+		} else if args, lfound := gen_facts.attr_find(attr_set, "late_update"); lfound {
+			db.set(_updates, entity, Update_GenComp{kind = .Late, order = gen_facts.attr_int(args, "order"), component = _component_arg(args)})
 		} else if args, ffound := gen_facts.attr_find(attr_set, "fixed_update"); ffound {
 			divisor := gen_facts.attr_int(args, "divisor")
 			if divisor < 1 do divisor = 1
@@ -104,8 +111,9 @@ _UpdateRow :: struct {
 // excluded (they're separate programs).
 update_generate :: proc(w: ^db.World) -> bool {
 	frame_rows: [dynamic]_UpdateRow
+	late_rows:  [dynamic]_UpdateRow
 	fixed_rows: [dynamic]_UpdateRow
-	defer { delete(frame_rows); delete(fixed_rows) }
+	defer { delete(frame_rows); delete(late_rows); delete(fixed_rows) }
 
 	decls := db.get_comps_DeclInfo()
 	_updates := db.get_comps(w, Update_GenComp)
@@ -128,6 +136,7 @@ update_generate :: proc(w: ^db.World) -> bool {
 		}
 		switch update.kind {
 		case .Frame: append(&frame_rows, row)
+		case .Late:  append(&late_rows, row)
 		case .Fixed: append(&fixed_rows, row)
 		}
 	}
@@ -143,7 +152,7 @@ update_generate :: proc(w: ^db.World) -> bool {
 		}
 		return true
 	}
-	if !_check_unique(frame_rows[:]) || !_check_unique(fixed_rows[:]) do return false
+	if !_check_unique(frame_rows[:]) || !_check_unique(late_rows[:]) || !_check_unique(fixed_rows[:]) do return false
 
 	// Preserve previous collect_finalize ordering: sort by order.
 	sort_rows :: proc(rows: []_UpdateRow) {
@@ -157,12 +166,13 @@ update_generate :: proc(w: ^db.World) -> bool {
 		})
 	}
 	sort_rows(frame_rows[:])
+	sort_rows(late_rows[:])
 	sort_rows(fixed_rows[:])
 
 	runnables := gen_facts.runnable_packages(w)
 	defer delete(runnables)
 	for host in runnables {
-		_generate_host(w, host, frame_rows[:], fixed_rows[:], runnables[:])
+		_generate_host(w, host, frame_rows[:], late_rows[:], fixed_rows[:], runnables[:])
 	}
 	return true
 }
@@ -188,7 +198,7 @@ _resolve_component :: proc(w: ^db.World, decls: ^db.Comps(db.DeclInfo), comps: ^
 	return false
 }
 
-_generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, fixed_rows: []_UpdateRow, runnables: []gen_facts.Runnable_Pkg) {
+_generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, late_rows, fixed_rows: []_UpdateRow, runnables: []gen_facts.Runnable_Pkg) {
 	// The host's slice of the rows: own entries + library packages.
 	_included :: proc(e: _UpdateRow, host: string, runnables: []gen_facts.Runnable_Pkg) -> bool {
 		return e.pkg == host || !gen_facts.is_runnable(runnables, e.pkg)
@@ -217,11 +227,11 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 		}
 	}
 	_collect_imports(&imports, frame_rows, host.name, runnables)
+	_collect_imports(&imports, late_rows, host.name, runnables)
 	_collect_imports(&imports, fixed_rows, host.name, runnables)
-	// Divisor guards read the engine tick counter, wrappers the world.
-	for e in fixed_rows do if _included(e, host.name, runnables) && e.divisor > 1 { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
-	for e in frame_rows do if _included(e, host.name, runnables) && e.component != "" { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
-	for e in fixed_rows do if _included(e, host.name, runnables) && e.component != "" { _add_import(&imports, "engine", "moonhug/packages/engine"); break }
+	// __ticks and __frame_tick are engine types, divisor guards read its tick
+	// counter, wrappers its world.
+	_add_import(&imports, "engine", "moonhug/packages/engine")
 	slice.sort_by(imports[:], proc(a, b: _UpdateRow) -> bool { return a.pkg < b.pkg })
 	for p in imports {
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
@@ -236,14 +246,20 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 	}
 
 	for e in frame_rows do if _included(e, host.name, runnables) && e.component != "" do _write_wrapper(&b, e, host.name, .Frame)
+	for e in late_rows do if _included(e, host.name, runnables) && e.component != "" do _write_wrapper(&b, e, host.name, .Late)
 	for e in fixed_rows do if _included(e, host.name, runnables) && e.component != "" do _write_wrapper(&b, e, host.name, .Fixed)
 
-	strings.write_string(&b, "__update :: proc(dt: f32) {\n")
-	for e in frame_rows {
-		if !_included(e, host.name, runnables) do continue
-		fmt.sbprintf(&b, "\t%s(dt)\n", _call_name(e, host.name, .Frame))
+	_write_frame_dispatcher :: proc(b: ^strings.Builder, name: string, rows: []_UpdateRow, kind: Update_Kind, host: string, runnables: []gen_facts.Runnable_Pkg) {
+		fmt.sbprintf(b, "%s :: proc(dt: f32) {{\n", name)
+		for e in rows {
+			if !_included(e, host, runnables) do continue
+			fmt.sbprintf(b, "\t%s(dt)\n", _call_name(e, host, kind))
+		}
+		strings.write_string(b, "}\n\n")
 	}
-	strings.write_string(&b, "}\n\n")
+	_write_frame_dispatcher(&b, "__update", frame_rows, .Frame, host.name, runnables)
+	strings.write_string(&b, "// After __update, the last stage before the frame renders.\n")
+	_write_frame_dispatcher(&b, "__late_update", late_rows, .Late, host.name, runnables)
 
 	// Fixed-tick dispatcher (plugins/engine/docs/FixedTick.md): the app loop's accumulator
 	// calls this 0..k times per frame with the constant fixed_dt. divisor=N
@@ -257,6 +273,12 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 			fmt.sbprintf(&b, "\t%s(fixed_dt)\n", _call_name(e, host.name, .Fixed))
 		}
 	}
+	strings.write_string(&b, "}\n\n")
+
+	strings.write_string(&b, "// The dispatchers as one value, and a frame of simulation through engine.frame_tick.\n")
+	strings.write_string(&b, "__ticks :: engine.Tick_Hooks{fixed_update = __fixed_update, update = __update, late_update = __late_update}\n\n")
+	strings.write_string(&b, "__frame_tick :: proc(dt: f32, step: bool) {\n")
+	strings.write_string(&b, "\tengine.frame_tick(__ticks, dt, step)\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))
@@ -266,6 +288,15 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, f
 // breakpoint reads as the proc it wraps.
 _wrapper_name :: proc(e: _UpdateRow, kind: Update_Kind) -> string {
 	return fmt.tprintf("__%s", e.name)
+}
+
+_attr_name :: proc(kind: Update_Kind) -> string {
+	switch kind {
+	case .Frame: return "update"
+	case .Late:  return "late_update"
+	case .Fixed: return "fixed_update"
+	}
+	return ""
 }
 
 // The loop a per-item proc does not write: every enabled instance of its type
@@ -280,7 +311,7 @@ _write_wrapper :: proc(b: ^strings.Builder, e: _UpdateRow, host: string, kind: U
 	} else {
 		pool = fmt.tprintf("%s.%s(w)", e.comp_pkg, e.comp_plural)
 	}
-	fmt.sbprintf(b, "// @(%s={{component=%s}}) %s\n", "update" if kind == .Frame else "fixed_update", e.component, call)
+	fmt.sbprintf(b, "// @(%s={{component=%s}}) %s\n", _attr_name(kind), e.component, call)
 	fmt.sbprintf(b, "%s :: proc(dt: f32) {{\n", _wrapper_name(e, kind))
 	strings.write_string(b, "\tw := engine.ctx_world()\n")
 	fmt.sbprintf(b, "\tit := engine.pool_iterator(%s)\n", pool)

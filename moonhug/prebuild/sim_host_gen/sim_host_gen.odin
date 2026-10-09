@@ -10,15 +10,16 @@ package sim_host_gen
 // installed packages whose root declares `main`.
 //
 //   generate - moonhug/registration/sim_hosts_generated.odin: `sim_hosts`, one
-//              Sim_Host row per runnable package with that host's __update /
-//              __fixed_update. The table lives in the all-packages bundle, which
-//              already imports every runtime package, so the engine plugin never
-//              imports a game. sim_world converts the rows to simulate.Host and
-//              hands them to editor/simulate.
+//              Sim_Host row per runnable package with that host's __frame_tick,
+//              the generated proc that runs one frame of its simulation. The
+//              table lives in the all-packages bundle, which already imports
+//              every runtime package, so the engine plugin never imports a
+//              game. sim_world converts the rows to simulate.Host and hands
+//              them to editor/simulate.
 //
-// Other dispatchers are emitted per host under a fixed name, unambiguous inside a
+// Dispatchers are emitted per host under a fixed name, unambiguous inside a
 // game binary. The editor is not a host and links all of them, so which host to
-// tick is a runtime choice: editor/simulate reads the selected row's procs, and
+// tick is a runtime choice: editor/simulate calls the selected row's tick, and
 // the Sim Host dropdown lists them.
 
 import "core:fmt"
@@ -66,15 +67,13 @@ sim_host_generate :: proc(w: ^db.World) -> bool {
 	// The row type is local: registration imports runtime packages only, never
 	// the editor shell that declares simulate.Host.
 	strings.write_string(&b, "Sim_Host :: struct {\n")
-	strings.write_string(&b, "\tname:         string,\n")
-	strings.write_string(&b, "\tpath:         string,\n")
-	strings.write_string(&b, "\tupdate:       proc(dt: f32),\n")
-	strings.write_string(&b, "\tfixed_update: proc(dt: f32),\n")
+	strings.write_string(&b, "\tname: string,\n")
+	strings.write_string(&b, "\tpath: string,\n")
+	strings.write_string(&b, "\ttick: proc(dt: f32, step: bool), // one frame of its simulation, engine.frame_tick with its dispatchers\n")
 	strings.write_string(&b, "}\n\n")
 	strings.write_string(&b, "sim_hosts := []Sim_Host{\n")
 	for h in hosts {
-		fmt.sbprintf(&b, "\t{{\"%s\", \"%s\", %s.__update, %s.__fixed_update},\n",
-			h.name, h.path, h.name, h.name)
+		fmt.sbprintf(&b, "\t{{\"%s\", \"%s\", %s.__frame_tick},\n", h.name, h.path, h.name)
 	}
 	strings.write_string(&b, "}\n")
 
