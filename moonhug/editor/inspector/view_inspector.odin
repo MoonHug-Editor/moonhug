@@ -136,6 +136,8 @@ init :: proc() {
     decorator_origin_registry = make(map[typeid][]string)
     init_property_drawer_map()
     init_decorators()
+    _context_menu_registry = make(map[typeid][dynamic]Context_Menu_Entry)
+    init_context_menu_registry()
     inspector_buttons = make(map[typeid][]Inspector_Button)
     _register_inspector_buttons()
     undo.set_asset_apply(asset_doc_apply_json)
@@ -149,6 +151,7 @@ init :: proc() {
 
 shutdown_registries :: proc() {
     multi_shutdown()
+    _shutdown_context_menu_registry()
     delete(mapPropertyDrawer)
     delete(mapPropertyDrawerOrigin)
     delete(asset_doc_hooks)

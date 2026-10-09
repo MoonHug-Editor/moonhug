@@ -10,6 +10,7 @@ package mh
 
 import "core:fmt"
 import "core:os"
+import "core:path/filepath"
 import "core:slice"
 import "core:strings"
 
@@ -18,6 +19,9 @@ DOCS_MOUNTS :: "builds/docs-mounts.toml"
 DOCS_INDEX  :: "builds/docs/index.html"
 DOCS_PKG_DIR :: "docs/reference/packages"
 DOCS_HOME_DIR :: "builds/docs-home"
+// The External Tools user setting, read for its source_url field
+// (core.user_settings_file names it).
+DOCS_USER_TOOLS :: "moonhug/UserSettings/external_tools.json"
 // Not Hugo's 1313, so a docs server and any other Hugo project on the
 // machine do not fight over a port. Hugo moves on if this one is busy.
 DOCS_PORT :: "7272"
@@ -53,6 +57,86 @@ cmd_docs :: proc(args: []string) -> int {
 		return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--renderToMemory", "--openBrowser")
 	}
 	return 0
+}
+
+// The URL template every source location in the reference pages links to,
+// with {file} and {line} to fill in. It is the `source_url` field of the
+// External Tools user setting when set. Otherwise it is the file on GitHub
+// on the current branch, from the origin remote: a branch link works once
+// the branch is pushed, where a commit link is dead until that commit is.
+// Without a GitHub remote it is the file on disk, with no line. Resolved
+// once per run.
+docs_source_url :: proc() -> string {
+	@(static) resolved: string
+	@(static) done: bool
+	if done do return resolved
+	done = true
+	if data, err := os.read_entire_file(DOCS_USER_TOOLS, context.temp_allocator); err == nil {
+		if t := strings.trim_space(_json_string_field(string(data), "source_url")); t != "" {
+			resolved = strings.clone(t)
+			return resolved
+		}
+	}
+	resolved = "file://{file}"
+	remote, rcode := run_capture("git", "remote", "get-url", "origin")
+	defer delete(remote)
+	branch, bcode := run_capture("git", "rev-parse", "--abbrev-ref", "HEAD")
+	defer delete(branch)
+	if rcode != 0 || bcode != 0 do return resolved
+	ref := strings.trim_space(branch)
+	// A detached checkout has no branch name, the commit is all there is.
+	if ref == "HEAD" {
+		sha, scode := run_capture("git", "rev-parse", "HEAD")
+		defer delete(sha)
+		if scode != 0 do return resolved
+		ref = strings.clone(strings.trim_space(sha), context.temp_allocator)
+	}
+	repo := strings.trim_space(remote)
+	switch {
+	case strings.has_prefix(repo, "git@github.com:"):    repo = repo[len("git@github.com:"):]
+	case strings.has_prefix(repo, "https://github.com/"): repo = repo[len("https://github.com/"):]
+	case strings.has_prefix(repo, "ssh://git@github.com/"): repo = repo[len("ssh://git@github.com/"):]
+	case: return resolved
+	}
+	repo = strings.trim_suffix(strings.trim_suffix(repo, "/"), ".git")
+	// Concatenated, not formatted: fmt reads {file} as a format argument.
+	resolved = strings.concatenate({"https://github.com/", repo, "/blob/", ref, "/{file}#L{line}"})
+	return resolved
+}
+
+// docs_source_href fills a docs_source_url template for a repo-relative
+// path. {file} is the relative path for GitHub and the absolute path for any
+// other template, since an editor URL needs the absolute one.
+// This tool imports nothing from the moonhug collection, so this is the
+// same rule as gen_core.SourceHref: {file} is the real path, the packages
+// link resolved, repo-relative for GitHub and absolute for an editor URL.
+docs_source_href :: proc(rel_path: string, line: int) -> string {
+	template := docs_source_url()
+	file := docs_source_real_path(rel_path)
+	if !strings.has_prefix(template, "https://github.com/") {
+		cwd, _ := os.get_working_directory(context.temp_allocator)
+		file = fmt.tprintf("%s/%s", cwd, file)
+	}
+	href, _ := strings.replace_all(template, "{file}", file, context.temp_allocator)
+	href, _ = strings.replace_all(href, "{line}", fmt.tprintf("%d", line), context.temp_allocator)
+	return href
+}
+
+// A plugin's moonhug/packages/<name> link replaced by the folder it points
+// to: a link is a file on GitHub, not a folder. Temp-allocated.
+docs_source_real_path :: proc(rel_path: string) -> string {
+	PACKAGES :: "moonhug/packages/"
+	if !strings.has_prefix(rel_path, PACKAGES) do return rel_path
+	rest := rel_path[len(PACKAGES):]
+	slash := strings.index_byte(rest, '/')
+	if slash <= 0 do return rel_path
+	link := rel_path[:len(PACKAGES) + slash]
+	target, err := os.read_link(link, context.temp_allocator)
+	if err != nil do return rel_path
+	context.allocator = context.temp_allocator // filepath.dir and clean take no allocator
+	real, _ := filepath.join({filepath.dir(link), target})
+	cleaned, _ := filepath.clean(strings.concatenate({real, rest[slash:]}))
+	return cleaned
 }
 
 // Removes integrity="…" and crossorigin="…" from every built page. Browsers
@@ -228,7 +312,8 @@ docs_write_home :: proc(plugins: []string) -> bool {
 }
 
 // The string value of one top-level field in a small flat JSON object, "" when
-// absent or empty. Enough for the manifest, which this tool does not otherwise parse.
+// absent or empty. Enough for the manifest and the External Tools user setting,
+// which this tool does not otherwise parse.
 @(private = "file")
 _json_string_field :: proc(json: string, field: string) -> string {
 	key := fmt.tprintf("\"%s\"", field)

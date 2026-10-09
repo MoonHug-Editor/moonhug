@@ -18,7 +18,7 @@ tags: ["build", "assets"]
 - external - external dependencies folder
 - library - derived-data cache (Unity's Library model, see [library](#library)). Safe to delete, rebuilt on the next run
 - ProjectSettings - settings about the PROJECT, committed: `mcp.json` and one `<slug>.json` per @(project_settings) tab
-- UserSettings - per-developer editor state, never committed (Unity's UserSettings): window geometry, open scenes and windows, panel visibility, theme, grid and snap, selected run config, and in `external_tools.json` the optional command Edit Script runs to open a file at a line (`script_editor`, such as `zed {file}:{line}`, empty opens the file with the app the OS associates with it). A `@(user_settings)` with `tab="..."` is also a tab of the Settings window. The editor writes each settings file with its defaults on the first start. Safe to delete, the editor writes defaults on the next run
+- UserSettings - per-developer editor state, never committed (Unity's UserSettings): window geometry, open scenes and windows, panel visibility, theme, grid and snap, selected run config, and in `external_tools.json` the optional command Edit Script runs to open a file at a line (`script_editor`, such as `zed {file}:{line}`, empty opens the file with the app the OS associates with it) and the URL template the documentation site links source locations to (`source_url`, such as `vscode://file/{file}:{line}`, empty links to GitHub at the current commit). A `@(user_settings)` with `tab="..."` is also a tab of the Settings window. The editor writes each settings file with its defaults on the first start. Safe to delete, the editor writes defaults on the next run
 
 The folders above are inside `moonhug/`. Next to it, at the repo root:
 

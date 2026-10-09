@@ -28,6 +28,7 @@ import "core:os"
 import "core:path/slashpath"
 import "core:slice"
 import "core:strings"
+import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 
@@ -470,7 +471,7 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int, decorators: []Dec
 	case .Flag:  fmt.sbprintf(&b, "**Form** flag, written as the bare word `%s` (`%s:\"\"` reads the same)", d.key, d.key)
 	case .Call:  fmt.sbprintf(&b, "**Form** call, written `%s:name(args)`, and a tag may carry several", d.key)
 	}
-	fmt.sbprintf(&b, " · **Package** `%s`\n\nDeclared as `%s` at `%s`.\n\n", gen_facts.pkg_import_path(d.pkg_path), d.const_name, d.where_)
+	fmt.sbprintf(&b, " · **Package** `%s`\n\nDeclared as `%s` at %s.\n\n", gen_facts.pkg_import_path(d.pkg_path), d.const_name, gen_core.SourceLinkAt(d.where_))
 	strings.write_string(&b, d.doc)
 	strings.write_string(&b, "\n")
 	if d.key == "decor" && d.pkg_path == INSPECTOR_PKG {
@@ -479,7 +480,7 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int, decorators: []Dec
 		strings.write_string(&b, "| Decorator | Parameters | Summary | Where | Uses |\n|---|---|---|---|---|\n")
 		for dec in decorators {
 			params := dec.params == "" ? "" : fmt.tprintf("`%s`", gen_facts.md_cell(dec.params))
-			fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` | %d |\n", dec.name, params, gen_facts.md_cell(dec.doc), dec.where_, dec.uses)
+			fmt.sbprintf(&b, "| `%s` | %s | %s | %s | %d |\n", dec.name, params, gen_facts.md_cell(dec.doc), gen_core.SourceLinkAt(dec.where_), dec.uses)
 		}
 	}
 	fmt.sbprintf(&b, "\n## Uses (%d)\n\n", len(d.uses))
@@ -487,7 +488,7 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int, decorators: []Dec
 		strings.write_string(&b, "No field uses it yet.\n")
 	} else {
 		strings.write_string(&b, "| Field | Package | Where | Tag |\n|---|---|---|---|\n")
-		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` |\n", u.field, u.pkg, u.where_, gen_facts.md_cell(u.tag))
+		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` |\n", u.field, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.tag))
 	}
 	layer, _ := gen_facts.pkg_layer(d.pkg_path)
 	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, layer, d.key), strings.to_string(b))

@@ -1196,7 +1196,7 @@ _draw_component_overflow_menu :: proc(
 		if im.MenuItem("Edit Script", nil, false, script_editor.has_type_source(comp_tid)) {
 			script_editor.open_type_source(comp_tid)
 		}
-		ctx_entries := _get_context_menu_entries(comp.handle.type_key)
+		ctx_entries := inspector.context_menu_entries(comp_tid)
 		if len(ctx_entries) > 0 {
 			im.Separator()
 		}

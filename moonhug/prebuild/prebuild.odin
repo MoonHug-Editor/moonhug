@@ -19,6 +19,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:time"
+import "gen_core"
 import db "gen_db"
 
 // Importing each module pulls in its @(init) system registration. The blank
@@ -45,6 +46,7 @@ import _ "mcp_tool_gen"
 import _ "union_gen"
 import _ "undo_command_gen"
 import _ "sim_host_gen"
+import _ "context_menu_gen"
 import _ "provider_install_gen"
 // Package-shipped generators (moonhug/packages/<name>/gen) are imported by
 // the generated package_gens_generated.odin next to this file.
@@ -240,7 +242,10 @@ _check_plugin_deps :: proc() -> bool {
 
 main :: proc() {
 	total := time.tick_now()
-	for a in os.args[1:] do if a == "--docs" do gen_facts.write_reference_pages = true
+	for a in os.args[1:] {
+		if a == "--docs" do gen_facts.write_reference_pages = true
+		if strings.has_prefix(a, "--source-url=") do gen_core.source_url_template = strings.trim_prefix(a, "--source-url=")
+	}
 	lap := total
 	step :: proc(lap: ^time.Tick, name: string) {
 		db.timing_report(name, lap^)

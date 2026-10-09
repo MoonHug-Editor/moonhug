@@ -32,12 +32,10 @@ install_scene_views :: proc() {
 
 @(private = "file")
 _register_menus :: proc() {
-	_init_context_menu_registry()
 	register_component_menus()
 }
 
 @(private = "file")
 _shutdown :: proc() {
-	_shutdown_context_menu_registry()
 	shutdown_hierarchy_views()
 }

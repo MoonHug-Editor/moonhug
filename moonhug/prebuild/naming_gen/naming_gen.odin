@@ -23,6 +23,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 
@@ -251,7 +252,7 @@ _emit_page :: proc(w: ^db.World, c: ^gen_facts.Naming_Convention, uses: []Use, w
 			return a.name < b.name
 		})
 		strings.write_string(&b, "| Subject | Proc | Where |\n|---|---|---|\n")
-		for u in sorted do fmt.sbprintf(&b, "| `%s` | `%s` | `%s` |\n", u.subject, u.name, u.where_)
+		for u in sorted do fmt.sbprintf(&b, "| `%s` | `%s` | %s |\n", u.subject, u.name, gen_core.SourceLinkAt(u.where_))
 	}
 	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, c.layer, c.key), strings.to_string(b))
 }

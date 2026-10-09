@@ -18,7 +18,8 @@ MCP_BIN :: "builds/mcp_shim" + EXE
 // (tools_cache.odin). Prebuild also depends on the package generators it
 // compiles in, so their gen/ folders count as its sources.
 // `docs` makes the reference generators write their pages under
-// docs/reference. Their checks run either way.
+// docs/reference, with source locations linked through docs_source_url.
+// Their checks run either way.
 prebuild :: proc(docs := false) -> bool {
 	prune, pok := tool_bin("prune_package_gens", "moonhug/prebuild/prune_package_gens", {})
 	if !pok || !step("prune", prune) do return false
@@ -27,7 +28,7 @@ prebuild :: proc(docs := false) -> bool {
 	for attempt in 0 ..< 2 {
 		gen, gok := tool_bin("prebuild", "moonhug/prebuild", package_gen_dirs(), COLLECTION)
 		if !gok do return false
-		code := run(gen, "--docs") if docs else run(gen)
+		code := run(gen, "--docs", fmt.tprintf("--source-url=%s", docs_source_url())) if docs else run(gen)
 		if code == 0 do return true
 		if code == 2 && attempt == 0 do continue
 		fmt.eprintfln("mh: prebuild failed (exit %d)", code)

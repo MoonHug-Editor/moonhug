@@ -22,6 +22,11 @@ External_Tools :: struct {
 	// `zed {file}:{line}`, `code -g {file}:{line}`, `clion --line {line} {file}`.
 	// Empty opens the file with the app the OS associates with it.
 	script_editor: string `decor:help(text="Optional. The command Edit Script runs to open a script at its line, with {file} and {line} filled in.\n - Empty opens the file with the app the OS associates with it, at the top.\n - Zed: /Applications/Zed.app/Contents/MacOS/cli {file}:{line}.\n - VS Code: code -g {file}:{line}.\n - CLion: clion --line {line} {file}.\n The program path cannot contain spaces.")`,
+	// Optional. The URL the documentation site links every source location
+	// to, with {file} and {line} replaced: `vscode://file/{file}:{line}`.
+	// {file} is the absolute path. Empty links to the file on GitHub at the
+	// current commit. `mh docs` reads it when it builds the site.
+	source_url: string `decor:help(text="Optional. A URL template the documentation site uses to open a source file at a line, with {file} (absolute path) and {line} filled in.\n - VS Code: vscode://file/{file}:{line}\n - Cursor: cursor://file/{file}:{line}\n - Zed: zed://file/{file}:{line}\n Empty links to the file on GitHub at the current commit.")`,
 }
 
 @(user_settings={name="External Tools", tab="External Tools"})

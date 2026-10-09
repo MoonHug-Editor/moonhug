@@ -10,6 +10,62 @@ import "core:slice"
 import "core:strconv"
 import "core:strings"
 
+// The URL template the reference pages link source locations to, with {file}
+// and {line} replaced. Set from --source-url (`mh docs` passes it). Empty
+// leaves locations as plain code text.
+source_url_template: string
+
+// SourceRealPath is a repo-relative path with a plugin's moonhug/packages/<name>
+// link replaced by the folder it points to: "plugins/engine/camera.odin" for
+// "moonhug/packages/engine/camera.odin". A link is a file on GitHub, not a
+// folder, and an editor opens the real file. Temp-allocated.
+SourceRealPath :: proc(rel_path: string) -> string {
+	PACKAGES :: "moonhug/packages/"
+	if !strings.has_prefix(rel_path, PACKAGES) do return rel_path
+	rest := rel_path[len(PACKAGES):]
+	slash := strings.index_byte(rest, '/')
+	if slash <= 0 do return rel_path
+	link := rel_path[:len(PACKAGES) + slash]
+	target, err := os.read_link(link, context.temp_allocator)
+	if err != nil do return rel_path
+	context.allocator = context.temp_allocator // filepath.dir and clean take no allocator
+	real, _ := filepath.join({filepath.dir(link), target})
+	cleaned, _ := filepath.clean(strings.concatenate({real, rest[slash:]}))
+	return cleaned
+}
+
+// SourceHref fills a source URL template for a repo-relative location:
+// {file} is the real path, repo-relative for a GitHub template and absolute
+// for any other, since an editor URL needs the absolute one. Temp-allocated.
+SourceHref :: proc(template, rel_path: string, line: int) -> string {
+	file := SourceRealPath(rel_path)
+	if !strings.has_prefix(template, "https://github.com/") {
+		cwd, _ := os.get_working_directory(context.temp_allocator)
+		file = fmt.tprintf("%s/%s", cwd, file)
+	}
+	href, _ := strings.replace_all(template, "{file}", file, context.temp_allocator)
+	href, _ = strings.replace_all(href, "{line}", fmt.tprintf("%d", line), context.temp_allocator)
+	return href
+}
+
+// SourceLink formats a repo-relative source location as markdown: a link
+// whose text is `path:line`, or that text as inline code when there is no
+// template.
+SourceLink :: proc(rel_path: string, line: int) -> string {
+	text := fmt.tprintf("%s:%d", rel_path, line)
+	if source_url_template == "" do return fmt.tprintf("`%s`", text)
+	return fmt.tprintf("[%s](<%s>)", text, SourceHref(source_url_template, rel_path, line))
+}
+
+// SourceLinkAt is SourceLink for a location already written as `path:line`.
+SourceLinkAt :: proc(where_: string) -> string {
+	i := strings.last_index_byte(where_, ':')
+	if i < 0 do return fmt.tprintf("`%s`", where_)
+	line, ok := strconv.parse_int(where_[i + 1:])
+	if !ok do return fmt.tprintf("`%s`", where_)
+	return SourceLink(where_[:i], line)
+}
+
 // ParsePackage parses a package from path. Returns (nil, false) on failure.
 ParsePackage :: proc(pkg_path: string) -> (^ast.Package, bool) {
 	pkg, ok := parser.parse_package_from_path(pkg_path)

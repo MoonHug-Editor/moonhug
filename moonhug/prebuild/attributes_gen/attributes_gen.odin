@@ -26,6 +26,7 @@ import "core:fmt"
 import "core:os"
 import "core:slice"
 import "core:strings"
+import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 
@@ -271,7 +272,7 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 		strings.write_string(&b, " · **Fields**")
 		for f, i in d.fields do fmt.sbprintf(&b, "%s `%s`", i == 0 ? "" : ",", f)
 	}
-	fmt.sbprintf(&b, "\n\nDeclared on `%s` at `%s`.\n\n", d.anchor, d.where_)
+	fmt.sbprintf(&b, "\n\nDeclared on `%s` at %s.\n\n", d.anchor, gen_core.SourceLinkAt(d.where_))
 	strings.write_string(&b, d.doc)
 	fmt.sbprintf(&b, "\n\n## Uses (%d)\n\n", len(d.uses))
 	if len(d.uses) == 0 {
@@ -286,11 +287,11 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 				fmt.sbprintf(&b, "\n### %s\n\n", key if key != "" else "(no key)")
 				strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
 			}
-			fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+			fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` | %s |\n", u.name, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
 		}
 	} else {
 		strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
-		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | %s | `%s` | %s |\n", u.name, u.pkg, gen_core.SourceLinkAt(u.where_), gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
 	}
 	layer, _ := gen_facts.pkg_layer(d.pkg_path)
 	db.emit(w, fmt.tprintf("%s/%s/%s.md", OUT_DIR, layer, d.attribute), strings.to_string(b))

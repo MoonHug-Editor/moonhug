@@ -148,7 +148,7 @@ plugins/
   disappears, the run scripts prune the stale import before compiling
   (`odin run moonhug/prebuild/prune_package_gens` — a standalone program, so
   it works on every platform). gen/ is excluded from the attribute scan — it
-  is prebuild-side code. The engine's own generators ship this way: `plugins/engine/gen` holds components, gizmos, context menu, sim host and update generation, and `moonhug/prebuild` holds only the host and shell generators.
+  is prebuild-side code. The engine's own generators ship this way: `plugins/engine/gen` holds components, gizmos and update generation, and `moonhug/prebuild` holds only the host and shell generators.
 - **`assets/`** — live content: mounted, browsable, editable, referenced by
   guid like any project asset. Content outside `assets/` doesn't exist to the
   editor — the rule is structural, no filters needed. The editor ENSURES this

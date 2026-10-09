@@ -9,7 +9,7 @@ package mh
 // own libraries. Each page lists the package's public declarations by kind,
 // with signatures whose types link to the package that declares them, the
 // declaration's attributes linked to their reference pages, its doc comment
-// and its file:line.
+// and its file:line, linked to the source through docs_source_url.
 //
 // Pages sit in one folder per layer (host, editor, then each plugin by name),
 // like the other reference sections. gen_facts.pkg_page in the prebuild names
@@ -483,7 +483,9 @@ _write_entity :: proc(r: ^Render, b: ^strings.Builder, ei: doc.Entity_Index) {
 	if e.kind == .Type_Name && .Type_Alias not_in e.flags {
 		_write_procs_of_type(r, b, e)
 	}
-	fmt.sbprintf(b, "<small><code>%s</code></small>\n\n", _html(_where(r, e.pos)))
+	if path, line, ok := _where(r, e.pos); ok {
+		fmt.sbprintf(b, "<small><a href=\"%s\"><code>%s:%d</code></a></small>\n\n", _html(docs_source_href(path, line)), _html(path), line)
+	}
 }
 
 // A struct, union, enum or bit_field written out with one member per line.
@@ -1060,12 +1062,12 @@ _strip_param_names :: proc(name: string) -> string {
 }
 
 @(private = "file")
-_where :: proc(r: ^Render, pos: doc.Position) -> string {
-	if int(pos.file) >= len(r.files) || pos.file == 0 do return ""
-	path := _s(r, r.files[pos.file].name)
+_where :: proc(r: ^Render, pos: doc.Position) -> (path: string, line: int, ok: bool) {
+	if int(pos.file) >= len(r.files) || pos.file == 0 do return
+	path = _s(r, r.files[pos.file].name)
 	cwd, _ := os.get_working_directory(context.temp_allocator)
 	if strings.has_prefix(path, cwd) do path = strings.trim_prefix(path[len(cwd):], "/")
-	return fmt.tprintf("%s:%d", path, pos.line)
+	return path, int(pos.line), true
 }
 
 @(private = "file")
