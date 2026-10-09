@@ -1,3 +1,9 @@
+## [0.127.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.126.0...v0.127.0) (2026-10-09)
+
+### Features
+
+* docs preview local odin files instead of github ([a6790f4](https://github.com/MoonHug-Editor/moonhug/commit/a6790f466b2d3bf331fc358b40df6e8f4472d554))
+
 ## [0.126.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.125.0...v0.126.0) (2026-10-09)
 
 ### Features
