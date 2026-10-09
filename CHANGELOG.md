@@ -1,3 +1,9 @@
+## [0.126.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.125.0...v0.126.0) (2026-10-09)
+
+### Features
+
+* doc tables sortable by column ([e85d161](https://github.com/MoonHug-Editor/moonhug/commit/e85d161a7dba5ace873e3304bb8f6d599d7e8121))
+
 ## [0.125.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.124.0...v0.125.0) (2026-10-09)
 
 ### Features
