@@ -21,25 +21,32 @@ source_url_template: string
 // folder, and an editor opens the real file. Temp-allocated.
 SourceRealPath :: proc(rel_path: string) -> string {
 	PACKAGES :: "moonhug/packages/"
-	if !strings.has_prefix(rel_path, PACKAGES) do return rel_path
-	rest := rel_path[len(PACKAGES):]
-	slash := strings.index_byte(rest, '/')
-	if slash <= 0 do return rel_path
-	link := rel_path[:len(PACKAGES) + slash]
-	target, err := os.read_link(link, context.temp_allocator)
-	if err != nil do return rel_path
 	context.allocator = context.temp_allocator // filepath.dir and clean take no allocator
-	real, _ := filepath.join({filepath.dir(link), target})
-	cleaned, _ := filepath.clean(strings.concatenate({real, rest[slash:]}))
-	return cleaned
+	path := rel_path
+	// A sample is a link to a folder inside another plugin's link
+	// (timeline_sample -> animation/samples/timeline_sample), so links are
+	// followed until the path leaves moonhug/packages. The bound stops a cycle.
+	for _ in 0 ..< 8 {
+		if !strings.has_prefix(path, PACKAGES) do break
+		rest := path[len(PACKAGES):]
+		slash := strings.index_byte(rest, '/')
+		if slash <= 0 do break
+		link := path[:len(PACKAGES) + slash]
+		target, err := os.read_link(link, context.temp_allocator)
+		if err != nil do break
+		real, _ := filepath.join({filepath.dir(link), target})
+		path, _ = filepath.clean(strings.concatenate({real, rest[slash:]}))
+	}
+	return path
 }
 
 // SourceHref fills a source URL template for a repo-relative location:
-// {file} is the real path, repo-relative for a GitHub template and absolute
-// for any other, since an editor URL needs the absolute one. Temp-allocated.
+// {file} is the real path, absolute for an editor's URL scheme (zed://,
+// vscode://, file://) and repo-relative for a web URL or the site's own
+// pages. Temp-allocated.
 SourceHref :: proc(template, rel_path: string, line: int) -> string {
 	file := SourceRealPath(rel_path)
-	if !strings.has_prefix(template, "https://github.com/") {
+	if strings.contains(template, "://") && !strings.has_prefix(template, "https://") && !strings.has_prefix(template, "http://") {
 		cwd, _ := os.get_working_directory(context.temp_allocator)
 		file = fmt.tprintf("%s/%s", cwd, file)
 	}

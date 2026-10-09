@@ -26,7 +26,7 @@ External_Tools :: struct {
 	// to, with {file} and {line} replaced: `vscode://file/{file}:{line}`.
 	// {file} is the absolute path. Empty links to the file on GitHub at the
 	// current commit. `mh docs` reads it when it builds the site.
-	source_url: string `decor:help(text="Optional. A URL template the documentation site uses to open a source file at a line, with {file} (absolute path) and {line} filled in.\n - VS Code: vscode://file/{file}:{line}\n - Cursor: cursor://file/{file}:{line}\n - Zed: zed://file/{file}:{line}\n Empty links to the file on GitHub at the current commit.")`,
+	source_url: string `decor:help(text="Optional. A URL template the documentation site uses to open a source file at a line, with {file} (absolute path) and {line} filled in.\n - VS Code: vscode://file/{file}:{line}\n - Cursor: cursor://file/{file}:{line}\n - Zed: zed://file/{file}:{line}\n Empty links to the site's own copy of the file, as the docs were built.")`,
 }
 
 @(user_settings={name="External Tools", tab="External Tools"})
