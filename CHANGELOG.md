@@ -1,3 +1,13 @@
+## [0.125.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.124.0...v0.125.0) (2026-10-09)
+
+### Features
+
+* move context_menu attr to editor, improve phase docs and url opening on github or local by app ([8184c95](https://github.com/MoonHug-Editor/moonhug/commit/8184c9594cad68475b2b1a57103d5c1b70d20b6f))
+
+### Bug Fixes
+
+* lines order in phases_generated ([c6d8020](https://github.com/MoonHug-Editor/moonhug/commit/c6d8020d2b851d9b525566a6b4fda1d1cd58cfbd))
+
 ## [0.124.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.123.0...v0.124.0) (2026-10-09)
 
 ### Features
