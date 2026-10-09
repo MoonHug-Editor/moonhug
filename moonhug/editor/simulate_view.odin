@@ -86,6 +86,8 @@ _sim_fire_phase :: proc(p: sim.Phase) {
         game_view_focus()
         input.reset_edges() // the Play click is not the game's
         phase_editor_run(.EnteredPlayMode)
+        // The open scene is live already, no load fires this.
+        phase_editor_run(.SceneLoaded)
     case .ExitingPlayMode: phase_editor_run(.ExitingPlayMode)
     case .EnteredEditMode: phase_editor_run(.EnteredEditMode)
     }

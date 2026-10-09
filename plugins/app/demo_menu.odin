@@ -68,7 +68,7 @@ demo_menu_tick :: proc(dt: f32) {
         if ok && (clicked || input.key_released(input.Key(int(input.Key._1) + i))) {
             _current_demo = engine.scene_load_additive_path(path)
             if _current_demo != nil {
-                scene_loaded()
+                phase_run(.SceneLoaded)
                 _hud_build(_current_demo)
                 // Hide the menu scene (incl. its camera) while a demo runs.
                 _menu_root_set_active(menu, false)

@@ -35,7 +35,17 @@ DEFAULT_PHASE_NAMES :: []string{
 	// Play-mode transitions, fired by the editor's Simulate (Unity's
 	// PlayModeStateChange). Exiting* run before the switch, Entered* after.
 	"ExitingEditMode", "EnteredPlayMode", "ExitingPlayMode", "EnteredEditMode",
-	"Init", "Shutdown", "DebugDraw",
+	// The engine's own startup and teardown, around a game's Init and
+	// Shutdown: the player runs them from the generated __standalone_run, the
+	// editor's main around EditorInit. SceneLoaded fires after a gameplay
+	// scene becomes live: the boot scene, a game's own loads, play start.
+	"EngineInit", "Init", "SceneLoaded", "Shutdown", "EngineShutdown", "DebugDraw",
+}
+
+// A shutdown phase runs its subscribers in descending order, so a proc paired
+// with an init proc by the same `order` undoes it in reverse.
+_is_shutdown_phase :: proc(key_name: string) -> bool {
+	return strings.has_suffix(key_name, "Shutdown")
 }
 
 PhaseMode :: enum {
@@ -214,7 +224,7 @@ _collect_entries :: proc(w: ^db.World, phase_names: []string) -> [dynamic]PhaseE
 	// order. pkg_path is the unique final tiebreak.
 	slice.sort_by(entries[:], proc(a, b: PhaseEntry) -> bool {
 		if a.key_index != b.key_index do return a.key_index < b.key_index
-		if a.order != b.order do return a.order < b.order
+		if a.order != b.order do return a.order > b.order if _is_shutdown_phase(a.key_name) else a.order < b.order
 		if a.name != b.name do return a.name < b.name
 		return a.pkg_path < b.pkg_path
 	})
@@ -351,7 +361,7 @@ _write_imports :: proc(
 // matter which host Simulate ticks.
 _HOST_GATED_PHASES :: [?]string{
 	"ExitingEditMode", "EnteredPlayMode", "ExitingPlayMode", "EnteredEditMode",
-	"Init", "Shutdown", "DebugDraw",
+	"Init", "SceneLoaded", "Shutdown", "DebugDraw",
 }
 
 _is_host_gated_phase :: proc(key_name: string) -> bool {
@@ -366,6 +376,7 @@ _write_dispatcher :: proc(
 	entries: []PhaseEntry,
 	home_pkg: string,
 	hosts: []gen_facts.Runnable_Pkg = nil, // editor dispatcher: host-owned lifecycle entries run only for the active sim host
+	init_prelude: string = "", // runnable dispatcher: lines at the top of Init, before any subscriber
 ) {
 	fmt.sbprintf(b, "%s :: proc(key: %s) {{\n", proc_name, key_type)
 	// One bool per host that owns gated entries, resolved once up front.
@@ -385,10 +396,15 @@ _write_dispatcher :: proc(
 	}
 	strings.write_string(b, "\t#partial switch key {\n")
 	current_key := ""
+	init_seen := false
 	for e in entries {
 		if e.key_name != current_key {
 			current_key = e.key_name
 			fmt.sbprintf(b, "\tcase .%s:\n", current_key)
+			if current_key == "Init" && init_prelude != "" {
+				init_seen = true
+				strings.write_string(b, init_prelude)
+			}
 			if current_key == "SerializationInit" {
 				// Every host registers type keys first: subscribers look them up.
 				strings.write_string(b, "\t\tassert(core.type_keys_registered(), \"SerializationInit before register_type_guids\")\n")
@@ -408,6 +424,10 @@ _write_dispatcher :: proc(
 		}
 		strings.write_string(b, e.name)
 		strings.write_string(b, "()\n")
+	}
+	if init_prelude != "" && !init_seen {
+		strings.write_string(b, "\tcase .Init:\n")
+		strings.write_string(b, init_prelude)
 	}
 	strings.write_string(b, "\t}\n")
 	strings.write_string(b, "}\n")
@@ -472,7 +492,10 @@ generate_app :: proc(w: ^db.World) -> bool {
 		_write_imports(&b, host_entries[:], host.name, false, "core")
 		strings.write_string(&b, "\n// The enum lives in moonhug:host/core.\n")
 		strings.write_string(&b, "Phase :: core.Phase\n\n")
-		_write_dispatcher(&b, "phase_run", "Phase", host_entries[:], host.name)
+		// Registration and the registration phases come first in Init, in
+		// the order the editor and the tests use, so no game writes them.
+		prelude := fmt.tprintf("\t\t// Generated: the host's registrations, then the registration phases, before any Init subscriber.\n\t\tregister_%s_components()\n\t\tregister_packages()\n\t\tregister_type_guids()\n\t\tphase_run(.SerializationInit)\n\t\tphase_run(.ImportersInit)\n", host.name)
+		_write_dispatcher(&b, "phase_run", "Phase", host_entries[:], host.name, init_prelude = prelude)
 
 		db.emit(w, fmt.tprintf("%s/phases_generated.odin", host.path), strings.to_string(b))
 	}

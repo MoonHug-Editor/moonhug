@@ -122,9 +122,10 @@ main :: proc() {
     // of a black window (progress_overlay.odin).
     progress_overlay_install()
 
-    // The installed engine's user context and world (session.Host_Lifecycle),
-    // nil with no engine.
-    context.user_ptr = session.host_boot()
+    // The installed engine's user context, world and caches, from its
+    // EngineInit subscribers. nil with no engine.
+    phase_editor_run(.EngineInit)
+    context.user_ptr = core.user_context
 
     undo_stack := new(undo.Undo_Stack)
     undo.init(undo_stack)
@@ -134,7 +135,7 @@ main :: proc() {
     defer selection_undo_shutdown()
     defer { undo.destroy(undo_stack); free(undo_stack) }
 
-    defer session.host_release()
+    defer phase_editor_run(.EngineShutdown)
 
     progress.begin("Starting MoonHug")
     phase_editor_run(.EditorInit)
@@ -360,9 +361,6 @@ editor_init :: proc() {
     asset_pipeline.asset_pipeline_init()
     assets.asset_db_init("assets")
     asset_pipeline.asset_pipeline_import_all()
-    progress.report("Initializing caches")
-    session.host_init()
-
     init_scene_view()
     init_game_view()
     setup_menu_items()
@@ -453,7 +451,6 @@ editor_shutdown :: proc() {
     join_play_thread()
     shutdown_game_view()
     shutdown_scene_view()
-    session.host_shutdown()
     assets.asset_db_shutdown()
     inspector.shutdown_registries()
     session.scene_views_shutdown()

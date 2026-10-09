@@ -15,7 +15,7 @@ The attribute system (`@component`, `@update`, `@phase`, `@menu_item`,
 app code already uses.
 
 ## app plugin
-**The app is a plugin too** (`packages/app`) — an ordinary package with a `main :: proc()`, a and game loop.
+**The app is a plugin too** (`packages/app`) — an ordinary package with a `main :: proc()` that calls the generated `__standalone_run`: the engine's phases around the game's, the boot scene, and the frame loop (`plugins/engine/standalone.odin`). The window, its size and the fallback boot scene are the Player project setting.
 
 **Runnable packages** Any package root declaring `main` is "runnable"
 and receives its OWN generated dispatcher set (`__update`, `phase_run`,
@@ -286,8 +286,7 @@ carries no special scan status), then generates:
                                                  (and <name>/<integration>/editor)
   ```
 
-  `register_packages()` is called from `app_init`/`editor_init` right after
-  `register_app_components()`.
+  A runnable package's generated `phase_run` calls `register_<host>_components()`, `register_packages()` and `register_type_guids()` at the top of `Init`, then the registration phases, before any subscriber. `editor_init` does the same for the editor.
 
 An editor package may import its own runtime package, the engine plugin
 (`moonhug:packages/engine` and its `editor/` subpackages, declared as a

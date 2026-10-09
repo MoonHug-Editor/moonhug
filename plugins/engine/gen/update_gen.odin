@@ -236,7 +236,7 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	for p in imports {
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
 	}
-	if len(imports) > 0 do strings.write_string(&b, "\n")
+	strings.write_string(&b, "import core \"moonhug:host/core\"\n\n")
 
 	// A system is called where it lives, a per-item proc through its wrapper.
 	_call_name :: proc(e: _UpdateRow, host: string, kind: Update_Kind) -> string {
@@ -279,6 +279,33 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	strings.write_string(&b, "__ticks :: engine.Tick_Hooks{fixed_update = __fixed_update, update = __update, late_update = __late_update}\n\n")
 	strings.write_string(&b, "__frame_tick :: proc(dt: f32, step: bool) {\n")
 	strings.write_string(&b, "\tengine.frame_tick(__ticks, dt, step)\n")
+	strings.write_string(&b, "}\n\n")
+
+	// The standalone player (plugins/engine/standalone.odin): the phases
+	// around the loop and the loop itself, with this package's phase_run and
+	// ticks. A game's main calls it.
+	strings.write_string(&b, "// The standalone player: phases, boot scene and the frame loop (plugins/engine/standalone.odin).\n")
+	strings.write_string(&b, "__standalone_run :: proc() {\n")
+	strings.write_string(&b, "\tengine.standalone_prepare()\n")
+	strings.write_string(&b, "\tif !engine.standalone_window_open() do return\n")
+	strings.write_string(&b, "\tdefer engine.standalone_window_close()\n")
+	strings.write_string(&b, "\tphase_run(.EngineInit)\n")
+	// user_ptr is set before the EngineShutdown defer: a deferred call runs
+	// with the context of its defer statement, and the engine teardown reads
+	// the user context through it.
+	strings.write_string(&b, "\tcontext.user_ptr = core.user_context\n")
+	strings.write_string(&b, "\tdefer phase_run(.EngineShutdown)\n")
+	strings.write_string(&b, "\tphase_run(.Init)\n")
+	strings.write_string(&b, "\tdefer phase_run(.Shutdown)\n")
+	strings.write_string(&b, "\tif engine.standalone_load_boot_scene() do phase_run(.SceneLoaded)\n")
+	strings.write_string(&b, "\tfor engine.standalone_frame_begin() {\n")
+	strings.write_string(&b, "\t\tengine.frame_tick(__ticks, engine.standalone_frame_dt())\n")
+	strings.write_string(&b, "\t\tif engine.standalone_render_begin() {\n")
+	strings.write_string(&b, "\t\t\tif engine.debug_draw_enabled do phase_run(.DebugDraw)\n")
+	strings.write_string(&b, "\t\t\tengine.standalone_render_end()\n")
+	strings.write_string(&b, "\t\t}\n")
+	strings.write_string(&b, "\t\tengine.standalone_frame_end()\n")
+	strings.write_string(&b, "\t}\n")
 	strings.write_string(&b, "}\n")
 
 	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))

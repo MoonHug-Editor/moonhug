@@ -21,3 +21,9 @@ application_is_focused :: proc() -> bool {
 application_set_focused :: proc(on: bool) {
 	_application_focused = on
 }
+
+// The engine's user context, made by its EngineInit subscriber. A phase proc
+// cannot set its caller's context, so each binary's main reads it from here
+// right after EngineInit: `context.user_ptr = core.user_context`. nil with no
+// engine installed.
+user_context: rawptr

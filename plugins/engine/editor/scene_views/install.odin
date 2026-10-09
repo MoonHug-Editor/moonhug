@@ -8,7 +8,6 @@ package scene_views
 import "moonhug:editor/session"
 // Links the engine's boot and shutdown (session.Host_Lifecycle), which
 // installs itself from @(init) and has no generated entry point of its own.
-import _ "moonhug:packages/engine/editor/host"
 
 @(provider_install)
 install_scene_views :: proc() {

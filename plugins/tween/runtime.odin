@@ -392,6 +392,8 @@ _lib_init :: proc "contextless" () {
 	_lib = make(map[string][]byte, runtime.default_allocator())
 }
 
+// The player's startup. The editor and the tests call it where they need it.
+@(phase={key=Init, mode=App})
 tween_init :: proc() {
 	register_builtin_nodes()
 }

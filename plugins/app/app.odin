@@ -3,128 +3,11 @@ package app
 
 import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
-import gfx "moonhug:host/gfx"
-import "moonhug:host/gizmos"
-import input "moonhug:host/input"
-import "core:os"
 import "core:fmt"
-import "core:strings"
-import "core:encoding/uuid"
 import "moonhug:host/log"
 
-MENU_SCENE_GUID :: "b794d34b-3067-4b7e-ac2d-5cd46c16c5c1"
-
-// The catalog to boot from (docs/core/AssetPipeline.md "Asset catalog and
-// builds"): --catalog[=path] overrides, default = the editor-maintained
-// in-place catalog. The app has no scan mode.
-_catalog_path: string
-
 main :: proc() {
-    // Machine-tagged log lines: the editor's play pipe parses them back into
-    // its console (standalone runs just see the tagged text in the terminal).
-    log.stdout_tagged = true
-
-    // Normalize the runtime cwd to moonhug/ (same as the editor): asset paths
-    // are moonhug-relative, and builds always run from the repo root so the
-    // packages: collection flag is one canonical spelling everywhere.
-    engine.project_chdir_root()
-
-    for arg in os.args[1:] {
-        if arg == "--catalog" {
-            _catalog_path = engine.ASSET_CATALOG_PATH
-        } else if strings.has_prefix(arg, "--catalog=") {
-            _catalog_path = arg[len("--catalog="):]
-        }
-    }
-    // Launched bare, the binary finds its own export: <exe>_data/catalog.json
-    // beside it, the Game + Game_Data layout run configs stage. So a build
-    // double-clicked in builds/ boots its stamped scene instead of falling
-    // through to the editor's in-place catalog and the dev menu.
-    if _catalog_path == "" {
-        if exe, eerr := os.get_executable_path(context.temp_allocator); eerr == nil {
-            beside := strings.concatenate({exe, "_data/catalog.json"}, context.temp_allocator)
-            if os.exists(beside) do _catalog_path = beside
-        }
-    }
-
-    if !gfx.init("App", 800, 600) {
-        log.error("gfx init failed")
-        return
-    }
-    defer gfx.shutdown()
-
-    uc := new(engine.UserContext)
-    uc.is_editor = false  // standalone binary (engine.application_is_editor)
-    uc.is_playing = true  // for the process lifetime (engine.application_is_playing)
-    context.user_ptr = uc
-
-    w := new(engine.World)
-    engine.w_init(w)
-    engine.ctx_get().world = w
-
-    phase_run(Phase.Init)
-
-    // Scene selection, in order: explicit path via first non-flag program arg
-    // (the editor's Play button passes its active scene), then the catalog's
-    // exported boot scene, then the menu scene by GUID (the dev fallback so
-    // the asset can move freely).
-    scene_path: string
-    for arg in os.args[1:] {
-        if strings.has_prefix(arg, "--") do continue
-        if len(arg) > 0 && scene_path == "" do scene_path = arg
-    }
-    if scene_path == "" {
-        if boot := engine.asset_db_boot_scene(); boot != {} {
-            scene_path, _ = engine.asset_db_get_path(uuid.Identifier(boot))
-        }
-    }
-    if scene_path == "" {
-        if guid, gerr := uuid.read(MENU_SCENE_GUID); gerr == nil {
-            scene_path, _ = engine.asset_db_get_path(guid)
-        }
-    }
-    if os.exists(scene_path) {
-        engine.scene_load_single_path(scene_path)
-        scene_loaded()
-    } else {
-        log.errorf("scene not found: %s", scene_path)
-    }
-
-    input.set_game_scope(true) // the whole frame is the game's; window focus gates it
-
-    for !gfx.quit_requested() {
-        gfx.poll_events()
-        if !gfx.frame_begin() do continue
-
-        // Gameplay gizmos measure against the camera they show in: the one
-        // render_world_cameras draws last, at the window size (docs/core/Gizmos.md).
-        if cam := engine.camera_active(); cam != nil {
-            ws := gfx.window_size()
-            gizmos.set_view(engine.camera_render_view(cam, f32(ws.x), f32(ws.y)))
-        }
-
-        // The frame's simulation: fixed ticks, then the frame tick
-        // (plugins/engine/docs/FixedTick.md). The editor's Simulate runs the
-        // same proc with the same dispatchers.
-        engine.frame_tick(__ticks, gfx.delta_time())
-
-        // F3 toggles the DebugDraw phase (collider wireframes etc).
-        if input.key_pressed(.F3) {
-            engine.debug_draw_enabled = !engine.debug_draw_enabled
-        }
-
-        // World cameras render (the canvases with them); the pass stays open
-        // with the world view_proj set, so debug draw rides it.
-        if engine.render_world_cameras() {
-            if engine.debug_draw_enabled do phase_run(.DebugDraw)
-            gfx.pass_end()
-        }
-        gfx.frame_end()
-
-        free_all(context.temp_allocator)
-    }
-
-    phase_run(Phase.Shutdown)
+    __standalone_run()
 }
 
 Phase_Extra :: enum {
@@ -136,26 +19,6 @@ BULLET_SCENE_GUID :: "7db918ca-bee2-4f8a-92de-dc4bec1b7cb9"
 @(phase={key=Phase.Init})
 app_init :: proc() {
     log.info("App Init")
-    register_app_components()
-    register_packages()
-    register_type_guids()
-    phase_run(.SerializationInit)
-    phase_run(.ImportersInit)
-    // The app ALWAYS runs the catalog pipeline — the editor maintains
-    // library/catalog.json (dev runs read it in place), exports carry their
-    // own. There is no scan mode: scanning and importing are editor machinery
-    // (plugins/engine/editor), not linked into this binary.
-    if _catalog_path == "" do _catalog_path = engine.ASSET_CATALOG_PATH
-    if !engine.asset_db_init_from_catalog(_catalog_path) {
-        log.errorf("no catalog at %s — run the editor once (it maintains library/catalog.json) or pass --catalog=<path>", _catalog_path)
-    }
-    engine.texture_cache_init()
-    engine.mesh_cache_init()
-    engine.material_cache_init()
-    engine.shader_cache_init()
-    tween.tween_init()
-
-    log.info("App Init done")
 }
 
 setup_player_animations :: proc()

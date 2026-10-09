@@ -21,3 +21,25 @@ _ensure_time_settings :: proc() {
     _time_settings_loaded = true
     project_settings_load("Time", &time_settings)
 }
+
+// --- Player -----------------------------------------------------------------
+
+// The standalone player's window and boot scene (plugins/engine/standalone.odin).
+Player_Settings :: struct {
+    title:      string,
+    width:      i32 `decor:min(1)`,
+    height:     i32 `decor:min(1)`,
+    boot_scene: string `decor:help(text="The scene guid the player boots when no program argument and no exported boot scene names one. Empty leaves the player on an error.")`,
+}
+
+@(project_settings={name="Player"})
+player_settings := Player_Settings{title = "App", width = 800, height = 600}
+
+@(private = "file")
+_player_settings_loaded: bool
+
+_ensure_player_settings :: proc() {
+    if _player_settings_loaded do return
+    _player_settings_loaded = true
+    project_settings_load("Player", &player_settings)
+}
