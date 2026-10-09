@@ -1,3 +1,10 @@
+## [0.124.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.123.0...v0.124.0) (2026-10-09)
+
+### Features
+
+* add more runtime phases ([9adcc75](https://github.com/MoonHug-Editor/moonhug/commit/9adcc75e692d955def114f59cb37069ea2820d31))
+* late_update, engine.Tick_Hooks ([569277f](https://github.com/MoonHug-Editor/moonhug/commit/569277f0d312d4d8ed8e43129e8d2c0d39def180))
+
 ## [0.123.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.122.0...v0.123.0) (2026-10-08)
 
 ### Features
