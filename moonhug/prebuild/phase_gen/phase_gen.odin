@@ -30,16 +30,31 @@ import "../gen_core"
 import db "../gen_db"
 import "../gen_facts"
 
+// In the order a process runs them, which is the Phase enum's order and the
+// order the reference page lists them in. A package's Phase_Extra names
+// follow. SerializationInit and ImportersInit are declared by host packages
+// as Phase_Extra and sit here only for their place in the sequence.
 DEFAULT_PHASE_NAMES :: []string{
-	"EditorInit", "EditorShutdown",
+	// The engine's own startup: the player runs it from the generated
+	// __standalone_run, the editor's main before EditorInit.
+	"EngineInit",
+	// Registration: type keys, serializers, importers. A runnable package's
+	// phase_run fires them at the top of Init, the editor at EditorInit.
+	"SerializationInit", "ImportersInit",
+	"EditorInit",
+	"Init",
+	// After a gameplay scene becomes live: the boot scene, a game's own
+	// loads, play start.
+	"SceneLoaded",
 	// Play-mode transitions, fired by the editor's Simulate (Unity's
 	// PlayModeStateChange). Exiting* run before the switch, Entered* after.
-	"ExitingEditMode", "EnteredPlayMode", "ExitingPlayMode", "EnteredEditMode",
-	// The engine's own startup and teardown, around a game's Init and
-	// Shutdown: the player runs them from the generated __standalone_run, the
-	// editor's main around EditorInit. SceneLoaded fires after a gameplay
-	// scene becomes live: the boot scene, a game's own loads, play start.
-	"EngineInit", "Init", "SceneLoaded", "Shutdown", "EngineShutdown", "DebugDraw",
+	"ExitingEditMode", "EnteredPlayMode",
+	// Per frame, inside the open world pass, while debug drawing is on.
+	"DebugDraw",
+	"ExitingPlayMode", "EnteredEditMode",
+	"Shutdown",
+	"EditorShutdown",
+	"EngineShutdown",
 }
 
 // A shutdown phase runs its subscribers in descending order, so a proc paired
@@ -103,6 +118,14 @@ PhaseEntry :: struct {
 }
 
 provide :: proc(w: ^db.World) -> bool {
+	// The reference page groups @(phase) uses by key in this order.
+	{
+		names := _build_phase_names(w)
+		defer delete(names)
+		keys := make([]gen_facts.Attr_Key, len(names), context.temp_allocator)
+		for n, i in names do keys[i] = {n, _is_shutdown_phase(n)}
+		gen_facts.register_attr_key_order("phase", keys)
+	}
 	_phases := db.get_or_create_comps(w, Phase_GenComp)
 	decls := db.get_comps_DeclInfo()
 	procs := db.get_comps(w, gen_facts.Proc_GenComp)

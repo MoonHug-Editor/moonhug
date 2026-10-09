@@ -65,6 +65,7 @@ Use :: struct {
 	attr:    string, // "@(key k=v ...)" as rendered by gen_facts.attr_origin
 	summary: string,
 	order:   int,    // the use's `order` field, for attributes that have one
+	key:     string, // the use's `key` field, for attributes that have one: "Init"
 }
 
 @(init)
@@ -129,7 +130,7 @@ generate :: proc(w: ^db.World) -> bool {
 			for k in args.nested do _check_field(d, k, decl.name, where_, &errors)
 			origin := gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, decl.name)
 			parts := strings.split(origin, "  ", context.temp_allocator)
-			append(&d.uses, Use{name = decl.name, pkg = decl.pkg.name, where_ = where_, attr = parts[0], summary = _doc_summary(decl), order = gen_facts.attr_int(args, "order")})
+			append(&d.uses, Use{name = decl.name, pkg = decl.pkg.name, where_ = where_, attr = parts[0], summary = _doc_summary(decl), order = gen_facts.attr_int(args, "order"), key = gen_facts.attr_keyname(args, "key")})
 		}
 	}
 
@@ -144,9 +145,24 @@ generate :: proc(w: ^db.World) -> bool {
 	list := make([dynamic]^Declaration, context.temp_allocator)
 	for _, d in declared {
 		if len(d.uses) == 0 && !d.reserved do fmt.eprintfln("prebuild: warning: @(%s) is declared at %s but nothing uses it", d.attribute, d.where_)
-		// An attribute with an `order` field lists its uses as the generated
-		// dispatcher calls them: by order, then package, then name.
-		if slice.contains(d.fields, "order") {
+		// An attribute with a `key` field groups its uses by key, in the
+		// order the owner registered (gen_facts.register_attr_key_order).
+		// One with an `order` field lists them as the generated dispatcher
+		// calls them: by order, then package, then name.
+		if slice.contains(d.fields, "key") {
+			attribute := d.attribute
+			context.user_ptr = &attribute
+			slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
+				attribute := (cast(^string)context.user_ptr)^
+				ia, descending := gen_facts.attr_key_index(attribute, a.key)
+				ib, _ := gen_facts.attr_key_index(attribute, b.key)
+				if ia != ib do return ia < ib
+				if a.key != b.key do return a.key < b.key
+				if a.order != b.order do return a.order > b.order if descending else a.order < b.order
+				if a.pkg != b.pkg do return a.pkg < b.pkg
+				return a.name < b.name
+			})
+		} else if slice.contains(d.fields, "order") {
 			slice.sort_by(d.uses[:], proc(a, b: Use) -> bool {
 				if a.order != b.order do return a.order < b.order
 				if a.pkg != b.pkg do return a.pkg < b.pkg
@@ -260,6 +276,18 @@ _emit_page :: proc(w: ^db.World, d: ^Declaration, weight: int) {
 	fmt.sbprintf(&b, "\n\n## Uses (%d)\n\n", len(d.uses))
 	if len(d.uses) == 0 {
 		strings.write_string(&b, "Nothing uses it yet.\n")
+	} else if slice.contains(d.fields, "key") {
+		// One table per key, in the owner's order, so a reader sees what
+		// runs at each key and in what order.
+		key := "\x00"
+		for u in d.uses {
+			if u.key != key {
+				key = u.key
+				fmt.sbprintf(&b, "\n### %s\n\n", key if key != "" else "(no key)")
+				strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
+			}
+			fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))
+		}
 	} else {
 		strings.write_string(&b, "| Declaration | Package | Where | Attribute | Summary |\n|---|---|---|---|---|\n")
 		for u in d.uses do fmt.sbprintf(&b, "| `%s` | %s | `%s` | `%s` | %s |\n", u.name, u.pkg, u.where_, gen_facts.md_cell(u.attr), gen_facts.md_cell(u.summary))

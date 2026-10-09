@@ -25,6 +25,7 @@ package gen_facts
 // providers read `DeclInfo.decl.attributes` directly and emit their own
 // typed components.
 
+import "base:runtime"
 import "core:fmt"
 import "core:odin/ast"
 import "core:os"
@@ -114,6 +115,34 @@ is_reserved :: proc(d: ^db.DeclInfo) -> bool {
 		}
 	}
 	return false
+}
+
+// The order of an attribute's `key` values, as its owner knows it: phase_gen
+// registers the Phase names in lifecycle order, and the attribute's reference
+// page groups its uses by key in that order. Keys not listed sort after,
+// by name. `descending` marks a key whose dispatcher runs its subscribers
+// from the highest `order` down, so the page lists them the same way.
+Attr_Key :: struct {
+	name:       string,
+	descending: bool,
+}
+
+attr_key_orders: map[string][]Attr_Key
+
+register_attr_key_order :: proc(attribute: string, keys: []Attr_Key) {
+	context.allocator = runtime.default_allocator()
+	if attr_key_orders == nil do attr_key_orders = make(map[string][]Attr_Key)
+	kept := make([]Attr_Key, len(keys))
+	for k, i in keys do kept[i] = {strings.clone(k.name), k.descending}
+	attr_key_orders[attribute] = kept
+}
+
+// The position of `key` in the attribute's registered order, len when
+// unknown, and whether its subscribers run in descending order.
+attr_key_index :: proc(attribute, key: string) -> (index: int, descending: bool) {
+	keys := attr_key_orders[attribute]
+	for k, i in keys do if k.name == key do return i, k.descending
+	return len(keys), false
 }
 
 // attr_nested returns a nested compound-literal member of an attribute
