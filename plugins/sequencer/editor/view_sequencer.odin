@@ -24,6 +24,7 @@ import "core:fmt"
 import "core:math"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
+import gfx "moonhug:host/gfx"
 import engine "moonhug:packages/engine"
 import seq "moonhug:packages/sequencer"
 import "moonhug:editor/inspector"
@@ -890,6 +891,7 @@ sequencer_preview_apply :: proc() {
 
 	playing_step := _sq.playing
 	if playing_step {
+		gfx.keep_awake()
 		tracks := seq.director_tracks(d)
 		dur := max(seq.director_duration(d, tracks), 0.001)
 		_sq.time += im.GetIO().DeltaTime

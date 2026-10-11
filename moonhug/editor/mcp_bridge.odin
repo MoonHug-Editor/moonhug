@@ -185,6 +185,9 @@ mcp_bridge_tick :: proc() {
 			return
 		}
 		if !ok do break
+		// An agent's next request usually follows the answer: stay at the
+		// full rate while it works.
+		gfx.keep_awake(2)
 		keep := _mcp_handle(payload)
 		mcp.frame_buffer_consume(&_mcp.fb)
 		if !keep {

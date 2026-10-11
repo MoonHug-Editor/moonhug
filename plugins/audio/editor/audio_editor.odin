@@ -9,6 +9,7 @@ package audio_editor
 import "base:runtime"
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
+import gfx "moonhug:host/gfx"
 import "moonhug:editor/inspector"
 import engine "moonhug:packages/engine"
 import audio "moonhug:packages/audio"
@@ -102,6 +103,7 @@ _draw_audio_preview :: proc(path: string) {
 
 	playing := audio.preview_playing(guid)
 	if playing {
+		gfx.keep_awake() // the playhead moves
 		if im.Button("Stop") do audio.preview_stop()
 	} else if im.Button("Play") {
 		audio.preview_play(guid)

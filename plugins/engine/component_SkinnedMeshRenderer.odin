@@ -21,6 +21,7 @@ package engine
 // bone, which is the glTF rule and Unity's.
 
 import "core:math/linalg"
+import "core:slice"
 import gfx "moonhug:host/gfx"
 import "moonhug:host/log"
 
@@ -46,6 +47,10 @@ SkinnedMeshRenderer :: struct {
     bound_root:  Transform_Handle `json:"-" inspect:"-"`, // the subtree it searched
     bound_ready: bool `json:"-" inspect:"-"`,
     posed_frame: u64 `json:"-" inspect:"-"`, // gfx.frame_index the skinning last ran in
+    // The skin matrices `posed` was built from. A frame whose palette is equal
+    // keeps `posed` and the uploaded buffer: an idle pose costs one palette
+    // build and compare, not a pass over every vertex and an upload.
+    palette:     [dynamic]matrix[4, 4]f32 `json:"-" inspect:"-"`,
     // World bounds of `posed`, accumulated by _skin_pose. Kept because the
     // skinned bounds are the only ones that describe where the mesh actually
     // IS — the mesh's own aabb is the bind pose in the skeleton's space, which
@@ -75,6 +80,7 @@ cleanup_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
     if smr.bound_ready do gfx.dynamic_mesh_destroy(&smr.gpu)
     delete(smr.joints)
     delete(smr.posed)
+    delete(smr.palette)
     if smr.materials != nil do delete(smr.materials)
     comp_zero(smr)
 }
@@ -147,6 +153,8 @@ _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, par
     }
     if smr.bound_ready do gfx.dynamic_mesh_destroy(&smr.gpu)
     clear(&smr.joints)
+    // A new buffer holds nothing yet, so the next pose is built whatever it is.
+    clear(&smr.palette)
     smr.bound_ready = false
 
     missing := 0
@@ -196,6 +204,10 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
         tw := transform_world(h)
         palette[j] = trs_matrix(tw.position, tw.rotation, tw.scale) * mesh.inverse_binds[j]
     }
+    if slice.equal(palette, smr.palette[:]) do return
+    if smr.palette == nil do smr.palette = make([dynamic]matrix[4, 4]f32)
+    resize(&smr.palette, len(palette))
+    copy(smr.palette[:], palette)
 
     // Accumulated as the vertices are written, since this loop already visits
     // every one of them — recomputing the bounds per pick would walk the whole

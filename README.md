@@ -35,8 +35,7 @@ To build and run the editor, see [Install, Build and Run](docs/general/InstallBu
 ## UX Features
 - Editor development happens through features
   - Each feature provides specific UX solution with optional extensibility
-
-- At high level, UX features build around window views, assets and/or components
+  - At high level, UX features build around window views, assets and/or components
 
 #### Contribution
 

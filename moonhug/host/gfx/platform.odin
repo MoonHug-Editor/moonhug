@@ -14,6 +14,7 @@ _platform: struct {
 	quit_requested: bool,
 	perf_freq:      f64,
 	last_counter:   u64,
+	awake_until:    u64, // performance counter: keep_awake's deadline
 	delta:          f32,
 }
 
@@ -63,21 +64,62 @@ show_window :: proc() {
 
 // Drains the SDL event queue once per frame: updates the input snapshot and
 // forwards every event to event_cb (the editor passes imgui's ProcessEvent).
-poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil) {
+// Drains the event queue. `wait_ms` first waits that long in the kernel,
+// never spinning: `wake_on_event` ends the wait at the first event (an idle
+// editor answers input at once), otherwise the wait runs its full length (a
+// frame-rate cap). Returns whether any event arrived.
+poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil, wait_ms: u32 = 0, wake_on_event := true) -> (had_event: bool) {
 	input.frame_reset()
 	ws := window_size()
 	input.default_viewport({f32(ws.x), f32(ws.y)})
-	e: sdl.Event
-	for sdl.PollEvent(&e) {
-		if event_cb != nil do event_cb(&e)
+	handle :: proc(e: ^sdl.Event, event_cb: proc(e: ^sdl.Event)) {
+		if event_cb != nil do event_cb(e)
 		#partial switch e.type {
 		case .QUIT, .WINDOW_CLOSE_REQUESTED:
 			_platform.quit_requested = true
 		case:
-			input.apply_event(&e)
+			input.apply_event(e)
 		}
 	}
+	e: sdl.Event
+	if wait_ms > 0 {
+		if wake_on_event {
+			if sdl.WaitEventTimeout(&e, i32(wait_ms)) {
+				handle(&e, event_cb)
+				had_event = true
+			}
+		} else {
+			sdl.Delay(wait_ms)
+		}
+	}
+	for sdl.PollEvent(&e) {
+		handle(&e, event_cb)
+		had_event = true
+	}
 	input.sync_global_mouse()
+	return
+}
+
+// Asks a host that throttles idle frames (the editor) to keep drawing at its
+// full rate for `seconds`. Anything that changes on screen without input
+// calls it every frame it runs: a playing preview, a run in progress.
+keep_awake :: proc(seconds: f32 = 0.5) {
+	until := sdl.GetPerformanceCounter() + u64(f64(seconds) * _platform.perf_freq)
+	if until > _platform.awake_until do _platform.awake_until = until
+}
+
+// Whether keep_awake's deadline is still ahead.
+awake :: proc() -> bool {
+	return sdl.GetPerformanceCounter() < _platform.awake_until
+}
+
+// Seconds since `counter`, a value of perf_counter().
+seconds_since :: proc(counter: u64) -> f64 {
+	return f64(sdl.GetPerformanceCounter() - counter) / _platform.perf_freq
+}
+
+perf_counter :: proc() -> u64 {
+	return sdl.GetPerformanceCounter()
 }
 
 quit_requested :: proc() -> bool {

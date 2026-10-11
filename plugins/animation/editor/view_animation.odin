@@ -1039,6 +1039,7 @@ anim_ends_on_last_frame :: proc() -> bool {
 @(private = "file")
 _pv_advance :: proc(clip: ^anim.AnimationClip, length: f32) {
 	if !_pv.playing do return
+	gfx.keep_awake()
 	_pv.time += gfx.delta_time()
 	if _pv.time < length do return
 	// The IMPORTED clip's wrap, not the edited document's: wrap is authored in

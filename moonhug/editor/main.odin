@@ -171,7 +171,9 @@ main :: proc() {
 
         // Events feed both the editor input snapshot and imgui (the SDL3
         // backend owns keyboard/mouse/text/clipboard/DisplaySize/DeltaTime).
-        gfx.poll_events(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
+        // Waits for the next frame (frame_pacing.odin): the frame-rate cap,
+        // and the idle throttle that input ends at once.
+        frame_pacing_wait(proc(e: ^sdl.Event) { im_sdl.ProcessEvent(e) })
 
         // Unity-style Auto Refresh: re-scan assets when the editor window
         // regains focus (git checkouts, external editors). Incremental
