@@ -13,6 +13,7 @@ tags: ["build", "assets"]
 - packages - one link per installed plugin into `plugins/` at the repo root, the plugin reached as `moonhug:packages/<name>`
 - host - the packages the game and the editor both stand on, none of them imports the engine
   - core, log, serialization, gizmos, gfx, input, assets, catalog, crash_journal, imported as `moonhug:host/<name>`
+- tests - the editor's own test suite, importing no plugin, plus `tests/common`, the bootstrap every plugin's suite shares
 - registration - generated only: the registration bundle (packages, phases, type registration) the editor and the tests import as `moonhug:registration`
 - builds folder - build results with runnable application
 - external - external dependencies folder
@@ -26,6 +27,7 @@ The folders above are inside `moonhug/`. Next to it, at the repo root:
   - engine - the engine plugin: scenes, transforms, components, rendering, `package engine`, imported as `moonhug:packages/engine` by the game and the editor
     - editor - the engine's editor half, one subpackage per folder (scene_views, scene_tools, drawers, importers, previews, undo, undo_ops, sim_world, mcp_tools, mesh_editor, host), never linked into game binaries (the app runs the catalog pipeline only). The write side of the asset pipeline is the shell's editor/assets over the host package host/assets, `editor/importers` holds the engine's importers
     - gen - the engine's generators, compiled into the prebuild
+    - tests - the engine's test suite, `package engine_tests`, run by `mh test` with every other plugin's
     - docs - the engine's documentation pages, mounted on the site at `/plugins/engine` ([Components](../../plugins/engine/docs/Components.md) is the first)
   - app - the game: a runnable plugin with no editor dependencies outside its own `editor/`
 

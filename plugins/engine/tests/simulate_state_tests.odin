@@ -1,0 +1,368 @@
+package engine_tests
+
+import "moonhug:packages/engine"
+import sim "moonhug:editor/simulate"
+import "core:os"
+
+import "core:testing"
+
+// The Simulate state machine (docs/core/Simulate.md), reachable because the logic lives
+// in editor/simulate, a subpackage with no imgui or view dependencies.
+
+// A host whose ticks only count, so tests can assert what advanced.
+_sim_ticks: int
+_sim_fixed_ticks: int
+
+@(private="file")
+_count_update :: proc(dt: f32) { _sim_ticks += 1 }
+
+@(private="file")
+_count_fixed :: proc(dt: f32) { _sim_fixed_ticks += 1 }
+
+// The host's tick as update_gen generates it: the real frame_tick, so the
+// accumulator and the step path are the ones a game runs.
+@(private="file")
+_count_tick :: proc(dt: f32, step: bool) {
+	engine.frame_tick({fixed_update = _count_fixed, update = _count_update}, dt, step)
+}
+
+// Fixed storage: a dynamic array here reads stale once teardown frees the
+// per-test allocator.
+@(private="file")
+_phase_buf: [16]sim.Phase
+@(private="file")
+_phase_n: int
+
+@(private="file")
+_record_phase :: proc(p: sim.Phase) {
+	if _phase_n < len(_phase_buf) {
+		_phase_buf[_phase_n] = p
+		_phase_n += 1
+	}
+}
+
+@(private="file")
+_phases_seen :: proc() -> []sim.Phase { return _phase_buf[:_phase_n] }
+
+// Installs a counting host and a phase recorder. Selection and settings hooks stay
+// nil, exercising the unset-hook no-op path.
+@(private="file")
+_sim_install :: proc(hosts: []sim.Host) {
+	_sim_ticks = 0
+	_sim_fixed_ticks = 0
+	_phase_n = 0
+	sim.install(sim.Hooks{phase = _record_phase}, hosts)
+}
+
+// Drops the phase recorder before shutdown, whose stop() would record
+// transitions belonging to no test.
+@(private="file")
+_sim_uninstall :: proc() {
+	sim.install(sim.Hooks{}, sim.hosts())
+	sim.shutdown()
+}
+
+@(private="file")
+_one_host_storage: [1]sim.Host
+
+@(private="file")
+_one_host :: proc() -> []sim.Host {
+	_one_host_storage[0] = sim.Host{
+		name = "app", tick = _count_tick,
+	}
+	return _one_host_storage[:]
+}
+
+@(test)
+test_sim_start_stop_round_trip :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_sm.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	s := tc_mem.scene
+	tH := engine.transform_new("Mover", engine.Transform_Handle(s.root.handle))
+	lid: engine.Local_ID
+	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH)); tr != nil {
+		tr.position = {1, 2, 3}
+		lid = tr.local_id
+	}
+
+	testing.expect(t, sim.state() == .Stopped, "starts Stopped")
+	testing.expect(t, !engine.application_is_playing(), "not playing before start")
+
+	testing.expect(t, sim.start(), "start succeeds")
+	testing.expect(t, sim.state() == .Running)
+	testing.expect(t, sim.is_ticking())
+	testing.expect(t, engine.application_is_playing(), "playing while running")
+
+	// A second start is refused rather than re-capturing over the snapshot.
+	testing.expect(t, !sim.start(), "start is refused while active")
+
+	if tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH)); tr != nil {
+		tr.position = {99, 99, 99}
+	}
+
+	sim.stop()
+	testing.expect(t, sim.state() == .Stopped)
+	testing.expect(t, !engine.application_is_playing(), "not playing after stop")
+
+	restored := engine.sm_scene_get_active()
+	tc_mem.scene = restored
+	rH, found := engine.scene_find_selectable_transform_local_id(restored, lid)
+	testing.expect(t, found, "object survives the round trip")
+	if !found do return
+	rt := engine.pool_get(&tc_mem.world.transforms, engine.Handle(rH))
+	testing.expect(t, rt != nil)
+	if rt == nil do return
+	testing.expectf(t, rt.position == [3]f32{1, 2, 3},
+		"stop reverts the run's changes, got %v", rt.position)
+}
+
+// Pause holds the world without leaving the simulation: isPlaying stays true,
+// ticking stops.
+@(test)
+test_sim_pause_holds_without_leaving :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_pause.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	testing.expect(t, sim.start())
+	sim.tick(1.0 / 60.0)
+	ticks_running := _sim_ticks
+	testing.expect(t, ticks_running > 0, "running advances the frame tick")
+
+	sim.set_paused(true)
+	testing.expect(t, sim.state() == .Paused)
+	testing.expect(t, sim.is_active(), "paused is still active")
+	testing.expect(t, !sim.is_ticking(), "paused does not tick")
+	testing.expect(t, engine.application_is_playing(),
+		"isPlaying stays true while paused")
+
+	sim.tick(1.0 / 60.0)
+	testing.expectf(t, _sim_ticks == ticks_running,
+		"a paused tick advances nothing, got %d", _sim_ticks - ticks_running)
+
+	sim.toggle_pause()
+	testing.expect(t, sim.state() == .Running, "toggle resumes")
+	sim.stop()
+}
+
+// Step advances exactly one fixed and one frame tick from either state, and leaves
+// the simulation held.
+@(test)
+test_sim_step_advances_one_tick :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_step.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	// Step from Stopped enters a held simulation.
+	sim.step()
+	testing.expect(t, sim.state() == .Paused, "step from stopped enters paused")
+	testing.expect(t, sim.is_active())
+
+	sim.tick(10.0) // large dt: a step must ignore the accumulator
+	testing.expectf(t, _sim_fixed_ticks == 1,
+		"step advances exactly one fixed tick, got %d", _sim_fixed_ticks)
+	testing.expectf(t, _sim_ticks == 1,
+		"step advances exactly one frame tick, got %d", _sim_ticks)
+
+	// The step is consumed: the next tick advances nothing.
+	sim.tick(10.0)
+	testing.expectf(t, _sim_fixed_ticks == 1,
+		"the step latch is consumed once, got %d", _sim_fixed_ticks)
+	testing.expect(t, sim.state() == .Paused, "still held after stepping")
+
+	sim.stop()
+}
+
+// Transitions fire in Unity's order, and a failed start emits none.
+@(test)
+test_sim_phase_order :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_phase.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	testing.expect(t, sim.start())
+	testing.expectf(t, _phase_n == 2, "start fires 2 phases, got %d", _phase_n)
+	if _phase_n >= 2 {
+		testing.expect(t, _phase_buf[0] == .ExitingEditMode)
+		testing.expect(t, _phase_buf[1] == .EnteredPlayMode)
+	}
+
+	// Pause is not a mode change.
+	sim.set_paused(true)
+	testing.expectf(t, _phase_n == 2, "pause fires nothing, got %d", _phase_n)
+
+	sim.stop()
+	testing.expectf(t, _phase_n == 4, "stop fires 2 more, got %d", _phase_n)
+	if _phase_n >= 4 {
+		testing.expectf(t, _phase_buf[2] == .ExitingPlayMode, "phases: %v", _phases_seen())
+		testing.expectf(t, _phase_buf[3] == .EnteredEditMode, "phases: %v", _phases_seen())
+	}
+}
+
+// With no host there is nothing to tick: start refuses and emits no phases.
+@(test)
+test_sim_refuses_without_host :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_nohost.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install([]sim.Host{})
+	defer _sim_uninstall()
+
+	testing.expect(t, !sim.available(), "no hosts means unavailable")
+	testing.expect(t, !sim.start(), "start refuses without a host")
+	testing.expect(t, sim.state() == .Stopped)
+	testing.expectf(t, _phase_n == 0,
+		"a refused start fires no transitions, got %d", _phase_n)
+}
+
+// Host selection: guards by name, and stops a running simulation rather than
+// swapping update sets mid-run.
+@(test)
+test_sim_host_selection :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_hosts.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install([]sim.Host{
+		{name = "app", tick = _count_tick},
+		{name = "game2", tick = _count_tick},
+	})
+	defer _sim_uninstall()
+
+	// Row 0 is the default, so one game needs no setting.
+	h, ok := sim.active_host()
+	testing.expect(t, ok && h.name == "app", "defaults to the first host")
+	testing.expect(t, sim.host_is("app"))
+	testing.expect(t, !sim.host_is("game2"))
+
+	testing.expect(t, sim.start())
+	sim.set_host(1)
+	testing.expect(t, sim.state() == .Stopped,
+		"changing host stops the running simulation")
+	h2, ok2 := sim.active_host()
+	testing.expect(t, ok2 && h2.name == "game2", "host switched")
+	testing.expect(t, sim.host_is("game2"))
+
+	// Out-of-range selections are ignored rather than clamped.
+	sim.set_host(99)
+	h3, _ := sim.active_host()
+	testing.expect(t, h3.name == "game2", "out-of-range host index is ignored")
+}
+
+// Play is DEFERRED one frame (sim.request_start): editor previews pose the
+// world for the render and restore it after, so starting in the same call
+// would snapshot and swap the scene between a preview's apply and its
+// restore — tracks then release at visibly different moments. The queued
+// start runs on the next tick_pending.
+@(test)
+test_sim_request_start_defers_one_frame :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_defer.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	// Requesting does NOT start: the frame in between is what previews use
+	// to unwind, so nothing may transition yet.
+	sim.request_start()
+	testing.expect(t, sim.start_pending(), "the start is queued")
+	testing.expect(t, sim.state() == .Stopped, "still stopped in the requesting frame")
+	testing.expect(t, !engine.application_is_playing(), "not playing before the queued start runs")
+	testing.expect_value(t, len(_phases_seen()), 0)
+
+	// The next frame runs it.
+	sim.tick_pending()
+	testing.expect(t, !sim.start_pending(), "the queue is consumed")
+	testing.expect(t, sim.state() == .Running, "the queued start ran")
+	testing.expect(t, engine.application_is_playing())
+
+	// Idempotent: a second pending tick does nothing.
+	sim.tick_pending()
+	testing.expect(t, sim.state() == .Running)
+
+	sim.stop()
+	testing.expect(t, sim.state() == .Stopped)
+
+	// A stop cancels a queued start rather than letting it fire late.
+	sim.request_start()
+	testing.expect(t, sim.start_pending())
+	sim.stop()
+	testing.expect(t, !sim.start_pending(), "stop cancels the queued start")
+	sim.tick_pending()
+	testing.expect(t, sim.state() == .Stopped, "the cancelled start never runs")
+}
+
+// Stop restores the scene SET of Start: a scene the run loaded additively is
+// gone, a scene present at Start that the run unloaded is back.
+@(test)
+test_sim_stop_restores_scene_set :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_sim_set.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_sim_install(_one_host())
+	defer _sim_uninstall()
+
+	loaded_count :: proc() -> int {
+		sm := engine.ctx_scene_manager()
+		n := 0
+		for i in 0 ..< sm.count do if sm.loaded[i] != nil do n += 1
+		return n
+	}
+
+	// A second scene present at Start.
+	kept_path := "moonhug/tests/fixtures/_test_sim_set_kept.scene"
+	testing.expect(t, fixture_write_empty_scene(kept_path, "KeptRoot"))
+	defer os.remove(kept_path)
+	kept := engine.scene_load_additive_path(kept_path)
+	testing.expect(t, kept != nil)
+	at_start := loaded_count()
+
+	testing.expect(t, sim.start(), "start succeeds")
+
+	// The run loads one more scene and unloads the kept one.
+	extra_path := "moonhug/tests/fixtures/_test_sim_set_extra.scene"
+	testing.expect(t, fixture_write_empty_scene(extra_path, "ExtraRoot"))
+	defer os.remove(extra_path)
+	extra := engine.scene_load_additive_path(extra_path)
+	testing.expect(t, extra != nil)
+	engine.sm_scene_unload(kept)
+	testing.expect_value(t, loaded_count(), at_start)
+
+	sim.stop()
+	testing.expect_value(t, loaded_count(), at_start)
+	// By path: the unloaded scene's memory may be reused by the reloaded one.
+	extra_again, kept_again := false, false
+	sm := engine.ctx_scene_manager()
+	for i in 0 ..< sm.count {
+		if sm.loaded[i] == nil do continue
+		if sm.loaded[i].path == extra_path do extra_again = true
+		if sm.loaded[i].path == kept_path do kept_again = true
+	}
+	testing.expect(t, !extra_again, "the run's additive scene is unloaded")
+	testing.expect(t, kept_again, "the scene the run unloaded is back")
+}

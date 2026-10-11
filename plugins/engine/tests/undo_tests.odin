@@ -1,0 +1,697 @@
+package engine_tests
+
+import "moonhug:packages/engine"
+
+import "core:os"
+import "core:strings"
+import "core:testing"
+import undo "moonhug:packages/engine/editor/undo"
+
+@(test)
+test_undo_value_transform_position :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	testing.expect(t, tr != nil, "transform exists")
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {10, 20, 30}
+	new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect_value(t, tr.position, [3]f32{10, 20, 30})
+	testing.expect(t, undo.can_undo(s), "should be able to undo")
+
+	ok := undo.apply_undo(s)
+	testing.expect(t, ok, "undo succeeded")
+	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
+	testing.expect(t, undo.can_redo(s), "should be able to redo")
+
+	ok = undo.apply_redo(s)
+	testing.expect(t, ok, "redo succeeded")
+	testing.expect_value(t, tr.position, [3]f32{10, 20, 30})
+}
+
+@(test)
+test_undo_value_component_field :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	testing.expect(t, lt != nil, "light exists")
+	if lt == nil do return
+
+	target := undo.make_component_target(owned.handle, offset_of(engine.Light, color), typeid_of([4]f32))
+	old_json := undo.capture_json(&lt.color, typeid_of([4]f32))
+	lt.color = {1, 0.5, 0.25, 1}
+	new_json := undo.capture_json(&lt.color, typeid_of([4]f32))
+	undo.push_value(s, target, old_json, new_json)
+
+	ok := undo.apply_undo(s)
+	testing.expect(t, ok, "undo succeeded")
+	testing.expect_value(t, lt.color, [4]f32{1, 1, 1, 1})
+
+	ok = undo.apply_redo(s)
+	testing.expect(t, ok, "redo succeeded")
+	testing.expect_value(t, lt.color, [4]f32{1, 0.5, 0.25, 1})
+}
+
+@(test)
+test_undo_value_string_name :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("Before")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, name), typeid_of(string))
+	old_json := undo.capture_json(&tr.name, typeid_of(string))
+	delete(tr.name)
+	tr.name = strings.clone("After")
+	new_json := undo.capture_json(&tr.name, typeid_of(string))
+	undo.push_value(s, target, old_json, new_json)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, tr.name, "Before")
+	undo.apply_redo(s)
+	testing.expect_value(t, tr.name, "After")
+}
+
+@(test)
+test_undo_reparent :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	aH := engine.transform_new("A")
+	bH := engine.transform_new("B")
+	cH := engine.transform_new("C", aH)
+
+	old_parent := aH
+	old_index := engine.transform_get_sibling_index(cH)
+	engine.transform_set_parent(cH, bH)
+	new_index := engine.transform_get_sibling_index(cH)
+	undo.record_reparent(cH, old_parent, bH, old_index, new_index)
+
+	ct := engine.pool_get(&tc_mem.world.transforms, engine.Handle(cH))
+	testing.expect(t, ct != nil, "C exists after reparent")
+	if ct == nil do return
+	testing.expect_value(t, ct.parent.handle, engine.Handle(bH))
+
+	undo.apply_undo(s)
+	testing.expect_value(t, ct.parent.handle, engine.Handle(aH))
+
+	undo.apply_redo(s)
+	testing.expect_value(t, ct.parent.handle, engine.Handle(bH))
+}
+
+@(test)
+test_undo_create_subtree :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	parentH := engine.Transform_Handle(tc_mem.scene.root.handle)
+
+	newH := engine.transform_new("New", parentH)
+	undo.record_create(newH, parentH)
+
+	p := engine.pool_get(&tc_mem.world.transforms, engine.Handle(parentH))
+	if p == nil do return
+	testing.expect_value(t, len(p.children), 1)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, len(p.children), 0)
+	testing.expect(t, !engine.pool_valid(&tc_mem.world.transforms, engine.Handle(newH)), "new should be destroyed on undo")
+
+	undo.apply_redo(s)
+	testing.expect_value(t, len(p.children), 1)
+}
+
+@(test)
+test_undo_delete_subtree :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	parentH := engine.Transform_Handle(tc_mem.scene.root.handle)
+	childH := engine.transform_new("Child", parentH)
+	ch := engine.pool_get(&tc_mem.world.transforms, engine.Handle(childH))
+	if ch == nil do return
+	child_lid := ch.local_id
+	ch.position = {7, 8, 9}
+
+	pre, ok := undo.record_delete_pre(childH)
+	testing.expect(t, ok, "delete_pre captured")
+	defer if ok do undo.record_cleanup(&pre)
+	engine.transform_destroy(childH)
+	undo.record_commit(&pre)
+
+	p := engine.pool_get(&tc_mem.world.transforms, engine.Handle(parentH))
+	if p == nil do return
+	testing.expect_value(t, len(p.children), 0)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, len(p.children), 1)
+
+	restored_h, rok := undo.scene_find_transform_by_local_id(tc_mem.scene, child_lid)
+	testing.expect(t, rok, "restored child found by local_id")
+	restored := engine.pool_get(&tc_mem.world.transforms, restored_h)
+	testing.expect(t, restored != nil, "restored transform exists")
+	if restored == nil do return
+	testing.expect_value(t, restored.name, "Child")
+	testing.expect_value(t, restored.position, [3]f32{7, 8, 9})
+
+	undo.apply_redo(s)
+	testing.expect_value(t, len(p.children), 0)
+}
+
+@(test)
+test_undo_add_component :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	owned, lt := engine.transform_add_comp(tH, .Light)
+	testing.expect(t, lt != nil, "light added")
+	if lt == nil do return
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	undo.record_add_component(tH, owned.handle, len(tr.components) - 1)
+
+	testing.expect_value(t, len(tr.components), 1)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, len(tr.components), 0)
+
+	undo.apply_redo(s)
+	testing.expect_value(t, len(tr.components), 1)
+	testing.expect(t, tr.components[0].handle.type_key == .Light, "component is the light")
+}
+
+@(test)
+test_undo_remove_component :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	owned, lt := engine.transform_get_or_add_comp(tH, engine.Light)
+	if lt == nil do return
+	lt.color = {0.1, 0.2, 0.3, 1}
+	lt.enabled = true
+
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+	list_idx := 0
+
+	pre, ok := undo.record_remove_component_pre(tH, owned.handle, list_idx)
+	testing.expect(t, ok, "pre captured")
+	defer if ok do undo.record_cleanup(&pre)
+	engine.transform_remove_comp(tH, owned.handle)
+	undo.record_commit(&pre)
+
+	testing.expect_value(t, len(tr.components), 0)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, len(tr.components), 1)
+
+	_, restored := engine.transform_get_comp(tH, engine.Light)
+	testing.expect(t, restored != nil, "component restored")
+	if restored == nil do return
+	testing.expect_value(t, restored.color, [4]f32{0.1, 0.2, 0.3, 1})
+
+	undo.apply_redo(s)
+	testing.expect_value(t, len(tr.components), 0)
+}
+
+@(test)
+test_undo_reorder_components :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	engine.transform_add_comp(tH, .Light)
+	engine.transform_add_comp(tH, .Camera)
+
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Light)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Camera)
+
+	entry := tr.components[0]
+	ordered_remove(&tr.components, 0)
+	inject_at(&tr.components, 1, entry)
+	undo.record_reorder_components(tH, 0, 1)
+
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Camera)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Light)
+
+	undo.apply_undo(s)
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Light)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Camera)
+
+	undo.apply_redo(s)
+	testing.expect_value(t, tr.components[0].handle.type_key, engine.TypeKey.Camera)
+	testing.expect_value(t, tr.components[1].handle.type_key, engine.TypeKey.Light)
+}
+
+@(test)
+test_undo_group_command :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	undo.begin_group_command(s, "Edit Pos+Scale")
+	{
+		target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+		old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		tr.position = {1, 1, 1}
+		new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		undo.push_value(s, target, old_json, new_json)
+
+		target2 := undo.make_transform_target(tH, offset_of(engine.Transform, scale), typeid_of([3]f32))
+		old_json2 := undo.capture_json(&tr.scale, typeid_of([3]f32))
+		tr.scale = {2, 2, 2}
+		new_json2 := undo.capture_json(&tr.scale, typeid_of([3]f32))
+		undo.push_value(s, target2, old_json2, new_json2)
+	}
+	undo.end_group_command(s, "Edit Pos+Scale")
+
+	testing.expect(t, undo.can_undo(s), "one undo entry available")
+
+	undo.apply_undo(s)
+	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
+	testing.expect_value(t, tr.scale, [3]f32{1, 1, 1})
+
+	undo.apply_redo(s)
+	testing.expect_value(t, tr.position, [3]f32{1, 1, 1})
+	testing.expect_value(t, tr.scale, [3]f32{2, 2, 2})
+}
+
+@(test)
+test_undo_stack_clear :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {5, 5, 5}
+	new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect(t, undo.can_undo(s), "can undo")
+
+	undo.clear(s)
+	testing.expect(t, !undo.can_undo(s), "cannot undo after clear")
+	testing.expect(t, !undo.can_redo(s), "cannot redo after clear")
+
+	undo.clear(s)
+	testing.expect(t, !undo.can_undo(s), "double clear is safe")
+
+	target2 := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {9, 9, 9}
+	new_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target2, old_json2, new_json2)
+	testing.expect(t, undo.can_undo(s), "stack is reusable after clear")
+	testing.expect_value(t, undo.top_index(s), 1)
+}
+
+@(test)
+test_undo_inspector_flow_f32_field :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	owned, p := engine.transform_get_or_add_comp(tH, engine.Light)
+	if p == nil do return
+	p.intensity = 55
+
+	undo.push_component_owner(owned.handle)
+	defer undo.pop_owner()
+
+	e := undo.edit_begin(owned.handle, &p.intensity, typeid_of(f32))
+	p.intensity = 123
+	undo.edit_end(&e)
+
+	testing.expect(t, undo.can_undo(s), "should have recorded f32 change")
+	testing.expect_value(t, p.intensity, f32(123))
+
+	ok := undo.apply_undo(s)
+	testing.expect(t, ok, "undo succeeded")
+	testing.expect_value(t, p.intensity, f32(55))
+
+	ok = undo.apply_redo(s)
+	testing.expect(t, ok, "redo succeeded")
+	testing.expect_value(t, p.intensity, f32(123))
+}
+
+@(test)
+test_undo_jump_to :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	push :: proc(s: ^undo.Undo_Stack, tr: ^engine.Transform, target: undo.Property_Target, v: [3]f32) {
+		old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		tr.position = v
+		new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		undo.push_value(s, target, old_json, new_json)
+	}
+
+	push(s, tr, target, {1, 0, 0})
+	push(s, tr, target, {2, 0, 0})
+	push(s, tr, target, {3, 0, 0})
+	testing.expect_value(t, undo.top_index(s), 3)
+	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
+
+	ok := undo.jump_to(s, 1)
+	testing.expect(t, ok, "jump to step 1")
+	testing.expect_value(t, undo.top_index(s), 1)
+	testing.expect_value(t, tr.position, [3]f32{1, 0, 0})
+
+	ok = undo.jump_to(s, 3)
+	testing.expect(t, ok, "jump to step 3")
+	testing.expect_value(t, tr.position, [3]f32{3, 0, 0})
+
+	ok = undo.jump_to(s, 0)
+	testing.expect(t, ok, "jump to initial state")
+	testing.expect_value(t, undo.top_index(s), 0)
+	testing.expect_value(t, tr.position, [3]f32{0, 0, 0})
+}
+
+@(test)
+test_undo_default_label :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {9, 9, 9}
+	new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json, new_json)
+
+	items := undo.entries(s)
+	testing.expect_value(t, len(items), 1)
+	testing.expect_value(t, items[0].label, "Edit Transform")
+}
+
+@(test)
+test_undo_create_empty_parent_repro :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	rootH := engine.Transform_Handle(tc_mem.scene.root.handle)
+
+	child := engine.transform_new("Child", rootH)
+	testing.expect(t, child != {}, "child created")
+
+	create_empty_parent :: proc(s: ^undo.Undo_Stack, tH: engine.Transform_Handle, w: ^engine.World) -> engine.Transform_Handle {
+		t := engine.pool_get(&w.transforms, engine.Handle(tH))
+		if t == nil do return {}
+		sibling_idx := engine.transform_get_sibling_index(tH)
+		old_parent := engine.Transform_Handle(t.parent.handle)
+
+		undo.begin_group_command(s, "Create Empty Parent")
+		committed := false
+		defer if !committed do undo.abort_group_command(s)
+
+		new_parent := engine.transform_new("Transform", old_parent)
+		if new_parent == {} do return {}
+		undo.record_create(new_parent, old_parent)
+
+		old_np_parent := old_parent
+		old_np_index := engine.transform_get_sibling_index(new_parent)
+		engine.transform_set_parent(new_parent, old_parent, sibling_idx)
+		new_np_index := engine.transform_get_sibling_index(new_parent)
+		undo.record_reparent(new_parent, old_np_parent, old_parent, old_np_index, new_np_index)
+
+		old_ch_parent := engine.Transform_Handle(t.parent.handle)
+		old_ch_index := engine.transform_get_sibling_index(tH)
+		engine.transform_set_parent(tH, new_parent)
+		new_ch_index := engine.transform_get_sibling_index(tH)
+		undo.record_reparent(tH, old_ch_parent, new_parent, old_ch_index, new_ch_index)
+
+		undo.end_group_command(s, "Create Empty Parent")
+		committed = true
+		return new_parent
+	}
+
+	_ = create_empty_parent(s, child, &tc_mem.world)
+	testing.expect(t, undo.apply_undo(s), "first undo ok")
+
+	_ = create_empty_parent(s, child, &tc_mem.world)
+	testing.expect(t, undo.apply_undo(s), "second undo ok")
+}
+
+@(test)
+test_undo_new_edit_truncates_redo :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	push_edit :: proc(s: ^undo.Undo_Stack, tr: ^engine.Transform, target: undo.Property_Target, v: [3]f32) {
+		old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		tr.position = v
+		new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+		undo.push_value(s, target, old_json, new_json)
+	}
+
+	push_edit(s, tr, target, {1, 0, 0})
+	push_edit(s, tr, target, {2, 0, 0})
+	undo.apply_undo(s)
+	testing.expect_value(t, tr.position, [3]f32{1, 0, 0})
+	testing.expect(t, undo.can_redo(s), "can redo")
+
+	push_edit(s, tr, target, {9, 9, 9})
+	testing.expect(t, !undo.can_redo(s), "redo truncated by new edit")
+}
+
+// Undoing a cleared Ref must restore it RESOLVED. The undo payload carries
+// only PPtr data (Handle fields are json:"-" and unmarshal to zero), so the
+// apply path re-binds handles against the live scene — without that, the
+// inspector shows "unresolved local_id = N" until the scene reloads
+// (repro: open tank.scene, clear tank.turret, undo).
+@(test)
+test_undo_ref_clear_restores_resolved_handle :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	// Loaded scene, so transforms register in local_ids — the repro state.
+	path := "moonhug/tests/_test_undo_ref.scene"
+	defer os.remove(path)
+	scene_json := `{
+  "root": 1,
+  "transforms": [
+    {"local_id": 1, "name": "Root", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 0, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [{"pptr": {"local_id": 2, "guid": "00000000-0000-0000-0000-000000000000"}}],
+     "components": []},
+    {"local_id": 2, "name": "Turret", "is_active": true,
+     "position": [0,0,0], "rotation": [0,0,0,1], "scale": [1,1,1], "render_layer": 1,
+     "parent": {"pptr": {"local_id": 1, "guid": "00000000-0000-0000-0000-000000000000"}},
+     "children": [], "components": []}
+  ],
+  "nested_scenes": [], "breadcrumbs": [], "components": []
+}`
+	testing.expect(t, os.write_entire_file(path, transmute([]byte)scene_json) == nil)
+
+	loaded := engine.scene_load_single_path(path)
+	testing.expect(t, loaded != nil, "scene loads")
+	if loaded == nil do return
+	tc_mem.scene = loaded
+
+	root_h, root_ok := engine.bimap_get(&loaded.local_ids, engine.Local_ID(1))
+	turret_h, turret_ok := engine.bimap_get(&loaded.local_ids, engine.Local_ID(2))
+	testing.expect(t, root_ok && turret_ok, "lids registered at load")
+	if !root_ok || !turret_ok do return
+
+	w := engine.ctx_world()
+	turret := engine.pool_get(&w.transforms, turret_h)
+	testing.expect(t, turret != nil)
+	if turret == nil do return
+	testing.expect(t, turret.parent.handle == root_h, "loaded ref starts resolved")
+
+	// Inspector flow: capture old, clear to none, capture new, push.
+	target := undo.make_transform_target(engine.Transform_Handle(turret_h), offset_of(engine.Transform, parent), typeid_of(engine.Ref))
+	old_json := undo.capture_json(&turret.parent, typeid_of(engine.Ref))
+	turret.parent = engine.Ref{}
+	new_json := undo.capture_json(&turret.parent, typeid_of(engine.Ref))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect(t, undo.apply_undo(s), "undo succeeded")
+	testing.expect_value(t, turret.parent.pptr.local_id, engine.Local_ID(1))
+	testing.expect(t, turret.parent.handle == root_h,
+		"undone ref must be RESOLVED, not just carry the local_id")
+
+	// Redo re-clears: the handle must clear too — unmarshal alone leaves the
+	// pre-apply (resolved) handle under the zeroed pptr and the field would
+	// still look assigned.
+	testing.expect(t, undo.apply_redo(s), "redo succeeded")
+	testing.expect_value(t, turret.parent.pptr.local_id, engine.Local_ID(0))
+	testing.expect(t, turret.parent.handle == engine.Handle{},
+		"redone clear must clear the handle as well")
+
+	testing.expect(t, undo.apply_undo(s), "second undo succeeded")
+	testing.expect(t, turret.parent.handle == root_h, "resolved again after redo cycle")
+}
+
+// The same clear→undo cycle for objects created THIS session and never saved:
+// creation registers lids in the scene's live index (local_ids), so undo
+// resolution binds without a save/reload round-trip.
+@(test)
+test_undo_ref_clear_resolves_for_fresh_objects :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	pH := engine.transform_new("Turret")
+	cH := engine.transform_new("Body")
+	engine.transform_set_parent(cH, pH)
+
+	w := engine.ctx_world()
+	ct := engine.pool_get(&w.transforms, engine.Handle(cH))
+	pt := engine.pool_get(&w.transforms, engine.Handle(pH))
+	testing.expect(t, ct != nil && pt != nil)
+	if ct == nil || pt == nil do return
+	testing.expect(t, ct.parent.pptr.local_id == pt.local_id, "ref carries the fresh lid")
+
+	// Fresh lids must be registered in the live index at creation.
+	reg_h, reg_ok := engine.bimap_get(&tc_mem.scene.local_ids, pt.local_id)
+	testing.expect(t, reg_ok && reg_h == engine.Handle(pH), "created transform registered in local_ids")
+
+	target := undo.make_transform_target(cH, offset_of(engine.Transform, parent), typeid_of(engine.Ref))
+	old_json := undo.capture_json(&ct.parent, typeid_of(engine.Ref))
+	ct.parent = engine.Ref{}
+	new_json := undo.capture_json(&ct.parent, typeid_of(engine.Ref))
+	undo.push_value(s, target, old_json, new_json)
+
+	testing.expect(t, undo.apply_undo(s), "undo succeeded")
+	testing.expect_value(t, ct.parent.pptr.local_id, pt.local_id)
+	testing.expect(t, ct.parent.handle == engine.Handle(pH),
+		"ref to a never-saved transform must resolve after undo")
+}
+
+// A scene is dirty from the first recorded edit until scene_save, and an
+// undo or redo edits it again. Selection commands touch no scene.
+@(test)
+test_undo_marks_scene_dirty :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	s := setup_undo(tc_mem)
+	context.user_ptr = &tc_mem.uc
+	defer teardown_undo(tc_mem, s)
+
+	scene := engine.sm_scene_get_active()
+	testing.expect(t, scene != nil, "setup provides an active scene")
+	if scene == nil do return
+	scene.dirty = false
+
+	tH := engine.transform_new("N")
+	tr := engine.pool_get(&tc_mem.world.transforms, engine.Handle(tH))
+	if tr == nil do return
+	testing.expect(t, tr.scene == scene, "a new transform belongs to the active scene")
+
+	target := undo.make_transform_target(tH, offset_of(engine.Transform, position), typeid_of([3]f32))
+	old_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {1, 2, 3}
+	new_json := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json, new_json)
+	testing.expect(t, scene.dirty, "recording an edit marks the scene dirty")
+
+	scene.dirty = false
+	undo.apply_undo(s)
+	testing.expect(t, scene.dirty, "undo marks the scene dirty")
+
+	scene.dirty = false
+	undo.apply_redo(s)
+	testing.expect(t, scene.dirty, "redo marks the scene dirty")
+
+	// A grouped edit lands through end_group_command, not push, and must mark too.
+	scene.dirty = false
+	undo.begin_group_command(s, "Group")
+	old_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	tr.position = {4, 5, 6}
+	new_json2 := undo.capture_json(&tr.position, typeid_of([3]f32))
+	undo.push_value(s, target, old_json2, new_json2)
+	testing.expect(t, !scene.dirty, "a command inside an open group is not landed yet")
+	undo.end_group_command(s, "Group")
+	testing.expect(t, scene.dirty, "closing the group marks the scene dirty")
+}
