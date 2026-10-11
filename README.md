@@ -1,36 +1,42 @@
-# MoonHug Game Engine Editor
+# MoonHug Editor & Engine
 ![](readme_files/Logo1.png)
 
-# Generic game engine editor inspired by Unity Editor
+An extensible editor for Odin projects, inspired by Unity Editor.
 
 ## State
-</br>The editor is a generic shell and the engine is a plugin on it — every feature, the engine included, hooks into the editor through attributes.
-</br>Code consists of three parts - host packages (moonhug/host), the editor shell (moonhug/editor) and plugins (plugins/, the engine among them), all other parts serve these three.
 
-> There are still frequent API changes, bugs, non-implemented features.
-> </br>Good moment to add contribution and influence how Editor shapes up.
+> Frequent API changes, bugs, non-implemented features.
+Good moment to add contribution and influence how Editor shapes up.
+
+Main parts:
+- host (moonhug/host) — core packages that editor and engine plugin depend on
+- editor (moonhug/editor) — a generic editor that can be extended via attributes. Every feature, the engine included, hooks into the editor through attributes.
+- plugins (plugins/*) — packages that extend editor via attributes and can use other plugins
+  - engine (plugins/engine) — plugin with scene tree and most functionality
+  - app (plugins/app) — example of application that uses engine
+
+For more details see [Architecture](docs/core/Architecture.md)
 
 ## Installation
 To build and run the editor, see [Install, Build and Run](docs/general/InstallBuildAndRun.md).
 
 ## Goals
-- highly and easily extensible level editor
+### MoonHug Editor Goals
+- extensible editor with minimal dependencies to help visualizing odin packages
+
+### MoonHug Engine Goals
 - allow differently skilled people combine resources together into interactive elements
-
-#### Optional Extra Goal
-- extensible editor without any engine code to help visualizing odin packages
-  - would remove dependency onto engine codebase
-  - can be done in MoonHug Editor or as separate project
-
-### UX Features
-- Editor UX happens through features
-  - Each feature provides specific UX solution with optional extensibility
-
-- On top level UX features are represented by window views
+- extend Editor with scene tree and components to give workflow experience similar to Unity
 
 > - Editor should be user-friendly
 >   - easier for users familiar with Unity Editor, for this it should provide similar features when possible but not limited to them
 > - Editor should provide convenient access to editing assets and/or redirect into external apps
+
+## UX Features
+- Editor development happens through features
+  - Each feature provides specific UX solution with optional extensibility
+
+- At high level, UX features build around window views, assets and/or components
 
 #### Contribution
 

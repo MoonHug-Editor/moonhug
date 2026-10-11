@@ -8,11 +8,14 @@ package mh
 // is written into a second config file passed beside the first. The prebuild
 // runs first so the generated reference pages are current.
 
+import "base:runtime"
 import "core:fmt"
+import "core:net"
 import "core:os"
 import "core:path/filepath"
 import "core:slice"
 import "core:strings"
+import "core:thread"
 
 DOCS_CONFIG :: "tools/docs/hugo.toml"
 DOCS_MOUNTS :: "builds/docs-mounts.toml"
@@ -30,9 +33,7 @@ cmd_docs :: proc(args: []string) -> int {
 	// Served or read from disk decides what a source link opens, so it is
 	// known before the pages are generated.
 	docs_serving = slice.contains(args, "--open")
-	if !prebuild(docs = true) do return 1
-	if !docs_write_plugin_mounts() do return 1
-	if !docs_write_package_pages() do return 1
+	if !docs_regenerate() do return 1
 	// Hugo never removes files from publishDir on its own, and its clean flag
 	// left a whole folder behind after the site's layout changed, so the
 	// output is removed outright. It is a build artifact, nothing lives there.
@@ -57,9 +58,67 @@ cmd_docs :: proc(args: []string) -> int {
 		// treat that as a path. The server gets a URL with a scheme and no
 		// port: Hugo appends whichever port it actually binds, so a busy 1313
 		// does not leave the links pointing at the wrong one.
+		// The Rebuild button's endpoint runs beside the server, for as long
+		// as the server does.
+		docs_rebuild_listen()
 		return run("hugo", "server", "--source", ".", "--config", DOCS_CONFIG + "," + DOCS_MOUNTS, "--baseURL", "http://localhost/", "--port", DOCS_PORT, "--renderToMemory", "--openBrowser")
 	}
 	return 0
+}
+
+// Everything the site is built from that is not committed: the reference
+// pages, the mounts file, the home and viewer pages. The served site's
+// Rebuild button runs it again, and Hugo reloads what changed.
+docs_regenerate :: proc() -> bool {
+	if !prebuild(docs = true) do return false
+	if !docs_write_plugin_mounts() do return false
+	if !docs_write_package_pages() do return false
+	return true
+}
+
+// The served site's Rebuild button: a loopback-only HTTP endpoint on
+// DOCS_REBUILD_PORT, beside the Hugo server. `GET /ping` answers so the page
+// knows to show the button, `POST /rebuild` runs docs_regenerate and answers
+// once it is done. Only the served site's own origin may call it. A port
+// already taken leaves the site without the button.
+DOCS_REBUILD_PORT :: 7271
+
+docs_rebuild_listen :: proc() {
+	sock, err := net.listen_tcp({address = net.IP4_Loopback, port = DOCS_REBUILD_PORT})
+	if err != nil {
+		fmt.eprintfln("mh: the Rebuild button is off, port %d is taken: %v", DOCS_REBUILD_PORT, err)
+		return
+	}
+	thread.create_and_start_with_poly_data(sock, _docs_rebuild_serve, self_cleanup = true)
+}
+
+@(private = "file")
+_docs_rebuild_serve :: proc(sock: net.TCP_Socket) {
+	context.allocator = runtime.default_allocator()
+	for {
+		client, _, aerr := net.accept_tcp(sock)
+		if aerr != nil do continue
+		buf: [4096]byte
+		n, _ := net.recv_tcp(client, buf[:])
+		request := string(buf[:n])
+		status, body := "404 Not Found", "unknown"
+		switch {
+		case strings.has_prefix(request, "GET /ping "):
+			status, body = "200 OK", "ok"
+		case strings.has_prefix(request, "POST /rebuild "):
+			fmt.println("mh: rebuilding the docs for the Rebuild button")
+			if docs_regenerate() {
+				status, body = "200 OK", "ok"
+			} else {
+				status, body = "500 Internal Server Error", "failed, see the terminal"
+			}
+		}
+		origin := fmt.tprintf("http://localhost:%s", DOCS_PORT)
+		response := fmt.tprintf("HTTP/1.1 %s\r\nAccess-Control-Allow-Origin: %s\r\nContent-Type: text/plain\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s", status, origin, len(body), body)
+		net.send_tcp(client, transmute([]byte)response)
+		net.close(client)
+		free_all(context.temp_allocator)
+	}
 }
 
 // True for `mh docs --open`: the site is served over http, where a page can
@@ -252,6 +311,9 @@ docs_write_plugin_mounts :: proc() -> bool {
 	if !docs_write_home(names[:]) do return false
 	if !docs_write_viewer() do return false
 	os.make_directory("builds")
+	// Unchanged content is not rewritten: the served site watches this file
+	// as config, and a write would reload the whole site.
+	if old, rerr := os.read_entire_file(DOCS_MOUNTS, context.temp_allocator); rerr == nil && string(old) == strings.to_string(b) do return true
 	if err := os.write_entire_file(DOCS_MOUNTS, transmute([]byte)strings.to_string(b)); err != nil {
 		fmt.eprintfln("mh: cannot write %s: %v", DOCS_MOUNTS, err)
 		return false

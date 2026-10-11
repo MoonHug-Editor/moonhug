@@ -45,3 +45,46 @@
     });
   });
 </script>
+{{- /* The Rebuild button, served site only: `mh docs --open` listens on a
+     loopback port beside the server, and the button shows when it answers.
+     A click regenerates the reference pages, and the server reloads the page. */ -}}
+<style>
+  .mh-rebuild { margin-left: 0.5rem; padding: 0.35rem; display: inline-flex; align-items: center; border-radius: 6px; border: none; background: transparent; color: inherit; opacity: 0.7; cursor: pointer; }
+  .mh-rebuild:hover { opacity: 1; background: rgba(128,128,128,0.15); }
+  .mh-rebuild svg { width: 1.15rem; height: 1.15rem; }
+  .mh-rebuild:disabled { cursor: progress; opacity: 1; }
+  .mh-rebuild:disabled svg { animation: mh-spin 0.9s linear infinite; }
+  .mh-rebuild.mh-failed { color: #d32f2f; opacity: 1; }
+  @keyframes mh-spin { to { transform: rotate(360deg); } }
+  .mh-rebuild.mh-floating { position: fixed; top: 0.6rem; right: 1rem; z-index: 50; }
+</style>
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    if (!location.protocol.startsWith("http")) return;
+    var endpoint = "http://localhost:7271";
+    fetch(endpoint + "/ping").then(function (r) {
+      if (!r.ok) return;
+      var button = document.createElement("button");
+      var IDLE = "Rebuild the docs (make docs)";
+      button.className = "mh-rebuild";
+      button.title = IDLE;
+      button.setAttribute("aria-label", IDLE);
+      button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>';
+      var nav = document.querySelector(".hextra-nav-container nav");
+      if (nav) nav.appendChild(button); else { button.classList.add("mh-floating"); document.body.appendChild(button); }
+      button.addEventListener("click", function () {
+        button.disabled = true;
+        button.classList.remove("mh-failed");
+        button.title = "Rebuilding…";
+        fetch(endpoint + "/rebuild", { method: "POST" }).then(function (res) {
+          if (!res.ok) throw new Error("failed");
+          setTimeout(function () { location.reload(); }, 1500);
+        }).catch(function () {
+          button.disabled = false;
+          button.classList.add("mh-failed");
+          button.title = "Rebuild failed, see the terminal";
+        });
+      });
+    }).catch(function () {});
+  });
+</script>
