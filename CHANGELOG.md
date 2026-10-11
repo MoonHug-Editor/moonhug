@@ -1,3 +1,14 @@
+## [0.128.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.127.0...v0.128.0) (2026-10-11)
+
+### Features
+
+* move tests, up docs ([8630ec4](https://github.com/MoonHug-Editor/moonhug/commit/8630ec4631ab22da408bd297de8c1306b773c40e))
+* up docs, add rebuild docs button ([4688ab4](https://github.com/MoonHug-Editor/moonhug/commit/4688ab4ec11c13c007749d689aa8b1e26b65a2f0))
+
+### Bug Fixes
+
+* current scene state build assets and build button ([ec2bdf7](https://github.com/MoonHug-Editor/moonhug/commit/ec2bdf762a9544afc33aec5497e480b638311bc2))
+
 ## [0.127.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.126.0...v0.127.0) (2026-10-09)
 
 ### Features
