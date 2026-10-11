@@ -5,8 +5,10 @@ package mh
 // editor's Play button runs. A run config is `packages/<pkg>/run_configs/
 // <config>.odin`. With one argument part it is the package and the config is
 // `run`. With no argument and exactly one package shipping run configs, that
-// package is picked. The flags are the editor's modifier keys: Alt is --dev,
-// Shift is --run-only, Alt+Shift is --build-only.
+// package is picked. With no flag it exports and runs the export, the
+// editor's Alt+click. --dev is the editor's plain click, --run-only its
+// Shift (the editor adds --dev) and its Alt+Shift. --build-only builds and
+// exports without running, which no toolbar input does.
 
 import "core:fmt"
 import "core:os"

@@ -71,12 +71,15 @@ chdir_repo_root :: proc() -> bool {
 }
 
 // The editor's toolbar modifiers arrive as flags, honored inside the rc procs
-// so config files stay straight-line scripts:
+// so config files stay straight-line scripts. A plain toolbar click sends
+// --dev, Alt sends none, Shift --run-only --dev, Alt+Shift --run-only:
 //
 //   (none)        build, export the data dir, run the export   (the shipping shape)
-//   --dev         Alt        build, run against the editor's live library catalog, no export
-//   --run-only    Shift      run what the last build produced, no compile, no staging
-//   --build-only  Alt+Shift  build and stage, skip every run step
+//   --dev         build, run against the editor's live library catalog, no export
+//   --run-only    no compile: run what the last build produced (with --dev,
+//                 against the live catalog, without it, against the staged data)
+//   --build-only  build (and stage, without --dev), skip every run step. No
+//                 toolbar input sends it, `mh play --build-only` does
 FLAGS :: [?]string{"--dev", "--run-only", "--build-only"}
 
 build_only :: proc() -> bool { return _flag("--build-only") }
@@ -111,17 +114,20 @@ scene_arg :: proc() -> string {
 // modifiers (see FLAGS) turn the same call into a dev run, a run of the last
 // build, or a build with no run, so one config file and one toolbar button
 // cover every way of playing. `scene` is the pinned boot scene, moonhug-
-// relative. An invoker scene (the editor's live snapshot) wins for the RUN
-// only, never for what gets staged. Does not return.
+// relative. An invoker scene (the editor's live snapshot) is what the run
+// boots, and its assets are staged beside the pinned scene's. Does not
+// return.
 play :: proc(cfg: Config, scene := "") {
 	if dev_run() {
 		// No export: the game reads the editor's in-place catalog, the way it
-		// does under Simulate. The pinned scene applies when no invoker scene
-		// was passed.
+		// does under Simulate. --catalog alone names that catalog: without it
+		// the game boots the export beside its binary (<out>_data) when an
+		// earlier run left one, however stale. The pinned scene applies when
+		// no invoker scene was passed.
 		if scene != "" && scene_arg() == "" {
-			build_and_run(cfg, scene)
+			build_and_run(cfg, "--catalog", scene)
 		} else {
-			build_and_run(cfg)
+			build_and_run(cfg, "--catalog")
 		}
 	}
 	if _, ok := build(cfg); !ok do exit_build_failed(cfg.package_path)
@@ -144,10 +150,11 @@ build_and_run :: proc(cfg: Config, extra: ..string) {
 // Stage the build's data dir: <out>_data beside the binary (Unity's
 // Game + Game_Data layout), copied from the editor-maintained
 // library/catalog.json with a relocatable catalog written beside it. `scene`
-// is the config's pinned boot scene (moonhug-relative asset path) — the
-// staged data is ALWAYS the config's own build, so bare launches reproduce
-// it exactly. The editor's scene only ever affects the run (scene_arg,
-// forwarded by the run procs), never the build.
+// is the config's pinned boot scene (moonhug-relative asset path), stamped
+// as the export's boot scene, so a bare launch boots it. An invoker scene
+// (scene_arg, the editor's live snapshot, which the run procs forward)
+// stages its assets too: it is not a catalog entry, so without that the run
+// would boot a scene whose meshes and materials are not there.
 export_data :: proc(out: string, scene := "") -> bool {
 	if !chdir_repo_root() do return false
 	data_dir := fmt.tprintf("%s_data", out)
@@ -159,7 +166,10 @@ export_data :: proc(out: string, scene := "") -> bool {
 		}
 		return true
 	}
-	if !catalog.export_from("moonhug/library/catalog.json", data_dir, scene, root = "moonhug") {
+	// The array outlives the `if`: a slice literal lives in its block.
+	live := [1]string{scene_arg()}
+	extra := live[:] if live[0] != "" else nil
+	if !catalog.export_from("moonhug/library/catalog.json", data_dir, scene, root = "moonhug", extra_roots = extra) {
 		fmt.eprintf("run config: data export failed for %s (is the editor's catalog current?)\n", out)
 		return false
 	}

@@ -264,7 +264,7 @@ draw_tool_bar :: proc() {
 // and the combo to its widest label, so the bar never shifts when a run starts
 // or a config is picked.
 
-MOD_HINT :: "\nAlt: dev run (no export), Shift: run last build, Alt+Shift: build only"
+MOD_HINT :: "\nRuns against the editor's assets.\nAlt: export the data and run the export\nShift: run the last build without building\nAlt+Shift: run the last export without building"
 NO_CONFIGS :: cstring("No run configs")
 
 // Explicit ### ids: the labels are icon-only, and imgui derives ids from
@@ -590,23 +590,25 @@ _play_dispatch_line :: proc(line: string) {
 // the Build button. `id` only names the config binary, so two packages can each
 // ship a run.odin without colliding.
 // Toolbar modifier state at click time, forwarded to the config as flags the
-// rc procs honor (runconfig.FLAGS): plain = build, export, run the export.
+// rc procs honor (runconfig.FLAGS). A click is the everyday test run: build
+// and run against the editor's assets, nothing staged. Alt is the shipping
+// shape: export the data dir and run the export.
 Run_Mode :: enum {
-	Build_And_Run,
-	Dev,        // Alt: build, run against the live library catalog, no export
-	Run_Only,   // Shift: run the last build, no compile, no staging
-	Build_Only, // Alt+Shift: build and stage, no run
+	Dev,           // click: build, run against the live library catalog, no export
+	Build_And_Run, // Alt: build, export, run the export
+	Run_Only,      // Shift: run the last build against the live catalog, no compile
+	Run_Export,    // Alt+Shift: run the last build against its export, no compile, no staging
 }
 
 _run_mode_from_modifiers :: proc() -> Run_Mode {
 	io := im.GetIO()
-	if io.KeyAlt && io.KeyShift do return .Build_Only
-	if io.KeyAlt do return .Dev
+	if io.KeyAlt && io.KeyShift do return .Run_Export
+	if io.KeyAlt do return .Build_And_Run
 	if io.KeyShift do return .Run_Only
-	return .Build_And_Run
+	return .Dev
 }
 
-run_app_play :: proc(id: string, source: string, with_current_scene := false, mode := Run_Mode.Build_And_Run) {
+run_app_play :: proc(id: string, source: string, with_current_scene := false, mode := Run_Mode.Dev) {
     if _play_thread != nil && !thread.is_done(_play_thread) {
         return
     }
@@ -665,8 +667,8 @@ run_app_play :: proc(id: string, source: string, with_current_scene := false, mo
     }
     switch mode {
     case .Dev:        append(&run_parts, "--dev")
-    case .Build_Only: append(&run_parts, "--build-only")
-    case .Run_Only:   append(&run_parts, "--run-only")
+    case .Run_Export: append(&run_parts, "--run-only")
+    case .Run_Only:   append(&run_parts, "--run-only", "--dev")
     case .Build_And_Run:
     }
 

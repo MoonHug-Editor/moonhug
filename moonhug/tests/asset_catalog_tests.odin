@@ -143,6 +143,8 @@ test_asset_catalog_export_is_self_contained :: proc(t: ^testing.T) {
 // ships, an unreferenced one does not. Folders on the way to shipped assets
 // ship too, so the exported tree keeps its shape. Proven the same way as the
 // self-contained test: the originals are deleted before the export is read.
+// A file passed as an extra root (the editor's live-scene snapshot) ships the
+// assets it references and leaves the boot scene stamp alone.
 @(test)
 test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	src_dir :: "moonhug/tests/fixtures/_catalog_closure_tmp"
@@ -152,6 +154,8 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	by_path :: res_dir + "/by_path.png"
 	scene :: src_dir + "/boot.scene"
 	data_dir :: src_dir + "_data"
+	snapshot :: src_dir + "_snapshot.scene"
+	live_data_dir :: src_dir + "_live_data"
 	os.make_directory(src_dir)
 	os.make_directory(res_dir)
 	png, rerr := os.read_entire_file("moonhug/tests/fixtures/textures/circle-256.png", context.temp_allocator)
@@ -170,6 +174,8 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	defer {
 		_remove_tree(src_dir)
 		_remove_tree(data_dir)
+		_remove_tree(live_data_dir)
+		os.remove(snapshot)
 		_remove_tree("library")
 	}
 
@@ -197,6 +203,28 @@ test_asset_catalog_export_ships_dependency_closure :: proc(t: ^testing.T) {
 	testing.expect(t, engine.asset_catalog_write(), "in-place catalog should write")
 	engine.asset_db_shutdown()
 	testing.expect(t, catalog.export_from("library/catalog.json", data_dir, boot_scene = scene), "export should succeed")
+
+	// The live snapshot is not a catalog entry and references the asset the
+	// boot scene does not.
+	snapshot_text := strings.concatenate({"{\"mesh\": \"", uuid.to_string(unused_guid, context.temp_allocator), "\"}"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(snapshot, transmute([]byte)snapshot_text) == nil)
+	testing.expect(t, catalog.export_from("library/catalog.json", live_data_dir, boot_scene = scene, extra_roots = {snapshot}), "export with an extra root should succeed")
+	live_catalog, lerr := os.read_entire_file(live_data_dir + "/catalog.json", context.temp_allocator)
+	testing.expect(t, lerr == nil)
+	testing.expect(t, strings.contains(string(live_catalog), uuid.to_string(unused_guid, context.temp_allocator)), "an asset the extra root references ships")
+	live_unused_artifact := strings.concatenate({live_data_dir, "/artifacts/", unused_key[:2], "/", unused_key, ".bin"}, context.temp_allocator)
+	testing.expect(t, os.exists(live_unused_artifact), "its artifact is copied")
+	pinned_catalog, perr := os.read_entire_file(data_dir + "/catalog.json", context.temp_allocator)
+	testing.expect(t, perr == nil)
+	boot_of :: proc(catalog_text: string) -> string {
+		KEY :: "\"boot_scene\": \""
+		i := strings.index(catalog_text, KEY)
+		if i < 0 || i + len(KEY) + 36 > len(catalog_text) do return ""
+		return catalog_text[i + len(KEY):][:36]
+	}
+	testing.expect(t, boot_of(string(pinned_catalog)) != "", "the pinned export stamps a boot scene")
+	testing.expect_value(t, boot_of(string(live_catalog)), boot_of(string(pinned_catalog)))
+	testing.expect(t, !catalog.export_from("library/catalog.json", live_data_dir, boot_scene = scene, extra_roots = {src_dir + "/missing.scene"}), "an extra root that cannot be read fails the export")
 
 	_remove_tree(src_dir)
 	_remove_tree("library")

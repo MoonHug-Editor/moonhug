@@ -191,10 +191,17 @@ main :: proc() {
   The right one (beside the config dropdown) runs it verbatim — its own
   pinned scene. The middle one (beside the Simulate controls) forwards the
   CURRENT scene state to the run — unsaved edits on the built binary, assets
-  still resolving through the catalog. On both, **Alt = dev run** (build,
-  then run against the editor's live library catalog with no export, the
-  fast loop), **Shift = run only** (skip the compile and the staging, run the
-  last build) and **Alt+Shift = build only**. The rc helpers own the protocol
+  still resolving through the catalog. The snapshot is an extra root of the
+  export walk, so the assets it references ship beside the pinned scene's,
+  and the boot scene stamp stays the pinned one. The player logs every scene
+  reference whose asset is not in its catalog, naming the object, component
+  and field. On both, a **click is a dev run** (build, then run against the
+  editor's live library catalog with no export, the fast loop), **Alt =
+  export** (build, stage the data dir, run the export, the shipping shape),
+  **Shift = run only** (skip the compile, run the last build against the live
+  catalog) and **Alt+Shift = run the last export** (skip the compile and the
+  staging, run the last build against its exported data). `mh play
+  --build-only` builds and exports without running. The rc helpers own the protocol
   (`rc.scene_arg`, `rc.dev_run`, `rc.run_only`, `rc.build_only`), config
   files never see it
 

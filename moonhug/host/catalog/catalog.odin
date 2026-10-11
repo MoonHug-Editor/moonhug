@@ -77,8 +77,8 @@ save :: proc(cf: ^File, path: string) -> bool {
 // artifact's existence is the declaration.
 //
 // WHAT SHIPS is the dependency closure of the roots (see _closure): the boot
-// scene, plus every asset under a folder named `resources`, plus everything
-// they reference, transitively. An asset the game loads by path at runtime
+// scene, every asset under a folder named `resources`, the assets the files
+// in `extra_roots` reference, plus everything they reference, transitively. An asset the game loads by path at runtime
 // is invisible to the walk, so it lives under a `resources` folder or it does
 // not ship. With no boot scene there is no root to walk from, and the whole
 // catalog ships.
@@ -91,7 +91,11 @@ save :: proc(cf: ^File, path: string) -> bool {
 //   library/artifacts, an exported catalog sits beside its artifacts/.
 // - `boot_scene` is an entry path resolved to its guid; "" skips the stamp
 //   and a path not in the catalog fails the export.
-export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", root := "") -> bool {
+// - `extra_roots` are files that are not catalog entries but run against the
+//   export, such as the editor's live-scene snapshot: their references ship,
+//   the boot scene stamp stays. Read through `root` like entry sources. A
+//   file that cannot be read fails the export.
+export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", root := "", extra_roots: []string = nil) -> bool {
 	data, read_err := os.read_entire_file(src_catalog, context.temp_allocator)
 	if read_err != nil {
 		fmt.eprintfln("[Catalog] export: cannot read %s", src_catalog)
@@ -122,7 +126,7 @@ export_from :: proc(src_catalog: string, data_dir: string, boot_scene := "", roo
 		}
 	}
 
-	ship, cok := _closure(&src, boot_guid, root)
+	ship, cok := _closure(&src, boot_guid, root, extra_roots)
 	if !cok do return false
 
 	// Stage into an EMPTY dir, so the export is exactly the closure and not
@@ -224,7 +228,7 @@ RESOURCES_DIR :: "resources"
 //
 // `boot_guid == ""` means no root, and the whole catalog ships.
 @(private = "file")
-_closure :: proc(src: ^File, boot_guid: string, root: string) -> (ship: [dynamic]string, ok: bool) {
+_closure :: proc(src: ^File, boot_guid: string, root: string, extra_roots: []string = nil) -> (ship: [dynamic]string, ok: bool) {
 	ship = make([dynamic]string, context.temp_allocator)
 	if boot_guid == "" {
 		for guid_str in src.assets do append(&ship, guid_str)
@@ -244,6 +248,15 @@ _closure :: proc(src: ^File, boot_guid: string, root: string) -> (ship: [dynamic
 	push(&ship, &seen, boot_guid)
 	for guid_str, entry in src.assets {
 		if _under_resources(entry.path) do push(&ship, &seen, guid_str)
+	}
+	for extra in extra_roots {
+		path := _rooted(root, extra)
+		data, read_err := os.read_entire_file(path, context.temp_allocator)
+		if read_err != nil {
+			fmt.eprintfln("[Catalog] export: cannot read %s", path)
+			return ship, false
+		}
+		_harvest_guids(string(data), src, &ship, &seen)
 	}
 
 	// Breadth-first over `ship` itself: it grows while it is walked.

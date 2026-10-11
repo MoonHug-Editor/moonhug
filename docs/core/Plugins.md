@@ -197,10 +197,10 @@ server, an engine sample) ships configurations in `run_configs/`:
   ```
 
 - `rc.play` builds, exports the data dir for the pinned scene and runs the
-  export. Alt on the toolbar button makes the same config a dev run against
-  the editor's live catalog with no export, Shift runs the last build,
-  Alt+Shift builds without running (docs/core/AssetPipeline.md "Asset catalog and
-  builds").
+  export. A plain toolbar click makes the same config a dev run against the
+  editor's live catalog with no export, Alt runs the export, Shift runs the
+  last build, Alt+Shift runs the last export (docs/core/AssetPipeline.md
+  "Asset catalog and builds").
 - Configs run from the REPO ROOT and receive the editor's args — the
   live-scene snapshot path when launched via Play. The rc procs forward them
   to the game and exit with the game's exit code. The same config runs

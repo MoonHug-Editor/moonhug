@@ -1589,6 +1589,7 @@ scene_load_single_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
 	defer scene_file_destroy(&sf)
+	if !application_is_editor() do scene_log_missing_assets(path)
 
 	scene_guid: Asset_GUID = {}
 	if g, gok := asset_db_get_guid(path); gok {
@@ -1667,6 +1668,7 @@ scene_load_additive_path :: proc(path: string) -> ^Scene {
 	sf, ok := scene_file_load(path)
 	if !ok do return nil
 	defer scene_file_destroy(&sf)
+	if !application_is_editor() do scene_log_missing_assets(path)
 
 	scene_guid: Asset_GUID = {}
 	if g, gok := asset_db_get_guid(path); gok {
