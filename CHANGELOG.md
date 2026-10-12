@@ -1,3 +1,10 @@
+## [0.130.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.129.0...v0.130.0) (2026-10-12)
+
+### Features
+
+* move tests ([776ec2a](https://github.com/MoonHug-Editor/moonhug/commit/776ec2a76f4063a257b340df872a793a29a7a213))
+* up docs, add button in header to open doc file with external editor or preview as source ([36ec0c6](https://github.com/MoonHug-Editor/moonhug/commit/36ec0c60d66598d921b88f692df4ff56c5d0cbb6))
+
 ## [0.129.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.128.0...v0.129.0) (2026-10-12)
 
 ### Features
