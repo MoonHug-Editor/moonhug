@@ -1,3 +1,9 @@
+## [0.131.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.130.0...v0.131.0) (2026-10-12)
+
+### Features
+
+* gpu skinning ([870c209](https://github.com/MoonHug-Editor/moonhug/commit/870c209940f8481d0960e7549e587dd9ab48c23f))
+
 ## [0.130.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.129.0...v0.130.0) (2026-10-12)
 
 ### Features
