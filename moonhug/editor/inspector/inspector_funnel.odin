@@ -30,7 +30,7 @@ package inspector
 
 import "base:runtime"
 import "core:slice"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 ORDER_OUTER :: -1000 // outermost frames (headers, foldouts, banners)
 ORDER_MIDDLE :: 0 // ordinary prepend/append rows

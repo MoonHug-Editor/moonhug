@@ -5,8 +5,8 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "base:builtin"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 MAX_ENTRIES :: 128
 

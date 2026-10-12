@@ -7,7 +7,7 @@ package session
 // none installed the windows do not draw and the Edit menu acts on the
 // project only.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 

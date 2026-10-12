@@ -6,7 +6,7 @@ package engine
 
 import "base:runtime"
 import "core:encoding/json"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 @(init)
 _scene_asset_index_register :: proc "contextless" () {

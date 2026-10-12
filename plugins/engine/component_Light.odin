@@ -1,7 +1,7 @@
 package engine
 
 import "core:math"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 
 // Light consumed by the built-in lit shader and custom lit shaders
 // (plugins/engine/docs/Materials.md). Directional, Point or Spot — Unity's Light.type model.

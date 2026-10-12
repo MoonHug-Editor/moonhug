@@ -7,8 +7,8 @@ package drawers
 
 import "moonhug:editor/inspector"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
-import gfx "moonhug:host/gfx"
+import "moonhug:libs/gizmos"
+import gfx "moonhug:libs/gfx"
 
 @(provider_install)
 install_object_provider :: proc() {

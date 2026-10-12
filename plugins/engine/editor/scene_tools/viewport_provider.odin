@@ -6,7 +6,7 @@ package scene_tools
 import "core:math/linalg"
 import "moonhug:editor/viewport"
 import "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 
 @(provider_install)
 install_viewport_provider :: proc() {

@@ -19,7 +19,7 @@ package editor
 import "base:runtime"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // --- Scene inspector ---------------------------------------------------------
 

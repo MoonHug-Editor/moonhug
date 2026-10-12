@@ -22,7 +22,7 @@ package inspector
 
 import "core:reflect"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // The component keys `spec` admits, in first-mention order with duplicates
 // removed. Empty for an empty spec, and for a spec naming nothing that exists —

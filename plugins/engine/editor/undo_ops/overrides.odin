@@ -7,7 +7,7 @@ package undo_ops
 import "core:fmt"
 import "core:strings"
 import engine "moonhug:packages/engine"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // Bookkeeping for the prefab override that a live edit CREATED (see
 // engine.nested_scene_record_override). Paired in a group with the

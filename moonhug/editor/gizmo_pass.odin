@@ -19,13 +19,13 @@ package editor
 import "base:runtime"
 import "core:math"
 import "menu"
-import core "moonhug:host/core"
-import gfx "moonhug:host/gfx"
+import core "moonhug:libs/core"
+import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/handles"
 import "moonhug:editor/viewport"
 import "moonhug:editor/session"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 
 // The gfx frame the scene view last rendered in, and its image size then.
 _scene_rendered_frame: u64

@@ -31,7 +31,7 @@ import "base:runtime"
 import "core:slice"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "moonhug:editor/widgets"
 import "menu"
 

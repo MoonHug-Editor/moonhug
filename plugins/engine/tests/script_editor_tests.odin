@@ -7,7 +7,7 @@ import "base:runtime"
 import "core:os"
 import "core:strings"
 import "core:testing"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:editor/script_editor"
 import "moonhug:packages/engine"
 

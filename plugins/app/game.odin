@@ -7,7 +7,7 @@ package app
 
 import "core:math"
 import "moonhug:packages/engine"
-import input "moonhug:host/input"
+import input "moonhug:libs/input"
 
 TANK_SPEED :: f32(5)
 

@@ -12,7 +12,7 @@ package engine_tests
 import "core:testing"
 import "moonhug:editor/handles"
 import "moonhug:packages/engine"
-import "moonhug:host/gfx"
+import "moonhug:libs/gfx"
 import "moonhug:packages/engine/editor/scene_tools"
 
 // A camera at +Z looking back at the origin, and the view it renders.

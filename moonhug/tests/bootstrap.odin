@@ -1,6 +1,6 @@
 package tests
 
-// The central suite: the host's tests, plus the imports that run the
+// The central suite: the libs tests, plus the imports that run the
 // editor's suite (moonhug/editor/tests) and every installed plugin's with it.
 // Shared world bootstrap lives in tests/common so those suites can import it
 // too. The short names for it, the same aliases every suite keeps.

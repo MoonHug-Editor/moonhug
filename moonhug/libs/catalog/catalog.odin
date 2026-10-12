@@ -7,7 +7,7 @@ package catalog
 // This is a leaf package on purpose: run configs stage build data with
 // export_from, and a config binary must not pull the whole engine (SDL, GPU)
 // just to copy files. The engine's live halves — writing the catalog from
-// the AssetDB, running the catalog pipeline from it — live in host/assets/asset_catalog.odin.
+// the AssetDB, running the catalog pipeline from it — live in libs/assets/asset_catalog.odin.
 
 import "core:encoding/json"
 import "core:fmt"

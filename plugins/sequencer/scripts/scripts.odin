@@ -12,7 +12,7 @@ package sequencer_scripts
 // built-ins prove the same path plugins take.
 
 import "moonhug:packages/engine"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import core "moonhug:packages/sequencer/core"
 
 @(typ_guid={guid = "32417493-2d60-4e02-9551-8a28a9d17c8a"})

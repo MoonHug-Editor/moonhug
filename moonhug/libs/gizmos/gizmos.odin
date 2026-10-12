@@ -25,8 +25,8 @@ package gizmos
 import "base:runtime"
 import "core:strings"
 import "core:math/linalg"
-import core "moonhug:host/core"
-import gfx "moonhug:host/gfx"
+import core "moonhug:libs/core"
+import gfx "moonhug:libs/gfx"
 
 @(private)
 _State :: struct {

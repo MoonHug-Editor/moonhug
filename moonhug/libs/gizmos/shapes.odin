@@ -14,7 +14,7 @@ package gizmos
 
 import "core:math"
 import "core:math/linalg"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // --- line_* -----------------------------------------------------------------------
 

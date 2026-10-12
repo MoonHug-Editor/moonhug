@@ -120,7 +120,7 @@ _relative_import_path :: proc(out_dir: string, source_path: string) -> string {
 	return strings.to_string(b)
 }
 
-_OUT_DIR :: "moonhug/host/serialization"
+_OUT_DIR :: "moonhug/libs/serialization"
 
 _SerializationRow :: struct {
 	kind:        SerializationCallbackKind,
@@ -218,6 +218,6 @@ generate :: proc(w: ^db.World) -> bool {
 
 	strings.write_string(&b, "}\n")
 
-	db.emit(w, "moonhug/host/serialization/serialization_generated.odin", strings.to_string(b))
+	db.emit(w, "moonhug/libs/serialization/serialization_generated.odin", strings.to_string(b))
 	return true
 }

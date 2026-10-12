@@ -16,7 +16,7 @@ import "core:math/linalg"
 import "core:slice"
 import "moonhug:packages/engine"
 import "moonhug:editor/handles"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 
 // Every quad `view` draws (temp): what the package renderers registered with
 // engine.render_register_collector draw, and UI graphics. Meshes are left

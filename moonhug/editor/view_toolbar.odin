@@ -14,7 +14,7 @@ import "core:time"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/runconfig"
 import "moonhug:editor/session"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 

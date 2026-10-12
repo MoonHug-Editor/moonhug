@@ -7,7 +7,7 @@ package core
 
 // Unity's Application.isFocused. Standalone it is the window's focus; in the
 // editor it is the Game view's focus during a run. The host (platform or
-// editor) writes it through host/input, which also freezes the mouse and
+// editor) writes it through libs/input, which also freezes the mouse and
 // filters the fixed-tick edges on the change. Reads start true so a game
 // that runs before the first focus event is not blind.
 @(private = "file")
@@ -17,7 +17,7 @@ application_is_focused :: proc() -> bool {
 	return _application_focused
 }
 
-// For the host layer only (host/input); game code reads.
+// For the libs layer only (libs/input); game code reads.
 application_set_focused :: proc(on: bool) {
 	_application_focused = on
 }

@@ -14,7 +14,7 @@ package gizmos
 
 import "base:runtime"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 Gizmo_Part :: enum {
 	Icon,

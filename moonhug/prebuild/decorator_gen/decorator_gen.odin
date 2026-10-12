@@ -307,7 +307,7 @@ generate :: proc(w: ^db.World) -> bool {
 		// engine and app included) reached via the collection, at its pkg_path
 		// (subpackages live below their folder name).
 		if pkg == "core" {
-			fmt.sbprintf(&b, "import core \"moonhug:host/core\"\n")
+			fmt.sbprintf(&b, "import core \"moonhug:libs/core\"\n")
 		} else {
 			fmt.sbprintf(&b, "import %s \"moonhug:%s\"\n", pkg, packages_used[pkg][len("moonhug/"):])
 		}

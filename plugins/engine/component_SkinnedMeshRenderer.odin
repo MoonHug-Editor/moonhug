@@ -22,8 +22,8 @@ package engine
 
 import "core:math/linalg"
 import "core:slice"
-import gfx "moonhug:host/gfx"
-import "moonhug:host/log"
+import gfx "moonhug:libs/gfx"
+import "moonhug:libs/log"
 
 @(component={menu="Mesh/SkinnedMeshRenderer"})
 @(typ_guid={guid = "5f2e77c4-8a3b-4d19-9e06-1c7b4a2f3d85"})

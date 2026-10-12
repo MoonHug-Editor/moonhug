@@ -7,7 +7,7 @@ package plugin_example
 // same way (`children: [dynamic]tween.Node_Handle` with json:"-").
 
 import engine "moonhug:packages/engine"
-import log "moonhug:host/log"
+import log "moonhug:libs/log"
 import tween "moonhug:packages/tween"
 
 // Eases the subject's Spinner `speed` toward `speed` over `duration` —

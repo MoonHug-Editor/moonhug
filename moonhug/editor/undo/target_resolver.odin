@@ -7,7 +7,7 @@ package undo
 // Without a resolver, .Pooled targets never resolve and scenes are never
 // dirtied, while .Raw and .Asset targets work as before.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 

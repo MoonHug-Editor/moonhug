@@ -7,7 +7,7 @@ import "core:time"
 import im "moonhug:external/odin-imgui"
 import "menu"
 import "moonhug:editor/widgets"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import "moonhug:editor/icons"
 
 _console_last_count: int

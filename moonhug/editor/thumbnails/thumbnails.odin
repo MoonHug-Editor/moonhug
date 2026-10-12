@@ -28,9 +28,9 @@ import "core:mem"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import assets "moonhug:host/assets"
-import core "moonhug:host/core"
-import gfx "moonhug:host/gfx"
+import assets "moonhug:libs/assets"
+import core "moonhug:libs/core"
+import gfx "moonhug:libs/gfx"
 import "moonhug:editor/subassets"
 
 // Draws one thumbnail into `target` (SIZE x SIZE): the asset itself for

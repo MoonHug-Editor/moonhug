@@ -9,7 +9,7 @@ package audio_editor
 import "base:runtime"
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "moonhug:editor/inspector"
 import engine "moonhug:packages/engine"
 import audio "moonhug:packages/audio"

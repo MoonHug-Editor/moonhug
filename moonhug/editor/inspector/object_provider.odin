@@ -10,7 +10,7 @@ package inspector
 // `scope` is opaque to the shell: what local ids are minted against, the
 // owner's root scene in the engine. nil means no scope, nothing is minted.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 

@@ -8,7 +8,7 @@ import "core:fmt"
 import "core:slice"
 import "core:strings"
 import "base:runtime"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 // Walks `ptr` of type `ti` and, for every PPtr / Ref / Ref_Local / Owned found,
 // resolves its `handle` from `local_id`.

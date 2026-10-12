@@ -18,7 +18,7 @@ import "core:os"
 import "core:path/filepath"
 import "core:strings"
 
-SHADER_DIR :: "moonhug/host/gfx/shaders"
+SHADER_DIR :: "moonhug/libs/gfx/shaders"
 
 // Stage comes from the second extension: "world.vert" -> vert.
 SHADERS := []string{"world.vert", "world.frag", "lit.frag"}

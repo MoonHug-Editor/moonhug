@@ -2,7 +2,7 @@ package core
 
 // Core vocabulary of the engine: handles, pools, type keys, type registries
 // and object references. Depends only on Odin's core library, so any package
-// can import moonhug:host/core without importing the engine.
+// can import moonhug:libs/core without importing the engine.
 //
 // The engine aliases core names in plugins/engine/core_exports.odin:
 // - Types and procs the engine uses get an alias. engine.Handle and

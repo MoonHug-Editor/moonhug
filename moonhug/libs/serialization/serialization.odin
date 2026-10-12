@@ -5,8 +5,8 @@ import "core:os"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import strings "core:strings"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 TYPE_GUID_KEY :: "__type_guid"
 

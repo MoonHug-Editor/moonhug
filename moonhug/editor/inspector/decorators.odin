@@ -5,8 +5,8 @@ import "core:fmt"
 import "core:math"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 Min_Value :: union { int, f64 }
 

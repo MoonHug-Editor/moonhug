@@ -20,8 +20,8 @@ import "moonhug:editor/thumbnails"
 import "undo"
 import "moonhug:editor/widgets"
 import "moonhug:editor/icons"
-import assets "moonhug:host/assets"
-import core "moonhug:host/core"
+import assets "moonhug:libs/assets"
+import core "moonhug:libs/core"
 import "moonhug:editor/session"
 
 ProjectViewData :: struct {

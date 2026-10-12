@@ -58,7 +58,7 @@ import _ "provider_install_gen"
 // generators import test packages back, a cycle.
 SCAN_ROOTS := []string{
 	"moonhug/editor",
-	"moonhug/host",
+	"moonhug/libs",
 	"moonhug/registration",
 }
 
@@ -303,7 +303,7 @@ _discover :: proc(list: ^[dynamic]string, dir: string) {
 		// a cycle. samples: their contents install as symlinked sibling
 		// packages, so scanning the source dir would scan the same files
 		// twice. assets: a plugin's asset root, no Odin code (in the scan
-		// roots `assets` is a code package, moonhug/host/assets and
+		// roots `assets` is a code package, moonhug/libs/assets and
 		// moonhug/editor/assets). run_configs: one standalone file per
 		// configuration, not a package. gen: prebuild-side code compiled into
 		// THIS program, not the binaries (docs/core/Plugins.md).

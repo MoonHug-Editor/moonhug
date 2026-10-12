@@ -1,6 +1,6 @@
 package engine
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:strings"

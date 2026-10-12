@@ -4,11 +4,11 @@ package scene_tools
 // as a wire frustum (near rect, far rect, connecting edges). Aspect comes from
 // the game view's render target so the wires show exactly what the game view
 // sees. Runs through the @(on_draw_gizmos) hook for cameras in the selection, drawn with
-// host/gizmos. Every camera also gets a scene icon.
+// libs/gizmos. Every camera also gets a scene icon.
 
 import "core:math"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/session"
 

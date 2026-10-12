@@ -16,7 +16,7 @@ package undo
 // change. Reach for edit_session_begin directly when a gesture spans several
 // targets.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 Edit_Scope :: Edit_Session
 

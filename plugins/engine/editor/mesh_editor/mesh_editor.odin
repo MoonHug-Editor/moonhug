@@ -17,7 +17,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:editor/inspector"
 import "moonhug:editor/subassets"
 import "moonhug:editor/widgets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 _MODEL_EXTS := [?]string{".glb", ".gltf"}
 

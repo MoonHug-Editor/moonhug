@@ -1,13 +1,13 @@
 // Window, event pump, and frame timing on SDL3. Input state lives in the
-// host/input package — poll_events feeds it events, call sites read it
-// through `import "moonhug:host/input"` and never touch SDL directly.
+// libs/input package — poll_events feeds it events, call sites read it
+// through `import "moonhug:libs/input"` and never touch SDL directly.
 //
 // gfx never imports engine: it knows nothing about assets, scenes, or
 // components. See plugins/engine/docs/SDL3Renderer.md.
 package gfx
 
 import sdl "vendor:sdl3"
-import "moonhug:host/input"
+import "moonhug:libs/input"
 
 _platform: struct {
 	window:         ^sdl.Window,

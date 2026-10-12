@@ -9,7 +9,7 @@ An extensible editor for Odin projects, inspired by Unity Editor.
 Good moment to add contribution and influence how Editor shapes up.
 
 Main parts:
-- host (moonhug/host) — core packages that editor and engine plugin depend on
+- libs (moonhug/libs) — core packages that editor and engine plugin depend on
 - editor (moonhug/editor) — a generic editor that can be extended via attributes. Every feature, the engine included, hooks into the editor through attributes.
 - plugins (plugins/*) — packages that extend editor via attributes and can use other plugins
   - engine (plugins/engine) — plugin with scene tree and most functionality
@@ -174,6 +174,8 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - Node graph editor for different use-cases
   - VFX graph
+
+- lightweight App: the generated glue of a runnable package imports `serialization` and `gizmos` (so `gfx`) even when the package declares no component and installs no engine. Emit both only when needed, so a package importing `moonhug:libs/core` alone builds as a small headless App
 
 - undo follow-ups: import settings onto the asset doc model
 - multiselection follow-ups: multi-path drag-drop, multiedit for prefab-instance selections

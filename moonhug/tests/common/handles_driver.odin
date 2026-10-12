@@ -8,7 +8,7 @@ package tests_common
 
 import "core:math/linalg"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 
 // A perspective camera at `eye` looking at the origin, 800x600 pixels.

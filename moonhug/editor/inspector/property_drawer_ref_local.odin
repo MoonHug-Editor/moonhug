@@ -4,7 +4,7 @@ import "core:fmt"
 import "core:mem"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "../undo"
 import "moonhug:editor/widgets"
 

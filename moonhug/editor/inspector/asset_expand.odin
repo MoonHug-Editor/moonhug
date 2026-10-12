@@ -14,8 +14,8 @@ package inspector
 
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
-import assets "moonhug:host/assets"
-import core "moonhug:host/core"
+import assets "moonhug:libs/assets"
+import core "moonhug:libs/core"
 import "moonhug:editor/widgets"
 
 EXPAND_BTN_W :: f32(24)

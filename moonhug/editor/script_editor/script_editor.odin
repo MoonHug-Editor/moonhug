@@ -12,9 +12,9 @@ import "core:slice"
 import "core:strings"
 import "core:thread"
 import "core:time"
-import "moonhug:host/assets"
-import "moonhug:host/log"
-import core "moonhug:host/core"
+import "moonhug:libs/assets"
+import "moonhug:libs/log"
+import core "moonhug:libs/core"
 
 External_Tools :: struct {
 	// Optional. The command that opens a file at a line, split into words on

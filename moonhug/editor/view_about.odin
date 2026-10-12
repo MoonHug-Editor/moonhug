@@ -1,6 +1,6 @@
 package editor
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
 

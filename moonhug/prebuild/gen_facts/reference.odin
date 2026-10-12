@@ -10,11 +10,11 @@ import "core:strings"
 import "../gen_core"
 import db "../gen_db"
 
-// The layer a package belongs to, named like its folder (host, editor, the
-// plugin's name), and the order layers are listed in: host, editor, then
+// The layer a package belongs to, named like its folder (libs, editor, the
+// plugin's name), and the order layers are listed in: libs, editor, then
 // every plugin by name.
 pkg_layer :: proc(pkg_path: string) -> (name: string, order: int) {
-	if strings.has_prefix(pkg_path, "moonhug/host") || strings.has_prefix(pkg_path, "moonhug/registration") do return "host", 0
+	if strings.has_prefix(pkg_path, "moonhug/libs") || strings.has_prefix(pkg_path, "moonhug/registration") do return "libs", 0
 	if strings.has_prefix(pkg_path, "moonhug/editor") do return "editor", 1
 	if strings.has_prefix(pkg_path, "moonhug/packages/") {
 		rest := pkg_path[len("moonhug/packages/"):]
@@ -27,7 +27,7 @@ pkg_layer :: proc(pkg_path: string) -> (name: string, order: int) {
 // What a layer is, for a sentence: "the editor shell", "the audio plugin".
 layer_noun :: proc(layer: string, order: int) -> string {
 	switch order {
-	case 0: return "the host packages"
+	case 0: return "the libs"
 	case 1: return "the editor shell"
 	}
 	return fmt.tprintf("the %s plugin", layer)
@@ -95,7 +95,7 @@ first_sentence :: proc(text: string) -> string {
 write_reference_pages: bool
 
 // The Packages reference page of a package, relative to the reference root:
-// moonhug/host/core is packages/host/core.md, moonhug/editor/undo is
+// moonhug/libs/core is packages/libs/core.md, moonhug/editor/undo is
 // packages/editor/undo.md, moonhug/packages/engine/editor/undo is
 // packages/engine/editor_undo.md. mh docs writes the pages (tools/mh/
 // package_docs.odin, pkg_page there is the same rule, keep the two in step).
@@ -109,8 +109,8 @@ pkg_page :: proc(pkg_path: string) -> (path: string, ok: bool) {
 		out, _ := strings.replace_all(s, "/", "_", context.temp_allocator)
 		return out
 	}
-	if rest, in_host := under(pkg_path, "moonhug/host"); in_host do return fmt.tprintf("packages/host/%s.md", rest == "" ? "host" : flat(rest)), true
-	if _, in_reg := under(pkg_path, "moonhug/registration"); in_reg do return "packages/host/registration.md", true
+	if rest, in_libs := under(pkg_path, "moonhug/libs"); in_libs do return fmt.tprintf("packages/libs/%s.md", rest == "" ? "libs" : flat(rest)), true
+	if _, in_reg := under(pkg_path, "moonhug/registration"); in_reg do return "packages/libs/registration.md", true
 	if rest, in_editor := under(pkg_path, "moonhug/editor"); in_editor do return fmt.tprintf("packages/editor/%s.md", rest == "" ? "editor" : flat(rest)), true
 	if rest, in_pkgs := under(pkg_path, "moonhug/packages"); in_pkgs {
 		name, sub := rest, ""

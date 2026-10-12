@@ -15,7 +15,7 @@ import "core:slice"
 import stbtt "vendor:stb/truetype"
 import stbrp "vendor:stb/rect_pack"
 import "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 
 // Import settings on a font file (the meta). Baked into the artifact.
 @(typ_guid={guid="33026060-aac7-4df7-a6d4-ae9f7b863264"})

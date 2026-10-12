@@ -27,7 +27,7 @@ package undo
 // step and needs no group around it.
 
 import "core:slice"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // One thing being edited. The three kinds cover every call site in the editor:
 // pooled components and transforms, plain editor-owned structs, and asset

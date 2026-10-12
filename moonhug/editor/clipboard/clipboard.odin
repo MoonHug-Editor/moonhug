@@ -3,9 +3,9 @@ package clipboard
 import "core:encoding/json"
 import "core:fmt"
 import "core:reflect"
-import core "moonhug:host/core"
-import ser "moonhug:host/serialization"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import ser "moonhug:libs/serialization"
+import "moonhug:libs/log"
 
 Clipboard :: struct {
 	json_data:      [dynamic]byte,

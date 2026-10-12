@@ -7,7 +7,7 @@ package inspector
 // path. The installed engine answers (plugins/engine/editor/drawers/override_provider.odin).
 // With no provider nothing is instance content and no row shows a marker.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 

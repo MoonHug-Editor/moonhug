@@ -21,7 +21,7 @@ import "core:strings"
 import engine "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/importers"
-import "moonhug:host/serialization"
+import "moonhug:libs/serialization"
 
 @(menu_separator={path="Assets", order=-45})
 extract_gltf_separator :: proc() {}

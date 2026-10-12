@@ -5,11 +5,11 @@ import "core:fmt"
 // from reading it as unused in a release build.
 @(require) import "core:mem"
 import sdl "vendor:sdl3"
-import gfx "moonhug:host/gfx"
-import input "moonhug:host/input"
+import gfx "moonhug:libs/gfx"
+import input "moonhug:libs/input"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import im_sdl "moonhug:external/odin-imgui/imgui_impl_sdl3"
 import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import "inspector"
@@ -22,12 +22,12 @@ import "moonhug:editor/preview"
 import "moonhug:editor/thumbnails"
 import "moonhug:registration"
 import "core:os"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import asset_pipeline "moonhug:editor/assets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 import "moonhug:editor/progress"
-import crash_journal "moonhug:host/crash_journal"
-import "moonhug:host/log"
+import crash_journal "moonhug:libs/crash_journal"
+import "moonhug:libs/log"
 import "core:encoding/uuid"
 import "moonhug:editor/session"
 
@@ -49,7 +49,7 @@ main :: proc() {
     }
 
     // Anchor at moonhug/ before anything reads a relative path. Detection is
-    // by directory content, not folder name (host/assets/project_root.odin).
+    // by directory content, not folder name (libs/assets/project_root.odin).
     assets.project_chdir_root()
 
     // Before anything that can fault: from here on a crash lands in

@@ -1,7 +1,7 @@
 package engine
 
 import "base:runtime"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 UserContext :: struct {
     world         : ^World,
@@ -17,7 +17,7 @@ UserContext :: struct {
     // is_editor.
     is_playing : bool,
     undo          : rawptr,
-    // Recorded gizmo shapes for this context's views (host/gizmos).
+    // Recorded gizmo shapes for this context's views (libs/gizmos).
     gizmos        : Gizmo_Buffer,
 }
 

@@ -5,7 +5,7 @@ package handles
 // instance, selected or not. An icon is a dark round badge icon_px wide
 // facing the camera, showing one of:
 //
-// - a symbol: a proc that draws with host/gizmos shapes (the built-in
+// - a symbol: a proc that draws with libs/gizmos shapes (the built-in
 //   icons for lights, cameras and audio sources)
 // - a glyph of the editor's icon font, by its Material Symbols codepoint
 //   (external/fonts/material/MaterialSymbolsOutlined.codepoints)
@@ -21,16 +21,16 @@ import "base:runtime"
 import "core:c"
 import "core:fmt"
 import stbtt "vendor:stb/truetype"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:editor/inspector"
-import gfx "moonhug:host/gfx"
-import "moonhug:host/gizmos"
+import gfx "moonhug:libs/gfx"
+import "moonhug:libs/gizmos"
 
 // An icon's width on screen: the gizmo settings' Icon Size.
 ICON_PX_DEFAULT :: f32(28)
 icon_px := ICON_PX_DEFAULT
 
-// Draws a symbol with host/gizmos in the badge's space: -1..1 spans the
+// Draws a symbol with libs/gizmos in the badge's space: -1..1 spans the
 // badge, +X right and +Y up on screen, in the current color.
 Icon_Symbol :: core.Gizmo_Symbol
 

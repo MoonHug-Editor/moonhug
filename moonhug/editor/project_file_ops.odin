@@ -28,7 +28,7 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 // --- File clipboard -----------------------------------------------------------
 

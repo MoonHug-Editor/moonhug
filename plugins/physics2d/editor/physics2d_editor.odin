@@ -10,7 +10,7 @@ package physics2d_editor
 // them in their plane (@(on_scene_handles)), one undo step per drag.
 
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import physics2d "moonhug:packages/physics2d"

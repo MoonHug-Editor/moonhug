@@ -4,7 +4,7 @@ package session
 // selection, what the inspector shows, the project view's active path and folder,
 // and the game view's aspect. The editor owns all of it and sets this at start.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 

@@ -1,7 +1,7 @@
 package engine
 
 // World-level pool dispatch. The pools themselves (Pool, Handle, Pool_Entry)
-// live in moonhug:host/core — this file is the part that needs a World:
+// live in moonhug:libs/core — this file is the part that needs a World:
 // routing a handle to the world's pool_table entry for its TypeKey.
 
 // pool_table is a [TypeKey]Pool_Entry — an array sized to the enumerator count,

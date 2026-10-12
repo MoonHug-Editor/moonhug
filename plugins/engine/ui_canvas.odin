@@ -13,7 +13,7 @@ import "base:runtime"
 import "core:math"
 import "core:math/linalg"
 import "core:slice"
-import "moonhug:host/input"
+import "moonhug:libs/input"
 
 // A rectangle in canvas units: bottom-left origin, y up, the same
 // orientation as NDC.
@@ -703,7 +703,7 @@ canvas_collect_graphics :: proc(view: Render_View, out: ^[dynamic]Render_Command
 
 // --- Pointer -----------------------------------------------------------------------------
 // The event system's pointer pass. Every frame canvas_pointer_update reads the
-// mouse (viewport coordinates, see host/input) and raycasts the canvases
+// mouse (viewport coordinates, see libs/input) and raycasts the canvases
 // that carry a GraphicRaycaster: the topmost graphic with raycast_target under
 // the pointer is `hovered`. The left button's press remembers its target
 // (`pressed`, also `selected`, like Unity's EventSystem selecting on pointer

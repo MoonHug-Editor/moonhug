@@ -20,7 +20,7 @@ import "core:fmt"
 import "core:mem"
 import "core:slice"
 import "core:strings"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 Component_Desc :: struct {
 	type_key:  TypeKey,

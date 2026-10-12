@@ -5,7 +5,7 @@ package engine_tests
 
 import "core:testing"
 import "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 
 @(test)
 test_save_load_scene_with_light :: proc(t: ^testing.T) {

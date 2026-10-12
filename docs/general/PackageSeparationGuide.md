@@ -56,7 +56,7 @@ Good architecture is an investment in speed, not a shipping requirement. Everyth
 
 ## moonhug mapping
 
-- Leaf packages: `host/gfx`, `host/log`, `host/serialization`* — no game knowledge.
+- Leaf packages: `libs/gfx`, `libs/log`, `libs/serialization`* — no game knowledge.
 - `engine` is a glue parent: imports gfx + asset pipeline + components and wires them (materials resolve assets INTO gfx draws).
 - `app` and `editor` are top glue: own the frame loop (time enters at the root — `render_world_cameras` is a plain call, not a callback).
 - Database: AssetDb pipeline (.mat/.asset/.scene/.meta, guid refs).

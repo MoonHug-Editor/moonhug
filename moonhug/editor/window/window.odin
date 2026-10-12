@@ -17,7 +17,7 @@ import "base:runtime"
 import "core:strings"
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 Draw_Proc :: proc()
 

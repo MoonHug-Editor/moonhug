@@ -12,7 +12,7 @@ import "core:strings"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/icons"
 import "moonhug:editor/inspector"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 _PROJECT_PACKAGES_PATH :: "packages"
 

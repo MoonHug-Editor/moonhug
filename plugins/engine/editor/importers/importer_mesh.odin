@@ -24,8 +24,8 @@ import "core:math/linalg"
 import "core:os"
 import "core:strings"
 import "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
-import "moonhug:host/log"
+import gfx "moonhug:libs/gfx"
+import "moonhug:libs/log"
 
 _import_mesh :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
     mesh_settings := settings != nil ? (cast(^engine.MeshSettings)settings)^ : engine.default_mesh_settings()

@@ -18,8 +18,8 @@ package handles
 
 import "core:math"
 import "core:math/linalg"
-import core "moonhug:host/core"
-import "moonhug:host/gizmos"
+import core "moonhug:libs/core"
+import "moonhug:libs/gizmos"
 
 // Axis colors: X red, Y green, Z blue.
 COLOR_AXES :: [3][4]f32{

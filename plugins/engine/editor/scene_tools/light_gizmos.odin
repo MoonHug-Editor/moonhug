@@ -19,7 +19,7 @@ package scene_tools
 import "core:math"
 import "core:math/linalg"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 import undo "moonhug:packages/engine/editor/undo"
 

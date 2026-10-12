@@ -6,10 +6,10 @@ package viewport
 // tools (plugins/engine/editor/scene_tools/viewport_provider.odin). With no
 // provider the viewport is an empty space with a grid.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 
 Viewport_Provider :: struct {
 	// Draws the world into the current pass. The grid and axes are drawn already.

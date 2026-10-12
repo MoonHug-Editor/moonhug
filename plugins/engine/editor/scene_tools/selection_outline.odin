@@ -6,7 +6,7 @@ package scene_tools
 
 import "core:math/linalg"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 
 // Orange wireframe on the selected object: mesh → its local AABB edges
 // through the world transform; a package renderer → the quad it draws (a

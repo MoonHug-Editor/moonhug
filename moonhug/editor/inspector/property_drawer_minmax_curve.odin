@@ -8,7 +8,7 @@ package inspector
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:editor/widgets"
 
 @(private = "file") ICON_MD_EXPAND_MORE :: "\ue5cf" // the editor's dropdown glyph

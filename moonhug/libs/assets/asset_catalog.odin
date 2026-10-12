@@ -1,7 +1,7 @@
 package assets
 
 // The engine's live halves of the asset catalog (format + export live in
-// moonhug:host/catalog, a leaf package run configs can import):
+// moonhug:libs/catalog, a leaf package run configs can import):
 //
 // - the editor maintains library/catalog.json AUTOMATICALLY: with
 //   asset_catalog_auto set (editor init), every import pass and refresh
@@ -18,9 +18,9 @@ import "core:encoding/uuid"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "moonhug:host/catalog"
-import "moonhug:host/log"
-import core "moonhug:host/core"
+import "moonhug:libs/catalog"
+import "moonhug:libs/log"
+import core "moonhug:libs/core"
 
 ASSET_CATALOG_PATH :: "library/catalog.json"
 

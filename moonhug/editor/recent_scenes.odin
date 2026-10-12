@@ -17,7 +17,7 @@ import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:editor/undo"
 import "moonhug:editor/widgets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 import "moonhug:editor/session"
 
 RECENT_SCENES_MAX :: 10

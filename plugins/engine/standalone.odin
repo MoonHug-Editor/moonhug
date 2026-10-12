@@ -29,10 +29,10 @@ package engine
 import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
-import gfx "moonhug:host/gfx"
-import "moonhug:host/gizmos"
-import "moonhug:host/input"
-import "moonhug:host/log"
+import gfx "moonhug:libs/gfx"
+import "moonhug:libs/gizmos"
+import "moonhug:libs/input"
+import "moonhug:libs/log"
 
 // The catalog to boot from (docs/core/AssetPipeline.md "Asset catalog and
 // builds"): --catalog[=path] overrides, the export's own beside the binary

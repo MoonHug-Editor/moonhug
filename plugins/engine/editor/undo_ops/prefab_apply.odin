@@ -8,8 +8,8 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import engine "moonhug:packages/engine"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 // A Prefab Apply (scene_undo.apply_to_prefab): prefab files changed on disk,
 // and the instance's records lost what went into them. Undo writes the old

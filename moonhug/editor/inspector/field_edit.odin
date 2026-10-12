@@ -19,7 +19,7 @@ package inspector
 
 import "core:slice"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import undo "moonhug:editor/undo"
 
 // An in-flight row edit. Zero value means "not editing", and every proc below

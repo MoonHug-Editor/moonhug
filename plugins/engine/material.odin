@@ -9,7 +9,7 @@ package engine
 // Unity's default material, lit, and its sprite default, unlit).
 
 import "base:runtime"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"

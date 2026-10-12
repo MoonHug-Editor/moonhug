@@ -3,7 +3,7 @@ package particles_editor
 // Emission shape gizmo: the selected ParticleSystem draws its shape as
 // wireframe lines in the emitter's world frame — emission is along local +Z,
 // scale is ignored exactly like the sim's shape sampling. Drawn with
-// host/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
+// libs/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
 // Every system also gets a scene icon, the "snowing" glyph.
 //
 // In the Handles tool (T), shape handles edit it (docs/core/Handles.md), one undo
@@ -12,7 +12,7 @@ package particles_editor
 
 import "core:math"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import particles "moonhug:packages/particles"

@@ -7,7 +7,7 @@ package scene_tools
 
 import "moonhug:editor/session"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 
 // The scene view's tool layer for this frame, into the gizmo channel the
 // caller set (.Tools): the selection outline, the selection's

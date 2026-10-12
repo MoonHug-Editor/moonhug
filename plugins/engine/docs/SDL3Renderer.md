@@ -42,8 +42,8 @@ Deliberate behavior changes:
 
 ## Package structure
 
-The renderer is its own package, `moonhug/host/gfx` (precedent: `host/log`,
-`host/serialization`). `import sdl "vendor:sdl3"` appears ONLY inside gfx
+The renderer is its own package, `moonhug/libs/gfx` (precedent: `libs/log`,
+`libs/serialization`). `import sdl "vendor:sdl3"` appears ONLY inside gfx
 (plus `editor/main.odin` for the imgui backend hookup). The app never touches
 SDL directly.
 
@@ -89,7 +89,7 @@ poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil)  // editor passes imgui
 quit_requested, delta_time, window_size, pixel_size, window_position,
 set_window_geometry, display_usable_bounds
 
-// Input lives in host/input (import "moonhug:host/input"): poll_events feeds it,
+// Input lives in libs/input (import "moonhug:libs/input"): poll_events feeds it,
 // call sites read input.key_down / key_pressed / key_released, mouse_down /
 // mouse_pressed / mouse_position / wheel, focus_gained (edge; drives editor
 // asset refresh), set_mouse_relative, plus the *_fixed tick-latched variants
@@ -124,7 +124,7 @@ pipeline set serves both. Draw-order policy: meshes first (depth-write), then
 sprites back-to-front by view depth (no depth-write). Semi-transparent meshes
 sorting wrong is accepted for now.
 
-Shaders: GLSL (Vulkan-style) source in `moonhug/host/gfx/shaders/`, compiled
+Shaders: GLSL (Vulkan-style) source in `moonhug/libs/gfx/shaders/`, compiled
 OFFLINE to SPIR-V by `glslc` and crossed to MSL by `spirv-cross` (both
 `brew install shaderc spirv-cross`; DXIL added when Windows lands). This is the
 same pipeline SDL_shadercross uses internally — chosen over shadercross itself
@@ -207,28 +207,28 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [x] `brew install sdl3` (vendor:sdl3 links `system:SDL3`); note in README
 - [x] shader toolchain: `brew install shaderc spirv-cross` (shadercross has no
       release binaries; glslc + spirv-cross is the same pipeline)
-- [x] `host/gfx/shaders/world.vert.glsl` + `world.frag.glsl` (SDL_GPU SPIR-V
+- [x] `libs/gfx/shaders/world.vert.glsl` + `world.frag.glsl` (SDL_GPU SPIR-V
       convention: vertex UBO set=1, fragment sampler2D set=2)
 - [x] `mh shaders` → committed `compiled/*.{spv,msl}` (MSL entrypoint
       `main0`); builds run it when the toolchain is present
 
 ### 1. gfx package: window + input (new code, unused yet)
-- [x] `host/gfx/platform.odin` — init/window/event pump/frame timing; vsync
+- [x] `libs/gfx/platform.odin` — init/window/event pump/frame timing; vsync
       via swapchain params (no SetTargetFPS equivalent; dt-based logic copes)
-- [x] `host/gfx/input.odin` — per-frame input snapshot (down/pressed/released,
+- [x] `libs/gfx/input.odin` — per-frame input snapshot (down/pressed/released,
       mouse, wheel, text, focus_gained edge) mirroring every current rl call site
 - [x] Checkpoint: tree compiles with raylib + SDL3 linked side by side; tests green
 
 ### 2. gfx package: GPU core
-- [x] `host/gfx/gfx.odin` — device, pipelines, textures, meshes, frame begin/end
-- [x] `host/gfx/pass.odin` — passes, CPU batch → copy pass → render pass,
+- [x] `libs/gfx/gfx.odin` — device, pipelines, textures, meshes, frame begin/end
+- [x] `libs/gfx/pass.odin` — passes, CPU batch → copy pass → render pass,
       render targets, draw procs (seam above)
-- [x] `host/gfx/shaders.odin` — `#load` blobs, format negotiation
-- [x] `host/gfx/debug_text.odin` + `font8x8.odin` — embedded 8×8 bitmap font
+- [x] `libs/gfx/shaders.odin` — `#load` blobs, format negotiation
+- [x] `libs/gfx/debug_text.odin` + `font8x8.odin` — embedded 8×8 bitmap font
       (replaces rl.DrawText in the app demo menu; future debug overlay)
-- [x] `matrix4_perspective_z01` / `matrix4_ortho_z01` in `host/gfx/math.odin`
+- [x] `matrix4_perspective_z01` / `matrix4_ortho_z01` in `libs/gfx/math.odin`
       (SDL_GPU clip z∈[0,1]; core linalg is GL-style)
-- [x] Checkpoint: `host/gfx/scratch` validation window (since deleted) —
+- [x] Checkpoint: `libs/gfx/scratch` validation window (since deleted) —
       quads, alpha blend, both line pipelines, mid-pass view_proj switch,
       debug text, offscreen target pass; verified on-screen
 
@@ -269,7 +269,7 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
 - [ ] macOS live-resize freeze documented (SDL_AddEventWatch fix deferred)
 
 ### 5. glTF mesh pipeline
-- [x] `host/assets/asset_pipeline.odin` — `.glb`/`.gltf` importable, `MeshSettings{scale}`
+- [x] `libs/assets/asset_pipeline.odin` — `.glb`/`.gltf` importable, `MeshSettings{scale}`
       in ImportSettings union, importer "mesh"
 - [x] `plugins/engine/asset_importer_mesh.odin` — `vendor:cgltf` parse + load_buffers
       (one-time: `make -C "$(odin root)/vendor/cgltf/src"`); bakes node world

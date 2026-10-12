@@ -4,7 +4,7 @@ package asset_pipeline
 // settings editing. Editor-side by construction — this package never links
 // into a game binary, so shipped builds carry no importer code and the app
 // consumes what the editor produced (artifacts, catalog). The READ half is
-// the host package moonhug:host/assets: the artifact index, meta/settings
+// the libs package moonhug:libs/assets: the artifact index, meta/settings
 // reading, catalog init.
 //
 // Installed into the asset database at ImportersInit (editor mode): the
@@ -17,8 +17,8 @@ import "core:strings"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import xxh "core:hash/xxhash"
-import core "moonhug:host/core"
-import assets "moonhug:host/assets"
+import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
 import "moonhug:editor/progress"
 
 // Bump to invalidate EVERY artifact (artifact container format changes).

@@ -14,7 +14,7 @@ package provider
 import "base:runtime"
 import "core:fmt"
 import "core:strings"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 Entry :: struct {
 	name: string,

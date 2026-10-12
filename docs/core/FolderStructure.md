@@ -13,11 +13,11 @@ moonhug/                    ← the editor's project
   prebuild/                 ← generator folder: a separate program that runs even before anything compiles
   editor/                   ← the editor shell: the top-level package, composed with the installed plugins through generated files and moonhug:registration
   packages/                 ← one link per installed plugin into plugins/ at the repo root:  import "moonhug:packages/<name>"
-  host/                     ← the packages the game and the editor both stand on, none imports the engine:  import "moonhug:host/<name>"
-  tests/                    ← the host's tests + tests runner:  mh test
+  libs/                     ← the packages the game and the editor both stand on, none imports the engine:  import "moonhug:libs/<name>"
+  tests/                    ← the libs tests + tests runner:  mh test
   registration/             ← generated only: the registration bundle (packages, phases, type registration):  import "moonhug:registration"
   builds/                   ← build results with runnable application
-  external/                 ← external dependencies folder
+  external/                 ← third-party code. MoonHug's own packages are in libs/
   library/                  ← derived-data cache (see Library below). Safe to delete, rebuilt on the next run
   ProjectSettings/          ← settings about the PROJECT, committed: mcp.json and one <slug>.json per @(project_settings) tab
   UserSettings/             ← per-developer editor state, never committed. Safe to delete, the editor writes defaults on the next run

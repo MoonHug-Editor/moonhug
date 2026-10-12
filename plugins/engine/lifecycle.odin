@@ -6,7 +6,7 @@ package engine
 // __standalone_run. `mode` picks the pieces one binary needs. Shutdown
 // phases run in descending order, so a pair shares its `order`.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 @(private = "file") _uc: ^UserContext
 @(private = "file") _world: ^World

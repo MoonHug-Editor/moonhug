@@ -10,7 +10,7 @@ package subassets
 
 import "base:runtime"
 import "core:fmt"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 Sub_Asset :: struct {
 	id:   core.Local_ID,

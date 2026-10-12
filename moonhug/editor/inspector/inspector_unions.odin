@@ -6,7 +6,7 @@ import "core:mem"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "../undo"
 
 // `record_undo=false` is for callers whose OWN transaction wraps this draw -- a

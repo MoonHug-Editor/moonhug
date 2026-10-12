@@ -12,9 +12,9 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:fmt"
 import "core:os"
-import assets "moonhug:host/assets"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import assets "moonhug:libs/assets"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 Missing_Asset_Ref :: struct {
 	guid:      string, // the guid as written

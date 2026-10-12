@@ -29,7 +29,7 @@ package inspector
 
 import "base:runtime"
 import "core:slice"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "../undo"
 
 // One selected object's counterpart of the object currently being drawn: the

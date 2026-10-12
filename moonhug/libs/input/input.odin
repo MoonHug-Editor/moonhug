@@ -7,7 +7,7 @@
 package input
 
 import sdl "vendor:sdl3"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // SDL scancodes are physical key positions (WASD stays WASD on AZERTY
 // hardware layouts too). The TYPE is re-exported so call sites only import

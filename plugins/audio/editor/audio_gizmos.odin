@@ -9,7 +9,7 @@ package audio_editor
 
 import "core:math"
 import "moonhug:packages/engine"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import audio "moonhug:packages/audio"

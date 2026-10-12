@@ -7,8 +7,8 @@ package engine
 // part == 0 is the whole baked model; part == i+1 is glTF mesh i in
 // node-local space (MeshFilter.part).
 
-import gfx "moonhug:host/gfx"
-import "moonhug:host/log"
+import gfx "moonhug:libs/gfx"
+import "moonhug:libs/log"
 import "base:runtime"
 import "core:encoding/uuid"
 import "core:os"

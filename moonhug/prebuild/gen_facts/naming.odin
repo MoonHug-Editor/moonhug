@@ -41,7 +41,7 @@ Naming_Convention :: struct {
 	key:          string, // stable id and page name: "type_lifecycle"
 	title:        string, // "Type lifecycle procs"
 	subject:      string, // what <Subject> names: "a type with @(typ_guid)"
-	layer:        string, // "host", "editor" or the declaring plugin's name
+	layer:        string, // "libs", "editor" or the declaring plugin's name
 	owner:        string, // the generator that resolves it: "type_guid_gen"
 	procs:        []Naming_Proc,
 	scope:        Naming_Scope,

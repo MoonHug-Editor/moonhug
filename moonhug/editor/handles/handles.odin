@@ -2,7 +2,7 @@ package handles
 
 // Interactive scene-view handles for editor code and package editors
 // (docs/core/Handles.md). Immediate mode, keyed by caller ids like imgui: a handle
-// proc draws itself (through host/gizmos), reports hover, and when the user
+// proc draws itself (through libs/gizmos), reports hover, and when the user
 // drags it, reports the drag as an offset on a plane. The editor's gizmo pass
 // publishes the scene view's frame (view, pointer, keys) before the handle
 // hooks run, and the scene view asks `consumes_mouse` before picking or
@@ -24,8 +24,8 @@ import "core:hash"
 import "core:math"
 import "core:math/linalg"
 import "core:mem"
-import core "moonhug:host/core"
-import "moonhug:host/gizmos"
+import core "moonhug:libs/core"
+import "moonhug:libs/gizmos"
 
 // The scene view's tool: Q W E R T. viewport.gizmo_mode holds it, and
 // gizmo and handles hooks read it from their context.
@@ -351,7 +351,7 @@ _to_camera :: proc(p: [3]f32) -> [3]f32 {
 // --- Drawing: handle chrome ---------------------------------------------------------
 // Handle shapes over everything (no depth test), styled to read on any
 // background: a dark half-transparent line one pixel off each edge. Plain
-// shapes come from host/gizmos directly.
+// shapes come from libs/gizmos directly.
 
 // A rect outline with the dark line one pixel INSIDE each edge, so the
 // outline still marks the exact edge (the rect tool). bl, br, tr, tl or any

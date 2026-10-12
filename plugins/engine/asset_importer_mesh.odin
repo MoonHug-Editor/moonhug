@@ -14,7 +14,7 @@ package engine
 // Prefer .glb: a .gltf + external .bin pair works, but the .bin gets its own
 // (harmless) guid/meta from the AssetDB walk.
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:fmt"
 import "core:os"

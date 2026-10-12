@@ -9,7 +9,7 @@ import "core:os"
 import "core:slice"
 import "core:strings"
 import "core:testing"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:packages/engine"
 import "moonhug:editor"
 import "moonhug:editor/icons"
@@ -221,7 +221,7 @@ test_view_chrome_id_is_the_ini_key :: proc(t: ^testing.T) {
 	testing.expect_value(t, editor.view_id_of("Plain"), "Plain")
 }
 
-// --- User settings (host/core/user_settings.odin) -------------------------------
+// --- User settings (libs/core/user_settings.odin) -------------------------------
 //
 // A per-developer preference, kept out of ProjectSettings because it is about
 // the person rather than the project. A missing file must read as "defaults",

@@ -127,9 +127,9 @@ _docs_rebuild_serve :: proc(sock: net.TCP_Socket) {
 docs_serving: bool
 
 // The folders the viewer can show, mounted raw under /source when serving,
-// .odin and .md files only: the docs, the host, the shell, the prebuild, the
+// .odin and .md files only: the docs, the libs, the shell, the prebuild, the
 // tests, every plugin by its real path, and this tool.
-DOCS_SOURCE_ROOTS :: []string{"docs", "moonhug/host", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
+DOCS_SOURCE_ROOTS :: []string{"docs", "moonhug/libs", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
 
 // The URL template every source location in the reference pages links to,
 // with {file} and {line} to fill in. It is the `source_url` field of the

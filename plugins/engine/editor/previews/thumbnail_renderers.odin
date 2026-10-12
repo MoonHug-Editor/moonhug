@@ -8,7 +8,7 @@ package previews
 import "core:math"
 import "core:math/linalg"
 import engine "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "moonhug:editor/thumbnails"
 import "moonhug:packages/engine/editor/scene_tools"
 

@@ -14,7 +14,7 @@ package editor
 import "core:fmt"
 import "core:strings"
 import im "moonhug:external/odin-imgui"
-import input "moonhug:host/input"
+import input "moonhug:libs/input"
 import "menu"
 import "moonhug:editor/icons"
 import "moonhug:editor/session"

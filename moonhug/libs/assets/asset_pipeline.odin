@@ -7,7 +7,7 @@ import "core:path/filepath"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "base:runtime"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // The asset pipeline's READ half: the artifact index, meta/settings reading,
 // artifact path resolution. The WRITE half — scanning, importing, meta

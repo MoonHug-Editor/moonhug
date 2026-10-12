@@ -9,7 +9,7 @@ import "base:runtime"
 import "core:strings"
 import "moonhug:editor/simulate"
 import "moonhug:packages/engine"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import "moonhug:registration"
 
 @(provider_install)

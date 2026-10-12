@@ -6,7 +6,7 @@ package engine
 // reuses the SAME collect/execute path with its own (non-component) camera,
 // so game view and scene view render identically by construction.
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "base:runtime"
 import "core:math"
 import "core:math/linalg"

@@ -8,7 +8,7 @@ package inspector
 
 import "core:fmt"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 @(private = "file") _curve_sel: int = -1
 @(private = "file") _curve_dragging: bool

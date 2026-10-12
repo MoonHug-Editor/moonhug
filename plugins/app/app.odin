@@ -4,7 +4,7 @@ package app
 import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import "core:fmt"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 main :: proc() {
     __standalone_run()

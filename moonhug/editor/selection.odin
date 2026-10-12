@@ -26,7 +26,7 @@ package editor
 import "base:runtime"
 import "core:path/filepath"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:editor/inspector"
 import "subassets"
 

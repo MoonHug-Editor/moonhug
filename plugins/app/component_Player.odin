@@ -8,7 +8,7 @@ import "moonhug:packages/engine"
 import tween "moonhug:packages/tween"
 import sprites "moonhug:packages/sprites"
 import audio "moonhug:packages/audio"
-import input "moonhug:host/input"
+import input "moonhug:libs/input"
 import "core:encoding/uuid"
 import "core:math/rand"
 

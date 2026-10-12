@@ -189,7 +189,7 @@ scripts are structurally identical:
   It finds variants by the embedded `Clip_Script` base and probes each
   lifecycle proc by name, so a variant missing a phase gets an empty case.
 
-Persistence is guid-keyed (`host/serialization` union marshalers): union
+Persistence is guid-keyed (`libs/serialization` union marshalers): union
 tags are positional and shift when a variant is added, so the wire format
 carries the variant's type guid instead. `Ref_Local` fields inside a variant
 rebind on load like any component field — the resolve walk descends into

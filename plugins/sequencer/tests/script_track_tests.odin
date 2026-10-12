@@ -14,7 +14,7 @@ package sequencer_tests
 import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import seq "moonhug:packages/sequencer"
 import scripts "moonhug:packages/sequencer/scripts"
 import undo "moonhug:packages/engine/editor/undo"

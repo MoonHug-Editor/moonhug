@@ -13,10 +13,10 @@ package animation_editor
 import "core:encoding/json"
 import "core:os"
 import "moonhug:packages/engine"
-import "moonhug:host/serialization"
+import "moonhug:libs/serialization"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/importers"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 import anim "moonhug:packages/animation"
 import cgltf "vendor:cgltf"
 

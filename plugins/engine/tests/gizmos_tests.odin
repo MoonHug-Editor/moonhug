@@ -1,6 +1,6 @@
 package engine_tests
 
-// host/gizmos: calls record world-space shapes into the context's buffer,
+// libs/gizmos: calls record world-space shapes into the context's buffer,
 // scopes undo themselves at the end of the block, and lifetimes follow the
 // frame or the fixed tick.
 
@@ -12,9 +12,9 @@ import "moonhug:editor"
 import "moonhug:editor/menu"
 import "moonhug:editor/handles"
 import "moonhug:packages/engine"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
-import "moonhug:host/gizmos"
+import "moonhug:libs/gizmos"
 import "moonhug:packages/engine/editor/scene_tools"
 import "moonhug:editor/viewport"
 

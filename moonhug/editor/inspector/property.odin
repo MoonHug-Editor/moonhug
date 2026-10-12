@@ -14,7 +14,7 @@ import "core:fmt"
 import "core:reflect"
 import "core:strconv"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import undo "moonhug:editor/undo"
 
 Property :: struct {

@@ -2,7 +2,7 @@ package mh
 
 // `mh build --no-plugins`: the proof that the editor shell depends on no
 // plugin. Every link in moonhug/packages is moved aside, the prebuild and the
-// editor build run against the bare shell and host, and the links come back
+// editor build run against the bare shell and libs, and the links come back
 // whatever happened. The editor binary goes to a separate file, so the
 // installed build is untouched. The last generator pass then regenerates the
 // installed state, which is why the prebuild runs again at the end.

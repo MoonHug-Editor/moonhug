@@ -6,7 +6,7 @@ tags: ["handles", "gizmos", "editor"]
 path: editor/scene-view
 ---
 
-`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `host/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
+`editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `libs/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.
 
 ## Where handles live
 
@@ -146,7 +146,7 @@ The transform tool (`plugins/engine/editor/scene_tools/gizmo.odin`) keeps only w
 
 - a glyph of the editor's icon font: a Material Symbols codepoint such as `'\ue90f'` (lightbulb). The names and codepoints are in `external/fonts/material/MaterialSymbolsOutlined.codepoints`.
 - a texture asset: its guid, usually a component field picked in the inspector. `color` multiplies it, white by default.
-- a symbol: a proc that draws with host/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
+- a symbol: a proc that draws with libs/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
 
 `color` tints a glyph or a symbol. Call it from an `@(on_draw_gizmos)` hook, before the selection check, so every instance shows one:
 
@@ -172,7 +172,7 @@ Undo is the caller's. Open an undo session on `started`, edit on `dragging`, clo
 
 ## Drawing
 
-Plain shapes and labels come from `host/gizmos` (docs/core/Gizmos.md). Handles add the chrome a handle needs, drawn over everything and styled to read on any background with a dark half-transparent line one pixel off each edge:
+Plain shapes and labels come from `libs/gizmos` (docs/core/Gizmos.md). Handles add the chrome a handle needs, drawn over everything and styled to read on any background with a dark half-transparent line one pixel off each edge:
 
 - `rect_outlined`, `circle_outlined`, `dot_outlined`
 - camera-facing caps: `square`, `square_outline`, `triangle`, `triangle_outline`, with `triangle_points` for a hit area that matches the drawing

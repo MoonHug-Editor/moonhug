@@ -6,9 +6,9 @@ import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 import "moonhug:editor/subassets"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 @(property_drawer={type = core.Asset_GUID, priority = 0})
 draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {

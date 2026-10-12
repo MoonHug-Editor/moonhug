@@ -7,7 +7,7 @@ import "core:reflect"
 import "base:runtime"
 import strings "core:strings"
 import im "moonhug:external/odin-imgui"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 ICON_MD_DRAG_INDICATOR :: "\ue945" // drag_indicator (array row reorder grip)
 

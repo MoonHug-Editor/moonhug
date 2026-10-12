@@ -14,7 +14,7 @@ import "core:fmt"
 import "core:os"
 import "core:strings"
 import "moonhug:packages/engine"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 _import_shader :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
     tmp_spv := strings.concatenate({artifact_path, ".spv.tmp"}, context.temp_allocator)

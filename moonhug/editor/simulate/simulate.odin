@@ -10,8 +10,8 @@ package simulate
 // and restores its scenes and runs the fixed ticks.
 
 import "base:runtime"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 import "moonhug:editor/undo"
 
 State :: enum {

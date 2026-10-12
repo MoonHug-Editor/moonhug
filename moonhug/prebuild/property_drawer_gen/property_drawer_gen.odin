@@ -195,7 +195,7 @@ generate :: proc(w: ^db.World) -> bool {
 		if path := packages_used[pkg]; path != "" {
 			fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, path)
 		} else if pkg == "core" {
-			fmt.sbprintf(&b, "import core \"moonhug:host/core\"\n")
+			fmt.sbprintf(&b, "import core \"moonhug:libs/core\"\n")
 		} else if pkg == "editor" {
 			// The editor shell.
 			fmt.sbprintf(&b, "import \"moonhug:%s\"\n", pkg)

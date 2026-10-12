@@ -20,7 +20,7 @@ import im "moonhug:external/odin-imgui"
 import "moonhug:packages/engine"
 import "moonhug:editor/inspector"
 import "moonhug:editor/widgets"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 
 _SPRITE_REF_EXTS := [?]string{".png", ".jpg", ".jpeg", ".bmp"}
 

@@ -1,10 +1,10 @@
 package editor_tests
 
 // The editor is a generic shell (dock, views, menus, inspector reflection,
-// undo stack, settings, console, MCP) standing on the host packages, and the
+// undo stack, settings, console, MCP) standing on the libs, and the
 // engine is a plugin like any other (plugins/engine, its editor half in
 // plugins/engine/editor). The rule: no hand-written file under moonhug/editor,
-// moonhug/host or moonhug/registration imports the engine. Generated files
+// moonhug/libs or moonhug/registration imports the engine. Generated files
 // are skipped, they are the composition point and import every installed
 // package. main.odin may import moonhug:registration, the bundle that
 // registers every installed package: that is where the shell is composed with
@@ -18,7 +18,7 @@ import "core:os"
 import "core:strings"
 import "core:testing"
 
-_SHELL_ROOTS := []string{"moonhug/editor", "moonhug/host", "moonhug/registration"}
+_SHELL_ROOTS := []string{"moonhug/editor", "moonhug/libs", "moonhug/registration"}
 
 // The composition point, the one file allowed to import moonhug:registration.
 _SHELL_COMPOSITION_FILE :: "moonhug/editor/main.odin"
@@ -59,12 +59,12 @@ _imports_engine :: proc(src: string, allow_registration: bool) -> (line: string,
 	return "", false
 }
 
-// The core host and the packages beside it are what a plugin-free editor
+// The libs packages are what a plugin-free editor
 // stands on, so none of them may import the engine itself.
 @(test)
-test_host_packages_import_no_engine :: proc(t: ^testing.T) {
-	HOST := []string{"moonhug/host/core", "moonhug/host/log", "moonhug/host/serialization", "moonhug/host/gizmos", "moonhug/host/gfx", "moonhug/host/input", "moonhug/host/assets", "moonhug/host/catalog", "moonhug/host/crash_journal"}
-	for root in HOST {
+test_libs_packages_import_no_engine :: proc(t: ^testing.T) {
+	LIBS := []string{"moonhug/libs/core", "moonhug/libs/log", "moonhug/libs/serialization", "moonhug/libs/gizmos", "moonhug/libs/gfx", "moonhug/libs/input", "moonhug/libs/assets", "moonhug/libs/catalog", "moonhug/libs/crash_journal"}
+	for root in LIBS {
 		files := make([dynamic]string, context.temp_allocator)
 		_collect_odin_files(root, &files)
 		testing.expectf(t, len(files) > 0, "%s should have sources", root)

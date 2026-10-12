@@ -1,7 +1,7 @@
 package undo
 
 import "base:runtime"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 Inspector_Owner :: struct {
 	kind:       Owner_Kind,

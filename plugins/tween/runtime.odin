@@ -24,7 +24,7 @@ import "core:fmt"
 import "core:mem"
 import "core:reflect"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 _POOL_MAX :: 256
 

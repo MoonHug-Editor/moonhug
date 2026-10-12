@@ -3,7 +3,7 @@ package core
 import "base:runtime"
 import "core:time"
 
-// The recording buffer behind host/gizmos (docs/core/Gizmos.md). Gizmo calls
+// The recording buffer behind libs/gizmos (docs/core/Gizmos.md). Gizmo calls
 // append world-space lines, triangles and labels here, and a view draws them
 // inside its pass. The data lives in the engine and not in the gizmos package
 // so the engine can clear it (a fixed tick starting, Stop) without importing
@@ -30,7 +30,7 @@ Gizmo_Prim :: struct {
 	kind:  Gizmo_Prim_Kind,
 }
 
-// Draws an icon's symbol with host/gizmos shapes in -1..1 of the icon
+// Draws an icon's symbol with libs/gizmos shapes in -1..1 of the icon
 // square.
 Gizmo_Symbol :: proc()
 

@@ -1,7 +1,7 @@
 package serialization
 
 import "core:encoding/json"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 
 component_marshalers:   map[typeid]json.User_Marshaler

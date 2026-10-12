@@ -3,7 +3,7 @@ package assets
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import "moonhug:host/log"
+import "moonhug:libs/log"
 
 // Locating the moonhug/ source directory, and anchoring the process there.
 //

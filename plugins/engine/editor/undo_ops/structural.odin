@@ -10,8 +10,8 @@ import "core:encoding/json"
 import "core:fmt"
 import "core:strings"
 import engine "moonhug:packages/engine"
-import core "moonhug:host/core"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
 
 @(undo_command)
 Reparent_Command :: struct {

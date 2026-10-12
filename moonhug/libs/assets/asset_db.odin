@@ -9,8 +9,8 @@ import "core:time"
 import "core:path/filepath"
 import "core:encoding/json"
 import "core:encoding/uuid"
-import "moonhug:host/log"
-import core "moonhug:host/core"
+import "moonhug:libs/log"
+import core "moonhug:libs/core"
 
 // Which pipeline feeds the AssetDB (docs/core/AssetPipeline.md "Asset catalog and
 // builds"). Both end at the same loaders — they differ in where content

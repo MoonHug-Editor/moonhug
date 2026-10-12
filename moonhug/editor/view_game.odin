@@ -1,12 +1,12 @@
 package editor
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import im "moonhug:external/odin-imgui"
 import "menu"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "moonhug:editor/viewport"
-import "moonhug:host/gizmos"
-import "moonhug:host/input"
+import "moonhug:libs/gizmos"
+import "moonhug:libs/input"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 

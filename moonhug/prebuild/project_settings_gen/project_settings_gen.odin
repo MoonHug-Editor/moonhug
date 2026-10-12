@@ -158,7 +158,7 @@ generate :: proc(w: ^db.World) -> bool {
 	// Own alias for the load call: a tab owned by the core package would
 	// otherwise collide with the packages_used "core" import. Settings
 	// persistence is core, so the shell loads tabs with no engine.
-	strings.write_string(&b, "import __core \"moonhug:host/core\"\n")
+	strings.write_string(&b, "import __core \"moonhug:libs/core\"\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
 	}

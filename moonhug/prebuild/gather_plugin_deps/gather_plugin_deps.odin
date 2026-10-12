@@ -10,7 +10,7 @@ package main
 // - Code: an import of another plugin from the package's root, editor/ (and
 //   the folders below it) or tests/, or from a subpackage those import
 //   (gen_facts.plugin_walk). Imports of the shell (`moonhug:editor/...`) and
-//   the host (`moonhug:host/...`) are not plugins and never count.
+//   the libs (`moonhug:libs/...`) are not plugins and never count.
 // - Content: a guid in the package's assets or code that another package
 //   owns. A type guid (@(typ_guid)) is owned by the package declaring the
 //   type, an asset guid by the package whose .meta holds it. A type declared

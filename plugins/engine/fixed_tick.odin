@@ -1,7 +1,7 @@
 package engine
 
-import core "moonhug:host/core"
-import "moonhug:host/input"
+import core "moonhug:libs/core"
+import "moonhug:libs/input"
 
 // Fixed-rate simulation tick (plugins/engine/docs/FixedTick.md). ONE project tick rate — no
 // independent per-system rates; coarse systems schedule with the divisor on
@@ -91,7 +91,7 @@ fixed_tick_advance :: proc() {
 	core.in_fixed_tick = false
 }
 
-// True while a fixed tick runs (host/gizmos records with .Fixed_Tick then).
+// True while a fixed tick runs (libs/gizmos records with .Fixed_Tick then).
 // Consume a frame's dt and return how many fixed ticks to run now (0..max).
 // The fractional remainder stays in the accumulator for the next frame.
 fixed_frame_ticks :: proc(frame_dt: f32) -> int {

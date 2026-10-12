@@ -4,16 +4,16 @@ package asset_pipeline
 // drivers: a game binary runs the catalog pipeline only (app.odin boots from
 // library/catalog.json or an export) and never scans assets/ or mints metas.
 // Storage and lookups (guid<->path maps, root-info index, meta primitives)
-// live in the host package moonhug:host/assets. This file is the driver
+// live in the libs package moonhug:libs/assets. This file is the driver
 // that fills them from the tree.
 
 import "core:encoding/uuid"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
-import core "moonhug:host/core"
-import assets "moonhug:host/assets"
-import "moonhug:host/log"
+import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
+import "moonhug:libs/log"
 
 // Incremental refresh (Unity model): enumerate the tree (stat only), diff
 // against file_state, and process only the deltas — new assets get metas +

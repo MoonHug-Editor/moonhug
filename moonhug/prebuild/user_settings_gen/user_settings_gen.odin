@@ -1,6 +1,6 @@
 package user_settings_gen
 
-// user_settings_gen: per-developer preferences (host/core/user_settings.odin).
+// user_settings_gen: per-developer preferences (libs/core/user_settings.odin).
 //
 //   @(user_settings={name="External Tools", tab="External Tools"})
 //   external_tools: External_Tools
@@ -135,7 +135,7 @@ generate :: proc(w: ^db.World) -> bool {
 	// Own alias for the load call: a tab owned by a package named core would
 	// otherwise collide with its packages_used import. No entries (no package
 	// declares settings) means no call, so no import.
-	if len(entries) > 0 do strings.write_string(&b, "import __core \"moonhug:host/core\"\n")
+	if len(entries) > 0 do strings.write_string(&b, "import __core \"moonhug:libs/core\"\n")
 	for pkg in import_pkgs {
 		fmt.sbprintf(&b, "import %s \"%s\"\n", pkg, packages_used[pkg])
 	}

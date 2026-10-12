@@ -8,7 +8,7 @@ package editor
 
 import "core:sync"
 import sdl "vendor:sdl3"
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "moonhug:editor/frame_pacing"
 import "moonhug:editor/simulate"
 

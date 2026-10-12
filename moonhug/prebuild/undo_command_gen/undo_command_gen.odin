@@ -134,7 +134,7 @@ generate :: proc(w: ^db.World) -> bool {
 	strings.write_string(&b, "// procs in its file (prebuild/undo_command_gen). Every installed package's\n")
 	strings.write_string(&b, "// commands join this union on the next prebuild.\n\n")
 	strings.write_string(&b, "import \"core:strings\"\n")
-	strings.write_string(&b, "import core \"moonhug:host/core\"\n")
+	strings.write_string(&b, "import core \"moonhug:libs/core\"\n")
 	{
 		imported: [dynamic]string
 		defer delete(imported)

@@ -13,7 +13,7 @@ import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
-import "moonhug:host/catalog"
+import "moonhug:libs/catalog"
 
 @(test)
 test_asset_catalog_round_trip :: proc(t: ^testing.T) {

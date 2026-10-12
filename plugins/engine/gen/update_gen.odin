@@ -236,7 +236,7 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	for p in imports {
 		fmt.sbprintf(&b, "import %s \"moonhug:packages/%s\"\n", p.pkg, p.path[len(_PACKAGES_PREFIX):])
 	}
-	strings.write_string(&b, "import core \"moonhug:host/core\"\n\n")
+	strings.write_string(&b, "import core \"moonhug:libs/core\"\n\n")
 
 	// A system is called where it lives, a per-item proc through its wrapper.
 	_call_name :: proc(e: _UpdateRow, host: string, kind: Update_Kind) -> string {

@@ -5,8 +5,8 @@ import "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import "moonhug:editor/widgets"
-import core "moonhug:host/core"
-import assets "moonhug:host/assets"
+import core "moonhug:libs/core"
+import assets "moonhug:libs/assets"
 
 // core.Ref (PPtr): local OR cross-asset reference — both picker tabs are
 // assignable. A Scene pick stores {local_id, guid: 0} + live handle; a Project

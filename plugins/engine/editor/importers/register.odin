@@ -9,7 +9,7 @@ import cgltf "vendor:cgltf"
 import "core:encoding/json"
 import "core:strings"
 import "moonhug:packages/engine"
-import assets "moonhug:host/assets"
+import assets "moonhug:libs/assets"
 import asset_pipeline "moonhug:editor/assets"
 
 // Bakes one glTF animation of `data` to `out_path`, the model's _a<i>.bin

@@ -40,10 +40,10 @@ Two things stand between a Hugo theme and a double-clicked `index.html`:
 
 `docs/reference/` is generated and gitignored, and written by `mh docs` only. The prebuild checks attributes, field tags and naming conventions on every build, and writes their pages when `mh docs` runs it with `--docs`. The four parts:
 
-- `attributes/<layer>/`, one folder per layer (`host`, `editor`, then each plugin by name) with one page per attribute, written by `moonhug/prebuild/attributes_gen`.
+- `attributes/<layer>/`, one folder per layer (`libs`, `editor`, then each plugin by name) with one page per attribute, written by `moonhug/prebuild/attributes_gen`.
 - `field_tags/<layer>/`, the same layout with one page per field tag key, written by `moonhug/prebuild/field_tags_gen`.
 - `naming/<layer>/`, the same layout with one page per naming convention, written by `moonhug/prebuild/naming_gen`.
-- `packages/<layer>/`, the same layout with one page per package of the host, the editor and every installed plugin, written by `mh docs` (`tools/mh/package_docs.odin`). `mh docs` writes an entry file that imports every package, runs `odin doc -doc-format` on it once, and reads the binary `.odin-doc` file Odin writes (`core:odin/doc-format`), the way pkg.odin-lang.org documents Odin's own libraries. Each page lists the package's public declarations by kind, with signatures whose types link to the declaring package's page, attributes linked to their reference pages, the doc comment and `file:line`. `_name` and `@(private)` declarations are left out. A signature longer than one line puts its parameters one per line. In a doc comment, a `name` in backticks links to the declaration when it names one of the package's own, `pkg.Name` of a documented package, or `@(attribute)`, so writing names in backticks is what makes them links. A named proc type lists every procedure with its signature, and a struct does the same for each field written as a `proc(...)`, such as the fields of a provider. A signature that takes and returns nothing gets no list. An extension point links to its attribute's page.
+- `packages/<layer>/`, the same layout with one page per package of the libs, the editor and every installed plugin, written by `mh docs` (`tools/mh/package_docs.odin`). `mh docs` writes an entry file that imports every package, runs `odin doc -doc-format` on it once, and reads the binary `.odin-doc` file Odin writes (`core:odin/doc-format`), the way pkg.odin-lang.org documents Odin's own libraries. Each page lists the package's public declarations by kind, with signatures whose types link to the declaring package's page, attributes linked to their reference pages, the doc comment and `file:line`. `_name` and `@(private)` declarations are left out. A signature longer than one line puts its parameters one per line. In a doc comment, a `name` in backticks links to the declaration when it names one of the package's own, `pkg.Name` of a documented package, or `@(attribute)`, so writing names in backticks is what makes them links. A named proc type lists every procedure with its signature, and a struct does the same for each field written as a `proc(...)`, such as the fields of a provider. A signature that takes and returns nothing gets no list. An extension point links to its attribute's page.
 
 Every `file:line` on these pages is a link that opens the source, through the `source_url` URL template of the External Tools user setting (such as `vscode://file/{file}:{line}`), or to the site's own copy of the file under `/source` when it is empty: `mh docs` writes every `.odin` file as a highlighted page with a line anchor per line, so a local build opens the code it was built from. A GitHub template works too: `https://github.com/<owner>/<repo>/blob/main/{file}#L{line}`.
 
@@ -60,7 +60,7 @@ toolbar_add_item :: proc(zone: Toolbar_Zone, draw: proc(), order := 0, origin :=
 ```
 
 - The doc comment is the attribute's explanation, and its first sentence is the summary on the index.
-- The package the declaration sits in is the package the attribute extends. The index groups attributes by layer, Host, Editor, then each plugin by name, and by that package inside a layer.
+- The package the declaration sits in is the package the attribute extends. The index groups attributes by layer, Libs, Editor, then each plugin by name, and by that package inside a layer.
 - `fields` lists the keys the attribute takes. A trailing `*` matches by prefix, as in `param_*`.
 - `target` says what the attribute goes on (`proc`, `var`, `type`). It is documentation only.
 
@@ -81,7 +81,7 @@ TAG_EXT :: Field_Tag{key = "ext", form = .Value}
 
 - The doc comment is the key's explanation, and its first sentence is the summary on the index.
 - `form` is how the key is written: `.Value` is `key:"text"`, `.Flag` is a bare `key` (`key:""` reads the same), `.Call` is `key:name(args)`, and only a Call key may appear several times in one tag, as `decor` does.
-- The package the constant sits in decides its layer on the index: `host`, `editor`, then each plugin by name.
+- The package the constant sits in decides its layer on the index: `libs`, `editor`, then each plugin by name.
 
 The `decor` page also lists every decorator, each a `decorator_<name>` proc in `moonhug:editor/inspector`, with its parameters and its number of uses.
 
@@ -137,7 +137,7 @@ gen_facts.naming_subject("clip_tween", decl.name, decl.file_path, where_)
 - `procs` lists the names the convention resolves, `<prefix><Subject>`, with their signature and whether every subject must have one.
 - `scope` is where the owner looks: `.Subject_File` (the file that declares the subject), `.Package` (one package, `package_path`) or `.Any`.
 - `unclaimed` decides what a proc with the prefix and no subject behind it is: `.Near_Miss` (the default, an error only when it is a typo of a subject), `.Warn` or `.Error` for a convention that owns its prefix, as `decorator_` and `mcp_tool_` do.
-- `layer` places the convention on the index: `host`, `editor`, or the plugin whose `gen/` declares it.
+- `layer` places the convention on the index: `libs`, `editor`, or the plugin whose `gen/` declares it.
 
 The types and the registry are in `moonhug/prebuild/gen_facts/naming.odin`. The prebuild stops on:
 

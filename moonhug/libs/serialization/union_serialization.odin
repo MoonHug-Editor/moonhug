@@ -5,7 +5,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:io"
 import "core:mem"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 // Every guid in a scene goes through here, so it runs thousands of times per
 // save. The string is built on the STACK rather than in the temp allocator: a

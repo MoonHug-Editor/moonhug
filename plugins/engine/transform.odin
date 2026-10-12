@@ -2,7 +2,7 @@ package engine
 
 import "core:math/linalg"
 import "core:strings"
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 
 @(init)
 _transform_type_key_install :: proc "contextless" () {

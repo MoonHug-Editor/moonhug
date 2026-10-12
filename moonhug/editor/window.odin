@@ -1,6 +1,6 @@
 package editor
 
-import gfx "moonhug:host/gfx"
+import gfx "moonhug:libs/gfx"
 import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:os"
@@ -8,10 +8,10 @@ import "menu"
 import wnd "window"
 import "moonhug:editor/handles"
 import "moonhug:editor/session"
-import assets "moonhug:host/assets"
-import core "moonhug:host/core"
-import "moonhug:host/log"
-import "moonhug:host/gizmos"
+import assets "moonhug:libs/assets"
+import core "moonhug:libs/core"
+import "moonhug:libs/log"
+import "moonhug:libs/gizmos"
 
 WINDOW_TITLE :: "MoonHug Editor"
 VERSION :: #load("../version", string)

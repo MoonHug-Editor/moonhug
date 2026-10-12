@@ -6,7 +6,7 @@ package simulate
 // With no world installed a run captures and restores nothing and ticks only
 // the per-frame update.
 
-import core "moonhug:host/core"
+import core "moonhug:libs/core"
 import "base:runtime"
 import "moonhug:editor/provider"
 
