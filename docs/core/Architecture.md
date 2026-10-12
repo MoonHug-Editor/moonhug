@@ -6,13 +6,13 @@ tags: ["design", "plugins", "editor", "engine"]
 path: general/architecture
 ---
 
-MoonHug is two programs built from the same layers: the **Editor**, which you edit a project in, and the **App**, the project's own executable. The engine is not part of either program by itself. It is a plugin, and a project installs it like any other.
+MoonHug is built into two executables: the **Editor**, which you edit a project in, and the **App**, the project's own executable. The engine is a plugin package, which can be used or not by Editor and App.
 
 ## Vocabulary
 
 | Word | Means | Lives in |
 |---|---|---|
-| **Host** | What both programs stand on: the platform window and graphics, input, logging, the asset database, settings, the core vocabulary (handles, references, phases, the type registry). The host knows no engine. | `moonhug/host` |
+| **Host** | Small packages the Editor and an App build on, each imported on its own and only where it is used: `core` (handles, references, phases, the type registry, settings), `log`, `serialization`, `assets` and `catalog` (the asset database and what an App ships), `gfx` and `input` (the window and the platform), `gizmos`, `crash_journal`. | `moonhug/host/<name>` |
 | **Editor** | The generic editing application: windows, docking, menus, inspector, undo, project view, viewport, Simulate, console. It declares the extension points plugins fill and builds with no plugin installed. | `moonhug/editor` |
 | **Plugin** | A package a project installs. It has a runtime part that ships in the App and an optional `editor/` part that is linked only into the Editor. It extends both programs through attributes. | `plugins/<name>` |
 | **Engine** | The plugin that brings scenes, transforms, components, rendering, materials, meshes, the fixed tick and the App's frame loop. Other plugins build on it. | `plugins/engine` |
@@ -24,17 +24,18 @@ A **package** is an Odin package. Plugin, engine and app are roles a package pla
 ## Layers
 
 ```
-App      host ── engine plugin ── other plugins ── the app package
-Editor   host ── editor ── engine plugin ── other plugins ── the app package
-                            └ engine/editor/    └ <plugin>/editor/
+App      host ── engine plugin ── other plugins —— the app package
+Editor   host ─┬ engine plugin ── other plugins ── the app package
+               │  └ engine/editor/   └ <plugin>/editor/   └ app/editor/  <- */editor packages can import editor
+               └ editor
 ```
 
-Imports go one way, from right to left in the picture:
+Imports go one way, from right to left along a line and up a branch. The Editor runs the same plugin code the App does, and adds each plugin's `editor/` part, which imports its own plugin and the shell. The shell branches off the host beside the plugins: it imports no plugin, and no runtime part imports the shell or any `editor/` part.
 
-- the host imports nothing above it
+- a host package imports nothing above it, and little beside it: `core` imports nothing, `gfx` only `input`, `assets` only `core`, `log` and `catalog`
 - the editor imports the host, never a plugin
 - a plugin imports the host, the editor's extension points from its `editor/` part, and the plugins it declares as dependencies
-- the app package imports what it uses, like any plugin
+- the app package imports what it uses, like any plugin. The smallest App imports `moonhug:host/core` and nothing else: no window, no asset database, no engine. The Editor still inspects its structs, opens its windows and runs its config. Odin compiles only what a program references, so an imported package costs what is used of it
 
 The editor reaches a plugin only through what the plugin registered: an attribute the prebuild turned into a call, or a provider the plugin installed at startup. With no engine installed those stay empty and the editor runs without that capability.
 

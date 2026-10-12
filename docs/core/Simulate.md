@@ -6,19 +6,13 @@ tags: ["simulate", "editor"]
 path: editor
 ---
 
-Run the open scene inside the editor, then roll it back. Everything stays
-inspectable while it runs: the hierarchy updates, the inspector shows live
-values, gizmos keep drawing, selection keeps working.
+Run the open scene inside the editor, then roll it back. Everything stays inspectable while it runs: the hierarchy updates, the inspector shows live values, gizmos keep drawing, selection keeps working.
 
-**Toolbar:** Simulate · Pause · Step, centered, with the sim-host dropdown. The
-Play button and its run-config dropdown are pinned to the right — a different job
-(compile and launch), so a different place.
-**Shortcuts:** `Cmd/Ctrl+P` toggles Simulate, `Cmd/Ctrl+Shift+P` pauses.
+**Toolbar:** Simulate · Pause · Step, centered, with the sim-host dropdown. The Play button and its run-config dropdown are pinned to the right — a different job (compile and launch), so a different place. **Shortcuts:** `Cmd/Ctrl+P` toggles Simulate, `Cmd/Ctrl+Shift+P` pauses.
 
 ## Controls
 
-All three buttons are always visible and always enabled, and the cluster keeps its
-width. Pressing Pause or Step while stopped enters a run, as in Unity.
+All three buttons are always visible and always enabled, and the cluster keeps its width. Pressing Pause or Step while stopped enters a run, as in Unity.
 
 | Button | Stopped | Running | Paused |
 | --- | --- | --- | --- |
@@ -26,17 +20,11 @@ width. Pressing Pause or Step while stopped enters a run, as in Unity.
 | **Pause** | starts paused, on frame zero | pauses | resumes |
 | **Step** | starts paused, then one frame | pauses, then one frame | one frame |
 
-Simulate becomes Stop while a run is active, the way Unity's Play button does.
-Pause shows a resume icon while held.
+Simulate becomes Stop while a run is active, the way Unity's Play button does. Pause shows a resume icon while held.
 
-**All three buttons turn orange while a simulation is active**, paused included —
-the scene is still in a simulated state that Stop reverts. The accent marks the
-editor's state, not which button is toggled; the rest of the toolbar is
-theme-neutral.
+**All three buttons turn orange while a simulation is active**, paused included — the scene is still in a simulated state that Stop reverts. The accent marks the editor's state, not which button is toggled; the rest of the toolbar is theme-neutral.
 
-A **step** advances exactly one fixed tick and one frame tick, ignoring the
-frame-time accumulator. A normal run uses it, so gameplay speed matches
-standalone.
+A **step** advances exactly one fixed tick and one frame tick, ignoring the frame-time accumulator. A normal run uses it, so gameplay speed matches standalone.
 
 ## Simulate vs Play
 
@@ -50,15 +38,11 @@ Two separate buttons, two different jobs.
 | Proves the game runs standalone | no | yes |
 | Start cost | instant | seconds |
 
-Simulate is for watching and poking at gameplay. Play compiles the run config,
-launches the game on its own, and hands it the current scene state — the only path
-that shows the game running standalone.
+Simulate is for watching and poking at gameplay. Play compiles the run config, launches the game on its own, and hands it the current scene state — the only path that shows the game running standalone.
 
 ## What Stop restores
 
-Stop returns the scene to its state **at the moment Simulate started** — not to
-the last save. Unsaved edits made before Simulate come back intact, so Simulate
-never forces a save first.
+Stop returns the scene to its state **at the moment Simulate started** — not to the last save. Unsaved edits made before Simulate come back intact, so Simulate never forces a save first.
 
 Restored:
 - every object's fields and components
@@ -71,13 +55,9 @@ Removed:
 
 ## What Stop does NOT restore
 
-**Assets.** The snapshot covers scene objects only. If gameplay changes a
-material, a texture, or a settings asset, that change stays after Stop. The
-guarantee is "your scene is safe", not "nothing changed".
+**Assets.** The snapshot covers scene objects only. If gameplay changes a material, a texture, or a settings asset, that change stays after Stop. The guarantee is "your scene is safe", not "nothing changed".
 
-Assets live on disk and are shared by every scene that references them, so they
-are not part of any one scene's state, and mutating one at runtime is legitimate
-gameplay. Git is the restore path for an asset a run changed, as in Unity.
+Assets live on disk and are shared by every scene that references them, so they are not part of any one scene's state, and mutating one at runtime is legitimate gameplay. Git is the restore path for an asset a run changed, as in Unity.
 
 **Undo history from the run.** Edits made while simulating are undoable while the run lasts, and their scene steps are dropped on Stop: they describe objects and values Stop replaces. Asset edits made during the run stay, with their undo steps, since Stop does not roll assets back.
 
@@ -85,39 +65,21 @@ While the run lasts, undo and redo move only through the run's own steps. Steps 
 
 ## Why it is safe
 
-The snapshot is **the same bytes a save writes**, held in memory instead of
-written to disk. Capture goes through the save path (`scene_serialize`), restore
-goes through the load path (`scene_load_single_bytes`).
+The snapshot is **the same bytes a save writes**, held in memory instead of written to disk. Capture goes through the save path (`scene_serialize`), restore goes through the load path (`scene_load_single_bytes`).
 
-So "can Simulate revert correctly?" is the same question as "can the editor save
-and load a scene?", which every save and `tests/resave_scenes` exercise. There is
-no separate capture format to fall behind when a field is added.
+So "can Simulate revert correctly?" is the same question as "can the editor save and load a scene?", which every save and `tests/resave_scenes` exercise. There is no separate capture format to fall behind when a field is added.
 
-Restore reuses the ordinary scene load, so per-object teardown runs the same code
-path a manual delete does: `transform_destroy` fires each component's
-`on_destroy_*`, releasing subsystem state (box2d bodies, audio voices, animation
-runners). `physics2d/tests` covers this for physics.
+Restore reuses the ordinary scene load, so per-object teardown runs the same code path a manual delete does: `transform_destroy` fires each component's `on_destroy_*`, releasing subsystem state (box2d bodies, audio voices, animation runners). `physics2d/tests` covers this for physics.
 
-Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`, called from the engine's world provider).
-The restored scene keeps its slot and its active-scene status, so the editor
-carries on editing what it was editing. The scene SET is restored as well:
-scenes the run loaded additively are unloaded, and scenes the run unloaded
-come back from disk. Only the simulated scene's contents are snapshotted;
-other scenes present at Start keep whatever the run did to them.
+Restore is **scoped to the simulated scene** (`scene_reload_in_place_bytes`, called from the engine's world provider). The restored scene keeps its slot and its active-scene status, so the editor carries on editing what it was editing. The scene SET is restored as well: scenes the run loaded additively are unloaded, and scenes the run unloaded come back from disk. Only the simulated scene's contents are snapshotted; other scenes present at Start keep whatever the run did to them.
 
-It is not atomic: a snapshot that fails to load leaves the scene unrestored, and
-reports an error telling you to reopen it.
+It is not atomic: a snapshot that fails to load leaves the scene unrestored, and reports an error telling you to reopen it.
 
 ## Identity across the boundary
 
-Handles do not survive: a handle is a pool slot plus a generation, and restore
-re-creates every object.
+Handles do not survive: a handle is a pool slot plus a generation, and restore re-creates every object.
 
-Selection is therefore captured as **local ids** — the same stable ids the scene
-file stores. On Stop the selection is cleared first (while its handles are still
-valid, so the inspector and gizmos let go cleanly), the scene is restored, then
-the ids are resolved back to fresh handles. Objects the game destroyed simply do
-not resolve, and are dropped from the selection.
+Selection is therefore captured as **local ids** — the same stable ids the scene file stores. On Stop the selection is cleared first (while its handles are still valid, so the inspector and gizmos let go cleanly), the scene is restored, then the ids are resolved back to fresh handles. Objects the game destroyed simply do not resolve, and are dropped from the selection.
 
 The scene keeps its identity. Restore frees the Scene struct and loads a new one, and the new one takes over the old one's `session_id`. Undo steps from before Simulate, and Simulate's own record of the scene set at Start, find scenes by that id. A pointer would dangle, and a guid is empty for an unsaved scene and shared by two copies of one scene file.
 
@@ -135,70 +97,31 @@ The game's own loop calls the same `engine.frame_tick` with the same `__ticks` (
 
 ## Which game gets ticked (the sim host)
 
-A **sim host** is a runnable package: one whose root declares `main` — a game. The
-toolbar's Sim Host dropdown, right of the Simulate controls, chooses which
-host's update code Simulate runs.
+A **sim host** is a runnable package: one whose root declares `main` — a game. The toolbar's Sim Host dropdown, right of the Simulate controls, chooses which host's update code Simulate runs.
 
-The list is generated, not configured. Prebuild emits one row per runnable
-package into `registration/sim_hosts_generated.odin`, each carrying that host's
-`__frame_tick`, and sim_world converts the rows and hands them to Simulate in `EditorInit`. Install a second game and it appears; there is
-nothing to register.
+The list is generated, not configured. Prebuild emits one row per runnable package into `registration/sim_hosts_generated.odin`, each carrying that host's `__frame_tick`, and sim_world converts the rows and hands them to Simulate in `EditorInit`. Install a second game and it appears; there is nothing to register.
 
-With one sim host the dropdown is **disabled but still visible**, reading out that
-game's name. The choice persists in `editor_settings.sim_host`, stored by name so
-it survives hosts being added or removed.
+With one sim host the dropdown is **disabled but still visible**, reading out that game's name. The choice persists in `editor_settings.sim_host`, stored by name so it survives hosts being added or removed.
 
-Every generated dispatcher is emitted *per host* under a fixed name, unambiguous
-inside a game binary. The editor is not a host and links all of them, so with two
-games both `app.__update` and `game2.__update` exist and the table is what picks
-between them.
+Every generated dispatcher is emitted *per host* under a fixed name, unambiguous inside a game binary. The editor is not a host and links all of them, so with two games both `app.__update` and `game2.__update` exist and the table is what picks between them.
 
-Changing host while a simulation runs stops it first, since ticking a scene with
-another game's update set is not a meaningful state.
+Changing host while a simulation runs stops it first, since ticking a scene with another game's update set is not a meaningful state.
 
-Pause stops the ticking without leaving the simulation, so views keep drawing
-and the inspector keeps working on a frozen world. Step then advances that frozen
-world one tick at a time.
+Pause stops the ticking without leaving the simulation, so views keep drawing and the inspector keeps working on a frozen world. Step then advances that frozen world one tick at a time.
 
 ## Input
 
-Application focus (`engine.application_is_focused`, Unity's
-Application.isFocused, stored in `host/core` so every layer can ask) gates
-the game's input. Standalone it is the window's focus. In the editor it is
-the Game view's focus during a run: Play focuses the view (and brings its tab
-forward), a click on the view's image focuses it, a click anywhere else in
-the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame
-from that and opens `input.set_game_scope` around the simulation tick, so
-keys and mouse buttons read as released to the game while the editor's own
-views, reading outside the scope, are unaffected. A standalone app sets the
-scope once for the whole frame.
+Application focus (`engine.application_is_focused`, Unity's Application.isFocused, stored in `host/core` so every layer can ask) gates the game's input. Standalone it is the window's focus. In the editor it is the Game view's focus during a run: Play focuses the view (and brings its tab forward), a click on the view's image focuses it, a click anywhere else in the editor unfocuses it. `main.odin` sets `input.set_app_focused` every frame from that and opens `input.set_game_scope` around the simulation tick, so keys and mouse buttons read as released to the game while the editor's own views, reading outside the scope, are unaffected. A standalone app sets the scope once for the whole frame.
 
-Losing focus freezes the mouse position where it was, so nothing in the game
-follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining
-focus seeds the fixed-tick edges from the current frame, so the click that
-gives focus reaches the game like in Unity, while clicks from before it do
-not. Entering play mode drops every pending edge, so the Play click itself
-never reaches the first tick. The raw state keeps tracking underneath: a key
-held across the gap reads as down once focus returns. The focus decision is
-made at the start of the frame, before the tick.
+Losing focus freezes the mouse position where it was, so nothing in the game follows the cursor, and drops the fixed-tick edges nothing consumed. Gaining focus seeds the fixed-tick edges from the current frame, so the click that gives focus reaches the game like in Unity, while clicks from before it do not. Entering play mode drops every pending edge, so the Play click itself never reaches the first tick. The raw state keeps tracking underneath: a key held across the gap reads as down once focus returns. The focus decision is made at the start of the frame, before the tick.
 
-Standalone, the click that gives the window focus is delivered to the game
-as a click as well (SDL's focus click-through hint). While the window has
-focus the mouse position follows the cursor outside the window too (the platform reads the global cursor after the frame's events),
-as a windowed game expects when aiming. Relative mouse mode is exempt.
+Standalone, the click that gives the window focus is delivered to the game as a click as well (SDL's focus click-through hint). While the window has focus the mouse position follows the cursor outside the window too (the platform reads the global cursor after the frame's events), as a windowed game expects when aiming. Relative mouse mode is exempt.
 
-The Game view's image is the game's screen. Every frame the view hands its
-window rectangle to `input.set_viewport`: `input.mouse_position` is relative
-to that rectangle and `input.viewport_size` is its size, which is also the
-render target's size. Games unproject with those two, never with the window
-size. Standalone, the platform sets the viewport to the window.
+The Game view's image is the game's screen. Every frame the view hands its window rectangle to `input.set_viewport`: `input.mouse_position` is relative to that rectangle and `input.viewport_size` is its size, which is also the render target's size. Games unproject with those two, never with the window size. Standalone, the platform sets the viewport to the window.
 
 ## Limits
 
-- **One scene.** Simulate captures and restores the ACTIVE scene. Scenes
-  loaded alongside it at Start keep ticking (they share the world) but are not
-  captured, so changes gameplay makes to them are not reverted by Stop. Scenes
-  the run loads are unloaded by Stop.
+- **One scene.** Simulate captures and restores the ACTIVE scene. Scenes loaded alongside it at Start keep ticking (they share the world) but are not captured, so changes gameplay makes to them are not reverted by Stop. Scenes the run loads are unloaded by Stop.
 - **Assets are not restored** — by design, as Unity does (see above).
 
 ## Asking "is gameplay running?" from component code
@@ -208,14 +131,9 @@ engine.application_is_editor()   // editor binary? fixed per process, Unity's Ap
 engine.application_is_playing()  // gameplay advancing? true in the app, and in the editor while simulating
 ```
 
-`application_is_playing()` is the one component code wants. It stays true while
-paused - Unity's model, where a paused play mode still reports `isPlaying` and
-paused is a separate condition. Ask `sim_state()` if you need the distinction.
+`application_is_playing()` is the one component code wants. It stays true while paused - Unity's model, where a paused play mode still reports `isPlaying` and paused is a separate condition. Ask `sim_state()` if you need the distinction.
 
-These two are the whole vocabulary. Editor-only work (nested-prefab resolve) gates
-on `application_is_editor()`, so it keeps running during Simulate. Undo gates on
-`application_is_playing()`, so it is unavailable for the whole simulation, paused
-included.
+These two are the whole vocabulary. Editor-only work (nested-prefab resolve) gates on `application_is_editor()`, so it keeps running during Simulate. Undo gates on `application_is_playing()`, so it is unavailable for the whole simulation, paused included.
 
 ## Play-mode phases
 
@@ -233,13 +151,9 @@ Simulate fires four phases, mirroring Unity's `PlayModeStateChange`:
 my_setup :: proc() { ... }
 ```
 
-`ExitingEditMode` fires only once the snapshot exists, so a failed start emits no
-unpaired transition. `ExitingPlayMode` runs before the scene is touched, so
-subscribers can read the simulated world. Pause fires nothing, not being a mode
-change.
+`ExitingEditMode` fires only once the snapshot exists, so a failed start emits no unpaired transition. `ExitingPlayMode` runs before the scene is touched, so subscribers can read the simulated world. Pause fires nothing, not being a mode change.
 
-Subscribers owned by a runnable package run only when that package is the active
-sim host.
+Subscribers owned by a runnable package run only when that package is the active sim host.
 
 ## Code layout
 
@@ -250,7 +164,4 @@ editor/simulate_view.odin        toolbar, shortcuts, and the hooks into editor s
 plugins/engine/editor/sim_world/ the engine's Simulate_World: snapshot, scene set, host table
 ```
 
-The state machine is a subpackage with no imgui, view or engine dependencies, so tests and
-tools drive a simulation without the editor root. Editor-owned state (selection,
-phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an
-unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `select_restored` resolves a selected id in the restored scene. Ticking needs no world: the host's `tick` is the game's own generated proc. With no world installed a run captures nothing.
+The state machine is a subpackage with no imgui, view or engine dependencies, so tests and tools drive a simulation without the editor root. Editor-owned state (selection, phase dispatch, the persisted host name) arrives through `simulate.Hooks`, where an unset hook is a no-op. The world arrives through `simulate.Simulate_World`, which the engine installs at EditorInit (and `tests/common` for the test binary): `capture` and `restore` take and apply the snapshot (the active scene plus the loaded scene set), `select_restored` resolves a selected id in the restored scene. Ticking needs no world: the host's `tick` is the game's own generated proc. With no world installed a run captures nothing.

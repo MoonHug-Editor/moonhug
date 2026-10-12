@@ -11,59 +11,28 @@ Plugin is a package folder in `moonhug/packages/`.
 - Its `assets/` folder is scanned by the asset db — nothing else in the package is.
 - Samples install as further packages.
 
-The attribute system (`@component`, `@update`, `@phase`, `@menu_item`,
-`@property_drawer`, …) is the plugin API — packages use the exact same markers
-app code already uses.
+The attribute system (`@component`, `@update`, `@phase`, `@menu_item`, `@property_drawer`, …) is the plugin API — packages use the exact same markers app code already uses.
 
 ## app plugin
 **The app is a plugin too** (`packages/app`) — an ordinary package with a `main :: proc()` that calls the generated `__standalone_run`: the engine's phases around the game's, the boot scene, and the frame loop (`plugins/engine/standalone.odin`). The window, its size and the fallback boot scene are the Player project setting.
 
-**Runnable packages** Any package root declaring `main` is "runnable"
-and receives its OWN generated dispatcher set (`__update`, `phase_run`,
-`register_type_guids`, `register_packages`).
+**Runnable packages** Any package root declaring `main` is "runnable" and receives its OWN generated dispatcher set (`__update`, `phase_run`, `register_type_guids`, `register_packages`).
 
-Each dispatcher is emitted per runnable package under a fixed name, which is
-unambiguous inside a game binary — it contains one host. The EDITOR links all of
-them, so it also gets a table naming them: `registration/sim_hosts_generated.odin`, one row
-per runnable package with its `__frame_tick`, which sim_world converts and hands to `editor/simulate`. That is how the
-editor's Simulate (docs/core/Simulate.md) knows which game to tick, and what its Sim
-Host dropdown lists.
+Each dispatcher is emitted per runnable package under a fixed name, which is unambiguous inside a game binary — it contains one host. The EDITOR links all of them, so it also gets a table naming them: `registration/sim_hosts_generated.odin`, one row per runnable package with its `__frame_tick`, which sim_world converts and hands to `editor/simulate`. That is how the editor's Simulate (docs/core/Simulate.md) knows which game to tick, and what its Sim Host dropdown lists.
 
 ## Editor window seams
 
-A package editor window needs three things the editor root used to own; each
-is a subpackage a package `editor/` may import:
+A package editor window needs three things the editor root used to own; each is a subpackage a package `editor/` may import:
 
-- **The selection** — `engine.inspector_active_selection()` returns the
-  scene selection's active transform. The editor root publishes it once per
-  frame (`inspector_set_active_selection`); it is the read side of the
-  `UserContext` inspector channel that already carried `pending_select_tH`
-  the other way. Readers pool-validate, so a handle that dies mid-frame is
-  harmless.
-- **Frame hooks** (`editor/preview`) — `register_view` for a docked view the
-  root draws each frame (the window owns its own `menu.show_*` flag), and
-  `register` for a SCRUB PREVIEW pair: `apply` poses the world right before
-  the scene/game render, `restore` puts it back right after, so saves, undo
-  and the inspector always see authored values. Restores run in reverse
-  registration order. A scrub preview must also END ITSELF when play mode
-  starts — subscribe `@(phase={key=engine.Phase.ExitingEditMode, mode=Editor})`
-  and guard `apply` with `engine.application_is_playing()`: play owns the
-  world, and a preview posing it every frame fights the simulation.
+- **The selection** — `engine.inspector_active_selection()` returns the scene selection's active transform. The editor root publishes it once per frame (`inspector_set_active_selection`); it is the read side of the `UserContext` inspector channel that already carried `pending_select_tH` the other way. Readers pool-validate, so a handle that dies mid-frame is harmless.
+- **Frame hooks** (`editor/preview`) — `register_view` for a docked view the root draws each frame (the window owns its own `menu.show_*` flag), and `register` for a SCRUB PREVIEW pair: `apply` poses the world right before the scene/game render, `restore` puts it back right after, so saves, undo and the inspector always see authored values. Restores run in reverse registration order. A scrub preview must also END ITSELF when play mode starts — subscribe `@(phase={key=engine.Phase.ExitingEditMode, mode=Editor})` and guard `apply` with `engine.application_is_playing()`: play owns the world, and a preview posing it every frame fights the simulation.
 - **Shared widgets** — `editor/node_canvas` (pan/zoom node graph), `editor/inspector`, `editor/undo`, `editor/window`, `editor/menu`, `editor/widgets` (icon buttons, search field, tooltips, and `dialog_open`: a modal question built from a config with a title, a description, an optional icon and any number of buttons, drawn by the editor, so any code can open it).
 
-With those, a window lives entirely in its package: the animation, playable
-graph and sequencer windows all moved out of the editor root this way, and
-`editor/main.odin` imports no feature package.
+With those, a window lives entirely in its package: the animation, playable graph and sequencer windows all moved out of the editor root this way, and `editor/main.odin` imports no feature package.
 
 ## Folder structure
 
-Plugins live in `plugins/` at the repository root. A plugin is enabled by a
-symlink to it in `moonhug/packages/`, and presence in `packages/` is the
-whole switch: the generators scan `packages/`, Odin imports through
-`moonhug:packages/<name>`, and a plugin with no link there is not compiled,
-scanned or mounted. The link avoids a copy, so editing the plugin in
-`plugins/` is editing the enabled one. Samples install the same way, as a
-link in `packages/` to a folder under a plugin's `samples/`.
+Plugins live in `plugins/` at the repository root. A plugin is enabled by a symlink to it in `moonhug/packages/`, and presence in `packages/` is the whole switch: the generators scan `packages/`, Odin imports through `moonhug:packages/<name>`, and a plugin with no link there is not compiled, scanned or mounted. The link avoids a copy, so editing the plugin in `plugins/` is editing the enabled one. Samples install the same way, as a link in `packages/` to a folder under a plugin's `samples/`.
 
 ```
 plugins/
@@ -73,20 +42,9 @@ moonhug/packages/
   platformer -> physics2d/samples/platformer   ← an installed sample
 ```
 
-Project Settings has a Plugins section listing the folders in `plugins/`,
-each with a checkbox: on creates the link in `packages/`, off removes it. A
-real directory in `packages/` (a copy) shows disabled, since only links are
-toggled. Assets mount right away, code applies after Relaunch, which the
-section offers once something changed. In the project view a linked folder
-draws with a folder-and-arrow icon, so plugin links and linked samples read
-as links wherever they appear.
+Project Settings has a Plugins section listing the folders in `plugins/`, each with a checkbox: on creates the link in `packages/`, off removes it. A real directory in `packages/` (a copy) shows disabled, since only links are toggled. Assets mount right away, code applies after Relaunch, which the section offers once something changed. In the project view a linked folder draws with a folder-and-arrow icon, so plugin links and linked samples read as links wherever they appear.
 
-Git stores the links. `mh setup` checks every tracked link and repairs a
-clone that produced a plain file or a dangling link instead, which Git for
-Windows does with `core.symlinks` off (its default without Developer Mode).
-It sets `core.symlinks` for that clone only, recreates the link from the
-index after the whole tree exists, and reports a real directory sitting where
-a link belongs without touching it. Removing a link is never setup's job.
+Git stores the links. `mh setup` checks every tracked link and repairs a clone that produced a plain file or a dangling link instead, which Git for Windows does with `core.symlinks` off (its default without Developer Mode). It sets `core.symlinks` for that clone only, recreates the link from the index after the whole tree exists, and reports a real directory sitting where a link belongs without touching it. Removing a link is never setup's job.
 
 Inside a plugin:
 
@@ -115,73 +73,25 @@ plugins/
       Physics2D.md
 ```
 
-- **Package root = the runtime Odin package.** Compiled into BOTH binaries
-  (editor imports app). The folder name is the package identity and the
-  declared `package` name, and the link in `packages/` carries the same name.
-  Imports always go through `moonhug:packages/<name>`, never `plugins/`, so
-  the link is the one path a plugin is reached by.
-- **`editor/`** — editor-only code (gizmos, custom inspectors, menu items).
-  Compiled into the editor binary only, never the app. Declares
-  `package <name>_editor` — every plugin's folder is named `editor/`, so the
-  declaration carries uniqueness (prebuild lints it). `editor/` may also hold
-  subpackages, one folder each, which are editor-only like `editor/` itself
-  and declare any program-wide unique name (the engine's `editor/scene_views`
-  declares `scene_views`).
-- **Library subpackages** — any other subfolder with Odin code is scanned
-  like the root and declares `package <name>_<sub>` (`foo/util` declares
-  `foo_util`, prebuild lints it). The root reaches it via
-  `import "moonhug:packages/<name>/<sub>"`. Generated imports never target
-  subpackages directly except where a generator's output needs their types
-  (type registration, component registration, dispatchers).
+- **Package root = the runtime Odin package.** Compiled into BOTH binaries (editor imports app). The folder name is the package identity and the declared `package` name, and the link in `packages/` carries the same name. Imports always go through `moonhug:packages/<name>`, never `plugins/`, so the link is the one path a plugin is reached by.
+- **`editor/`** — editor-only code (gizmos, custom inspectors, menu items). Compiled into the editor binary only, never the app. Declares `package <name>_editor` — every plugin's folder is named `editor/`, so the declaration carries uniqueness (prebuild lints it). `editor/` may also hold subpackages, one folder each, which are editor-only like `editor/` itself and declare any program-wide unique name (the engine's `editor/scene_views` declares `scene_views`).
+- **Library subpackages** — any other subfolder with Odin code is scanned like the root and declares `package <name>_<sub>` (`foo/util` declares `foo_util`, prebuild lints it). The root reaches it via `import "moonhug:packages/<name>/<sub>"`. Generated imports never target subpackages directly except where a generator's output needs their types (type registration, component registration, dispatchers).
 - **Integration subpackages** — a subfolder that imports ANOTHER plugin, named after it (`audio/sequencer`, declaring `audio_sequencer`). It holds what the plugin adds to the other one through attributes: the audio track, the sprites fade tween, the TimelineAnimator. Prebuild scans it only while every plugin its files import is installed, and prints `prebuild: <dir> skipped, needs the <x> plugin` otherwise. Its own `editor/` and `tests/` go with it, and its `tests/` are also left out while a plugin they import is missing. Nothing in the plugin's root imports it, so the plugin builds without the other one. The plugin's own `editor/` is part of the plugin like its root and is never skipped. Components, phases, `@(update)` procs and union variants in it register like the root's.
 - **Dependency rule** — a plugin's root never imports a plugin that extends it through attributes (the sequencer imports none of animation, audio, particles or sprites). The extending plugin puts that code in an integration subpackage. An import of another plugin from a root, its `editor/` or `tests/`, or a subpackage those import is a hard dependency: games and samples (`app`, `timeline_sample`) and libraries (`node_graph`, which the Tween Graph window in `tween/editor` draws with) are the cases. Prebuild checks hard dependencies before anything compiles. A missing one stops it with the plugin that needs it and the imports that do, for example `tween needs node_graph` over `moonhug/packages/tween/editor/tween_view.odin:28`. That includes a dependency reached through another plugin's integration subpackage: `timeline_sample` imports `animation/sequencer`, so it needs the sequencer. The editor shell imports no plugin, and the engine imports no other plugin. The core tests (`moonhug/tests`) test the shell and the engine: they need the engine plugin and no other.
-- **`gen/`** — a prebuild generator shipped by the package (`package
-  <name>_gen`, `packages/tween/gen` is the reference). ANY installed package
-  can ship one: prebuild discovers `packages/*/gen` itself, no prebuild
-  edits. A gen has the full generator toolkit — it imports
-  `moonhug:prebuild/gen_db` / `gen_facts` / `gen_core` (and other generators,
-  tween_gen uses type_guid_gen), registers providers and generators in
-  `@(init)`, queries the shared decl scan and emits files anywhere in the
-  tree. Mechanics: gens compile into the PREBUILD program, not the binaries —
-  prebuild maintains `prebuild/package_gens_generated.odin` with one blank
-  import per installed gen. When a gen appears, prebuild rewrites the import
-  file and exits asking for a re-run (the next compile includes it). When one
-  disappears, the run scripts prune the stale import before compiling
-  (`odin run moonhug/prebuild/prune_package_gens` — a standalone program, so
-  it works on every platform). gen/ is excluded from the attribute scan — it
-  is prebuild-side code. The engine's own generators ship this way: `plugins/engine/gen` holds components, gizmos and update generation, and `moonhug/prebuild` holds only the host and shell generators.
-- **`assets/`** — live content: mounted, browsable, editable, referenced by
-  guid like any project asset. Content outside `assets/` doesn't exist to the
-  editor — the rule is structural, no filters needed. The editor ENSURES this
-  folder exists for every installed package (creates it on refresh if
-  missing), so package roots always resolve — no corner cases.
-- **`samples/`** — one subfolder per sample, each shaped like a plugin.
-  Inert by construction: the asset db only reads `assets/`, and prebuild
-  skips `samples/`, `tests/`, `assets/` and `run_configs/` in its package
-  walk, so nothing ever looks inside `samples/` until a sample is installed.
-- **`tests/`** — the package's test suite (`package <name>_tests`), sharing
-  the bootstrap in `moonhug/tests/common`. Prebuild imports every installed
-  suite into `moonhug/tests/packages_tests_generated.odin`, so `mh test`
-  covers everything in one `odin test -all-packages` run. Tests ship with the
-  package and die with it on uninstall — the central suite only reaches
-  `moonhug:packages/` through that generated file.
+- **`gen/`** — a prebuild generator shipped by the package (`package <name>_gen`, `packages/tween/gen` is the reference). ANY installed package can ship one: prebuild discovers `packages/*/gen` itself, no prebuild edits. A gen has the full generator toolkit — it imports `moonhug:prebuild/gen_db` / `gen_facts` / `gen_core` (and other generators, tween_gen uses type_guid_gen), registers providers and generators in `@(init)`, queries the shared decl scan and emits files anywhere in the tree. Mechanics: gens compile into the PREBUILD program, not the binaries — prebuild maintains `prebuild/package_gens_generated.odin` with one blank import per installed gen. When a gen appears, prebuild rewrites the import file and exits asking for a re-run (the next compile includes it). When one disappears, the run scripts prune the stale import before compiling (`odin run moonhug/prebuild/prune_package_gens` — a standalone program, so it works on every platform). gen/ is excluded from the attribute scan — it is prebuild-side code. The engine's own generators ship this way: `plugins/engine/gen` holds components, gizmos and update generation, and `moonhug/prebuild` holds only the host and shell generators.
+- **`assets/`** — live content: mounted, browsable, editable, referenced by guid like any project asset. Content outside `assets/` doesn't exist to the editor — the rule is structural, no filters needed. The editor ENSURES this folder exists for every installed package (creates it on refresh if missing), so package roots always resolve — no corner cases.
+- **`samples/`** — one subfolder per sample, each shaped like a plugin. Inert by construction: the asset db only reads `assets/`, and prebuild skips `samples/`, `tests/`, `assets/` and `run_configs/` in its package walk, so nothing ever looks inside `samples/` until a sample is installed.
+- **`tests/`** — the package's test suite (`package <name>_tests`), sharing the bootstrap in `moonhug/tests/common`. Prebuild imports every installed suite into `moonhug/tests/packages_tests_generated.odin`, so `mh test` covers everything in one `odin test -all-packages` run. Tests ship with the package and die with it on uninstall — the central suite only reaches `moonhug:packages/` through that generated file.
 - **`run_configs/`** — Odin programs that build+run the package as a program (see Run configurations)
 - **`docs/`** — the plugin's documentation pages, collected into the documentation site under `plugins/<name>` (see [Documentation](../general/Documentation.md)).
 - Other subfolders are just folders with no special meaning.
 
 ## Run configurations
 
-A package that can run as a program (the `app` package, a future headless
-server, an engine sample) ships configurations in `run_configs/`:
+A package that can run as a program (the `app` package, a future headless server, an engine sample) ships configurations in `run_configs/`:
 
-- One `.odin` file per configuration; the FILENAME is the config's name — no
-  metadata inside, no manifest. Each file declares its own `package` name
-  (matching the filename by convention) and a `main`, so several configs
-  coexist in the folder: the editor compiles each with `-file`, one at a time.
-- A config is an Odin PROGRAM, not a script. `moonhug:editor/runconfig` — an
-  editor-only subpackage, like `moonhug:editor/undo` — supplies the shared odin
-  flags, the platform executable suffix, output-directory creation, and
-  argument forwarding, so the common case is one call:
+- One `.odin` file per configuration; the FILENAME is the config's name — no metadata inside, no manifest. Each file declares its own `package` name (matching the filename by convention) and a `main`, so several configs coexist in the folder: the editor compiles each with `-file`, one at a time.
+- A config is an Odin PROGRAM, not a script. `moonhug:editor/runconfig` — an editor-only subpackage, like `moonhug:editor/undo` — supplies the shared odin flags, the platform executable suffix, output-directory creation, and argument forwarding, so the common case is one call:
 
   ```odin
   package run_debug
@@ -197,38 +107,16 @@ server, an engine sample) ships configurations in `run_configs/`:
   }
   ```
 
-- `rc.play` builds, exports the data dir for the pinned scene and runs the
-  export. A plain toolbar click makes the same config a dev run against the
-  editor's live catalog with no export, Alt runs the export, Shift runs the
-  last build, Alt+Shift runs the last export (docs/core/AssetPipeline.md
-  "Asset catalog and builds").
-- Configs run from the REPO ROOT and receive the editor's args — the
-  live-scene snapshot path when launched via Play. The rc procs forward them
-  to the game and exit with the game's exit code. The same config runs
-  from a terminal:
-  `odin run moonhug/packages/app/run_configs/run.odin -file -collection:moonhug=moonhug`
-- The editor's toolbar Play is a split button: the play half compiles and runs
-  the selected configuration, the dropdown half lists every
-  `packages/*/run_configs/*.odin` as `<package>: <name>`. The selection
-  persists in `UserSettings/editor_settings.json`; with no selection the
-  editor prefers a `run_debug` config (call-stack capture for console logs).
-- Configs are ALWAYS recompiled before running, into
-  `builds/run_config_<package>_<name>`. No cache, so nothing goes stale. A
-  config that fails to compile never launches, and its diagnostics reach the
-  console the same way build output does.
+- `rc.play` builds, exports the data dir for the pinned scene and runs the export. A plain toolbar click makes the same config a dev run against the editor's live catalog with no export, Alt runs the export, Shift runs the last build, Alt+Shift runs the last export (docs/core/AssetPipeline.md "Asset catalog and builds").
+- Configs run from the REPO ROOT and receive the editor's args — the live-scene snapshot path when launched via Play. The rc procs forward them to the game and exit with the game's exit code. The same config runs from a terminal: `odin run moonhug/packages/app/run_configs/run.odin -file -collection:moonhug=moonhug`
+- The editor's toolbar Play is a split button: the play half compiles and runs the selected configuration, the dropdown half lists every `packages/*/run_configs/*.odin` as `<package>: <name>`. The selection persists in `UserSettings/editor_settings.json`; with no selection the editor prefers a `run_debug` config (call-stack capture for console logs).
+- Configs are ALWAYS recompiled before running, into `builds/run_config_<package>_<name>`. No cache, so nothing goes stale. A config that fails to compile never launches, and its diagnostics reach the console the same way build output does.
 
 ## Install model
 
-Presence in `packages/` = installed. Management is manual and mechanism-free:
-copy a folder in, delete it to uninstall, use a symlink or git submodule if
-you personally prefer — the editor doesn't know or care, it only ever sees a
-directory. Packages committed with the repo are shared with the team
-automatically (Unity's *embedded packages* model).
+Presence in `packages/` = installed. Management is manual and mechanism-free: copy a folder in, delete it to uninstall, use a symlink or git submodule if you personally prefer — the editor doesn't know or care, it only ever sees a directory. Packages committed with the repo are shared with the team automatically (Unity's *embedded packages* model).
 
-Install/remove changes what gets compiled, so it takes a prebuild + rebuild
-(`mh run`). Static compilation is deliberate: Odin has no useful dylib story
-(no stable ABI, `typeid` identity breaks across boundaries), and static keeps
-plugin code debuggable and optimizable like first-party code.
+Install/remove changes what gets compiled, so it takes a prebuild + rebuild (`mh run`). Static compilation is deliberate: Odin has no useful dylib story (no stable ABI, `typeid` identity breaks across boundaries), and static keeps plugin code debuggable and optimizable like first-party code.
 
 ## Plugin manifest
 
@@ -263,22 +151,10 @@ Prebuild reads the manifests on every build:
 - A plugin without a manifest is a warning that names the `mh deps` command that makes it.
 
 ## Code
-Prebuild scans `packages/*` and `packages/*/editor` (the app included — it
-carries no special scan status), then generates:
+Prebuild scans `packages/*` and `packages/*/editor` (the app included — it carries no special scan status), then generates:
 
-- `components_ext_generated.odin` inside each package — the same runtime
-  component registration app components use (`register_<name>_components()`,
-  ext pools, guid blob records) plus typed pool accessors and `get_comp`.
-- `@update` ticks and `@typ_guid` types are baked package-qualified into the
-  existing central dispatchers (`__update`, `register_type_guids`), fully
-  interleaved with app entries by order. `@menu_item` in `editor/` packages
-  lands in the editor's menu registration the same way. `@phase` subscribers
-  work from packages too (editor-side ones must declare `mode=Editor`) — the
-  `Phase` enum plus a subscriber table live in
-  `host/core/phases_generated.odin`. In the editor dispatcher
-  (`phase_editor_run`), entries owned by a runnable package run only when that
-  package is the active sim host — subscribers from several hosts interleave by
-  `order`, and the guard skips the inactive ones.
+- `components_ext_generated.odin` inside each package — the same runtime component registration app components use (`register_<name>_components()`, ext pools, guid blob records) plus typed pool accessors and `get_comp`.
+- `@update` ticks and `@typ_guid` types are baked package-qualified into the existing central dispatchers (`__update`, `register_type_guids`), fully interleaved with app entries by order. `@menu_item` in `editor/` packages lands in the editor's menu registration the same way. `@phase` subscribers work from packages too (editor-side ones must declare `mode=Editor`) — the `Phase` enum plus a subscriber table live in `host/core/phases_generated.odin`. In the editor dispatcher (`phase_editor_run`), entries owned by a runnable package run only when that package is the active sim host — subscribers from several hosts interleave by `order`, and the guard skips the inactive ones.
 - The import lines, so presence = compiled + registered in both binaries:
 
   ```
@@ -289,26 +165,13 @@ carries no special scan status), then generates:
 
   A runnable package's generated `phase_run` calls `register_<host>_components()`, `register_packages()` and `register_type_guids()` at the top of `Init`, then the registration phases, before any subscriber. `editor_init` does the same for the editor.
 
-An editor package may import its own runtime package, the engine plugin
-(`moonhug:packages/engine` and its `editor/` subpackages, declared as a
-dependency), imgui and the editor's subpackages (`menu`, `inspector`,
-`undo`, `window`). Never the editor root — that's a cycle, the root imports
-plugin editor packages. Editor integration goes through attributes.
+An editor package may import its own runtime package, the engine plugin (`moonhug:packages/engine` and its `editor/` subpackages, declared as a dependency), imgui and the editor's subpackages (`menu`, `inspector`, `undo`, `window`). Never the editor root — that's a cycle, the root imports plugin editor packages. Editor integration goes through attributes.
 
-`moonhug:host/core` holds the dependency-free vocabulary — `Handle`,
-`TypeKey`, `Pool`, `Ref`/`PPtr`, `CompData`, the type registries — and any
-package may import it without importing the engine. The engine aliases the
-core names it uses in `plugins/engine/core_exports.odin`, so `engine.Handle` and
-`core.Handle` are the same type. Prebuild discovers scan targets by walking
-`moonhug/editor`, `moonhug/host`, `moonhug/registration` and the installed
-packages, the engine among them (symlinks followed, `tests/` skipped), so a new subpackage joins the attribute scan
-with no prebuild edit.
+`moonhug:host/core` holds the dependency-free vocabulary — `Handle`, `TypeKey`, `Pool`, `Ref`/`PPtr`, `CompData`, the type registries — and any package may import it without importing the engine. The engine aliases the core names it uses in `plugins/engine/core_exports.odin`, so `engine.Handle` and `core.Handle` are the same type. Prebuild discovers scan targets by walking `moonhug/editor`, `moonhug/host`, `moonhug/registration` and the installed packages, the engine among them (symlinks followed, `tests/` skipped), so a new subpackage joins the attribute scan with no prebuild edit.
 
 ## Asset importers
 
-A package ships an asset importer by registering an `engine.Importer_Desc`
-on the `ImportersInit` phase (`moonhug/packages/audio` is the reference —
-settings type, defaults and logic all in the package):
+A package ships an asset importer by registering an `engine.Importer_Desc` on the `ImportersInit` phase (`moonhug/packages/audio` is the reference — settings type, defaults and logic all in the package):
 
 ```odin
 @(typ_guid={guid="..."})
@@ -332,58 +195,35 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md,
-  "Lifecycle procs"). The pipeline creates a defaulted instance and overlays
-  the meta's settings object, so fields absent from old metas keep their
-  defaults.
+- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults.
 
 ## Asset types
 
-A package can own an asset type end to end — the audio package is the
-reference (plugins/audio/docs/Audio.md):
+A package can own an asset type end to end — the audio package is the reference (plugins/audio/docs/Audio.md):
 
-- The importer above produces the artifact (audio bakes its settings into
-  float32 WAV PCM).
-- A guid-keyed runtime cache in the package loads the artifact
-  (`clip_load`), mirroring the engine's texture cache. It registers an
-  `engine.asset_pipeline_add_reimport_hook` to evict on artifact change —
-  the same hook the texture cache uses, so settings edits apply live.
-- An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from
-  an `@(provider_install)` proc — the drawer renders in the Preview section pinned
-  to the bottom of the Project Inspector when a matching asset is selected.
-- A component references the asset through a plain `engine.Asset_GUID`
-  field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector
-  picker and drag-drop, filtered to those extensions — no editor code.
-- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`),
-  cleaned up in the component's `cleanup_`/`on_destroy_` hooks.
+- The importer above produces the artifact (audio bakes its settings into float32 WAV PCM).
+- A guid-keyed runtime cache in the package loads the artifact (`clip_load`), mirroring the engine's texture cache. It registers an `engine.asset_pipeline_add_reimport_hook` to evict on artifact change — the same hook the texture cache uses, so settings edits apply live.
+- An editor subpackage can register `inspector.mapAssetPreview[".ext"]` from an `@(provider_install)` proc — the drawer renders in the Preview section pinned to the bottom of the Project Inspector when a matching asset is selected.
+- A component references the asset through a plain `engine.Asset_GUID` field. An `ext:"mp3,wav,ogg"` field tag gives it the standard inspector picker and drag-drop, filtered to those extensions — no editor code.
+- Playback state stays in runtime-only fields (`json:"-" inspect:"-"`), cleaned up in the component's `cleanup_`/`on_destroy_` hooks.
 
-The engine contributes only generated glue (type registration, pool
-accessors, update dispatch). No engine or editor source knows the asset
-type exists.
+The engine contributes only generated glue (type registration, pool accessors, update dispatch). No engine or editor source knows the asset type exists.
 
 ## Inspector funnel
 
-Registered wrappers stack around the default drawing of a value. The chain
-runs outermost to innermost and ends at the default drawing:
+Registered wrappers stack around the default drawing of a value. The chain runs outermost to innermost and ends at the default drawing:
 
 ```
 inspector ──▶ wrapper A ──▶ wrapper B ──▶ default drawing
               draw(ctx)     draw(ctx)
 ```
 
-`draw(ctx)` draws everything beneath the wrapper. One rule: rows drawn
-before the call appear above the default drawing, rows drawn after appear
-below it, and skipping the call replaces it entirely.
+`draw(ctx)` draws everything beneath the wrapper. One rule: rows drawn before the call appear above the default drawing, rows drawn after appear below it, and skipping the call replaces it entirely.
 
 Two funnels share the mechanics:
 
-- **Component/value funnel** — keyed by typeid, wraps every struct the
-  inspector draws. The default drawing is the type's custom drawer
-  (`mapPropertyDrawer`) or the reflected field loop.
-  `packages/plugin_example/editor` is the reference (a hint row under
-  Spinner's fields).
-- **Asset funnel** — keyed by IMPORTER NAME (`""` wraps every asset),
-  wraps the import-settings body. The default drawing is Apply / Revert + the reflected settings. `ctx.settings` is the asset's import settings document (docs/core/Undo.md, "Import settings"): a wrapper edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
+- **Component/value funnel** — keyed by typeid, wraps every struct the inspector draws. The default drawing is the type's custom drawer (`mapPropertyDrawer`) or the reflected field loop. `packages/plugin_example/editor` is the reference (a hint row under Spinner's fields).
+- **Asset funnel** — keyed by IMPORTER NAME (`""` wraps every asset), wraps the import-settings body. The default drawing is Apply / Revert + the reflected settings. `ctx.settings` is the asset's import settings document (docs/core/Undo.md, "Import settings"): a wrapper edits it in place and undo records the change, no undo code needed. `packages/audio/editor` is the reference (clip stats under AudioSettings).
 
 ```odin
 @(provider_install)
@@ -405,23 +245,14 @@ _my_wrapper :: proc(ctx: ^inspector.Component_Ctx) {
 
 Rules:
 
-- Call `draw(ctx)` at most once. Never call `draw_inspector` on the same
-  value from inside a wrapper — that re-enters the funnel.
-- Wrappers sort by (`order`, registration sequence), lower = outer. Use the
-  bands so independent packages compose without coordinating numbers:
-  `ORDER_OUTER` (outermost frames), `ORDER_MIDDLE` (ordinary rows),
-  `ORDER_INNER` (closest to the default drawing).
-- A wrapper that calls `draw` inherits undo, multiedit and prefab-override
-  behavior — the default drawing owns that machinery. Skipping `draw`
-  (replace) takes over that responsibility.
-- Declarative tags stay the front door for common cases (`inspect:`,
-  `ext:`, `decor:button()`, `@(inspector_button)`). Wrappers are for
-  structural changes those cannot express.
+- Call `draw(ctx)` at most once. Never call `draw_inspector` on the same value from inside a wrapper — that re-enters the funnel.
+- Wrappers sort by (`order`, registration sequence), lower = outer. Use the bands so independent packages compose without coordinating numbers: `ORDER_OUTER` (outermost frames), `ORDER_MIDDLE` (ordinary rows), `ORDER_INNER` (closest to the default drawing).
+- A wrapper that calls `draw` inherits undo, multiedit and prefab-override behavior — the default drawing owns that machinery. Skipping `draw` (replace) takes over that responsibility.
+- Declarative tags stay the front door for common cases (`inspect:`, `ext:`, `decor:button()`, `@(inspector_button)`). Wrappers are for structural changes those cannot express.
 
 ## Editor windows
 
-A plugin declares a dockable editor window with an attribute and opens it by
-id, the way Unity's `[MenuItem]` calls `EditorWindow.GetWindow`:
+A plugin declares a dockable editor window with an attribute and opens it by id, the way Unity's `[MenuItem]` calls `EditorWindow.GetWindow`:
 
 ```odin
 import wnd "moonhug:editor/window"
@@ -438,76 +269,36 @@ open_physics_debug :: proc() {
 }
 ```
 
-- `title` defaults to the id. `icon` names a Material Symbols glyph from
-  `editor/icons` without the `ICON_MD_` prefix and draws before the tab label
-  (default `EXTENSION`). `width`/`height` are the first-shown size, applied
-  only while imgui.ini has no entry for the id (`FirstUseEver`) — once the
-  user resizes or docks it, imgui.ini wins.
-- `open` focuses the window if it is already open. Any code path can call it —
-  a button or context menu works as well as a menu item.
-- The open list is process-lifetime (reopen from the menu after a restart);
-  dock position and size persist in imgui.ini by id. The imgui title is
-  `"<icon> <title>###<id>"`, so icon and title changes never move a window.
-  `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the
-  id on startup for layouts saved with title-keyed windows.
-- Declarations land in `editor/editor_windows_generated.odin`
-  (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
+- `title` defaults to the id. `icon` names a Material Symbols glyph from `editor/icons` without the `ICON_MD_` prefix and draws before the tab label (default `EXTENSION`). `width`/`height` are the first-shown size, applied only while imgui.ini has no entry for the id (`FirstUseEver`) — once the user resizes or docks it, imgui.ini wins.
+- `open` focuses the window if it is already open. Any code path can call it — a button or context menu works as well as a menu item.
+- The open list is process-lifetime (reopen from the menu after a restart); dock position and size persist in imgui.ini by id. The imgui title is `"<icon> <title>###<id>"`, so icon and title changes never move a window. `editor/imgui_ini_migrate.odin` renames `[Window][<title>]` entries to the id on startup for layouts saved with title-keyed windows.
+- Declarations land in `editor/editor_windows_generated.odin` (editor_window_gen). `packages/plugin_example/editor` carries a working demo.
 
 ## Scene view overlays
 
-`@(scene_overlay={id="Tools", order=N})` on a `proc(vertical: bool)` adds an
-item to a scene view overlay (dock.odin). Items sharing an id sit in one
-overlay and sort by order. The proc draws imgui widgets and calls `SameLine`
-between its own widgets when `vertical` is false.
+`@(scene_overlay={id="Tools", order=N})` on a `proc(vertical: bool)` adds an item to a scene view overlay (dock.odin). Items sharing an id sit in one overlay and sort by order. The proc draws imgui widgets and calls `SameLine` between its own widgets when `vertical` is false.
 
-An overlay sits in one of three kinds of place, and the user drags it between
-them by its grip:
+An overlay sits in one of three kinds of place, and the user drags it between them by its grip:
 
-- **A toolbar strip** along the left, right, top or bottom edge. A strip
-  reserves its own space, so the view image shrinks beside it instead of
-  being covered. A strip is only as thick as the items it holds: an overlay
-  in a strip drops its own panel and its grip shrinks to the item height, so
-  the strip hugs the buttons. An empty strip has zero thickness and draws
-  nothing. The top and bottom strips take the corners and span the full
-  width; the side strips run between them.
+- **A toolbar strip** along the left, right, top or bottom edge. A strip reserves its own space, so the view image shrinks beside it instead of being covered. A strip is only as thick as the items it holds: an overlay in a strip drops its own panel and its grip shrinks to the item height, so the strip hugs the buttons. An empty strip has zero thickness and draws nothing. The top and bottom strips take the corners and span the full width; the side strips run between them.
 - **A floating corner or side** inside the image, drawn over the render.
 - **Free floating** anywhere inside the image.
 
-While an overlay drags, every zone highlights and the one under the cursor
-takes an accent. The outermost band on each edge is the strip, and the
-floating zones sit just inside it. The top and bottom bands are taller and
-span the full width, taking the corners, so the side bands run only between
-them — the same split the drawn strips use. Placement persists per overlay in
-`UserSettings/editor_settings.json`.
+While an overlay drags, every zone highlights and the one under the cursor takes an accent. The outermost band on each edge is the strip, and the floating zones sit just inside it. The top and bottom bands are taller and span the full width, taking the corners, so the side bands run only between them — the same split the drawn strips use. Placement persists per overlay in `UserSettings/editor_settings.json`.
 
-An overlay whose items draw nothing shows no background, grip or hover, and
-costs its strip no space. A conditional overlay therefore vanishes with its
-content and returns the moment an item draws again.
+An overlay whose items draw nothing shows no background, grip or hover, and costs its strip no space. A conditional overlay therefore vanishes with its content and returns the moment an item draws again.
 
-A view opts in by taking the strip space before it sizes its image:
-`overlays_measure_bars`, then `overlay_bar_insets` for the four thicknesses,
-then `overlays_draw` with both the image rect and the full content rect.
+A view opts in by taking the strip space before it sizes its image: `overlays_measure_bars`, then `overlay_bar_insets` for the four thicknesses, then `overlays_draw` with both the image rect and the full content rect.
 
 ## Game view toolbar
 
-The Game view draws a toolbar above its image with Unity's controls
-(view_game.odin):
+The Game view draws a toolbar above its image with Unity's controls (view_game.odin):
 
-- **Size**: Free Aspect fills the view, an aspect letterboxes to that ratio,
-  and a fixed resolution renders exactly those pixels, scaled down when it
-  does not fit. The list is built in.
-- **Flip**: swaps the selected size's width and height, for portrait targets.
-  Disabled on Free Aspect, which has no ratio to swap.
-- **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the
-  maximum is 5x. The minimum is 1x, or the zoom that fits the size in the
-  view when its pixels are larger, so the game is never cropped. Parking the
-  slider at that floor means "match the view": the zoom follows the floor as
-  the view resizes. A 1x button returns to actual pixels, and zoom is
-  disabled on Free Aspect, which already fills the view.
+- **Size**: Free Aspect fills the view, an aspect letterboxes to that ratio, and a fixed resolution renders exactly those pixels, scaled down when it does not fit. The list is built in.
+- **Flip**: swaps the selected size's width and height, for portrait targets. Disabled on Free Aspect, which has no ratio to swap.
+- **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the maximum is 5x. The minimum is 1x, or the zoom that fits the size in the view when its pixels are larger, so the game is never cropped. Parking the slider at that floor means "match the view": the zoom follows the floor as the view resizes. A 1x button returns to actual pixels, and zoom is disabled on Free Aspect, which already fills the view.
 
-The rendered rect is centered in the area under the toolbar, and the input
-viewport follows it, so game mouse coordinates stay correct at any size or
-scale. Size, flip and scale persist in `UserSettings/editor_settings.json`.
+The rendered rect is centered in the area under the toolbar, and the input viewport follows it, so game mouse coordinates stay correct at any size or scale. Size, flip and scale persist in `UserSettings/editor_settings.json`.
 
 ## Editor startup hook
 
@@ -519,9 +310,7 @@ Startup work that is not an install (state that depends on the asset scan or a w
 
 ## Project settings
 
-A plugin adds a section to the editor's Project Settings window
-(Edit ▸ Project Settings…) by marking a package-level struct var — the data IS
-the registration:
+A plugin adds a section to the editor's Project Settings window (Edit ▸ Project Settings…) by marking a package-level struct var — the data IS the registration:
 
 ```odin
 @(project_settings={name="Physics 2D"})
@@ -532,20 +321,10 @@ Physics2D_Settings :: struct {
 }
 ```
 
-- The window draws the struct through the inspector, so `decor:` tags and
-  @(property_drawer) overrides apply — register a drawer for the settings TYPE
-  for a fully custom pane. Edits land in the global undo history.
-- Values persist to `ProjectSettings/<slug>.json` ("Physics 2D" →
-  `physics_2d.json`) whenever they change while the window is open, and again
-  at editor shutdown.
-- The OWNING system loads its own file (`engine.project_settings_load`) and
-  consumes the var by polling, so an edit — typed, undone or redone — reaches
-  the runtime with no editor coupling, and the game binary reads the same
-  files. `packages/physics2d/settings.odin` is the shipped example: the fixed
-  step syncs the var into the live box2d world.
-- Declarations land in `editor/project_settings_generated.odin`
-  (project_settings_gen). Built-in tabs use the same attribute — Time
-  (`engine.time_settings`, the fixed tick rate) is one.
+- The window draws the struct through the inspector, so `decor:` tags and @(property_drawer) overrides apply — register a drawer for the settings TYPE for a fully custom pane. Edits land in the global undo history.
+- Values persist to `ProjectSettings/<slug>.json` ("Physics 2D" → `physics_2d.json`) whenever they change while the window is open, and again at editor shutdown.
+- The OWNING system loads its own file (`engine.project_settings_load`) and consumes the var by polling, so an edit — typed, undone or redone — reaches the runtime with no editor coupling, and the game binary reads the same files. `packages/physics2d/settings.odin` is the shipped example: the fixed step syncs the var into the live box2d world.
+- Declarations land in `editor/project_settings_generated.odin` (project_settings_gen). Built-in tabs use the same attribute — Time (`engine.time_settings`, the fixed tick rate) is one.
 
 ## Assets
 
@@ -554,17 +333,7 @@ The asset db walks `assets/` plus `packages/<name>/assets` per package.
 - References are guid-based, so removing a package just leaves unresolved refs (Unity's missing-package behavior).
 - Duplicate guids error loudly on refresh.
 
-Each package's `assets/` folder is an **additional root**, the same concept
-as the existing Assets root: label = package name, path = the root directory
-(`packages/<name>/assets`). Project view shows these roots under a top-level
-**Packages** node, one row per installed package — the root directory always
-exists because refresh auto-creates a missing `assets/` folder. The Packages
-node and its direct children (the package
-rows) are special the way the Assets root already is: non-renameable,
-non-deletable, no file ops on the rows themselves. Selecting a package —
-the left-pane node or the right-pane row — opens the package inspector:
-name, asset count, the manifest and the Samples foldout.
-The manifest part reads the package's `mh_plugin.json`: its description, a Dependencies foldout, a table of each dependency with a dot under Compile (an import, the build stops without it), Tests (an import from `tests/` only, the test build stops) or Content (a guid in `assets/` or code, what uses it does not load) for what needs it, none for an entry written by hand, and the ones not installed marked, and a Used by foldout, the same table for the installed packages whose manifest lists this one. Both tables sort by a header click. Clicking a row pings that package in the project view, a double click selects it. A package without a manifest says which `mh deps` command makes it.
+Each package's `assets/` folder is an **additional root**, the same concept as the existing Assets root: label = package name, path = the root directory (`packages/<name>/assets`). Project view shows these roots under a top-level **Packages** node, one row per installed package — the root directory always exists because refresh auto-creates a missing `assets/` folder. The Packages node and its direct children (the package rows) are special the way the Assets root already is: non-renameable, non-deletable, no file ops on the rows themselves. Selecting a package — the left-pane node or the right-pane row — opens the package inspector: name, asset count, the manifest and the Samples foldout. The manifest part reads the package's `mh_plugin.json`: its description, a Dependencies foldout, a table of each dependency with a dot under Compile (an import, the build stops without it), Tests (an import from `tests/` only, the test build stops) or Content (a guid in `assets/` or code, what uses it does not load) for what needs it, none for an entry written by hand, and the ones not installed marked, and a Used by foldout, the same table for the installed packages whose manifest lists this one. Both tables sort by a header click. Clicking a row pings that package in the project view, a double click selects it. A package without a manifest says which `mh deps` command makes it.
 
 ## Samples
 - `samples/` itself is never scanned by AssetDb, so the originals' guids don't exist until installed.
