@@ -12,7 +12,6 @@ package engine_tests
 import "core:testing"
 import "moonhug:editor/handles"
 import "moonhug:packages/engine"
-import "moonhug:libs/gfx"
 import "moonhug:packages/engine/editor/scene_tools"
 
 // A camera at +Z looking back at the origin, and the view it renders.
@@ -27,16 +26,14 @@ _pick_view :: proc() -> engine.Render_View {
 	return engine.camera_render_view(cam, 100, 100)
 }
 
-// A skinned renderer whose last pose filled the given world box. `posed` holds
-// what the skinning produced — its LENGTH is what says the mesh has been
-// skinned, so one vertex is enough to stand for a pose here.
+// A skinned renderer whose last pose filled the given world box. `posed_ok` is
+// what says the mesh has been skinned, so the box alone stands for a pose here.
 @(private = "file")
 _posed_skinned :: proc(name: string, lo, hi: [3]f32) -> engine.Transform_Handle {
 	tH := engine.transform_new(name)
 	_, ptr := engine.transform_add_comp(tH, .SkinnedMeshRenderer)
 	smr := cast(^engine.SkinnedMeshRenderer)ptr
-	append(&smr.posed, gfx.Vertex{position = lo})
-	smr.posed_min, smr.posed_max = lo, hi
+	smr.posed_min, smr.posed_max, smr.posed_ok = lo, hi, true
 	return tH
 }
 

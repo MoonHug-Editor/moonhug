@@ -2,13 +2,12 @@ package engine
 
 // SkinnedMeshRenderer: draws a mesh deformed by a skeleton of transforms.
 //
-// Skinning is done on the CPU. Every frame the bind-pose vertices are rebuilt
-// through the current skin matrices and uploaded to a per-renderer dynamic
-// vertex buffer, then drawn with the ordinary mesh pipeline. That keeps the
-// whole feature inside this layer: no vertex format change, no shader variant,
-// no bone matrix buffer. GPU skinning is the faster answer at high character
-// counts and is a drop-in replacement later — the binding and the matrix
-// palette computed here are exactly what a vertex shader would need.
+// Skinning runs on the GPU. Every frame the joint matrix palette is built from
+// the current joint transforms and uploaded, and a compute pass (gfx/skinning)
+// writes the posed vertices into this renderer's own vertex buffer, which is
+// then drawn with the ordinary mesh pipeline: no vertex format change and no
+// shader variant in any graphics pass. The bind pose and the skin data are
+// the mesh's, uploaded once and shared by every renderer of it.
 //
 // JOINTS ARE SCENE TRANSFORMS, found by NAME, the same way animation channels
 // find theirs. So a skinned character animates through the existing clip and
@@ -37,29 +36,30 @@ SkinnedMeshRenderer :: struct {
     // which is where an extracted glTF puts the armature next to the mesh.
     root_bone: Ref_Local `ref:"Transform"`,
 
-    // Runtime. `joints` is parallel to the mesh's joint_names, `posed` is the
-    // CPU skinning scratch, `gpu` the buffer it is uploaded to.
+    // Runtime. `joints` is parallel to the mesh's joint_names, `gpu` the
+    // palette and the posed vertex buffer the compute pass writes.
     joints:      [dynamic]Transform_Handle `json:"-" inspect:"-"`,
-    posed:       [dynamic]gfx.Vertex `json:"-" inspect:"-"`,
-    gpu:         gfx.Dynamic_Mesh `json:"-" inspect:"-"`,
+    gpu:         gfx.Skinned_Mesh `json:"-" inspect:"-"`,
     bound_guid:  Asset_GUID `json:"-" inspect:"-"`, // what `joints` was built for
     bound_part:  i32 `json:"-" inspect:"-"`,
     bound_root:  Transform_Handle `json:"-" inspect:"-"`, // the subtree it searched
     bound_ready: bool `json:"-" inspect:"-"`,
     posed_frame: u64 `json:"-" inspect:"-"`, // gfx.frame_index the skinning last ran in
-    // The skin matrices `posed` was built from. A frame whose palette is equal
-    // keeps `posed` and the uploaded buffer: an idle pose costs one palette
-    // build and compare, not a pass over every vertex and an upload.
+    // The skin matrices the posed buffer was built from. A frame whose palette
+    // is equal keeps the buffer: an idle pose costs one palette build and
+    // compare, not an upload and a dispatch.
     palette:     [dynamic]matrix[4, 4]f32 `json:"-" inspect:"-"`,
-    // World bounds of `posed`, accumulated by _skin_pose. Kept because the
-    // skinned bounds are the only ones that describe where the mesh actually
-    // IS — the mesh's own aabb is the bind pose in the skeleton's space, which
-    // a posed character has usually left entirely.
+    // World bounds of the posed mesh, computed by _skin_pose from the palette
+    // and the bind-pose box (see there). Kept because the skinned bounds are
+    // the only ones that describe where the mesh actually IS — the mesh's own
+    // aabb is the bind pose in the skeleton's space, which a posed character
+    // has usually left entirely. `posed_ok` says they have been computed.
     posed_min:   [3]f32 `json:"-" inspect:"-"`,
     posed_max:   [3]f32 `json:"-" inspect:"-"`,
+    posed_ok:    bool `json:"-" inspect:"-"`,
 }
 
-// World-space bounds of the skinned vertices as of the last pose. The skin
+// World-space bounds of the skinned mesh as of the last pose. The skin
 // matrices produce world space directly (see _skin_pose), which is why the
 // draw command uses an identity model and why nothing is transformed here.
 //
@@ -68,7 +68,7 @@ SkinnedMeshRenderer :: struct {
 // was authored rather than where the object is, so this reports nothing rather
 // than reporting somewhere wrong.
 skinned_mesh_world_bounds :: proc(smr: ^SkinnedMeshRenderer) -> (lo, hi: [3]f32, ok: bool) {
-    if smr == nil || len(smr.posed) == 0 do return {}, {}, false
+    if smr == nil || !smr.posed_ok do return {}, {}, false
     return smr.posed_min, smr.posed_max, true
 }
 
@@ -77,9 +77,8 @@ on_destroy_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
 }
 
 cleanup_SkinnedMeshRenderer :: proc(smr: ^SkinnedMeshRenderer) {
-    if smr.bound_ready do gfx.dynamic_mesh_destroy(&smr.gpu)
+    if smr.bound_ready do gfx.skinned_mesh_destroy(&smr.gpu)
     delete(smr.joints)
-    delete(smr.posed)
     delete(smr.palette)
     if smr.materials != nil do delete(smr.materials)
     comp_zero(smr)
@@ -151,11 +150,12 @@ _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, par
     if smr.bound_ready && smr.bound_guid == guid && smr.bound_part == part && smr.bound_root == root {
         return true
     }
-    if smr.bound_ready do gfx.dynamic_mesh_destroy(&smr.gpu)
+    if smr.bound_ready do gfx.skinned_mesh_destroy(&smr.gpu)
     clear(&smr.joints)
     // A new buffer holds nothing yet, so the next pose is built whatever it is.
     clear(&smr.palette)
     smr.bound_ready = false
+    smr.posed_ok = false
 
     missing := 0
     if smr.joints == nil do smr.joints = make([dynamic]Transform_Handle)
@@ -169,13 +169,9 @@ _skin_bind :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh, guid: Asset_GUID, par
             missing, len(mesh.joint_names), _transform_name(root))
     }
 
-    indices := _mesh_indices_of(mesh)
-    if len(indices) == 0 do return false
-    smr.gpu = gfx.dynamic_mesh_create(len(mesh.bind_vertices), indices)
+    smr.gpu = gfx.skinned_mesh_create(int(mesh.skin_gpu.vertex_count), len(mesh.inverse_binds), mesh.gpu.ibuf, mesh.gpu.index_count)
     if smr.gpu.index_count == 0 do return false
 
-    if smr.posed == nil do smr.posed = make([dynamic]gfx.Vertex)
-    resize(&smr.posed, len(mesh.bind_vertices))
     smr.bound_guid, smr.bound_part, smr.bound_root, smr.bound_ready = guid, part, root, true
     return true
 }
@@ -187,8 +183,8 @@ _transform_name :: proc(h: Transform_Handle) -> string {
     return t != nil ? t.name : "<gone>"
 }
 
-// Rebuild the posed vertices from the bind pose through the current joint
-// world transforms, and upload them.
+// Build the palette from the current joint world transforms and, when it
+// changed, upload it and run the skinning pass.
 @(private = "file")
 _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
     w := ctx_world()
@@ -209,55 +205,38 @@ _skin_pose :: proc(smr: ^SkinnedMeshRenderer, mesh: ^Mesh) {
     resize(&smr.palette, len(palette))
     copy(smr.palette[:], palette)
 
-    // Accumulated as the vertices are written, since this loop already visits
-    // every one of them — recomputing the bounds per pick would walk the whole
-    // mesh again on every click and every rubber-band frame.
+    // The posed vertices live on the GPU, so the bounds come from the palette:
+    // every posed vertex is a weighted mix of its joints' images of a bind-pose
+    // point, and each image lies inside that joint's image of the bind box. The
+    // union of the eight transformed corners over every joint therefore
+    // contains the whole posed mesh. Looser than the exact box, but a bound,
+    // and 8 corners per joint instead of a pass over every vertex.
     lo := [3]f32{max(f32), max(f32), max(f32)}
     hi := [3]f32{min(f32), min(f32), min(f32)}
-
-    for i in 0 ..< len(mesh.bind_vertices) {
-        v := mesh.bind_vertices[i]
-        sv := mesh.skin[i]
-
-        pos: [3]f32
-        nrm: [3]f32
-        total: f32
-        for k in 0 ..< 4 {
-            wgt := sv.weights[k]
-            if wgt <= 0 do continue
-            ji := int(sv.joints[k])
-            if ji >= len(palette) do continue
-            m := palette[ji]
-            p4 := m * [4]f32{v.position.x, v.position.y, v.position.z, 1}
-            pos += wgt * p4.xyz
-            n3 := matrix[3, 3]f32{
-                m[0, 0], m[0, 1], m[0, 2],
-                m[1, 0], m[1, 1], m[1, 2],
-                m[2, 0], m[2, 1], m[2, 2],
+    for m in palette {
+        for c in 0 ..< 8 {
+            corner := [4]f32{
+                c & 1 == 0 ? mesh.aabb_min.x : mesh.aabb_max.x,
+                c & 2 == 0 ? mesh.aabb_min.y : mesh.aabb_max.y,
+                c & 4 == 0 ? mesh.aabb_min.z : mesh.aabb_max.z,
+                1,
             }
-            nrm += wgt * (n3 * v.normal)
-            total += wgt
+            p := (m * corner).xyz
+            lo = {min(lo.x, p.x), min(lo.y, p.y), min(lo.z, p.z)}
+            hi = {max(hi.x, p.x), max(hi.y, p.y), max(hi.z, p.z)}
         }
-        // No usable weight: keep the bind pose rather than collapsing to the
-        // origin, which is what an unresolved skeleton looks like otherwise.
-        if total > 0 {
-            v.position = pos / total
-            v.normal = linalg.normalize0(nrm)
-        }
-        smr.posed[i] = v
-        lo = {min(lo.x, v.position.x), min(lo.y, v.position.y), min(lo.z, v.position.z)}
-        hi = {max(hi.x, v.position.x), max(hi.y, v.position.y), max(hi.z, v.position.z)}
     }
-    if len(mesh.bind_vertices) > 0 do smr.posed_min, smr.posed_max = lo, hi
-    gfx.dynamic_mesh_update(&smr.gpu, smr.posed[:])
+    if len(palette) > 0 do smr.posed_min, smr.posed_max, smr.posed_ok = lo, hi, true
+
+    gfx.skinned_mesh_pose(&smr.gpu, mesh.skin_gpu, palette)
 }
 
 // Hand every enabled SkinnedMeshRenderer's draw to `out`. Called from the
 // render collector once PER VIEW, so the draw command is appended for each
 // view but the skinning itself runs once per frame per renderer — the frame
 // stamp below. Skinning is a pure function of the bind pose and the current
-// joint transforms, so a second view in the same frame would rebuild identical
-// vertices and upload them again.
+// joint transforms, so a second view in the same frame would upload the same
+// palette and dispatch the same pass again.
 skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
     w := ctx_world()
     it := pool_iterator(skinned_mesh_renderers(w))

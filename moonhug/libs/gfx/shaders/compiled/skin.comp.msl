@@ -1,0 +1,140 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+struct Params
+{
+    uint vertex_count;
+    uint joint_count;
+};
+
+struct Bind
+{
+    uint bind[1];
+};
+
+struct Skin
+{
+    uint skin[1];
+};
+
+struct Palette
+{
+    float4x4 palette[1];
+};
+
+struct Out
+{
+    uint posed[1];
+};
+
+constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(64u, 1u, 1u);
+
+kernel void main0(constant Params& _19 [[buffer(0)]], device Bind& _41 [[buffer(1)]], device Skin& _88 [[buffer(2)]], device Palette& _157 [[buffer(3)]], device Out& _222 [[buffer(4)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+{
+    uint i = gl_GlobalInvocationID.x;
+    if (i >= _19.vertex_count)
+    {
+        return;
+    }
+    uint vb = i * 9u;
+    float3 p = float3(as_type<float>(_41.bind[vb + 0u]), as_type<float>(_41.bind[vb + 1u]), as_type<float>(_41.bind[vb + 2u]));
+    float3 n = float3(as_type<float>(_41.bind[vb + 3u]), as_type<float>(_41.bind[vb + 4u]), as_type<float>(_41.bind[vb + 5u]));
+    uint sb = i * 6u;
+    uint j01 = _88.skin[sb + 0u];
+    uint j23 = _88.skin[sb + 1u];
+    spvUnsafeArray<uint, 4> _111 = spvUnsafeArray<uint, 4>({ j01 & 65535u, j01 >> uint(16), j23 & 65535u, j23 >> uint(16) });
+    spvUnsafeArray<uint, 4> joints = _111;
+    float3 pos = float3(0.0);
+    float3 nrm = float3(0.0);
+    float total = 0.0;
+    for (uint k = 0u; k < 4u; k++)
+    {
+        float w = as_type<float>(_88.skin[(sb + 2u) + k]);
+        bool _135 = w <= 0.0;
+        bool _146;
+        if (!_135)
+        {
+            _146 = joints[k] >= _19.joint_count;
+        }
+        else
+        {
+            _146 = _135;
+        }
+        if (_146)
+        {
+            continue;
+        }
+        float4x4 m = _157.palette[joints[k]];
+        pos += ((m * float4(p, 1.0)).xyz * w);
+        nrm += ((float3x3(m[0].xyz, m[1].xyz, m[2].xyz) * n) * w);
+        total += w;
+    }
+    if (total > 0.0)
+    {
+        p = pos / float3(total);
+        float len = length(nrm);
+        float3 _210;
+        if (len > 0.0)
+        {
+            _210 = nrm / float3(len);
+        }
+        else
+        {
+            _210 = float3(0.0);
+        }
+        n = _210;
+    }
+    _222.posed[vb + 0u] = as_type<uint>(p.x);
+    _222.posed[vb + 1u] = as_type<uint>(p.y);
+    _222.posed[vb + 2u] = as_type<uint>(p.z);
+    _222.posed[vb + 3u] = as_type<uint>(n.x);
+    _222.posed[vb + 4u] = as_type<uint>(n.y);
+    _222.posed[vb + 5u] = as_type<uint>(n.z);
+    _222.posed[vb + 6u] = _41.bind[vb + 6u];
+    _222.posed[vb + 7u] = _41.bind[vb + 7u];
+    _222.posed[vb + 8u] = _41.bind[vb + 8u];
+}
+

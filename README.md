@@ -129,11 +129,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - if no menu path specified, type name is used
 
 ## TODO
-- skinned mesh runs on the CPU: `SkinnedMeshRenderer` rebuilds the bind-pose
-  vertices through the skin matrices every frame and uploads them. GPU skinning
-  — a bone matrix buffer plus a vertex shader variant — is the drop-in
-  replacement that makes many characters on screen affordable
-
 - mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
 
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key

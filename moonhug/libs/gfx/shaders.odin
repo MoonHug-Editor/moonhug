@@ -2,7 +2,8 @@
 // the device accepts. MSL entry point is main0 (spirv-cross convention),
 // SPIR-V is main. See `mh shaders`.
 //
-// Built-in shaders (one vertex shader, per-shader fragment): "unlit" and
+// Built-in shaders (one vertex shader, per-shader fragment, and the skinning
+// compute shader in skinning.odin): "unlit" and
 // "lit", registered in init. shader_register is the seam a future custom
 // shader importer plugs into — pipelines are name-keyed (see gfx.odin).
 package gfx

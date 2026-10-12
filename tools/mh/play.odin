@@ -54,7 +54,9 @@ cmd_play :: proc(args: []string) -> int {
 		if c.pkg != pkg || c.config != config do continue
 		if !prebuild() do return 1
 		cmd := make([dynamic]string, context.temp_allocator)
-		append(&cmd, "odin", "run", c.path, "-file", COLLECTION)
+		// -out keeps the executable out of the repo root, where `odin run` on
+		// run.odin would otherwise leave a `run` binary.
+		append(&cmd, "odin", "run", c.path, "-file", COLLECTION, fmt.tprintf("-out:builds/%s_%s", pkg, config))
 		if len(flags) > 0 {
 			append(&cmd, "--")
 			append(&cmd, ..flags[:])

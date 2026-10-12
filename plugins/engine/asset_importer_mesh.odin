@@ -117,11 +117,9 @@ Mesh_Artifact_Header :: struct #packed {
 // `joints` indexes the SKIN's joint list, NOT glTF node indices. Reading them
 // as node indices is the classic "my character explodes" bug. Blender writes
 // them as UNSIGNED_BYTE, other exporters as UNSIGNED_SHORT, so the importer
-// widens both to u16.
-Mesh_Skin_Vertex :: struct #packed {
-    joints:  [4]u16,
-    weights: [4]f32,
-}
+// widens both to u16. The layout is gfx's, since the artifact bytes go to the
+// GPU as they are.
+Mesh_Skin_Vertex :: gfx.Skin_Vertex
 
 // An index range drawn with one material (materials[i] on the renderer).
 Mesh_Submesh :: struct #packed {
