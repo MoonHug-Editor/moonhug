@@ -1,3 +1,9 @@
+## [0.129.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.128.0...v0.129.0) (2026-10-12)
+
+### Features
+
+* frame drop for less cpu usage, performance settings, skinnedMeshRenderer optimization ([616295e](https://github.com/MoonHug-Editor/moonhug/commit/616295e32207b59ddc7f0ef7f9c3608c903deda7))
+
 ## [0.128.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.127.0...v0.128.0) (2026-10-11)
 
 ### Features
