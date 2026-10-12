@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // The generic modal dialog (editor/widgets/dialog.odin) and its first user,
 // the asset delete confirmation (editor/project_file_ops.odin). The draw path

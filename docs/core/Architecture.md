@@ -65,5 +65,5 @@ The pattern is the same in every row: the editor owns a mechanism, the plugin ow
 ## How to check the separation
 
 - `make build NOPLUGINS=1` builds the Editor with every plugin set aside. It has to succeed.
-- `moonhug/tests` is the editor's own suite and imports no plugin. Each plugin's tests live in its `tests/` folder and run with it.
+- Tests live with what they test: the host's in `moonhug/tests`, the editor's in `moonhug/editor/tests`, each plugin's in its `tests/` folder. `mh test` runs them all.
 - A hand-written file in `moonhug/editor`, `moonhug/host` or `moonhug/registration` that imports the engine fails the boundary test.

@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // The project view's path bar: the current folder as clickable segments.
 

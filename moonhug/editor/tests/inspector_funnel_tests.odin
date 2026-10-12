@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // The inspector funnel's mechanics, headless: chain composition, order
 // bands, the asset wildcard merge, and the four wrapper capabilities

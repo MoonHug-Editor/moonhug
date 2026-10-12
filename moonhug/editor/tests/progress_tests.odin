@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // The progress API: no-op without a sink, sink receives title/info/fraction,
 // begin/end nesting restores the outer title, and the reentrancy guard stops

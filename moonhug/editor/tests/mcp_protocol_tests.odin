@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // Framing layer of the MCP bridge wire protocol (moonhug/mcp): length-
 // prefixed frames accumulated from arbitrary recv chunk boundaries.

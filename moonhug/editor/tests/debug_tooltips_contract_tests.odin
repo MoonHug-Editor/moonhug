@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // Debug tooltips (editor/widgets/ui_debug_tooltips.odin) rest on two
 // conventions nothing enforces at compile time. Both fail silently: the
@@ -83,7 +83,9 @@ _collect_odin_files :: proc(dir: string, out: ^[dynamic]string) {
 	os.close(handle)
 	if rerr != nil do return
 	for e in entries {
-		if strings.has_prefix(e.name, ".") || e.name == "external" do continue
+		// Test suites are not the code the contracts are about, and this
+		// package names what the boundary test forbids.
+		if strings.has_prefix(e.name, ".") || e.name == "external" || e.name == "tests" do continue
 		full := strings.concatenate({dir, "/", e.name}, context.temp_allocator)
 		if e.type == .Directory || (e.type == .Symlink && os.is_dir(full)) {
 			_collect_odin_files(full, out)

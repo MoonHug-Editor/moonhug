@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // The editor is a generic shell (dock, views, menus, inspector reflection,
 // undo stack, settings, console, MCP) standing on the host packages, and the

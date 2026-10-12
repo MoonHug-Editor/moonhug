@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // Game view size math (editor/view_game.odin): the rect the game renders into
 // for each kind of entry in the size list, plus the flip and scale modifiers.

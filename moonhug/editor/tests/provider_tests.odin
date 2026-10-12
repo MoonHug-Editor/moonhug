@@ -1,4 +1,4 @@
-package tests
+package editor_tests
 
 // editor/provider: a provider struct is absent or complete, a partly filled
 // one is named field by field.
