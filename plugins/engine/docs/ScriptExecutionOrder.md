@@ -1,8 +1,9 @@
 ---
 title: "Script execution order"
 description: "Execution order of engine event procs against a reference event order, with the implementation status of each"
-weight: 60
+order: 60
 tags: ["components", "engine"]
+path: engine/frame
 ---
 
 This document tracks similarities to Unity execution methods and implementation status.

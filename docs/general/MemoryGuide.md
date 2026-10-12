@@ -1,8 +1,9 @@
 ---
 title: "Memory Guide (Odin)"
 description: "Concepts and patterns for leak-free and crash-free manual memory management in Odin, from simple to complex"
-weight: 50
+order: 50
 tags: ["memory", "contributing"]
+path: general/guides
 ---
 
 Odin language uses manual memory management and doesn't have garbage collector.  

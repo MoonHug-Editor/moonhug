@@ -1,8 +1,9 @@
 ---
 title: "Gizmos"
 description: "The gizmos API that draws debug and editor shapes for gizmo procs, editor handles and in-game debug drawing"
-weight: 170
+order: 170
 tags: ["gizmos", "handles", "engine", "editor"]
+path: editor/scene-view
 ---
 
 `host/gizmos` draws debug and editor shapes: collider wires, a camera frustum, handle chrome, the transform gizmo, a raycast from gameplay code. One API serves the editor's gizmo hooks, `editor/handles` and in-game debug drawing.

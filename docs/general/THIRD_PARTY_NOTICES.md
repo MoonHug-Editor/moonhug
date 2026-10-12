@@ -1,8 +1,9 @@
 ---
 title: "Third-Party Notices"
 description: ""
-weight: 1005
+order: 1005
 tags: ["contributing"]
+path: general/legal
 ---
 
 MoonHug is licensed under the zlib License (see `LICENSE`). It bundles or

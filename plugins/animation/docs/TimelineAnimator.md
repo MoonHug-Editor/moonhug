@@ -1,7 +1,7 @@
 ---
 title: "TimelineAnimator"
 description: "Design of an animation state machine whose states play whole timelines with several tracks and cross-fade between them"
-weight: 30
+order: 30
 tags: ["animation", "sequencer", "design"]
 ---
 

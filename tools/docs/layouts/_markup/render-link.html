@@ -18,7 +18,14 @@
   {{- if hasPrefix $pagePath "/" -}}
     {{- $pagePath = strings.TrimPrefix "/" $pagePath -}}
   {{- else -}}
-    {{- $pagePath = path.Join .PageInner.File.Dir $pagePath -}}
+    {{- /* OVERRIDE (tools/docs): a relative link is relative to the file in
+         the REPO, not to where the page sits on the site: a page is mounted
+         where its `path:` says, and its links are written against its folder. */ -}}
+    {{- $srcDir := strings.TrimPrefix (printf "%s/" hugo.WorkingDir) (path.Dir .PageInner.File.Filename) -}}
+    {{- /* Pages mh docs writes into the build folder (the README copy, the
+         License page) link against the repo root. */ -}}
+    {{- if hasPrefix $srcDir "builds/" -}}{{- $srcDir = "" -}}{{- end -}}
+    {{- $pagePath = path.Join $srcDir $pagePath -}}
   {{- end -}}
   {{- /* OVERRIDE (tools/docs): links are written as REPO paths, so they work on
        GitHub, and translated to SITE paths here. The site drops the docs/
@@ -29,8 +36,14 @@
   {{- $pagePath = path.Clean $pagePath -}}
   {{- $pagePath = replaceRE `^/+` "" $pagePath -}}
   {{- $pagePath = replaceRE `^(\.\./)+` "" $pagePath -}}
-  {{- $pagePath = replaceRE `^docs/` "" $pagePath -}}
-  {{- $pagePath = replaceRE `^plugins/([^/]+)/docs/` "plugins/$1/" $pagePath -}}
+  {{- /* A page says where it sits (its `path:` front matter), and `mh docs`
+       writes the repo path -> site path table to data/pages.json. */ -}}
+  {{- with index site.Data.pages (printf "%s.md" $pagePath) -}}
+    {{- $pagePath = . -}}
+  {{- else -}}
+    {{- $pagePath = replaceRE `^docs/` "" $pagePath -}}
+    {{- $pagePath = replaceRE `^plugins/([^/]+)/docs/` "plugins/$1/" $pagePath -}}
+  {{- end -}}
   {{- /* The README is the home page. */ -}}
   {{- $pagePath = replaceRE `^README$` "" $pagePath -}}
   {{- /* Looked up from the site root: after the join above the path is

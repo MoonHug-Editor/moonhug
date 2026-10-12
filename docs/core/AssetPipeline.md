@@ -1,8 +1,9 @@
 ---
 title: "Asset Pipeline"
 description: "How source assets get meta files and guids, are imported into cached artifacts, registered, loaded and built"
-weight: 80
+order: 80
 tags: ["assets", "serialization", "engine", "editor"]
+path: editor
 ---
 
 **What lives on disk alongside it:**

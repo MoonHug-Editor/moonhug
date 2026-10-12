@@ -1,7 +1,7 @@
 ---
 title: "Sequencer"
 description: "A timeline system where a timeline is a prefab whose root carries a director, with track nodes and clip nodes as children"
-weight: 10
+order: 10
 tags: ["sequencer", "animation", "prefabs"]
 ---
 

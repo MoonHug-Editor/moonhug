@@ -1,8 +1,9 @@
 ---
 title: "Plugins (Packages)"
 description: "Plugin packages: folder layout, manifest, install model, and extension points for importers, windows and settings"
-weight: 4 
+order: 3
 tags: ["plugins", "build", "editor", "engine"]
+path: general/architecture
 ---
 
 Plugin is a package folder in `moonhug/packages/`.

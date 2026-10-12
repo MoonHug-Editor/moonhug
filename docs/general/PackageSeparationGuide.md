@@ -1,8 +1,9 @@
 ---
-title: "Architecture Notes"
+title: "Package Separation Guide"
 description: "Notes on indie game code architecture from Jonas Tyroller's talk: packages, glue, dependencies, data and time"
-weight: 60
+order: 60
 tags: ["design", "contributing"]
+path: general/guides
 ---
 
 Key notes from Jonas Tyroller's ["Best Code Architectures For Indie Games"](https://www.youtube.com/watch?v=8WqYQ1OwxJ4)

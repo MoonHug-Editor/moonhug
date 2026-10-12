@@ -1,8 +1,9 @@
 ---
 title: "Prefabs Specification"
 description: "Implementation-independent specification of prefab behaviour, stated as rules and observable outcomes"
-weight: 30
+order: 30
 tags: ["prefabs", "scenes", "design", "engine"]
+path: engine/scenes
 ---
 
 > MoonHug Editor uses scenes as prefabs, so "prefab" and "scene" are synonyms in

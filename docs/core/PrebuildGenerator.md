@@ -1,8 +1,9 @@
 ---
 title: "Prebuild Generator"
 description: "The prebuild step that scans Odin source for attribute markers and emits the generated files the build depends on"
-weight: 200
+order: 200
 tags: ["prebuild", "build"]
+path: editor/extending
 ---
 
 The prebuild step (`moonhug/prebuild`) scans the Odin source for attribute markers

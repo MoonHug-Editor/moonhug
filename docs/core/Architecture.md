@@ -1,8 +1,9 @@
 ---
 title: "Architecture"
 description: "The two programs, the layers they are built from, what each layer owns, and the one rule about imports"
-weight: 2
+order: 1
 tags: ["design", "plugins", "editor", "engine"]
+path: general/architecture
 ---
 
 MoonHug is two programs built from the same layers: the **Editor**, which you edit a project in, and the **App**, the project's own executable. The engine is not part of either program by itself. It is a plugin, and a project installs it like any other.

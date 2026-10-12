@@ -1,7 +1,7 @@
 ---
 title: "Animation component"
 description: "The Animation component that owns a PlayableGraph and drives clip playback state and time on a transform hierarchy"
-weight: 10
+order: 10
 tags: ["animation", "components", "engine"]
 ---
 

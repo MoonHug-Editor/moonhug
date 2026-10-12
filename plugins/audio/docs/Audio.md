@@ -1,7 +1,7 @@
 ---
 title: "Audio"
 description: "The audio package: SDL3_mixer backend, import pipeline with baked gain, AudioSource, one-shots and spatial playback"
-weight: 10
+order: 10
 tags: ["audio", "assets", "components"]
 ---
 

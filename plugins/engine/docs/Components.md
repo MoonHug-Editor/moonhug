@@ -1,8 +1,9 @@
 ---
 title: "Components"
 description: "The component data layer and its narrow access contract: pools, handles, transforms and lifecycle procs"
-weight: 10
+order: 10
 tags: ["components", "engine"]
+path: engine/data
 ---
 
 The component data layer and its access contract. The contract is deliberately narrow so the storage layout can change (for example to SoA columns) without touching the code above it.

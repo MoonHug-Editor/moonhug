@@ -1,8 +1,9 @@
 ---
 title: "Folder Structure"
 description: "What each top-level folder holds, and the derived-data cache in library/"
-weight: 1
+order: 2
 tags: ["build", "assets"]
+path: general/architecture
 ---
 
 ## Folders

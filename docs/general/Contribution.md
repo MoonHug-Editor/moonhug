@@ -1,8 +1,9 @@
 ---
 title: "Contribution"
 description: "Ways to contribute, pull request scope and rules, documentation-driven development and licensing"
-weight: 30
+order: 30
 tags: ["contributing", "design"]
+path: general/guides
 ---
 
 ## Ways to contribute

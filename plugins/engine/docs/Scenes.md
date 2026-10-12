@@ -1,8 +1,9 @@
 ---
 title: "Scenes"
 description: "How scenes are stored on disk, serialized and deserialized, loaded in different modes, and shown in the editor"
-weight: 20
+order: 20
 tags: ["scenes", "serialization", "engine"]
+path: engine/scenes
 ---
 
 **What lives on disk:**

@@ -1,0 +1,23 @@
+{{- /* Rendered inside the page title (layouts/docs/single.html and list.html).
+     A page written by hand gets a link that opens its source file, the way a reference page's
+     locations open code: through the site's source_url template (an editor
+     URL scheme, the served site's viewer, or the file itself). Generated
+     pages and the copied home page have no file to open. */ -}}
+{{- with .File -}}
+  {{- $file := strings.TrimPrefix (printf "%s/" hugo.WorkingDir) .Filename -}}
+  {{- /* The home page is the README, copied into the build folder. */ -}}
+  {{- if $.IsHome -}}{{- $file = "README.md" -}}{{- end -}}
+  {{- if and (not (hasPrefix $file "docs/reference/")) (not (hasPrefix $file "builds/")) -}}
+    {{- $tpl := site.Params.source_url -}}
+    {{- if $tpl -}}
+      {{- $path := $file -}}
+      {{- if and (in $tpl "://") (not (hasPrefix $tpl "http")) -}}
+        {{- $path = printf "%s/%s" hugo.WorkingDir $file -}}
+      {{- end -}}
+      {{- $href := replace (replace $tpl "{file}" $path) "{line}" "1" -}}
+      <a class="mh-open-source" href="{{ $href | safeURL }}" title="Open {{ $file }}" aria-label="Open the page's source file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 13v5a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h5"/></svg>
+      </a>
+    {{- end -}}
+  {{- end -}}
+{{- end -}}

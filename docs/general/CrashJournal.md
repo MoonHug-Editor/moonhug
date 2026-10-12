@@ -1,8 +1,9 @@
 ---
 title: "Crash Journal"
 description: "How the process writes a crash log with reason, context and stack trace on fatal signals, panics and failed asserts"
-weight: 80
+order: 80
 tags: ["engine", "editor"]
+path: general/guides
 ---
 
 Last words for crashes that can't be reproduced on demand. On SIGSEGV/SIGBUS/SIGILL/SIGFPE/SIGABRT — or a panic or failed assert — the process writes `logs/crash_<pid>.log` and then dies normally.

@@ -1,8 +1,9 @@
 ---
 title: "Install, Build and Run"
 description: "How to install Odin and SDL3, set up a fresh clone, and build, run and test everything through tools/mh"
-weight: 10
+order: 1
 tags: ["build", "testing", "contributing"]
+path: general
 ---
 
 Everything the repo does from a terminal goes through `tools/mh`.

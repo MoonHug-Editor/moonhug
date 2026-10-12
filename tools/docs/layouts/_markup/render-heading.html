@@ -1,0 +1,15 @@
+{{- /* OVERRIDE (tools/docs): the home page is the README with its own level-1
+     heading and no theme title, so that heading carries the source link the
+     theme title carries elsewhere (custom/title-source-link.html). The rest is
+     the theme's hook, unchanged. */ -}}
+<h{{ .Level }} data-hextra-search-id="{{ .Anchor | safeURL }}" {{- with .Attributes.class }} class="{{ . }}" {{- end }}>
+  {{- .Text | safeHTML -}}
+  {{- if and (eq .Level 1) .Page.IsHome -}}
+    {{- partial "custom/title-source-link.html" .Page -}}
+  {{- end -}}
+  {{- if gt .Level 1 -}}
+    <span class="hx:absolute hx:-mt-20" id="{{ .Anchor | safeURL }}"></span>
+    <a href="#{{ .Anchor | safeURL }}" class="subheading-anchor" aria-label="{{ (T "permalinkLabel") | default "Permalink for this section" }}"></a>
+  {{- end -}}
+</h{{ .Level }}>
+{{- /* Drop trailing newlines */ -}}

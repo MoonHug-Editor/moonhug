@@ -1,8 +1,9 @@
 ---
 title: "Nested Prefabs"
 description: "How the prefab specification is implemented here: file layout, records, and the resolve and save pipeline"
-weight: 40
+order: 40
 tags: ["prefabs", "scenes", "serialization", "engine"]
+path: engine/scenes
 ---
 
 > MoonHug Editor uses scenes as prefabs, so "prefab" and "scene" are synonyms in

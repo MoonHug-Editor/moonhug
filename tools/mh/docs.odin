@@ -127,9 +127,9 @@ _docs_rebuild_serve :: proc(sock: net.TCP_Socket) {
 docs_serving: bool
 
 // The folders the viewer can show, mounted raw under /source when serving,
-// .odin files only: the host, the shell, the prebuild, the tests, every
-// plugin by its real path, and this tool.
-DOCS_SOURCE_ROOTS :: []string{"moonhug/host", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
+// .odin and .md files only: the docs, the host, the shell, the prebuild, the
+// tests, every plugin by its real path, and this tool.
+DOCS_SOURCE_ROOTS :: []string{"docs", "moonhug/host", "moonhug/editor", "moonhug/prebuild", "moonhug/registration", "moonhug/tests", "plugins", "tools/mh"}
 
 // The URL template every source location in the reference pages links to,
 // with {file} and {line} to fill in. It is the `source_url` field of the
@@ -285,31 +285,33 @@ docs_write_plugin_mounts :: proc() -> bool {
 	slice.sort(names[:])
 
 	b := strings.builder_make(context.temp_allocator)
-	// The site follows the repo one level down: docs/general is /general,
-	// docs/core is /core, a plugin's pages are /plugins/<name>. The README's
-	// repo-path links are rewritten to match in docs_write_home.
 	strings.write_string(&b, "# Written by `mh docs`. Not committed, not edited.\n")
-	for sec in ([]string{"general", "core", "reference"}) {
-		fmt.sbprintf(&b, "[[module.mounts]]\nsource = 'docs/%s'\ntarget = 'content/%s'\n", sec, sec)
-	}
+	// The source link template, for the layout's "open this page's file"
+	// link (custom/content-begin.html).
+	fmt.sbprintf(&b, "[params]\nsource_url = '%s'\n", docs_source_url())
+	// Every hand-written page is mounted on its own, where its front matter
+	// puts it (docs_page_mounts). The generated reference is one folder.
+	strings.write_string(&b, "[[module.mounts]]\nsource = 'docs/reference'\ntarget = 'content/reference'\n")
+	groups, gok := docs_page_mounts(&b, names[:])
+	if !gok do return false
 	strings.write_string(&b, "[[module.mounts]]\nsource = 'builds/docs-home'\ntarget = 'content'\n")
 	// The README's images, at the path the README uses, so the home page
 	// shows them without the README changing.
 	strings.write_string(&b, "[[module.mounts]]\nsource = 'readme_files'\ntarget = 'static/readme_files'\n")
-	for n in names {
-		fmt.sbprintf(&b, "[[module.mounts]]\nsource = 'plugins/%s/docs'\ntarget = 'content/plugins/%s'\n", n, n)
-	}
+	// The repo path -> site path table the link hook reads (site.Data.pages).
+	strings.write_string(&b, "[[module.mounts]]\nsource = 'builds/docs-data'\ntarget = 'data'\n")
 	// The raw source files the viewer fetches, served only: a static mount
 	// in a disk build would copy them into the output.
 	if docs_serving {
 		for root in DOCS_SOURCE_ROOTS {
 			if !os.is_dir(root) do continue
 			// The folders match too, or the walk prunes them before any file.
-			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['**/', '**.odin']\n", root, root)
+			fmt.sbprintf(&b, "[[module.mounts]]\nsource = '%s'\ntarget = 'static/source/%s'\nfiles = ['**/', '**.odin', '**.md']\n", root, root)
 		}
 	}
 	if !docs_write_home(names[:]) do return false
 	if !docs_write_viewer() do return false
+	if !docs_write_group_indexes(groups) do return false
 	os.make_directory("builds")
 	// Unchanged content is not rewritten: the served site watches this file
 	// as config, and a write would reload the whole site.
@@ -336,7 +338,7 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// LICENSE is a repo file with no page, so the README's link to it would be
 	// dead on the site. The site gets a License page (written below), and the
 	// site's copy of the README links there. GitHub keeps the plain link.
-	body, _ = strings.replace_all(body, "](LICENSE)", "](docs/general/License.md)", context.temp_allocator)
+	body, _ = strings.replace_all(body, "](LICENSE)", "](docs/general/legal/License.md)", context.temp_allocator)
 	// Rebuilt whole: a page this stops writing must not survive from an
 	// earlier build, it would still be mounted into the site.
 	os.remove_all(DOCS_HOME_DIR)
@@ -353,16 +355,16 @@ docs_write_home :: proc(plugins: []string) -> bool {
 		fmt.eprintfln("mh: cannot read LICENSE: %v", lerr)
 		return false
 	}
-	os.make_directory(fmt.tprintf("%s/general", DOCS_HOME_DIR))
-	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\nweight: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
-	if err := os.write_entire_file(fmt.tprintf("%s/general/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
+	os.make_directory_all(fmt.tprintf("%s/general/legal", DOCS_HOME_DIR))
+	lp := strings.concatenate({"---\ntitle: \"License\"\ndescription: \"The license MoonHug is distributed under\"\norder: 1004\ntags: [\"contributing\"]\n---\n\n", string(license)}, context.temp_allocator)
+	if err := os.write_entire_file(fmt.tprintf("%s/general/legal/License.md", DOCS_HOME_DIR), transmute([]byte)lp); err != nil {
 		fmt.eprintfln("mh: cannot write the License page: %v", err)
 		return false
 	}
 	// The Plugins section index. The repo has no plugins/docs folder to hold
 	// one, the section exists only on the site, so it is written here.
 	os.make_directory(fmt.tprintf("%s/plugins", DOCS_HOME_DIR))
-	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\nweight: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
+	sec := "---\ntitle: \"Plugins\"\ndescription: \"Documentation that ships with each plugin\"\norder: 30\n---\n\nEach plugin keeps its pages in its own `docs/` folder and they are collected here at build time. The plugins model itself is described in [Plugins](/docs/core/Plugins.md), and how this site is put together in [Documentation](/docs/general/Documentation.md).\n"
 	if err := os.write_entire_file(fmt.tprintf("%s/plugins/_index.md", DOCS_HOME_DIR), transmute([]byte)sec); err != nil {
 		fmt.eprintfln("mh: cannot write plugins/_index.md: %v", err)
 		return false
@@ -370,6 +372,9 @@ docs_write_home :: proc(plugins: []string) -> bool {
 	// A landing page per plugin, so the sidebar has a titled, clickable
 	// section. The description comes from the manifest when it has one.
 	for n in plugins {
+		// A plugin that writes its own section page places its pages itself
+		// (the engine's sit at /engine), so it gets no entry under Plugins.
+		if os.exists(fmt.tprintf("plugins/%s/docs/_index.md", n)) do continue
 		desc := fmt.tprintf("Pages of the %s plugin", n)
 		if m, merr := os.read_entire_file(fmt.tprintf("plugins/%s/mh_plugin.json", n), context.temp_allocator); merr == nil {
 			if d := _json_string_field(string(m), "description"); d != "" do desc = d
@@ -532,7 +537,7 @@ excludeSearch: true
     if (!r.ok) throw new Error(r.status + " " + r.statusText);
     return r.text();
   }).then(function (text) {
-    var lines = highlight(text).split("\n");
+    var lines = (file.endsWith(".odin") ? highlight(text) : esc(text)).split("\n");
     if (lines.length && lines[lines.length - 1] === "") lines.pop();
     // The markup Chroma writes: the theme makes each line a flex row, so
     // the code sits in its own .cl item, where the newline and the
@@ -550,3 +555,125 @@ excludeSearch: true
 })();
 </script>
 `
+
+// Where a page sits on the site is the page's own say: a `path:` line in its
+// front matter, a site folder ("general/architecture") or a full site path
+// ending in .md ("general/Documentation.md"). A page without one keeps its
+// folder's place: docs/<section>/X.md is /<section>/X, plugins/<name>/docs/X.md
+// is /plugins/<name>/X. One mount per page, so no file moves when a page
+// changes place, and builds/docs-data/pages.json maps every repo path to
+// its site path for the link hook, since links are written as repo paths.
+// Returns the site folders pages were placed in that got no `_index.md` of
+// their own, for docs_write_group_indexes.
+docs_page_mounts :: proc(b: ^strings.Builder, plugins: []string) -> (groups: []string, ok: bool) {
+	pages := strings.builder_make(context.temp_allocator)
+	strings.write_string(&pages, "{\n")
+	first := true
+	// Site folder -> whether a page mounted its _index.md there.
+	dirs := make(map[string]bool, context.temp_allocator)
+	add :: proc(b, pages: ^strings.Builder, first: ^bool, dirs: ^map[string]bool, repo_path, default_dir: string) -> bool {
+		data, rerr := os.read_entire_file(repo_path, context.temp_allocator)
+		if rerr != nil {
+			fmt.eprintfln("mh: cannot read %s", repo_path)
+			return false
+		}
+		name := filepath.base(repo_path)
+		target := fmt.tprintf("%s/%s", default_dir, name)
+		if p := _front_matter_value(string(data), "path"); p != "" {
+			target = p if strings.has_suffix(p, ".md") else fmt.tprintf("%s/%s", strings.trim_suffix(p, "/"), name)
+		}
+		fmt.sbprintf(b, "[[module.mounts]]\nsource = '%s'\ntarget = 'content/%s'\n", repo_path, target)
+		{
+			context.allocator = context.temp_allocator
+			dir := filepath.dir(target)
+			has_index := dirs[dir] || filepath.base(target) == "_index.md"
+			dirs[dir] = has_index
+		}
+		if !first^ do strings.write_string(pages, ",\n")
+		first^ = false
+		fmt.sbprintf(pages, "\t%q: %q", repo_path, strings.trim_suffix(target, ".md"))
+		return true
+	}
+	walk :: proc(b, pages: ^strings.Builder, first: ^bool, dirs: ^map[string]bool, dir, default_dir: string) -> bool {
+		handle, oerr := os.open(dir)
+		if oerr != nil do return true
+		defer os.close(handle)
+		entries, rerr := os.read_dir(handle, -1, context.temp_allocator)
+		if rerr != nil do return true
+		slice.sort_by(entries, proc(a, c: os.File_Info) -> bool { return a.name < c.name })
+		for e in entries {
+			if e.type == .Directory {
+				if !walk(b, pages, first, dirs, fmt.tprintf("%s/%s", dir, e.name), fmt.tprintf("%s/%s", default_dir, e.name)) do return false
+				continue
+			}
+			if !strings.has_suffix(e.name, ".md") do continue
+			if !add(b, pages, first, dirs, fmt.tprintf("%s/%s", dir, e.name), default_dir) do return false
+		}
+		return true
+	}
+	// docs/<section>, the generated reference excluded.
+	if handle, oerr := os.open("docs"); oerr == nil {
+		defer os.close(handle)
+		entries, _ := os.read_dir(handle, -1, context.temp_allocator)
+		slice.sort_by(entries, proc(a, c: os.File_Info) -> bool { return a.name < c.name })
+		for e in entries {
+			if e.type != .Directory || e.name == "reference" do continue
+			if !walk(b, &pages, &first, &dirs, fmt.tprintf("docs/%s", e.name), e.name) do return {}, false
+		}
+	}
+	for n in plugins {
+		if !walk(b, &pages, &first, &dirs, fmt.tprintf("plugins/%s/docs", n), fmt.tprintf("plugins/%s", n)) do return {}, false
+	}
+	strings.write_string(&pages, "\n}\n")
+	os.make_directory_all("builds/docs-data")
+	if err := os.write_entire_file("builds/docs-data/pages.json", transmute([]byte)strings.to_string(pages)); err != nil {
+		fmt.eprintfln("mh: cannot write builds/docs-data/pages.json: %v", err)
+		return {}, false
+	}
+	missing := make([dynamic]string, context.temp_allocator)
+	for dir, has_index in dirs {
+		// The sections themselves and a plugin's folder have index pages of
+		// their own (the section files, docs_write_home).
+		if has_index || strings.count(dir, "/") == 0 || strings.has_prefix(dir, "plugins/") do continue
+		append(&missing, dir)
+	}
+	slice.sort(missing[:])
+	return missing[:], true
+}
+
+// A folder is a section of the sidebar only with an `_index.md`, so each
+// group folder a page was placed in gets one, titled after the folder
+// ("scene-view" is "Scene View"). A page mounted as the folder's own
+// `_index.md` replaces it. Written into the home folder, which is mounted at
+// the content root after docs_write_home cleared it.
+docs_write_group_indexes :: proc(groups: []string) -> bool {
+	for dir in groups {
+		words := strings.split(filepath.base(dir), "-", context.temp_allocator)
+		for &w in words do if len(w) > 0 do w = strings.concatenate({strings.to_upper(w[:1], context.temp_allocator), w[1:]}, context.temp_allocator)
+		title := strings.join(words, " ", context.temp_allocator)
+		out_dir := fmt.tprintf("%s/%s", DOCS_HOME_DIR, dir)
+		os.make_directory_all(out_dir)
+		page := fmt.tprintf("---\ntitle: \"%s\"\n---\n", title)
+		if err := os.write_entire_file(fmt.tprintf("%s/_index.md", out_dir), transmute([]byte)page); err != nil {
+			fmt.eprintfln("mh: cannot write %s/_index.md: %v", out_dir, err)
+			return false
+		}
+	}
+	return true
+}
+
+// The value of a `key:` line in a page's front matter, quotes stripped, ""
+// when the page has none.
+_front_matter_value :: proc(text, key: string) -> string {
+	if !strings.has_prefix(text, "---") do return ""
+	rest := text[3:]
+	end := strings.index(rest, "\n---")
+	if end < 0 do return ""
+	for line in strings.split_lines(rest[:end], context.temp_allocator) {
+		if !strings.has_prefix(line, key) do continue
+		after := line[len(key):]
+		if !strings.has_prefix(after, ":") do continue
+		return strings.trim(strings.trim_space(after[1:]), "\"'")
+	}
+	return ""
+}

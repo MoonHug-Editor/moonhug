@@ -1,7 +1,7 @@
 ---
 title: "GUI (mhgui)"
 description: "The UI canvas tree in the engine and the mhgui package that draws images, lays out groups and provides editor tooling"
-weight: 10
+order: 10
 tags: ["mhgui", "ui", "rendering", "editor"]
 ---
 

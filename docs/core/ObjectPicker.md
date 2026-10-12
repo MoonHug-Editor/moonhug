@@ -1,8 +1,9 @@
 ---
 title: "Object Picker"
 description: "The picker popup for inspector reference fields, its Scene and Project tabs, field filters and AssetDB indexes"
-weight: 140
+order: 140
 tags: ["inspector", "assets", "editor"]
+path: editor/inspector
 ---
 
 Unity-style picker popup for reference fields in the inspector. One shared

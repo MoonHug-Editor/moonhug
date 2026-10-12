@@ -1,8 +1,9 @@
 ---
 title: "Unity Conveniences"
 description: "Unity editor conveniences replicated in MoonHug, such as attribute markers and default and custom IMGUI inspectors"
-weight: 70
+order: 70
 tags: ["inspector", "prebuild", "editor"]
+path: editor
 ---
 
 Most Unity conveniences come from C# and clever Editor design choices, here are some of important features replicated in MoonHug Editor.

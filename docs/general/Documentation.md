@@ -1,8 +1,9 @@
 ---
 title: "Documentation"
 description: "How the documentation site is assembled from the repo's markdown, generated reference pages and the README"
-weight: 15
+order: 4
 tags: ["build", "contributing", "prebuild"]
+path: general
 ---
 
 `mh docs` (or `make docs`) builds the site into `builds/docs`, clearing that folder first. Double-click `builds/docs/index.html` to read it from the file system. `mh docs --open` (or `make docs OPEN=1`, since make cannot pass `--open` through) serves it with `hugo server` on port 7272, rendering to memory so the server never writes into `builds/docs` (`DOCS_PORT` in `tools/mh/docs.odin`) and opens the browser, which is the mode where search works.
@@ -16,7 +17,7 @@ tags: ["build", "contributing", "prebuild"]
 
 ## How the content is assembled
 
-The site follows the repo one level down: `docs/general` is `/general`, `docs/core` is `/core`, `docs/reference` is `/reference`, each `plugins/<name>/docs/` is `/plugins/<name>`, and the README is the home page. The navbar search box is a `[[menu.main]]` entry with `params.type = 'search'`, which is the only way the theme renders one. `mh docs` writes every Hugo mount into `builds/docs-mounts.toml`, because a later config file replaces an earlier one's mounts array rather than adding to it, so they all have to come from one place.
+Each page says where it sits on the site with a `path:` line in its front matter: a site folder (`path: general/architecture`) or a full site path ending in `.md`. A page without one follows its folder: `docs/<section>/X.md` is `/<section>/X`, `plugins/<name>/docs/X.md` is `/plugins/<name>/X`. The sections are General, Editor, Engine (the engine plugin's pages, which carry `path: engine/...`), Plugins and the generated Reference, and the README is the home page. `mh docs` mounts every page on its own and writes the repo path to site path table (`builds/docs-data/pages.json`) the link hook uses, so links stay repo paths and a page moves by editing one line. A group folder is a sidebar section with a landing page: `mh docs` writes a placeholder titled after the folder, and a page with `path: <group>/_index.md` replaces it with real text and an `order` that places the group. `order` is how every page is placed among its siblings: 1 first. The navbar search box is a `[[menu.main]]` entry with `params.type = 'search'`, which is the only way the theme renders one. `mh docs` writes every Hugo mount into `builds/docs-mounts.toml`, because a later config file replaces an earlier one's mounts array rather than adding to it, so they all have to come from one place.
 
 `mh docs` also writes `builds/docs-home/`, every page that exists only on the site: a copy of the README with frontmatter (an empty title, since the README has its own heading and the theme prints the title as one), the notices file it links, the Plugins section index, and a landing page per plugin titled from `mh_plugin.json`. Nothing hand-written lives outside `docs/` and the plugins' `docs/` folders. The README's links are repo paths like every page's, and the link hook resolves them.
 

@@ -1,8 +1,9 @@
 ---
 title: "Handles"
 description: "Immediate-mode scene-view handles for editor code that draw through gizmos, report hover and turn drags into offsets"
-weight: 160
+order: 160
 tags: ["handles", "gizmos", "editor"]
+path: editor/scene-view
 ---
 
 `editor/handles` is the scene-view interaction layer for editor code and package editors: immediate-mode handles that draw themselves through `host/gizmos` (docs/core/Gizmos.md), report hover, and turn a mouse drag into an offset on a plane. The transform tool (W E R), the mhgui rect tool, the physics collider bounds, lights, audio sources and particle shapes use it.

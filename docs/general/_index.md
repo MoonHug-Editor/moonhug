@@ -1,7 +1,7 @@
 ---
 title: "General"
 description: "Getting started, contributing, and the conventions the codebase keeps"
-weight: 10
+order: 10
 ---
 
 How to build and run the project, how to contribute, and the conventions the codebase keeps.

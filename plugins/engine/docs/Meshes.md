@@ -1,8 +1,9 @@
 ---
 title: "Meshes"
 description: "How 3D meshes are imported from glTF and rendered through the MeshFilter and MeshRenderer components"
-weight: 100
+order: 100
 tags: ["meshes", "rendering", "assets", "engine"]
+path: engine/rendering
 ---
 
 3D meshes imported from glTF and rendered via MeshFilter + MeshRenderer.

@@ -1,8 +1,9 @@
 ---
 title: "MCP Bridge"
 description: "Agent access to the running editor over MCP through an editor TCP endpoint and a stdio shim, its protocol and tools"
-weight: 190
+order: 190
 tags: ["mcp", "editor"]
+path: editor
 ---
 
 Agent access to the running editor over [MCP](https://modelcontextprotocol.io). Two processes, no external dependencies:
