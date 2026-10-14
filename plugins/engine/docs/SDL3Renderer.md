@@ -157,6 +157,8 @@ Everything gfx draws is lit, blended and filtered in linear light:
 
 `gfx.Cubemap` is an RGBA16F cube: `cubemap_render` draws one face at one mip with a fullscreen shader in its own pass (face order +X, -X, +Y, -Y, +Z, -Z, `shaders/env_common.glsl` face_dir), `cubemap_generate_mips` fills the mips. `set_environment(specular, irradiance, diffuse, specular)` hands a pass its image-based light: sampler slots 8 and 9 (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`), bound like the shadow map at slot 7 to shaders that declare them, with 1x1 white cubes and the ambient level as intensity when a pass sets none. `draw_sky` is a fullscreen draw on the far plane, depth-tested without writing, so it fills only uncovered pixels.
 
+The linear, repeat and nearest samplers set `max_lod` high, so `textureLod` reaches every mip: SDL's zero default clamps each lookup to mip 0. Loops in these shaders count with integers: a float counter (`phi += step`) made Metal return about a third of the irradiance integral.
+
 ## Render commands (engine side)
 
 `plugins/engine/render.odin` is rewritten around per-frame command lists (temp

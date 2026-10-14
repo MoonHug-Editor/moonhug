@@ -124,6 +124,7 @@ _capture_params :: proc(env: ^Environment) -> (p: _Capture_Params, pano: gfx.Tex
 		if t, ok := texture_load(env.panorama); ok && env.panorama != {} {
 			pano = t.gfx^
 			has_pano = true
+			if gfx.texture_is_hdr(t.gfx) do p.sun_color.w = 1 // linear already, not sRGB
 		} else {
 			mode = 0 // no texture yet: the procedural sky stands in
 		}
@@ -137,7 +138,7 @@ _capture_params :: proc(env: ^Environment) -> (p: _Capture_Params, pano: gfx.Tex
 		to_sun := linalg.normalize0(-sun.direction)
 		p.sun_dir = {to_sun.x, to_sun.y, to_sun.z, math.cos(math.to_radians(max(env.sun_size, 0.01)))}
 		c := gfx.srgb_to_linear({sun.color.r, sun.color.g, sun.color.b, 1})
-		p.sun_color = {c.r * sun.intensity, c.g * sun.intensity, c.b * sun.intensity, 0}
+		p.sun_color.rgb = {c.r * sun.intensity, c.g * sun.intensity, c.b * sun.intensity}
 	}
 	return
 }

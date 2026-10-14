@@ -1,0 +1,54 @@
+{
+  "__type_guid": "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73",
+  "slots": [
+    {
+      "name": "Main"
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "node": "environment_pass",
+      "slot": "",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 2,
+      "node": "scene_opaque",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 3,
+      "node": "scene_sky",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 4,
+      "node": "postfx_tonemap",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": {
+        "operator": 0,
+        "exposure": 0.5
+      }
+    },
+    {
+      "id": 5,
+      "node": "final_blit",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    }
+  ],
+  "next_id": 6
+}

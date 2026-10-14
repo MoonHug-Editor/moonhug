@@ -21,6 +21,7 @@ Tonemap_Operator :: enum u8 {
 	None,     // clamp, the engine's look without post effects
 	Reinhard,
 	ACES,
+	ACES_Hill, // the Khronos glTF Sample Viewer's curve (Stephen Hill's fit)
 }
 
 Bloom_Settings :: struct {

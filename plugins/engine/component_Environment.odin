@@ -24,7 +24,7 @@ Environment :: struct {
 	// The sun disc's angular radius in degrees. The sun is the first enabled
 	// directional Light: its direction and color.
 	sun_size:             f32 `decor:min(0)`,
-	panorama:             Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	panorama:             Asset_GUID `ext:"png,jpg,jpeg,bmp,hdr"`, // an .hdr is linear light, other images are sRGB color
 	panorama_rotation:    f32, // degrees around the vertical
 	exposure:             f32 `decor:min(0)`, // the sky's brightness
 	ambient_intensity:    f32 `decor:min(0)`, // how much the sky lights surfaces (diffuse)

@@ -1,0 +1,488 @@
+{
+  "root": 1,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "Furnace",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 100,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 102,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 104,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 106,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 109,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 112,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 115,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 100,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        4.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 101
+        }
+      ]
+    },
+    {
+      "local_id": 102,
+      "name": "No Light",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 103
+        }
+      ]
+    },
+    {
+      "local_id": 104,
+      "name": "Environment",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 105
+        }
+      ]
+    },
+    {
+      "local_id": 106,
+      "name": "Diffuse",
+      "is_active": true,
+      "position": [
+        -0.7,
+        0.7,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 107
+        },
+        {
+          "local_id": 108
+        }
+      ]
+    },
+    {
+      "local_id": 109,
+      "name": "Rough Metal",
+      "is_active": true,
+      "position": [
+        0.7,
+        0.7,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 110
+        },
+        {
+          "local_id": 111
+        }
+      ]
+    },
+    {
+      "local_id": 112,
+      "name": "Mid Metal",
+      "is_active": true,
+      "position": [
+        -0.7,
+        -0.7,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 113
+        },
+        {
+          "local_id": 114
+        }
+      ]
+    },
+    {
+      "local_id": 115,
+      "name": "Mirror Metal",
+      "is_active": true,
+      "position": [
+        0.7,
+        -0.7,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 116
+        },
+        {
+          "local_id": 117
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "clear_color": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "far_clip": 100.0,
+      "fov": 45.0,
+      "slot": "",
+      "near_clip": 0.01,
+      "order": 0,
+      "render_layer_mask": 4294967295,
+      "base": {
+        "enabled": true,
+        "local_id": 101
+      }
+    },
+    {
+      "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
+      "type": 0,
+      "color": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "intensity": 0.0,
+      "range": 10.0,
+      "spot_angle": 30.0,
+      "inner_spot_angle": 21.8,
+      "ambient": 0.0,
+      "shadows": false,
+      "base": {
+        "enabled": true,
+        "local_id": 103
+      }
+    },
+    {
+      "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "sky": 2,
+      "sky_top": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sky_horizon": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "ground": [
+        1.0,
+        1.0,
+        1.0,
+        1.0
+      ],
+      "sun_size": 1.0,
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "exposure": 1.0,
+      "ambient_intensity": 1.0,
+      "reflection_intensity": 1.0,
+      "draw_sky": true,
+      "base": {
+        "enabled": true,
+        "local_id": 105
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 107
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        "9b954530-6ce6-42d1-bd5a-87ace0121211"
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 108
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 110
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        "1ff4b12f-1fd0-4836-82bf-95b8cfe61998"
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 111
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 113
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        "87250ba7-8b52-4019-98a2-acc6cfe8c8d2"
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 114
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 116
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        "7d18ed89-db7c-49ff-b4e8-94b4741b2300"
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 117
+      }
+    }
+  ]
+}

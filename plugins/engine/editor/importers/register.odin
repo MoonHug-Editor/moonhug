@@ -32,7 +32,7 @@ Gltf_Clip_Extractor :: struct {
 }
 gltf_clip_extractor: Gltf_Clip_Extractor
 
-_TEXTURE_EXTS := []string{".png", ".jpg", ".jpeg", ".bmp"}
+_TEXTURE_EXTS := []string{".png", ".jpg", ".jpeg", ".bmp", ".hdr"} // .hdr decodes to a linear float texture
 _MESH_EXTS    := []string{".glb", ".gltf"}
 _SHADER_EXTS  := []string{".glsl"}
 

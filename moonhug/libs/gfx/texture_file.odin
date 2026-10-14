@@ -20,6 +20,17 @@ texture_decode_file :: proc(path: string) -> ^Texture {
 	if read_err != nil do return nil
 
 	w, h, channels: i32
+	// A Radiance .hdr image: linear float, kept as half floats.
+	if stbi.is_hdr_from_memory(raw_data(data), i32(len(data))) != 0 {
+		floats := stbi.loadf_from_memory(raw_data(data), i32(len(data)), &w, &h, &channels, 4)
+		if floats == nil do return nil
+		defer stbi.image_free(floats)
+		halves := make([][4]f16, int(w * h), context.temp_allocator)
+		for i in 0 ..< int(w * h) {
+			halves[i] = {f16(floats[i * 4]), f16(floats[i * 4 + 1]), f16(floats[i * 4 + 2]), f16(floats[i * 4 + 3])}
+		}
+		return texture_create_hdr(halves, w, h)
+	}
 	pixels := stbi.load_from_memory(raw_data(data), i32(len(data)), &w, &h, &channels, 4)
 	if pixels == nil do return nil
 	defer stbi.image_free(pixels)

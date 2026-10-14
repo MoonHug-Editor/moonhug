@@ -10,7 +10,7 @@ The postfx plugin ships three render nodes (plugins/engine/docs/RenderPipeline.m
 | Node | Reads | Writes | What |
 |---|---|---|---|
 | `postfx_bloom` | `final` (the scene's HDR image) | `bloom:HDR@0.5` and two scratch targets | a bright pass above the threshold, then a horizontal and a vertical gaussian blur |
-| `postfx_tonemap` | `final` and `bloom` | `post:LDR*` | exposure, the bloom added, then the operator: none, Reinhard or ACES |
+| `postfx_tonemap` | `final` and `bloom` | `post:LDR*` | exposure, the bloom added, then the operator: none, Reinhard, ACES or ACES Hill |
 | `postfx_fxaa` | `final` | `aa:LDR*` | fast approximate anti-aliasing |
 
 Each node reads the finished image so far (`reads="final"`, `engine.render_input`) and takes its own target from its declaration (`engine.render_target`), whose `*` makes it the new final, so the engine's `final_blit` copies whichever node ran last. Removing a node from the pipeline removes its effect: without `postfx_fxaa` the tonemap output is the final, without all three the scene's HDR image is, the engine's own look. The tonemap adds bloom only when a bloom node ran before it in the lane.
@@ -20,7 +20,7 @@ Each node reads the finished image so far (`reads="final"`, `engine.render_input
 Per placed node, in the Render Pipeline window's settings pane, stored in the pipeline asset:
 
 - `postfx_bloom`: `threshold` (scene color above it blooms), `strength` (how much the tonemap adds back)
-- `postfx_tonemap`: `operator` (None, Reinhard, ACES), `exposure` (multiplier before the operator)
+- `postfx_tonemap`: `operator` (None, Reinhard, ACES, ACES Hill), `exposure` (multiplier before the operator). ACES Hill is Stephen Hill's fit of the ACES transforms, the curve the Khronos glTF Sample Viewer uses: with exposure 1 / 0.6 it matches the Sample Viewer's default look
 - `postfx_fxaa`: none
 
 ## The shaders

@@ -102,8 +102,18 @@ float3 panorama_color(thread const float3& d, constant Params& _151, texture2d<f
 {
     float u = ((precise::atan2(d.z, d.x) / 6.283185482025146484375) + 0.5) + (_151.face_mode.z / 6.283185482025146484375);
     float v = acos(fast::clamp(d.y, -1.0, 1.0)) / 3.1415927410125732421875;
-    float3 param = panorama.sample(panoramaSmplr, float2(fract(u), v), level(0.0)).xyz;
-    return srgb_to_linear(param);
+    float3 c = panorama.sample(panoramaSmplr, float2(fract(u), v), level(0.0)).xyz;
+    float3 _280;
+    if (_151.sun_color.w > 0.5)
+    {
+        _280 = c;
+    }
+    else
+    {
+        float3 param = c;
+        _280 = srgb_to_linear(param);
+    }
+    return _280;
 }
 
 fragment main0_out main0(main0_in in [[stage_in]], constant Params& _151 [[buffer(1)]], texture2d<float> panorama [[texture(0)]], sampler panoramaSmplr [[sampler(0)]])
@@ -113,27 +123,27 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _151 [[buffe
     float2 param_1 = in.frag_uv;
     float3 d = face_dir(param, param_1);
     int mode = int(_151.face_mode.y + 0.5);
-    float3 _299;
+    float3 _310;
     if (mode == 0)
     {
         float3 param_2 = d;
-        _299 = procedural(param_2, _151);
+        _310 = procedural(param_2, _151);
     }
     else
     {
-        float3 _308;
+        float3 _319;
         if (mode == 1)
         {
             float3 param_3 = d;
-            _308 = panorama_color(param_3, _151, panorama, panoramaSmplr);
+            _319 = panorama_color(param_3, _151, panorama, panoramaSmplr);
         }
         else
         {
-            _308 = _151.sky_top.xyz;
+            _319 = _151.sky_top.xyz;
         }
-        _299 = _308;
+        _310 = _319;
     }
-    float3 c = _299;
+    float3 c = _310;
     out.out_color = float4(c * _151.face_mode.w, 1.0);
     return out;
 }

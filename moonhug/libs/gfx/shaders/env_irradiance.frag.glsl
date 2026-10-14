@@ -21,10 +21,14 @@ void main() {
     basis(n, t, b);
     vec3 sum = vec3(0.0);
     float count = 0.0;
+    // Integer counters, angles at the cell midpoints. With float counters
+    // (phi += step) Metal returned about a third of this integral.
     const float step_phi = 2.0 * PI / 48.0;
     const float step_theta = 0.5 * PI / 16.0;
-    for (float phi = 0.0; phi < 2.0 * PI; phi += step_phi) {
-        for (float theta = 0.0; theta < 0.5 * PI; theta += step_theta) {
+    for (int i = 0; i < 48; ++i) {
+        float phi = (float(i) + 0.5) * step_phi;
+        for (int j = 0; j < 16; ++j) {
+            float theta = (float(j) + 0.5) * step_theta;
             vec3 l = t * (sin(theta) * cos(phi)) + b * (sin(theta) * sin(phi)) + n * cos(theta);
             sum += textureLod(source, l, face_lod.y).rgb * cos(theta) * sin(theta);
             count += 1.0;

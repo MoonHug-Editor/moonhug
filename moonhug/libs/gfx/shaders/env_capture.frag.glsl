@@ -17,7 +17,7 @@ layout(set = 3, binding = 1) uniform Params {
     vec4 sky_horizon; // rgb linear
     vec4 ground;      // rgb linear
     vec4 sun_dir;     // xyz toward the sun, w cos of the sun's angular radius
-    vec4 sun_color;   // rgb linear times intensity, zero for no sun
+    vec4 sun_color;   // rgb linear times intensity, zero for no sun; w 1 = the panorama is linear (HDR)
 };
 
 vec3 srgb_to_linear(vec3 c) {
@@ -41,7 +41,8 @@ vec3 procedural(vec3 d) {
 vec3 panorama_color(vec3 d) {
     float u = atan(d.z, d.x) / (2.0 * PI) + 0.5 + face_mode.z / (2.0 * PI);
     float v = acos(clamp(d.y, -1.0, 1.0)) / PI;
-    return srgb_to_linear(textureLod(panorama, vec2(fract(u), v), 0.0).rgb);
+    vec3 c = textureLod(panorama, vec2(fract(u), v), 0.0).rgb;
+    return sun_color.w > 0.5 ? c : srgb_to_linear(c);
 }
 
 void main() {

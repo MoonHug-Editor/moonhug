@@ -168,6 +168,8 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	if !sdl.SetGPUAllowedFramesInFlight(_gfx.device, 1) do return false
 	_fence_probe()
 
+	// max_lod opens every mip level: SDL's zero default clamps each lookup
+	// to mip 0, which hides a cubemap's prefiltered mips (textureLod).
 	sampler_info := sdl.GPUSamplerCreateInfo{
 		min_filter     = .LINEAR,
 		mag_filter     = .LINEAR,
@@ -175,6 +177,7 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 		address_mode_u = .CLAMP_TO_EDGE,
 		address_mode_v = .CLAMP_TO_EDGE,
 		address_mode_w = .CLAMP_TO_EDGE,
+		max_lod        = 1000,
 	}
 	_gfx.sampler_linear = sdl.CreateGPUSampler(_gfx.device, sampler_info)
 	// Meshes sample with REPEAT — glTF's default wrap mode, and models in the
@@ -267,9 +270,27 @@ command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
 // command buffer so lazy loads mid-frame (between passes) stay legal.
 texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 	assert(len(pixels) == int(width * height * 4))
+	return _texture_upload(pixels, width, height, .R8G8B8A8_UNORM)
+}
+
+// A linear float texture from RGBA half floats: an HDR image (texture_file.odin).
+// Shaders sample it as linear light, it is never sRGB-decoded.
+texture_create_hdr :: proc(pixels: [][4]f16, width, height: i32) -> ^Texture {
+	assert(len(pixels) == int(width * height))
+	return _texture_upload(([^]u8)(raw_data(pixels))[:len(pixels) * size_of([4]f16)], width, height, .R16G16B16A16_FLOAT)
+}
+
+// Whether a texture holds linear float data (an HDR image) rather than sRGB
+// color bytes.
+texture_is_hdr :: proc(tex: ^Texture) -> bool {
+	return tex != nil && tex.format == .R16G16B16A16_FLOAT
+}
+
+@(private = "file")
+_texture_upload :: proc(bytes: []u8, width, height: i32, format: sdl.GPUTextureFormat) -> ^Texture {
 	gpu_tex := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
 		type                 = .D2,
-		format               = .R8G8B8A8_UNORM,
+		format               = format,
 		usage                = {.SAMPLER},
 		width                = u32(width),
 		height               = u32(height),
@@ -280,7 +301,7 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 
 	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, sdl.GPUTransferBufferCreateInfo{
 		usage = .UPLOAD,
-		size  = u32(len(pixels)),
+		size  = u32(len(bytes)),
 	})
 	if transfer == nil {
 		sdl.ReleaseGPUTexture(_gfx.device, gpu_tex)
@@ -289,7 +310,7 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 	defer sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
 
 	mapped := sdl.MapGPUTransferBuffer(_gfx.device, transfer, false)
-	runtime.mem_copy_non_overlapping(mapped, raw_data(pixels), len(pixels))
+	runtime.mem_copy_non_overlapping(mapped, raw_data(bytes), len(bytes))
 	sdl.UnmapGPUTransferBuffer(_gfx.device, transfer)
 
 	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
@@ -305,7 +326,7 @@ texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
 	tex.gpu = gpu_tex
 	tex.width = width
 	tex.height = height
-	tex.format = .R8G8B8A8_UNORM
+	tex.format = format
 	return tex
 }
 
