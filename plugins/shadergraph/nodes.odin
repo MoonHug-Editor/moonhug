@@ -33,7 +33,7 @@ NODE_DEFS := []Node_Def{
 	{PROPERTY_KIND, "Input", {}, {{"Out", .Dyn, {}}}, {}},
 	{SAMPLE_TEXTURE_KIND, "Input", {{"UV", .Vec2, {0, 0, 0, 0}}}, {{"RGBA", .Vec4, {}}, {"RGB", .Vec3, {}}, {"A", .Float, {}}}, {}},
 	{"Main Texture", "Input", {{"UV", .Vec2, {0, 0, 0, 0}}}, {{"RGBA", .Vec4, {}}, {"RGB", .Vec3, {}}, {"A", .Float, {}}},
-		{"texture(tex, $0)", "texture(tex, $0).rgb", "texture(tex, $0).a"}},
+		{"srgb_to_linear(texture(tex, $0))", "srgb_to_linear(texture(tex, $0).rgb)", "texture(tex, $0).a"}},
 	{"UV", "Input", {}, {{"UV", .Vec2, {}}}, {"frag_uv"}},
 	{"Vertex Color", "Input", {}, {{"RGBA", .Vec4, {}}, {"RGB", .Vec3, {}}}, {"frag_color", "frag_color.rgb"}},
 	{"World Normal", "Input", {}, {{"Normal", .Vec3, {}}}, {"normalize(frag_normal)"}},

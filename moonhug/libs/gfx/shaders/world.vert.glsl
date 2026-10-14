@@ -13,6 +13,8 @@ layout(location = 3) in vec4 in_color;
 
 // tint: batch draws bake color into vertices and push white; mesh draws
 // push their material color here (mesh vertex color is white from import).
+// Both arrive sRGB as authored and leave as linear light: every pass gfx
+// draws is linear (gfx.odin, Target_Format).
 layout(set = 1, binding = 0) uniform UBO {
     mat4 view_proj;
     mat4 model;
@@ -24,11 +26,19 @@ layout(location = 1) out vec4 frag_color;
 layout(location = 2) out vec3 frag_normal;
 layout(location = 3) out vec3 frag_world_pos;
 
+// A color brighter than 1 is an sRGB color times a linear intensity, as in
+// gfx.srgb_to_linear.
+vec3 srgb_to_linear(vec3 c) {
+    float m = max(max(c.r, c.g), max(c.b, 1.0));
+    c /= m;
+    return m * mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
+}
+
 void main() {
     vec4 world = model * vec4(in_position, 1.0);
     gl_Position = view_proj * world;
     frag_uv     = in_uv;
-    frag_color  = in_color * tint;
+    frag_color  = vec4(srgb_to_linear(in_color.rgb) * srgb_to_linear(tint.rgb), in_color.a * tint.a);
     // mat3(model) is wrong under non-uniform scale (needs inverse-transpose);
     // accepted for the built-in lit shader, normals renormalize in fragment.
     frag_normal = mat3(model) * in_normal;

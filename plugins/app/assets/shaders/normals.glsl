@@ -21,5 +21,6 @@ layout(location = 0) out vec4 out_color;
 
 void main() {
     vec3 n = normalize(frag_normal) * 0.5 + 0.5;
-    out_color = texture(tex, frag_uv) * frag_color * vec4(n, 1.0);
+    vec4 tex_px = texture(tex, frag_uv);
+    out_color = vec4(pow(tex_px.rgb, vec3(2.2)), tex_px.a) * frag_color * vec4(n, 1.0);
 }

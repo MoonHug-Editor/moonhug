@@ -72,6 +72,16 @@ float light_attenuation(GpuLight l, vec3 to_frag, float dist) {
     return a;
 }
 
+// A color texture's sample (stored as sRGB) to linear light, the space the
+// template lights in. Data textures (normal maps, masks) are not decoded.
+vec3 srgb_to_linear(vec3 c) {
+    return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
+}
+
+vec4 srgb_to_linear(vec4 c) {
+    return vec4(srgb_to_linear(c.rgb), c.a);
+}
+
 // Direction toward the camera from the fragment, for rim and specular terms.
 vec3 view_dir() {
     return normalize(cam_pos.xyz - frag_world_pos);

@@ -30,7 +30,9 @@ layout(set = 3, binding = 1) uniform MaterialUBO {
 layout(location = 0) out vec4 out_color;
 
 void main() {
-    vec4 base = texture(tex, frag_uv) * frag_color;
+    // The texture is sRGB color data, frag_color arrives linear (world.vert).
+    vec4 tex_px = texture(tex, frag_uv);
+    vec4 base = vec4(pow(tex_px.rgb, vec3(2.2)), tex_px.a) * frag_color;
 
     vec4 sc = stripe_color;
     if (sc == vec4(0.0)) sc = vec4(0.0, 0.0, 0.0, 1.0); // unset: black, full strength

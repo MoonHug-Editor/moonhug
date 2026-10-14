@@ -3,7 +3,7 @@
 // from the pass's Light UBO, the way the built-in lit shader always has.
 
 void main() {
-    vec4 base = texture(tex, frag_uv) * frag_color;
+    vec4 base = srgb_to_linear(texture(tex, frag_uv)) * frag_color;
     Surface s;
     s.albedo   = base.rgb;
     s.alpha    = base.a;

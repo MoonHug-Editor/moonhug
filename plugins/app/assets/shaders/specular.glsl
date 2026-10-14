@@ -58,7 +58,9 @@ void main() {
     vec3 half_dir = normalize(to_light + to_cam);
     float spec = pow(max(dot(n, half_dir), 0.0), shiny) * step(0.0, diffuse);
 
-    vec4 base = texture(tex, frag_uv) * frag_color;
+    // The texture is sRGB color data, frag_color arrives linear (world.vert).
+    vec4 tex_px = texture(tex, frag_uv);
+    vec4 base = vec4(pow(tex_px.rgb, vec3(2.2)), tex_px.a) * frag_color;
     vec3 rgb = base.rgb * light + lights[0].color_outer.rgb * sc.rgb * (spec * clamp(sc.a, 0.0, 1.0));
     out_color = vec4(rgb, base.a);
 }

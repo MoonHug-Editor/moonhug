@@ -176,7 +176,9 @@ _emit_node_output :: proc(gen: ^_Gen, id, port: i32) -> (expr: string, type: Por
 		}
 		uv := _coerce(inputs[0], in_types[0], .Vec2)
 		e.types = {.Vec4, .Vec3, .Float, .Float, .Float, .Float, .Float, .Float}
-		fmt.sbprintf(gen.b, "    vec4 n%d_0 = texture(%s, %s);\n", id, prop_identifier(p.name), uv)
+		// A color texture, stored as sRGB: decoded to the linear light the
+		// template lights in (surface.glsl srgb_to_linear).
+		fmt.sbprintf(gen.b, "    vec4 n%d_0 = srgb_to_linear(texture(%s, %s));\n", id, prop_identifier(p.name), uv)
 		fmt.sbprintf(gen.b, "    vec3 n%d_1 = n%d_0.rgb;\n", id, id)
 		fmt.sbprintf(gen.b, "    float n%d_2 = n%d_0.a;\n", id, id)
 	case SURFACE_KIND:

@@ -85,12 +85,6 @@ scene_over :: proc(ctx: ^Render_Ctx) {
 final_blit :: proc(ctx: ^Render_Ctx) {
 	src := render_input(ctx, FINAL_INPUT)
 	if src == nil do return
-	if ctx.target != nil {
-		gfx.pass_begin_target(ctx.target, nil)
-	} else if !gfx.pass_begin_swapchain(nil) {
-		return // minimized window: no swapchain image this frame
-	}
-	color := gfx.rt_color_texture(src)
-	gfx.draw_fullscreen(gfx.BLIT_SHADER, []^gfx.Texture{&color})
-	gfx.pass_end()
+	// Linear to the view's sRGB bytes. A minimized window draws nothing.
+	gfx.display_blit(ctx.target, gfx.rt_color_texture(src))
 }

@@ -134,6 +134,8 @@ Damaged Helmet works out of the box). Conventions:
   `lit.frag.glsl`
 - optional **material property block** at `set = 3, binding = 1` — any
   uniform block of floats/vec2/vec3/vec4
+- **color space:** the shader works in linear light and writes linear light (the view's last pass encodes to sRGB). `frag_color`, light colors, the ambient level and color properties arrive already linear. A texture holding color (albedo, emissive) is stored as sRGB and must be decoded where it is sampled (`srgb_to_linear` in the surface template, `pow(c, vec3(2.2))` in a full shader). Data textures (normal maps, masks, metal/rough) are not decoded
+- **color properties:** a vec4 whose name contains "color" or "colour" (any case) is a color: the inspector shows a picker and the value, authored in sRGB, is packed as linear. A color brighter than 1 is an sRGB color times a linear intensity
 
 ### Surface shaders
 
@@ -241,6 +243,5 @@ Still deferred: shadows, per-draw
 light culling (all 8 lights reach every draw), imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
 instead), engine-level IBL (pbr.glsl samples an equirect environment via its
 `env_tex` row — `assets/textures/studio_env.png` ships as a starter; no
-prefiltered mips, roughness blur is approximated), a real linear-color
-pipeline (pbr.glsl decodes/encodes sRGB in-shader). Per-submesh materials,
+prefiltered mips, roughness blur is approximated). Per-submesh materials,
 property blocks and multi-texture rows are done (see above and Meshes.md).

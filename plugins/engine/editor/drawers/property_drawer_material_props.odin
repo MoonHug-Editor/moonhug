@@ -53,7 +53,7 @@ draw_material_properties :: proc(ptr: rawptr, tid: typeid, label: cstring) {
 		case 12:
 			changed = inspector.drag_float3(inspector.field_row(name_c), cast(^[3]f32)&prop.value, 0.01, format = "%g")
 		case:
-			if strings.contains(sp.name, "color") || strings.contains(sp.name, "colour") {
+			if engine.material_property_is_color(sp.name, sp.size) {
 				changed = im.ColorEdit4(inspector.field_row(name_c), &prop.value)
 			} else {
 				changed = inspector.drag_float4(inspector.field_row(name_c), &prop.value, 0.01, format = "%g")

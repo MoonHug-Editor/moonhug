@@ -5,6 +5,7 @@
 package gfx
 
 import "base:runtime"
+import "core:fmt"
 import "core:math"
 import sdl "vendor:sdl3"
 
@@ -109,7 +110,7 @@ _Shadow :: struct {
 // Matches the previously baked-in lit shader constants, so scenes without a
 // Light component keep looking the same: one white directional, 0.35 ambient.
 _LIGHT_DEFAULT :: _Light_Uniform{
-	ambient_count = {0.35, 1, 0, 0},
+	ambient_count = {0.1004, 1, 0, 0}, // 0.35 sRGB in linear
 	lights = {
 		0 = {
 			pos_type    = {0, 0, 0, 0},
@@ -134,7 +135,14 @@ _pass: struct {
 	format:       Target_Format,   // picks each shader's pipeline set
 	store_depth:  bool,            // render targets keep depth for later sampling, the swapchain discards it
 	keep_depth:   bool,            // load the target's depth instead of clearing it (pass_begin_target)
-	clear:        Maybe([4]f32),
+	clear:        Maybe([4]f32),   // linear, decoded from the caller's sRGB (raw passes keep it as given)
+	// A pass on a Display target draws into a linear scratch target and
+	// pass_end encodes the scratch into these (Target_Format).
+	display_color: ^sdl.GPUTexture,
+	display_depth: ^sdl.GPUTexture,
+	scratch:       ^Render_Target,
+	encode_src:    Texture, // the scratch's color, alive while pass_end encodes it
+	display_pool:  Target_Pool, // scratch targets by size
 	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
 	shadow:       _Shadow,               // reset each pass_end
 	vps:          [dynamic]_View,
@@ -149,13 +157,14 @@ _pass: struct {
 _pass_shutdown :: proc() {
 	if _pass.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.vbuf)
 	if _pass.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.transfer)
+	pool_destroy(&_pass.display_pool)
 	delete(_pass.vps)
 	delete(_pass.vtx)
 	delete(_pass.draws)
 	_pass = {}
 }
 
-rt_create :: proc(width, height: i32, format := Target_Format.LDR) -> ^Render_Target {
+rt_create :: proc(width, height: i32, format := Target_Format.Display) -> ^Render_Target {
 	rt := new(Render_Target, runtime.default_allocator())
 	rt.width = width
 	rt.height = height
@@ -271,7 +280,7 @@ rt_copy :: proc(dst, src: ^Render_Target) {
 // The contents must come from an already SUBMITTED frame — calling this at
 // the top of a frame reads what the previous frame drew.
 rt_download_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
-	assert(rt.format == .LDR, "rt_download_begin reads 8-bit targets only")
+	assert(rt.format == .Display, "rt_download_begin reads Display targets only (8-bit, the bytes the window shows)")
 	tex := rt_color_texture(rt)
 	return texture_download_begin(&tex)
 }
@@ -366,10 +375,16 @@ swapchain_capture_begin :: proc() -> ^Texture_Download {
 @(private = "file")
 _swapchain_pending_download: ^Texture_Download
 
-// Begins a pass on a render target. `clear` nil keeps the color the target
-// holds. `keep_depth` keeps its depth too, so several passes draw into one
-// scene with one depth buffer (a render pipeline's scene passes). Depth is
-// otherwise cleared: a pass that starts a new scene.
+// Begins a pass on a render target. `clear` (sRGB, as authored) nil keeps
+// the color the target holds. `keep_depth` keeps its depth too, so several
+// passes draw into one scene with one depth buffer (a render pipeline's
+// scene passes). Depth is otherwise cleared: a pass that starts a new scene.
+//
+// On a Display target the pass draws into a linear scratch target of the
+// same size, and pass_end encodes it into the target: everything drawn is
+// lit and blended in linear light. Such a pass starts from a clear color and
+// fresh depth, since the target's own bytes are encoded. display_blit puts a
+// finished linear image on a Display target without the scratch.
 pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth := false) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true
@@ -378,7 +393,55 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth :
 	_pass.format = rt.format
 	_pass.store_depth = true
 	_pass.keep_depth = keep_depth
-	_pass.clear = clear
+	_pass.clear = _decode_clear(clear)
+	if rt.format == .Display {
+		assert(clear != nil && !keep_depth, "a pass on a Display target starts from a clear color and fresh depth")
+		_redirect(rt.color, rt.depth, rt.width, rt.height)
+	}
+}
+
+// Puts a finished linear image (`src`, any format) on a Display target,
+// encoded to sRGB: what a render pipeline's last pass does. `dst` nil is the
+// window. False when the window is minimized.
+display_blit :: proc(dst: ^Render_Target, src: Texture) -> bool {
+	assert(!_pass.active, "gfx pass already active")
+	if dst == nil {
+		if !pass_begin_swapchain(nil, raw = true) do return false
+	} else {
+		assert(dst.format == .Display, "display_blit draws on Display targets")
+		_pass.active = true
+		_pass.target_color = dst.color
+		_pass.target_depth = dst.depth
+		_pass.format = .Display
+		_pass.store_depth = true
+		_pass.keep_depth = false
+		_pass.clear = nil
+	}
+	_pass.encode_src = src
+	draw_fullscreen(ENCODE_SHADER, []^Texture{&_pass.encode_src})
+	pass_end()
+	return true
+}
+
+// The scratch target a Display pass draws into, sized to it.
+@(private = "file")
+_redirect :: proc(color, depth: ^sdl.GPUTexture, w, h: i32) {
+	b: [32]u8
+	key := fmt.bprintf(b[:], "%dx%d", w, h)
+	scratch := pool_target(&_pass.display_pool, key, w, h, .HDR)
+	_pass.display_color = color
+	_pass.display_depth = depth
+	_pass.scratch = scratch
+	_pass.target_color = scratch.color
+	_pass.target_depth = scratch.depth
+	_pass.format = .HDR
+}
+
+@(private = "file")
+_decode_clear :: proc(clear: Maybe([4]f32)) -> Maybe([4]f32) {
+	c, ok := clear.?
+	if !ok do return nil
+	return srgb_to_linear(c)
 }
 
 // Acquires the swapchain image; false when the window is minimized (skip
@@ -386,7 +449,10 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth :
 // depth=false makes a depth-less pass — REQUIRED when only external
 // pipelines without a depth attachment draw in it (the editor's imgui pass);
 // our own gfx pipelines must NOT draw in such a pass (they declare D32).
-pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
+// The window is a Display target: a pass with depth draws into a linear
+// scratch encoded at pass_end, as pass_begin_target does. A depth-less pass
+// and a `raw` one draw the window's bytes as given (imgui, display_blit).
+pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true, raw := false) -> bool {
 	assert(!_pass.active, "gfx pass already active")
 	swap_tex: ^sdl.GPUTexture
 	w, h: u32
@@ -402,7 +468,7 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 		_pass.active = true
 		_pass.target_color = swap_tex
 		_pass.target_depth = nil
-		_pass.format = .LDR
+		_pass.format = .Display
 		_pass.store_depth = false
 		_pass.keep_depth = false
 		_pass.clear = clear
@@ -427,10 +493,15 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 	_pass.active = true
 	_pass.target_color = swap_tex
 	_pass.target_depth = _gfx.window_depth
-	_pass.format = .LDR
+	_pass.format = .Display
 	_pass.store_depth = false
 	_pass.keep_depth = false
 	_pass.clear = clear
+	if !raw {
+		assert(clear != nil, "a pass on the window starts from a clear color (display_blit puts a finished image there)")
+		_pass.clear = _decode_clear(clear)
+		_redirect(swap_tex, _gfx.window_depth, i32(w), i32(h))
+	}
 	return true
 }
 
@@ -441,7 +512,8 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true) -> bool {
 set_lights :: proc(ls: []Light, ambient: f32) {
 	u := _Light_Uniform{}
 	n := min(len(ls), MAX_LIGHTS)
-	u.ambient_count = {clamp(ambient, 0, 1), f32(n), 0, 0}
+	// Colors and the ambient level are sRGB as authored, lit in linear.
+	u.ambient_count = {srgb_to_linear1(clamp(ambient, 0, 1)), f32(n), 0, 0}
 	for i in 0 ..< n {
 		l := ls[i]
 		d := l.direction
@@ -454,7 +526,7 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 		u.lights[i] = _Gpu_Light{
 			pos_type    = {l.position.x, l.position.y, l.position.z, f32(l.kind)},
 			dir_range   = {d.x, d.y, d.z, max(l.range, 0)},
-			color_outer = {l.color.r * l.intensity, l.color.g * l.intensity, l.color.b * l.intensity, l.outer_cos},
+			color_outer = {srgb_to_linear1(l.color.r) * l.intensity, srgb_to_linear1(l.color.g) * l.intensity, srgb_to_linear1(l.color.b) * l.intensity, l.outer_cos},
 			params      = {l.inner_cos, 0, 0, 0},
 		}
 	}
@@ -636,6 +708,27 @@ _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u3
 // draw data there).
 pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) = nil) {
 	assert(_pass.active, "gfx pass not active")
+	display_color, display_depth, scratch := _pass.display_color, _pass.display_depth, _pass.scratch
+	_pass.display_color, _pass.display_depth, _pass.scratch = nil, nil, nil
+	_pass_flush(before_end)
+	if display_color == nil do return
+
+	// A Display pass: encode the linear scratch into the real target.
+	_pass.active = true
+	_pass.target_color = display_color
+	_pass.target_depth = display_depth
+	_pass.format = .Display
+	_pass.store_depth = false
+	_pass.keep_depth = false
+	_pass.clear = [4]f32{0, 0, 0, 0}
+	_pass.encode_src = rt_color_texture(scratch)
+	draw_fullscreen(ENCODE_SHADER, []^Texture{&_pass.encode_src})
+	_pass_flush(nil)
+}
+
+// Encodes the pass's render pass from its recorded draws and resets it.
+@(private = "file")
+_pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass)) {
 	_upload_batch()
 
 	color_info := sdl.GPUColorTargetInfo{

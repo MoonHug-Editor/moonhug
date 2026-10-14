@@ -1,3 +1,5 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
@@ -27,14 +29,26 @@ struct main0_in
     float4 in_color [[attribute(3)]];
 };
 
-vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _13 [[buffer(0)]])
+static inline __attribute__((always_inline))
+float3 srgb_to_linear(thread float3& c)
+{
+    float m = fast::max(fast::max(c.x, c.y), fast::max(c.z, 1.0));
+    c /= float3(m);
+    return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375))) * m;
+}
+
+vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _68 [[buffer(0)]])
 {
     main0_out out = {};
-    float4 world = _13.model * float4(in.in_position, 1.0);
-    out.gl_Position = _13.view_proj * world;
+    float4 world = _68.model * float4(in.in_position, 1.0);
+    out.gl_Position = _68.view_proj * world;
     out.frag_uv = in.in_uv;
-    out.frag_color = in.in_color * _13.tint;
-    out.frag_normal = float3x3(_13.model[0].xyz, _13.model[1].xyz, _13.model[2].xyz) * in.in_normal;
+    float3 param = in.in_color.xyz;
+    float3 _105 = srgb_to_linear(param);
+    float3 param_1 = _68.tint.xyz;
+    float3 _112 = srgb_to_linear(param_1);
+    out.frag_color = float4(_105 * _112, in.in_color.w * _68.tint.w);
+    out.frag_normal = float3x3(_68.model[0].xyz, _68.model[1].xyz, _68.model[2].xyz) * in.in_normal;
     out.frag_world_pos = world.xyz;
     return out;
 }

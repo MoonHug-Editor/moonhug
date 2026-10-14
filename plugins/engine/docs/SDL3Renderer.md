@@ -144,6 +144,15 @@ Contributors never need the toolchain unless they change a shader. SDL_GPU
 SPIR-V binding convention: vertex uniform buffers = set 1, fragment sampled
 textures = set 2.
 
+## Color space
+
+Everything gfx draws is lit, blended and filtered in linear light:
+
+- Colors handed to gfx (vertex colors, tints, material colors, clear colors, light colors, the ambient level) are sRGB as authored and decoded once on the way in: the world vertex shader decodes vertex colors and tints, `pass_begin_*` and `set_lights` decode on the CPU. A color brighter than 1 is an sRGB color times a linear intensity.
+- Color textures stay stored as sRGB bytes (imgui shows them as they are) and the shaders that sample them decode them: the unlit shader, the lit template's albedo, the shader graph's texture nodes.
+- Render targets come in three formats (`Target_Format`). `HDR` is linear float. `LDR` is linear at 8 bits, stored as sRGB so the GPU encodes on write and decodes on sampling. `Display` holds sRGB bytes: the window and every target imgui shows (scene and game views, previews, thumbnails).
+- A pass on a Display target draws into a linear scratch target of its size and `pass_end` encodes it, so previews and thumbnails light in linear like the scene. `display_blit` encodes a finished linear image onto a Display target directly: the last pass of a render pipeline (`final_blit`).
+
 ## Render commands (engine side)
 
 `plugins/engine/render.odin` is rewritten around per-frame command lists (temp

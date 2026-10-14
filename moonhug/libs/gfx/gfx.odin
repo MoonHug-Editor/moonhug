@@ -3,6 +3,7 @@
 // per pass (see pass.odin).
 package gfx
 
+import "core:math"
 import "base:runtime"
 import sdl "vendor:sdl3"
 
@@ -40,15 +41,45 @@ _Pipeline_Kind :: enum u8 {
 // What a pass renders into. A pipeline is bound to its color target's pixel
 // format, so every shader keeps one pipeline set per Target_Format, built the
 // first time a pass of that format draws with it (pipelines.odin).
+//
+// Color is linear everywhere gfx draws: shaders light, blend and filter in
+// linear light, and the colors callers pass in (vertex colors, tints, clear
+// colors, lights) are sRGB as authored, decoded once on the way in. Only a
+// Display target holds sRGB-encoded bytes, because that is what the window
+// and imgui show as they are.
 Target_Format :: enum u8 {
-	LDR, // the swapchain's 8-bit format: the window and ordinary render targets
-	HDR, // RGBA16F: lit scene color before tonemapping
+	// 8-bit sRGB-encoded bytes: the window, the editor's views and previews,
+	// anything imgui shows. A pass on one draws into a linear scratch target
+	// and pass_end encodes it (display_blit encodes a finished image directly).
+	Display,
+	HDR, // RGBA16F, linear: the lit scene before tonemapping
+	// 8-bit linear, stored as sRGB: the GPU encodes on write and decodes on
+	// sampling, so shaders see linear values at 8-bit cost (a tonemapped image,
+	// a shadow map's color).
+	LDR,
 }
 
 DEFAULT_SHADER :: "unlit"
 
 // The fullscreen shader that copies its input to the target.
 BLIT_SHADER :: "blit"
+
+// The fullscreen shader that encodes a linear image to sRGB: what a Display
+// target receives (display_blit, and pass_end for a pass on one).
+ENCODE_SHADER :: "encode"
+
+// sRGB as authored to linear light, the exact piecewise curve. Alpha stays.
+// A color brighter than 1 (an HDR color for emission or bloom) is an sRGB
+// color times a linear intensity: its brightest channel is the intensity.
+srgb_to_linear :: proc(c: [4]f32) -> [4]f32 {
+	m := max(c.r, c.g, c.b, 1)
+	return {srgb_to_linear1(c.r / m) * m, srgb_to_linear1(c.g / m) * m, srgb_to_linear1(c.b / m) * m, c.a}
+}
+
+srgb_to_linear1 :: proc(v: f32) -> f32 {
+	if v <= 0.04045 do return v / 12.92
+	return math.pow((v + 0.055) / 1.055, 2.4)
+}
 
 // The world shader that draws the world-space normal as color (debug views).
 NORMALS_SHADER :: "normals"

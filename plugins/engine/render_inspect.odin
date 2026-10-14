@@ -125,9 +125,10 @@ _inspect_node_ends :: proc(id: i32, pool: ^gfx.Target_Pool) {
 	for name in n.taken {
 		src := gfx.pool_find(pool, name)
 		if src == nil do continue
+		// Display thumbnails: imgui shows their bytes as they are.
 		h := max(i32(f32(INSPECT_THUMB_W) * f32(src.height) / f32(max(src.width, 1))), 1)
-		dst := gfx.pool_target(&_inspect.pool, _thumb_key(id, name), INSPECT_THUMB_W, h, src.format)
-		gfx.rt_copy(dst, src)
+		dst := gfx.pool_target(&_inspect.pool, _thumb_key(id, name), INSPECT_THUMB_W, h, .Display)
+		gfx.display_blit(dst, gfx.rt_color_texture(src))
 		if id == _inspect.show_id && name == _inspect.show_name {
 			full := gfx.pool_target(&_inspect.pool, _SHOW_KEY, src.width, src.height, src.format)
 			gfx.rt_copy(full, src)
@@ -149,10 +150,7 @@ _inspect_lane_ends :: proc(ctx: ^Render_Ctx) {
 	if !ctx.scene_view || _inspect.show_id == 0 || ctx.target == nil do return
 	src := gfx.pool_find(&_inspect.pool, _SHOW_KEY)
 	if src == nil || _inspect.shown != gfx.frame_index + 1 do return
-	gfx.pass_begin_target(ctx.target, nil)
-	color := gfx.rt_color_texture(src)
-	gfx.draw_fullscreen(gfx.BLIT_SHADER, []^gfx.Texture{&color})
-	gfx.pass_end()
+	gfx.display_blit(ctx.target, gfx.rt_color_texture(src))
 }
 
 // Called when a node takes a target (render_node_registry.odin).

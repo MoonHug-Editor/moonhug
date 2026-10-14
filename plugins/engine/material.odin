@@ -126,8 +126,18 @@ _material_resolve_textures :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []^gf
 	return extra
 }
 
+// Whether a shader property is a color: a vec4 whose name says so ("color",
+// "colour", any case). The inspector shows it with a color picker, and its
+// value, authored in sRGB like every color, reaches the shader as linear.
+material_property_is_color :: proc(name: string, size: u32) -> bool {
+	if size != 16 do return false
+	lower := strings.to_lower(name, context.temp_allocator)
+	return strings.contains(lower, "color") || strings.contains(lower, "colour")
+}
+
 // Packs Material.properties into the shader's reflected UBO layout
 // (temp-allocated; zero-filled for properties the material doesn't set).
+// Color properties go in as linear (material_property_is_color).
 _material_pack_properties :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []u8 {
 	if sr.block_size == 0 do return nil
 	data := make([]u8, sr.block_size, context.temp_allocator)
@@ -135,6 +145,7 @@ _material_pack_properties :: proc(mat: ^Material, sr: ^Shader_Runtime) -> []u8 {
 		for &mp in mat.properties {
 			if mp.name != sp.name do continue
 			value := mp.value
+			if material_property_is_color(sp.name, sp.size) do value = gfx.srgb_to_linear(value)
 			value_bytes := (^[16]u8)(&value)
 			copy(data[sp.offset:], value_bytes[:min(sp.size, 16)])
 			break

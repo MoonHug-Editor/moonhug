@@ -33,9 +33,10 @@
 //
 // Tangents: the mesh has none, so the tangent frame is derived per-pixel
 // from position/uv derivatives (Schüler's cotangent frame) — good enough
-// until imported tangents land. Albedo/emissive are treated as sRGB and the
-// result is re-encoded (the rest of the engine is gamma-naive; doing it
-// in-shader keeps PBR plausible without a linear pipeline).
+// until imported tangents land. Albedo and emissive textures are sRGB color
+// data, decoded here. Everything else arrives linear (frag_color, the
+// lights, color properties) and the result is linear: the view's last pass
+// encodes it.
 #version 450
 
 layout(location = 0) in vec2 frag_uv;
@@ -91,8 +92,10 @@ mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv) {
 }
 
 void main() {
-    vec4 base_px = texture(tex, frag_uv) * frag_color;
-    vec3 albedo = pow(base_px.rgb, vec3(2.2)); // sRGB -> linear
+    // The texture is sRGB color data, frag_color arrives linear (world.vert).
+    vec4 base_tex = texture(tex, frag_uv);
+    vec4 base_px = vec4(pow(base_tex.rgb, vec3(2.2)), base_tex.a) * frag_color;
+    vec3 albedo = base_px.rgb;
 
     float metal_f = metallic  <= 0.0 ? 1.0 : metallic;
     float rough_f = roughness <= 0.0 ? 1.0 : roughness;
@@ -182,6 +185,6 @@ void main() {
     vec3 emissive = pow(texture(emissive_tex, frag_uv).rgb, vec3(2.2))
                   * emissive_color.rgb * emissive_color.w;
 
-    vec3 rgb = pow(lo + ambient + env_spec + emissive, vec3(1.0 / 2.2)); // linear -> sRGB
-    out_color = vec4(rgb, base_px.a);
+    // Linear out: the target is linear, the view's last pass encodes it.
+    out_color = vec4(lo + ambient + env_spec + emissive, base_px.a);
 }

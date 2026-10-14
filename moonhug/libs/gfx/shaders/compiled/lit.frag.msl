@@ -52,6 +52,19 @@ struct main0_in
 };
 
 static inline __attribute__((always_inline))
+float3 srgb_to_linear(thread const float3& c)
+{
+    return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
+}
+
+static inline __attribute__((always_inline))
+float4 srgb_to_linear(thread const float4& c)
+{
+    float3 param = c.xyz;
+    return float4(srgb_to_linear(param), c.w);
+}
+
+static inline __attribute__((always_inline))
 void surface(thread const Surface& s)
 {
 }
@@ -78,58 +91,58 @@ float light_attenuation(thread const GpuLight& l, thread const float3& to_frag, 
 }
 
 static inline __attribute__((always_inline))
-float shadow_factor(thread const float3& world_pos, constant LightUBO& _104, texture2d<float> shadow_map, sampler shadow_mapSmplr)
+float shadow_factor(thread const float3& world_pos, constant LightUBO& _149, texture2d<float> shadow_map, sampler shadow_mapSmplr)
 {
-    if (_104.shadow_params.z < 0.5)
+    if (_149.shadow_params.z < 0.5)
     {
         return 1.0;
     }
-    float4 lp = _104.shadow_vp * float4(world_pos, 1.0);
+    float4 lp = _149.shadow_vp * float4(world_pos, 1.0);
     float3 ndc = lp.xyz / float3(lp.w);
     float2 uv = float2((ndc.x * 0.5) + 0.5, 1.0 - ((ndc.y * 0.5) + 0.5));
-    bool _147 = uv.x < 0.0;
-    bool _154;
-    if (!_147)
+    bool _192 = uv.x < 0.0;
+    bool _199;
+    if (!_192)
     {
-        _154 = uv.x > 1.0;
+        _199 = uv.x > 1.0;
     }
     else
     {
-        _154 = _147;
+        _199 = _192;
     }
-    bool _161;
-    if (!_154)
+    bool _206;
+    if (!_199)
     {
-        _161 = uv.y < 0.0;
+        _206 = uv.y < 0.0;
     }
     else
     {
-        _161 = _154;
+        _206 = _199;
     }
-    bool _168;
-    if (!_161)
+    bool _213;
+    if (!_206)
     {
-        _168 = uv.y > 1.0;
+        _213 = uv.y > 1.0;
     }
     else
     {
-        _168 = _161;
+        _213 = _206;
     }
-    bool _175;
-    if (!_168)
+    bool _220;
+    if (!_213)
     {
-        _175 = ndc.z > 1.0;
+        _220 = ndc.z > 1.0;
     }
     else
     {
-        _175 = _168;
+        _220 = _213;
     }
-    if (_175)
+    if (_220)
     {
         return 1.0;
     }
-    float depth = ndc.z - _104.shadow_params.y;
-    float texel = _104.shadow_params.x;
+    float depth = ndc.z - _149.shadow_params.y;
+    float texel = _149.shadow_params.x;
     float lit = 0.0;
     for (int y = -1; y <= 1; y++)
     {
@@ -142,30 +155,31 @@ float shadow_factor(thread const float3& world_pos, constant LightUBO& _104, tex
     return lit / 9.0;
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _104 [[buffer(0)]], texture2d<float> tex [[texture(0)]], texture2d<float> shadow_map [[texture(7)]], sampler texSmplr [[sampler(0)]], sampler shadow_mapSmplr [[sampler(7)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _149 [[buffer(0)]], texture2d<float> tex [[texture(0)]], texture2d<float> shadow_map [[texture(7)]], sampler texSmplr [[sampler(0)]], sampler shadow_mapSmplr [[sampler(7)]])
 {
     main0_out out = {};
-    float4 base = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
+    float4 param = tex.sample(texSmplr, in.frag_uv);
+    float4 base = srgb_to_linear(param) * in.frag_color;
     Surface s;
     s.albedo = base.xyz;
     s.alpha = base.w;
     s.normal = fast::normalize(in.frag_normal);
     s.emissive = float3(0.0);
-    Surface param = s;
-    surface(param);
-    s = param;
+    Surface param_1 = s;
+    surface(param_1);
+    s = param_1;
     float3 n = fast::normalize(s.normal);
-    float ambient = _104.ambient_count.x;
-    int count = int(_104.ambient_count.y);
+    float ambient = _149.ambient_count.x;
+    int count = int(_149.ambient_count.y);
     float3 light = float3(ambient);
     GpuLight l;
     float3 L;
     for (int i = 0; i < count; i++)
     {
-        l.pos_type = _104.lights[i].pos_type;
-        l.dir_range = _104.lights[i].dir_range;
-        l.color_outer = _104.lights[i].color_outer;
-        l.params = _104.lights[i].params;
+        l.pos_type = _149.lights[i].pos_type;
+        l.dir_range = _149.lights[i].dir_range;
+        l.color_outer = _149.lights[i].color_outer;
+        l.params = _149.lights[i].params;
         float dist = 0.0;
         if (l.pos_type.w < 0.5)
         {
@@ -178,14 +192,14 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _104 [[buf
             L = d / float3(fast::max(dist, 9.9999999747524270787835121154785e-07));
         }
         float diffuse = fast::max(dot(n, -L), 0.0);
-        GpuLight param_1 = l;
-        float3 param_2 = L;
-        float param_3 = dist;
-        float atten = light_attenuation(param_1, param_2, param_3);
-        if (i == int(_104.shadow_params.w))
+        GpuLight param_2 = l;
+        float3 param_3 = L;
+        float param_4 = dist;
+        float atten = light_attenuation(param_2, param_3, param_4);
+        if (i == int(_149.shadow_params.w))
         {
-            float3 param_4 = in.frag_world_pos;
-            atten *= shadow_factor(param_4, _104, shadow_map, shadow_mapSmplr);
+            float3 param_5 = in.frag_world_pos;
+            atten *= shadow_factor(param_5, _149, shadow_map, shadow_mapSmplr);
         }
         light += (l.color_outer.xyz * (((1.0 - ambient) * diffuse) * atten));
     }

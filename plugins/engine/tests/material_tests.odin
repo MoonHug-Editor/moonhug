@@ -77,24 +77,30 @@ test_material_cache_preview_and_unload :: proc(t: ^testing.T) {
 @(test)
 test_material_pack_properties :: proc(t: ^testing.T) {
 	sr := engine.Shader_Runtime{
-		block_size = 32,
+		block_size = 48,
 		properties = []engine.Shader_Property{
 			{name = "mix_amount", offset = 0, size = 4},
-			{name = "rim_color", offset = 16, size = 16},
+			{name = "rim_params", offset = 16, size = 16},
+			{name = "rimColor", offset = 32, size = 16},
 		},
 	}
 	mat := engine.Material{}
-	append(&mat.properties, engine.Material_Property{name = "rim_color", value = {1, 2, 3, 4}})
+	append(&mat.properties, engine.Material_Property{name = "rim_params", value = {1, 2, 3, 4}})
 	append(&mat.properties, engine.Material_Property{name = "mix_amount", value = {0.5, 9, 9, 9}}) // only .x fits a float
 	append(&mat.properties, engine.Material_Property{name = "stale_unknown", value = {7, 7, 7, 7}})
+	append(&mat.properties, engine.Material_Property{name = "rimColor", value = {1, 0.5, 0, 0.25}})
 	defer delete(mat.properties)
 
 	data := engine._material_pack_properties(&mat, &sr)
-	testing.expect(t, len(data) == 32, "packed size = block_size")
-	floats := ([^]f32)(raw_data(data))[:8]
+	testing.expect(t, len(data) == 48, "packed size = block_size")
+	floats := ([^]f32)(raw_data(data))[:12]
 	testing.expect(t, floats[0] == 0.5, "float lands at offset 0, truncated to 4 bytes")
 	testing.expect(t, floats[1] == 0 && floats[2] == 0 && floats[3] == 0, "float padding stays zero")
-	testing.expect(t, floats[4] == 1 && floats[7] == 4, "vec4 lands at offset 16")
+	testing.expect(t, floats[4] == 1 && floats[7] == 4, "vec4 lands at offset 16, as authored: not a color")
+	// A color property (its name says so, any case) goes in as linear light,
+	// alpha untouched: sRGB 0.5 is linear 0.214.
+	testing.expect(t, floats[8] == 1 && floats[10] == 0 && floats[11] == 0.25, "color ends stay, alpha stays")
+	testing.expectf(t, abs(floats[9] - 0.2140) < 0.001, "sRGB 0.5 decodes to 0.214, got %f", floats[9])
 }
 
 // Clearing custom_shader purges the property rows (they belong to the

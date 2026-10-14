@@ -35,6 +35,8 @@ _Fullscreen_Entry :: struct {
 
 @(private) _FULLSCREEN_VERT_SPV := #load("shaders/compiled/fullscreen.vert.spv")
 @(private) _FULLSCREEN_VERT_MSL := #load("shaders/compiled/fullscreen.vert.msl")
+@(private) _ENCODE_FRAG_SPV     := #load("shaders/compiled/encode.frag.spv")
+@(private) _ENCODE_FRAG_MSL     := #load("shaders/compiled/encode.frag.msl")
 @(private) _BLIT_FRAG_SPV       := #load("shaders/compiled/blit.frag.spv")
 @(private) _BLIT_FRAG_MSL       := #load("shaders/compiled/blit.frag.msl")
 @(private) _NORMALS_FRAG_SPV    := #load("shaders/compiled/normals.frag.spv")
@@ -50,6 +52,7 @@ _create_pipelines :: proc() -> bool {
 	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = SHADOW_SAMPLER_SLOT + 1, frag_uniform_buffers = 1) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
+	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
 	return true
 }
 
@@ -71,8 +74,9 @@ _pipelines_shutdown :: proc() {
 // The pixel format a Target_Format stands for on this device.
 target_pixel_format :: proc(f: Target_Format) -> sdl.GPUTextureFormat {
 	switch f {
-	case .LDR: return _gfx.swapchain_format
-	case .HDR: return .R16G16B16A16_FLOAT
+	case .Display: return _gfx.swapchain_format
+	case .HDR:     return .R16G16B16A16_FLOAT
+	case .LDR:     return .R8G8B8A8_UNORM_SRGB
 	}
 	return _gfx.swapchain_format
 }

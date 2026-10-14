@@ -1,3 +1,5 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
 #include <metal_stdlib>
 #include <simd/simd.h>
 
@@ -14,10 +16,18 @@ struct main0_in
     float4 frag_color [[user(locn1)]];
 };
 
+static inline __attribute__((always_inline))
+float3 srgb_to_linear(thread const float3& c)
+{
+    return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
+}
+
 fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    out.out_color = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
+    float4 t = tex.sample(texSmplr, in.frag_uv);
+    float3 param = t.xyz;
+    out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
     return out;
 }
 
