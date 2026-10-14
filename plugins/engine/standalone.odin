@@ -152,14 +152,11 @@ standalone_frame_dt :: proc() -> f32 {
 	return gfx.delta_time()
 }
 
-// World cameras render. The pass stays open with the world view_proj set, so
-// the DebugDraw phase rides it, then standalone_render_end closes it.
-standalone_render_begin :: proc() -> bool {
-	return render_world_cameras()
-}
-
-standalone_render_end :: proc() {
-	gfx.pass_end()
+// World cameras render through the `3d` graph. `overlay` draws over the
+// scene inside the last camera's pass: the generated __standalone_run passes
+// the DebugDraw phase.
+standalone_render :: proc(overlay: proc() = nil) {
+	render_world_cameras(nil, overlay)
 }
 
 standalone_frame_end :: proc() {

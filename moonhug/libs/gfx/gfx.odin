@@ -4,7 +4,6 @@
 package gfx
 
 import "base:runtime"
-import "core:strings"
 import sdl "vendor:sdl3"
 
 // One vertex format for the CPU batch AND meshes. Normals are unused by the
@@ -31,18 +30,28 @@ _Pipeline_Kind :: enum u8 {
 	Tris,          // alpha-blended, depth test, NO depth write (sprites)
 	Tris_Depth,    // opaque, depth test + write (meshes)
 	Tris_Overlay,  // alpha-blended, no depth test (gizmo solids, e.g. arrow cones)
+	Tris_Wire,     // triangles rasterized as lines, depth test, no write (wireframe view)
 	Lines,         // depth-tested lines (selection outline)
 	Lines_Depth,   // depth test + WRITE (editor grid — occludes and is occluded
 	               // by meshes regardless of draw order; sprites still cover it)
 	Lines_Overlay, // no depth test (gizmos)
 }
 
-// One pipeline per kind, per registered shader. All shaders share the Vertex
-// format and the UBO layout (pass.odin _Uniform) — that contract is what lets
-// pass_end switch shaders per draw without re-plumbing uniforms.
-_Shader_Set :: [_Pipeline_Kind]^sdl.GPUGraphicsPipeline
+// What a pass renders into. A pipeline is bound to its color target's pixel
+// format, so every shader keeps one pipeline set per Target_Format, built the
+// first time a pass of that format draws with it (pipelines.odin).
+Target_Format :: enum u8 {
+	LDR, // the swapchain's 8-bit format: the window and ordinary render targets
+	HDR, // RGBA16F: lit scene color before tonemapping
+}
 
 DEFAULT_SHADER :: "unlit"
+
+// The fullscreen shader that copies its input to the target.
+BLIT_SHADER :: "blit"
+
+// The world shader that draws the world-space normal as color (debug views).
+NORMALS_SHADER :: "normals"
 
 _DEPTH_FORMAT :: sdl.GPUTextureFormat.D32_FLOAT
 
@@ -50,8 +59,9 @@ _gfx: struct {
 	device:           ^sdl.GPUDevice,
 	swapchain_format: sdl.GPUTextureFormat,
 	cmd:              ^sdl.GPUCommandBuffer, // valid between frame_begin/frame_end
-	shader_sets:      map[string]_Shader_Set, // built-ins registered in init
-	pipelines:        _Shader_Set, // = shader_sets[DEFAULT_SHADER] (batch fast path)
+	shaders:          map[string]_Shader_Entry,     // pipelines.odin, built-ins registered in init
+	fullscreen:       map[string]_Fullscreen_Entry, // pipelines.odin
+	fullscreen_vert:  ^sdl.GPUShader,              // the fullscreen-triangle vertex stage
 	skin_pipeline:    ^sdl.GPUComputePipeline, // skinning.odin
 	sampler_linear:   ^sdl.GPUSampler,
 	sampler_nearest:  ^sdl.GPUSampler,
@@ -124,13 +134,7 @@ shutdown :: proc() {
 		_skinning_shutdown()
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
-		for name, set in _gfx.shader_sets {
-			for p in set {
-				if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
-			}
-			delete(name)
-		}
-		delete(_gfx.shader_sets)
+		_pipelines_shutdown()
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_repeat)
@@ -180,123 +184,6 @@ frame_end :: proc() {
 
 command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
 	return _gfx.cmd
-}
-
-_create_pipelines :: proc() -> bool {
-	_gfx.shader_sets = make(map[string]_Shader_Set)
-	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
-	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_uniform_buffers = 1) do return false
-	_gfx.pipelines = _gfx.shader_sets[DEFAULT_SHADER]
-	return true
-}
-
-shader_exists :: proc(name: string) -> bool {
-	return name in _gfx.shader_sets
-}
-
-// User shaders are fragment-only: the vertex stage is always the built-in
-// world vertex shader (fixed Vertex format + _Uniform contract). Resource
-// counts come from import-time reflection, not convention.
-shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
-	return shader_register(name, _WORLD_VERT_SPV, _WORLD_VERT_MSL, frag_spv, frag_msl,
-		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers)
-}
-
-// Releases the shader's pipelines (SDL_GPU defers actual destruction past
-// in-flight frames). Used by shader hot-reload; unknown names are a no-op.
-shader_unregister :: proc(name: string) {
-	set, ok := _gfx.shader_sets[name]
-	if !ok do return
-	for p in set {
-		if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
-	}
-	key, _ := delete_key(&_gfx.shader_sets, name)
-	delete(key)
-}
-
-// Builds the full pipeline set for a vertex+fragment shader pair and registers
-// it under `name` (draw_mesh's shader parameter). The vertex stage must
-// declare 1 UBO (_Uniform layout); fragment resource counts must match the
-// shader's declarations (sampler2D at set=2, optional Light UBO at set=3).
-// Re-registering a name is an error (false).
-shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0) -> bool {
-	if name in _gfx.shader_sets do return false
-	vert := _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl)
-	frag := _create_shader(.FRAGMENT, frag_samplers, frag_uniform_buffers, frag_spv, frag_msl)
-	if vert == nil || frag == nil do return false
-	defer sdl.ReleaseGPUShader(_gfx.device, vert)
-	defer sdl.ReleaseGPUShader(_gfx.device, frag)
-
-	buffer_desc := sdl.GPUVertexBufferDescription{
-		slot       = 0,
-		pitch      = size_of(Vertex),
-		input_rate = .VERTEX,
-	}
-	attributes := [4]sdl.GPUVertexAttribute{
-		{location = 0, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, position))},
-		{location = 1, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, normal))},
-		{location = 2, buffer_slot = 0, format = .FLOAT2, offset = u32(offset_of(Vertex, uv))},
-		{location = 3, buffer_slot = 0, format = .UBYTE4_NORM, offset = u32(offset_of(Vertex, color))},
-	}
-	alpha_blend := sdl.GPUColorTargetBlendState{
-		src_color_blendfactor = .SRC_ALPHA,
-		dst_color_blendfactor = .ONE_MINUS_SRC_ALPHA,
-		color_blend_op        = .ADD,
-		src_alpha_blendfactor = .ONE,
-		dst_alpha_blendfactor = .ONE_MINUS_SRC_ALPHA,
-		alpha_blend_op        = .ADD,
-		enable_blend          = true,
-	}
-	color_target := sdl.GPUColorTargetDescription{
-		format      = _gfx.swapchain_format,
-		blend_state = alpha_blend,
-	}
-
-	info := sdl.GPUGraphicsPipelineCreateInfo{
-		vertex_shader   = vert,
-		fragment_shader = frag,
-		vertex_input_state = {
-			vertex_buffer_descriptions = &buffer_desc,
-			num_vertex_buffers         = 1,
-			vertex_attributes          = raw_data(attributes[:]),
-			num_vertex_attributes      = len(attributes),
-		},
-		primitive_type = .TRIANGLELIST,
-		target_info = {
-			color_target_descriptions = &color_target,
-			num_color_targets         = 1,
-			depth_stencil_format      = _DEPTH_FORMAT,
-			has_depth_stencil_target  = true,
-		},
-	}
-
-	make_pipeline :: proc(info: ^sdl.GPUGraphicsPipelineCreateInfo, primitive: sdl.GPUPrimitiveType, depth_test, depth_write: bool) -> ^sdl.GPUGraphicsPipeline {
-		info.primitive_type = primitive
-		info.depth_stencil_state = {
-			compare_op         = .LESS_OR_EQUAL,
-			enable_depth_test  = depth_test,
-			enable_depth_write = depth_write,
-		}
-		return sdl.CreateGPUGraphicsPipeline(_gfx.device, info^)
-	}
-
-	set: _Shader_Set
-	set[.Tris]          = make_pipeline(&info, .TRIANGLELIST, true, false)
-	set[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
-	set[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
-	set[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
-	set[.Lines_Depth]   = make_pipeline(&info, .LINELIST, true, true)
-	set[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
-	for p in set {
-		if p == nil {
-			for q in set {
-				if q != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, q)
-			}
-			return false
-		}
-	}
-	_gfx.shader_sets[strings.clone(name)] = set
-	return true
 }
 
 // Uploads RGBA8 pixels into a new sampled texture. Uses its OWN short-lived

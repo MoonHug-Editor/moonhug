@@ -41,7 +41,7 @@ Material_Texture :: struct {
 @(typ_guid={guid = "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4", menu_assets_create = {menu_name = "Material", file_name = "New Material.mat", order = -6}})
 Material :: struct {
 	shader:        Material_Shader,
-	custom_shader: Asset_GUID `ext:"glsl"`, // user .glsl asset; overrides `shader` when set
+	custom_shader: Asset_GUID `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set
 	texture:       Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 	color:         [4]f32 `decor:color()`,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
@@ -237,6 +237,7 @@ material_cache_init :: proc() {
 }
 
 material_cache_shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	for _, &mat in material_cache {
 		cleanup_Material(&mat)
 	}
@@ -252,6 +253,7 @@ material_load :: proc(guid: Asset_GUID) -> (^Material, bool) {
 		return mat, true
 	}
 	if !_material_cache_ready do return nil, false
+	context.allocator = runtime.default_allocator() // the cache outlives every caller
 
 	path, path_ok := asset_db_get_path(uuid.Identifier(guid))
 	if !path_ok do return nil, false
@@ -265,6 +267,7 @@ material_load :: proc(guid: Asset_GUID) -> (^Material, bool) {
 }
 
 material_unload :: proc(guid: Asset_GUID) {
+	context.allocator = runtime.default_allocator()
 	if mat, ok := &material_cache[guid]; ok {
 		cleanup_Material(mat)
 		delete_key(&material_cache, guid)
@@ -274,8 +277,11 @@ material_unload :: proc(guid: Asset_GUID) {
 // Editor hook: pushes (possibly unsaved) inspector values into the cache so
 // material edits render live. Deep-cloned — the inspector owns its instance
 // and may free it; skipped when the cache already matches (per-frame call).
+// The cache is pinned to the default allocator whatever the caller runs
+// under: a clone made with a frame allocator freed later is a bad free.
 material_preview :: proc(guid: Asset_GUID, mat: Material) {
 	if !_material_cache_ready do return
+	context.allocator = runtime.default_allocator()
 	if existing, ok := &material_cache[guid]; ok {
 		if _material_equal(existing^, mat) do return
 		cleanup_Material(existing)

@@ -126,3 +126,34 @@ test_material_shader_names :: proc(t: ^testing.T) {
 	testing.expect(t, engine.material_shader_name(.Unlit) == "unlit", "unlit maps to gfx name")
 	testing.expect(t, engine.material_shader_name(.Lit) == "lit", "lit maps to gfx name")
 }
+
+// The cache outlives every caller: a preview pushed from a frame whose
+// context.allocator is the temp allocator must not leave temp-owned strings
+// in the cache, or the next preview's cleanup frees them with the wrong
+// allocator (the "Bad free" crash when tweaking a material's properties).
+@(test)
+test_material_cache_pins_its_allocator :: proc(t: ^testing.T) {
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+
+	guid_id, _ := uuid.read("13131313-3434-5656-7878-909090909090")
+	guid := engine.Asset_GUID(guid_id)
+
+	{
+		context.allocator = context.temp_allocator
+		props := make([dynamic]engine.Material_Property, context.temp_allocator)
+		append(&props, engine.Material_Property{name = "rim_power", value = {3, 0, 0, 0}})
+		engine.material_preview(guid, {shader = .Lit, properties = props})
+	}
+	free_all(context.temp_allocator) // the frame ends, the temp strings are gone
+
+	mat, ok := engine.material_load(guid)
+	testing.expect(t, ok, "previewed material should be a cache hit")
+	if !ok do return
+	testing.expect(t, len(mat.properties) == 1 && mat.properties[0].name == "rim_power", "the cache keeps its own copy of the names")
+
+	// A changed value replaces the entry: frees the old names with the cache's allocator.
+	engine.material_preview(guid, {shader = .Lit, color = {0, 1, 0, 1}})
+	mat, ok = engine.material_load(guid)
+	testing.expect(t, ok && mat.color == {0, 1, 0, 1}, "the new preview sticks")
+}

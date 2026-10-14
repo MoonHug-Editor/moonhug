@@ -156,18 +156,21 @@ game_label_pos :: proc(v: core.Render_View, img_min, img_size: [2]f32, l: core.G
 render_game_rt :: proc(w, h: i32) -> bool {
 	if w < 1 || h < 1 do return false
 	gfx.rt_resize(game_rt, w, h)
-	// Begins the pass (black clear when no camera) and leaves it open.
-	had_camera := viewport.render_game(game_rt)
-	// What the gizmo pass recorded this frame (gizmo_pass.odin): gizmos with
-	// the view menu toggle, gameplay shapes with the toggle or debug drawing on.
-	// Icons draw facing the game camera.
+	// The engine renders its cameras in its own passes, black when no camera,
+	// and draws the gizmos over the scene inside the last camera's pass.
+	return viewport.render_game(game_rt, _draw_game_over)
+}
+
+// What the gizmo pass recorded this frame (gizmo_pass.odin): gizmos with
+// the view menu toggle, gameplay shapes with the toggle or debug drawing on.
+// Icons draw facing the game camera.
+@(private = "file")
+_draw_game_over :: proc() {
 	channels := game_gizmo_channels()
 	if v, ok := _game_gizmo_view(); ok && channels != {} {
 		gizmos.with_view(v)
 		gizmos.draw(channels)
 	}
-	gfx.pass_end()
-	return had_camera
 }
 
 // Game view toolbar: Unity's size dropdown and scale slider. Drawn inside the

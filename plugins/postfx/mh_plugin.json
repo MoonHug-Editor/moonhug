@@ -1,0 +1,7 @@
+{
+  "name": "postfx",
+  "guid": "6444cfac-36bc-4ca1-8c51-1e6173e250d3",
+  "description": "Post effects as render graph nodes: bloom, tonemap operators, FXAA",
+  "dependencies": ["engine"],
+  "dependencies_custom": []
+}

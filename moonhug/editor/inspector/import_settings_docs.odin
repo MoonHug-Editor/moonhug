@@ -51,7 +51,7 @@ import_settings_doc_get :: proc(path: string) -> ^Asset_Doc {
 		doc.touched = true
 		return doc
 	}
-	settings, sok := assets.asset_pipeline_get_settings(path)
+	settings, sok := asset_pipeline.import_settings_or_default(path)
 	if !sok do return nil
 	doc := new(Asset_Doc)
 	doc^ = Asset_Doc{

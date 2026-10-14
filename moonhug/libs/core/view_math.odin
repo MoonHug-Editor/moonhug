@@ -12,6 +12,16 @@ View_Kind :: enum u8 {
 	Preview,   // thumbnails and inspector previews
 }
 
+// How a view shades what it draws. Shaded is the game's look, the rest are
+// the scene view's debug modes, applied by the engine's render execute.
+View_Mode :: enum u8 {
+	Shaded,
+	Wireframe, // meshes as lines, unlit
+	Unlit,     // every material through the unlit shader, textures kept
+	Normals,   // world-space normals as color
+	Overdraw,  // every surface a faint additive layer, no depth test: brighter = more overdraw
+}
+
 Render_View :: struct {
 	view, proj:    matrix[4, 4]f32,
 	view_proj:     matrix[4, 4]f32,
@@ -20,6 +30,7 @@ Render_View :: struct {
 	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
 	layer_mask:    u32,
 	kind:          View_Kind,
+	mode:          View_Mode,
 	camera:        Transform_Handle, // the Camera node a Game view renders for; {} for editor views
 }
 

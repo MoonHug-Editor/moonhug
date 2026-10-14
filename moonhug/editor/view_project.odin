@@ -309,7 +309,17 @@ _project_inspect_path :: proc(full_path: string) {
 // Same side effects as clicking/double-clicking the file row.
 _project_activate_file :: proc(full_path: string) {
     _project_inspect_path(full_path)
-    if strings.has_suffix(full_path, ".scene") do editor_open_scene(full_path)
+    _project_open_file(full_path)
+}
+
+// Opens a file's document: a scene in the scene view, any other asset in the
+// editor its package registered for the extension (asset_open_handler_add).
+_project_open_file :: proc(full_path: string) {
+    if strings.has_suffix(full_path, ".scene") {
+        editor_open_scene(full_path)
+        return
+    }
+    _ = asset_pipeline.asset_open(full_path)
 }
 
 _project_open_selected :: proc() {
@@ -1218,9 +1228,7 @@ _project_item_clicked :: proc(full_path: string, is_dir: bool) {
         }
     } else if !toggled_off {
         _project_inspect_path(full_path)
-        if strings.has_suffix(full_path, ".scene") && im.IsMouseDoubleClicked(.Left) {
-            editor_open_scene(full_path)
-        }
+        if im.IsMouseDoubleClicked(.Left) do _project_open_file(full_path)
     }
 }
 

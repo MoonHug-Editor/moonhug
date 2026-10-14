@@ -325,21 +325,25 @@ scene_render_view :: proc(w, h: f32) -> core.Render_View {
 	} else {
 		proj = gfx.matrix4_perspective_z01(math.to_radians(SCENE_CAM_FOV_DEG), aspect, SCENE_CAM_NEAR, SCENE_CAM_FAR)
 	}
-	return core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
+	rv := core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
+	rv.mode = scene_view_mode
+	return rv
 }
+
+// The render pipeline slot the scene view renders through, Main when the
+// pipeline declares no Editor slot (plugins/engine/render_pipeline.odin). A
+// name, so the shell needs no engine type: with no engine the viewport falls
+// back to an empty view.
+SCENE_VIEW_SLOT :: "Editor"
+
+// Shading mode of the scene view (the Shading overlay), persisted in editor_settings.
+scene_view_mode: core.View_Mode
 
 render_scene_rt :: proc(w, h: i32) {
 	if w < 1 || h < 1 do return
 	gfx.rt_resize(scene_rt, w, h)
 
-	gfx.pass_begin_target(scene_rt, [4]f32{0.15, 0.15, 0.15, 1})
 	view := scene_render_view(f32(w), f32(h))
-	gfx.set_view_proj(view.view_proj, view.cam_pos)
-	draw_grid()
-	draw_axis_lines()
-
-	viewport.render(view)
-
 	// The gizmo pass (gizmo_pass.odin) recorded the outline, the handles, the
 	// transform gizmo and the gizmo hooks before this render. The next pass reads the view's size
 	// and the frame it rendered in.
@@ -347,9 +351,22 @@ render_scene_rt :: proc(w, h: i32) {
 	_scene_view_size = {f32(w), f32(h)}
 	gizmos.set_view(view)
 	_scene_view_last = view
-	// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
+	// The engine's render pipeline owns the passes: the grid and axes draw
+	// under the scene, the gizmos over it, both from scene passes that share
+	// its depth.
+	viewport.render(scene_rt, view, SCENE_VIEW_SLOT, [4]f32{0.15, 0.15, 0.15, 1}, _draw_scene_under, _draw_scene_over)
+}
+
+@(private = "file")
+_draw_scene_under :: proc() {
+	draw_grid()
+	draw_axis_lines()
+}
+
+// Gameplay shapes, gizmos, then tools: depth-tested first, then the rest over them.
+@(private = "file")
+_draw_scene_over :: proc() {
 	gizmos.draw(gizmos.scene_gizmo_channels())
-	gfx.pass_end()
 }
 
 // Scene grid: per-plane toggles + cell layout, edited via the Grid overlay
@@ -632,6 +649,28 @@ draw_view_overlay :: proc(vertical: bool) {
 	if overlay_tool_button("2D", "2D view: orthographic, looking along -Z, no orbit (right or middle drag pans)", scene_2d_mode, width = vertical ? OVERLAY_SPLIT_WIDTH : 0) {
 		scene_set_2d(!scene_2d_mode)
 	}
+}
+
+// Shading overlay: the scene view's draw mode (core.View_Mode), Unity's
+// shading dropdown. Shaded is the game's look, the rest are debug views.
+@(scene_overlay={id="View", order=60})
+draw_shading_overlay :: proc(vertical: bool) {
+	labels := [core.View_Mode]cstring{
+		.Shaded    = "Shaded",
+		.Wireframe = "Wireframe",
+		.Unlit     = "Unlit",
+		.Normals   = "Normals",
+		.Overdraw  = "Overdraw",
+	}
+	if !vertical do im.SameLine()
+	im.SetNextItemWidth(vertical ? OVERLAY_SPLIT_WIDTH : 100)
+	if im.BeginCombo("##shading", labels[scene_view_mode]) {
+		for mode in core.View_Mode {
+			if im.Selectable(labels[mode], mode == scene_view_mode) do scene_view_mode = mode
+		}
+		im.EndCombo()
+	}
+	widgets.tooltip("Shading mode: how the scene view draws every surface. Shaded is the game's look, the others are debug views")
 }
 
 // Pivot mini-overlay: Unity's Global/Local gizmo orientation switch — a single

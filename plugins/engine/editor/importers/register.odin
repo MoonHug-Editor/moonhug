@@ -60,9 +60,11 @@ register_builtin_importers :: proc() {
 		artifacts    = _mesh_artifacts,
 		sub_assets   = engine.asset_db_register_model_subs,
 	})
+	// The surface template is an input of every surface shader, so its text
+	// is part of the importer version: a template edit reimports them all.
 	asset_pipeline.importer_register({
 		name         = "shader",
-		version      = 1,
+		version      = shader_importer_version(),
 		extensions   = _SHADER_EXTS,
 		settings_tid = typeid_of(engine.ShaderSettings),
 		run          = _import_shader,

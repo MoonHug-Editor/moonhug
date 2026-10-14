@@ -1,0 +1,32 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 1,
+  "custom_shader": "8d2ef107-370a-421f-a987-c1cbea40a39f",
+  "texture": "00000000-0000-0000-0000-000000000000",
+  "color": [
+    0.6,
+    0.6,
+    0.7,
+    1.0
+  ],
+  "properties": [
+    {
+      "name": "rim_color",
+      "value": [
+        1.0,
+        0.8,
+        0.4,
+        1.5
+      ]
+    },
+    {
+      "name": "rim_power",
+      "value": [
+        3.0,
+        0.0,
+        0.0,
+        0.0
+      ]
+    }
+  ]
+}

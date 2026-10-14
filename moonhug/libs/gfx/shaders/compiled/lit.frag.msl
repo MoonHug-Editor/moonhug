@@ -13,6 +13,14 @@ struct GpuLight
     float4 params;
 };
 
+struct Surface
+{
+    float3 albedo;
+    float alpha;
+    float3 normal;
+    float3 emissive;
+};
+
 struct GpuLight_1
 {
     float4 pos_type;
@@ -26,6 +34,8 @@ struct LightUBO
     float4 ambient_count;
     float4 cam_pos;
     GpuLight_1 lights[8];
+    float4x4 shadow_vp;
+    float4 shadow_params;
 };
 
 struct main0_out
@@ -40,6 +50,11 @@ struct main0_in
     float3 frag_normal [[user(locn2)]];
     float3 frag_world_pos [[user(locn3)]];
 };
+
+static inline __attribute__((always_inline))
+void surface(thread const Surface& s)
+{
+}
 
 static inline __attribute__((always_inline))
 float light_attenuation(thread const GpuLight& l, thread const float3& to_frag, thread const float& dist)
@@ -62,21 +77,95 @@ float light_attenuation(thread const GpuLight& l, thread const float3& to_frag, 
     return a;
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _99 [[buffer(0)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+static inline __attribute__((always_inline))
+float shadow_factor(thread const float3& world_pos, constant LightUBO& _104, texture2d<float> shadow_map, sampler shadow_mapSmplr)
+{
+    if (_104.shadow_params.z < 0.5)
+    {
+        return 1.0;
+    }
+    float4 lp = _104.shadow_vp * float4(world_pos, 1.0);
+    float3 ndc = lp.xyz / float3(lp.w);
+    float2 uv = float2((ndc.x * 0.5) + 0.5, 1.0 - ((ndc.y * 0.5) + 0.5));
+    bool _147 = uv.x < 0.0;
+    bool _154;
+    if (!_147)
+    {
+        _154 = uv.x > 1.0;
+    }
+    else
+    {
+        _154 = _147;
+    }
+    bool _161;
+    if (!_154)
+    {
+        _161 = uv.y < 0.0;
+    }
+    else
+    {
+        _161 = _154;
+    }
+    bool _168;
+    if (!_161)
+    {
+        _168 = uv.y > 1.0;
+    }
+    else
+    {
+        _168 = _161;
+    }
+    bool _175;
+    if (!_168)
+    {
+        _175 = ndc.z > 1.0;
+    }
+    else
+    {
+        _175 = _168;
+    }
+    if (_175)
+    {
+        return 1.0;
+    }
+    float depth = ndc.z - _104.shadow_params.y;
+    float texel = _104.shadow_params.x;
+    float lit = 0.0;
+    for (int y = -1; y <= 1; y++)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            float d = shadow_map.sample(shadow_mapSmplr, (uv + (float2(float(x), float(y)) * texel))).x;
+            lit += float(depth <= d);
+        }
+    }
+    return lit / 9.0;
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _104 [[buffer(0)]], texture2d<float> tex [[texture(0)]], texture2d<float> shadow_map [[texture(7)]], sampler texSmplr [[sampler(0)]], sampler shadow_mapSmplr [[sampler(7)]])
 {
     main0_out out = {};
-    float3 n = fast::normalize(in.frag_normal);
-    float ambient = _99.ambient_count.x;
-    int count = int(_99.ambient_count.y);
+    float4 base = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
+    Surface s;
+    s.albedo = base.xyz;
+    s.alpha = base.w;
+    s.normal = fast::normalize(in.frag_normal);
+    s.emissive = float3(0.0);
+    Surface param = s;
+    surface(param);
+    s = param;
+    float3 n = fast::normalize(s.normal);
+    float ambient = _104.ambient_count.x;
+    int count = int(_104.ambient_count.y);
     float3 light = float3(ambient);
     GpuLight l;
     float3 L;
     for (int i = 0; i < count; i++)
     {
-        l.pos_type = _99.lights[i].pos_type;
-        l.dir_range = _99.lights[i].dir_range;
-        l.color_outer = _99.lights[i].color_outer;
-        l.params = _99.lights[i].params;
+        l.pos_type = _104.lights[i].pos_type;
+        l.dir_range = _104.lights[i].dir_range;
+        l.color_outer = _104.lights[i].color_outer;
+        l.params = _104.lights[i].params;
         float dist = 0.0;
         if (l.pos_type.w < 0.5)
         {
@@ -89,14 +178,18 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _99 [[buff
             L = d / float3(fast::max(dist, 9.9999999747524270787835121154785e-07));
         }
         float diffuse = fast::max(dot(n, -L), 0.0);
-        GpuLight param = l;
-        float3 param_1 = L;
-        float param_2 = dist;
-        float atten = light_attenuation(param, param_1, param_2);
+        GpuLight param_1 = l;
+        float3 param_2 = L;
+        float param_3 = dist;
+        float atten = light_attenuation(param_1, param_2, param_3);
+        if (i == int(_104.shadow_params.w))
+        {
+            float3 param_4 = in.frag_world_pos;
+            atten *= shadow_factor(param_4, _104, shadow_map, shadow_mapSmplr);
+        }
         light += (l.color_outer.xyz * (((1.0 - ambient) * diffuse) * atten));
     }
-    float4 base = tex.sample(texSmplr, in.frag_uv) * in.frag_color;
-    out.out_color = float4(base.xyz * light, base.w);
+    out.out_color = float4((s.albedo * light) + s.emissive, s.alpha);
     return out;
 }
 

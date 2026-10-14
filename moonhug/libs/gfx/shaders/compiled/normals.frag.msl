@@ -1,0 +1,23 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float3 frag_normal [[user(locn2)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]])
+{
+    main0_out out = {};
+    float3 n = fast::normalize(in.frag_normal);
+    out.out_color = float4((n * 0.5) + float3(0.5), 1.0);
+    return out;
+}
+

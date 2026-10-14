@@ -11,12 +11,29 @@ package importers
 
 import "core:encoding/json"
 import "core:fmt"
+import "core:hash"
 import "core:os"
 import "core:strings"
 import "moonhug:packages/engine"
+import gfx "moonhug:libs/gfx"
 import "moonhug:libs/log"
 
 _import_shader :: proc(source_path: string, artifact_path: string, settings: rawptr) -> bool {
+    source, read_err := os.read_entire_file(source_path, context.temp_allocator)
+    if read_err != nil {
+        log.errorf("[Pipeline] Cannot read shader source: %s", source_path)
+        return false
+    }
+    return shader_compile_source(string(source), source_path, artifact_path)
+}
+
+// Compiles fragment shader GLSL to the shader artifact at `artifact_path`:
+// a surface shader (surface() and no main()) wrapped in the template, any
+// other source as it is. `source_path` names the source in messages and
+// is where the assembled file sits when the source is not a file of its own
+// (a generated shader passes its asset's path). The .glsl importer and the
+// shader graph importer both end here.
+shader_compile_source :: proc(source: string, source_path: string, artifact_path: string) -> bool {
     tmp_spv := strings.concatenate({artifact_path, ".spv.tmp"}, context.temp_allocator)
     tmp_msl := strings.concatenate({artifact_path, ".msl.tmp"}, context.temp_allocator)
     tmp_json := strings.concatenate({artifact_path, ".json.tmp"}, context.temp_allocator)
@@ -26,13 +43,30 @@ _import_shader :: proc(source_path: string, artifact_path: string, settings: raw
 
     engine._ensure_artifact_dir(artifact_path)
 
+    // A surface shader (surface() and no main()) compiles wrapped in the
+    // template, see _surface_assemble. Any other source compiles from a copy
+    // next to the artifact, so a generated shader needs no file of its own.
+    // `compile_path` is what glslc reads.
+    compile_path: string
+    if _is_surface_shader(source) {
+        assembled, ok := _surface_assemble(source, artifact_path)
+        if !ok do return false
+        compile_path = assembled
+    } else {
+        compile_path = strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
+        if os.write_entire_file(compile_path, transmute([]u8)source) != nil do return false
+    }
+    tmp_assembled := strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
+    defer os.remove(tmp_assembled)
+
     // Input file FIRST for spirv-cross: --reflect greedily consumes a
     // following bare argument as its optional format, eating the input path.
     // --msl-decoration-binding: keep GLSL binding numbers as Metal buffer
     // indices — by default spirv-cross assigns them SEQUENTIALLY, so a lone
     // MaterialUBO at binding=1 would land at buffer(0) while the engine
     // pushes property data to slot 1 (silently reading the light UBO).
-    if !_run_tool({"glslc", "-fshader-stage=frag", source_path, "-o", tmp_spv}, source_path) do return false
+    // -I: the surface template's include folder, next to the artifact.
+    if !_run_tool({"glslc", "-fshader-stage=frag", "-I", _surface_include_dir(artifact_path), compile_path, "-o", tmp_spv}, source_path) do return false
     if !_run_tool({"spirv-cross", tmp_spv, "--msl", "--msl-decoration-binding", "--output", tmp_msl}, source_path) do return false
     if !_run_tool({"spirv-cross", tmp_spv, "--reflect", "--output", tmp_json}, source_path) do return false
 
@@ -94,6 +128,53 @@ _import_shader :: proc(source_path: string, artifact_path: string, settings: raw
     return true
 }
 
+// --- Surface shaders --------------------------------------------------------
+
+// The shader importer's version: 1 plus a hash of the surface template, so
+// an artifact compiled against an older template reimports (the artifact
+// key hashes the importer version).
+shader_compile_version :: 1
+shader_importer_version :: proc() -> int {
+	h := hash.fnv32a(transmute([]u8)gfx.SURFACE_GLSL)
+	h = hash.fnv32a(transmute([]u8)gfx.SURFACE_MAIN_GLSL, h)
+	return shader_compile_version * 1_000_000 + int(h % 1_000_000)
+}
+
+_SURFACE_TMP_SUFFIX :: ".surface.glsl.tmp"
+
+// A surface shader declares surface() and leaves main() to the template.
+_is_surface_shader :: proc(source: string) -> bool {
+    return strings.contains(source, "void surface(") && !strings.contains(source, "void main(")
+}
+
+// Where the template's include files sit for glslc: a folder next to the
+// artifact, rewritten on every import so an engine update reaches it.
+_surface_include_dir :: proc(artifact_path: string) -> string {
+    return strings.concatenate({artifact_path, ".inc"}, context.temp_allocator)
+}
+
+// The user's surface shader between the template's two halves, as a file for
+// glslc. `#line 1` keeps the compiler's error lines pointing at the user's
+// file, and the include files come from gfx (the engine's own copy, so the
+// template a user shader compiles against is the one the built-in lit shader
+// was compiled with).
+_surface_assemble :: proc(source: string, artifact_path: string) -> (path: string, ok: bool) {
+    dir := _surface_include_dir(artifact_path)
+    os.make_directory_all(dir)
+    inc := strings.concatenate({dir, "/surface.glsl"}, context.temp_allocator)
+    inc_main := strings.concatenate({dir, "/surface_main.glsl"}, context.temp_allocator)
+    if os.write_entire_file(inc, transmute([]u8)gfx.SURFACE_GLSL) != nil do return "", false
+    if os.write_entire_file(inc_main, transmute([]u8)gfx.SURFACE_MAIN_GLSL) != nil do return "", false
+
+    b := strings.builder_make(context.temp_allocator)
+    strings.write_string(&b, "#version 450\n#include \"surface.glsl\"\n#line 1\n")
+    strings.write_string(&b, source)
+    strings.write_string(&b, "\n#include \"surface_main.glsl\"\n")
+    path = strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
+    if os.write_entire_file(path, transmute([]u8)strings.to_string(b)) != nil do return "", false
+    return path, true
+}
+
 _blob_append_u32 :: proc(blob: ^[dynamic]u8, v: u32) {
     v := v
     bytes := (^[4]u8)(&v)
@@ -143,6 +224,9 @@ _shader_reflect :: proc(data: []u8) -> (result: _Shader_Reflect, ok: bool) {
             binding := u32(0)
             if b, b_ok := tex["binding"].(json.Float); b_ok do binding = u32(b)
             result.num_samplers = max(result.num_samplers, binding + 1)
+            // The surface template's shadow map: gfx binds it, it is no
+            // material row.
+            if name == "shadow_map" && binding == gfx.SHADOW_SAMPLER_SLOT do continue
             append(&result.textures, engine.Shader_Texture{name = name, binding = binding})
         }
     }

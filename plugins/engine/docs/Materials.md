@@ -122,7 +122,9 @@ Damaged Helmet works out of the box). Conventions:
   `frag_world_pos` (loc 3, world-space fragment position) — declare only the
   ones you read
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
-  samplers at bindings 1..7 become named texture rows (see below)
+  samplers at bindings 1..6 become named texture rows (see below). Binding 7
+  is the shadow map, bound by gfx for shaders that declare it as `shadow_map`
+  (the surface template does)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
   floor, y light count), `cam_pos` (xyz camera world position — pair it with
   `frag_world_pos` for specular/fresnel), then `lights[8]` of four vec4s each:
@@ -132,6 +134,25 @@ Damaged Helmet works out of the box). Conventions:
   `lit.frag.glsl`
 - optional **material property block** at `set = 3, binding = 1` — any
   uniform block of floats/vec2/vec3/vec4
+
+### Surface shaders
+
+A `.glsl` asset that declares `void surface(inout Surface s)` and no `main()` is a **surface shader**: the importer compiles it between the two halves of the template, `libs/gfx/shaders/surface.glsl` (the inputs, the light UBO, the `Surface` struct, `view_dir()`) and `surface_main.glsl` (presets the surface, calls `surface()`, runs the lambert light loop). The built-in `lit` shader is the same template with an empty `surface()`, so a surface shader is lit exactly like it. Sample: `assets/shaders/rim.glsl`.
+
+```glsl
+layout(set = 3, binding = 1) uniform MaterialUBO { vec4 rim_color; float rim_power; };
+
+void surface(inout Surface s) {
+    float rim = pow(1.0 - max(dot(s.normal, view_dir()), 0.0), rim_power);
+    s.emissive = rim_color.rgb * rim;
+}
+```
+
+- `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color`, `s.normal` as the interpolated world normal, `s.emissive` as zero. Change what you need
+- the template declares the inputs, `tex`, the `LightUBO` and the shadow map, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by the scene's directional Light with `shadows` on, like the built-in lit shader
+- compiler errors keep the shader's own line numbers (`#line 1`)
+- the template is what a shader graph emits (plugins/shadergraph), so a hand-written surface shader and a graph-made one are the same kind of asset
+- the template is an input of every surface shader: the shader importer's version hashes its text, so a template edit reimports them all
 
 ### Property blocks
 

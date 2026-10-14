@@ -17,6 +17,14 @@ import sdl "vendor:sdl3"
 @(private) _LIT_FRAG_SPV   := #load("shaders/compiled/lit.frag.spv")
 @(private) _LIT_FRAG_MSL   := #load("shaders/compiled/lit.frag.msl")
 
+// The surface shader template (shaders/surface.glsl, surface_main.glsl): a
+// user shader that declares `void surface(inout Surface s)` and no main() is
+// compiled between these two, which the shader importer writes next to its
+// artifact as include files. The sources, so the importer needs no path
+// into this package.
+SURFACE_GLSL      := #load("shaders/surface.glsl", string)
+SURFACE_MAIN_GLSL := #load("shaders/surface_main.glsl", string)
+
 // num_* counts must match the shader's declared resources per SDL_GPU
 // convention (vertex UBO set=1, fragment sampler2D set=2 in the GLSL source).
 _create_shader :: proc(stage: sdl.GPUShaderStage, num_samplers, num_uniform_buffers: u32, spv, msl: []u8) -> ^sdl.GPUShader {

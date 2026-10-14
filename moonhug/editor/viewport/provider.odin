@@ -12,8 +12,12 @@ import "moonhug:editor/provider"
 import gfx "moonhug:libs/gfx"
 
 Viewport_Provider :: struct {
-	// Draws the world into the current pass. The grid and axes are drawn already.
-	render:              proc(view: core.Render_View),
+	// Renders the world into `target` for `view` through the render pipeline
+	// slot `graph` (the engine takes Main when the pipeline lacks it): its own
+	// passes, cleared to `clear`. `under` draws inside the
+	// scene pass before the world (the grid), `over` after it (gizmos), both
+	// with the view's view_proj set.
+	render:              proc(target: ^gfx.Render_Target, view: core.Render_View, graph: string, clear: [4]f32, under, over: proc()),
 	// Framing: center and radius of one object, false when it has no bounds.
 	object_bounds:       proc(view: core.Render_View, tH: core.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool),
 	pick:                proc(view: core.Render_View, px, py: f32) -> (core.Transform_Handle, bool),
@@ -31,9 +35,10 @@ Viewport_Provider :: struct {
 	game_view:           proc(width, height: f32) -> (core.Render_View, bool),
 	// The open document has unsaved changes (the tab's dirty mark).
 	dirty:               proc() -> bool,
-	// Begins the pass on `target` and draws the world through its game
-	// cameras, leaving the pass open. False when no game camera is active.
-	render_game:         proc(target: ^gfx.Render_Target) -> bool,
+	// Renders the world into `target` through its game cameras, its own
+	// passes. `over` draws over the scene inside the last camera's pass (the
+	// Game view's gizmos). False when no game camera is active.
+	render_game:         proc(target: ^gfx.Render_Target, over: proc()) -> bool,
 	// Gameplay debug drawing is on: the Game view shows the .Game gizmo channel.
 	debug_draw:          proc() -> bool,
 }
@@ -50,8 +55,18 @@ set_provider :: proc(p: Viewport_Provider) {
 	_provider = p
 }
 
-render :: proc(view: core.Render_View) {
-	if _provider.render != nil do _provider.render(view)
+// With no provider the target is still cleared and the overlays still draw,
+// in one pass: the viewport is an empty space with a grid.
+render :: proc(target: ^gfx.Render_Target, view: core.Render_View, graph: string, clear: [4]f32, under, over: proc()) {
+	if _provider.render != nil {
+		_provider.render(target, view, graph, clear, under, over)
+		return
+	}
+	gfx.pass_begin_target(target, clear)
+	gfx.set_view_proj(view.view_proj, view.cam_pos)
+	if under != nil do under()
+	if over != nil do over()
+	gfx.pass_end()
 }
 
 object_bounds :: proc(view: core.Render_View, tH: core.Transform_Handle) -> (center: [3]f32, radius: f32, ok: bool) {
@@ -110,13 +125,15 @@ dirty :: proc() -> bool {
 	return _provider.dirty()
 }
 
-// With no provider the pass still begins, cleared to black.
-render_game :: proc(target: ^gfx.Render_Target) -> bool {
+// With no provider the target is cleared to black and `over` still draws.
+render_game :: proc(target: ^gfx.Render_Target, over: proc()) -> bool {
 	if _provider.render_game == nil {
 		gfx.pass_begin_target(target, [4]f32{0, 0, 0, 1})
+		if over != nil do over()
+		gfx.pass_end()
 		return false
 	}
-	return _provider.render_game(target)
+	return _provider.render_game(target, over)
 }
 
 debug_draw :: proc() -> bool {

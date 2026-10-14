@@ -4,6 +4,7 @@ package engine_tests
 // document per asset, shared by the import settings inspector and the Sprite
 // Editor, recorded for undo by a per-frame compare, committed by Apply.
 
+import "core:encoding/uuid"
 import "core:os"
 import "core:strings"
 import "core:testing"
@@ -11,6 +12,7 @@ import "moonhug:editor/inspector"
 import "moonhug:editor/undo"
 import "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
+import assets "moonhug:libs/assets"
 
 @(private = "file")
 _DIR :: "moonhug/tests/fixtures/_import_settings_doc_tmp"
@@ -208,4 +210,36 @@ test_reimport_reloads_a_clean_import_settings_document :: proc(t: ^testing.T) {
 	inspector.import_settings_track(true)
 	asset_pipeline.asset_pipeline_reimport(_PNG)
 	testing.expect_value(t, _ts(doc).pixels_per_unit, f32(12))
+}
+
+// A .meta without a settings block (written by hand) still gets an import
+// settings document, with the importer's defaults: that document is what the
+// inspector draws, and the asset's wrappers (an Open button) run inside it.
+@(test)
+test_import_settings_default_when_meta_has_none :: proc(t: ^testing.T) {
+	defer {
+		_remove_tree(_DIR)
+		_remove_tree("library")
+	}
+	tc := new(TestCtx)
+	defer free(tc)
+	s := setup_undo(tc)
+	context.user_ptr = &tc.uc
+	defer teardown_undo(tc, s)
+	if !_texture_fixture(t) do return
+	defer engine.asset_db_shutdown()
+	defer inspector.asset_docs_shutdown()
+
+	// The scan wrote a meta with settings, replace it with a bare one.
+	meta := strings.concatenate({_PNG, ".meta"}, context.temp_allocator)
+	guid, ok := engine.asset_db_get_guid(_PNG)
+	testing.expect(t, ok, "the png is registered")
+	guid_str := uuid.to_string(guid, context.temp_allocator)
+	bare := strings.concatenate({"{\n  \"guid\": \"", guid_str, "\",\n  \"importer\": \"texture\"\n}"}, context.temp_allocator)
+	testing.expect(t, os.write_entire_file(meta, transmute([]u8)bare) == nil)
+
+	_, has := assets.asset_pipeline_get_settings(_PNG, context.temp_allocator)
+	testing.expect(t, !has, "the bare meta carries no settings")
+	doc := inspector.import_settings_doc_get(_PNG)
+	testing.expect(t, doc != nil && doc.data.id == typeid_of(engine.TextureSettings), "a document with the texture importer's defaults")
 }

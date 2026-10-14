@@ -23,6 +23,10 @@ Shader_Runtime :: struct {
 	textures:     []Shader_Texture,  // owned (names too); bindings 1+ are material rows
 }
 
+// The caches live for the process and are filled from whatever context
+// draws first, so every proc that allocates into them or frees from them
+// pins the default allocator: a cache entry made with one allocator and freed
+// with another is a bad free (the tracking allocator caught it at shutdown).
 shader_cache: map[Asset_GUID]Shader_Runtime
 _shader_cache_ready: bool
 
@@ -34,12 +38,14 @@ _shader_cache_ready: bool
 @(private = "file") _shader_failed: map[Asset_GUID]bool
 
 shader_cache_init :: proc() {
+	context.allocator = runtime.default_allocator()
 	shader_cache = make(map[Asset_GUID]Shader_Runtime)
 	_shader_failed = make(map[Asset_GUID]bool)
 	_shader_cache_ready = true
 }
 
 shader_cache_shutdown :: proc() {
+	context.allocator = runtime.default_allocator()
 	for _, &sr in shader_cache {
 		_shader_runtime_destroy(&sr)
 	}
@@ -47,6 +53,9 @@ shader_cache_shutdown :: proc() {
 	shader_cache = nil
 	delete(_shader_failed)
 	_shader_failed = nil
+	for _, name in _fullscreen_cache do delete(name)
+	delete(_fullscreen_cache)
+	_fullscreen_cache = nil
 	_shader_cache_ready = false
 }
 
@@ -69,6 +78,7 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	}
 	if !_shader_cache_ready do return nil, false
 	if guid in _shader_failed do return nil, false
+	context.allocator = runtime.default_allocator()
 	// Headless contexts (tests, scene tooling) have no GPU device.
 	if gfx.device() == nil do return nil, false
 
@@ -128,11 +138,83 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 }
 
 shader_unload :: proc(guid: Asset_GUID) {
+	context.allocator = runtime.default_allocator()
 	if sr, hit := &shader_cache[guid]; hit {
 		gfx.shader_unregister(sr.name)
 		_shader_runtime_destroy(sr)
 		delete_key(&shader_cache, guid)
 	}
+	if name, hit := _fullscreen_cache[guid]; hit {
+		gfx.fullscreen_unregister(name)
+		delete(name)
+		delete_key(&_fullscreen_cache, guid)
+	}
+}
+
+// A .glsl asset as a FULLSCREEN shader (gfx.draw_fullscreen): a post effect
+// or a blit, drawn over a whole target with `frag_uv` as its only input, its
+// inputs as samplers at set=2 and its property block at set=3, binding=1,
+// the way a material shader declares them. The same artifact the importer
+// writes for any fragment shader, registered with the fullscreen vertex
+// stage instead of the world one. Returns the gfx name to draw with.
+// Headless contexts and a failed compile return false, the failed memo
+// clears when the source changes, as for shader_load.
+shader_load_fullscreen :: proc(guid: Asset_GUID) -> (name: string, ok: bool) {
+	if cached, hit := _fullscreen_cache[guid]; hit do return cached, true
+	context.allocator = runtime.default_allocator()
+	if !_shader_cache_ready || guid in _shader_failed || gfx.device() == nil do return "", false
+
+	header, spv, msl, properties, textures, parse_ok := _shader_artifact_load(guid)
+	if !parse_ok do return "", false
+	for prop in properties do delete(prop.name)
+	delete(properties)
+	for tex in textures do delete(tex.name)
+	delete(textures)
+
+	guid_str := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
+	name = strings.concatenate({"fullscreen:", guid_str})
+	if !gfx.fullscreen_exists(name) {
+		if !gfx.fullscreen_register(name, spv, msl, header.num_samplers, header.num_uniform_buffers) {
+			delete(name)
+			_shader_failed[guid] = true
+			return "", false
+		}
+	}
+	if _fullscreen_cache == nil do _fullscreen_cache = make(map[Asset_GUID]string)
+	_fullscreen_cache[guid] = name
+	return name, true
+}
+
+@(private = "file")
+_fullscreen_cache: map[Asset_GUID]string
+
+// The shader's artifact, imported from source when missing or stale (needs
+// the toolchain). Properties and textures are owned by the caller.
+@(private = "file")
+_shader_artifact_load :: proc(guid: Asset_GUID) -> (header: Shader_Artifact_Header, spv, msl: []u8, properties: []Shader_Property, textures: []Shader_Texture, ok: bool) {
+	artifact := _artifact_path(uuid.Identifier(guid))
+	defer delete(artifact)
+	blob, read_err := os.read_entire_file(artifact, context.temp_allocator)
+	if read_err == nil {
+		header, spv, msl, properties, textures, ok = _shader_artifact_parse(blob)
+	}
+	if ok do return
+	// Artifact missing (fresh clone, cleaned library/) or stale (format
+	// bump): import from source and retry once.
+	source_path, path_ok := asset_db_get_path(uuid.Identifier(guid))
+	if !path_ok do return
+	if !asset_pipeline_request_import(source_path, force = true) {
+		_shader_failed[guid] = true
+		return
+	}
+	blob, read_err = os.read_entire_file(artifact, context.temp_allocator)
+	if read_err != nil {
+		_shader_failed[guid] = true
+		return
+	}
+	header, spv, msl, properties, textures, ok = _shader_artifact_parse(blob)
+	if !ok do _shader_failed[guid] = true
+	return
 }
 
 // The asset database's evict hook, registered here.

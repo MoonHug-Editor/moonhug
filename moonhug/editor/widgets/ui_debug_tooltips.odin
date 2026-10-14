@@ -70,6 +70,23 @@ tooltip_unchecked :: proc(text: cstring, loc := #caller_location) {
 	_tooltip_show(text, loc)
 }
 
+// A tooltip the caller fills itself (colored parts, several lines): true
+// when the last item is hovered (or always, `unchecked`, for a caller that
+// hit-tests itself) and the tooltip is open. Draw into it, then call
+// tooltip_end, which adds the element's origin when debug tooltips are on.
+tooltip_begin :: proc(flags: im.HoveredFlags = {}, unchecked := false) -> bool {
+	if !unchecked && !im.IsItemHovered(flags) do return false
+	return im.BeginTooltip()
+}
+
+tooltip_end :: proc(loc := #caller_location) {
+	if ui_debug_tooltips {
+		im.Separator()
+		_draw_origin_or_location(loc)
+	}
+	im.EndTooltip()
+}
+
 @(private = "file")
 _tooltip_show :: proc(text: cstring, loc: runtime.Source_Code_Location) {
 	has_text := text != nil && text != ""
@@ -83,6 +100,11 @@ _tooltip_show :: proc(text: cstring, loc: runtime.Source_Code_Location) {
 		im.TextUnformatted(text)
 		im.Separator()
 	}
+	_draw_origin_or_location(loc)
+}
+
+@(private = "file")
+_draw_origin_or_location :: proc(loc: runtime.Source_Code_Location) {
 	if _ui_origin != "" {
 		_draw_origin(_ui_origin)
 	} else {

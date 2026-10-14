@@ -44,6 +44,7 @@ engine_init_caches :: proc() {
 
 @(phase={key=EngineShutdown, order=10})
 engine_shutdown_caches :: proc() {
+	_render_view_pools_shutdown()
 	texture_cache_shutdown()
 	mesh_cache_shutdown()
 	material_cache_shutdown()

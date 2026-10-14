@@ -58,7 +58,10 @@ The boundary rule — **gfx never imports engine** — forces the clean split:
   (`map[Asset_GUID]^gfx.Texture`), mesh cache (guid → `^gfx.Mesh` + AABB),
   cameras, `Render_View`, command collect/execute, raycast.
 - **editor/app** drive frames via `gfx.frame_begin()` /
-  `engine.render_world_cameras(...)` / `gfx.frame_end()`. Editor reaches
+  `engine.render_world_cameras(...)` / `gfx.frame_end()`. A camera renders
+  through the render pipeline's slot (render_pipeline.odin, [Render Pipeline](RenderPipeline.md)):
+  the scene pass into the view's HDR target, then the tonemap copy onto the
+  view's target. Editor reaches
   `gfx.window()` / `gfx.device()` only to init the imgui backends.
 
 Window/input live in the SAME gfx package (not a sibling): the GPU device
@@ -76,7 +79,9 @@ Vertex :: struct { position: [3]f32, normal: [3]f32, uv: [2]f32, color: [4]u8 }
 
 Texture :: struct { gpu: ^sdl.GPUTexture, width, height: i32 }
 Mesh    :: struct { vbuf, ibuf: ^sdl.GPUBuffer, index_count: u32 }
-Render_Target :: struct { color, depth: ^sdl.GPUTexture, width, height: i32 }
+Render_Target :: struct { color, depth: ^sdl.GPUTexture, width, height: i32, format: Target_Format }
+Target_Format :: enum { LDR, HDR }   // LDR = the swapchain format, HDR = RGBA16F
+Target_Pool   :: struct { ... }      // named targets a view owns: pool_target(name, w, h, format), pool_find, pool_destroy
 // imgui 1.92.2+ SDLGPU3 convention: ImTextureID is the RAW ^sdl.GPUTexture
 // (passing a sampler-binding pointer — the pre-1.92.2 convention — reads
 // garbage and crashes in Metal). texture_imgui_id/rt_imgui_id return it;
@@ -107,20 +112,24 @@ texture_create :: proc(pixels: []u8, w, h: i32) -> ^Texture  // own short-lived 
 texture_destroy                                              // legal mid-frame (lazy loads)
 mesh_create :: proc(vertices: []Vertex, indices: []u32) -> ^Mesh
 mesh_destroy
-rt_create / rt_resize / rt_destroy / rt_imgui_id
+rt_create(w, h, format := .LDR) / rt_resize / rt_destroy / rt_imgui_id
+rt_color_texture / rt_depth_texture :: proc(rt) -> Texture   // sample a target an EARLIER pass filled (depth is stored for render targets)
 
 // draws (valid inside a pass)
 set_view_proj :: proc(vp: matrix[4,4]f32)           // callable mid-pass: camera stacking, screen-space UI
 draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture)  // tex=nil → white
 draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true)  // false → overlay pipeline (gizmos)
-draw_mesh :: proc(mesh: ^Mesh, tex: ^Texture, model: matrix[4,4]f32, color: [4]f32)
+draw_mesh :: proc(mesh: ^Mesh, tex: ^Texture, model: matrix[4,4]f32, color: [4]f32, wire := false)  // wire = triangles as lines
+draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil)  // fullscreen_register shaders: blits, post effects. BLIT_SHADER is built in, a .glsl asset registers through engine.shader_load_fullscreen (the postfx plugin)
 debug_text :: proc(pos_px: [2]f32, size_px: f32, color: [4]f32, text: string)
 ```
 
 Pipelines (all from ONE shader pair): triangles no-depth-write (sprites,
 alpha-blended), triangles depth-write (meshes), lines depth-tested, lines
-overlay. Depth `D32_FLOAT`; offscreen targets use the swapchain format so one
-pipeline set serves both. Draw-order policy: meshes first (depth-write), then
+overlay. Depth `D32_FLOAT`. A pipeline is bound to its color target's format, so each
+shader keeps one pipeline set per Target_Format, built the first time a pass of
+that format draws with it (pipelines.odin). Fullscreen shaders pair a
+vertex-id triangle with a fragment shader and have their own per-format pipeline. Draw-order policy: meshes first (depth-write), then
 sprites back-to-front by view depth (no depth-write). Semi-transparent meshes
 sorting wrong is accepted for now.
 
@@ -148,8 +157,11 @@ Render_Command :: struct { depth: f32, variant: union #no_nil { Draw_Mesh, Draw_
 
 camera_view_proj        :: proc(cam: ^Camera, aspect: f32) -> (view, proj: matrix[4,4]f32)
 render_collect_commands :: proc(view: Render_View, out: ^[dynamic]Render_Command)
-render_execute          :: proc(view: Render_View, commands: []Render_Command)  // guid→cache→gfx.draw_*
-render_world_cameras    :: proc(rt: ^gfx.Render_Target)  // nil = swapchain; ALL enabled cams by order
+render_execute          :: proc(view: Render_View, commands: []Render_Command, phases := RENDER_ALL_PHASES)  // guid→cache→gfx.draw_*, the opaque meshes and/or the transparent quads
+render_world_cameras    :: proc(rt: ^gfx.Render_Target, overlay: proc())  // nil = swapchain; ALL enabled cams by order, each a run of its pipeline slot; overlay draws over the last camera's scene
+render_scene_view       :: proc(rt, view, slot, clear, under, over: proc())  // one editor view through the pipeline slot (the scene view asks for Editor, gets Main otherwise), the grid under and the gizmos over the scene. view.mode (core.View_Mode) picks shaded / wireframe / unlit / normals / overdraw
+render_pipeline_run     :: proc(slot: string, ctx: ^Render_Ctx) -> bool  // render_pipeline.odin: the frame lane once per frame, then the slot's lane in canvas order
+shadow_pass / shadow_bind                                                 // render_shadow.odin: the directional shadow map, a per-frame node, handed to gfx.set_shadow by scene_target_begin
 camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // replaces rl.GetScreenToWorldRay
 ```
 
@@ -242,8 +254,8 @@ camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // re
       stricter still) though Metal happens to tolerate it unvalidated — NOT
       the cause of the cutover segfaults (that was ImTextureID, see Risks)
 - [x] `plugins/engine/render.odin` — full rewrite straight to render commands (above);
-      killed `camera_to_3d`; `render_world_cameras` leaves its pass OPEN for
-      caller overlays (demo menu, editor)
+      killed `camera_to_3d`; caller overlays (demo menu, editor gizmos) draw
+      inside the scene pass through the `overlay` proc
 - [x] `app/app.odin` — SDL loop; `game.odin`/`tick_player.odin` →
       `gfx.input_*`, `rand.int_max`; `demo_menu.odin` → `gfx.debug_text`
       (screen-ortho `set_view_proj` in the same swapchain pass)

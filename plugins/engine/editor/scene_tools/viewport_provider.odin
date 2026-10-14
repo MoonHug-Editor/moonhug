@@ -30,10 +30,8 @@ install_viewport_provider :: proc() {
 }
 
 @(private = "file")
-_vp_render :: proc(view: engine.Render_View) {
-	commands := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(view, &commands)
-	engine.render_execute(view, commands[:])
+_vp_render :: proc(target: ^gfx.Render_Target, view: engine.Render_View, graph: string, clear: [4]f32, under, over: proc()) {
+	engine.render_scene_view(target, view, graph, clear, under, over)
 }
 
 @(private = "file")
@@ -54,9 +52,9 @@ _vp_game_view :: proc(width, height: f32) -> (engine.Render_View, bool) {
 }
 
 @(private = "file")
-_vp_render_game :: proc(target: ^gfx.Render_Target) -> bool {
+_vp_render_game :: proc(target: ^gfx.Render_Target, over: proc()) -> bool {
 	had_camera := engine.camera_active() != nil
-	engine.render_world_cameras(target)
+	engine.render_world_cameras(target, over)
 	return had_camera
 }
 

@@ -10,6 +10,15 @@ Camera :: struct {
     far_clip:          f32,
     clear_color:       [4]f32 `decor:color()`,
     render_layer_mask: u32, // TODO: use bit_set[RenderLayer]
+    // The render pipeline slot this camera renders through
+    // (render_pipeline.odin). Empty is Main. A slot the pipeline does not
+    // declare falls back to Main with one warning.
+    slot:              string,
+}
+
+cleanup_Camera :: proc(cam: ^Camera) {
+    delete(cam.slot)
+    comp_zero(cam)
 }
 
 reset_Camera :: proc(cam: ^Camera) {

@@ -1,0 +1,7 @@
+{
+  "name": "shadergraph",
+  "guid": "9f23eeff-1186-4b93-a312-c25d191b9d6f",
+  "description": "Shader Graph: node-based surface shaders compiled to the engine's surface template",
+  "dependencies": ["engine"],
+  "dependencies_custom": []
+}

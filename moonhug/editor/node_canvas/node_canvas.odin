@@ -5,10 +5,17 @@ package node_canvas
 // pan/zoom grid,
 // node chrome with ports, bezier edge routing, node dragging and selection.
 // Strictly presentation and interaction — no document model. Each client
-// (the PlayableGraph visualizer today; Controller/ShaderGraph/VfxGraph
-// canvases later) supplies node content, port meaning and what happens on
-// edit. The first client is read-only, so ports render but do not interact —
-// marquee selection and edit undo arrive with the first editing client.
+// (the PlayableGraph visualizer, the Shader Graph editor) supplies node
+// content, port meaning and what happens on edit.
+//
+// Editing: a row with `out` carries an output port the user drags from. The
+// pending link follows the cursor and, released over an input port of
+// another node, lands in `Node_Canvas.edit` with both ends. A link drawn with
+// an index is clickable (`sel_link`), and a right-click on empty canvas asks
+// for a context menu. The canvas only reports: the client reads `edit` after
+// canvas_end and changes its own document (and records its own undo).
+// A read-only client sets no `out` rows and no link indices, so nothing of
+// this reaches it.
 //
 // Coordinates: nodes live in CANVAS units (zoom-independent). screen =
 // origin + (p + pan) * zoom. Client code converts through canvas_to_screen
@@ -41,26 +48,68 @@ PORT_VALUE :: im.Vec4{0.87, 0.44, 0.47, 1}
 // One body row. `value` is right-aligned in the value column, `label` left in
 // the label column. `port` gives the row an input dot on the left edge.
 Canvas_Row :: struct {
-	label: cstring,
-	value: cstring,
-	port:  bool,
-	col:   im.Vec4, // port hue; zero alpha takes PORT_POSE
+	label:   cstring,
+	value:   cstring,
+	port:    bool,
+	col:     im.Vec4, // port hue; zero alpha takes PORT_POSE
+	out:     bool,    // an output dot on the right edge that starts a link drag
+	out_col: im.Vec4, // its hue; zero alpha takes PORT_POSE
+}
+
+// What the user did on the canvas this frame. canvas_begin resets it,
+// canvas_node, canvas_link and canvas_end fill it, the client reads it after
+// canvas_end. A port is named by its node id and its ROW index in the rows
+// that node was drawn with, the client maps the row back to its own port.
+Canvas_Edit :: struct {
+	link_made:      bool, // a drag from an output port ended on an input port
+	link_from_node: int,
+	link_from_row:  int,
+	link_to_node:   int,
+	link_to_row:    int,
+	context_menu:   bool,    // right-click on empty canvas
+	context_pos:    im.Vec2, // where, in canvas units
+	link_clicked:   int,     // index of the clicked link (canvas_link `index`), -1 = none
 }
 
 Node_Canvas :: struct {
 	pan:  im.Vec2, // canvas-unit offset of the origin
 	zoom: f32,
 	sel:  int, // selected node id, -1 = none
+	sel_link: int, // selected link index, -1 = none
 
 	// Per-frame, set by canvas_begin.
 	origin: im.Vec2, // screen top-left of the canvas rect
 	size:   im.Vec2,
+	edit:   Canvas_Edit,
+
+	// The pending link: dragged from output row `drag_row` of node
+	// `drag_node`. `drag_from` follows the port as the canvas pans.
+	drag_link: bool,
+	drag_node: int,
+	drag_row:  int,
+	drag_from: im.Vec2,
+	drag_col:  im.Vec4,
+	// The input port under the cursor during a link drag, this frame.
+	drop_node: int,
+	drop_row:  int,
+	drop_at:   im.Vec2,
+	// The link closest to the cursor this frame, and last frame's (drawn
+	// highlighted, since the hover is only known after the links draw).
+	link_hit:   int,
+	link_hit_d: f32,
+	link_hover: int,
 }
 
 canvas_init :: proc(cv: ^Node_Canvas) {
 	cv.zoom = 1
 	cv.sel = -1
+	cv.sel_link = -1
+	cv.link_hover = -1
 }
+
+// Screen pixels around a port or a link that still count as on it.
+@(private = "file")
+_HIT_R :: f32(7)
 
 canvas_to_screen :: proc(cv: ^Node_Canvas, p: im.Vec2) -> im.Vec2 {
 	return cv.origin + (p + cv.pan) * cv.zoom
@@ -92,6 +141,11 @@ canvas_port_out :: proc(cv: ^Node_Canvas, pos: im.Vec2, row: int = 0) -> im.Vec2
 // begin and end) win their clicks and the background takes the rest.
 canvas_begin :: proc(cv: ^Node_Canvas, id: cstring) -> bool {
 	if cv.zoom == 0 do canvas_init(cv)
+	cv.edit = Canvas_Edit{link_from_node = -1, link_from_row = -1, link_to_node = -1, link_to_row = -1, link_clicked = -1}
+	cv.drop_node = -1
+	cv.drop_row = -1
+	cv.link_hit = -1
+	cv.link_hit_d = max(f32)
 	// No window padding: the canvas IS the child's whole rect. With the default
 	// padding the content region is inset, so the surface and the grid stop
 	// short of the border and the panel colour shows through as a frame.
@@ -143,7 +197,38 @@ canvas_end :: proc(cv: ^Node_Canvas) {
 		if im.IsItemActive() && im.IsMouseDragging(.Left, 0) {
 			cv.pan += im.GetIO().MouseDelta / cv.zoom
 		}
-		if im.IsItemClicked(.Left) do cv.sel = -1
+		bg_hovered := im.IsItemHovered()
+		if im.IsItemClicked(.Left) {
+			// A click that no node took: on a link it selects the link,
+			// anywhere else it clears both selections.
+			cv.sel = -1
+			cv.sel_link = cv.link_hit
+			cv.edit.link_clicked = cv.link_hit
+		}
+		if bg_hovered && im.IsMouseClicked(.Right) {
+			cv.edit.context_menu = true
+			cv.edit.context_pos = (im.GetMousePos() - cv.origin) / cv.zoom - cv.pan
+		}
+		cv.link_hover = bg_hovered && !cv.drag_link ? cv.link_hit : -1
+
+		if cv.drag_link {
+			// Drawn last, over the nodes, ending on the drop port when there is one.
+			to := cv.drop_node >= 0 ? cv.drop_at : im.GetMousePos()
+			c := cv.drag_col
+			if c.w == 0 do c = PORT_POSE
+			canvas_link(cv, cv.drag_from, to, im.GetColorU32ImVec4(c), 2)
+			if !im.IsMouseDown(.Left) {
+				if cv.drop_node >= 0 {
+					cv.edit.link_made = true
+					cv.edit.link_from_node = cv.drag_node
+					cv.edit.link_from_row = cv.drag_row
+					cv.edit.link_to_node = cv.drop_node
+					cv.edit.link_to_row = cv.drop_row
+				}
+				cv.drag_link = false
+			}
+		}
+
 		if im.IsWindowHovered(im.HoveredFlags_ChildWindows) {
 			if im.IsMouseDragging(.Middle, 0) {
 				cv.pan += im.GetIO().MouseDelta / cv.zoom
@@ -182,12 +267,51 @@ canvas_node :: proc(
 	font := im.GetFont()
 	font_sz := max(im.GetFontSize() * cv.zoom, 7)
 	selected := cv.sel == id
+	hit := max(_HIT_R, CANVAS_PORT_R * cv.zoom * 1.6)
+
+	// Output ports first: overlapping items go to the first submitted, so a
+	// port wins over the node button under it and a press starts a link
+	// instead of a node drag.
+	for row, i in rows {
+		if !row.out do continue
+		at := canvas_port_out(cv, pos^, i)
+		im.SetCursorScreenPos(at - im.Vec2{hit, hit})
+		im.InvisibleButton(fmt.ctprintf("##canvas_out_%d_%d", id, i), im.Vec2{hit, hit} * 2)
+		if im.IsItemActivated() {
+			cv.drag_link = true
+			cv.drag_node = id
+			cv.drag_row = i
+			cv.drag_col = row.out_col
+		}
+		if cv.drag_link && cv.drag_node == id && cv.drag_row == i do cv.drag_from = at
+	}
+
+	// The drop target of a pending link: an input port of another node, or
+	// the left half of its row, so the drop does not need pixel aim.
+	if cv.drag_link && cv.drag_node != id {
+		mp := im.GetMousePos()
+		half := CANVAS_ROW_H * 0.5 * cv.zoom
+		for row, i in rows {
+			if !row.port do continue
+			at := canvas_port_in(cv, pos^, i)
+			on_port := _len_sq(mp - at) <= hit * hit
+			on_row := mp.y >= at.y - half && mp.y < at.y + half && mp.x >= at.x - hit && mp.x <= at.x + (rmax.x - rmin.x) * 0.5
+			if on_port || on_row {
+				cv.drop_node = id
+				cv.drop_row = i
+				cv.drop_at = at
+			}
+		}
+	}
 
 	// Interaction first: the button claims hover over the background pan
 	// surface, the visuals draw over both.
 	im.SetCursorScreenPos(rmin)
 	im.InvisibleButton(fmt.ctprintf("##canvas_node_%d", id), rmax - rmin)
-	if im.IsItemActivated() do cv.sel = id
+	if im.IsItemActivated() {
+		cv.sel = id
+		cv.sel_link = -1
+	}
 	if im.IsItemActive() && im.IsMouseDragging(.Left, 0) {
 		pos^ += im.GetIO().MouseDelta / cv.zoom
 	}
@@ -239,8 +363,14 @@ canvas_node :: proc(
 	im.DrawList_PopClipRect(dl)
 
 	for row, i in rows {
-		if !row.port do continue
-		_port(dl, cv, canvas_port_in(cv, pos^, i), row.col)
+		if row.port {
+			at := canvas_port_in(cv, pos^, i)
+			_port(dl, cv, at, row.col)
+			if cv.drag_link && cv.drop_node == id && cv.drop_row == i {
+				im.DrawList_AddCircle(dl, at, CANVAS_PORT_R * cv.zoom + 3, im.GetColorU32(.Text), 0, 1.5)
+			}
+		}
+		if row.out do _port(dl, cv, canvas_port_out(cv, pos^, i), row.out_col)
 	}
 	if has_out do _port(dl, cv, canvas_port_out(cv, pos^, out_row), PORT_POSE)
 }
@@ -264,6 +394,10 @@ _port :: proc(dl: ^im.DrawList, cv: ^Node_Canvas, at: im.Vec2, col: im.Vec4) {
 // how bright they are. 0 draws the line alone. An idle edge and a carrying one
 // then differ by MOTION, which is the one channel a static graph has no way to
 // show and the eye picks up without being pointed at it.
+//
+// `index` 0 or above makes the edge clickable: a click on it sets `sel_link`
+// and `edit.link_clicked` to the index, and the selected edge draws with a
+// halo. The index is the client's own (its position in the link list).
 canvas_link :: proc(
 	cv: ^Node_Canvas,
 	from, to: im.Vec2,
@@ -271,11 +405,30 @@ canvas_link :: proc(
 	thickness: f32 = 1.5,
 	flow: f32 = 0,
 	label: cstring = nil,
+	index: int = -1,
 ) {
 	dl := im.GetWindowDrawList()
 	d := clamp(abs(to.x - from.x) * 0.5, 30 * cv.zoom, 120 * cv.zoom)
 	c1 := from + im.Vec2{d, 0}
 	c2 := to - im.Vec2{d, 0}
+	if index >= 0 {
+		// Hit test against the curve as a polyline, the nearest edge wins.
+		mp := im.GetMousePos()
+		prev := from
+		for i in 1 ..= LINK_HIT_SEGMENTS {
+			p := _bezier(from, c1, c2, to, f32(i) / f32(LINK_HIT_SEGMENTS))
+			dist := _segment_dist(mp, prev, p)
+			if dist <= _HIT_R && dist < cv.link_hit_d {
+				cv.link_hit_d = dist
+				cv.link_hit = index
+			}
+			prev = p
+		}
+		if cv.sel_link == index || cv.link_hover == index {
+			a := cv.sel_link == index ? f32(0.55) : f32(0.25)
+			im.DrawList_AddBezierCubic(dl, from, c1, c2, to, im.GetColorU32(.Text, a), (thickness + 4) * cv.zoom)
+		}
+	}
 	im.DrawList_AddBezierCubic(dl, from, c1, c2, to, col, thickness * cv.zoom)
 
 	if flow > 0.001 {
@@ -306,6 +459,23 @@ canvas_link :: proc(
 BEAD_SPACING :: f32(26)
 // Bead travel, in edge-lengths per second at full weight.
 BEAD_SPEED :: f32(0.75)
+
+// Polyline segments a link's hit test walks.
+LINK_HIT_SEGMENTS :: 24
+
+@(private = "file")
+_len_sq :: proc(v: im.Vec2) -> f32 {
+	return v.x * v.x + v.y * v.y
+}
+
+// Distance from `p` to the segment a..b.
+@(private = "file")
+_segment_dist :: proc(p, a, b: im.Vec2) -> f32 {
+	ab := b - a
+	l2 := _len_sq(ab)
+	t := l2 > 0 ? clamp(((p.x - a.x) * ab.x + (p.y - a.y) * ab.y) / l2, 0, 1) : 0
+	return math.sqrt(_len_sq(p - (a + ab * t)))
+}
 
 @(private = "file")
 _bezier :: proc(p0, p1, p2, p3: im.Vec2, t: f32) -> im.Vec2 {

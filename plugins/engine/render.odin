@@ -226,7 +226,23 @@ _apply_scene_light :: proc() {
 	if n > 0 do gfx.set_lights(buf[:n], ambient)
 }
 
-render_execute :: proc(view: Render_View, commands: []Render_Command) {
+// The scene view's debug modes (core.View_Mode): what one surface draws as.
+WIREFRAME_COLOR :: [4]f32{0.85, 0.85, 0.85, 1}
+OVERDRAW_LAYER  :: [4]f32{1, 1, 1, 0.12} // each surface adds this much, so brighter = more overdraw
+
+// What render_execute draws: the opaque meshes, the alpha-blended quads, or
+// both. The scene nodes draw one phase each (render_nodes.odin).
+Render_Phase :: enum u8 {
+	Opaque,      // Draw_Mesh, grouped by material
+	Transparent, // Draw_Quad, back to front by sort key
+}
+Render_Phases :: bit_set[Render_Phase; u8]
+RENDER_ALL_PHASES :: Render_Phases{.Opaque, .Transparent}
+
+// Draws the commands of `phases` with the view's mode: Shaded is the game's
+// look, the other modes override every material's shader and color
+// (view.mode). Sets the pass's lights, so each pass that draws calls it.
+render_execute :: proc(view: Render_View, commands: []Render_Command, phases := RENDER_ALL_PHASES) {
 	// A command without its owner is a collector's bug: the editor could
 	// neither pick nor outline what it draws.
 	for c in commands do assert(c.owner != {}, "render_execute: a render command names no owner (its collector must set Render_Command.owner)")
@@ -260,8 +276,10 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 	for &cmd in commands {
 		switch d in cmd.variant {
 		case Draw_Quad:
+			if .Transparent not_in phases do continue
 			tex, ok := texture_load(d.texture)
 			if !ok do continue
+			_inspect_draw(cmd)
 			sm, cached := quad_mats[d.material]
 			if !cached {
 				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: quads use their own
@@ -271,16 +289,38 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 			// Quad facing for lighting shaders (quads are transform-
 			// oriented, not billboards).
 			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
-			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+			switch view.mode {
+			case .Shaded, .Wireframe:
+				gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+			case .Unlit:
+				gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal)
+			case .Normals:
+				gfx.draw_quad(d.corners, d.uvs, {1, 1, 1, 1}, nil, gfx.NORMALS_SHADER, nil, normal)
+			case .Overdraw:
+				gfx.draw_quad(d.corners, d.uvs, OVERDRAW_LAYER, nil, gfx.DEFAULT_SHADER, nil, normal, depth_test = false)
+			}
 		case Draw_Mesh:
+			if .Opaque not_in phases do continue
 			mesh, ok := mesh_load(d.mesh, d.part)
 			if !ok do continue
+			_inspect_draw(cmd)
 			gpu := d.skinned != nil ? d.skinned^ : mesh.gpu
 			for sub, i in mesh.submeshes {
 				mat_guid: Asset_GUID
 				if i < len(d.materials) do mat_guid = d.materials[i]
 				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid, .Lit)
-				gfx.draw_mesh(gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
+				switch view.mode {
+				case .Shaded:
+					gfx.draw_mesh(gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
+				case .Wireframe:
+					gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
+				case .Unlit:
+					gfx.draw_mesh(gpu, gpu_tex, d.model, color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count)
+				case .Normals:
+					gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count)
+				case .Overdraw:
+					gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
+				}
 			}
 		}
 	}
@@ -291,12 +331,15 @@ render_execute :: proc(view: Render_View, commands: []Render_Command) {
 // the open world pass. Toggled with F3.
 debug_draw_enabled: bool
 
-// Renders ALL enabled cameras ascending by Camera.order into `target`
-// (nil = swapchain). Begins the pass — cleared by the lowest-order camera's
-// clear_color, black when no camera — and LEAVES IT OPEN so the caller can
-// draw overlays (demo menu, editor grid) before gfx.pass_end().
-// Returns false only when no pass could begin (window minimized).
-render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
+// Renders ALL enabled cameras ascending by Camera.order into `target` (nil =
+// the swapchain), each through its render pipeline slot (render_pipeline.odin).
+// The lowest-order camera clears with its clear_color, later cameras draw
+// over it. `overlay` draws inside the LAST camera's scene pass, over the
+// scene: the editor's game-view gizmos, the app's DebugDraw phase.
+//
+// With no camera the target is cleared black and the overlay still runs.
+// Returns false when the window is minimized and nothing could draw.
+render_world_cameras :: proc(target: ^gfx.Render_Target = nil, overlay: proc() = nil) -> bool {
 	world := ctx_world()
 	cams := make([dynamic]^Camera, 0, 8, context.temp_allocator)
 	it := pool_iterator(cameras(world))
@@ -309,25 +352,61 @@ render_world_cameras :: proc(target: ^gfx.Render_Target = nil) -> bool {
 		return a.order < b.order
 	})
 
-	clear_color := [4]f32{0, 0, 0, 1}
-	if len(cams) > 0 do clear_color = cams[0].clear_color
-
 	width, height: f32
 	if target != nil {
-		gfx.pass_begin_target(target, clear_color)
 		width, height = f32(target.width), f32(target.height)
 	} else {
-		if !gfx.pass_begin_swapchain(clear_color) do return false
 		ws := gfx.window_size()
 		width, height = f32(ws.x), f32(ws.y)
 	}
 	canvas_set_game_viewport({width, height}) // the canvas tree measures against the game viewport
 
-	for cam in cams {
+	if len(cams) == 0 {
+		if target != nil {
+			gfx.pass_begin_target(target, [4]f32{0, 0, 0, 1})
+		} else if !gfx.pass_begin_swapchain([4]f32{0, 0, 0, 1}) {
+			return false
+		}
+		if overlay != nil do overlay()
+		gfx.pass_end()
+		return true
+	}
+
+	pool := render_view_pool(target)
+	for cam, i in cams {
 		view := camera_render_view(cam, width, height)
 		commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
 		render_collect_commands(view, &commands)
-		render_execute(view, commands[:])
+		ctx := Render_Ctx{
+			view     = view,
+			target   = target,
+			pool     = pool,
+			commands = commands[:],
+		}
+		if i == 0 do ctx.clear = cam.clear_color
+		if i == len(cams) - 1 do ctx.overlay_over = overlay
+		render_pipeline_run(cam.slot != "" ? cam.slot : MAIN_SLOT, &ctx)
 	}
 	return true
+}
+
+// Renders one editor view of the world into `target` through the pipeline
+// slot `slot` (the scene view asks for Editor and gets Main when the
+// pipeline declares no such slot), with the shell's grid under the scene and
+// its gizmos over it. The commands are collected here, so the caller never
+// sees them.
+render_scene_view :: proc(target: ^gfx.Render_Target, view: Render_View, slot: string, clear: [4]f32, overlay_under, overlay_over: proc()) {
+	commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
+	render_collect_commands(view, &commands)
+	ctx := Render_Ctx{
+		view          = view,
+		target        = target,
+		pool          = render_view_pool(target),
+		commands      = commands[:],
+		clear         = clear,
+		overlay_under = overlay_under,
+		overlay_over  = overlay_over,
+		scene_view    = true,
+	}
+	render_pipeline_run(render_pipeline_has_slot(slot) ? slot : MAIN_SLOT, &ctx)
 }

@@ -19,3 +19,17 @@ DEFAULT_MATERIAL_GUID :: "86518465-b823-4eb9-b3f5-c0deef450fc6"
 // assets/shaders/pbr.glsl — the sample PBR shader (custom_shader on a
 // Material).
 PBR_SHADER_GUID :: "d85e072d-e69c-421f-ace2-83b602c98eb0"
+
+// assets/rendering/Default.renderpipeline — the frame a project renders
+// through until its Rendering setting names a pipeline of its own: the
+// engine's scene nodes, the postfx chain, the final blit.
+DEFAULT_PIPELINE_GUID :: "2f6a9c41-8b3d-4a7e-9d15-c0e4b7a2d938"
+
+import "core:encoding/uuid"
+import "moonhug:packages/engine"
+
+@(phase={key=EngineInit, order=-1})
+essentials_default_pipeline :: proc() {
+	id := uuid.read(DEFAULT_PIPELINE_GUID) or_else uuid.Identifier{}
+	engine.render_pipeline_default = engine.Asset_GUID(id)
+}

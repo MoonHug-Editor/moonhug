@@ -166,7 +166,9 @@ The READ half is the libs package `moonhug:libs/assets`, which the game and the 
 - `asset_db_set_subs(path, kind, subs)`: the sub-asset guids an asset declares. An importer calls it through its `Importer_Desc.sub_assets` hook (the mesh importer registers model clips).
 - `Importer_Desc.artifacts`: every artifact file an importer wrote for one source, so the pipeline moves fan-out files (mesh parts and clips) with the main artifact.
 
-The project view opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active.
+The project view opens assets through `asset_pipeline.Asset_Actions` (`open`, `open_additive`, `create_variant`), which `plugins/engine/editor/importers` installs at EditorInit: a scene loads and becomes active. A package opens its own asset type in its own editor with `asset_open_handler_add(ext, proc)`, which a double click or Enter on the asset runs before the installed `open` (the shadergraph plugin opens `.shadergraph` this way).
+
+An importable asset whose `.meta` has no `settings` block (one written by hand) shows the importer's default settings in the inspector (`import_settings_or_default`), and Apply writes them to the meta.
 
 Seams connect the halves, all installed at the editor's ImportersInit and nil in the app:
 

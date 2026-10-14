@@ -35,6 +35,16 @@ is_importable_extension :: proc(ext: string) -> bool {
 	return ext in _importer_by_ext
 }
 
+// The import settings of an importable asset: its .meta's, else the
+// importer's defaults when the meta carries none (a meta written by hand, or
+// before the importer had settings). False when no importer claims the
+// extension or it has no settings type. Applying the defaults writes them to
+// the meta, so the fallback heals the file on first edit.
+import_settings_or_default :: proc(source_path: string, allocator := context.allocator) -> (any, bool) {
+	if settings, ok := assets.asset_pipeline_get_settings(source_path, allocator); ok do return settings, true
+	return _settings_new(importer_for_extension(filepath.ext(source_path)), allocator)
+}
+
 // Fresh default-valued settings instance for an importer, allocated on
 // `allocator`. Defaults come from the settings type's reset_<T>
 // (plugins/engine/docs/Components.md, "Lifecycle procs") — none = zeroed.
