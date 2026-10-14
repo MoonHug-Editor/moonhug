@@ -71,7 +71,7 @@ generate :: proc(g: ^Shader_Graph, allocator := context.temp_allocator) -> (resu
 	gen := _Gen{g = g, b = &b, errors = &result.errors, emitted = make(map[i32]_Emitted)}
 	if surface != nil {
 		def, _ := node_def(SURFACE_KIND)
-		fields := []string{"s.albedo", "s.alpha", "s.normal", "s.emissive"}
+		fields := []string{"s.albedo", "s.alpha", "s.normal", "s.emissive", "s.metallic", "s.smoothness", "s.occlusion"}
 		for in_port, i in def.inputs {
 			link, linked := graph_input_link(g, surface.id, i32(i))
 			if !linked do continue
@@ -174,13 +174,24 @@ _emit_node_output :: proc(gen: ^_Gen, id, port: i32) -> (expr: string, type: Por
 			append(gen.errors, Codegen_Error{id, fmt.tprintf("Sample Texture names no texture property %q", n.property)})
 			return "", .Float, false
 		}
-		uv := _coerce(inputs[0], in_types[0], .Vec2)
+		uv := _texture_uv(gen, id, inputs[0], in_types[0])
 		e.types = {.Vec4, .Vec3, .Float, .Float, .Float, .Float, .Float, .Float}
 		// A color texture, stored as sRGB: decoded to the linear light the
 		// template lights in (surface.glsl srgb_to_linear).
 		fmt.sbprintf(gen.b, "    vec4 n%d_0 = srgb_to_linear(texture(%s, %s));\n", id, prop_identifier(p.name), uv)
 		fmt.sbprintf(gen.b, "    vec3 n%d_1 = n%d_0.rgb;\n", id, id)
 		fmt.sbprintf(gen.b, "    float n%d_2 = n%d_0.a;\n", id, id)
+	case NORMAL_MAP_KIND:
+		p := graph_find_property(gen.g, n.property)
+		if p == nil || p.kind != .Texture {
+			append(gen.errors, Codegen_Error{id, fmt.tprintf("Normal Map names no texture property %q", n.property)})
+			return "", .Float, false
+		}
+		uv := _texture_uv(gen, id, inputs[0], in_types[0])
+		strength := _coerce(inputs[1], in_types[1], .Float)
+		e.types[0] = .Vec3
+		// Normal data, not color: unpacked, never sRGB-decoded.
+		fmt.sbprintf(gen.b, "    vec3 n%d_0 = perturb_normal(texture(%s, %s).xyz * 2.0 - 1.0, %s);\n", id, prop_identifier(p.name), uv, strength)
 	case SURFACE_KIND:
 		append(gen.errors, Codegen_Error{id, "the Surface node has no outputs"})
 		return "", .Float, false
@@ -247,4 +258,11 @@ _literal :: proc(v: [4]f32, t: Port_Type) -> string {
 	case 3: return fmt.tprintf("vec3(%.6f, %.6f, %.6f)", v.x, v.y, v.z)
 	}
 	return fmt.tprintf("vec4(%.6f, %.6f, %.6f, %.6f)", v.x, v.y, v.z, v.w)
+}
+
+// A texture node's UV: what is linked into it, the mesh's uvs when nothing is.
+@(private = "file")
+_texture_uv :: proc(gen: ^_Gen, id: i32, expr: string, t: Port_Type) -> string {
+	if _, linked := graph_input_link(gen.g, id, 0); !linked do return "frag_uv"
+	return _coerce(expr, t, .Vec2)
 }

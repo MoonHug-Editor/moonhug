@@ -23,7 +23,7 @@ layout(set = 2, binding = 0) uniform Params {
     uint joint_count;
 };
 
-const uint VERTEX_WORDS = 9; // 3 position + 3 normal + 2 uv + 1 packed color
+const uint VERTEX_WORDS = 13; // 3 position + 3 normal + 2 uv + 1 packed color + 4 tangent
 const uint SKIN_WORDS   = 6; // 2 words of u16 joints + 4 weights
 
 void main() {
@@ -33,6 +33,7 @@ void main() {
     uint vb = i * VERTEX_WORDS;
     vec3 p = vec3(uintBitsToFloat(bind[vb + 0]), uintBitsToFloat(bind[vb + 1]), uintBitsToFloat(bind[vb + 2]));
     vec3 n = vec3(uintBitsToFloat(bind[vb + 3]), uintBitsToFloat(bind[vb + 4]), uintBitsToFloat(bind[vb + 5]));
+    vec3 t = vec3(uintBitsToFloat(bind[vb + 9]), uintBitsToFloat(bind[vb + 10]), uintBitsToFloat(bind[vb + 11]));
 
     uint sb = i * SKIN_WORDS;
     uint j01 = skin[sb + 0];
@@ -41,6 +42,7 @@ void main() {
 
     vec3 pos = vec3(0.0);
     vec3 nrm = vec3(0.0);
+    vec3 tan = vec3(0.0);
     float total = 0.0;
     for (uint k = 0; k < 4; k++) {
         float w = uintBitsToFloat(skin[sb + 2 + k]);
@@ -48,6 +50,7 @@ void main() {
         mat4 m = palette[joints[k]];
         pos += w * (m * vec4(p, 1.0)).xyz;
         nrm += w * (mat3(m) * n);
+        tan += w * (mat3(m) * t);
         total += w;
     }
     // No usable weight keeps the bind pose rather than collapsing to the origin.
@@ -55,6 +58,8 @@ void main() {
         p = pos / total;
         float len = length(nrm);
         n = len > 0.0 ? nrm / len : vec3(0.0);
+        float tlen = length(tan);
+        t = tlen > 0.0 ? tan / tlen : vec3(0.0);
     }
 
     posed[vb + 0] = floatBitsToUint(p.x);
@@ -66,4 +71,8 @@ void main() {
     posed[vb + 6] = bind[vb + 6];
     posed[vb + 7] = bind[vb + 7];
     posed[vb + 8] = bind[vb + 8];
+    posed[vb + 9] = floatBitsToUint(t.x);
+    posed[vb + 10] = floatBitsToUint(t.y);
+    posed[vb + 11] = floatBitsToUint(t.z);
+    posed[vb + 12] = bind[vb + 12]; // the handedness sign
 }

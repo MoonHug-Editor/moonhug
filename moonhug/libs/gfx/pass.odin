@@ -7,6 +7,7 @@ package gfx
 import "base:runtime"
 import "core:fmt"
 import "core:math"
+import "core:math/linalg"
 import sdl "vendor:sdl3"
 
 // An offscreen color + depth pair. Both are sampleable after the pass that
@@ -289,89 +290,60 @@ rt_download_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
 // pass_begin_swapchain and frame_end. nil outside that window, or on a frame the
 // acquire failed (minimized window).
 //
-// This is what makes an on-demand full-window capture possible: the swapchain
-// holds EVERYTHING, imgui panels included, so a copy taken after the UI pass is
-// a picture of the whole editor. See swapchain_capture.
+// Its size is what a full-window capture renders the UI at (swapchain_size).
 @(private = "file")
 _swapchain_this_frame: struct {
 	tex:  ^sdl.GPUTexture,
 	w, h: u32,
 }
 
-// Starts a readback of the current swapchain image — the finished frame,
-// including every imgui panel.
+// The window image's size this frame, false outside pass_begin_swapchain and
+// frame_end or on a frame the acquire failed (minimized window).
+swapchain_size :: proc() -> (w, h: i32, ok: bool) {
+	if _swapchain_this_frame.tex == nil do return 0, 0, false
+	return i32(_swapchain_this_frame.w), i32(_swapchain_this_frame.h), true
+}
+
+// Starts a readback of a render target as this frame's passes leave it: a
+// download encoded into the FRAME's command buffer, behind those passes, and
+// fenced by frame_end's submit. texture_download_begin would acquire its own
+// buffer and submit at once, ahead of passes still sitting unsubmitted in the
+// frame buffer, and read an untouched texture.
 //
-// ONLY runs when someone asks for a screenshot: the cost is one full-screen copy
-// plus a download on that single frame, and nothing at all otherwise. That is
-// why the frame still renders straight to the swapchain, rather than through an
-// offscreen target that would need blitting every frame forever just to keep a
-// capture possible.
-//
-// Both the copy AND the download are encoded into the FRAME's command buffer,
-// which is what makes this correct. texture_download_begin would otherwise
-// acquire its own buffer and submit it immediately — running the download ahead
-// of a copy that is still sitting unsubmitted in the frame buffer, and reading
-// an untouched texture. (That produced a solid magenta image: uninitialized
-// texture memory, not a broken capture path.)
-//
-// Call while the frame's command buffer is open and after the UI pass has ended.
-// Returns nil when there is no swapchain image this frame.
-swapchain_capture_begin :: proc() -> ^Texture_Download {
-	if _swapchain_this_frame.tex == nil do return nil
-	if _gfx.cmd == nil do return nil
-	w := _swapchain_this_frame.w
-	h := _swapchain_this_frame.h
+// The window's own image cannot be read on every backend (Metal makes it
+// framebuffer-only), so a full-window picture is the UI drawn a second time
+// into a Display target, then read with this (the editor's screenshot).
+// Call while the frame's command buffer is open, after the passes that drew
+// the target. The caller keeps the target alive until the download is taken.
+frame_capture_begin :: proc(rt: ^Render_Target) -> ^Texture_Download {
+	if _gfx.cmd == nil || rt == nil do return nil
+	w, h := u32(rt.width), u32(rt.height)
 	if w < 2 || h < 2 do return nil
-
-	// A swapchain image cannot be downloaded from directly — it belongs to the
-	// presentation engine. Copy into a texture that can be, then read that.
-	dst := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
-		type                 = .D2,
-		format               = _gfx.swapchain_format,
-		usage                = {.SAMPLER},
-		width                = w,
-		height               = h,
-		layer_count_or_depth = 1,
-		num_levels           = 1,
-	})
-	if dst == nil do return nil
-
-	byte_count := w * h * 4
-	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .DOWNLOAD, size = byte_count})
-	if transfer == nil {
-		sdl.ReleaseGPUTexture(_gfx.device, dst)
-		return nil
-	}
-
-	// One copy pass on the frame buffer: swapchain -> dst -> transfer buffer.
+	transfer := sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .DOWNLOAD, size = w * h * 4})
+	if transfer == nil do return nil
 	copy_pass := sdl.BeginGPUCopyPass(_gfx.cmd)
 	if copy_pass == nil {
 		sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer)
-		sdl.ReleaseGPUTexture(_gfx.device, dst)
 		return nil
 	}
-	sdl.CopyGPUTextureToTexture(copy_pass,
-		sdl.GPUTextureLocation{texture = _swapchain_this_frame.tex},
-		sdl.GPUTextureLocation{texture = dst}, w, h, 1, false)
 	sdl.DownloadFromGPUTexture(copy_pass,
-		{texture = dst, w = w, h = h, d = 1},
+		{texture = rt.color, w = w, h = h, d = 1},
 		{transfer_buffer = transfer, pixels_per_row = w, rows_per_layer = h})
 	sdl.EndGPUCopyPass(copy_pass)
 
-	// The frame's own submit carries this, so the fence comes from frame_end.
+	format := target_pixel_format(rt.format)
 	d := new(Texture_Download, runtime.default_allocator())
 	d.transfer = transfer
 	d.fence = nil // set by frame_end
 	d.width = i32(w)
 	d.height = i32(h)
-	d.bgra = _gfx.swapchain_format == .B8G8R8A8_UNORM || _gfx.swapchain_format == .B8G8R8A8_UNORM_SRGB
-	d.scratch_texture = dst
+	d.bgra = format == .B8G8R8A8_UNORM || format == .B8G8R8A8_UNORM_SRGB
 	_swapchain_pending_download = d
 	return d
 }
 
-// A capture whose copy rides this frame's command buffer, waiting for the
-// submit in frame_end to give it a fence.
+// A capture riding this frame's command buffer, waiting for the submit in
+// frame_end to give it a fence.
 @(private = "file")
 _swapchain_pending_download: ^Texture_Download
 
@@ -385,7 +357,11 @@ _swapchain_pending_download: ^Texture_Download
 // lit and blended in linear light. Such a pass starts from a clear color and
 // fresh depth, since the target's own bytes are encoded. display_blit puts a
 // finished linear image on a Display target without the scratch.
-pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth := false) {
+//
+// `depth` false makes a depth-less pass that draws the target's bytes as
+// given, for external pipelines without a depth attachment (imgui drawing
+// the editor's UI into a capture target). gfx's own draws need depth.
+pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth := false, depth := true) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true
 	_pass.target_color = rt.color
@@ -394,6 +370,13 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth :
 	_pass.store_depth = true
 	_pass.keep_depth = keep_depth
 	_pass.clear = _decode_clear(clear)
+	if !depth {
+		_pass.target_depth = nil
+		_pass.store_depth = false
+		_pass.keep_depth = false
+		_pass.clear = clear
+		return
+	}
 	if rt.format == .Display {
 		assert(clear != nil && !keep_depth, "a pass on a Display target starts from a clear color and fresh depth")
 		_redirect(rt.color, rt.depth, rt.width, rt.height)
@@ -587,15 +570,39 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 	c := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := normal
+	// u runs along the bottom edge, v up the left one: the tangent is the
+	// bottom edge's direction, flipped when the uvs are mirrored.
+	t := _quad_tangent(corners, uvs, n)
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c},
-		Vertex{corners[1], n, uvs[1], c},
-		Vertex{corners[2], n, uvs[2], c},
-		Vertex{corners[0], n, uvs[0], c},
-		Vertex{corners[2], n, uvs[2], c},
-		Vertex{corners[3], n, uvs[3], c},
+		Vertex{corners[0], n, uvs[0], c, t},
+		Vertex{corners[1], n, uvs[1], c, t},
+		Vertex{corners[2], n, uvs[2], c, t},
+		Vertex{corners[0], n, uvs[0], c, t},
+		Vertex{corners[2], n, uvs[2], c, t},
+		Vertex{corners[3], n, uvs[3], c, t},
 	)
 	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
+}
+
+// A quad's tangent from its corners and uvs (bl, br, tr, tl): the bottom
+// edge's direction, with w the sign that makes cross(normal, tangent) * w
+// run the way v grows.
+@(private = "file")
+_quad_tangent :: proc(corners: [4][3]f32, uvs: [4][2]f32, n: [3]f32) -> [4]f32 {
+	e1 := corners[1] - corners[0]
+	e2 := corners[3] - corners[0]
+	du1, dv1 := uvs[1].x - uvs[0].x, uvs[1].y - uvs[0].y
+	du2, dv2 := uvs[3].x - uvs[0].x, uvs[3].y - uvs[0].y
+	det := du1 * dv2 - du2 * dv1
+	if abs(det) < 1e-12 do return {}
+	r := 1 / det
+	t := (e1 * dv2 - e2 * dv1) * r
+	b := (e2 * du1 - e1 * du2) * r
+	tl := linalg.length(t)
+	if tl < 1e-12 do return {}
+	t /= tl
+	w: f32 = linalg.dot(linalg.cross(n, t), b) < 0 ? -1 : 1
+	return {t.x, t.y, t.z, w}
 }
 
 // Untextured filled triangle (white 1x1 texture bound at draw). Winding is
@@ -604,7 +611,7 @@ draw_triangle :: proc(a, b, c: [3]f32, color: [4]f32, depth_test := true) {
 	col := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := [3]f32{0, 0, 1}
-	append(&_pass.vtx, Vertex{a, n, {}, col}, Vertex{b, n, {}, col}, Vertex{c, n, {}, col})
+	append(&_pass.vtx, Vertex{a, n, {}, col, {}}, Vertex{b, n, {}, col, {}}, Vertex{c, n, {}, col, {}})
 	_batch_append(depth_test ? .Tris : .Tris_Overlay, nil, first, 3)
 }
 
@@ -615,7 +622,7 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 	first := u32(len(_pass.vtx))
 	n := [3]f32{0, 0, 1}
 	kind: _Pipeline_Kind = depth_test ? (depth_write ? .Lines_Depth : .Lines) : .Lines_Overlay
-	append(&_pass.vtx, Vertex{a, n, {}, c}, Vertex{b, n, {}, c})
+	append(&_pass.vtx, Vertex{a, n, {}, c, {}}, Vertex{b, n, {}, c, {}})
 	_batch_append(kind, nil, first, 2)
 }
 
@@ -726,6 +733,18 @@ pass_end :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURender
 	_pass_flush(nil)
 }
 
+// A draw's material block (fragment slot 1): its own, or the lit shader's
+// default for a lit draw that brought none.
+@(private = "file")
+_push_material :: proc(d: ^_Draw) {
+	if len(d.material) > 0 {
+		sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
+	} else if d.shader == LIT_SHADER {
+		block := LIT_MATERIAL_DEFAULT
+		sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, &block, size_of(block))
+	}
+}
+
 // Encodes the pass's render pass from its recorded draws and resets it.
 @(private = "file")
 _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass)) {
@@ -830,10 +849,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		} else if d.is_mesh {
 			u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = d.model, tint = d.color}
 			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
-			if len(d.material) > 0 {
-				// Shader property block (custom shaders' MaterialUBO, slot 1).
-				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
-			}
+			_push_material(&d)
 			pushed_vp = -1
 			pushed_mesh = true
 
@@ -849,10 +865,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 				pushed_vp = d.vp_index
 				pushed_mesh = false
 			}
-			if len(d.material) > 0 {
-				// Sprite-material property block (fragment slot 1).
-				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
-			}
+			_push_material(&d)
 			if !batch_bound {
 				vb := sdl.GPUBufferBinding{buffer = _pass.vbuf}
 				sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)

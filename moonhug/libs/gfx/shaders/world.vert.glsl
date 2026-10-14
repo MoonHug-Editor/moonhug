@@ -10,6 +10,7 @@ layout(location = 0) in vec3 in_position;
 layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec2 in_uv;
 layout(location = 3) in vec4 in_color;
+layout(location = 4) in vec4 in_tangent; // xyz direction of +u, w bitangent sign; zero = none
 
 // tint: batch draws bake color into vertices and push white; mesh draws
 // push their material color here (mesh vertex color is white from import).
@@ -25,6 +26,9 @@ layout(location = 0) out vec2 frag_uv;
 layout(location = 1) out vec4 frag_color;
 layout(location = 2) out vec3 frag_normal;
 layout(location = 3) out vec3 frag_world_pos;
+// World-space tangent and the bitangent sign, for normal maps (surface.glsl
+// perturb_normal). Zero when the vertex has none.
+layout(location = 4) out vec4 frag_tangent;
 
 // A color brighter than 1 is an sRGB color times a linear intensity, as in
 // gfx.srgb_to_linear.
@@ -45,4 +49,5 @@ void main() {
     // World-space position for view-dependent shading (specular, fresnel) —
     // fragment shaders that don't declare the input simply ignore it.
     frag_world_pos = world.xyz;
+    frag_tangent = vec4(mat3(model) * in_tangent.xyz, in_tangent.w);
 }

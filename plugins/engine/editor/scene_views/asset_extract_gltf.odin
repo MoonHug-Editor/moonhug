@@ -3,8 +3,8 @@ package scene_views
 // "Assets/Extract Assets" — turns a downloaded .glb/.gltf into ready-to-use
 // assets (plugins/engine/docs/Materials.md). Embedded images are written as PLAIN FILES next
 // to the model, one .mat per glTF material is created with its slots wired
-// (albedo → texture; metal-rough/normal/ao/emissive → pbr.glsl rows when that
-// shader asset exists, built-in Lit otherwise), one clip per glTF animation
+// (the built-in Lit: base color → texture and color, metal-rough, normal,
+// occlusion and emissive → the material's lit block), one clip per glTF animation
 // (with the animation package installed: importers.gltf_clip_extractor),
 // and one .scene mirroring the node hierarchy with all of the above
 // referenced — the Unity model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
@@ -21,6 +21,7 @@ import "core:strings"
 import engine "moonhug:packages/engine"
 import asset_pipeline "moonhug:editor/assets"
 import "moonhug:packages/engine/editor/importers"
+import gfx "moonhug:libs/gfx"
 import "moonhug:libs/serialization"
 
 @(menu_separator={path="Assets", order=-45})
@@ -36,9 +37,6 @@ extract_gltf_menu :: proc() {
 	extract_gltf_assets(path)
 }
 
-// The pbr sample shader's contract (assets/shaders/pbr.glsl): material rows
-// are matched by SAMPLER NAME, so these must stay in sync with the shader.
-_PBR_SHADER_PATH :: "assets/shaders/pbr.glsl"
 
 extract_gltf_assets :: proc(model_path: string) {
 	dir := filepath.dir(model_path) // slice into model_path — not owned
@@ -98,11 +96,6 @@ extract_gltf_assets :: proc(model_path: string) {
 		return engine.Asset_GUID(guid)
 	}
 
-	pbr_shader: engine.Asset_GUID
-	if guid, ok := engine.asset_db_get_guid(_PBR_SHADER_PATH); ok {
-		pbr_shader = engine.Asset_GUID(guid)
-	}
-
 	// 2) One .mat per glTF material — the mesh importer orders submeshes by
 	// material first-appearance, so these assign to MeshRenderer.materials
 	// in file order.
@@ -114,46 +107,27 @@ extract_gltf_assets :: proc(model_path: string) {
 			continue
 		}
 
-		mat := engine.Material{color = {1, 1, 1, 1}}
-		mat.properties = make([dynamic]engine.Material_Property, context.temp_allocator)
-		mat.textures = make([dynamic]engine.Material_Texture, context.temp_allocator)
-
-		metal_rough, normal, ao, emissive: engine.Asset_GUID
-		metallic, roughness: f32 = 1, 1
+		// The built-in Lit: glTF's metal/roughness model, its factors stored
+		// the way the material inspector authors them (colors in sRGB,
+		// smoothness instead of roughness).
+		mat := engine.Material{shader = .Lit, color = {1, 1, 1, 1}, lit = engine.MATERIAL_LIT_DEFAULT}
+		mat.lit.metallic = 1
+		mat.lit.smoothness = 0
 		if m.has_pbr_metallic_roughness {
 			pmr := m.pbr_metallic_roughness
-			mat.color = pmr.base_color_factor
+			mat.color = gfx.linear_to_srgb(pmr.base_color_factor)
 			mat.texture = tex_guid(pmr.base_color_texture, &img_paths)
-			metal_rough = tex_guid(pmr.metallic_roughness_texture, &img_paths)
-			metallic = pmr.metallic_factor
-			roughness = pmr.roughness_factor
+			mat.lit.metallic_roughness_map = tex_guid(pmr.metallic_roughness_texture, &img_paths)
+			mat.lit.metallic = pmr.metallic_factor
+			mat.lit.smoothness = 1 - pmr.roughness_factor
 		}
-		normal = tex_guid(m.normal_texture, &img_paths)
-		ao = tex_guid(m.occlusion_texture, &img_paths)
-		emissive = tex_guid(m.emissive_texture, &img_paths)
-
-		needs_pbr := metal_rough != {} || normal != {} || ao != {} || emissive != {}
-		if needs_pbr && pbr_shader != {} {
-			mat.custom_shader = pbr_shader
-			append(&mat.textures, engine.Material_Texture{name = "metal_rough_tex", texture = metal_rough})
-			append(&mat.textures, engine.Material_Texture{name = "normal_tex", texture = normal})
-			append(&mat.textures, engine.Material_Texture{name = "ao_tex", texture = ao})
-			append(&mat.textures, engine.Material_Texture{name = "emissive_tex", texture = emissive})
-			// pbr.glsl treats 0 as "unset, fall back to 1" for factors —
-			// nudge a real 0 to near-zero so it survives.
-			factor := proc(f: f32) -> f32 { return f <= 0 ? 0.001 : f }
-			ef := m.emissive_factor
-			has_emissive := emissive != {} || ef != {0, 0, 0}
-			append(&mat.properties, engine.Material_Property{name = "emissive_color", value = {ef.r, ef.g, ef.b, has_emissive ? 1 : 0}})
-			append(&mat.properties, engine.Material_Property{name = "metallic", value = {factor(metallic), 0, 0, 0}})
-			append(&mat.properties, engine.Material_Property{name = "roughness", value = {factor(roughness), 0, 0, 0}})
-			append(&mat.properties, engine.Material_Property{name = "normal_strength", value = {normal != {} ? 1 : 0, 0, 0, 0}})
-		} else {
-			mat.shader = .Lit
-			if needs_pbr {
-				fmt.printf("[Editor] Extract: %s not found — %s gets built-in Lit with albedo only\n", _PBR_SHADER_PATH, out)
-			}
-		}
+		mat.lit.normal_map = tex_guid(m.normal_texture, &img_paths)
+		mat.lit.normal_scale = m.normal_texture.texture != nil ? m.normal_texture.scale : 1
+		mat.lit.occlusion_map = tex_guid(m.occlusion_texture, &img_paths)
+		mat.lit.occlusion_strength = m.occlusion_texture.texture != nil ? m.occlusion_texture.scale : 1
+		mat.lit.emission_map = tex_guid(m.emissive_texture, &img_paths)
+		ef := m.emissive_factor
+		mat.lit.emission_color = gfx.linear_to_srgb({ef.r, ef.g, ef.b, 1})
 
 		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.Material), mat) {
 			fmt.printf("[Editor] Extract: failed to write %s\n", out)

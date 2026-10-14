@@ -259,13 +259,15 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
             return false
         }
 
-        pos_acc, norm_acc, uv_acc, joint_acc, weight_acc: ^cgltf.accessor
+        pos_acc, norm_acc, tan_acc, uv_acc, joint_acc, weight_acc: ^cgltf.accessor
         for &attr in prim.attributes {
             #partial switch attr.type {
             case .position:
                 if pos_acc == nil do pos_acc = attr.data
             case .normal:
                 if norm_acc == nil do norm_acc = attr.data
+            case .tangent:
+                if tan_acc == nil do tan_acc = attr.data
             case .texcoord:
                 if uv_acc == nil && attr.index == 0 do uv_acc = attr.data
             case .joints:
@@ -324,6 +326,18 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
             if uv_acc != nil && vi < uint(uv_acc.count) {
                 _ = cgltf.accessor_read_float(uv_acc, vi, &v.uv[0], 2)
             }
+            // The file's tangents when it has them (glTF: xyz direction, w the
+            // bitangent sign), transformed like a direction. A mirroring node
+            // flips the bitangent. Missing ones are generated below.
+            if tan_acc != nil && vi < uint(tan_acc.count) {
+                t: [4]f32
+                _ = cgltf.accessor_read_float(tan_acc, vi, &t[0], 4)
+                dir := skinned ? t.xyz : (world * [4]f32{t.x, t.y, t.z, 0}).xyz
+                dir = linalg.normalize0(dir)
+                w := t.w < 0 ? f32(-1) : f32(1)
+                if !skinned && flip_winding do w = -w
+                v.tangent = {dir.x, dir.y, dir.z, w}
+            }
             append(&build.vertices, v)
 
             // Keep `skin` parallel to `vertices` whenever this build has any
@@ -368,8 +382,52 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
                 bucket.indices[tri + 1], bucket.indices[tri + 2] = bucket.indices[tri + 2], bucket.indices[tri + 1]
             }
         }
+        if tan_acc == nil && uv_acc != nil {
+            mesh_generate_tangents(build.vertices[base_vertex:], bucket.indices[first_index:], base_vertex)
+        }
     }
     return true
+}
+
+// Per-vertex tangents for a primitive whose file has none: each triangle's
+// tangent from its positions and uvs, summed per vertex, made orthogonal to
+// the normal, with w the bitangent sign. A close approximation of the
+// MikkTSpace tangents glTF asks for, which agrees with them on smooth and
+// regularly mapped meshes. `indices` name vertices with `base` added.
+mesh_generate_tangents :: proc(vertices: []gfx.Vertex, indices: []u32, base: u32) {
+    tan := make([][3]f32, len(vertices), context.temp_allocator)
+    bit := make([][3]f32, len(vertices), context.temp_allocator)
+    for tri := 0; tri + 2 < len(indices); tri += 3 {
+        i0, i1, i2 := indices[tri] - base, indices[tri + 1] - base, indices[tri + 2] - base
+        if int(i0) >= len(vertices) || int(i1) >= len(vertices) || int(i2) >= len(vertices) do continue
+        v0, v1, v2 := vertices[i0], vertices[i1], vertices[i2]
+        e1 := v1.position - v0.position
+        e2 := v2.position - v0.position
+        du1, dv1 := v1.uv.x - v0.uv.x, v1.uv.y - v0.uv.y
+        du2, dv2 := v2.uv.x - v0.uv.x, v2.uv.y - v0.uv.y
+        det := du1 * dv2 - du2 * dv1
+        if abs(det) < 1e-20 do continue
+        r := 1 / det
+        t := (e1 * dv2 - e2 * dv1) * r
+        b := (e2 * du1 - e1 * du2) * r
+        for i in ([3]u32{i0, i1, i2}) {
+            tan[i] += t
+            bit[i] += b
+        }
+    }
+    for &v, i in vertices {
+        n := v.normal
+        // Gram-Schmidt: the tangent's part along the normal removed.
+        t := tan[i] - n * linalg.dot(n, tan[i])
+        tl := linalg.length(t)
+        if tl < 1e-12 {
+            v.tangent = {}
+            continue
+        }
+        t /= tl
+        w: f32 = linalg.dot(linalg.cross(n, t), bit[i]) < 0 ? -1 : 1
+        v.tangent = {t.x, t.y, t.z, w}
+    }
 }
 
 // Concatenate a build's buckets into the artifact blob and write it.

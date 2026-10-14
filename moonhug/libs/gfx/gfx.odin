@@ -14,6 +14,11 @@ Vertex :: struct {
 	normal:   [3]f32,
 	uv:       [2]f32,
 	color:    [4]u8,
+	// The direction u grows along the surface (xyz) and the bitangent's sign
+	// (w, the glTF convention: bitangent = cross(normal, tangent.xyz) * w).
+	// What a normal map is decoded against. Zero where there is none (lines,
+	// meshes without uvs): shaders fall back to a frame from derivatives.
+	tangent:  [4]f32,
 }
 
 Texture :: struct {
@@ -64,6 +69,19 @@ DEFAULT_SHADER :: "unlit"
 // The fullscreen shader that copies its input to the target.
 BLIT_SHADER :: "blit"
 
+// The built-in lit shader's material block (shaders/surface.glsl
+// LitMaterial, fragment set 3 binding 1). A lit draw without one gets
+// LIT_MATERIAL_DEFAULT, so it never reads the previous draw's.
+Lit_Material :: struct {
+	params:   [4]f32, // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
+	emission: [4]f32, // rgb, linear
+}
+
+LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}}
+
+// The built-in lit shader's name.
+LIT_SHADER :: "lit"
+
 // The fullscreen shader that encodes a linear image to sRGB: what a Display
 // target receives (display_blit, and pass_end for a pass on one).
 ENCODE_SHADER :: "encode"
@@ -74,6 +92,19 @@ ENCODE_SHADER :: "encode"
 srgb_to_linear :: proc(c: [4]f32) -> [4]f32 {
 	m := max(c.r, c.g, c.b, 1)
 	return {srgb_to_linear1(c.r / m) * m, srgb_to_linear1(c.g / m) * m, srgb_to_linear1(c.b / m) * m, c.a}
+}
+
+// Linear light to sRGB, the inverse of srgb_to_linear (a color above 1 keeps
+// its brightest channel as a linear intensity). For linear colors from
+// files, such as a glTF material's factors, stored as authored colors.
+linear_to_srgb :: proc(c: [4]f32) -> [4]f32 {
+	m := max(c.r, c.g, c.b, 1)
+	return {linear_to_srgb1(c.r / m) * m, linear_to_srgb1(c.g / m) * m, linear_to_srgb1(c.b / m) * m, c.a}
+}
+
+linear_to_srgb1 :: proc(v: f32) -> f32 {
+	if v <= 0.0031308 do return max(v, 0) * 12.92
+	return 1.055 * math.pow(v, 1 / 2.4) - 0.055
 }
 
 srgb_to_linear1 :: proc(v: f32) -> f32 {

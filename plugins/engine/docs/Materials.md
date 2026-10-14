@@ -54,7 +54,13 @@ merge into one draw.
 | Name | Material_Shader | Effect |
 |---|---|---|
 | `unlit` | `.Unlit` | `texture * color`, no lighting |
-| `lit` | `.Lit` | unlit × per-light lambert, driven by the scene's **Light** components |
+| `lit` | `.Lit` | physically based (metal/roughness: GGX, height-correlated Smith, Schlick) per light, driven by the scene's **Light** components, plus the ambient level as a uniform environment. Its surface is the material's `lit` block |
+
+### The Lit block
+
+`Material.lit` is the built-in Lit's surface, the metal/roughness model glTF uses, in the terms of the engine's Lit material: `metallic`, `smoothness` (1 minus roughness), a `metallic_roughness_map` in glTF's packing (green roughness, blue metallic), a `normal_map` with its `normal_scale`, an `occlusion_map` (red) with its `occlusion_strength`, an `emission_map` with its `emission_color` (brighter than 1 for HDR emission). Each map multiplies its factor, an unassigned map is white, and an unassigned normal map leaves the vertex normal. A material file without the block gets a dielectric of smoothness 0.5. Unlit and custom shaders ignore it.
+
+Diffuse is not divided by pi, so a light of intensity 1 on white albedo lights it to 1, as the earlier Lambert did, and scenes keep their brightness. Assets/Extract Assets maps a glTF material straight onto the block, its linear factors stored as sRGB colors like everything the inspector authors.
 
 ### Light component
 
@@ -150,7 +156,9 @@ void surface(inout Surface s) {
 }
 ```
 
-- `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color`, `s.normal` as the interpolated world normal, `s.emissive` as zero. Change what you need
+- `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color` (the texture decoded to linear), `s.normal` as the interpolated world normal, `s.emissive` as zero. Change what you need
+- PBR: `s.metallic` (preset 0), `s.smoothness` (preset 0.5) and `s.occlusion` (preset 1) feed the same lighting as the built-in Lit
+- normal maps: `s.normal = perturb_normal(texture(bumps, frag_uv).xyz * 2.0 - 1.0, strength)` turns a tangent-space texel into the world normal, through the vertex tangent (`frag_tangent`, location 4) or a frame from derivatives where the vertex has none. A normal map is data: never `srgb_to_linear` it
 - the template declares the inputs, `tex`, the `LightUBO` and the shadow map, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by the scene's directional Light with `shadows` on, like the built-in lit shader
 - compiler errors keep the shader's own line numbers (`#line 1`)
 - the template is what a shader graph emits (plugins/shadergraph), so a hand-written surface shader and a graph-made one are the same kind of asset

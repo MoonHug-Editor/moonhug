@@ -4,6 +4,7 @@ package shadergraph_tests
 // Compiling the GLSL needs the toolchain and a GPU, which the editor
 // exercises through the importer.
 
+import "core:fmt"
 import "core:strings"
 import "core:testing"
 import sg "moonhug:packages/shadergraph"
@@ -127,4 +128,28 @@ test_property_identifier :: proc(t: ^testing.T) {
 	testing.expect_value(t, sg.prop_identifier("Rim Color 2"), "Rim_Color_2")
 	testing.expect_value(t, sg.prop_identifier("2nd"), "_nd")
 	testing.expect_value(t, sg.prop_identifier(""), "prop")
+}
+
+// A Normal Map node reads its texture as data (no sRGB decode), turns it to
+// world space through the template's perturb_normal, and an unlinked UV is
+// the mesh's uvs. A Sample Texture node decodes its color.
+@(test)
+test_codegen_normal_map_and_texture_uvs :: proc(t: ^testing.T) {
+	g: sg.Shader_Graph
+	sg.reset_Shader_Graph(&g)
+	defer sg.cleanup_Shader_Graph(&g)
+	surface := g.nodes[0].id
+	sg.graph_add_property(&g, "bumps", .Texture)
+	sg.graph_add_property(&g, "base", .Texture)
+	nm := sg.graph_add_node(&g, sg.NORMAL_MAP_KIND, {0, 0}, "bumps")
+	tex := sg.graph_add_node(&g, sg.SAMPLE_TEXTURE_KIND, {0, 0}, "base")
+	testing.expect(t, sg.graph_link(&g, nm, 0, surface, 2), "the normal map feeds the Surface's Normal")
+	testing.expect(t, sg.graph_link(&g, tex, 1, surface, 0), "the texture's RGB feeds the albedo")
+	r, ok := sg.generate(&g)
+	testing.expect(t, ok)
+	testing.expect_value(t, len(r.errors), 0)
+	bumps, base := sg.prop_identifier("bumps"), sg.prop_identifier("base")
+	testing.expect(t, strings.contains(r.glsl, fmt.tprintf("perturb_normal(texture(%s, frag_uv).xyz * 2.0 - 1.0, 1.000000)", bumps)), "the normal map: data, unpacked, mesh uvs")
+	testing.expect(t, strings.contains(r.glsl, fmt.tprintf("srgb_to_linear(texture(%s, frag_uv))", base)), "the color texture: decoded, mesh uvs")
+	testing.expect(t, strings.contains(r.glsl, "s.normal = n"), "the Surface's Normal is set")
 }

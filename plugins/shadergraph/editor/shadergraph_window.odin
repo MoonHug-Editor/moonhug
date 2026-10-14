@@ -345,7 +345,7 @@ _sg_rename_property :: proc(p: ^sg.Graph_Property, name: string) {
 	trimmed := strings.trim_space(name)
 	if trimmed == "" || trimmed == p.name || sg.graph_find_property(&_sg.graph, trimmed) != nil do return
 	for &n in _sg.graph.nodes {
-		if (n.kind == sg.PROPERTY_KIND || n.kind == sg.SAMPLE_TEXTURE_KIND) && n.property == p.name {
+		if sg.kind_reads_property(n.kind) && n.property == p.name {
 			delete(n.property)
 			n.property = strings.clone(trimmed)
 		}
@@ -465,7 +465,7 @@ _sg_add_node_menu :: proc() {
 		if !im.BeginMenu(fmt.ctprintf("%s", cat)) do continue
 		for d in sg.NODE_DEFS {
 			if d.category != cat do continue
-			if d.kind == sg.PROPERTY_KIND || d.kind == sg.SAMPLE_TEXTURE_KIND do continue
+			if sg.kind_reads_property(d.kind) do continue
 			if d.kind == sg.SURFACE_KIND && has_surface do continue
 			if im.MenuItem(fmt.ctprintf("%s", d.kind)) do _sg_add_node(d.kind, "")
 		}
@@ -475,6 +475,7 @@ _sg_add_node_menu :: proc() {
 	for p in g.properties {
 		if p.kind == .Texture {
 			if im.MenuItem(fmt.ctprintf("Sample Texture: %s", p.name)) do _sg_add_node(sg.SAMPLE_TEXTURE_KIND, p.name)
+			if im.MenuItem(fmt.ctprintf("Normal Map: %s", p.name)) do _sg_add_node(sg.NORMAL_MAP_KIND, p.name)
 		} else {
 			if im.MenuItem(fmt.ctprintf("Property: %s", p.name)) do _sg_add_node(sg.PROPERTY_KIND, p.name)
 		}
@@ -512,6 +513,7 @@ _sg_node_title :: proc(n: ^sg.Graph_Node) -> cstring {
 	switch n.kind {
 	case sg.PROPERTY_KIND:       return fmt.ctprintf("%s", n.property)
 	case sg.SAMPLE_TEXTURE_KIND: return fmt.ctprintf("Sample %s", n.property)
+	case sg.NORMAL_MAP_KIND:     return fmt.ctprintf("Normal Map %s", n.property)
 	}
 	return fmt.ctprintf("%s", n.kind)
 }

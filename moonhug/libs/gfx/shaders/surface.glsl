@@ -8,9 +8,13 @@
 // The built-in lit shader is the same template with a default surface().
 //
 // Set `s` from the inputs below and your own properties:
-//   s.albedo    base color, preset to texture(tex, frag_uv) * frag_color
-//   s.alpha     preset to that texture's alpha
-//   s.normal    world-space, preset to the interpolated vertex normal
+//   s.albedo     base color, preset to texture(tex, frag_uv) * frag_color
+//   s.alpha      preset to that texture's alpha
+//   s.metallic   0 dielectric to 1 metal, preset to 0
+//   s.smoothness 0 rough to 1 mirror-like, preset to 0.5
+//   s.occlusion  ambient light that reaches the point, preset to 1
+//   s.normal    world-space, preset to the interpolated vertex normal. For a
+//               normal map: s.normal = perturb_normal(sample.xyz * 2.0 - 1.0)
 //   s.emissive  added after lighting, preset to zero
 //
 // SDL_GPU SPIR-V convention: fragment sampled textures live in set 2,
@@ -21,6 +25,7 @@ layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
 layout(location = 3) in vec3 frag_world_pos;
+layout(location = 4) in vec4 frag_tangent; // world tangent, w bitangent sign; zero = none
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -53,7 +58,24 @@ struct Surface {
     float alpha;
     vec3  normal;
     vec3  emissive;
+    float metallic;
+    float smoothness;
+    float occlusion;
 };
+
+// The built-in Lit's own material (engine Material.lit), declared only when
+// lit.frag.glsl compiles this template: a user surface shader owns binding 1
+// and samplers 1..6 for its own properties and textures.
+#ifdef MOONHUG_LIT_MATERIAL
+layout(set = 3, binding = 1) uniform LitMaterial {
+    vec4 lit_params;   // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
+    vec4 lit_emission; // rgb emission color, linear (times the emission map)
+};
+layout(set = 2, binding = 1) uniform sampler2D metallic_roughness_map; // glTF packing: g roughness, b metallic
+layout(set = 2, binding = 2) uniform sampler2D normal_map;
+layout(set = 2, binding = 3) uniform sampler2D occlusion_map;          // r
+layout(set = 2, binding = 4) uniform sampler2D emission_map;           // color, sRGB
+#endif
 
 // Smooth, artist-predictable falloff: 1 at the light, 0 at range, no hot
 // inverse-square center. (1 - (d/range)^2)^2, clamped.
@@ -80,6 +102,37 @@ vec3 srgb_to_linear(vec3 c) {
 
 vec4 srgb_to_linear(vec4 c) {
     return vec4(srgb_to_linear(c.rgb), c.a);
+}
+
+// A tangent-space normal (a normal map's texel unpacked to -1..1, z out of
+// the surface) to world space. Uses the vertex tangent, or, where there is
+// none (quads without uvs, lines), a frame from the position and uv
+// derivatives. `strength` scales the map's tilt: 0 is the vertex normal.
+vec3 perturb_normal(vec3 tangent_normal, float strength) {
+    vec3 n = normalize(frag_normal);
+    vec3 tn = vec3(tangent_normal.xy * strength, tangent_normal.z);
+    vec3 t, b;
+    if (dot(frag_tangent.xyz, frag_tangent.xyz) > 1e-8) {
+        t = normalize(frag_tangent.xyz - n * dot(n, frag_tangent.xyz));
+        b = cross(n, t) * (frag_tangent.w < 0.0 ? -1.0 : 1.0);
+    } else {
+        vec3 dp1 = dFdx(frag_world_pos);
+        vec3 dp2 = dFdy(frag_world_pos);
+        vec2 duv1 = dFdx(frag_uv);
+        vec2 duv2 = dFdy(frag_uv);
+        vec3 dp2perp = cross(dp2, n);
+        vec3 dp1perp = cross(n, dp1);
+        t = dp2perp * duv1.x + dp1perp * duv2.x;
+        b = dp2perp * duv1.y + dp1perp * duv2.y;
+        float invmax = inversesqrt(max(max(dot(t, t), dot(b, b)), 1e-12));
+        t *= invmax;
+        b *= invmax;
+    }
+    return normalize(mat3(t, b, n) * tn);
+}
+
+vec3 perturb_normal(vec3 tangent_normal) {
+    return perturb_normal(tangent_normal, 1.0);
 }
 
 // Direction toward the camera from the fragment, for rim and specular terms.

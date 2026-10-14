@@ -26,11 +26,17 @@ Node_Def :: struct {
 NODE_DEFS := []Node_Def{
 	// --- Output
 	{SURFACE_KIND, "Output",
-		{{"Albedo", .Vec3, {0.8, 0.8, 0.8, 1}}, {"Alpha", .Float, {1, 0, 0, 0}}, {"Normal", .Vec3, {0, 0, 1, 0}}, {"Emissive", .Vec3, {0, 0, 0, 0}}},
+		// Appended inputs keep the earlier ones' port indices, which links store.
+		{{"Albedo", .Vec3, {0.8, 0.8, 0.8, 1}}, {"Alpha", .Float, {1, 0, 0, 0}}, {"Normal", .Vec3, {0, 0, 1, 0}}, {"Emissive", .Vec3, {0, 0, 0, 0}},
+		 {"Metallic", .Float, {0, 0, 0, 0}}, {"Smoothness", .Float, {0.5, 0, 0, 0}}, {"Occlusion", .Float, {1, 0, 0, 0}}},
 		{}, {}},
 
 	// --- Input
 	{PROPERTY_KIND, "Input", {}, {{"Out", .Dyn, {}}}, {}},
+	// A tangent-space normal map from a texture property, out in world space
+	// for the Surface's Normal (surface.glsl perturb_normal). Strength 0 is
+	// the vertex normal.
+	{NORMAL_MAP_KIND, "Input", {{"UV", .Vec2, {0, 0, 0, 0}}, {"Strength", .Float, {1, 0, 0, 0}}}, {{"Normal", .Vec3, {}}}, {}},
 	{SAMPLE_TEXTURE_KIND, "Input", {{"UV", .Vec2, {0, 0, 0, 0}}}, {{"RGBA", .Vec4, {}}, {"RGB", .Vec3, {}}, {"A", .Float, {}}}, {}},
 	{"Main Texture", "Input", {{"UV", .Vec2, {0, 0, 0, 0}}}, {{"RGBA", .Vec4, {}}, {"RGB", .Vec3, {}}, {"A", .Float, {}}},
 		{"srgb_to_linear(texture(tex, $0))", "srgb_to_linear(texture(tex, $0).rgb)", "texture(tex, $0).a"}},

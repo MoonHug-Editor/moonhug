@@ -44,9 +44,31 @@ Material :: struct {
 	custom_shader: Asset_GUID `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set
 	texture:       Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 	color:         [4]f32 `decor:color()`,
+	// The built-in Lit's surface. Unlit and custom shaders ignore it.
+	lit:           Material_Lit,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
 	textures:      [dynamic]Material_Texture,  // custom-shader extra sampler assignments
 }
+
+// The built-in Lit shader's physically based surface: metal/roughness, the
+// model glTF uses, in the terms of the engine's Lit material UX (smoothness,
+// not roughness). Each map multiplies its factor, an unassigned map is white.
+Material_Lit :: struct {
+	metallic:               f32 `decor:range(0, 1)`,
+	smoothness:             f32 `decor:range(0, 1)`,
+	// glTF packing: green is roughness, blue is metallic.
+	metallic_roughness_map: Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	normal_map:             Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	normal_scale:           f32 `decor:min(0)`,
+	occlusion_map:          Asset_GUID `ext:"png,jpg,jpeg,bmp"`, // red channel
+	occlusion_strength:     f32 `decor:range(0, 1)`,
+	emission_map:           Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
+	emission_color:         [4]f32 `decor:color()`, // brighter than 1 for HDR emission
+}
+
+// What a material without a lit block gets: a dielectric of medium
+// smoothness, full-strength maps, no emission.
+MATERIAL_LIT_DEFAULT :: Material_Lit{smoothness = 0.5, normal_scale = 1, occlusion_strength = 1}
 
 // A new material is Lit, like Unity's. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
@@ -54,6 +76,7 @@ reset_Material :: proc(m: ^Material) {
 	cleanup_Material(m)
 	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
+	m.lit = MATERIAL_LIT_DEFAULT
 }
 
 // gfx shader-set name for draw_mesh. Returned strings are literals — safe to
@@ -98,12 +121,34 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 			extra_textures = _material_resolve_textures(mat, sr)
 		}
 	}
+	if mat.shader == .Lit && mat.custom_shader == {} {
+		material_data, extra_textures = _material_pack_lit(&mat.lit)
+	}
 	color = mat.color
 	if mat.texture != {} {
 		if t, t_ok := texture_load(mat.texture); t_ok {
 			tex = t.gfx
 		}
 	}
+	return
+}
+
+// The built-in Lit's material block and maps (surface.glsl LitMaterial):
+// bindings 1..4 metallic/roughness, normal, occlusion, emission, white when
+// unassigned. A normal scale goes in as 0 without a normal map, since white
+// is no normal. The emission color goes in as linear.
+_material_pack_lit :: proc(lit: ^Material_Lit) -> (data: []u8, maps: []^gfx.Texture) {
+	maps = make([]^gfx.Texture, 4, context.temp_allocator)
+	guids := [4]Asset_GUID{lit.metallic_roughness_map, lit.normal_map, lit.occlusion_map, lit.emission_map}
+	for g, i in guids {
+		if g == {} do continue
+		if t, ok := texture_load(g); ok do maps[i] = t.gfx
+	}
+	normal_scale := maps[1] != nil ? lit.normal_scale : 0
+	block := new(gfx.Lit_Material, context.temp_allocator)
+	block.params = {clamp(lit.metallic, 0, 1), clamp(lit.smoothness, 0, 1), normal_scale, clamp(lit.occlusion_strength, 0, 1)}
+	block.emission = gfx.srgb_to_linear(lit.emission_color)
+	data = (^[size_of(gfx.Lit_Material)]u8)(block)[:]
 	return
 }
 
@@ -344,7 +389,7 @@ _material_clone :: proc(mat: Material) -> Material {
 }
 
 _material_equal :: proc(a, b: Material) -> bool {
-	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color do return false
+	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color || a.lit != b.lit do return false
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false
@@ -362,7 +407,7 @@ _material_equal :: proc(a, b: Material) -> bool {
 _material_parse :: proc(data: []byte) -> (Material, bool) {
 	// The same defaults as reset_Material, for a hand-written file that
 	// leaves a field out.
-	mat := Material{shader = .Lit, color = {1, 1, 1, 1}}
+	mat := Material{shader = .Lit, color = {1, 1, 1, 1}, lit = MATERIAL_LIT_DEFAULT}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {
 		cleanup_Material(&mat)
 		return {}, false

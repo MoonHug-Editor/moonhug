@@ -24,7 +24,7 @@ Skin_Vertex :: struct #packed {
 	weights: [4]f32,
 }
 
-#assert(size_of(Vertex) == 36)
+#assert(size_of(Vertex) == 52) // 13 words, skin.comp's VERTEX_WORDS
 #assert(size_of(Skin_Vertex) == 24)
 
 @(private) _SKIN_COMP_SPV := #load("shaders/compiled/skin.comp.spv")

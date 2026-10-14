@@ -49,8 +49,9 @@ part):
   correctly; sprites/batch quads still sample CLAMP
 - negative-scale nodes → triangle winding flipped (front faces survive a
   future backface-culling switch)
-- vertex format = `gfx.Vertex` (position, normal, uv, color) — normals feed
-  the built-in lit shader
+- vertex format = `gfx.Vertex` (position, normal, uv, color, tangent) — normals feed
+  the built-in lit shader, tangents decode normal maps
+- tangents: the file's `TANGENT` attribute when present (xyz direction, w the bitangent sign, transformed like a direction and flipped by a mirroring node), else generated per triangle from positions and uvs and made orthogonal to the normal (`importers.mesh_generate_tangents`), close to the MikkTSpace tangents glTF asks for. A primitive without uvs gets none, and shaders fall back to a frame from screen-space derivatives
 - glTF material PROPERTIES (base color, textures) are not imported — moonhug
   materials are authored as `.mat` assets; the glTF materials only define the
   submesh split

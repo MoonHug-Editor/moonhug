@@ -78,6 +78,12 @@ Shader_Graph :: struct {
 SURFACE_KIND        :: "Surface"
 PROPERTY_KIND       :: "Property"
 SAMPLE_TEXTURE_KIND :: "Sample Texture"
+NORMAL_MAP_KIND     :: "Normal Map"
+
+// The node kinds that read a blackboard property (n.property names it).
+kind_reads_property :: proc(kind: string) -> bool {
+	return kind == PROPERTY_KIND || kind == SAMPLE_TEXTURE_KIND || kind == NORMAL_MAP_KIND
+}
 
 // A new graph: one Surface node, no properties. What the Create menu writes.
 reset_Shader_Graph :: proc(g: ^Shader_Graph) {
@@ -203,7 +209,7 @@ graph_add_property :: proc(g: ^Shader_Graph, name: string, kind: Prop_Kind, defa
 graph_remove_property :: proc(g: ^Shader_Graph, name: string) {
 	for i := len(g.nodes) - 1; i >= 0; i -= 1 {
 		n := g.nodes[i]
-		if (n.kind == PROPERTY_KIND || n.kind == SAMPLE_TEXTURE_KIND) && n.property == name do graph_remove_node(g, n.id)
+		if kind_reads_property(n.kind) && n.property == name do graph_remove_node(g, n.id)
 	}
 	for p, i in g.properties {
 		if p.name == name {

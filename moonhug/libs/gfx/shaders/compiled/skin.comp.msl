@@ -72,69 +72,87 @@ struct Out
 
 constant uint3 gl_WorkGroupSize [[maybe_unused]] = uint3(64u, 1u, 1u);
 
-kernel void main0(constant Params& _19 [[buffer(0)]], device Bind& _41 [[buffer(1)]], device Skin& _88 [[buffer(2)]], device Palette& _157 [[buffer(3)]], device Out& _222 [[buffer(4)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
+kernel void main0(constant Params& _19 [[buffer(0)]], device Bind& _41 [[buffer(1)]], device Skin& _108 [[buffer(2)]], device Palette& _178 [[buffer(3)]], device Out& _271 [[buffer(4)]], uint3 gl_GlobalInvocationID [[thread_position_in_grid]])
 {
     uint i = gl_GlobalInvocationID.x;
     if (i >= _19.vertex_count)
     {
         return;
     }
-    uint vb = i * 9u;
+    uint vb = i * 13u;
     float3 p = float3(as_type<float>(_41.bind[vb + 0u]), as_type<float>(_41.bind[vb + 1u]), as_type<float>(_41.bind[vb + 2u]));
     float3 n = float3(as_type<float>(_41.bind[vb + 3u]), as_type<float>(_41.bind[vb + 4u]), as_type<float>(_41.bind[vb + 5u]));
+    float3 t = float3(as_type<float>(_41.bind[vb + 9u]), as_type<float>(_41.bind[vb + 10u]), as_type<float>(_41.bind[vb + 11u]));
     uint sb = i * 6u;
-    uint j01 = _88.skin[sb + 0u];
-    uint j23 = _88.skin[sb + 1u];
-    spvUnsafeArray<uint, 4> _111 = spvUnsafeArray<uint, 4>({ j01 & 65535u, j01 >> uint(16), j23 & 65535u, j23 >> uint(16) });
-    spvUnsafeArray<uint, 4> joints = _111;
+    uint j01 = _108.skin[sb + 0u];
+    uint j23 = _108.skin[sb + 1u];
+    spvUnsafeArray<uint, 4> _131 = spvUnsafeArray<uint, 4>({ j01 & 65535u, j01 >> uint(16), j23 & 65535u, j23 >> uint(16) });
+    spvUnsafeArray<uint, 4> joints = _131;
     float3 pos = float3(0.0);
     float3 nrm = float3(0.0);
+    float3 _tan = float3(0.0);
     float total = 0.0;
     for (uint k = 0u; k < 4u; k++)
     {
-        float w = as_type<float>(_88.skin[(sb + 2u) + k]);
-        bool _135 = w <= 0.0;
-        bool _146;
-        if (!_135)
+        float w = as_type<float>(_108.skin[(sb + 2u) + k]);
+        bool _156 = w <= 0.0;
+        bool _167;
+        if (!_156)
         {
-            _146 = joints[k] >= _19.joint_count;
+            _167 = joints[k] >= _19.joint_count;
         }
         else
         {
-            _146 = _135;
+            _167 = _156;
         }
-        if (_146)
+        if (_167)
         {
             continue;
         }
-        float4x4 m = _157.palette[joints[k]];
+        float4x4 m = _178.palette[joints[k]];
         pos += ((m * float4(p, 1.0)).xyz * w);
         nrm += ((float3x3(m[0].xyz, m[1].xyz, m[2].xyz) * n) * w);
+        _tan += ((float3x3(m[0].xyz, m[1].xyz, m[2].xyz) * t) * w);
         total += w;
     }
     if (total > 0.0)
     {
         p = pos / float3(total);
         float len = length(nrm);
-        float3 _210;
+        float3 _245;
         if (len > 0.0)
         {
-            _210 = nrm / float3(len);
+            _245 = nrm / float3(len);
         }
         else
         {
-            _210 = float3(0.0);
+            _245 = float3(0.0);
         }
-        n = _210;
+        n = _245;
+        float tlen = length(_tan);
+        float3 _259;
+        if (tlen > 0.0)
+        {
+            _259 = _tan / float3(tlen);
+        }
+        else
+        {
+            _259 = float3(0.0);
+        }
+        t = _259;
     }
-    _222.posed[vb + 0u] = as_type<uint>(p.x);
-    _222.posed[vb + 1u] = as_type<uint>(p.y);
-    _222.posed[vb + 2u] = as_type<uint>(p.z);
-    _222.posed[vb + 3u] = as_type<uint>(n.x);
-    _222.posed[vb + 4u] = as_type<uint>(n.y);
-    _222.posed[vb + 5u] = as_type<uint>(n.z);
-    _222.posed[vb + 6u] = _41.bind[vb + 6u];
-    _222.posed[vb + 7u] = _41.bind[vb + 7u];
-    _222.posed[vb + 8u] = _41.bind[vb + 8u];
+    _271.posed[vb + 0u] = as_type<uint>(p.x);
+    _271.posed[vb + 1u] = as_type<uint>(p.y);
+    _271.posed[vb + 2u] = as_type<uint>(p.z);
+    _271.posed[vb + 3u] = as_type<uint>(n.x);
+    _271.posed[vb + 4u] = as_type<uint>(n.y);
+    _271.posed[vb + 5u] = as_type<uint>(n.z);
+    _271.posed[vb + 6u] = _41.bind[vb + 6u];
+    _271.posed[vb + 7u] = _41.bind[vb + 7u];
+    _271.posed[vb + 8u] = _41.bind[vb + 8u];
+    _271.posed[vb + 9u] = as_type<uint>(t.x);
+    _271.posed[vb + 10u] = as_type<uint>(t.y);
+    _271.posed[vb + 11u] = as_type<uint>(t.z);
+    _271.posed[vb + 12u] = _41.bind[vb + 12u];
 }
 

@@ -8,6 +8,7 @@ import "core:encoding/json"
 import "core:encoding/uuid"
 import "core:testing"
 import "moonhug:packages/engine"
+import gfx "moonhug:libs/gfx"
 
 // The exact shape write_asset_to_path produces: __type_guid first, then the
 // marshaled fields. The unknown key must be tolerated.
@@ -34,6 +35,27 @@ test_material_parse_defaults :: proc(t: ^testing.T) {
 	testing.expect(t, ok, "empty object should parse")
 	testing.expect(t, mat.shader == .Lit, "default shader is lit")
 	testing.expect(t, mat.color == {1, 1, 1, 1}, "default color is white")
+	testing.expect(t, mat.lit == engine.MATERIAL_LIT_DEFAULT, "a material without a lit block gets the Lit defaults")
+}
+
+// The built-in Lit's block: factors clamped into place, the normal scale
+// zeroed without a normal map (white is no normal), the emission color in
+// linear. No maps load in a test, so every map slot is empty (white).
+@(test)
+test_material_pack_lit :: proc(t: ^testing.T) {
+	lit := engine.MATERIAL_LIT_DEFAULT
+	lit.metallic = 2 // out of range
+	lit.smoothness = 0.8
+	lit.normal_scale = 1.5
+	lit.emission_color = {1, 0.5, 0, 1}
+	data, maps := engine._material_pack_lit(&lit)
+	testing.expect_value(t, len(data), size_of(gfx.Lit_Material))
+	testing.expect_value(t, len(maps), 4)
+	block := (^gfx.Lit_Material)(raw_data(data))^
+	testing.expect(t, block.params.x == 1 && abs(block.params.y - 0.8) < 1e-6, "metallic clamped, smoothness kept")
+	testing.expect(t, block.params.z == 0, "no normal map: scale 0")
+	testing.expect(t, block.params.w == 1, "occlusion strength")
+	testing.expect(t, block.emission.r == 1 && abs(block.emission.g - 0.2140) < 1e-3 && block.emission.b == 0, "emission decoded to linear")
 }
 
 @(test)

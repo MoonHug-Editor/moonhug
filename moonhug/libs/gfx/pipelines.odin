@@ -14,6 +14,7 @@
 // away, so a shader that cannot compile fails at registration, not mid-frame.
 package gfx
 
+import "base:runtime"
 import "core:strings"
 import sdl "vendor:sdl3"
 
@@ -44,12 +45,15 @@ _Fullscreen_Entry :: struct {
 
 @(private)
 _create_pipelines :: proc() -> bool {
-	_gfx.shaders = make(map[string]_Shader_Entry)
-	_gfx.fullscreen = make(map[string]_Fullscreen_Entry)
+	// Registries for the process: their names are copied and freed with the
+	// map's own allocator, whatever allocator a registering caller runs
+	// under (a cache pinned to the default one, a frame's tracking one).
+	_gfx.shaders = make(map[string]_Shader_Entry, runtime.default_allocator())
+	_gfx.fullscreen = make(map[string]_Fullscreen_Entry, runtime.default_allocator())
 	_gfx.fullscreen_vert = _create_shader(.VERTEX, 0, 0, _FULLSCREEN_VERT_SPV, _FULLSCREEN_VERT_MSL)
 	if _gfx.fullscreen_vert == nil do return false
 	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
-	if !shader_register("lit", _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = SHADOW_SAMPLER_SLOT + 1, frag_uniform_buffers = 1) do return false
+	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = SHADOW_SAMPLER_SLOT + 1, frag_uniform_buffers = 2) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
@@ -60,12 +64,12 @@ _create_pipelines :: proc() -> bool {
 _pipelines_shutdown :: proc() {
 	for name, &e in _gfx.shaders {
 		_shader_entry_release(&e)
-		delete(name)
+		delete(name, _gfx.shaders.allocator)
 	}
 	delete(_gfx.shaders)
 	for name, &e in _gfx.fullscreen {
 		_fullscreen_entry_release(&e)
-		delete(name)
+		delete(name, _gfx.fullscreen.allocator)
 	}
 	delete(_gfx.fullscreen)
 	if _gfx.fullscreen_vert != nil do sdl.ReleaseGPUShader(_gfx.device, _gfx.fullscreen_vert)
@@ -100,7 +104,7 @@ shader_unregister :: proc(name: string) {
 	if !ok do return
 	_shader_entry_release(e)
 	key, _ := delete_key(&_gfx.shaders, name)
-	delete(key)
+	delete(key, _gfx.shaders.allocator)
 }
 
 // Registers a vertex+fragment shader pair under `name` (draw_mesh's shader
@@ -119,7 +123,7 @@ shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []
 		_shader_entry_release(&e)
 		return false
 	}
-	_gfx.shaders[strings.clone(name)] = e
+	_gfx.shaders[strings.clone(name, _gfx.shaders.allocator)] = e
 	return true
 }
 
@@ -164,11 +168,12 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 		pitch      = size_of(Vertex),
 		input_rate = .VERTEX,
 	}
-	attributes := [4]sdl.GPUVertexAttribute{
+	attributes := [5]sdl.GPUVertexAttribute{
 		{location = 0, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, position))},
 		{location = 1, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, normal))},
 		{location = 2, buffer_slot = 0, format = .FLOAT2, offset = u32(offset_of(Vertex, uv))},
 		{location = 3, buffer_slot = 0, format = .UBYTE4_NORM, offset = u32(offset_of(Vertex, color))},
+		{location = 4, buffer_slot = 0, format = .FLOAT4, offset = u32(offset_of(Vertex, tangent))},
 	}
 	color_target := sdl.GPUColorTargetDescription{
 		format      = target_pixel_format(format),
@@ -253,7 +258,7 @@ fullscreen_register :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers
 		_fullscreen_entry_release(&e)
 		return false
 	}
-	_gfx.fullscreen[strings.clone(name)] = e
+	_gfx.fullscreen[strings.clone(name, _gfx.fullscreen.allocator)] = e
 	return true
 }
 
@@ -262,7 +267,7 @@ fullscreen_unregister :: proc(name: string) {
 	if !ok do return
 	_fullscreen_entry_release(e)
 	key, _ := delete_key(&_gfx.fullscreen, name)
-	delete(key)
+	delete(key, _gfx.fullscreen.allocator)
 }
 
 @(private)

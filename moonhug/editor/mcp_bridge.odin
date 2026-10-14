@@ -26,7 +26,10 @@ import "core:fmt"
 import "core:net"
 import "core:os"
 import "core:strings"
+import sdl "vendor:sdl3"
 import stbi "vendor:stb/image"
+import im "moonhug:external/odin-imgui"
+import im_sdlgpu "moonhug:external/odin-imgui/imgui_impl_sdlgpu3"
 import mcp "moonhug:editor/mcp"
 import assets "moonhug:libs/assets"
 import core "moonhug:libs/core"
@@ -68,6 +71,7 @@ _Mcp_Window_Shot :: struct {
 	shots:        [dynamic]_Mcp_Shot,
 	shot_counter: int,
 	pending_window_shot: _Mcp_Window_Shot,
+	window_rt:           ^gfx.Render_Target, // the UI drawn again for a full-window capture
 }
 
 mcp_bridge_init :: proc() {
@@ -130,6 +134,7 @@ mcp_bridge_shutdown :: proc() {
 		gfx.texture_download_cancel(shot.dl)
 	}
 	delete(_mcp.shots)
+	gfx.rt_destroy(_mcp.window_rt)
 	mcp.frame_buffer_destroy(&_mcp.fb)
 	delete(_mcp.token)
 	_mcp = {}
@@ -595,20 +600,29 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 }
 
 // Services a queued full-window capture. Called at the END of the frame, after
-// the imgui pass has drawn into the swapchain and while the command buffer is
-// still open — the only moment the swapchain holds the finished UI and can
-// still be copied from.
+// the imgui pass, while the command buffer is still open. The window's image
+// cannot be read (Metal makes it framebuffer-only), so the frame's UI draw
+// data is rendered a second time into a Display target of the window's size,
+// and that target is read (gfx.frame_capture_begin, in this frame's buffer).
 mcp_bridge_capture_frame :: proc() {
 	if !_mcp.active || !_mcp.pending_window_shot.wanted do return
 	req := _mcp.pending_window_shot
 	_mcp.pending_window_shot = {}
 
-	// Copy AND download are encoded into this frame's command buffer, so they
-	// land in queue order behind the UI draw. Starting a separate download here
-	// would submit ahead of the copy and read an untouched texture.
-	dl := gfx.swapchain_capture_begin()
+	w, h, ok := gfx.swapchain_size()
+	if !ok {
+		_mcp_respond_error(req.id, "capture_failed", "no window image this frame (window minimized?)")
+		return
+	}
+	if _mcp.window_rt == nil do _mcp.window_rt = gfx.rt_create(w, h)
+	else do gfx.rt_resize(_mcp.window_rt, w, h)
+	gfx.pass_begin_target(_mcp.window_rt, [4]f32{0.96, 0.96, 0.96, 1}, depth = false)
+	gfx.pass_end(proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass) {
+		im_sdlgpu.RenderDrawData(im.GetDrawData(), cmd, rp)
+	})
+	dl := gfx.frame_capture_begin(_mcp.window_rt)
 	if dl == nil {
-		_mcp_respond_error(req.id, "capture_failed", "no swapchain image this frame (window minimized?)")
+		_mcp_respond_error(req.id, "capture_failed", "could not read the window capture")
 		return
 	}
 	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, view = "editor", max_size = req.max_size})

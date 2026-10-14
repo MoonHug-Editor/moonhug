@@ -31,9 +31,9 @@
 // Unassigned texture rows bind WHITE: metal_rough/ao neutral, emissive
 // gated by emissive_color.w, normals gated by normal_strength.
 //
-// Tangents: the mesh has none, so the tangent frame is derived per-pixel
-// from position/uv derivatives (Schüler's cotangent frame) — good enough
-// until imported tangents land. Albedo and emissive textures are sRGB color
+// Tangents: the mesh's own (imported or generated at import), or a frame
+// derived per pixel from position/uv derivatives (Schüler's cotangent frame)
+// where a vertex has none. Albedo and emissive textures are sRGB color
 // data, decoded here. Everything else arrives linear (frag_color, the
 // lights, color properties) and the result is linear: the view's last pass
 // encodes it.
@@ -43,6 +43,7 @@ layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
 layout(location = 3) in vec3 frag_world_pos;
+layout(location = 4) in vec4 frag_tangent; // world tangent, w bitangent sign; zero = none
 
 layout(set = 2, binding = 0) uniform sampler2D tex;             // albedo
 layout(set = 2, binding = 1) uniform sampler2D metal_rough_tex; // g=rough, b=metal
@@ -91,6 +92,17 @@ mat3 cotangent_frame(vec3 N, vec3 p, vec2 uv) {
     return mat3(T * invmax, B * invmax, N);
 }
 
+// The tangent frame: the mesh's tangents, or one from screen-space
+// derivatives where the vertex has none.
+mat3 tangent_frame(vec3 N) {
+    if (dot(frag_tangent.xyz, frag_tangent.xyz) > 1e-8) {
+        vec3 T = normalize(frag_tangent.xyz - N * dot(N, frag_tangent.xyz));
+        vec3 B = cross(N, T) * (frag_tangent.w < 0.0 ? -1.0 : 1.0);
+        return mat3(T, B, N);
+    }
+    return cotangent_frame(N, frag_world_pos, frag_uv);
+}
+
 void main() {
     // The texture is sRGB color data, frag_color arrives linear (world.vert).
     vec4 base_tex = texture(tex, frag_uv);
@@ -107,7 +119,7 @@ void main() {
     if (normal_strength > 0.0) {
         vec3 nm = texture(normal_tex, frag_uv).xyz * 2.0 - 1.0;
         nm.xy *= normal_strength;
-        n = normalize(cotangent_frame(n, frag_world_pos, frag_uv) * nm);
+        n = normalize(tangent_frame(n) * nm);
     }
 
     vec3 v = normalize(cam_pos.xyz - frag_world_pos);
