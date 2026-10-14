@@ -55,85 +55,91 @@
         },
         {
           "pptr": {
-            "local_id": 111,
+            "local_id": 110,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 114,
+            "local_id": 113,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 117,
+            "local_id": 116,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 120,
+            "local_id": 119,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 123,
+            "local_id": 122,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 126,
+            "local_id": 125,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 129,
+            "local_id": 128,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 132,
+            "local_id": 131,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 135,
+            "local_id": 134,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 138,
+            "local_id": 137,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 141,
+            "local_id": 140,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 144,
+            "local_id": 143,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 147,
+            "local_id": 146,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         },
         {
           "pptr": {
-            "local_id": 150,
+            "local_id": 149,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 152,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -210,12 +216,12 @@
     },
     {
       "local_id": 106,
-      "name": "Point Red",
+      "name": "Environment",
       "is_active": true,
       "position": [
-        -4.0,
-        1.2,
-        1.5
+        0.0,
+        0.0,
+        0.0
       ],
       "rotation": [
         0.0,
@@ -244,6 +250,40 @@
     },
     {
       "local_id": 108,
+      "name": "Point Red",
+      "is_active": true,
+      "position": [
+        -4.0,
+        1.2,
+        1.5
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 107
+        }
+      ]
+    },
+    {
+      "local_id": 110,
       "name": "Spot Blue",
       "is_active": true,
       "position": [
@@ -272,12 +312,12 @@
       "children": [],
       "components": [
         {
-          "local_id": 107
+          "local_id": 109
         }
       ]
     },
     {
-      "local_id": 111,
+      "local_id": 113,
       "name": "Floor",
       "is_active": true,
       "position": [
@@ -306,15 +346,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 109
+          "local_id": 111
         },
         {
-          "local_id": 110
+          "local_id": 112
         }
       ]
     },
     {
-      "local_id": 114,
+      "local_id": 116,
       "name": "Sphere Default",
       "is_active": true,
       "position": [
@@ -343,15 +383,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 112
+          "local_id": 114
         },
         {
-          "local_id": 113
+          "local_id": 115
         }
       ]
     },
     {
-      "local_id": 117,
+      "local_id": 119,
       "name": "Sphere Red",
       "is_active": true,
       "position": [
@@ -380,15 +420,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 115
+          "local_id": 117
         },
         {
-          "local_id": 116
+          "local_id": 118
         }
       ]
     },
     {
-      "local_id": 120,
+      "local_id": 122,
       "name": "Sphere Green",
       "is_active": true,
       "position": [
@@ -417,15 +457,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 118
+          "local_id": 120
         },
         {
-          "local_id": 119
+          "local_id": 121
         }
       ]
     },
     {
-      "local_id": 123,
+      "local_id": 125,
       "name": "Sphere Blue",
       "is_active": true,
       "position": [
@@ -454,15 +494,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 121
+          "local_id": 123
         },
         {
-          "local_id": 122
+          "local_id": 124
         }
       ]
     },
     {
-      "local_id": 126,
+      "local_id": 128,
       "name": "Sphere Rim",
       "is_active": true,
       "position": [
@@ -491,15 +531,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 124
+          "local_id": 126
         },
         {
-          "local_id": 125
+          "local_id": 127
         }
       ]
     },
     {
-      "local_id": 129,
+      "local_id": 131,
       "name": "Sphere RimGraph",
       "is_active": true,
       "position": [
@@ -528,15 +568,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 127
+          "local_id": 129
         },
         {
-          "local_id": 128
+          "local_id": 130
         }
       ]
     },
     {
-      "local_id": 132,
+      "local_id": 134,
       "name": "Sphere Stripes",
       "is_active": true,
       "position": [
@@ -565,15 +605,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 130
+          "local_id": 132
         },
         {
-          "local_id": 131
+          "local_id": 133
         }
       ]
     },
     {
-      "local_id": 135,
+      "local_id": 137,
       "name": "Sphere Glow",
       "is_active": true,
       "position": [
@@ -602,15 +642,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 133
+          "local_id": 135
         },
         {
-          "local_id": 134
+          "local_id": 136
         }
       ]
     },
     {
-      "local_id": 138,
+      "local_id": 140,
       "name": "Capsule",
       "is_active": true,
       "position": [
@@ -639,15 +679,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 136
+          "local_id": 138
         },
         {
-          "local_id": 137
+          "local_id": 139
         }
       ]
     },
     {
-      "local_id": 141,
+      "local_id": 143,
       "name": "Cube",
       "is_active": true,
       "position": [
@@ -676,15 +716,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 139
+          "local_id": 141
         },
         {
-          "local_id": 140
+          "local_id": 142
         }
       ]
     },
     {
-      "local_id": 144,
+      "local_id": 146,
       "name": "DamagedHelmet",
       "is_active": true,
       "position": [
@@ -713,15 +753,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 142
+          "local_id": 144
         },
         {
-          "local_id": 143
+          "local_id": 145
         }
       ]
     },
     {
-      "local_id": 147,
+      "local_id": 149,
       "name": "Avocado",
       "is_active": true,
       "position": [
@@ -750,15 +790,15 @@
       "children": [],
       "components": [
         {
-          "local_id": 145
+          "local_id": 147
         },
         {
-          "local_id": 146
+          "local_id": 148
         }
       ]
     },
     {
-      "local_id": 150,
+      "local_id": 152,
       "name": "Sphere UV",
       "is_active": true,
       "position": [
@@ -787,10 +827,10 @@
       "children": [],
       "components": [
         {
-          "local_id": 148
+          "local_id": 150
         },
         {
-          "local_id": 149
+          "local_id": 151
         }
       ]
     }
@@ -838,11 +878,44 @@
       "type": 0
     },
     {
+      "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "base": {
+        "enabled": true,
+        "local_id": 105
+      },
+      "sky": 0,
+      "sky_top": [
+        0.35,
+        0.55,
+        0.85,
+        1.0
+      ],
+      "sky_horizon": [
+        0.75,
+        0.82,
+        0.9,
+        1.0
+      ],
+      "ground": [
+        0.35,
+        0.32,
+        0.3,
+        1.0
+      ],
+      "sun_size": 1.0,
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "exposure": 1.0,
+      "ambient_intensity": 1.0,
+      "reflection_intensity": 1.0,
+      "draw_sky": true
+    },
+    {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
       "ambient": 0.34999999,
       "base": {
         "enabled": true,
-        "local_id": 105
+        "local_id": 107
       },
       "color": [
         1.0,
@@ -862,7 +935,7 @@
       "ambient": 0.34999999,
       "base": {
         "enabled": true,
-        "local_id": 107
+        "local_id": 109
       },
       "color": [
         0.3,
@@ -881,7 +954,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 109
+        "local_id": 111
       },
       "mesh": {
         "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
@@ -892,7 +965,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 110
+        "local_id": 112
       },
       "materials": [
         "86518465-b823-4eb9-b3f5-c0deef450fc6"
@@ -902,7 +975,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 112
+        "local_id": 114
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -911,20 +984,20 @@
     },
     {
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 113
-      },
-      "materials": [
-        "86518465-b823-4eb9-b3f5-c0deef450fc6"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
         "local_id": 115
       },
+      "materials": [
+        "86518465-b823-4eb9-b3f5-c0deef450fc6"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 117
+      },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
         "local_id": 0
@@ -934,7 +1007,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 116
+        "local_id": 118
       },
       "materials": [
         "36905c9e-4494-4dfc-b15d-301743783f65"
@@ -944,7 +1017,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 118
+        "local_id": 120
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -955,7 +1028,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 119
+        "local_id": 121
       },
       "materials": [
         "c4e858d8-57ed-44e0-adb0-33ce36393678"
@@ -965,7 +1038,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 121
+        "local_id": 123
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -976,7 +1049,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 122
+        "local_id": 124
       },
       "materials": [
         "5bcf091b-285e-46a7-93ff-ab413b929a07"
@@ -986,7 +1059,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 124
+        "local_id": 126
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -997,7 +1070,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 125
+        "local_id": 127
       },
       "materials": [
         "42542f7f-166a-4873-8b32-c3ed810cfbd1"
@@ -1007,7 +1080,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 127
+        "local_id": 129
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -1018,7 +1091,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 128
+        "local_id": 130
       },
       "materials": [
         "d74fd5fe-5001-4134-b66d-3ed161db3dc9"
@@ -1028,7 +1101,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 130
+        "local_id": 132
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -1039,7 +1112,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 131
+        "local_id": 133
       },
       "materials": [
         "0884a4d9-3048-4b0b-9a2b-5aba8d7236d7"
@@ -1049,7 +1122,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 133
+        "local_id": 135
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -1060,7 +1133,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 134
+        "local_id": 136
       },
       "materials": [
         "8b6a63c2-3d1d-44aa-95e4-56cf9310ce82"
@@ -1070,7 +1143,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 136
+        "local_id": 138
       },
       "mesh": {
         "guid": "6902c2a5-44a4-4a0e-b2f5-e2c65d22835f",
@@ -1081,7 +1154,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 137
+        "local_id": 139
       },
       "materials": [
         "42542f7f-166a-4873-8b32-c3ed810cfbd1"
@@ -1091,7 +1164,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 139
+        "local_id": 141
       },
       "mesh": {
         "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
@@ -1102,7 +1175,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 140
+        "local_id": 142
       },
       "materials": [
         "ac10cafc-8354-4abb-9485-2a3a21076578"
@@ -1112,7 +1185,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 142
+        "local_id": 144
       },
       "mesh": {
         "guid": "eb28d9ed-803a-446b-bc76-1ff01e138527",
@@ -1123,7 +1196,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 143
+        "local_id": 145
       },
       "materials": [
         "916a80cf-95d1-4ac3-8bab-0f0a90c7f26a"
@@ -1133,7 +1206,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 145
+        "local_id": 147
       },
       "mesh": {
         "guid": "ca39b87f-be91-46d0-9ab3-ca8cb9a93292",
@@ -1144,7 +1217,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 146
+        "local_id": 148
       },
       "materials": [
         "32583acf-be2f-4fb3-bef6-1993e9c5a137"
@@ -1154,7 +1227,7 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 148
+        "local_id": 150
       },
       "mesh": {
         "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
@@ -1165,7 +1238,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 149
+        "local_id": 151
       },
       "materials": [
         "f98dbc29-ba06-4408-bc9f-e84831eccce9"

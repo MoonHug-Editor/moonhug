@@ -82,6 +82,19 @@ LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}}
 // The built-in lit shader's name.
 LIT_SHADER :: "lit"
 
+// The 1x1 white texture: what an unassigned sampler reads.
+white_texture :: proc() -> Texture {
+	return _gfx.white_tex^
+}
+
+// The image-based light's fullscreen shaders (shaders/env_*.frag): the sky
+// into a cube face, a face's GGX prefilter at a roughness, a face's diffuse
+// irradiance, and the sky behind a view (draw_sky).
+ENV_CAPTURE_SHADER    :: "env_capture"
+ENV_PREFILTER_SHADER  :: "env_prefilter"
+ENV_IRRADIANCE_SHADER :: "env_irradiance"
+SKYBOX_SHADER         :: "skybox"
+
 // The fullscreen shader that encodes a linear image to sRGB: what a Display
 // target receives (display_blit, and pass_end for a pass on one).
 ENCODE_SHADER :: "encode"
@@ -181,6 +194,7 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	_gfx.sampler_nearest = sdl.CreateGPUSampler(_gfx.device, sampler_info)
 
 	if !_create_pipelines() do return false
+	if !_cubemap_init() do return false
 	if !_skinning_init() do return false
 
 	white := [4]u8{255, 255, 255, 255}
@@ -196,7 +210,8 @@ shutdown :: proc() {
 		_skinning_shutdown()
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
-		_pipelines_shutdown()
+		_cubemap_shutdown()
+	_pipelines_shutdown()
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_repeat)

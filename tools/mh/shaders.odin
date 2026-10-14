@@ -21,7 +21,7 @@ import "core:strings"
 SHADER_DIR :: "moonhug/libs/gfx/shaders"
 
 // Stage comes from the second extension: "world.vert" -> vert.
-SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag"}
+SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag", "env_capture.frag", "env_prefilter.frag", "env_irradiance.frag", "skybox.frag"}
 
 cmd_shaders :: proc(args: []string) -> int {
 	missing := false
@@ -46,6 +46,7 @@ shaders_compile :: proc(force := false) -> bool {
 	os.make_directory_all(out_dir)
 	surface, _ := filepath.join({SHADER_DIR, "surface.glsl"}, context.temp_allocator)
 	surface_main, _ := filepath.join({SHADER_DIR, "surface_main.glsl"}, context.temp_allocator)
+	env_common, _ := filepath.join({SHADER_DIR, "env_common.glsl"}, context.temp_allocator)
 
 	for name in SHADERS {
 		stage := name[strings.last_index(name, ".") + 1:]
@@ -55,7 +56,7 @@ shaders_compile :: proc(force := false) -> bool {
 
 		// The surface template files are inputs of every shader that includes
 		// them (lit.frag), so a template edit recompiles.
-		if !force && newer_than(spv, src) && newer_than(msl, src) && newer_than(spv, surface) && newer_than(spv, surface_main) do continue
+		if !force && newer_than(spv, src) && newer_than(msl, src) && newer_than(spv, surface) && newer_than(spv, surface_main) && newer_than(spv, env_common) do continue
 
 		// -I: `#include "surface.glsl"` resolves against the shader folder.
 		if !step(fmt.tprintf("glslc %s", name), "glslc", fmt.tprintf("-fshader-stage=%s", stage), "-I", SHADER_DIR, src, "-o", spv) {

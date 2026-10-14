@@ -9,6 +9,8 @@ layout(location = 0) out vec2 frag_uv;
 void main() {
     vec2 pos = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
     frag_uv = pos;
-    gl_Position = vec4(pos * 2.0 - 1.0, 0.0, 1.0);
+    // On the far plane: a depth-tested draw_sky fills only what nothing
+    // nearer covered. Draws without a depth test do not care.
+    gl_Position = vec4(pos * 2.0 - 1.0, 1.0, 1.0);
     gl_Position.y = -gl_Position.y;
 }

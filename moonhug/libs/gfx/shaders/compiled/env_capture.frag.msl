@@ -1,0 +1,140 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4 face_mode;
+    float4 sky_top;
+    float4 sky_horizon;
+    float4 ground;
+    float4 sun_dir;
+    float4 sun_color;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+static inline __attribute__((always_inline))
+float3 face_dir(thread const int& face, thread const float2& uv)
+{
+    float2 p = (uv * 2.0) - float2(1.0);
+    float3 d;
+    if (face == 0)
+    {
+        d = float3(1.0, -p.y, -p.x);
+    }
+    else
+    {
+        if (face == 1)
+        {
+            d = float3(-1.0, -p.y, p.x);
+        }
+        else
+        {
+            if (face == 2)
+            {
+                d = float3(p.x, 1.0, p.y);
+            }
+            else
+            {
+                if (face == 3)
+                {
+                    d = float3(p.x, -1.0, -p.y);
+                }
+                else
+                {
+                    if (face == 4)
+                    {
+                        d = float3(p.x, -p.y, 1.0);
+                    }
+                    else
+                    {
+                        d = float3(-p.x, -p.y, -1.0);
+                    }
+                }
+            }
+        }
+    }
+    return fast::normalize(d);
+}
+
+static inline __attribute__((always_inline))
+float3 procedural(thread const float3& d, constant Params& _151)
+{
+    float y = d.y;
+    float3 _145;
+    if (y >= 0.0)
+    {
+        _145 = mix(_151.sky_horizon.xyz, _151.sky_top.xyz, float3(powr(y, 0.449999988079071044921875)));
+    }
+    else
+    {
+        _145 = mix(_151.sky_horizon.xyz, _151.ground.xyz, float3(powr(fast::min((-y) * 4.0, 1.0), 0.5)));
+    }
+    float3 c = _145;
+    float mu = fast::max(dot(d, _151.sun_dir.xyz), 0.0);
+    float above = smoothstep(-0.0199999995529651641845703125, 0.0199999995529651641845703125, y);
+    c += ((_151.sun_color.xyz * ((0.0599999986588954925537109375 * powr(mu, 6.0)) + (0.300000011920928955078125 * powr(mu, 96.0)))) * above);
+    float edge = (1.0 - _151.sun_dir.w) * 0.300000011920928955078125;
+    c += (((_151.sun_color.xyz * 6.0) * smoothstep(_151.sun_dir.w - edge, _151.sun_dir.w, dot(d, _151.sun_dir.xyz))) * above);
+    return c;
+}
+
+static inline __attribute__((always_inline))
+float3 srgb_to_linear(thread const float3& c)
+{
+    return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
+}
+
+static inline __attribute__((always_inline))
+float3 panorama_color(thread const float3& d, constant Params& _151, texture2d<float> panorama, sampler panoramaSmplr)
+{
+    float u = ((precise::atan2(d.z, d.x) / 6.283185482025146484375) + 0.5) + (_151.face_mode.z / 6.283185482025146484375);
+    float v = acos(fast::clamp(d.y, -1.0, 1.0)) / 3.1415927410125732421875;
+    float3 param = panorama.sample(panoramaSmplr, float2(fract(u), v), level(0.0)).xyz;
+    return srgb_to_linear(param);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _151 [[buffer(1)]], texture2d<float> panorama [[texture(0)]], sampler panoramaSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    int param = int(_151.face_mode.x + 0.5);
+    float2 param_1 = in.frag_uv;
+    float3 d = face_dir(param, param_1);
+    int mode = int(_151.face_mode.y + 0.5);
+    float3 _299;
+    if (mode == 0)
+    {
+        float3 param_2 = d;
+        _299 = procedural(param_2, _151);
+    }
+    else
+    {
+        float3 _308;
+        if (mode == 1)
+        {
+            float3 param_3 = d;
+            _308 = panorama_color(param_3, _151, panorama, panoramaSmplr);
+        }
+        else
+        {
+            _308 = _151.sky_top.xyz;
+        }
+        _299 = _308;
+    }
+    float3 c = _299;
+    out.out_color = float4(c * _151.face_mode.w, 1.0);
+    return out;
+}
+

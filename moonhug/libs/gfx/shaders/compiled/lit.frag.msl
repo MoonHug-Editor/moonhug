@@ -39,6 +39,7 @@ struct LightUBO
     GpuLight_1 lights[8];
     float4x4 shadow_vp;
     float4 shadow_params;
+    float4 env_params;
 };
 
 struct LitMaterial
@@ -232,7 +233,7 @@ float3 env_brdf_approx(thread const float3& f0, thread const float& roughness, t
     return (f0 * ab.x) + float3(ab.y);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _312 [[buffer(0)]], constant LitMaterial& _602 [[buffer(1)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], texture2d<float> shadow_map [[texture(7)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _312 [[buffer(0)]], constant LitMaterial& _602 [[buffer(1)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], texture2d<float> shadow_map [[texture(7)]], texturecube<float> env_specular [[texture(8)]], texturecube<float> env_irradiance [[texture(9)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]], sampler env_specularSmplr [[sampler(8)]], sampler env_irradianceSmplr [[sampler(9)]])
 {
     main0_out out = {};
     float4 param = tex.sample(texSmplr, in.frag_uv);
@@ -319,12 +320,13 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _312 [[buf
         float3 kd = (float3(1.0) - F) * diffuse_color;
         color += (((kd + spec) * l.color_outer.xyz) * (NoL * atten));
     }
-    float ambient = _312.ambient_count.x;
+    float3 r = reflect(-v, n);
+    float3 irradiance = env_irradiance.sample(env_irradianceSmplr, n).xyz * _312.env_params.x;
+    float3 reflected = env_specular.sample(env_specularSmplr, r, level(roughness * _312.env_params.z)).xyz * _312.env_params.y;
     float3 param_16 = f0;
     float param_17 = roughness;
     float param_18 = NoV;
-    float3 ambient_spec = env_brdf_approx(param_16, param_17, param_18);
-    color += (((diffuse_color + ambient_spec) * ambient) * s.occlusion);
+    color += (((diffuse_color * irradiance) + (reflected * env_brdf_approx(param_16, param_17, param_18))) * s.occlusion);
     out.out_color = float4(color + s.emissive, s.alpha);
     return out;
 }

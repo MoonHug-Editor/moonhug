@@ -32,10 +32,22 @@ _Shader_Entry :: struct {
 _Fullscreen_Entry :: struct {
 	frag:      ^sdl.GPUShader,
 	pipelines: [Target_Format]^sdl.GPUGraphicsPipeline,
+	// draw_sky: depth-tested at the far plane, no depth write.
+	sky:       [Target_Format]^sdl.GPUGraphicsPipeline,
+	// cubemap_render: an HDR color target, no depth attachment.
+	cube:      ^sdl.GPUGraphicsPipeline,
 }
 
 @(private) _FULLSCREEN_VERT_SPV := #load("shaders/compiled/fullscreen.vert.spv")
 @(private) _FULLSCREEN_VERT_MSL := #load("shaders/compiled/fullscreen.vert.msl")
+@(private) _ENV_CAPTURE_FRAG_SPV    := #load("shaders/compiled/env_capture.frag.spv")
+@(private) _ENV_CAPTURE_FRAG_MSL    := #load("shaders/compiled/env_capture.frag.msl")
+@(private) _ENV_PREFILTER_FRAG_SPV  := #load("shaders/compiled/env_prefilter.frag.spv")
+@(private) _ENV_PREFILTER_FRAG_MSL  := #load("shaders/compiled/env_prefilter.frag.msl")
+@(private) _ENV_IRRADIANCE_FRAG_SPV := #load("shaders/compiled/env_irradiance.frag.spv")
+@(private) _ENV_IRRADIANCE_FRAG_MSL := #load("shaders/compiled/env_irradiance.frag.msl")
+@(private) _SKYBOX_FRAG_SPV         := #load("shaders/compiled/skybox.frag.spv")
+@(private) _SKYBOX_FRAG_MSL         := #load("shaders/compiled/skybox.frag.msl")
 @(private) _ENCODE_FRAG_SPV     := #load("shaders/compiled/encode.frag.spv")
 @(private) _ENCODE_FRAG_MSL     := #load("shaders/compiled/encode.frag.msl")
 @(private) _BLIT_FRAG_SPV       := #load("shaders/compiled/blit.frag.spv")
@@ -53,10 +65,14 @@ _create_pipelines :: proc() -> bool {
 	_gfx.fullscreen_vert = _create_shader(.VERTEX, 0, 0, _FULLSCREEN_VERT_SPV, _FULLSCREEN_VERT_MSL)
 	if _gfx.fullscreen_vert == nil do return false
 	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
-	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = SHADOW_SAMPLER_SLOT + 1, frag_uniform_buffers = 2) do return false
+	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = 2) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
+	if !fullscreen_register(ENV_CAPTURE_SHADER, _ENV_CAPTURE_FRAG_SPV, _ENV_CAPTURE_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(ENV_PREFILTER_SHADER, _ENV_PREFILTER_FRAG_SPV, _ENV_PREFILTER_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(ENV_IRRADIANCE_SHADER, _ENV_IRRADIANCE_FRAG_SPV, _ENV_IRRADIANCE_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(SKYBOX_SHADER, _SKYBOX_FRAG_SPV, _SKYBOX_FRAG_MSL, 1, 2) do return false
 	return true
 }
 
@@ -271,11 +287,23 @@ fullscreen_unregister :: proc(name: string) {
 }
 
 @(private)
-_fullscreen_pipeline :: proc(name: string, format: Target_Format) -> ^sdl.GPUGraphicsPipeline {
+_fullscreen_pipeline :: proc(name: string, format: Target_Format, sky := false) -> ^sdl.GPUGraphicsPipeline {
 	e, ok := &_gfx.fullscreen[name]
 	if !ok do return nil
+	if sky {
+		if e.sky[format] == nil do e.sky[format] = _fullscreen_build(e, format, sky = true)
+		return e.sky[format]
+	}
 	if e.pipelines[format] == nil do e.pipelines[format] = _fullscreen_build(e, format)
 	return e.pipelines[format]
+}
+
+// The pipeline that renders a fullscreen shader into a cubemap face.
+_fullscreen_cube_pipeline :: proc(name: string) -> ^sdl.GPUGraphicsPipeline {
+	e, ok := &_gfx.fullscreen[name]
+	if !ok do return nil
+	if e.cube == nil do e.cube = _fullscreen_build(e, .HDR, depth = false)
+	return e.cube
 }
 
 @(private)
@@ -283,6 +311,10 @@ _fullscreen_entry_release :: proc(e: ^_Fullscreen_Entry) {
 	for p in e.pipelines {
 		if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
 	}
+	for p in e.sky {
+		if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+	}
+	if e.cube != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, e.cube)
 	if e.frag != nil do sdl.ReleaseGPUShader(_gfx.device, e.frag)
 	e^ = {}
 }
@@ -290,7 +322,10 @@ _fullscreen_entry_release :: proc(e: ^_Fullscreen_Entry) {
 // Depth is attached but neither tested nor written: every gfx pass has a
 // depth target, and the pipeline's target layout has to match the pass's.
 @(private)
-_fullscreen_build :: proc(e: ^_Fullscreen_Entry, format: Target_Format) -> ^sdl.GPUGraphicsPipeline {
+// The fullscreen triangle lies on the far plane (fullscreen.vert), so a
+// `sky` pipeline that tests LESS_OR_EQUAL without writing fills only the
+// pixels no earlier draw covered.
+_fullscreen_build :: proc(e: ^_Fullscreen_Entry, format: Target_Format, sky := false, depth := true) -> ^sdl.GPUGraphicsPipeline {
 	color_target := sdl.GPUColorTargetDescription{format = target_pixel_format(format)}
 	info := sdl.GPUGraphicsPipelineCreateInfo{
 		vertex_shader   = _gfx.fullscreen_vert,
@@ -300,8 +335,11 @@ _fullscreen_build :: proc(e: ^_Fullscreen_Entry, format: Target_Format) -> ^sdl.
 			color_target_descriptions = &color_target,
 			num_color_targets         = 1,
 			depth_stencil_format      = _DEPTH_FORMAT,
-			has_depth_stencil_target  = true,
+			has_depth_stencil_target  = depth,
 		},
+	}
+	if sky {
+		info.depth_stencil_state = {compare_op = .LESS_OR_EQUAL, enable_depth_test = true}
 	}
 	return sdl.CreateGPUGraphicsPipeline(_gfx.device, info)
 }

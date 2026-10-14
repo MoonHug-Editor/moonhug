@@ -80,8 +80,9 @@ reset_Render_Pipeline :: proc(p: ^Render_Pipeline) {
 	cleanup_Render_Pipeline(p)
 	p.next_id = 1
 	pipeline_add_slot(p, MAIN_SLOT)
+	pipeline_add_node(p, "environment_pass", "")
 	pipeline_add_node(p, "shadow_pass", "")
-	for name in ([]string{"scene_opaque", "scene_under", "scene_transparent", "scene_over", "final_blit"}) {
+	for name in ([]string{"scene_opaque", "scene_sky", "scene_under", "scene_transparent", "scene_over", "final_blit"}) {
 		pipeline_add_node(p, name, MAIN_SLOT)
 	}
 }

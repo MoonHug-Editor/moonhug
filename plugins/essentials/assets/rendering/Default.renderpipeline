@@ -7,59 +7,84 @@
   ],
   "nodes": [
     {
+      "id": 10,
+      "node": "environment_pass",
+      "slot": "",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 1,
       "node": "shadow_pass",
       "slot": "",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 2,
       "node": "scene_opaque",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 11,
+      "node": "scene_sky",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
     },
     {
       "id": 3,
       "node": "scene_under",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 4,
       "node": "scene_transparent",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 5,
       "node": "scene_over",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 6,
       "node": "postfx_bloom",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 7,
       "node": "postfx_tonemap",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 8,
       "node": "postfx_fxaa",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     },
     {
       "id": 9,
       "node": "final_blit",
       "slot": "Main",
-      "binds": []
+      "binds": [],
+      "muted": false
     }
   ],
-  "next_id": 10
+  "next_id": 12
 }

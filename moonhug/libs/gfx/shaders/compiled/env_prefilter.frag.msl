@@ -1,0 +1,137 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4 face_rough;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+static inline __attribute__((always_inline))
+float3 face_dir(thread const int& face, thread const float2& uv)
+{
+    float2 p = (uv * 2.0) - float2(1.0);
+    float3 d;
+    if (face == 0)
+    {
+        d = float3(1.0, -p.y, -p.x);
+    }
+    else
+    {
+        if (face == 1)
+        {
+            d = float3(-1.0, -p.y, p.x);
+        }
+        else
+        {
+            if (face == 2)
+            {
+                d = float3(p.x, 1.0, p.y);
+            }
+            else
+            {
+                if (face == 3)
+                {
+                    d = float3(p.x, -1.0, -p.y);
+                }
+                else
+                {
+                    if (face == 4)
+                    {
+                        d = float3(p.x, -p.y, 1.0);
+                    }
+                    else
+                    {
+                        d = float3(-p.x, -p.y, -1.0);
+                    }
+                }
+            }
+        }
+    }
+    return fast::normalize(d);
+}
+
+static inline __attribute__((always_inline))
+void basis(thread const float3& n, thread float3& t, thread float3& b)
+{
+    float3 up = select(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), bool3(abs(n.y) < 0.999000012874603271484375));
+    t = fast::normalize(cross(up, n));
+    b = cross(n, t);
+}
+
+static inline __attribute__((always_inline))
+float radical_inverse(thread uint& bits)
+{
+    bits = (bits << 16u) | (bits >> 16u);
+    bits = ((bits & 1431655765u) << 1u) | ((bits & 2863311530u) >> 1u);
+    bits = ((bits & 858993459u) << 2u) | ((bits & 3435973836u) >> 2u);
+    bits = ((bits & 252645135u) << 4u) | ((bits & 4042322160u) >> 4u);
+    bits = ((bits & 16711935u) << 8u) | ((bits & 4278255360u) >> 8u);
+    return float(bits) * 2.3283064365386962890625e-10;
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _188 [[buffer(1)]], texturecube<float> source [[texture(0)]], sampler sourceSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    int param = int(_188.face_rough.x + 0.5);
+    float2 param_1 = in.frag_uv;
+    float3 n = face_dir(param, param_1);
+    float roughness = _188.face_rough.y;
+    if (roughness < 0.001000000047497451305389404296875)
+    {
+        out.out_color = float4(source.sample(sourceSmplr, n, level(0.0)).xyz, 1.0);
+        return out;
+    }
+    float a = roughness * roughness;
+    float3 param_2 = n;
+    float3 param_3;
+    float3 param_4;
+    basis(param_2, param_3, param_4);
+    float3 t = param_3;
+    float3 b = param_4;
+    uint count = uint(_188.face_rough.w);
+    float texel_sa = 12.56637096405029296875 / ((6.0 * _188.face_rough.z) * _188.face_rough.z);
+    float3 sum = float3(0.0);
+    float weight = 0.0;
+    for (uint i = 0u; i < count; i++)
+    {
+        uint param_5 = i;
+        float _272 = radical_inverse(param_5);
+        float2 xi = float2(float(i) / float(count), _272);
+        float phi = 6.283185482025146484375 * xi.x;
+        float cos_t = sqrt((1.0 - xi.y) / (1.0 + (((a * a) - 1.0) * xi.y)));
+        float sin_t = sqrt(1.0 - (cos_t * cos_t));
+        float3 h = fast::normalize(((t * (sin_t * cos(phi))) + (b * (sin_t * sin(phi)))) + (n * cos_t));
+        float3 l = fast::normalize((h * (2.0 * dot(n, h))) - n);
+        float NoL = dot(n, l);
+        if (NoL <= 0.0)
+        {
+            continue;
+        }
+        float NoH = fast::max(dot(n, h), 0.0);
+        float a2 = a * a;
+        float f = (((NoH * a2) - NoH) * NoH) + 1.0;
+        float D = a2 / ((3.1415927410125732421875 * f) * f);
+        float pdf = (D * 0.25) + 9.9999997473787516355514526367188e-05;
+        float sample_sa = 1.0 / (float(count) * pdf);
+        float mip = fast::max((0.5 * log2(sample_sa / texel_sa)) + 1.0, 0.0);
+        sum += (source.sample(sourceSmplr, l, level(mip)).xyz * NoL);
+        weight += NoL;
+    }
+    out.out_color = float4(sum / float3(fast::max(weight, 9.9999997473787516355514526367188e-05)), 1.0);
+    return out;
+}
+

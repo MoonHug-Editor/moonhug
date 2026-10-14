@@ -52,7 +52,7 @@ A sequence with named ports carries the same information as a wired node graph: 
 - The **frame lane** holds per-frame nodes (`frame=true`): the shadow map, a probe. Each runs once per frame, whichever slot asks first, with the frame's target pool.
 - A **slot lane** holds per-view nodes. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `shadow_pass`, `Main` lane `scene_opaque`, `scene_under`, `scene_transparent`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `postfx_fxaa`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_pass`, `Main` lane `scene_opaque`, `scene_sky`, `scene_under`, `scene_transparent`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `postfx_fxaa`, `final_blit`.
 
 ## Nodes
 

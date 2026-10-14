@@ -153,6 +153,10 @@ Everything gfx draws is lit, blended and filtered in linear light:
 - Render targets come in three formats (`Target_Format`). `HDR` is linear float. `LDR` is linear at 8 bits, stored as sRGB so the GPU encodes on write and decodes on sampling. `Display` holds sRGB bytes: the window and every target imgui shows (scene and game views, previews, thumbnails).
 - A pass on a Display target draws into a linear scratch target of its size and `pass_end` encodes it, so previews and thumbnails light in linear like the scene. `display_blit` encodes a finished linear image onto a Display target directly: the last pass of a render pipeline (`final_blit`).
 
+## Cubemaps and the environment
+
+`gfx.Cubemap` is an RGBA16F cube: `cubemap_render` draws one face at one mip with a fullscreen shader in its own pass (face order +X, -X, +Y, -Y, +Z, -Z, `shaders/env_common.glsl` face_dir), `cubemap_generate_mips` fills the mips. `set_environment(specular, irradiance, diffuse, specular)` hands a pass its image-based light: sampler slots 8 and 9 (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`), bound like the shadow map at slot 7 to shaders that declare them, with 1x1 white cubes and the ambient level as intensity when a pass sets none. `draw_sky` is a fullscreen draw on the far plane, depth-tested without writing, so it fills only uncovered pixels.
+
 ## Render commands (engine side)
 
 `plugins/engine/render.odin` is rewritten around per-frame command lists (temp

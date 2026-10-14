@@ -1,0 +1,101 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4 face_lod;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+static inline __attribute__((always_inline))
+float3 face_dir(thread const int& face, thread const float2& uv)
+{
+    float2 p = (uv * 2.0) - float2(1.0);
+    float3 d;
+    if (face == 0)
+    {
+        d = float3(1.0, -p.y, -p.x);
+    }
+    else
+    {
+        if (face == 1)
+        {
+            d = float3(-1.0, -p.y, p.x);
+        }
+        else
+        {
+            if (face == 2)
+            {
+                d = float3(p.x, 1.0, p.y);
+            }
+            else
+            {
+                if (face == 3)
+                {
+                    d = float3(p.x, -1.0, -p.y);
+                }
+                else
+                {
+                    if (face == 4)
+                    {
+                        d = float3(p.x, -p.y, 1.0);
+                    }
+                    else
+                    {
+                        d = float3(-p.x, -p.y, -1.0);
+                    }
+                }
+            }
+        }
+    }
+    return fast::normalize(d);
+}
+
+static inline __attribute__((always_inline))
+void basis(thread const float3& n, thread float3& t, thread float3& b)
+{
+    float3 up = select(float3(1.0, 0.0, 0.0), float3(0.0, 1.0, 0.0), bool3(abs(n.y) < 0.999000012874603271484375));
+    t = fast::normalize(cross(up, n));
+    b = cross(n, t);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _132 [[buffer(1)]], texturecube<float> source [[texture(0)]], sampler sourceSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    int param = int(_132.face_lod.x + 0.5);
+    float2 param_1 = in.frag_uv;
+    float3 n = face_dir(param, param_1);
+    float3 param_2 = n;
+    float3 param_3;
+    float3 param_4;
+    basis(param_2, param_3, param_4);
+    float3 t = param_3;
+    float3 b = param_4;
+    float3 sum = float3(0.0);
+    float count = 0.0;
+    for (float phi = 0.0; phi < 6.283185482025146484375; phi += 0.1308996975421905517578125)
+    {
+        for (float theta = 0.0; theta < 1.57079637050628662109375; theta += 0.098174773156642913818359375)
+        {
+            float3 l = ((t * (sin(theta) * cos(phi))) + (b * (sin(theta) * sin(phi)))) + (n * cos(theta));
+            sum += ((source.sample(sourceSmplr, l, level(_132.face_lod.y)).xyz * cos(theta)) * sin(theta));
+            count += 1.0;
+        }
+    }
+    out.out_color = float4((sum * 3.1415927410125732421875) / float3(count), 1.0);
+    return out;
+}
+

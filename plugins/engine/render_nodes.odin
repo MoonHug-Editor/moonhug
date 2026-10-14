@@ -37,6 +37,7 @@ scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_de
 	gfx.pass_begin_target(hdr, clear, keep_depth)
 	gfx.set_view_proj(ctx.view.view_proj, ctx.view.cam_pos)
 	shadow_bind() // render_shadow.odin: this frame's map, if a light cast one
+	environment_bind() // render_environment.odin: this frame's sky light, if an Environment set one
 	return hdr
 }
 

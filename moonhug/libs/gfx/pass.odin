@@ -24,6 +24,7 @@ _Draw :: struct {
 	kind:         _Pipeline_Kind,
 	is_mesh:      bool,
 	fullscreen:   bool, // draw_fullscreen: shader names a fullscreen shader, texture + extra_tex are its inputs
+	sky:          bool, // draw_sky: a fullscreen draw on the far plane, depth-tested
 	texture:      ^Texture, // nil = white
 	vp_index:     i32,
 	first_vertex: u32, // batch draws
@@ -40,7 +41,7 @@ _Draw :: struct {
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 8
+MAX_FRAGMENT_SAMPLERS :: 10
 
 // Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
 // model = identity (vertices are pre-transformed to world space).
@@ -94,12 +95,27 @@ _Light_Uniform :: struct {
 	// y = depth bias, z = 1 when a map is bound, w = the light it belongs to.
 	shadow_vp:     matrix[4, 4]f32,
 	shadow_params: [4]f32,
+	// The environment (set_environment), appended the same way: x diffuse
+	// intensity, y specular intensity, z the specular cube's last mip.
+	env_params:    [4]f32,
 }
 
 // The fragment sampler slot the shadow map binds to, for shaders that
 // declare it (the surface template's `shadow_map` at set=2, binding=7).
 // Material texture rows use bindings 1..SHADOW_SAMPLER_SLOT-1.
-SHADOW_SAMPLER_SLOT :: MAX_FRAGMENT_SAMPLERS - 1
+SHADOW_SAMPLER_SLOT :: 7
+// The environment's prefiltered specular cube and its irradiance cube
+// (set_environment), bound like the shadow map to shaders that declare them
+// (the surface template). White cubes stand in when no environment is set.
+ENV_SPECULAR_SLOT   :: 8
+ENV_IRRADIANCE_SLOT :: 9
+
+_Env :: struct {
+	has:        bool,
+	specular:   ^Cubemap,
+	irradiance: ^Cubemap,
+	params:     [4]f32,
+}
 
 _Shadow :: struct {
 	has:    bool,    // a map is set for this pass
@@ -146,6 +162,7 @@ _pass: struct {
 	display_pool:  Target_Pool, // scratch targets by size
 	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
 	shadow:       _Shadow,               // reset each pass_end
+	env:          _Env,                  // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	draws:        [dynamic]_Draw,
@@ -516,6 +533,20 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 	_pass.light = u
 }
 
+// The image-based light for the CURRENT pass's lit draws: `specular`, a
+// cube whose mips are prefiltered for rising roughness, and `irradiance`,
+// its cosine-convolved diffuse light, scaled by the two intensities. Not
+// calling this keeps the ambient level as a uniform white environment.
+set_environment :: proc(specular, irradiance: ^Cubemap, diffuse_intensity, specular_intensity: f32) {
+	if specular == nil || irradiance == nil do return
+	_pass.env = _Env{
+		has        = true,
+		specular   = specular,
+		irradiance = irradiance,
+		params     = {diffuse_intensity, specular_intensity, f32(specular.mips - 1), 0},
+	}
+}
+
 // Back to the built-in default (one white directional, 0.35 ambient) — for
 // callers that set temporary lights (the inspector's preview headlight) and
 // must not leak them into later passes of lightless scenes.
@@ -673,6 +704,14 @@ draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil
 	})
 }
 
+// A fullscreen shader drawn behind everything the pass drew so far: on the
+// far plane, depth-tested without writing, so it fills only uncovered
+// pixels (the sky, after the opaque meshes).
+draw_sky :: proc(shader: string, inputs: []^Texture, material: []u8 = nil) {
+	draw_fullscreen(shader, inputs, material)
+	_pass.draws[len(_pass.draws) - 1].sky = true
+}
+
 _color_u8 :: proc(c: [4]f32) -> [4]u8 {
 	return {
 		u8(clamp(c.r, 0, 1) * 255),
@@ -783,6 +822,15 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		light.shadow_vp = _pass.shadow.vp
 		light.shadow_params = _pass.shadow.params
 	}
+	// Without an environment the white cubes times the ambient level light
+	// what no light reaches, uniformly.
+	env_specular, env_irradiance := _pass.env.specular, _pass.env.irradiance
+	if _pass.env.has {
+		light.env_params = _pass.env.params
+	} else {
+		env_specular, env_irradiance = _cubemap_white(), _cubemap_white()
+		light.env_params = {light.ambient_count.x, light.ambient_count.x, 0, 0}
+	}
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
@@ -795,7 +843,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
 			pushed_light_vp = d.vp_index
 		}
-		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format) : _shader_pipeline(d.shader, _pass.format, d.kind)
+		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind)
 		if pipeline == nil do continue
 		if pipeline != bound {
 			sdl.BindGPUGraphicsPipeline(rp, pipeline)
@@ -831,6 +879,11 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			shadow_gpu := _pass.shadow.has ? _pass.shadow.tex.gpu : _gfx.white_tex.gpu
 			bindings[SHADOW_SAMPLER_SLOT] = {texture = shadow_gpu, sampler = _gfx.sampler_nearest}
 			num_bindings = SHADOW_SAMPLER_SLOT + 1
+		}
+		if !d.fullscreen && _shader_samplers(d.shader) > ENV_IRRADIANCE_SLOT && env_specular != nil && env_irradiance != nil {
+			bindings[ENV_SPECULAR_SLOT] = {texture = env_specular.tex, sampler = _gfx.sampler_linear}
+			bindings[ENV_IRRADIANCE_SLOT] = {texture = env_irradiance.tex, sampler = _gfx.sampler_linear}
+			num_bindings = ENV_IRRADIANCE_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 
@@ -886,6 +939,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.target_depth = nil
 	_pass.light = nil
 	_pass.shadow = {}
+	_pass.env = {}
 }
 
 // One copy pass uploading this pass's vertices. cycle=true keeps earlier

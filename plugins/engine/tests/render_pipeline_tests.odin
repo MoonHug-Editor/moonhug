@@ -196,27 +196,31 @@ test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	defer engine.cleanup_Render_Pipeline(&p)
 	testing.expect_value(t, len(p.slots), 1)
 	testing.expect_value(t, p.slots[0].name, engine.MAIN_SLOT)
-	testing.expect_value(t, len(p.nodes), 6)
-	testing.expect_value(t, p.nodes[0].node, "shadow_pass")
-	testing.expect_value(t, p.nodes[0].slot, "")
-	testing.expect_value(t, p.nodes[5].node, "final_blit")
-	p.nodes[0].settings = _settings_json("bias", 0.01)
+	// The frame lane (environment, shadow), then Main from the opaque pass
+	// through the sky to the final blit.
+	testing.expect_value(t, len(p.nodes), 8)
+	testing.expect_value(t, p.nodes[0].node, "environment_pass")
+	testing.expect_value(t, p.nodes[1].node, "shadow_pass")
+	testing.expect_value(t, p.nodes[1].slot, "")
+	testing.expect_value(t, p.nodes[3].node, "scene_sky")
+	testing.expect_value(t, p.nodes[7].node, "final_blit")
+	p.nodes[1].settings = _settings_json("bias", 0.01)
 
 	data, err := json.marshal(p, {spec = .JSON}, context.temp_allocator)
 	testing.expect(t, err == nil)
 	back, ok := engine.pipeline_parse(data)
 	defer engine.cleanup_Render_Pipeline(&back)
 	testing.expect(t, ok, "a pipeline parses back")
-	testing.expect_value(t, len(back.nodes), 6)
+	testing.expect_value(t, len(back.nodes), 8)
 	testing.expect_value(t, back.next_id, p.next_id)
-	bias, has := back.nodes[0].settings.(json.Object)["bias"]
+	bias, has := back.nodes[1].settings.(json.Object)["bias"]
 	testing.expect(t, has && bias.(json.Float) == 0.01, "the settings JSON round-trips")
 
 	clone := engine.pipeline_clone(back)
 	defer engine.cleanup_Render_Pipeline(&clone)
-	testing.expect_value(t, len(clone.nodes), 6)
+	testing.expect_value(t, len(clone.nodes), 8)
 	engine.pipeline_remove_slot(&clone, engine.MAIN_SLOT)
-	testing.expect_value(t, len(clone.nodes), 1) // only the frame lane remains
+	testing.expect_value(t, len(clone.nodes), 2) // only the frame lane remains
 	testing.expect_value(t, len(clone.slots), 0)
 }
 

@@ -1,0 +1,31 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4x4 inv_view_proj;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _33 [[buffer(1)]], texturecube<float> env [[texture(0)]], sampler envSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    float2 ndc = float2((in.frag_uv.x * 2.0) - 1.0, 1.0 - (in.frag_uv.y * 2.0));
+    float4 near = _33.inv_view_proj * float4(ndc, 0.0, 1.0);
+    float4 far = _33.inv_view_proj * float4(ndc, 1.0, 1.0);
+    float3 dir = fast::normalize((far.xyz / float3(far.w)) - (near.xyz / float3(near.w)));
+    out.out_color = float4(env.sample(envSmplr, dir, level(0.0)).xyz, 1.0);
+    return out;
+}
+

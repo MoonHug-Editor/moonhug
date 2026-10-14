@@ -62,6 +62,18 @@ merge into one draw.
 
 Diffuse is not divided by pi, so a light of intensity 1 on white albedo lights it to 1, as the earlier Lambert did, and scenes keep their brightness. Assets/Extract Assets maps a glTF material straight onto the block, its linear factors stored as sRGB colors like everything the inspector authors.
 
+### Environment
+
+The **Environment** component (Rendering/Environment) is the scene's sky and the light it gives what no Light reaches. The first enabled one in the world drives the scene:
+
+- `sky`: Procedural (a gradient from `ground` through `sky_horizon` to `sky_top`, with the sun: the first enabled directional Light's direction and color, its disc `sun_size` degrees across), Panorama (an equirectangular texture, 2:1, turned by `panorama_rotation`), or Color (`sky_top`)
+- `exposure` scales the sky, `ambient_intensity` the diffuse light it gives surfaces, `reflection_intensity` what they reflect of it
+- `draw_sky` shows it behind the cameras where nothing is drawn, else their clear color stays
+
+The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected.
+
+A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
+
 ### Light component
 
 Directional, Point or Spot via `type` (Unity's `Light.type`): `color`,

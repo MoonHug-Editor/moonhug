@@ -1,9 +1,11 @@
 // The surface shader template, part 2: the lighting. Presets the Surface,
 // lets surface() change it, then lights it: metal/roughness physically
 // based shading per light from the pass's Light UBO (GGX distribution,
-// height-correlated Smith visibility, Schlick Fresnel), plus the ambient
-// level for what no light reaches. Diffuse is not divided by pi, so a light
-// of intensity 1 lights white albedo to 1, as Lambert did.
+// height-correlated Smith visibility, Schlick Fresnel), plus the
+// environment for what no light reaches: its irradiance for diffuse, its
+// prefiltered reflection times the split-sum fit for specular. Diffuse is
+// not divided by pi, so a light of intensity 1 lights white albedo to 1, as
+// Lambert did.
 
 const float PI = 3.14159265359;
 
@@ -92,11 +94,11 @@ void main() {
         color += (kd + spec) * l.color_outer.rgb * (NoL * atten);
     }
 
-    // What no light reaches: the ambient level as a uniform environment,
-    // diffuse and specular, both shaded by occlusion.
-    float ambient = ambient_count.x;
-    vec3 ambient_spec = env_brdf_approx(f0, roughness, NoV);
-    color += (diffuse_color + ambient_spec) * ambient * s.occlusion;
+    // What no light reaches: the environment, shaded by occlusion.
+    vec3 r = reflect(-v, n);
+    vec3 irradiance = texture(env_irradiance, n).rgb * env_params.x;
+    vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
+    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * s.occlusion;
 
     out_color = vec4(color + s.emissive, s.alpha);
 }

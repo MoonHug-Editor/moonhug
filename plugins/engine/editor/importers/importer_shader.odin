@@ -226,7 +226,10 @@ _shader_reflect :: proc(data: []u8) -> (result: _Shader_Reflect, ok: bool) {
             result.num_samplers = max(result.num_samplers, binding + 1)
             // The surface template's shadow map: gfx binds it, it is no
             // material row.
+            // The template's reserved samplers, bound by gfx, never a material row.
             if name == "shadow_map" && binding == gfx.SHADOW_SAMPLER_SLOT do continue
+            if name == "env_specular" && binding == gfx.ENV_SPECULAR_SLOT do continue
+            if name == "env_irradiance" && binding == gfx.ENV_IRRADIANCE_SLOT do continue
             append(&result.textures, engine.Shader_Texture{name = name, binding = binding})
         }
     }

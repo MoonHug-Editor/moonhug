@@ -44,12 +44,18 @@ layout(set = 3, binding = 0) uniform LightUBO {
     GpuLight lights[MAX_LIGHTS];
     mat4 shadow_vp;     // the caster pass's view_proj (gfx.set_shadow)
     vec4 shadow_params; // x = one texel in uv, y = depth bias, z = 1 when a map is bound, w = its light index
+    vec4 env_params;    // x = diffuse intensity, y = specular intensity, z = the specular cube's last mip (gfx.set_environment)
 };
 
 // The shadow map, bound by gfx at this reserved slot for every shader that
 // declares it (white, depth 1, when no caster pass ran: nothing in shadow).
 // Material texture rows use bindings 1..6.
 layout(set = 2, binding = 7) uniform sampler2D shadow_map;
+// The environment (gfx.set_environment): the specular cube prefiltered for
+// rising roughness along its mips, and the diffuse irradiance cube. White
+// when the pass has none, so the ambient level lights uniformly.
+layout(set = 2, binding = 8) uniform samplerCube env_specular;
+layout(set = 2, binding = 9) uniform samplerCube env_irradiance;
 
 layout(location = 0) out vec4 out_color;
 
