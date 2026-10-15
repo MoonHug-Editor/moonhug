@@ -39,6 +39,14 @@
       "settings": null
     },
     {
+      "id": 16,
+      "node": "scene_ssao",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 2,
       "node": "scene_opaque",
       "slot": "Main",
@@ -68,6 +76,22 @@
       "muted": false
     },
     {
+      "id": 15,
+      "node": "motion_vectors",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 14,
+      "node": "scene_taa",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 5,
       "node": "scene_over",
       "slot": "Main",
@@ -89,13 +113,6 @@
       "muted": false
     },
     {
-      "id": 8,
-      "node": "postfx_fxaa",
-      "slot": "Main",
-      "binds": [],
-      "muted": false
-    },
-    {
       "id": 9,
       "node": "final_blit",
       "slot": "Main",
@@ -103,5 +120,5 @@
       "muted": false
     }
   ],
-  "next_id": 14
+  "next_id": 15
 }

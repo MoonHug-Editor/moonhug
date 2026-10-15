@@ -10,8 +10,6 @@ path: engine/rendering
 
 A render pipeline is an asset that describes one frame: which render nodes run, in which order, with which settings. The project renders through one pipeline (Project Settings > Rendering, the essentials plugin's `Default.renderpipeline` when unset). A camera names a slot of it (`Camera.slot`, `Main` by default) and renders through that slot's lane. The editor's scene view renders through the `Editor` slot when the pipeline declares one, `Main` otherwise.
 
-The shape follows Stride's graphics compositor (an asset with entry points cameras reference) with URP's renderer asset as the user-facing model (a list of passes with settings, duplicated and edited per project).
-
 ## The asset
 
 `.renderpipeline` is JSON: `slots` (names), `nodes` (placed instances), `next_id`. A placed node is `{id, node, slot, binds, settings}`: `node` names a registered `@(render_node)` proc, `slot` the lane (`""` is the frame lane), `binds` the ports bound to another target name than the node declares, `settings` the values of the node's settings struct (absent keys keep the node's defaults).
@@ -52,7 +50,7 @@ A sequence with named ports carries the same information as a wired node graph: 
 - The **frame lane** holds per-frame nodes (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame, whichever slot asks first, with the frame's target pool.
 - A **slot lane** holds per-view nodes. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_opaque`, `scene_sky`, `scene_under`, `scene_transparent`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `postfx_fxaa`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_opaque`, `scene_sky`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `final_blit`.
 
 `depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
 
@@ -81,6 +79,37 @@ The prebuild checks the declarations (format, sizes, `final` reserved, a frame n
 ## Drawing into the scene
 
 The scene nodes are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A node placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the view's shadows bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow nodes and the depth prepass use.
+
+## Temporal anti-aliasing
+
+`scene_taa` smooths edges and thin highlights over several frames. When a lane holds it and the view shades normally, the scene nodes draw through a camera offset by a fraction of a pixel, a different offset each frame (8 points of the Halton 2, 3 sequence, `render_draw_view`). `scene_taa` blends each frame into the view's history and writes the result back into `hdr`, so the nodes after it see an anti-aliased scene and draw with the steady camera. It goes after the scene nodes and before `scene_over`, so the editor's gizmos stay sharp and do not lag.
+
+Each pixel finds where it was last frame:
+
+- through the camera's motion: its position from the depth, taken at the nearest surface in its 3x3 neighbourhood, so an edge moves with what is in front
+- through an object's own motion, where `motion_vectors` (placed before `scene_taa`) drew it: the meshes whose model changed since the view's last frame, drawn again into `motion` against the scene's depth, each pixel holding how far it moved on screen. A frame where nothing moved draws nothing there and costs only the check
+
+The history is read there through a Catmull-Rom filter, which keeps its detail while the view moves, and clipped to the spread of this frame's 3x3 neighbourhood (mean and 1.25 standard deviations, in YCoCg), so what was uncovered or changed does not ghost. `blend` (default 0.1) is how much of each frame goes into the result: lower is smoother and steadier. A pixel's own frame counts for more the faster it moves, up to a quarter at 4 pixels per frame, since a moving image shows smearing more than aliasing.
+
+Each view (target pool and camera) keeps its own history, last frame's camera and the models of the meshes it drew. A view that skipped a frame or changed size starts over from its current frame.
+
+Limits:
+
+- a skinned mesh's motion vectors follow its model only, so its animation reprojects through the clipping alone and softens while it moves
+- transparent objects have no motion vectors and no depth: they reproject with what is behind them
+- the motion pass does not clip, so a moved alpha-clipped mesh writes motion vectors in its holes too
+
+## Ambient occlusion
+
+`scene_ssao`, placed before `scene_opaque`, darkens creases, corners and the ground under objects: how much of the hemisphere above each pixel's surface the view's depth leaves open. The lit draws after it take that as ambient occlusion: it shades the environment's light, together with a material's occlusion map (the smaller of the two counts), and `direct` of the lights' light. The Default pipeline holds it muted: it costs a depth pass over the opaque meshes and three passes over the screen.
+
+- the depth comes from the depth prepass. `scene_ssao` draws it itself when no `depth_prepass` ran before it, and `scene_opaque` keeps it either way
+- the surface point and its normal come from the depth. `samples` points spread over the hemisphere around the normal, within `radius` (world units, default 0.5), turned per pixel by a noise pattern
+- a sample counts as occluded where the depth at its pixel is in front of it, weighted down the further that surface lies outside the radius, so a near object does not darken a far wall
+- two blur passes, across and down, smooth the noise without crossing an object's edge (taps at a different depth count less)
+- `intensity` (default 1) scales the occluded fraction. `direct` (default 0.25) is how much of the occlusion also darkens direct light: 0 shades only the environment's light, as the physics says, a little more grounds objects
+- the scene view's debug modes skip it
+- the result is the `ssao` target: red the open fraction, green the view depth
 
 ## Validation at load
 

@@ -33,6 +33,10 @@ _Shader_Entry :: struct {
 	owns_caster:     bool,
 	sets:          [Target_Format]_Shader_Set,
 	built:         [Target_Format]bool,
+	// Mesh draws (.Tris_Depth) that cull or are mirrored, by cull mode and
+	// mirroring (1 = clockwise front faces): built the first time a pass of
+	// the format draws one. The sets hold the unculled, unmirrored pipelines.
+	faced:         [Target_Format][Cull][2]^sdl.GPUGraphicsPipeline,
 }
 
 @(private)
@@ -67,6 +71,14 @@ _Fullscreen_Entry :: struct {
 @(private) _CASTER_FRAG_MSL     := #load("shaders/compiled/caster.frag.msl")
 @(private) _DEPTH_VIEW_FRAG_SPV := #load("shaders/compiled/depth_view.frag.spv")
 @(private) _DEPTH_VIEW_FRAG_MSL := #load("shaders/compiled/depth_view.frag.msl")
+@(private) _TAA_FRAG_SPV        := #load("shaders/compiled/taa.frag.spv")
+@(private) _TAA_FRAG_MSL        := #load("shaders/compiled/taa.frag.msl")
+@(private) _MOTION_FRAG_SPV     := #load("shaders/compiled/motion.frag.spv")
+@(private) _MOTION_FRAG_MSL     := #load("shaders/compiled/motion.frag.msl")
+@(private) _SSAO_FRAG_SPV       := #load("shaders/compiled/ssao.frag.spv")
+@(private) _SSAO_FRAG_MSL       := #load("shaders/compiled/ssao.frag.msl")
+@(private) _SSAO_BLUR_FRAG_SPV  := #load("shaders/compiled/ssao_blur.frag.spv")
+@(private) _SSAO_BLUR_FRAG_MSL  := #load("shaders/compiled/ssao_blur.frag.msl")
 
 @(private)
 _create_pipelines :: proc() -> bool {
@@ -88,12 +100,16 @@ _create_pipelines :: proc() -> bool {
 	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = LIGHT_LIST_SLOT + 1) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
 	if !shader_register(DEPTH_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL, frag_samplers = 0) do return false
+	if !shader_register(MOTION_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _MOTION_FRAG_SPV, _MOTION_FRAG_MSL, frag_samplers = 0, frag_uniform_buffers = 2) do return false
 	for name in ([]string{DEFAULT_SHADER, LIT_SHADER}) {
 		e := &_gfx.shaders[name]
 		e.caster = _gfx.caster_frag
 		e.caster_samplers = MAX_FRAGMENT_SAMPLERS
 	}
 	if !fullscreen_register(DEPTH_VIEW_SHADER, _DEPTH_VIEW_FRAG_SPV, _DEPTH_VIEW_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(TAA_SHADER, _TAA_FRAG_SPV, _TAA_FRAG_MSL, 4, 2) do return false
+	if !fullscreen_register(SSAO_SHADER, _SSAO_FRAG_SPV, _SSAO_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(SSAO_BLUR_SHADER, _SSAO_BLUR_FRAG_SPV, _SSAO_BLUR_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENV_CAPTURE_SHADER, _ENV_CAPTURE_FRAG_SPV, _ENV_CAPTURE_FRAG_MSL, 1, 2) do return false
@@ -187,11 +203,19 @@ shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []
 
 // The pipeline a draw binds: `name` ("" = DEFAULT_SHADER, unknown = DEFAULT_SHADER
 // too, so a missing user shader draws unlit rather than nothing), for the
-// pass's target format and the draw's kind. Builds the format's set on first use.
+// pass's target format, the draw's kind, and its cull mode and mirroring
+// (meshes only, draw_mesh). Builds the format's set, or the mesh pipeline
+// with that cull and winding, on first use.
 @(private)
-_shader_pipeline :: proc(name: string, format: Target_Format, kind: _Pipeline_Kind) -> ^sdl.GPUGraphicsPipeline {
+_shader_pipeline :: proc(name: string, format: Target_Format, kind: _Pipeline_Kind, cull: Cull, mirrored: bool) -> ^sdl.GPUGraphicsPipeline {
 	e, ok := &_gfx.shaders[name]
 	if !ok do e = &_gfx.shaders[DEFAULT_SHADER]
+	if cull != .None || mirrored {
+		assert(kind == .Tris_Depth, "gfx: only mesh draws cull or mirror")
+		p := &e.faced[format][cull][int(mirrored)]
+		if p^ == nil do p^ = _world_pipeline_create(e, format, .TRIANGLELIST, true, true, cull = cull, mirrored = mirrored)
+		return p^
+	}
 	if !e.built[format] && !_shader_set_build(e, format) do return nil
 	return e.sets[format][kind]
 }
@@ -216,6 +240,14 @@ _shader_entry_release :: proc(e: ^_Shader_Entry) {
 		}
 		e.built[f] = false
 	}
+	for &by_cull in e.faced {
+		for &by_winding in by_cull {
+			for &p in by_winding {
+				if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+				p = nil
+			}
+		}
+	}
 	if e.vert != nil do sdl.ReleaseGPUShader(_gfx.device, e.vert)
 	if e.frag != nil do sdl.ReleaseGPUShader(_gfx.device, e.frag)
 	if e.owns_caster && e.caster != nil do sdl.ReleaseGPUShader(_gfx.device, e.caster)
@@ -224,6 +256,33 @@ _shader_entry_release :: proc(e: ^_Shader_Entry) {
 
 @(private)
 _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
+	set: _Shader_Set
+	set[.Tris]          = _world_pipeline_create(e, format, .TRIANGLELIST, true, false)
+	set[.Tris_Depth]    = _world_pipeline_create(e, format, .TRIANGLELIST, true, true)
+	set[.Tris_Overlay]  = _world_pipeline_create(e, format, .TRIANGLELIST, false, false)
+	set[.Tris_Wire]     = _world_pipeline_create(e, format, .TRIANGLELIST, true, false, .LINE)
+	set[.Lines]         = _world_pipeline_create(e, format, .LINELIST, true, false)
+	set[.Lines_Depth]   = _world_pipeline_create(e, format, .LINELIST, true, true)
+	set[.Lines_Overlay] = _world_pipeline_create(e, format, .LINELIST, false, false)
+	for p in set {
+		if p == nil {
+			for q in set {
+				if q != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, q)
+			}
+			return false
+		}
+	}
+	e.sets[format] = set
+	e.built[format] = true
+	return true
+}
+
+// One pipeline of a world shader: its vertex and fragment stages (or caster,
+// in a depth-only pass) with the given primitive, depth state, fill and cull.
+// `mirrored` makes clockwise triangles the front faces, for a model whose
+// transform turns the winding around.
+@(private)
+_world_pipeline_create :: proc(e: ^_Shader_Entry, format: Target_Format, primitive: sdl.GPUPrimitiveType, depth_test, depth_write: bool, fill := sdl.GPUFillMode.FILL, cull := Cull.None, mirrored := false) -> ^sdl.GPUGraphicsPipeline {
 	// Slot 0: the mesh's or the batch's vertices. Slot 1: one _Instance per
 	// drawn object, its model matrix as four columns and its tint.
 	buffer_descs := [2]sdl.GPUVertexBufferDescription{
@@ -251,6 +310,12 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 	depth_only := format == .Depth
 	frag := e.frag
 	if depth_only do frag = e.caster != nil ? e.caster : _gfx.depth_frag
+	cull_mode: sdl.GPUCullMode
+	switch cull {
+	case .None:  cull_mode = .NONE
+	case .Back:  cull_mode = .BACK
+	case .Front: cull_mode = .FRONT
+	}
 	info := sdl.GPUGraphicsPipelineCreateInfo{
 		vertex_shader   = e.vert,
 		fragment_shader = frag,
@@ -260,7 +325,17 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 			vertex_attributes          = raw_data(attributes[:]),
 			num_vertex_attributes      = len(attributes),
 		},
-		primitive_type = .TRIANGLELIST,
+		primitive_type = primitive,
+		rasterizer_state = {
+			fill_mode  = fill,
+			cull_mode  = cull_mode,
+			front_face = mirrored ? .CLOCKWISE : .COUNTER_CLOCKWISE,
+		},
+		depth_stencil_state = {
+			compare_op         = .LESS_OR_EQUAL,
+			enable_depth_test  = depth_test,
+			enable_depth_write = depth_write,
+		},
 		target_info = {
 			color_target_descriptions = depth_only ? nil : &color_target,
 			num_color_targets         = depth_only ? 0 : 1,
@@ -268,37 +343,7 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 			has_depth_stencil_target  = true,
 		},
 	}
-
-	make_pipeline :: proc(info: ^sdl.GPUGraphicsPipelineCreateInfo, primitive: sdl.GPUPrimitiveType, depth_test, depth_write: bool, fill := sdl.GPUFillMode.FILL) -> ^sdl.GPUGraphicsPipeline {
-		info.primitive_type = primitive
-		info.rasterizer_state.fill_mode = fill
-		info.depth_stencil_state = {
-			compare_op         = .LESS_OR_EQUAL,
-			enable_depth_test  = depth_test,
-			enable_depth_write = depth_write,
-		}
-		return sdl.CreateGPUGraphicsPipeline(_gfx.device, info^)
-	}
-
-	set: _Shader_Set
-	set[.Tris]          = make_pipeline(&info, .TRIANGLELIST, true, false)
-	set[.Tris_Depth]    = make_pipeline(&info, .TRIANGLELIST, true, true)
-	set[.Tris_Overlay]  = make_pipeline(&info, .TRIANGLELIST, false, false)
-	set[.Tris_Wire]     = make_pipeline(&info, .TRIANGLELIST, true, false, .LINE)
-	set[.Lines]         = make_pipeline(&info, .LINELIST, true, false)
-	set[.Lines_Depth]   = make_pipeline(&info, .LINELIST, true, true)
-	set[.Lines_Overlay] = make_pipeline(&info, .LINELIST, false, false)
-	for p in set {
-		if p == nil {
-			for q in set {
-				if q != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, q)
-			}
-			return false
-		}
-	}
-	e.sets[format] = set
-	e.built[format] = true
-	return true
+	return sdl.CreateGPUGraphicsPipeline(_gfx.device, info)
 }
 
 @(private)

@@ -135,6 +135,35 @@ test_material_alpha_cutoff :: proc(t: ^testing.T) {
 	testing.expect_value(t, engine.material_alpha_cutoff({}), f32(0))
 }
 
+// The faces a draw of the material skips: Front draws front faces (back
+// culled), Back draws back faces, Both culls nothing. No material, and one
+// that does not load, draw front faces as a new material does.
+@(test)
+test_material_cull :: proc(t: ^testing.T) {
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+
+	front_id, _ := uuid.read("51515151-4343-6565-8787-090909090909")
+	back_id, _ := uuid.read("61616161-4343-6565-8787-090909090909")
+	both_id, _ := uuid.read("71717171-4343-6565-8787-090909090909")
+	front, back, both := engine.Asset_GUID(front_id), engine.Asset_GUID(back_id), engine.Asset_GUID(both_id)
+	engine.material_preview(front, {shader = .Lit, color = {1, 1, 1, 1}})
+	engine.material_preview(back, {shader = .Lit, color = {1, 1, 1, 1}, render_face = .Back})
+	engine.material_preview(both, {shader = .Lit, color = {1, 1, 1, 1}, render_face = .Both})
+
+	testing.expect_value(t, engine.material_cull(front), gfx.Cull.Back)
+	testing.expect_value(t, engine.material_cull(back), gfx.Cull.Front)
+	testing.expect_value(t, engine.material_cull(both), gfx.Cull.None)
+	testing.expect_value(t, engine.material_cull({}), gfx.Cull.Back)
+	missing_id, _ := uuid.read("81818181-4343-6565-8787-090909090909")
+	testing.expect_value(t, engine.material_cull(engine.Asset_GUID(missing_id)), gfx.Cull.Back)
+
+	// A changed face setting is a changed material: the previews redraw.
+	v := engine.material_cache_version
+	engine.material_preview(front, {shader = .Lit, color = {1, 1, 1, 1}, render_face = .Both})
+	testing.expect(t, engine.material_cache_version > v, "a render face edit moves the version")
+}
+
 // Property packing: named vec4 values land at the shader's reflected std140
 // offsets, truncated to the member size; unmatched names on either side are
 // zero-filled / ignored.

@@ -1,0 +1,155 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4x4 proj;
+    float4x4 inv_proj;
+    float4 params;
+};
+
+struct main0_out
+{
+    float4 out_ao [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+static inline __attribute__((always_inline))
+float3 view_pos(thread int2& p, thread int2& size, texture2d<float> depth, sampler depthSmplr, constant Params& _55)
+{
+    p = clamp(p, int2(0), size - int2(1));
+    float d = depth.read(uint2(p), 0).x;
+    float2 uv = (float2(p) + float2(0.5)) / float2(size);
+    float4 v = _55.inv_proj * float4((uv.x * 2.0) - 1.0, 1.0 - (uv.y * 2.0), d, 1.0);
+    return v.xyz / float3(v.w);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _55 [[buffer(1)]], texture2d<float> depth [[texture(0)]], sampler depthSmplr [[sampler(0)]], float4 gl_FragCoord [[position]])
+{
+    main0_out out = {};
+    int2 size = int2(depth.get_width(), depth.get_height());
+    int2 p = clamp(int2(in.frag_uv * float2(size)), int2(0), size - int2(1));
+    if (depth.read(uint2(p), 0).x >= 1.0)
+    {
+        out.out_ao = float4(1.0, 10000.0, 0.0, 1.0);
+        return out;
+    }
+    int2 param = p;
+    float3 _116 = view_pos(param, size, depth, depthSmplr, _55);
+    float3 c = _116;
+    int2 param_1 = p - int2(1, 0);
+    float3 _122 = view_pos(param_1, size, depth, depthSmplr, _55);
+    float3 l = _122;
+    int2 param_2 = p + int2(1, 0);
+    float3 _127 = view_pos(param_2, size, depth, depthSmplr, _55);
+    float3 r = _127;
+    int2 param_3 = p - int2(0, 1);
+    float3 _133 = view_pos(param_3, size, depth, depthSmplr, _55);
+    float3 u = _133;
+    int2 param_4 = p + int2(0, 1);
+    float3 _138 = view_pos(param_4, size, depth, depthSmplr, _55);
+    float3 b = _138;
+    float3 _154;
+    if (abs(r.z - c.z) < abs(c.z - l.z))
+    {
+        _154 = r - c;
+    }
+    else
+    {
+        _154 = c - l;
+    }
+    float3 dx = _154;
+    float3 _179;
+    if (abs(b.z - c.z) < abs(c.z - u.z))
+    {
+        _179 = b - c;
+    }
+    else
+    {
+        _179 = c - u;
+    }
+    float3 dy = _179;
+    float3 n = fast::normalize(cross(dy, dx));
+    if (dot(n, -c) < 0.0)
+    {
+        n = -n;
+    }
+    float _noise = fract(52.98291778564453125 * fract(dot(gl_FragCoord.xy, float2(0.067110560834407806396484375, 0.005837149918079376220703125))));
+    float angle = _noise * 6.283185482025146484375;
+    float3 rnd = float3(cos(angle), sin(angle), 0.0);
+    float3 _234;
+    if (abs(dot(rnd, n)) > 0.9900000095367431640625)
+    {
+        _234 = float3(0.0, 1.0, 0.0) - (n * n.y);
+    }
+    else
+    {
+        _234 = rnd - (n * dot(rnd, n));
+    }
+    float3 t = fast::normalize(_234);
+    float3x3 tbn = float3x3(float3(t), float3(cross(n, t)), float3(n));
+    float radius = _55.params.x;
+    int count = int(_55.params.z + 0.5);
+    float occluded = 0.0;
+    for (int i = 0; i < count; i++)
+    {
+        float fi = (float(i) + 0.5) / float(count);
+        float z = fi;
+        float ring = sqrt(1.0 - (z * z));
+        float phi = (float(i) * 2.3999631404876708984375) + (_noise * 6.283185482025146484375);
+        float3 h = float3(ring * cos(phi), ring * sin(phi), z);
+        float scale = mix(0.100000001490116119384765625, 1.0, fi * fi);
+        float3 s = c + ((tbn * h) * (radius * scale));
+        float4 clip = _55.proj * float4(s, 1.0);
+        float2 uv = float2(((clip.x / clip.w) * 0.5) + 0.5, 0.5 - ((clip.y / clip.w) * 0.5));
+        bool _372 = uv.x < 0.0;
+        bool _379;
+        if (!_372)
+        {
+            _379 = uv.y < 0.0;
+        }
+        else
+        {
+            _379 = _372;
+        }
+        bool _386;
+        if (!_379)
+        {
+            _386 = uv.x > 1.0;
+        }
+        else
+        {
+            _386 = _379;
+        }
+        bool _393;
+        if (!_386)
+        {
+            _393 = uv.y > 1.0;
+        }
+        else
+        {
+            _393 = _386;
+        }
+        if (_393)
+        {
+            continue;
+        }
+        int2 param_5 = int2(uv * float2(size));
+        float3 _404 = view_pos(param_5, size, depth, depthSmplr, _55);
+        float scene_z = _404.z;
+        float reach = smoothstep(0.0, 1.0, radius / fast::max(abs(c.z - scene_z), 9.9999997473787516355514526367188e-05));
+        occluded += (float(scene_z >= (s.z + (0.0199999995529651641845703125 * radius))) * reach);
+    }
+    float open = fast::clamp(1.0 - ((_55.params.y * occluded) / float(max(count, 1))), 0.0, 1.0);
+    out.out_ao = float4(open, -c.z, 0.0, 1.0);
+    return out;
+}
+

@@ -1,12 +1,11 @@
 package engine
 
-// Unity-style Material asset (plugins/engine/docs/Materials.md): picks a shader (built-in
+// Material asset (plugins/engine/docs/Materials.md): picks a shader (built-in
 // enum or a custom .glsl asset) and supplies its property block — texture,
 // color, and named properties for custom shaders. Materials are JSON files
 // under assets/ ("Assets/Create/Material" writes New Material.mat) and
 // cached by guid like textures/meshes. MeshRenderer references one by guid;
-// no material = plain white, lit on a mesh and unlit on a quad (mirrors
-// Unity's default material, lit, and its sprite default, unlit).
+// no material = plain white, lit on a mesh and unlit on a quad.
 
 import "base:runtime"
 import gfx "moonhug:libs/gfx"
@@ -20,6 +19,15 @@ import "core:strings"
 Material_Shader :: enum u8 {
 	Unlit,
 	Lit,
+}
+
+// Which sides of a mesh's triangles draw. Front is the zero value: the inside
+// of a closed mesh is never seen, so its back faces are skipped. Both is for
+// open, thin geometry seen from either side: leaves, cloth, planes.
+Material_Render_Face :: enum u8 {
+	Front,
+	Back,
+	Both,
 }
 
 // A named value for the custom shader's material UBO (set=3 binding=1).
@@ -49,6 +57,8 @@ Material :: struct {
 	// casts no shadow. For leaves, fences, cutout decals.
 	alpha_clip:    bool,
 	alpha_cutoff:  f32 `decor:range(0, 1)`,
+	// The faces drawn, in every pass, shadows included.
+	render_face:   Material_Render_Face,
 	// The built-in Lit's surface. Unlit and custom shaders ignore it.
 	lit:           Material_Lit,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
@@ -75,7 +85,7 @@ Material_Lit :: struct {
 // smoothness, full-strength maps, no emission.
 MATERIAL_LIT_DEFAULT :: Material_Lit{smoothness = 0.5, normal_scale = 1, occlusion_strength = 1}
 
-// A new material is Lit, like Unity's. `shader` is stored as a number and
+// A new material is Lit. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
 reset_Material :: proc(m: ^Material) {
 	cleanup_Material(m)
@@ -122,6 +132,21 @@ material_alpha_cutoff :: proc(guid: Asset_GUID) -> f32 {
 	mat, ok := material_load(guid)
 	if !ok || !mat.alpha_clip do return 0
 	return clamp(mat.alpha_cutoff, 0, 1)
+}
+
+// The faces a mesh draw of the material skips (gfx.draw_mesh cull): back
+// faces for Front, front faces for Back, none for Both. No material draws
+// front faces, as a new material does.
+material_cull :: proc(guid: Asset_GUID) -> gfx.Cull {
+	if guid == {} do return .Back
+	mat, ok := material_load(guid)
+	if !ok do return .Back
+	switch mat.render_face {
+	case .Front: return .Back
+	case .Back:  return .Front
+	case .Both:  return .None
+	}
+	return .Back
 }
 
 _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
@@ -417,7 +442,7 @@ _material_clone :: proc(mat: Material) -> Material {
 
 _material_equal :: proc(a, b: Material) -> bool {
 	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color || a.lit != b.lit do return false
-	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff do return false
+	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff || a.render_face != b.render_face do return false
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false

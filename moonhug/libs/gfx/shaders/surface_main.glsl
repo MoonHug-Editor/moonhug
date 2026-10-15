@@ -44,7 +44,7 @@ Surface surface_preset() {
     Surface s;
     s.albedo     = base.rgb;
     s.alpha      = base.a;
-    s.normal     = normalize(frag_normal);
+    s.normal     = vertex_normal();
     s.emissive   = vec3(0.0);
     s.metallic   = 0.0;
     s.smoothness = 0.5;
@@ -98,7 +98,7 @@ void main() {
     vec3 color = vec3(0.0);
     int count = int(ambient_count.y + 0.5);
     int tile = light_tile();
-    vec3 geometric_n = normalize(frag_normal);
+    vec3 geometric_n = vertex_normal();
     for (int w = 0; w < (count + 31) / 32; ++w) {
         uint bits = light_tile_word(tile, w);
         while (bits != 0u) {
@@ -137,11 +137,16 @@ void main() {
         }
     }
 
+    // The screen's ambient occlusion shades a part of the direct light
+    // (occlusion_params.x) and all of the environment's.
+    float screen_ao = screen_occlusion();
+    color *= mix(1.0, screen_ao, occlusion_params.x);
+
     // What no light reaches: the environment, shaded by occlusion.
     vec3 r = reflect(-v, n);
     vec3 irradiance = texture(env_irradiance, n).rgb * env_params.x;
     vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
-    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * s.occlusion;
+    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * min(s.occlusion, screen_ao);
 
     // Capped well inside half-float range (65504): an overflow is infinite and
     // spreads through bloom as a white block.

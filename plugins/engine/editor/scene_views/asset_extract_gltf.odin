@@ -134,6 +134,8 @@ extract_gltf_assets :: proc(model_path: string) {
 			mat.alpha_clip = true
 			mat.alpha_cutoff = m.alpha_cutoff
 		}
+		// glTF doubleSided: both faces drawn, no back-face culling.
+		if m.double_sided do mat.render_face = .Both
 
 		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.Material), mat) {
 			fmt.printf("[Editor] Extract: failed to write %s\n", out)

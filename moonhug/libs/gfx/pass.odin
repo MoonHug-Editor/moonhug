@@ -37,6 +37,8 @@ _Draw :: struct {
 	instance_first: u32, // mesh draws: the objects drawn, a run of _pass.inst
 	instance_count: u32,
 	alpha_cutoff:   f32, // the material's alpha clipping threshold, 0 = none (DRAW_UNIFORM_SLOT)
+	cull:           Cull, // mesh draws: the faces skipped
+	mirrored:       bool, // mesh draws: clockwise triangles are the front faces
 	shader:         string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
@@ -44,7 +46,7 @@ _Draw :: struct {
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 11
+MAX_FRAGMENT_SAMPLERS :: 12
 
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
@@ -157,6 +159,9 @@ _Light_Uniform :: struct {
 	tile_vp:        [MAX_SHADOW_TILES]matrix[4, 4]f32,
 	tile_rects:     [MAX_SHADOW_TILES][4]f32,
 	tile_params:    [MAX_SHADOW_TILES][4]f32,
+	// Ambient occlusion (set_ambient_occlusion): x how much of it darkens
+	// direct light.
+	occlusion_params: [4]f32,
 }
 
 // The fragment sampler slot the directional cascades' atlas binds to, for
@@ -172,6 +177,18 @@ ENV_IRRADIANCE_SLOT :: 9
 // The spot and point lights' shadow atlas (the template's `shadow_atlas`),
 // sampled like the cascades.
 SHADOW_ATLAS_SLOT   :: 10
+// The screen's ambient occlusion (set_ambient_occlusion, the template's
+// `ambient_occlusion`): red is how much ambient light reaches each pixel.
+// White when none is set.
+OCCLUSION_SLOT      :: 11
+
+// A screen-space ambient occlusion texture for a pass's lit draws
+// (set_ambient_occlusion): `tex` the view's size, red 1 open to 0 occluded,
+// `direct` how much of it also darkens direct light (0 none, 1 fully).
+Ambient_Occlusion :: struct {
+	tex:    Texture,
+	direct: f32,
+}
 
 _Env :: struct {
 	has:        bool,
@@ -270,6 +287,7 @@ _pass: struct {
 	target_w:     f32, // the target's size, what a zero viewport covers
 	target_h:     f32,
 	env:          _Env,                  // reset each pass_end
+	occlusion:    Maybe(Ambient_Occlusion), // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -502,11 +520,22 @@ _swapchain_pending_download: ^Texture_Download
 // prepass on a scene target), as every pass on a Depth target is: no color
 // attachment, `clear` ignored, each draw through its shader's depth variant
 // (Target_Format.Depth).
-pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth := false, depth := true, color := true) {
+//
+// `shared_depth` draws into `rt`'s color against another target's depth, of
+// the same size, kept as it is: the motion vectors of moved objects, hidden
+// where the scene drew something nearer.
+pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth := false, depth := true, color := true, shared_depth: ^Render_Target = nil) {
 	assert(!_pass.active, "gfx pass already active")
 	_pass.active = true
 	_pass.target_color = rt.color
 	_pass.target_depth = rt.depth
+	keep_depth := keep_depth
+	if shared_depth != nil {
+		assert(shared_depth.width == rt.width && shared_depth.height == rt.height, "gfx: a shared depth is the target's size")
+		assert(rt.format != .Display && rt.format != .Depth && color && depth, "gfx: a shared depth is for a color pass with depth")
+		_pass.target_depth = shared_depth.depth
+		keep_depth = true
+	}
 	_pass.target_w, _pass.target_h = f32(rt.width), f32(rt.height)
 	_pass.format = rt.format
 	_pass.store_depth = true
@@ -698,6 +727,14 @@ set_shadow_cascades :: proc(c: Shadow_Cascades) {
 	_pass.shadows.has_cascades = c.count > 0
 }
 
+// The screen's ambient occlusion for the CURRENT pass's lit draws (the
+// engine's scene_ssao node), read at OCCLUSION_SLOT: it shades the
+// environment's light, and `direct` of the lights'. Not calling this leaves
+// every surface open.
+set_ambient_occlusion :: proc(ao: Ambient_Occlusion) {
+	_pass.occlusion = ao
+}
+
 // The spot and point lights' shadow atlas for the CURRENT pass's lit draws
 // (the shadow_atlas render node's result), read at SHADOW_ATLAS_SLOT.
 set_shadow_atlas :: proc(a: ^Shadow_Atlas) {
@@ -814,19 +851,27 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 //
 // Instancing: a draw that matches the previous one in everything but `model`
 // and `color` (same mesh and index range, texture, shader, material bytes,
-// extra textures, view and kind) joins it as one more instance, so N copies
+// extra textures, cutoff, cull, mirroring, view and kind) joins it as one more instance, so N copies
 // of a mesh drawn in a row cost one draw call. Callers order their draws to
 // make such runs (engine render_execute sorts by material and mesh).
 //
 // alpha_cutoff is the material's alpha clipping threshold: a shader that
 // clips (the surface template, the unlit shader, their casters) discards a
 // fragment whose alpha is below it. 0 clips nothing.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0) {
+//
+// cull skips the back or the front faces. `mirrored` is for a model whose
+// transform turns the triangles' winding around (negative determinant): its
+// clockwise triangles are the front faces, so culling and the shader's
+// gl_FrontFacing still see the outside as the front. Wire and overlay draws
+// show both faces and ignore both.
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
 	count = min(count, mesh.index_count - first_index)
 	kind: _Pipeline_Kind = wire ? .Tris_Wire : overlay ? .Tris_Overlay : .Tris_Depth
+	cull := kind == .Tris_Depth ? cull : .None
+	mirrored := kind == .Tris_Depth && mirrored
 	vp := _current_vp()
 	_instance_base()
 	inst := u32(len(_pass.inst))
@@ -836,7 +881,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		last := &_pass.draws[n - 1]
 		if last.is_mesh && last.kind == kind && last.mesh == mesh &&
 		   last.mesh_first == first_index && last.mesh_count == count &&
-		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff &&
+		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff && last.cull == cull && last.mirrored == mirrored &&
 		   slice.equal(last.material, material) && slice.equal(last.extra_tex, extra_tex) &&
 		   last.instance_first + last.instance_count == inst {
 			last.instance_count += 1
@@ -854,6 +899,8 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		instance_first = inst,
 		instance_count = 1,
 		alpha_cutoff   = alpha_cutoff,
+		cull           = cull,
+		mirrored       = mirrored,
 		shader         = shader,
 		material       = material,
 		extra_tex      = extra_tex,
@@ -1160,6 +1207,11 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		env_specular, env_irradiance = _cubemap_white(), _cubemap_white()
 		light.env_params = {light.ambient_count.x, light.ambient_count.x, 0, 0}
 	}
+	occlusion_gpu := _gfx.white_tex.gpu
+	if ao, has := _pass.occlusion.?; has {
+		occlusion_gpu = ao.tex.gpu
+		light.occlusion_params = {clamp(ao.direct, 0, 1), 0, 0, 0}
+	}
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
@@ -1183,7 +1235,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			}
 			pushed_light_vp = d.vp_index
 		}
-		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind)
+		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind, d.cull, d.mirrored)
 		if pipeline == nil do continue
 		if pipeline != bound {
 			sdl.BindGPUGraphicsPipeline(rp, pipeline)
@@ -1229,6 +1281,10 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			atlas_gpu := _pass.shadows.has_atlas ? _pass.shadows.atlas.tex.gpu : _gfx.depth_one
 			bindings[SHADOW_ATLAS_SLOT] = {texture = atlas_gpu, sampler = _gfx.sampler_shadow}
 			num_bindings = SHADOW_ATLAS_SLOT + 1
+		}
+		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > OCCLUSION_SLOT {
+			bindings[OCCLUSION_SLOT] = {texture = occlusion_gpu, sampler = _gfx.sampler_linear}
+			num_bindings = OCCLUSION_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && pushed_cutoff != d.alpha_cutoff {
@@ -1300,6 +1356,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.light = nil
 	_pass.shadows = {}
 	_pass.env = {}
+	_pass.occlusion = nil
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

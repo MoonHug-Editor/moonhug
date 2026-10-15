@@ -257,22 +257,25 @@ render_execute :: proc(view: Render_View, commands: []Render_Command, phases := 
 }
 
 // The opaque meshes, one draw per submesh, ordered by material, then mesh,
-// then submesh: equal neighbours differ only in their model matrix, so gfx
-// merges each run into one instanced draw (gfx.draw_mesh). Each material is
-// resolved once.
+// then submesh, then the faces culled and mirroring: equal neighbours differ only in their
+// model matrix, so gfx merges each run into one instanced draw
+// (gfx.draw_mesh). Each material is resolved once.
 @(private = "file")
 _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 	Item :: struct {
 		material: Asset_GUID,
 		sub:      i32,
+		cull:     gfx.Cull,
+		mirrored: bool,
 		cmd:      ^Render_Command,
 		loaded:   ^Mesh,
 	}
+	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
 	items := make([dynamic]Item, 0, len(commands), context.temp_allocator)
 	// The order as integer keys, sorted without a comparator: the material
-	// folded into the high half, the mesh, part and submesh folded into the
-	// next 32 bits, the item's index in the low 32. Two groups folding alike
-	// only interleave their runs, which costs merges, never a wrong draw.
+	// folded into the high half, the mesh, part, submesh, cull and mirroring
+	// folded into the next 32 bits, the item's index in the low 32. Two groups folding
+	// alike only interleave their runs, which costs merges, never a wrong draw.
 	keys := make([dynamic]u128, 0, len(commands), context.temp_allocator)
 	for &cmd in commands {
 		d, is_mesh := cmd.variant.(Draw_Mesh)
@@ -280,19 +283,20 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		mesh, ok := mesh_load(d.mesh, d.part)
 		if !ok do continue
 		_inspect_draw(cmd)
+		mirrored := render_mirrored(d.model)
 		for _, i in mesh.submeshes {
 			mat: Asset_GUID
 			if i < len(d.materials) do mat = d.materials[i]
+			cull := _mesh_mat(&mats, mat).cull
 			index := len(items)
 			assert(index <= int(max(u32)), "render_execute: more mesh draws than a sort key indexes")
-			group := u128(render_fold_guid(mat)) << 64 | u128(render_fold_mesh(d.mesh, d.part, i32(i))) << 32
+			group := u128(render_fold_guid(mat)) << 64 | u128(_fold_mesh_faces(d, i32(i), cull, mirrored)) << 32
 			append(&keys, group | u128(index))
-			append(&items, Item{material = mat, sub = i32(i), cmd = &cmd, loaded = mesh})
+			append(&items, Item{material = mat, sub = i32(i), cull = cull, mirrored = mirrored, cmd = &cmd, loaded = mesh})
 		}
 	}
 	slice.sort(keys[:])
 
-	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
 	for key in keys {
 		it := items[u32(key)]
 		d := it.cmd.variant.(Draw_Mesh)
@@ -301,13 +305,13 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		m := _mesh_mat(&mats, it.material)
 		switch view.mode {
 		case .Shaded:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
 		case .Normals:
-			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count)
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, cull = it.cull, mirrored = it.mirrored)
 		case .Overdraw:
 			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
 		}
@@ -322,7 +326,8 @@ _Mesh_Mat :: struct {
 	color:  [4]f32,
 	data:   []u8,
 	extra:  []^gfx.Texture,
-	cutoff: f32, // alpha clipping threshold, 0 = none
+	cutoff: f32,      // alpha clipping threshold, 0 = none
+	cull:   gfx.Cull, // the faces skipped
 }
 
 @(private = "file")
@@ -331,22 +336,27 @@ _mesh_mat :: proc(mats: ^map[Asset_GUID]_Mesh_Mat, guid: Asset_GUID) -> _Mesh_Ma
 	m: _Mesh_Mat
 	m.shader, m.tex, m.color, m.data, m.extra = _resolve_material(guid, .Lit)
 	m.cutoff = material_alpha_cutoff(guid)
+	m.cull = material_cull(guid)
 	mats[guid] = m
 	return m
 }
 
 // Draws the meshes of `commands` into the CURRENT depth-only pass (gfx
-// Target_Format.Depth: the shadow map, the depth prepass). A mesh none of
-// whose materials clip draws whole with gfx.DEPTH_SHADER, so every copy of it
-// merges into one instanced draw whatever its materials are. A submesh whose
-// material clips draws with that material's shader, which gfx runs as its
-// caster (alpha clipping, no lighting), with its texture, color and cutoff.
+// Target_Format.Depth: the shadow map, the depth prepass), each face culled
+// as its material says. A mesh none of whose materials clip, and whose
+// materials all cull alike, draws whole with gfx.DEPTH_SHADER, so every copy
+// of it merges into one instanced draw whatever its materials are. Otherwise
+// each submesh draws on its own, and one whose material clips draws with
+// that material's shader, which gfx runs as its caster (alpha clipping, no
+// lighting), with its texture, color and cutoff.
 render_execute_depth :: proc(commands: []Render_Command) {
 	Item :: struct {
 		cmd:      ^Render_Command,
 		loaded:   ^Mesh,
 		sub:      i32, // -1: the whole mesh
 		material: Asset_GUID,
+		cull:     gfx.Cull,
+		mirrored: bool,
 	}
 	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
 	items := make([dynamic]Item, 0, len(commands), context.temp_allocator)
@@ -357,7 +367,7 @@ render_execute_depth :: proc(commands: []Render_Command) {
 	add :: proc(items: ^[dynamic]Item, keys: ^[dynamic]u128, it: Item, material_fold: u64, d: Draw_Mesh) {
 		index := len(items)
 		assert(index <= int(max(u32)), "render_execute_depth: more mesh draws than a sort key indexes")
-		append(keys, u128(material_fold) << 64 | u128(render_fold_mesh(d.mesh, d.part, it.sub)) << 32 | u128(index))
+		append(keys, u128(material_fold) << 64 | u128(_fold_mesh_faces(d, it.sub, it.cull, it.mirrored)) << 32 | u128(index))
 		append(items, it)
 	}
 	for &cmd in commands {
@@ -366,19 +376,28 @@ render_execute_depth :: proc(commands: []Render_Command) {
 		mesh, ok := mesh_load(d.mesh, d.part)
 		if !ok do continue
 		_inspect_draw(cmd)
-		clips := false
+		mirrored := render_mirrored(d.model)
+		clips, mixed := false, false
+		first_cull: gfx.Cull
 		for _, i in mesh.submeshes {
-			if i < len(d.materials) && _mesh_mat(&mats, d.materials[i]).cutoff > 0 do clips = true
+			mat: Asset_GUID
+			if i < len(d.materials) do mat = d.materials[i]
+			m := _mesh_mat(&mats, mat)
+			if m.cutoff > 0 do clips = true
+			if i == 0 do first_cull = m.cull
+			else if m.cull != first_cull do mixed = true
 		}
-		if !clips {
-			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = -1}, 0, d)
+		if !clips && !mixed {
+			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = -1, cull = first_cull, mirrored = mirrored}, 0, d)
 			continue
 		}
 		for _, i in mesh.submeshes {
 			mat: Asset_GUID
 			if i < len(d.materials) do mat = d.materials[i]
-			clip := _mesh_mat(&mats, mat).cutoff > 0
-			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}}, clip ? render_fold_guid(mat) | 1 : 0, d)
+			m := _mesh_mat(&mats, mat)
+			clip := m.cutoff > 0
+			it := Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}, cull = m.cull, mirrored = mirrored}
+			add(&items, &keys, it, clip ? render_fold_guid(mat) | 1 : 0, d)
 		}
 	}
 	slice.sort(keys[:])
@@ -388,17 +407,30 @@ render_execute_depth :: proc(commands: []Render_Command) {
 		d := it.cmd.variant.(Draw_Mesh)
 		gpu := d.skinned != nil ? d.skinned^ : it.loaded.gpu
 		if it.sub < 0 {
-			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER)
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER, cull = it.cull, mirrored = it.mirrored)
 			continue
 		}
 		sub := it.loaded.submeshes[it.sub]
 		if it.material == {} {
-			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER, sub.first_index, sub.index_count)
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER, sub.first_index, sub.index_count, cull = it.cull, mirrored = it.mirrored)
 			continue
 		}
 		m := _mesh_mat(&mats, it.material)
-		gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff)
+		gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
 	}
+}
+
+// Whether `model` mirrors what it draws (negative scale on an odd number of
+// axes): that turns its triangles' winding around (gfx.draw_mesh mirrored).
+render_mirrored :: proc(model: matrix[4, 4]f32) -> bool {
+	return linalg.determinant(linalg.matrix3_from_matrix4(model)) < 0
+}
+
+// The mesh fold with the cull mode in its top 2 bits and mirroring in the
+// next: draws that differ in either never merge, so they sort apart.
+@(private = "file")
+_fold_mesh_faces :: proc(d: Draw_Mesh, sub: i32, cull: gfx.Cull, mirrored: bool) -> u32 {
+	return render_fold_mesh(d.mesh, d.part, sub) & 0x1FFF_FFFF | u32(cull) << 30 | u32(mirrored) << 29
 }
 
 // Sort-key folds for grouping draws (render_execute, the shadow pass): a guid

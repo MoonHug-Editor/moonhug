@@ -45,6 +45,15 @@ _Pipeline_Kind :: enum u8 {
 	Lines_Overlay, // no depth test (gizmos)
 }
 
+// Which triangles a mesh draw skips (draw_mesh). Front faces wind counter-
+// clockwise on screen, as glTF and the built-in meshes author them, or
+// clockwise for a mirrored draw.
+Cull :: enum u8 {
+	None,  // both faces drawn
+	Back,  // the usual: the inside of a closed mesh is never seen
+	Front, // only the back faces drawn (the inside of a room or a sky dome)
+}
+
 // What a pass renders into. A pipeline is bound to its color target's pixel
 // format, so every shader keeps one pipeline set per Target_Format, built the
 // first time a pass of that format draws with it (pipelines.odin).
@@ -78,6 +87,46 @@ DEPTH_SHADER :: "depth"
 
 // The fullscreen shader that shows a depth texture as grey (draw_depth_view).
 DEPTH_VIEW_SHADER :: "depth_view"
+
+// Temporal anti-aliasing's resolve (shaders/taa.frag.glsl): this frame's
+// image, the history, the depth and the motion vectors in, the blended image
+// out. Its block is Taa_Params.
+TAA_SHADER :: "taa"
+
+Taa_Params :: struct {
+	reproject: matrix[4, 4]f32, // this frame's clip space to last frame's, both through the steady camera
+	// x = this frame's weight, y = 1 when the history is valid, z = 1 when
+	// the motion input holds this frame's motion vectors
+	params:    [4]f32,
+}
+
+// Screen-space ambient occlusion (shaders/ssao.frag.glsl): the scene's depth
+// in, red the open fraction and green the view depth out. Its block is
+// Ssao_Params. SSAO_BLUR_SHADER blurs that along one axis, keeping edges
+// (Ssao_Blur_Params).
+SSAO_SHADER      :: "ssao"
+SSAO_BLUR_SHADER :: "ssao_blur"
+
+Ssao_Params :: struct {
+	proj:     matrix[4, 4]f32, // the camera's projection, as the depth was drawn
+	inv_proj: matrix[4, 4]f32,
+	params:   [4]f32,          // x = radius (view units), y = intensity, z = sample count
+}
+
+Ssao_Blur_Params :: struct {
+	params: [4]f32, // xy = the step between taps in pixels: {1, 0} then {0, 1}
+}
+
+// The world shader that draws motion vectors (shaders/motion.frag.glsl): a
+// mesh drawn with it writes how far each of its pixels moved on screen since
+// the last frame, alpha 1. Its block (draw_mesh material) is Motion_Params.
+MOTION_SHADER :: "motion"
+
+Motion_Params :: struct {
+	to_prev:        matrix[4, 4]f32, // the object's world space now to last frame's: prev_model * inverse(model)
+	view_proj:      matrix[4, 4]f32, // this frame's steady camera
+	prev_view_proj: matrix[4, 4]f32, // last frame's steady camera
+}
 
 // The fullscreen shader that copies its input to the target.
 BLIT_SHADER :: "blit"

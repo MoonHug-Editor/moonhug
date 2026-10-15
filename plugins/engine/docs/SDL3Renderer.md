@@ -161,9 +161,9 @@ Everything gfx draws is lit, blended and filtered in linear light:
 
 Every world pipeline reads two vertex buffers. Slot 0 holds the mesh's or the batch's vertices. Slot 1 holds one `_Instance` per drawn object: its model matrix as four columns and its tint (`world.vert` locations 5 to 9). The vertex UBO holds only `view_proj`, pushed once per view.
 
-`draw_mesh` appends the object's instance and joins the previous draw when everything else matches: the mesh and index range, the texture, the shader, the material bytes, the extra textures, the view and the pipeline kind. A run of such draws costs one draw call. Entry 0 of a pass's instances is the identity, which batch draws (quads, lines) read, since their vertices are world-space with colors baked in.
+`draw_mesh` appends the object's instance and joins the previous draw when everything else matches: the mesh and index range, the texture, the shader, the material bytes, the extra textures, the alpha cutoff, the cull mode and mirroring, the view and the pipeline kind. A run of such draws costs one draw call. Entry 0 of a pass's instances is the identity, which batch draws (quads, lines) read, since their vertices are world-space with colors baked in.
 
-The engine orders opaque draws by material, mesh and submesh (`render_execute`) and depth draws by clipping material and mesh (`render_execute_depth`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
+The engine orders opaque draws by material, mesh, submesh, cull mode and mirroring (`render_execute`) and depth draws by clipping material, mesh, cull mode and mirroring (`render_execute_depth`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
 
 ## Depth passes and alpha clipping
 
@@ -176,6 +176,22 @@ A caster is a fragment stage for depth passes: the surface template compiled wit
 `world.vert` declares `invariant gl_Position`, so a depth prepass and the shading pass after it compute the same depth. spirv-cross emits it from MSL 2.1, so `mh shaders` crosses vertex shaders with `--msl-version 20100`. SDL compiles MSL source with the OS's newest language version.
 
 `draw_depth_view(depth, perspective)` draws a depth texture as grey over the target, near white, for the Render Pipeline window. It fetches texels rather than filtering them, since not every GPU filters depth.
+
+## Face culling
+
+`draw_mesh`'s `cull` (`Cull.None`, `.Back`, `.Front`) skips a face of each triangle. Front faces wind counter-clockwise on screen. `mirrored` is for a model whose transform turns the winding around (a negative determinant): its pipeline takes clockwise triangles as front faces, so culling and the shader's `gl_FrontFacing` still see the outside as the front. Wire and overlay draws ignore both and show every face. Each shader builds a mesh pipeline per cull mode and winding the first time a pass of a format draws one, and the shader's pipeline set keeps the unculled, unmirrored ones.
+
+The engine passes the material's cull mode (`material_cull`, from `Material.render_face`, back faces culled by default) and `render_mirrored(model)` to every mesh draw, the depth passes included, so a shadow has the faces the surface has. A mesh draws depth whole only when its materials all cull alike and none clips.
+
+The surface template lights a back face with its normal reversed (`vertex_normal()`, and `perturb_normal` reverses its result), the other side of a thin sheet, as glTF's `doubleSided` asks. `world.vert` multiplies the tangent's bitangent sign by the sign of the model's determinant, so a normal map on a mirrored object tilts the right way.
+
+## Temporal anti-aliasing
+
+`TAA_SHADER` is the resolve, a fullscreen shader: this frame's image, the history, the depth and the motion vectors in (`Taa_Params`: the camera's reprojection, the blend, whether the history and the motion vectors are valid), the blended image out. `MOTION_SHADER` is a world shader that writes a mesh's motion vectors from its `Motion_Params` block (the object's world space now to last frame's, this and last frame's steady cameras), alpha 1 where it drew. `pass_begin_target(rt, clear, shared_depth = scene)` draws into `rt`'s color against another target's depth, kept as it is, so a moved mesh writes motion vectors only where it is in front. The engine's `scene_taa` and `motion_vectors` nodes drive them (RenderPipeline.md, Temporal anti-aliasing).
+
+## Ambient occlusion
+
+`set_ambient_occlusion({tex, direct})` hands a pass's lit draws the screen's ambient occlusion: `tex` the view's size, red how much ambient light reaches each pixel. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads it at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of it and the surface's occlusion, and the lights' light by `direct` of it (`occlusion_params.x` in the light block). `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` node drives them (RenderPipeline.md, Ambient occlusion).
 
 ## Mip levels and specular aliasing
 

@@ -9,5 +9,6 @@
   ],
   "texture": "a2d2633c-ece0-491c-aa97-99af54b39635",
   "alpha_clip": true,
-  "alpha_cutoff": 0.5
+  "alpha_cutoff": 0.5,
+  "render_face": 2
 }

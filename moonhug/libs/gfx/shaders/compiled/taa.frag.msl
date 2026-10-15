@@ -1,0 +1,199 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4x4 reproject;
+    float4 params;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+static inline __attribute__((always_inline))
+float3 to_ycocg(thread const float3& c)
+{
+    return float3(((0.25 * c.x) + (0.5 * c.y)) + (0.25 * c.z), (0.5 * c.x) - (0.5 * c.z), (((-0.25) * c.x) + (0.5 * c.y)) - (0.25 * c.z));
+}
+
+static inline __attribute__((always_inline))
+float3 history_catmull_rom(thread const float2& uv, thread const float2& size, texture2d<float> history, sampler historySmplr)
+{
+    float2 pos = uv * size;
+    float2 p1 = floor(pos - float2(0.5)) + float2(0.5);
+    float2 f = pos - p1;
+    float2 w0 = f * (float2(-0.5) + (f * (float2(1.0) - (f * 0.5))));
+    float2 w1 = float2(1.0) + ((f * f) * (float2(-2.5) + (f * 1.5)));
+    float2 w2 = f * (float2(0.5) + (f * (float2(2.0) - (f * 1.5))));
+    float2 w3 = (f * f) * (float2(-0.5) + (f * 0.5));
+    float2 w12 = w1 + w2;
+    float2 p0 = (p1 - float2(1.0)) / size;
+    float2 p3 = (p1 + float2(2.0)) / size;
+    float2 p12 = (p1 + (w2 / w12)) / size;
+    float3 c = ((((history.sample(historySmplr, float2(p12.x, p0.y), level(0.0)).xyz * (w12.x * w0.y)) + (history.sample(historySmplr, float2(p0.x, p12.y), level(0.0)).xyz * (w0.x * w12.y))) + (history.sample(historySmplr, p12, level(0.0)).xyz * (w12.x * w12.y))) + (history.sample(historySmplr, float2(p3.x, p12.y), level(0.0)).xyz * (w3.x * w12.y))) + (history.sample(historySmplr, float2(p12.x, p3.y), level(0.0)).xyz * (w12.x * w3.y));
+    float w = ((((w12.x * w0.y) + (w0.x * w12.y)) + (w12.x * w12.y)) + (w3.x * w12.y)) + (w12.x * w3.y);
+    return fast::max(c / float3(w), float3(0.0));
+}
+
+static inline __attribute__((always_inline))
+float3 clip_to_box(thread const float3& c, thread const float3& lo, thread const float3& hi)
+{
+    float3 centre = (lo + hi) * 0.5;
+    float3 half_size = fast::max((hi - lo) * 0.5, float3(9.9999997473787516355514526367188e-06));
+    float3 d = c - centre;
+    float3 unit = abs(d / half_size);
+    float m = fast::max(unit.x, fast::max(unit.y, unit.z));
+    float3 _340;
+    if (m > 1.0)
+    {
+        _340 = centre + (d / float3(m));
+    }
+    else
+    {
+        _340 = c;
+    }
+    return _340;
+}
+
+static inline __attribute__((always_inline))
+float3 from_ycocg(thread const float3& c)
+{
+    return float3((c.x + c.y) - c.z, c.x + c.z, (c.x - c.y) - c.z);
+}
+
+static inline __attribute__((always_inline))
+float luma(thread const float3& c)
+{
+    return dot(c, float3(0.2125999927520751953125, 0.715200006961822509765625, 0.072200000286102294921875));
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _453 [[buffer(1)]], texture2d<float> current [[texture(0)]], texture2d<float> history [[texture(1)]], texture2d<float> depth [[texture(2)]], texture2d<float> motion [[texture(3)]], sampler currentSmplr [[sampler(0)]], sampler historySmplr [[sampler(1)]], sampler depthSmplr [[sampler(2)]], sampler motionSmplr [[sampler(3)]])
+{
+    main0_out out = {};
+    int2 size = int2(current.get_width(), current.get_height());
+    int2 p = clamp(int2(in.frag_uv * float2(size)), int2(0), size - int2(1));
+    float3 cur = current.read(uint2(p), 0).xyz;
+    float3 m1 = float3(0.0);
+    float3 m2 = float3(0.0);
+    float nearest = 1.0;
+    int2 nearest_p = p;
+    for (int y = -1; y <= 1; y++)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            int2 q = clamp(p + int2(x, y), int2(0), size - int2(1));
+            float3 param = current.read(uint2(q), 0).xyz;
+            float3 c = to_ycocg(param);
+            m1 += c;
+            m2 += (c * c);
+            float d = depth.read(uint2(q), 0).x;
+            if (d < nearest)
+            {
+                nearest = d;
+                nearest_p = q;
+            }
+        }
+    }
+    if (_453.params.y < 0.5)
+    {
+        out.out_color = float4(cur, 1.0);
+        return out;
+    }
+    float2 texel = float2(1.0) / float2(size);
+    float2 uv = (float2(p) + float2(0.5)) * texel;
+    float4 _485;
+    if (_453.params.z > 0.5)
+    {
+        _485 = motion.read(uint2(nearest_p), 0);
+    }
+    else
+    {
+        _485 = float4(0.0);
+    }
+    float4 moved = _485;
+    bool behind = false;
+    float2 prev_uv;
+    if (moved.w > 0.5)
+    {
+        prev_uv = uv - moved.xy;
+    }
+    else
+    {
+        float2 nearest_uv = (float2(nearest_p) + float2(0.5)) * texel;
+        float4 prev = _453.reproject * float4((nearest_uv.x * 2.0) - 1.0, 1.0 - (nearest_uv.y * 2.0), nearest, 1.0);
+        prev_uv = float2(((prev.x / prev.w) * 0.5) + 0.5, 0.5 - ((prev.y / prev.w) * 0.5)) + (uv - nearest_uv);
+        behind = prev.w <= 0.0;
+    }
+    bool _562;
+    if (!behind)
+    {
+        _562 = prev_uv.x < 0.0;
+    }
+    else
+    {
+        _562 = behind;
+    }
+    bool _569;
+    if (!_562)
+    {
+        _569 = prev_uv.y < 0.0;
+    }
+    else
+    {
+        _569 = _562;
+    }
+    bool _576;
+    if (!_569)
+    {
+        _576 = prev_uv.x > 1.0;
+    }
+    else
+    {
+        _576 = _569;
+    }
+    bool _583;
+    if (!_576)
+    {
+        _583 = prev_uv.y > 1.0;
+    }
+    else
+    {
+        _583 = _576;
+    }
+    if (_583)
+    {
+        out.out_color = float4(cur, 1.0);
+        return out;
+    }
+    float3 mean = m1 / float3(9.0);
+    float3 sigma = sqrt(fast::max((m2 / float3(9.0)) - (mean * mean), float3(0.0)));
+    float2 param_1 = prev_uv;
+    float2 param_2 = float2(size);
+    float3 hist = history_catmull_rom(param_1, param_2, history, historySmplr);
+    float3 param_3 = hist;
+    float3 param_4 = to_ycocg(param_3);
+    float3 param_5 = mean - (sigma * 1.25);
+    float3 param_6 = mean + (sigma * 1.25);
+    float3 param_7 = clip_to_box(param_4, param_5, param_6);
+    hist = from_ycocg(param_7);
+    float speed = length((prev_uv - uv) * float2(size));
+    float blend = mix(_453.params.x, fast::max(_453.params.x, 0.25), fast::clamp(speed / 4.0, 0.0, 1.0));
+    float3 param_8 = cur;
+    float wc = blend / (1.0 + luma(param_8));
+    float3 param_9 = hist;
+    float wh = (1.0 - blend) / (1.0 + luma(param_9));
+    out.out_color = float4(((cur * wc) + (hist * wh)) / float3(wc + wh), 1.0);
+    return out;
+}
+

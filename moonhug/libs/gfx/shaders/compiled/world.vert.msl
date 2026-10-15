@@ -57,7 +57,8 @@ vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _115 [[buffer(0)]
     out.frag_color = float4(_134 * _139, in.in_color.w * in.in_tint.w);
     out.frag_normal = float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_normal;
     out.frag_world_pos = world.xyz;
-    out.frag_tangent = float4(float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_tangent.xyz, in.in_tangent.w);
+    float mirror = (determinant(float3x3(model[0].xyz, model[1].xyz, model[2].xyz)) < 0.0) ? (-1.0) : 1.0;
+    out.frag_tangent = float4(float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_tangent.xyz, in.in_tangent.w * mirror);
     return out;
 }
 

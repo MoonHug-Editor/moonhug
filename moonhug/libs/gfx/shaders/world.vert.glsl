@@ -61,5 +61,8 @@ void main() {
     // World-space position for view-dependent shading (specular, fresnel) —
     // fragment shaders that don't declare the input simply ignore it.
     frag_world_pos = world.xyz;
-    frag_tangent = vec4(mat3(model) * in_tangent.xyz, in_tangent.w);
+    // A mirrored model turns the tangent frame's handedness around: the
+    // bitangent sign follows it, so normal maps tilt the right way.
+    float mirror = determinant(mat3(model)) < 0.0 ? -1.0 : 1.0;
+    frag_tangent = vec4(mat3(model) * in_tangent.xyz, in_tangent.w * mirror);
 }

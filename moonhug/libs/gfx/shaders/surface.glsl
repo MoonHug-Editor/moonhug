@@ -13,8 +13,8 @@
 //   s.metallic   0 dielectric to 1 metal, preset to 0
 //   s.smoothness 0 rough to 1 mirror-like, preset to 0.5
 //   s.occlusion  ambient light that reaches the point, preset to 1
-//   s.normal    world-space, preset to the interpolated vertex normal. For a
-//               normal map: s.normal = perturb_normal(sample.xyz * 2.0 - 1.0)
+//   s.normal    world-space, preset to vertex_normal(). For a normal map:
+//               s.normal = perturb_normal(sample.xyz * 2.0 - 1.0)
 //   s.emissive  added after lighting, preset to zero
 //
 // A fragment whose s.alpha ends below the material's alpha cutoff is
@@ -68,6 +68,9 @@ layout(set = 3, binding = 0) uniform LightUBO {
     mat4 tile_vp[MAX_SHADOW_TILES];
     vec4 tile_rects[MAX_SHADOW_TILES];
     vec4 tile_params[MAX_SHADOW_TILES]; // x near, y far, z one texel's world size at distance 1
+    // Ambient occlusion (gfx.set_ambient_occlusion): x how much of it darkens
+    // direct light.
+    vec4 occlusion_params;
 };
 
 // Per draw, from gfx.draw_mesh: x = the material's alpha cutoff (0 = no
@@ -106,6 +109,14 @@ uint light_tile_word(int tile, int w) {
 // rows use bindings 1..6.
 layout(set = 2, binding = 7) uniform sampler2DShadow shadow_map;
 layout(set = 2, binding = 10) uniform sampler2DShadow shadow_atlas;
+
+// The screen's ambient occlusion (the scene_ssao node): red is how much
+// ambient light reaches the pixel, 1 when there is none.
+layout(set = 2, binding = 11) uniform sampler2D ambient_occlusion;
+
+float screen_occlusion() {
+    return texture(ambient_occlusion, gl_FragCoord.xy * cluster_params.xy).r;
+}
 // The environment (gfx.set_environment): the specular cube prefiltered for
 // rising roughness along its mips, and the diffuse irradiance cube. White
 // when the pass has none, so the ambient level lights uniformly.
@@ -165,10 +176,20 @@ vec4 srgb_to_linear(vec4 c) {
     return vec4(srgb_to_linear(c.rgb), c.a);
 }
 
+// The interpolated vertex normal, reversed on a back face (a material that
+// draws both faces): the back of a thin sheet is lit as a surface of its
+// own, facing the other way.
+vec3 vertex_normal() {
+    vec3 n = normalize(frag_normal);
+    return gl_FrontFacing ? n : -n;
+}
+
 // A tangent-space normal (a normal map's texel unpacked to -1..1, z out of
 // the surface) to world space. Uses the vertex tangent, or, where there is
 // none (quads without uvs, lines), a frame from the position and uv
-// derivatives. `strength` scales the map's tilt: 0 is the vertex normal.
+// derivatives. `strength` scales the map's tilt: 0 is vertex_normal(). On a
+// back face the result is reversed whole, as vertex_normal() is: a bump on
+// the front is a dent on the back.
 vec3 perturb_normal(vec3 tangent_normal, float strength) {
     vec3 n = normalize(frag_normal);
     vec3 tn = vec3(tangent_normal.xy * strength, tangent_normal.z);
@@ -189,7 +210,8 @@ vec3 perturb_normal(vec3 tangent_normal, float strength) {
         t *= invmax;
         b *= invmax;
     }
-    return normalize(mat3(t, b, n) * tn);
+    vec3 r = normalize(mat3(t, b, n) * tn);
+    return gl_FrontFacing ? r : -r;
 }
 
 vec3 perturb_normal(vec3 tangent_normal) {

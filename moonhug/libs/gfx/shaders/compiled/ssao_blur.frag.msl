@@ -1,0 +1,86 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+#pragma clang diagnostic ignored "-Wmissing-braces"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+template<typename T, size_t Num>
+struct spvUnsafeArray
+{
+    T elements[Num ? Num : 1];
+    
+    thread T& operator [] (size_t pos) thread
+    {
+        return elements[pos];
+    }
+    constexpr const thread T& operator [] (size_t pos) const thread
+    {
+        return elements[pos];
+    }
+    
+    device T& operator [] (size_t pos) device
+    {
+        return elements[pos];
+    }
+    constexpr const device T& operator [] (size_t pos) const device
+    {
+        return elements[pos];
+    }
+    
+    constexpr const constant T& operator [] (size_t pos) const constant
+    {
+        return elements[pos];
+    }
+    
+    threadgroup T& operator [] (size_t pos) threadgroup
+    {
+        return elements[pos];
+    }
+    constexpr const threadgroup T& operator [] (size_t pos) const threadgroup
+    {
+        return elements[pos];
+    }
+};
+
+struct Params
+{
+    float4 params;
+};
+
+constant spvUnsafeArray<float, 5> _105 = spvUnsafeArray<float, 5>({ 0.227026998996734619140625, 0.19459460675716400146484375, 0.121621601283550262451171875, 0.054053999483585357666015625, 0.01621600054204463958740234375 });
+
+struct main0_out
+{
+    float4 out_ao [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _54 [[buffer(1)]], texture2d<float> ao [[texture(0)]], sampler aoSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    int2 size = int2(ao.get_width(), ao.get_height());
+    int2 p = clamp(int2(in.frag_uv * float2(size)), int2(0), size - int2(1));
+    float2 centre = ao.read(uint2(p), 0).xy;
+    float sum = centre.x * 0.227026998996734619140625;
+    float total = 0.227026998996734619140625;
+    int2 _step = int2(_54.params.xy);
+    for (int i = 1; i <= 4; i++)
+    {
+        for (int side = -1; side <= 1; side += 2)
+        {
+            float2 s = ao.read(uint2(clamp(p + ((_step * int2(i)) * int2(side)), int2(0), size - int2(1))), 0).xy;
+            float w = _105[i] * exp((-abs(s.y - centre.y)) / fast::max(centre.y * 0.100000001490116119384765625, 0.001000000047497451305389404296875));
+            sum += (s.x * w);
+            total += w;
+        }
+    }
+    out.out_ao = float4(sum / total, centre.y, 0.0, 1.0);
+    return out;
+}
+

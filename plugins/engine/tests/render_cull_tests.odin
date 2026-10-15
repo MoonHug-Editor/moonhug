@@ -132,3 +132,15 @@ test_mip_count :: proc(t: ^testing.T) {
 	testing.expect_value(t, gfx.mip_count(2048, 1024), i32(12))
 	testing.expect_value(t, gfx.mip_count(1000, 1), i32(10)) // 1000 500 250 125 62 31 15 7 3 1
 }
+
+// A model mirrors what it draws when it flips an odd number of axes: one or
+// three negative scales, not two (two are a rotation by 180 degrees).
+@(test)
+test_render_mirrored :: proc(t: ^testing.T) {
+	rot := linalg.matrix4_rotate_f32(0.7, {0, 1, 0})
+	move := linalg.matrix4_translate_f32({3, -2, 5})
+	testing.expect(t, !engine.render_mirrored(move * rot * linalg.matrix4_scale_f32({2, 3, 4})), "positive scale")
+	testing.expect(t, engine.render_mirrored(move * rot * linalg.matrix4_scale_f32({-1, 1, 1})), "one axis flipped")
+	testing.expect(t, !engine.render_mirrored(move * rot * linalg.matrix4_scale_f32({-1, -1, 1})), "two axes flipped")
+	testing.expect(t, engine.render_mirrored(move * rot * linalg.matrix4_scale_f32({-1, -1, -1})), "three axes flipped")
+}

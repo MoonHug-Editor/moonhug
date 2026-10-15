@@ -529,6 +529,17 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 		if inspect_frame do _inspect_node_ends(inst.id, frame_ctx.pool)
 	}
 	inspect := _inspect_lane_begins(slot, ctx)
+	// Temporal anti-aliasing jitters the camera for the scene nodes when the
+	// lane resolves it (render_taa.odin). The debug view modes draw steady.
+	ctx.jitter = {}
+	if ctx.view.mode == .Shaded {
+		for inst in lane {
+			if inst.node.name == TAA_NODE && !inst.muted {
+				ctx.jitter = taa_jitter(ctx)
+				break
+			}
+		}
+	}
 	for inst in lane {
 		if inst.muted {
 			if inspect do _inspect_node_skipped(inst.id)

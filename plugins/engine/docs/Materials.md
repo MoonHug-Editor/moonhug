@@ -68,6 +68,16 @@ Diffuse is not divided by pi, so a light of intensity 1 on white albedo lights i
 
 Depth passes (the shadow map, the depth prepass) draw a clipped material through its shader's caster, the same `surface()` without lighting, so the shadow has the same holes as the surface. A mesh whose materials do not clip draws depth with one shared shader whatever its materials, so its copies merge into one instanced draw (SDL3Renderer.md, Depth passes and alpha clipping).
 
+### Render face
+
+`render_face` picks which faces of a mesh's triangles draw, in every pass, shadows included:
+
+- `Front` (the default): back faces are skipped. A closed mesh never shows its inside, so this costs nothing visible and saves the GPU about half the triangles
+- `Back`: only back faces draw, for the inside of a room or a sky dome
+- `Both`: no face is skipped, for open, thin geometry seen from either side: leaves, cloth, planes, a cutout cube's far panels. A back face is lit with its normal reversed, normal map included, as the other side of a thin sheet
+
+Front faces are the ones wound counter-clockwise, as glTF and the built-in meshes author them. An object mirrored by its transform (a negative scale on one or three axes) keeps its outside as the front. Extract Assets sets `Both` for a glTF material marked `doubleSided`. Sprites, previews and the wireframe and overdraw views draw both faces whatever the material says.
+
 ### Environment
 
 The **Environment** component (Rendering/Environment) is the scene's sky and the light it gives what no Light reaches. The first enabled one in the world drives the scene:
@@ -170,9 +180,9 @@ void surface(inout Surface s) {
 }
 ```
 
-- `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color` (the texture decoded to linear), `s.normal` as the interpolated world normal, `s.emissive` as zero. Change what you need
-- PBR: `s.metallic` (preset 0), `s.smoothness` (preset 0.5) and `s.occlusion` (preset 1) feed the same lighting as the built-in Lit
-- normal maps: `s.normal = perturb_normal(texture(bumps, frag_uv).xyz * 2.0 - 1.0, strength)` turns a tangent-space texel into the world normal, through the vertex tangent (`frag_tangent`, location 4) or a frame from derivatives where the vertex has none. A normal map is data: never `srgb_to_linear` it
+- `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color` (the texture decoded to linear), `s.normal` as `vertex_normal()` (the interpolated world normal, reversed on a back face), `s.emissive` as zero. Change what you need
+- PBR: `s.metallic` (preset 0), `s.smoothness` (preset 0.5) and `s.occlusion` (preset 1) feed the same lighting as the built-in Lit. The environment's light is shaded by the smaller of `s.occlusion` and the screen's ambient occlusion (`screen_occlusion()`, white unless the pipeline runs `scene_ssao`)
+- normal maps: `s.normal = perturb_normal(texture(bumps, frag_uv).xyz * 2.0 - 1.0, strength)` turns a tangent-space texel into the world normal, through the vertex tangent (`frag_tangent`, location 4) or a frame from derivatives where the vertex has none. On a back face the result is reversed whole, as `vertex_normal()` is. A normal map is data: never `srgb_to_linear` it
 - the template declares the inputs, `tex`, the `LightUBO` and the shadow maps, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by every Light with `shadows` on, like the built-in lit shader
 - with the material's alpha clipping on, a pixel whose `s.alpha` ends below the cutoff is discarded. The importer also compiles the shader's caster (the template with `MOONHUG_CASTER`: `surface()` and the clip, no lighting), what shadows and the depth prepass draw a clipped material with, so a graph that cuts holes through `s.alpha` cuts them in its shadow too
 - set 3 binding 2 is gfx's per-draw block (`DrawUBO`, the alpha cutoff): a property block stays at binding 1

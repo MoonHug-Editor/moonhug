@@ -1,0 +1,40 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Motion
+{
+    float4x4 to_prev;
+    float4x4 view_proj;
+    float4x4 prev_view_proj;
+};
+
+struct main0_out
+{
+    float4 out_motion [[color(0)]];
+};
+
+struct main0_in
+{
+    float3 frag_world_pos [[user(locn3)]];
+};
+
+static inline __attribute__((always_inline))
+float2 to_uv(thread const float4& clip)
+{
+    return float2(((clip.x / clip.w) * 0.5) + 0.5, 0.5 - ((clip.y / clip.w) * 0.5));
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Motion& _52 [[buffer(1)]])
+{
+    main0_out out = {};
+    float4 world = float4(in.frag_world_pos, 1.0);
+    float4 param = _52.view_proj * world;
+    float4 param_1 = _52.prev_view_proj * (_52.to_prev * world);
+    out.out_motion = float4(to_uv(param) - to_uv(param_1), 0.0, 1.0);
+    return out;
+}
+

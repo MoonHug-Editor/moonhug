@@ -60,6 +60,13 @@ Render_Ctx :: struct {
 	// This view's directional shadow cascades (shadow_cascades), bound by
 	// scene_target_begin. count 0 = none this run.
 	shadow_cascades: gfx.Shadow_Cascades,
+	// This run's sub-pixel camera offset in clip space (render_taa.odin): the
+	// scene nodes draw through render_draw_view, which applies it, until
+	// scene_taa resolves and clears it. Zero = the steady camera.
+	jitter: [2]f32,
+	// This view's ambient occlusion (scene_ssao), bound by scene_target_begin
+	// for the lit draws after it. nil = none this run.
+	occlusion: Maybe(gfx.Ambient_Occlusion),
 	// The view targets nodes took this run (render_target), temp-allocated:
 	// what render_input finds. A target a node did not take this run is
 	// absent, even though the pool still holds last frame's texture.
@@ -100,6 +107,7 @@ _render_view_pools_shutdown :: proc() {
 	_render_inspect_shutdown()
 	_render_pipeline_shutdown()
 	_render_environment_shutdown()
+	_render_taa_shutdown()
 }
 
 @(private = "file")
