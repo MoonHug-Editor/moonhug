@@ -4,6 +4,7 @@
 package gfx
 
 import "core:math"
+import "core:time"
 import "base:runtime"
 import sdl "vendor:sdl3"
 
@@ -242,7 +243,10 @@ frame_index: u64
 frame_begin :: proc() -> bool {
 	frame_index += 1
 	_platform_frame_tick()
+	_stats_frame_begin()
+	acquire := time.tick_now()
 	_gfx.cmd = sdl.AcquireGPUCommandBuffer(_gfx.device)
+	_stats_wait(acquire)
 	return _gfx.cmd != nil
 }
 
@@ -257,6 +261,7 @@ frame_end :: proc() {
 		}
 		_gfx.cmd = nil
 	}
+	_stats_frame_end()
 	// The swapchain image belongs to this frame only — a capture must not reach
 	// for it after submit.
 	_swapchain_frame_clear()

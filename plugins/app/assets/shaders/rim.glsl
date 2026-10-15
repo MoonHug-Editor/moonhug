@@ -10,7 +10,8 @@
 //        rim_power   edge tightness (0 falls back to 3; higher = thinner rim)
 //
 // A surface shader may declare a property block at set = 3, binding = 1 and
-// extra textures at set = 2, bindings 1..7, like any user shader.
+// extra textures at set = 2, bindings 1..6, like any user shader (7 and up
+// are the shadow map and the environment).
 
 layout(set = 3, binding = 1) uniform MaterialUBO {
     vec4  rim_color;

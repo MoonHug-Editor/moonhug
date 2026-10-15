@@ -16,6 +16,7 @@ package engine
 // and fed per-draw from Material.properties.
 
 import "core:strings"
+import gfx "moonhug:libs/gfx"
 
 @(typ_guid={guid="fa4de399-c86a-47fa-821f-ddd6276562ad"})
 ShaderSettings :: struct {
@@ -42,7 +43,10 @@ Shader_Texture :: struct {
 
 // Fragment sampler slots the engine will bind per draw (SDL_GPU wants the
 // exact count the pipeline declares). Shaders with more samplers fail import.
-SHADER_MAX_SAMPLERS :: 8
+// gfx's own count: a surface shader declares the shadow map and the
+// environment cubes at its top slots (gfx SHADOW_SAMPLER_SLOT,
+// ENV_SPECULAR_SLOT, ENV_IRRADIANCE_SLOT).
+SHADER_MAX_SAMPLERS :: gfx.MAX_FRAGMENT_SAMPLERS
 
 // Artifact layout (little-endian): header | spirv | msl | property table
 // (per property: offset u32 | size u32 | name_len u32 | name bytes) |

@@ -327,6 +327,7 @@ scene_render_view :: proc(w, h: f32) -> core.Render_View {
 	}
 	rv := core.render_view_make(view, proj, w, h, ~u32(0), .SceneView) // editor sees all layers
 	rv.mode = scene_view_mode
+	rv.cull = true
 	return rv
 }
 

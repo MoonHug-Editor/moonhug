@@ -121,9 +121,7 @@ GPU-free (works headless, fully testable):
 - Invalidation: `asset_db_refresh` drops cache entries for externally
   changed/deleted `.mat` files (git checkout, other tools).
 
-`render_execute` resolves `Draw_Mesh.material` → shader name + texture +
-color and calls `gfx.draw_mesh(..., shader)`. Meshes sort by material guid so
-same-material draws share pipeline/texture binds.
+`render_execute` resolves each material once per pass (shader name, texture, color, property block) and calls `gfx.draw_mesh(..., shader)` per submesh. Draws sort by material, mesh and submesh, so equal ones merge into instanced draws (SDL3Renderer.md, Instancing).
 
 ## Custom user shaders
 
@@ -140,9 +138,7 @@ Damaged Helmet works out of the box). Conventions:
   `frag_world_pos` (loc 3, world-space fragment position) — declare only the
   ones you read
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
-  samplers at bindings 1..6 become named texture rows (see below). Binding 7
-  is the shadow map, bound by gfx for shaders that declare it as `shadow_map`
-  (the surface template does)
+  samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the shadow map, 8 and 9 the environment's reflection and irradiance cubes, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 9 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
   floor, y light count), `cam_pos` (xyz camera world position — pair it with
   `frag_world_pos` for specular/fresnel), then `lights[8]` of four vec4s each:
@@ -254,8 +250,7 @@ Pipelines are **name-keyed** in gfx: `shader_register(name, ...)` builds the
 full pipeline set for a shader pair ("unlit" and "lit" are registered in
 `gfx.init`; user shaders register through `shader_register_fragment` under
 their guid string, `shader_unregister` enables hot reload). All shaders share
-the `Vertex` format and the vertex UBO layout (`_Uniform`: view_proj, model,
-tint) — that contract is what lets `pass_end` switch shaders per draw.
+the `Vertex` format, the per-instance `_Instance` format (model matrix and tint) and the vertex UBO layout (`_Uniform`: view_proj) — that contract is what lets `pass_end` switch shaders per draw.
 
 Light gizmos and handles (range sphere, spot cone) live in the editor: docs/core/Handles.md.
 

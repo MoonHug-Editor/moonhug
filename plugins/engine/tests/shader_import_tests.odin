@@ -5,7 +5,9 @@ package engine_tests
 // artifact parsing is covered toolchain-free.
 
 import "core:os"
+import "core:strings"
 import "core:testing"
+import gfx "moonhug:libs/gfx"
 import "moonhug:packages/engine"
 import "moonhug:packages/engine/editor/importers"
 
@@ -98,6 +100,30 @@ test_shader_import_view_dependent_contract :: proc(t: ^testing.T) {
 	if len(props) != 2 do return
 	testing.expect(t, props[0].name == "spec_color" && props[0].offset == 0 && props[0].size == 16, "vec4 member")
 	testing.expect(t, props[1].name == "shininess" && props[1].offset == 16 && props[1].size == 4, "float member")
+}
+
+// A surface shader compiles inside the template, which declares the shadow
+// map and the environment cubes at the top sampler slots: the importer
+// accepts every slot gfx binds (gfx.MAX_FRAGMENT_SAMPLERS).
+@(test)
+test_shader_import_surface_template :: proc(t: ^testing.T) {
+	if !_toolchain_available() {
+		testing.expect(t, true)
+		return
+	}
+
+	artifact := "moonhug/tests/fixtures/shaders/_test_surface_artifact.bin"
+	defer os.remove(artifact)
+	defer os.remove_all(strings.concatenate({artifact, ".inc"}, context.temp_allocator))
+
+	ok := importers._import_shader("moonhug/tests/fixtures/shaders/test_surface.glsl", artifact, nil)
+	testing.expect(t, ok, "test_surface.glsl import failed")
+
+	blob, _ := os.read_entire_file(artifact, context.temp_allocator)
+	header, _, _, props, _, parse_ok := engine._shader_artifact_parse(blob, context.temp_allocator)
+	testing.expect(t, parse_ok, "artifact failed to parse")
+	testing.expect_value(t, header.num_samplers, u32(gfx.MAX_FRAGMENT_SAMPLERS))
+	testing.expect(t, len(props) == 1 && props[0].name == "tint_strength", "the material block's one member")
 }
 
 // Samplers past binding 0 reflect into the texture table (multi-texture

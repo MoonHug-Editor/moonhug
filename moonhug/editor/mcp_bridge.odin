@@ -359,6 +359,20 @@ mcp_tool_read_log :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	return mcp.tool_ok(out[:])
 }
 
+@(mcp_tool={
+	description="Render statistics of recent frames: draw calls, instances (objects drawn, several per instanced call), triangles, render passes, CPU milliseconds per frame without the GPU waits, and milliseconds waiting for the GPU. Averaged over the last frames, plus the last frame alone. Editor UI draws are not counted. With idle throttling on, an idle editor draws a few frames a second, so averages span longer.",
+	param_frames="integer:How many recent frames to average (default 60, at most 120)",
+})
+mcp_tool_render_stats :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
+	avg, n := gfx.stats_average(int(mcp.json_int(params, "frames", 60)))
+	Result :: struct {
+		frames:  int,
+		average: gfx.Frame_Stats,
+		last:    gfx.Frame_Stats,
+	}
+	return mcp.tool_ok(Result{frames = n, average = avg, last = gfx.stats_last()})
+}
+
 // Several tools in one round trip. The frame-polled bridge answers one call
 // per frame, so N separate calls cost N frames and N envelopes; authoring a
 // scene is mostly repetition, which is exactly what that penalizes.

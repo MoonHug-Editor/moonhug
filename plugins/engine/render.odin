@@ -122,6 +122,7 @@ camera_render_view :: proc(cam: ^Camera, width, height: f32) -> Render_View {
 	proj := gfx.matrix4_perspective_z01(math.to_radians(cam.fov), aspect, cam.near_clip, cam.far_clip)
 	rv := render_view_make(view, proj, width, height, cam.render_layer_mask)
 	rv.camera = Transform_Handle(cam.owner)
+	rv.cull = true
 	return rv
 }
 
@@ -131,7 +132,8 @@ camera_screen_ray :: proc(cam: ^Camera, screen_pos: [2]f32, viewport: [2]f32) ->
 }
 
 // A collector appends commands for the renderers it owns that are visible to
-// `view` (enabled, active in hierarchy, layer mask intersecting). `out` lives
+// `view` (enabled, active in hierarchy, layer mask intersecting, and inside
+// view.frustum when view.cull is on). `out` lives
 // on the temp allocator. Packages register theirs once at an init phase —
 // the registry is the seam that lets renderer components live outside the
 // engine. Collection order does not matter: render_execute sorts the
@@ -182,23 +184,25 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		if !part_ok do continue
 
 		tw := transform_world(Transform_Handle(mr.owner))
+		model := trs_matrix(tw.position, tw.rotation, tw.scale)
+		if view.cull {
+			mesh, loaded := mesh_load(mf.mesh.guid, part)
+			if !loaded do continue
+			lo, hi := aabb_transform(mesh.aabb_min, mesh.aabb_max, model)
+			if !frustum_intersects_aabb(view.frustum, lo, hi) do continue
+		}
 		append(out, Render_Command{
 			owner   = Transform_Handle(mr.owner),
 			variant = Draw_Mesh{
 				mesh      = mf.mesh.guid,
 				part      = part,
 				materials = mr.materials[:],
-				model     = trs_matrix(tw.position, tw.rotation, tw.scale),
+				model     = model,
 			},
 		})
 	}
 }
 
-// Sorts and replays commands into the CURRENT gfx pass: opaque meshes first
-// (depth-write pipeline handles their ordering; grouped by material to batch
-// pipeline/texture binds), then alpha-blended quads by their sort key
-// (lexicographic over levels — the sprite collector makes keys unique, so
-// their order is total and deterministic regardless of sort stability).
 // Every enabled Light (up to gfx.MAX_LIGHTS, the pool max) fills `buf` in pool
 // order. The ambient floor is the first enabled light's. Returns the count and
 // ambient; count 0 leaves the gfx default in effect.
@@ -247,20 +251,105 @@ render_execute :: proc(view: Render_View, commands: []Render_Command, phases := 
 	// neither pick nor outline what it draws.
 	for c in commands do assert(c.owner != {}, "render_execute: a render command names no owner (its collector must set Render_Command.owner)")
 	_apply_scene_light()
-	slice.sort_by(commands, proc(a, b: Render_Command) -> bool {
-		am, a_mesh := a.variant.(Draw_Mesh)
-		bm, b_mesh := b.variant.(Draw_Mesh)
-		if a_mesh != b_mesh do return a_mesh // meshes first
-		if a_mesh {
-			// Group by first material so same-material runs share binds.
-			ak: u128 = len(am.materials) > 0 ? transmute(u128)am.materials[0] : 0
-			bk: u128 = len(bm.materials) > 0 ? transmute(u128)bm.materials[0] : 0
-			return ak < bk
+	gfx.set_view_proj(view.view_proj, view.cam_pos)
+	if .Opaque in phases do _execute_meshes(view, commands)
+	if .Transparent in phases do _execute_quads(view, commands)
+}
+
+// The opaque meshes, one draw per submesh, ordered by material, then mesh,
+// then submesh: equal neighbours differ only in their model matrix, so gfx
+// merges each run into one instanced draw (gfx.draw_mesh). Each material is
+// resolved once.
+@(private = "file")
+_execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
+	Item :: struct {
+		material: Asset_GUID,
+		sub:      i32,
+		cmd:      ^Render_Command,
+		loaded:   ^Mesh,
+	}
+	items := make([dynamic]Item, 0, len(commands), context.temp_allocator)
+	// The order as integer keys, sorted without a comparator: the material
+	// folded into the high half, the mesh, part and submesh folded into the
+	// next 32 bits, the item's index in the low 32. Two groups folding alike
+	// only interleave their runs, which costs merges, never a wrong draw.
+	keys := make([dynamic]u128, 0, len(commands), context.temp_allocator)
+	for &cmd in commands {
+		d, is_mesh := cmd.variant.(Draw_Mesh)
+		if !is_mesh do continue
+		mesh, ok := mesh_load(d.mesh, d.part)
+		if !ok do continue
+		_inspect_draw(cmd)
+		for _, i in mesh.submeshes {
+			mat: Asset_GUID
+			if i < len(d.materials) do mat = d.materials[i]
+			index := len(items)
+			assert(index <= int(max(u32)), "render_execute: more mesh draws than a sort key indexes")
+			group := u128(render_fold_guid(mat)) << 64 | u128(render_fold_mesh(d.mesh, d.part, i32(i))) << 32
+			append(&keys, group | u128(index))
+			append(&items, Item{material = mat, sub = i32(i), cmd = &cmd, loaded = mesh})
 		}
+	}
+	slice.sort(keys[:])
+
+	Mesh_Mat :: struct {
+		shader: string,
+		tex:    ^gfx.Texture,
+		color:  [4]f32,
+		data:   []u8,
+		extra:  []^gfx.Texture,
+	}
+	mats := make(map[Asset_GUID]Mesh_Mat, context.temp_allocator)
+	for key in keys {
+		it := items[u32(key)]
+		d := it.cmd.variant.(Draw_Mesh)
+		sub := it.loaded.submeshes[it.sub]
+		gpu := d.skinned != nil ? d.skinned^ : it.loaded.gpu
+		m, cached := mats[it.material]
+		if !cached {
+			m.shader, m.tex, m.color, m.data, m.extra = _resolve_material(it.material, .Lit)
+			mats[it.material] = m
+		}
+		switch view.mode {
+		case .Shaded:
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra)
+		case .Wireframe:
+			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
+		case .Unlit:
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count)
+		case .Normals:
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count)
+		case .Overdraw:
+			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
+		}
+	}
+}
+
+// Sort-key folds for grouping draws (render_execute, the shadow pass): a guid
+// to 64 bits, a mesh part's submesh to 32. Equal inputs fold equal, which is
+// all the grouping needs.
+render_fold_guid :: proc(g: Asset_GUID) -> u64 {
+	halves := transmute([2]u64)g
+	return halves[0] ~ halves[1]
+}
+
+render_fold_mesh :: proc(mesh: Asset_GUID, part, sub: i32) -> u32 {
+	h := render_fold_guid(mesh) ~ u64(u32(part)) * 0x9E3779B97F4A7C15 ~ u64(u32(sub)) * 0xC2B2AE3D27D4EB4F
+	return u32(h ~ h >> 32)
+}
+
+// The alpha-blended quads, back to front by their sort key (lexicographic
+// over levels: the sprite collector makes keys unique, so their order is
+// total and deterministic regardless of sort stability).
+@(private = "file")
+_execute_quads :: proc(view: Render_View, commands: []Render_Command) {
+	quads := make([dynamic]^Render_Command, 0, len(commands), context.temp_allocator)
+	for &cmd in commands {
+		if _, is_quad := cmd.variant.(Draw_Quad); is_quad do append(&quads, &cmd)
+	}
+	slice.sort_by(quads[:], proc(a, b: ^Render_Command) -> bool {
 		return sort_key_less(a.key, b.key)
 	})
-
-	gfx.set_view_proj(view.view_proj, view.cam_pos)
 
 	// One resolve per material guid: equal-material quads then share the
 	// SAME packed property slice, which is what lets their draws merge in
@@ -273,55 +362,29 @@ render_execute :: proc(view: Render_View, commands: []Render_Command, phases := 
 	}
 	quad_mats := make(map[Asset_GUID]Quad_Mat, context.temp_allocator)
 
-	for &cmd in commands {
-		switch d in cmd.variant {
-		case Draw_Quad:
-			if .Transparent not_in phases do continue
-			tex, ok := texture_load(d.texture)
-			if !ok do continue
-			_inspect_draw(cmd)
-			sm, cached := quad_mats[d.material]
-			if !cached {
-				shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: quads use their own
-				sm = Quad_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
-				quad_mats[d.material] = sm
-			}
-			// Quad facing for lighting shaders (quads are transform-
-			// oriented, not billboards).
-			normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
-			switch view.mode {
-			case .Shaded, .Wireframe:
-				gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
-			case .Unlit:
-				gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal)
-			case .Normals:
-				gfx.draw_quad(d.corners, d.uvs, {1, 1, 1, 1}, nil, gfx.NORMALS_SHADER, nil, normal)
-			case .Overdraw:
-				gfx.draw_quad(d.corners, d.uvs, OVERDRAW_LAYER, nil, gfx.DEFAULT_SHADER, nil, normal, depth_test = false)
-			}
-		case Draw_Mesh:
-			if .Opaque not_in phases do continue
-			mesh, ok := mesh_load(d.mesh, d.part)
-			if !ok do continue
-			_inspect_draw(cmd)
-			gpu := d.skinned != nil ? d.skinned^ : mesh.gpu
-			for sub, i in mesh.submeshes {
-				mat_guid: Asset_GUID
-				if i < len(d.materials) do mat_guid = d.materials[i]
-				shader, gpu_tex, color, mat_data, extra_tex := _resolve_material(mat_guid, .Lit)
-				switch view.mode {
-				case .Shaded:
-					gfx.draw_mesh(gpu, gpu_tex, d.model, color, shader, sub.first_index, sub.index_count, mat_data, extra_tex)
-				case .Wireframe:
-					gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
-				case .Unlit:
-					gfx.draw_mesh(gpu, gpu_tex, d.model, color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count)
-				case .Normals:
-					gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count)
-				case .Overdraw:
-					gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
-				}
-			}
+	for cmd in quads {
+		d := cmd.variant.(Draw_Quad)
+		tex, ok := texture_load(d.texture)
+		if !ok do continue
+		_inspect_draw(cmd^)
+		sm, cached := quad_mats[d.material]
+		if !cached {
+			shader, _, mcolor, mdata, mextra := _resolve_material(d.material) // material texture ignored: quads use their own
+			sm = Quad_Mat{shader = shader, color = mcolor, data = mdata, extra = mextra}
+			quad_mats[d.material] = sm
+		}
+		// Quad facing for lighting shaders (quads are transform-
+		// oriented, not billboards).
+		normal := linalg.normalize0(linalg.cross(d.corners[1] - d.corners[0], d.corners[3] - d.corners[0]))
+		switch view.mode {
+		case .Shaded, .Wireframe:
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, sm.shader, sm.data, normal, sm.extra)
+		case .Unlit:
+			gfx.draw_quad(d.corners, d.uvs, d.color * sm.color, tex.gfx, gfx.DEFAULT_SHADER, nil, normal)
+		case .Normals:
+			gfx.draw_quad(d.corners, d.uvs, {1, 1, 1, 1}, nil, gfx.NORMALS_SHADER, nil, normal)
+		case .Overdraw:
+			gfx.draw_quad(d.corners, d.uvs, OVERDRAW_LAYER, nil, gfx.DEFAULT_SHADER, nil, normal, depth_test = false)
 		}
 	}
 }

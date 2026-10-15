@@ -168,6 +168,10 @@ Render_View                  :: core.Render_View
 Ray                          :: core.Ray
 render_view_make             :: core.render_view_make
 render_view_screen_ray       :: core.render_view_screen_ray
+Frustum                      :: core.Frustum
+frustum_from_view_proj       :: core.frustum_from_view_proj
+frustum_intersects_aabb      :: core.frustum_intersects_aabb
+aabb_transform               :: core.aabb_transform
 trs_matrix                   :: core.trs_matrix
 ray_hit_aabb                 :: core.ray_hit_aabb
 ray_hit_triangle             :: core.ray_hit_triangle

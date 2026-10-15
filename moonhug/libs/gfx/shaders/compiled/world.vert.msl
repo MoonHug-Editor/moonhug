@@ -8,8 +8,6 @@ using namespace metal;
 struct UBO
 {
     float4x4 view_proj;
-    float4x4 model;
-    float4 tint;
 };
 
 struct main0_out
@@ -29,6 +27,11 @@ struct main0_in
     float2 in_uv [[attribute(2)]];
     float4 in_color [[attribute(3)]];
     float4 in_tangent [[attribute(4)]];
+    float4 in_model0 [[attribute(5)]];
+    float4 in_model1 [[attribute(6)]];
+    float4 in_model2 [[attribute(7)]];
+    float4 in_model3 [[attribute(8)]];
+    float4 in_tint [[attribute(9)]];
 };
 
 static inline __attribute__((always_inline))
@@ -39,20 +42,21 @@ float3 srgb_to_linear(thread float3& c)
     return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375))) * m;
 }
 
-vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _68 [[buffer(0)]])
+vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _115 [[buffer(0)]])
 {
     main0_out out = {};
-    float4 world = _68.model * float4(in.in_position, 1.0);
-    out.gl_Position = _68.view_proj * world;
+    float4x4 model = float4x4(float4(in.in_model0), float4(in.in_model1), float4(in.in_model2), float4(in.in_model3));
+    float4 world = model * float4(in.in_position, 1.0);
+    out.gl_Position = _115.view_proj * world;
     out.frag_uv = in.in_uv;
     float3 param = in.in_color.xyz;
-    float3 _105 = srgb_to_linear(param);
-    float3 param_1 = _68.tint.xyz;
-    float3 _112 = srgb_to_linear(param_1);
-    out.frag_color = float4(_105 * _112, in.in_color.w * _68.tint.w);
-    out.frag_normal = float3x3(_68.model[0].xyz, _68.model[1].xyz, _68.model[2].xyz) * in.in_normal;
+    float3 _134 = srgb_to_linear(param);
+    float3 param_1 = in.in_tint.xyz;
+    float3 _139 = srgb_to_linear(param_1);
+    out.frag_color = float4(_134 * _139, in.in_color.w * in.in_tint.w);
+    out.frag_normal = float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_normal;
     out.frag_world_pos = world.xyz;
-    out.frag_tangent = float4(float3x3(_68.model[0].xyz, _68.model[1].xyz, _68.model[2].xyz) * in.in_tangent.xyz, in.in_tangent.w);
+    out.frag_tangent = float4(float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_tangent.xyz, in.in_tangent.w);
     return out;
 }
 

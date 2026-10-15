@@ -2,8 +2,9 @@
 //
 // - World shaders (shader_register): the built-in world vertex stage plus a
 //   fragment shader, one pipeline per _Pipeline_Kind. All of them share the
-//   Vertex format and the _Uniform layout (pass.odin), which is what lets
-//   pass_end switch shaders per draw without re-plumbing uniforms.
+//   Vertex format (slot 0), the _Instance format (slot 1) and the _Uniform
+//   layout (pass.odin), which is what lets pass_end switch shaders per draw
+//   without re-plumbing uniforms.
 // - Fullscreen shaders (fullscreen_register): the fullscreen-triangle vertex
 //   stage plus a fragment shader, one pipeline. Used by draw_fullscreen for
 //   blits and post effects.
@@ -106,7 +107,7 @@ shader_exists :: proc(name: string) -> bool {
 }
 
 // User shaders are fragment-only: the vertex stage is always the built-in
-// world vertex shader (fixed Vertex format + _Uniform contract). Resource
+// world vertex shader (fixed Vertex and _Instance formats + _Uniform contract). Resource
 // counts come from import-time reflection, not convention.
 shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
 	return shader_register(name, _WORLD_VERT_SPV, _WORLD_VERT_MSL, frag_spv, frag_msl,
@@ -179,17 +180,23 @@ _shader_entry_release :: proc(e: ^_Shader_Entry) {
 
 @(private)
 _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
-	buffer_desc := sdl.GPUVertexBufferDescription{
-		slot       = 0,
-		pitch      = size_of(Vertex),
-		input_rate = .VERTEX,
+	// Slot 0: the mesh's or the batch's vertices. Slot 1: one _Instance per
+	// drawn object, its model matrix as four columns and its tint.
+	buffer_descs := [2]sdl.GPUVertexBufferDescription{
+		{slot = 0, pitch = size_of(Vertex), input_rate = .VERTEX},
+		{slot = 1, pitch = size_of(_Instance), input_rate = .INSTANCE},
 	}
-	attributes := [5]sdl.GPUVertexAttribute{
+	attributes := [10]sdl.GPUVertexAttribute{
 		{location = 0, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, position))},
 		{location = 1, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, normal))},
 		{location = 2, buffer_slot = 0, format = .FLOAT2, offset = u32(offset_of(Vertex, uv))},
 		{location = 3, buffer_slot = 0, format = .UBYTE4_NORM, offset = u32(offset_of(Vertex, color))},
 		{location = 4, buffer_slot = 0, format = .FLOAT4, offset = u32(offset_of(Vertex, tangent))},
+		{location = 5, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model))},
+		{location = 6, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model)) + 16},
+		{location = 7, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model)) + 32},
+		{location = 8, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model)) + 48},
+		{location = 9, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, tint))},
 	}
 	color_target := sdl.GPUColorTargetDescription{
 		format      = target_pixel_format(format),
@@ -199,8 +206,8 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 		vertex_shader   = e.vert,
 		fragment_shader = e.frag,
 		vertex_input_state = {
-			vertex_buffer_descriptions = &buffer_desc,
-			num_vertex_buffers         = 1,
+			vertex_buffer_descriptions = raw_data(buffer_descs[:]),
+			num_vertex_buffers         = len(buffer_descs),
 			vertex_attributes          = raw_data(attributes[:]),
 			num_vertex_attributes      = len(attributes),
 		},

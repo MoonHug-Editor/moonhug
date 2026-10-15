@@ -265,6 +265,9 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
             _skin_pose(smr, mesh)
             smr.posed_frame = gfx.frame_index
         }
+        // Culled after posing: the posed bounds are the box to test, and
+        // another view this frame (the shadow pass) may still draw it.
+        if view.cull && smr.posed_ok && !frustum_intersects_aabb(view.frustum, smr.posed_min, smr.posed_max) do continue
 
         // Identity model: skin matrices already produced world space.
         append(out, Render_Command{

@@ -119,7 +119,7 @@ rt_color_texture / rt_depth_texture :: proc(rt) -> Texture   // sample a target 
 set_view_proj :: proc(vp: matrix[4,4]f32)           // callable mid-pass: camera stacking, screen-space UI
 draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Texture)  // tex=nil → white
 draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true)  // false → overlay pipeline (gizmos)
-draw_mesh :: proc(mesh: ^Mesh, tex: ^Texture, model: matrix[4,4]f32, color: [4]f32, wire := false)  // wire = triangles as lines
+draw_mesh :: proc(mesh: ^Mesh, tex: ^Texture, model: matrix[4,4]f32, color: [4]f32, wire := false)  // wire = triangles as lines. A draw matching the previous one joins it as one more instance (Instancing)
 draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil)  // fullscreen_register shaders: blits, post effects. BLIT_SHADER is built in, a .glsl asset registers through engine.shader_load_fullscreen (the postfx plugin)
 debug_text :: proc(pos_px: [2]f32, size_px: f32, color: [4]f32, text: string)
 ```
@@ -129,7 +129,7 @@ alpha-blended), triangles depth-write (meshes), lines depth-tested, lines
 overlay. Depth `D32_FLOAT`. A pipeline is bound to its color target's format, so each
 shader keeps one pipeline set per Target_Format, built the first time a pass of
 that format draws with it (pipelines.odin). Fullscreen shaders pair a
-vertex-id triangle with a fragment shader and have their own per-format pipeline. Draw-order policy: meshes first (depth-write), then
+vertex-id triangle with a fragment shader and have their own per-format pipeline. Draw-order policy: meshes first (depth-write), ordered by material, mesh and submesh so equal draws merge into instanced draws, then
 sprites back-to-front by view depth (no depth-write). Semi-transparent meshes
 sorting wrong is accepted for now.
 
@@ -157,6 +157,18 @@ Everything gfx draws is lit, blended and filtered in linear light:
 
 `gfx.Cubemap` is an RGBA16F cube: `cubemap_render` draws one face at one mip with a fullscreen shader in its own pass (face order +X, -X, +Y, -Y, +Z, -Z, `shaders/env_common.glsl` face_dir), `cubemap_generate_mips` fills the mips. `set_environment(specular, irradiance, diffuse, specular)` hands a pass its image-based light: sampler slots 8 and 9 (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`), bound like the shadow map at slot 7 to shaders that declare them, with 1x1 white cubes and the ambient level as intensity when a pass sets none. `draw_sky` is a fullscreen draw on the far plane, depth-tested without writing, so it fills only uncovered pixels.
 
+## Instancing
+
+Every world pipeline reads two vertex buffers. Slot 0 holds the mesh's or the batch's vertices. Slot 1 holds one `_Instance` per drawn object: its model matrix as four columns and its tint (`world.vert` locations 5 to 9). The vertex UBO holds only `view_proj`, pushed once per view.
+
+`draw_mesh` appends the object's instance and joins the previous draw when everything else matches: the mesh and index range, the texture, the shader, the material bytes, the extra textures, the view and the pipeline kind. A run of such draws costs one draw call. Entry 0 of a pass's instances is the identity, which batch draws (quads, lines) read, since their vertices are world-space with colors baked in.
+
+The engine orders opaque draws by material, mesh and submesh (`render_execute`) and shadow casters by mesh (`shadow_pass`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
+
+## Frame statistics
+
+`gfx.stats_last` and `gfx.stats_average` report recent frames: draw calls, instances, triangles, render passes, CPU milliseconds without the GPU waits, and milliseconds waiting for the GPU. The waits are the command buffer and swapchain acquires, which with one frame in flight wait for the GPU to finish the previous frame. The editor's MCP bridge reads them with the `render_stats` tool. Editor UI draws are not counted.
+
 The linear, repeat and nearest samplers set `max_lod` high, so `textureLod` reaches every mip: SDL's zero default clamps each lookup to mip 0. Loops in these shaders count with integers: a float counter (`phi += step`) made Metal return about a third of the irradiance integral.
 
 ## Render commands (engine side)
@@ -180,7 +192,7 @@ shadow_pass / shadow_bind                                                 // ren
 camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // replaces rl.GetScreenToWorldRay
 ```
 
-- Layer culling only (`t.render_layer & view.layer_mask`); no frustum culling.
+- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow pass collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
 - Sprites stay transform-oriented quads (NOT billboards), 100 px/unit;
   `sprite_world_corners` helper is shared by draw AND picking so they can't
   diverge.

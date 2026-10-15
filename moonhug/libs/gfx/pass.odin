@@ -8,6 +8,8 @@ import "base:runtime"
 import "core:fmt"
 import "core:math"
 import "core:math/linalg"
+import "core:slice"
+import "core:time"
 import sdl "vendor:sdl3"
 
 // An offscreen color + depth pair. Both are sampleable after the pass that
@@ -21,20 +23,20 @@ Render_Target :: struct {
 }
 
 _Draw :: struct {
-	kind:         _Pipeline_Kind,
-	is_mesh:      bool,
-	fullscreen:   bool, // draw_fullscreen: shader names a fullscreen shader, texture + extra_tex are its inputs
-	sky:          bool, // draw_sky: a fullscreen draw on the far plane, depth-tested
-	texture:      ^Texture, // nil = white
-	vp_index:     i32,
-	first_vertex: u32, // batch draws
-	vertex_count: u32,
-	mesh:         Mesh, // mesh draws
-	mesh_first:   u32, // index range within the mesh (submeshes)
-	mesh_count:   u32,
-	model:        matrix[4, 4]f32,
-	color:        [4]f32,
-	shader:       string, // "" = DEFAULT_SHADER (meshes and batched quads)
+	kind:           _Pipeline_Kind,
+	is_mesh:        bool,
+	fullscreen:     bool, // draw_fullscreen: shader names a fullscreen shader, texture + extra_tex are its inputs
+	sky:            bool, // draw_sky: a fullscreen draw on the far plane, depth-tested
+	texture:        ^Texture, // nil = white
+	vp_index:       i32,
+	first_vertex:   u32, // batch draws
+	vertex_count:   u32,
+	mesh:           Mesh, // mesh draws
+	mesh_first:     u32, // index range within the mesh (submeshes)
+	mesh_count:     u32,
+	instance_first: u32, // mesh draws: the objects drawn, a run of _pass.inst
+	instance_count: u32,
+	shader:         string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
 }
@@ -43,13 +45,21 @@ _Draw :: struct {
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
 MAX_FRAGMENT_SAMPLERS :: 10
 
-// Must match the GLSL UBO (std140: mat4, mat4, vec4). Batch draws push
-// model = identity (vertices are pre-transformed to world space).
+// Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
 	view_proj: matrix[4, 4]f32,
-	model:     matrix[4, 4]f32,
-	tint:      [4]f32,
 }
+
+// One drawn object: vertex buffer slot 1 of every world pipeline, read per
+// instance (world.vert in_model0..3, in_tint). A mesh draw covers a run of
+// these, one per object. Entry 0 of a pass is the identity, which batch draws
+// read: their vertices are world-space with colors baked in.
+_Instance :: struct {
+	model: matrix[4, 4]f32, // column-major, the shader's mat4 columns
+	tint:  [4]f32,
+}
+
+_INSTANCE_IDENTITY :: _Instance{model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
 
 // Up to MAX_LIGHTS lights reach the shader in one UBO. Matches the Light
 // component's pool max, so every enabled light in a scene fits.
@@ -165,19 +175,27 @@ _pass: struct {
 	env:          _Env,                  // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
+	inst:         [dynamic]_Instance,
 	draws:        [dynamic]_Draw,
-	// GPU-side batch storage, grown on demand, reused across passes/frames
+	// GPU-side batch and instance storage, grown on demand, reused across
+	// passes/frames
 	vbuf:          ^sdl.GPUBuffer,
 	transfer:      ^sdl.GPUTransferBuffer,
 	vbuf_capacity: u32, // in vertices
+	inst_buf:      ^sdl.GPUBuffer,
+	inst_transfer: ^sdl.GPUTransferBuffer,
+	inst_capacity: u32, // in instances
 }
 
 _pass_shutdown :: proc() {
 	if _pass.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.vbuf)
 	if _pass.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.transfer)
+	if _pass.inst_buf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.inst_buf)
+	if _pass.inst_transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.inst_transfer)
 	pool_destroy(&_pass.display_pool)
 	delete(_pass.vps)
 	delete(_pass.vtx)
+	delete(_pass.inst)
 	delete(_pass.draws)
 	_pass = {}
 }
@@ -456,9 +474,10 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true, raw := false) 
 	assert(!_pass.active, "gfx pass already active")
 	swap_tex: ^sdl.GPUTexture
 	w, h: u32
-	if !sdl.WaitAndAcquireGPUSwapchainTexture(_gfx.cmd, _platform.window, &swap_tex, &w, &h) {
-		return false
-	}
+	acquire := time.tick_now()
+	acquired := sdl.WaitAndAcquireGPUSwapchainTexture(_gfx.cmd, _platform.window, &swap_tex, &w, &h)
+	_stats_wait(acquire)
+	if !acquired do return false
 	if swap_tex == nil do return false
 
 	// Remembered for an on-demand capture later this frame (swapchain_capture).
@@ -665,25 +684,54 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // index_count=0 draws the whole mesh; a submesh passes its index range.
 // wire draws the triangles as lines (wireframe view) with depth test, no write.
 // overlay draws alpha-blended with no depth test or write (the overdraw view).
+//
+// Instancing: a draw that matches the previous one in everything but `model`
+// and `color` (same mesh and index range, texture, shader, material bytes,
+// extra textures, view and kind) joins it as one more instance, so N copies
+// of a mesh drawn in a row cost one draw call. Callers order their draws to
+// make such runs (engine render_execute sorts by material and mesh).
 draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
 	count = min(count, mesh.index_count - first_index)
+	kind: _Pipeline_Kind = wire ? .Tris_Wire : overlay ? .Tris_Overlay : .Tris_Depth
+	vp := _current_vp()
+	_instance_base()
+	inst := u32(len(_pass.inst))
+	append(&_pass.inst, _Instance{model = model, tint = color})
+
+	if n := len(_pass.draws); n > 0 {
+		last := &_pass.draws[n - 1]
+		if last.is_mesh && last.kind == kind && last.mesh == mesh &&
+		   last.mesh_first == first_index && last.mesh_count == count &&
+		   last.texture == tex && last.vp_index == vp && last.shader == shader &&
+		   slice.equal(last.material, material) && slice.equal(last.extra_tex, extra_tex) &&
+		   last.instance_first + last.instance_count == inst {
+			last.instance_count += 1
+			return
+		}
+	}
 	append(&_pass.draws, _Draw{
-		kind       = wire ? .Tris_Wire : overlay ? .Tris_Overlay : .Tris_Depth,
-		is_mesh    = true,
-		texture    = tex,
-		vp_index   = _current_vp(),
-		mesh       = mesh,
-		mesh_first = first_index,
-		mesh_count = count,
-		model      = model,
-		color      = color,
-		shader     = shader,
-		material   = material,
-		extra_tex  = extra_tex,
+		kind           = kind,
+		is_mesh        = true,
+		texture        = tex,
+		vp_index       = vp,
+		mesh           = mesh,
+		mesh_first     = first_index,
+		mesh_count     = count,
+		instance_first = inst,
+		instance_count = 1,
+		shader         = shader,
+		material       = material,
+		extra_tex      = extra_tex,
 	})
+}
+
+// Entry 0 of the pass's instances: the identity batch draws read.
+@(private = "file")
+_instance_base :: proc() {
+	if len(_pass.inst) == 0 do append(&_pass.inst, _INSTANCE_IDENTITY)
 }
 
 // Runs a fullscreen shader (fullscreen_register) over the whole target:
@@ -726,6 +774,7 @@ _color_u8 :: proc(c: [4]f32) -> [4]u8 {
 // compare by pointer: callers reuse one packed slice per material to merge.
 _batch_append :: proc(kind: _Pipeline_Kind, tex: ^Texture, first: u32, count: u32, shader := "", material: []u8 = nil, extra_tex: []^Texture = nil) {
 	vp := _current_vp()
+	_instance_base()
 	if len(_pass.draws) > 0 {
 		last := &_pass.draws[len(_pass.draws)-1]
 		if !last.is_mesh && last.kind == kind && last.texture == tex && last.vp_index == vp &&
@@ -813,6 +862,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		assert(len(_pass.draws) == 0, "gfx draws recorded in a depth-less pass")
 		rp = sdl.BeginGPURenderPass(_gfx.cmd, &color_info, 1, nil)
 	}
+	_stats_pass()
 
 	// Light + camera uniforms (fragment slot 0) are re-pushed on view switch —
 	// cam_pos is per-view (multi-camera passes). Only pipelines that declare
@@ -836,7 +886,6 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	batch_bound := false
 	pushed_vp := i32(-1)
 	pushed_light_vp := i32(-1)
-	pushed_mesh := false
 	for &d in _pass.draws {
 		if pushed_light_vp != d.vp_index {
 			light.cam_pos.xyz = _pass.vps[d.vp_index].cam_pos
@@ -894,37 +943,45 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 				sdl.PushGPUFragmentUniformData(_gfx.cmd, 1, raw_data(d.material), u32(len(d.material)))
 			}
 			sdl.DrawGPUPrimitives(rp, 3, 1, 0, 0)
+			_stats_draw(1, 1)
 			// The light UBO push above was for this draw's pipeline, which does
 			// not declare it: the next lit draw must push it again.
 			pushed_light_vp = -1
 			pushed_vp = -1
 			batch_bound = false
 		} else if d.is_mesh {
-			u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = d.model, tint = d.color}
-			sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
-			_push_material(&d)
-			pushed_vp = -1
-			pushed_mesh = true
-
-			vb := sdl.GPUBufferBinding{buffer = d.mesh.vbuf}
-			sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)
-			sdl.BindGPUIndexBuffer(rp, {buffer = d.mesh.ibuf}, ._32BIT)
-			sdl.DrawGPUIndexedPrimitives(rp, d.mesh_count, 1, d.mesh_first, 0, 0)
-			batch_bound = false
-		} else {
-			if pushed_vp != d.vp_index || pushed_mesh {
-				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp, model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
+			if pushed_vp != d.vp_index {
+				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp}
 				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
 				pushed_vp = d.vp_index
-				pushed_mesh = false
+			}
+			_push_material(&d)
+
+			// The draw's run of instances, bound at its offset.
+			vbs := [2]sdl.GPUBufferBinding{
+				{buffer = d.mesh.vbuf},
+				{buffer = _pass.inst_buf, offset = d.instance_first * size_of(_Instance)},
+			}
+			sdl.BindGPUVertexBuffers(rp, 0, &vbs[0], 2)
+			sdl.BindGPUIndexBuffer(rp, {buffer = d.mesh.ibuf}, ._32BIT)
+			sdl.DrawGPUIndexedPrimitives(rp, d.mesh_count, d.instance_count, d.mesh_first, 0, 0)
+			_stats_draw(int(d.instance_count), int(d.mesh_count / 3))
+			batch_bound = false
+		} else {
+			if pushed_vp != d.vp_index {
+				u := _Uniform{view_proj = _pass.vps[d.vp_index].vp}
+				sdl.PushGPUVertexUniformData(_gfx.cmd, 0, &u, size_of(_Uniform))
+				pushed_vp = d.vp_index
 			}
 			_push_material(&d)
 			if !batch_bound {
-				vb := sdl.GPUBufferBinding{buffer = _pass.vbuf}
-				sdl.BindGPUVertexBuffers(rp, 0, &vb, 1)
+				// Instance 0, the identity: batch vertices are world-space.
+				vbs := [2]sdl.GPUBufferBinding{{buffer = _pass.vbuf}, {buffer = _pass.inst_buf}}
+				sdl.BindGPUVertexBuffers(rp, 0, &vbs[0], 2)
 				batch_bound = true
 			}
 			sdl.DrawGPUPrimitives(rp, d.vertex_count, 1, d.first_vertex, 0)
+			_stats_draw(1, d.kind <= .Tris_Wire ? int(d.vertex_count / 3) : 0)
 		}
 	}
 
@@ -932,6 +989,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	sdl.EndGPURenderPass(rp)
 
 	clear(&_pass.vtx)
+	clear(&_pass.inst)
 	clear(&_pass.draws)
 	clear(&_pass.vps)
 	_pass.active = false
@@ -942,32 +1000,47 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.env = {}
 }
 
-// One copy pass uploading this pass's vertices. cycle=true keeps earlier
-// encoded passes (and in-flight frames) reading their own allocation.
+// One copy pass uploading this pass's batch vertices and instances.
+// cycle=true keeps earlier encoded passes (and in-flight frames) reading their
+// own allocation.
 _upload_batch :: proc() {
-	count := u32(len(_pass.vtx))
-	if count == 0 do return
-
-	if count > _pass.vbuf_capacity {
-		new_cap := max(u32(4096), _pass.vbuf_capacity)
-		for new_cap < count do new_cap *= 2
-		if _pass.vbuf != nil do sdl.ReleaseGPUBuffer(_gfx.device, _pass.vbuf)
-		if _pass.transfer != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, _pass.transfer)
-		size := new_cap * size_of(Vertex)
-		_pass.vbuf = sdl.CreateGPUBuffer(_gfx.device, {usage = {.VERTEX}, size = size})
-		_pass.transfer = sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .UPLOAD, size = size})
-		_pass.vbuf_capacity = new_cap
-	}
-
-	byte_count := int(count) * size_of(Vertex)
-	mapped := sdl.MapGPUTransferBuffer(_gfx.device, _pass.transfer, true)
-	runtime.mem_copy_non_overlapping(mapped, raw_data(_pass.vtx), byte_count)
-	sdl.UnmapGPUTransferBuffer(_gfx.device, _pass.transfer)
+	vtx_count := u32(len(_pass.vtx))
+	inst_count := u32(len(_pass.inst))
+	if vtx_count == 0 && inst_count == 0 do return
 
 	copy_pass := sdl.BeginGPUCopyPass(_gfx.cmd)
-	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = _pass.transfer},
-		{buffer = _pass.vbuf, size = u32(byte_count)}, true)
+	if vtx_count > 0 {
+		_upload_grow(&_pass.vbuf, &_pass.transfer, &_pass.vbuf_capacity, vtx_count, size_of(Vertex), 4096)
+		_upload(copy_pass, _pass.vbuf, _pass.transfer, raw_data(_pass.vtx), int(vtx_count) * size_of(Vertex))
+	}
+	if inst_count > 0 {
+		_upload_grow(&_pass.inst_buf, &_pass.inst_transfer, &_pass.inst_capacity, inst_count, size_of(_Instance), 1024)
+		_upload(copy_pass, _pass.inst_buf, _pass.inst_transfer, raw_data(_pass.inst), int(inst_count) * size_of(_Instance))
+	}
 	sdl.EndGPUCopyPass(copy_pass)
+}
+
+// A vertex buffer and its upload buffer holding at least `count` elements,
+// doubled from `minimum` and recreated when too small.
+@(private = "file")
+_upload_grow :: proc(buf: ^^sdl.GPUBuffer, transfer: ^^sdl.GPUTransferBuffer, capacity: ^u32, count, stride, minimum: u32) {
+	if count <= capacity^ do return
+	new_cap := max(minimum, capacity^)
+	for new_cap < count do new_cap *= 2
+	if buf^ != nil do sdl.ReleaseGPUBuffer(_gfx.device, buf^)
+	if transfer^ != nil do sdl.ReleaseGPUTransferBuffer(_gfx.device, transfer^)
+	size := new_cap * stride
+	buf^ = sdl.CreateGPUBuffer(_gfx.device, {usage = {.VERTEX}, size = size})
+	transfer^ = sdl.CreateGPUTransferBuffer(_gfx.device, {usage = .UPLOAD, size = size})
+	capacity^ = new_cap
+}
+
+@(private = "file")
+_upload :: proc(copy_pass: ^sdl.GPUCopyPass, buf: ^sdl.GPUBuffer, transfer: ^sdl.GPUTransferBuffer, data: rawptr, byte_count: int) {
+	mapped := sdl.MapGPUTransferBuffer(_gfx.device, transfer, true)
+	runtime.mem_copy_non_overlapping(mapped, data, byte_count)
+	sdl.UnmapGPUTransferBuffer(_gfx.device, transfer)
+	sdl.UploadToGPUBuffer(copy_pass, {transfer_buffer = transfer}, {buffer = buf, size = u32(byte_count)}, true)
 }
 
 // Frame teardown: the swapchain image is only valid until submit.
