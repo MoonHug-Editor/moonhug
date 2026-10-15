@@ -32,6 +32,9 @@ _register_asset_previews :: proc() {
 	}
 	inspector.mapAssetPreview[".scene"] = _preview_scene
 	inspector.mapAssetPreview[".mat"] = _preview_thumb
+	// Asset content changes: the live previews redraw (_pv_needs_draw).
+	engine.asset_db_add_evict_hook(_pv_asset_changed)
+	engine.asset_pipeline_add_reimport_hook(_pv_asset_reimported)
 }
 
 // Before the editor's own shutdown (order 0), which tears down the scene
@@ -54,6 +57,7 @@ asset_previews_shutdown :: proc() {
 		gfx.rt_destroy(_mesh_pv_rt)
 		_mesh_pv_rt = nil
 	}
+	_pv_drawn = {}
 }
 
 // The active selection's sub-asset for `path`, when one is selected. The
@@ -105,9 +109,76 @@ _preview_texture :: proc(path: string) {
 	_preview_draw_region(gfx.texture_imgui_id(tex.gfx), uv0, uv1, w, h)
 }
 
+// --- When a live preview redraws -----------------------------------------------
+// The live previews (model, scene, clip) render into _mesh_pv_rt only when
+// their picture would change: another asset, part or clip, a new pane size,
+// orbit or zoom input, a clip's time, or a change to asset content. An idle
+// preview shows the picture it rendered last, so a selected scene costs
+// nothing per frame however large it is. Asset content changes arrive through
+// the asset database's evict hook (a changed or removed file), the pipeline's
+// reimport hook and the material cache's version (live material edits).
+
+@(private = "file")
+_Pv_Kind :: enum u8 {
+	None,
+	Model,
+	Scene,
+	Clip,
+}
+
+// Everything a live preview's picture depends on.
+@(private = "file")
+_Pv_Key :: struct {
+	kind:             _Pv_Kind,
+	guid:             engine.Asset_GUID,
+	sub:              i64,    // the model's part, the clip's id
+	size:             [2]i32, // the pane, the target's size
+	time:             f32,    // a clip's
+	yaw, pitch, zoom: f32,
+	content:          u64,    // _pv_content
+	materials:        u64,    // engine.material_cache_version
+}
+
+// What _mesh_pv_rt shows.
+@(private = "file") _pv_drawn: _Pv_Key
+
+// Asset files changed or reimported, counted by the hooks below.
+@(private = "file") _pv_content: u64
+
+// Whether the preview `key` describes has to render now: true once per change
+// of anything its picture depends on, which it then counts as drawn.
+@(private = "file")
+_pv_needs_draw :: proc(key: _Pv_Key) -> bool {
+	k := key
+	k.yaw, k.pitch, k.zoom = _mesh_pv_yaw, _mesh_pv_pitch, _mesh_pv_zoom
+	k.content = _pv_content
+	k.materials = engine.material_cache_version
+	if k == _pv_drawn do return false
+	_pv_drawn = k
+	return true
+}
+
+// The asset database's evict hook: a file changed or went away. The previewed
+// scene's own file respawns its instance.
+@(private = "file")
+_pv_asset_changed :: proc(path: string) {
+	_pv_content += 1
+	if guid, ok := engine.asset_db_get_guid(path); ok && engine.Asset_GUID(guid) == _scene_pv_guid {
+		_scene_pv_stale = true
+	}
+}
+
+// The asset pipeline's reimport hook: an artifact changed (a model, a
+// texture, a shader).
+@(private = "file")
+_pv_asset_reimported :: proc(guid: engine.Asset_GUID) {
+	_pv_content += 1
+	if guid == _scene_pv_guid do _scene_pv_stale = true
+}
+
 // --- Live mesh preview --------------------------------------------------------
-// The mesh preview: the model (or the selected part) rendered LIVE into
-// an RT at pane size, orbited by dragging, zoomed by wheel. No scene spawn —
+// The mesh preview: the model (or the selected part) rendered into an RT at
+// pane size when its picture changes, orbited by dragging, zoomed by wheel. No scene spawn —
 // one Draw_Mesh command straight through render_execute (white unlit, the
 // filter carries no materials).
 
@@ -141,25 +212,27 @@ _preview_model :: proc(path: string) {
 	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
 	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
 
-	center := (mesh.aabb_min + mesh.aabb_max) * 0.5
-	radius := max(linalg.length(mesh.aabb_max - mesh.aabb_min) * 0.5, 0.01)
-	rv, forward := _pv_view(center, radius, avail)
+	if _pv_needs_draw({kind = .Model, guid = guid, sub = i64(part), size = {i32(avail.x), i32(avail.y)}}) {
+		center := (mesh.aabb_min + mesh.aabb_max) * 0.5
+		radius := max(linalg.length(mesh.aabb_max - mesh.aabb_min) * 0.5, 0.01)
+		rv, forward := _pv_view(center, radius, avail)
 
-	// Lit, with a camera headlight — the mesh draws
-	// directly, bypassing material resolution (no material = unlit white).
-	gfx.set_lights([]gfx.Light{{
-		kind      = .Directional,
-		direction = forward,
-		color     = {1, 1, 1},
-		intensity = 1,
-	}}, 0.35)
-	gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
-	gfx.set_view_proj(rv.view_proj, rv.cam_pos)
-	for sub in mesh.submeshes {
-		gfx.draw_mesh(mesh.gpu, nil, linalg.MATRIX4F32_IDENTITY, {1, 1, 1, 1}, "lit", sub.first_index, sub.index_count, nil, nil)
+		// Lit, with a camera headlight — the mesh draws
+		// directly, bypassing material resolution (no material = unlit white).
+		gfx.set_lights([]gfx.Light{{
+			kind      = .Directional,
+			direction = forward,
+			color     = {1, 1, 1},
+			intensity = 1,
+		}}, 0.35)
+		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
+		gfx.set_view_proj(rv.view_proj, rv.cam_pos)
+		for sub in mesh.submeshes {
+			gfx.draw_mesh(mesh.gpu, nil, linalg.MATRIX4F32_IDENTITY, {1, 1, 1, 1}, "lit", sub.first_index, sub.index_count, nil, nil)
+		}
+		gfx.pass_end()
+		gfx.set_lights_default() // the headlight must not leak into later passes
 	}
-	gfx.pass_end()
-	gfx.set_lights_default() // the headlight must not leak into later passes
 
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
@@ -197,11 +270,10 @@ _pv_image_orbit :: proc(rt: ^gfx.Render_Target, avail: im.Vec2) {
 	}
 }
 
-// Prefab (.scene) preview: the prefab instantiated and orbited
-// live. Spawn, render, destroy WITHIN this call: nothing persists into the
-// frame's picking or views (the thumbnail renderer's contract). Content goes
-// on the reserved preview layer and the view masks to it, so the open
-// scene's content never bleeds in.
+// Prefab (.scene) preview: the prefab instantiated and orbited live, rendered
+// when its picture changes (_pv_needs_draw). Content goes on the reserved
+// preview layer and the view masks to it, so the open scene's content never
+// bleeds in.
 // The scene instance behind the preview, kept alive between frames. Spawning
 // is a full deserialize of the scene file and every object it creates, so
 // doing it per frame pegged a core on a 35-object scene. Exactly one lives at
@@ -211,6 +283,8 @@ _pv_image_orbit :: proc(rt: ^gfx.Render_Target, avail: im.Vec2) {
 @(private = "file") _scene_pv_root: engine.Transform_Handle
 @(private = "file") _scene_pv_center: [3]f32
 @(private = "file") _scene_pv_radius: f32
+// The previewed scene's file changed since it was spawned (_pv_asset_changed).
+@(private = "file") _scene_pv_stale: bool
 
 // Frees the instance. Must run inside preview_world_begin/end — its
 // transforms live in the preview world's pools.
@@ -232,38 +306,43 @@ _preview_scene :: proc(path: string) {
 	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
 	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
 
-	prev := preview_world_begin()
-	defer preview_world_end(prev)
+	// Respawn only when the selection moved to another scene or the scene's
+	// file changed. Bounds come from the same pass, so the tree is walked
+	// once per instance rather than once per frame.
+	respawn := guid != _scene_pv_guid || _scene_pv_root == {} || _scene_pv_stale
+	draw := _pv_needs_draw({kind = .Scene, guid = guid, size = {i32(avail.x), i32(avail.y)}})
+	if respawn || draw {
+		prev := preview_world_begin()
+		defer preview_world_end(prev)
 
-	// Respawn only when the selection moved to another scene. Bounds come
-	// from the same pass, so the tree is walked once per instance rather than
-	// once per frame.
-	if guid != _scene_pv_guid || _scene_pv_root == {} {
-		_scene_pv_release()
-		spawned := engine.scene_instantiate_guid(guid, preview_world_root())
-		if spawned == {} {
-			im.TextDisabled("scene not loadable")
-			return
+		if respawn {
+			_scene_pv_release()
+			_scene_pv_stale = false
+			spawned := engine.scene_instantiate_guid(guid, preview_world_root())
+			if spawned == {} {
+				im.TextDisabled("scene not loadable")
+				return
+			}
+			_thumb_set_layer(spawned)
+			bmin, bmax, bok := _thumb_bounds(spawned)
+			if !bok {
+				engine.transform_destroy(spawned)
+				return
+			}
+			_scene_pv_guid = guid
+			_scene_pv_root = spawned
+			_scene_pv_center = (bmin + bmax) * 0.5
+			_scene_pv_radius = max(linalg.length(bmax - bmin) * 0.5, 0.01)
 		}
-		_thumb_set_layer(spawned)
-		bmin, bmax, bok := _thumb_bounds(spawned)
-		if !bok {
-			engine.transform_destroy(spawned)
-			return
-		}
-		_scene_pv_guid = guid
-		_scene_pv_root = spawned
-		_scene_pv_center = (bmin + bmax) * 0.5
-		_scene_pv_radius = max(linalg.length(bmax - bmin) * 0.5, 0.01)
+
+		rv, _ := _pv_view(_scene_pv_center, _scene_pv_radius, avail)
+
+		cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+		engine.render_collect_commands(rv, &cmds)
+		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
+		engine.render_execute(rv, cmds[:])
+		gfx.pass_end()
 	}
-
-	rv, _ := _pv_view(_scene_pv_center, _scene_pv_radius, avail)
-
-	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(rv, &cmds)
-	gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
-	engine.render_execute(rv, cmds[:])
-	gfx.pass_end()
 
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
@@ -336,22 +415,26 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 		_clip_pv.time += im.GetIO().DeltaTime
 		if _clip_pv.time > rig.length do _clip_pv.time -= rig.length
 	}
-	model_clip_rig_pose(rig, _clip_pv.time)
 
 	avail = im.GetContentRegionAvail()
 	if avail.x < 32 || avail.y < 32 do return
 	if _mesh_pv_rt == nil do _mesh_pv_rt = gfx.rt_create(1, 1)
 	gfx.rt_resize(_mesh_pv_rt, i32(avail.x), i32(avail.y))
-	rv, forward := _pv_view(_clip_pv.center, _clip_pv.radius, avail)
-	cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
-	engine.render_collect_commands(rv, &cmds)
-	// A headlight from the camera, the same one the model preview uses: the
-	// preview world has no lights of its own, and unlit reads as flat white.
-	gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
-	gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
-	engine.render_execute(rv, cmds[:])
-	gfx.pass_end()
-	gfx.set_lights_default() // the headlight must not leak into later passes
+	// Posed and rendered when the picture changes: every frame while it
+	// plays, once per scrub while it is paused.
+	if _pv_needs_draw({kind = .Clip, guid = owner, sub = i64(clip_id), size = {i32(avail.x), i32(avail.y)}, time = _clip_pv.time}) {
+		model_clip_rig_pose(rig, _clip_pv.time)
+		rv, forward := _pv_view(_clip_pv.center, _clip_pv.radius, avail)
+		cmds := make([dynamic]engine.Render_Command, 0, 64, context.temp_allocator)
+		engine.render_collect_commands(rv, &cmds)
+		// A headlight from the camera, the same one the model preview uses: the
+		// preview world has no lights of its own, and unlit reads as flat white.
+		gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
+		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
+		engine.render_execute(rv, cmds[:])
+		gfx.pass_end()
+		gfx.set_lights_default() // the headlight must not leak into later passes
+	}
 	_pv_image_orbit(_mesh_pv_rt, avail)
 }
 

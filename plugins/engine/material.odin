@@ -301,6 +301,12 @@ material_sync_properties :: proc(mat: ^Material) -> bool {
 }
 
 material_cache: map[Asset_GUID]Material
+
+// Counts the changes to what a cached material renders as: a live edit
+// (material_preview with new values) or an entry dropped (material_unload). A
+// picture rendered at one version is current until it moves (the inspector's
+// asset previews redraw on change only).
+material_cache_version: u64
 // Explicit flag: an empty map still compares equal to nil in Odin, so the
 // map itself can't distinguish "initialized" from "headless context without
 // a cache" (where loads must fail instead of inserting).
@@ -344,6 +350,7 @@ material_load :: proc(guid: Asset_GUID) -> (^Material, bool) {
 material_unload :: proc(guid: Asset_GUID) {
 	context.allocator = runtime.default_allocator()
 	if mat, ok := &material_cache[guid]; ok {
+		material_cache_version += 1
 		cleanup_Material(mat)
 		delete_key(&material_cache, guid)
 	}
@@ -362,6 +369,7 @@ material_preview :: proc(guid: Asset_GUID, mat: Material) {
 		cleanup_Material(existing)
 	}
 	material_cache[guid] = _material_clone(mat)
+	material_cache_version += 1
 }
 
 // Cache invalidation for external file changes and removed files, the asset

@@ -94,6 +94,29 @@ test_material_cache_preview_and_unload :: proc(t: ^testing.T) {
 	testing.expect(t, !still, "unloaded material without a backing file should miss")
 }
 
+// The version the asset previews redraw on: it moves when a live edit
+// changes what a material renders, or when an entry is dropped, and stays put
+// when the inspector pushes the same values again (its per-frame call).
+@(test)
+test_material_cache_version :: proc(t: ^testing.T) {
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+
+	id, _ := uuid.read("41414141-4343-6565-8787-090909090909")
+	guid := engine.Asset_GUID(id)
+	v0 := engine.material_cache_version
+	engine.material_preview(guid, {shader = .Lit, color = {1, 0, 0, 1}})
+	v1 := engine.material_cache_version
+	testing.expect(t, v1 > v0, "a new entry moves the version")
+	engine.material_preview(guid, {shader = .Lit, color = {1, 0, 0, 1}})
+	testing.expect_value(t, engine.material_cache_version, v1) // same values: unchanged
+	engine.material_preview(guid, {shader = .Lit, color = {0, 1, 0, 1}})
+	v2 := engine.material_cache_version
+	testing.expect(t, v2 > v1, "an edit moves the version")
+	engine.material_unload(guid)
+	testing.expect(t, engine.material_cache_version > v2, "an unload moves the version")
+}
+
 // The cutoff a draw passes to gfx: the threshold with clipping on, 0 (nothing
 // clipped) with it off, for no material, or for one that does not load.
 @(test)
