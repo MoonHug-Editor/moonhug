@@ -298,7 +298,7 @@ The Game view draws a toolbar above its image with Unity's controls (view_game.o
 - **Flip**: swaps the selected size's width and height, for portrait targets. Disabled on Free Aspect, which has no ratio to swap.
 - **Scale**: zooms the rendered rect. 1x is the size's actual pixels and the maximum is 5x. The minimum is 1x, or the zoom that fits the size in the view when its pixels are larger, so the game is never cropped. Parking the slider at that floor means "match the view": the zoom follows the floor as the view resizes. A 1x button returns to actual pixels, and zoom is disabled on Free Aspect, which already fills the view.
 
-The rendered rect is centered in the area under the toolbar, and the input viewport follows it, so game mouse coordinates stay correct at any size or scale. Size, flip and scale persist in `UserSettings/editor_settings.json`.
+The rendered rect is centered in the area under the toolbar. When the zoom makes it larger than the area, the area scrolls: a scrollbar appears on each axis that overflows, the rect stays centered on an axis that fits, and the mouse wheel stays the game's input, so the bars are dragged. The input viewport follows the rect as it scrolls, so game mouse coordinates stay correct at any size, scale or scroll. Size, flip and scale persist in `UserSettings/editor_settings.json`.
 
 ## Editor startup hook
 

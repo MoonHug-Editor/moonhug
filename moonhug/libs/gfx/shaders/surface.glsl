@@ -32,9 +32,12 @@ layout(location = 4) in vec4 frag_tangent; // world tangent, w bitangent sign; z
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
-#define MAX_LIGHTS 8
+#define MAX_LIGHTS 256
 #define MAX_CASCADES 4
 #define MAX_SHADOW_TILES 48
+// The screen's grid of light tiles (gfx CLUSTER_COLS, CLUSTER_ROWS).
+#define CLUSTER_COLS 16
+#define CLUSTER_ROWS 9
 
 struct GpuLight {
     vec4 pos_type;    // xyz = position, w = kind (0 dir, 1 point, 2 spot)
@@ -44,9 +47,12 @@ struct GpuLight {
 };
 
 layout(set = 3, binding = 0) uniform LightUBO {
-    vec4 ambient_count; // x = ambient floor, y = light count
-    vec4 cam_pos;       // xyz = camera world position
-    GpuLight lights[MAX_LIGHTS];
+    vec4 ambient_count;  // x = ambient floor, y = light count
+    vec4 cam_pos;        // xyz = camera world position
+    // The first 8 lights, the prefix hand-written full shaders read. The
+    // template reads every light from ClusterUBO.
+    GpuLight first_lights[8];
+    vec4 cluster_params; // x = 1 / target width, y = 1 / target height (pixels)
     // The directional light's cascades (gfx.set_shadow_cascades), tiles of
     // shadow_map: view_proj, the tile in atlas uv, x one texel's world size,
     // y the depth bias in the cascade's depth units.
@@ -69,6 +75,29 @@ layout(set = 3, binding = 0) uniform LightUBO {
 layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 draw_params;
 };
+
+// Every light of the pass (gfx.set_lights), and for each tile of the screen's
+// CLUSTER_COLS x CLUSTER_ROWS grid a bit per light that reaches into it: a
+// point or spot light's range sphere covers the tile, a directional light
+// covers every tile. Two uvec4 per tile hold its 256 bits, light i at word
+// i / 32, bit i % 32.
+layout(set = 3, binding = 3) uniform ClusterUBO {
+    GpuLight lights[MAX_LIGHTS];
+    uvec4 tile_bits[CLUSTER_COLS * CLUSTER_ROWS * 2];
+};
+
+// The light tile the fragment is in.
+int light_tile() {
+    ivec2 t = ivec2(gl_FragCoord.xy * cluster_params.xy * vec2(CLUSTER_COLS, CLUSTER_ROWS));
+    t = clamp(t, ivec2(0), ivec2(CLUSTER_COLS - 1, CLUSTER_ROWS - 1));
+    return t.y * CLUSTER_COLS + t.x;
+}
+
+// Word `w` of tile `tile`'s light bits.
+uint light_tile_word(int tile, int w) {
+    uvec4 v = tile_bits[tile * 2 + (w >> 2)];
+    return v[w & 3];
+}
 
 // The shadow maps, bound by gfx at reserved slots for every shader that
 // declares them, sampled with a depth comparison (1 lit, 0 shadowed, filtered
@@ -165,6 +194,33 @@ vec3 perturb_normal(vec3 tangent_normal, float strength) {
 
 vec3 perturb_normal(vec3 tangent_normal) {
     return perturb_normal(tangent_normal, 1.0);
+}
+
+// Toksvig: a normal map's smaller mip levels average its normals, so a
+// texel's unpacked normal is shorter where the bumps under it point different
+// ways. That spread, (1 - len) / len, becomes roughness, so the highlight
+// widens as the bumps it would scatter into blur away instead of sparkling.
+// `len` is the filtered normal's length relative to the full-size texel's,
+// and the first hundredth is 8-bit rounding, not spread.
+float toksvig_smoothness(float smoothness, float len) {
+    len = clamp(len, 1e-3, 1.0);
+    float spread = max(1.0 - len - 0.01, 0.0) / len;
+    float a = (1.0 - smoothness) * (1.0 - smoothness);
+    return 1.0 - sqrt(sqrt(clamp(a * a + spread, 0.0, 1.0)));
+}
+
+// Geometric specular anti-aliasing (Kaplanyan et al. 2016, as Filament and
+// HDRP do): where the normal turns faster across the screen than one pixel can
+// show, the perceptual roughness rises, so a highlight spreads over the pixels
+// instead of flickering between them. Reads screen derivatives: call it where
+// every pixel of a 2x2 block still runs (before a discard).
+float specular_aa(float perceptual_roughness, vec3 n) {
+    vec3 du = dFdx(n);
+    vec3 dv = dFdy(n);
+    float variance = 0.15 * (dot(du, du) + dot(dv, dv));
+    float kernel = min(2.0 * variance, 0.2);
+    float a = perceptual_roughness * perceptual_roughness;
+    return sqrt(sqrt(clamp(a * a + kernel, 0.0, 1.0)));
 }
 
 // Direction toward the camera from the fragment, for rim and specular terms.

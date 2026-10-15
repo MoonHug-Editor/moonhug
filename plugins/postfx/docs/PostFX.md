@@ -19,7 +19,7 @@ Each node reads the finished image so far (`reads="final"`, `engine.render_input
 
 Per placed node, in the Render Pipeline window's settings pane, stored in the pipeline asset:
 
-- `postfx_bloom`: `threshold` (scene color above it blooms), `strength` (how much the tonemap adds back)
+- `postfx_bloom`: `threshold` (scene color above it blooms), `strength` (how much the tonemap adds back), `clamp` (the brightest a scene pixel counts for, half-float range by default). The bright pass averages four taps per half-size pixel weighted by 1 / (1 + brightness) (Karis), so a lone very bright pixel cannot flare into a glowing block
 - `postfx_tonemap`: `operator` (None, Reinhard, ACES, ACES Hill), `exposure` (multiplier before the operator). ACES Hill is Stephen Hill's fit of the ACES transforms, the curve the Khronos glTF Sample Viewer uses: with exposure 1 / 0.6 it matches the Sample Viewer's default look
 - `postfx_fxaa`: none
 

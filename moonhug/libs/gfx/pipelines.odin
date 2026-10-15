@@ -80,11 +80,12 @@ _create_pipelines :: proc() -> bool {
 	// Depth passes: depth.frag for a shader with no caster, the template's
 	// caster variant for the built-in Lit and Unlit (alpha clipping).
 	_gfx.depth_frag = _create_shader(.FRAGMENT, 0, 0, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL)
-	_gfx.caster_frag = _create_shader(.FRAGMENT, MAX_FRAGMENT_SAMPLERS, DRAW_UNIFORM_SLOT + 1, _CASTER_FRAG_SPV, _CASTER_FRAG_MSL)
+	_gfx.caster_frag = _create_shader(.FRAGMENT, MAX_FRAGMENT_SAMPLERS, LIGHT_LIST_SLOT + 1, _CASTER_FRAG_SPV, _CASTER_FRAG_MSL)
 	if _gfx.depth_frag == nil || _gfx.caster_frag == nil do return false
 	// The world shaders that clip declare the per-draw block (DRAW_UNIFORM_SLOT).
 	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
-	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
+	// The surface template declares every block: lights, material, draw, light list.
+	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = LIGHT_LIST_SLOT + 1) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
 	if !shader_register(DEPTH_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL, frag_samplers = 0) do return false
 	for name in ([]string{DEFAULT_SHADER, LIT_SHADER}) {

@@ -5,7 +5,8 @@ import gfx "moonhug:libs/gfx"
 
 // Light consumed by the built-in lit shader and custom lit shaders
 // (plugins/engine/docs/Materials.md). Directional, Point or Spot — Unity's Light.type model.
-// Up to 8 enabled lights render per pass (the pool max). Directional light
+// Up to 256 enabled lights render per pass (the pool max, gfx.MAX_LIGHTS): a
+// fragment lights with those whose range reaches its screen tile. Directional light
 // travels along the transform's forward (-Z), like a camera; point and spot
 // sit at the transform's position, spot aiming along forward.
 //
@@ -18,7 +19,7 @@ Light_Type :: enum u8 {
     Spot,
 }
 
-@(component={max=8, menu="Rendering/Light"})
+@(component={max=256, menu="Rendering/Light"})
 @(typ_guid={guid = "9f36ee91-34b6-4636-a360-ee872af0436b"})
 Light :: struct {
     using base: CompData `inspect:"-"`,

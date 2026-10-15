@@ -177,12 +177,35 @@ A caster is a fragment stage for depth passes: the surface template compiled wit
 
 `draw_depth_view(depth, perspective)` draws a depth texture as grey over the target, near white, for the Render Pipeline window. It fetches texels rather than filtering them, since not every GPU filters depth.
 
+## Mip levels and specular aliasing
+
+A texture asset gets its full chain of mip levels (`gfx.texture_create(..., mipmaps = true)`): each level half the size of the one above, filled by the GPU from the uploaded pixels (`GenerateMipmapsForGPUTexture`, so the texture is a color target too). A texture seen small samples the level that matches its size on screen instead of one arbitrary texel of the full image, which is what made fine detail shimmer and normal-mapped highlights sparkle. The importer's `mipmaps` setting turns it off (`None`) for a sliced sprite atlas, whose slices would bleed into each other in the smaller levels. Its zero value is `Generate`, so older metas get mip levels. The averaging runs on the stored bytes, so a color texture's levels average sRGB-encoded values, slightly darker than averaging light. `texture_upload_region` regenerates the levels of a mipmapped texture. Textures gfx makes for itself (font atlases, icons, thumbnails, the HDR panorama) keep one level.
+
+The mesh sampler filters trilinearly between levels and anisotropically (8x), so a surface at a grazing angle samples along its stretched footprint.
+
+Highlights that are too small for a pixel flicker between pixels as the camera moves. The surface template counters it twice:
+
+- `specular_aa` (geometric specular anti-aliasing, as Filament and HDRP do) raises the roughness where the shading normal turns faster across the screen than a pixel shows, from its screen derivatives, before the alpha-clip discard.
+- `toksvig_smoothness` lowers the built-in Lit's smoothness where its normal map's mip levels averaged diverging normals into a shorter one, so the highlight widens as the bumps blur away. The first hundredth of shortening is 8-bit rounding and ignored.
+
+A light's specular term is capped at 100 times a white diffuse surface, and the template's output at 4096, inside half-float range: a pixel that overflowed was infinite, and bloom blurred it into a white block.
+
+## Lights
+
+`set_lights` takes up to `MAX_LIGHTS` (256) lights per pass, the Light component's pool max, so every enabled light in a world reaches it. gfx splits the target into a fixed grid of `CLUSTER_COLS` x `CLUSTER_ROWS` (16 x 9) tiles and, per view, sets each light's bit in the tiles it reaches: a point or spot light's range sphere, culled against the view's frustum, over the screen rectangle of its bounding box (the whole screen once the box reaches behind the camera), a directional light in every tile. The light list and the tiles' bits (256 per tile) travel in one uniform block at `LIGHT_LIST_SLOT` (3), `ClusterUBO` in the surface template, binned when a view's draws begin and pushed only for passes that light (not depth passes).
+
+The template's light loop finds its fragment's tile from `gl_FragCoord` (`cluster_params` holds the target's size) and walks that tile's bits, so a fragment pays for the lights near it only. A light whose falloff is zero at the fragment is skipped before its shadow lookup. Binning is exact: a render with every bit set matches the binned one pixel for pixel (moonhug-render-perf has the scene, `--lights 200 --dark`).
+
+The light uniform keeps its documented prefix: `ambient_count`, `cam_pos`, then `lights[8]`, the first `LIGHT_UBO_LIGHTS` lights again. A hand-written full shader that declares only that prefix lights with up to 8 lights, all of them per fragment.
+
+The block is about 21 KB. Metal and desktop Vulkan drivers accept it, while the Vulkan specification guarantees only 16 KB for a uniform block, which a Vulkan port has to revisit.
+
 ## Shadows
 
 Every Light with `shadows` on casts them, through two render nodes (`plugins/engine/render_shadow.odin`):
 
 - `shadow_cascades` (per view) renders the first shadowing directional light's cascades into the view's `shadow` atlas: up to `MAX_CASCADES` (4) slices of the camera's frustum, split between even and logarithmic (`split`), out to `distance`. Each slice is an orthographic view of the sphere around it, so its size holds still as the camera turns, with its centre snapped to whole texels, so shadow edges do not shimmer as the camera moves. The view reaches back toward the light as far as any caster does. One cascade fills the atlas, more share a 2x2 grid.
-- `shadow_atlas` (per frame) renders every shadowing spot light's view (one tile) and every shadowing point light's six cube faces (+X, -X, +Y, -Y, +Z, -Z) into the frame's `shadow_atlas`. The tiles form a square grid of as many cells as needed, so every light keeps its shadow and more lights make every tile smaller.
+- `shadow_atlas` (per frame) renders every shadowing spot light's view (one tile) and every shadowing point light's six cube faces (+X, -X, +Y, -Y, +Z, -Z) into the frame's `shadow_atlas`. The tiles form a square grid of as many cells as needed, so more lights make every tile smaller. The tiles travel in the light uniform, so at most `MAX_SHADOW_TILES` (48) fit: lights past the budget in light order render without shadows, with one warning.
 
 Casters are every mesh in the world, collected once per frame and culled per tile against the tile's view. Each atlas is drawn in one depth-only pass with `render_execute_depth`, each tile through `set_view_proj(vp, eye, viewport)`: the viewport (pixels, origin top-left, zero = the whole target) confines the draws after it to that tile.
 

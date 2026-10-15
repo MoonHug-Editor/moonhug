@@ -27,9 +27,12 @@ Tonemap_Operator :: enum u8 {
 Bloom_Settings :: struct {
 	threshold: f32 `decor:min(0)`, // scene color above this blooms
 	strength:  f32 `decor:min(0)`, // how much of it the tonemap adds back
+	// The brightest a scene pixel counts for: lower it to keep stray bright
+	// pixels from flaring. The default is half-float range.
+	clamp:     f32 `decor:min(0)`,
 }
 
-bloom_defaults := Bloom_Settings{threshold = 1, strength = 0.3}
+bloom_defaults := Bloom_Settings{threshold = 1, strength = 0.3, clamp = 65472}
 
 Tonemap_Settings :: struct {
 	operator: Tonemap_Operator,
@@ -90,7 +93,7 @@ postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 	w, h := source.width, source.height
 
 	src_tex := gfx.rt_color_texture(src)
-	_blit(source, bright, {&src_tex}, {s.threshold, 0.5, 0, 0})
+	_blit(source, bright, {&src_tex}, {s.threshold, 0.5, s.clamp > 0 ? s.clamp : 65472, 0})
 	source_tex := gfx.rt_color_texture(source)
 	_blit(scratch, blur, {&source_tex}, {1 / f32(w), 0, 0, 0})
 	scratch_tex := gfx.rt_color_texture(scratch)

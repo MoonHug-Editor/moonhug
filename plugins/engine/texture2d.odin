@@ -77,26 +77,32 @@ texture_load :: proc(guid: Asset_GUID) -> (^Texture2D, bool) {
     if !path_ok do return nil, false
     artifact := _artifact_path(uuid.Identifier(guid))
     defer delete(artifact)
-    g := gfx.texture_decode_file(artifact)
-    if g == nil do g = gfx.texture_decode_file(path)
+
+    ts: TextureSettings
+    has_settings := false
+    if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
+        ts, has_settings = settings.(TextureSettings)
+    }
+    // A texture without settings gets the default: generated mip levels.
+    mipmaps := !has_settings || ts.mipmaps == .Generate
+    g := gfx.texture_decode_file(artifact, mipmaps)
+    if g == nil do g = gfx.texture_decode_file(path, mipmaps)
     if g == nil do return nil, false
 
     ppu := f32(PIXELS_PER_UNIT)
     sprites: []Sprite_Rect
     border: [4]f32
-    if settings, sok := asset_pipeline_get_settings(path, context.temp_allocator); sok {
-        if ts, is_tex := settings.(TextureSettings); is_tex {
-            if ts.pixels_per_unit > 0 do ppu = ts.pixels_per_unit
-            border = ts.sprite_border
-            // Settings live on the temp allocator — the cache owns clones
-            // (_texture_sprites_free frees them, same pinned allocator).
-            if ts.sprite_mode == .Multiple && len(ts.sprites) > 0 {
-                alloc := runtime.default_allocator()
-                sprites = make([]Sprite_Rect, len(ts.sprites), alloc)
-                for s, i in ts.sprites {
-                    sprites[i] = s
-                    sprites[i].name = strings.clone(s.name, alloc)
-                }
+    if has_settings {
+        if ts.pixels_per_unit > 0 do ppu = ts.pixels_per_unit
+        border = ts.sprite_border
+        // Settings live on the temp allocator — the cache owns clones
+        // (_texture_sprites_free frees them, same pinned allocator).
+        if ts.sprite_mode == .Multiple && len(ts.sprites) > 0 {
+            alloc := runtime.default_allocator()
+            sprites = make([]Sprite_Rect, len(ts.sprites), alloc)
+            for s, i in ts.sprites {
+                sprites[i] = s
+                sprites[i].name = strings.clone(s.name, alloc)
             }
         }
     }

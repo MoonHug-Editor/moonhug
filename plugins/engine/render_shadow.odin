@@ -24,6 +24,7 @@ package engine
 import "core:math"
 import "core:math/linalg"
 import gfx "moonhug:libs/gfx"
+import "moonhug:libs/log"
 
 SHADOW_TARGET       :: "shadow"
 SHADOW_ATLAS_TARGET :: "shadow_atlas"
@@ -167,19 +168,29 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 		light: gfx.Light,
 		faces: int,
 	}
-	shadowed: [gfx.MAX_LIGHTS]Shadowed
-	n_shadowed, tiles, n := 0, 0, 0
+	// The tiles travel in the light uniform, so gfx.MAX_SHADOW_TILES is the
+	// budget: lights past it in that order render unshadowed, said once.
+	shadowed := make([dynamic]Shadowed, 0, 16, context.temp_allocator)
+	tiles, n, skipped := 0, 0, 0
 	it := pool_iterator(lights(ctx_world()))
 	for l, _ in pool_next(&it) {
 		if n >= gfx.MAX_LIGHTS do break
 		if !l.enabled || !transform_active_in_hierarchy(l.owner) do continue
 		if l.shadows && l.type != .Directional {
 			faces := l.type == .Point ? 6 : 1
-			shadowed[n_shadowed] = {n, light_to_gfx(l, transform_world(Transform_Handle(l.owner))), faces}
-			n_shadowed += 1
-			tiles += faces
+			if tiles + faces <= gfx.MAX_SHADOW_TILES {
+				append(&shadowed, Shadowed{n, light_to_gfx(l, transform_world(Transform_Handle(l.owner))), faces})
+				tiles += faces
+			} else {
+				skipped += 1
+			}
 		}
 		n += 1
+	}
+	@(static) warned := false
+	if skipped > 0 && !warned {
+		warned = true
+		log.warningf("[Render] %d spot or point light(s) with shadows on render without them: the shadow atlas holds %d tiles (a spot light takes 1, a point light 6)", skipped, gfx.MAX_SHADOW_TILES)
 	}
 	if tiles == 0 do return
 	casters := _shadow_casters()
@@ -199,7 +210,7 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 		{{0, 0, -1}, {0, 1, 0}},
 	}
 	t := 0
-	for s in shadowed[:n_shadowed] {
+	for s in shadowed {
 		data.light_tiles[s.index] = {i32(t), i32(s.faces)}
 		near := f32(0.05)
 		far := max(s.light.range, near + 0.1)

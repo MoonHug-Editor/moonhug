@@ -122,3 +122,13 @@ test_shadow_atlas_grid :: proc(t: ^testing.T) {
 	grid, tile = engine.shadow_atlas_grid(48, 2048) // eight point lights
 	testing.expect(t, grid == 7 && grid * grid >= 48 && tile == 292, "the most a scene can ask for still fits")
 }
+
+// A full mip chain halves down to one texel, a non-square or odd size by its
+// longer side.
+@(test)
+test_mip_count :: proc(t: ^testing.T) {
+	testing.expect_value(t, gfx.mip_count(1, 1), i32(1))
+	testing.expect_value(t, gfx.mip_count(2, 2), i32(2))
+	testing.expect_value(t, gfx.mip_count(2048, 1024), i32(12))
+	testing.expect_value(t, gfx.mip_count(1000, 1), i32(10)) // 1000 500 250 125 62 31 15 7 3 1
+}

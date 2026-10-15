@@ -1,0 +1,296 @@
+{
+  "root": 1,
+  "transforms": [
+    {
+      "local_id": 1,
+      "name": "HelmetCloseup",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 100,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 102,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 104,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 106,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 100,
+      "name": "Camera",
+      "is_active": true,
+      "position": [
+        6.5,
+        0.602,
+        2.4
+      ],
+      "rotation": [
+        -0.03558602718483528,
+        0.5649138733187965,
+        0.024396269057525264,
+        0.8240210995218676
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 101
+        }
+      ]
+    },
+    {
+      "local_id": 102,
+      "name": "Sun",
+      "is_active": true,
+      "position": [
+        0.0,
+        5.0,
+        0.0
+      ],
+      "rotation": [
+        -0.2604188614360106,
+        0.4768584753741134,
+        0.15035289975213653,
+        0.8259431073677969
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 103
+        }
+      ]
+    },
+    {
+      "local_id": 104,
+      "name": "Environment",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 105
+        }
+      ]
+    },
+    {
+      "local_id": 106,
+      "name": "DamagedHelmet",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 107
+        },
+        {
+          "local_id": 108
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [],
+  "breadcrumbs": [],
+  "components": [
+    {
+      "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
+      "clear_color": [
+        0.1,
+        0.1,
+        0.12,
+        1.0
+      ],
+      "far_clip": 100.0,
+      "fov": 40.0,
+      "slot": "",
+      "near_clip": 0.02,
+      "order": 0,
+      "render_layer_mask": 4294967295,
+      "base": {
+        "enabled": true,
+        "local_id": 101
+      }
+    },
+    {
+      "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
+      "type": 0,
+      "color": [
+        1.0,
+        0.97,
+        0.92,
+        1.0
+      ],
+      "intensity": 2.5,
+      "range": 10.0,
+      "spot_angle": 30.0,
+      "inner_spot_angle": 21.8,
+      "ambient": 0.2,
+      "shadows": true,
+      "base": {
+        "enabled": true,
+        "local_id": 103
+      }
+    },
+    {
+      "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "sky": 0,
+      "sky_top": [
+        0.35,
+        0.55,
+        0.85,
+        1.0
+      ],
+      "sky_horizon": [
+        0.75,
+        0.82,
+        0.9,
+        1.0
+      ],
+      "ground": [
+        0.35,
+        0.32,
+        0.3,
+        1.0
+      ],
+      "sun_size": 1.0,
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "exposure": 1.0,
+      "ambient_intensity": 1.0,
+      "reflection_intensity": 1.0,
+      "draw_sky": true,
+      "base": {
+        "enabled": true,
+        "local_id": 105
+      }
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "mesh": {
+        "guid": "eb28d9ed-803a-446b-bc76-1ff01e138527",
+        "local_id": 0
+      },
+      "base": {
+        "enabled": true,
+        "local_id": 107
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "materials": [
+        "916a80cf-95d1-4ac3-8bab-0f0a90c7f26a"
+      ],
+      "base": {
+        "enabled": true,
+        "local_id": 108
+      }
+    }
+  ]
+}

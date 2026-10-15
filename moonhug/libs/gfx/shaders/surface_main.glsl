@@ -1,6 +1,6 @@
 // The surface shader template, part 2: the lighting. Presets the Surface,
 // lets surface() change it, then lights it: metal/roughness physically
-// based shading per light from the pass's Light UBO (GGX distribution,
+// based shading per light that reaches the fragment's screen tile (GGX distribution,
 // height-correlated Smith visibility, Schlick Fresnel), plus the
 // environment for what no light reaches: its irradiance for diffuse, its
 // prefiltered reflection times the split-sum fit for specular. Diffuse is
@@ -53,7 +53,14 @@ Surface surface_preset() {
     vec4 mr = texture(metallic_roughness_map, frag_uv);
     s.metallic   = lit_params.x * mr.b;
     s.smoothness = 1.0 - (1.0 - lit_params.y) * mr.g;
-    if (lit_params.z > 0.0) s.normal = perturb_normal(texture(normal_map, frag_uv).xyz * 2.0 - 1.0, lit_params.z);
+    if (lit_params.z > 0.0) {
+        vec3 tn = texture(normal_map, frag_uv).xyz * 2.0 - 1.0;
+        s.normal = perturb_normal(tn, lit_params.z);
+        // Against the same texel at full size: a map stored a little short
+        // (compression, authoring) is not a spread of directions.
+        float full = length(textureLod(normal_map, frag_uv, 0.0).xyz * 2.0 - 1.0);
+        s.smoothness = toksvig_smoothness(s.smoothness, length(tn) / max(full, 1e-3));
+    }
     s.occlusion  = mix(1.0, texture(occlusion_map, frag_uv).r, lit_params.w);
     s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, frag_uv).rgb);
 #endif
@@ -73,47 +80,61 @@ void main() {
 void main() {
     Surface s = surface_preset();
     surface(s);
+    vec3 n = normalize(s.normal);
+    // Perceptual, floored so GGX stays finite, and widened where the normal
+    // turns faster than a pixel (before the discard: it reads derivatives).
+    float roughness = specular_aa(clamp(1.0 - s.smoothness, 0.045, 1.0), n);
     if (s.alpha < draw_params.x) discard;
 
-    vec3 n = normalize(s.normal);
     vec3 v = view_dir();
     float NoV = max(dot(n, v), 1e-4);
     float metallic = clamp(s.metallic, 0.0, 1.0);
-    float roughness = clamp(1.0 - s.smoothness, 0.045, 1.0); // perceptual, floored so GGX stays finite
     float a = roughness * roughness;
     vec3 f0 = mix(vec3(0.04), s.albedo, metallic);
     vec3 diffuse_color = s.albedo * (1.0 - metallic);
 
+    // The lights that reach this fragment's screen tile: its bits, lowest
+    // first, one word of 32 lights at a time.
     vec3 color = vec3(0.0);
-    int count = int(ambient_count.y);
-    for (int i = 0; i < count; ++i) {
-        GpuLight l = lights[i];
-        vec3 L; // direction the light travels at this fragment
-        float dist = 0.0;
-        if (l.pos_type.w < 0.5) {
-            L = l.dir_range.xyz;
-        } else {
-            vec3 d = frag_world_pos - l.pos_type.xyz;
-            dist = length(d);
-            L = d / max(dist, 1e-6);
+    int count = int(ambient_count.y + 0.5);
+    int tile = light_tile();
+    vec3 geometric_n = normalize(frag_normal);
+    for (int w = 0; w < (count + 31) / 32; ++w) {
+        uint bits = light_tile_word(tile, w);
+        while (bits != 0u) {
+            int i = w * 32 + findLSB(bits);
+            bits &= bits - 1u;
+            GpuLight l = lights[i];
+            vec3 L; // direction the light travels at this fragment
+            float dist = 0.0;
+            if (l.pos_type.w < 0.5) {
+                L = l.dir_range.xyz;
+            } else {
+                vec3 d = frag_world_pos - l.pos_type.xyz;
+                dist = length(d);
+                L = d / max(dist, 1e-6);
+            }
+            vec3 to_light = -L;
+            float NoL = max(dot(n, to_light), 0.0);
+            if (NoL <= 0.0) continue;
+            float atten = light_attenuation(l, L, dist);
+            if (atten <= 0.0) continue;
+            if (l.pos_type.w < 0.5) {
+                if (i == int(shadow_params.w + 0.5)) atten *= cascade_shadow(frag_world_pos, geometric_n);
+            } else {
+                atten *= punctual_shadow(l, frag_world_pos, geometric_n);
+            }
+            vec3 h = normalize(v + to_light);
+            float NoH = max(dot(n, h), 0.0);
+            float VoH = max(dot(v, h), 0.0);
+            vec3 F = F_Schlick(VoH, f0);
+            // Times pi: the diffuse term is not divided by it, so neither is
+            // this. At most a hundred times a white diffuse surface: a peak
+            // brighter than that only makes fireflies.
+            vec3 spec = min(D_GGX(NoH, a) * V_SmithGGXCorrelated(NoV, NoL, a) * F * PI, vec3(100.0));
+            vec3 kd = (1.0 - F) * diffuse_color;
+            color += (kd + spec) * l.color_outer.rgb * (NoL * atten);
         }
-        vec3 to_light = -L;
-        float NoL = max(dot(n, to_light), 0.0);
-        if (NoL <= 0.0) continue;
-        float atten = light_attenuation(l, L, dist);
-        if (l.pos_type.w < 0.5) {
-            if (i == int(shadow_params.w + 0.5)) atten *= cascade_shadow(frag_world_pos, normalize(frag_normal));
-        } else {
-            atten *= punctual_shadow(l, frag_world_pos, normalize(frag_normal));
-        }
-        vec3 h = normalize(v + to_light);
-        float NoH = max(dot(n, h), 0.0);
-        float VoH = max(dot(v, h), 0.0);
-        vec3 F = F_Schlick(VoH, f0);
-        // Times pi: the diffuse term is not divided by it, so neither is this.
-        vec3 spec = D_GGX(NoH, a) * V_SmithGGXCorrelated(NoV, NoL, a) * F * PI;
-        vec3 kd = (1.0 - F) * diffuse_color;
-        color += (kd + spec) * l.color_outer.rgb * (NoL * atten);
     }
 
     // What no light reaches: the environment, shaded by occlusion.
@@ -122,6 +143,8 @@ void main() {
     vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
     color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * s.occlusion;
 
-    out_color = vec4(color + s.emissive, s.alpha);
+    // Capped well inside half-float range (65504): an overflow is infinite and
+    // spreads through bloom as a white block.
+    out_color = vec4(min(color + s.emissive, vec3(4096.0)), s.alpha);
 }
 #endif

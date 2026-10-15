@@ -15,7 +15,9 @@ texture_load_file :: proc(path: string) -> (^Texture, bool) {
 }
 
 // stb decodes top-down RGBA8, matching SDL_GPU's top-left uv origin.
-texture_decode_file :: proc(path: string) -> ^Texture {
+// `mipmaps` gives an 8-bit image its mip chain (texture_create). An HDR image
+// keeps one level: its reader (the environment's capture) samples level 0.
+texture_decode_file :: proc(path: string, mipmaps := false) -> ^Texture {
 	data, read_err := os.read_entire_file(path, context.temp_allocator)
 	if read_err != nil do return nil
 
@@ -35,5 +37,5 @@ texture_decode_file :: proc(path: string) -> ^Texture {
 	if pixels == nil do return nil
 	defer stbi.image_free(pixels)
 
-	return texture_create(pixels[:w * h * 4], w, h)
+	return texture_create(pixels[:w * h * 4], w, h, mipmaps)
 }

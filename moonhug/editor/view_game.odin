@@ -52,6 +52,12 @@ GAME_TOOLBAR_PAD :: f32(4)
 // Unity's Game view backdrop outside the rendered rect.
 GAME_BACKDROP :: im.Vec4{0.16, 0.16, 0.16, 1}
 
+// The image size the scroll was last centered for: a new size (a zoom
+// change, another resolution, a resized view) scrolls back to the middle, so a
+// larger image overflows equally on both sides.
+@(private = "file")
+_game_centered_for: im.Vec2
+
 // Last frame's zoom floor, so the toolbar can tell "the user parked the zoom
 // at the floor" (follow the view) from "the user picked this value".
 @(private = "file")
@@ -264,13 +270,27 @@ draw_game_view :: proc() {
 		w := i32(avail.x)
 		h := i32(avail.y)
 
-		if w > 0 && h > 0 {
+		// The area under the toolbar scrolls when the zoomed game is larger
+		// than the view, with a scrollbar on each axis that overflows. The
+		// wheel stays the game's input, so the bars are dragged.
+		im.SetCursorScreenPos(area_min)
+		im.PushStyleColorImVec4(.ChildBg, GAME_BACKDROP)
+		im.PushStyleVarImVec2(.WindowPadding, im.Vec2{0, 0})
+		scrolling := im.BeginChild("##game_area", area, {}, {.HorizontalScrollbar, .NoScrollWithMouse})
+		im.PopStyleVar()
+		im.PopStyleColor()
+		if scrolling && w > 0 && h > 0 {
+			visible := im.GetContentRegionAvail()
+			if avail != _game_centered_for {
+				im.SetScrollX(max(avail.x - visible.x, 0) * 0.5)
+				im.SetScrollY(max(avail.y - visible.y, 0) * 0.5)
+				_game_centered_for = avail
+			}
 			had_camera := render_game_rt(w, h)
 			tex_id := im.TextureID(uintptr(gfx.rt_imgui_id(game_rt)))
-			// Center the rect in the area; a scaled-up rect overflows equally
-			// on both sides, matching Unity.
-			offset := im.Vec2{max((area.x - avail.x) * 0.5, 0), max((area.y - avail.y) * 0.5, 0)}
-			im.SetCursorScreenPos(area_min + offset)
+			// Centered on an axis that fits, scrolled on one that does not.
+			offset := im.Vec2{max((visible.x - avail.x) * 0.5, 0), max((visible.y - avail.y) * 0.5, 0)}
+			im.SetCursorPos(im.GetCursorPos() + offset)
 			im.Image(im.TextureRef{_TexID = tex_id}, avail)
 
 			// The image is the game's screen: mouse coordinates are relative
@@ -293,15 +313,12 @@ draw_game_view :: proc() {
 			_game_view_hovered = im.IsItemHovered()
 
 			if !had_camera {
-				// Centered on the rendered rect, in screen coordinates (the
-				// rect is offset by the toolbar and any letterboxing).
+				// Centered on the part of the area in view.
 				msg: cstring = "No cameras rendering"
 				text_size := im.CalcTextSize(msg)
 				padding := im.Vec2{32, 16}
-				text_pos := im.Vec2{
-					img_min.x + (avail.x - text_size.x) * 0.5,
-					img_min.y + (avail.y - text_size.y) * 0.5,
-				}
+				view_min := im.GetWindowPos()
+				text_pos := view_min + (im.GetWindowSize() - text_size) * 0.5
 				rect_min := text_pos - padding
 				rect_max := text_pos + text_size + padding
 				im.DrawList_AddRectFilled(im.GetWindowDrawList(), rect_min, rect_max, 0x99333333, 4)
@@ -311,6 +328,7 @@ draw_game_view :: proc() {
 				im.PopStyleColor()
 			}
 		}
+		im.EndChild()
 	}
 	im.End()
 }

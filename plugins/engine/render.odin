@@ -225,8 +225,8 @@ scene_collect_lights :: proc(buf: []gfx.Light) -> (n: int, ambient: f32) {
 // Enabled Lights drive the pass's lit-shader uniforms; without any the gfx
 // default applies (one white directional — matches the pre-Light look).
 _apply_scene_light :: proc() {
-	buf: [gfx.MAX_LIGHTS]gfx.Light
-	n, ambient := scene_collect_lights(buf[:])
+	buf := make([]gfx.Light, gfx.MAX_LIGHTS, context.temp_allocator)
+	n, ambient := scene_collect_lights(buf)
 	if n > 0 do gfx.set_lights(buf[:n], ambient)
 }
 

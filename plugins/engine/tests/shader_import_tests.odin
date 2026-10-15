@@ -132,7 +132,7 @@ test_shader_import_surface_template :: proc(t: ^testing.T) {
 	testing.expect(t, len(caster_spv) > 0 && len(caster_spv) % 4 == 0, "caster SPIR-V present and aligned")
 	if len(caster_spv) >= 4 do testing.expect_value(t, (^u32)(raw_data(caster_spv))^, u32(0x07230203))
 	testing.expect(t, len(caster_msl) > 0, "caster MSL present")
-	testing.expect_value(t, header.caster_uniform_buffers, u32(gfx.DRAW_UNIFORM_SLOT + 1))
+	testing.expect_value(t, header.caster_uniform_buffers, u32(gfx.LIGHT_LIST_SLOT + 1))
 }
 
 // Samplers past binding 0 reflect into the texture table (multi-texture

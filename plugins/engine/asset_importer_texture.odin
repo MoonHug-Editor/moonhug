@@ -25,6 +25,15 @@ Sprite_Rect :: struct {
     border: [4]f32, // 9-slice borders in pixels: left, bottom, right, top (Unity's Sprite.border)
 }
 
+// Whether a texture gets its chain of mip levels (gfx.texture_create): the
+// smaller copies a texture seen small samples from. Generate is the zero value,
+// so a meta predating the field generates them. None suits a sliced sprite
+// atlas, whose slices would bleed into each other in the smaller levels.
+Texture_Mipmaps :: enum u8 {
+    Generate,
+    None,
+}
+
 Sprite_Import_Mode :: enum u8 {
     Single,   // the whole texture is one sprite
     Multiple, // `sprites` lists the slices
@@ -36,6 +45,7 @@ TextureSettings :: struct {
     wrap:     TextureWrapMode,
     srgb:     bool,
     max_size: u16,
+    mipmaps:  Texture_Mipmaps,
     // Unity's Pixels Per Unit: a sprite's world size = pixel size / this.
     // 100 (the default) makes 100 px = 1 world unit = 1 m, the physics
     // convention (plugins/engine/docs/FixedTick.md). 0 means the default: a meta predating

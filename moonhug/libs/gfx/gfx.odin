@@ -26,6 +26,7 @@ Texture :: struct {
 	gpu:           ^sdl.GPUTexture,
 	width, height: i32,
 	format:        sdl.GPUTextureFormat, // readback needs the channel order
+	mips:          i32,                  // mip levels, 1 = none below the full size
 }
 
 Mesh :: struct {
@@ -203,7 +204,13 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	sampler_info.address_mode_u = .REPEAT
 	sampler_info.address_mode_v = .REPEAT
 	sampler_info.address_mode_w = .REPEAT
+	// Anisotropic: a surface seen at a grazing angle (a floor toward the
+	// horizon) samples along its stretched footprint instead of blurring it.
+	sampler_info.enable_anisotropy = true
+	sampler_info.max_anisotropy = 8
 	_gfx.sampler_repeat = sdl.CreateGPUSampler(_gfx.device, sampler_info)
+	sampler_info.enable_anisotropy = false
+	sampler_info.max_anisotropy = 0
 	sampler_info.address_mode_u = .CLAMP_TO_EDGE
 	sampler_info.address_mode_v = .CLAMP_TO_EDGE
 	sampler_info.address_mode_w = .CLAMP_TO_EDGE
@@ -335,9 +342,16 @@ command_buffer :: proc() -> ^sdl.GPUCommandBuffer {
 
 // Uploads RGBA8 pixels into a new sampled texture. Uses its OWN short-lived
 // command buffer so lazy loads mid-frame (between passes) stay legal.
-texture_create :: proc(pixels: []u8, width, height: i32) -> ^Texture {
+//
+// `mipmaps` gives it the full chain of mip levels, each half the size of the
+// one above, filtered down by the GPU from the uploaded pixels: a texture seen
+// small samples the level that matches, instead of one arbitrary texel of
+// the full size (shimmer on fine detail, sparkling highlights from normal
+// maps). The averaging runs on the stored bytes, so a color texture's levels
+// average sRGB-encoded values, slightly darker than averaging light.
+texture_create :: proc(pixels: []u8, width, height: i32, mipmaps := false) -> ^Texture {
 	assert(len(pixels) == int(width * height * 4))
-	return _texture_upload(pixels, width, height, .R8G8B8A8_UNORM)
+	return _texture_upload(pixels, width, height, .R8G8B8A8_UNORM, mipmaps)
 }
 
 // A linear float texture from RGBA half floats: an HDR image (texture_file.odin).
@@ -354,15 +368,20 @@ texture_is_hdr :: proc(tex: ^Texture) -> bool {
 }
 
 @(private = "file")
-_texture_upload :: proc(bytes: []u8, width, height: i32, format: sdl.GPUTextureFormat) -> ^Texture {
+_texture_upload :: proc(bytes: []u8, width, height: i32, format: sdl.GPUTextureFormat, mipmaps := false) -> ^Texture {
+	// The GPU fills the levels by rendering into them, so a mipmapped texture
+	// is a color target too.
+	levels := mipmaps ? mip_count(width, height) : 1
+	usage: sdl.GPUTextureUsageFlags = {.SAMPLER}
+	if levels > 1 do usage += {.COLOR_TARGET}
 	gpu_tex := sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
 		type                 = .D2,
 		format               = format,
-		usage                = {.SAMPLER},
+		usage                = usage,
 		width                = u32(width),
 		height               = u32(height),
 		layer_count_or_depth = 1,
-		num_levels           = 1,
+		num_levels           = u32(levels),
 	})
 	if gpu_tex == nil do return nil
 
@@ -387,6 +406,7 @@ _texture_upload :: proc(bytes: []u8, width, height: i32, format: sdl.GPUTextureF
 		{texture = gpu_tex, w = u32(width), h = u32(height), d = 1},
 		false)
 	sdl.EndGPUCopyPass(copy_pass)
+	if levels > 1 do sdl.GenerateMipmapsForGPUTexture(cmd, gpu_tex)
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
 
 	tex := new(Texture, runtime.default_allocator())
@@ -394,7 +414,15 @@ _texture_upload :: proc(bytes: []u8, width, height: i32, format: sdl.GPUTextureF
 	tex.width = width
 	tex.height = height
 	tex.format = format
+	tex.mips = levels
 	return tex
+}
+
+// The levels of a full mip chain for a texture of this size: down to 1x1.
+mip_count :: proc(width, height: i32) -> i32 {
+	n := i32(1)
+	for size := max(width, height); size > 1; size /= 2 do n += 1
+	return n
 }
 
 // Overwrites a region of a sampled RGBA8 texture (a dynamic font atlas adding
@@ -416,6 +444,8 @@ texture_upload_region :: proc(tex: ^Texture, x, y, width, height: i32, pixels: [
 		{texture = tex.gpu, x = u32(x), y = u32(y), w = u32(width), h = u32(height), d = 1},
 		false)
 	sdl.EndGPUCopyPass(copy_pass)
+	// The levels below follow the new pixels.
+	if tex.mips > 1 do sdl.GenerateMipmapsForGPUTexture(cmd, tex.gpu)
 	_ = sdl.SubmitGPUCommandBuffer(cmd)
 	return true
 }

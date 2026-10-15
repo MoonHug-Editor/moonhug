@@ -72,9 +72,27 @@ _Draw_Uniform :: struct {
 	params: [4]f32,
 }
 
-// Up to MAX_LIGHTS lights reach the shader in one UBO. Matches the Light
-// component's pool max, so every enabled light in a scene fits.
-MAX_LIGHTS :: 8
+// Up to MAX_LIGHTS lights reach the shader, in one uniform block with the
+// screen's light tiles (_Cluster_Uniform). Matches the Light component's pool
+// max, so every enabled light in a world fits.
+MAX_LIGHTS :: 256
+
+// The screen's grid of light tiles: each tile holds a bit per light that
+// reaches into it, and a fragment lights with its tile's lights only
+// (surface.glsl light_tile). A fixed grid, stretched to the target.
+CLUSTER_COLS  :: 16
+CLUSTER_ROWS  :: 9
+CLUSTER_TILES :: CLUSTER_COLS * CLUSTER_ROWS
+
+// The fragment uniform slot of the light list and tiles (surface.glsl
+// ClusterUBO, set 3 binding 3).
+LIGHT_LIST_SLOT :: 3
+
+// The first lights again, in the light uniform's documented prefix
+// (ambient_count, cam_pos, lights[8]): a hand-written full shader that
+// declares only that prefix lights with up to these, every one of them per
+// fragment. The surface template reads every light from the light list.
+LIGHT_UBO_LIGHTS :: 8
 
 Light_Kind :: enum u32 {
 	Directional,
@@ -108,16 +126,18 @@ _Gpu_Light :: struct {
 MAX_CASCADES :: 4
 
 // Spot and point light shadow tiles in one atlas: one per spot light, six per
-// point light (cube faces +X -X +Y -Y +Z -Z), enough for every light.
-MAX_SHADOW_TILES :: MAX_LIGHTS * 6
+// point light (cube faces +X -X +Y -Y +Z -Z). Eight point lights' worth: the
+// tiles travel in the light uniform, which has room for no more.
+MAX_SHADOW_TILES :: 48
 
 // Must match the lit shader's LightUBO. cam_pos comes from the draw's view
 // (set_view_proj), not set_lights — it's filled in at push time per view
 // switch.
 _Light_Uniform :: struct {
-	ambient_count: [4]f32, // x = ambient floor, y = light count
-	cam_pos:       [4]f32, // xyz = camera world position (specular shaders), w unused
-	lights:        [MAX_LIGHTS]_Gpu_Light,
+	ambient_count:  [4]f32, // x = ambient floor, y = light count
+	cam_pos:        [4]f32, // xyz = camera world position (specular shaders), w unused
+	lights:         [LIGHT_UBO_LIGHTS]_Gpu_Light, // the first lights, for full shaders
+	cluster_params: [4]f32, // x = 1 / target width, y = 1 / target height, the light tiles' scale
 	// The directional cascades (set_shadow_cascades). cascade_params: x one
 	// texel's world size, y the depth bias in the cascade's depth units.
 	// shadow_params: x one atlas texel in uv, y cascade count, z where shadows
@@ -203,14 +223,20 @@ _Shadows :: struct {
 // Light component keep looking the same: one white directional, 0.35 ambient.
 _LIGHT_DEFAULT :: _Light_Uniform{
 	ambient_count = {0.1004, 1, 0, 0}, // 0.35 sRGB in linear
-	lights = {
-		0 = {
-			pos_type    = {0, 0, 0, 0},
-			dir_range   = {-0.42107597, -0.84215194, -0.33686078, 0}, // normalize({-0.5,-1,-0.4})
-			color_outer = {1, 1, 1, 0},
-			params      = {0, 0, 0, 0},
-		},
-	},
+}
+
+_LIGHT_DEFAULT_SUN :: _Gpu_Light{
+	pos_type    = {0, 0, 0, 0},
+	dir_range   = {-0.42107597, -0.84215194, -0.33686078, 0}, // normalize({-0.5,-1,-0.4})
+	color_outer = {1, 1, 1, 0},
+	params      = {0, 0, 0, 0},
+}
+
+// Must match surface.glsl ClusterUBO (std140): the pass's lights, then two
+// uvec4 of light bits per tile (light i at word i / 32, bit i % 32).
+_Cluster_Uniform :: struct {
+	lights:    [MAX_LIGHTS]_Gpu_Light,
+	tile_bits: [CLUSTER_TILES * 2][4]u32,
 }
 
 // One view entry per set_view_proj call: the matrix, the camera world
@@ -238,6 +264,8 @@ _pass: struct {
 	encode_src:    Texture, // the scratch's color, alive while pass_end encodes it
 	display_pool:  Target_Pool, // scratch targets by size
 	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
+	light_list:   [MAX_LIGHTS]_Gpu_Light, // set_lights's, light_count of them
+	light_count:  int,
 	shadows:      _Shadows,              // reset each pass_end
 	target_w:     f32, // the target's size, what a zero viewport covers
 	target_h:     f32,
@@ -613,13 +641,15 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true, raw := false) 
 	return true
 }
 
-// Directional light for the CURRENT pass's lit-shader draws (one light —
-// per-draw light lists are a later problem). Each direction is the way the
-// light travels (sun → scene); zero-length falls back to straight down. Not
-// calling this keeps the default (one white directional, 0.35 ambient).
+// The lights for the CURRENT pass's lit-shader draws, up to MAX_LIGHTS. gfx
+// bins them into the screen's light tiles per view, so a fragment lights with
+// those that reach its tile only. Each direction is the way the light travels
+// (sun → scene); zero-length falls back to straight down. Not calling this
+// keeps the default (one white directional, 0.35 ambient).
 set_lights :: proc(ls: []Light, ambient: f32) {
+	assert(len(ls) <= MAX_LIGHTS, "set_lights: more lights than MAX_LIGHTS")
 	u := _Light_Uniform{}
-	n := min(len(ls), MAX_LIGHTS)
+	n := len(ls)
 	// Colors and the ambient level are sRGB as authored, lit in linear.
 	u.ambient_count = {srgb_to_linear1(clamp(ambient, 0, 1)), f32(n), 0, 0}
 	for i in 0 ..< n {
@@ -631,7 +661,7 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 		} else {
 			d /= math.sqrt(len_sq)
 		}
-		u.lights[i] = _Gpu_Light{
+		_pass.light_list[i] = _Gpu_Light{
 			pos_type    = {l.position.x, l.position.y, l.position.z, f32(l.kind)},
 			dir_range   = {d.x, d.y, d.z, max(l.range, 0)},
 			color_outer = {srgb_to_linear1(l.color.r) * l.intensity, srgb_to_linear1(l.color.g) * l.intensity, srgb_to_linear1(l.color.b) * l.intensity, l.outer_cos},
@@ -639,6 +669,7 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 		}
 	}
 	_pass.light = u
+	_pass.light_count = n
 }
 
 // The image-based light for the CURRENT pass's lit draws: `specular`, a
@@ -675,7 +706,8 @@ set_shadow_atlas :: proc(a: ^Shadow_Atlas) {
 }
 
 set_lights_default :: proc() {
-	_pass.light = _LIGHT_DEFAULT
+	_pass.light = nil
+	_pass.light_count = 0
 }
 
 // May change mid-pass (multi-camera stacking, screen-space overlays).
@@ -944,9 +976,9 @@ _push_material :: proc(d: ^_Draw) {
 }
 
 // The pass's cascades and atlas into the light uniform, and each shadowed
-// spot or point light's tiles into its GpuLight.
+// spot or point light's tiles into its GpuLight (when the pass lights).
 @(private = "file")
-_apply_shadows :: proc(light: ^_Light_Uniform) {
+_apply_shadows :: proc(light: ^_Light_Uniform, cluster: ^_Cluster_Uniform) {
 	if _pass.shadows.has_cascades {
 		c := &_pass.shadows.cascades
 		n := min(c.count, MAX_CASCADES)
@@ -968,11 +1000,96 @@ _apply_shadows :: proc(light: ^_Light_Uniform) {
 			light.tile_rects[i] = t.rect
 			light.tile_params[i] = {t.near, t.far, t.texel_per_distance, 0}
 		}
-		for lt, i in a.light_tiles {
-			light.lights[i].params.y = f32(lt[0])
-			light.lights[i].params.z = f32(lt[1])
+		if cluster != nil {
+			for lt, i in a.light_tiles {
+				cluster.lights[i].params.y = f32(lt[0])
+				cluster.lights[i].params.z = f32(lt[1])
+			}
 		}
 	}
+}
+
+// Sets each light's bit in the tiles of the screen it reaches, seen through
+// view `v` (its matrix and viewport on the pass's target): a point or spot
+// light's range sphere, inside the view's frustum, over the screen rectangle
+// of its bounding box (the whole screen once the box reaches behind the
+// camera), a directional light everywhere.
+@(private = "file")
+_cluster_bin :: proc(c: ^_Cluster_Uniform, count: int, v: _View) {
+	c.tile_bits = {}
+	rect := v.viewport == {} ? [4]f32{0, 0, _pass.target_w, _pass.target_h} : v.viewport
+	tw, th := max(_pass.target_w, 1), max(_pass.target_h, 1)
+	planes := _frustum_planes(v.vp)
+	for i in 0 ..< count {
+		l := &c.lights[i]
+		x0, y0, x1, y1 := 0, 0, CLUSTER_COLS - 1, CLUSTER_ROWS - 1
+		if l.pos_type.w >= 0.5 {
+			centre := l.pos_type.xyz
+			r := l.dir_range.w
+			outside := false
+			for p in planes {
+				if p.x * centre.x + p.y * centre.y + p.z * centre.z + p.w < -r {
+					outside = true
+					break
+				}
+			}
+			if outside do continue
+			lo := [2]f32{max(f32), max(f32)}
+			hi := [2]f32{-max(f32), -max(f32)}
+			behind := false
+			for k in 0 ..< 8 {
+				corner := [4]f32{
+					centre.x + (k & 1 == 0 ? -r : r),
+					centre.y + (k & 2 == 0 ? -r : r),
+					centre.z + (k & 4 == 0 ? -r : r),
+					1,
+				}
+				clip := v.vp * corner
+				if clip.w <= 1e-4 {
+					behind = true
+					break
+				}
+				ndc := clip.xy / clip.w
+				lo = {min(lo.x, ndc.x), min(lo.y, ndc.y)}
+				hi = {max(hi.x, ndc.x), max(hi.y, ndc.y)}
+			}
+			if !behind {
+				// NDC to target pixels (y down), then to tiles.
+				px0 := rect[0] + (lo.x * 0.5 + 0.5) * rect[2]
+				px1 := rect[0] + (hi.x * 0.5 + 0.5) * rect[2]
+				py0 := rect[1] + (0.5 - hi.y * 0.5) * rect[3]
+				py1 := rect[1] + (0.5 - lo.y * 0.5) * rect[3]
+				x0 = clamp(int(px0 / tw * CLUSTER_COLS), 0, CLUSTER_COLS - 1)
+				x1 = clamp(int(px1 / tw * CLUSTER_COLS), 0, CLUSTER_COLS - 1)
+				y0 = clamp(int(py0 / th * CLUSTER_ROWS), 0, CLUSTER_ROWS - 1)
+				y1 = clamp(int(py1 / th * CLUSTER_ROWS), 0, CLUSTER_ROWS - 1)
+			}
+		}
+		word, bit := i / 32, u32(1) << u32(i % 32)
+		for y in y0 ..= y1 {
+			for x in x0 ..= x1 {
+				t := y * CLUSTER_COLS + x
+				c.tile_bits[t * 2 + word / 4][word % 4] |= bit
+			}
+		}
+	}
+}
+
+// A view-projection's six clip planes, normalized, (normal, d) with
+// dot(normal, p) + d >= 0 inside. The near plane is the -1 <= z/w one,
+// conservative for gfx's 0 <= z/w projections.
+@(private = "file")
+_frustum_planes :: proc(vp: matrix[4, 4]f32) -> (planes: [6][4]f32) {
+	row :: proc(m: matrix[4, 4]f32, i: int) -> [4]f32 {
+		return {m[i, 0], m[i, 1], m[i, 2], m[i, 3]}
+	}
+	r0, r1, r2, r3 := row(vp, 0), row(vp, 1), row(vp, 2), row(vp, 3)
+	planes = {r3 + r0, r3 - r0, r3 + r1, r3 - r1, r3 + r2, r3 - r2}
+	for &p in planes {
+		l := math.sqrt(p.x * p.x + p.y * p.y + p.z * p.z)
+		if l > 0 do p /= l
+	}
+	return
 }
 
 // Encodes the pass's render pass from its recorded draws and resets it.
@@ -1013,7 +1130,27 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	// cam_pos is per-view (multi-camera passes). Only pipelines that declare
 	// the fragment UBO (lit, user shaders) consume them.
 	light := _pass.light.? or_else _LIGHT_DEFAULT
-	_apply_shadows(&light)
+	// The light list, for a pass that lights (a depth pass does not): the
+	// tiles are binned per view as the draws reach it.
+	cluster: ^_Cluster_Uniform
+	light_count := 0
+	if _pass.format != .Depth {
+		cluster = new(_Cluster_Uniform, context.temp_allocator)
+		if _pass.light != nil {
+			light_count = _pass.light_count
+			copy(cluster.lights[:light_count], _pass.light_list[:light_count])
+		} else {
+			light_count = 1
+			cluster.lights[0] = _LIGHT_DEFAULT_SUN
+		}
+		light.ambient_count.y = f32(light_count)
+		light.cluster_params = {1 / max(_pass.target_w, 1), 1 / max(_pass.target_h, 1), 0, 0}
+	}
+	_apply_shadows(&light, cluster)
+	if cluster != nil {
+		head := min(light_count, LIGHT_UBO_LIGHTS)
+		copy(light.lights[:head], cluster.lights[:head])
+	}
 	// Without an environment the white cubes times the ambient level light
 	// what no light reaches, uniformly.
 	env_specular, env_irradiance := _pass.env.specular, _pass.env.irradiance
@@ -1040,6 +1177,10 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		if pushed_light_vp != d.vp_index && !(_pass.format == .Depth && d.shader == DEPTH_SHADER) {
 			light.cam_pos.xyz = _pass.vps[d.vp_index].cam_pos
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
+			if cluster != nil {
+				_cluster_bin(cluster, light_count, _pass.vps[d.vp_index])
+				sdl.PushGPUFragmentUniformData(_gfx.cmd, LIGHT_LIST_SLOT, cluster, size_of(_Cluster_Uniform))
+			}
 			pushed_light_vp = d.vp_index
 		}
 		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind)

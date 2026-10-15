@@ -88,15 +88,13 @@ Directional, Point or Spot via `type` (Unity's `Light.type`): `color`,
 directional light travels along the transform's forward (-Z, like cameras);
 point and spot sit at the transform's position, spot aiming along forward.
 
-Rendering gathers EVERY enabled light, up to 8 (the pool max), into one
-per-pass fragment UBO (`scene_collect_lights` → `gfx.set_lights`); the ambient
-floor comes from the first enabled light in slot order. Scenes without a light
+Rendering gathers EVERY enabled light, up to 256 (the pool max), for each pass (`scene_collect_lights` → `gfx.set_lights`), and gfx bins them into screen tiles, so a fragment lights with the lights whose range reaches its tile (SDL3Renderer.md, Lights). The ambient floor comes from the first enabled light in slot order. Scenes without a light
 get a neutral default (one white directional, down-ish, 0.35 ambient) so
 unlit-era scenes look unchanged. Point/spot falloff is the smooth
 `(1 - (d/range)^2)^2` — predictable zero at range, no inverse-square hot
 center — and spot fades between the inner and outer cone.
 
-`shadows` makes a light cast shadows: the first enabled directional one through cascades fitted to each view, every spot and point light through tiles of one atlas (SDL3Renderer.md, Shadows). The pipeline needs the `shadow_cascades` and `shadow_atlas` nodes, which the Default pipeline has.
+`shadows` makes a light cast shadows: the first enabled directional one through cascades fitted to each view, spot and point lights through tiles of one atlas, up to 48 tiles (a spot light takes 1, a point light 6), in light order (SDL3Renderer.md, Shadows). The pipeline needs the `shadow_cascades` and `shadow_atlas` nodes, which the Default pipeline has.
 
 The lit shader uses world-space normals via `mat3(model)` — wrong under
 non-uniform scale (needs inverse-transpose), accepted for now.
@@ -149,7 +147,7 @@ Damaged Helmet works out of the box). Conventions:
   samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the directional cascades' shadow atlas, 8 and 9 the environment's reflection and irradiance cubes, 10 the spot and point lights' shadow atlas, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 10 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
   floor, y light count), `cam_pos` (xyz camera world position — pair it with
-  `frag_world_pos` for specular/fresnel), then `lights[8]` of four vec4s each:
+  `frag_world_pos` for specular/fresnel), then `lights[8]`, the first 8 of the pass's lights, of four vec4s each:
   `pos_type` (xyz position, w kind: 0 dir, 1 point, 2 spot), `dir_range` (xyz
   travel direction, w range), `color_outer` (rgb premultiplied by intensity, w
   cos outer half-angle), `params` (x cos inner half-angle). Copy the block from
@@ -178,6 +176,7 @@ void surface(inout Surface s) {
 - the template declares the inputs, `tex`, the `LightUBO` and the shadow maps, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by every Light with `shadows` on, like the built-in lit shader
 - with the material's alpha clipping on, a pixel whose `s.alpha` ends below the cutoff is discarded. The importer also compiles the shader's caster (the template with `MOONHUG_CASTER`: `surface()` and the clip, no lighting), what shadows and the depth prepass draw a clipped material with, so a graph that cuts holes through `s.alpha` cuts them in its shadow too
 - set 3 binding 2 is gfx's per-draw block (`DrawUBO`, the alpha cutoff): a property block stays at binding 1
+- the template widens a highlight where the normal turns faster than a pixel can show (`specular_aa`) and caps a light's specular term, so fine bright detail does not flicker between pixels (SDL3Renderer.md, Mip levels and specular aliasing). The built-in Lit also roughens its normal map's smaller mip levels (`toksvig_smoothness`), which a surface shader can call on its own normal map
 - compiler errors keep the shader's own line numbers (`#line 1`)
 - the template is what a shader graph emits (plugins/shadergraph), so a hand-written surface shader and a graph-made one are the same kind of asset
 - the template is an input of every surface shader: the shader importer's version hashes its text, so a template edit reimports them all
@@ -264,4 +263,4 @@ the `Vertex` format, the per-instance `_Instance` format (model matrix and tint)
 
 Light gizmos and handles (range sphere, spot cone) live in the editor: docs/core/Handles.md.
 
-Every light reaches every draw: lights are not culled per draw, so a pass lights with at most `MAX_LIGHTS` (8).
+A surface shader lights with every light that reaches its fragment's screen tile. A hand-written full shader reads the light uniform's prefix, so it lights with the first 8 lights.
