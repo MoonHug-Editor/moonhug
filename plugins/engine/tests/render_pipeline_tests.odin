@@ -196,14 +196,17 @@ test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	defer engine.cleanup_Render_Pipeline(&p)
 	testing.expect_value(t, len(p.slots), 1)
 	testing.expect_value(t, p.slots[0].name, engine.MAIN_SLOT)
-	// The frame lane (environment, shadow), then Main from the opaque pass
-	// through the sky to the final blit.
-	testing.expect_value(t, len(p.nodes), 8)
+	// The frame lane (environment, spot and point shadows), then Main from
+	// the directional cascades and the opaque pass through the sky to the
+	// final blit.
+	testing.expect_value(t, len(p.nodes), 9)
 	testing.expect_value(t, p.nodes[0].node, "environment_pass")
-	testing.expect_value(t, p.nodes[1].node, "shadow_pass")
+	testing.expect_value(t, p.nodes[1].node, "shadow_atlas")
 	testing.expect_value(t, p.nodes[1].slot, "")
-	testing.expect_value(t, p.nodes[3].node, "scene_sky")
-	testing.expect_value(t, p.nodes[7].node, "final_blit")
+	testing.expect_value(t, p.nodes[2].node, "shadow_cascades")
+	testing.expect_value(t, p.nodes[2].slot, engine.MAIN_SLOT)
+	testing.expect_value(t, p.nodes[4].node, "scene_sky")
+	testing.expect_value(t, p.nodes[8].node, "final_blit")
 	p.nodes[1].settings = _settings_json("bias", 0.01)
 
 	data, err := json.marshal(p, {spec = .JSON}, context.temp_allocator)
@@ -211,14 +214,14 @@ test_render_pipeline_reset_and_roundtrip :: proc(t: ^testing.T) {
 	back, ok := engine.pipeline_parse(data)
 	defer engine.cleanup_Render_Pipeline(&back)
 	testing.expect(t, ok, "a pipeline parses back")
-	testing.expect_value(t, len(back.nodes), 8)
+	testing.expect_value(t, len(back.nodes), 9)
 	testing.expect_value(t, back.next_id, p.next_id)
 	bias, has := back.nodes[1].settings.(json.Object)["bias"]
 	testing.expect(t, has && bias.(json.Float) == 0.01, "the settings JSON round-trips")
 
 	clone := engine.pipeline_clone(back)
 	defer engine.cleanup_Render_Pipeline(&clone)
-	testing.expect_value(t, len(clone.nodes), 8)
+	testing.expect_value(t, len(clone.nodes), 9)
 	engine.pipeline_remove_slot(&clone, engine.MAIN_SLOT)
 	testing.expect_value(t, len(clone.nodes), 2) // only the frame lane remains
 	testing.expect_value(t, len(clone.slots), 0)
@@ -258,7 +261,10 @@ test_render_nodes_registered_declarations :: proc(t: ^testing.T) {
 		testing.expect_value(t, opaque.writes[0].format, gfx.Target_Format.HDR)
 		testing.expect(t, opaque.writes[0].final, "the scene image is the first final")
 	}
-	shadow := engine.render_node_find("shadow_pass")
-	testing.expect(t, shadow != nil && shadow.frame && shadow.writes[0].px == i32(engine.SHADOW_MAP_SIZE))
-	testing.expect(t, shadow != nil && shadow.settings_tid == typeid_of(engine.Shadow_Settings), "shadow_pass declares its settings")
+	cascades := engine.render_node_find("shadow_cascades")
+	testing.expect(t, cascades != nil && !cascades.frame && cascades.writes[0].px == i32(engine.SHADOW_CASCADE_ATLAS_SIZE) && cascades.writes[0].format == .Depth)
+	testing.expect(t, cascades != nil && cascades.settings_tid == typeid_of(engine.Shadow_Settings), "shadow_cascades declares its settings")
+	atlas := engine.render_node_find("shadow_atlas")
+	testing.expect(t, atlas != nil && atlas.frame && atlas.writes[0].px == i32(engine.SHADOW_ATLAS_SIZE) && atlas.writes[0].format == .Depth)
+	testing.expect(t, atlas != nil && atlas.settings_tid == typeid_of(engine.Shadow_Atlas_Settings), "shadow_atlas declares its settings")
 }

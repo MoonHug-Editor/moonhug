@@ -155,7 +155,7 @@ Everything gfx draws is lit, blended and filtered in linear light:
 
 ## Cubemaps and the environment
 
-`gfx.Cubemap` is an RGBA16F cube: `cubemap_render` draws one face at one mip with a fullscreen shader in its own pass (face order +X, -X, +Y, -Y, +Z, -Z, `shaders/env_common.glsl` face_dir), `cubemap_generate_mips` fills the mips. `set_environment(specular, irradiance, diffuse, specular)` hands a pass its image-based light: sampler slots 8 and 9 (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`), bound like the shadow map at slot 7 to shaders that declare them, with 1x1 white cubes and the ambient level as intensity when a pass sets none. `draw_sky` is a fullscreen draw on the far plane, depth-tested without writing, so it fills only uncovered pixels.
+`gfx.Cubemap` is an RGBA16F cube: `cubemap_render` draws one face at one mip with a fullscreen shader in its own pass (face order +X, -X, +Y, -Y, +Z, -Z, `shaders/env_common.glsl` face_dir), `cubemap_generate_mips` fills the mips. `set_environment(specular, irradiance, diffuse, specular)` hands a pass its image-based light: sampler slots 8 and 9 (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`), bound like the shadow maps at slots 7 and 10 to shaders that declare them, with 1x1 white cubes and the ambient level as intensity when a pass sets none. `draw_sky` is a fullscreen draw on the far plane, depth-tested without writing, so it fills only uncovered pixels.
 
 ## Instancing
 
@@ -163,7 +163,7 @@ Every world pipeline reads two vertex buffers. Slot 0 holds the mesh's or the ba
 
 `draw_mesh` appends the object's instance and joins the previous draw when everything else matches: the mesh and index range, the texture, the shader, the material bytes, the extra textures, the view and the pipeline kind. A run of such draws costs one draw call. Entry 0 of a pass's instances is the identity, which batch draws (quads, lines) read, since their vertices are world-space with colors baked in.
 
-The engine orders opaque draws by material, mesh and submesh (`render_execute`) and shadow casters by mesh (`shadow_pass`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
+The engine orders opaque draws by material, mesh and submesh (`render_execute`) and depth draws by clipping material and mesh (`render_execute_depth`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
 
 ## Depth passes and alpha clipping
 
@@ -176,6 +176,19 @@ A caster is a fragment stage for depth passes: the surface template compiled wit
 `world.vert` declares `invariant gl_Position`, so a depth prepass and the shading pass after it compute the same depth. spirv-cross emits it from MSL 2.1, so `mh shaders` crosses vertex shaders with `--msl-version 20100`. SDL compiles MSL source with the OS's newest language version.
 
 `draw_depth_view(depth, perspective)` draws a depth texture as grey over the target, near white, for the Render Pipeline window. It fetches texels rather than filtering them, since not every GPU filters depth.
+
+## Shadows
+
+Every Light with `shadows` on casts them, through two render nodes (`plugins/engine/render_shadow.odin`):
+
+- `shadow_cascades` (per view) renders the first shadowing directional light's cascades into the view's `shadow` atlas: up to `MAX_CASCADES` (4) slices of the camera's frustum, split between even and logarithmic (`split`), out to `distance`. Each slice is an orthographic view of the sphere around it, so its size holds still as the camera turns, with its centre snapped to whole texels, so shadow edges do not shimmer as the camera moves. The view reaches back toward the light as far as any caster does. One cascade fills the atlas, more share a 2x2 grid.
+- `shadow_atlas` (per frame) renders every shadowing spot light's view (one tile) and every shadowing point light's six cube faces (+X, -X, +Y, -Y, +Z, -Z) into the frame's `shadow_atlas`. The tiles form a square grid of as many cells as needed, so every light keeps its shadow and more lights make every tile smaller.
+
+Casters are every mesh in the world, collected once per frame and culled per tile against the tile's view. Each atlas is drawn in one depth-only pass with `render_execute_depth`, each tile through `set_view_proj(vp, eye, viewport)`: the viewport (pixels, origin top-left, zero = the whole target) confines the draws after it to that tile.
+
+`gfx.set_shadow_cascades` and `gfx.set_shadow_atlas` hand a pass its maps (scene_target_begin, from shadow_bind). They reach the shader through the light uniform (`cascade_*`, `tile_*`, a light's `params.y`/`params.z` for its first tile and tile count) and two samplers: `shadow_map` at `SHADOW_SAMPLER_SLOT` (7) and `shadow_atlas` at `SHADOW_ATLAS_SLOT` (10). Both sample through a depth comparison sampler with linear filtering, so each of a lookup's 3x3 taps is a 2x2 percentage-closer filter, clamped inside its tile. A 1x1 depth of 1 stands in for a missing map.
+
+The surface template's `cascade_shadow` takes the first cascade whose tile holds the point and fades over the last tenth of the distance. `punctual_shadow` picks a point light's face by the direction's major axis. Both move the lookup along the geometric normal by a few texels (`normal_bias`) and add a bias toward the light in world units (`bias`), which the cascades turn into their own depth units and the perspective tiles apply to the view depth before converting it back.
 
 ## Frame statistics
 
@@ -200,11 +213,11 @@ render_execute          :: proc(view: Render_View, commands: []Render_Command, p
 render_world_cameras    :: proc(rt: ^gfx.Render_Target, overlay: proc())  // nil = swapchain; ALL enabled cams by order, each a run of its pipeline slot; overlay draws over the last camera's scene
 render_scene_view       :: proc(rt, view, slot, clear, under, over: proc())  // one editor view through the pipeline slot (the scene view asks for Editor, gets Main otherwise), the grid under and the gizmos over the scene. view.mode (core.View_Mode) picks shaded / wireframe / unlit / normals / overdraw
 render_pipeline_run     :: proc(slot: string, ctx: ^Render_Ctx) -> bool  // render_pipeline.odin: the frame lane once per frame, then the slot's lane in canvas order
-shadow_pass / shadow_bind                                                 // render_shadow.odin: the directional shadow map, a per-frame node, handed to gfx.set_shadow by scene_target_begin
+shadow_cascades / shadow_atlas / shadow_bind                              // render_shadow.odin: the directional cascades per view, the spot and point atlas per frame, handed to gfx.set_shadow_cascades / set_shadow_atlas by scene_target_begin
 camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // replaces rl.GetScreenToWorldRay
 ```
 
-- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow pass collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
+- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow nodes collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
 - Sprites stay transform-oriented quads (NOT billboards), 100 px/unit;
   `sprite_world_corners` helper is shared by draw AND picking so they can't
   diverge.

@@ -49,10 +49,10 @@ A sequence with named ports carries the same information as a wired node graph: 
 
 ## Lanes
 
-- The **frame lane** holds per-frame nodes (`frame=true`): the shadow map, a probe. Each runs once per frame, whichever slot asks first, with the frame's target pool.
+- The **frame lane** holds per-frame nodes (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame, whichever slot asks first, with the frame's target pool.
 - A **slot lane** holds per-view nodes. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `environment_pass`, `shadow_pass`, `Main` lane `scene_opaque`, `scene_sky`, `scene_under`, `scene_transparent`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `postfx_fxaa`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_opaque`, `scene_sky`, `scene_under`, `scene_transparent`, `scene_over`, `postfx_bloom`, `postfx_tonemap`, `postfx_fxaa`, `final_blit`.
 
 `depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
 
@@ -71,7 +71,7 @@ postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 ```
 
 - `summary` is one line of what the node does, shown in the window.
-- `writes` declares each target the node renders as `name[:LDR|HDR|Depth][@scale|@Npx][*]`. A `Depth` target has no color: passes on it are depth-only, each mesh drawn through its shader's depth variant (the shadow map is `shadow:Depth@2048px`). `render_target(ctx, name)` allocates it from the declaration (the view's size times the scale, or fixed pixels, required on a per-frame node). `*` makes it the view's final image when the node takes it, so a node that returns early leaves the earlier final in place.
+- `writes` declares each target the node renders as `name[:LDR|HDR|Depth][@scale|@Npx][*]`. A `Depth` target has no color: passes on it are depth-only, each mesh drawn through its shader's depth variant (the shadow atlases are `shadow:Depth@2048px` and `shadow_atlas:Depth@2048px`). `render_target(ctx, name)` allocates it from the declaration (the view's size times the scale, or fixed pixels, required on a per-frame node). `*` makes it the view's final image when the node takes it, so a node that returns early leaves the earlier final in place.
 - `reads` names what the node samples. `render_input(ctx, name)` returns the view's target, a frame node's, or `final`, the finished image so far. nil when no node took that target earlier this frame, even if the pool still holds an older texture of that name. A node that draws the view's objects reads `scene`, which is always there and is not a texture.
 - `settings` names a package-level var holding the settings struct's defaults. Each placed instance gets its own copy, edited in the window, stored in the asset, handed to the node as `ctx.settings`.
 - `frame=true` makes a per-frame node.
@@ -80,7 +80,7 @@ The prebuild checks the declarations (format, sizes, `final` reserved, a frame n
 
 ## Drawing into the scene
 
-The scene nodes are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A node placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the shadow map bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow pass and the depth prepass use.
+The scene nodes are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A node placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the view's shadows bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow nodes and the depth prepass use.
 
 ## Validation at load
 

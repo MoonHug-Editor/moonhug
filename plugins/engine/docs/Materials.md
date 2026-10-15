@@ -96,6 +96,8 @@ unlit-era scenes look unchanged. Point/spot falloff is the smooth
 `(1 - (d/range)^2)^2` — predictable zero at range, no inverse-square hot
 center — and spot fades between the inner and outer cone.
 
+`shadows` makes a light cast shadows: the first enabled directional one through cascades fitted to each view, every spot and point light through tiles of one atlas (SDL3Renderer.md, Shadows). The pipeline needs the `shadow_cascades` and `shadow_atlas` nodes, which the Default pipeline has.
+
 The lit shader uses world-space normals via `mat3(model)` — wrong under
 non-uniform scale (needs inverse-transpose), accepted for now.
 
@@ -144,7 +146,7 @@ Damaged Helmet works out of the box). Conventions:
   `frag_world_pos` (loc 3, world-space fragment position) — declare only the
   ones you read
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
-  samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the shadow map, 8 and 9 the environment's reflection and irradiance cubes, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 9 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
+  samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the directional cascades' shadow atlas, 8 and 9 the environment's reflection and irradiance cubes, 10 the spot and point lights' shadow atlas, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 10 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
   floor, y light count), `cam_pos` (xyz camera world position — pair it with
   `frag_world_pos` for specular/fresnel), then `lights[8]` of four vec4s each:
@@ -173,7 +175,7 @@ void surface(inout Surface s) {
 - `s.albedo` and `s.alpha` arrive as `texture(tex, frag_uv) * frag_color` (the texture decoded to linear), `s.normal` as the interpolated world normal, `s.emissive` as zero. Change what you need
 - PBR: `s.metallic` (preset 0), `s.smoothness` (preset 0.5) and `s.occlusion` (preset 1) feed the same lighting as the built-in Lit
 - normal maps: `s.normal = perturb_normal(texture(bumps, frag_uv).xyz * 2.0 - 1.0, strength)` turns a tangent-space texel into the world normal, through the vertex tangent (`frag_tangent`, location 4) or a frame from derivatives where the vertex has none. A normal map is data: never `srgb_to_linear` it
-- the template declares the inputs, `tex`, the `LightUBO` and the shadow map, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by the scene's directional Light with `shadows` on, like the built-in lit shader
+- the template declares the inputs, `tex`, the `LightUBO` and the shadow maps, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by every Light with `shadows` on, like the built-in lit shader
 - with the material's alpha clipping on, a pixel whose `s.alpha` ends below the cutoff is discarded. The importer also compiles the shader's caster (the template with `MOONHUG_CASTER`: `surface()` and the clip, no lighting), what shadows and the depth prepass draw a clipped material with, so a graph that cuts holes through `s.alpha` cuts them in its shadow too
 - set 3 binding 2 is gfx's per-draw block (`DrawUBO`, the alpha cutoff): a property block stays at binding 1
 - compiler errors keep the shader's own line numbers (`#line 1`)
@@ -262,9 +264,4 @@ the `Vertex` format, the per-instance `_Instance` format (model matrix and tint)
 
 Light gizmos and handles (range sphere, spot cone) live in the editor: docs/core/Handles.md.
 
-Still deferred: shadows, per-draw
-light culling (all 8 lights reach every draw), imported mesh tangents (pbr.glsl derives a per-pixel cotangent frame
-instead), engine-level IBL (pbr.glsl samples an equirect environment via its
-`env_tex` row — `assets/textures/studio_env.png` ships as a starter; no
-prefiltered mips, roughness blur is approximated). Per-submesh materials,
-property blocks and multi-texture rows are done (see above and Meshes.md).
+Every light reaches every draw: lights are not culled per draw, so a pass lights with at most `MAX_LIGHTS` (8).

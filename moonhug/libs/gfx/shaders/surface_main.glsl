@@ -101,7 +101,11 @@ void main() {
         float NoL = max(dot(n, to_light), 0.0);
         if (NoL <= 0.0) continue;
         float atten = light_attenuation(l, L, dist);
-        if (i == int(shadow_params.w)) atten *= shadow_factor(frag_world_pos);
+        if (l.pos_type.w < 0.5) {
+            if (i == int(shadow_params.w + 0.5)) atten *= cascade_shadow(frag_world_pos, normalize(frag_normal));
+        } else {
+            atten *= punctual_shadow(l, frag_world_pos, normalize(frag_normal));
+        }
         vec3 h = normalize(v + to_light);
         float NoH = max(dot(n, h), 0.0);
         float VoH = max(dot(v, h), 0.0);

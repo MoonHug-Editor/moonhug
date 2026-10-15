@@ -33,21 +33,35 @@ layout(location = 4) in vec4 frag_tangent; // world tangent, w bitangent sign; z
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
 #define MAX_LIGHTS 8
+#define MAX_CASCADES 4
+#define MAX_SHADOW_TILES 48
 
 struct GpuLight {
     vec4 pos_type;    // xyz = position, w = kind (0 dir, 1 point, 2 spot)
     vec4 dir_range;   // xyz = normalized travel direction, w = range
     vec4 color_outer; // rgb premultiplied by intensity, w = cos outer half-angle
-    vec4 params;      // x = cos inner half-angle, yzw reserved
+    vec4 params;      // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w reserved
 };
 
 layout(set = 3, binding = 0) uniform LightUBO {
     vec4 ambient_count; // x = ambient floor, y = light count
     vec4 cam_pos;       // xyz = camera world position
     GpuLight lights[MAX_LIGHTS];
-    mat4 shadow_vp;     // the caster pass's view_proj (gfx.set_shadow)
-    vec4 shadow_params; // x = one texel in uv, y = depth bias, z = 1 when a map is bound, w = its light index
+    // The directional light's cascades (gfx.set_shadow_cascades), tiles of
+    // shadow_map: view_proj, the tile in atlas uv, x one texel's world size,
+    // y the depth bias in the cascade's depth units.
+    mat4 cascade_vp[MAX_CASCADES];
+    vec4 cascade_rects[MAX_CASCADES];
+    vec4 cascade_params[MAX_CASCADES];
+    vec4 shadow_params; // x = one atlas texel in uv, y = cascade count (0 none), z = where shadows end, w = the light they belong to
     vec4 env_params;    // x = diffuse intensity, y = specular intensity, z = the specular cube's last mip (gfx.set_environment)
+    // Spot and point light shadows (gfx.set_shadow_atlas), tiles of
+    // shadow_atlas: x one atlas texel in uv, y bias along the light ray
+    // (world), z normal bias (texels) of these tiles, w the cascades'.
+    vec4 atlas_params;
+    mat4 tile_vp[MAX_SHADOW_TILES];
+    vec4 tile_rects[MAX_SHADOW_TILES];
+    vec4 tile_params[MAX_SHADOW_TILES]; // x near, y far, z one texel's world size at distance 1
 };
 
 // Per draw, from gfx.draw_mesh: x = the material's alpha cutoff (0 = no
@@ -56,10 +70,13 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 draw_params;
 };
 
-// The shadow map, bound by gfx at this reserved slot for every shader that
-// declares it (white, depth 1, when no caster pass ran: nothing in shadow).
-// Material texture rows use bindings 1..6.
-layout(set = 2, binding = 7) uniform sampler2D shadow_map;
+// The shadow maps, bound by gfx at reserved slots for every shader that
+// declares them, sampled with a depth comparison (1 lit, 0 shadowed, filtered
+// between): the directional cascades' atlas and the spot and point lights'
+// atlas. A 1x1 depth of 1 stands in when a pass has none. Material texture
+// rows use bindings 1..6.
+layout(set = 2, binding = 7) uniform sampler2DShadow shadow_map;
+layout(set = 2, binding = 10) uniform sampler2DShadow shadow_atlas;
 // The environment (gfx.set_environment): the specular cube prefiltered for
 // rising roughness along its mips, and the diffuse irradiance cube. White
 // when the pass has none, so the ambient level lights uniformly.
@@ -155,24 +172,71 @@ vec3 view_dir() {
     return normalize(cam_pos.xyz - frag_world_pos);
 }
 
-// How lit the fragment is by the shadow-casting light, 0 (shadowed) to 1:
-// a 3x3 PCF of the shadow map around the fragment's light-space position.
-// Outside the map, or with no map bound, the fragment counts as lit, which
-// is the clamp-to-edge border SDL_GPU samplers lack.
-float shadow_factor(vec3 world_pos) {
-    if (shadow_params.z < 0.5) return 1.0;
-    vec4 lp = shadow_vp * vec4(world_pos, 1.0);
-    vec3 ndc = lp.xyz / lp.w;
-    vec2 uv = vec2(ndc.x * 0.5 + 0.5, 1.0 - (ndc.y * 0.5 + 0.5));
-    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0) return 1.0;
-    float depth = ndc.z - shadow_params.y;
-    float texel = shadow_params.x;
+// 3x3 comparison taps (each a filtered 2x2 compare) around `uv`, a point of
+// one atlas tile `rect` (atlas uv x, y, w, h), clamped 1.5 texels inside the
+// tile so no tap reads a neighbouring tile. 1 lit, 0 shadowed.
+float shadow_pcf(sampler2DShadow map, vec4 rect, vec2 uv, float depth, float texel) {
+    vec2 lo = rect.xy + vec2(texel * 1.5);
+    vec2 hi = rect.xy + rect.zw - vec2(texel * 1.5);
+    vec2 c = rect.xy + uv * rect.zw;
     float lit = 0.0;
     for (int y = -1; y <= 1; ++y) {
         for (int x = -1; x <= 1; ++x) {
-            float d = texture(shadow_map, uv + vec2(x, y) * texel).r;
-            lit += depth <= d ? 1.0 : 0.0;
+            lit += texture(map, vec3(clamp(c + vec2(x, y) * texel, lo, hi), depth));
         }
     }
     return lit / 9.0;
+}
+
+// The directional light's shadow at a surface point with geometric normal
+// `n`: the first cascade whose tile holds the point, looked up a few of that
+// cascade's texels along the normal (against acne), faded out over the last
+// tenth of the shadow distance. 1 past the distance or with no cascades.
+float cascade_shadow(vec3 world_pos, vec3 n) {
+    int count = int(shadow_params.y + 0.5);
+    if (count == 0) return 1.0;
+    float end = shadow_params.z;
+    float dist = length(world_pos - cam_pos.xyz);
+    if (dist >= end) return 1.0;
+    float fade = smoothstep(end * 0.9, end, dist);
+    for (int c = 0; c < count; ++c) {
+        vec3 p = world_pos + n * (cascade_params[c].x * atlas_params.w);
+        vec4 lp = cascade_vp[c] * vec4(p, 1.0);
+        vec3 ndc = lp.xyz / lp.w;
+        vec2 uv = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+        float margin = 2.0 * shadow_params.x / cascade_rects[c].z; // two texels, in the tile's uv
+        if (uv.x < margin || uv.x > 1.0 - margin || uv.y < margin || uv.y > 1.0 - margin || ndc.z < 0.0 || ndc.z > 1.0) continue;
+        float lit = shadow_pcf(shadow_map, cascade_rects[c], uv, ndc.z - cascade_params[c].y, shadow_params.x);
+        return mix(lit, 1.0, fade);
+    }
+    return 1.0;
+}
+
+// A spot or point light's shadow at a surface point with geometric normal
+// `n`: its tile of the atlas (a point light's six, +X -X +Y -Y +Z -Z, by the
+// direction's major axis), looked up a few texels along the normal, with
+// the bias taken along the light ray in world units. 1 for a light without.
+float punctual_shadow(GpuLight l, vec3 world_pos, vec3 n) {
+    int count = int(l.params.z + 0.5);
+    if (count == 0) return 1.0;
+    int tile = int(l.params.y + 0.5);
+    vec3 d = world_pos - l.pos_type.xyz;
+    if (count == 6) {
+        vec3 a = abs(d);
+        if (a.x >= a.y && a.x >= a.z) tile += d.x > 0.0 ? 0 : 1;
+        else if (a.y >= a.z) tile += d.y > 0.0 ? 2 : 3;
+        else tile += d.z > 0.0 ? 4 : 5;
+    }
+    vec4 tp = tile_params[tile];
+    vec3 p = world_pos + n * (tp.z * length(d) * atlas_params.z);
+    vec4 lp = tile_vp[tile] * vec4(p, 1.0);
+    if (lp.w <= tp.x) return 1.0;
+    vec3 ndc = lp.xyz / lp.w;
+    vec2 uv = vec2(ndc.x * 0.5 + 0.5, 0.5 - ndc.y * 0.5);
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || ndc.z > 1.0) return 1.0;
+    // The view depth moved toward the light by the bias, back to the map's
+    // depth (gfx.matrix4_perspective_z01: far / (far - near) * (1 - near / w)).
+    float w = max(lp.w - atlas_params.y, tp.x);
+    float depth = tp.y / (tp.y - tp.x) * (1.0 - tp.x / w);
+    return shadow_pcf(shadow_atlas, tile_rects[tile], uv, depth, atlas_params.x);
 }

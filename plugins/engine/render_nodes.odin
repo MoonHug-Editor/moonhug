@@ -3,8 +3,10 @@ package engine
 // The engine's render nodes: what the default pipeline places in its Main
 // slot (render_pipeline.odin, plugins/engine/docs/RenderPipeline.md).
 //
-//   shadow_pass       (render_shadow.odin, per frame) renders the shadow map
-//                     of the first directional Light with shadows on
+//   shadow_atlas      (render_shadow.odin, per frame) spot and point Light
+//                     shadows, tiles of one atlas
+//   shadow_cascades   (render_shadow.odin) the first shadowing directional
+//                     Light's cascades, fitted to the view
 //   depth_prepass     the opaque meshes' depth first (optional, not in the
 //                     Default pipeline), so scene_opaque shades each pixel once
 //   scene_opaque      clears the view's "hdr" target and its depth (keeps the
@@ -33,12 +35,12 @@ HDR_TARGET :: "hdr"
 // Begins a pass on the view's scene target for a node that draws into the
 // scene: the "hdr" color kept (or cleared to `clear`), the depth kept from
 // the earlier scene nodes unless `keep_depth` is false, the view's camera set
-// and this frame's shadow map bound. pass_end closes it.
+// and its shadows bound. pass_end closes it.
 scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_depth := true) -> ^gfx.Render_Target {
 	hdr := render_target(ctx, HDR_TARGET) // every scene node declares `hdr:HDR`
 	gfx.pass_begin_target(hdr, clear, keep_depth)
 	gfx.set_view_proj(ctx.view.view_proj, ctx.view.cam_pos)
-	shadow_bind() // render_shadow.odin: this frame's map, if a light cast one
+	shadow_bind(ctx) // render_shadow.odin: this view's cascades and this frame's atlas, for what cast them
 	environment_bind() // render_environment.odin: this frame's sky light, if an Environment set one
 	return hdr
 }
@@ -64,7 +66,7 @@ depth_prepass :: proc(ctx: ^Render_Ctx) {
 // The first scene node: starts the view's image with the camera's clear and
 // a fresh depth (the depth prepass's when one ran), then the opaque meshes.
 // Its "hdr" is the view's final image until a post node renders a later one.
-@(render_node={summary="clears the view, draws the opaque meshes", reads="scene shadow", writes="hdr:HDR*"})
+@(render_node={summary="clears the view, draws the opaque meshes", reads="scene shadow shadow_atlas", writes="hdr:HDR*"})
 scene_opaque :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx, ctx.clear, keep_depth = ctx.depth_primed)
 	render_execute(ctx.view, ctx.commands, {.Opaque})
@@ -82,7 +84,7 @@ scene_under :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 }
 
-@(render_node={summary="draws the alpha-blended quads back to front", reads="scene shadow hdr", writes="hdr:HDR"})
+@(render_node={summary="draws the alpha-blended quads back to front", reads="scene shadow shadow_atlas hdr", writes="hdr:HDR"})
 scene_transparent :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx)
 	render_execute(ctx.view, ctx.commands, {.Transparent})

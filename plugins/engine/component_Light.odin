@@ -29,7 +29,7 @@ Light :: struct {
     spot_angle:       f32 `decor:min(0)`, // spot: full cone angle, degrees (Unity spotAngle)
     inner_spot_angle: f32 `decor:min(0)`, // spot: full-brightness cone, degrees
     ambient:          f32 `decor:min(0)`, // unlit floor 0..1, first enabled light wins
-    shadows:          bool, // directional: casts a shadow map (render_shadow.odin), the first enabled one wins
+    shadows:          bool, // casts shadows (render_shadow.odin): the first enabled directional light's cascades, every spot and point light's atlas tiles
 }
 
 reset_Light :: proc(l: ^Light) {

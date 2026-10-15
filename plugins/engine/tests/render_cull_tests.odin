@@ -94,3 +94,31 @@ test_mesh_collector_culls_outside_view :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(seen), 1)
 	if len(seen) == 1 do testing.expect(t, seen[0] == front, "the mesh in front of the camera is the one kept")
 }
+
+// Cascade slices run from the view's start to the shadow distance, in
+// order, and the split blends from even to logarithmic.
+@(test)
+test_shadow_cascade_splits :: proc(t: ^testing.T) {
+	even := engine.shadow_cascade_splits(0.1, 50, 4, 0)
+	testing.expect_value(t, even[0], f32(0.1))
+	testing.expect_value(t, even[4], f32(50))
+	testing.expect(t, abs(even[2] - 25.05) < 1e-3, "an even split halves the range at the middle boundary")
+
+	logarithmic := engine.shadow_cascade_splits(0.1, 50, 4, 1)
+	testing.expect(t, abs(logarithmic[2] - math.sqrt(f32(0.1 * 50))) < 1e-3, "a logarithmic split puts the middle at the geometric mean")
+	for i in 0 ..< 4 do testing.expectf(t, logarithmic[i] < logarithmic[i + 1], "boundaries rise: %v", logarithmic)
+
+	one := engine.shadow_cascade_splits(0.1, 50, 1, 0.75)
+	testing.expect(t, one[0] == 0.1 && one[1] == 50, "one cascade covers the whole distance")
+}
+
+// Every shadowed light keeps its tiles: the grid grows and the tiles shrink.
+@(test)
+test_shadow_atlas_grid :: proc(t: ^testing.T) {
+	grid, tile := engine.shadow_atlas_grid(1, 2048)
+	testing.expect(t, grid == 1 && tile == 2048, "one spot light gets the whole atlas")
+	grid, tile = engine.shadow_atlas_grid(7, 2048) // a point light and a spot light
+	testing.expect(t, grid == 3 && tile == 682, "seven tiles fit a 3x3 grid")
+	grid, tile = engine.shadow_atlas_grid(48, 2048) // eight point lights
+	testing.expect(t, grid == 7 && grid * grid >= 48 && tile == 292, "the most a scene can ask for still fits")
+}

@@ -155,6 +155,8 @@ _gfx: struct {
 	sampler_linear:   ^sdl.GPUSampler,
 	sampler_nearest:  ^sdl.GPUSampler,
 	sampler_repeat:   ^sdl.GPUSampler, // linear + REPEAT — mesh draws (glTF's default wrap)
+	sampler_shadow:   ^sdl.GPUSampler, // linear depth comparison (LESS_OR_EQUAL: 1 lit), for the shadow maps
+	depth_one:        ^sdl.GPUTexture, // 1x1 depth of 1: a shadow map with nothing in it
 	white_tex:        ^Texture,
 	window_depth:     ^sdl.GPUTexture, // lazily sized to the swapchain
 	window_depth_w:   u32,
@@ -209,6 +211,21 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	sampler_info.mag_filter = .NEAREST
 	sampler_info.mipmap_mode = .NEAREST
 	_gfx.sampler_nearest = sdl.CreateGPUSampler(_gfx.device, sampler_info)
+	// Shadow maps: each lookup compares a reference depth with the map's
+	// texels and filters the results, so one tap is a 2x2 percentage-closer
+	// filter. Clamped: the shaders keep taps inside their tile.
+	_gfx.sampler_shadow = sdl.CreateGPUSampler(_gfx.device, sdl.GPUSamplerCreateInfo{
+		min_filter     = .LINEAR,
+		mag_filter     = .LINEAR,
+		mipmap_mode    = .NEAREST,
+		address_mode_u = .CLAMP_TO_EDGE,
+		address_mode_v = .CLAMP_TO_EDGE,
+		address_mode_w = .CLAMP_TO_EDGE,
+		compare_op     = .LESS_OR_EQUAL,
+		enable_compare = true,
+	})
+	if _gfx.sampler_shadow == nil do return false
+	if !_depth_one_init() do return false
 
 	if !_create_pipelines() do return false
 	if !_cubemap_init() do return false
@@ -232,11 +249,43 @@ shutdown :: proc() {
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_linear)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_nearest)
 		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_repeat)
+		sdl.ReleaseGPUSampler(_gfx.device, _gfx.sampler_shadow)
+		if _gfx.depth_one != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.depth_one)
 		sdl.ReleaseWindowFromGPUDevice(_gfx.device, _platform.window)
 		sdl.DestroyGPUDevice(_gfx.device)
 	}
 	_gfx = {}
 	_platform_shutdown()
+}
+
+// The 1x1 depth texture of 1 a pass without a shadow map binds in its place:
+// a comparison sampler needs a depth texture, and 1 is the far plane, so
+// nothing reads as shadowed. Cleared once by an empty render pass.
+@(private = "file")
+_depth_one_init :: proc() -> bool {
+	_gfx.depth_one = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
+		type                 = .D2,
+		format               = _DEPTH_FORMAT,
+		usage                = {.DEPTH_STENCIL_TARGET, .SAMPLER},
+		width                = 1,
+		height               = 1,
+		layer_count_or_depth = 1,
+		num_levels           = 1,
+	})
+	if _gfx.depth_one == nil do return false
+	cmd := sdl.AcquireGPUCommandBuffer(_gfx.device)
+	if cmd == nil do return false
+	depth_info := sdl.GPUDepthStencilTargetInfo{
+		texture          = _gfx.depth_one,
+		clear_depth      = 1,
+		load_op          = .CLEAR,
+		store_op         = .STORE,
+		stencil_load_op  = .DONT_CARE,
+		stencil_store_op = .DONT_CARE,
+	}
+	rp := sdl.BeginGPURenderPass(cmd, nil, 0, &depth_info)
+	sdl.EndGPURenderPass(rp)
+	return sdl.SubmitGPUCommandBuffer(cmd)
 }
 
 device :: proc() -> ^sdl.GPUDevice {

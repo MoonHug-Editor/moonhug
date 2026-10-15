@@ -195,7 +195,7 @@ _inspect_taken :: proc(name: string) {
 	append(&n.taken, strings.clone(name, runtime.default_allocator()))
 }
 
-// Called for every command a node draws (render_execute, shadow_pass).
+// Called for every command a node draws (render_execute, render_execute_depth).
 _inspect_draw :: proc(cmd: Render_Command) {
 	n := _inspect.recording
 	if n == nil do return

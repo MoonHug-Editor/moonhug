@@ -16,10 +16,19 @@
     },
     {
       "id": 1,
-      "node": "shadow_pass",
+      "node": "shadow_atlas",
       "slot": "",
       "binds": [],
-      "muted": false
+      "muted": false,
+      "settings": null
+    },
+    {
+      "id": 12,
+      "node": "shadow_cascades",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
     },
     {
       "id": 2,
@@ -86,5 +95,5 @@
       "muted": false
     }
   ],
-  "next_id": 12
+  "next_id": 13
 }

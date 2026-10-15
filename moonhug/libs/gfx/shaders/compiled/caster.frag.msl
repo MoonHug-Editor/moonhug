@@ -34,9 +34,15 @@ struct LightUBO
     float4 ambient_count;
     float4 cam_pos;
     GpuLight lights[8];
-    float4x4 shadow_vp;
+    float4x4 cascade_vp[4];
+    float4 cascade_rects[4];
+    float4 cascade_params[4];
     float4 shadow_params;
     float4 env_params;
+    float4 atlas_params;
+    float4x4 tile_vp[48];
+    float4 tile_rects[48];
+    float4 tile_params[48];
 };
 
 struct main0_in

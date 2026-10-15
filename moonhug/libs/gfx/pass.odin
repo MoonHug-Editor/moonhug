@@ -44,7 +44,7 @@ _Draw :: struct {
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 10
+MAX_FRAGMENT_SAMPLERS :: 11
 
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
@@ -101,8 +101,15 @@ _Gpu_Light :: struct {
 	pos_type:    [4]f32, // xyz = position, w = kind (0 dir, 1 point, 2 spot)
 	dir_range:   [4]f32, // xyz = normalized travel direction, w = range
 	color_outer: [4]f32, // rgb premultiplied by intensity, w = cos outer half-angle
-	params:      [4]f32, // x = cos inner half-angle, yzw reserved
+	params:      [4]f32, // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w reserved
 }
+
+// The directional light's cascades: at most this many tiles of one atlas.
+MAX_CASCADES :: 4
+
+// Spot and point light shadow tiles in one atlas: one per spot light, six per
+// point light (cube faces +X -X +Y -Y +Z -Z), enough for every light.
+MAX_SHADOW_TILES :: MAX_LIGHTS * 6
 
 // Must match the lit shader's LightUBO. cam_pos comes from the draw's view
 // (set_view_proj), not set_lights — it's filled in at push time per view
@@ -111,25 +118,40 @@ _Light_Uniform :: struct {
 	ambient_count: [4]f32, // x = ambient floor, y = light count
 	cam_pos:       [4]f32, // xyz = camera world position (specular shaders), w unused
 	lights:        [MAX_LIGHTS]_Gpu_Light,
-	// The shadow map (set_shadow), appended so a shader that declares only the
-	// fields above still reads its prefix. shadow_params: x = one texel in uv,
-	// y = depth bias, z = 1 when a map is bound, w = the light it belongs to.
-	shadow_vp:     matrix[4, 4]f32,
-	shadow_params: [4]f32,
-	// The environment (set_environment), appended the same way: x diffuse
-	// intensity, y specular intensity, z the specular cube's last mip.
-	env_params:    [4]f32,
+	// The directional cascades (set_shadow_cascades). cascade_params: x one
+	// texel's world size, y the depth bias in the cascade's depth units.
+	// shadow_params: x one atlas texel in uv, y cascade count, z where shadows
+	// end, w the light they belong to.
+	cascade_vp:     [MAX_CASCADES]matrix[4, 4]f32,
+	cascade_rects:  [MAX_CASCADES][4]f32,
+	cascade_params: [MAX_CASCADES][4]f32,
+	shadow_params:  [4]f32,
+	// The environment (set_environment): x diffuse intensity, y specular
+	// intensity, z the specular cube's last mip.
+	env_params:     [4]f32,
+	// Spot and point shadows (set_shadow_atlas): x one atlas texel in uv,
+	// y bias along the light ray (world), z the tiles' normal bias (texels),
+	// w the cascades' normal bias (texels). tile_params: x near, y far, z one
+	// texel's world size at distance 1.
+	atlas_params:   [4]f32,
+	tile_vp:        [MAX_SHADOW_TILES]matrix[4, 4]f32,
+	tile_rects:     [MAX_SHADOW_TILES][4]f32,
+	tile_params:    [MAX_SHADOW_TILES][4]f32,
 }
 
-// The fragment sampler slot the shadow map binds to, for shaders that
-// declare it (the surface template's `shadow_map` at set=2, binding=7).
-// Material texture rows use bindings 1..SHADOW_SAMPLER_SLOT-1.
+// The fragment sampler slot the directional cascades' atlas binds to, for
+// shaders that declare it (the surface template's `shadow_map` at set=2,
+// binding=7), sampled with a depth comparison. Material texture rows use
+// bindings 1..SHADOW_SAMPLER_SLOT-1.
 SHADOW_SAMPLER_SLOT :: 7
 // The environment's prefiltered specular cube and its irradiance cube
 // (set_environment), bound like the shadow map to shaders that declare them
 // (the surface template). White cubes stand in when no environment is set.
 ENV_SPECULAR_SLOT   :: 8
 ENV_IRRADIANCE_SLOT :: 9
+// The spot and point lights' shadow atlas (the template's `shadow_atlas`),
+// sampled like the cascades.
+SHADOW_ATLAS_SLOT   :: 10
 
 _Env :: struct {
 	has:        bool,
@@ -138,11 +160,43 @@ _Env :: struct {
 	params:     [4]f32,
 }
 
-_Shadow :: struct {
-	has:    bool,    // a map is set for this pass
-	tex:    Texture, // the caster pass's depth, by value: set_shadow's argument is a temporary
-	vp:     matrix[4, 4]f32,
-	params: [4]f32,
+// The directional light's cascades for a pass (set_shadow_cascades): tiles
+// of one depth atlas, each an orthographic view of a slice of the camera's
+// frustum.
+Shadow_Cascades :: struct {
+	tex:         Texture, // the atlas's depth (rt_depth_texture)
+	count:       int,     // 0 = no cascades
+	light_index: int,     // the light they belong to, in set_lights order
+	vp:          [MAX_CASCADES]matrix[4, 4]f32,
+	rects:       [MAX_CASCADES][4]f32, // each tile in atlas uv: x, y, width, height
+	world_texel: [MAX_CASCADES]f32,    // one texel's world size, for the normal offset
+	depth_bias:  [MAX_CASCADES]f32,    // the bias in each cascade's depth units
+	normal_bias: f32,                  // texels along the surface normal
+	distance:    f32,                  // where shadows end, fading over the last tenth
+}
+
+// One spot light's view, or one point light cube face's, in the atlas.
+Shadow_Tile :: struct {
+	vp:                 matrix[4, 4]f32,
+	rect:               [4]f32, // atlas uv: x, y, width, height
+	near, far:          f32,    // the perspective's, to turn a biased distance back into depth
+	texel_per_distance: f32,    // one texel's world size at distance 1, for the normal offset
+}
+
+// Spot and point light shadows for a pass (set_shadow_atlas).
+Shadow_Atlas :: struct {
+	tex:         Texture,
+	tiles:       [MAX_SHADOW_TILES]Shadow_Tile,
+	light_tiles: [MAX_LIGHTS][2]i32, // per light in set_lights order: first tile, tile count (0 none)
+	bias:        f32,                // world units along the light ray
+	normal_bias: f32,                // texels along the surface normal
+}
+
+_Shadows :: struct {
+	cascades:     Shadow_Cascades,
+	has_cascades: bool,
+	atlas:        Shadow_Atlas,
+	has_atlas:    bool,
 }
 
 // Matches the previously baked-in lit shader constants, so scenes without a
@@ -159,11 +213,13 @@ _LIGHT_DEFAULT :: _Light_Uniform{
 	},
 }
 
-// One view entry per set_view_proj call: the matrix plus the camera world
-// position fragment shaders see as cam_pos.
+// One view entry per set_view_proj call: the matrix, the camera world
+// position fragment shaders see as cam_pos, and the viewport in pixels
+// (x, y, width, height, zero = the whole target).
 _View :: struct {
-	vp:      matrix[4, 4]f32,
-	cam_pos: [3]f32,
+	vp:       matrix[4, 4]f32,
+	cam_pos:  [3]f32,
+	viewport: [4]f32,
 }
 
 _pass: struct {
@@ -182,7 +238,9 @@ _pass: struct {
 	encode_src:    Texture, // the scratch's color, alive while pass_end encodes it
 	display_pool:  Target_Pool, // scratch targets by size
 	light:        Maybe(_Light_Uniform), // nil = _LIGHT_DEFAULT; reset each pass_end
-	shadow:       _Shadow,               // reset each pass_end
+	shadows:      _Shadows,              // reset each pass_end
+	target_w:     f32, // the target's size, what a zero viewport covers
+	target_h:     f32,
 	env:          _Env,                  // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
@@ -421,6 +479,7 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth :
 	_pass.active = true
 	_pass.target_color = rt.color
 	_pass.target_depth = rt.depth
+	_pass.target_w, _pass.target_h = f32(rt.width), f32(rt.height)
 	_pass.format = rt.format
 	_pass.store_depth = true
 	_pass.keep_depth = keep_depth
@@ -458,6 +517,7 @@ display_blit :: proc(dst: ^Render_Target, src: Texture) -> bool {
 		_pass.active = true
 		_pass.target_color = dst.color
 		_pass.target_depth = dst.depth
+		_pass.target_w, _pass.target_h = f32(dst.width), f32(dst.height)
 		_pass.format = .Display
 		_pass.store_depth = true
 		_pass.keep_depth = false
@@ -510,6 +570,7 @@ pass_begin_swapchain :: proc(clear: Maybe([4]f32), depth := true, raw := false) 
 
 	// Remembered for an on-demand capture later this frame (swapchain_capture).
 	_swapchain_this_frame = {tex = swap_tex, w = w, h = h}
+	_pass.target_w, _pass.target_h = f32(w), f32(h)
 
 	if !depth {
 		_pass.active = true
@@ -597,18 +658,20 @@ set_environment :: proc(specular, irradiance: ^Cubemap, diffuse_intensity, specu
 // Back to the built-in default (one white directional, 0.35 ambient) — for
 // callers that set temporary lights (the inspector's preview headlight) and
 // must not leak them into later passes of lightless scenes.
-// The shadow map for the CURRENT pass's lit draws: the depth a caster pass
-// rendered from `light_vp` (rt_depth_texture of its target), for light
-// `light_index` of set_lights. Shaders that declare the shadow sampler
-// (SHADOW_SAMPLER_SLOT) read it, with `bias` in depth units. Not calling this
-// leaves every surface lit.
-set_shadow :: proc(tex: Texture, light_vp: matrix[4, 4]f32, light_index: int, bias: f32) {
-	_pass.shadow = _Shadow{
-		has    = true,
-		tex    = tex,
-		vp     = light_vp,
-		params = {1 / f32(max(tex.width, 1)), bias, 1, f32(light_index)},
-	}
+// The directional light's cascades for the CURRENT pass's lit draws (the
+// shadow_cascades render node's result). Shaders that declare the cascades'
+// sampler (SHADOW_SAMPLER_SLOT) read it. Not calling this leaves every
+// surface lit by that light.
+set_shadow_cascades :: proc(c: Shadow_Cascades) {
+	_pass.shadows.cascades = c
+	_pass.shadows.has_cascades = c.count > 0
+}
+
+// The spot and point lights' shadow atlas for the CURRENT pass's lit draws
+// (the shadow_atlas render node's result), read at SHADOW_ATLAS_SLOT.
+set_shadow_atlas :: proc(a: ^Shadow_Atlas) {
+	_pass.shadows.atlas = a^
+	_pass.shadows.has_atlas = true
 }
 
 set_lights_default :: proc() {
@@ -618,8 +681,12 @@ set_lights_default :: proc() {
 // May change mid-pass (multi-camera stacking, screen-space overlays).
 // cam_pos is the camera's world position, exposed to fragment shaders for
 // specular terms — screen-space/ortho callers can leave the zero default.
-set_view_proj :: proc(vp: matrix[4, 4]f32, cam_pos := [3]f32{0, 0, 0}) {
-	v := _View{vp = vp, cam_pos = cam_pos}
+//
+// `viewport` (x, y, width, height in pixels, origin top-left) confines the
+// draws that follow to a part of the target: one tile of a shadow atlas.
+// Zero is the whole target.
+set_view_proj :: proc(vp: matrix[4, 4]f32, cam_pos := [3]f32{0, 0, 0}, viewport := [4]f32{}) {
+	v := _View{vp = vp, cam_pos = cam_pos, viewport = viewport}
 	if len(_pass.vps) > 0 && _pass.vps[len(_pass.vps)-1] == v do return
 	append(&_pass.vps, v)
 }
@@ -876,6 +943,38 @@ _push_material :: proc(d: ^_Draw) {
 	}
 }
 
+// The pass's cascades and atlas into the light uniform, and each shadowed
+// spot or point light's tiles into its GpuLight.
+@(private = "file")
+_apply_shadows :: proc(light: ^_Light_Uniform) {
+	if _pass.shadows.has_cascades {
+		c := &_pass.shadows.cascades
+		n := min(c.count, MAX_CASCADES)
+		for i in 0 ..< n {
+			light.cascade_vp[i] = c.vp[i]
+			light.cascade_rects[i] = c.rects[i]
+			light.cascade_params[i] = {c.world_texel[i], c.depth_bias[i], 0, 0}
+		}
+		light.shadow_params = {1 / f32(max(c.tex.width, 1)), f32(n), c.distance, f32(c.light_index)}
+		light.atlas_params.w = c.normal_bias
+	}
+	if _pass.shadows.has_atlas {
+		a := &_pass.shadows.atlas
+		light.atlas_params.x = 1 / f32(max(a.tex.width, 1))
+		light.atlas_params.y = a.bias
+		light.atlas_params.z = a.normal_bias
+		for t, i in a.tiles {
+			light.tile_vp[i] = t.vp
+			light.tile_rects[i] = t.rect
+			light.tile_params[i] = {t.near, t.far, t.texel_per_distance, 0}
+		}
+		for lt, i in a.light_tiles {
+			light.lights[i].params.y = f32(lt[0])
+			light.lights[i].params.z = f32(lt[1])
+		}
+	}
+}
+
 // Encodes the pass's render pass from its recorded draws and resets it.
 @(private = "file")
 _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURenderPass)) {
@@ -914,10 +1013,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	// cam_pos is per-view (multi-camera passes). Only pipelines that declare
 	// the fragment UBO (lit, user shaders) consume them.
 	light := _pass.light.? or_else _LIGHT_DEFAULT
-	if _pass.shadow.has {
-		light.shadow_vp = _pass.shadow.vp
-		light.shadow_params = _pass.shadow.params
-	}
+	_apply_shadows(&light)
 	// Without an environment the white cubes times the ambient level light
 	// what no light reaches, uniformly.
 	env_specular, env_irradiance := _pass.env.specular, _pass.env.irradiance
@@ -933,8 +1029,15 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_vp := i32(-1)
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
+	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
-		if pushed_light_vp != d.vp_index {
+		if want := _pass.vps[d.vp_index].viewport; want != viewport {
+			r := want == {} ? [4]f32{0, 0, _pass.target_w, _pass.target_h} : want
+			sdl.SetGPUViewport(rp, {x = r[0], y = r[1], w = r[2], h = r[3], min_depth = 0, max_depth = 1})
+			viewport = want
+		}
+		// A depth pass's DEPTH_SHADER draws read no light uniform (depth.frag).
+		if pushed_light_vp != d.vp_index && !(_pass.format == .Depth && d.shader == DEPTH_SHADER) {
 			light.cam_pos.xyz = _pass.vps[d.vp_index].cam_pos
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, 0, &light, size_of(_Light_Uniform))
 			pushed_light_vp = d.vp_index
@@ -972,14 +1075,19 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 				bindings[num_bindings] = {texture = _gfx.white_tex.gpu, sampler = smp}
 				num_bindings += 1
 			}
-			shadow_gpu := _pass.shadow.has ? _pass.shadow.tex.gpu : _gfx.white_tex.gpu
-			bindings[SHADOW_SAMPLER_SLOT] = {texture = shadow_gpu, sampler = _gfx.sampler_nearest}
+			shadow_gpu := _pass.shadows.has_cascades ? _pass.shadows.cascades.tex.gpu : _gfx.depth_one
+			bindings[SHADOW_SAMPLER_SLOT] = {texture = shadow_gpu, sampler = _gfx.sampler_shadow}
 			num_bindings = SHADOW_SAMPLER_SLOT + 1
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > ENV_IRRADIANCE_SLOT && env_specular != nil && env_irradiance != nil {
 			bindings[ENV_SPECULAR_SLOT] = {texture = env_specular.tex, sampler = _gfx.sampler_linear}
 			bindings[ENV_IRRADIANCE_SLOT] = {texture = env_irradiance.tex, sampler = _gfx.sampler_linear}
 			num_bindings = ENV_IRRADIANCE_SLOT + 1
+		}
+		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > SHADOW_ATLAS_SLOT {
+			atlas_gpu := _pass.shadows.has_atlas ? _pass.shadows.atlas.tex.gpu : _gfx.depth_one
+			bindings[SHADOW_ATLAS_SLOT] = {texture = atlas_gpu, sampler = _gfx.sampler_shadow}
+			num_bindings = SHADOW_ATLAS_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && pushed_cutoff != d.alpha_cutoff {
@@ -1049,7 +1157,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.target_color = nil
 	_pass.target_depth = nil
 	_pass.light = nil
-	_pass.shadow = {}
+	_pass.shadows = {}
 	_pass.env = {}
 }
 
