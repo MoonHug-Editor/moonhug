@@ -21,7 +21,7 @@ import "core:strings"
 SHADER_DIR :: "moonhug/libs/gfx/shaders"
 
 // Stage comes from the second extension: "world.vert" -> vert.
-SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag", "env_capture.frag", "env_prefilter.frag", "env_irradiance.frag", "skybox.frag"}
+SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag", "env_capture.frag", "env_prefilter.frag", "env_irradiance.frag", "skybox.frag", "depth.frag", "caster.frag", "depth_view.frag"}
 
 cmd_shaders :: proc(args: []string) -> int {
 	missing := false
@@ -68,6 +68,10 @@ shaders_compile :: proc(force := false) -> bool {
 		// does. Not for compute: its sets map to SDL's buffer order sequentially.
 		cross := []string{"spirv-cross", "--msl", spv, "--output", msl}
 		if stage != "comp" do cross = []string{"spirv-cross", "--msl", "--msl-decoration-binding", spv, "--output", msl}
+		// MSL 2.1 for `invariant gl_Position` (world.vert): SDL compiles MSL
+		// source with the OS's newest language version, so this is only what
+		// spirv-cross may emit.
+		if stage == "vert" do cross = []string{"spirv-cross", "--msl", "--msl-decoration-binding", "--msl-version", "20100", spv, "--output", msl}
 		if !step(fmt.tprintf("spirv-cross %s", name), ..cross) {
 			return false
 		}

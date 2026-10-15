@@ -44,6 +44,7 @@ test_shader_import_compiles_fixture :: proc(t: ^testing.T) {
 	testing.expect_value(t, header.block_size, u32(0))
 	testing.expect(t, len(props) == 0, "fixture has no property block")
 	testing.expect(t, len(texs) == 1 && texs[0].binding == 0, "one reflected sampler at binding 0")
+	testing.expect(t, header.caster_spv_len == 0 && header.caster_msl_len == 0, "a shader with its own main() has no caster: depth passes use depth.frag")
 
 	// SPIR-V magic word.
 	magic := (^u32)(raw_data(spv))^
@@ -124,6 +125,14 @@ test_shader_import_surface_template :: proc(t: ^testing.T) {
 	testing.expect(t, parse_ok, "artifact failed to parse")
 	testing.expect_value(t, header.num_samplers, u32(gfx.MAX_FRAGMENT_SAMPLERS))
 	testing.expect(t, len(props) == 1 && props[0].name == "tint_strength", "the material block's one member")
+
+	// The caster: the same surface() for depth passes, declaring the
+	// per-draw block (the alpha cutoff) at its slot.
+	caster_spv, caster_msl := engine._shader_artifact_caster(blob, header)
+	testing.expect(t, len(caster_spv) > 0 && len(caster_spv) % 4 == 0, "caster SPIR-V present and aligned")
+	if len(caster_spv) >= 4 do testing.expect_value(t, (^u32)(raw_data(caster_spv))^, u32(0x07230203))
+	testing.expect(t, len(caster_msl) > 0, "caster MSL present")
+	testing.expect_value(t, header.caster_uniform_buffers, u32(gfx.DRAW_UNIFORM_SLOT + 1))
 }
 
 // Samplers past binding 0 reflect into the texture table (multi-texture

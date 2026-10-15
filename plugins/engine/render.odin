@@ -292,36 +292,112 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 	}
 	slice.sort(keys[:])
 
-	Mesh_Mat :: struct {
-		shader: string,
-		tex:    ^gfx.Texture,
-		color:  [4]f32,
-		data:   []u8,
-		extra:  []^gfx.Texture,
-	}
-	mats := make(map[Asset_GUID]Mesh_Mat, context.temp_allocator)
+	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
 	for key in keys {
 		it := items[u32(key)]
 		d := it.cmd.variant.(Draw_Mesh)
 		sub := it.loaded.submeshes[it.sub]
 		gpu := d.skinned != nil ? d.skinned^ : it.loaded.gpu
-		m, cached := mats[it.material]
-		if !cached {
-			m.shader, m.tex, m.color, m.data, m.extra = _resolve_material(it.material, .Lit)
-			mats[it.material] = m
-		}
+		m := _mesh_mat(&mats, it.material)
 		switch view.mode {
 		case .Shaded:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff)
 		case .Normals:
 			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count)
 		case .Overdraw:
 			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
 		}
+	}
+}
+
+// A material as mesh draws use it, resolved once per pass (_mesh_mat).
+@(private = "file")
+_Mesh_Mat :: struct {
+	shader: string,
+	tex:    ^gfx.Texture,
+	color:  [4]f32,
+	data:   []u8,
+	extra:  []^gfx.Texture,
+	cutoff: f32, // alpha clipping threshold, 0 = none
+}
+
+@(private = "file")
+_mesh_mat :: proc(mats: ^map[Asset_GUID]_Mesh_Mat, guid: Asset_GUID) -> _Mesh_Mat {
+	if m, cached := mats[guid]; cached do return m
+	m: _Mesh_Mat
+	m.shader, m.tex, m.color, m.data, m.extra = _resolve_material(guid, .Lit)
+	m.cutoff = material_alpha_cutoff(guid)
+	mats[guid] = m
+	return m
+}
+
+// Draws the meshes of `commands` into the CURRENT depth-only pass (gfx
+// Target_Format.Depth: the shadow map, the depth prepass). A mesh none of
+// whose materials clip draws whole with gfx.DEPTH_SHADER, so every copy of it
+// merges into one instanced draw whatever its materials are. A submesh whose
+// material clips draws with that material's shader, which gfx runs as its
+// caster (alpha clipping, no lighting), with its texture, color and cutoff.
+render_execute_depth :: proc(commands: []Render_Command) {
+	Item :: struct {
+		cmd:      ^Render_Command,
+		loaded:   ^Mesh,
+		sub:      i32, // -1: the whole mesh
+		material: Asset_GUID,
+	}
+	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
+	items := make([dynamic]Item, 0, len(commands), context.temp_allocator)
+	// Integer keys as in _execute_meshes: the clipping material folded high
+	// (zero for depth-only draws, so those come first), the mesh, part and
+	// submesh next, the item's index low.
+	keys := make([dynamic]u128, 0, len(commands), context.temp_allocator)
+	add :: proc(items: ^[dynamic]Item, keys: ^[dynamic]u128, it: Item, material_fold: u64, d: Draw_Mesh) {
+		index := len(items)
+		assert(index <= int(max(u32)), "render_execute_depth: more mesh draws than a sort key indexes")
+		append(keys, u128(material_fold) << 64 | u128(render_fold_mesh(d.mesh, d.part, it.sub)) << 32 | u128(index))
+		append(items, it)
+	}
+	for &cmd in commands {
+		d, is_mesh := cmd.variant.(Draw_Mesh)
+		if !is_mesh do continue
+		mesh, ok := mesh_load(d.mesh, d.part)
+		if !ok do continue
+		_inspect_draw(cmd)
+		clips := false
+		for _, i in mesh.submeshes {
+			if i < len(d.materials) && _mesh_mat(&mats, d.materials[i]).cutoff > 0 do clips = true
+		}
+		if !clips {
+			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = -1}, 0, d)
+			continue
+		}
+		for _, i in mesh.submeshes {
+			mat: Asset_GUID
+			if i < len(d.materials) do mat = d.materials[i]
+			clip := _mesh_mat(&mats, mat).cutoff > 0
+			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}}, clip ? render_fold_guid(mat) | 1 : 0, d)
+		}
+	}
+	slice.sort(keys[:])
+
+	for key in keys {
+		it := items[u32(key)]
+		d := it.cmd.variant.(Draw_Mesh)
+		gpu := d.skinned != nil ? d.skinned^ : it.loaded.gpu
+		if it.sub < 0 {
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER)
+			continue
+		}
+		sub := it.loaded.submeshes[it.sub]
+		if it.material == {} {
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.DEPTH_SHADER, sub.first_index, sub.index_count)
+			continue
+		}
+		m := _mesh_mat(&mats, it.material)
+		gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff)
 	}
 }
 

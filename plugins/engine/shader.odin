@@ -118,7 +118,8 @@ shader_load :: proc(guid: Asset_GUID) -> (^Shader_Runtime, bool) {
 	guid_str := uuid.to_string(uuid.Identifier(guid), context.temp_allocator)
 	// A leftover registration (cache cleared without unregister) is reused.
 	if !gfx.shader_exists(guid_str) {
-		if !gfx.shader_register_fragment(guid_str, spv, msl, header.num_samplers, header.num_uniform_buffers) {
+		caster_spv, caster_msl := _shader_artifact_caster(blob, header)
+		if !gfx.shader_register_fragment(guid_str, spv, msl, header.num_samplers, header.num_uniform_buffers, caster_spv, caster_msl, header.caster_samplers, header.caster_uniform_buffers) {
 			for prop in properties do delete(prop.name)
 			delete(properties)
 			for tex in textures do delete(tex.name)

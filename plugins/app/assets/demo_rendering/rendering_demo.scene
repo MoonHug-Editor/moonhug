@@ -142,6 +142,12 @@
             "local_id": 152,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 155,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": []
@@ -833,6 +839,43 @@
           "local_id": 151
         }
       ]
+    },
+    {
+      "local_id": 155,
+      "name": "Cube Cutout",
+      "is_active": true,
+      "position": [
+        -4.5,
+        1.0,
+        3.0
+      ],
+      "rotation": [
+        0.0,
+        -0.42261826174069944,
+        0.0,
+        0.9063077870366499
+      ],
+      "scale": [
+        1.6,
+        1.6,
+        1.6
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 153
+        },
+        {
+          "local_id": 154
+        }
+      ]
     }
   ],
   "nested_scenes": [],
@@ -1242,6 +1285,27 @@
       },
       "materials": [
         "f98dbc29-ba06-4408-bc9f-e84831eccce9"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 153
+      },
+      "mesh": {
+        "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 154
+      },
+      "materials": [
+        "cacd68c7-81ef-4480-b679-5175081a10ca"
       ]
     }
   ]

@@ -37,6 +37,10 @@ layout(location = 3) out vec3 frag_world_pos;
 // perturb_normal). Zero when the vertex has none.
 layout(location = 4) out vec4 frag_tangent;
 
+// The same vertex gives the same depth in every pipeline: a depth prepass
+// and the shading pass after it compare equal.
+invariant gl_Position;
+
 // A color brighter than 1 is an sRGB color times a linear intensity, as in
 // gfx.srgb_to_linear.
 vec3 srgb_to_linear(vec3 c) {

@@ -5,8 +5,10 @@ package engine
 //
 //   shadow_pass       (render_shadow.odin, per frame) renders the shadow map
 //                     of the first directional Light with shadows on
-//   scene_opaque      clears the view's "hdr" target and its depth, draws the
-//                     opaque meshes
+//   depth_prepass     the opaque meshes' depth first (optional, not in the
+//                     Default pipeline), so scene_opaque shades each pixel once
+//   scene_opaque      clears the view's "hdr" target and its depth (keeps the
+//                     depth after a depth_prepass), draws the opaque meshes
 //   scene_under       the host's drawing under the scene (the editor's grid),
 //                     depth-tested against the opaques
 //   scene_transparent the alpha-blended quads, back to front
@@ -41,12 +43,30 @@ scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_de
 	return hdr
 }
 
+// The opaque meshes' depth before they are shaded. With it scene_opaque
+// keeps the depth instead of clearing it, so each covered pixel is shaded
+// once instead of once per mesh drawn over it. It costs a second pass over
+// the geometry, so it pays off with expensive materials and heavy overdraw,
+// and the Default pipeline leaves it out. The scene view's debug modes draw
+// without it: a wireframe has to show what lies behind the front surface.
+@(render_node={summary="the opaque meshes' depth before shading, so each pixel is shaded once", reads="scene", writes="hdr:HDR*"})
+depth_prepass :: proc(ctx: ^Render_Ctx) {
+	if ctx.view.mode != .Shaded do return
+	hdr := render_target(ctx, HDR_TARGET)
+	gfx.pass_begin_target(hdr, nil, color = false)
+	gfx.set_view_proj(ctx.view.view_proj, ctx.view.cam_pos)
+	render_execute_depth(ctx.commands)
+	gfx.pass_end()
+	ctx.depth_primed = true
+	_inspect_depth_view(HDR_TARGET)
+}
+
 // The first scene node: starts the view's image with the camera's clear and
-// a fresh depth, then the opaque meshes. Its "hdr" is the view's final image
-// until a post node renders a later one.
+// a fresh depth (the depth prepass's when one ran), then the opaque meshes.
+// Its "hdr" is the view's final image until a post node renders a later one.
 @(render_node={summary="clears the view, draws the opaque meshes", reads="scene shadow", writes="hdr:HDR*"})
 scene_opaque :: proc(ctx: ^Render_Ctx) {
-	scene_target_begin(ctx, ctx.clear, keep_depth = false)
+	scene_target_begin(ctx, ctx.clear, keep_depth = ctx.depth_primed)
 	render_execute(ctx.view, ctx.commands, {.Opaque})
 	gfx.pass_end()
 }

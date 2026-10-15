@@ -17,7 +17,7 @@ struct main0_out
     float3 frag_normal [[user(locn2)]];
     float3 frag_world_pos [[user(locn3)]];
     float4 frag_tangent [[user(locn4)]];
-    float4 gl_Position [[position]];
+    float4 gl_Position [[position, invariant]];
 };
 
 struct main0_in
@@ -47,7 +47,8 @@ vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _115 [[buffer(0)]
     main0_out out = {};
     float4x4 model = float4x4(float4(in.in_model0), float4(in.in_model1), float4(in.in_model2), float4(in.in_model3));
     float4 world = model * float4(in.in_position, 1.0);
-    out.gl_Position = _115.view_proj * world;
+    float4 _120 = _115.view_proj * world;
+    out.gl_Position = _120;
     out.frag_uv = in.in_uv;
     float3 param = in.in_color.xyz;
     float3 _134 = srgb_to_linear(param);

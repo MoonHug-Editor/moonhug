@@ -62,6 +62,12 @@ merge into one draw.
 
 Diffuse is not divided by pi, so a light of intensity 1 on white albedo lights it to 1, as the earlier Lambert did, and scenes keep their brightness. Assets/Extract Assets maps a glTF material straight onto the block, its linear factors stored as sRGB colors like everything the inspector authors.
 
+### Alpha clipping
+
+`alpha_clip` and `alpha_cutoff` work with every shader: a pixel whose alpha is below the cutoff is not drawn and casts no shadow. The alpha is the texture's times the color's, or what a surface shader sets in `s.alpha`. For leaves, fences and cutout decals, which would otherwise draw their transparent texels into the depth and hide what is behind. A new material has the cutoff at 0.5 and clipping off. Extract Assets turns on clipping for a glTF material in `MASK` mode, with its `alphaCutoff`.
+
+Depth passes (the shadow map, the depth prepass) draw a clipped material through its shader's caster, the same `surface()` without lighting, so the shadow has the same holes as the surface. A mesh whose materials do not clip draws depth with one shared shader whatever its materials, so its copies merge into one instanced draw (SDL3Renderer.md, Depth passes and alpha clipping).
+
 ### Environment
 
 The **Environment** component (Rendering/Environment) is the scene's sky and the light it gives what no Light reaches. The first enabled one in the world drives the scene:
@@ -168,6 +174,8 @@ void surface(inout Surface s) {
 - PBR: `s.metallic` (preset 0), `s.smoothness` (preset 0.5) and `s.occlusion` (preset 1) feed the same lighting as the built-in Lit
 - normal maps: `s.normal = perturb_normal(texture(bumps, frag_uv).xyz * 2.0 - 1.0, strength)` turns a tangent-space texel into the world normal, through the vertex tangent (`frag_tangent`, location 4) or a frame from derivatives where the vertex has none. A normal map is data: never `srgb_to_linear` it
 - the template declares the inputs, `tex`, the `LightUBO` and the shadow map, so the shader declares only its property block and extra textures, which work as for any user shader. A surface shader is shadowed by the scene's directional Light with `shadows` on, like the built-in lit shader
+- with the material's alpha clipping on, a pixel whose `s.alpha` ends below the cutoff is discarded. The importer also compiles the shader's caster (the template with `MOONHUG_CASTER`: `surface()` and the clip, no lighting), what shadows and the depth prepass draw a clipped material with, so a graph that cuts holes through `s.alpha` cuts them in its shadow too
+- set 3 binding 2 is gfx's per-draw block (`DrawUBO`, the alpha cutoff): a property block stays at binding 1
 - compiler errors keep the shader's own line numbers (`#line 1`)
 - the template is what a shader graph emits (plugins/shadergraph), so a hand-written surface shader and a graph-made one are the same kind of asset
 - the template is an input of every surface shader: the shader importer's version hashes its text, so a template edit reimports them all

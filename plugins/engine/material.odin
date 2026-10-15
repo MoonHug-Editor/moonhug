@@ -44,6 +44,11 @@ Material :: struct {
 	custom_shader: Asset_GUID `ext:"glsl,shadergraph"`, // user .glsl or .shadergraph asset; overrides `shader` when set
 	texture:       Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 	color:         [4]f32 `decor:color()`,
+	// Alpha clipping: a pixel whose alpha (the texture's times the color's,
+	// or what a surface shader sets) is below alpha_cutoff is not drawn and
+	// casts no shadow. For leaves, fences, cutout decals.
+	alpha_clip:    bool,
+	alpha_cutoff:  f32 `decor:range(0, 1)`,
 	// The built-in Lit's surface. Unlit and custom shaders ignore it.
 	lit:           Material_Lit,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
@@ -76,8 +81,12 @@ reset_Material :: proc(m: ^Material) {
 	cleanup_Material(m)
 	m.shader = .Lit
 	m.color = {1, 1, 1, 1}
+	m.alpha_cutoff = MATERIAL_ALPHA_CUTOFF_DEFAULT
 	m.lit = MATERIAL_LIT_DEFAULT
 }
+
+// The alpha clipping threshold of a new material, and of a file without one.
+MATERIAL_ALPHA_CUTOFF_DEFAULT :: 0.5
 
 // gfx shader-set name for draw_mesh. Returned strings are literals — safe to
 // hold in draw commands across the frame.
@@ -103,6 +112,16 @@ material_shader_name :: proc(shader: Material_Shader) -> string {
 // system — do not free.
 material_resolve_draw :: proc(guid: Asset_GUID) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
 	return _resolve_material(guid)
+}
+
+// The alpha cutoff a draw of the material passes to gfx.draw_mesh: its
+// threshold with alpha clipping on, 0 (nothing clipped) with it off or for no
+// material.
+material_alpha_cutoff :: proc(guid: Asset_GUID) -> f32 {
+	if guid == {} do return 0
+	mat, ok := material_load(guid)
+	if !ok || !mat.alpha_clip do return 0
+	return clamp(mat.alpha_cutoff, 0, 1)
 }
 
 _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -> (shader: string, tex: ^gfx.Texture, color: [4]f32, material_data: []u8, extra_textures: []^gfx.Texture) {
@@ -390,6 +409,7 @@ _material_clone :: proc(mat: Material) -> Material {
 
 _material_equal :: proc(a, b: Material) -> bool {
 	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color || a.lit != b.lit do return false
+	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff do return false
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false
@@ -407,7 +427,7 @@ _material_equal :: proc(a, b: Material) -> bool {
 _material_parse :: proc(data: []byte) -> (Material, bool) {
 	// The same defaults as reset_Material, for a hand-written file that
 	// leaves a field out.
-	mat := Material{shader = .Lit, color = {1, 1, 1, 1}, lit = MATERIAL_LIT_DEFAULT}
+	mat := Material{shader = .Lit, color = {1, 1, 1, 1}, alpha_cutoff = MATERIAL_ALPHA_CUTOFF_DEFAULT, lit = MATERIAL_LIT_DEFAULT}
 	if json.unmarshal(data, &mat, .JSON, context.allocator) != nil {
 		cleanup_Material(&mat)
 		return {}, false

@@ -84,6 +84,17 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
         return false
     }
 
+    // A surface shader's caster: the same surface() in the template's
+    // depth-pass main, what depth passes (shadow casters, the depth prepass)
+    // draw an alpha-clipped material with.
+    caster_spv, caster_msl: []u8
+    caster_reflect: _Shader_Reflect
+    if _is_surface_shader(source) {
+        ok: bool
+        caster_spv, caster_msl, caster_reflect, ok = _compile_caster(source, source_path, artifact_path)
+        if !ok do return false
+    }
+
     if reflect.num_samplers > engine.SHADER_MAX_SAMPLERS {
         log.errorf("[Pipeline] %s declares sampler binding %d — max is %d",
             source_path, reflect.num_samplers - 1, engine.SHADER_MAX_SAMPLERS - 1)
@@ -98,6 +109,10 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
         block_size          = reflect.block_size,
         property_count      = u32(len(reflect.properties)),
         texture_count       = u32(len(reflect.textures)),
+        caster_spv_len         = u32(len(caster_spv)),
+        caster_msl_len         = u32(len(caster_msl)),
+        caster_samplers        = caster_reflect.num_samplers,
+        caster_uniform_buffers = caster_reflect.num_uniform_buffers,
     }
     copy(header.magic[:], engine.SHADER_ARTIFACT_MAGIC)
 
@@ -106,6 +121,8 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
     append(&blob, ..header_bytes[:])
     append(&blob, ..spv)
     append(&blob, ..msl)
+    append(&blob, ..caster_spv)
+    append(&blob, ..caster_msl)
     for prop in reflect.properties {
         _blob_append_u32(&blob, prop.offset)
         _blob_append_u32(&blob, prop.size)
@@ -133,7 +150,7 @@ shader_compile_source :: proc(source: string, source_path: string, artifact_path
 // The shader importer's version: 1 plus a hash of the surface template, so
 // an artifact compiled against an older template reimports (the artifact
 // key hashes the importer version).
-shader_compile_version :: 1
+shader_compile_version :: 2
 shader_importer_version :: proc() -> int {
 	h := hash.fnv32a(transmute([]u8)gfx.SURFACE_GLSL)
 	h = hash.fnv32a(transmute([]u8)gfx.SURFACE_MAIN_GLSL, h)
@@ -141,6 +158,36 @@ shader_importer_version :: proc() -> int {
 }
 
 _SURFACE_TMP_SUFFIX :: ".surface.glsl.tmp"
+_CASTER_TMP_SUFFIX  :: ".caster.glsl.tmp"
+
+// A surface shader's caster variant: SPIR-V, MSL and its reflected resource
+// counts (temp-allocated). Its errors are the main variant's, which compiled
+// first, so a failure here is reported the same way.
+_compile_caster :: proc(source, source_path, artifact_path: string) -> (spv, msl: []u8, reflect: _Shader_Reflect, ok: bool) {
+    assembled := _surface_assemble(source, artifact_path, caster = true) or_return
+    defer os.remove(assembled)
+    tmp_spv := strings.concatenate({artifact_path, ".caster.spv.tmp"}, context.temp_allocator)
+    tmp_msl := strings.concatenate({artifact_path, ".caster.msl.tmp"}, context.temp_allocator)
+    tmp_json := strings.concatenate({artifact_path, ".caster.json.tmp"}, context.temp_allocator)
+    defer os.remove(tmp_spv)
+    defer os.remove(tmp_msl)
+    defer os.remove(tmp_json)
+    _run_tool({"glslc", "-fshader-stage=frag", "-I", _surface_include_dir(artifact_path), assembled, "-o", tmp_spv}, source_path) or_return
+    _run_tool({"spirv-cross", tmp_spv, "--msl", "--msl-decoration-binding", "--output", tmp_msl}, source_path) or_return
+    _run_tool({"spirv-cross", tmp_spv, "--reflect", "--output", tmp_json}, source_path) or_return
+    spv_err, msl_err, json_err: os.Error
+    reflect_data: []u8
+    spv, spv_err = os.read_entire_file(tmp_spv, context.temp_allocator)
+    msl, msl_err = os.read_entire_file(tmp_msl, context.temp_allocator)
+    reflect_data, json_err = os.read_entire_file(tmp_json, context.temp_allocator)
+    if spv_err != nil || msl_err != nil || json_err != nil {
+        log.errorf("[Pipeline] Shader tool output missing for the caster: %s", source_path)
+        return
+    }
+    reflect, ok = _shader_reflect(reflect_data)
+    if !ok do log.errorf("[Pipeline] Failed to parse the caster's reflection: %s", source_path)
+    return
+}
 
 // A surface shader declares surface() and leaves main() to the template.
 _is_surface_shader :: proc(source: string) -> bool {
@@ -157,8 +204,8 @@ _surface_include_dir :: proc(artifact_path: string) -> string {
 // glslc. `#line 1` keeps the compiler's error lines pointing at the user's
 // file, and the include files come from gfx (the engine's own copy, so the
 // template a user shader compiles against is the one the built-in lit shader
-// was compiled with).
-_surface_assemble :: proc(source: string, artifact_path: string) -> (path: string, ok: bool) {
+// was compiled with). `caster` assembles the depth-pass variant.
+_surface_assemble :: proc(source: string, artifact_path: string, caster := false) -> (path: string, ok: bool) {
     dir := _surface_include_dir(artifact_path)
     os.make_directory_all(dir)
     inc := strings.concatenate({dir, "/surface.glsl"}, context.temp_allocator)
@@ -167,10 +214,12 @@ _surface_assemble :: proc(source: string, artifact_path: string) -> (path: strin
     if os.write_entire_file(inc_main, transmute([]u8)gfx.SURFACE_MAIN_GLSL) != nil do return "", false
 
     b := strings.builder_make(context.temp_allocator)
-    strings.write_string(&b, "#version 450\n#include \"surface.glsl\"\n#line 1\n")
+    strings.write_string(&b, "#version 450\n")
+    if caster do strings.write_string(&b, "#define MOONHUG_CASTER\n")
+    strings.write_string(&b, "#include \"surface.glsl\"\n#line 1\n")
     strings.write_string(&b, source)
     strings.write_string(&b, "\n#include \"surface_main.glsl\"\n")
-    path = strings.concatenate({artifact_path, _SURFACE_TMP_SUFFIX}, context.temp_allocator)
+    path = strings.concatenate({artifact_path, caster ? _CASTER_TMP_SUFFIX : _SURFACE_TMP_SUFFIX}, context.temp_allocator)
     if os.write_entire_file(path, transmute([]u8)strings.to_string(b)) != nil do return "", false
     return path, true
 }

@@ -1,0 +1,39 @@
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Params
+{
+    float4 mode;
+};
+
+struct main0_out
+{
+    float4 out_color [[color(0)]];
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+};
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _45 [[buffer(1)]], texture2d<float> depth [[texture(0)]], sampler depthSmplr [[sampler(0)]])
+{
+    main0_out out = {};
+    int2 size = int2(depth.get_width(), depth.get_height());
+    float d = depth.read(uint2(clamp(int2(in.frag_uv * float2(size)), int2(0), size - int2(1))), 0).x;
+    float _52;
+    if (_45.mode.x < 0.5)
+    {
+        _52 = 1.0 - d;
+    }
+    else
+    {
+        _52 = 1.0 - fast::clamp((-log2(fast::max(1.0 - d, 1.0000000116860974230803549289703e-07))) / 16.0, 0.0, 1.0);
+    }
+    float v = _52;
+    out.out_color = float4(float3(v), 1.0);
+    return out;
+}
+

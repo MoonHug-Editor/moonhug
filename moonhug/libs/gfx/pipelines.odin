@@ -25,6 +25,12 @@ _Shader_Set :: [_Pipeline_Kind]^sdl.GPUGraphicsPipeline
 _Shader_Entry :: struct {
 	vert, frag:    ^sdl.GPUShader, // kept alive so later formats can build their set
 	frag_samplers: u32,            // sampler slots the fragment stage declares
+	// The fragment stage of depth-only pipelines: the shader's caster variant
+	// (alpha clipping, no lighting), nil for depth.frag. The built-in caster
+	// is shared, so only a caster the entry created is released with it.
+	caster:          ^sdl.GPUShader,
+	caster_samplers: u32,
+	owns_caster:     bool,
 	sets:          [Target_Format]_Shader_Set,
 	built:         [Target_Format]bool,
 }
@@ -55,6 +61,12 @@ _Fullscreen_Entry :: struct {
 @(private) _BLIT_FRAG_MSL       := #load("shaders/compiled/blit.frag.msl")
 @(private) _NORMALS_FRAG_SPV    := #load("shaders/compiled/normals.frag.spv")
 @(private) _NORMALS_FRAG_MSL    := #load("shaders/compiled/normals.frag.msl")
+@(private) _DEPTH_FRAG_SPV      := #load("shaders/compiled/depth.frag.spv")
+@(private) _DEPTH_FRAG_MSL      := #load("shaders/compiled/depth.frag.msl")
+@(private) _CASTER_FRAG_SPV     := #load("shaders/compiled/caster.frag.spv")
+@(private) _CASTER_FRAG_MSL     := #load("shaders/compiled/caster.frag.msl")
+@(private) _DEPTH_VIEW_FRAG_SPV := #load("shaders/compiled/depth_view.frag.spv")
+@(private) _DEPTH_VIEW_FRAG_MSL := #load("shaders/compiled/depth_view.frag.msl")
 
 @(private)
 _create_pipelines :: proc() -> bool {
@@ -65,9 +77,22 @@ _create_pipelines :: proc() -> bool {
 	_gfx.fullscreen = make(map[string]_Fullscreen_Entry, runtime.default_allocator())
 	_gfx.fullscreen_vert = _create_shader(.VERTEX, 0, 0, _FULLSCREEN_VERT_SPV, _FULLSCREEN_VERT_MSL)
 	if _gfx.fullscreen_vert == nil do return false
-	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL) do return false
-	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = 2) do return false
+	// Depth passes: depth.frag for a shader with no caster, the template's
+	// caster variant for the built-in Lit and Unlit (alpha clipping).
+	_gfx.depth_frag = _create_shader(.FRAGMENT, 0, 0, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL)
+	_gfx.caster_frag = _create_shader(.FRAGMENT, MAX_FRAGMENT_SAMPLERS, DRAW_UNIFORM_SLOT + 1, _CASTER_FRAG_SPV, _CASTER_FRAG_MSL)
+	if _gfx.depth_frag == nil || _gfx.caster_frag == nil do return false
+	// The world shaders that clip declare the per-draw block (DRAW_UNIFORM_SLOT).
+	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
+	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
 	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
+	if !shader_register(DEPTH_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL, frag_samplers = 0) do return false
+	for name in ([]string{DEFAULT_SHADER, LIT_SHADER}) {
+		e := &_gfx.shaders[name]
+		e.caster = _gfx.caster_frag
+		e.caster_samplers = MAX_FRAGMENT_SAMPLERS
+	}
+	if !fullscreen_register(DEPTH_VIEW_SHADER, _DEPTH_VIEW_FRAG_SPV, _DEPTH_VIEW_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENV_CAPTURE_SHADER, _ENV_CAPTURE_FRAG_SPV, _ENV_CAPTURE_FRAG_MSL, 1, 2) do return false
@@ -90,6 +115,8 @@ _pipelines_shutdown :: proc() {
 	}
 	delete(_gfx.fullscreen)
 	if _gfx.fullscreen_vert != nil do sdl.ReleaseGPUShader(_gfx.device, _gfx.fullscreen_vert)
+	if _gfx.depth_frag != nil do sdl.ReleaseGPUShader(_gfx.device, _gfx.depth_frag)
+	if _gfx.caster_frag != nil do sdl.ReleaseGPUShader(_gfx.device, _gfx.caster_frag)
 }
 
 // The pixel format a Target_Format stands for on this device.
@@ -98,6 +125,7 @@ target_pixel_format :: proc(f: Target_Format) -> sdl.GPUTextureFormat {
 	case .Display: return _gfx.swapchain_format
 	case .HDR:     return .R16G16B16A16_FLOAT
 	case .LDR:     return .R8G8B8A8_UNORM_SRGB
+	case .Depth:   return .INVALID // no color
 	}
 	return _gfx.swapchain_format
 }
@@ -108,10 +136,13 @@ shader_exists :: proc(name: string) -> bool {
 
 // User shaders are fragment-only: the vertex stage is always the built-in
 // world vertex shader (fixed Vertex and _Instance formats + _Uniform contract). Resource
-// counts come from import-time reflection, not convention.
-shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
+// counts come from import-time reflection, not convention. `caster` is the
+// shader's depth-pass variant (a surface shader's caster, alpha clipping),
+// empty for none: depth passes then draw it with depth.frag.
+shader_register_fragment :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0) -> bool {
 	return shader_register(name, _WORLD_VERT_SPV, _WORLD_VERT_MSL, frag_spv, frag_msl,
-		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers)
+		frag_samplers = num_samplers, frag_uniform_buffers = num_uniform_buffers,
+		caster_spv = caster_spv, caster_msl = caster_msl, caster_samplers = caster_samplers, caster_uniform_buffers = caster_uniform_buffers)
 }
 
 // Releases the shader's pipelines (SDL_GPU defers actual destruction past
@@ -129,12 +160,21 @@ shader_unregister :: proc(name: string) {
 // 1 UBO (_Uniform layout); fragment resource counts must match the shader's
 // declarations (sampler2D at set=2, optional Light UBO at set=3).
 // Re-registering a name is an error (false).
-shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0) -> bool {
+shader_register :: proc(name: string, vert_spv, vert_msl, frag_spv, frag_msl: []u8, frag_samplers: u32 = 1, frag_uniform_buffers: u32 = 0, caster_spv: []u8 = nil, caster_msl: []u8 = nil, caster_samplers: u32 = 0, caster_uniform_buffers: u32 = 0) -> bool {
 	if name in _gfx.shaders do return false
 	e := _Shader_Entry{
 		vert          = _create_shader(.VERTEX, 0, 1, vert_spv, vert_msl),
 		frag          = _create_shader(.FRAGMENT, frag_samplers, frag_uniform_buffers, frag_spv, frag_msl),
 		frag_samplers = frag_samplers,
+	}
+	if len(caster_spv) > 0 || len(caster_msl) > 0 {
+		e.caster = _create_shader(.FRAGMENT, caster_samplers, caster_uniform_buffers, caster_spv, caster_msl)
+		e.caster_samplers = caster_samplers
+		e.owns_caster = true
+		if e.caster == nil {
+			_shader_entry_release(&e)
+			return false
+		}
 	}
 	if e.vert == nil || e.frag == nil || !_shader_set_build(&e, .LDR) {
 		_shader_entry_release(&e)
@@ -155,12 +195,14 @@ _shader_pipeline :: proc(name: string, format: Target_Format, kind: _Pipeline_Ki
 	return e.sets[format][kind]
 }
 
-// Sampler slots the named shader's fragment stage declares ("" and unknown
-// names resolve as _shader_pipeline does).
+// Sampler slots the named shader's fragment stage declares in a pass of
+// `format` ("" and unknown names resolve as _shader_pipeline does): in a
+// depth-only pass, its caster's, or none for depth.frag.
 @(private)
-_shader_samplers :: proc(name: string) -> u32 {
+_shader_samplers :: proc(name: string, format: Target_Format) -> u32 {
 	e, ok := &_gfx.shaders[name]
 	if !ok do e = &_gfx.shaders[DEFAULT_SHADER]
+	if format == .Depth do return e.caster != nil ? e.caster_samplers : 0
 	return e.frag_samplers
 }
 
@@ -175,7 +217,8 @@ _shader_entry_release :: proc(e: ^_Shader_Entry) {
 	}
 	if e.vert != nil do sdl.ReleaseGPUShader(_gfx.device, e.vert)
 	if e.frag != nil do sdl.ReleaseGPUShader(_gfx.device, e.frag)
-	e.vert, e.frag = nil, nil
+	if e.owns_caster && e.caster != nil do sdl.ReleaseGPUShader(_gfx.device, e.caster)
+	e.vert, e.frag, e.caster = nil, nil, nil
 }
 
 @(private)
@@ -202,9 +245,14 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 		format      = target_pixel_format(format),
 		blend_state = _ALPHA_BLEND,
 	}
+	// A depth-only pass has no color target and draws with the shader's
+	// caster, or depth.frag when it has none.
+	depth_only := format == .Depth
+	frag := e.frag
+	if depth_only do frag = e.caster != nil ? e.caster : _gfx.depth_frag
 	info := sdl.GPUGraphicsPipelineCreateInfo{
 		vertex_shader   = e.vert,
-		fragment_shader = e.frag,
+		fragment_shader = frag,
 		vertex_input_state = {
 			vertex_buffer_descriptions = raw_data(buffer_descs[:]),
 			num_vertex_buffers         = len(buffer_descs),
@@ -213,8 +261,8 @@ _shader_set_build :: proc(e: ^_Shader_Entry, format: Target_Format) -> bool {
 		},
 		primitive_type = .TRIANGLELIST,
 		target_info = {
-			color_target_descriptions = &color_target,
-			num_color_targets         = 1,
+			color_target_descriptions = depth_only ? nil : &color_target,
+			num_color_targets         = depth_only ? 0 : 1,
 			depth_stencil_format      = _DEPTH_FORMAT,
 			has_depth_stencil_target  = true,
 		},

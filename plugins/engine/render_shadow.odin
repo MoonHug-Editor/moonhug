@@ -15,10 +15,9 @@ package engine
 // and belong in a later node.
 
 import "core:math/linalg"
-import "core:slice"
 import gfx "moonhug:libs/gfx"
 
-SHADOW_MAP_SIZE :: 2048 // as shadow_pass declares its target (@2048px)
+SHADOW_MAP_SIZE :: 2048 // as shadow_pass declares its target (Depth@2048px)
 SHADOW_TARGET   :: "shadow"
 
 // The shadow pass's settings, per placed node (the pipeline asset).
@@ -39,7 +38,7 @@ _shadow: struct {
 	bias:        f32,
 }
 
-@(render_node={summary="depth from the first shadowing directional light", frame=true, reads="scene", writes="shadow:LDR@2048px", settings="shadow_defaults"})
+@(render_node={summary="depth from the first shadowing directional light", frame=true, reads="scene", writes="shadow:Depth@2048px", settings="shadow_defaults"})
 shadow_pass :: proc(ctx: ^Render_Ctx) {
 	_shadow.valid = false
 	settings := (^Shadow_Settings)(ctx.settings)
@@ -93,32 +92,12 @@ shadow_pass :: proc(ctx: ^Render_Ctx) {
 	proj := gfx.matrix4_ortho_z01(-radius, radius, -radius, radius, radius * 0.5, radius * 3.5)
 	vp := proj * view
 
-	// Casters of one mesh in a row, so gfx draws each mesh's casters as one
-	// instanced draw: integer keys, the mesh folded high, the command's index
-	// low (render_execute sorts the same way).
-	keys := make([dynamic]u64, 0, len(commands), context.temp_allocator)
-	for &cmd, i in commands {
-		d, is_mesh := cmd.variant.(Draw_Mesh)
-		if !is_mesh do continue
-		assert(i <= int(max(u32)), "shadow_pass: more casters than a sort key indexes")
-		append(&keys, u64(render_fold_mesh(d.mesh, d.part, 0)) << 32 | u64(i))
-	}
-	slice.sort(keys[:])
-
+	// A depth-only pass: each mesh's casters merge into one instanced draw,
+	// alpha-clipped materials cut their holes (render_execute_depth).
 	rt := render_target(ctx, SHADOW_TARGET)
-	gfx.pass_begin_target(rt, [4]f32{1, 1, 1, 1})
+	gfx.pass_begin_target(rt, nil)
 	gfx.set_view_proj(vp, eye)
-	for key in keys {
-		cmd := &commands[u32(key)]
-		d := cmd.variant.(Draw_Mesh)
-		mesh, ok := mesh_load(d.mesh, d.part)
-		if !ok do continue
-		gpu := d.skinned != nil ? d.skinned^ : mesh.gpu
-		// Depth is what the scene nodes sample. The color is the casters in
-		// black on white, what the light sees, for the pipeline window.
-		gfx.draw_mesh(gpu, nil, d.model, {0, 0, 0, 1})
-		_inspect_draw(cmd^)
-	}
+	render_execute_depth(commands[:])
 	gfx.pass_end()
 
 	_shadow = {valid = true, vp = vp, light_index = index, rt = rt, bias = settings.bias}

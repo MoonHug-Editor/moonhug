@@ -165,6 +165,18 @@ Every world pipeline reads two vertex buffers. Slot 0 holds the mesh's or the ba
 
 The engine orders opaque draws by material, mesh and submesh (`render_execute`) and shadow casters by mesh (`shadow_pass`), so equal draws arrive in a row. Each material is resolved once per pass. The sort keys are integers sorted without a comparator: at the editor's default optimization a struct comparator cost as much as the draw calls it saved.
 
+## Depth passes and alpha clipping
+
+`Target_Format.Depth` is a target with depth and no color. A pass on one, or `pass_begin_target(rt, clear, color = false)` on a color target's depth, is depth-only: it binds no color attachment and every draw goes through its shader's depth variant. A shader's depth variant is its caster when it has one, else `depth.frag`, which writes depth and nothing else. `DEPTH_SHADER` is a registered shader whose depth variant is `depth.frag`, so meshes drawn with it merge by mesh whatever their materials.
+
+A caster is a fragment stage for depth passes: the surface template compiled with `MOONHUG_CASTER`, which runs `surface()` and discards clipped pixels without lighting. `caster.frag` is the built-in Lit and Unlit shaders' caster. A user surface shader brings its own, compiled by the importer (`shader_register_fragment`'s caster arguments). A shader without one draws depth-only without clipping.
+
+`draw_mesh`'s `alpha_cutoff` is the material's alpha clipping threshold. gfx pushes it in the per-draw block (`DRAW_UNIFORM_SLOT`, fragment set 3 binding 2, `DrawUBO.draw_params.x`), and the surface template, `world.frag` and the casters discard a fragment whose alpha is below it. 0 clips nothing, and batch draws push 0.
+
+`world.vert` declares `invariant gl_Position`, so a depth prepass and the shading pass after it compute the same depth. spirv-cross emits it from MSL 2.1, so `mh shaders` crosses vertex shaders with `--msl-version 20100`. SDL compiles MSL source with the OS's newest language version.
+
+`draw_depth_view(depth, perspective)` draws a depth texture as grey over the target, near white, for the Render Pipeline window. It fetches texels rather than filtering them, since not every GPU filters depth.
+
 ## Frame statistics
 
 `gfx.stats_last` and `gfx.stats_average` report recent frames: draw calls, instances, triangles, render passes, CPU milliseconds without the GPU waits, and milliseconds waiting for the GPU. The waits are the command buffer and swapchain acquires, which with one frame in flight wait for the GPU to finish the previous frame. The editor's MCP bridge reads them with the `render_stats` tool. Editor UI draws are not counted.

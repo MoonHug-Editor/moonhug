@@ -4,7 +4,8 @@ package scene_views
 // assets (plugins/engine/docs/Materials.md). Embedded images are written as PLAIN FILES next
 // to the model, one .mat per glTF material is created with its slots wired
 // (the built-in Lit: base color → texture and color, metal-rough, normal,
-// occlusion and emissive → the material's lit block), one clip per glTF animation
+// occlusion and emissive → the material's lit block, alpha mode MASK → alpha
+// clipping), one clip per glTF animation
 // (with the animation package installed: importers.gltf_clip_extractor),
 // and one .scene mirroring the node hierarchy with all of the above
 // referenced — the Unity model-prefab analog. Deliberately NOT Unity's read-only sub-assets:
@@ -110,7 +111,7 @@ extract_gltf_assets :: proc(model_path: string) {
 		// The built-in Lit: glTF's metal/roughness model, its factors stored
 		// the way the material inspector authors them (colors in sRGB,
 		// smoothness instead of roughness).
-		mat := engine.Material{shader = .Lit, color = {1, 1, 1, 1}, lit = engine.MATERIAL_LIT_DEFAULT}
+		mat := engine.Material{shader = .Lit, color = {1, 1, 1, 1}, alpha_cutoff = engine.MATERIAL_ALPHA_CUTOFF_DEFAULT, lit = engine.MATERIAL_LIT_DEFAULT}
 		mat.lit.metallic = 1
 		mat.lit.smoothness = 0
 		if m.has_pbr_metallic_roughness {
@@ -128,6 +129,11 @@ extract_gltf_assets :: proc(model_path: string) {
 		mat.lit.emission_map = tex_guid(m.emissive_texture, &img_paths)
 		ef := m.emissive_factor
 		mat.lit.emission_color = gfx.linear_to_srgb({ef.r, ef.g, ef.b, 1})
+		// glTF MASK: texels below the cutoff are not drawn (alpha clipping).
+		if m.alpha_mode == .mask {
+			mat.alpha_clip = true
+			mat.alpha_cutoff = m.alpha_cutoff
+		}
 
 		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.Material), mat) {
 			fmt.printf("[Editor] Extract: failed to write %s\n", out)

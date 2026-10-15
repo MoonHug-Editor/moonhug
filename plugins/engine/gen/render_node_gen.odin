@@ -28,7 +28,7 @@ import "moonhug:prebuild/gen_facts"
 // One parsed write, mirroring engine.Render_Target_Decl.
 Target_Decl :: struct {
 	name:   string,
-	format: string, // "LDR" or "HDR"
+	format: string, // "LDR", "HDR" or "Depth"
 	scale:  f32,
 	px:     int,
 	final:  bool,
@@ -136,7 +136,7 @@ _parse_decl :: proc(word: string) -> (d: Target_Decl, err: string) {
 	if colon := strings.index_byte(rest, ':'); colon >= 0 {
 		d.format = rest[colon + 1:]
 		rest = rest[:colon]
-		if d.format != "LDR" && d.format != "HDR" do return d, "the format after : is LDR or HDR"
+		if d.format != "LDR" && d.format != "HDR" && d.format != "Depth" do return d, "the format after : is LDR, HDR or Depth"
 	}
 	d.name = rest
 	if d.name == "" do return d, "a target needs a name"

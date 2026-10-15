@@ -1,0 +1,94 @@
+#pragma clang diagnostic ignored "-Wmissing-prototypes"
+
+#include <metal_stdlib>
+#include <simd/simd.h>
+
+using namespace metal;
+
+struct Surface
+{
+    float3 albedo;
+    float alpha;
+    float3 normal;
+    float3 emissive;
+    float metallic;
+    float smoothness;
+    float occlusion;
+};
+
+struct DrawUBO
+{
+    float4 draw_params;
+};
+
+struct GpuLight
+{
+    float4 pos_type;
+    float4 dir_range;
+    float4 color_outer;
+    float4 params;
+};
+
+struct LightUBO
+{
+    float4 ambient_count;
+    float4 cam_pos;
+    GpuLight lights[8];
+    float4x4 shadow_vp;
+    float4 shadow_params;
+    float4 env_params;
+};
+
+struct main0_in
+{
+    float2 frag_uv [[user(locn0)]];
+    float4 frag_color [[user(locn1)]];
+    float3 frag_normal [[user(locn2)]];
+};
+
+static inline __attribute__((always_inline))
+float3 srgb_to_linear(thread const float3& c)
+{
+    return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
+}
+
+static inline __attribute__((always_inline))
+float4 srgb_to_linear(thread const float4& c)
+{
+    float3 param = c.xyz;
+    return float4(srgb_to_linear(param), c.w);
+}
+
+static inline __attribute__((always_inline))
+Surface surface_preset(texture2d<float> tex, sampler texSmplr, thread float2& frag_uv, thread float4& frag_color, thread float3& frag_normal)
+{
+    float4 param = tex.sample(texSmplr, frag_uv);
+    float4 base = srgb_to_linear(param) * frag_color;
+    Surface s;
+    s.albedo = base.xyz;
+    s.alpha = base.w;
+    s.normal = fast::normalize(frag_normal);
+    s.emissive = float3(0.0);
+    s.metallic = 0.0;
+    s.smoothness = 0.5;
+    s.occlusion = 1.0;
+    return s;
+}
+
+static inline __attribute__((always_inline))
+void surface(thread const Surface& s)
+{
+}
+
+fragment void main0(main0_in in [[stage_in]], constant DrawUBO& _126 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+{
+    Surface s = surface_preset(tex, texSmplr, in.frag_uv, in.frag_color, in.frag_normal);
+    Surface param = s;
+    surface(param);
+    s = param;
+    if (s.alpha < _126.draw_params.x)
+    {
+        discard_fragment();
+    }
+}
+

@@ -48,14 +48,15 @@ Shader_Texture :: struct {
 // ENV_SPECULAR_SLOT, ENV_IRRADIANCE_SLOT).
 SHADER_MAX_SAMPLERS :: gfx.MAX_FRAGMENT_SAMPLERS
 
-// Artifact layout (little-endian): header | spirv | msl | property table
-// (per property: offset u32 | size u32 | name_len u32 | name bytes) |
-// texture table (per texture: binding u32 | name_len u32 | name bytes).
+// Artifact layout (little-endian): header | spirv | msl | caster spirv |
+// caster msl | property table (per property: offset u32 | size u32 |
+// name_len u32 | name bytes) | texture table (per texture: binding u32 |
+// name_len u32 | name bytes).
 // v2 added the property table + block_size; v3 fixed MSL buffer indices
 // (--msl-decoration-binding); v4 added the texture table (multi-texture
-// materials). Stale artifacts fail the magic check and shader_load reimports
-// from source.
-SHADER_ARTIFACT_MAGIC :: "MHSHDR4\x00"
+// materials); v5 added the caster (a surface shader's depth-pass variant).
+// Stale artifacts fail the magic check and shader_load reimports from source.
+SHADER_ARTIFACT_MAGIC :: "MHSHDR5\x00"
 
 Shader_Artifact_Header :: struct #packed {
     magic:               [8]u8,
@@ -66,6 +67,22 @@ Shader_Artifact_Header :: struct #packed {
     block_size:          u32, // material UBO byte size; 0 = no property block
     property_count:      u32,
     texture_count:       u32,
+    // The caster: a surface shader's fragment stage for depth passes (the
+    // template compiled with MOONHUG_CASTER: surface(), alpha clipping, no
+    // lighting). Zero lengths for a shader that is not a surface shader.
+    caster_spv_len:             u32,
+    caster_msl_len:             u32,
+    caster_samplers:            u32,
+    caster_uniform_buffers:     u32,
+}
+
+// The caster blobs of a parsed artifact (views into it), empty when it has
+// none.
+_shader_artifact_caster :: proc(blob: []u8, header: Shader_Artifact_Header) -> (spv, msl: []u8) {
+    start := size_of(Shader_Artifact_Header) + int(header.spv_len) + int(header.msl_len)
+    spv = blob[start:][:header.caster_spv_len]
+    msl = blob[start + int(header.caster_spv_len):][:header.caster_msl_len]
+    return
 }
 
 
@@ -76,13 +93,14 @@ _shader_artifact_parse :: proc(blob: []u8, allocator := context.allocator) -> (h
     if len(blob) < size_of(Shader_Artifact_Header) do return
     header = (^Shader_Artifact_Header)(raw_data(blob))^
     if string(header.magic[:]) != SHADER_ARTIFACT_MAGIC do return
-    if len(blob) < size_of(Shader_Artifact_Header) + int(header.spv_len) + int(header.msl_len) do return
+    blobs_end := size_of(Shader_Artifact_Header) + int(header.spv_len) + int(header.msl_len) + int(header.caster_spv_len) + int(header.caster_msl_len)
+    if len(blob) < blobs_end do return
 
     spv = blob[size_of(Shader_Artifact_Header):][:header.spv_len]
     msl = blob[size_of(Shader_Artifact_Header) + int(header.spv_len):][:header.msl_len]
 
     props := make([dynamic]Shader_Property, 0, header.property_count, allocator)
-    cursor := size_of(Shader_Artifact_Header) + int(header.spv_len) + int(header.msl_len)
+    cursor := blobs_end
     for _ in 0 ..< header.property_count {
         if cursor + 12 > len(blob) do return {}, nil, nil, nil, nil, false
         offset := (^u32)(raw_data(blob[cursor:]))^

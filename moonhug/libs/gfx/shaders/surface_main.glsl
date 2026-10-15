@@ -37,7 +37,9 @@ vec3 env_brdf_approx(vec3 f0, float roughness, float NoV) {
     return f0 * ab.x + ab.y;
 }
 
-void main() {
+// The Surface before surface() changes it: the texture times the color, and
+// the built-in Lit's maps when this is the Lit shader.
+Surface surface_preset() {
     vec4 base = srgb_to_linear(texture(tex, frag_uv)) * frag_color;
     Surface s;
     s.albedo     = base.rgb;
@@ -55,7 +57,23 @@ void main() {
     s.occlusion  = mix(1.0, texture(occlusion_map, frag_uv).r, lit_params.w);
     s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, frag_uv).rgb);
 #endif
+    return s;
+}
+
+#ifdef MOONHUG_CASTER
+// The caster variant, for depth passes of alpha-clipped materials (shadow
+// casters, the depth prepass): the same surface(), no lighting, no color, so
+// a pixel clipping cuts away casts no shadow and hides nothing.
+void main() {
+    Surface s = surface_preset();
     surface(s);
+    if (s.alpha < draw_params.x) discard;
+}
+#else
+void main() {
+    Surface s = surface_preset();
+    surface(s);
+    if (s.alpha < draw_params.x) discard;
 
     vec3 n = normalize(s.normal);
     vec3 v = view_dir();
@@ -102,3 +120,4 @@ void main() {
 
     out_color = vec4(color + s.emissive, s.alpha);
 }
+#endif

@@ -60,12 +60,23 @@ Target_Format :: enum u8 {
 	Display,
 	HDR, // RGBA16F, linear: the lit scene before tonemapping
 	// 8-bit linear, stored as sRGB: the GPU encodes on write and decodes on
-	// sampling, so shaders see linear values at 8-bit cost (a tonemapped image,
-	// a shadow map's color).
+	// sampling, so shaders see linear values at 8-bit cost (a tonemapped image).
 	LDR,
+	// Depth only, no color: a shadow map. A depth-only pass draws with each
+	// shader's depth variant: its caster when it has one, else depth.frag
+	// (pipelines.odin). pass_begin_target(color = false) makes a depth-only
+	// pass on a color target's depth (the depth prepass).
+	Depth,
 }
 
 DEFAULT_SHADER :: "unlit"
+
+// Depth only, nothing else: what an unclipped mesh draws with in a depth pass,
+// whatever its material, so such draws merge by mesh alone.
+DEPTH_SHADER :: "depth"
+
+// The fullscreen shader that shows a depth texture as grey (draw_depth_view).
+DEPTH_VIEW_SHADER :: "depth_view"
 
 // The fullscreen shader that copies its input to the target.
 BLIT_SHADER :: "blit"
@@ -138,6 +149,8 @@ _gfx: struct {
 	shaders:          map[string]_Shader_Entry,     // pipelines.odin, built-ins registered in init
 	fullscreen:       map[string]_Fullscreen_Entry, // pipelines.odin
 	fullscreen_vert:  ^sdl.GPUShader,              // the fullscreen-triangle vertex stage
+	depth_frag:       ^sdl.GPUShader,              // depth.frag: a depth pass's fragment stage for shaders with no caster
+	caster_frag:      ^sdl.GPUShader,              // caster.frag: the Lit and Unlit shaders' caster
 	skin_pipeline:    ^sdl.GPUComputePipeline, // skinning.odin
 	sampler_linear:   ^sdl.GPUSampler,
 	sampler_nearest:  ^sdl.GPUSampler,

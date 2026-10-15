@@ -5,6 +5,11 @@
 
 using namespace metal;
 
+struct DrawUBO
+{
+    float4 draw_params;
+};
+
 struct main0_out
 {
     float4 out_color [[color(0)]];
@@ -22,12 +27,16 @@ float3 srgb_to_linear(thread const float3& c)
     return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _78 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float4 t = tex.sample(texSmplr, in.frag_uv);
     float3 param = t.xyz;
     out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
+    if (out.out_color.w < _78.draw_params.x)
+    {
+        discard_fragment();
+    }
     return out;
 }
 

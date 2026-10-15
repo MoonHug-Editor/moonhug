@@ -54,6 +54,9 @@ Render_Ctx :: struct {
 	// The editor's scene view: the run the Render Pipeline window inspects
 	// first, and the one "Show in scene view" replaces the image of.
 	scene_view: bool,
+	// The view's scene depth holds the opaque meshes already (depth_prepass
+	// ran in this run): scene_opaque keeps it instead of clearing it.
+	depth_primed: bool,
 	// The view targets nodes took this run (render_target), temp-allocated:
 	// what render_input finds. A target a node did not take this run is
 	// absent, even though the pool still holds last frame's texture.

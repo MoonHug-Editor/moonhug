@@ -12,6 +12,12 @@ layout(set = 2, binding = 0) uniform sampler2D tex;
 
 layout(location = 0) out vec4 out_color;
 
+// Per draw, from gfx.draw_mesh: x = the material's alpha cutoff (0 = no
+// clipping). Batch draws push 0.
+layout(set = 3, binding = 2) uniform DrawUBO {
+    vec4 draw_params;
+};
+
 vec3 srgb_to_linear(vec3 c) {
     return mix(pow((c + 0.055) / 1.055, vec3(2.4)), c / 12.92, vec3(lessThanEqual(c, vec3(0.04045))));
 }
@@ -19,4 +25,5 @@ vec3 srgb_to_linear(vec3 c) {
 void main() {
     vec4 t = texture(tex, frag_uv);
     out_color = vec4(srgb_to_linear(t.rgb), t.a) * frag_color;
+    if (out_color.a < draw_params.x) discard;
 }

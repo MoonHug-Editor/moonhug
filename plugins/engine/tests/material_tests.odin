@@ -36,6 +36,7 @@ test_material_parse_defaults :: proc(t: ^testing.T) {
 	testing.expect(t, mat.shader == .Lit, "default shader is lit")
 	testing.expect(t, mat.color == {1, 1, 1, 1}, "default color is white")
 	testing.expect(t, mat.lit == engine.MATERIAL_LIT_DEFAULT, "a material without a lit block gets the Lit defaults")
+	testing.expect(t, !mat.alpha_clip && mat.alpha_cutoff == engine.MATERIAL_ALPHA_CUTOFF_DEFAULT, "clipping off, the default threshold ready for when it is turned on")
 }
 
 // The built-in Lit's block: factors clamped into place, the normal scale
@@ -91,6 +92,24 @@ test_material_cache_preview_and_unload :: proc(t: ^testing.T) {
 	engine.material_unload(guid)
 	_, still := engine.material_load(guid) // no asset_db in this test → miss
 	testing.expect(t, !still, "unloaded material without a backing file should miss")
+}
+
+// The cutoff a draw passes to gfx: the threshold with clipping on, 0 (nothing
+// clipped) with it off, for no material, or for one that does not load.
+@(test)
+test_material_alpha_cutoff :: proc(t: ^testing.T) {
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+
+	clip_id, _ := uuid.read("21212121-4343-6565-8787-090909090909")
+	open_id, _ := uuid.read("31313131-4343-6565-8787-090909090909")
+	clip, open := engine.Asset_GUID(clip_id), engine.Asset_GUID(open_id)
+	engine.material_preview(clip, {shader = .Lit, color = {1, 1, 1, 1}, alpha_clip = true, alpha_cutoff = 0.3})
+	engine.material_preview(open, {shader = .Lit, color = {1, 1, 1, 1}, alpha_clip = false, alpha_cutoff = 0.3})
+
+	testing.expect_value(t, engine.material_alpha_cutoff(clip), f32(0.3))
+	testing.expect_value(t, engine.material_alpha_cutoff(open), f32(0))
+	testing.expect_value(t, engine.material_alpha_cutoff({}), f32(0))
 }
 
 // Property packing: named vec4 values land at the shader's reflected std140

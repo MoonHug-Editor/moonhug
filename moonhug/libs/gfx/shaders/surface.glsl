@@ -17,9 +17,12 @@
 //               normal map: s.normal = perturb_normal(sample.xyz * 2.0 - 1.0)
 //   s.emissive  added after lighting, preset to zero
 //
+// A fragment whose s.alpha ends below the material's alpha cutoff is
+// discarded (Material alpha clipping, draw_params.x, 0 = off).
+//
 // SDL_GPU SPIR-V convention: fragment sampled textures live in set 2,
 // fragment uniform buffers in set 3. Your property block goes at
-// set = 3, binding = 1, extra textures at set = 2, bindings 1..7.
+// set = 3, binding = 1, extra textures at set = 2, bindings 1..6.
 
 layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
@@ -45,6 +48,12 @@ layout(set = 3, binding = 0) uniform LightUBO {
     mat4 shadow_vp;     // the caster pass's view_proj (gfx.set_shadow)
     vec4 shadow_params; // x = one texel in uv, y = depth bias, z = 1 when a map is bound, w = its light index
     vec4 env_params;    // x = diffuse intensity, y = specular intensity, z = the specular cube's last mip (gfx.set_environment)
+};
+
+// Per draw, from gfx.draw_mesh: x = the material's alpha cutoff (0 = no
+// clipping), yzw reserved.
+layout(set = 3, binding = 2) uniform DrawUBO {
+    vec4 draw_params;
 };
 
 // The shadow map, bound by gfx at this reserved slot for every shader that

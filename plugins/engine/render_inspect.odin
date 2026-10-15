@@ -31,6 +31,10 @@ Inspect_Node :: struct {
 	meshes:    [dynamic]Asset_GUID,
 	materials: [dynamic]Asset_GUID,
 	textures:  [dynamic]Asset_GUID,   // quads' own textures (a material's are found from the material)
+	// Taken color targets the node drew only the depth of (the depth
+	// prepass), owned: shown as their depth from a perspective camera. A
+	// Depth target always shows its depth, read as orthographic.
+	depth_views: [dynamic]string,
 }
 
 @(private = "file")
@@ -125,16 +129,46 @@ _inspect_node_ends :: proc(id: i32, pool: ^gfx.Target_Pool) {
 	for name in n.taken {
 		src := gfx.pool_find(pool, name)
 		if src == nil do continue
+		perspective := false
+		for v in n.depth_views do if v == name do perspective = true
+		depth := perspective || src.format == .Depth
 		// Display thumbnails: imgui shows their bytes as they are.
 		h := max(i32(f32(INSPECT_THUMB_W) * f32(src.height) / f32(max(src.width, 1))), 1)
 		dst := gfx.pool_target(&_inspect.pool, _thumb_key(id, name), INSPECT_THUMB_W, h, .Display)
-		gfx.display_blit(dst, gfx.rt_color_texture(src))
+		if depth {
+			_inspect_draw_depth(dst, src, perspective)
+		} else {
+			gfx.display_blit(dst, gfx.rt_color_texture(src))
+		}
 		if id == _inspect.show_id && name == _inspect.show_name {
-			full := gfx.pool_target(&_inspect.pool, _SHOW_KEY, src.width, src.height, src.format)
-			gfx.rt_copy(full, src)
+			if depth {
+				full := gfx.pool_target(&_inspect.pool, _SHOW_KEY, src.width, src.height, .LDR)
+				_inspect_draw_depth(full, src, perspective)
+			} else {
+				full := gfx.pool_target(&_inspect.pool, _SHOW_KEY, src.width, src.height, src.format)
+				gfx.rt_copy(full, src)
+			}
 			_inspect.shown = gfx.frame_index + 1
 		}
 	}
+}
+
+// `src`'s depth as grey into `dst` (gfx.draw_depth_view).
+@(private = "file")
+_inspect_draw_depth :: proc(dst, src: ^gfx.Render_Target, perspective: bool) {
+	gfx.pass_begin_target(dst, [4]f32{0, 0, 0, 1})
+	gfx.draw_depth_view(gfx.rt_depth_texture(src), perspective)
+	gfx.pass_end()
+}
+
+// Called by a node that drew only the depth of a color target it took (the
+// depth prepass), so its thumbnail shows that depth rather than the color.
+_inspect_depth_view :: proc(name: string) {
+	n := _inspect.recording
+	if n == nil do return
+	context.allocator = runtime.default_allocator() // cross-frame state
+	for v in n.depth_views do if v == name do return
+	append(&n.depth_views, strings.clone(name))
 }
 
 // A muted node in a captured run: shown as not run.
@@ -195,6 +229,7 @@ _render_inspect_shutdown :: proc() {
 		delete(n.meshes)
 		delete(n.materials)
 		delete(n.textures)
+		delete(n.depth_views)
 	}
 	delete(_inspect.nodes)
 	gfx.pool_destroy(&_inspect.pool)
@@ -219,6 +254,8 @@ _thumb_key :: proc(id: i32, target: string) -> string {
 _inspect_node_clear :: proc(n: ^Inspect_Node) {
 	for t in n.taken do delete(t, runtime.default_allocator())
 	clear(&n.taken)
+	for v in n.depth_views do delete(v, runtime.default_allocator())
+	clear(&n.depth_views)
 	clear(&n.objects)
 	clear(&n.meshes)
 	clear(&n.materials)
