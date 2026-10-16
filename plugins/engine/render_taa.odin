@@ -56,7 +56,7 @@ scene_taa :: proc(ctx: ^Render_Ctx) {
 	// Two targets in turn: last frame's result is this frame's history.
 	write := gfx.pool_target(ctx.pool, _taa_history_name(ctx, state.parity), w, h, .HDR)
 	read := gfx.pool_target(ctx.pool, _taa_history_name(ctx, 1 - state.parity), w, h, .HDR)
-	valid := state.frame == gfx.frame_index && state.size == {w, h}
+	valid := state.resolved == gfx.frame_index && state.size == {w, h}
 
 	// Pixel centres through the steady cameras: the history holds the steady
 	// image, so a still camera reprojects each pixel onto itself.
@@ -78,19 +78,25 @@ scene_taa :: proc(ctx: ^Render_Ctx) {
 
 	state.prev_view_proj = ctx.view.view_proj
 	state.frame = gfx.frame_index + 1
+	state.resolved = state.frame
 	state.size = {w, h}
 	state.parity = 1 - state.parity
 }
 
-@(render_step={summary="motion vectors: how far each pixel of a mesh that moved since the view's last frame moved on screen, for scene_taa", reads="scene hdr", writes="motion:HDR"})
+@(render_step={summary="motion vectors: how far each pixel of a mesh that moved since the view's last frame moved on screen, for scene_taa and a motion blur", reads="scene hdr", writes="motion:HDR"})
 motion_vectors :: proc(ctx: ^Render_Ctx) {
-	// Only temporal anti-aliasing reads them.
-	if ctx.jitter == {} do return
+	if ctx.view.mode != .Shaded do return
 	hdr := render_input(ctx, HDR_TARGET)
 	if hdr == nil do return
 	state := _taa_state(ctx)
 	// Last frame's models count only when the view drew last frame.
 	consecutive := state.frame == gfx.frame_index
+	// Without a resolve this run (no scene_taa in the lane, or muted), this
+	// step keeps the view's last camera and frame itself, for its next run.
+	defer if ctx.jitter == {} {
+		state.prev_view_proj = ctx.view.view_proj
+		state.frame = gfx.frame_index + 1
+	}
 
 	// This frame's models, the next frame's previous ones.
 	if state.models == nil do state.models = make(map[Transform_Handle]matrix[4, 4]f32, runtime.default_allocator())
@@ -176,7 +182,8 @@ _Taa_Key :: struct {
 _Taa_View :: struct {
 	index:          int,             // the jitter point last used, 1 ..= TAA_JITTER_COUNT
 	parity:         int,             // which history target this frame writes
-	frame:          u64,             // gfx.frame_index + 1 when it last resolved
+	frame:          u64,             // gfx.frame_index + 1 when the view last drew (scene_taa or motion_vectors)
+	resolved:       u64,             // gfx.frame_index + 1 when scene_taa last resolved: the history is that frame's
 	size:           [2]i32,
 	prev_view_proj: matrix[4, 4]f32, // last frame's steady camera
 	// The models of the meshes the view drew last frame, by owner, and the

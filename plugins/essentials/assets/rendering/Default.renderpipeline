@@ -100,6 +100,14 @@
       "settings": null
     },
     {
+      "id": 19,
+      "step": "postfx_motion_blur",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 5,
       "step": "scene_over",
       "slot": "Main",
@@ -136,5 +144,5 @@
       "muted": false
     }
   ],
-  "next_id": 19
+  "next_id": 20
 }

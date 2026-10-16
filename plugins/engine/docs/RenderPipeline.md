@@ -50,7 +50,7 @@ A sequence with named ports carries the same information as a wired node graph: 
 - The **frame lane** holds per-frame steps (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame and world, right before that world's first lane, with the frame's target pool. A frame that renders two worlds (the scene, and an asset preview's) runs them for each, so a preview's lights never serve the scene's views.
 - A **slot lane** holds per-view steps. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `postfx_motion_blur` (muted), `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
 
 `depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
 
@@ -92,7 +92,7 @@ Each pixel finds where it was last frame:
 
 The history is read there through a Catmull-Rom filter, which keeps its detail while the view moves, and clipped to the spread of this frame's 3x3 neighbourhood (mean and 1.25 standard deviations, in YCoCg), so what was uncovered or changed does not ghost. `blend` (default 0.1) is how much of each frame goes into the result: lower is smoother and steadier. A pixel's own frame counts for more the faster it moves, up to a quarter at 4 pixels per frame, since a moving image shows smearing more than aliasing.
 
-Each view (target pool and camera) keeps its own history, last frame's camera and the models of the meshes it drew. A view that skipped a frame or changed size starts over from its current frame.
+Each view (target pool and camera) keeps its own history, last frame's camera and the models of the meshes it drew. A view that skipped a frame or changed size starts over from its current frame. `motion_vectors` runs without `scene_taa` too, keeping the view's last camera itself, for the postfx plugin's motion blur.
 
 Limits:
 

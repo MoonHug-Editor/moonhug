@@ -97,6 +97,7 @@ exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, co
 @(private = "file") EXPOSURE_LUM_GUID    := uuid.read("d549108d-4d60-46b2-8c15-116703cefc10") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_REDUCE_GUID := uuid.read("eead4648-77e6-463e-8d8a-c74ad4aff236") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_ADAPT_GUID  := uuid.read("4def1fcf-8e40-45de-8cd5-75550f990c39") or_else uuid.Identifier{}
+@(private = "file") MOTION_BLUR_GUID     := uuid.read("e2ab81a3-c95e-4b50-a044-3af61ec110c3") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_HISTOGRAM_GUID  := uuid.read("7e3cacf2-566d-4df7-8cae-944e19b4c8bb") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_PERCENTILE_GUID := uuid.read("c86417c6-cc5e-43ed-9972-7c8fbb225bf4") or_else uuid.Identifier{}
 
@@ -231,6 +232,8 @@ _exposure_state :: proc(ctx: ^engine.Render_Ctx) -> ^_Exposure_View {
 postfx_shutdown :: proc() {
 	delete(_exposure_views)
 	_exposure_views = nil
+	delete(_motion_blur_views)
+	_motion_blur_views = nil
 	delete(_lut_warned)
 	_lut_warned = nil
 }
@@ -346,6 +349,89 @@ _lut_texture :: proc(g: Color_Grading) -> (^gfx.Texture, int) {
 
 @(private = "file")
 _lut_warned: map[engine.Asset_GUID]bool
+
+// Motion blur: the scene smeared along each pixel's motion since last
+// frame, the camera's (from the depth) and the moved objects' (motion?, the
+// motion_vectors step), back into `hdr`. Placed after scene_taa and before
+// scene_over, so the gizmos stay sharp.
+Motion_Blur_Settings :: struct {
+	// How much of each frame's motion the blur spans: 0.5 is a shutter open
+	// for half the frame, the film look.
+	intensity: f32 `decor:range(0, 1)`,
+	// Taps along the motion: more is smoother and costs more.
+	samples:   int `decor:range(2, 32)`,
+	// The longest blur, as a fraction of the view's height.
+	max_blur:  f32 `decor:range(0, 0.5)`,
+	// Blur with the camera's motion too, not only with the objects that moved.
+	camera:    bool,
+}
+
+motion_blur_defaults := Motion_Blur_Settings{intensity = 0.5, samples = 8, max_blur = 0.05, camera = true}
+
+MOTION_BLUR_TARGET :: "motion_blur"
+
+@(render_step={summary="motion blur: each pixel smeared along how far it moved since last frame, with the camera and with the objects that moved", reads="hdr motion?", writes="motion_blur:HDR hdr:HDR", settings="motion_blur_defaults"})
+postfx_motion_blur :: proc(ctx: ^engine.Render_Ctx) {
+	if ctx.view.mode != .Shaded do return
+	s := (^Motion_Blur_Settings)(ctx.settings)
+	hdr := engine.render_input(ctx, engine.HDR_TARGET)
+	if hdr == nil do return
+	shader, ok := engine.shader_load_fullscreen(engine.Asset_GUID(MOTION_BLUR_GUID))
+	if !ok do return
+
+	// Last frame's camera is this view's when it drew last frame at this size.
+	state := _motion_blur_state(ctx)
+	w, h := hdr.width, hdr.height
+	valid := state.frame == gfx.frame_index && state.size == {w, h}
+	defer {
+		state.prev_view_proj = ctx.view.view_proj
+		state.frame = gfx.frame_index + 1
+		state.size = {w, h}
+	}
+	motion_rt := engine.render_input(ctx, engine.MOTION_TARGET)
+	if motion_rt == nil && !(valid && s.camera) do return // nothing moved that the step can see
+
+	params := _Motion_Blur_Params{
+		reproject = state.prev_view_proj * linalg.inverse(ctx.view.view_proj),
+		params    = {clamp(s.intensity, 0, 1), f32(clamp(s.samples, 2, 64)), max(s.max_blur, 0), motion_rt != nil ? 1 : 0},
+		params2   = {s.camera ? 1 : 0, valid ? 1 : 0, 0, 0},
+	}
+	src := gfx.rt_color_texture(hdr)
+	depth := gfx.rt_depth_texture(hdr)
+	motion := motion_rt != nil ? gfx.rt_color_texture(motion_rt) : src
+	dst := engine.render_target(ctx, MOTION_BLUR_TARGET)
+	gfx.pass_begin_target(dst, nil)
+	gfx.draw_fullscreen(shader, {&src, &depth, &motion}, (^[size_of(_Motion_Blur_Params)]u8)(&params)[:])
+	gfx.pass_end()
+	gfx.rt_copy(hdr, dst)
+}
+
+// The motion blur's block (motion_blur.glsl).
+@(private = "file")
+_Motion_Blur_Params :: struct {
+	reproject: matrix[4, 4]f32, // this frame's clip space to last frame's
+	params:    [4]f32,          // intensity, samples, max blur, motion vectors present
+	params2:   [4]f32,          // camera motion on, last frame's camera valid
+}
+
+@(private = "file")
+_Motion_Blur_View :: struct {
+	frame:          u64, // gfx.frame_index + 1 when it last ran
+	size:           [2]i32,
+	prev_view_proj: matrix[4, 4]f32, // last frame's steady camera
+}
+
+@(private = "file")
+_motion_blur_views: map[_Exposure_Key]_Motion_Blur_View
+
+@(private = "file")
+_motion_blur_state :: proc(ctx: ^engine.Render_Ctx) -> ^_Motion_Blur_View {
+	context.allocator = runtime.default_allocator() // cross-frame state
+	key := _Exposure_Key{ctx.pool, ctx.view.camera}
+	if v, ok := &_motion_blur_views[key]; ok do return v
+	_motion_blur_views[key] = {}
+	return &_motion_blur_views[key]
+}
 
 // FXAA on the LDR image, the chain's last step.
 @(render_step={summary="fast approximate anti-aliasing", reads="final", writes="aa:LDR*"})
