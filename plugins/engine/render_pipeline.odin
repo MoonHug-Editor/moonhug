@@ -544,13 +544,17 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 			}
 		}
 	}
-	for inst in lane {
+	// The volumes the camera is in blend their overrides into the steps'
+	// settings for this view (render_volumes.odin).
+	volume_settings := _volumes_settings(lane[:], ctx.view.cam_pos)
+	for inst, i in lane {
 		if inst.muted {
 			if inspect do _inspect_step_skipped(inst.id)
 			continue
 		}
 		ctx.step = inst.step
 		ctx.settings = inst.settings
+		if volume_settings != nil && volume_settings[i] != nil do ctx.settings = volume_settings[i]
 		ctx.reads = inst.reads
 		ctx.writes = inst.writes
 		if inspect do _inspect_step_begins(inst.id)

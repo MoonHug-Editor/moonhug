@@ -105,6 +105,7 @@ _render_view_pools_shutdown :: proc() {
 	_render_pipeline_shutdown()
 	_render_environment_shutdown()
 	_render_taa_shutdown()
+	_render_volumes_shutdown()
 }
 
 @(private = "file")

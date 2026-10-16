@@ -6,6 +6,7 @@ package engine_tests
 // own settings.
 
 import "core:encoding/json"
+import "core:strings"
 import "core:testing"
 
 @(private = "file")
@@ -358,4 +359,98 @@ test_render_inspect_looks_at :: proc(t: ^testing.T) {
 	engine.render_inspect_show(5, engine.HDR_TARGET)
 	engine.render_inspect_request(engine.MAIN_SLOT, 7)
 	testing.expect(t, engine._inspect_looks_at(before), "the step shown in the scene view counts over the selection")
+}
+
+// --- Volumes ---------------------------------------------------------------------
+
+@(private = "file")
+Blend_Settings :: struct {
+	amount: f32,
+	on:     bool,
+	mode:   enum u8 {A, B, C},
+	color:  [4]f32,
+	nested: struct {
+		radius: f32,
+		count:  int,
+	},
+}
+
+// Numbers, alone, in arrays and in nested structs, interpolate. Switches,
+// enums and integers snap to the source once the weight reaches a half.
+@(test)
+test_settings_blend :: proc(t: ^testing.T) {
+	dst := Blend_Settings{amount = 0, on = false, mode = .A, color = {0, 0, 0, 1}, nested = {radius = 1, count = 2}}
+	src := Blend_Settings{amount = 1, on = true, mode = .C, color = {1, 0.5, 0, 1}, nested = {radius = 3, count = 8}}
+	quarter := dst
+	engine.settings_blend(typeid_of(Blend_Settings), &quarter, &src, 0.25)
+	testing.expect_value(t, quarter.amount, f32(0.25))
+	testing.expect_value(t, quarter.color, [4]f32{0.25, 0.125, 0, 1})
+	testing.expect_value(t, quarter.nested.radius, f32(1.5))
+	testing.expect(t, !quarter.on && quarter.mode == .A && quarter.nested.count == 2, "below a half the switches stay")
+	half := dst
+	engine.settings_blend(typeid_of(Blend_Settings), &half, &src, 0.5)
+	testing.expect(t, half.on && half.mode == .C && half.nested.count == 8, "at a half the switches take the source")
+	testing.expect_value(t, half.amount, f32(0.5))
+}
+
+// A global volume applies its weight anywhere. A local one applies it inside
+// its box (the transform's scale scales the box), fades over the blend
+// distance outside, and is gone beyond it. Without a blend distance it
+// switches at the edge.
+@(test)
+test_volume_weight :: proc(t: ^testing.T) {
+	tw := engine.Transform_World{position = {10, 0, 0}, rotation = {0, 0, 0, 1}, scale = {2, 1, 1}}
+	v := engine.Volume{size = {4, 4, 4}, blend_distance = 2, weight = 0.8}
+	testing.expect_value(t, engine.volume_weight(&v, tw, {10, 0, 0}), f32(0.8))
+	testing.expect_value(t, engine.volume_weight(&v, tw, {13.9, 0, 0}), f32(0.8)) // half size 2 x scale 2 = 4
+	testing.expectf(t, abs(engine.volume_weight(&v, tw, {15, 0, 0}) - 0.4) < 1e-5, "halfway through the blend: %v", engine.volume_weight(&v, tw, {15, 0, 0}))
+	testing.expect_value(t, engine.volume_weight(&v, tw, {17, 0, 0}), f32(0))
+	testing.expect_value(t, engine.volume_weight(&v, tw, {10, 2.5, 0}), f32(0.6)) // y: half size 2, 0.5 into the blend
+	v.blend_distance = 0
+	testing.expect_value(t, engine.volume_weight(&v, tw, {10, 2.5, 0}), f32(0))
+	v.global = true
+	testing.expect_value(t, engine.volume_weight(&v, tw, {100, 100, 100}), f32(0.8))
+}
+
+// A step runs with the pipeline's settings blended toward a volume's
+// override when the view's camera is inside the volume: the tint step sees
+// amount 2 from the pipeline, a volume at full weight sets 0.5 (its default),
+// and the step reports what it got.
+@(test)
+test_render_pipeline_volume_overrides_settings :: proc(t: ^testing.T) {
+	tc_mem := new(TestCtx)
+	defer free(tc_mem)
+	setup(tc_mem, "moonhug/tests/fixtures/_test_pipeline_volume.scene")
+	context.user_ptr = &tc_mem.uc
+	defer teardown(tc_mem)
+	_register_test_steps()
+	_calls = make([dynamic]string)
+	defer delete(_calls)
+
+	p: engine.Render_Pipeline
+	engine.pipeline_add_slot(&p, engine.MAIN_SLOT)
+	tint := engine.pipeline_add_step(&p, "t_tint", engine.MAIN_SLOT)
+	engine.pipeline_find_step(&p, tint).settings = _settings_json("amount", 2)
+	engine.render_pipeline_preview({}, p)
+	engine.cleanup_Render_Pipeline(&p)
+	defer engine.render_pipeline_preview({}, {})
+
+	root := engine.Transform_Handle(tc_mem.scene.root.handle)
+	vol_tH := engine.transform_new("Volume", root)
+	_, vol := engine.transform_get_or_add_comp(vol_tH, engine.Volume)
+	vol.enabled = true
+	vol.size = {4, 4, 4}
+	vol.weight = 1
+	append(&vol.overrides, engine.Volume_Override{step = strings.clone("t_tint"), settings = strings.clone(`{"amount": 0.5}`)})
+
+	ctx: engine.Render_Ctx
+	ctx.view.cam_pos = {0, 0, 0} // inside
+	testing.expect(t, engine.render_pipeline_run(engine.MAIN_SLOT, &ctx))
+	ctx.view.cam_pos = {50, 0, 0} // outside
+	testing.expect(t, engine.render_pipeline_run(engine.MAIN_SLOT, &ctx))
+	testing.expect_value(t, len(_calls), 2)
+	if len(_calls) == 2 {
+		testing.expect_value(t, _calls[0], "tint:default") // the volume's 0.5
+		testing.expect_value(t, _calls[1], "tint:set")     // the pipeline's 2
+	}
 }

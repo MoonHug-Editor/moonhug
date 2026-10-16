@@ -112,6 +112,16 @@ Limits:
 - the scene view's debug modes skip it
 - the result is the `ssao` target: red the factor for the environment's light (the open fraction), blue the factor for the lights' (`direct` of the occlusion), green the view depth
 
+## Volumes
+
+A `Volume` component (Rendering > Volume) is a place where steps run with other settings: the tonemap's grading in a cave, the exposure's limits outdoors, SSAO off in a stylised room. It holds overrides, one per step, each the step's whole settings block edited through the same drawer the Render Pipeline window uses (Add Override lists every installed step with settings).
+
+- a global volume applies to every view. A local one applies to a view whose camera is inside its box (`size`, around the transform, scaled by it), fading in over `blend_distance` world units outside the box, so a walk through the edge eases from one look to the other. With no blend distance it switches at the edge
+- `weight` is how much of the overrides apply at full strength. `priority` orders volumes that overlap: a higher priority blends in later, over the lower ones
+- each frame, for each view, the pipeline's settings for a step are moved toward each active volume's override by its weight at the camera (`settings_blend`): numbers interpolate, and switches, enums and assets take the override's value once the weight passes a half. The scene view follows at its own camera. Frame steps (the shadow atlas) keep the pipeline's settings
+- an override is stored as JSON in the scene. One that no longer matches its step's settings (the struct changed) is ignored with one warning
+- the scene view draws a selected volume's box, and the outer box its blend reaches
+
 ## Validation at load
 
 A pipeline is user data, not an engine invariant, so a problem warns once and the frame still renders:
