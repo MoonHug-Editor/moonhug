@@ -38,9 +38,6 @@ Render_View :: struct {
 	// every caster) is not a camera, and nothing it would drop is invisible.
 	frustum:       Frustum,
 	cull:          bool,
-	// With mode Normals: the normals as they are (xyz, for a shader that
-	// reads them) instead of encoded as colour (0.5 + 0.5 n, to look at).
-	normals_raw:   bool,
 }
 
 // Six clip planes, each (normal, d) with dot(normal, p) + d >= 0 inside:

@@ -1,9 +1,6 @@
-// World-space normal as color, the scene view's Normals mode, and raw (0
-// where nothing is drawn) for the engine's scene_ssr step, which tells the
-// two apart by the draw's colour alpha: 1 encodes, 0 writes the normal as
-// it is. Same inputs as world.frag (the shared world vertex stage). Alpha
-// clipping cuts the same holes as the shaded draw, so the depth this pass
-// writes matches the scene's.
+// World-space normal as color, the scene view's Normals mode. Same inputs
+// as world.frag (the shared world vertex stage). Alpha clipping cuts the
+// same holes as the shaded draw.
 #version 450
 
 layout(location = 0) in vec2 frag_uv;
@@ -28,5 +25,5 @@ layout(set = 3, binding = 2) uniform DrawUBO {
 void main() {
     if (texture(tex, frag_uv).a < draw_params.x) discard;
     vec3 n = normalize(frag_normal);
-    out_color = frag_color.a > 0.5 ? vec4(n * 0.5 + 0.5, 1.0) : vec4(n, 1.0);
+    out_color = vec4(n * 0.5 + 0.5, 1.0);
 }

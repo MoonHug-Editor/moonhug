@@ -87,6 +87,11 @@ void main() {
     // turns faster than a pixel (before the discard: it reads derivatives).
     float roughness = specular_aa(clamp(1.0 - s.smoothness, 0.045, 1.0), n);
     if (s.alpha < draw_params.x) discard;
+    // A normals pass: the normal as it is (its map applied), nothing else.
+    if (draw_params.y > 0.5) {
+        out_color = vec4(n, 1.0);
+        return;
+    }
 
     vec3 v = view_dir();
     float NoV = max(dot(n, v), 1e-4);

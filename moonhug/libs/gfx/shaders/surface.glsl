@@ -77,6 +77,9 @@ layout(set = 3, binding = 0) uniform LightUBO {
 // clipping), then the pass's fog (gfx.Fog: colour and mode, density, start,
 // end, height, height falloff, the sky's share) and the camera (view_pos), for the
 // fog's distance.
+// draw_params: x = the material's alpha cutoff (0 = off), y = 1 on a pass
+// that wants the surface's world-space normal as the colour instead of its
+// shading (gfx.pass_output_normals, the engine's scene_ssr step).
 layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 draw_params;
     vec4 fog_color;

@@ -317,6 +317,7 @@ _pass: struct {
 	fog:          Fog,                   // reset each pass_end (mode Off)
 	scene_color:  Maybe(Texture),        // reset each pass_end
 	reflections:  Maybe(Texture),        // reset each pass_end
+	normals_out:  bool,                  // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -772,6 +773,16 @@ set_ambient_occlusion :: proc(tex: Texture) {
 // scene_copy step), read at SCENE_COLOR_SLOT by materials that refract.
 set_scene_color :: proc(tex: Texture) {
 	_pass.scene_color = tex
+}
+
+// Makes the CURRENT pass's world draws write their surface's world-space
+// normal (its normal map applied) as the colour instead of their shading,
+// alpha clipping kept (the surface template and world.frag read it from
+// the draw block): the engine's scene_ssr step draws the opaque meshes
+// through their own materials this way. A hand-written world shader that
+// ignores the flag writes its colour.
+pass_output_normals :: proc() {
+	_pass.normals_out = true
 }
 
 // The screen's reflections for the CURRENT pass's lit draws (the engine's
@@ -1371,7 +1382,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index) {
 			cam := _pass.vps[d.vp_index].cam_pos
-			u := _Draw_Uniform{params = {d.alpha_cutoff, 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
+			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff
@@ -1446,6 +1457,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.fog = {}
 	_pass.scene_color = nil
 	_pass.reflections = nil
+	_pass.normals_out = false
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

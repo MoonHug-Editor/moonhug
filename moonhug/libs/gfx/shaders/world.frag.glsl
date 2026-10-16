@@ -7,6 +7,7 @@
 
 layout(location = 0) in vec2 frag_uv;
 layout(location = 1) in vec4 frag_color;
+layout(location = 2) in vec3 frag_normal; // for a normals pass only
 layout(location = 3) in vec3 frag_world_pos;
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
@@ -55,5 +56,10 @@ void main() {
     vec4 t = texture(tex, frag_uv);
     out_color = vec4(srgb_to_linear(t.rgb), t.a) * frag_color;
     if (out_color.a < draw_params.x) discard;
+    // A normals pass (gfx.pass_output_normals): the normal as the colour.
+    if (draw_params.y > 0.5) {
+        out_color = vec4(normalize(frag_normal), 1.0);
+        return;
+    }
     out_color.rgb = mix(out_color.rgb, fog_color.rgb, fog_amount(frag_world_pos));
 }

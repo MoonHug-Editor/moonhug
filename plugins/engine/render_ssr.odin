@@ -10,8 +10,10 @@ package engine
 // lit draws (gfx.set_screen_reflections, bound by scene_target_begin), which
 // put it in place of the environment's reflection by its confidence, read
 // blurrier the rougher the surface. The normals come from a pass of the
-// opaque meshes the step draws itself, which also writes their depth, so
-// scene_opaque keeps it like after a depth prepass.
+// opaque meshes the step draws itself through their own materials, with
+// their normal maps, as a normals pass (gfx.pass_output_normals), which
+// also writes their depth, so scene_opaque keeps it like after a depth
+// prepass.
 
 import "base:runtime"
 import "core:math/linalg"
@@ -50,12 +52,12 @@ scene_ssr :: proc(ctx: ^Render_Ctx) {
 	w, h := hdr.width, hdr.height
 
 	// The opaque surfaces' normals, and their depth, through the view's
-	// camera (with this run's jitter) as scene_opaque will draw them.
+	// camera (with this run's jitter) and their own materials, as
+	// scene_opaque will draw them.
 	normals := render_target(ctx, SSR_NORMALS_TARGET)
 	gfx.pass_begin_target(normals, [4]f32{0, 0, 0, 0}, keep_depth = ctx.depth_primed, shared_depth = hdr)
+	gfx.pass_output_normals()
 	view := render_draw_view(ctx)
-	view.mode = .Normals
-	view.normals_raw = true
 	render_execute(view, ctx.commands, {.Opaque})
 	gfx.pass_end()
 	ctx.depth_primed = true

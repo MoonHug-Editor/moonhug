@@ -24,6 +24,7 @@ struct main0_in
 {
     float2 frag_uv [[user(locn0)]];
     float4 frag_color [[user(locn1)]];
+    float3 frag_normal [[user(locn2)]];
     float3 frag_world_pos [[user(locn3)]];
 };
 
@@ -89,12 +90,17 @@ fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _24 [[buffe
     {
         discard_fragment();
     }
-    float4 _213 = out.out_color;
+    if (_24.draw_params.y > 0.5)
+    {
+        out.out_color = float4(fast::normalize(in.frag_normal), 1.0);
+        return out;
+    }
+    float4 _227 = out.out_color;
     float3 param_1 = in.frag_world_pos;
-    float3 _224 = mix(_213.xyz, _24.fog_color.xyz, float3(fog_amount(param_1, _24)));
-    out.out_color.x = _224.x;
-    out.out_color.y = _224.y;
-    out.out_color.z = _224.z;
+    float3 _237 = mix(_227.xyz, _24.fog_color.xyz, float3(fog_amount(param_1, _24)));
+    out.out_color.x = _237.x;
+    out.out_color.y = _237.y;
+    out.out_color.z = _237.z;
     return out;
 }
 

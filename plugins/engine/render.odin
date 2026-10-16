@@ -316,7 +316,7 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		case .Unlit:
 			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
 		case .Normals:
-			gfx.draw_mesh(gpu, m.tex, d.model, {1, 1, 1, view.normals_raw ? 0 : 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
+			gfx.draw_mesh(gpu, m.tex, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
 		case .Overdraw:
 			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
 		}
@@ -367,7 +367,7 @@ _execute_transparent_meshes :: proc(view: Render_View, commands: []Render_Comman
 		case .Unlit:
 			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true)
 		case .Normals:
-			gfx.draw_mesh(gpu, m.tex, d.model, {1, 1, 1, view.normals_raw ? 0 : 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored)
+			gfx.draw_mesh(gpu, m.tex, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored)
 		case .Overdraw:
 			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
 		}

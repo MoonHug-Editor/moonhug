@@ -581,6 +581,11 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _149 [[buf
     {
         discard_fragment();
     }
+    if (_209.draw_params.y > 0.5)
+    {
+        out.out_color = float4(n, 1.0);
+        return out;
+    }
     float3 v = view_dir(_149, in.frag_world_pos);
     float NoV = fast::max(dot(n, v), 9.9999997473787516355514526367188e-05);
     float metallic = fast::clamp(s.metallic, 0.0, 1.0);
