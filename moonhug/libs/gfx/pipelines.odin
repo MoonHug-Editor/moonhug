@@ -42,6 +42,7 @@ _Shader_Entry :: struct {
 @(private)
 _Fullscreen_Entry :: struct {
 	frag:      ^sdl.GPUShader,
+	samplers:  u32, // the inputs the fragment stage declares (draw_fullscreen checks them)
 	pipelines: [Target_Format]^sdl.GPUGraphicsPipeline,
 	// draw_sky: depth-tested at the far plane, no depth write.
 	sky:       [Target_Format]^sdl.GPUGraphicsPipeline,
@@ -369,7 +370,7 @@ fullscreen_exists :: proc(name: string) -> bool {
 // blending, no depth.
 fullscreen_register :: proc(name: string, frag_spv, frag_msl: []u8, num_samplers, num_uniform_buffers: u32) -> bool {
 	if name in _gfx.fullscreen do return false
-	e := _Fullscreen_Entry{frag = _create_shader(.FRAGMENT, num_samplers, num_uniform_buffers, frag_spv, frag_msl)}
+	e := _Fullscreen_Entry{frag = _create_shader(.FRAGMENT, num_samplers, num_uniform_buffers, frag_spv, frag_msl), samplers = num_samplers}
 	if e.frag == nil do return false
 	if _fullscreen_build(&e, .LDR) == nil {
 		_fullscreen_entry_release(&e)

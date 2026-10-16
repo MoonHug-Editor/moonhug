@@ -908,8 +908,17 @@ _instance_base :: proc() {
 // an EARLIER pass filled, never the current pass's own target), `material`
 // is its property block (fragment UBO set=3 binding=1, slot 1). Draws in order with everything
 // else in the pass, so a blit then a mesh draw layers the mesh over the blit.
-draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil) {
+//
+// The draw gives at least as many inputs as the shader declares samplers (nil
+// entries bind white): fewer is the caller's bug, caught here with the
+// shader's name rather than as SDL's missing-binding assertion at pass_end.
+// It shows up when a shader asset gains an input while code that predates it
+// still runs (an open editor reimports a changed shader).
+draw_fullscreen :: proc(shader: string, inputs: []^Texture, material: []u8 = nil, loc := #caller_location) {
 	if len(inputs) == 0 do return
+	if e, ok := _gfx.fullscreen[shader]; ok {
+		fmt.assertf(u32(len(inputs)) >= e.samplers, "gfx: fullscreen shader %q declares %d inputs, the draw gives %d", shader, e.samplers, len(inputs), loc = loc)
+	}
 	append(&_pass.draws, _Draw{
 		fullscreen = true,
 		texture    = inputs[0],

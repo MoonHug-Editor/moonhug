@@ -99,6 +99,14 @@
       "muted": false
     },
     {
+      "id": 17,
+      "step": "postfx_exposure",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 6,
       "step": "postfx_bloom",
       "slot": "Main",
