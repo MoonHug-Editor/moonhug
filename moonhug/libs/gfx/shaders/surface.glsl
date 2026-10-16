@@ -146,25 +146,10 @@ float fog_amount(vec3 world_pos) {
 // view ray lands after bending into the surface (Snell's law, glass's index
 // of 1.5) and travelling `t` world units through it: straight on it barely
 // moves, at a grazing edge it bends hard, and a solid ball of its own
-// diameter inverts what is behind it, as glass does. The bend fades out near
-// the screen's edges, where the copy ends.
+// diameter inverts what is behind it, as glass does. refracted() (below the
+// environment, which stands in beyond the copy's edge) does the lookup.
 layout(set = 2, binding = 12) uniform sampler2D scene_color;
 
-vec3 refracted(vec3 n, float t) {
-    vec3 inside = refract(-normalize(view_pos.xyz - frag_world_pos), n, 1.0 / 1.5);
-    vec4 here = view_proj * vec4(frag_world_pos, 1.0);
-    vec4 there = view_proj * vec4(frag_world_pos + inside * t, 1.0);
-    vec2 uv = gl_FragCoord.xy * cluster_params.xy;
-    vec2 offset = (there.xy / there.w - here.xy / here.w) * vec2(0.5, -0.5);
-    // The bend fades out over the last tenth toward a screen edge: the copy
-    // ends there, and a clamped lookup would repeat its edge.
-    vec2 edge = min(uv, 1.0 - uv);
-    offset *= smoothstep(0.0, 0.1, min(edge.x, edge.y));
-    // One mip level blurrier than the lens's minification asks: glass is
-    // never a perfect lens, and under TAA's sub-pixel camera moves a sharp
-    // minified image flickers where fine detail lands.
-    return texture(scene_color, clamp(uv + offset, vec2(0.001), vec2(0.999)), 1.0).rgb;
-}
 
 // The screen's ambient occlusion (the scene_ssao step): red is how much
 // ambient light reaches the pixel, blue how much direct light, both 1 when
@@ -192,6 +177,37 @@ vec4 screen_reflection(float roughness) {
 // when the pass has none, so the ambient level lights uniformly.
 layout(set = 2, binding = 8) uniform samplerCube env_specular;
 layout(set = 2, binding = 9) uniform samplerCube env_irradiance;
+
+// What a refracting surface shows (Material.refraction, surface_main):
+// the opaque copy (scene_color) read where the view ray lands after
+// bending into the surface and travelling `t` through it. Where that lands
+// beyond the copy's edge a stand-in takes over, blended in over the last
+// fiftieth of the screen before it: on a curved surface (the bend changes
+// from pixel to pixel: a ball) the environment along the bent ray, which
+// reads as sky and ground seen through glass, and on a flat face (one bend
+// across it: a slab) what sits straight behind the pixel, since one
+// environment colour over a whole face looks like paint. Without an
+// environment every surface falls back to what is behind it.
+vec3 refracted(vec3 n, float t) {
+    vec3 inside = refract(-normalize(view_pos.xyz - frag_world_pos), n, 1.0 / 1.5);
+    vec4 here = view_proj * vec4(frag_world_pos, 1.0);
+    vec4 there = view_proj * vec4(frag_world_pos + inside * t, 1.0);
+    vec2 uv = gl_FragCoord.xy * cluster_params.xy;
+    vec2 offset = (there.xy / there.w - here.xy / here.w) * vec2(0.5, -0.5);
+    float curved = smoothstep(0.0, 0.002, length(fwidth(offset)));
+    vec2 look = uv + offset;
+    // One mip level blurrier than the lens's minification asks: glass is
+    // never a perfect lens, and under TAA's sub-pixel camera moves a sharp
+    // minified image flickers where fine detail lands.
+    vec3 screen = texture(scene_color, clamp(look, vec2(0.001), vec2(0.999)), 1.0).rgb;
+    float outside = max(max(-look.x, look.x - 1.0), max(-look.y, look.y - 1.0));
+    float beyond = smoothstep(-0.02, 0.0, outside);
+    if (beyond <= 0.0) return screen;
+    vec3 behind = texture(scene_color, uv, 1.0).rgb;
+    vec3 stand_in = behind;
+    if (env_params.z > 0.0) stand_in = mix(behind, textureLod(env_specular, inside, 1.0).rgb, curved);
+    return mix(screen, stand_in, beyond);
+}
 
 layout(location = 0) out vec4 out_color;
 
