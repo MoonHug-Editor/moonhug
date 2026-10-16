@@ -172,6 +172,18 @@ layout(set = 2, binding = 11) uniform sampler2D ambient_occlusion;
 vec2 screen_occlusion() {
     return texture(ambient_occlusion, gl_FragCoord.xy * cluster_params.xy).rb;
 }
+// The screen's reflections (the scene_ssr step), premultiplied: rgb what the
+// pixel's mirror ray sees times the confidence, alpha the confidence, 0
+// where there are none. Its mip levels blur the image for a rough surface.
+layout(set = 2, binding = 13) uniform sampler2D screen_reflections;
+
+// What stands in for the environment's reflection at this pixel: the
+// screen's reflection read blurrier the rougher the surface, and faded out
+// toward rough surfaces, whose wide lobe one mirror ray does not stand for.
+vec4 screen_reflection(float roughness) {
+    vec4 r = textureLod(screen_reflections, gl_FragCoord.xy * cluster_params.xy, roughness * 5.0);
+    return r * (1.0 - smoothstep(0.5, 0.8, roughness));
+}
 // The environment (gfx.set_environment): the specular cube prefiltered for
 // rising roughness along its mips, and the diffuse irradiance cube. White
 // when the pass has none, so the ambient level lights uniformly.

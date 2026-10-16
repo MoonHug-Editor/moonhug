@@ -50,7 +50,7 @@ A sequence with named ports carries the same information as a wired node graph: 
 - The **frame lane** holds per-frame steps (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame and world, right before that world's first lane, with the frame's target pool. A frame that renders two worlds (the scene, and an asset preview's) runs them for each, so a preview's lights never serve the scene's views.
 - A **slot lane** holds per-view steps. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_opaque`, `scene_sky`, `scene_under`, `scene_copy`, `scene_transparent`, `motion_vectors`, `scene_taa`, `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
 
 `depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
 
@@ -79,7 +79,7 @@ The prebuild checks the declarations (format, sizes, `final` reserved, a frame s
 
 ## Drawing into the scene
 
-The scene steps are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A step placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the shadows and ambient occlusion it reads (`shadow?`, `shadow_atlas?`, `ssao?`) bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow steps and the depth prepass use.
+The scene steps are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A step placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the shadows, ambient occlusion, screen reflections and opaque copy it reads (`shadow?`, `shadow_atlas?`, `ssao?`, `ssr?`, `scene_color?`) bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow steps and the depth prepass use.
 
 ## Temporal anti-aliasing
 
@@ -111,6 +111,17 @@ Limits:
 - `intensity` (default 1) scales the occluded fraction. `direct` (default 0.25) is how much of the occlusion also darkens direct light: 0 shades only the environment's light, as the physics says, a little more grounds objects
 - the scene view's debug modes skip it
 - the result is the `ssao` target: red the factor for the environment's light (the open fraction), blue the factor for the lights' (`direct` of the occlusion), green the view depth
+
+## Screen-space reflections
+
+`scene_ssr`, placed before `scene_opaque`, mirrors what is on screen in smooth surfaces: a glossy floor shows the objects on it, a chrome ball the room around it. A step that reads `ssr?` (`scene_opaque`) gets the result for its lit draws, which put it in place of the environment's reflection by its confidence. The Default pipeline holds it muted: it costs a pass over the opaque meshes and two passes over the screen, and the perf `Ssr` pipeline runs it.
+
+- the step draws the opaque meshes once into `ssr_normals` (their world-space normals, 0 where nothing is drawn), which writes their depth too, so `scene_opaque` keeps it as after a `depth_prepass`. Alpha-clipped materials cut their holes there as well
+- each pixel's mirror ray (the view direction reflected in the normal) marches through the view's depth in `steps` even steps (default 48) up to `max_distance` world units (default 20), started a noise-sized fraction of a step in, so banding becomes noise that `scene_taa` averages. A hit is where the depth's surface lies in front of the sample by less than `thickness` (default 0.3): thinner misses thin objects, thicker reflects through them. A few halvings refine the crossing
+- the colour at the hit comes from last frame's opaque image: the `scene_color` target `scene_copy` left in the pool, read through last frame's camera. The step warns once when the lane has no `scene_copy`. A view that skipped a frame or changed size reflects nothing that frame. The copy is taken before `scene_under`, so the editor's grid is not mirrored
+- the confidence fades over `edge_fade` of the screen toward its edges (default 0.1), over the last third of the ray's length, and for a ray turning toward the camera, since the screen holds little of what it sees. A ray that leaves the screen, hits a back face or finds nothing reflects nothing, and the environment's reflection stays
+- the result is the `ssr` target, premultiplied (rgb the colour times the confidence, alpha the confidence) with mip levels: a lit draw reads it blurrier the rougher the surface (`screen_reflection` in the surface template) and fades it out between roughness 0.5 and 0.8, where one mirror ray no longer stands for the surface's wide lobe
+- the scene view's debug modes skip it. Transparent surfaces reflect the environment only: the normals pass skips them
 
 ## Volumes
 

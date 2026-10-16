@@ -120,6 +120,22 @@ Ssao_Blur_Params :: struct {
 	params: [4]f32,
 }
 
+// Screen-space reflections (shaders/ssr.frag.glsl): the scene's depth, the
+// world-space normals of the opaque surfaces and last frame's opaque image
+// in, premultiplied reflections out: rgb what each pixel's mirror ray sees
+// times the confidence, alpha the confidence. Its block is Ssr_Params. What
+// set_screen_reflections takes.
+SSR_SHADER :: "ssr"
+
+Ssr_Params :: struct {
+	proj:      matrix[4, 4]f32, // the camera's projection, as the depth was drawn
+	inv_proj:  matrix[4, 4]f32,
+	view:      matrix[4, 4]f32, // world to view
+	reproject: matrix[4, 4]f32, // this frame's view space to last frame's clip space
+	params:    [4]f32,          // x = max distance (view units), y = thickness, z = steps, w = edge fade (fraction of the screen)
+	params2:   [4]f32,          // x = 1 when last frame's image is this view's, consecutive and the same size
+}
+
 // The sky's block (shaders/skybox.frag.glsl, draw_sky): the view's inverse
 // view-projection and the pass's fog (draw_uniform_fog).
 Sky_Params :: struct {
@@ -221,6 +237,7 @@ _gfx: struct {
 	depth_one:        ^sdl.GPUTexture, // 1x1 depth of 1: a shadow map with nothing in it
 	white_tex:        ^Texture,
 	black_tex:        ^Texture, // the scene colour's stand-in: nothing behind
+	clear_tex:        ^Texture, // the screen reflections' stand-in: none (0 confidence)
 	window_depth:     ^sdl.GPUTexture, // lazily sized to the swapchain
 	window_depth_w:   u32,
 	window_depth_h:   u32,
@@ -304,7 +321,9 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 	_gfx.white_tex = texture_create(white[:], 1, 1)
 	black := [4]u8{0, 0, 0, 255}
 	_gfx.black_tex = texture_create(black[:], 1, 1)
-	return _gfx.white_tex != nil && _gfx.black_tex != nil
+	clear := [4]u8{0, 0, 0, 0}
+	_gfx.clear_tex = texture_create(clear[:], 1, 1)
+	return _gfx.white_tex != nil && _gfx.black_tex != nil && _gfx.clear_tex != nil
 }
 
 shutdown :: proc() {
@@ -315,6 +334,7 @@ shutdown :: proc() {
 		_skinning_shutdown()
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
 		if _gfx.black_tex != nil do texture_destroy(_gfx.black_tex)
+		if _gfx.clear_tex != nil do texture_destroy(_gfx.clear_tex)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
 		_cubemap_shutdown()
 	_pipelines_shutdown()

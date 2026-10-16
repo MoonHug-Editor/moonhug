@@ -81,6 +81,8 @@ _Fullscreen_Entry :: struct {
 @(private) _SSAO_FRAG_MSL       := #load("shaders/compiled/ssao.frag.msl")
 @(private) _SSAO_BLUR_FRAG_SPV  := #load("shaders/compiled/ssao_blur.frag.spv")
 @(private) _SSAO_BLUR_FRAG_MSL  := #load("shaders/compiled/ssao_blur.frag.msl")
+@(private) _SSR_FRAG_SPV        := #load("shaders/compiled/ssr.frag.spv")
+@(private) _SSR_FRAG_MSL        := #load("shaders/compiled/ssr.frag.msl")
 
 @(private)
 _create_pipelines :: proc() -> bool {
@@ -100,7 +102,7 @@ _create_pipelines :: proc() -> bool {
 	if !shader_register(DEFAULT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _WORLD_FRAG_SPV, _WORLD_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
 	// The surface template declares every block: lights, material, draw, light list.
 	if !shader_register(LIT_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _LIT_FRAG_SPV, _LIT_FRAG_MSL, frag_samplers = MAX_FRAGMENT_SAMPLERS, frag_uniform_buffers = LIGHT_LIST_SLOT + 1) do return false
-	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL) do return false
+	if !shader_register(NORMALS_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _NORMALS_FRAG_SPV, _NORMALS_FRAG_MSL, frag_uniform_buffers = DRAW_UNIFORM_SLOT + 1) do return false
 	if !shader_register(DEPTH_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _DEPTH_FRAG_SPV, _DEPTH_FRAG_MSL, frag_samplers = 0) do return false
 	if !shader_register(MOTION_SHADER, _WORLD_VERT_SPV, _WORLD_VERT_MSL, _MOTION_FRAG_SPV, _MOTION_FRAG_MSL, frag_samplers = 0, frag_uniform_buffers = 2) do return false
 	for name in ([]string{DEFAULT_SHADER, LIT_SHADER}) {
@@ -112,6 +114,7 @@ _create_pipelines :: proc() -> bool {
 	if !fullscreen_register(TAA_SHADER, _TAA_FRAG_SPV, _TAA_FRAG_MSL, 4, 2) do return false
 	if !fullscreen_register(SSAO_SHADER, _SSAO_FRAG_SPV, _SSAO_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(SSAO_BLUR_SHADER, _SSAO_BLUR_FRAG_SPV, _SSAO_BLUR_FRAG_MSL, 1, 2) do return false
+	if !fullscreen_register(SSR_SHADER, _SSR_FRAG_SPV, _SSR_FRAG_MSL, 3, 2) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENV_CAPTURE_SHADER, _ENV_CAPTURE_FRAG_SPV, _ENV_CAPTURE_FRAG_MSL, 1, 2) do return false

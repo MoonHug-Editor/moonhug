@@ -148,6 +148,9 @@ void main() {
     vec3 r = reflect(-v, n);
     vec3 irradiance = texture(env_irradiance, n).rgb * env_params.x;
     vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
+    // The screen's reflection where the scene_ssr step found one.
+    vec4 screen = screen_reflection(roughness);
+    reflected = reflected * (1.0 - screen.a) + screen.rgb;
     color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * min(s.occlusion, screen_ao.x);
 
     // Capped well inside half-float range (65504): an overflow is infinite and

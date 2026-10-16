@@ -92,7 +92,7 @@ The **Environment** component (Rendering/Environment) is the scene's sky and the
 - `exposure` scales the sky, `ambient_intensity` the diffuse light it gives surfaces, `reflection_intensity` what they reflect of it
 - `draw_sky` shows it behind the cameras where nothing is drawn, else their clear color stays
 
-The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected.
+The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected. A pipeline running `scene_ssr` (RenderPipeline.md, Screen-space reflections) puts what is on screen in place of the environment's reflection on smooth surfaces, where the mirror ray finds it.
 
 A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
 
@@ -162,7 +162,7 @@ Damaged Helmet works out of the box). Conventions:
   `frag_world_pos` (loc 3, world-space fragment position) — declare only the
   ones you read
 - `sampler2D` at `set = 2, binding = 0` — declare it even if unused; MORE
-  samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the directional cascades' shadow atlas, 8 and 9 the environment's reflection and irradiance cubes, 10 the spot and point lights' shadow atlas, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 10 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
+  samplers at bindings 1..6 become named texture rows (see below). Binding 7 is the directional cascades' shadow atlas, 8 and 9 the environment's reflection and irradiance cubes, 10 the spot and point lights' shadow atlas, 11 the screen's ambient occlusion, 12 the opaque copy, 13 the screen's reflections, bound by gfx for shaders that declare them (the surface template does). The importer accepts up to binding 10 (`SHADER_MAX_SAMPLERS`, gfx's `MAX_FRAGMENT_SAMPLERS`)
 - optional `LightUBO` at `set = 3, binding = 0`: `ambient_count` (x ambient
   floor, y light count), `cam_pos` (xyz camera world position — pair it with
   `frag_world_pos` for specular/fresnel), then `lights[8]`, the first 8 of the pass's lights, of four vec4s each:

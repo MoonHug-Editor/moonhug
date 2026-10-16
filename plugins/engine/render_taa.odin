@@ -116,7 +116,7 @@ motion_vectors :: proc(ctx: ^Render_Ctx) {
 	// its depth matches the scene's exactly. Both faces: a back face lies
 	// behind its front face and fails the depth test.
 	motion := render_target(ctx, MOTION_TARGET)
-	gfx.pass_begin_target(motion, [4]f32{0, 0, 0, 0}, shared_depth = hdr)
+	gfx.pass_begin_target(motion, [4]f32{0, 0, 0, 0}, keep_depth = true, shared_depth = hdr)
 	view := render_draw_view(ctx)
 	gfx.set_view_proj(view.view_proj, view.cam_pos)
 	for m in moved {

@@ -47,7 +47,7 @@ _Draw :: struct {
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 13
+MAX_FRAGMENT_SAMPLERS :: 14
 
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
@@ -210,6 +210,11 @@ OCCLUSION_SLOT      :: 11
 // what a refracting transparent material shows bent through itself. Black
 // when none is set.
 SCENE_COLOR_SLOT    :: 12
+// The screen's reflections (set_screen_reflections, the template's
+// `screen_reflections`), premultiplied: rgb what each pixel's mirror ray
+// sees times the confidence, alpha the confidence. Clear (no confidence)
+// when none is set.
+REFLECTIONS_SLOT    :: 13
 
 _Env :: struct {
 	has:        bool,
@@ -311,6 +316,7 @@ _pass: struct {
 	occlusion:    Maybe(Texture),        // reset each pass_end
 	fog:          Fog,                   // reset each pass_end (mode Off)
 	scene_color:  Maybe(Texture),        // reset each pass_end
+	reflections:  Maybe(Texture),        // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -562,7 +568,6 @@ pass_begin_target :: proc(rt: ^Render_Target, clear: Maybe([4]f32), keep_depth :
 		assert(shared_depth.width == rt.width && shared_depth.height == rt.height, "gfx: a shared depth is the target's size")
 		assert(rt.format != .Display && rt.format != .Depth && color && depth, "gfx: a shared depth is for a color pass with depth")
 		_pass.target_depth = shared_depth.depth
-		keep_depth = true
 	}
 	_pass.target_w, _pass.target_h = f32(rt.width), f32(rt.height)
 	_pass.format = rt.format
@@ -767,6 +772,15 @@ set_ambient_occlusion :: proc(tex: Texture) {
 // scene_copy step), read at SCENE_COLOR_SLOT by materials that refract.
 set_scene_color :: proc(tex: Texture) {
 	_pass.scene_color = tex
+}
+
+// The screen's reflections for the CURRENT pass's lit draws (the engine's
+// scene_ssr step), read at REFLECTIONS_SLOT: the view's size, with mip
+// levels, premultiplied. A lit draw puts them in place of the environment's
+// reflection by their confidence. Not calling this reflects the environment
+// alone.
+set_screen_reflections :: proc(tex: Texture) {
+	_pass.reflections = tex
 }
 
 // The fog of the CURRENT pass's world draws and sky (the engine's
@@ -1269,6 +1283,8 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	if tex, has := _pass.occlusion.?; has do occlusion_gpu = tex.gpu
 	scene_color_gpu := _gfx.black_tex.gpu
 	if tex, has := _pass.scene_color.?; has do scene_color_gpu = tex.gpu
+	reflections_gpu := _gfx.clear_tex.gpu
+	if tex, has := _pass.reflections.?; has do reflections_gpu = tex.gpu
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
@@ -1348,6 +1364,10 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			bindings[SCENE_COLOR_SLOT] = {texture = scene_color_gpu, sampler = _gfx.sampler_linear}
 			num_bindings = SCENE_COLOR_SLOT + 1
 		}
+		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > REFLECTIONS_SLOT {
+			bindings[REFLECTIONS_SLOT] = {texture = reflections_gpu, sampler = _gfx.sampler_linear}
+			num_bindings = REFLECTIONS_SLOT + 1
+		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index) {
 			cam := _pass.vps[d.vp_index].cam_pos
@@ -1425,6 +1445,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.occlusion = nil
 	_pass.fog = {}
 	_pass.scene_color = nil
+	_pass.reflections = nil
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

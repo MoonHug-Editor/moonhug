@@ -3,6 +3,16 @@
 
 using namespace metal;
 
+struct DrawUBO
+{
+    float4 draw_params;
+    float4 fog_color;
+    float4 fog_params;
+    float4 fog_more;
+    float4 view_pos;
+    float4x4 view_proj;
+};
+
 struct main0_out
 {
     float4 out_color [[color(0)]];
@@ -10,14 +20,29 @@ struct main0_out
 
 struct main0_in
 {
+    float2 frag_uv [[user(locn0)]];
+    float4 frag_color [[user(locn1)]];
     float3 frag_normal [[user(locn2)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _24 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
+    if (tex.sample(texSmplr, in.frag_uv).w < _24.draw_params.x)
+    {
+        discard_fragment();
+    }
     float3 n = fast::normalize(in.frag_normal);
-    out.out_color = float4((n * 0.5) + float3(0.5), 1.0);
+    float4 _53;
+    if (in.frag_color.w > 0.5)
+    {
+        _53 = float4((n * 0.5) + float3(0.5), 1.0);
+    }
+    else
+    {
+        _53 = float4(n, 1.0);
+    }
+    out.out_color = _53;
     return out;
 }
 

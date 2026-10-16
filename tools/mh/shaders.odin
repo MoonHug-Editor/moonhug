@@ -21,7 +21,7 @@ import "core:strings"
 SHADER_DIR :: "moonhug/libs/gfx/shaders"
 
 // Stage comes from the second extension: "world.vert" -> vert.
-SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag", "env_capture.frag", "env_prefilter.frag", "env_irradiance.frag", "skybox.frag", "depth.frag", "caster.frag", "depth_view.frag", "taa.frag", "motion.frag", "ssao.frag", "ssao_blur.frag"}
+SHADERS := []string{"world.vert", "world.frag", "lit.frag", "skin.comp", "fullscreen.vert", "blit.frag", "encode.frag", "normals.frag", "env_capture.frag", "env_prefilter.frag", "env_irradiance.frag", "skybox.frag", "depth.frag", "caster.frag", "depth_view.frag", "taa.frag", "motion.frag", "ssao.frag", "ssao_blur.frag", "ssr.frag"}
 
 cmd_shaders :: proc(args: []string) -> int {
 	missing := false

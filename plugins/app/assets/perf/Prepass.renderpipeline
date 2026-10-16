@@ -62,19 +62,19 @@
       "settings": null
     },
     {
-      "id": 3,
-      "step": "scene_under",
-      "slot": "Main",
-      "binds": [],
-      "muted": false
-    },
-    {
       "id": 18,
       "step": "scene_copy",
       "slot": "Main",
       "muted": false,
       "binds": [],
       "settings": null
+    },
+    {
+      "id": 3,
+      "step": "scene_under",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
     },
     {
       "id": 4,

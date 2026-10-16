@@ -296,11 +296,13 @@ test_render_steps_optional_reads :: proc(t: ^testing.T) {
 	expect_optional(t, "scene_opaque", engine.SHADOW_TARGET, true)
 	expect_optional(t, "scene_opaque", engine.SHADOW_ATLAS_TARGET, true)
 	expect_optional(t, "scene_opaque", engine.SSAO_TARGET, true)
+	expect_optional(t, "scene_opaque", engine.SSR_TARGET, true)
 	expect_optional(t, "scene_taa", engine.MOTION_TARGET, true)
 	expect_optional(t, "scene_taa", engine.HDR_TARGET, false)
 
 	ctx := engine.Render_Ctx{step = engine.render_step_find("scene_opaque")}
 	testing.expect(t, engine.render_reads(&ctx, engine.SSAO_TARGET), "scene_opaque reads ssao")
+	testing.expect(t, engine.render_reads(&ctx, engine.SSR_TARGET), "scene_opaque reads ssr")
 	testing.expect(t, !engine.render_reads(&ctx, engine.MOTION_TARGET), "scene_opaque does not read motion")
 }
 

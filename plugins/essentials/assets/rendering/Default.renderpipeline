@@ -39,6 +39,14 @@
       "settings": null
     },
     {
+      "id": 18,
+      "step": "scene_ssr",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 2,
       "step": "scene_opaque",
       "slot": "Main",
@@ -54,19 +62,19 @@
       "settings": null
     },
     {
-      "id": 3,
-      "step": "scene_under",
-      "slot": "Main",
-      "binds": [],
-      "muted": false
-    },
-    {
       "id": 17,
       "step": "scene_copy",
       "slot": "Main",
       "muted": false,
       "binds": [],
       "settings": null
+    },
+    {
+      "id": 3,
+      "step": "scene_under",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
     },
     {
       "id": 4,
@@ -128,5 +136,5 @@
       "muted": false
     }
   ],
-  "next_id": 14
+  "next_id": 19
 }

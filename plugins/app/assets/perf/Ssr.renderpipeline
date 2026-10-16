@@ -1,0 +1,140 @@
+{
+  "__type_guid": "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73",
+  "slots": [
+    {
+      "name": "Main"
+    }
+  ],
+  "steps": [
+    {
+      "id": 10,
+      "step": "environment_pass",
+      "slot": "",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 1,
+      "step": "shadow_atlas",
+      "slot": "",
+      "binds": [],
+      "muted": false,
+      "settings": null
+    },
+    {
+      "id": 12,
+      "step": "shadow_cascades",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 15,
+      "step": "scene_ssao",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 18,
+      "step": "scene_ssr",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 2,
+      "step": "scene_opaque",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 11,
+      "step": "scene_sky",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 17,
+      "step": "scene_copy",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 3,
+      "step": "scene_under",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 4,
+      "step": "scene_transparent",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 14,
+      "step": "motion_vectors",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 13,
+      "step": "scene_taa",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 5,
+      "step": "scene_over",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 16,
+      "step": "postfx_exposure",
+      "slot": "Main",
+      "muted": true,
+      "binds": [],
+      "settings": null
+    },
+    {
+      "id": 6,
+      "step": "postfx_bloom",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 7,
+      "step": "postfx_tonemap",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    },
+    {
+      "id": 9,
+      "step": "final_blit",
+      "slot": "Main",
+      "binds": [],
+      "muted": false
+    }
+  ],
+  "next_id": 19
+}

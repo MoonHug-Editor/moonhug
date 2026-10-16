@@ -13,9 +13,14 @@ package engine
 //                     Default pipeline), so scene_opaque shades each pixel once
 //   scene_ssao        (render_ssao.odin) screen-space ambient occlusion from
 //                     the depth (muted in the Default pipeline)
+//   scene_ssr         (render_ssr.odin) screen-space reflections from the
+//                     depth, the normals and last frame's opaque image
+//                     (muted in the Default pipeline)
 //   scene_opaque      clears the view's "hdr" target and its depth (keeps the
 //                     depth after a depth_prepass), draws the opaque meshes
 //   scene_sky         (render_environment.odin) the sky behind the opaques
+//   scene_copy        the opaque image, sky included, for the materials that
+//                     refract and for next frame's reflections
 //   scene_under       the host's drawing under the scene (the editor's grid),
 //                     depth-tested against the opaques
 //   scene_transparent the alpha-blended quads, back to front
@@ -42,8 +47,9 @@ HDR_TARGET :: "hdr"
 // Begins a pass on the view's scene target for a step that draws into the
 // scene: the "hdr" color kept (or cleared to `clear`), the depth kept from
 // the earlier scene steps unless `keep_depth` is false, the view's camera
-// set, and what the running step reads of the shadows and the ambient
-// occlusion bound for its lit draws. pass_end closes it.
+// set, and what the running step reads of the shadows, the ambient
+// occlusion, the screen's reflections and the opaque copy bound for its lit
+// draws. pass_end closes it.
 scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_depth := true) -> ^gfx.Render_Target {
 	hdr := render_target(ctx, HDR_TARGET) // every scene step declares `hdr:HDR`
 	gfx.pass_begin_target(hdr, clear, keep_depth)
@@ -56,6 +62,9 @@ scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_de
 	}
 	if render_reads(ctx, SCENE_COLOR_TARGET) {
 		if copy := render_input(ctx, SCENE_COLOR_TARGET); copy != nil do gfx.set_scene_color(gfx.rt_color_texture(copy)) // scene_copy
+	}
+	if render_reads(ctx, SSR_TARGET) {
+		if ssr := render_input(ctx, SSR_TARGET); ssr != nil do gfx.set_screen_reflections(gfx.rt_color_texture(ssr)) // render_ssr.odin
 	}
 	return hdr
 }
@@ -88,7 +97,7 @@ depth_prepass :: proc(ctx: ^Render_Ctx) {
 // The first scene step: starts the view's image with the camera's clear and
 // a fresh depth (the depth prepass's when one ran), then the opaque meshes.
 // Its "hdr" is the view's final image until a post step renders a later one.
-@(render_step={summary="clears the view, draws the opaque meshes", reads="scene shadow? shadow_atlas? ssao?", writes="hdr:HDR*"})
+@(render_step={summary="clears the view, draws the opaque meshes", reads="scene shadow? shadow_atlas? ssao? ssr?", writes="hdr:HDR*"})
 scene_opaque :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx, ctx.clear, keep_depth = ctx.depth_primed)
 	render_execute(render_draw_view(ctx), ctx.commands, {.Opaque})
@@ -110,8 +119,10 @@ scene_under :: proc(ctx: ^Render_Ctx) {
 // (Material.refraction): scene_transparent reads it as `scene_color?`. With
 // mip levels, so a lens that minifies what is behind it samples a blur
 // instead of aliasing (and TAA's sub-pixel jitter, magnified through the
-// lens, moves a smooth image).
-@(render_step={summary="copies the opaque image for transparent materials that refract", reads="hdr", writes="scene_color:HDR"})
+// lens, moves a smooth image). Next frame's scene_ssr reads the same target
+// from the pool as last frame's image, so a step placed before this one
+// (the editor's grid, scene_under) stays out of the reflections.
+@(render_step={summary="copies the opaque image for the materials that refract and next frame's reflections", reads="hdr", writes="scene_color:HDR"})
 scene_copy :: proc(ctx: ^Render_Ctx) {
 	hdr := render_input(ctx, HDR_TARGET)
 	if hdr == nil do return
