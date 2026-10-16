@@ -309,3 +309,19 @@ test_list_objects_filters_by_component :: proc(t: ^testing.T) {
 	_, err := editor.run_mcp_tool_for_test("list_objects", _params({"component", json.String("Lite")}))
 	testing.expect_value(t, err.code, "not_found")
 }
+
+// The view tools name a window by what its tab shows and by its id: imgui's
+// "<icon> Title###id" splits at ###, the leading icon glyph and spaces
+// dropped. A name without ### is its own id.
+@(test)
+test_mcp_window_title_id :: proc(t: ^testing.T) {
+	title, id := editor.mcp_window_title_id("\ue9f4 Render Pipeline###render_pipeline")
+	testing.expect_value(t, title, "Render Pipeline")
+	testing.expect_value(t, id, "render_pipeline")
+	title, id = editor.mcp_window_title_id("Plain")
+	testing.expect_value(t, title, "Plain")
+	testing.expect_value(t, id, "Plain")
+	title, id = editor.mcp_window_title_id("\ue564  Scene###Scene")
+	testing.expect_value(t, title, "Scene")
+	testing.expect_value(t, id, "Scene")
+}

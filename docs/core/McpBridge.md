@@ -35,7 +35,7 @@ mcp_tool_rename_object :: proc(id: i64, params: json.Object) -> (string, mcp.Too
 
 ## Tools
 
-The shell's tools (`editor/mcp_bridge.odin`) are `read_log`, `batch`, `list_menus`, `invoke_menu`, `dialog`, `open_scene`, `ping_asset`, `editor_setting`, `render_stats` and `screenshot`. The engine's (`plugins/engine/editor/mcp_tools`) are `editor_state`, `scene_dump`, `list_objects`, `describe_type`, `select`, `set_transform`, `rename_object`, `get_property` and `set_property`. `open_scene` runs the project view's open flow and reads the active scene through `session.Document_Actions`.
+The shell's tools (`editor/mcp_bridge.odin`, the view tools in `editor/mcp_views.odin`) are `read_log`, `batch`, `list_menus`, `invoke_menu`, `dialog`, `open_scene`, `ping_asset`, `editor_setting`, `render_stats`, `screenshot`, `window_list`, `window_place`, `window_resize` and `editor_size`. The engine's (`plugins/engine/editor/mcp_tools`) are `editor_state`, `scene_dump`, `list_objects`, `describe_type`, `select`, `set_transform`, `rename_object`, `get_property` and `set_property`. `open_scene` runs the project view's open flow and reads the active scene through `session.Document_Actions`.
 
 - `editor_state` — active scene, simulate state, selection (names and `local_id`s, since names repeat)
 - `read_log` — recent console entries
@@ -51,9 +51,23 @@ The shell's tools (`editor/mcp_bridge.odin`) are `read_log`, `batch`, `list_menu
 - `get_property` / `set_property` — a component (or the transform) on an object, or one field of it, addressed by component name as `list_objects` prints it plus a dotted path with `[i]` for array elements (`layers[0].states[1].speed`). No path reads the whole component, which is how an agent learns its field names. Values are JSON in the field's own shape. A write is one undo step, obeys a reference field's `ref:` / `has:` tags the way the picker does, and on a prefab instance records the override the inspector would — on the whole array when the path indexes one (docs/core/InspectorProperty.md)
 - `editor_setting` — read all editor settings, or set one scalar field
 - `render_stats` — render statistics of recent frames (gfx frame statistics, plugins/engine/docs/SDL3Renderer.md): draw calls, instances, triangles, render passes, CPU milliseconds and GPU wait milliseconds, averaged over `frames` (default 60) plus the last frame. Turn idle throttling off first (Frame Pacing) or an idle editor averages over a few frames a second
-- `screenshot` — full-resolution PNG to `library/screenshots/`, plus a downscaled copy (default ≤640px) inline as MCP image content. Three views:
+- `screenshot` — full-resolution PNG to `library/screenshots/`, plus a downscaled copy (default ≤640px) inline as MCP image content. Four views:
   - `scene` (default) / `game` — that view's render target. The tick runs before views draw, so the RT holds the previous frame's submitted contents and is read back asynchronously (fence polled per tick, response sent when pixels land).
   - `editor` — the whole editor window, imgui panels included (inspector, hierarchy, console). Those panels draw straight to the swapchain and never reach a render target, so this copies the swapchain image itself (`gfx.swapchain_capture`). The copy runs **only on frames a screenshot was asked for**, after the UI pass has drawn and while the command buffer is still open — so there is no per-frame cost for a feature used occasionally, and no OS screen-recording permission, since a swapchain image contains nothing but the editor's own window. The request is queued by the tool and serviced at end of frame, because the bridge tick runs before the UI draws.
+  - `window` — one window of the editor (`window=`, a title or id from `window_list`): the `editor` capture cropped to that window's rectangle. A docked window behind another tab is refused: `window_place` brings it forward
+
+### Views
+
+`window_list`, `window_place`, `window_resize` and `editor_size` set the editor's layout up the way a person drags tabs, so an agent can read a window at a useful size:
+
+- `window_list` — every open window: title, id, rectangle in points from the editor's top-left, docked or floating, drawn or behind another tab. Plus the editor's size and pixels per point
+- `window_place` — floats a window at a rectangle (undocking it first), or with `dock` puts it beside another docked window (`side` left, right, top or bottom, `ratio` its share) or as a tab next to it (`side` tab)
+- `window_resize` — a floating window takes the size as given. A docked one moves the split between its dock node and the neighbour along each axis given, so every tab of that node changes size with it, as a drag on the node's edge does
+- `editor_size` — the editor window's own size, the same every run for comparable screenshots
+- a window is named by its title or id, case ignored, or by a part of either that names one window only. An ambiguous name is an error listing the matches
+- imgui applies layout inside a frame, so `window_place` and `window_resize` queue the change, `mcp_bridge_window_ops` applies it right after `im.NewFrame` (before the dockspace and the views draw), and the tool answers with the window's rectangle once the change shows: a frame later, a few for an undock. They cannot run in a `batch`
+- the changes are the layout imgui saves to `imgui.ini`, and the editor's size goes to `UserSettings/editor_settings.json`, as a person's are. A script that measures on someone's project saves and restores both
+- the Odin binding of imgui's `Window` struct declares C bitfields as whole fields, so the fields after the first bitfield (`DockNode`, `DockIsActive`, `LastFrameActive`, `RootWindow`) sit at the wrong offsets and read garbage. The view tools read only the fields before it (name, flags, position, size, `Active`, `Hidden`) and find a window's dock node by walking the dock tree from the dockspace (`dock_space_id`). `DockNode` keeps its bitfields at the end, after every field the tools use, and they are never written
 
 Objects are addressed by `local_id` (from `list_objects`) or exact name. An ambiguous name is an error naming the count. Every object `list_objects` prints is addressable, prefab-instance content included: all bridge writes go through `inspector.property_set_json` (docs/core/InspectorProperty.md), which records the override the inspector would, so a write into instance content survives the next resolve exactly as an inspector edit does.
 

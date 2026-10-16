@@ -20,6 +20,10 @@ import "moonhug:editor/widgets"
 
 _dock_layout_reset: bool
 
+// The main dockspace's node id, set each frame by draw_dockspace: the root of
+// the dock tree the MCP view tools walk (mcp_views.odin).
+dock_space_id: im.ID
+
 // Host window under the main toolbar holding the central dockspace. Builds the
 // default layout when the dockspace node has no saved state (fresh imgui.ini)
 // or a reset was requested. Must run before any dockable view's Begin().
@@ -33,6 +37,7 @@ draw_dockspace :: proc() {
 	flags := im.WindowFlags{.NoTitleBar, .NoResize, .NoMove, .NoScrollbar, .NoCollapse, .NoBringToFrontOnFocus, .NoNavFocus, .NoDocking}
 	if im.Begin("##DockSpaceHost", nil, flags) {
 		dockspace_id := im.GetID("DockSpace")
+		dock_space_id = dockspace_id
 		if im.DockBuilderGetNode(dockspace_id) == nil || _dock_layout_reset {
 			_dock_layout_reset = false
 			_dock_build_default_layout(dockspace_id, size)

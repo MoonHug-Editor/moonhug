@@ -49,6 +49,7 @@ _Mcp_Shot :: struct {
 	dl:       ^gfx.Texture_Download,
 	view:     string,
 	max_size: int,
+	crop:     [4]i32, // x, y, width, height in the image's pixels, width 0 = all
 }
 
 // A pending full-window capture. Serviced at the END of the frame, because the
@@ -58,6 +59,7 @@ _Mcp_Window_Shot :: struct {
 	id:       i64,
 	max_size: int,
 	wanted:   bool,
+	crop:     [4]i32, // view=window: that window's rectangle, width 0 = the whole editor
 }
 
 @(private = "file") _mcp: struct {
@@ -217,12 +219,12 @@ _mcp_send :: proc(payload: string) {
 
 // result_json must be valid JSON (object/array/scalar). NOTE: fmt treats
 // {} as placeholders — JSON braces in format strings are escaped as {{ }}.
-@(private = "file")
+@(private)
 _mcp_respond :: proc(id: i64, result_json: string) {
 	_mcp_send(fmt.tprintf(`{{"id":%d,"status":"ok","result":%s}}`, id, result_json))
 }
 
-@(private = "file")
+@(private)
 _mcp_respond_error :: proc(id: i64, code: string, message: string) {
 	e, _ := json.marshal(mcp.Wire_Error{code = code, message = message}, {}, context.temp_allocator)
 	_mcp_send(fmt.tprintf(`{{"id":%d,"status":"error","error":%s}}`, id, string(e)))
@@ -382,7 +384,7 @@ mcp_tool_render_stats :: proc(id: i64, params: json.Object) -> (string, Mcp_Erro
 // command keeps its own undo step: a batch is a convenience, not a transaction,
 // and nothing here merges or rolls back across commands.
 @(mcp_tool={
-	description="Run several tools in one round trip. Strongly preferred for repetitive work — setting many properties, renaming several objects — since the bridge otherwise answers one call per frame. Each command is {\"tool\": name, \"params\": {...}} and keeps its own undo step, so this is a convenience, not a transaction: a later failure does not roll back an earlier success. Max 100 commands. Cannot nest, and cannot carry screenshot (it answers across frames).",
+	description="Run several tools in one round trip. Strongly preferred for repetitive work — setting many properties, renaming several objects — since the bridge otherwise answers one call per frame. Each command is {\"tool\": name, \"params\": {...}} and keeps its own undo step, so this is a convenience, not a transaction: a later failure does not roll back an earlier success. Max 100 commands. Cannot nest, and cannot carry the tools that answer across frames (screenshot, window_place, window_resize).",
 	param_commands="object[]!:Commands to run in order, each {\"tool\": name, \"params\": {...}}",
 	param_fail_fast="boolean:Stop at the first failure (default true)",
 })
@@ -569,7 +571,8 @@ mcp_tool_dialog :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 
 @(mcp_tool={
 	description="Capture a view's render target (previous frame). Full PNG saved to library/screenshots, downscaled copy returned inline as an image. Costs context — prefer text tools unless the question is visual.",
-	param_view="string:scene (default), game, or editor for the whole editor window including the inspector and other panels",
+	param_view="string:scene (default), game, editor for the whole editor window including the inspector and other panels, or window for one window of the editor (with window=)",
+	param_window="string:With view=window: the window's title or id (window_list)",
 	param_max_size="integer:Inline image longest edge in pixels (default 640)",
 })
 mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
@@ -591,6 +594,16 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 		}
 		return MCP_DEFERRED, {} // answered once the frame's image is copied
 	}
+	// One window: the editor capture cropped to its rectangle (mcp_views.odin).
+	if view == "window" {
+		query, _ := params["window"].(json.String)
+		rect, _, err := mcp_window_capture_rect(query)
+		if err.code != "" do return "", err
+		_mcp.pending_window_shot = _Mcp_Window_Shot{
+			id = id, max_size = max(max_size, 16), wanted = true, crop = rect,
+		}
+		return MCP_DEFERRED, {}
+	}
 
 	rt: ^gfx.Render_Target
 	switch view {
@@ -601,7 +614,7 @@ mcp_tool_screenshot :: proc(id: i64, params: json.Object) -> (string, Mcp_Error)
 		rt = game_rt
 		view = "game"
 	case:
-		return mcp.tool_fail("bad_request", "view must be scene, game or editor")
+		return mcp.tool_fail("bad_request", "view must be scene, game, editor or window")
 	}
 	if rt == nil || rt.width < 2 || rt.height < 2 {
 		return mcp.tool_fail("view_not_available", "%s view has not rendered yet", view)
@@ -639,7 +652,7 @@ mcp_bridge_capture_frame :: proc() {
 		_mcp_respond_error(req.id, "capture_failed", "could not read the window capture")
 		return
 	}
-	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, view = "editor", max_size = req.max_size})
+	append(&_mcp.shots, _Mcp_Shot{id = req.id, dl = dl, view = req.crop.z > 0 ? "window" : "editor", max_size = req.max_size, crop = req.crop})
 }
 
 @(private = "file")
@@ -658,8 +671,25 @@ _mcp_poll_shots :: proc() {
 			_mcp_respond_error(shot.id, "readback_failed", "GPU readback returned no pixels")
 			continue
 		}
+		if shot.crop.z > 0 do pixels, w, h = _mcp_crop(pixels, w, h, shot.crop)
 		_mcp_finish_shot(shot, pixels, w, h)
 	}
+}
+
+// The part of an RGBA8 image inside `crop` (x, y, width, height), clamped to
+// the image, temp-allocated.
+@(private = "file")
+_mcp_crop :: proc(pixels: []u8, w, h: int, crop: [4]i32) -> ([]u8, int, int) {
+	x0 := clamp(int(crop.x), 0, w - 1)
+	y0 := clamp(int(crop.y), 0, h - 1)
+	cw := clamp(int(crop.z), 1, w - x0)
+	ch := clamp(int(crop.w), 1, h - y0)
+	out := make([]u8, cw * ch * 4, context.temp_allocator)
+	for row in 0 ..< ch {
+		src := ((y0 + row) * w + x0) * 4
+		copy(out[row * cw * 4:(row + 1) * cw * 4], pixels[src:src + cw * 4])
+	}
+	return out, cw, ch
 }
 
 // PNG bytes in memory via stb's to-func writer (c callback, no context).

@@ -813,3 +813,24 @@ test_gizmos_record_per_camera :: proc(t: ^testing.T) {
 	testing.expectf(t, game > scene * 2, "each built for its own camera: %v in the scene view, %v in the game view", scene, game)
 	gizmos.frame_end()
 }
+
+
+// The flythrough's first frame after a long one (the idle rate waits up to a
+// quarter second between frames while the right button is held still) eases
+// in: from rest toward full speed it moves a few centimetres, not the two
+// metres a quarter second at near full speed was. Then it speeds up frame by
+// frame.
+@(test)
+test_scene_fly_move_starts_smoothly :: proc(t: ^testing.T) {
+	target := [3]f32{0, 0, -editor.FLYTHROUGH_BASE_SPEED}
+	vel, step := editor.scene_fly_move_step({}, target, 0.25)
+	first := linalg.length(step)
+	testing.expectf(t, first < 0.15, "the first step after a 0.25 s frame moves %.3f m", first)
+	speed := linalg.length(vel)
+	for _ in 0 ..< 10 {
+		vel, step = editor.scene_fly_move_step(vel, target, 1.0 / 60)
+		testing.expectf(t, linalg.length(vel) > speed, "the speed rises every frame")
+		speed = linalg.length(vel)
+	}
+	testing.expectf(t, linalg.length(vel) < editor.FLYTHROUGH_BASE_SPEED, "still easing toward full speed")
+}

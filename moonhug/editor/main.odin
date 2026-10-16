@@ -211,6 +211,9 @@ main :: proc() {
         im_sdl.NewFrame()
         im.NewFrame()
         widgets.text_input_escape_frame() // Escape commits text fields (widgets/text_input.odin)
+        // Agent layout changes, before the dockspace and the views draw
+        // (mcp_views.odin).
+        mcp_bridge_window_ops()
 
         menu.draw_menu_bar()
         draw_tool_bar()

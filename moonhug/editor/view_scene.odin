@@ -109,6 +109,10 @@ FLYTHROUGH_RAMP_TIME :: f32(2.0) // seconds to reach the ramp cap
 FLY_SPEED_WHEEL_BASE :: f32(1.2) // wheel during fly: speed *= base^notches
 FLY_LOOK_SMOOTH_TAU :: f32(0.025) // seconds for look to catch its target (~63%)
 FLY_MOVE_SMOOTH_TAU :: f32(0.08) // seconds for velocity to catch its target
+// The longest step the flythrough takes: a frame that took longer (the idle
+// rate's wait, a hitch) moves the camera as one frame of this length, so
+// movement eases in instead of jumping.
+FLY_MAX_DT :: f32(1.0 / 30)
 LOOK_SENSITIVITY :: f32(0.005) // radians per pixel (fly + orbit)
 ZOOM_WHEEL_BASE :: f32(1.2) // wheel dolly: dist *= base^-notches
 ZOOM_MIN_STEP :: f32(0.25) // keeps close-range dolly responsive
@@ -783,6 +787,16 @@ draw_snap_overlay :: proc(vertical: bool) {
 	}
 }
 
+// One frame of flythrough movement: the velocity eases toward `target_vel`
+// (FLY_MOVE_SMOOTH_TAU) and the camera moves by the eased velocity, over at
+// most FLY_MAX_DT.
+scene_fly_move_step :: proc(vel, target_vel: [3]f32, dt: f32) -> (new_vel, step: [3]f32) {
+	dt := min(dt, FLY_MAX_DT)
+	k := 1 - math.exp(-dt / FLY_MOVE_SMOOTH_TAU)
+	new_vel = vel + (target_vel - vel) * k
+	return new_vel, new_vel * dt
+}
+
 handle_scene_input :: proc() {
 	io := im.GetIO()
 	dt := io.DeltaTime
@@ -848,6 +862,11 @@ handle_scene_input :: proc() {
 	// un-hovered while latched).
 	if scene_flythrough_active {
 		_orbit_active = false
+		// The full frame rate while flying: holding the button still sends
+		// no input, and the idle rate's long frames would make the first key
+		// press a jump.
+		gfx.keep_awake(0.25)
+		dt := min(dt, FLY_MAX_DT)
 
 		// First-person look — all reads below go through the input package
 		// (raw SDL snapshot): imgui derives its mouse delta from the cursor
@@ -898,9 +917,9 @@ handle_scene_input :: proc() {
 		} else {
 			_fly_speed_cur = scene_fly_speed
 		}
-		move_k := 1 - math.exp(-dt / FLY_MOVE_SMOOTH_TAU)
-		_fly_vel += (target_vel - _fly_vel) * move_k
-		scene_cam_pos += _fly_vel * dt
+		step: [3]f32
+		_fly_vel, step = scene_fly_move_step(_fly_vel, target_vel, dt)
+		scene_cam_pos += step
 
 		update_scene_camera()
 		return
