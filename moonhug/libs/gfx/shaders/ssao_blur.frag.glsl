@@ -1,7 +1,8 @@
-// The ambient occlusion's blur (the engine's scene_ssao node), one direction
+// The ambient occlusion's blur (the engine's scene_ssao step), one direction
 // per pass: a 9-tap Gaussian whose taps count less the further their depth
 // (green) lies from the centre's, so occlusion does not bleed across an
-// object's edge. Red and green out as in.
+// object's edge. Red and green out as in, blue the factor for direct light:
+// `params.z` of the occlusion.
 #version 450
 
 layout(location = 0) in vec2 frag_uv;
@@ -10,7 +11,7 @@ layout(location = 0) out vec4 out_ao;
 layout(set = 2, binding = 0) uniform sampler2D ao;
 
 layout(set = 3, binding = 1) uniform Params {
-    vec4 params; // xy = the step between taps, in pixels (1, 0 or 0, 1)
+    vec4 params; // xy = the step between taps, in pixels (1, 0 or 0, 1), z = how much of the occlusion darkens direct light
 };
 
 void main() {
@@ -30,5 +31,6 @@ void main() {
             total += w;
         }
     }
-    out_ao = vec4(sum / total, centre.g, 0.0, 1.0);
+    float open = sum / total;
+    out_ao = vec4(open, centre.g, mix(1.0, open, params.z), 1.0);
 }

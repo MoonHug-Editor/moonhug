@@ -26,6 +26,7 @@ _Column :: struct {
 _Cell :: struct {
 	access:    _Access,
 	via_final: bool, // the step reads it as `final`
+	optional:  bool, // the step's read of it is optional (`name?`)
 	unwritten: bool, // the step reads it and nothing before it wrote it
 }
 
@@ -66,7 +67,7 @@ _rp_model :: proc(slot: string) -> _Model {
 	for c, ci in cols {
 		n := c.step
 		if n == nil do continue
-		for port in n.reads {
+		for port, pi in n.reads {
 			t := engine.pipeline_entry_port(c.entry^, port)
 			via_final := false
 			if t == engine.FINAL_INPUT {
@@ -79,6 +80,7 @@ _rp_model :: proc(slot: string) -> _Model {
 			cell := &r.cells[ci]
 			cell.access = cell.access == .Write ? .Read_Write : (cell.access == .None ? .Read : cell.access)
 			cell.via_final = via_final
+			cell.optional = engine.render_step_read_optional(n, pi)
 		}
 		for d in n.writes {
 			t := engine.pipeline_entry_port(c.entry^, d.name)
@@ -91,6 +93,22 @@ _rp_model :: proc(slot: string) -> _Model {
 			cell := &r.cells[ci]
 			cell.access = cell.access == .Read ? .Read_Write : (cell.access == .None ? .Write : cell.access)
 		}
+	}
+
+	// An optional read nothing before it writes is not a read at all: the
+	// step runs without it. Rows left with no access go.
+	for &r in res {
+		for &cell, ci in r.cells {
+			if !cell.optional || (cell.access != .Read && cell.access != .Read_Write) do continue
+			if _writer_before(&r, ci) >= 0 do continue
+			cell.access = cell.access == .Read_Write ? .Write : .None
+			cell.optional = false
+		}
+	}
+	for i := len(res) - 1; i >= 0; i -= 1 {
+		used := false
+		for cell in res[i].cells do if cell.access != .None do used = true
+		if !used do ordered_remove(&res, i)
 	}
 
 	// Lifetimes, scratch rows, reads without a writer.

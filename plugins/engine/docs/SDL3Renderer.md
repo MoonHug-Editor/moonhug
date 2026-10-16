@@ -191,7 +191,7 @@ The surface template lights a back face with its normal reversed (`vertex_normal
 
 ## Ambient occlusion
 
-`set_ambient_occlusion({tex, direct})` hands a pass's lit draws the screen's ambient occlusion: `tex` the view's size, red how much ambient light reaches each pixel. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads it at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of it and the surface's occlusion, and the lights' light by `direct` of it (`occlusion_params.x` in the light block). `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` step drives them (RenderPipeline.md, Ambient occlusion).
+`set_ambient_occlusion(tex)` hands a pass's lit draws the screen's ambient occlusion: the view's size, red how much of the environment's light reaches each pixel, blue how much of the lights'. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads both at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of red and the surface's occlusion, and the lights' light by blue. `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` step drives them (RenderPipeline.md, Ambient occlusion).
 
 ## Mip levels and specular aliasing
 

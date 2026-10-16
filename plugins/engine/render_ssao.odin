@@ -2,11 +2,13 @@ package engine
 
 // Screen-space ambient occlusion (plugins/engine/docs/RenderPipeline.md
 // "Ambient occlusion"): scene_ssao, placed before scene_opaque, works out
-// from the view's depth how open each pixel's surroundings are and hands the
-// result to the lit draws after it (gfx.set_ambient_occlusion, bound by
-// scene_target_begin): it shades the environment's light, and a part of the
-// lights'. The depth comes from the depth prepass, which scene_ssao draws
-// itself when no depth_prepass ran before it.
+// from the view's depth how open each pixel's surroundings are, into the
+// "ssao" target: red the factor for the environment's light, blue for the
+// lights' (a part of the occlusion, `direct`), green the view depth. A step
+// that reads `ssao?` (scene_opaque) gets it for its lit draws
+// (gfx.set_ambient_occlusion, bound by scene_target_begin). The depth comes
+// from the depth prepass, which scene_ssao draws itself when no
+// depth_prepass ran before it.
 
 import gfx "moonhug:libs/gfx"
 import "core:math/linalg"
@@ -54,7 +56,8 @@ scene_ssao :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 
 	// Across, into the blur's target, then down, back into the occlusion.
-	steps := [2]gfx.Ssao_Blur_Params{{params = {1, 0, 0, 0}}, {params = {0, 1, 0, 0}}}
+	direct := clamp(settings.direct, 0, 1)
+	steps := [2]gfx.Ssao_Blur_Params{{params = {1, 0, direct, 0}}, {params = {0, 1, direct, 0}}}
 	across := new_clone(steps[0], context.temp_allocator)
 	down := new_clone(steps[1], context.temp_allocator)
 	ao_tex := gfx.rt_color_texture(ao)
@@ -65,6 +68,4 @@ scene_ssao :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_begin_target(ao, nil)
 	gfx.draw_fullscreen(gfx.SSAO_BLUR_SHADER, {&blur_tex}, (^[size_of(gfx.Ssao_Blur_Params)]u8)(down)[:])
 	gfx.pass_end()
-
-	ctx.occlusion = gfx.Ambient_Occlusion{tex = gfx.rt_color_texture(ao), direct = settings.direct}
 }

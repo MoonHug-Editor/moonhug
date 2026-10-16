@@ -54,7 +54,6 @@ struct LightUBO
     float4x4 tile_vp[48];
     float4 tile_rects[48];
     float4 tile_params[48];
-    float4 occlusion_params;
 };
 
 struct ClusterUBO
@@ -479,9 +478,9 @@ float V_SmithGGXCorrelated(thread const float& NoV, thread const float& NoL, thr
 }
 
 static inline __attribute__((always_inline))
-float screen_occlusion(thread float4& gl_FragCoord, constant LightUBO& _137, texture2d<float> ambient_occlusion, sampler ambient_occlusionSmplr)
+float2 screen_occlusion(thread float4& gl_FragCoord, constant LightUBO& _137, texture2d<float> ambient_occlusion, sampler ambient_occlusionSmplr)
 {
-    return ambient_occlusion.sample(ambient_occlusionSmplr, (gl_FragCoord.xy * _137.cluster_params.xy)).x;
+    return ambient_occlusion.sample(ambient_occlusionSmplr, (gl_FragCoord.xy * _137.cluster_params.xy)).xz;
 }
 
 static inline __attribute__((always_inline))
@@ -590,15 +589,15 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
             color += (((kd + spec) * l.color_outer.xyz) * (NoL * atten));
         }
     }
-    float screen_ao = screen_occlusion(gl_FragCoord, _137, ambient_occlusion, ambient_occlusionSmplr);
-    color *= mix(1.0, screen_ao, _137.occlusion_params.x);
+    float2 screen_ao = screen_occlusion(gl_FragCoord, _137, ambient_occlusion, ambient_occlusionSmplr);
+    color *= screen_ao.y;
     float3 r = reflect(-v, n);
     float3 irradiance = env_irradiance.sample(env_irradianceSmplr, n).xyz * _137.env_params.x;
     float3 reflected = env_specular.sample(env_specularSmplr, r, level(roughness * _137.env_params.z)).xyz * _137.env_params.y;
     float3 param_20 = f0;
     float param_21 = roughness;
     float param_22 = NoV;
-    color += (((diffuse_color * irradiance) + (reflected * env_brdf_approx(param_20, param_21, param_22))) * fast::min(s.occlusion, screen_ao));
+    color += (((diffuse_color * irradiance) + (reflected * env_brdf_approx(param_20, param_21, param_22))) * fast::min(s.occlusion, screen_ao.x));
     out.out_color = float4(fast::min(color + s.emissive, float3(4096.0)), s.alpha);
     return out;
 }

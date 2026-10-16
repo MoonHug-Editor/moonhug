@@ -1,4 +1,4 @@
-// Screen-space ambient occlusion (the engine's scene_ssao node): how much of
+// Screen-space ambient occlusion (the engine's scene_ssao step): how much of
 // the hemisphere above each pixel's surface the scene's depth leaves open.
 // The surface point and its normal come from the depth (the normal from the
 // neighbour on the side whose depth is closer, so an edge does not bend

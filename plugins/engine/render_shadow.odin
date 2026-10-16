@@ -273,11 +273,12 @@ shadow_atlas_grid :: proc(tiles, atlas_size: int) -> (grid, tile: int) {
 }
 
 // Hands this view's cascades and this frame's atlas to the current pass
-// (scene_target_begin calls it after pass_begin). Nothing for what no step
+// (scene_target_begin calls it after pass_begin), each when the running
+// step reads it (`shadow?`, `shadow_atlas?`). Nothing for what no step
 // rendered.
 shadow_bind :: proc(ctx: ^Render_Ctx) {
-	if ctx.shadow_cascades.count > 0 do gfx.set_shadow_cascades(ctx.shadow_cascades)
-	if _atlas.frame == gfx.frame_index + 1 do gfx.set_shadow_atlas(&_atlas.data)
+	if ctx.shadow_cascades.count > 0 && render_reads(ctx, SHADOW_TARGET) do gfx.set_shadow_cascades(ctx.shadow_cascades)
+	if _atlas.frame == gfx.frame_index + 1 && render_reads(ctx, SHADOW_ATLAS_TARGET) do gfx.set_shadow_atlas(&_atlas.data)
 }
 
 // This frame's atlas (shadow_atlas), stored +1 so frame 0 counts.

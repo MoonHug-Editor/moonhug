@@ -137,16 +137,16 @@ void main() {
         }
     }
 
-    // The screen's ambient occlusion shades a part of the direct light
-    // (occlusion_params.x) and all of the environment's.
-    float screen_ao = screen_occlusion();
-    color *= mix(1.0, screen_ao, occlusion_params.x);
+    // The screen's ambient occlusion shades the environment's light and a
+    // part of the lights' (scene_ssao's `direct`).
+    vec2 screen_ao = screen_occlusion();
+    color *= screen_ao.y;
 
     // What no light reaches: the environment, shaded by occlusion.
     vec3 r = reflect(-v, n);
     vec3 irradiance = texture(env_irradiance, n).rgb * env_params.x;
     vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
-    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * min(s.occlusion, screen_ao);
+    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * min(s.occlusion, screen_ao.x);
 
     // Capped well inside half-float range (65504): an overflow is infinite and
     // spreads through bloom as a white block.

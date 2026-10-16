@@ -159,9 +159,6 @@ _Light_Uniform :: struct {
 	tile_vp:        [MAX_SHADOW_TILES]matrix[4, 4]f32,
 	tile_rects:     [MAX_SHADOW_TILES][4]f32,
 	tile_params:    [MAX_SHADOW_TILES][4]f32,
-	// Ambient occlusion (set_ambient_occlusion): x how much of it darkens
-	// direct light.
-	occlusion_params: [4]f32,
 }
 
 // The fragment sampler slot the directional cascades' atlas binds to, for
@@ -178,17 +175,9 @@ ENV_IRRADIANCE_SLOT :: 9
 // sampled like the cascades.
 SHADOW_ATLAS_SLOT   :: 10
 // The screen's ambient occlusion (set_ambient_occlusion, the template's
-// `ambient_occlusion`): red is how much ambient light reaches each pixel.
-// White when none is set.
+// `ambient_occlusion`): red is how much ambient light reaches each pixel,
+// blue how much direct light. White when none is set.
 OCCLUSION_SLOT      :: 11
-
-// A screen-space ambient occlusion texture for a pass's lit draws
-// (set_ambient_occlusion): `tex` the view's size, red 1 open to 0 occluded,
-// `direct` how much of it also darkens direct light (0 none, 1 fully).
-Ambient_Occlusion :: struct {
-	tex:    Texture,
-	direct: f32,
-}
 
 _Env :: struct {
 	has:        bool,
@@ -287,7 +276,7 @@ _pass: struct {
 	target_w:     f32, // the target's size, what a zero viewport covers
 	target_h:     f32,
 	env:          _Env,                  // reset each pass_end
-	occlusion:    Maybe(Ambient_Occlusion), // reset each pass_end
+	occlusion:    Maybe(Texture),        // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -728,11 +717,11 @@ set_shadow_cascades :: proc(c: Shadow_Cascades) {
 }
 
 // The screen's ambient occlusion for the CURRENT pass's lit draws (the
-// engine's scene_ssao step), read at OCCLUSION_SLOT: it shades the
-// environment's light, and `direct` of the lights'. Not calling this leaves
-// every surface open.
-set_ambient_occlusion :: proc(ao: Ambient_Occlusion) {
-	_pass.occlusion = ao
+// engine's scene_ssao step), read at OCCLUSION_SLOT: the view's size, red
+// how much of the environment's light reaches each pixel, blue how much of
+// the lights'. Not calling this leaves every surface open.
+set_ambient_occlusion :: proc(tex: Texture) {
+	_pass.occlusion = tex
 }
 
 // The spot and point lights' shadow atlas for the CURRENT pass's lit draws
@@ -1208,10 +1197,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		light.env_params = {light.ambient_count.x, light.ambient_count.x, 0, 0}
 	}
 	occlusion_gpu := _gfx.white_tex.gpu
-	if ao, has := _pass.occlusion.?; has {
-		occlusion_gpu = ao.tex.gpu
-		light.occlusion_params = {clamp(ao.direct, 0, 1), 0, 0, 0}
-	}
+	if tex, has := _pass.occlusion.?; has do occlusion_gpu = tex.gpu
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false

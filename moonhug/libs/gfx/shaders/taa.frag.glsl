@@ -1,4 +1,4 @@
-// Temporal anti-aliasing's resolve (the engine's scene_taa node): this
+// Temporal anti-aliasing's resolve (the engine's scene_taa step): this
 // frame's image, rendered a fraction of a pixel off (a different jitter each
 // frame), blended into the history of earlier frames, so over a few frames a
 // pixel averages many positions inside itself: edges and highlights thinner

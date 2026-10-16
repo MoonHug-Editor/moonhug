@@ -15,7 +15,7 @@ layout(set = 2, binding = 0) uniform sampler2D tex;       // the HDR scene
 layout(set = 2, binding = 1) uniform sampler2D bloom_tex; // the blurred bloom, white when off
 
 layout(set = 3, binding = 1) uniform MaterialUBO {
-    vec4 params; // x = operator, y = exposure, z = bloom strength, w unused
+    vec4 params; // x = operator, y = exposure, z = 1 when the bloom is bound (its strength is baked in), w unused
 };
 
 vec3 aces(vec3 x) {

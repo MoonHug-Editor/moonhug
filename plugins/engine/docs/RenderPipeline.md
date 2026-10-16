@@ -37,7 +37,7 @@ Edits render as they are made (`render_pipeline_preview`), Save writes the asset
 
 ## Inspecting a frame
 
-While the window draws, the engine captures the slot it shows (`render_inspect_request`): the scene view's run of that slot, or the first camera's when the scene view renders another slot, and the frame lane whenever it runs. After each step it copies every target the step took into a thumbnail, so an in-place target like `hdr` has one image per pass that drew into it, each as that pass left it. It also records what each step drew. A `Depth` target, and a color target a step drew only the depth of (the depth prepass), show their depth as grey, near white (`gfx.draw_depth_view`). "Show in scene view" copies one pass's target at full size and draws it over the scene view's image at the end of the view's run. A closed window costs nothing.
+While the window draws, the engine captures the slot it shows (`render_inspect_request`): the scene view's run of that slot, or the first camera's when the scene view renders another slot, and the frame lane whenever it runs. After each step it copies every target the step took into a thumbnail, so an in-place target like `hdr` has one image per pass that drew into it, each as that pass left it. It also records what each step drew. A `Depth` target, and a color target a step drew only the depth of (the depth prepass), show their depth as grey, near white (`gfx.draw_depth_view`). "Show in scene view" copies one pass's target at full size and draws it over the scene view's image at the end of the view's run. A closed window costs nothing. While the window looks at a step before `scene_taa` (the selected one, or the one shown in the scene view), the captured run draws with the steady camera: images drawn before the resolve go through the jittered camera and would move up to half a pixel each frame. Selecting `scene_taa` or a later step brings the jitter back.
 
 ## Ports
 
@@ -70,7 +70,8 @@ postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 
 - `summary` is one line of what the step does, shown in the window.
 - `writes` declares each target the step renders as `name[:LDR|HDR|Depth][@scale|@Npx][*]`. A `Depth` target has no color: passes on it are depth-only, each mesh drawn through its shader's depth variant (the shadow atlases are `shadow:Depth@2048px` and `shadow_atlas:Depth@2048px`). `render_target(ctx, name)` allocates it from the declaration (the view's size times the scale, or fixed pixels, required on a per-frame step). `*` makes it the view's final image when the step takes it, so a step that returns early leaves the earlier final in place.
-- `reads` names what the step samples. `render_input(ctx, name)` returns the view's target, a frame step's, or `final`, the finished image so far. nil when no step took that target earlier this frame, even if the pool still holds an older texture of that name. A step that draws the view's objects reads `scene`, which is always there and is not a texture.
+- `reads` names what the step uses from earlier steps. `render_input(ctx, name)` returns the view's target, a frame step's, or `final`, the finished image so far. nil when no step took that target earlier this frame, even if the pool still holds an older texture of that name. A step that draws the view's objects reads `scene`, which is always there and is not a texture.
+- a read ending in `?` is optional: the step works without it, as `scene_opaque` works without shadows or ambient occlusion and the tonemap without bloom. A pipeline where nothing before the step writes it loads without a warning, and the window leaves it out. Everything a step takes from another goes through a declared read, so the window shows every dependency and a port binding redirects it: `scene_target_begin` binds the shadows and the ambient occlusion only for a step that reads them (`render_reads(ctx, name)`).
 - `settings` names a package-level var holding the settings struct's defaults. Each placed instance gets its own copy, edited in the window, stored in the asset, handed to the step as `ctx.settings`.
 - `frame=true` makes a per-frame step.
 
@@ -78,7 +79,7 @@ The prebuild checks the declarations (format, sizes, `final` reserved, a frame s
 
 ## Drawing into the scene
 
-The scene steps are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A step placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the view's shadows bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow steps and the depth prepass use.
+The scene steps are each one gfx pass on the view's `hdr` target sharing its depth (`gfx.pass_begin_target` with `keep_depth`). A step placed between them calls `scene_target_begin(ctx)` to get the same target with the camera set and the shadows and ambient occlusion it reads (`shadow?`, `shadow_atlas?`, `ssao?`) bound, and `render_execute(view, commands, phases)` to draw the view's commands of one phase its own way. `render_execute_depth(commands)` draws the meshes into a depth-only pass (`gfx.pass_begin_target` with `color = false`, or a `Depth` target), what the shadow steps and the depth prepass use.
 
 ## Temporal anti-aliasing
 
@@ -101,7 +102,7 @@ Limits:
 
 ## Ambient occlusion
 
-`scene_ssao`, placed before `scene_opaque`, darkens creases, corners and the ground under objects: how much of the hemisphere above each pixel's surface the view's depth leaves open. The lit draws after it take that as ambient occlusion: it shades the environment's light, together with a material's occlusion map (the smaller of the two counts), and `direct` of the lights' light. The Default pipeline holds it muted: it costs a depth pass over the opaque meshes and three passes over the screen.
+`scene_ssao`, placed before `scene_opaque`, darkens creases, corners and the ground under objects: how much of the hemisphere above each pixel's surface the view's depth leaves open. A step that reads `ssao?` (`scene_opaque`) takes that as ambient occlusion for its lit draws: it shades the environment's light, together with a material's occlusion map (the smaller of the two counts), and `direct` of the lights' light. The Default pipeline holds it muted: it costs a depth pass over the opaque meshes and three passes over the screen.
 
 - the depth comes from the depth prepass. `scene_ssao` draws it itself when no `depth_prepass` ran before it, and `scene_opaque` keeps it either way
 - the surface point and its normal come from the depth. `samples` points spread over the hemisphere around the normal, within `radius` (world units, default 0.5), turned per pixel by a noise pattern
@@ -109,7 +110,7 @@ Limits:
 - two blur passes, across and down, smooth the noise without crossing an object's edge (taps at a different depth count less)
 - `intensity` (default 1) scales the occluded fraction. `direct` (default 0.25) is how much of the occlusion also darkens direct light: 0 shades only the environment's light, as the physics says, a little more grounds objects
 - the scene view's debug modes skip it
-- the result is the `ssao` target: red the open fraction, green the view depth
+- the result is the `ssao` target: red the factor for the environment's light (the open fraction), blue the factor for the lights' (`direct` of the occlusion), green the view depth
 
 ## Validation at load
 
@@ -117,7 +118,7 @@ A pipeline is user data, not an engine invariant, so a problem warns once and th
 
 - a placed step that is not installed (a plugin's step whose link is gone) is skipped
 - a step in a slot the pipeline does not declare, or a per-frame step in a slot lane, is skipped
-- a read nothing before it in the lane writes (the frame lane counts as before every slot lane) is reported, the step runs and its `render_input` returns nil
+- a read nothing before it in the lane writes (the frame lane counts as before every slot lane) is reported, the step runs and its `render_input` returns nil. An optional read (`name?`) is not reported
 
 A camera naming a slot the pipeline lacks renders through `Main` with one warning.
 

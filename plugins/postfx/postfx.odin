@@ -26,7 +26,7 @@ Tonemap_Operator :: enum u8 {
 
 Bloom_Settings :: struct {
 	threshold: f32 `decor:min(0)`, // scene color above this blooms
-	strength:  f32 `decor:min(0)`, // how much of it the tonemap adds back
+	strength:  f32 `decor:min(0)`, // how much of it the tonemap adds back (baked into the bloom image)
 	// The brightest a scene pixel counts for: lower it to keep stray bright
 	// pixels from flaring. The default is half-float range.
 	clamp:     f32 `decor:min(0)`,
@@ -55,11 +55,6 @@ BLOOM_SOURCE   :: "bloom_source"
 TONEMAP_TARGET :: "post"
 FXAA_TARGET    :: "aa"
 
-// The bloom step's strength, handed to the tonemap step that follows it in
-// the lane (bloom renders the image, tonemap adds it).
-@(private = "file")
-_bloom_strength: f32
-
 // The shaders' property block: one vec4, std140.
 @(private = "file")
 _Params :: struct {
@@ -86,7 +81,6 @@ postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 	blur, ok2 := engine.shader_load_fullscreen(engine.Asset_GUID(BLOOM_BLUR_GUID))
 	if !ok1 || !ok2 do return
 
-	_bloom_strength = s.strength // read by the tonemap step of the same lane
 	source := engine.render_target(ctx, BLOOM_SOURCE)
 	scratch := engine.render_target(ctx, BLOOM_SCRATCH)
 	bloom := engine.render_target(ctx, BLOOM_TARGET)
@@ -95,14 +89,16 @@ postfx_bloom :: proc(ctx: ^engine.Render_Ctx) {
 	src_tex := gfx.rt_color_texture(src)
 	_blit(source, bright, {&src_tex}, {s.threshold, 0.5, s.clamp > 0 ? s.clamp : 65472, 0})
 	source_tex := gfx.rt_color_texture(source)
-	_blit(scratch, blur, {&source_tex}, {1 / f32(w), 0, 0, 0})
+	_blit(scratch, blur, {&source_tex}, {1 / f32(w), 0, 1, 0})
+	// The last pass scales by the strength: the bloom image is the light the
+	// tonemap adds, so a tonemap needs nothing from this step but the image.
 	scratch_tex := gfx.rt_color_texture(scratch)
-	_blit(bloom, blur, {&scratch_tex}, {0, 1 / f32(h), 0, 0})
+	_blit(bloom, blur, {&scratch_tex}, {0, 1 / f32(h), max(s.strength, 0), 0})
 }
 
 // Tonemap: the HDR scene plus the bloom (when a bloom step ran before it)
 // to an LDR image, the chain's new final.
-@(render_step={summary="exposure, bloom added, HDR to LDR by the operator", reads="final bloom", writes="post:LDR*", settings="tonemap_defaults"})
+@(render_step={summary="exposure, bloom added, HDR to LDR by the operator", reads="final bloom?", writes="post:LDR*", settings="tonemap_defaults"})
 postfx_tonemap :: proc(ctx: ^engine.Render_Ctx) {
 	s := (^Tonemap_Settings)(ctx.settings)
 	src := engine.render_input(ctx, engine.FINAL_INPUT)
@@ -113,15 +109,12 @@ postfx_tonemap :: proc(ctx: ^engine.Render_Ctx) {
 	dst := engine.render_target(ctx, TONEMAP_TARGET)
 	src_tex := gfx.rt_color_texture(src)
 	bloom_tex: gfx.Texture
-	strength := f32(0)
-	// Absent when no bloom step is placed before this one.
-	if bloom := engine.render_input(ctx, BLOOM_TARGET); bloom != nil {
-		bloom_tex = gfx.rt_color_texture(bloom)
-		strength = _bloom_strength
-	}
+	// Absent when no bloom step ran before this one (an optional read).
+	bloom := engine.render_input(ctx, BLOOM_TARGET)
+	if bloom != nil do bloom_tex = gfx.rt_color_texture(bloom)
 	// An unassigned input binds white, so the bloom slot is always given.
-	inputs := strength > 0 ? []^gfx.Texture{&src_tex, &bloom_tex} : []^gfx.Texture{&src_tex, nil}
-	_blit(dst, shader, inputs, {f32(s.operator), s.exposure, strength, 0})
+	inputs := bloom != nil ? []^gfx.Texture{&src_tex, &bloom_tex} : []^gfx.Texture{&src_tex, nil}
+	_blit(dst, shader, inputs, {f32(s.operator), s.exposure, bloom != nil ? 1 : 0, 0})
 }
 
 // FXAA on the LDR image, the chain's last step.

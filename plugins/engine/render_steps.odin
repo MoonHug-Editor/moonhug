@@ -41,16 +41,19 @@ HDR_TARGET :: "hdr"
 
 // Begins a pass on the view's scene target for a step that draws into the
 // scene: the "hdr" color kept (or cleared to `clear`), the depth kept from
-// the earlier scene steps unless `keep_depth` is false, the view's camera set
-// and its shadows bound. pass_end closes it.
+// the earlier scene steps unless `keep_depth` is false, the view's camera
+// set, and what the running step reads of the shadows and the ambient
+// occlusion bound for its lit draws. pass_end closes it.
 scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_depth := true) -> ^gfx.Render_Target {
 	hdr := render_target(ctx, HDR_TARGET) // every scene step declares `hdr:HDR`
 	gfx.pass_begin_target(hdr, clear, keep_depth)
 	sv := render_draw_view(ctx) // with the TAA jitter, when this run has one
 	gfx.set_view_proj(sv.view_proj, sv.cam_pos)
-	shadow_bind(ctx) // render_shadow.odin: this view's cascades and this frame's atlas, for what cast them
+	shadow_bind(ctx) // render_shadow.odin: this view's cascades and this frame's atlas, when the step reads them
 	environment_bind() // render_environment.odin: this frame's sky light, if an Environment set one
-	if ao, has := ctx.occlusion.?; has do gfx.set_ambient_occlusion(ao) // render_ssao.odin
+	if render_reads(ctx, SSAO_TARGET) {
+		if ao := render_input(ctx, SSAO_TARGET); ao != nil do gfx.set_ambient_occlusion(gfx.rt_color_texture(ao)) // render_ssao.odin
+	}
 	return hdr
 }
 
@@ -82,7 +85,7 @@ depth_prepass :: proc(ctx: ^Render_Ctx) {
 // The first scene step: starts the view's image with the camera's clear and
 // a fresh depth (the depth prepass's when one ran), then the opaque meshes.
 // Its "hdr" is the view's final image until a post step renders a later one.
-@(render_step={summary="clears the view, draws the opaque meshes", reads="scene shadow shadow_atlas", writes="hdr:HDR*"})
+@(render_step={summary="clears the view, draws the opaque meshes", reads="scene shadow? shadow_atlas? ssao?", writes="hdr:HDR*"})
 scene_opaque :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx, ctx.clear, keep_depth = ctx.depth_primed)
 	render_execute(render_draw_view(ctx), ctx.commands, {.Opaque})
@@ -100,7 +103,7 @@ scene_under :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 }
 
-@(render_step={summary="draws the alpha-blended quads back to front", reads="scene shadow shadow_atlas hdr", writes="hdr:HDR"})
+@(render_step={summary="draws the alpha-blended quads back to front", reads="scene shadow? shadow_atlas? hdr", writes="hdr:HDR"})
 scene_transparent :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx)
 	render_execute(render_draw_view(ctx), ctx.commands, {.Transparent})

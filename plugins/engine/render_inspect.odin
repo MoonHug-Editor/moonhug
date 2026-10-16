@@ -41,6 +41,7 @@ Inspect_Step :: struct {
 _inspect: struct {
 	slot:       string, // owned, the slot the window shows
 	requested:  u64,    // gfx.frame_index + 1 of the last request
+	selected:   i32,    // the step the window selected (entry id), 0 = none
 	scene_done: u64,    // gfx.frame_index + 1 when the scene view's run was captured
 	pool:       gfx.Target_Pool, // thumbnails, "<id>/<target>"
 	steps:      map[i32]Inspect_Step,
@@ -51,14 +52,16 @@ _inspect: struct {
 }
 
 // The window calls this every frame it draws: captures happen for `slot`
-// this frame and the next.
-render_inspect_request :: proc(slot: string) {
+// this frame and the next. `selected` is the step the window shows the
+// images of (entry id, 0 = none).
+render_inspect_request :: proc(slot: string, selected: i32 = 0) {
 	context.allocator = runtime.default_allocator()
 	if _inspect.slot != slot {
 		delete(_inspect.slot)
 		_inspect.slot = strings.clone(slot)
 	}
 	_inspect.requested = gfx.frame_index + 1
+	_inspect.selected = selected
 }
 
 render_inspect_active :: proc() -> bool {
@@ -117,6 +120,17 @@ _inspect_step_begins :: proc(id: i32) {
 	_inspect_step_clear(n)
 	n.ran = true
 	_inspect.recording = n
+}
+
+// Whether the step the window looks at (the one shown in the scene view, else
+// the selected one) is among `steps`: the captured run holds the camera
+// steady while it lies before the TAA resolve, since its images are drawn
+// through the jittered camera and would move up to half a pixel each frame.
+_inspect_looks_at :: proc(steps: []Pipeline_Instance) -> bool {
+	id := _inspect.show_id != 0 ? _inspect.show_id : _inspect.selected
+	if id == 0 do return false
+	for inst in steps do if inst.id == id do return true
+	return false
 }
 
 // After it: one thumbnail per target it took, and the full-size copy the

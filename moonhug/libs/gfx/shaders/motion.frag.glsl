@@ -1,4 +1,4 @@
-// Motion vectors (the engine's motion_vectors node): for each pixel of an
+// Motion vectors (the engine's motion_vectors step): for each pixel of an
 // object that moved since the view's last frame, how far its surface point
 // moved on screen, in uv units (this frame's position minus last frame's),
 // both through the steady cameras. Alpha 1 marks the pixels written: the rest

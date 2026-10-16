@@ -15,6 +15,7 @@ _settings_json :: proc(key: string, value: f64) -> json.Value {
 	return obj
 }
 import "moonhug:packages/engine"
+import rpv "moonhug:packages/engine/editor/render_pipeline_view"
 import gfx "moonhug:libs/gfx"
 
 @(private = "file")
@@ -267,4 +268,94 @@ test_render_steps_registered_declarations :: proc(t: ^testing.T) {
 	atlas := engine.render_step_find("shadow_atlas")
 	testing.expect(t, atlas != nil && atlas.frame && atlas.writes[0].px == i32(engine.SHADOW_ATLAS_SIZE) && atlas.writes[0].format == .Depth)
 	testing.expect(t, atlas != nil && atlas.settings_tid == typeid_of(engine.Shadow_Atlas_Settings), "shadow_atlas declares its settings")
+}
+
+// A read declared with a trailing `?` registers without the `?` and marked
+// optional, parallel to the reads: scene_opaque works without shadows and
+// ambient occlusion, scene_taa without motion vectors. render_reads answers
+// for the declared names.
+@(test)
+test_render_steps_optional_reads :: proc(t: ^testing.T) {
+	for n in engine.render_steps() {
+		if n.optional != nil do testing.expectf(t, len(n.optional) == len(n.reads), "%s: one optional flag per read", n.name)
+		for r in n.reads do testing.expectf(t, r[len(r) - 1] != '?', "%s registers %q with its `?`", n.name, r)
+	}
+	optional :: proc(name, read: string) -> (declared, opt: bool) {
+		s := engine.render_step_find(name)
+		if s == nil do return
+		for r, i in s.reads do if r == read do return true, engine.render_step_read_optional(s, i)
+		return
+	}
+	expect_optional :: proc(t: ^testing.T, name, read: string, want: bool, loc := #caller_location) {
+		declared, opt := optional(name, read)
+		testing.expectf(t, declared, "%s reads %s", name, read, loc = loc)
+		testing.expectf(t, opt == want, "%s's read of %s optional = %v", name, read, want, loc = loc)
+	}
+	expect_optional(t, "scene_opaque", engine.SCENE_INPUT, false)
+	expect_optional(t, "scene_opaque", engine.SHADOW_TARGET, true)
+	expect_optional(t, "scene_opaque", engine.SHADOW_ATLAS_TARGET, true)
+	expect_optional(t, "scene_opaque", engine.SSAO_TARGET, true)
+	expect_optional(t, "scene_taa", engine.MOTION_TARGET, true)
+	expect_optional(t, "scene_taa", engine.HDR_TARGET, false)
+
+	ctx := engine.Render_Ctx{step = engine.render_step_find("scene_opaque")}
+	testing.expect(t, engine.render_reads(&ctx, engine.SSAO_TARGET), "scene_opaque reads ssao")
+	testing.expect(t, !engine.render_reads(&ctx, engine.MOTION_TARGET), "scene_opaque does not read motion")
+}
+
+// The Render Pipeline window shows what a step takes from another as a read:
+// with scene_ssao before scene_opaque, ssao is read by scene_opaque, not a
+// scratch target. Without scene_ssao the optional read is no read at all:
+// no ssao row, nothing reported missing.
+@(test)
+test_render_pipeline_window_optional_reads :: proc(t: ^testing.T) {
+	saved := rpv._rp.doc
+	defer rpv._rp.doc = saved
+	find :: proc(m: rpv._Model, name: string) -> ^rpv._Resource {
+		for &r in m.res do if r.name == name do return &r
+		return nil
+	}
+
+	with: engine.Render_Pipeline
+	defer engine.cleanup_Render_Pipeline(&with)
+	engine.pipeline_add_slot(&with, engine.MAIN_SLOT)
+	engine.pipeline_add_step(&with, "scene_ssao", engine.MAIN_SLOT)
+	engine.pipeline_add_step(&with, "scene_opaque", engine.MAIN_SLOT)
+	rpv._rp.doc = with
+	m := rpv._rp_model(engine.MAIN_SLOT)
+	ssao := find(m, engine.SSAO_TARGET)
+	testing.expect(t, ssao != nil, "scene_ssao writes ssao")
+	if ssao != nil {
+		testing.expect(t, !ssao.scratch, "scene_opaque reads ssao: not scratch")
+		testing.expect(t, !ssao.missing, "ssao has its writer")
+	}
+
+	without: engine.Render_Pipeline
+	defer engine.cleanup_Render_Pipeline(&without)
+	engine.pipeline_add_slot(&without, engine.MAIN_SLOT)
+	engine.pipeline_add_step(&without, "scene_opaque", engine.MAIN_SLOT)
+	rpv._rp.doc = without
+	m = rpv._rp_model(engine.MAIN_SLOT)
+	testing.expect(t, find(m, engine.SSAO_TARGET) == nil, "no ssao row without its writer")
+	testing.expect(t, find(m, engine.SHADOW_TARGET) == nil, "no shadow row without its writer")
+	for r in m.res do testing.expectf(t, !r.missing, "%s reported missing", r.name)
+}
+
+// The step the Render Pipeline window looks at: the one shown in the scene
+// view, else the selected one. The captured run draws without the TAA jitter
+// while it lies before the resolve (render_pipeline_run).
+@(test)
+test_render_inspect_looks_at :: proc(t: ^testing.T) {
+	defer engine.render_inspect_request("", 0)
+	defer engine.render_inspect_show(0, "")
+	before := []engine.Pipeline_Instance{{id = 5}, {id = 6}}
+	engine.render_inspect_request(engine.MAIN_SLOT, 6)
+	testing.expect(t, engine._inspect_looks_at(before), "the selected step is before the resolve")
+	engine.render_inspect_request(engine.MAIN_SLOT, 7)
+	testing.expect(t, !engine._inspect_looks_at(before), "a step after the resolve is not")
+	engine.render_inspect_request(engine.MAIN_SLOT, 0)
+	testing.expect(t, !engine._inspect_looks_at(before), "nothing selected")
+	engine.render_inspect_show(5, engine.HDR_TARGET)
+	engine.render_inspect_request(engine.MAIN_SLOT, 7)
+	testing.expect(t, engine._inspect_looks_at(before), "the step shown in the scene view counts over the selection")
 }

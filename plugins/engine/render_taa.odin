@@ -43,7 +43,7 @@ Taa_Settings :: struct {
 
 taa_defaults := Taa_Settings{blend = 0.1}
 
-@(render_step={summary="temporal anti-aliasing: each frame's sub-pixel offset blended into the view's history, back into the scene image", reads="hdr motion", writes="hdr:HDR", settings="taa_defaults"})
+@(render_step={summary="temporal anti-aliasing: each frame's sub-pixel offset blended into the view's history, back into the scene image", reads="hdr motion?", writes="hdr:HDR", settings="taa_defaults"})
 scene_taa :: proc(ctx: ^Render_Ctx) {
 	// The steps after this one draw with the steady camera.
 	defer ctx.jitter = {}

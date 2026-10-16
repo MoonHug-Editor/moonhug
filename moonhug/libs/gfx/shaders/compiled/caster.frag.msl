@@ -44,7 +44,6 @@ struct LightUBO
     float4x4 tile_vp[48];
     float4 tile_rects[48];
     float4 tile_params[48];
-    float4 occlusion_params;
 };
 
 struct ClusterUBO

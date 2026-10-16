@@ -68,9 +68,6 @@ layout(set = 3, binding = 0) uniform LightUBO {
     mat4 tile_vp[MAX_SHADOW_TILES];
     vec4 tile_rects[MAX_SHADOW_TILES];
     vec4 tile_params[MAX_SHADOW_TILES]; // x near, y far, z one texel's world size at distance 1
-    // Ambient occlusion (gfx.set_ambient_occlusion): x how much of it darkens
-    // direct light.
-    vec4 occlusion_params;
 };
 
 // Per draw, from gfx.draw_mesh: x = the material's alpha cutoff (0 = no
@@ -110,12 +107,14 @@ uint light_tile_word(int tile, int w) {
 layout(set = 2, binding = 7) uniform sampler2DShadow shadow_map;
 layout(set = 2, binding = 10) uniform sampler2DShadow shadow_atlas;
 
-// The screen's ambient occlusion (the scene_ssao node): red is how much
-// ambient light reaches the pixel, 1 when there is none.
+// The screen's ambient occlusion (the scene_ssao step): red is how much
+// ambient light reaches the pixel, blue how much direct light, both 1 when
+// there is none.
 layout(set = 2, binding = 11) uniform sampler2D ambient_occlusion;
 
-float screen_occlusion() {
-    return texture(ambient_occlusion, gl_FragCoord.xy * cluster_params.xy).r;
+// x: the factor for the environment's light, y: for the lights'.
+vec2 screen_occlusion() {
+    return texture(ambient_occlusion, gl_FragCoord.xy * cluster_params.xy).rb;
 }
 // The environment (gfx.set_environment): the specular cube prefiltered for
 // rising roughness along its mips, and the diffuse irradiance cube. White

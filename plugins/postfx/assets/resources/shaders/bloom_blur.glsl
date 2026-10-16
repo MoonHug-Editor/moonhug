@@ -1,5 +1,6 @@
 // Bloom, passes 2 and 3: a 9-tap gaussian along `dir` (one texel in uv,
-// horizontal then vertical), each on the previous pass's output.
+// horizontal then vertical), each on the previous pass's output, times a
+// scale (1, then the bloom's strength).
 #version 450
 
 layout(location = 0) in vec2 frag_uv;
@@ -8,7 +9,7 @@ layout(location = 0) out vec4 out_color;
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
 layout(set = 3, binding = 1) uniform MaterialUBO {
-    vec4 params; // xy = blur direction in uv (one texel), zw unused
+    vec4 params; // xy = blur direction in uv (one texel), z = scale, w unused
 };
 
 void main() {
@@ -19,5 +20,5 @@ void main() {
         c += texture(tex, frag_uv + step * float(i)).rgb * w[i];
         c += texture(tex, frag_uv - step * float(i)).rgb * w[i];
     }
-    out_color = vec4(c, 1.0);
+    out_color = vec4(c * params.z, 1.0);
 }

@@ -102,8 +102,9 @@ Taa_Params :: struct {
 
 // Screen-space ambient occlusion (shaders/ssao.frag.glsl): the scene's depth
 // in, red the open fraction and green the view depth out. Its block is
-// Ssao_Params. SSAO_BLUR_SHADER blurs that along one axis, keeping edges
-// (Ssao_Blur_Params).
+// Ssao_Params. SSAO_BLUR_SHADER blurs that along one axis, keeping edges,
+// and writes blue, the factor for direct light (Ssao_Blur_Params): what
+// set_ambient_occlusion takes.
 SSAO_SHADER      :: "ssao"
 SSAO_BLUR_SHADER :: "ssao_blur"
 
@@ -114,7 +115,9 @@ Ssao_Params :: struct {
 }
 
 Ssao_Blur_Params :: struct {
-	params: [4]f32, // xy = the step between taps in pixels: {1, 0} then {0, 1}
+	// xy = the step between taps in pixels: {1, 0} then {0, 1}, z = how
+	// much of the occlusion also darkens direct light, written to blue
+	params: [4]f32,
 }
 
 // The world shader that draws motion vectors (shaders/motion.frag.glsl): a

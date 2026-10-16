@@ -470,7 +470,8 @@ _instance_settings :: proc(step: ^Render_Step, v: json.Value) -> rawptr {
 }
 
 // Every read has a writer that ran before it: the frame lane for a slot's
-// step, earlier steps in the same lane, an earlier final for "final".
+// step, earlier steps in the same lane, an earlier final for "final". An
+// optional read (`name?`) may have none.
 @(private = "file")
 _pipeline_check_reads :: proc(r: ^Pipeline_Runtime) {
 	check_lane :: proc(lane: []Pipeline_Instance, frame: []Pipeline_Instance, slot: string) {
@@ -478,7 +479,8 @@ _pipeline_check_reads :: proc(r: ^Pipeline_Runtime) {
 		has_final := false
 		for inst in frame do for d in inst.writes do written[d.name] = true
 		for inst in lane {
-			for t in inst.reads {
+			for t, i in inst.reads {
+				if render_step_read_optional(inst.step, i) do continue
 				ok := t == SCENE_INPUT || (t == FINAL_INPUT ? has_final : (t in written || _writes_name(inst, t)))
 				if !ok do log.warningf("[Render] pipeline step %q in %s reads %q, which nothing before it writes", inst.step.name, slot == "" ? "the frame lane" : fmt.tprintf("slot %q", slot), t)
 			}
@@ -530,12 +532,14 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	}
 	inspect := _inspect_lane_begins(slot, ctx)
 	// Temporal anti-aliasing jitters the camera for the scene steps when the
-	// lane resolves it (render_taa.odin). The debug view modes draw steady.
+	// lane resolves it (render_taa.odin). The debug view modes draw steady,
+	// and so does the captured run while the Render Pipeline window looks at
+	// a step before the resolve: its images would shake.
 	ctx.jitter = {}
 	if ctx.view.mode == .Shaded {
-		for inst in lane {
+		for inst, i in lane {
 			if inst.step.name == TAA_STEP && !inst.muted {
-				ctx.jitter = taa_jitter(ctx)
+				if !(inspect && _inspect_looks_at(lane[:i])) do ctx.jitter = taa_jitter(ctx)
 				break
 			}
 		}

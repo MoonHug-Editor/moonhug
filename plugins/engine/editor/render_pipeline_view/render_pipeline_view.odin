@@ -190,7 +190,7 @@ render_pipeline_window_draw :: proc() {
 		_rp_set_string(&_rp.slot, first)
 	}
 	// Thumbnails come from the frames rendered while the window shows.
-	engine.render_inspect_request(_rp.slot)
+	engine.render_inspect_request(_rp.slot, _rp.sel)
 
 	_rp_toolbar()
 	_rp_tabs()

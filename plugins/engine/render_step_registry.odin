@@ -64,9 +64,6 @@ Render_Ctx :: struct {
 	// scene steps draw through render_draw_view, which applies it, until
 	// scene_taa resolves and clears it. Zero = the steady camera.
 	jitter: [2]f32,
-	// This view's ambient occlusion (scene_ssao), bound by scene_target_begin
-	// for the lit draws after it. nil = none this run.
-	occlusion: Maybe(gfx.Ambient_Occlusion),
 	// The view targets steps took this run (render_target), temp-allocated:
 	// what render_input finds. A target a step did not take this run is
 	// absent, even though the pool still holds last frame's texture.
@@ -134,6 +131,11 @@ _view_pools: map[^gfx.Render_Target]^gfx.Target_Pool
 // `final`, the finished image so far. `scene` names the view's objects (the
 // commands collected for it): a step that draws them reads `scene`, which
 // is always available and is not a texture (render_input returns nil).
+// A read ending in `?` is optional: the step works without it (no shadows,
+// no ambient occlusion, no bloom), so a pipeline where nothing before the
+// step writes it loads without a warning, and render_input returns nil.
+// Everything a step uses from another step goes through a declared read:
+// that is what the pipeline checks and the window shows.
 //
 // `frame=true` makes a per-frame step: it does not read the view, so it runs
 // once per frame before any view's steps, however many views run the pipeline
@@ -166,6 +168,9 @@ Render_Step :: struct {
 	line:    int,
 	frame:  bool,     // per-frame step: once per frame, before any view's steps
 	reads:  []string, // target names, as declared
+	// Parallel to reads, nil when none is: read declared with a trailing
+	// `?`, which the step works without.
+	optional: []bool,
 	writes: []Render_Target_Decl,
 	run:    Render_Step_Proc,
 	// The settings struct: its typeid, the typeid of a pointer to it (what
@@ -265,6 +270,21 @@ _render_steps_init :: proc "contextless" () {
 	context = runtime.default_context()
 	_render_steps = make([dynamic]Render_Step, runtime.default_allocator())
 	_frame_taken = make(map[string]u64, runtime.default_allocator())
+}
+
+// Whether read `i` of the step is optional (declared `name?`).
+render_step_read_optional :: proc(step: ^Render_Step, i: int) -> bool {
+	return i < len(step.optional) && step.optional[i]
+}
+
+// Whether the running step declares a read of `name` (as declared, before
+// the pipeline's bindings): for shared helpers that serve several steps, such
+// as scene_target_begin, which binds the shadows and the ambient occlusion
+// only for a step that reads them.
+render_reads :: proc(ctx: ^Render_Ctx, name: string) -> bool {
+	assert(ctx.step != nil, "render_reads outside a render step")
+	for r in ctx.step.reads do if r == name do return true
+	return false
 }
 
 // Adds a step. Called by the generated registrations.

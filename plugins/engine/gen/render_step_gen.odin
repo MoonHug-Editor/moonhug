@@ -38,11 +38,15 @@ Target_Decl :: struct {
 // The read name reserved for the finished image so far (engine.FINAL_INPUT).
 _FINAL_INPUT :: "final"
 
+// The read name for the view's objects (engine.SCENE_INPUT).
+_SCENE_INPUT :: "scene"
+
 Render_Step_GenComp :: struct {
 	summary:  string,
 	file:     string, // repo-relative, for the pipeline window's jump to code
 	line:     int,
 	reads:    []string,
+	optional: []bool, // parallel to reads: declared with a trailing `?`
 	writes:   []Target_Decl,
 	frame:    bool,   // frame=true: once per frame, before the view's steps
 	settings: string, // the defaults var in the step's package, "" = no settings
@@ -83,17 +87,37 @@ render_step_provide :: proc(w: ^db.World) -> bool {
 			}
 			append(&writes, d)
 		}
-		for t in _words(args.fields["reads"]) {
+		// `name?` is an optional read: the step runs without it when nothing
+		// before it writes the target, and the pipeline does not warn.
+		reads := make([dynamic]string)
+		optional := make([dynamic]bool)
+		any_optional := false
+		for word in _words(args.fields["reads"]) {
+			t := strings.trim_suffix(word, "?")
+			opt := len(t) < len(word)
 			if frame && t == _FINAL_INPUT {
 				fmt.eprintfln("prebuild: %s: render step %s is per frame and runs before any view has a final image, it cannot read %q", where_, decl.name, t)
 				_provide_failed = true
 			}
+			if opt && t == _SCENE_INPUT {
+				fmt.eprintfln("prebuild: %s: render step %s reads %q: the view's objects are always there, a read of them cannot be optional", where_, decl.name, word)
+				_provide_failed = true
+			}
+			if t == "" {
+				fmt.eprintfln("prebuild: %s: render step %s reads %q: a read needs a name", where_, decl.name, word)
+				_provide_failed = true
+				continue
+			}
+			append(&reads, t)
+			append(&optional, opt)
+			any_optional ||= opt
 		}
 		db.set(steps, entity, Render_Step_GenComp{
 			summary  = args.fields["summary"],
 			file     = gen_facts.decl_rel_path(decl),
 			line     = decl.decl.pos.line,
-			reads    = _words(args.fields["reads"]),
+			reads    = reads[:],
+			optional = any_optional ? optional[:] : nil,
 			writes   = writes[:],
 			frame    = frame,
 			settings = args.fields["settings"],
@@ -263,6 +287,7 @@ _write_target_arrays :: proc(b: ^strings.Builder, rows: []_Step_Row, own_pkg: st
 	if len(rows) > 0 do strings.write_string(b, "\n")
 	for r, i in rows {
 		if len(r.reads) > 0 do fmt.sbprintf(b, "@(private = \"file\") _reads_%d := %s\n", i, _string_array(r.reads))
+		if len(r.optional) > 0 do fmt.sbprintf(b, "@(private = \"file\") _optional_%d := %s\n", i, _bool_array(r.optional))
 		if len(r.writes) > 0 do fmt.sbprintf(b, "@(private = \"file\") _writes_%d := %s\n", i, _decl_array(r.writes, own_pkg))
 	}
 }
@@ -285,14 +310,27 @@ _write_register :: proc(b: ^strings.Builder, r: _Step_Row, index: int, own_pkg: 
 	qual := r.pkg == own_pkg ? "" : fmt.tprintf("%s.", r.pkg)
 	prefix := own_pkg == "engine" ? "" : "engine."
 	reads := len(r.reads) > 0 ? fmt.tprintf("_reads_%d[:]", index) : "nil"
+	optional := len(r.optional) > 0 ? fmt.tprintf("_optional_%d[:]", index) : "nil"
 	writes := len(r.writes) > 0 ? fmt.tprintf("_writes_%d[:]", index) : "nil"
 	settings := ""
 	if r.settings != "" {
 		v := fmt.tprintf("%s%s", qual, r.settings)
 		settings = fmt.tprintf(", settings_tid = typeid_of(type_of(%s)), settings_ptr_tid = typeid_of(^type_of(%s)), settings_size = size_of(type_of(%s)), settings_default = &%s", v, v, v, v)
 	}
-	fmt.sbprintf(b, "\t%srender_step_register(%sRender_Step{{name = %q, pkg = %q, summary = %q, file = %q, line = %d, frame = %t, reads = %s, writes = %s, run = %s%s%s}})\n",
-		prefix, prefix, r.name, r.pkg, r.summary, r.file, r.line, r.frame, reads, writes, qual, r.name, settings)
+	fmt.sbprintf(b, "\t%srender_step_register(%sRender_Step{{name = %q, pkg = %q, summary = %q, file = %q, line = %d, frame = %t, reads = %s, optional = %s, writes = %s, run = %s%s%s}})\n",
+		prefix, prefix, r.name, r.pkg, r.summary, r.file, r.line, r.frame, reads, optional, writes, qual, r.name, settings)
+}
+
+@(private = "file")
+_bool_array :: proc(flags: []bool) -> string {
+	b := strings.builder_make(context.temp_allocator)
+	strings.write_string(&b, "[?]bool{")
+	for f, i in flags {
+		if i > 0 do strings.write_string(&b, ", ")
+		strings.write_string(&b, f ? "true" : "false")
+	}
+	strings.write_string(&b, "}")
+	return strings.to_string(b)
 }
 
 @(private = "file")

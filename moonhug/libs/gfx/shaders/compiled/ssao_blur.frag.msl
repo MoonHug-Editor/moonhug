@@ -80,7 +80,8 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _54 [[buffer
             total += w;
         }
     }
-    out.out_ao = float4(sum / total, centre.y, 0.0, 1.0);
+    float open = sum / total;
+    out.out_ao = float4(open, centre.y, mix(1.0, open, _54.params.z), 1.0);
     return out;
 }
 

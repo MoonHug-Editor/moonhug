@@ -221,7 +221,8 @@ _rp_ports :: proc(m: ^_Model, ci: int) {
 			}
 			im.EndCombo()
 		}
-		widgets.tooltip(fmt.ctprintf("The code reads %q, this placed step reads the target chosen here", port))
+		optional := engine.render_step_read_optional(n, i) ? ", optional: the step runs without it when nothing before it writes it" : ""
+		widgets.tooltip(fmt.ctprintf("The code reads %q%s. This placed step reads the target chosen here", port, optional))
 		im.PopID()
 	}
 
