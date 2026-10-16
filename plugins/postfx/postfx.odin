@@ -73,9 +73,21 @@ Exposure_Settings :: struct {
 	// and toward a darker one (an eye adapts to light faster than to dark).
 	speed_dark_to_light: f32 `decor:min(0)`,
 	speed_light_to_dark: f32 `decor:min(0)`,
+	// Meter from a histogram of the brightness: the darkest `histogram_low`
+	// percent of the image and the brightest above `histogram_high` percent
+	// are left out of the average, so a black border or the sun does not
+	// pull the exposure. Off, every pixel counts.
+	histogram:      bool,
+	histogram_low:  f32 `decor:range(0, 100)`,
+	histogram_high: f32 `decor:range(0, 100)`,
 }
 
-exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, compensation = 0, speed_dark_to_light = 3, speed_light_to_dark = 1}
+exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, compensation = 0, speed_dark_to_light = 3, speed_light_to_dark = 1, histogram = true, histogram_low = 40, histogram_high = 95}
+
+// The histogram's bins cover this range of log2 luminance, 256 bins over 24
+// stops: a tenth of a stop each.
+@(private = "file") EXPOSURE_HISTOGRAM_MIN :: -8.0
+@(private = "file") EXPOSURE_HISTOGRAM_MAX :: 16.0
 
 // The shader assets, by the guid in their .meta files.
 @(private = "file") BLOOM_BRIGHT_GUID := uuid.read("caa45a1a-ee91-410b-951c-60afa81d716f") or_else uuid.Identifier{}
@@ -85,6 +97,8 @@ exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, co
 @(private = "file") EXPOSURE_LUM_GUID    := uuid.read("d549108d-4d60-46b2-8c15-116703cefc10") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_REDUCE_GUID := uuid.read("eead4648-77e6-463e-8d8a-c74ad4aff236") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_ADAPT_GUID  := uuid.read("4def1fcf-8e40-45de-8cd5-75550f990c39") or_else uuid.Identifier{}
+@(private = "file") EXPOSURE_HISTOGRAM_GUID  := uuid.read("7e3cacf2-566d-4df7-8cae-944e19b4c8bb") or_else uuid.Identifier{}
+@(private = "file") EXPOSURE_PERCENTILE_GUID := uuid.read("c86417c6-cc5e-43ed-9972-7c8fbb225bf4") or_else uuid.Identifier{}
 
 // Target names, as the steps declare them. "bloom" is what tonemap reads,
 // the others are the chain's scratch.
@@ -94,9 +108,13 @@ BLOOM_SOURCE   :: "bloom_source"
 TONEMAP_TARGET :: "post"
 FXAA_TARGET    :: "aa"
 // The auto exposure, 1 x 1: red the factor the bloom and the tonemap
-// multiply the scene by. The others are the metering's chain.
-EXPOSURE_TARGET :: "exposure"
-EXPOSURE_CHAIN  :: [?]string{"exposure_64", "exposure_16", "exposure_4", "exposure_avg"}
+// multiply the scene by. The others are the metering's chain: the reduction
+// (the histogram replaces its last three levels when it is on), the
+// histogram, and the average both end in.
+EXPOSURE_TARGET    :: "exposure"
+EXPOSURE_CHAIN     :: [?]string{"exposure_64", "exposure_16", "exposure_4"}
+EXPOSURE_HISTOGRAM :: "exposure_hist"
+EXPOSURE_AVERAGE   :: "exposure_avg"
 
 // The shaders' property block: one vec4, std140.
 @(private = "file")
@@ -114,12 +132,12 @@ _blit :: proc(dst: ^gfx.Render_Target, shader: string, inputs: []^gfx.Texture, p
 }
 
 // Auto exposure: the scene's average log2 luminance measured on the GPU
-// (256 x 256, then down to 1 x 1), and the exposure that brings it to the
-// target,
-// reached over time from this view's last frame. Writes it as a 1 x 1
-// target the bloom and the tonemap read (`exposure?`). Leaves the scene image
-// as the final.
-@(render_step={summary="auto exposure: the scene's average brightness metered, the exposure adapted to it over time, for the bloom and the tonemap", reads="final", writes="exposure_lum:HDR@256px exposure_64:HDR@64px exposure_16:HDR@16px exposure_4:HDR@4px exposure_avg:HDR@1px exposure:HDR@1px", settings="exposure_defaults"})
+// (256 x 256, reduced to 64 x 64, then either down to 1 x 1 or through a
+// histogram whose middle percentiles average to 1 x 1), and the exposure
+// that brings it to the target, reached over time from this view's last
+// frame. Writes it as a 1 x 1 target the bloom and the tonemap read
+// (`exposure?`). Leaves the scene image as the final.
+@(render_step={summary="auto exposure: the scene's brightness metered (by average or histogram), the exposure adapted to it over time, for the bloom and the tonemap", reads="final", writes="exposure_lum:HDR@256px exposure_64:HDR@64px exposure_16:HDR@16px exposure_4:HDR@4px exposure_hist:HDR@16px exposure_avg:HDR@1px exposure:HDR@1px", settings="exposure_defaults"})
 postfx_exposure :: proc(ctx: ^engine.Render_Ctx) {
 	s := (^Exposure_Settings)(ctx.settings)
 	src := engine.render_input(ctx, engine.FINAL_INPUT)
@@ -132,12 +150,31 @@ postfx_exposure :: proc(ctx: ^engine.Render_Ctx) {
 	prev := engine.render_target(ctx, "exposure_lum")
 	src_tex := gfx.rt_color_texture(src)
 	_blit(prev, lum_shader, {&src_tex}, {s.metering == .Center_Weighted ? 1 : 0, 0, 0, 0})
-	for name in EXPOSURE_CHAIN {
-		next := engine.render_target(ctx, name)
+	average := engine.render_target(ctx, EXPOSURE_AVERAGE)
+	histogram, ok4 := engine.shader_load_fullscreen(engine.Asset_GUID(EXPOSURE_HISTOGRAM_GUID))
+	percentile, ok5 := engine.shader_load_fullscreen(engine.Asset_GUID(EXPOSURE_PERCENTILE_GUID))
+	if s.histogram && ok4 && ok5 {
+		// 256 to 64, the histogram of that, the average of its middle.
+		first := engine.render_target(ctx, EXPOSURE_CHAIN[0])
 		tex := gfx.rt_color_texture(prev)
-		_blit(next, reduce, {&tex}, {})
-		prev = next
+		_blit(first, reduce, {&tex}, {})
+		hist := engine.render_target(ctx, EXPOSURE_HISTOGRAM)
+		tex = gfx.rt_color_texture(first)
+		_blit(hist, histogram, {&tex}, {EXPOSURE_HISTOGRAM_MIN, EXPOSURE_HISTOGRAM_MAX, 0, 0})
+		tex = gfx.rt_color_texture(hist)
+		_blit(average, percentile, {&tex}, {clamp(s.histogram_low, 0, 100) / 100, clamp(s.histogram_high, 0, 100) / 100, 0, 0})
+	} else {
+		// 256, 64, 16, 4, 1: the average of everything.
+		for name in EXPOSURE_CHAIN {
+			next := engine.render_target(ctx, name)
+			tex := gfx.rt_color_texture(prev)
+			_blit(next, reduce, {&tex}, {})
+			prev = next
+		}
+		tex := gfx.rt_color_texture(prev)
+		_blit(average, reduce, {&tex}, {})
 	}
+	prev = average
 
 	// Two 1 x 1 targets in turn: last frame's result is this frame's history.
 	state := _exposure_state(ctx)
