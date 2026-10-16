@@ -5,11 +5,12 @@ order: 10
 tags: ["rendering", "plugins"]
 ---
 
-The postfx plugin ships five render steps (plugins/engine/docs/RenderPipeline.md). The default pipeline places `postfx_motion_blur` (muted) between `scene_taa` and `scene_over`, and three of the others in its Main lane after `scene_over` and before `final_blit`, in this order, `postfx_exposure` muted:
+The postfx plugin ships six render steps (plugins/engine/docs/RenderPipeline.md). The default pipeline places `postfx_motion_blur` and `postfx_dof` (both muted) between `scene_taa` and `scene_over`, and three of the others in its Main lane after `scene_over` and before `final_blit`, in this order, `postfx_exposure` muted:
 
 | Step | Reads | Writes | What |
 |---|---|---|---|
 | `postfx_motion_blur` | `hdr` and `motion?` (optional) | `hdr:HDR` and a scratch target | each pixel smeared along how far it moved since last frame, with the camera and with the objects that moved |
+| `postfx_dof` | `hdr` | `hdr:HDR`, a full-size and two half-size scratch targets | depth of field: the scene blurred by its distance from the focus, through a thin lens |
 | `postfx_exposure` | `final` (the scene's HDR image) | `exposure:HDR@1px` and the metering's chain | the scene's average brightness metered, the exposure adapted to it over time |
 | `postfx_bloom` | `final` and `exposure?` (optional) | `bloom:HDR@0.5` and two scratch targets | a bright pass above the threshold, then a horizontal and a vertical gaussian blur |
 | `postfx_tonemap` | `final`, `bloom?` and `exposure?` (optional) | `post:LDR*` | the exposures, the bloom added, colour grading, then the operator: none, Reinhard, ACES or ACES Hill, then the lookup texture |
@@ -24,6 +25,7 @@ Per placed step, in the Render Pipeline window's settings pane, stored in the pi
 - `postfx_exposure`: `metering` (Center Weighted, the default: the middle of the image counts most, a tenth at the corners; or Average), `target` (the average brightness the exposure brings the scene to, 0.6: a sunlit scene looks as it does without auto exposure, a darker one is lifted to that), `min_ev` and `max_ev` (the range of average brightness metered, in stops: -4 to 8, so a dark scene is lifted by at most about ten times), `compensation` (stops brighter or darker), `speed_dark_to_light` and `speed_light_to_dark` (how fast it follows, per second: 3 toward a brighter scene, 1 toward a darker one), `histogram` (on by default: meter the middle of a histogram of the brightness, between `histogram_low` and `histogram_high` percent of the image, 40 to 95, so the darkest and the brightest parts do not pull the exposure)
 - `postfx_bloom`: `threshold` (scene color above it blooms, as exposed), `strength` (how much the tonemap adds back, applied in the last blur pass), `clamp` (the brightest a scene pixel counts for, half-float range by default). The bright pass averages four taps per half-size pixel weighted by 1 / (1 + brightness) (Karis), so a lone very bright pixel cannot flare into a glowing block
 - `postfx_motion_blur`: `intensity` (how much of each frame's motion the blur spans, 0.5: a shutter open for half the frame), `samples` (taps along the motion, 8), `max_blur` (the longest blur as a fraction of the view's height, 0.05), `camera` (blur with the camera's motion too, on)
+- `postfx_dof`: `focus_distance` (the sharp distance, metres, 10), `focal_length` (mm, 50) and `aperture` (f-number, 5.6: a longer lens or a lower f-number blurs more either side of the focus, on a 24 mm sensor), `max_blur` (the widest blur as a fraction of the view's height, 0.03), `samples` (taps on each pixel's disc, 24)
 - `postfx_tonemap`: `operator` (None, Reinhard, ACES, ACES Hill), `exposure` (multiplier before the operator, after the auto exposure), `grading` (Colour grading, below). ACES Hill is Stephen Hill's fit of the ACES transforms, the curve the Khronos glTF Sample Viewer uses: with exposure 1 / 0.6 it matches the Sample Viewer's default look
 - `postfx_fxaa`: none
 
@@ -49,6 +51,16 @@ The bloom's bright pass multiplies the scene by it, so the threshold applies to 
 - each pixel gathers along its own motion only: a moving object blurs inside its silhouette and does not smear over what is behind it, and a static object in front of a moving background keeps its edge
 - the motion is per frame as drawn, not per second: a faster frame rate shows less blur for the same speed, as a camera with the same shutter share would
 - placed after `scene_taa` and before `scene_over`, so the gizmos stay sharp. The scene view's debug modes skip it
+
+## Depth of field
+
+`postfx_dof` blurs the HDR scene by how far each pixel is from the focus, writing back into `hdr`:
+
+- the circle of confusion comes from a thin lens: the focal length, the aperture (focal length over f-number) and the focus distance give the circle a point at the pixel's view depth makes on a 24 mm sensor, in pixels of the half-size image, negative in front of the focus and positive behind it, capped at `max_blur` (`dof_coc`). The half-size image averages each 2 x 2 block's colour and takes the circle of its nearest pixel, so a near object keeps its spread
+- each half-size pixel gathers `samples` taps on a disc of the widest radius (a golden-angle spiral, turned per pixel by noise). A tap counts where its own circle, or the pixel's, reaches it: a blurred near object spreads over its sharp neighbours, and a sharp object does not bleed into a blurred one behind it (`dof_bokeh`)
+- the combine takes the sharp scene where the circle is under half a pixel and the blur, read in a 4-tap tent, where it is two pixels or more, blended between (`dof_combine`)
+- the sky is at the far plane: it blurs when the focus is near, as a camera's would
+- placed with the motion blur, after `scene_taa` and before `scene_over`, so the gizmos stay sharp. The scene view's debug modes skip it. The focus follows the step's settings, a Volume can move it per place
 
 ## Colour grading
 

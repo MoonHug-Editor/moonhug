@@ -97,6 +97,9 @@ exposure_defaults := Exposure_Settings{target = 0.6, min_ev = -4, max_ev = 8, co
 @(private = "file") EXPOSURE_LUM_GUID    := uuid.read("d549108d-4d60-46b2-8c15-116703cefc10") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_REDUCE_GUID := uuid.read("eead4648-77e6-463e-8d8a-c74ad4aff236") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_ADAPT_GUID  := uuid.read("4def1fcf-8e40-45de-8cd5-75550f990c39") or_else uuid.Identifier{}
+@(private = "file") DOF_COC_GUID         := uuid.read("14040ade-402b-4109-a8ec-8b896b3eb896") or_else uuid.Identifier{}
+@(private = "file") DOF_BOKEH_GUID       := uuid.read("90ca68cd-d796-459f-8be1-93f32a26c24d") or_else uuid.Identifier{}
+@(private = "file") DOF_COMBINE_GUID     := uuid.read("eb083392-cd33-4191-8d5f-78d80bb7ec99") or_else uuid.Identifier{}
 @(private = "file") MOTION_BLUR_GUID     := uuid.read("e2ab81a3-c95e-4b50-a044-3af61ec110c3") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_HISTOGRAM_GUID  := uuid.read("7e3cacf2-566d-4df7-8cae-944e19b4c8bb") or_else uuid.Identifier{}
 @(private = "file") EXPOSURE_PERCENTILE_GUID := uuid.read("c86417c6-cc5e-43ed-9972-7c8fbb225bf4") or_else uuid.Identifier{}
@@ -431,6 +434,75 @@ _motion_blur_state :: proc(ctx: ^engine.Render_Ctx) -> ^_Motion_Blur_View {
 	if v, ok := &_motion_blur_views[key]; ok do return v
 	_motion_blur_views[key] = {}
 	return &_motion_blur_views[key]
+}
+
+// Depth of field: the scene blurred by how far each pixel is from the
+// focus distance, through a thin lens (focal length, aperture), back into
+// `hdr`. Placed with the motion blur, before scene_over.
+Dof_Settings :: struct {
+	// The distance that is sharp, in world units (metres).
+	focus_distance: f32 `decor:min(0.01)`,
+	// The lens, as a camera's: a longer focal length and a wider aperture
+	// (a lower f-number) blur more, either side of the focus. The sensor is
+	// 24 mm high.
+	focal_length:   f32 `decor:range(1, 300)`,
+	aperture:       f32 `decor:range(0.7, 32)`,
+	// The widest blur, as a fraction of the view's height.
+	max_blur:       f32 `decor:range(0, 0.2)`,
+	// Taps on the disc each pixel gathers: more is smoother and costs more.
+	samples:        int `decor:range(4, 64)`,
+}
+
+dof_defaults := Dof_Settings{focus_distance = 10, focal_length = 50, aperture = 5.6, max_blur = 0.03, samples = 24}
+
+DOF_HALF_TARGET :: "dof_half"
+DOF_BLUR_TARGET :: "dof_blur"
+DOF_TARGET      :: "dof"
+
+@(render_step={summary="depth of field: the scene blurred by its distance from the focus, through a thin lens", reads="hdr", writes="dof_half:HDR@0.5 dof_blur:HDR@0.5 dof:HDR hdr:HDR", settings="dof_defaults"})
+postfx_dof :: proc(ctx: ^engine.Render_Ctx) {
+	if ctx.view.mode != .Shaded do return
+	s := (^Dof_Settings)(ctx.settings)
+	hdr := engine.render_input(ctx, engine.HDR_TARGET)
+	if hdr == nil do return
+	coc, ok1 := engine.shader_load_fullscreen(engine.Asset_GUID(DOF_COC_GUID))
+	bokeh, ok2 := engine.shader_load_fullscreen(engine.Asset_GUID(DOF_BOKEH_GUID))
+	combine, ok3 := engine.shader_load_fullscreen(engine.Asset_GUID(DOF_COMBINE_GUID))
+	if !ok1 || !ok2 || !ok3 do return
+
+	half := engine.render_target(ctx, DOF_HALF_TARGET)
+	max_radius := max(s.max_blur, 0) * f32(half.height)
+	if max_radius < 0.5 do return
+	// The lens in world units (metres): the sensor is 24 mm high.
+	focal := clamp(s.focal_length, 1, 300) / 1000
+	aperture := focal / clamp(s.aperture, 0.7, 32)
+	params := _Dof_Params{
+		inv_proj = linalg.inverse(ctx.view.proj),
+		params   = {max(s.focus_distance, 0.01), focal, aperture, max_radius},
+		params2  = {f32(half.height) / 0.024, 0, 0, 0},
+	}
+	src := gfx.rt_color_texture(hdr)
+	depth := gfx.rt_depth_texture(hdr)
+	gfx.pass_begin_target(half, nil)
+	gfx.draw_fullscreen(coc, {&src, &depth}, (^[size_of(_Dof_Params)]u8)(&params)[:])
+	gfx.pass_end()
+
+	blur := engine.render_target(ctx, DOF_BLUR_TARGET)
+	half_tex := gfx.rt_color_texture(half)
+	_blit(blur, bokeh, {&half_tex}, {max_radius, f32(clamp(s.samples, 4, 64)), 0, 0})
+
+	dst := engine.render_target(ctx, DOF_TARGET)
+	blur_tex := gfx.rt_color_texture(blur)
+	_blit(dst, combine, {&src, &blur_tex}, {})
+	gfx.rt_copy(hdr, dst)
+}
+
+// The circle of confusion pass's block (dof_coc.glsl).
+@(private = "file")
+_Dof_Params :: struct {
+	inv_proj: matrix[4, 4]f32,
+	params:   [4]f32, // focus distance, focal length, aperture diameter (world units), max radius (half-size pixels)
+	params2:  [4]f32, // half-size pixels per sensor height
 }
 
 // FXAA on the LDR image, the chain's last step.
