@@ -16,6 +16,9 @@
 //   s.normal    world-space, preset to vertex_normal(). For a normal map:
 //               s.normal = perturb_normal(sample.xyz * 2.0 - 1.0)
 //   s.emissive  added after lighting, preset to zero
+//   s.refraction for a transparent material: the thickness of glass the view
+//               bends through, world units, preset to the Lit material's
+//               (0 = none)
 //
 // A fragment whose s.alpha ends below the material's alpha cutoff is
 // discarded (Material alpha clipping, draw_params.x, 0 = off).
@@ -80,6 +83,7 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 fog_params;
     vec4 fog_more;
     vec4 view_pos;
+    mat4 view_proj;  // the view's, for a refraction's screen offset
 };
 
 // Every light of the pass (gfx.set_lights), and for each tile of the screen's
@@ -134,6 +138,31 @@ float fog_amount(vec3 world_pos) {
     return clamp(f, 0.0, 1.0);
 }
 
+// The opaque image so far (the scene_copy step), what a refracting surface
+// shows: black when no step copied it. `refracted(n, t)` reads it where the
+// view ray lands after bending into the surface (Snell's law, glass's index
+// of 1.5) and travelling `t` world units through it: straight on it barely
+// moves, at a grazing edge it bends hard, and a solid ball of its own
+// diameter inverts what is behind it, as glass does. The bend fades out near
+// the screen's edges, where the copy ends.
+layout(set = 2, binding = 12) uniform sampler2D scene_color;
+
+vec3 refracted(vec3 n, float t) {
+    vec3 inside = refract(-normalize(view_pos.xyz - frag_world_pos), n, 1.0 / 1.5);
+    vec4 here = view_proj * vec4(frag_world_pos, 1.0);
+    vec4 there = view_proj * vec4(frag_world_pos + inside * t, 1.0);
+    vec2 uv = gl_FragCoord.xy * cluster_params.xy;
+    vec2 offset = (there.xy / there.w - here.xy / here.w) * vec2(0.5, -0.5);
+    // The bend fades out over the last tenth toward a screen edge: the copy
+    // ends there, and a clamped lookup would repeat its edge.
+    vec2 edge = min(uv, 1.0 - uv);
+    offset *= smoothstep(0.0, 0.1, min(edge.x, edge.y));
+    // One mip level blurrier than the lens's minification asks: glass is
+    // never a perfect lens, and under TAA's sub-pixel camera moves a sharp
+    // minified image flickers where fine detail lands.
+    return texture(scene_color, clamp(uv + offset, vec2(0.001), vec2(0.999)), 1.0).rgb;
+}
+
 // The screen's ambient occlusion (the scene_ssao step): red is how much
 // ambient light reaches the pixel, blue how much direct light, both 1 when
 // there is none.
@@ -159,6 +188,7 @@ struct Surface {
     float metallic;
     float smoothness;
     float occlusion;
+    float refraction; // 0 none: how far the scene behind bends through the surface (transparent materials)
 };
 
 // The built-in Lit's own material (engine Material.lit), declared only when
@@ -167,7 +197,7 @@ struct Surface {
 #ifdef MOONHUG_LIT_MATERIAL
 layout(set = 3, binding = 1) uniform LitMaterial {
     vec4 lit_params;   // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
-    vec4 lit_emission; // rgb emission color, linear (times the emission map)
+    vec4 lit_emission; // rgb emission color, linear (times the emission map), w refraction
 };
 layout(set = 2, binding = 1) uniform sampler2D metallic_roughness_map; // glTF packing: g roughness, b metallic
 layout(set = 2, binding = 2) uniform sampler2D normal_map;

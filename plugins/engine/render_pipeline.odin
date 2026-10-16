@@ -311,7 +311,16 @@ Pipeline_Runtime :: struct {
 @(private = "file") _active_built: bool
 @(private = "file") _settings_loaded: bool
 @(private = "file") _warned_slots: map[string]bool
-@(private = "file") _frame_ran: map[i32]u64 // instance id -> gfx.frame_index of its last run
+// A frame step's last run, per placed instance and world: a frame that
+// renders two worlds (the scene and an asset preview's) runs the frame lane
+// for each, right before that world's first lane, so one world's sky light
+// and shadow atlas never serve the other's views.
+@(private = "file")
+_Frame_Run_Key :: struct {
+	id:    i32,
+	world: ^World,
+}
+@(private = "file") _frame_ran: map[_Frame_Run_Key]u64 // -> gfx.frame_index + 1 of the last run
 
 // The pipeline the project renders through, built on first use and rebuilt
 // when the Rendering setting names another asset.
@@ -355,7 +364,7 @@ render_pipeline_preview :: proc(guid: Asset_GUID, p: Render_Pipeline) {
 _pipeline_evict_hook_register :: proc "contextless" () {
 	context = runtime.default_context()
 	asset_db_add_evict_hook(_pipeline_path_changed)
-	_frame_ran = make(map[i32]u64, runtime.default_allocator())
+	_frame_ran = make(map[_Frame_Run_Key]u64, runtime.default_allocator())
 	_warned_slots = make(map[string]bool, runtime.default_allocator())
 }
 
@@ -517,10 +526,12 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	// The frame lane, captured for the Render Pipeline window whenever it
 	// runs while the window is open (render_inspect.odin).
 	inspect_frame := render_inspect_active()
+	world := ctx_get() != nil ? ctx_world() : nil
 	for inst in r.frame {
 		// Stored +1 so frame 0 (tests, the first frame) runs too.
-		if _frame_ran[inst.id] == gfx.frame_index + 1 do continue
-		_frame_ran[inst.id] = gfx.frame_index + 1
+		key := _Frame_Run_Key{inst.id, world}
+		if _frame_ran[key] == gfx.frame_index + 1 do continue
+		_frame_ran[key] = gfx.frame_index + 1
 		if inst.muted {
 			if inspect_frame do _inspect_step_skipped(inst.id)
 			continue

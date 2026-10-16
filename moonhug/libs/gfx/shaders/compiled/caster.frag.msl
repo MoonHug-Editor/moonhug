@@ -14,6 +14,7 @@ struct Surface
     float metallic;
     float smoothness;
     float occlusion;
+    float refraction;
 };
 
 struct DrawUBO
@@ -23,6 +24,7 @@ struct DrawUBO
     float4 fog_params;
     float4 fog_more;
     float4 view_pos;
+    float4x4 view_proj;
 };
 
 struct GpuLight
@@ -105,6 +107,7 @@ Surface surface_preset(thread float3& frag_normal, thread bool& gl_FrontFacing, 
     s.metallic = 0.0;
     s.smoothness = 0.5;
     s.occlusion = 1.0;
+    s.refraction = 0.0;
     return s;
 }
 
@@ -113,13 +116,13 @@ void surface(thread const Surface& s)
 {
 }
 
-fragment void main0(main0_in in [[stage_in]], constant DrawUBO& _144 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], bool gl_FrontFacing [[front_facing]])
+fragment void main0(main0_in in [[stage_in]], constant DrawUBO& _147 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], bool gl_FrontFacing [[front_facing]])
 {
     Surface s = surface_preset(in.frag_normal, gl_FrontFacing, tex, texSmplr, in.frag_uv, in.frag_color);
     Surface param = s;
     surface(param);
     s = param;
-    if (s.alpha < _144.draw_params.x)
+    if (s.alpha < _147.draw_params.x)
     {
         discard_fragment();
     }

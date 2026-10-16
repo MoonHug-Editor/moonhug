@@ -188,7 +188,9 @@ Render_Step :: struct {
 // pixels. A name the step does not declare is the step's bug. Marks the
 // view's final image when the declaration says so, so a step that skips its
 // work (an effect turned off) leaves the earlier final.
-render_target :: proc(ctx: ^Render_Ctx, name: string) -> ^gfx.Render_Target {
+// `mips` gives the target a mip chain (gfx.rt_create): for one that is
+// copied into and sampled minified.
+render_target :: proc(ctx: ^Render_Ctx, name: string, mips := false) -> ^gfx.Render_Target {
 	assert(ctx.step != nil, "render_target outside a render step")
 	for decl, i in ctx.step.writes {
 		if decl.name != name do continue
@@ -198,7 +200,7 @@ render_target :: proc(ctx: ^Render_Ctx, name: string) -> ^gfx.Render_Target {
 			w = max(i32(ctx.view.width * d.scale), 1)
 			h = max(i32(ctx.view.height * d.scale), 1)
 		}
-		rt := gfx.pool_target(ctx.pool, d.name, w, h, d.format)
+		rt := gfx.pool_target(ctx.pool, d.name, w, h, d.format, mips)
 		if d.final do ctx.final = d.name
 		_mark_taken(ctx, d.name)
 		return rt

@@ -19,19 +19,19 @@ Target_Pool :: struct {
 // across resizes (the textures inside are recreated), so a caller may keep
 // it for the pool's lifetime, but must re-fetch rt_imgui_id after a resize
 // like any render target.
-pool_target :: proc(p: ^Target_Pool, name: string, width, height: i32, format := Target_Format.LDR) -> ^Render_Target {
+pool_target :: proc(p: ^Target_Pool, name: string, width, height: i32, format := Target_Format.LDR, mips := false) -> ^Render_Target {
 	if p.targets == nil do p.targets = make(map[string]^Render_Target, runtime.default_allocator())
 	if rt, ok := p.targets[name]; ok {
-		if rt.format != format {
+		if rt.format != format || (rt.mips > 1) != mips {
 			rt_destroy(rt)
-			fresh := rt_create(width, height, format)
+			fresh := rt_create(width, height, format, mips)
 			p.targets[name] = fresh
 			return fresh
 		}
 		rt_resize(rt, width, height)
 		return rt
 	}
-	rt := rt_create(width, height, format)
+	rt := rt_create(width, height, format, mips)
 	p.targets[runtime_clone(name)] = rt
 	return rt
 }

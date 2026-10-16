@@ -148,7 +148,7 @@ BLIT_SHADER :: "blit"
 // LIT_MATERIAL_DEFAULT, so it never reads the previous draw's.
 Lit_Material :: struct {
 	params:   [4]f32, // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
-	emission: [4]f32, // rgb, linear
+	emission: [4]f32, // rgb, linear, w = refraction strength
 }
 
 LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}}
@@ -220,6 +220,7 @@ _gfx: struct {
 	sampler_shadow:   ^sdl.GPUSampler, // linear depth comparison (LESS_OR_EQUAL: 1 lit), for the shadow maps
 	depth_one:        ^sdl.GPUTexture, // 1x1 depth of 1: a shadow map with nothing in it
 	white_tex:        ^Texture,
+	black_tex:        ^Texture, // the scene colour's stand-in: nothing behind
 	window_depth:     ^sdl.GPUTexture, // lazily sized to the swapchain
 	window_depth_w:   u32,
 	window_depth_h:   u32,
@@ -301,7 +302,9 @@ init :: proc(title: cstring, width, height: i32, show := true) -> bool {
 
 	white := [4]u8{255, 255, 255, 255}
 	_gfx.white_tex = texture_create(white[:], 1, 1)
-	return _gfx.white_tex != nil
+	black := [4]u8{0, 0, 0, 255}
+	_gfx.black_tex = texture_create(black[:], 1, 1)
+	return _gfx.white_tex != nil && _gfx.black_tex != nil
 }
 
 shutdown :: proc() {
@@ -311,6 +314,7 @@ shutdown :: proc() {
 		_debug_text_shutdown()
 		_skinning_shutdown()
 		if _gfx.white_tex != nil do texture_destroy(_gfx.white_tex)
+		if _gfx.black_tex != nil do texture_destroy(_gfx.black_tex)
 		if _gfx.window_depth != nil do sdl.ReleaseGPUTexture(_gfx.device, _gfx.window_depth)
 		_cubemap_shutdown()
 	_pipelines_shutdown()

@@ -49,7 +49,9 @@ Surface surface_preset() {
     s.metallic   = 0.0;
     s.smoothness = 0.5;
     s.occlusion  = 1.0;
+    s.refraction = 0.0;
 #ifdef MOONHUG_LIT_MATERIAL
+    s.refraction = lit_emission.w;
     vec4 mr = texture(metallic_roughness_map, frag_uv);
     s.metallic   = lit_params.x * mr.b;
     s.smoothness = 1.0 - (1.0 - lit_params.y) * mr.g;
@@ -151,7 +153,14 @@ void main() {
     // Capped well inside half-float range (65504): an overflow is infinite and
     // spreads through bloom as a white block.
     color = min(color + s.emissive, vec3(4096.0));
+    float alpha = s.alpha;
+    // A refracting surface shows the scene behind it, bent, tinted by its
+    // albedo, under its own lighting by its alpha, and covers its pixel.
+    if (s.refraction > 0.0) {
+        color = mix(refracted(n, s.refraction) * s.albedo, color, alpha);
+        alpha = 1.0;
+    }
     color = mix(color, fog_color.rgb, fog_amount(frag_world_pos));
-    out_color = vec4(color, s.alpha);
+    out_color = vec4(color, alpha);
 }
 #endif

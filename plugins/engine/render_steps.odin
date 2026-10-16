@@ -54,6 +54,9 @@ scene_target_begin :: proc(ctx: ^Render_Ctx, clear: Maybe([4]f32) = nil, keep_de
 	if render_reads(ctx, SSAO_TARGET) {
 		if ao := render_input(ctx, SSAO_TARGET); ao != nil do gfx.set_ambient_occlusion(gfx.rt_color_texture(ao)) // render_ssao.odin
 	}
+	if render_reads(ctx, SCENE_COLOR_TARGET) {
+		if copy := render_input(ctx, SCENE_COLOR_TARGET); copy != nil do gfx.set_scene_color(gfx.rt_color_texture(copy)) // scene_copy
+	}
 	return hdr
 }
 
@@ -103,7 +106,21 @@ scene_under :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 }
 
-@(render_step={summary="draws the alpha-blended quads back to front", reads="scene shadow? shadow_atlas? hdr", writes="hdr:HDR"})
+// The opaque image, sky included, for the transparent materials that refract
+// (Material.refraction): scene_transparent reads it as `scene_color?`. With
+// mip levels, so a lens that minifies what is behind it samples a blur
+// instead of aliasing (and TAA's sub-pixel jitter, magnified through the
+// lens, moves a smooth image).
+@(render_step={summary="copies the opaque image for transparent materials that refract", reads="hdr", writes="scene_color:HDR"})
+scene_copy :: proc(ctx: ^Render_Ctx) {
+	hdr := render_input(ctx, HDR_TARGET)
+	if hdr == nil do return
+	gfx.rt_copy(render_target(ctx, SCENE_COLOR_TARGET, mips = true), hdr)
+}
+
+SCENE_COLOR_TARGET :: "scene_color"
+
+@(render_step={summary="draws the transparent meshes and the alpha-blended quads back to front", reads="scene shadow? shadow_atlas? hdr scene_color?", writes="hdr:HDR"})
 scene_transparent :: proc(ctx: ^Render_Ctx) {
 	scene_target_begin(ctx)
 	render_execute(render_draw_view(ctx), ctx.commands, {.Transparent})

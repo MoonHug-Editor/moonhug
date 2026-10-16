@@ -12,6 +12,7 @@ struct DrawUBO
     float4 fog_params;
     float4 fog_more;
     float4 view_pos;
+    float4x4 view_proj;
 };
 
 struct main0_out
@@ -33,67 +34,67 @@ float3 srgb_to_linear(thread const float3& c)
 }
 
 static inline __attribute__((always_inline))
-float fog_amount(thread const float3& world_pos, constant DrawUBO& _23)
+float fog_amount(thread const float3& world_pos, constant DrawUBO& _24)
 {
-    int mode = int(_23.fog_color.w + 0.5);
+    int mode = int(_24.fog_color.w + 0.5);
     if (mode == 0)
     {
         return 0.0;
     }
-    float3 d = world_pos - _23.view_pos.xyz;
+    float3 d = world_pos - _24.view_pos.xyz;
     float dist = length(d);
     float h = 1.0;
-    if (_23.fog_more.x > 0.0)
+    if (_24.fog_more.x > 0.0)
     {
-        float k = _23.fog_more.x;
+        float k = _24.fog_more.x;
         float ky = k * d.y;
-        float _85;
+        float _86;
         if (abs(ky) > 9.9999997473787516355514526367188e-05)
         {
-            _85 = (1.0 - exp(-ky)) / ky;
+            _86 = (1.0 - exp(-ky)) / ky;
         }
         else
         {
-            _85 = 1.0;
+            _86 = 1.0;
         }
-        h = exp((-k) * (_23.view_pos.y - _23.fog_params.w)) * _85;
+        h = exp((-k) * (_24.view_pos.y - _24.fog_params.w)) * _86;
     }
     float f;
     if (mode == 1)
     {
-        f = 1.0 - exp(((-_23.fog_params.x) * h) * dist);
+        f = 1.0 - exp(((-_24.fog_params.x) * h) * dist);
     }
     else
     {
         if (mode == 2)
         {
-            float x = (_23.fog_params.x * h) * dist;
+            float x = (_24.fog_params.x * h) * dist;
             f = 1.0 - exp((-x) * x);
         }
         else
         {
-            f = fast::clamp((dist - _23.fog_params.y) / fast::max(_23.fog_params.z - _23.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
+            f = fast::clamp((dist - _24.fog_params.y) / fast::max(_24.fog_params.z - _24.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
         }
     }
     return fast::clamp(f, 0.0, 1.0);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _23 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _24 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float4 t = tex.sample(texSmplr, in.frag_uv);
     float3 param = t.xyz;
     out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
-    if (out.out_color.w < _23.draw_params.x)
+    if (out.out_color.w < _24.draw_params.x)
     {
         discard_fragment();
     }
-    float4 _212 = out.out_color;
+    float4 _213 = out.out_color;
     float3 param_1 = in.frag_world_pos;
-    float3 _223 = mix(_212.xyz, _23.fog_color.xyz, float3(fog_amount(param_1, _23)));
-    out.out_color.x = _223.x;
-    out.out_color.y = _223.y;
-    out.out_color.z = _223.z;
+    float3 _224 = mix(_213.xyz, _24.fog_color.xyz, float3(fog_amount(param_1, _24)));
+    out.out_color.x = _224.x;
+    out.out_color.y = _224.y;
+    out.out_color.z = _224.z;
     return out;
 }
 

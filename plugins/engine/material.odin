@@ -69,6 +69,10 @@ Material :: struct {
 	// The faces drawn, in every pass, shadows included.
 	render_face:   Material_Render_Face,
 	surface:       Material_Surface,
+	// Transparent, built-in Lit: the thickness of glass the view bends through,
+	// in world units (a ball's diameter inverts what is behind it, a thin pane
+	// barely shifts it), 0 for none. Needs the pipeline's scene_copy step.
+	refraction:    f32 `decor:min(0)`,
 	// The built-in Lit's surface. Unlit and custom shaders ignore it.
 	lit:           Material_Lit,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
@@ -184,7 +188,7 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 		}
 	}
 	if mat.shader == .Lit && mat.custom_shader == {} {
-		material_data, extra_textures = _material_pack_lit(&mat.lit)
+		material_data, extra_textures = _material_pack_lit(&mat.lit, mat.surface == .Transparent ? mat.refraction : 0)
 	}
 	color = mat.color
 	if mat.texture != {} {
@@ -199,7 +203,7 @@ _resolve_material :: proc(guid: Asset_GUID, fallback := Material_Shader.Unlit) -
 // bindings 1..4 metallic/roughness, normal, occlusion, emission, white when
 // unassigned. A normal scale goes in as 0 without a normal map, since white
 // is no normal. The emission color goes in as linear.
-_material_pack_lit :: proc(lit: ^Material_Lit) -> (data: []u8, maps: []^gfx.Texture) {
+_material_pack_lit :: proc(lit: ^Material_Lit, refraction: f32 = 0) -> (data: []u8, maps: []^gfx.Texture) {
 	maps = make([]^gfx.Texture, 4, context.temp_allocator)
 	guids := [4]Asset_GUID{lit.metallic_roughness_map, lit.normal_map, lit.occlusion_map, lit.emission_map}
 	for g, i in guids {
@@ -210,6 +214,7 @@ _material_pack_lit :: proc(lit: ^Material_Lit) -> (data: []u8, maps: []^gfx.Text
 	block := new(gfx.Lit_Material, context.temp_allocator)
 	block.params = {clamp(lit.metallic, 0, 1), clamp(lit.smoothness, 0, 1), normal_scale, clamp(lit.occlusion_strength, 0, 1)}
 	block.emission = gfx.srgb_to_linear(lit.emission_color)
+	block.emission.w = max(refraction, 0)
 	data = (^[size_of(gfx.Lit_Material)]u8)(block)[:]
 	return
 }
@@ -460,7 +465,7 @@ _material_clone :: proc(mat: Material) -> Material {
 
 _material_equal :: proc(a, b: Material) -> bool {
 	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color || a.lit != b.lit do return false
-	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff || a.render_face != b.render_face || a.surface != b.surface do return false
+	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff || a.render_face != b.render_face || a.surface != b.surface || a.refraction != b.refraction do return false
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false

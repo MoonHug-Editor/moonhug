@@ -22,6 +22,7 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 fog_params;
     vec4 fog_more;
     vec4 view_pos;
+    mat4 view_proj;
 };
 
 // Fog (gfx.set_fog, the DrawUBO): how much of the fog colour covers a point.

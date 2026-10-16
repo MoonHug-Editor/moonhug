@@ -20,6 +20,7 @@ Render_Target :: struct {
 	color, depth:  ^sdl.GPUTexture,
 	width, height: i32,
 	format:        Target_Format,
+	mips:          i32, // the color's mip levels, 1 = none: rt_copy into it fills them
 }
 
 _Draw :: struct {
@@ -46,7 +47,7 @@ _Draw :: struct {
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
 // SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 12
+MAX_FRAGMENT_SAMPLERS :: 13
 
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
@@ -76,6 +77,7 @@ _Draw_Uniform :: struct {
 	fog_params: [4]f32, // density, start, end, height
 	fog_more:   [4]f32, // height falloff, the sky's share
 	cam_pos:    [4]f32, // xyz, for the distance
+	view_proj:  matrix[4, 4]f32, // the view's, for a refraction's screen offset
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -204,6 +206,10 @@ SHADOW_ATLAS_SLOT   :: 10
 // `ambient_occlusion`): red is how much ambient light reaches each pixel,
 // blue how much direct light. White when none is set.
 OCCLUSION_SLOT      :: 11
+// The opaque image so far (set_scene_color, the template's `scene_color`):
+// what a refracting transparent material shows bent through itself. Black
+// when none is set.
+SCENE_COLOR_SLOT    :: 12
 
 _Env :: struct {
 	has:        bool,
@@ -304,6 +310,7 @@ _pass: struct {
 	env:          _Env,                  // reset each pass_end
 	occlusion:    Maybe(Texture),        // reset each pass_end
 	fog:          Fog,                   // reset each pass_end (mode Off)
+	scene_color:  Maybe(Texture),        // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -331,11 +338,14 @@ _pass_shutdown :: proc() {
 	_pass = {}
 }
 
-rt_create :: proc(width, height: i32, format := Target_Format.Display) -> ^Render_Target {
+// `mips` gives the color a full mip chain, filled by rt_copy into it: a
+// copy that is sampled minified (a refraction, a blur by roughness).
+rt_create :: proc(width, height: i32, format := Target_Format.Display, mips := false) -> ^Render_Target {
 	rt := new(Render_Target, runtime.default_allocator())
 	rt.width = width
 	rt.height = height
 	rt.format = format
+	rt.mips = mips && format != .Depth ? mip_count(width, height) : 1
 	if format != .Depth {
 		rt.color = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
 			type                 = .D2,
@@ -344,7 +354,7 @@ rt_create :: proc(width, height: i32, format := Target_Format.Display) -> ^Rende
 			width                = u32(width),
 			height               = u32(height),
 			layer_count_or_depth = 1,
-			num_levels           = 1,
+			num_levels           = u32(rt.mips),
 		})
 	}
 	rt.depth = sdl.CreateGPUTexture(_gfx.device, sdl.GPUTextureCreateInfo{
@@ -366,11 +376,12 @@ rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
 	if rt.width == width && rt.height == height do return
 	if rt.color != nil do sdl.ReleaseGPUTexture(_gfx.device, rt.color)
 	sdl.ReleaseGPUTexture(_gfx.device, rt.depth)
-	tmp := rt_create(width, height, rt.format)
+	tmp := rt_create(width, height, rt.format, rt.mips > 1)
 	rt.color = tmp.color
 	rt.depth = tmp.depth
 	rt.width = width
 	rt.height = height
+	rt.mips = tmp.mips
 	free(tmp, runtime.default_allocator())
 }
 
@@ -379,7 +390,7 @@ rt_resize :: proc(rt: ^Render_Target, width, height: i32) {
 // and only reads what passes BEFORE the current one wrote.
 rt_color_texture :: proc(rt: ^Render_Target) -> Texture {
 	assert(rt.format != .Depth, "a Depth target has no color: read rt_depth_texture")
-	return Texture{gpu = rt.color, width = rt.width, height = rt.height, format = target_pixel_format(rt.format)}
+	return Texture{gpu = rt.color, width = rt.width, height = rt.height, format = target_pixel_format(rt.format), mips = rt.mips}
 }
 
 // The target's depth as a sampleable texture (D32, read the red channel).
@@ -445,6 +456,7 @@ rt_copy :: proc(dst, src: ^Render_Target) {
 		load_op     = .DONT_CARE,
 		filter      = .LINEAR,
 	})
+	if dst.mips > 1 do sdl.GenerateMipmapsForGPUTexture(_gfx.cmd, dst.color)
 }
 
 // Async readback of the RT's color contents (texture_download_* protocol).
@@ -749,6 +761,12 @@ set_shadow_cascades :: proc(c: Shadow_Cascades) {
 // the lights'. Not calling this leaves every surface open.
 set_ambient_occlusion :: proc(tex: Texture) {
 	_pass.occlusion = tex
+}
+
+// The opaque image for the CURRENT pass's transparent draws (the engine's
+// scene_copy step), read at SCENE_COLOR_SLOT by materials that refract.
+set_scene_color :: proc(tex: Texture) {
+	_pass.scene_color = tex
 }
 
 // The fog of the CURRENT pass's world draws and sky (the engine's
@@ -1249,6 +1267,8 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	}
 	occlusion_gpu := _gfx.white_tex.gpu
 	if tex, has := _pass.occlusion.?; has do occlusion_gpu = tex.gpu
+	scene_color_gpu := _gfx.black_tex.gpu
+	if tex, has := _pass.scene_color.?; has do scene_color_gpu = tex.gpu
 
 	bound: ^sdl.GPUGraphicsPipeline
 	batch_bound := false
@@ -1324,10 +1344,14 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			bindings[OCCLUSION_SLOT] = {texture = occlusion_gpu, sampler = _gfx.sampler_linear}
 			num_bindings = OCCLUSION_SLOT + 1
 		}
+		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > SCENE_COLOR_SLOT {
+			bindings[SCENE_COLOR_SLOT] = {texture = scene_color_gpu, sampler = _gfx.sampler_linear}
+			num_bindings = SCENE_COLOR_SLOT + 1
+		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index) {
 			cam := _pass.vps[d.vp_index].cam_pos
-			u := _Draw_Uniform{params = {d.alpha_cutoff, 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}}
+			u := _Draw_Uniform{params = {d.alpha_cutoff, 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff
@@ -1400,6 +1424,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.env = {}
 	_pass.occlusion = nil
 	_pass.fog = {}
+	_pass.scene_color = nil
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

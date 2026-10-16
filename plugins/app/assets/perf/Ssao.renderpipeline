@@ -61,6 +61,14 @@
       "muted": false
     },
     {
+      "id": 17,
+      "step": "scene_copy",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 4,
       "step": "scene_transparent",
       "slot": "Main",
