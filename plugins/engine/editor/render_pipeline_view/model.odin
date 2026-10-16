@@ -1,8 +1,8 @@
 package render_pipeline_view
 
 // What the matrix shows, derived from the open document each frame: the
-// passes of one slot as columns (the frame lane's first), and the resources
-// they touch as rows, with one cell per pass and resource. Port bindings are
+// steps of one slot as columns (the frame lane's first), and the resources
+// they touch as rows, with one cell per step and resource. Port bindings are
 // resolved, and a read of `final` becomes a read of the target it is at that
 // point of the lane (the last earlier write marked final).
 
@@ -13,20 +13,20 @@ _Access :: enum u8 {
 	None,
 	Read,
 	Write,
-	Read_Write, // in place: the pass keeps the contents and draws over them
+	Read_Write, // in place: the step keeps the contents and draws over them
 }
 
 _Column :: struct {
 	entry: ^engine.Pipeline_Entry,
-	node:  ^engine.Render_Node, // nil = not installed
+	step:  ^engine.Render_Step, // nil = not installed
 	frame: bool,                // in the frame lane
 	pos:   int,                 // position in its lane
 }
 
 _Cell :: struct {
 	access:    _Access,
-	via_final: bool, // the pass reads it as `final`
-	unwritten: bool, // the pass reads it and nothing before it wrote it
+	via_final: bool, // the step reads it as `final`
+	unwritten: bool, // the step reads it and nothing before it wrote it
 }
 
 _Resource :: struct {
@@ -37,7 +37,7 @@ _Resource :: struct {
 	cells:    []_Cell,                   // one per column
 	first:    int,                       // lifetime, column indices
 	last:     int,
-	scratch:  bool,                      // written by one pass and read by none
+	scratch:  bool,                      // written by one step and read by none
 	missing:  bool,                      // some read has no writer
 }
 
@@ -50,9 +50,9 @@ _Model :: struct {
 _rp_model :: proc(slot: string) -> _Model {
 	doc := &_rp.doc
 	cols := make([dynamic]_Column, context.temp_allocator)
-	for e, i in engine.pipeline_lane(doc, "") do append(&cols, _Column{entry = e, node = engine.render_node_find(e.node), frame = true, pos = i})
+	for e, i in engine.pipeline_lane(doc, "") do append(&cols, _Column{entry = e, step = engine.render_step_find(e.step), frame = true, pos = i})
 	n_frame := len(cols)
-	for e, i in engine.pipeline_lane(doc, slot) do append(&cols, _Column{entry = e, node = engine.render_node_find(e.node), pos = i})
+	for e, i in engine.pipeline_lane(doc, slot) do append(&cols, _Column{entry = e, step = engine.render_step_find(e.step), pos = i})
 
 	names := make([dynamic]string, context.temp_allocator)
 	res := make([dynamic]_Resource, context.temp_allocator)
@@ -64,7 +64,7 @@ _rp_model :: proc(slot: string) -> _Model {
 	}
 
 	for c, ci in cols {
-		n := c.node
+		n := c.step
 		if n == nil do continue
 		for port in n.reads {
 			t := engine.pipeline_entry_port(c.entry^, port)
@@ -124,7 +124,7 @@ _rp_model :: proc(slot: string) -> _Model {
 _final_before :: proc(cols: []_Column, n_frame, ci: int) -> (string, bool) {
 	if ci < n_frame do return "", false
 	for j := ci - 1; j >= n_frame; j -= 1 {
-		n := cols[j].node
+		n := cols[j].step
 		if n == nil do continue
 		for d in n.writes do if d.final do return engine.pipeline_entry_port(cols[j].entry^, d.name), true
 	}

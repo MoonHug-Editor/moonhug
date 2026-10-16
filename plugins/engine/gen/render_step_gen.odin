@@ -1,21 +1,21 @@
 package engine_gen
 
-// render_node_gen: the render node registry (plugins/engine/render_node_registry.odin).
+// render_step_gen: the render step registry (plugins/engine/render_step_registry.odin).
 //
-//   @(render_node={summary="ambient occlusion from the scene depth", reads="hdr", writes="ssao:LDR@0.5", settings="ssao_defaults"})
-//   ssao_node :: proc(ctx: ^engine.Render_Ctx) { ... }
+//   @(render_step={summary="ambient occlusion from the scene depth", reads="hdr", writes="ssao:LDR@0.5", settings="ssao_defaults"})
+//   ssao_step :: proc(ctx: ^engine.Render_Ctx) { ... }
 //
-//   provide  - recognise procs in installed packages carrying @(render_node),
+//   provide  - recognise procs in installed packages carrying @(render_step),
 //              parse each write (`name[:FORMAT][@scale|@Npx][*]`), check the
 //              settings var exists in the same package.
-//   generate - check every node name is unique across packages, and emit the
+//   generate - check every step name is unique across packages, and emit the
 //              registrations:
-//              - <engine>/editor/scene_tools/render_nodes_editor_generated.odin:
-//                every node, for the editor, registered from @(init)
-//              - <runnable>/render_nodes_generated.odin per runnable package:
-//                its runtime nodes and the library packages', registered by
-//                the generated __standalone_run through __register_render_nodes
-//              Which nodes run and in what order is the pipeline asset's
+//              - <engine>/editor/scene_tools/render_steps_editor_generated.odin:
+//                every step, for the editor, registered from @(init)
+//              - <runnable>/render_steps_generated.odin per runnable package:
+//                its runtime steps and the library packages', registered by
+//                the generated __standalone_run through __register_render_steps
+//              Which steps run and in what order is the pipeline asset's
 //              (render_pipeline.odin), not the generator's.
 
 import "core:fmt"
@@ -38,28 +38,28 @@ Target_Decl :: struct {
 // The read name reserved for the finished image so far (engine.FINAL_INPUT).
 _FINAL_INPUT :: "final"
 
-Render_Node_GenComp :: struct {
+Render_Step_GenComp :: struct {
 	summary:  string,
 	file:     string, // repo-relative, for the pipeline window's jump to code
 	line:     int,
 	reads:    []string,
 	writes:   []Target_Decl,
-	frame:    bool,   // frame=true: once per frame, before the view's nodes
-	settings: string, // the defaults var in the node's package, "" = no settings
+	frame:    bool,   // frame=true: once per frame, before the view's steps
+	settings: string, // the defaults var in the step's package, "" = no settings
 	editor:   bool,   // declared in an editor/ package
 }
 
 _RG_OUT_PKG      :: "scene_tools"
-_EDITOR_OUT_FILE :: _ENGINE_EDITOR_PKG_PATH + "/scene_tools/render_nodes_editor_generated.odin"
+_EDITOR_OUT_FILE :: _ENGINE_EDITOR_PKG_PATH + "/scene_tools/render_steps_editor_generated.odin"
 
 @(init)
-_register_render_node_gen :: proc "contextless" () {
-	db.provider("render_node/provide", render_node_provide)
-	db.generator("render_node/generate", render_node_generate)
+_register_render_step_gen :: proc "contextless" () {
+	db.provider("render_step/provide", render_step_provide)
+	db.generator("render_step/generate", render_step_generate)
 }
 
-render_node_provide :: proc(w: ^db.World) -> bool {
-	nodes := db.get_or_create_comps(w, Render_Node_GenComp)
+render_step_provide :: proc(w: ^db.World) -> bool {
+	steps := db.get_or_create_comps(w, Render_Step_GenComp)
 	decls := db.get_comps_DeclInfo()
 	procs := db.get_comps(w, gen_facts.Proc_GenComp)
 	attrs := db.get_comps(w, gen_facts.Attrs_GenComp)
@@ -68,16 +68,16 @@ render_node_provide :: proc(w: ^db.World) -> bool {
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
 		if decl.name == "" || !strings.has_prefix(decl.pkg_path, _PACKAGES_PREFIX) do continue
-		args, found := gen_facts.attr_find(db.get(attrs, entity), "render_node")
+		args, found := gen_facts.attr_find(db.get(attrs, entity), "render_step")
 		if !found do continue
 		where_ := fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line)
 		writes := make([dynamic]Target_Decl)
 		frame := args.fields["frame"] == "true"
 		for word in _words(args.fields["writes"]) {
 			d, err := _parse_decl(word)
-			if err == "" && frame && d.px == 0 do err = "a per-frame node's target needs a fixed size (@2048px): there is no view to scale from"
+			if err == "" && frame && d.px == 0 do err = "a per-frame step's target needs a fixed size (@2048px): there is no view to scale from"
 			if err != "" {
-				fmt.eprintfln("prebuild: %s: render node %s: writes=%q: %s", where_, decl.name, word, err)
+				fmt.eprintfln("prebuild: %s: render step %s: writes=%q: %s", where_, decl.name, word, err)
 				_provide_failed = true
 				continue
 			}
@@ -85,11 +85,11 @@ render_node_provide :: proc(w: ^db.World) -> bool {
 		}
 		for t in _words(args.fields["reads"]) {
 			if frame && t == _FINAL_INPUT {
-				fmt.eprintfln("prebuild: %s: render node %s is per frame and runs before any view has a final image, it cannot read %q", where_, decl.name, t)
+				fmt.eprintfln("prebuild: %s: render step %s is per frame and runs before any view has a final image, it cannot read %q", where_, decl.name, t)
 				_provide_failed = true
 			}
 		}
-		db.set(nodes, entity, Render_Node_GenComp{
+		db.set(steps, entity, Render_Step_GenComp{
 			summary  = args.fields["summary"],
 			file     = gen_facts.decl_rel_path(decl),
 			line     = decl.decl.pos.line,
@@ -145,42 +145,42 @@ _parse_decl :: proc(word: string) -> (d: Target_Decl, err: string) {
 }
 
 @(private = "file")
-_Node_Row :: struct {
+_Step_Row :: struct {
 	name:   string,
 	pkg:    string,
 	path:   string, // pkg_path
 	where_: string, // file:line, for errors
-	using comp: Render_Node_GenComp,
+	using comp: Render_Step_GenComp,
 }
 
-render_node_generate :: proc(w: ^db.World) -> bool {
+render_step_generate :: proc(w: ^db.World) -> bool {
 	decls := db.get_comps_DeclInfo()
-	nodes := db.get_comps(w, Render_Node_GenComp)
+	steps := db.get_comps(w, Render_Step_GenComp)
 
-	rows := make([dynamic]_Node_Row, context.temp_allocator)
-	m := db.all_of(db.r(decls), db.r(nodes)); defer db.matcher_destroy(&m)
+	rows := make([dynamic]_Step_Row, context.temp_allocator)
+	m := db.all_of(db.r(decls), db.r(steps)); defer db.matcher_destroy(&m)
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
-		append(&rows, _Node_Row{
+		append(&rows, _Step_Row{
 			name   = decl.name,
 			pkg    = decl.pkg.name,
 			path   = decl.pkg_path,
 			where_ = fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line),
-			comp   = db.get(nodes, entity)^,
+			comp   = db.get(steps, entity)^,
 		})
 	}
-	// Stable order: the row order the generated files list nodes in.
-	slice.sort_by(rows[:], proc(a, b: _Node_Row) -> bool {
+	// Stable order: the row order the generated files list steps in.
+	slice.sort_by(rows[:], proc(a, b: _Step_Row) -> bool {
 		if a.pkg != b.pkg do return a.pkg < b.pkg
 		return a.name < b.name
 	})
 
 	ok := !_provide_failed
-	// A node's name is what a pipeline asset places, unique across packages.
+	// A step's name is what a pipeline asset places, unique across packages.
 	for r, i in rows {
 		for o in rows[:i] {
 			if o.name == r.name {
-				fmt.eprintfln("prebuild: %s: render node %s is also declared by package %s (%s), rename one: a pipeline places nodes by name", r.where_, r.name, o.pkg, o.where_)
+				fmt.eprintfln("prebuild: %s: render step %s is also declared by package %s (%s), rename one: a pipeline places steps by name", r.where_, r.name, o.pkg, o.where_)
 				ok = false
 			}
 		}
@@ -194,17 +194,17 @@ render_node_generate :: proc(w: ^db.World) -> bool {
 	return true
 }
 
-// The editor's registrations: every node, runtime and editor, from the
+// The editor's registrations: every step, runtime and editor, from the
 // engine's scene tools, which may import any package's runtime and editor
-// parts. Registers from @(init). Always written, so removing the last node
+// parts. Registers from @(init). Always written, so removing the last step
 // clears the previous file.
 @(private = "file")
-_emit_editor :: proc(w: ^db.World, rows: []_Node_Row) {
+_emit_editor :: proc(w: ^db.World, rows: []_Step_Row) {
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 	fmt.sbprintf(&b, "package %s\n\n", _RG_OUT_PKG)
-	strings.write_string(&b, "// Code generated by render_node_gen. Do not edit.\n")
-	strings.write_string(&b, "// Every render node, for the editor (plugins/engine/render_node_registry.odin).\n\n")
+	strings.write_string(&b, "// Code generated by render_step_gen. Do not edit.\n")
+	strings.write_string(&b, "// Every render step, for the editor (plugins/engine/render_step_registry.odin).\n\n")
 	if len(rows) == 0 {
 		db.emit(w, _EDITOR_OUT_FILE, strings.to_string(b))
 		return
@@ -212,19 +212,19 @@ _emit_editor :: proc(w: ^db.World, rows: []_Node_Row) {
 	strings.write_string(&b, "import \"base:runtime\"\n")
 	_write_imports(&b, rows, "")
 	_write_target_arrays(&b, rows, "")
-	strings.write_string(&b, "\n@(init)\n_register_render_nodes :: proc \"contextless\" () {\n\tcontext = runtime.default_context()\n")
+	strings.write_string(&b, "\n@(init)\n_register_render_steps :: proc \"contextless\" () {\n\tcontext = runtime.default_context()\n")
 	for r, i in rows do _write_register(&b, r, i, "")
 	strings.write_string(&b, "}\n")
 	db.emit(w, _EDITOR_OUT_FILE, strings.to_string(b))
 }
 
-// One runnable package's registrations: its own runtime nodes and the
-// library packages', never an editor node or another runnable's. A plain
+// One runnable package's registrations: its own runtime steps and the
+// library packages', never an editor step or another runnable's. A plain
 // proc the generated __standalone_run calls (update_gen), not @(init), so the
-// editor, which imports the same package, never registers a node twice.
+// editor, which imports the same package, never registers a step twice.
 @(private = "file")
-_emit_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, rows: []_Node_Row, runnables: []gen_facts.Runnable_Pkg) {
-	mine := make([dynamic]_Node_Row, context.temp_allocator)
+_emit_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, rows: []_Step_Row, runnables: []gen_facts.Runnable_Pkg) {
+	mine := make([dynamic]_Step_Row, context.temp_allocator)
 	for r in rows {
 		if r.editor do continue
 		if r.pkg != host.name && gen_facts.is_runnable(runnables, r.pkg) do continue
@@ -233,19 +233,19 @@ _emit_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, rows: []_Node_Row
 	b := strings.builder_make()
 	defer strings.builder_destroy(&b)
 	fmt.sbprintf(&b, "package %s\n\n", host.name)
-	strings.write_string(&b, "// Code generated by render_node_gen. Do not edit.\n")
-	strings.write_string(&b, "// This package's render nodes and the library packages', registered by __standalone_run.\n\n")
+	strings.write_string(&b, "// Code generated by render_step_gen. Do not edit.\n")
+	strings.write_string(&b, "// This package's render steps and the library packages', registered by __standalone_run.\n\n")
 	if len(mine) > 0 do _write_imports(&b, mine[:], host.name)
 	_write_target_arrays(&b, mine[:], host.name)
-	strings.write_string(&b, "\n__register_render_nodes :: proc() {\n")
+	strings.write_string(&b, "\n__register_render_steps :: proc() {\n")
 	for r, i in mine do _write_register(&b, r, i, host.name)
 	strings.write_string(&b, "}\n")
-	db.emit(w, fmt.tprintf("%s/render_nodes_generated.odin", host.path), strings.to_string(b))
+	db.emit(w, fmt.tprintf("%s/render_steps_generated.odin", host.path), strings.to_string(b))
 }
 
-// engine first, then every node package but the file's own, by name.
+// engine first, then every step package but the file's own, by name.
 @(private = "file")
-_write_imports :: proc(b: ^strings.Builder, rows: []_Node_Row, own_pkg: string) {
+_write_imports :: proc(b: ^strings.Builder, rows: []_Step_Row, own_pkg: string) {
 	imports := make(map[string]string, context.temp_allocator) // pkg name -> import path
 	for r in rows do if r.pkg != own_pkg && r.pkg not_in imports do imports[r.pkg] = _rg_import_path(r.path)
 	names := make([dynamic]string, context.temp_allocator)
@@ -259,7 +259,7 @@ _write_imports :: proc(b: ^strings.Builder, rows: []_Node_Row, own_pkg: string) 
 // literal written inside the registration proc would live on that proc's
 // stack, and the registry keeps the slices after the proc returns.
 @(private = "file")
-_write_target_arrays :: proc(b: ^strings.Builder, rows: []_Node_Row, own_pkg: string) {
+_write_target_arrays :: proc(b: ^strings.Builder, rows: []_Step_Row, own_pkg: string) {
 	if len(rows) > 0 do strings.write_string(b, "\n")
 	for r, i in rows {
 		if len(r.reads) > 0 do fmt.sbprintf(b, "@(private = \"file\") _reads_%d := %s\n", i, _string_array(r.reads))
@@ -281,7 +281,7 @@ _decl_array :: proc(decls: []Target_Decl, own_pkg: string) -> string {
 }
 
 @(private = "file")
-_write_register :: proc(b: ^strings.Builder, r: _Node_Row, index: int, own_pkg: string) {
+_write_register :: proc(b: ^strings.Builder, r: _Step_Row, index: int, own_pkg: string) {
 	qual := r.pkg == own_pkg ? "" : fmt.tprintf("%s.", r.pkg)
 	prefix := own_pkg == "engine" ? "" : "engine."
 	reads := len(r.reads) > 0 ? fmt.tprintf("_reads_%d[:]", index) : "nil"
@@ -291,7 +291,7 @@ _write_register :: proc(b: ^strings.Builder, r: _Node_Row, index: int, own_pkg: 
 		v := fmt.tprintf("%s%s", qual, r.settings)
 		settings = fmt.tprintf(", settings_tid = typeid_of(type_of(%s)), settings_ptr_tid = typeid_of(^type_of(%s)), settings_size = size_of(type_of(%s)), settings_default = &%s", v, v, v, v)
 	}
-	fmt.sbprintf(b, "\t%srender_node_register(%sRender_Node{{name = %q, pkg = %q, summary = %q, file = %q, line = %d, frame = %t, reads = %s, writes = %s, run = %s%s%s}})\n",
+	fmt.sbprintf(b, "\t%srender_step_register(%sRender_Step{{name = %q, pkg = %q, summary = %q, file = %q, line = %d, frame = %t, reads = %s, writes = %s, run = %s%s%s}})\n",
 		prefix, prefix, r.name, r.pkg, r.summary, r.file, r.line, r.frame, reads, writes, qual, r.name, settings)
 }
 

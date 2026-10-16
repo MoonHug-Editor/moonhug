@@ -5,10 +5,10 @@
       "name": "Main"
     }
   ],
-  "nodes": [
+  "steps": [
     {
       "id": 10,
-      "node": "environment_pass",
+      "step": "environment_pass",
       "slot": "",
       "muted": false,
       "binds": [],
@@ -16,7 +16,7 @@
     },
     {
       "id": 1,
-      "node": "shadow_atlas",
+      "step": "shadow_atlas",
       "slot": "",
       "binds": [],
       "muted": false,
@@ -24,7 +24,7 @@
     },
     {
       "id": 12,
-      "node": "depth_prepass",
+      "step": "depth_prepass",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -32,7 +32,7 @@
     },
     {
       "id": 13,
-      "node": "shadow_cascades",
+      "step": "shadow_cascades",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -40,7 +40,7 @@
     },
     {
       "id": 16,
-      "node": "scene_ssao",
+      "step": "scene_ssao",
       "slot": "Main",
       "muted": true,
       "binds": [],
@@ -48,14 +48,14 @@
     },
     {
       "id": 2,
-      "node": "scene_opaque",
+      "step": "scene_opaque",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 11,
-      "node": "scene_sky",
+      "step": "scene_sky",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -63,21 +63,21 @@
     },
     {
       "id": 3,
-      "node": "scene_under",
+      "step": "scene_under",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 4,
-      "node": "scene_transparent",
+      "step": "scene_transparent",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 15,
-      "node": "motion_vectors",
+      "step": "motion_vectors",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -85,7 +85,7 @@
     },
     {
       "id": 14,
-      "node": "scene_taa",
+      "step": "scene_taa",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -93,28 +93,28 @@
     },
     {
       "id": 5,
-      "node": "scene_over",
+      "step": "scene_over",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 6,
-      "node": "postfx_bloom",
+      "step": "postfx_bloom",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 7,
-      "node": "postfx_tonemap",
+      "step": "postfx_tonemap",
       "slot": "Main",
       "binds": [],
       "muted": false
     },
     {
       "id": 9,
-      "node": "final_blit",
+      "step": "final_blit",
       "slot": "Main",
       "binds": [],
       "muted": false

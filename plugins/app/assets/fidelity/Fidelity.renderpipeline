@@ -5,10 +5,10 @@
       "name": "Main"
     }
   ],
-  "nodes": [
+  "steps": [
     {
       "id": 1,
-      "node": "environment_pass",
+      "step": "environment_pass",
       "slot": "",
       "muted": false,
       "binds": [],
@@ -16,7 +16,7 @@
     },
     {
       "id": 2,
-      "node": "scene_opaque",
+      "step": "scene_opaque",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -24,7 +24,7 @@
     },
     {
       "id": 3,
-      "node": "scene_sky",
+      "step": "scene_sky",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -32,7 +32,7 @@
     },
     {
       "id": 4,
-      "node": "scene_transparent",
+      "step": "scene_transparent",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -40,7 +40,7 @@
     },
     {
       "id": 5,
-      "node": "postfx_tonemap",
+      "step": "postfx_tonemap",
       "slot": "Main",
       "muted": false,
       "binds": [],
@@ -51,7 +51,7 @@
     },
     {
       "id": 6,
-      "node": "final_blit",
+      "step": "final_blit",
       "slot": "Main",
       "muted": false,
       "binds": [],

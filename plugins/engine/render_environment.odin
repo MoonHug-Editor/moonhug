@@ -9,7 +9,7 @@ package engine
 //                    cube, and its diffuse irradiance in a third
 //   scene_sky        draws the source behind the opaque meshes
 //
-// The scene nodes bind the reflection and irradiance cubes through
+// The scene steps bind the reflection and irradiance cubes through
 // environment_bind (scene_target_begin), the surface template lights with
 // them. Without an Environment the ambient level of the first Light lights
 // uniformly, as gfx's white cubes give.
@@ -55,7 +55,7 @@ _env: struct {
 	reflection: f32,
 }
 
-@(render_node={summary="renders the scene's Environment into cubes for reflections and ambient light, when it changed", frame=true, reads="scene"})
+@(render_step={summary="renders the scene's Environment into cubes for reflections and ambient light, when it changed", frame=true, reads="scene"})
 environment_pass :: proc(ctx: ^Render_Ctx) {
 	_env.active = false
 	env := _active_environment()
@@ -80,7 +80,7 @@ environment_bind :: proc() {
 	gfx.set_environment(_env.specular, _env.irradiance, _env.diffuse, _env.reflection)
 }
 
-@(render_node={summary="draws the Environment's sky behind the opaque meshes", reads="hdr", writes="hdr:HDR"})
+@(render_step={summary="draws the Environment's sky behind the opaque meshes", reads="hdr", writes="hdr:HDR"})
 scene_sky :: proc(ctx: ^Render_Ctx) {
 	if !_env.active || !_env.draw_sky do return
 	scene_target_begin(ctx)

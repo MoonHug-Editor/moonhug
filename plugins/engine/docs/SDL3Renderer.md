@@ -187,11 +187,11 @@ The surface template lights a back face with its normal reversed (`vertex_normal
 
 ## Temporal anti-aliasing
 
-`TAA_SHADER` is the resolve, a fullscreen shader: this frame's image, the history, the depth and the motion vectors in (`Taa_Params`: the camera's reprojection, the blend, whether the history and the motion vectors are valid), the blended image out. `MOTION_SHADER` is a world shader that writes a mesh's motion vectors from its `Motion_Params` block (the object's world space now to last frame's, this and last frame's steady cameras), alpha 1 where it drew. `pass_begin_target(rt, clear, shared_depth = scene)` draws into `rt`'s color against another target's depth, kept as it is, so a moved mesh writes motion vectors only where it is in front. The engine's `scene_taa` and `motion_vectors` nodes drive them (RenderPipeline.md, Temporal anti-aliasing).
+`TAA_SHADER` is the resolve, a fullscreen shader: this frame's image, the history, the depth and the motion vectors in (`Taa_Params`: the camera's reprojection, the blend, whether the history and the motion vectors are valid), the blended image out. `MOTION_SHADER` is a world shader that writes a mesh's motion vectors from its `Motion_Params` block (the object's world space now to last frame's, this and last frame's steady cameras), alpha 1 where it drew. `pass_begin_target(rt, clear, shared_depth = scene)` draws into `rt`'s color against another target's depth, kept as it is, so a moved mesh writes motion vectors only where it is in front. The engine's `scene_taa` and `motion_vectors` steps drive them (RenderPipeline.md, Temporal anti-aliasing).
 
 ## Ambient occlusion
 
-`set_ambient_occlusion({tex, direct})` hands a pass's lit draws the screen's ambient occlusion: `tex` the view's size, red how much ambient light reaches each pixel. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads it at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of it and the surface's occlusion, and the lights' light by `direct` of it (`occlusion_params.x` in the light block). `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` node drives them (RenderPipeline.md, Ambient occlusion).
+`set_ambient_occlusion({tex, direct})` hands a pass's lit draws the screen's ambient occlusion: `tex` the view's size, red how much ambient light reaches each pixel. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads it at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of it and the surface's occlusion, and the lights' light by `direct` of it (`occlusion_params.x` in the light block). `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` step drives them (RenderPipeline.md, Ambient occlusion).
 
 ## Mip levels and specular aliasing
 
@@ -218,7 +218,7 @@ The block is about 21 KB. Metal and desktop Vulkan drivers accept it, while the 
 
 ## Shadows
 
-Every Light with `shadows` on casts them, through two render nodes (`plugins/engine/render_shadow.odin`):
+Every Light with `shadows` on casts them, through two render steps (`plugins/engine/render_shadow.odin`):
 
 - `shadow_cascades` (per view) renders the first shadowing directional light's cascades into the view's `shadow` atlas: up to `MAX_CASCADES` (4) slices of the camera's frustum, split between even and logarithmic (`split`), out to `distance`. Each slice is an orthographic view of the sphere around it, so its size holds still as the camera turns, with its centre snapped to whole texels, so shadow edges do not shimmer as the camera moves. The view reaches back toward the light as far as any caster does. One cascade fills the atlas, more share a 2x2 grid.
 - `shadow_atlas` (per frame) renders every shadowing spot light's view (one tile) and every shadowing point light's six cube faces (+X, -X, +Y, -Y, +Z, -Z) into the frame's `shadow_atlas`. The tiles form a square grid of as many cells as needed, so more lights make every tile smaller. The tiles travel in the light uniform, so at most `MAX_SHADOW_TILES` (48) fit: lights past the budget in light order render without shadows, with one warning.
@@ -256,7 +256,7 @@ shadow_cascades / shadow_atlas / shadow_bind                              // ren
 camera_screen_ray       :: proc(cam: ^Camera, px, py, vw, vh: f32) -> Ray  // replaces rl.GetScreenToWorldRay
 ```
 
-- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow nodes collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
+- Culling: layers (`t.render_layer & view.layer_mask`), and the view frustum when `Render_View.cull` is on. Camera views and the editor scene view turn it on. Probe views leave it off: the shadow steps collecting every caster, thumbnails and previews. The mesh collector tests the mesh's local box moved by the model matrix (`core.aabb_transform`) against the view's six planes (`core.frustum_intersects_aabb`, planes from `core.frustum_from_view_proj` in `render_view_make`). The skinned collector tests the posed bounds after posing, since another view in the same frame may still draw the mesh. The package collectors (sprites, particles, the canvas) do not cull.
 - Sprites stay transform-oriented quads (NOT billboards), 100 px/unit;
   `sprite_world_corners` helper is shared by draw AND picking so they can't
   diverge.

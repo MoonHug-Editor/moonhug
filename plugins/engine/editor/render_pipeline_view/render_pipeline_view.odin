@@ -3,22 +3,22 @@ package render_pipeline_view
 // The Render Pipeline window: the editor of `.renderpipeline` assets and the
 // view of what a frame does (plugins/engine/docs/RenderPipeline.md).
 //
-// One slot shows at a time, picked by the tabs. Its passes are the columns
+// One slot shows at a time, picked by the tabs. Its steps are the columns
 // of a matrix in run order, the frame lane's left of a divider, and the
 // resources they touch are the rows: the view's objects (`scene`), then every
 // target in the order it first appears. A cell marks a read, a write or both,
-// a bar spans each resource's lifetime (matrix.odin). Selecting a pass tints
+// a bar spans each resource's lifetime (matrix.odin). Selecting a step tints
 // the rows it reads and the rows it writes in two colors, selecting a row
 // marks its writer and readers.
 //
-// The panel on the right (panel.odin) shows the selected pass: its inputs and
+// The panel on the right (panel.odin) shows the selected step: its inputs and
 // outputs as thumbnails from the running frame (engine.render_inspect_*),
 // its settings, its port bindings, what it drew, mute, remove and jump to
-// code. Below it the Resource List and the Pass List, searchable, list every
+// code. Below it the Resource List and the Step List, searchable, list every
 // row and column with their details.
 //
 // Editing: drag a column header to reorder or move it to the other lane,
-// the "+" columns and a header's context menu insert passes, the tabs add,
+// the "+" columns and a header's context menu insert steps, the tabs add,
 // rename and remove slots.
 //
 // The window owns one open document. Every edit changes it in place and sets
@@ -48,7 +48,7 @@ import "moonhug:libs/log"
 import "moonhug:packages/engine"
 import rpu "moonhug:packages/engine/editor/render_pipeline_view/undo_cmd"
 
-_RP_PAYLOAD :: "RP_PASS"
+_RP_PAYLOAD :: "RP_STEP"
 
 _RP_State :: struct {
 	path:     string, // heap clone, "" = nothing open
@@ -64,16 +64,16 @@ _RP_State :: struct {
 	tried_guid: engine.Asset_GUID, // the active pipeline last opened on its own, not retried after a failed load
 
 	slot:    string, // heap, the slot the tabs show
-	sel:     i32,    // selected pass (entry id), 0 = none
+	sel:     i32,    // selected step (entry id), 0 = none
 	sel_res: string, // heap, selected resource row, "" = none
-	scroll_pass: bool, // the lists scroll to the selection once
+	scroll_step: bool, // the lists scroll to the selection once
 	scroll_res:  bool,
 
 	// The palette: the lane and lane position it inserts at (-1 = end).
 	menu_slot:  string, // heap
 	menu_index: int,
 	open_menu:  bool,
-	ctx_id:     i32, // the pass a header's context menu is for
+	ctx_id:     i32, // the step a header's context menu is for
 	open_ctx:   bool,
 
 	// Slots.
@@ -84,7 +84,7 @@ _RP_State :: struct {
 	open_rename: bool,
 	remove_slot: string, // heap, the slot the confirm dialog removes
 
-	// Panel: the selected pass's settings struct, typed, on the default
+	// Panel: the selected step's settings struct, typed, on the default
 	// allocator, rebuilt from the entry's JSON when the selection changes or
 	// the document is replaced.
 	set_buf:   []u8,
@@ -96,7 +96,7 @@ _RP_State :: struct {
 	write_buf:  [128]u8,
 
 	res_search:  [64]u8,
-	pass_search: [64]u8,
+	step_search: [64]u8,
 }
 
 _rp := _RP_State{write_edit = -1}
@@ -104,14 +104,14 @@ _rp := _RP_State{write_edit = -1}
 // The window's layout and filters, saved per developer.
 Render_Pipeline_Prefs :: struct {
 	// The right pane's three sections. The pane shows while any of them does.
-	hide_pass:      bool, // the selected pass
+	hide_step:      bool, // the selected step
 	hide_resources: bool, // the Resource List
-	hide_passes:    bool, // the Pass List
+	hide_steps:    bool, // the Step List
 	pane_w:         f32,  // the right pane's width, 0 = the default
-	pass_ratio:     f32,  // the selected pass's share of the pane's height when a list shows too, 0 = the default
-	hide_scratch: bool, // rows only one pass touches (a pass's own scratch textures)
+	step_ratio:     f32,  // the selected step's share of the pane's height when a list shows too, 0 = the default
+	hide_scratch: bool, // rows only one step touches (a step's own scratch textures)
 	hide_scene:   bool, // the `scene` row
-	hide_muted:   bool, // muted passes' columns
+	hide_muted:   bool, // muted steps' columns
 }
 
 @(user_settings={name="Render Pipeline"})
@@ -184,7 +184,7 @@ render_pipeline_window_draw :: proc() {
 		im.TextDisabled("The built-in frame. Create a Render Pipeline asset (Assets > Create > Render Pipeline) and set it in Project Settings > Rendering.")
 		return
 	}
-	if engine.pipeline_find_node(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
+	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
 	if _rp.slot == "" || !engine.pipeline_find_slot(&_rp.doc, _rp.slot) {
 		first := len(_rp.doc.slots) > 0 ? _rp.doc.slots[0].name : engine.MAIN_SLOT
 		_rp_set_string(&_rp.slot, first)
@@ -197,7 +197,7 @@ render_pipeline_window_draw :: proc() {
 
 	m := _rp_model(_rp.slot)
 	prefs := &render_pipeline_prefs
-	show_pane := !prefs.hide_pass || !prefs.hide_resources || !prefs.hide_passes
+	show_pane := !prefs.hide_step || !prefs.hide_resources || !prefs.hide_steps
 	if !show_pane {
 		if im.BeginChild("##rp_matrix", im.Vec2{0, 0}, {}, {.HorizontalScrollbar}) do _rp_matrix(&m)
 		im.EndChild()
@@ -221,7 +221,7 @@ render_pipeline_window_draw :: proc() {
 
 	io := im.GetIO()
 	if im.IsWindowFocused(im.FocusedFlags_RootAndChildWindows) && !io.WantTextInput && !im.IsAnyItemActive() {
-		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _rp_delete_node(_rp.sel)
+		if im.IsKeyPressed(.Delete, false) || im.IsKeyPressed(.Backspace, false) do _rp_delete_step(_rp.sel)
 		if im.IsKeyPressed(.Escape, false) {
 			_rp.sel = 0
 			_rp_set_string(&_rp.sel_res, "")
@@ -245,11 +245,11 @@ _rp_toolbar :: proc() {
 	if im.BeginPopup("##rp_filter") {
 		show_scratch := !render_pipeline_prefs.hide_scratch
 		if im.Checkbox("Scratch resources", &show_scratch) do render_pipeline_prefs.hide_scratch = !show_scratch
-		widgets.tooltip("Targets only one pass touches, such as bloom's blur textures")
+		widgets.tooltip("Targets only one step touches, such as bloom's blur textures")
 		show_scene := !render_pipeline_prefs.hide_scene
 		if im.Checkbox("Scene objects row", &show_scene) do render_pipeline_prefs.hide_scene = !show_scene
 		show_muted := !render_pipeline_prefs.hide_muted
-		if im.Checkbox("Muted passes", &show_muted) do render_pipeline_prefs.hide_muted = !show_muted
+		if im.Checkbox("Muted steps", &show_muted) do render_pipeline_prefs.hide_muted = !show_muted
 		im.EndPopup()
 	}
 	im.SameLine()
@@ -262,7 +262,7 @@ _rp_toolbar :: proc() {
 
 	// The pane's sections, right-aligned.
 	style := im.GetStyle()
-	labels := [3]cstring{"Selected Pass", "Resource List", "Pass List"}
+	labels := [3]cstring{"Selected Step", "Resource List", "Step List"}
 	w: f32
 	for l in labels do w += im.CalcTextSize(l).x + style.FramePadding.x * 2
 	w += style.ItemSpacing.x * 2
@@ -270,11 +270,11 @@ _rp_toolbar :: proc() {
 	x := im.GetCursorPosX()
 	im.SetCursorPosX(max(x + im.GetContentRegionAvail().x - w, x))
 	prefs := &render_pipeline_prefs
-	_rp_pane_toggle(labels[0], &prefs.hide_pass, "Show the selected pass: its images, settings, ports and what it drew")
+	_rp_pane_toggle(labels[0], &prefs.hide_step, "Show the selected step: its images, settings, ports and what it drew")
 	im.SameLine()
 	_rp_pane_toggle(labels[1], &prefs.hide_resources, "Show every resource with its format, writers, readers and last image")
 	im.SameLine()
-	_rp_pane_toggle(labels[2], &prefs.hide_passes, "Show every pass with what it reads and writes")
+	_rp_pane_toggle(labels[2], &prefs.hide_steps, "Show every step with what it reads and writes")
 }
 
 // A toolbar button lit while its section shows. The tint is pushed for the
@@ -315,12 +315,12 @@ _rp_tabs :: proc() {
 		}
 	}
 	if im.TabItemButton("+", {.Trailing, .NoTooltip}) do _rp.open_add = true
-	widgets.tooltip("Add a slot: a lane of passes that cameras naming it render through")
+	widgets.tooltip("Add a slot: a lane of steps that cameras naming it render through")
 }
 
 _rp_select_slot :: proc(name: string) {
 	_rp_set_string(&_rp.slot, name)
-	if e := engine.pipeline_find_node(&_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
+	if e := engine.pipeline_find_step(&_rp.doc, _rp.sel); e != nil && e.slot != "" && e.slot != name do _rp.sel = 0
 }
 
 _rp_save :: proc() {
@@ -339,18 +339,18 @@ _rp_save :: proc() {
 _rp_popups :: proc() {
 	if _rp.open_menu {
 		_rp.open_menu = false
-		im.OpenPopup("##rp_add_pass")
+		im.OpenPopup("##rp_add_step")
 	}
-	if im.BeginPopup("##rp_add_pass") {
-		_rp_add_pass_menu()
+	if im.BeginPopup("##rp_add_step") {
+		_rp_add_step_menu()
 		im.EndPopup()
 	}
 	if _rp.open_ctx {
 		_rp.open_ctx = false
-		im.OpenPopup("##rp_pass_ctx")
+		im.OpenPopup("##rp_step_ctx")
 	}
-	if im.BeginPopup("##rp_pass_ctx") {
-		_rp_pass_context_menu()
+	if im.BeginPopup("##rp_step_ctx") {
+		_rp_step_context_menu()
 		im.EndPopup()
 	}
 	if _rp.open_add {
@@ -400,24 +400,24 @@ _rp_open_palette :: proc(slot: string, index: int) {
 	_rp.open_menu = true
 }
 
-// Every registered node by package. Per-frame nodes go in the frame lane,
-// per-view nodes in a slot, the others show disabled.
-_rp_add_pass_menu :: proc() {
+// Every registered step by package. Per-frame steps go in the frame lane,
+// per-view steps in a slot, the others show disabled.
+_rp_add_step_menu :: proc() {
 	frame := _rp.menu_slot == ""
 	im.TextDisabled("%s", frame ? cstring("Add to the frame lane") : fmt.ctprintf("Add to slot %s", _rp.menu_slot))
 	im.Separator()
-	nodes := engine.render_nodes()
+	steps := engine.render_steps()
 	pkgs := make([dynamic]string, context.temp_allocator)
-	for n in nodes do if !slice.contains(pkgs[:], n.pkg) do append(&pkgs, n.pkg)
+	for n in steps do if !slice.contains(pkgs[:], n.pkg) do append(&pkgs, n.pkg)
 	for pkg in pkgs {
 		if !im.BeginMenu(fmt.ctprintf("%s", pkg)) do continue
-		for n in nodes {
+		for n in steps {
 			if n.pkg != pkg do continue
 			label := n.frame ? fmt.ctprintf("%s (per frame)", n.name) : fmt.ctprintf("%s", n.name)
 			if im.MenuItem(label, nil, false, n.frame == frame) {
-				_rp.sel = engine.pipeline_add_node(&_rp.doc, n.name, _rp.menu_slot, _rp.menu_index)
-				_rp.scroll_pass = true
-				_rp_touch("Add Pass")
+				_rp.sel = engine.pipeline_add_step(&_rp.doc, n.name, _rp.menu_slot, _rp.menu_index)
+				_rp.scroll_step = true
+				_rp_touch("Add Step")
 			}
 			if n.summary != "" do widgets.tooltip(fmt.ctprintf("%s", n.summary))
 		}
@@ -426,22 +426,22 @@ _rp_add_pass_menu :: proc() {
 }
 
 // A column header's context menu.
-_rp_pass_context_menu :: proc() {
-	e := engine.pipeline_find_node(&_rp.doc, _rp.ctx_id)
+_rp_step_context_menu :: proc() {
+	e := engine.pipeline_find_step(&_rp.doc, _rp.ctx_id)
 	if e == nil {
 		im.CloseCurrentPopup()
 		return
 	}
-	im.TextDisabled("%s", fmt.ctprintf("%s", e.node))
+	im.TextDisabled("%s", fmt.ctprintf("%s", e.step))
 	im.Separator()
 	pos := _rp_lane_position(e)
-	if im.MenuItem("Insert pass before") do _rp_open_palette(e.slot, pos)
-	if im.MenuItem("Insert pass after") do _rp_open_palette(e.slot, pos + 1)
+	if im.MenuItem("Insert step before") do _rp_open_palette(e.slot, pos)
+	if im.MenuItem("Insert step after") do _rp_open_palette(e.slot, pos + 1)
 	if im.MenuItem(e.muted ? "Unmute" : "Mute") do _rp_set_muted(e, !e.muted)
-	n := engine.render_node_find(e.node)
+	n := engine.render_step_find(e.step)
 	if im.MenuItem("Open code", nil, false, n != nil && n.file != "") do _rp_open_code(n)
 	im.Separator()
-	if im.MenuItem("Remove") do _rp_delete_node(e.id)
+	if im.MenuItem("Remove") do _rp_delete_step(e.id)
 }
 
 // --- Edits --------------------------------------------------------------------------
@@ -451,35 +451,35 @@ _rp_lane_position :: proc(e: ^engine.Pipeline_Entry) -> int {
 	return -1
 }
 
-_rp_delete_node :: proc(id: i32) {
-	if engine.pipeline_find_node(&_rp.doc, id) == nil do return
+_rp_delete_step :: proc(id: i32) {
+	if engine.pipeline_find_step(&_rp.doc, id) == nil do return
 	if shown, _, _ := engine.render_inspect_showing(); shown == id do engine.render_inspect_show(0, "")
-	engine.pipeline_remove_node(&_rp.doc, id)
+	engine.pipeline_remove_step(&_rp.doc, id)
 	if _rp.sel == id do _rp.sel = 0
-	_rp_touch("Remove Pass")
+	_rp_touch("Remove Step")
 }
 
 _rp_set_muted :: proc(e: ^engine.Pipeline_Entry, muted: bool) {
 	if e.muted == muted do return
 	e.muted = muted
-	_rp_touch(muted ? "Mute Pass" : "Unmute Pass")
+	_rp_touch(muted ? "Mute Step" : "Unmute Step")
 }
 
-// Moves pass `id` into lane `slot` before lane position `index` (-1 = the
-// end), refusing a per-frame pass in a slot or a per-view pass in the frame
+// Moves step `id` into lane `slot` before lane position `index` (-1 = the
+// end), refusing a per-frame step in a slot or a per-view step in the frame
 // lane. Returns the refusal, "" when the move is allowed.
 _rp_move_check :: proc(id: i32, slot: string) -> string {
-	e := engine.pipeline_find_node(&_rp.doc, id)
-	if e == nil do return "the pass is gone"
-	n := engine.render_node_find(e.node)
+	e := engine.pipeline_find_step(&_rp.doc, id)
+	if e == nil do return "the step is gone"
+	n := engine.render_step_find(e.step)
 	if n == nil do return ""
-	if n.frame && slot != "" do return "a per-frame pass runs in the frame lane only"
-	if !n.frame && slot == "" do return "a per-view pass runs in a slot only"
+	if n.frame && slot != "" do return "a per-frame step runs in the frame lane only"
+	if !n.frame && slot == "" do return "a per-view step runs in a slot only"
 	return ""
 }
 
 _rp_move :: proc(id: i32, slot: string, index: int) {
-	e := engine.pipeline_find_node(&_rp.doc, id)
+	e := engine.pipeline_find_step(&_rp.doc, id)
 	if e == nil do return
 	at := index
 	if at >= 0 && e.slot == slot {
@@ -488,18 +488,18 @@ _rp_move :: proc(id: i32, slot: string, index: int) {
 		if from == at || from + 1 == at do return // dropped next to itself
 		if from < at do at -= 1
 	}
-	engine.pipeline_move_node(&_rp.doc, id, slot, at)
-	_rp_touch("Move Pass")
+	engine.pipeline_move_step(&_rp.doc, id, slot, at)
+	_rp_touch("Move Step")
 }
 
-// A new name for a slot, carried onto every pass in its lane. Empty or taken
+// A new name for a slot, carried onto every step in its lane. Empty or taken
 // names are ignored.
 _rp_rename_slot :: proc(old, name: string) {
 	trimmed := strings.trim_space(name)
 	if trimmed == "" || trimmed == old || engine.pipeline_find_slot(&_rp.doc, trimmed) do return
 	for &s in _rp.doc.slots {
 		if s.name != old do continue
-		for &e in _rp.doc.nodes {
+		for &e in _rp.doc.steps {
 			if e.slot == old {
 				delete(e.slot)
 				e.slot = strings.clone(trimmed)
@@ -514,10 +514,10 @@ _rp_rename_slot :: proc(old, name: string) {
 	}
 }
 
-// Removes an empty slot at once, asks first when passes sit in its lane.
+// Removes an empty slot at once, asks first when steps sit in its lane.
 _rp_ask_remove_slot :: proc(name: string) {
 	count := 0
-	for e in _rp.doc.nodes do if e.slot == name do count += 1
+	for e in _rp.doc.steps do if e.slot == name do count += 1
 	_rp_set_string(&_rp.remove_slot, name)
 	if count == 0 {
 		_rp_remove_pending_slot()
@@ -525,7 +525,7 @@ _rp_ask_remove_slot :: proc(name: string) {
 	}
 	widgets.dialog_open(widgets.Dialog{
 		title       = "Remove Slot",
-		description = fmt.tprintf("Remove slot %q and the %d pass(es) in its lane?", name, count),
+		description = fmt.tprintf("Remove slot %q and the %d step(s) in its lane?", name, count),
 		buttons     = {
 			{label = "Remove", action = _rp_remove_pending_slot, is_default = true},
 			{label = "Cancel", is_cancel = true},
@@ -538,7 +538,7 @@ _rp_remove_pending_slot :: proc() {
 	if _rp.remove_slot == "" do return
 	engine.pipeline_remove_slot(&_rp.doc, _rp.remove_slot)
 	_rp_set_string(&_rp.remove_slot, "")
-	if engine.pipeline_find_node(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
+	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
 	_rp_touch("Remove Slot")
 }
 
@@ -564,16 +564,16 @@ _rp_users :: proc(slot: string) -> string {
 	return strings.join(users[:], ", ", context.temp_allocator)
 }
 
-_rp_open_code :: proc(n: ^engine.Render_Node) {
+_rp_open_code :: proc(n: ^engine.Render_Step) {
 	if n == nil || n.file == "" do return
 	script_editor.open_source(n.file, n.line)
 }
 
 // --- Settings -----------------------------------------------------------------------
 
-// The selected pass's settings, drawn through the inspector from a typed
+// The selected step's settings, drawn through the inspector from a typed
 // buffer and written back to the entry's JSON when a field changed.
-_rp_settings_edit :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Node) {
+_rp_settings_edit :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Step) {
 	if _rp.set_stale || _rp.set_id != e.id || len(_rp.set_buf) != n.settings_size {
 		delete(_rp.set_buf)
 		_rp.set_buf = nil
@@ -605,20 +605,20 @@ _rp_settings_edit :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Node) {
 		}
 		json.destroy_value(e.settings)
 		e.settings = v
-		_rp_touch("Edit Pass Settings")
+		_rp_touch("Edit Step Settings")
 	}
 	if im.Button("Reset to defaults") {
 		json.destroy_value(e.settings)
 		e.settings = nil
 		_rp.set_stale = true
-		_rp_touch("Reset Pass Settings")
+		_rp_touch("Reset Step Settings")
 	}
 }
 
-// The node's defaults with the entry's JSON applied over them, the way the
+// The step's defaults with the entry's JSON applied over them, the way the
 // runtime builds an instance. `buf` is settings_size bytes. `warn` is off for
 // the hints, which rebuild every frame.
-_rp_settings_fill :: proc(buf: []u8, e: ^engine.Pipeline_Entry, n: ^engine.Render_Node, warn := true) {
+_rp_settings_fill :: proc(buf: []u8, e: ^engine.Pipeline_Entry, n: ^engine.Render_Step, warn := true) {
 	runtime.mem_copy(raw_data(buf), n.settings_default, n.settings_size)
 	if e.settings == nil do return
 	if _, is_null := e.settings.(json.Null); is_null do return
@@ -626,12 +626,12 @@ _rp_settings_fill :: proc(buf: []u8, e: ^engine.Pipeline_Entry, n: ^engine.Rende
 	if merr != nil do return
 	pp := raw_data(buf)
 	if json.unmarshal_any(bytes, any{&pp, n.settings_ptr_tid}, .JSON, context.temp_allocator) != nil && warn {
-		log.warningf("[Render] pipeline pass %q: its settings do not match %v, defaults shown", n.name, n.settings_tid)
+		log.warningf("[Render] pipeline step %q: its settings do not match %v, defaults shown", n.name, n.settings_tid)
 	}
 }
 
 // The first two settings fields as `name value`, for hints.
-_rp_settings_hint :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Node) -> string {
+_rp_settings_hint :: proc(e: ^engine.Pipeline_Entry, n: ^engine.Render_Step) -> string {
 	if n == nil || n.settings_size == 0 do return ""
 	buf := make([]u8, n.settings_size, context.temp_allocator)
 	_rp_settings_fill(buf, e, n, warn = false)
@@ -726,7 +726,7 @@ _rp_undo_load :: proc(path: string, data: string) {
 	_rp.touched = false
 	_rp.write_edit = -1
 	_rp.set_stale = true
-	if engine.pipeline_find_node(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
+	if engine.pipeline_find_step(&_rp.doc, _rp.sel) == nil do _rp.sel = 0
 	_rp.changed = false
 	_rp_preview()
 }
@@ -750,7 +750,7 @@ _rp_decl_info :: proc(d: engine.Render_Target_Decl) -> string {
 
 _RP_ENGINE :: im.Vec4{0.30, 0.40, 0.55, 1}
 _RP_DANGER :: im.Vec4{0.95, 0.38, 0.35, 1}
-// What a selected pass does to a row: reads it, writes it, or both in place.
+// What a selected step does to a row: reads it, writes it, or both in place.
 _RP_IN     :: im.Vec4{0.11, 0.62, 0.46, 1}
 _RP_OUT    :: im.Vec4{0.85, 0.36, 0.19, 1}
 _RP_INOUT  :: im.Vec4{0.50, 0.46, 0.86, 1}

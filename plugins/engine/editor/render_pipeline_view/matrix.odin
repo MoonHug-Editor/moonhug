@@ -1,10 +1,10 @@
 package render_pipeline_view
 
-// The matrix: passes as columns in run order (the frame lane's left of a
+// The matrix: steps as columns in run order (the frame lane's left of a
 // divider, each lane closed by a "+" column), resources as rows. A cell marks
-// what the pass does to the resource, a bar spans the resource's lifetime.
+// what the step does to the resource, a bar spans the resource's lifetime.
 //
-// - Selecting a pass (its header or any of its cells) tints the rows it reads
+// - Selecting a step (its header or any of its cells) tints the rows it reads
 //   in one color, the rows it writes in another, rows it reads and writes in
 //   place in a third.
 // - Selecting a row (its label or a cell) marks its writers and readers.
@@ -19,8 +19,8 @@ import "moonhug:editor/widgets"
 _CW    :: f32(30)  // column width
 _RH    :: f32(24)  // row height
 _LW    :: f32(200) // the row labels
-_HH    :: f32(165) // the header with the rotated pass names
-_ANGLE :: f32(-55) // the pass names' rotation, degrees
+_HH    :: f32(165) // the header with the rotated step names
+_ANGLE :: f32(-55) // the step names' rotation, degrees
 
 // The matrix's visible columns as laid out: column index into the model, or
 // -1 for a lane's "+" column (frame = which lane).
@@ -63,7 +63,7 @@ _rp_matrix :: proc(m: ^_Model) {
 	}
 
 	// Backgrounds: the frame lane, the selected and hovered column, the rows
-	// the selected pass touches, the selected and hovered row.
+	// the selected step touches, the selected and hovered row.
 	right := slot_x(grid_x, len(slots))
 	im.DrawList_AddRectFilled(dl, im.Vec2{grid_x, body_y}, im.Vec2{slot_x(grid_x, divider), body_y + body_h}, im.GetColorU32(.FrameBg, 0.35))
 	if k, ok := col_slot[sel_col]; ok && sel_col >= 0 {
@@ -141,7 +141,7 @@ _rp_matrix :: proc(m: ^_Model) {
 			if clicked && s.col >= 0 {
 				_rp.sel = m.cols[s.col].entry.id
 				_rp_set_string(&_rp.sel_res, r.name)
-				_rp.scroll_pass = true
+				_rp.scroll_step = true
 				_rp.scroll_res = true
 			}
 		}
@@ -196,22 +196,22 @@ _rp_header :: proc(m: ^_Model, slots: []_Slot, divider: int, origin: im.Vec2, gr
 		c := m.cols[s.col]
 		e := c.entry
 		col := text_col
-		if c.node == nil do col = im.GetColorU32ImVec4(_RP_DANGER)
+		if c.step == nil do col = im.GetColorU32ImVec4(_RP_DANGER)
 		else if e.muted do col = dim_col
-		name := fmt.ctprintf("%s%s", e.node, e.muted ? " (muted)" : "")
+		name := fmt.ctprintf("%s%s", e.step, e.muted ? " (muted)" : "")
 		pivot := im.Vec2{x + _CW * 0.5 - lh * 0.35, origin.y + _HH - lh * 0.6 - 10}
 		im.DrawList_PushClipRect(dl, wp, wp + ws, false)
 		_rp_text_rotated(dl, pivot, col, name, _ANGLE)
 		if s.col == sel_col do _rp_text_rotated(dl, pivot + im.Vec2{1, 0}, col, name, _ANGLE)
 		im.DrawList_PopClipRect(dl)
-		pkg := c.node != nil ? _rp_package_color(c.node.pkg) : im.Vec4{0.4, 0.4, 0.4, 1}
+		pkg := c.step != nil ? _rp_package_color(c.step.pkg) : im.Vec4{0.4, 0.4, 0.4, 1}
 		im.DrawList_AddRectFilled(dl, im.Vec2{x + 4, origin.y + _HH - 6}, im.Vec2{x + _CW - 4, origin.y + _HH - 2}, im.GetColorU32ImVec4(pkg))
 
 		im.SetCursorScreenPos(im.Vec2{x, origin.y})
 		im.InvisibleButton(fmt.ctprintf("##col_%d", e.id), im.Vec2{_CW, _HH}, {.MouseButtonLeft, .MouseButtonRight})
 		if im.IsItemClicked(.Left) {
 			_rp.sel = e.id
-			_rp.scroll_pass = true
+			_rp.scroll_step = true
 		}
 		if im.IsItemClicked(.Right) {
 			_rp.ctx_id = e.id
@@ -221,7 +221,7 @@ _rp_header :: proc(m: ^_Model, slots: []_Slot, divider: int, origin: im.Vec2, gr
 		if im.BeginDragDropSource() {
 			id := e.id
 			im.SetDragDropPayload(_RP_PAYLOAD, &id, size_of(id))
-			im.TextUnformatted(fmt.ctprintf("%s", e.node))
+			im.TextUnformatted(fmt.ctprintf("%s", e.step))
 			im.EndDragDropSource()
 		}
 		if _rp_drop_target(e.slot, c.pos) {
@@ -238,15 +238,15 @@ _rp_plus_column :: proc(s: _Slot, x: f32, origin: im.Vec2) {
 	im.SetCursorScreenPos(at)
 	if im.InvisibleButton(fmt.ctprintf("##plus_%s", s.frame ? "frame" : "slot"), im.Vec2{_CW, _CW}) do _rp_open_palette(slot, -1)
 	hovered := im.IsItemHovered()
-	widgets.tooltip(s.frame ? "Add a pass to the frame lane: it runs once per frame, before every slot" : "Add a pass at the end of this slot")
+	widgets.tooltip(s.frame ? "Add a step to the frame lane: it runs once per frame, before every slot" : "Add a step at the end of this slot")
 	c := at + im.Vec2{_CW, _CW} * 0.5
 	im.DrawList_AddCircleFilled(dl, c, 10, im.GetColorU32(hovered ? im.Col.ButtonHovered : im.Col.Button))
 	_rp_plus(dl, c, 5, im.GetColorU32(.Text))
 	if _rp_drop_target(slot, -1) do im.DrawList_AddCircle(dl, c, 12, im.GetColorU32(.HeaderActive), 0, 2)
 }
 
-// Accepts a dragged pass, inserting it into lane `slot` at lane position
-// `index` (-1 = the end). True while a pass that may go there hovers it.
+// Accepts a dragged step, inserting it into lane `slot` at lane position
+// `index` (-1 = the end). True while a step that may go there hovers it.
 _rp_drop_target :: proc(slot: string, index: int) -> bool {
 	if !im.BeginDragDropTarget() do return false
 	defer im.EndDragDropTarget()
@@ -306,7 +306,7 @@ _rp_cell_glyph :: proc(dl: ^im.DrawList, cell: _Cell, c: im.Vec2, muted: bool) {
 	}
 }
 
-// "pass reads resource", the verb in the cell's color, the resource in its
+// "step reads resource", the verb in the cell's color, the resource in its
 // row's, then a dim note when there is more to say.
 _rp_cell_tooltip :: proc(m: ^_Model, r: ^_Resource, ci: int) {
 	c := m.cols[ci]
@@ -324,29 +324,29 @@ _rp_cell_tooltip :: proc(m: ^_Model, r: ^_Resource, ci: int) {
 		note = "in place: it draws over what is there"
 	case .None:
 		verb = "does not use"
-		if r.first >= 0 && ci > r.first && ci < r.last do note = "it stays alive past this pass"
+		if r.first >= 0 && ci > r.first && ci < r.last do note = "it stays alive past this step"
 	}
 	if cell.unwritten do verb_col = _RP_DANGER
 	gap := im.CalcTextSize(" ").x
-	im.TextUnformatted(fmt.ctprintf("%s", c.entry.node))
+	im.TextUnformatted(fmt.ctprintf("%s", c.entry.step))
 	im.SameLine(0, gap)
 	im.TextColoredUnformatted(verb_col, fmt.ctprintf("%s", verb))
 	im.SameLine(0, gap)
 	im.TextColoredUnformatted(r.scene ? im.GetStyleColorVec4(.Text)^ : _rp_target_color(r.name), fmt.ctprintf("%s", r.name))
 	if note != "" do im.TextDisabled("%s", fmt.ctprintf("%s", note))
-	if cell.unwritten do im.TextColoredUnformatted(_RP_DANGER, "nothing writes it before this pass")
+	if cell.unwritten do im.TextColoredUnformatted(_RP_DANGER, "nothing writes it before this step")
 	if c.entry.muted do im.TextDisabled("muted")
 }
 
 _rp_row_tooltip :: proc(m: ^_Model, r: ^_Resource) -> string {
-	if r.scene do return "The view's objects, collected before the frame runs. Passes that draw the scene read them."
+	if r.scene do return "The view's objects, collected before the frame runs. Steps that draw the scene read them."
 	b := make([dynamic]string, context.temp_allocator)
 	writers, readers: [dynamic]string
 	writers.allocator = context.temp_allocator
 	readers.allocator = context.temp_allocator
 	for cell, ci in r.cells {
-		if cell.access == .Write || cell.access == .Read_Write do append(&writers, m.cols[ci].entry.node)
-		if cell.access == .Read || cell.access == .Read_Write do append(&readers, m.cols[ci].entry.node)
+		if cell.access == .Write || cell.access == .Read_Write do append(&writers, m.cols[ci].entry.step)
+		if cell.access == .Read || cell.access == .Read_Write do append(&readers, m.cols[ci].entry.step)
 	}
 	append(&b, r.name)
 	if r.has_decl do append(&b, _rp_decl_info(r.decl))
@@ -357,14 +357,14 @@ _rp_row_tooltip :: proc(m: ^_Model, r: ^_Resource) -> string {
 }
 
 _rp_column_tooltip :: proc(c: _Column) -> string {
-	if c.node == nil do return fmt.tprintf("%s is not installed: no linked plugin declares it, so it does not run", c.entry.node)
-	kind := c.node.frame ? "per frame" : "per view"
-	s := fmt.tprintf("%s\n%s\n%s, %s", c.entry.node, c.node.summary, c.node.pkg, kind)
+	if c.step == nil do return fmt.tprintf("%s is not installed: no linked plugin declares it, so it does not run", c.entry.step)
+	kind := c.step.frame ? "per frame" : "per view"
+	s := fmt.tprintf("%s\n%s\n%s, %s", c.entry.step, c.step.summary, c.step.pkg, kind)
 	if c.entry.muted do s = fmt.tprintf("%s\nmuted", s)
 	return fmt.tprintf("%s\nDrag to reorder. Right-click for more.", s)
 }
 
-// A resource's lifetime, from its first pass to its last.
+// A resource's lifetime, from its first step to its last.
 _rp_lifetime_bar :: proc(dl: ^im.DrawList, x0, x1, y: f32) {
 	im.DrawList_AddLine(dl, im.Vec2{x0, y}, im.Vec2{x1, y}, im.GetColorU32(.Text, 0.3), 3)
 }

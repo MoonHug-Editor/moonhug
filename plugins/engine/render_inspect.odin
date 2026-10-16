@@ -2,18 +2,18 @@ package engine
 
 // What the Render Pipeline window shows of a running frame
 // (plugins/engine/docs/RenderPipeline.md "Inspecting a frame"): for every
-// placed node, a thumbnail of each target it wrote, as it was right after
-// the node ran, and the objects, meshes, materials and textures it drew.
-// Optionally one node's output replaces the scene view's image.
+// placed step, a thumbnail of each target it wrote, as it was right after
+// the step ran, and the objects, meshes, materials and textures it drew.
+// Optionally one step's output replaces the scene view's image.
 //
 // Nothing happens unless the window asked this frame or the one before
 // (render_inspect_request), so a closed window costs nothing. The window
 // names one slot. The scene view's run of that slot is captured, or the
 // first camera's when the scene view renders another slot. The frame lane is
-// captured whenever its nodes run.
+// captured whenever its steps run.
 //
-// The capture copies each target a node took (render_target) right after
-// the node, so an in-place target like "hdr" gets one thumbnail per node that
+// The capture copies each target a step took (render_target) right after
+// the step, so an in-place target like "hdr" gets one thumbnail per step that
 // wrote it, each showing its state at that point of the frame.
 
 import "base:runtime"
@@ -23,15 +23,15 @@ import gfx "moonhug:libs/gfx"
 // The thumbnails' width in pixels, the height follows the target's aspect.
 INSPECT_THUMB_W :: 256
 
-// What one placed node did in the captured run.
-Inspect_Node :: struct {
-	ran:       bool,                  // the node ran this capture (not muted, not a frame node already run)
+// What one placed step did in the captured run.
+Inspect_Step :: struct {
+	ran:       bool,                  // the step ran this capture (not muted, not a frame step already run)
 	taken:     [dynamic]string,       // the targets it took (render_target), in order, owned
 	objects:   [dynamic]Transform_Handle, // what it drew, each once
 	meshes:    [dynamic]Asset_GUID,
 	materials: [dynamic]Asset_GUID,
 	textures:  [dynamic]Asset_GUID,   // quads' own textures (a material's are found from the material)
-	// Taken color targets the node drew only the depth of (the depth
+	// Taken color targets the step drew only the depth of (the depth
 	// prepass), owned: shown as their depth from a perspective camera. A
 	// Depth target always shows its depth, read as orthographic.
 	depth_views: [dynamic]string,
@@ -43,9 +43,9 @@ _inspect: struct {
 	requested:  u64,    // gfx.frame_index + 1 of the last request
 	scene_done: u64,    // gfx.frame_index + 1 when the scene view's run was captured
 	pool:       gfx.Target_Pool, // thumbnails, "<id>/<target>"
-	nodes:      map[i32]Inspect_Node,
-	recording:  ^Inspect_Node,   // the node running in a captured run
-	show_id:    i32,             // 0 = off: the node whose output the scene view shows
+	steps:      map[i32]Inspect_Step,
+	recording:  ^Inspect_Step,   // the step running in a captured run
+	show_id:    i32,             // 0 = off: the step whose output the scene view shows
 	show_name:  string,          // owned, the target of it shown
 	shown:      u64,             // gfx.frame_index + 1 of the last copy of the shown output
 }
@@ -65,19 +65,19 @@ render_inspect_active :: proc() -> bool {
 	return _inspect.requested != 0 && _inspect.requested + 2 >= gfx.frame_index + 1
 }
 
-// What the placed node `id` did in the last capture, nil when it has not run
+// What the placed step `id` did in the last capture, nil when it has not run
 // in one.
-render_inspect_node :: proc(id: i32) -> ^Inspect_Node {
-	return &_inspect.nodes[id] or_else nil
+render_inspect_step :: proc(id: i32) -> ^Inspect_Step {
+	return &_inspect.steps[id] or_else nil
 }
 
-// The thumbnail of `target` as node `id` left it, nil when the node did not
+// The thumbnail of `target` as step `id` left it, nil when the step did not
 // take that target in the last capture.
 render_inspect_thumb :: proc(id: i32, target: string) -> ^gfx.Render_Target {
 	return gfx.pool_find(&_inspect.pool, _thumb_key(id, target))
 }
 
-// Shows node `id`'s `target` in the scene view instead of its final image.
+// Shows step `id`'s `target` in the scene view instead of its final image.
 // id 0 turns it off.
 render_inspect_show :: proc(id: i32, target: string) {
 	context.allocator = runtime.default_allocator()
@@ -86,8 +86,8 @@ render_inspect_show :: proc(id: i32, target: string) {
 	_inspect.show_name = id != 0 ? strings.clone(target) : ""
 }
 
-// The node and target the scene view shows, and whether it did last frame
-// (false when that node did not take the target).
+// The step and target the scene view shows, and whether it did last frame
+// (false when that step did not take the target).
 render_inspect_showing :: proc() -> (id: i32, target: string, shown: bool) {
 	return _inspect.show_id, _inspect.show_name, _inspect.shown != 0 && _inspect.shown + 1 >= gfx.frame_index + 1
 }
@@ -105,23 +105,23 @@ _inspect_lane_begins :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	return _inspect.scene_done != gfx.frame_index + 1
 }
 
-// Before a node of a captured run: forget what it did last time and start
+// Before a step of a captured run: forget what it did last time and start
 // recording.
-_inspect_node_begins :: proc(id: i32) {
+_inspect_step_begins :: proc(id: i32) {
 	context.allocator = runtime.default_allocator()
-	n, ok := &_inspect.nodes[id]
+	n, ok := &_inspect.steps[id]
 	if !ok {
-		_inspect.nodes[id] = {}
-		n = &_inspect.nodes[id]
+		_inspect.steps[id] = {}
+		n = &_inspect.steps[id]
 	}
-	_inspect_node_clear(n)
+	_inspect_step_clear(n)
 	n.ran = true
 	_inspect.recording = n
 }
 
 // After it: one thumbnail per target it took, and the full-size copy the
-// scene view shows when this is the shown node.
-_inspect_node_ends :: proc(id: i32, pool: ^gfx.Target_Pool) {
+// scene view shows when this is the shown step.
+_inspect_step_ends :: proc(id: i32, pool: ^gfx.Target_Pool) {
 	context.allocator = runtime.default_allocator()
 	n := _inspect.recording
 	_inspect.recording = nil
@@ -161,7 +161,7 @@ _inspect_draw_depth :: proc(dst, src: ^gfx.Render_Target, perspective: bool) {
 	gfx.pass_end()
 }
 
-// Called by a node that drew only the depth of a color target it took (the
+// Called by a step that drew only the depth of a color target it took (the
 // depth prepass), so its thumbnail shows that depth rather than the color.
 _inspect_depth_view :: proc(name: string) {
 	n := _inspect.recording
@@ -171,14 +171,14 @@ _inspect_depth_view :: proc(name: string) {
 	append(&n.depth_views, strings.clone(name))
 }
 
-// A muted node in a captured run: shown as not run.
-_inspect_node_skipped :: proc(id: i32) {
-	if n, ok := &_inspect.nodes[id]; ok {
-		_inspect_node_clear(n)
+// A muted step in a captured run: shown as not run.
+_inspect_step_skipped :: proc(id: i32) {
+	if n, ok := &_inspect.steps[id]; ok {
+		_inspect_step_clear(n)
 	}
 }
 
-// At the end of the scene view's run: the shown node's output over the
+// At the end of the scene view's run: the shown step's output over the
 // view's image.
 _inspect_lane_ends :: proc(ctx: ^Render_Ctx) {
 	if !ctx.scene_view || _inspect.show_id == 0 || ctx.target == nil do return
@@ -187,7 +187,7 @@ _inspect_lane_ends :: proc(ctx: ^Render_Ctx) {
 	gfx.display_blit(ctx.target, gfx.rt_color_texture(src))
 }
 
-// Called when a node takes a target (render_node_registry.odin).
+// Called when a step takes a target (render_step_registry.odin).
 _inspect_taken :: proc(name: string) {
 	n := _inspect.recording
 	if n == nil do return
@@ -195,7 +195,7 @@ _inspect_taken :: proc(name: string) {
 	append(&n.taken, strings.clone(name, runtime.default_allocator()))
 }
 
-// Called for every command a node draws (render_execute, render_execute_depth).
+// Called for every command a step draws (render_execute, render_execute_depth).
 _inspect_draw :: proc(cmd: Render_Command) {
 	n := _inspect.recording
 	if n == nil do return
@@ -222,8 +222,8 @@ _inspect_draw :: proc(cmd: Render_Command) {
 
 _render_inspect_shutdown :: proc() {
 	context.allocator = runtime.default_allocator()
-	for _, &n in _inspect.nodes do _inspect_node_clear(&n)
-	for _, &n in _inspect.nodes {
+	for _, &n in _inspect.steps do _inspect_step_clear(&n)
+	for _, &n in _inspect.steps {
 		delete(n.taken)
 		delete(n.objects)
 		delete(n.meshes)
@@ -231,7 +231,7 @@ _render_inspect_shutdown :: proc() {
 		delete(n.textures)
 		delete(n.depth_views)
 	}
-	delete(_inspect.nodes)
+	delete(_inspect.steps)
 	gfx.pool_destroy(&_inspect.pool)
 	delete(_inspect.slot)
 	delete(_inspect.show_name)
@@ -251,7 +251,7 @@ _thumb_key :: proc(id: i32, target: string) -> string {
 }
 
 @(private = "file")
-_inspect_node_clear :: proc(n: ^Inspect_Node) {
+_inspect_step_clear :: proc(n: ^Inspect_Step) {
 	for t in n.taken do delete(t, runtime.default_allocator())
 	clear(&n.taken)
 	for v in n.depth_views do delete(v, runtime.default_allocator())

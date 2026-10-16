@@ -719,7 +719,7 @@ set_environment :: proc(specular, irradiance: ^Cubemap, diffuse_intensity, specu
 // callers that set temporary lights (the inspector's preview headlight) and
 // must not leak them into later passes of lightless scenes.
 // The directional light's cascades for the CURRENT pass's lit draws (the
-// shadow_cascades render node's result). Shaders that declare the cascades'
+// shadow_cascades render step's result). Shaders that declare the cascades'
 // sampler (SHADOW_SAMPLER_SLOT) read it. Not calling this leaves every
 // surface lit by that light.
 set_shadow_cascades :: proc(c: Shadow_Cascades) {
@@ -728,7 +728,7 @@ set_shadow_cascades :: proc(c: Shadow_Cascades) {
 }
 
 // The screen's ambient occlusion for the CURRENT pass's lit draws (the
-// engine's scene_ssao node), read at OCCLUSION_SLOT: it shades the
+// engine's scene_ssao step), read at OCCLUSION_SLOT: it shades the
 // environment's light, and `direct` of the lights'. Not calling this leaves
 // every surface open.
 set_ambient_occlusion :: proc(ao: Ambient_Occlusion) {
@@ -736,7 +736,7 @@ set_ambient_occlusion :: proc(ao: Ambient_Occlusion) {
 }
 
 // The spot and point lights' shadow atlas for the CURRENT pass's lit draws
-// (the shadow_atlas render node's result), read at SHADOW_ATLAS_SLOT.
+// (the shadow_atlas render step's result), read at SHADOW_ATLAS_SLOT.
 set_shadow_atlas :: proc(a: ^Shadow_Atlas) {
 	_pass.shadows.atlas = a^
 	_pass.shadows.has_atlas = true

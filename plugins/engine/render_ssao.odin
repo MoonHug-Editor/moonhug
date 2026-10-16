@@ -11,7 +11,7 @@ package engine
 import gfx "moonhug:libs/gfx"
 import "core:math/linalg"
 
-SSAO_NODE :: "scene_ssao"
+SSAO_STEP :: "scene_ssao"
 
 // The occlusion, and the blur's first pass.
 SSAO_TARGET      :: "ssao"
@@ -32,7 +32,7 @@ Ssao_Settings :: struct {
 
 ssao_defaults := Ssao_Settings{radius = 0.5, intensity = 1, samples = 12, direct = 0.25}
 
-@(render_node={summary="screen-space ambient occlusion from the view's depth, shading the environment's light of the lit draws after it", reads="scene", writes="hdr:HDR* ssao:HDR ssao_blur:HDR", settings="ssao_defaults"})
+@(render_step={summary="screen-space ambient occlusion from the view's depth, shading the environment's light of the lit draws after it", reads="scene", writes="hdr:HDR* ssao:HDR ssao_blur:HDR", settings="ssao_defaults"})
 scene_ssao :: proc(ctx: ^Render_Ctx) {
 	if ctx.view.mode != .Shaded do return
 	settings := (^Ssao_Settings)(ctx.settings)

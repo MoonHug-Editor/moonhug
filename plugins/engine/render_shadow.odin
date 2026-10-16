@@ -29,11 +29,11 @@ import "moonhug:libs/log"
 SHADOW_TARGET       :: "shadow"
 SHADOW_ATLAS_TARGET :: "shadow_atlas"
 
-// The atlases' sizes, as the nodes declare their targets (Depth@2048px).
+// The atlases' sizes, as the steps declare their targets (Depth@2048px).
 SHADOW_CASCADE_ATLAS_SIZE :: 2048
 SHADOW_ATLAS_SIZE         :: 2048
 
-// The directional cascades' settings, per placed node (the pipeline asset).
+// The directional cascades' settings, per placed step (the pipeline asset).
 Shadow_Settings :: struct {
 	// Slices of the camera's frustum, each its own tile: more keeps the
 	// shadows near the camera sharp further out.
@@ -53,7 +53,7 @@ Shadow_Settings :: struct {
 
 shadow_defaults := Shadow_Settings{cascades = 4, distance = 50, split = 0.75, bias = 0.05, normal_bias = 1.5}
 
-// The spot and point lights' shadow settings, per placed node.
+// The spot and point lights' shadow settings, per placed step.
 Shadow_Atlas_Settings :: struct {
 	bias:        f32 `decor:min(0)`, // world units along the light ray
 	normal_bias: f32 `decor:min(0)`, // texels along the surface normal
@@ -61,7 +61,7 @@ Shadow_Atlas_Settings :: struct {
 
 shadow_atlas_defaults := Shadow_Atlas_Settings{bias = 0.05, normal_bias = 1.5}
 
-@(render_node={summary="the first shadowing directional light's cascades, fitted to the view", reads="scene", writes="shadow:Depth@2048px", settings="shadow_defaults"})
+@(render_step={summary="the first shadowing directional light's cascades, fitted to the view", reads="scene", writes="shadow:Depth@2048px", settings="shadow_defaults"})
 shadow_cascades :: proc(ctx: ^Render_Ctx) {
 	ctx.shadow_cascades = {}
 	settings := (^Shadow_Settings)(ctx.settings)
@@ -156,7 +156,7 @@ shadow_cascades :: proc(ctx: ^Render_Ctx) {
 	ctx.shadow_cascades = result
 }
 
-@(render_node={summary="spot and point light shadows: a tile per spot light, six per point light", frame=true, reads="scene", writes="shadow_atlas:Depth@2048px", settings="shadow_atlas_defaults"})
+@(render_step={summary="spot and point light shadows: a tile per spot light, six per point light", frame=true, reads="scene", writes="shadow_atlas:Depth@2048px", settings="shadow_atlas_defaults"})
 shadow_atlas :: proc(ctx: ^Render_Ctx) {
 	_atlas.frame = 0
 	settings := (^Shadow_Atlas_Settings)(ctx.settings)
@@ -273,7 +273,7 @@ shadow_atlas_grid :: proc(tiles, atlas_size: int) -> (grid, tile: int) {
 }
 
 // Hands this view's cascades and this frame's atlas to the current pass
-// (scene_target_begin calls it after pass_begin). Nothing for what no node
+// (scene_target_begin calls it after pass_begin). Nothing for what no step
 // rendered.
 shadow_bind :: proc(ctx: ^Render_Ctx) {
 	if ctx.shadow_cascades.count > 0 do gfx.set_shadow_cascades(ctx.shadow_cascades)

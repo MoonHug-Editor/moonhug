@@ -2,28 +2,28 @@ package engine
 
 // The render pipeline: the frame as an asset (plugins/engine/docs/RenderPipeline.md).
 //
-// A `.renderpipeline` asset lists the nodes a frame runs: the per-frame
-// nodes once, then one lane per slot. A camera names a slot (Camera.slot,
+// A `.renderpipeline` asset lists the steps a frame runs: the per-frame
+// steps once, then one lane per slot. A camera names a slot (Camera.slot,
 // "Main" by default) and renders through that lane. The project's active
 // pipeline is the Rendering project setting, the essentials plugin's
 // Default.renderpipeline when unset, and a built-in frame when neither
 // exists, so the engine renders with no asset installed.
 //
-// A node is a proc declared with @(render_node) (render_node_registry.odin): the
+// A step is a proc declared with @(render_step) (render_step_registry.odin): the
 // registry of what can be placed. The asset places instances of them, each
 // with its own settings and port bindings, in the order the pipeline window
-// lists them: a lane runs its nodes in the order they appear in `nodes`.
+// lists them: a lane runs its steps in the order they appear in `steps`.
 // Nothing is sorted: what you see is what runs.
 //
-// A placed node's ports are bound by name: a read takes the target of that
+// A placed step's ports are bound by name: a read takes the target of that
 // name from the pool, a write creates it. The declared names are the
 // defaults, and an entry may rebind a port (`binds`), so two blooms in one
 // lane write `bloom` and `bloom_wide` and a tonemap picks which it reads.
 // That is the whole wiring: a sequence with named ports carries the same
 // information as a wired graph, laid out one way.
 //
-// Validation happens when a pipeline loads: a read no earlier node writes
-// and an instance naming a node that is not installed (a removed plugin)
+// Validation happens when a pipeline loads: a read no earlier step writes
+// and an instance naming a step that is not installed (a removed plugin)
 // are each warned once and the frame still renders, since both are the
 // asset's business and not an engine invariant.
 
@@ -42,21 +42,21 @@ import "moonhug:libs/serialization"
 MAIN_SLOT   :: "Main"
 EDITOR_SLOT :: "Editor"
 
-// One placed node: `node` names the registered @(render_node) proc, `slot`
+// One placed step: `step` names the registered @(render_step) proc, `slot`
 // the lane ("" = the per-frame lane), `binds` the ports whose target differs
-// from the declared name, `settings` the values of the node's settings struct
-// as JSON (absent keys keep the node's defaults).
+// from the declared name, `settings` the values of the step's settings struct
+// as JSON (absent keys keep the step's defaults).
 Pipeline_Entry :: struct {
 	id:       i32,
-	node:     string,
+	step:     string,
 	slot:     string,
 	muted:    bool, // placed but skipped: the frame runs as if it were not there
 	binds:    [dynamic]Pipeline_Bind,
 	settings: json.Value,
 }
 
-// A port of a placed node bound to another target name than it declares.
-// `port` is the declared name (a read or a write of the node), `target` the
+// A port of a placed step bound to another target name than it declares.
+// `port` is the declared name (a read or a write of the step), `target` the
 // pool name it uses instead. A read may bind to "final".
 Pipeline_Bind :: struct {
 	port:   string,
@@ -70,7 +70,7 @@ Pipeline_Slot :: struct {
 @(typ_guid={guid = "6b1f3c2e-7d4a-4e85-9c0b-2a5f8d1e4c73", menu_assets_create = {menu_name = "Render Pipeline", file_name = "New Render Pipeline.renderpipeline", order = -4}})
 Render_Pipeline :: struct {
 	slots:   [dynamic]Pipeline_Slot,
-	nodes:   [dynamic]Pipeline_Entry,
+	steps:   [dynamic]Pipeline_Entry,
 	next_id: i32,
 }
 
@@ -80,23 +80,23 @@ reset_Render_Pipeline :: proc(p: ^Render_Pipeline) {
 	cleanup_Render_Pipeline(p)
 	p.next_id = 1
 	pipeline_add_slot(p, MAIN_SLOT)
-	pipeline_add_node(p, "environment_pass", "")
-	pipeline_add_node(p, "shadow_atlas", "")
+	pipeline_add_step(p, "environment_pass", "")
+	pipeline_add_step(p, "shadow_atlas", "")
 	for name in ([]string{"shadow_cascades", "scene_opaque", "scene_sky", "scene_under", "scene_transparent", "scene_over", "final_blit"}) {
-		pipeline_add_node(p, name, MAIN_SLOT)
+		pipeline_add_step(p, name, MAIN_SLOT)
 	}
 }
 
 cleanup_Render_Pipeline :: proc(p: ^Render_Pipeline) {
 	for s in p.slots do delete(s.name)
 	delete(p.slots)
-	for &e in p.nodes do pipeline_entry_destroy(&e)
-	delete(p.nodes)
+	for &e in p.steps do pipeline_entry_destroy(&e)
+	delete(p.steps)
 	p^ = {}
 }
 
 pipeline_entry_destroy :: proc(e: ^Pipeline_Entry) {
-	delete(e.node)
+	delete(e.step)
 	delete(e.slot)
 	for b in e.binds {
 		delete(b.port)
@@ -142,12 +142,12 @@ pipeline_find_slot :: proc(p: ^Render_Pipeline, name: string) -> bool {
 	return false
 }
 
-// Removes a slot and every node placed in it.
+// Removes a slot and every step placed in it.
 pipeline_remove_slot :: proc(p: ^Render_Pipeline, name: string) {
-	for i := len(p.nodes) - 1; i >= 0; i -= 1 {
-		if p.nodes[i].slot == name {
-			pipeline_entry_destroy(&p.nodes[i])
-			ordered_remove(&p.nodes, i)
+	for i := len(p.steps) - 1; i >= 0; i -= 1 {
+		if p.steps[i].slot == name {
+			pipeline_entry_destroy(&p.steps[i])
+			ordered_remove(&p.steps, i)
 		}
 	}
 	for s, i in p.slots {
@@ -159,66 +159,66 @@ pipeline_remove_slot :: proc(p: ^Render_Pipeline, name: string) {
 	}
 }
 
-// Places a node in its lane: at the end, or at `index` within the lane
-// (0 = first). The entry is inserted into `nodes` right where that lane
+// Places a step in its lane: at the end, or at `index` within the lane
+// (0 = first). The entry is inserted into `steps` right where that lane
 // position falls, so array order and lane order agree.
-pipeline_add_node :: proc(p: ^Render_Pipeline, node: string, slot: string, index := -1) -> i32 {
+pipeline_add_step :: proc(p: ^Render_Pipeline, step: string, slot: string, index := -1) -> i32 {
 	if p.next_id < 1 do p.next_id = 1
-	e := Pipeline_Entry{id = p.next_id, node = strings.clone(node), slot = strings.clone(slot)}
+	e := Pipeline_Entry{id = p.next_id, step = strings.clone(step), slot = strings.clone(slot)}
 	p.next_id += 1
 	at := _lane_insert_at(p, slot, index)
-	inject_at(&p.nodes, at, e)
+	inject_at(&p.steps, at, e)
 	return e.id
 }
 
-// Moves a placed node to `slot` at lane position `index` (-1 = the end).
-pipeline_move_node :: proc(p: ^Render_Pipeline, id: i32, slot: string, index := -1) -> bool {
+// Moves a placed step to `slot` at lane position `index` (-1 = the end).
+pipeline_move_step :: proc(p: ^Render_Pipeline, id: i32, slot: string, index := -1) -> bool {
 	from := -1
-	for e, i in p.nodes do if e.id == id do from = i
+	for e, i in p.steps do if e.id == id do from = i
 	if from < 0 do return false
-	e := p.nodes[from]
-	ordered_remove(&p.nodes, from)
+	e := p.steps[from]
+	ordered_remove(&p.steps, from)
 	if e.slot != slot {
 		delete(e.slot)
 		e.slot = strings.clone(slot)
 	}
 	at := _lane_insert_at(p, slot, index)
-	inject_at(&p.nodes, at, e)
+	inject_at(&p.steps, at, e)
 	return true
 }
 
-// The nodes of one lane, in order (temp-allocated pointers into `nodes`).
+// The steps of one lane, in order (temp-allocated pointers into `steps`).
 pipeline_lane :: proc(p: ^Render_Pipeline, slot: string) -> []^Pipeline_Entry {
 	out := make([dynamic]^Pipeline_Entry, context.temp_allocator)
-	for &e in p.nodes do if e.slot == slot do append(&out, &e)
+	for &e in p.steps do if e.slot == slot do append(&out, &e)
 	return out[:]
 }
 
-// The array index at which a node inserted at lane position `index` goes:
-// before the lane's `index`-th node, or after the lane's last one (or at the
+// The array index at which a step inserted at lane position `index` goes:
+// before the lane's `index`-th step, or after the lane's last one (or at the
 // array's end when the lane is empty).
 @(private = "file")
 _lane_insert_at :: proc(p: ^Render_Pipeline, slot: string, index: int) -> int {
 	seen, last := 0, -1
-	for e, i in p.nodes {
+	for e, i in p.steps {
 		if e.slot != slot do continue
 		if index >= 0 && seen == index do return i
 		seen += 1
 		last = i
 	}
-	return last + 1 if last >= 0 else len(p.nodes)
+	return last + 1 if last >= 0 else len(p.steps)
 }
 
-pipeline_find_node :: proc(p: ^Render_Pipeline, id: i32) -> ^Pipeline_Entry {
-	for &e in p.nodes do if e.id == id do return &e
+pipeline_find_step :: proc(p: ^Render_Pipeline, id: i32) -> ^Pipeline_Entry {
+	for &e in p.steps do if e.id == id do return &e
 	return nil
 }
 
-pipeline_remove_node :: proc(p: ^Render_Pipeline, id: i32) {
-	for &e, i in p.nodes {
+pipeline_remove_step :: proc(p: ^Render_Pipeline, id: i32) {
+	for &e, i in p.steps {
 		if e.id == id {
 			pipeline_entry_destroy(&e)
-			ordered_remove(&p.nodes, i)
+			ordered_remove(&p.steps, i)
 			return
 		}
 	}
@@ -248,14 +248,14 @@ pipeline_save_file :: proc(p: ^Render_Pipeline, path: string, guid: Asset_GUID) 
 pipeline_clone :: proc(src: Render_Pipeline) -> (p: Render_Pipeline) {
 	p.next_id = src.next_id
 	for s in src.slots do append(&p.slots, Pipeline_Slot{name = strings.clone(s.name)})
-	for e in src.nodes {
+	for e in src.steps {
 		c := e
-		c.node = strings.clone(e.node)
+		c.step = strings.clone(e.step)
 		c.slot = strings.clone(e.slot)
 		c.settings = _json_clone(e.settings)
 		c.binds = nil
 		for b in e.binds do append(&c.binds, Pipeline_Bind{port = strings.clone(b.port), target = strings.clone(b.target)})
-		append(&p.nodes, c)
+		append(&p.steps, c)
 	}
 	return p
 }
@@ -288,13 +288,13 @@ rendering_settings: Rendering_Settings
 // at EngineInit. Empty = the built-in frame.
 render_pipeline_default: Asset_GUID
 
-// One placed node as it runs: the registered node, this instance's settings
-// (a copy of the node's defaults with the entry's JSON applied) and its ports
-// after binding, parallel to the node's declared reads and writes.
+// One placed step as it runs: the registered step, this instance's settings
+// (a copy of the step's defaults with the entry's JSON applied) and its ports
+// after binding, parallel to the step's declared reads and writes.
 Pipeline_Instance :: struct {
 	id:       i32,
-	node:     ^Render_Node,
-	settings: rawptr, // settings_size bytes on the default allocator, nil when the node has none
+	step:     ^Render_Step,
+	settings: rawptr, // settings_size bytes on the default allocator, nil when the step has none
 	muted:    bool,
 	reads:    []string,
 	writes:   []Render_Target_Decl,
@@ -409,7 +409,7 @@ _pipeline_runtime_destroy :: proc(r: ^Pipeline_Runtime) {
 	r^ = {}
 }
 
-// Resolves every entry to its node, builds each instance's settings and
+// Resolves every entry to its step, builds each instance's settings and
 // bound ports, keeps each lane in asset order, and warns once per load about
 // what will not run as listed.
 @(private = "file")
@@ -419,25 +419,25 @@ _pipeline_runtime_build :: proc(src: Render_Pipeline, guid: Asset_GUID) -> (r: P
 	r.slots = make(map[string][dynamic]Pipeline_Instance)
 	for s in src.slots do r.slots[strings.clone(s.name)] = make([dynamic]Pipeline_Instance)
 
-	for e in src.nodes {
-		node := render_node_find(e.node)
-		if node == nil {
-			log.warningf("[Render] pipeline node %q is not installed, skipped (a plugin's node whose link is gone?)", e.node)
+	for e in src.steps {
+		step := render_step_find(e.step)
+		if step == nil {
+			log.warningf("[Render] pipeline step %q is not installed, skipped (a plugin's step whose link is gone?)", e.step)
 			continue
 		}
 		if e.slot != "" && e.slot not_in r.slots {
-			log.warningf("[Render] pipeline node %q sits in slot %q, which the pipeline does not declare, skipped", e.node, e.slot)
+			log.warningf("[Render] pipeline step %q sits in slot %q, which the pipeline does not declare, skipped", e.step, e.slot)
 			continue
 		}
-		if node.frame != (e.slot == "") {
-			log.warningf("[Render] pipeline node %q is %s and cannot sit in %s, skipped", e.node, node.frame ? "per frame" : "per view", e.slot == "" ? "the frame lane" : "a slot")
+		if step.frame != (e.slot == "") {
+			log.warningf("[Render] pipeline step %q is %s and cannot sit in %s, skipped", e.step, step.frame ? "per frame" : "per view", e.slot == "" ? "the frame lane" : "a slot")
 			continue
 		}
-		inst := Pipeline_Instance{id = e.id, node = node, muted = e.muted, settings = _instance_settings(node, e.settings)}
-		inst.reads = make([]string, len(node.reads))
-		for t, i in node.reads do inst.reads[i] = strings.clone(pipeline_entry_port(e, t))
-		inst.writes = make([]Render_Target_Decl, len(node.writes))
-		for d, i in node.writes {
+		inst := Pipeline_Instance{id = e.id, step = step, muted = e.muted, settings = _instance_settings(step, e.settings)}
+		inst.reads = make([]string, len(step.reads))
+		for t, i in step.reads do inst.reads[i] = strings.clone(pipeline_entry_port(e, t))
+		inst.writes = make([]Render_Target_Decl, len(step.writes))
+		for d, i in step.writes {
 			inst.writes[i] = d
 			inst.writes[i].name = strings.clone(pipeline_entry_port(e, d.name))
 		}
@@ -449,20 +449,20 @@ _pipeline_runtime_build :: proc(src: Render_Pipeline, guid: Asset_GUID) -> (r: P
 }
 
 
-// A copy of the node's defaults with the entry's JSON applied over it.
+// A copy of the step's defaults with the entry's JSON applied over it.
 @(private = "file")
-_instance_settings :: proc(node: ^Render_Node, v: json.Value) -> rawptr {
-	if node.settings_size == 0 do return nil
-	ptr := runtime.mem_alloc_bytes(node.settings_size, 16) or_else nil
+_instance_settings :: proc(step: ^Render_Step, v: json.Value) -> rawptr {
+	if step.settings_size == 0 do return nil
+	ptr := runtime.mem_alloc_bytes(step.settings_size, 16) or_else nil
 	if ptr == nil do return nil
 	p := raw_data(ptr)
-	runtime.mem_copy(p, node.settings_default, node.settings_size)
+	runtime.mem_copy(p, step.settings_default, step.settings_size)
 	if _, is_null := v.(json.Null); v != nil && !is_null { // a JSON null is "no settings stored" too
 		bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
 		if merr == nil {
 			pp := p
-			if json.unmarshal_any(bytes, any{&pp, node.settings_ptr_tid}) != nil {
-				log.warningf("[Render] pipeline node %q: its settings do not match %v, defaults used", node.name, node.settings_tid)
+			if json.unmarshal_any(bytes, any{&pp, step.settings_ptr_tid}) != nil {
+				log.warningf("[Render] pipeline step %q: its settings do not match %v, defaults used", step.name, step.settings_tid)
 			}
 		}
 	}
@@ -470,7 +470,7 @@ _instance_settings :: proc(node: ^Render_Node, v: json.Value) -> rawptr {
 }
 
 // Every read has a writer that ran before it: the frame lane for a slot's
-// node, earlier nodes in the same lane, an earlier final for "final".
+// step, earlier steps in the same lane, an earlier final for "final".
 @(private = "file")
 _pipeline_check_reads :: proc(r: ^Pipeline_Runtime) {
 	check_lane :: proc(lane: []Pipeline_Instance, frame: []Pipeline_Instance, slot: string) {
@@ -480,11 +480,11 @@ _pipeline_check_reads :: proc(r: ^Pipeline_Runtime) {
 		for inst in lane {
 			for t in inst.reads {
 				ok := t == SCENE_INPUT || (t == FINAL_INPUT ? has_final : (t in written || _writes_name(inst, t)))
-				if !ok do log.warningf("[Render] pipeline node %q in %s reads %q, which nothing before it writes", inst.node.name, slot == "" ? "the frame lane" : fmt.tprintf("slot %q", slot), t)
+				if !ok do log.warningf("[Render] pipeline step %q in %s reads %q, which nothing before it writes", inst.step.name, slot == "" ? "the frame lane" : fmt.tprintf("slot %q", slot), t)
 			}
 			for d in inst.writes {
 				written[d.name] = true
-				if d.final && !inst.node.frame do has_final = true
+				if d.final && !inst.step.frame do has_final = true
 			}
 		}
 	}
@@ -520,21 +520,21 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 		if _frame_ran[inst.id] == gfx.frame_index + 1 do continue
 		_frame_ran[inst.id] = gfx.frame_index + 1
 		if inst.muted {
-			if inspect_frame do _inspect_node_skipped(inst.id)
+			if inspect_frame do _inspect_step_skipped(inst.id)
 			continue
 		}
-		frame_ctx := Render_Ctx{view = ctx.view, pool = render_frame_pool(), node = inst.node, settings = inst.settings, reads = inst.reads, writes = inst.writes}
-		if inspect_frame do _inspect_node_begins(inst.id)
-		inst.node.run(&frame_ctx)
-		if inspect_frame do _inspect_node_ends(inst.id, frame_ctx.pool)
+		frame_ctx := Render_Ctx{view = ctx.view, pool = render_frame_pool(), step = inst.step, settings = inst.settings, reads = inst.reads, writes = inst.writes}
+		if inspect_frame do _inspect_step_begins(inst.id)
+		inst.step.run(&frame_ctx)
+		if inspect_frame do _inspect_step_ends(inst.id, frame_ctx.pool)
 	}
 	inspect := _inspect_lane_begins(slot, ctx)
-	// Temporal anti-aliasing jitters the camera for the scene nodes when the
+	// Temporal anti-aliasing jitters the camera for the scene steps when the
 	// lane resolves it (render_taa.odin). The debug view modes draw steady.
 	ctx.jitter = {}
 	if ctx.view.mode == .Shaded {
 		for inst in lane {
-			if inst.node.name == TAA_NODE && !inst.muted {
+			if inst.step.name == TAA_STEP && !inst.muted {
 				ctx.jitter = taa_jitter(ctx)
 				break
 			}
@@ -542,18 +542,18 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	}
 	for inst in lane {
 		if inst.muted {
-			if inspect do _inspect_node_skipped(inst.id)
+			if inspect do _inspect_step_skipped(inst.id)
 			continue
 		}
-		ctx.node = inst.node
+		ctx.step = inst.step
 		ctx.settings = inst.settings
 		ctx.reads = inst.reads
 		ctx.writes = inst.writes
-		if inspect do _inspect_node_begins(inst.id)
-		inst.node.run(ctx)
-		if inspect do _inspect_node_ends(inst.id, ctx.pool)
+		if inspect do _inspect_step_begins(inst.id)
+		inst.step.run(ctx)
+		if inspect do _inspect_step_ends(inst.id, ctx.pool)
 	}
-	ctx.node = nil
+	ctx.step = nil
 	ctx.settings = nil
 	ctx.reads = nil
 	ctx.writes = nil

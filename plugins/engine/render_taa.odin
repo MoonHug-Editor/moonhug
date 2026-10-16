@@ -4,9 +4,9 @@ package engine
 // anti-aliasing"): when a lane holds scene_taa and the view shades normally,
 // render_pipeline_run offsets the camera by a fraction of a pixel, a different
 // offset each frame (8 points of the Halton 2, 3 sequence), and the scene
-// nodes draw through that jittered camera (render_draw_view). scene_taa
+// steps draw through that jittered camera (render_draw_view). scene_taa
 // then blends the frame into the view's history (gfx TAA_SHADER) and writes
-// the result back into "hdr", in place, so the nodes after it (the host's
+// the result back into "hdr", in place, so the steps after it (the host's
 // gizmos, the post chain) see an anti-aliased scene and draw with the steady
 // camera again.
 //
@@ -26,8 +26,8 @@ import "core:math/linalg"
 import "base:runtime"
 import gfx "moonhug:libs/gfx"
 
-TAA_NODE :: "scene_taa"
-MOTION_NODE :: "motion_vectors"
+TAA_STEP :: "scene_taa"
+MOTION_STEP :: "motion_vectors"
 
 // The motion vectors' target (motion_vectors, scene_taa).
 MOTION_TARGET :: "motion"
@@ -43,9 +43,9 @@ Taa_Settings :: struct {
 
 taa_defaults := Taa_Settings{blend = 0.1}
 
-@(render_node={summary="temporal anti-aliasing: each frame's sub-pixel offset blended into the view's history, back into the scene image", reads="hdr motion", writes="hdr:HDR", settings="taa_defaults"})
+@(render_step={summary="temporal anti-aliasing: each frame's sub-pixel offset blended into the view's history, back into the scene image", reads="hdr motion", writes="hdr:HDR", settings="taa_defaults"})
 scene_taa :: proc(ctx: ^Render_Ctx) {
-	// The nodes after this one draw with the steady camera.
+	// The steps after this one draw with the steady camera.
 	defer ctx.jitter = {}
 	if ctx.jitter == {} do return
 	settings := (^Taa_Settings)(ctx.settings)
@@ -62,7 +62,7 @@ scene_taa :: proc(ctx: ^Render_Ctx) {
 	// image, so a still camera reprojects each pixel onto itself.
 	params := new(gfx.Taa_Params, context.temp_allocator)
 	params.reproject = state.prev_view_proj * linalg.inverse(ctx.view.view_proj)
-	// No motion vectors this frame (nothing moved, or no motion_vectors node):
+	// No motion vectors this frame (nothing moved, or no motion_vectors step):
 	// the image binds in their place, unread.
 	motion_rt := render_input(ctx, MOTION_TARGET)
 	params.params = {clamp(settings.blend, 0.02, 1), valid ? 1 : 0, motion_rt != nil ? 1 : 0, 0}
@@ -82,7 +82,7 @@ scene_taa :: proc(ctx: ^Render_Ctx) {
 	state.parity = 1 - state.parity
 }
 
-@(render_node={summary="motion vectors: how far each pixel of a mesh that moved since the view's last frame moved on screen, for scene_taa", reads="scene hdr", writes="motion:HDR"})
+@(render_step={summary="motion vectors: how far each pixel of a mesh that moved since the view's last frame moved on screen, for scene_taa", reads="scene hdr", writes="motion:HDR"})
 motion_vectors :: proc(ctx: ^Render_Ctx) {
 	// Only temporal anti-aliasing reads them.
 	if ctx.jitter == {} do return
@@ -140,7 +140,7 @@ taa_jitter :: proc(ctx: ^Render_Ctx) -> [2]f32 {
 	return {offset.x * 2 / max(ctx.view.width, 1), offset.y * 2 / max(ctx.view.height, 1)}
 }
 
-// The view the scene nodes draw through: the camera with this run's
+// The view the scene steps draw through: the camera with this run's
 // sub-pixel offset (taa_jitter), the steady camera when there is none.
 render_draw_view :: proc(ctx: ^Render_Ctx) -> Render_View {
 	v := ctx.view

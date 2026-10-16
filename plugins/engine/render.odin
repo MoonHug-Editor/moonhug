@@ -235,7 +235,7 @@ WIREFRAME_COLOR :: [4]f32{0.85, 0.85, 0.85, 1}
 OVERDRAW_LAYER  :: [4]f32{1, 1, 1, 0.12} // each surface adds this much, so brighter = more overdraw
 
 // What render_execute draws: the opaque meshes, the alpha-blended quads, or
-// both. The scene nodes draw one phase each (render_nodes.odin).
+// both. The scene steps draw one phase each (render_steps.odin).
 Render_Phase :: enum u8 {
 	Opaque,      // Draw_Mesh, grouped by material
 	Transparent, // Draw_Quad, back to front by sort key
