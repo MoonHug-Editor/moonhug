@@ -30,6 +30,15 @@ Material_Render_Face :: enum u8 {
 	Both,
 }
 
+// Whether a mesh with the material is solid or see-through. Transparent
+// draws after every opaque mesh, back to front, blended by its alpha (the
+// texture's times the color's, or a surface shader's s.alpha), writes no
+// depth, casts no shadow and takes no ambient occlusion or motion vectors.
+Material_Surface :: enum u8 {
+	Opaque,
+	Transparent,
+}
+
 // A named value for the custom shader's material UBO (set=3 binding=1).
 // Stored as vec4; floats use .x, vec2 .xy, vec3 .xyz — matched to the
 // shader's reflected member by name, extra/unknown names are ignored.
@@ -59,6 +68,7 @@ Material :: struct {
 	alpha_cutoff:  f32 `decor:range(0, 1)`,
 	// The faces drawn, in every pass, shadows included.
 	render_face:   Material_Render_Face,
+	surface:       Material_Surface,
 	// The built-in Lit's surface. Unlit and custom shaders ignore it.
 	lit:           Material_Lit,
 	properties:    [dynamic]Material_Property, // custom-shader property block values
@@ -137,6 +147,14 @@ material_alpha_cutoff :: proc(guid: Asset_GUID) -> f32 {
 // The faces a mesh draw of the material skips (gfx.draw_mesh cull): back
 // faces for Front, front faces for Back, none for Both. No material draws
 // front faces, as a new material does.
+// Whether a draw of the material blends (Material_Surface.Transparent). No
+// material, or one that does not load, is opaque.
+material_transparent :: proc(guid: Asset_GUID) -> bool {
+	if guid == {} do return false
+	mat, ok := material_load(guid)
+	return ok && mat.surface == .Transparent
+}
+
 material_cull :: proc(guid: Asset_GUID) -> gfx.Cull {
 	if guid == {} do return .Back
 	mat, ok := material_load(guid)
@@ -442,7 +460,7 @@ _material_clone :: proc(mat: Material) -> Material {
 
 _material_equal :: proc(a, b: Material) -> bool {
 	if a.shader != b.shader || a.custom_shader != b.custom_shader || a.texture != b.texture || a.color != b.color || a.lit != b.lit do return false
-	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff || a.render_face != b.render_face do return false
+	if a.alpha_clip != b.alpha_clip || a.alpha_cutoff != b.alpha_cutoff || a.render_face != b.render_face || a.surface != b.surface do return false
 	if len(a.properties) != len(b.properties) do return false
 	for prop, i in a.properties {
 		if prop.name != b.properties[i].name || prop.value != b.properties[i].value do return false

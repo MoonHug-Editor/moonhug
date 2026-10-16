@@ -53,6 +53,7 @@ _env: struct {
 	draw_sky:   bool,
 	diffuse:    f32,
 	reflection: f32,
+	fog:        gfx.Fog,
 }
 
 @(render_step={summary="renders the scene's Environment into cubes for reflections and ambient light, when it changed", frame=true, reads="scene"})
@@ -72,21 +73,29 @@ environment_pass :: proc(ctx: ^Render_Ctx) {
 	_env.draw_sky = env.draw_sky
 	_env.diffuse = env.ambient_intensity
 	_env.reflection = env.reflection_intensity
+	fog_color := gfx.srgb_to_linear(env.fog.color)
+	_env.fog = gfx.Fog{
+		mode = env.fog.mode, color = fog_color.rgb,
+		density = max(env.fog.density, 0), start = env.fog.start, end = max(env.fog.end, env.fog.start + 0.01),
+		height = env.fog.height, height_falloff = max(env.fog.height_falloff, 0), sky = clamp(env.fog.sky, 0, 1),
+	}
 }
 
 // Hands this frame's environment to the current pass (scene_target_begin).
 environment_bind :: proc() {
 	if !_env.active do return
 	gfx.set_environment(_env.specular, _env.irradiance, _env.diffuse, _env.reflection)
+	gfx.set_fog(_env.fog)
 }
 
 @(render_step={summary="draws the Environment's sky behind the opaque meshes", reads="hdr", writes="hdr:HDR"})
 scene_sky :: proc(ctx: ^Render_Ctx) {
 	if !_env.active || !_env.draw_sky do return
 	scene_target_begin(ctx)
-	inv := linalg.inverse(ctx.view.view_proj)
+	params := gfx.Sky_Params{inv_view_proj = linalg.inverse(ctx.view.view_proj)}
+	params.fog_color, params.fog_params, params.fog_more = gfx.draw_uniform_fog(_env.fog, ctx.view.cam_pos)
 	sky := gfx.cubemap_texture(_env.source)
-	gfx.draw_sky(gfx.SKYBOX_SHADER, []^gfx.Texture{&sky}, (^[size_of(inv)]u8)(&inv)[:])
+	gfx.draw_sky(gfx.SKYBOX_SHADER, []^gfx.Texture{&sky}, (^[size_of(params)]u8)(&params)[:])
 	gfx.pass_end()
 }
 

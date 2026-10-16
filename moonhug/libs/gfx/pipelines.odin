@@ -33,10 +33,11 @@ _Shader_Entry :: struct {
 	owns_caster:     bool,
 	sets:          [Target_Format]_Shader_Set,
 	built:         [Target_Format]bool,
-	// Mesh draws (.Tris_Depth) that cull or are mirrored, by cull mode and
-	// mirroring (1 = clockwise front faces): built the first time a pass of
-	// the format draws one. The sets hold the unculled, unmirrored pipelines.
-	faced:         [Target_Format][Cull][2]^sdl.GPUGraphicsPipeline,
+	// Mesh draws that cull or are mirrored, by opaque (0, .Tris_Depth) or
+	// blended (1, .Tris), cull mode and mirroring (1 = clockwise front
+	// faces): built the first time a pass of the format draws one. The sets
+	// hold the unculled, unmirrored pipelines.
+	faced:         [Target_Format][2][Cull][2]^sdl.GPUGraphicsPipeline,
 }
 
 @(private)
@@ -212,9 +213,9 @@ _shader_pipeline :: proc(name: string, format: Target_Format, kind: _Pipeline_Ki
 	e, ok := &_gfx.shaders[name]
 	if !ok do e = &_gfx.shaders[DEFAULT_SHADER]
 	if cull != .None || mirrored {
-		assert(kind == .Tris_Depth, "gfx: only mesh draws cull or mirror")
-		p := &e.faced[format][cull][int(mirrored)]
-		if p^ == nil do p^ = _world_pipeline_create(e, format, .TRIANGLELIST, true, true, cull = cull, mirrored = mirrored)
+		assert(kind == .Tris_Depth || kind == .Tris, "gfx: only mesh draws cull or mirror")
+		p := &e.faced[format][kind == .Tris ? 1 : 0][cull][int(mirrored)]
+		if p^ == nil do p^ = _world_pipeline_create(e, format, .TRIANGLELIST, true, kind == .Tris_Depth, cull = cull, mirrored = mirrored)
 		return p^
 	}
 	if !e.built[format] && !_shader_set_build(e, format) do return nil
@@ -241,11 +242,13 @@ _shader_entry_release :: proc(e: ^_Shader_Entry) {
 		}
 		e.built[f] = false
 	}
-	for &by_cull in e.faced {
-		for &by_winding in by_cull {
-			for &p in by_winding {
-				if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
-				p = nil
+	for &by_blend in e.faced {
+		for &by_cull in by_blend {
+			for &by_winding in by_cull {
+				for &p in by_winding {
+					if p != nil do sdl.ReleaseGPUGraphicsPipeline(_gfx.device, p)
+					p = nil
+				}
 			}
 		}
 	}

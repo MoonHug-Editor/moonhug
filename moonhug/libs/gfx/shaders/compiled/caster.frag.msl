@@ -19,6 +19,10 @@ struct Surface
 struct DrawUBO
 {
     float4 draw_params;
+    float4 fog_color;
+    float4 fog_params;
+    float4 fog_more;
+    float4 view_pos;
 };
 
 struct GpuLight

@@ -62,15 +62,19 @@ struct ClusterUBO
     uint4 tile_bits[288];
 };
 
+struct DrawUBO
+{
+    float4 draw_params;
+    float4 fog_color;
+    float4 fog_params;
+    float4 fog_more;
+    float4 view_pos;
+};
+
 struct LitMaterial
 {
     float4 lit_params;
     float4 lit_emission;
-};
-
-struct DrawUBO
-{
-    float4 draw_params;
 };
 
 struct main0_out
@@ -104,16 +108,16 @@ static inline __attribute__((always_inline))
 float3 vertex_normal(thread float3& frag_normal, thread bool& gl_FrontFacing)
 {
     float3 n = fast::normalize(frag_normal);
-    float3 _315;
+    float3 _434;
     if (gl_FrontFacing)
     {
-        _315 = n;
+        _434 = n;
     }
     else
     {
-        _315 = -n;
+        _434 = -n;
     }
-    return _315;
+    return _434;
 }
 
 static inline __attribute__((always_inline))
@@ -143,16 +147,16 @@ float3 perturb_normal(thread const float3& tangent_normal, thread const float& s
         b *= invmax;
     }
     float3 r = fast::normalize(float3x3(float3(t), float3(b), float3(n)) * tn);
-    float3 _452;
+    float3 _570;
     if (gl_FrontFacing)
     {
-        _452 = r;
+        _570 = r;
     }
     else
     {
-        _452 = -r;
+        _570 = -r;
     }
-    return _452;
+    return _570;
 }
 
 static inline __attribute__((always_inline))
@@ -165,7 +169,7 @@ float toksvig_smoothness(thread const float& smoothness, thread float& len)
 }
 
 static inline __attribute__((always_inline))
-Surface surface_preset(thread float3& frag_normal, thread bool& gl_FrontFacing, thread float4& frag_tangent, thread float3& frag_world_pos, thread float2& frag_uv, texture2d<float> tex, sampler texSmplr, thread float4& frag_color, texture2d<float> metallic_roughness_map, sampler metallic_roughness_mapSmplr, constant LitMaterial& _1120, texture2d<float> normal_map, sampler normal_mapSmplr, texture2d<float> occlusion_map, sampler occlusion_mapSmplr, texture2d<float> emission_map, sampler emission_mapSmplr)
+Surface surface_preset(thread float3& frag_normal, thread bool& gl_FrontFacing, thread float4& frag_tangent, thread float3& frag_world_pos, thread float2& frag_uv, texture2d<float> tex, sampler texSmplr, thread float4& frag_color, texture2d<float> metallic_roughness_map, sampler metallic_roughness_mapSmplr, constant LitMaterial& _1236, texture2d<float> normal_map, sampler normal_mapSmplr, texture2d<float> occlusion_map, sampler occlusion_mapSmplr, texture2d<float> emission_map, sampler emission_mapSmplr)
 {
     float4 param = tex.sample(texSmplr, frag_uv);
     float4 base = srgb_to_linear(param) * frag_color;
@@ -178,23 +182,23 @@ Surface surface_preset(thread float3& frag_normal, thread bool& gl_FrontFacing, 
     s.smoothness = 0.5;
     s.occlusion = 1.0;
     float4 mr = metallic_roughness_map.sample(metallic_roughness_mapSmplr, frag_uv);
-    s.metallic = _1120.lit_params.x * mr.z;
-    s.smoothness = 1.0 - ((1.0 - _1120.lit_params.y) * mr.y);
-    if (_1120.lit_params.z > 0.0)
+    s.metallic = _1236.lit_params.x * mr.z;
+    s.smoothness = 1.0 - ((1.0 - _1236.lit_params.y) * mr.y);
+    if (_1236.lit_params.z > 0.0)
     {
         float3 tn = (normal_map.sample(normal_mapSmplr, frag_uv).xyz * 2.0) - float3(1.0);
         float3 param_1 = tn;
-        float param_2 = _1120.lit_params.z;
+        float param_2 = _1236.lit_params.z;
         s.normal = perturb_normal(param_1, param_2, frag_normal, gl_FrontFacing, frag_tangent, frag_world_pos, frag_uv);
         float full = length((normal_map.sample(normal_mapSmplr, frag_uv, level(0.0)).xyz * 2.0) - float3(1.0));
         float param_3 = s.smoothness;
         float param_4 = length(tn) / fast::max(full, 0.001000000047497451305389404296875);
-        float _1174 = toksvig_smoothness(param_3, param_4);
-        s.smoothness = _1174;
+        float _1290 = toksvig_smoothness(param_3, param_4);
+        s.smoothness = _1290;
     }
-    s.occlusion = mix(1.0, occlusion_map.sample(occlusion_mapSmplr, frag_uv).x, _1120.lit_params.w);
+    s.occlusion = mix(1.0, occlusion_map.sample(occlusion_mapSmplr, frag_uv).x, _1236.lit_params.w);
     float3 param_5 = emission_map.sample(emission_mapSmplr, frag_uv).xyz;
-    s.emissive = _1120.lit_emission.xyz * srgb_to_linear(param_5);
+    s.emissive = _1236.lit_emission.xyz * srgb_to_linear(param_5);
     return s;
 }
 
@@ -215,23 +219,23 @@ float specular_aa(thread const float& perceptual_roughness, thread const float3&
 }
 
 static inline __attribute__((always_inline))
-float3 view_dir(constant LightUBO& _137, thread float3& frag_world_pos)
+float3 view_dir(constant LightUBO& _141, thread float3& frag_world_pos)
 {
-    return fast::normalize(_137.cam_pos.xyz - frag_world_pos);
+    return fast::normalize(_141.cam_pos.xyz - frag_world_pos);
 }
 
 static inline __attribute__((always_inline))
-int light_tile(thread float4& gl_FragCoord, constant LightUBO& _137)
+int light_tile(thread float4& gl_FragCoord, constant LightUBO& _141)
 {
-    int2 t = int2((gl_FragCoord.xy * _137.cluster_params.xy) * float2(16.0, 9.0));
+    int2 t = int2((gl_FragCoord.xy * _141.cluster_params.xy) * float2(16.0, 9.0));
     t = clamp(t, int2(0), int2(15, 8));
     return (t.y * 16) + t.x;
 }
 
 static inline __attribute__((always_inline))
-uint light_tile_word(thread const int& tile, thread const int& w, constant ClusterUBO& _176)
+uint light_tile_word(thread const int& tile, thread const int& w, constant ClusterUBO& _180)
 {
-    uint4 v = _176.tile_bits[(tile * 2) + (w >> 2)];
+    uint4 v = _180.tile_bits[(tile * 2) + (w >> 2)];
     return v[w & 3];
 }
 
@@ -267,23 +271,23 @@ float shadow_pcf(depth2d<float> map, sampler mapSmplr, thread const float4& rect
     {
         for (int x = -1; x <= 1; x++)
         {
-            float3 _593 = float3(fast::clamp(c + (float2(float(x), float(y)) * texel), lo, hi), depth);
-            lit += map.sample_compare(mapSmplr, _593.xy, _593.z);
+            float3 _711 = float3(fast::clamp(c + (float2(float(x), float(y)) * texel), lo, hi), depth);
+            lit += map.sample_compare(mapSmplr, _711.xy, _711.z);
         }
     }
     return lit / 9.0;
 }
 
 static inline __attribute__((always_inline))
-float cascade_shadow(thread const float3& world_pos, thread const float3& n, constant LightUBO& _137, depth2d<float> shadow_map, sampler shadow_mapSmplr)
+float cascade_shadow(thread const float3& world_pos, thread const float3& n, constant LightUBO& _141, depth2d<float> shadow_map, sampler shadow_mapSmplr)
 {
-    int count = int(_137.shadow_params.y + 0.5);
+    int count = int(_141.shadow_params.y + 0.5);
     if (count == 0)
     {
         return 1.0;
     }
-    float end = _137.shadow_params.z;
-    float dist = length(world_pos - _137.cam_pos.xyz);
+    float end = _141.shadow_params.z;
+    float dist = length(world_pos - _141.cam_pos.xyz);
     if (dist >= end)
     {
         return 1.0;
@@ -291,65 +295,65 @@ float cascade_shadow(thread const float3& world_pos, thread const float3& n, con
     float fade = smoothstep(end * 0.89999997615814208984375, end, dist);
     for (int c = 0; c < count; c++)
     {
-        float3 p = world_pos + (n * (_137.cascade_params[c].x * _137.atlas_params.w));
-        float4 lp = _137.cascade_vp[c] * float4(p, 1.0);
+        float3 p = world_pos + (n * (_141.cascade_params[c].x * _141.atlas_params.w));
+        float4 lp = _141.cascade_vp[c] * float4(p, 1.0);
         float3 ndc = lp.xyz / float3(lp.w);
         float2 uv = float2((ndc.x * 0.5) + 0.5, 0.5 - (ndc.y * 0.5));
-        float margin = (2.0 * _137.shadow_params.x) / _137.cascade_rects[c].z;
-        bool _704 = uv.x < margin;
-        bool _713;
-        if (!_704)
+        float margin = (2.0 * _141.shadow_params.x) / _141.cascade_rects[c].z;
+        bool _820 = uv.x < margin;
+        bool _829;
+        if (!_820)
         {
-            _713 = uv.x > (1.0 - margin);
+            _829 = uv.x > (1.0 - margin);
         }
         else
         {
-            _713 = _704;
+            _829 = _820;
         }
-        bool _721;
-        if (!_713)
+        bool _837;
+        if (!_829)
         {
-            _721 = uv.y < margin;
+            _837 = uv.y < margin;
         }
         else
         {
-            _721 = _713;
+            _837 = _829;
         }
-        bool _730;
-        if (!_721)
+        bool _846;
+        if (!_837)
         {
-            _730 = uv.y > (1.0 - margin);
+            _846 = uv.y > (1.0 - margin);
         }
         else
         {
-            _730 = _721;
+            _846 = _837;
         }
-        bool _737;
-        if (!_730)
+        bool _853;
+        if (!_846)
         {
-            _737 = ndc.z < 0.0;
+            _853 = ndc.z < 0.0;
         }
         else
         {
-            _737 = _730;
+            _853 = _846;
         }
-        bool _744;
-        if (!_737)
+        bool _860;
+        if (!_853)
         {
-            _744 = ndc.z > 1.0;
+            _860 = ndc.z > 1.0;
         }
         else
         {
-            _744 = _737;
+            _860 = _853;
         }
-        if (_744)
+        if (_860)
         {
             continue;
         }
-        float4 param = _137.cascade_rects[c];
+        float4 param = _141.cascade_rects[c];
         float2 param_1 = uv;
-        float param_2 = ndc.z - _137.cascade_params[c].y;
-        float param_3 = _137.shadow_params.x;
+        float param_2 = ndc.z - _141.cascade_params[c].y;
+        float param_3 = _141.shadow_params.x;
         float lit = shadow_pcf(shadow_map, shadow_mapSmplr, param, param_1, param_2, param_3);
         return mix(lit, 1.0, fade);
     }
@@ -357,7 +361,7 @@ float cascade_shadow(thread const float3& world_pos, thread const float3& n, con
 }
 
 static inline __attribute__((always_inline))
-float punctual_shadow(thread const GpuLight& l, thread const float3& world_pos, thread const float3& n, constant LightUBO& _137, depth2d<float> shadow_atlas, sampler shadow_atlasSmplr)
+float punctual_shadow(thread const GpuLight& l, thread const float3& world_pos, thread const float3& n, constant LightUBO& _141, depth2d<float> shadow_atlas, sampler shadow_atlasSmplr)
 {
     int count = int(l.params.z + 0.5);
     if (count == 0)
@@ -369,17 +373,17 @@ float punctual_shadow(thread const GpuLight& l, thread const float3& world_pos, 
     if (count == 6)
     {
         float3 a = abs(d);
-        bool _807 = a.x >= a.y;
-        bool _815;
-        if (_807)
+        bool _923 = a.x >= a.y;
+        bool _931;
+        if (_923)
         {
-            _815 = a.x >= a.z;
+            _931 = a.x >= a.z;
         }
         else
         {
-            _815 = _807;
+            _931 = _923;
         }
-        if (_815)
+        if (_931)
         {
             tile += ((d.x > 0.0) ? 0 : 1);
         }
@@ -395,62 +399,62 @@ float punctual_shadow(thread const GpuLight& l, thread const float3& world_pos, 
             }
         }
     }
-    float4 tp = _137.tile_params[tile];
-    float3 p = world_pos + (n * ((tp.z * length(d)) * _137.atlas_params.z));
-    float4 lp = _137.tile_vp[tile] * float4(p, 1.0);
+    float4 tp = _141.tile_params[tile];
+    float3 p = world_pos + (n * ((tp.z * length(d)) * _141.atlas_params.z));
+    float4 lp = _141.tile_vp[tile] * float4(p, 1.0);
     if (lp.w <= tp.x)
     {
         return 1.0;
     }
     float3 ndc = lp.xyz / float3(lp.w);
     float2 uv = float2((ndc.x * 0.5) + 0.5, 0.5 - (ndc.y * 0.5));
-    bool _901 = uv.x < 0.0;
-    bool _908;
-    if (!_901)
+    bool _1017 = uv.x < 0.0;
+    bool _1024;
+    if (!_1017)
     {
-        _908 = uv.x > 1.0;
+        _1024 = uv.x > 1.0;
     }
     else
     {
-        _908 = _901;
+        _1024 = _1017;
     }
-    bool _915;
-    if (!_908)
+    bool _1031;
+    if (!_1024)
     {
-        _915 = uv.y < 0.0;
+        _1031 = uv.y < 0.0;
     }
     else
     {
-        _915 = _908;
+        _1031 = _1024;
     }
-    bool _922;
-    if (!_915)
+    bool _1038;
+    if (!_1031)
     {
-        _922 = uv.y > 1.0;
+        _1038 = uv.y > 1.0;
     }
     else
     {
-        _922 = _915;
+        _1038 = _1031;
     }
-    bool _929;
-    if (!_922)
+    bool _1045;
+    if (!_1038)
     {
-        _929 = ndc.z > 1.0;
+        _1045 = ndc.z > 1.0;
     }
     else
     {
-        _929 = _922;
+        _1045 = _1038;
     }
-    if (_929)
+    if (_1045)
     {
         return 1.0;
     }
-    float w = fast::max(lp.w - _137.atlas_params.y, tp.x);
+    float w = fast::max(lp.w - _141.atlas_params.y, tp.x);
     float depth = (tp.y / (tp.y - tp.x)) * (1.0 - (tp.x / w));
-    float4 param = _137.tile_rects[tile];
+    float4 param = _141.tile_rects[tile];
     float2 param_1 = uv;
     float param_2 = depth;
-    float param_3 = _137.atlas_params.x;
+    float param_3 = _141.atlas_params.x;
     return shadow_pcf(shadow_atlas, shadow_atlasSmplr, param, param_1, param_2, param_3);
 }
 
@@ -478,9 +482,9 @@ float V_SmithGGXCorrelated(thread const float& NoV, thread const float& NoL, thr
 }
 
 static inline __attribute__((always_inline))
-float2 screen_occlusion(thread float4& gl_FragCoord, constant LightUBO& _137, texture2d<float> ambient_occlusion, sampler ambient_occlusionSmplr)
+float2 screen_occlusion(thread float4& gl_FragCoord, constant LightUBO& _141, texture2d<float> ambient_occlusion, sampler ambient_occlusionSmplr)
 {
-    return ambient_occlusion.sample(ambient_occlusionSmplr, (gl_FragCoord.xy * _137.cluster_params.xy)).xz;
+    return ambient_occlusion.sample(ambient_occlusionSmplr, (gl_FragCoord.xy * _141.cluster_params.xy)).xz;
 }
 
 static inline __attribute__((always_inline))
@@ -492,10 +496,56 @@ float3 env_brdf_approx(thread const float3& f0, thread const float& roughness, t
     return (f0 * ab.x) + float3(ab.y);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buffer(0)]], constant LitMaterial& _1120 [[buffer(1)]], constant DrawUBO& _1224 [[buffer(2)]], constant ClusterUBO& _176 [[buffer(3)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], depth2d<float> shadow_map [[texture(7)]], texturecube<float> env_specular [[texture(8)]], texturecube<float> env_irradiance [[texture(9)]], depth2d<float> shadow_atlas [[texture(10)]], texture2d<float> ambient_occlusion [[texture(11)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]], sampler env_specularSmplr [[sampler(8)]], sampler env_irradianceSmplr [[sampler(9)]], sampler shadow_atlasSmplr [[sampler(10)]], sampler ambient_occlusionSmplr [[sampler(11)]], float4 gl_FragCoord [[position]], bool gl_FrontFacing [[front_facing]])
+static inline __attribute__((always_inline))
+float fog_amount(thread const float3& world_pos, constant DrawUBO& _201)
+{
+    int mode = int(_201.fog_color.w + 0.5);
+    if (mode == 0)
+    {
+        return 0.0;
+    }
+    float3 d = world_pos - _201.view_pos.xyz;
+    float dist = length(d);
+    float h = 1.0;
+    if (_201.fog_more.x > 0.0)
+    {
+        float k = _201.fog_more.x;
+        float ky = k * d.y;
+        float _254;
+        if (abs(ky) > 9.9999997473787516355514526367188e-05)
+        {
+            _254 = (1.0 - exp(-ky)) / ky;
+        }
+        else
+        {
+            _254 = 1.0;
+        }
+        h = exp((-k) * (_201.view_pos.y - _201.fog_params.w)) * _254;
+    }
+    float f;
+    if (mode == 1)
+    {
+        f = 1.0 - exp(((-_201.fog_params.x) * h) * dist);
+    }
+    else
+    {
+        if (mode == 2)
+        {
+            float x = (_201.fog_params.x * h) * dist;
+            f = 1.0 - exp((-x) * x);
+        }
+        else
+        {
+            f = fast::clamp((dist - _201.fog_params.y) / fast::max(_201.fog_params.z - _201.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
+        }
+    }
+    return fast::clamp(f, 0.0, 1.0);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _141 [[buffer(0)]], constant LitMaterial& _1236 [[buffer(1)]], constant DrawUBO& _201 [[buffer(2)]], constant ClusterUBO& _180 [[buffer(3)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], depth2d<float> shadow_map [[texture(7)]], texturecube<float> env_specular [[texture(8)]], texturecube<float> env_irradiance [[texture(9)]], depth2d<float> shadow_atlas [[texture(10)]], texture2d<float> ambient_occlusion [[texture(11)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]], sampler env_specularSmplr [[sampler(8)]], sampler env_irradianceSmplr [[sampler(9)]], sampler shadow_atlasSmplr [[sampler(10)]], sampler ambient_occlusionSmplr [[sampler(11)]], float4 gl_FragCoord [[position]], bool gl_FrontFacing [[front_facing]])
 {
     main0_out out = {};
-    Surface s = surface_preset(in.frag_normal, gl_FrontFacing, in.frag_tangent, in.frag_world_pos, in.frag_uv, tex, texSmplr, in.frag_color, metallic_roughness_map, metallic_roughness_mapSmplr, _1120, normal_map, normal_mapSmplr, occlusion_map, occlusion_mapSmplr, emission_map, emission_mapSmplr);
+    Surface s = surface_preset(in.frag_normal, gl_FrontFacing, in.frag_tangent, in.frag_world_pos, in.frag_uv, tex, texSmplr, in.frag_color, metallic_roughness_map, metallic_roughness_mapSmplr, _1236, normal_map, normal_mapSmplr, occlusion_map, occlusion_mapSmplr, emission_map, emission_mapSmplr);
     Surface param = s;
     surface(param);
     s = param;
@@ -503,19 +553,19 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
     float param_1 = fast::clamp(1.0 - s.smoothness, 0.04500000178813934326171875, 1.0);
     float3 param_2 = n;
     float roughness = specular_aa(param_1, param_2);
-    if (s.alpha < _1224.draw_params.x)
+    if (s.alpha < _201.draw_params.x)
     {
         discard_fragment();
     }
-    float3 v = view_dir(_137, in.frag_world_pos);
+    float3 v = view_dir(_141, in.frag_world_pos);
     float NoV = fast::max(dot(n, v), 9.9999997473787516355514526367188e-05);
     float metallic = fast::clamp(s.metallic, 0.0, 1.0);
     float a = roughness * roughness;
     float3 f0 = mix(float3(0.039999999105930328369140625), s.albedo, float3(metallic));
     float3 diffuse_color = s.albedo * (1.0 - metallic);
     float3 color = float3(0.0);
-    int count = int(_137.ambient_count.y + 0.5);
-    int tile = light_tile(gl_FragCoord, _137);
+    int count = int(_141.ambient_count.y + 0.5);
+    int tile = light_tile(gl_FragCoord, _141);
     float3 geometric_n = vertex_normal(in.frag_normal, gl_FrontFacing);
     GpuLight l;
     float3 L;
@@ -523,15 +573,15 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
     {
         int param_3 = tile;
         int param_4 = w;
-        uint bits = light_tile_word(param_3, param_4, _176);
+        uint bits = light_tile_word(param_3, param_4, _180);
         while (bits != 0u)
         {
             int i = (w * 32) + int(spvFindLSB(bits));
             bits &= (bits - 1u);
-            l.pos_type = _176.lights[i].pos_type;
-            l.dir_range = _176.lights[i].dir_range;
-            l.color_outer = _176.lights[i].color_outer;
-            l.params = _176.lights[i].params;
+            l.pos_type = _180.lights[i].pos_type;
+            l.dir_range = _180.lights[i].dir_range;
+            l.color_outer = _180.lights[i].color_outer;
+            l.params = _180.lights[i].params;
             float dist = 0.0;
             if (l.pos_type.w < 0.5)
             {
@@ -559,11 +609,11 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
             }
             if (l.pos_type.w < 0.5)
             {
-                if (i == int(_137.shadow_params.w + 0.5))
+                if (i == int(_141.shadow_params.w + 0.5))
                 {
                     float3 param_8 = in.frag_world_pos;
                     float3 param_9 = geometric_n;
-                    atten *= cascade_shadow(param_8, param_9, _137, shadow_map, shadow_mapSmplr);
+                    atten *= cascade_shadow(param_8, param_9, _141, shadow_map, shadow_mapSmplr);
                 }
             }
             else
@@ -571,7 +621,7 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
                 GpuLight param_10 = l;
                 float3 param_11 = in.frag_world_pos;
                 float3 param_12 = geometric_n;
-                atten *= punctual_shadow(param_10, param_11, param_12, _137, shadow_atlas, shadow_atlasSmplr);
+                atten *= punctual_shadow(param_10, param_11, param_12, _141, shadow_atlas, shadow_atlasSmplr);
             }
             float3 h = fast::normalize(v + to_light);
             float NoH = fast::max(dot(n, h), 0.0);
@@ -589,16 +639,19 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _137 [[buf
             color += (((kd + spec) * l.color_outer.xyz) * (NoL * atten));
         }
     }
-    float2 screen_ao = screen_occlusion(gl_FragCoord, _137, ambient_occlusion, ambient_occlusionSmplr);
+    float2 screen_ao = screen_occlusion(gl_FragCoord, _141, ambient_occlusion, ambient_occlusionSmplr);
     color *= screen_ao.y;
     float3 r = reflect(-v, n);
-    float3 irradiance = env_irradiance.sample(env_irradianceSmplr, n).xyz * _137.env_params.x;
-    float3 reflected = env_specular.sample(env_specularSmplr, r, level(roughness * _137.env_params.z)).xyz * _137.env_params.y;
+    float3 irradiance = env_irradiance.sample(env_irradianceSmplr, n).xyz * _141.env_params.x;
+    float3 reflected = env_specular.sample(env_specularSmplr, r, level(roughness * _141.env_params.z)).xyz * _141.env_params.y;
     float3 param_20 = f0;
     float param_21 = roughness;
     float param_22 = NoV;
     color += (((diffuse_color * irradiance) + (reflected * env_brdf_approx(param_20, param_21, param_22))) * fast::min(s.occlusion, screen_ao.x));
-    out.out_color = float4(fast::min(color + s.emissive, float3(4096.0)), s.alpha);
+    color = fast::min(color + s.emissive, float3(4096.0));
+    float3 param_23 = in.frag_world_pos;
+    color = mix(color, _201.fog_color.xyz, float3(fog_amount(param_23, _201)));
+    out.out_color = float4(color, s.alpha);
     return out;
 }
 

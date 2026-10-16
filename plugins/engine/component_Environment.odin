@@ -1,5 +1,7 @@
 package engine
 
+import gfx "moonhug:libs/gfx"
+
 // The scene's environment: the sky behind the cameras and the light it
 // gives everything no light reaches, diffuse (ambient) and specular
 // (reflections), rendered into cubes by render_environment.odin
@@ -30,7 +32,29 @@ Environment :: struct {
 	ambient_intensity:    f32 `decor:min(0)`, // how much the sky lights surfaces (diffuse)
 	reflection_intensity: f32 `decor:min(0)`, // how much surfaces reflect it (specular)
 	draw_sky:             bool, // shown behind the cameras (else their clear color stays)
+	fog:                  Environment_Fog,
 }
+
+// Fog over the scene (gfx.Fog): every material fades toward the colour with
+// its distance to the camera, the sky by direction.
+Environment_Fog :: struct {
+	mode:           gfx.Fog_Mode,
+	color:          [4]f32 `decor:color()`,
+	// The exponential modes: per world unit.
+	density:        f32 `decor:min(0)`,
+	// Linear: no fog before start, all of it at end, world units.
+	start:          f32 `decor:min(0)`,
+	end:            f32 `decor:min(0)`,
+	// Height fog: full density below `height`, falling off above it by
+	// exp(-height_falloff * height above). 0 falloff is the same fog at
+	// every height.
+	height:         f32,
+	height_falloff: f32 `decor:min(0)`,
+	// How much of the fog the sky takes at the horizon, none straight up.
+	sky:            f32 `decor:range(0, 1)`,
+}
+
+ENVIRONMENT_FOG_DEFAULT :: Environment_Fog{color = {0.7, 0.75, 0.8, 1}, density = 0.02, start = 10, end = 100, sky = 0.5}
 
 reset_Environment :: proc(e: ^Environment) {
 	e.sky = .Procedural
@@ -38,6 +62,7 @@ reset_Environment :: proc(e: ^Environment) {
 	e.sky_horizon = {0.75, 0.82, 0.9, 1}
 	e.ground = {0.35, 0.32, 0.3, 1}
 	e.sun_size = 1
+	e.fog = ENVIRONMENT_FOG_DEFAULT
 	e.exposure = 1
 	e.ambient_intensity = 1
 	e.reflection_intensity = 1

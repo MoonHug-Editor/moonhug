@@ -78,6 +78,10 @@ Depth passes (the shadow map, the depth prepass) draw a clipped material through
 
 Front faces are the ones wound counter-clockwise, as glTF and the built-in meshes author them. An object mirrored by its transform (a negative scale on one or three axes) keeps its outside as the front. Extract Assets sets `Both` for a glTF material marked `doubleSided`. Sprites, previews and the wireframe and overdraw views draw both faces whatever the material says.
 
+### Transparency
+
+`surface` is Opaque or Transparent. A transparent material's mesh draws after every opaque mesh, back to front by its object's distance to the camera, blended over what is there by its alpha (the texture's times the color's, or a surface shader's `s.alpha`), without writing depth. It casts no shadow, takes no ambient occlusion and no motion vectors (TAA reprojects it with what is behind it), and the depth prepass skips it. Transparent meshes draw before the transparent sprites, each group sorted on its own. The demo scene's Glass and Tinted spheres are two.
+
 ### Environment
 
 The **Environment** component (Rendering/Environment) is the scene's sky and the light it gives what no Light reaches. The first enabled one in the world drives the scene:
@@ -89,6 +93,8 @@ The **Environment** component (Rendering/Environment) is the scene's sky and the
 The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected.
 
 A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
+
+`fog` fades everything toward its `color` with the distance to the camera, in every material shader, so lit, unlit, surface-shader and sprite draws take it alike, and the sky by direction (`sky` is how much the horizon takes, none straight up). `mode` is Exponential (`1 - exp(-density * distance)`), Exponential Squared (clear up close, a wall further out) or Linear (none before `start`, all at `end`), Off by default. Height fog: with `height_falloff` above 0 the density is full below `height` and falls off above it, integrated along the view ray, so a valley fills while the hills stand clear. The demo scene has mild height fog.
 
 ### Light component
 

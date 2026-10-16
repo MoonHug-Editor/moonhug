@@ -148,6 +148,18 @@
             "local_id": 155,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
+        },
+        {
+          "pptr": {
+            "local_id": 158,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 161,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
         }
       ],
       "components": []
@@ -876,6 +888,80 @@
           "local_id": 154
         }
       ]
+    },
+    {
+      "local_id": 158,
+      "name": "Sphere Glass",
+      "is_active": true,
+      "position": [
+        3.0,
+        0.8,
+        3.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.6,
+        1.6,
+        1.6
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 156
+        },
+        {
+          "local_id": 157
+        }
+      ]
+    },
+    {
+      "local_id": 161,
+      "name": "Sphere Tinted",
+      "is_active": true,
+      "position": [
+        4.6,
+        0.6,
+        3.8
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.2,
+        1.2,
+        1.2
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 159
+        },
+        {
+          "local_id": 160
+        }
+      ]
     }
   ],
   "nested_scenes": [],
@@ -951,7 +1037,22 @@
       "exposure": 1.0,
       "ambient_intensity": 1.0,
       "reflection_intensity": 1.0,
-      "draw_sky": true
+      "draw_sky": true,
+      "fog": {
+        "mode": 1,
+        "color": [
+          0.7,
+          0.75,
+          0.8,
+          1.0
+        ],
+        "density": 0.025,
+        "start": 10.0,
+        "end": 100.0,
+        "height": 0.0,
+        "height_falloff": 0.35,
+        "sky": 0.5
+      }
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
@@ -1306,6 +1407,48 @@
       },
       "materials": [
         "cacd68c7-81ef-4480-b679-5175081a10ca"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 156
+      },
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 157
+      },
+      "materials": [
+        "5745fc72-4463-4ea1-a0af-bcd195483f00"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 159
+      },
+      "mesh": {
+        "guid": "833ce54b-c6d8-4d84-b927-edd0ec2cee7b",
+        "local_id": 0
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 160
+      },
+      "materials": [
+        "0444340f-8bbf-4629-aac2-fb709c5ee1ff"
       ]
     }
   ]

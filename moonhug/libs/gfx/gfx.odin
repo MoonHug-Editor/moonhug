@@ -120,6 +120,15 @@ Ssao_Blur_Params :: struct {
 	params: [4]f32,
 }
 
+// The sky's block (shaders/skybox.frag.glsl, draw_sky): the view's inverse
+// view-projection and the pass's fog (draw_uniform_fog).
+Sky_Params :: struct {
+	inv_view_proj: matrix[4, 4]f32,
+	fog_color:     [4]f32,
+	fog_params:    [4]f32,
+	fog_more:      [4]f32,
+}
+
 // The world shader that draws motion vectors (shaders/motion.frag.glsl): a
 // mesh drawn with it writes how far each of its pixels moved on screen since
 // the last frame, alpha 1. Its block (draw_mesh material) is Motion_Params.

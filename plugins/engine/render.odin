@@ -253,7 +253,10 @@ render_execute :: proc(view: Render_View, commands: []Render_Command, phases := 
 	_apply_scene_light()
 	gfx.set_view_proj(view.view_proj, view.cam_pos)
 	if .Opaque in phases do _execute_meshes(view, commands)
-	if .Transparent in phases do _execute_quads(view, commands)
+	if .Transparent in phases {
+		_execute_transparent_meshes(view, commands)
+		_execute_quads(view, commands)
+	}
 }
 
 // The opaque meshes, one draw per submesh, ordered by material, then mesh,
@@ -287,7 +290,9 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		for _, i in mesh.submeshes {
 			mat: Asset_GUID
 			if i < len(d.materials) do mat = d.materials[i]
-			cull := _mesh_mat(&mats, mat).cull
+			m := _mesh_mat(&mats, mat)
+			if m.transparent do continue // _execute_transparent_meshes
+			cull := m.cull
 			index := len(items)
 			assert(index <= int(max(u32)), "render_execute: more mesh draws than a sort key indexes")
 			group := u128(render_fold_guid(mat)) << 64 | u128(_fold_mesh_faces(d, i32(i), cull, mirrored)) << 32
@@ -318,6 +323,57 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 	}
 }
 
+// The transparent meshes' submeshes, back to front by their object's
+// distance to the camera, each blended over what is there without writing
+// depth. The debug modes draw them as the opaques, in their place here.
+@(private = "file")
+_execute_transparent_meshes :: proc(view: Render_View, commands: []Render_Command) {
+	Item :: struct {
+		material: Asset_GUID,
+		sub:      i32,
+		cmd:      ^Render_Command,
+		loaded:   ^Mesh,
+		dist:     f32,
+	}
+	mats := make(map[Asset_GUID]_Mesh_Mat, context.temp_allocator)
+	items := make([dynamic]Item, 0, 16, context.temp_allocator)
+	for &cmd in commands {
+		d, is_mesh := cmd.variant.(Draw_Mesh)
+		if !is_mesh do continue
+		mesh, ok := mesh_load(d.mesh, d.part)
+		if !ok do continue
+		for _, i in mesh.submeshes {
+			mat: Asset_GUID
+			if i < len(d.materials) do mat = d.materials[i]
+			if !_mesh_mat(&mats, mat).transparent do continue
+			centre := [3]f32{d.model[0, 3], d.model[1, 3], d.model[2, 3]}
+			append(&items, Item{material = mat, sub = i32(i), cmd = &cmd, loaded = mesh, dist = linalg.length2(centre - view.cam_pos)})
+		}
+	}
+	if len(items) == 0 do return
+	slice.sort_by(items[:], proc(a, b: Item) -> bool { return a.dist > b.dist })
+	for it in items {
+		_inspect_draw(it.cmd^)
+		d := it.cmd.variant.(Draw_Mesh)
+		sub := it.loaded.submeshes[it.sub]
+		gpu := d.skinned != nil ? d.skinned^ : it.loaded.gpu
+		m := _mesh_mat(&mats, it.material)
+		mirrored := render_mirrored(d.model)
+		switch view.mode {
+		case .Shaded:
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true)
+		case .Wireframe:
+			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
+		case .Unlit:
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true)
+		case .Normals:
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.NORMALS_SHADER, sub.first_index, sub.index_count, cull = m.cull, mirrored = mirrored)
+		case .Overdraw:
+			gfx.draw_mesh(gpu, nil, d.model, OVERDRAW_LAYER, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, overlay = true)
+		}
+	}
+}
+
 // A material as mesh draws use it, resolved once per pass (_mesh_mat).
 @(private = "file")
 _Mesh_Mat :: struct {
@@ -326,8 +382,9 @@ _Mesh_Mat :: struct {
 	color:  [4]f32,
 	data:   []u8,
 	extra:  []^gfx.Texture,
-	cutoff: f32,      // alpha clipping threshold, 0 = none
-	cull:   gfx.Cull, // the faces skipped
+	cutoff:      f32,      // alpha clipping threshold, 0 = none
+	cull:        gfx.Cull, // the faces skipped
+	transparent: bool,     // blended, drawn in the transparent phase
 }
 
 @(private = "file")
@@ -337,6 +394,7 @@ _mesh_mat :: proc(mats: ^map[Asset_GUID]_Mesh_Mat, guid: Asset_GUID) -> _Mesh_Ma
 	m.shader, m.tex, m.color, m.data, m.extra = _resolve_material(guid, .Lit)
 	m.cutoff = material_alpha_cutoff(guid)
 	m.cull = material_cull(guid)
+	m.transparent = material_transparent(guid)
 	mats[guid] = m
 	return m
 }
@@ -377,17 +435,18 @@ render_execute_depth :: proc(commands: []Render_Command) {
 		if !ok do continue
 		_inspect_draw(cmd)
 		mirrored := render_mirrored(d.model)
-		clips, mixed := false, false
+		clips, mixed, transparent := false, false, false
 		first_cull: gfx.Cull
 		for _, i in mesh.submeshes {
 			mat: Asset_GUID
 			if i < len(d.materials) do mat = d.materials[i]
 			m := _mesh_mat(&mats, mat)
 			if m.cutoff > 0 do clips = true
+			if m.transparent do transparent = true
 			if i == 0 do first_cull = m.cull
 			else if m.cull != first_cull do mixed = true
 		}
-		if !clips && !mixed {
+		if !clips && !mixed && !transparent {
 			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = -1, cull = first_cull, mirrored = mirrored}, 0, d)
 			continue
 		}
@@ -395,6 +454,7 @@ render_execute_depth :: proc(commands: []Render_Command) {
 			mat: Asset_GUID
 			if i < len(d.materials) do mat = d.materials[i]
 			m := _mesh_mat(&mats, mat)
+			if m.transparent do continue // no depth: it blends over what has
 			clip := m.cutoff > 0
 			it := Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}, cull = m.cull, mirrored = mirrored}
 			add(&items, &keys, it, clip ? render_fold_guid(mat) | 1 : 0, d)

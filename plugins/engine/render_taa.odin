@@ -126,7 +126,19 @@ motion_vectors :: proc(ctx: ^Render_Ctx) {
 		gpu := d.skinned != nil ? d.skinned^ : mesh.gpu
 		params := new(gfx.Motion_Params, context.temp_allocator)
 		params^ = {to_prev = m.prev * linalg.inverse(d.model), view_proj = ctx.view.view_proj, prev_view_proj = state.prev_view_proj}
-		gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.MOTION_SHADER, material = (^[size_of(gfx.Motion_Params)]u8)(params)[:])
+		bytes := (^[size_of(gfx.Motion_Params)]u8)(params)[:]
+		// A transparent submesh wrote no depth and blends over what moved
+		// behind it: its motion is not the pixel's.
+		transparent := false
+		for mat in d.materials do if material_transparent(mat) do transparent = true
+		if !transparent {
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.MOTION_SHADER, material = bytes)
+			continue
+		}
+		for sub, i in mesh.submeshes {
+			if i < len(d.materials) && material_transparent(d.materials[i]) do continue
+			gfx.draw_mesh(gpu, nil, d.model, {1, 1, 1, 1}, gfx.MOTION_SHADER, sub.first_index, sub.index_count, material = bytes)
+		}
 	}
 	gfx.pass_end()
 }

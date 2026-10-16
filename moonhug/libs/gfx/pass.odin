@@ -71,7 +71,33 @@ DRAW_UNIFORM_SLOT :: 2
 // Must match DrawUBO: x = the alpha cutoff (a fragment with less alpha is
 // discarded, 0 = no clipping), yzw reserved.
 _Draw_Uniform :: struct {
-	params: [4]f32,
+	params:     [4]f32, // x = the alpha cutoff
+	fog_color:  [4]f32, // rgb linear, w = Fog_Mode
+	fog_params: [4]f32, // density, start, end, height
+	fog_more:   [4]f32, // height falloff, the sky's share
+	cam_pos:    [4]f32, // xyz, for the distance
+}
+
+// Fog for a pass's world draws (set_fog): every material shader fades its
+// colour toward `color` with the distance to the camera, the sky by
+// direction. Height fog: the density falls off by exp(-height_falloff *
+// (y - height)) above `height`, integrated along the view ray, so a valley
+// fills while hills stand clear. 0 falloff is fog the same at every height.
+Fog_Mode :: enum u8 {
+	Off,
+	Exponential,         // 1 - exp(-density * distance)
+	Exponential_Squared, // 1 - exp(-(density * distance)^2): clear near, a wall further out
+	Linear,              // none before `start`, full at `end`
+}
+
+Fog :: struct {
+	mode:           Fog_Mode,
+	color:          [3]f32, // linear
+	density:        f32,    // the exponential modes, per world unit
+	start, end:     f32,    // Linear, world units
+	height:         f32,    // height fog: where the full density is
+	height_falloff: f32,    // 0 = no height fog
+	sky:            f32,    // how much of the fog the sky takes at the horizon, 0 to 1
 }
 
 // Up to MAX_LIGHTS lights reach the shader, in one uniform block with the
@@ -277,6 +303,7 @@ _pass: struct {
 	target_h:     f32,
 	env:          _Env,                  // reset each pass_end
 	occlusion:    Maybe(Texture),        // reset each pass_end
+	fog:          Fog,                   // reset each pass_end (mode Off)
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -724,6 +751,17 @@ set_ambient_occlusion :: proc(tex: Texture) {
 	_pass.occlusion = tex
 }
 
+// The fog of the CURRENT pass's world draws and sky (the engine's
+// Environment). Not calling this leaves the pass clear.
+set_fog :: proc(fog: Fog) {
+	_pass.fog = fog
+}
+
+// The per-draw block a fog and a camera make (the sky's fog, draw_sky).
+draw_uniform_fog :: proc(fog: Fog, cam_pos: [3]f32) -> ([4]f32, [4]f32, [4]f32) {
+	return {fog.color.r, fog.color.g, fog.color.b, f32(fog.mode)}, {fog.density, fog.start, fog.end, fog.height}, {fog.height_falloff, clamp(fog.sky, 0, 1), 0, 0}
+}
+
 // The spot and point lights' shadow atlas for the CURRENT pass's lit draws
 // (the shadow_atlas render step's result), read at SHADOW_ATLAS_SLOT.
 set_shadow_atlas :: proc(a: ^Shadow_Atlas) {
@@ -848,19 +886,23 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // clips (the surface template, the unlit shader, their casters) discards a
 // fragment whose alpha is below it. 0 clips nothing.
 //
+// blend draws the mesh alpha-blended over what is there, depth-tested but
+// not written (a transparent material): the caller orders such draws back
+// to front.
+//
 // cull skips the back or the front faces. `mirrored` is for a model whose
 // transform turns the triangles' winding around (negative determinant): its
 // clockwise triangles are the front faces, so culling and the shader's
 // gl_FrontFacing still see the outside as the front. Wire and overlay draws
 // show both faces and ignore both.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false) {
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
 	count = min(count, mesh.index_count - first_index)
-	kind: _Pipeline_Kind = wire ? .Tris_Wire : overlay ? .Tris_Overlay : .Tris_Depth
-	cull := kind == .Tris_Depth ? cull : .None
-	mirrored := kind == .Tris_Depth && mirrored
+	kind: _Pipeline_Kind = wire ? .Tris_Wire : overlay ? .Tris_Overlay : blend ? .Tris : .Tris_Depth
+	cull := (kind == .Tris_Depth || kind == .Tris) ? cull : .None
+	mirrored := (kind == .Tris_Depth || kind == .Tris) && mirrored
 	vp := _current_vp()
 	_instance_base()
 	inst := u32(len(_pass.inst))
@@ -1213,6 +1255,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_vp := i32(-1)
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
+	pushed_draw_vp := i32(-1) // the draw block holds the view's camera, for the fog
 	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
 		if want := _pass.vps[d.vp_index].viewport; want != viewport {
@@ -1282,10 +1325,13 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			num_bindings = OCCLUSION_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
-		if !d.fullscreen && pushed_cutoff != d.alpha_cutoff {
-			u := _Draw_Uniform{params = {d.alpha_cutoff, 0, 0, 0}}
+		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index) {
+			cam := _pass.vps[d.vp_index].cam_pos
+			u := _Draw_Uniform{params = {d.alpha_cutoff, 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}}
+			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff
+			pushed_draw_vp = d.vp_index
 		}
 
 		if d.fullscreen {
@@ -1301,6 +1347,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			pushed_light_vp = -1
 			pushed_vp = -1
 			pushed_cutoff = -1
+			pushed_draw_vp = -1
 			batch_bound = false
 		} else if d.is_mesh {
 			if pushed_vp != d.vp_index {
@@ -1352,6 +1399,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.shadows = {}
 	_pass.env = {}
 	_pass.occlusion = nil
+	_pass.fog = {}
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

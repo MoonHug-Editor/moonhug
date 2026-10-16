@@ -6,6 +6,9 @@ using namespace metal;
 struct Params
 {
     float4x4 inv_view_proj;
+    float4 fog_color;
+    float4 fog_params;
+    float4 fog_more;
 };
 
 struct main0_out
@@ -25,7 +28,13 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _33 [[buffer
     float4 near = _33.inv_view_proj * float4(ndc, 0.0, 1.0);
     float4 far = _33.inv_view_proj * float4(ndc, 1.0, 1.0);
     float3 dir = fast::normalize((far.xyz / float3(far.w)) - (near.xyz / float3(near.w)));
-    out.out_color = float4(env.sample(envSmplr, dir, level(0.0)).xyz, 1.0);
+    float3 c = env.sample(envSmplr, dir, level(0.0)).xyz;
+    if (_33.fog_color.w > 0.5)
+    {
+        float up = fast::clamp(dir.y, 0.0, 1.0);
+        c = mix(c, _33.fog_color.xyz, float3((_33.fog_more.y * (1.0 - up)) * (1.0 - up)));
+    }
+    out.out_color = float4(c, 1.0);
     return out;
 }
 

@@ -8,6 +8,10 @@ using namespace metal;
 struct DrawUBO
 {
     float4 draw_params;
+    float4 fog_color;
+    float4 fog_params;
+    float4 fog_more;
+    float4 view_pos;
 };
 
 struct main0_out
@@ -19,6 +23,7 @@ struct main0_in
 {
     float2 frag_uv [[user(locn0)]];
     float4 frag_color [[user(locn1)]];
+    float3 frag_world_pos [[user(locn3)]];
 };
 
 static inline __attribute__((always_inline))
@@ -27,16 +32,68 @@ float3 srgb_to_linear(thread const float3& c)
     return mix(powr((c + float3(0.054999999701976776123046875)) / float3(1.05499994754791259765625), float3(2.400000095367431640625)), c / float3(12.9200000762939453125), float3(c <= float3(0.040449999272823333740234375)));
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _78 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+static inline __attribute__((always_inline))
+float fog_amount(thread const float3& world_pos, constant DrawUBO& _23)
+{
+    int mode = int(_23.fog_color.w + 0.5);
+    if (mode == 0)
+    {
+        return 0.0;
+    }
+    float3 d = world_pos - _23.view_pos.xyz;
+    float dist = length(d);
+    float h = 1.0;
+    if (_23.fog_more.x > 0.0)
+    {
+        float k = _23.fog_more.x;
+        float ky = k * d.y;
+        float _85;
+        if (abs(ky) > 9.9999997473787516355514526367188e-05)
+        {
+            _85 = (1.0 - exp(-ky)) / ky;
+        }
+        else
+        {
+            _85 = 1.0;
+        }
+        h = exp((-k) * (_23.view_pos.y - _23.fog_params.w)) * _85;
+    }
+    float f;
+    if (mode == 1)
+    {
+        f = 1.0 - exp(((-_23.fog_params.x) * h) * dist);
+    }
+    else
+    {
+        if (mode == 2)
+        {
+            float x = (_23.fog_params.x * h) * dist;
+            f = 1.0 - exp((-x) * x);
+        }
+        else
+        {
+            f = fast::clamp((dist - _23.fog_params.y) / fast::max(_23.fog_params.z - _23.fog_params.y, 9.9999997473787516355514526367188e-05), 0.0, 1.0) * fast::clamp(h, 0.0, 1.0);
+        }
+    }
+    return fast::clamp(f, 0.0, 1.0);
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _23 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
     float4 t = tex.sample(texSmplr, in.frag_uv);
     float3 param = t.xyz;
     out.out_color = float4(srgb_to_linear(param), t.w) * in.frag_color;
-    if (out.out_color.w < _78.draw_params.x)
+    if (out.out_color.w < _23.draw_params.x)
     {
         discard_fragment();
     }
+    float4 _212 = out.out_color;
+    float3 param_1 = in.frag_world_pos;
+    float3 _223 = mix(_212.xyz, _23.fog_color.xyz, float3(fog_amount(param_1, _23)));
+    out.out_color.x = _223.x;
+    out.out_color.y = _223.y;
+    out.out_color.z = _223.z;
     return out;
 }
 

@@ -164,6 +164,22 @@ test_material_cull :: proc(t: ^testing.T) {
 	testing.expect(t, engine.material_cache_version > v, "a render face edit moves the version")
 }
 
+// A transparent material blends (drawn in the transparent phase); opaque,
+// no material and a missing one do not.
+@(test)
+test_material_transparent :: proc(t: ^testing.T) {
+	engine.material_cache_init()
+	defer engine.material_cache_shutdown()
+	glass_id, _ := uuid.read("91919191-4343-6565-8787-090909090909")
+	solid_id, _ := uuid.read("a1a1a1a1-4343-6565-8787-090909090909")
+	glass, solid := engine.Asset_GUID(glass_id), engine.Asset_GUID(solid_id)
+	engine.material_preview(glass, {shader = .Lit, color = {1, 1, 1, 0.5}, surface = .Transparent})
+	engine.material_preview(solid, {shader = .Lit, color = {1, 1, 1, 1}})
+	testing.expect(t, engine.material_transparent(glass), "transparent surface")
+	testing.expect(t, !engine.material_transparent(solid), "opaque surface")
+	testing.expect(t, !engine.material_transparent({}), "no material")
+}
+
 // Property packing: named vec4 values land at the shader's reflected std140
 // offsets, truncated to the member size; unmatched names on either side are
 // zero-filled / ignored.

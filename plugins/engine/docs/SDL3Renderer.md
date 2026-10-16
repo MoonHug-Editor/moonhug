@@ -189,6 +189,12 @@ The surface template lights a back face with its normal reversed (`vertex_normal
 
 `TAA_SHADER` is the resolve, a fullscreen shader: this frame's image, the history, the depth and the motion vectors in (`Taa_Params`: the camera's reprojection, the blend, whether the history and the motion vectors are valid), the blended image out. `MOTION_SHADER` is a world shader that writes a mesh's motion vectors from its `Motion_Params` block (the object's world space now to last frame's, this and last frame's steady cameras), alpha 1 where it drew. `pass_begin_target(rt, clear, shared_depth = scene)` draws into `rt`'s color against another target's depth, kept as it is, so a moved mesh writes motion vectors only where it is in front. The engine's `scene_taa` and `motion_vectors` steps drive them (RenderPipeline.md, Temporal anti-aliasing).
 
+## Fog
+
+`set_fog(Fog)` gives a pass's world draws and sky a fog: `color` (linear), `mode` (Off, Exponential, Exponential_Squared, Linear), `density`, `start` and `end`, `height` and `height_falloff`, and `sky`, the horizon's share. It rides the per-draw block (`DrawUBO`: the alpha cutoff, the fog, the view's camera for the distance), pushed when the cutoff or the view changes, so every world shader reads it the same way (`fog_amount(world_pos)` in surface.glsl and world.frag) and the sky through `Sky_Params` (`draw_uniform_fog`). The height fog is the exponential density integrated along the view ray between the camera's height and the fragment's.
+
+`draw_mesh`'s `blend` draws a mesh alpha-blended, depth-tested but not written (`.Tris`), for transparent materials: the engine orders such draws back to front. Culled and mirrored blended draws get their own pipelines, as the opaque ones do.
+
 ## Ambient occlusion
 
 `set_ambient_occlusion(tex)` hands a pass's lit draws the screen's ambient occlusion: the view's size, red how much of the environment's light reaches each pixel, blue how much of the lights'. Shaders that declare `OCCLUSION_SLOT` (the surface template's `ambient_occlusion`, binding 11) get it there, white when none is set. The template reads both at the fragment's screen position (`screen_occlusion()`), shades the environment's light by the smaller of red and the surface's occlusion, and the lights' light by blue. `SSAO_SHADER` and `SSAO_BLUR_SHADER` are the fullscreen passes that make it from a depth texture (`Ssao_Params`, `Ssao_Blur_Params`). The engine's `scene_ssao` step drives them (RenderPipeline.md, Ambient occlusion).

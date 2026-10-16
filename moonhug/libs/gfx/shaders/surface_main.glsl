@@ -150,6 +150,8 @@ void main() {
 
     // Capped well inside half-float range (65504): an overflow is infinite and
     // spreads through bloom as a white block.
-    out_color = vec4(min(color + s.emissive, vec3(4096.0)), s.alpha);
+    color = min(color + s.emissive, vec3(4096.0));
+    color = mix(color, fog_color.rgb, fog_amount(frag_world_pos));
+    out_color = vec4(color, s.alpha);
 }
 #endif
