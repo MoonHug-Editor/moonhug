@@ -86,7 +86,10 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 fog_params;
     vec4 fog_more;
     vec4 view_pos;
-    mat4 view_proj;  // the view's, for a refraction's screen offset
+    mat4 view_proj;
+    vec4 probe_pos;  // the draw's reflection probe: xyz its centre, w = 1 when box projected
+    vec4 probe_min;  // xyz the box, w = the probe's intensity
+    vec4 probe_max;  // xyz the box, w = 1 when a probe is bound  // the view's, for a refraction's screen offset
 };
 
 // Every light of the pass (gfx.set_lights), and for each tile of the screen's
@@ -175,8 +178,31 @@ vec4 screen_reflection(float roughness) {
 // The environment (gfx.set_environment): the specular cube prefiltered for
 // rising roughness along its mips, and the diffuse irradiance cube. White
 // when the pass has none, so the ambient level lights uniformly.
-layout(set = 2, binding = 8) uniform samplerCube env_specular;
+layout(set = 2, binding = 8) uniform samplerCube env_specular; // the draw's reflection probe's cube when one is bound (probe_max.w)
 layout(set = 2, binding = 9) uniform samplerCube env_irradiance;
+
+// The direction to read a box-projected probe in: where the reflected ray
+// from `p` leaves the probe's box, seen from the probe's centre, so a flat
+// surface reflects the room at its place instead of at infinity.
+vec3 box_projected(vec3 r, vec3 p, vec3 centre, vec3 box_min, vec3 box_max) {
+    vec3 safe = mix(r, vec3(1e-5), lessThan(abs(r), vec3(1e-5)));
+    vec3 t1 = (box_max - p) / safe;
+    vec3 t2 = (box_min - p) / safe;
+    vec3 far = max(t1, t2);
+    float t = min(min(far.x, far.y), far.z);
+    return p + r * t - centre;
+}
+
+// The environment's reflection for the surface at `p` with the reflected
+// ray `r`: the draw's probe when one is bound, box projected when it says
+// so, else the scene's environment.
+vec3 env_reflection(vec3 r, vec3 p, float roughness) {
+    if (probe_max.w > 0.5) {
+        vec3 dir = probe_pos.w > 0.5 ? box_projected(r, p, probe_pos.xyz, probe_min.xyz, probe_max.xyz) : r;
+        return textureLod(env_specular, dir, roughness * env_params.z).rgb * probe_min.w;
+    }
+    return textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
+}
 
 // What a refracting surface shows (Material.refraction, surface_main):
 // the opaque copy (scene_color) read where the view ray lands after

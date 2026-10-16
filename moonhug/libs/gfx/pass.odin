@@ -43,6 +43,21 @@ _Draw :: struct {
 	shader:         string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
+	probe:        Probe,  // mesh draws: the reflection cube in place of the pass's environment, cube nil = none
+}
+
+// A reflection probe for a draw (draw_mesh `probe`): its prefiltered cube
+// (the same mip layout as the pass's environment, set_environment) replaces
+// the environment's reflection for that draw, times `intensity`. With `box`
+// the reflected ray is projected onto the box (`min`, `max`, world space)
+// around `pos`, the cube's centre, so a flat floor reflects the room where
+// it is instead of at infinity.
+Probe :: struct {
+	cube:      ^Cubemap,
+	pos:       [3]f32,
+	min, max:  [3]f32,
+	box:       bool,
+	intensity: f32,
 }
 
 // Fragment sampler slots a single draw can bind (mirrors the importer's
@@ -70,14 +85,17 @@ _INSTANCE_IDENTITY :: _Instance{model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
 DRAW_UNIFORM_SLOT :: 2
 
 // Must match DrawUBO: x = the alpha cutoff (a fragment with less alpha is
-// discarded, 0 = no clipping), yzw reserved.
+// discarded, 0 = no clipping), y = 1 on a normals pass, zw reserved.
 _Draw_Uniform :: struct {
-	params:     [4]f32, // x = the alpha cutoff
+	params:     [4]f32, // x = the alpha cutoff, y = normals pass
 	fog_color:  [4]f32, // rgb linear, w = Fog_Mode
 	fog_params: [4]f32, // density, start, end, height
 	fog_more:   [4]f32, // height falloff, the sky's share
 	cam_pos:    [4]f32, // xyz, for the distance
 	view_proj:  matrix[4, 4]f32, // the view's, for a refraction's screen offset
+	probe_pos:  [4]f32, // the draw's reflection probe: xyz its centre, w = 1 when box projected
+	probe_min:  [4]f32, // xyz the box, w = the probe's intensity
+	probe_max:  [4]f32, // xyz the box, w = 1 when a probe is bound
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -938,7 +956,7 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // clockwise triangles are the front faces, so culling and the shader's
 // gl_FrontFacing still see the outside as the front. Wire and overlay draws
 // show both faces and ignore both.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false) {
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false, probe := Probe{}) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
@@ -955,7 +973,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		last := &_pass.draws[n - 1]
 		if last.is_mesh && last.kind == kind && last.mesh == mesh &&
 		   last.mesh_first == first_index && last.mesh_count == count &&
-		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff && last.cull == cull && last.mirrored == mirrored &&
+		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff && last.cull == cull && last.mirrored == mirrored && last.probe == probe &&
 		   slice.equal(last.material, material) && slice.equal(last.extra_tex, extra_tex) &&
 		   last.instance_first + last.instance_count == inst {
 			last.instance_count += 1
@@ -973,6 +991,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		instance_first = inst,
 		instance_count = 1,
 		alpha_cutoff   = alpha_cutoff,
+		probe          = probe,
 		cull           = cull,
 		mirrored       = mirrored,
 		shader         = shader,
@@ -1302,6 +1321,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_vp := i32(-1)
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
+	pushed_probe := Probe{intensity = -1}
 	pushed_draw_vp := i32(-1) // the draw block holds the view's camera, for the fog
 	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
@@ -1358,7 +1378,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			num_bindings = SHADOW_SAMPLER_SLOT + 1
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > ENV_IRRADIANCE_SLOT && env_specular != nil && env_irradiance != nil {
-			bindings[ENV_SPECULAR_SLOT] = {texture = env_specular.tex, sampler = _gfx.sampler_linear}
+			bindings[ENV_SPECULAR_SLOT] = {texture = d.probe.cube != nil ? d.probe.cube.tex : env_specular.tex, sampler = _gfx.sampler_linear}
 			bindings[ENV_IRRADIANCE_SLOT] = {texture = env_irradiance.tex, sampler = _gfx.sampler_linear}
 			num_bindings = ENV_IRRADIANCE_SLOT + 1
 		}
@@ -1380,13 +1400,19 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			num_bindings = REFLECTIONS_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
-		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index) {
+		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe) {
 			cam := _pass.vps[d.vp_index].cam_pos
 			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
+			if pr := d.probe; pr.cube != nil {
+				u.probe_pos = {pr.pos.x, pr.pos.y, pr.pos.z, pr.box ? 1 : 0}
+				u.probe_min = {pr.min.x, pr.min.y, pr.min.z, pr.intensity}
+				u.probe_max = {pr.max.x, pr.max.y, pr.max.z, 1}
+			}
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff
 			pushed_draw_vp = d.vp_index
+			pushed_probe = d.probe
 		}
 
 		if d.fullscreen {

@@ -396,7 +396,6 @@ _pipeline_asset_load :: proc(guid: Asset_GUID) -> (Render_Pipeline, bool) {
 	return pipeline_load_file(path)
 }
 
-@(private = "file")
 _pipeline_runtime_destroy :: proc(r: ^Pipeline_Runtime) {
 	destroy_lane :: proc(lane: ^[dynamic]Pipeline_Instance) {
 		for inst in lane {
@@ -421,7 +420,6 @@ _pipeline_runtime_destroy :: proc(r: ^Pipeline_Runtime) {
 // Resolves every entry to its step, builds each instance's settings and
 // bound ports, keeps each lane in asset order, and warns once per load about
 // what will not run as listed.
-@(private = "file")
 _pipeline_runtime_build :: proc(src: Render_Pipeline, guid: Asset_GUID) -> (r: Pipeline_Runtime) {
 	r.guid = guid
 	r.src = src
@@ -541,7 +539,14 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 		inst.step.run(&frame_ctx)
 		if inspect_frame do _inspect_step_ends(inst.id, frame_ctx.pool)
 	}
-	inspect := _inspect_lane_begins(slot, ctx)
+	return _lane_run(slot, lane[:], ctx, inspect = true)
+}
+
+// Runs one slot lane for the view in `ctx`. `inspect` offers the run to
+// the Render Pipeline window (a view's run); a capture of its own (a
+// reflection probe's faces) runs without it.
+_lane_run :: proc(slot: string, lane: []Pipeline_Instance, ctx: ^Render_Ctx, inspect: bool) -> bool {
+	inspect := inspect && _inspect_lane_begins(slot, ctx)
 	// Temporal anti-aliasing jitters the camera for the scene steps when the
 	// lane resolves it (render_taa.odin). The debug view modes draw steady,
 	// and so does the captured run while the Render Pipeline window looks at
@@ -557,7 +562,7 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	}
 	// The volumes the camera is in blend their overrides into the steps'
 	// settings for this view (render_volumes.odin).
-	volume_settings := _volumes_settings(lane[:], ctx.view.cam_pos)
+	volume_settings := _volumes_settings(lane, ctx.view.cam_pos)
 	for inst, i in lane {
 		if inst.muted {
 			if inspect do _inspect_step_skipped(inst.id)
@@ -576,7 +581,7 @@ render_pipeline_run :: proc(slot: string, ctx: ^Render_Ctx) -> bool {
 	ctx.settings = nil
 	ctx.reads = nil
 	ctx.writes = nil
-	_inspect_lane_ends(ctx)
+	if inspect do _inspect_lane_ends(ctx)
 	return true
 }
 

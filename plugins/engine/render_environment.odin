@@ -185,16 +185,24 @@ _env_rebuild :: proc(params: _Capture_Params, pano: gfx.Texture) -> bool {
 	gfx.cubemap_generate_mips(_env.source)
 
 	source := []gfx.Texture{gfx.cubemap_texture(_env.source)}
-	for mip in 0 ..< i32(ENV_SPECULAR_MIPS) {
-		rough := f32(mip) / f32(ENV_SPECULAR_MIPS - 1)
-		for face in 0 ..< i32(6) {
-			q := [4]f32{f32(face), rough, ENV_SOURCE_SIZE, ENV_PREFILTER_SAMPLES}
-			gfx.cubemap_render(_env.specular, face, mip, gfx.ENV_PREFILTER_SHADER, source, (^[size_of(q)]u8)(&q)[:])
-		}
-	}
+	_env_prefilter(_env.source, _env.specular)
 	for face in 0 ..< i32(6) {
 		q := [4]f32{f32(face), ENV_IRRADIANCE_LOD, 0, 0}
 		gfx.cubemap_render(_env.irradiance, face, 0, gfx.ENV_IRRADIANCE_SHADER, source, (^[size_of(q)]u8)(&q)[:])
 	}
 	return true
+}
+
+// Renders `source` (with its mips filled) GGX-prefiltered into `specular`,
+// roughness rising along its ENV_SPECULAR_MIPS mips: the environment's
+// reflection, and a reflection probe's (render_probes.odin).
+_env_prefilter :: proc(source, specular: ^gfx.Cubemap) {
+	input := []gfx.Texture{gfx.cubemap_texture(source)}
+	for mip in 0 ..< i32(ENV_SPECULAR_MIPS) {
+		rough := f32(mip) / f32(ENV_SPECULAR_MIPS - 1)
+		for face in 0 ..< i32(6) {
+			q := [4]f32{f32(face), rough, f32(source.size), ENV_PREFILTER_SAMPLES}
+			gfx.cubemap_render(specular, face, mip, gfx.ENV_PREFILTER_SHADER, input, (^[size_of(q)]u8)(&q)[:])
+		}
+	}
 }

@@ -310,7 +310,8 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		m := _mesh_mat(&mats, it.material)
 		switch view.mode {
 		case .Shaded:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored)
+			probe := probe_for_point({d.model[0, 3], d.model[1, 3], d.model[2, 3]}) // render_probes.odin
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored, probe = probe)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:
@@ -361,7 +362,8 @@ _execute_transparent_meshes :: proc(view: Render_View, commands: []Render_Comman
 		mirrored := render_mirrored(d.model)
 		switch view.mode {
 		case .Shaded:
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true)
+			probe := probe_for_point({d.model[0, 3], d.model[1, 3], d.model[2, 3]})
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true, probe = probe)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:

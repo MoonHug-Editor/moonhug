@@ -106,6 +106,7 @@ _render_view_pools_shutdown :: proc() {
 	_render_environment_shutdown()
 	_render_taa_shutdown()
 	_render_ssr_shutdown()
+	_render_probes_shutdown()
 	_render_volumes_shutdown()
 }
 

@@ -13,6 +13,9 @@ struct DrawUBO
     float4 fog_more;
     float4 view_pos;
     float4x4 view_proj;
+    float4 probe_pos;
+    float4 probe_min;
+    float4 probe_max;
 };
 
 struct main0_out

@@ -23,6 +23,14 @@
       "settings": null
     },
     {
+      "id": 19,
+      "step": "reflection_probes_pass",
+      "slot": "",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 12,
       "step": "shadow_cascades",
       "slot": "Main",
@@ -136,5 +144,5 @@
       "muted": false
     }
   ],
-  "next_id": 19
-}
+  "next_id": 20
+}\n

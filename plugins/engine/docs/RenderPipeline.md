@@ -50,7 +50,7 @@ A sequence with named ports carries the same information as a wired node graph: 
 - The **frame lane** holds per-frame steps (`frame=true`): the spot and point lights' shadow atlas, a probe. Each runs once per frame and world, right before that world's first lane, with the frame's target pool. A frame that renders two worlds (the scene, and an asset preview's) runs them for each, so a preview's lights never serve the scene's views.
 - A **slot lane** holds per-view steps. A slot runs once per view that names it: every camera with that slot, the scene view for `Editor`. Each run has its own `Render_Ctx` and the view's target pool.
 
-The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `postfx_motion_blur` (muted), `postfx_dof` (muted), `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
+The default pipeline: frame lane `environment_pass`, `shadow_atlas`, `reflection_probes_pass`, `Main` lane `shadow_cascades`, `scene_ssao` (muted), `scene_ssr` (muted), `scene_opaque`, `scene_sky`, `scene_copy`, `scene_under`, `scene_transparent`, `motion_vectors`, `scene_taa`, `postfx_motion_blur` (muted), `postfx_dof` (muted), `scene_over`, `postfx_exposure` (muted), `postfx_bloom`, `postfx_tonemap`, `final_blit`.
 
 `depth_prepass` is installed but not in the default pipeline. Placed before `scene_opaque`, it draws the opaque meshes' depth first (alpha-clipped ones through their caster) and `scene_opaque` keeps that depth, so each covered pixel is shaded once. It costs a second pass over the geometry, so it pays off with expensive materials and heavy overdraw on a GPU-bound frame. The scene view's debug modes skip it.
 
@@ -111,6 +111,10 @@ Limits:
 - `intensity` (default 1) scales the occluded fraction. `direct` (default 0.25) is how much of the occlusion also darkens direct light: 0 shades only the environment's light, as the physics says, a little more grounds objects
 - the scene view's debug modes skip it
 - the result is the `ssao` target: red the factor for the environment's light (the open fraction), blue the factor for the lights' (`direct` of the occlusion), green the view depth
+
+## Reflection probes
+
+`reflection_probes_pass`, a frame step after `shadow_atlas`, captures each Reflection Probe component that needs it (Materials.md, Reflection probes): six faces of the scene from the probe's position, each a view run through a lane of its own made of the engine's `shadow_cascades`, `scene_opaque`, `scene_sky` and `scene_transparent`, not the pipeline's slot lane, so no anti-aliasing, post effect or reflection step runs in a capture and the Render Pipeline window does not show it. The faces go into a source cube, its mips filled by the GPU, and the GGX prefilter fills the probe's reflection cube along its mips as for the Environment. The mesh draws of every later view take the probe whose box holds their centre, and gfx binds that cube in place of the Environment's for the draw (`gfx.Probe`, box projected when the probe says so). A Volume applies to a capture by the probe's position.
 
 ## Screen-space reflections
 

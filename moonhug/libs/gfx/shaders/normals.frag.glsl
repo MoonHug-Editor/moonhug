@@ -20,6 +20,9 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 fog_more;
     vec4 view_pos;
     mat4 view_proj;
+    vec4 probe_pos;  // the draw's reflection probe: xyz its centre, w = 1 when box projected
+    vec4 probe_min;  // xyz the box, w = the probe's intensity
+    vec4 probe_max;  // xyz the box, w = 1 when a probe is bound
 };
 
 void main() {

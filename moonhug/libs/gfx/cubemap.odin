@@ -81,6 +81,23 @@ cubemap_render :: proc(c: ^Cubemap, face, mip: i32, shader: string, inputs: []Te
 	sdl.EndGPURenderPass(rp)
 }
 
+// Copies a render target's colour (HDR) onto one face at mip 0, scaled to
+// the face, mirrored left to right when `flip`: a face rendered through a
+// camera looking out from the cube's centre comes out mirrored against the
+// cube's convention (the faces are laid out as seen from outside), so a
+// capture flips every face. Call between passes.
+cubemap_blit_face :: proc(c: ^Cubemap, face: i32, src: ^Render_Target, flip := true) {
+	assert(!_pass.active, "cubemap_blit_face must run between passes")
+	if _gfx.cmd == nil || c == nil || src == nil do return
+	sdl.BlitGPUTexture(_gfx.cmd, sdl.GPUBlitInfo{
+		source      = {texture = src.color, w = u32(src.width), h = u32(src.height)},
+		destination = {texture = c.tex, layer_or_depth_plane = u32(face), w = u32(c.size), h = u32(c.size)},
+		load_op     = .DONT_CARE,
+		filter      = .LINEAR,
+		flip_mode   = flip ? .HORIZONTAL : .NONE,
+	})
+}
+
 // Fills mips 1.. from mip 0 with the GPU's filter. Call between passes.
 cubemap_generate_mips :: proc(c: ^Cubemap) {
 	assert(!_pass.active, "cubemap_generate_mips must run between passes")

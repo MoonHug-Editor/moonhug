@@ -92,7 +92,19 @@ The **Environment** component (Rendering/Environment) is the scene's sky and the
 - `exposure` scales the sky, `ambient_intensity` the diffuse light it gives surfaces, `reflection_intensity` what they reflect of it
 - `draw_sky` shows it behind the cameras where nothing is drawn, else their clear color stays
 
-The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected. A pipeline running `scene_ssr` (RenderPipeline.md, Screen-space reflections) puts what is on screen in place of the environment's reflection on smooth surfaces, where the mirror ray finds it.
+The frame lane's `environment_pass` renders it into cubes, only when a setting, the panorama or the sun changed: the sky (512 px a face, with mips), its reflection prefiltered for roughness along six mips (GGX, importance sampled), and its diffuse irradiance. The template lights with them: irradiance times the diffuse color, the reflection read at the surface's roughness times the split-sum fit for specular, both times occlusion. `scene_sky` draws the sky after the opaque meshes. Without an Environment the first Light's ambient level lights uniformly and nothing is reflected. A pipeline running `scene_ssr` (RenderPipeline.md, Screen-space reflections) puts what is on screen in place of the environment's reflection on smooth surfaces, where the mirror ray finds it. A **Reflection Probe** puts the room around it in place of the sky for the meshes inside its box (below).
+
+### Reflection probes
+
+A Reflection Probe component captures its surroundings into a cube, so the smooth surfaces near it reflect the room, the objects behind the camera included, instead of the sky alone. The frame lane's `reflection_probes_pass` step does the capture (RenderPipeline.md).
+
+- `size` is a box in world units around the transform's position, aligned to the world (the transform's rotation and scale do not apply). A mesh whose centre lies inside takes the probe for its reflections, the smallest box when several hold it. Outside every box the Environment reflects
+- the capture renders the scene six times from the probe's position through the engine's own scene steps (the sun's cascades, the opaque meshes, the sky, the transparents), at `resolution` pixels a face, with no anti-aliasing, no post effects and no reflections of other probes, then prefilters the cube for roughness as the Environment's
+- `refresh` Once captures when the probe is first seen and again when it moves or its resolution changes, so objects that move afterwards do not show in it. Every Frame captures each frame, six scene renders a frame
+- `box_projection` reflects the box's walls where they are: a floor inside a room shows the room at its place rather than at infinity. Off for open ground, where there are no walls
+- `intensity` scales the reflection. The Environment's `reflection_intensity` does not apply to a probe
+- what the probe replaces is the environment's specular term only: the diffuse light stays the Environment's, screen-space reflections still take precedence where they hit, and a refracting material's stand-in beyond the screen edge reads the probe too
+- probes do not blend: at a box's edge a mesh switches from one to the other, or to the Environment
 
 A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
 

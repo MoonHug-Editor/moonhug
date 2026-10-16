@@ -152,7 +152,7 @@ void main() {
     // What no light reaches: the environment, shaded by occlusion.
     vec3 r = reflect(-v, n);
     vec3 irradiance = texture(env_irradiance, n).rgb * env_params.x;
-    vec3 reflected = textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
+    vec3 reflected = env_reflection(r, frag_world_pos, roughness);
     // The screen's reflection where the scene_ssr step found one.
     vec4 screen = screen_reflection(roughness);
     reflected = reflected * (1.0 - screen.a) + screen.rgb;
