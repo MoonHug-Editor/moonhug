@@ -136,7 +136,7 @@ Ssr_Params :: struct {
 	view:      matrix[4, 4]f32, // world to view
 	reproject: matrix[4, 4]f32, // this frame's view space to last frame's clip space
 	params:    [4]f32,          // x = max distance (view units), y = thickness, z = steps, w = edge fade (fraction of the screen)
-	params2:   [4]f32,          // x = 1 when last frame's image is this view's, consecutive and the same size
+	params2:   [4]f32,          // x = 1 when last frame's image is this view's, consecutive and the same size, y = 1 when the back faces' depth is bound
 }
 
 // The sky's block (shaders/skybox.frag.glsl, draw_sky): the view's inverse

@@ -133,6 +133,8 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
 
+- reflection probe blending: a mesh between two probes' boxes crossfades their cubes by its distance to the box edge, instead of switching from one to the other when its centre crosses
+
 - spline package: a path through space, the spatial counterpart to the engine's scalar `Curve`
   - a Spline component holding control points, edited in the scene view through the handles layer
   - sampling by parameter and by arc length

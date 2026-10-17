@@ -114,7 +114,7 @@ _create_pipelines :: proc() -> bool {
 	if !fullscreen_register(TAA_SHADER, _TAA_FRAG_SPV, _TAA_FRAG_MSL, 4, 2) do return false
 	if !fullscreen_register(SSAO_SHADER, _SSAO_FRAG_SPV, _SSAO_FRAG_MSL, 1, 2) do return false
 	if !fullscreen_register(SSAO_BLUR_SHADER, _SSAO_BLUR_FRAG_SPV, _SSAO_BLUR_FRAG_MSL, 1, 2) do return false
-	if !fullscreen_register(SSR_SHADER, _SSR_FRAG_SPV, _SSR_FRAG_MSL, 3, 2) do return false
+	if !fullscreen_register(SSR_SHADER, _SSR_FRAG_SPV, _SSR_FRAG_MSL, 4, 2) do return false
 	if !fullscreen_register(BLIT_SHADER, _BLIT_FRAG_SPV, _BLIT_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENCODE_SHADER, _ENCODE_FRAG_SPV, _ENCODE_FRAG_MSL, 1, 0) do return false
 	if !fullscreen_register(ENV_CAPTURE_SHADER, _ENV_CAPTURE_FRAG_SPV, _ENV_CAPTURE_FRAG_MSL, 1, 2) do return false

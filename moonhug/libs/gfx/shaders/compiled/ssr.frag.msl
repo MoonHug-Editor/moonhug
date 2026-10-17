@@ -26,62 +26,104 @@ struct main0_in
 };
 
 static inline __attribute__((always_inline))
-float3 view_pos(thread int2& p, thread int2& size, texture2d<float> depth, sampler depthSmplr, constant Params& _65)
+float3 unproject(thread const int2& p, thread const float& d, thread int2& size, constant Params& _55)
 {
-    p = clamp(p, int2(0), size - int2(1));
-    float d = depth.read(uint2(p), 0).x;
     float2 uv = (float2(p) + float2(0.5)) / float2(size);
-    float4 v = _65.inv_proj * float4((uv.x * 2.0) - 1.0, 1.0 - (uv.y * 2.0), d, 1.0);
+    float4 v = _55.inv_proj * float4((uv.x * 2.0) - 1.0, 1.0 - (uv.y * 2.0), d, 1.0);
     return v.xyz / float3(v.w);
 }
 
 static inline __attribute__((always_inline))
-float2 to_uv(thread const float3& p, constant Params& _65)
+float3 view_pos(thread int2& p, thread int2& size, constant Params& _55, texture2d<float> depth, sampler depthSmplr)
 {
-    float4 c = _65.proj * float4(p, 1.0);
+    p = clamp(p, int2(0), size - int2(1));
+    int2 param = p;
+    float param_1 = depth.read(uint2(p), 0).x;
+    return unproject(param, param_1, size, _55);
+}
+
+static inline __attribute__((always_inline))
+float2 to_uv(thread const float3& p, constant Params& _55)
+{
+    float4 c = _55.proj * float4(p, 1.0);
     return float2(((c.x / c.w) * 0.5) + 0.5, 0.5 - ((c.y / c.w) * 0.5));
 }
 
 static inline __attribute__((always_inline))
 bool off_screen(thread const float2& uv)
 {
-    bool _121 = uv.x < 0.0;
-    bool _128;
-    if (!_121)
+    bool _202 = uv.x < 0.0;
+    bool _209;
+    if (!_202)
     {
-        _128 = uv.y < 0.0;
+        _209 = uv.y < 0.0;
     }
     else
     {
-        _128 = _121;
+        _209 = _202;
     }
-    bool _135;
-    if (!_128)
+    bool _216;
+    if (!_209)
     {
-        _135 = uv.x > 1.0;
+        _216 = uv.x > 1.0;
     }
     else
     {
-        _135 = _128;
+        _216 = _209;
     }
-    bool _142;
-    if (!_135)
+    bool _223;
+    if (!_216)
     {
-        _142 = uv.y > 1.0;
+        _223 = uv.y > 1.0;
     }
     else
     {
-        _142 = _135;
+        _223 = _216;
     }
-    return _142;
+    return _223;
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer(1)]], texture2d<float> depth [[texture(0)]], texture2d<float> normals [[texture(1)]], texture2d<float> scene [[texture(2)]], sampler depthSmplr [[sampler(0)]], sampler normalsSmplr [[sampler(1)]], sampler sceneSmplr [[sampler(2)]], float4 gl_FragCoord [[position]])
+static inline __attribute__((always_inline))
+bool inside(thread const float3& s, thread int2& p, thread int2& size, constant Params& _55, texture2d<float> depth, sampler depthSmplr, texture2d<float> back_depth, sampler back_depthSmplr)
+{
+    p = clamp(p, int2(0), size - int2(1));
+    int2 param = p;
+    float param_1 = depth.read(uint2(p), 0).x;
+    float dz = unproject(param, param_1, size, _55).z - s.z;
+    if (dz <= 0.0)
+    {
+        return false;
+    }
+    if (dz < _55.params.y)
+    {
+        return true;
+    }
+    if (_55.params2.y < 0.5)
+    {
+        return false;
+    }
+    float b = back_depth.read(uint2(p), 0).x;
+    bool _159 = b < 1.0;
+    bool _171;
+    if (_159)
+    {
+        int2 param_2 = p;
+        float param_3 = b;
+        _171 = s.z >= unproject(param_2, param_3, size, _55).z;
+    }
+    else
+    {
+        _171 = _159;
+    }
+    return _171;
+}
+
+fragment main0_out main0(main0_in in [[stage_in]], constant Params& _55 [[buffer(1)]], texture2d<float> depth [[texture(0)]], texture2d<float> normals [[texture(1)]], texture2d<float> scene [[texture(2)]], texture2d<float> back_depth [[texture(3)]], sampler depthSmplr [[sampler(0)]], sampler normalsSmplr [[sampler(1)]], sampler sceneSmplr [[sampler(2)]], sampler back_depthSmplr [[sampler(3)]], float4 gl_FragCoord [[position]])
 {
     main0_out out = {};
     out.out_color = float4(0.0);
     int2 size;
-    if (_65.params2.x < 0.5)
+    if (_55.params2.x < 0.5)
     {
         return out;
     }
@@ -97,9 +139,9 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer
         return out;
     }
     int2 param = px;
-    float3 _198 = view_pos(param, size, depth, depthSmplr, _65);
-    float3 p = _198;
-    float3 n = fast::normalize(float3x3(_65.view[0].xyz, _65.view[1].xyz, _65.view[2].xyz) * fast::normalize(nw));
+    float3 _277 = view_pos(param, size, _55, depth, depthSmplr);
+    float3 p = _277;
+    float3 n = fast::normalize(float3x3(_55.view[0].xyz, _55.view[1].xyz, _55.view[2].xyz) * fast::normalize(nw));
     float3 v = fast::normalize(-p);
     float3 r = reflect(-v, n);
     float facing = 1.0 - smoothstep(0.0, 0.60000002384185791015625, dot(r, v));
@@ -107,9 +149,8 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer
     {
         return out;
     }
-    float max_dist = _65.params.x;
-    float thickness = _65.params.y;
-    int steps = int(_65.params.z + 0.5);
+    float max_dist = _55.params.x;
+    int steps = int(_55.params.z + 0.5);
     float t_max = max_dist;
     if (r.z > 0.0)
     {
@@ -129,16 +170,16 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer
         t = dt * (float(i) + _noise);
         float3 s = p + (r * t);
         float3 param_1 = s;
-        float2 uv = to_uv(param_1, _65);
+        float2 uv = to_uv(param_1, _55);
         float2 param_2 = uv;
         if (off_screen(param_2))
         {
             return out;
         }
-        int2 param_3 = int2(uv * float2(size));
-        float3 _332 = view_pos(param_3, size, depth, depthSmplr, _65);
-        float dz = _332.z - s.z;
-        if ((dz > 0.0) && (dz < thickness))
+        float3 param_3 = s;
+        int2 param_4 = int2(uv * float2(size));
+        bool _406 = inside(param_3, param_4, size, _55, depth, depthSmplr, back_depth, back_depthSmplr);
+        if (_406)
         {
             hit = true;
             break;
@@ -155,10 +196,10 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer
     {
         float mid = 0.5 * (lo + hi);
         float3 m = p + (r * mid);
-        float3 param_4 = m;
-        int2 param_5 = int2(to_uv(param_4, _65) * float2(size));
-        float3 _386 = view_pos(param_5, size, depth, depthSmplr, _65);
-        if ((_386.z - m.z) > 0.0)
+        float3 param_5 = m;
+        int2 param_6 = int2(to_uv(param_5, _55) * float2(size));
+        float3 _449 = view_pos(param_6, size, _55, depth, depthSmplr);
+        if ((_449.z - m.z) > 0.0)
         {
             hi = mid;
         }
@@ -168,51 +209,52 @@ fragment main0_out main0(main0_in in [[stage_in]], constant Params& _65 [[buffer
         }
     }
     float3 s_1 = p + (r * hi);
-    float3 param_6 = s_1;
-    float2 uv_1 = to_uv(param_6, _65);
+    float3 param_7 = s_1;
+    float2 uv_1 = to_uv(param_7, _55);
     int2 hp = clamp(int2(uv_1 * float2(size)), int2(0), size - int2(1));
-    int2 param_7 = hp;
-    float3 _421 = view_pos(param_7, size, depth, depthSmplr, _65);
-    if ((_421.z - s_1.z) > thickness)
+    float3 param_8 = s_1;
+    int2 param_9 = hp;
+    bool _486 = inside(param_8, param_9, size, _55, depth, depthSmplr, back_depth, back_depthSmplr);
+    if (!_486)
     {
         return out;
     }
     float3 hn = normals.read(uint2(hp), 0).xyz;
-    bool _440 = dot(hn, hn) > 0.25;
-    bool _458;
-    if (_440)
+    bool _500 = dot(hn, hn) > 0.25;
+    bool _518;
+    if (_500)
     {
-        _458 = dot(float3x3(_65.view[0].xyz, _65.view[1].xyz, _65.view[2].xyz) * fast::normalize(hn), r) > 0.0;
+        _518 = dot(float3x3(_55.view[0].xyz, _55.view[1].xyz, _55.view[2].xyz) * fast::normalize(hn), r) > 0.0;
     }
     else
     {
-        _458 = _440;
+        _518 = _500;
     }
-    if (_458)
+    if (_518)
     {
         return out;
     }
     float2 e = fast::min(uv_1, float2(1.0) - uv_1);
-    float _472;
-    if (_65.params.w > 0.0)
+    float _532;
+    if (_55.params.w > 0.0)
     {
-        _472 = smoothstep(0.0, _65.params.w, fast::min(e.x, e.y));
+        _532 = smoothstep(0.0, _55.params.w, fast::min(e.x, e.y));
     }
     else
     {
-        _472 = 1.0;
+        _532 = 1.0;
     }
-    float edge = _472;
+    float edge = _532;
     float reach = 1.0 - smoothstep(0.699999988079071044921875, 1.0, hi / max_dist);
     float conf = (facing * edge) * reach;
-    float4 pc = _65.reproject * float4(s_1, 1.0);
+    float4 pc = _55.reproject * float4(s_1, 1.0);
     if (pc.w <= 0.0)
     {
         return out;
     }
     float2 puv = float2(((pc.x / pc.w) * 0.5) + 0.5, 0.5 - ((pc.y / pc.w) * 0.5));
-    float2 param_8 = puv;
-    if (off_screen(param_8))
+    float2 param_10 = puv;
+    if (off_screen(param_10))
     {
         return out;
     }

@@ -336,6 +336,7 @@ _pass: struct {
 	scene_color:  Maybe(Texture),        // reset each pass_end
 	reflections:  Maybe(Texture),        // reset each pass_end
 	normals_out:  bool,                  // reset each pass_end
+	back_faces:   bool,                  // reset each pass_end
 	vps:          [dynamic]_View,
 	vtx:          [dynamic]Vertex,
 	inst:         [dynamic]_Instance,
@@ -801,6 +802,14 @@ set_scene_color :: proc(tex: Texture) {
 // ignores the flag writes its colour.
 pass_output_normals :: proc() {
 	_pass.normals_out = true
+}
+
+// Makes the CURRENT pass's mesh draws keep the faces they would skip and
+// skip the ones they would keep, so a depth-only pass holds each closed
+// mesh's far side: the engine's scene_ssr step reads it as how thick a
+// surface is. A double-sided draw stays double-sided.
+pass_draw_back_faces :: proc() {
+	_pass.back_faces = true
 }
 
 // The screen's reflections for the CURRENT pass's lit draws (the engine's
@@ -1340,7 +1349,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			}
 			pushed_light_vp = d.vp_index
 		}
-		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind, d.cull, d.mirrored)
+		pipeline := d.fullscreen ? _fullscreen_pipeline(d.shader, _pass.format, d.sky) : _shader_pipeline(d.shader, _pass.format, d.kind, _pass.back_faces ? _cull_flipped(d.cull) : d.cull, d.mirrored)
 		if pipeline == nil do continue
 		if pipeline != bound {
 			sdl.BindGPUGraphicsPipeline(rp, pipeline)
@@ -1484,6 +1493,17 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	_pass.scene_color = nil
 	_pass.reflections = nil
 	_pass.normals_out = false
+	_pass.back_faces = false
+}
+
+@(private)
+_cull_flipped :: proc(c: Cull) -> Cull {
+	switch c {
+	case .Back:  return .Front
+	case .Front: return .Back
+	case .None:
+	}
+	return .None
 }
 
 // One copy pass uploading this pass's batch vertices and instances.

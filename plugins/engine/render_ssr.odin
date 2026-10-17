@@ -13,7 +13,9 @@ package engine
 // opaque meshes the step draws itself through their own materials, with
 // their normal maps, as a normals pass (gfx.pass_output_normals), which
 // also writes their depth, so scene_opaque keeps it like after a depth
-// prepass.
+// prepass. With `back_faces` on, a second depth pass draws the same meshes'
+// far sides, so a ray inside a closed mesh counts as hitting it however
+// thick the mesh is.
 
 import "base:runtime"
 import "core:math/linalg"
@@ -27,14 +29,21 @@ SSR_STEP :: "scene_ssr"
 SSR_TARGET         :: "ssr"
 SSR_NORMALS_TARGET :: "ssr_normals"
 SSR_TRACE_TARGET   :: "ssr_trace"
+SSR_BACK_TARGET    :: "ssr_back"
 
 Ssr_Settings :: struct {
 	// How far a reflected ray travels before it gives up, in world units.
 	max_distance: f32 `decor:range(1, 100)`,
 	// How far behind the depth's surface a ray still counts as hitting it,
 	// in world units: thinner misses more, thicker reflects through thin
-	// objects.
+	// objects. With back faces on, a closed mesh is as thick as it is, and
+	// this is the least thickness.
 	thickness:    f32 `decor:range(0.01, 2)`,
+	// Draws the opaque meshes' far sides too, so a ray that enters a closed
+	// mesh hits it instead of passing behind it to what lies further: one
+	// more depth pass over the geometry. Off, every surface is `thickness`
+	// thick.
+	back_faces:   bool,
 	// Samples along each ray: more find thinner objects and cost more.
 	steps:        int `decor:range(8, 128)`,
 	// The fraction of the screen's width and height over which a reflection
@@ -42,9 +51,9 @@ Ssr_Settings :: struct {
 	edge_fade:    f32 `decor:range(0, 0.5)`,
 }
 
-ssr_defaults := Ssr_Settings{max_distance = 20, thickness = 0.3, steps = 48, edge_fade = 0.1}
+ssr_defaults := Ssr_Settings{max_distance = 20, thickness = 0.3, back_faces = true, steps = 48, edge_fade = 0.1}
 
-@(render_step={summary="screen-space reflections from the view's depth, its normals and last frame's opaque image, replacing the environment's reflection in the lit draws after it", reads="scene", writes="hdr:HDR* ssr_normals:HDR ssr_trace:HDR ssr:HDR", settings="ssr_defaults"})
+@(render_step={summary="screen-space reflections from the view's depth, its normals and last frame's opaque image, replacing the environment's reflection in the lit draws after it", reads="scene", writes="hdr:HDR* ssr_normals:HDR ssr_trace:HDR ssr_back:Depth ssr:HDR", settings="ssr_defaults"})
 scene_ssr :: proc(ctx: ^Render_Ctx) {
 	if ctx.view.mode != .Shaded do return
 	settings := (^Ssr_Settings)(ctx.settings)
@@ -62,6 +71,19 @@ scene_ssr :: proc(ctx: ^Render_Ctx) {
 	gfx.pass_end()
 	ctx.depth_primed = true
 	_inspect_depth_view(HDR_TARGET)
+
+	// The far sides of the same meshes: each pixel's nearest back face.
+	depth := gfx.rt_depth_texture(hdr)
+	back_depth := depth // unread when back faces are off
+	if settings.back_faces {
+		back := render_target(ctx, SSR_BACK_TARGET)
+		gfx.pass_begin_target(back, nil)
+		gfx.pass_draw_back_faces()
+		gfx.set_view_proj(view.view_proj, view.cam_pos)
+		render_execute_depth(ctx.commands)
+		gfx.pass_end()
+		back_depth = gfx.rt_depth_texture(back)
+	}
 
 	// Last frame's opaque image: the scene_copy target as the pool kept it.
 	// It is this view's only when the view drew last frame at this size.
@@ -86,14 +108,13 @@ scene_ssr :: proc(ctx: ^Render_Ctx) {
 		view      = view.view,
 		reproject = state.prev_view_proj * linalg.inverse(view.view),
 		params    = {max(settings.max_distance, 0.1), max(settings.thickness, 0.001), f32(clamp(settings.steps, 1, 256)), clamp(settings.edge_fade, 0, 0.5)},
-		params2   = {valid ? 1 : 0, 0, 0, 0},
+		params2   = {valid ? 1 : 0, settings.back_faces ? 1 : 0, 0, 0},
 	}
 	trace := render_target(ctx, SSR_TRACE_TARGET)
-	depth := gfx.rt_depth_texture(hdr)
 	normals_tex := gfx.rt_color_texture(normals)
 	prev_tex := valid ? gfx.rt_color_texture(prev) : normals_tex // unread when not valid
 	gfx.pass_begin_target(trace, nil)
-	gfx.draw_fullscreen(gfx.SSR_SHADER, {&depth, &normals_tex, &prev_tex}, (^[size_of(gfx.Ssr_Params)]u8)(params)[:])
+	gfx.draw_fullscreen(gfx.SSR_SHADER, {&depth, &normals_tex, &prev_tex, &back_depth}, (^[size_of(gfx.Ssr_Params)]u8)(params)[:])
 	gfx.pass_end()
 	// With mip levels: a lit draw reads a blurrier one the rougher its surface.
 	gfx.rt_copy(render_target(ctx, SSR_TARGET, mips = true), trace)
