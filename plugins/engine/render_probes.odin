@@ -25,8 +25,9 @@ PROBE_SLOT :: "Probe"
 
 @(private = "file")
 _Probe_Key :: struct {
-	position:   [3]f32,
-	resolution: Probe_Resolution,
+	position:     [3]f32,
+	resolution:   Probe_Resolution,
+	culling_mask: u32,
 }
 
 @(private = "file")
@@ -72,7 +73,7 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 		if !p.enabled || !transform_active_in_hierarchy(p.owner) do continue
 		owner := Transform_Handle(p.owner)
 		tw := transform_world(owner)
-		key := _Probe_Key{tw.position, p.resolution}
+		key := _Probe_Key{tw.position, p.resolution, p.culling_mask}
 		st, found := &_probes.states[owner]
 		if !found {
 			_probes.states[owner] = {}
@@ -191,7 +192,7 @@ _probe_capture :: proc(p: ^Reflection_Probe, st: ^_Probe_State, key: _Probe_Key)
 	proj := gfx.matrix4_perspective_z01(math.PI / 2, 1, 0.1, 1000)
 	for f, face in _FACES {
 		view := linalg.matrix4_look_at_f32(key.position, key.position + f.forward, f.up)
-		rv := render_view_make(view, proj, f32(size), f32(size), max(u32))
+		rv := render_view_make(view, proj, f32(size), f32(size), key.culling_mask)
 		rv.cull = true
 		commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
 		render_collect_commands(rv, &commands)

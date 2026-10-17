@@ -45,6 +45,10 @@ Reflection_Probe :: struct {
 	diffuse:        bool,
 	// How bright the reflection and the diffuse light are.
 	intensity:      f32 `decor:min(0)`,
+	// The render layers the capture draws (Transform.render_layer bits).
+	// A mirror-like object inside the box shows itself in its reflection
+	// unless its layer is left out.
+	culling_mask:   u32,
 	resolution:     Probe_Resolution,
 	refresh:        Probe_Refresh,
 }
@@ -55,6 +59,7 @@ reset_Reflection_Probe :: proc(p: ^Reflection_Probe) {
 	p.box_projection = true
 	p.diffuse = true
 	p.intensity = 1
+	p.culling_mask = 0xFFFFFFFF
 	p.resolution = .Res_128
 	p.refresh = .Once
 }

@@ -1123,7 +1123,7 @@
         1.39999998,
         1.39999998
       ],
-      "render_layer": 1,
+      "render_layer": 2,
       "parent": {
         "pptr": {
           "local_id": 1,
@@ -1349,6 +1349,7 @@
       },
       "blend_distance": 1.0,
       "box_projection": true,
+      "culling_mask": 4294967293,
       "diffuse": true,
       "intensity": 1.0,
       "refresh": 0,
