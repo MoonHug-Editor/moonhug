@@ -461,6 +461,7 @@ editor_shutdown :: proc() {
     session.scene_views_shutdown()
     selection_shutdown()
     shutdown_project_view()
+    clip.shutdown()
     _save_user_settings()
     menu.shutdown_menu()
     view_chrome_shutdown()

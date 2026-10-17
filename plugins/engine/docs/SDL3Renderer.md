@@ -207,6 +207,28 @@ The surface template lights a back face with its normal reversed (`vertex_normal
 
 `set_screen_reflections(tex)` hands a pass's lit draws the screen's reflections: the view's size, premultiplied, rgb what each pixel's mirror ray sees times the confidence, alpha the confidence, with mip levels. Shaders that declare `REFLECTIONS_SLOT` (the surface template's `screen_reflections`, binding 13) get it there, clear when none is set. The template reads it at the fragment's screen position blurrier the rougher the surface and fades it out toward rough surfaces (`screen_reflection(roughness)`), then puts it in place of the environment's reflection by its alpha. `SSR_SHADER` is the fullscreen pass that makes it from the depth, the surfaces' world-space normals and last frame's opaque image (`Ssr_Params`: the projection, the view, the reprojection into last frame's clip space, the march's distance, thickness, steps and edge fade, and whether the back faces' depth is bound at binding 3). The engine's `scene_ssr` step drives it (RenderPipeline.md, Screen-space reflections). `pass_output_normals()` turns the current pass into a normals pass: the surface template and `world.frag` read `draw_params.y` from the draw block and write the surface's world-space normal, normal map applied, instead of shading, alpha clipping kept. `pass_draw_back_faces()` flips the culling of the current pass's mesh draws (back-culled draws cull their front faces, double-sided ones stay double-sided), so a depth-only pass holds each closed mesh's far side: `scene_ssr` reads it as how thick each surface is. `NORMALS_SHADER` (the scene view's Normals mode) encodes the vertex normal as colour and clips by the draw's alpha cutoff.
 
+## Sampler slots
+
+A draw's fragment shader binds at most 16 textures with their samplers (`MAX_FRAGMENT_SAMPLERS`, SDL's `MAX_TEXTURE_SAMPLERS_PER_STAGE`, and Metal's 16 sampler states). The limit is per draw call, not per pass or pipeline step: every fullscreen effect, the sky and the depth passes have their own 16 and use few. The surface template, which the built-in Lit material and shader graphs compile through, uses all 16:
+
+| slots | what |
+|---|---|
+| 0–6 | the material's own textures. Lit uses 0–4 (base, metallic-roughness, normal, occlusion, emission), so a custom or graph shader has two spare |
+| 7 | the directional light's shadow cascades (`SHADOW_SAMPLER_SLOT`) |
+| 8, 9 | the reflection and irradiance cubes: the draw's probe or the environment (`ENV_SPECULAR_SLOT`, `ENV_IRRADIANCE_SLOT`) |
+| 10 | the spot and point lights' shadow atlas (`SHADOW_ATLAS_SLOT`) |
+| 11 | the screen's ambient occlusion (`OCCLUSION_SLOT`) |
+| 12 | the opaque copy a refracting surface reads (`SCENE_COLOR_SLOT`) |
+| 13 | the screen's reflections (`REFLECTIONS_SLOT`) |
+| 14, 15 | what the draw's probe blends with (`ENV_SPECULAR2_SLOT`, `ENV_IRRADIANCE2_SLOT`) |
+
+A new engine-wide input to lit shading (lightmaps, decals, contact shadows) needs a slot one of these gives up. The ways to free them, cheapest first:
+
+- irradiance as spherical harmonics: nine colour coefficients per cube in the draw block instead of the irradiance cubes, which frees 9 and 15. Diffuse light is smooth enough that the difference does not show, and it is what most engines do
+- the shadow cascades as tiles of the shadow atlas: both are depth maps compared through the same sampler, so one texture holds both and 7 is free
+- occlusion in the metallic-roughness texture's red channel, glTF's ORM convention, which frees a material slot
+- the screen's ambient occlusion sharing a texture with another screen-space input: it uses two channels
+
 ## Mip levels and specular aliasing
 
 A texture asset gets its full chain of mip levels (`gfx.texture_create(..., mipmaps = true)`): each level half the size of the one above, filled by the GPU from the uploaded pixels (`GenerateMipmapsForGPUTexture`, so the texture is a color target too). A texture seen small samples the level that matches its size on screen instead of one arbitrary texel of the full image, which is what made fine detail shimmer and normal-mapped highlights sparkle. The importer's `mipmaps` setting turns it off (`None`) for a sliced sprite atlas, whose slices would bleed into each other in the smaller levels. Its zero value is `Generate`, so older metas get mip levels. The averaging runs on the stored bytes, so a color texture's levels average sRGB-encoded values, slightly darker than averaging light. `texture_upload_region` regenerates the levels of a mipmapped texture. Textures gfx makes for itself (font atlases, icons, thumbnails, the HDR panorama) keep one level.

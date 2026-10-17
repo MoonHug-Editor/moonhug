@@ -1,23 +1,49 @@
 package clipboard
 
+import "base:runtime"
 import "core:encoding/json"
+import "core:strings"
 import "core:fmt"
 import "core:reflect"
 import core "moonhug:libs/core"
 import ser "moonhug:libs/serialization"
 import "moonhug:libs/log"
 
+// The editor's one clipboard. It holds what the last copy took, of one kind:
+// a value (a field or a component, as JSON), hierarchy objects, or project
+// files. Each copy clears the rest, so a paste never brings back something
+// copied before the last copy.
 Clipboard :: struct {
 	json_data:      [dynamic]byte,
 	json_tid:       typeid,
 	hierarchy_data: []byte,
+	files:          [dynamic]string, // owned clones
+	files_cut:      bool,            // the files move on paste instead of copying
 }
 
 @(private)
 _clipboard: Clipboard
 
 init :: proc() {
+	context.allocator = runtime.default_allocator() // lives across frames
 	_clipboard.json_data = make([dynamic]byte)
+	_clipboard.files = make([dynamic]string)
+}
+
+shutdown :: proc() {
+	clear_all()
+	delete(_clipboard.json_data)
+	delete(_clipboard.files)
+	_clipboard = {}
+}
+
+// Empties the clipboard of every kind.
+clear_all :: proc() {
+	clear(&_clipboard.json_data)
+	_clipboard.json_tid = nil
+	delete(_clipboard.hierarchy_data)
+	_clipboard.hierarchy_data = nil
+	clear_files()
 }
 
 copy :: proc(v: any) -> bool {
@@ -47,7 +73,7 @@ copy :: proc(v: any) -> bool {
 	}
 	defer delete(bytes)
 
-	clear(&_clipboard.json_data)
+	clear_all()
 	append(&_clipboard.json_data, ..bytes)
 	_clipboard.json_tid = tid
 	return true
@@ -93,8 +119,9 @@ paste :: proc(dst: any) -> bool {
 	return true
 }
 
+// Takes ownership of `data`.
 copy_hierarchy :: proc(data: []byte) {
-	delete(_clipboard.hierarchy_data)
+	clear_all()
 	_clipboard.hierarchy_data = data
 }
 
@@ -104,6 +131,28 @@ paste_hierarchy :: proc() -> []byte {
 
 has_hierarchy :: proc() -> bool {
 	return len(_clipboard.hierarchy_data) > 0
+}
+
+// Project files to paste, by path: `cut` moves them on paste, else they copy.
+copy_files :: proc(paths: []string, cut: bool) {
+	clear_all()
+	for p in paths do append(&_clipboard.files, strings.clone(p, runtime.default_allocator()))
+	_clipboard.files_cut = cut
+}
+
+files :: proc() -> []string {
+	return _clipboard.files[:]
+}
+
+files_cut :: proc() -> bool {
+	return _clipboard.files_cut
+}
+
+// Empties the files alone: a cut is pasted once.
+clear_files :: proc() {
+	for p in _clipboard.files do delete(p, runtime.default_allocator())
+	clear(&_clipboard.files)
+	_clipboard.files_cut = false
 }
 
 @(private)

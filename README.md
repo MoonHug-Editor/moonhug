@@ -160,8 +160,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - come up with more TODO and Considered features
 
-- clear clipboard completely on each copy call
-
 - keep improving memory guide
   - must be explained simply as if for someone new to memory handling
 

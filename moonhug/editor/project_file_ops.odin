@@ -26,29 +26,23 @@ import strings "core:strings"
 import "core:encoding/uuid"
 import im "moonhug:external/odin-imgui"
 import asset_pipeline "moonhug:editor/assets"
+import clip "moonhug:editor/clipboard"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 import assets "moonhug:libs/assets"
 
 // --- File clipboard -----------------------------------------------------------
-
-@(private = "file")
-_file_clip: [dynamic]string // owned clones
-
-@(private = "file")
-_file_clip_cut: bool
+// Cut and Copy put the selected files on the editor's clipboard (clipboard
+// package), which a later copy of anything else replaces.
 
 project_file_ops_shutdown :: proc() {
-	for p in _file_clip do delete(p)
-	delete(_file_clip)
-	_file_clip = nil
 	_project_delete_pending_clear()
 }
 
 // Cut files draw dimmed in the list (Finder/Explorer convention).
 project_file_is_cut :: proc(path: string) -> bool {
-	if !_file_clip_cut do return false
-	for p in _file_clip {
+	if !clip.files_cut() do return false
+	for p in clip.files() {
 		if p == path do return true
 	}
 	return false
@@ -56,14 +50,13 @@ project_file_is_cut :: proc(path: string) -> bool {
 
 @(private = "file")
 _file_clip_set :: proc(cut: bool) {
-	for p in _file_clip do delete(p)
-	clear(&_file_clip)
-	_file_clip_cut = cut
+	paths := make([dynamic]string, context.temp_allocator)
 	for p in sel_proj_items() {
 		// Roots (Assets, Packages, package roots) are structural, not files.
 		if project_path_is_protected(p) do continue
-		append(&_file_clip, strings.clone(p))
+		append(&paths, p)
 	}
+	clip.copy_files(paths[:], cut)
 }
 
 // --- Op helpers ---------------------------------------------------------------
@@ -179,11 +172,11 @@ project_ops_copy :: proc() {
 
 // Whether a paste would do anything: a Cut or Copy left files to paste.
 project_ops_can_paste :: proc() -> bool {
-	return len(_file_clip) > 0
+	return len(clip.files()) > 0
 }
 
 project_ops_paste :: proc() {
-	if len(_file_clip) == 0 {
+	if len(clip.files()) == 0 {
 		fmt.println("[Editor] Paste: clipboard is empty (Cut or Copy files first)")
 		return
 	}
@@ -195,9 +188,10 @@ project_ops_paste :: proc() {
 	}
 
 	pasted := make([dynamic]string, context.temp_allocator)
-	for src in _file_clip {
+	cut := clip.files_cut()
+	for src in clip.files() {
 		if !os.exists(src) do continue
-		if _file_clip_cut {
+		if cut {
 			// Moving a folder into itself/its subtree would orphan it.
 			prefix := strings.concatenate({src, "/"}, context.temp_allocator)
 			if dst_dir == src || strings.has_prefix(dst_dir, prefix) {
@@ -212,12 +206,8 @@ project_ops_paste :: proc() {
 			if _project_copy_recursive(src, dst) do append(&pasted, dst)
 		}
 	}
-	if _file_clip_cut {
-		// A cut clipboard is one-shot (Finder/Explorer semantics).
-		for p in _file_clip do delete(p)
-		clear(&_file_clip)
-		_file_clip_cut = false
-	}
+	// A cut clipboard is one-shot (Finder/Explorer semantics).
+	if cut do clip.clear_files()
 	asset_pipeline.asset_db_refresh()
 	project_dir_cache_invalidate()
 	_project_select_paths(pasted[:])
