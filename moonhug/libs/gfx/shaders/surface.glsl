@@ -90,7 +90,7 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     mat4 view_proj;
     vec4 probe_pos;  // the draw's reflection probe: xyz its centre, w = 1 when box projected
     vec4 probe_min;  // xyz the box, w = the probe's intensity
-    vec4 probe_max;  // xyz the box, w = 1 when a probe is bound  // the view's, for a refraction's screen offset
+    vec4 probe_max;  // xyz the box, w = 1 when a probe is bound, 2 when its irradiance is bound too
 };
 
 // Every light of the pass (gfx.set_lights), and for each tile of the screen's
@@ -180,7 +180,7 @@ vec4 screen_reflection(float roughness) {
 // rising roughness along its mips, and the diffuse irradiance cube. White
 // when the pass has none, so the ambient level lights uniformly.
 layout(set = 2, binding = 8) uniform samplerCube env_specular; // the draw's reflection probe's cube when one is bound (probe_max.w)
-layout(set = 2, binding = 9) uniform samplerCube env_irradiance;
+layout(set = 2, binding = 9) uniform samplerCube env_irradiance; // the draw's probe's when one is bound with it (probe_max.w 2)
 
 // The direction to read a box-projected probe in: where the reflected ray
 // from `p` leaves the probe's box, seen from the probe's centre, so a flat

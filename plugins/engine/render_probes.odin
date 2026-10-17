@@ -6,11 +6,13 @@ package engine
 // steps (the sun's cascades, the opaque meshes, the sky, the transparents:
 // no anti-aliasing, no post, no reflections of reflections), into a source
 // cube whose mips the GPU fills, then GGX-prefiltered along the mips of
-// the probe's cube like the Environment's (render_environment.odin). The
-// mesh draws take the probe whose box holds their centre (probe_for_point),
-// the smallest when several do, and gfx binds its cube in place of the
-// environment's for that draw (gfx.Probe), box projected when the probe
-// says so.
+// the probe's cube like the Environment's (render_environment.odin), and,
+// for a probe that lights diffusely, its diffuse light into an irradiance
+// cube. The mesh draws take the probe whose box holds their centre
+// (probe_for_point), the smallest when several do, and gfx binds its cubes
+// in place of the environment's for that draw (gfx.Probe), the reflection
+// box projected when the probe says so. A capture draws without probes, so
+// one probe's capture never depends on another's.
 
 import "base:runtime"
 import "core:math"
@@ -27,7 +29,7 @@ _Probe_Key :: struct {
 
 @(private = "file")
 _Probe_State :: struct {
-	source, specular: ^gfx.Cubemap,
+	source, specular, irradiance: ^gfx.Cubemap,
 	key:              _Probe_Key,
 	built:            bool,
 	seen:             u64, // gfx.frame_index + 1 when the step last saw the probe
@@ -74,7 +76,7 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 			st = &_probes.states[owner]
 		}
 		st.seen = gfx.frame_index + 1
-		if p.refresh == .Every_Frame || !st.built || st.key != key {
+		if p.refresh == .Every_Frame || !st.built || st.key != key || (p.diffuse && st.irradiance == nil) {
 			if _probe_capture(p, st, key) {
 				st.key = key
 				st.built = true
@@ -87,7 +89,7 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 			min    = tw.position - half,
 			max    = tw.position + half,
 			volume = p.size.x * p.size.y * p.size.z,
-			probe  = {cube = st.specular, pos = tw.position, min = tw.position - half, max = tw.position + half, box = p.box_projection, intensity = max(p.intensity, 0)},
+			probe  = {cube = st.specular, irradiance = p.diffuse ? st.irradiance : nil, pos = tw.position, min = tw.position - half, max = tw.position + half, box = p.box_projection, intensity = max(p.intensity, 0)},
 		})
 	}
 	// A probe gone (removed, its scene closed) frees its cubes.
@@ -95,15 +97,16 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 		if st.seen == gfx.frame_index + 1 do continue
 		gfx.cubemap_destroy(st.source)
 		gfx.cubemap_destroy(st.specular)
+		gfx.cubemap_destroy(st.irradiance)
 		delete_key(&_probes.states, owner)
 	}
 }
 
-// The probe a mesh centred at `point` reflects this frame: the smallest box
-// holding the point. None (cube nil) when no probe's box does, or the
-// frame's probes are another world's.
+// The probe a mesh centred at `point` takes this frame: the smallest box
+// holding the point. None (cube nil) when no probe's box does, the frame's
+// probes are another world's, or a probe is being captured.
 probe_for_point :: proc(point: [3]f32) -> gfx.Probe {
-	if ctx_get() == nil || _probes.world != ctx_world() do return {}
+	if ctx_get() == nil || _probes.capturing || _probes.world != ctx_world() do return {}
 	return probe_pick(_probes.candidates[:], point)
 }
 
@@ -153,7 +156,8 @@ _probe_capture :: proc(p: ^Reflection_Probe, st: ^_Probe_State, key: _Probe_Key)
 		st.source = gfx.cubemap_create(size, i32(math.log2(f32(size))) + 1)
 		st.specular = gfx.cubemap_create(ENV_SPECULAR_SIZE, ENV_SPECULAR_MIPS)
 	}
-	if st.source == nil || st.specular == nil do return false
+	if p.diffuse && st.irradiance == nil do st.irradiance = gfx.cubemap_create(ENV_IRRADIANCE_SIZE, 1)
+	if st.source == nil || st.specular == nil || (p.diffuse && st.irradiance == nil) do return false
 	if !_probes.lane_built {
 		src: Render_Pipeline
 		pipeline_add_slot(&src, PROBE_SLOT)
@@ -179,6 +183,7 @@ _probe_capture :: proc(p: ^Reflection_Probe, st: ^_Probe_State, key: _Probe_Key)
 	}
 	gfx.cubemap_generate_mips(st.source)
 	_env_prefilter(st.source, st.specular)
+	if p.diffuse do _env_irradiance(st.source, st.irradiance)
 	return true
 }
 
@@ -187,6 +192,7 @@ _render_probes_shutdown :: proc() {
 	for _, &st in _probes.states {
 		gfx.cubemap_destroy(st.source)
 		gfx.cubemap_destroy(st.specular)
+		gfx.cubemap_destroy(st.irradiance)
 	}
 	delete(_probes.states)
 	delete(_probes.candidates)

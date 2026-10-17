@@ -5,7 +5,9 @@ package engine
 // (plugins/engine/docs/Materials.md "Reflection probes"). The probe's box,
 // around its transform's position and aligned to the world, says which
 // meshes use it: a mesh whose centre lies inside takes the smallest such
-// box's cube in place of the scene's Environment for its reflections. The
+// box's cube in place of the scene's Environment for its reflections, and
+// with `diffuse` on, the captured room's diffuse light in place of the
+// Environment's too. The
 // frame lane's reflection_probes_pass step captures it (render_probes.odin).
 
 // When the cube is captured again.
@@ -32,7 +34,11 @@ Reflection_Probe :: struct {
 	// its place) instead of at infinity, as fits a room. Off for open
 	// ground, where there are no walls to project onto.
 	box_projection: bool,
-	// How bright the reflection is.
+	// Light the meshes inside with the room's diffuse light as captured
+	// (its walls, floor and lights) instead of the Environment's sky, so
+	// they stop looking lit from outdoors.
+	diffuse:        bool,
+	// How bright the reflection and the diffuse light are.
 	intensity:      f32 `decor:min(0)`,
 	resolution:     Probe_Resolution,
 	refresh:        Probe_Refresh,
@@ -41,6 +47,7 @@ Reflection_Probe :: struct {
 reset_Reflection_Probe :: proc(p: ^Reflection_Probe) {
 	p.size = {10, 10, 10}
 	p.box_projection = true
+	p.diffuse = true
 	p.intensity = 1
 	p.resolution = .Res_128
 	p.refresh = .Once

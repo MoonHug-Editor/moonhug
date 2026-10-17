@@ -776,7 +776,17 @@ fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _172 [[buf
     float2 screen_ao = screen_occlusion(gl_FragCoord, _172, ambient_occlusion, ambient_occlusionSmplr);
     color *= screen_ao.y;
     float3 r = reflect(-v, n);
-    float3 irradiance = env_irradiance.sample(env_irradianceSmplr, n).xyz * _172.env_params.x;
+    float4 _1955 = env_irradiance.sample(env_irradianceSmplr, n);
+    float _1960;
+    if (_232.probe_max.w > 1.5)
+    {
+        _1960 = _232.probe_min.w;
+    }
+    else
+    {
+        _1960 = _172.env_params.x;
+    }
+    float3 irradiance = _1955.xyz * _1960;
     float3 param_20 = r;
     float3 param_21 = in.frag_world_pos;
     float param_22 = roughness;

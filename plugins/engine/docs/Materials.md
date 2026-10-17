@@ -102,9 +102,10 @@ A Reflection Probe component captures its surroundings into a cube, so the smoot
 - the capture renders the scene six times from the probe's position through the engine's own scene steps (the sun's cascades, the opaque meshes, the sky, the transparents), at `resolution` pixels a face, with no anti-aliasing, no post effects and no reflections of other probes, then prefilters the cube for roughness as the Environment's
 - `refresh` Once captures when the probe is first seen and again when it moves or its resolution changes, so objects that move afterwards do not show in it. Every Frame captures each frame, six scene renders a frame
 - `box_projection` reflects the box's walls where they are: a floor inside a room shows the room at its place rather than at infinity. Off for open ground, where there are no walls
-- `intensity` scales the reflection. The Environment's `reflection_intensity` does not apply to a probe
-- what the probe replaces is the environment's specular term only: the diffuse light stays the Environment's, screen-space reflections still take precedence where they hit, and a refracting material's stand-in beyond the screen edge reads the probe too, box projected the same way
-- probes do not blend: at a box's edge a mesh switches from one to the other, or to the Environment
+- `diffuse` (on for a new probe) lights the meshes inside with the room's diffuse light as captured, its walls, floor and lit surfaces, instead of the Environment's sky: an irradiance cube made from the capture as the Environment makes its own. Off, the diffuse light stays the Environment's
+- `intensity` scales the reflection and the diffuse light. The Environment's `reflection_intensity` and `ambient_intensity` do not apply to a probe
+- a probe replaces the environment's light only: the lights still light as they do, screen-space reflections still take precedence where they hit, and a refracting material's stand-in beyond the screen edge reads the probe too, box projected the same way
+- probes do not blend: at a box's edge a mesh switches from one to the other, or to the Environment, which shows more with `diffuse` on, since it changes the whole surface rather than its reflection
 
 A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
 

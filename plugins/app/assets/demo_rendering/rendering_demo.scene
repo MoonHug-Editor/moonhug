@@ -1348,6 +1348,7 @@
         "local_id": 107
       },
       "box_projection": true,
+      "diffuse": true,
       "intensity": 1.0,
       "refresh": 0,
       "resolution": 1,

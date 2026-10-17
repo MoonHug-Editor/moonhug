@@ -23,7 +23,6 @@ ENV_SPECULAR_SIZE     :: 128
 ENV_SPECULAR_MIPS     :: 6   // roughness 0, 0.2, .. 1
 ENV_IRRADIANCE_SIZE   :: 32
 ENV_PREFILTER_SAMPLES :: 64
-ENV_IRRADIANCE_LOD    :: 4   // the source mip the irradiance reads (32 px)
 
 // The env_capture shader's property block (shaders/env_capture.frag.glsl).
 @(private = "file")
@@ -184,13 +183,21 @@ _env_rebuild :: proc(params: _Capture_Params, pano: gfx.Texture) -> bool {
 	}
 	gfx.cubemap_generate_mips(_env.source)
 
-	source := []gfx.Texture{gfx.cubemap_texture(_env.source)}
 	_env_prefilter(_env.source, _env.specular)
-	for face in 0 ..< i32(6) {
-		q := [4]f32{f32(face), ENV_IRRADIANCE_LOD, 0, 0}
-		gfx.cubemap_render(_env.irradiance, face, 0, gfx.ENV_IRRADIANCE_SHADER, source, (^[size_of(q)]u8)(&q)[:])
-	}
+	_env_irradiance(_env.source, _env.irradiance)
 	return true
+}
+
+// Renders the diffuse light from `source` (with its mips filled) into
+// `irradiance`, reading the source's mip of 32 pixels: the environment's,
+// and a reflection probe's (render_probes.odin).
+_env_irradiance :: proc(source, irradiance: ^gfx.Cubemap) {
+	input := []gfx.Texture{gfx.cubemap_texture(source)}
+	lod := max(math.log2(f32(source.size)) - math.log2(f32(32)), 0)
+	for face in 0 ..< i32(6) {
+		q := [4]f32{f32(face), lod, 0, 0}
+		gfx.cubemap_render(irradiance, face, 0, gfx.ENV_IRRADIANCE_SHADER, input, (^[size_of(q)]u8)(&q)[:])
+	}
 }
 
 // Renders `source` (with its mips filled) GGX-prefiltered into `specular`,

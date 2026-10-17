@@ -43,7 +43,7 @@ _Draw :: struct {
 	shader:         string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
-	probe:        Probe,  // mesh draws: the reflection cube in place of the pass's environment, cube nil = none
+	probe:        Probe,  // mesh draws: the probe's cubes in place of the pass's environment, cube nil = none
 }
 
 // A reflection probe for a draw (draw_mesh `probe`): its prefiltered cube
@@ -51,9 +51,11 @@ _Draw :: struct {
 // the environment's reflection for that draw, times `intensity`. With `box`
 // the reflected ray is projected onto the box (`min`, `max`, world space)
 // around `pos`, the cube's centre, so a flat floor reflects the room where
-// it is instead of at infinity.
+// it is instead of at infinity. Its `irradiance` cube, when set, replaces
+// the environment's diffuse light for that draw too, times `intensity`.
 Probe :: struct {
-	cube:      ^Cubemap,
+	cube:       ^Cubemap,
+	irradiance: ^Cubemap,
 	pos:       [3]f32,
 	min, max:  [3]f32,
 	box:       bool,
@@ -95,7 +97,7 @@ _Draw_Uniform :: struct {
 	view_proj:  matrix[4, 4]f32, // the view's, for a refraction's screen offset
 	probe_pos:  [4]f32, // the draw's reflection probe: xyz its centre, w = 1 when box projected
 	probe_min:  [4]f32, // xyz the box, w = the probe's intensity
-	probe_max:  [4]f32, // xyz the box, w = 1 when a probe is bound
+	probe_max:  [4]f32, // xyz the box, w = 1 when a probe is bound, 2 when its irradiance is bound too
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -1388,7 +1390,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > ENV_IRRADIANCE_SLOT && env_specular != nil && env_irradiance != nil {
 			bindings[ENV_SPECULAR_SLOT] = {texture = d.probe.cube != nil ? d.probe.cube.tex : env_specular.tex, sampler = _gfx.sampler_linear}
-			bindings[ENV_IRRADIANCE_SLOT] = {texture = env_irradiance.tex, sampler = _gfx.sampler_linear}
+			bindings[ENV_IRRADIANCE_SLOT] = {texture = d.probe.cube != nil && d.probe.irradiance != nil ? d.probe.irradiance.tex : env_irradiance.tex, sampler = _gfx.sampler_linear}
 			num_bindings = ENV_IRRADIANCE_SLOT + 1
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > SHADOW_ATLAS_SLOT {
@@ -1416,7 +1418,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			if pr := d.probe; pr.cube != nil {
 				u.probe_pos = {pr.pos.x, pr.pos.y, pr.pos.z, pr.box ? 1 : 0}
 				u.probe_min = {pr.min.x, pr.min.y, pr.min.z, pr.intensity}
-				u.probe_max = {pr.max.x, pr.max.y, pr.max.z, 1}
+				u.probe_max = {pr.max.x, pr.max.y, pr.max.z, pr.irradiance != nil ? 2 : 1}
 			}
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff
