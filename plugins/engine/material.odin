@@ -93,11 +93,20 @@ Material_Lit :: struct {
 	occlusion_strength:     f32 `decor:range(0, 1)`,
 	emission_map:           Asset_GUID `ext:"png,jpg,jpeg,bmp"`,
 	emission_color:         [4]f32 `decor:color()`, // brighter than 1 for HDR emission
+	// Where the maps are read: uv times `uv_scale` plus `uv_offset` (glTF's
+	// KHR_texture_transform, one transform for every map of the material).
+	// Scale 1 and offset 0 read them as they are, and a zero scale (a
+	// material saved before the field) counts as 1.
+	uv_scale:               [2]f32,
+	uv_offset:              [2]f32,
+	// Read the maps clamped to their edges instead of repeating, so a decal
+	// smaller than the surface fills the rest with its edge pixels.
+	uv_clamp:               bool,
 }
 
 // What a material without a lit block gets: a dielectric of medium
 // smoothness, full-strength maps, no emission.
-MATERIAL_LIT_DEFAULT :: Material_Lit{smoothness = 0.5, normal_scale = 1, occlusion_strength = 1}
+MATERIAL_LIT_DEFAULT :: Material_Lit{smoothness = 0.5, normal_scale = 1, occlusion_strength = 1, uv_scale = {1, 1}}
 
 // A new material is Lit. `shader` is stored as a number and
 // every saved material carries it, so this changes nothing already written.
@@ -215,6 +224,9 @@ _material_pack_lit :: proc(lit: ^Material_Lit, refraction: f32 = 0) -> (data: []
 	block.params = {clamp(lit.metallic, 0, 1), clamp(lit.smoothness, 0, 1), normal_scale, clamp(lit.occlusion_strength, 0, 1)}
 	block.emission = gfx.srgb_to_linear(lit.emission_color)
 	block.emission.w = max(refraction, 0)
+	scale := lit.uv_scale == {} ? [2]f32{1, 1} : lit.uv_scale
+	block.uv = {scale.x, scale.y, lit.uv_offset.x, lit.uv_offset.y}
+	block.flags = {lit.uv_clamp ? 1 : 0, 0, 0, 0}
 	data = (^[size_of(gfx.Lit_Material)]u8)(block)[:]
 	return
 }

@@ -40,7 +40,14 @@ vec3 env_brdf_approx(vec3 f0, float roughness, float NoV) {
 // The Surface before surface() changes it: the texture times the color, and
 // the built-in Lit's maps when this is the Lit shader.
 Surface surface_preset() {
-    vec4 base = srgb_to_linear(texture(tex, frag_uv)) * frag_color;
+    vec2 uv = frag_uv;
+#ifdef MOONHUG_LIT_MATERIAL
+    // The maps' own placement: scaled and offset, clamped to their edges
+    // when the material says so (a decal's edge pixels fill the rest).
+    uv = frag_uv * lit_uv.xy + lit_uv.zw;
+    if (lit_flags.x > 0.5) uv = clamp(uv, 0.0, 1.0);
+#endif
+    vec4 base = srgb_to_linear(texture(tex, uv)) * frag_color;
     Surface s;
     s.albedo     = base.rgb;
     s.alpha      = base.a;
@@ -52,19 +59,19 @@ Surface surface_preset() {
     s.refraction = 0.0;
 #ifdef MOONHUG_LIT_MATERIAL
     s.refraction = lit_emission.w;
-    vec4 mr = texture(metallic_roughness_map, frag_uv);
+    vec4 mr = texture(metallic_roughness_map, uv);
     s.metallic   = lit_params.x * mr.b;
     s.smoothness = 1.0 - (1.0 - lit_params.y) * mr.g;
     if (lit_params.z > 0.0) {
-        vec3 tn = texture(normal_map, frag_uv).xyz * 2.0 - 1.0;
+        vec3 tn = texture(normal_map, uv).xyz * 2.0 - 1.0;
         s.normal = perturb_normal(tn, lit_params.z);
         // Against the same texel at full size: a map stored a little short
         // (compression, authoring) is not a spread of directions.
-        float full = length(textureLod(normal_map, frag_uv, 0.0).xyz * 2.0 - 1.0);
+        float full = length(textureLod(normal_map, uv, 0.0).xyz * 2.0 - 1.0);
         s.smoothness = toksvig_smoothness(s.smoothness, length(tn) / max(full, 1e-3));
     }
-    s.occlusion  = mix(1.0, texture(occlusion_map, frag_uv).r, lit_params.w);
-    s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, frag_uv).rgb);
+    s.occlusion  = mix(1.0, texture(occlusion_map, uv).r, lit_params.w);
+    s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, uv).rgb);
 #endif
     return s;
 }

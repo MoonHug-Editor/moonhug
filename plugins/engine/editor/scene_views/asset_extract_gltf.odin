@@ -90,6 +90,14 @@ extract_gltf_assets :: proc(model_path: string) {
 
 	tex_guid := proc(view: cgltf.texture_view, img_paths: ^map[^cgltf.image]string) -> engine.Asset_GUID {
 		if view.texture == nil || view.texture.image_ == nil do return {}
+		// A map on a second texture coordinate set (a baked occlusion atlas
+		// on TEXCOORD_1 beside a tiled weave on TEXCOORD_0): the mesh
+		// carries one set, and reading it through the first smears the
+		// atlas over the surface. Left out.
+		if view.texcoord != 0 {
+			fmt.printf("[Editor] Extract: a map on texture coordinate set %d skipped (meshes carry one set)\n", view.texcoord)
+			return {}
+		}
 		path, has := img_paths[view.texture.image_]
 		if !has do return {}
 		guid, ok := engine.asset_db_get_guid(path)
@@ -136,6 +144,26 @@ extract_gltf_assets :: proc(model_path: string) {
 		}
 		// glTF doubleSided: both faces drawn, no back-face culling.
 		if m.double_sided do mat.render_face = .Both
+		// KHR_texture_transform on the base colour, taken for every map of
+		// the material, and a sampler clamped to the edge (a decal placed by
+		// the transform, its edge pixels filling the rest).
+		if m.has_pbr_metallic_roughness {
+			if v := m.pbr_metallic_roughness.base_color_texture; v.has_transform {
+				mat.lit.uv_scale = v.transform.scale
+				mat.lit.uv_offset = v.transform.offset
+			}
+			if v := m.pbr_metallic_roughness.base_color_texture; v.texture != nil && v.texture.sampler != nil && v.texture.sampler.wrap_s == .clamp_to_edge {
+				mat.lit.uv_clamp = true
+			}
+		}
+		// KHR_materials_transmission: glass. Transparent and refracting a
+		// little (a pane's thickness), keeping a tenth of its own lighting
+		// for its highlights.
+		if m.has_transmission && m.transmission.transmission_factor > 0 {
+			mat.surface = .Transparent
+			mat.color.a = max(1 - m.transmission.transmission_factor, 0.1)
+			mat.refraction = 0.02
+		}
 
 		if !serialization.write_asset_to_path(out, engine.get_guid_by_type_key(engine.TypeKey.Material), mat) {
 			fmt.printf("[Editor] Extract: failed to write %s\n", out)

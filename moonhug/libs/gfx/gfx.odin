@@ -165,9 +165,11 @@ BLIT_SHADER :: "blit"
 Lit_Material :: struct {
 	params:   [4]f32, // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
 	emission: [4]f32, // rgb, linear, w = refraction strength
+	uv:       [4]f32, // xy the maps' uv scale, zw their offset
+	flags:    [4]f32, // x = 1 reads the maps clamped to their edges
 }
 
-LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}}
+LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}, uv = {1, 1, 0, 0}}
 
 // The built-in lit shader's name.
 LIT_SHADER :: "lit"

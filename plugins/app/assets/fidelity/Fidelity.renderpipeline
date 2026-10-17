@@ -31,6 +31,14 @@
       "settings": null
     },
     {
+      "id": 7,
+      "step": "scene_copy",
+      "slot": "Main",
+      "muted": false,
+      "binds": [],
+      "settings": null
+    },
+    {
       "id": 4,
       "step": "scene_transparent",
       "slot": "Main",
@@ -58,5 +66,5 @@
       "settings": null
     }
   ],
-  "next_id": 7
+  "next_id": 8
 }

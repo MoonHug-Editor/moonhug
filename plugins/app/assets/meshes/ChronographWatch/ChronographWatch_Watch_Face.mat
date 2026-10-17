@@ -1,0 +1,36 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 1,
+  "color": [
+    0.9999999999999999,
+    0.9999999999999999,
+    0.9999999999999999,
+    1.0
+  ],
+  "texture": "7cf369e7-0ade-4a2f-83ad-52c7d239ee5e",
+  "lit": {
+    "metallic": 1.0,
+    "smoothness": 0.0,
+    "metallic_roughness_map": "c86a6303-a463-4047-aa82-8b1685f8da03",
+    "normal_map": "00000000-0000-0000-0000-000000000000",
+    "normal_scale": 1.0,
+    "occlusion_map": "c86a6303-a463-4047-aa82-8b1685f8da03",
+    "occlusion_strength": 1.0,
+    "emission_map": "00000000-0000-0000-0000-000000000000",
+    "emission_color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "uv_scale": [
+      1.0,
+      1.0
+    ],
+    "uv_offset": [
+      0.0,
+      0.0
+    ],
+    "uv_clamp": true
+  }
+}

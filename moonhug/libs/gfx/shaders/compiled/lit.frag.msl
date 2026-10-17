@@ -80,6 +80,8 @@ struct LitMaterial
 {
     float4 lit_params;
     float4 lit_emission;
+    float4 lit_uv;
+    float4 lit_flags;
 };
 
 struct main0_out
@@ -174,9 +176,15 @@ float toksvig_smoothness(thread const float& smoothness, thread float& len)
 }
 
 static inline __attribute__((always_inline))
-Surface surface_preset(thread float3& frag_world_pos, thread float3& frag_normal, thread bool& gl_FrontFacing, thread float4& frag_tangent, thread float2& frag_uv, texture2d<float> tex, sampler texSmplr, thread float4& frag_color, constant LitMaterial& _1506, texture2d<float> metallic_roughness_map, sampler metallic_roughness_mapSmplr, texture2d<float> normal_map, sampler normal_mapSmplr, texture2d<float> occlusion_map, sampler occlusion_mapSmplr, texture2d<float> emission_map, sampler emission_mapSmplr)
+Surface surface_preset(thread float3& frag_world_pos, thread float3& frag_normal, thread bool& gl_FrontFacing, thread float4& frag_tangent, thread float2& frag_uv, constant LitMaterial& _1485, texture2d<float> tex, sampler texSmplr, thread float4& frag_color, texture2d<float> metallic_roughness_map, sampler metallic_roughness_mapSmplr, texture2d<float> normal_map, sampler normal_mapSmplr, texture2d<float> occlusion_map, sampler occlusion_mapSmplr, texture2d<float> emission_map, sampler emission_mapSmplr)
 {
-    float4 param = tex.sample(texSmplr, frag_uv);
+    float2 uv = frag_uv;
+    uv = (frag_uv * _1485.lit_uv.xy) + _1485.lit_uv.zw;
+    if (_1485.lit_flags.x > 0.5)
+    {
+        uv = fast::clamp(uv, float2(0.0), float2(1.0));
+    }
+    float4 param = tex.sample(texSmplr, uv);
     float4 base = srgb_to_linear(param) * frag_color;
     Surface s;
     s.albedo = base.xyz;
@@ -187,25 +195,25 @@ Surface surface_preset(thread float3& frag_world_pos, thread float3& frag_normal
     s.smoothness = 0.5;
     s.occlusion = 1.0;
     s.refraction = 0.0;
-    s.refraction = _1506.lit_emission.w;
-    float4 mr = metallic_roughness_map.sample(metallic_roughness_mapSmplr, frag_uv);
-    s.metallic = _1506.lit_params.x * mr.z;
-    s.smoothness = 1.0 - ((1.0 - _1506.lit_params.y) * mr.y);
-    if (_1506.lit_params.z > 0.0)
+    s.refraction = _1485.lit_emission.w;
+    float4 mr = metallic_roughness_map.sample(metallic_roughness_mapSmplr, uv);
+    s.metallic = _1485.lit_params.x * mr.z;
+    s.smoothness = 1.0 - ((1.0 - _1485.lit_params.y) * mr.y);
+    if (_1485.lit_params.z > 0.0)
     {
-        float3 tn = (normal_map.sample(normal_mapSmplr, frag_uv).xyz * 2.0) - float3(1.0);
+        float3 tn = (normal_map.sample(normal_mapSmplr, uv).xyz * 2.0) - float3(1.0);
         float3 param_1 = tn;
-        float param_2 = _1506.lit_params.z;
+        float param_2 = _1485.lit_params.z;
         s.normal = perturb_normal(param_1, param_2, frag_world_pos, frag_normal, gl_FrontFacing, frag_tangent, frag_uv);
-        float full = length((normal_map.sample(normal_mapSmplr, frag_uv, level(0.0)).xyz * 2.0) - float3(1.0));
+        float full = length((normal_map.sample(normal_mapSmplr, uv, level(0.0)).xyz * 2.0) - float3(1.0));
         float param_3 = s.smoothness;
         float param_4 = length(tn) / fast::max(full, 0.001000000047497451305389404296875);
-        float _1568 = toksvig_smoothness(param_3, param_4);
-        s.smoothness = _1568;
+        float _1588 = toksvig_smoothness(param_3, param_4);
+        s.smoothness = _1588;
     }
-    s.occlusion = mix(1.0, occlusion_map.sample(occlusion_mapSmplr, frag_uv).x, _1506.lit_params.w);
-    float3 param_5 = emission_map.sample(emission_mapSmplr, frag_uv).xyz;
-    s.emissive = _1506.lit_emission.xyz * srgb_to_linear(param_5);
+    s.occlusion = mix(1.0, occlusion_map.sample(occlusion_mapSmplr, uv).x, _1485.lit_params.w);
+    float3 param_5 = emission_map.sample(emission_mapSmplr, uv).xyz;
+    s.emissive = _1485.lit_emission.xyz * srgb_to_linear(param_5);
     return s;
 }
 
@@ -618,10 +626,10 @@ float fog_amount(thread const float3& world_pos, constant DrawUBO& _223)
     return fast::clamp(f, 0.0, 1.0);
 }
 
-fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _163 [[buffer(0)]], constant LitMaterial& _1506 [[buffer(1)]], constant DrawUBO& _223 [[buffer(2)]], constant ClusterUBO& _202 [[buffer(3)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], depth2d<float> shadow_map [[texture(7)]], texturecube<float> env_specular [[texture(8)]], texturecube<float> env_irradiance [[texture(9)]], depth2d<float> shadow_atlas [[texture(10)]], texture2d<float> ambient_occlusion [[texture(11)]], texture2d<float> scene_color [[texture(12)]], texture2d<float> screen_reflections [[texture(13)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]], sampler env_specularSmplr [[sampler(8)]], sampler env_irradianceSmplr [[sampler(9)]], sampler shadow_atlasSmplr [[sampler(10)]], sampler ambient_occlusionSmplr [[sampler(11)]], sampler scene_colorSmplr [[sampler(12)]], sampler screen_reflectionsSmplr [[sampler(13)]], float4 gl_FragCoord [[position]], bool gl_FrontFacing [[front_facing]])
+fragment main0_out main0(main0_in in [[stage_in]], constant LightUBO& _163 [[buffer(0)]], constant LitMaterial& _1485 [[buffer(1)]], constant DrawUBO& _223 [[buffer(2)]], constant ClusterUBO& _202 [[buffer(3)]], texture2d<float> tex [[texture(0)]], texture2d<float> metallic_roughness_map [[texture(1)]], texture2d<float> normal_map [[texture(2)]], texture2d<float> occlusion_map [[texture(3)]], texture2d<float> emission_map [[texture(4)]], depth2d<float> shadow_map [[texture(7)]], texturecube<float> env_specular [[texture(8)]], texturecube<float> env_irradiance [[texture(9)]], depth2d<float> shadow_atlas [[texture(10)]], texture2d<float> ambient_occlusion [[texture(11)]], texture2d<float> scene_color [[texture(12)]], texture2d<float> screen_reflections [[texture(13)]], sampler texSmplr [[sampler(0)]], sampler metallic_roughness_mapSmplr [[sampler(1)]], sampler normal_mapSmplr [[sampler(2)]], sampler occlusion_mapSmplr [[sampler(3)]], sampler emission_mapSmplr [[sampler(4)]], sampler shadow_mapSmplr [[sampler(7)]], sampler env_specularSmplr [[sampler(8)]], sampler env_irradianceSmplr [[sampler(9)]], sampler shadow_atlasSmplr [[sampler(10)]], sampler ambient_occlusionSmplr [[sampler(11)]], sampler scene_colorSmplr [[sampler(12)]], sampler screen_reflectionsSmplr [[sampler(13)]], float4 gl_FragCoord [[position]], bool gl_FrontFacing [[front_facing]])
 {
     main0_out out = {};
-    Surface s = surface_preset(in.frag_world_pos, in.frag_normal, gl_FrontFacing, in.frag_tangent, in.frag_uv, tex, texSmplr, in.frag_color, _1506, metallic_roughness_map, metallic_roughness_mapSmplr, normal_map, normal_mapSmplr, occlusion_map, occlusion_mapSmplr, emission_map, emission_mapSmplr);
+    Surface s = surface_preset(in.frag_world_pos, in.frag_normal, gl_FrontFacing, in.frag_tangent, in.frag_uv, _1485, tex, texSmplr, in.frag_color, metallic_roughness_map, metallic_roughness_mapSmplr, normal_map, normal_mapSmplr, occlusion_map, occlusion_mapSmplr, emission_map, emission_mapSmplr);
     Surface param = s;
     surface(param);
     s = param;

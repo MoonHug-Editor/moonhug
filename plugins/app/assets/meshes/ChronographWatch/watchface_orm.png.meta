@@ -1,0 +1,23 @@
+{
+  "guid": "c86a6303-a463-4047-aa82-8b1685f8da03",
+  "importer": "texture",
+  "settings": {
+    "__type_guid": "21d45bcf-2bd8-44db-b780-953c2f8b610f",
+    "filter": 0,
+    "max_size": 0,
+    "mipmaps": 0,
+    "pixels_per_unit": 100.0000000000000000,
+    "sprite_border": [
+      0.0000000000000000,
+      0.0000000000000000,
+      0.0000000000000000,
+      0.0000000000000000
+    ],
+    "sprite_mode": 0,
+    "sprites": [
+
+    ],
+    "srgb": true,
+    "wrap": 0
+  }
+}

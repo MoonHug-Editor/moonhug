@@ -175,7 +175,13 @@
         },
         {
           "pptr": {
-            "local_id": 169,
+            "local_id": 167,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 210,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
@@ -1053,7 +1059,634 @@
       ]
     },
     {
-      "local_id": 169,
+      "local_id": 167,
+      "name": "ChronographWatch",
+      "is_active": true,
+      "position": [
+        2.4,
+        1.0,
+        4.4
+      ],
+      "rotation": [
+        0.0,
+        -0.49999999999999994,
+        0.0,
+        0.8660254037844387
+      ],
+      "scale": [
+        0.32,
+        0.32,
+        0.32
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 170,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 173,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 176,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 179,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 182,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 185,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 188,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 191,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 192,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 207,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 170,
+      "name": "Backplate Khronos",
+      "is_active": true,
+      "position": [
+        0,
+        0,
+        0.01
+      ],
+      "rotation": [
+        -0.7071066498756409,
+        0,
+        0,
+        0.70710688829422
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 168
+        },
+        {
+          "local_id": 169
+        }
+      ]
+    },
+    {
+      "local_id": 173,
+      "name": "Band Carbon Fiber",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 171
+        },
+        {
+          "local_id": 172
+        }
+      ]
+    },
+    {
+      "local_id": 176,
+      "name": "Band Plastic",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 174
+        },
+        {
+          "local_id": 175
+        }
+      ]
+    },
+    {
+      "local_id": 179,
+      "name": "Bezel Frame",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 177
+        },
+        {
+          "local_id": 178
+        }
+      ]
+    },
+    {
+      "local_id": 182,
+      "name": "Button Metal",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 180
+        },
+        {
+          "local_id": 181
+        }
+      ]
+    },
+    {
+      "local_id": 185,
+      "name": "Button Plastic",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 183
+        },
+        {
+          "local_id": 184
+        }
+      ]
+    },
+    {
+      "local_id": 188,
+      "name": "Clasp DGG",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 186
+        },
+        {
+          "local_id": 187
+        }
+      ]
+    },
+    {
+      "local_id": 191,
+      "name": "Glass Face",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 189
+        },
+        {
+          "local_id": 190
+        }
+      ]
+    },
+    {
+      "local_id": 192,
+      "name": "Hands",
+      "is_active": true,
+      "position": [
+        0.11272376775741576,
+        0.1582605242729187,
+        0.7580093741416931
+      ],
+      "rotation": [
+        -0.70710688829422,
+        0,
+        0,
+        0.7071066498756409
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 195,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 198,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 201,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 204,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": []
+    },
+    {
+      "local_id": 195,
+      "name": "Hand Hours",
+      "is_active": true,
+      "position": [
+        -0.11272376775741576,
+        0.7524163126945496,
+        -0.1582605093717575
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 192,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 193
+        },
+        {
+          "local_id": 194
+        }
+      ]
+    },
+    {
+      "local_id": 198,
+      "name": "Hand Minutes",
+      "is_active": true,
+      "position": [
+        -0.11272376775741576,
+        0.7524163126945496,
+        -0.1582605093717575
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 192,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 196
+        },
+        {
+          "local_id": 197
+        }
+      ]
+    },
+    {
+      "local_id": 201,
+      "name": "Hand Seconds",
+      "is_active": true,
+      "position": [
+        -0.11272376775741576,
+        0.7580093741416931,
+        -0.1582605093717575
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 192,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 199
+        },
+        {
+          "local_id": 200
+        }
+      ]
+    },
+    {
+      "local_id": 204,
+      "name": "Hand Setting",
+      "is_active": true,
+      "position": [
+        -0.11272376775741576,
+        0.7524163126945496,
+        -0.1582605093717575
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 192,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 202
+        },
+        {
+          "local_id": 203
+        }
+      ]
+    },
+    {
+      "local_id": 207,
+      "name": "Watch Face",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 167,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [],
+      "components": [
+        {
+          "local_id": 205
+        },
+        {
+          "local_id": 206
+        }
+      ]
+    },
+    {
+      "local_id": 210,
       "name": "Plate Glossy",
       "is_active": true,
       "position": [
@@ -1082,10 +1715,10 @@
       "children": [],
       "components": [
         {
-          "local_id": 167
+          "local_id": 208
         },
         {
-          "local_id": 168
+          "local_id": 209
         }
       ]
     }
@@ -1618,7 +2251,286 @@
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
       "base": {
         "enabled": true,
-        "local_id": 167
+        "local_id": 168
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 1
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 169
+      },
+      "materials": [
+        "9955f97d-892c-4777-9a8e-314ae9b36762"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 171
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 2
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 172
+      },
+      "materials": [
+        "2dc4f4aa-cad0-41f2-89c2-a94f1cd0d309"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 174
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 3
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 175
+      },
+      "materials": [
+        "8a4974aa-0631-4b9f-bdd0-b013c5422f5b"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 177
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 4
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 178
+      },
+      "materials": [
+        "9e3c69a0-e83c-4138-b028-b3e1a579f078"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 180
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 5
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 181
+      },
+      "materials": [
+        "0685c718-0def-4025-8b8a-d3ec14645038"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 183
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 6
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 184
+      },
+      "materials": [
+        "9ddd93dd-d0cd-4a5d-a10f-84a47c4ed30c"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 186
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 7
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 187
+      },
+      "materials": [
+        "219ea006-6f22-46eb-9ca6-7b0a29071daf"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 189
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 8
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 190
+      },
+      "materials": [
+        "dd13f0b6-e250-44fb-97ce-2204d81a60b9"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 193
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 9
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 194
+      },
+      "materials": [
+        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
+        "c4e6fd5b-fc00-4088-a918-6662faf3a217",
+        "5dce9ffc-8ac7-4d76-b5f4-7e37c4a95c9e"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 196
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 10
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 197
+      },
+      "materials": [
+        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
+        "c4e6fd5b-fc00-4088-a918-6662faf3a217",
+        "5dce9ffc-8ac7-4d76-b5f4-7e37c4a95c9e"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 199
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 11
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 200
+      },
+      "materials": [
+        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
+        "c4e6fd5b-fc00-4088-a918-6662faf3a217"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 202
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 12
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 203
+      },
+      "materials": [
+        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
+        "c4e6fd5b-fc00-4088-a918-6662faf3a217"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 205
+      },
+      "mesh": {
+        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
+        "local_id": 13
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 206
+      },
+      "materials": [
+        "929e72ec-c2c7-4dd8-bfa3-381158667c00"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 208
       },
       "mesh": {
         "guid": "9b978885-12f8-4d30-be4d-d9c2c2074477",
@@ -1629,7 +2541,7 @@
       "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
       "base": {
         "enabled": true,
-        "local_id": 168
+        "local_id": 209
       },
       "materials": [
         "9f73b9fe-64b5-49fe-b163-0745293c52c2"
