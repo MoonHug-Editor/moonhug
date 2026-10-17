@@ -61,9 +61,19 @@ extract_gltf_assets :: proc(model_path: string) {
 	// files next to the model.
 	img_paths := make(map[^cgltf.image]string, context.temp_allocator)
 	written, skipped := 0, 0
+	missing := 0
 	for &img, i in data.images {
 		if img.uri != nil {
-			img_paths[&img], _ = filepath.join({dir, string(img.uri)}, context.temp_allocator)
+			path, _ := filepath.join({dir, string(img.uri)}, context.temp_allocator)
+			// An external image the model names but that is not beside it:
+			// every map reading it stays empty, said once here rather than
+			// found later as a flat material.
+			if !os.exists(path) {
+				fmt.printf("[Editor] Extract: image %s is missing beside the model: the maps that read it stay empty\n", string(img.uri))
+				missing += 1
+				continue
+			}
+			img_paths[&img] = path
 			continue
 		}
 		if img.buffer_view == nil do continue
@@ -90,12 +100,11 @@ extract_gltf_assets :: proc(model_path: string) {
 
 	tex_guid := proc(view: cgltf.texture_view, img_paths: ^map[^cgltf.image]string) -> engine.Asset_GUID {
 		if view.texture == nil || view.texture.image_ == nil do return {}
-		// A map on a second texture coordinate set (a baked occlusion atlas
-		// on TEXCOORD_1 beside a tiled weave on TEXCOORD_0): the mesh
-		// carries one set, and reading it through the first smears the
-		// atlas over the surface. Left out.
-		if view.texcoord != 0 {
-			fmt.printf("[Editor] Extract: a map on texture coordinate set %d skipped (meshes carry one set)\n", view.texcoord)
+		if view.texture.image_ not_in img_paths do return {} // missing beside the model, reported above
+		// Meshes carry two texture coordinate sets: a map on a third or later
+		// one has nothing to read through and is left out.
+		if view.texcoord > 1 {
+			fmt.printf("[Editor] Extract: a map on texture coordinate set %d skipped (meshes carry two)\n", view.texcoord)
 			return {}
 		}
 		path, has := img_paths[view.texture.image_]
@@ -135,6 +144,16 @@ extract_gltf_assets :: proc(model_path: string) {
 		mat.lit.occlusion_map = tex_guid(m.occlusion_texture, &img_paths)
 		mat.lit.occlusion_strength = m.occlusion_texture.texture != nil ? m.occlusion_texture.scale : 1
 		mat.lit.emission_map = tex_guid(m.emissive_texture, &img_paths)
+		// The set each map reads: glTF's texCoord (a baked occlusion atlas
+		// usually sits on the second).
+		uv_set := proc(view: cgltf.texture_view) -> engine.Material_Uv_Set { return view.texcoord == 1 ? .Second : .First }
+		if m.has_pbr_metallic_roughness {
+			mat.lit.texture_uv_set = uv_set(m.pbr_metallic_roughness.base_color_texture)
+			mat.lit.metallic_roughness_uv_set = uv_set(m.pbr_metallic_roughness.metallic_roughness_texture)
+		}
+		mat.lit.normal_uv_set = uv_set(m.normal_texture)
+		mat.lit.occlusion_uv_set = uv_set(m.occlusion_texture)
+		mat.lit.emission_uv_set = uv_set(m.emissive_texture)
 		ef := m.emissive_factor
 		mat.lit.emission_color = gfx.linear_to_srgb({ef.r, ef.g, ef.b, 1})
 		// glTF MASK: texels below the cutoff are not drawn (alpha clipping).
@@ -237,8 +256,8 @@ extract_gltf_assets :: proc(model_path: string) {
 	}
 	asset_pipeline.asset_db_refresh()
 
-	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d material(s), %d animation clip(s), %d scene(s) created\n",
-		model_path, written, skipped, mats_written, anims_written, scenes_written)
+	fmt.printf("[Editor] Extract %s: %d texture(s) written, %d already existed, %d missing, %d material(s), %d animation clip(s), %d scene(s) created\n",
+		model_path, written, skipped, missing, mats_written, anims_written, scenes_written)
 }
 
 // Extraction output paths, shared by the writers and the scene reference

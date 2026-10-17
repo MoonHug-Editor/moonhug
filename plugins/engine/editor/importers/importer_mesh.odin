@@ -259,7 +259,7 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
             return false
         }
 
-        pos_acc, norm_acc, tan_acc, uv_acc, joint_acc, weight_acc: ^cgltf.accessor
+        pos_acc, norm_acc, tan_acc, uv_acc, uv2_acc, joint_acc, weight_acc: ^cgltf.accessor
         for &attr in prim.attributes {
             #partial switch attr.type {
             case .position:
@@ -270,6 +270,7 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
                 if tan_acc == nil do tan_acc = attr.data
             case .texcoord:
                 if uv_acc == nil && attr.index == 0 do uv_acc = attr.data
+                if uv2_acc == nil && attr.index == 1 do uv2_acc = attr.data
             case .joints:
                 if joint_acc == nil && attr.index == 0 do joint_acc = attr.data
             case .weights:
@@ -325,6 +326,9 @@ _mesh_append_mesh :: proc(build: ^_Mesh_Build, mesh: ^cgltf.mesh, world: matrix[
             }
             if uv_acc != nil && vi < uint(uv_acc.count) {
                 _ = cgltf.accessor_read_float(uv_acc, vi, &v.uv[0], 2)
+            }
+            if uv2_acc != nil && vi < uint(uv2_acc.count) {
+                _ = cgltf.accessor_read_float(uv2_acc, vi, &v.uv2[0], 2)
             }
             // The file's tangents when it has them (glTF: xyz direction, w the
             // bitangent sign), transformed like a direction. A mirroring node

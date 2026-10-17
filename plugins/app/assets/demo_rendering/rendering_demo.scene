@@ -133,6 +133,12 @@
         },
         {
           "pptr": {
+            "local_id": 2823632001803672,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
             "local_id": 148,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
@@ -175,18 +181,14 @@
         },
         {
           "pptr": {
-            "local_id": 167,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
             "local_id": 210,
             "guid": "00000000-0000-0000-0000-000000000000"
           }
         }
       ],
-      "components": []
+      "components": [
+
+      ]
     },
     {
       "local_id": 102,
@@ -194,14 +196,14 @@
       "is_active": true,
       "position": [
         0.057,
-        2.24,
-        9.92
+        2.24000001,
+        9.92000008
       ],
       "rotation": [
-        -0.10452846326765347,
+        -0.10452846,
         0.0,
         0.0,
-        0.9945218953682733
+        0.99452192
       ],
       "scale": [
         1.0,
@@ -215,7 +217,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 101
@@ -249,7 +253,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 103
@@ -283,7 +289,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 105
@@ -317,7 +325,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 107
@@ -330,7 +340,7 @@
       "is_active": true,
       "position": [
         -4.0,
-        1.2,
+        1.20000005,
         1.5
       ],
       "rotation": [
@@ -351,7 +361,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 109
@@ -368,10 +380,10 @@
         1.0
       ],
       "rotation": [
-        -0.7071067811865475,
+        -0.70710677,
         0.0,
         0.0,
-        0.7071067811865476
+        0.70710677
       ],
       "scale": [
         1.0,
@@ -385,7 +397,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 111
@@ -419,7 +433,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 113
@@ -456,7 +472,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 116
@@ -493,7 +511,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 119
@@ -530,7 +550,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 122
@@ -567,7 +589,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 125
@@ -604,7 +628,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 128
@@ -641,7 +667,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 131
@@ -678,7 +706,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 134
@@ -715,7 +745,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 137
@@ -752,7 +784,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 140
@@ -773,9 +807,9 @@
       ],
       "rotation": [
         0.0,
-        0.3420201433256687,
+        0.34202015,
         0.0,
-        0.9396926207859084
+        0.93969262
       ],
       "scale": [
         1.0,
@@ -789,7 +823,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 143
@@ -800,12 +836,46 @@
       ]
     },
     {
+      "local_id": 2823632001803672,
+      "name": "ChronographWatch",
+      "is_active": true,
+      "position": [
+        7.03880787,
+        0.74248898,
+        3.21284866
+      ],
+      "rotation": [
+        0.0,
+        -0.38268346,
+        0.0,
+        0.9238795
+      ],
+      "scale": [
+        0.25,
+        0.25,
+        0.25
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 1,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+
+      ]
+    },
+    {
       "local_id": 148,
       "name": "DamagedHelmet",
       "is_active": true,
       "position": [
         1.5,
-        1.2,
+        1.20000005,
         -3.5
       ],
       "rotation": [
@@ -815,9 +885,9 @@
         1.0
       ],
       "scale": [
-        1.2,
-        1.2,
-        1.2
+        1.20000005,
+        1.20000005,
+        1.20000005
       ],
       "render_layer": 1,
       "parent": {
@@ -826,7 +896,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 146
@@ -863,7 +935,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 149
@@ -900,7 +974,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 152
@@ -921,14 +997,14 @@
       ],
       "rotation": [
         0.0,
-        -0.42261826174069944,
+        -0.42261827,
         0.0,
-        0.9063077870366499
+        0.90630782
       ],
       "scale": [
-        1.6,
-        1.6,
-        1.6
+        1.60000002,
+        1.60000002,
+        1.60000002
       ],
       "render_layer": 1,
       "parent": {
@@ -937,7 +1013,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 155
@@ -952,8 +1030,8 @@
       "name": "Sphere Glass",
       "is_active": true,
       "position": [
-        4.11,
-        1.09,
+        4.11000013,
+        1.09000003,
         1.5
       ],
       "rotation": [
@@ -963,9 +1041,9 @@
         1.0
       ],
       "scale": [
-        1.6,
-        1.6,
-        1.6
+        1.60000002,
+        1.60000002,
+        1.60000002
       ],
       "render_layer": 1,
       "parent": {
@@ -974,7 +1052,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 158
@@ -989,7 +1069,7 @@
       "name": "Sphere Tinted",
       "is_active": true,
       "position": [
-        0.3,
+        0.30000001,
         1.0,
         3.5
       ],
@@ -1000,9 +1080,9 @@
         1.0
       ],
       "scale": [
-        1.2,
-        1.2,
-        1.2
+        1.20000005,
+        1.20000005,
+        1.20000005
       ],
       "render_layer": 1,
       "parent": {
@@ -1011,7 +1091,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 161
@@ -1026,9 +1108,9 @@
       "name": "Sphere Mirror",
       "is_active": true,
       "position": [
-        -2.2,
+        -2.20000005,
         1.0,
-        2.2
+        2.20000005
       ],
       "rotation": [
         0.0,
@@ -1037,9 +1119,9 @@
         1.0
       ],
       "scale": [
-        1.4,
-        1.4,
-        1.4
+        1.39999998,
+        1.39999998,
+        1.39999998
       ],
       "render_layer": 1,
       "parent": {
@@ -1048,7 +1130,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 164
@@ -1059,640 +1143,13 @@
       ]
     },
     {
-      "local_id": 167,
-      "name": "ChronographWatch",
-      "is_active": true,
-      "position": [
-        2.4,
-        1.0,
-        4.4
-      ],
-      "rotation": [
-        0.0,
-        -0.49999999999999994,
-        0.0,
-        0.8660254037844387
-      ],
-      "scale": [
-        0.32,
-        0.32,
-        0.32
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 1,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [
-        {
-          "pptr": {
-            "local_id": 170,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 173,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 176,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 179,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 182,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 185,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 188,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 191,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 192,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 207,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        }
-      ],
-      "components": []
-    },
-    {
-      "local_id": 170,
-      "name": "Backplate Khronos",
-      "is_active": true,
-      "position": [
-        0,
-        0,
-        0.01
-      ],
-      "rotation": [
-        -0.7071066498756409,
-        0,
-        0,
-        0.70710688829422
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 168
-        },
-        {
-          "local_id": 169
-        }
-      ]
-    },
-    {
-      "local_id": 173,
-      "name": "Band Carbon Fiber",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 171
-        },
-        {
-          "local_id": 172
-        }
-      ]
-    },
-    {
-      "local_id": 176,
-      "name": "Band Plastic",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 174
-        },
-        {
-          "local_id": 175
-        }
-      ]
-    },
-    {
-      "local_id": 179,
-      "name": "Bezel Frame",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 177
-        },
-        {
-          "local_id": 178
-        }
-      ]
-    },
-    {
-      "local_id": 182,
-      "name": "Button Metal",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 180
-        },
-        {
-          "local_id": 181
-        }
-      ]
-    },
-    {
-      "local_id": 185,
-      "name": "Button Plastic",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 183
-        },
-        {
-          "local_id": 184
-        }
-      ]
-    },
-    {
-      "local_id": 188,
-      "name": "Clasp DGG",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 186
-        },
-        {
-          "local_id": 187
-        }
-      ]
-    },
-    {
-      "local_id": 191,
-      "name": "Glass Face",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 189
-        },
-        {
-          "local_id": 190
-        }
-      ]
-    },
-    {
-      "local_id": 192,
-      "name": "Hands",
-      "is_active": true,
-      "position": [
-        0.11272376775741576,
-        0.1582605242729187,
-        0.7580093741416931
-      ],
-      "rotation": [
-        -0.70710688829422,
-        0,
-        0,
-        0.7071066498756409
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [
-        {
-          "pptr": {
-            "local_id": 195,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 198,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 201,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        },
-        {
-          "pptr": {
-            "local_id": 204,
-            "guid": "00000000-0000-0000-0000-000000000000"
-          }
-        }
-      ],
-      "components": []
-    },
-    {
-      "local_id": 195,
-      "name": "Hand Hours",
-      "is_active": true,
-      "position": [
-        -0.11272376775741576,
-        0.7524163126945496,
-        -0.1582605093717575
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 192,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 193
-        },
-        {
-          "local_id": 194
-        }
-      ]
-    },
-    {
-      "local_id": 198,
-      "name": "Hand Minutes",
-      "is_active": true,
-      "position": [
-        -0.11272376775741576,
-        0.7524163126945496,
-        -0.1582605093717575
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 192,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 196
-        },
-        {
-          "local_id": 197
-        }
-      ]
-    },
-    {
-      "local_id": 201,
-      "name": "Hand Seconds",
-      "is_active": true,
-      "position": [
-        -0.11272376775741576,
-        0.7580093741416931,
-        -0.1582605093717575
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 192,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 199
-        },
-        {
-          "local_id": 200
-        }
-      ]
-    },
-    {
-      "local_id": 204,
-      "name": "Hand Setting",
-      "is_active": true,
-      "position": [
-        -0.11272376775741576,
-        0.7524163126945496,
-        -0.1582605093717575
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 192,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 202
-        },
-        {
-          "local_id": 203
-        }
-      ]
-    },
-    {
-      "local_id": 207,
-      "name": "Watch Face",
-      "is_active": true,
-      "position": [
-        0.0,
-        0.0,
-        0.0
-      ],
-      "rotation": [
-        0.0,
-        0.0,
-        0.0,
-        1.0
-      ],
-      "scale": [
-        1.0,
-        1.0,
-        1.0
-      ],
-      "render_layer": 1,
-      "parent": {
-        "pptr": {
-          "local_id": 167,
-          "guid": "00000000-0000-0000-0000-000000000000"
-        }
-      },
-      "children": [],
-      "components": [
-        {
-          "local_id": 205
-        },
-        {
-          "local_id": 206
-        }
-      ]
-    },
-    {
       "local_id": 210,
       "name": "Plate Glossy",
       "is_active": true,
       "position": [
         0.0,
         0.01,
-        1.6
+        1.60000002
       ],
       "rotation": [
         0.0,
@@ -1703,7 +1160,7 @@
       "scale": [
         10.0,
         0.02,
-        3.2
+        3.20000005
       ],
       "render_layer": 1,
       "parent": {
@@ -1712,7 +1169,9 @@
           "guid": "00000000-0000-0000-0000-000000000000"
         }
       },
-      "children": [],
+      "children": [
+
+      ],
       "components": [
         {
           "local_id": 208
@@ -1723,8 +1182,77 @@
       ]
     }
   ],
-  "nested_scenes": [],
-  "breadcrumbs": [],
+  "nested_scenes": [
+    {
+      "local_id": 3735248926664713,
+      "local_id_in_parent": 0,
+      "source_prefab": "55e848e9-39db-4cb0-8a93-1eeb9d4cf8c1",
+      "transform_parent": 2823632001803672,
+      "host_breadcrumb_id": 4501511421778912,
+      "sibling_index": 0,
+      "overrides": [
+        {
+          "target": {
+            "local_id": 462179891199590,
+            "guid": "55e848e9-39db-4cb0-8a93-1eeb9d4cf8c1"
+          },
+          "property_path": "position",
+          "value": [
+            7.0388078700000003,
+            0.74248898,
+            3.2128486600000001
+          ]
+        },
+        {
+          "target": {
+            "local_id": 462179891199590,
+            "guid": "55e848e9-39db-4cb0-8a93-1eeb9d4cf8c1"
+          },
+          "property_path": "rotation",
+          "value": [
+            0.0,
+            -0.38268346,
+            0.0,
+            0.9238795
+          ]
+        },
+        {
+          "target": {
+            "local_id": 462179891199590,
+            "guid": "55e848e9-39db-4cb0-8a93-1eeb9d4cf8c1"
+          },
+          "property_path": "scale",
+          "value": [
+            0.25,
+            0.25,
+            0.25
+          ]
+        }
+      ],
+      "removed_components": [
+
+      ],
+      "added_components": [
+
+      ],
+      "removed_objects": [
+
+      ],
+      "added_objects": [
+
+      ]
+    }
+  ],
+  "breadcrumbs": [
+    {
+      "local_id": 4501511421778912,
+      "scene_source": {
+        "local_id": 2823632001803672,
+        "guid": "00000000-0000-0000-0000-000000000000"
+      },
+      "scene_instance": 3735248926664713
+    }
+  ],
   "components": [
     {
       "__type": "7a3b9c1d-2e4f-5a6b-8c7d-9e0f1a2b3c4d",
@@ -1740,10 +1268,10 @@
       ],
       "far_clip": 1000.0,
       "fov": 50.0,
-      "graph": "",
       "near_clip": 0.30000001,
       "order": 0,
-      "render_layer_mask": 4294967295
+      "render_layer_mask": 4294967295,
+      "slot": ""
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
@@ -1754,12 +1282,12 @@
       },
       "color": [
         1.0,
-        0.97,
-        0.9,
+        0.97000003,
+        0.89999998,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
-      "intensity": 1.4,
+      "inner_spot_angle": 21.7999992399999982,
+      "intensity": 1.39999998,
       "range": 10.0,
       "shadows": true,
       "spot_angle": 30.0,
@@ -1767,51 +1295,51 @@
     },
     {
       "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "ambient_intensity": 1.0,
       "base": {
         "enabled": true,
         "local_id": 105
       },
-      "sky": 0,
-      "sky_top": [
-        0.35,
-        0.55,
-        0.85,
-        1.0
-      ],
-      "sky_horizon": [
-        0.75,
-        0.82,
-        0.9,
-        1.0
-      ],
-      "ground": [
-        0.35,
-        0.32,
-        0.3,
-        1.0
-      ],
-      "sun_size": 1.0,
-      "panorama": "00000000-0000-0000-0000-000000000000",
-      "panorama_rotation": 0.0,
-      "exposure": 1.0,
-      "ambient_intensity": 1.0,
-      "reflection_intensity": 1.0,
       "draw_sky": true,
+      "exposure": 1.0,
       "fog": {
-        "mode": 0,
         "color": [
-          0.7,
+          0.69999999,
           0.75,
-          0.8,
+          0.80000001,
           1.0
         ],
         "density": 0.025,
-        "start": 10.0,
         "end": 100.0,
         "height": 0.0,
-        "height_falloff": 0.35,
-        "sky": 0.5
-      }
+        "height_falloff": 0.34999999,
+        "mode": 0,
+        "sky": 0.5,
+        "start": 10.0
+      },
+      "ground": [
+        0.34999999,
+        0.31999999,
+        0.30000001,
+        1.0
+      ],
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "reflection_intensity": 1.0,
+      "sky": 0,
+      "sky_horizon": [
+        0.75,
+        0.81999999,
+        0.89999998,
+        1.0
+      ],
+      "sky_top": [
+        0.34999999,
+        0.55000001,
+        0.85000002,
+        1.0
+      ],
+      "sun_size": 1.0
     },
     {
       "__type": "8909eabd-746b-4bfd-b405-e3a34003d0b9",
@@ -1819,15 +1347,15 @@
         "enabled": true,
         "local_id": 107
       },
+      "box_projection": true,
+      "intensity": 1.0,
+      "refresh": 0,
+      "resolution": 1,
       "size": [
         26.0,
         10.0,
         20.0
-      ],
-      "box_projection": true,
-      "intensity": 1.0,
-      "resolution": 1,
-      "refresh": 0
+      ]
     },
     {
       "__type": "9f36ee91-34b6-4636-a360-ee872af0436b",
@@ -1838,11 +1366,11 @@
       },
       "color": [
         1.0,
-        0.3,
+        0.30000001,
         0.2,
         1.0
       ],
-      "inner_spot_angle": 21.79999924,
+      "inner_spot_angle": 21.7999992399999982,
       "intensity": 3.0,
       "range": 6.0,
       "shadows": true,
@@ -1857,7 +1385,7 @@
         "local_id": 111
       },
       "color": [
-        0.3,
+        0.30000001,
         0.5,
         1.0,
         1.0
@@ -2245,285 +1773,6 @@
       },
       "materials": [
         "497c16fe-ea79-40af-97ee-9d82e491e54e"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 168
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 1
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 169
-      },
-      "materials": [
-        "9955f97d-892c-4777-9a8e-314ae9b36762"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 171
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 2
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 172
-      },
-      "materials": [
-        "2dc4f4aa-cad0-41f2-89c2-a94f1cd0d309"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 174
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 3
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 175
-      },
-      "materials": [
-        "8a4974aa-0631-4b9f-bdd0-b013c5422f5b"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 177
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 4
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 178
-      },
-      "materials": [
-        "9e3c69a0-e83c-4138-b028-b3e1a579f078"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 180
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 5
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 181
-      },
-      "materials": [
-        "0685c718-0def-4025-8b8a-d3ec14645038"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 183
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 6
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 184
-      },
-      "materials": [
-        "9ddd93dd-d0cd-4a5d-a10f-84a47c4ed30c"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 186
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 7
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 187
-      },
-      "materials": [
-        "219ea006-6f22-46eb-9ca6-7b0a29071daf"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 189
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 8
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 190
-      },
-      "materials": [
-        "dd13f0b6-e250-44fb-97ce-2204d81a60b9"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 193
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 9
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 194
-      },
-      "materials": [
-        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
-        "c4e6fd5b-fc00-4088-a918-6662faf3a217",
-        "5dce9ffc-8ac7-4d76-b5f4-7e37c4a95c9e"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 196
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 10
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 197
-      },
-      "materials": [
-        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
-        "c4e6fd5b-fc00-4088-a918-6662faf3a217",
-        "5dce9ffc-8ac7-4d76-b5f4-7e37c4a95c9e"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 199
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 11
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 200
-      },
-      "materials": [
-        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
-        "c4e6fd5b-fc00-4088-a918-6662faf3a217"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 202
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 12
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 203
-      },
-      "materials": [
-        "fd6fa292-4b43-4b71-af35-25b2b69fa0db",
-        "c4e6fd5b-fc00-4088-a918-6662faf3a217"
-      ]
-    },
-    {
-      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
-      "base": {
-        "enabled": true,
-        "local_id": 205
-      },
-      "mesh": {
-        "guid": "20213b9c-11ac-4d33-9d90-aa96ccc51a35",
-        "local_id": 13
-      }
-    },
-    {
-      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
-      "base": {
-        "enabled": true,
-        "local_id": 206
-      },
-      "materials": [
-        "929e72ec-c2c7-4dd8-bfa3-381158667c00"
       ]
     },
     {

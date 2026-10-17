@@ -1,0 +1,53 @@
+{
+  "__type_guid": "4d201ba5-2097-48bb-abd3-1a79e4f6f6f4",
+  "shader": 1,
+  "custom_shader": "00000000-0000-0000-0000-000000000000",
+  "texture": "663aabe5-bd21-4bac-a895-077cc0a33f92",
+  "color": [
+    0.99999994,
+    0.99999994,
+    0.99999994,
+    1.0
+  ],
+  "alpha_clip": false,
+  "alpha_cutoff": 0.5,
+  "render_face": 0,
+  "surface": 0,
+  "refraction": 0.0,
+  "lit": {
+    "metallic": 1.0,
+    "smoothness": 0.0,
+    "metallic_roughness_map": "6867c12d-31d5-4a2a-917a-37beff96155b",
+    "normal_map": "00000000-0000-0000-0000-000000000000",
+    "normal_scale": 1.0,
+    "occlusion_map": "e05f4365-4545-423a-8c06-511150e59883",
+    "occlusion_strength": 1.0,
+    "emission_map": "00000000-0000-0000-0000-000000000000",
+    "emission_color": [
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "uv_scale": [
+      1.25,
+      1.75
+    ],
+    "uv_offset": [
+      -0.15000001,
+      -0.40000001
+    ],
+    "uv_clamp": true,
+    "texture_uv_set": 0,
+    "metallic_roughness_uv_set": 0,
+    "normal_uv_set": 0,
+    "occlusion_uv_set": 1,
+    "emission_uv_set": 0
+  },
+  "properties": [
+
+  ],
+  "textures": [
+
+  ]
+}

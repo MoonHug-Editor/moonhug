@@ -23,7 +23,7 @@ layout(set = 2, binding = 0) uniform Params {
     uint joint_count;
 };
 
-const uint VERTEX_WORDS = 13; // 3 position + 3 normal + 2 uv + 1 packed color + 4 tangent
+const uint VERTEX_WORDS = 15; // 3 position + 3 normal + 2 uv + 1 packed color + 4 tangent + 2 uv2
 const uint SKIN_WORDS   = 6; // 2 words of u16 joints + 4 weights
 
 void main() {
@@ -75,4 +75,6 @@ void main() {
     posed[vb + 10] = floatBitsToUint(t.y);
     posed[vb + 11] = floatBitsToUint(t.z);
     posed[vb + 12] = bind[vb + 12]; // the handedness sign
+    posed[vb + 13] = bind[vb + 13]; // the second uv set
+    posed[vb + 14] = bind[vb + 14];
 }

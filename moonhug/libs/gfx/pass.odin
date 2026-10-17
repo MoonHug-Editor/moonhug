@@ -876,12 +876,12 @@ draw_quad :: proc(corners: [4][3]f32, uvs: [4][2]f32, color: [4]f32, tex: ^Textu
 	// bottom edge's direction, flipped when the uvs are mirrored.
 	t := _quad_tangent(corners, uvs, n)
 	append(&_pass.vtx,
-		Vertex{corners[0], n, uvs[0], c, t},
-		Vertex{corners[1], n, uvs[1], c, t},
-		Vertex{corners[2], n, uvs[2], c, t},
-		Vertex{corners[0], n, uvs[0], c, t},
-		Vertex{corners[2], n, uvs[2], c, t},
-		Vertex{corners[3], n, uvs[3], c, t},
+		Vertex{corners[0], n, uvs[0], c, t, {}},
+		Vertex{corners[1], n, uvs[1], c, t, {}},
+		Vertex{corners[2], n, uvs[2], c, t, {}},
+		Vertex{corners[0], n, uvs[0], c, t, {}},
+		Vertex{corners[2], n, uvs[2], c, t, {}},
+		Vertex{corners[3], n, uvs[3], c, t, {}},
 	)
 	_batch_append(.Tris if depth_test else .Tris_Overlay, tex, first, 6, shader, material, extra_tex)
 }
@@ -913,7 +913,7 @@ draw_triangle :: proc(a, b, c: [3]f32, color: [4]f32, depth_test := true) {
 	col := _color_u8(color)
 	first := u32(len(_pass.vtx))
 	n := [3]f32{0, 0, 1}
-	append(&_pass.vtx, Vertex{a, n, {}, col, {}}, Vertex{b, n, {}, col, {}}, Vertex{c, n, {}, col, {}})
+	append(&_pass.vtx, Vertex{a, n, {}, col, {}, {}}, Vertex{b, n, {}, col, {}, {}}, Vertex{c, n, {}, col, {}, {}})
 	_batch_append(depth_test ? .Tris : .Tris_Overlay, nil, first, 3)
 }
 
@@ -924,7 +924,7 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 	first := u32(len(_pass.vtx))
 	n := [3]f32{0, 0, 1}
 	kind: _Pipeline_Kind = depth_test ? (depth_write ? .Lines_Depth : .Lines) : .Lines_Overlay
-	append(&_pass.vtx, Vertex{a, n, {}, c, {}}, Vertex{b, n, {}, c, {}})
+	append(&_pass.vtx, Vertex{a, n, {}, c, {}, {}}, Vertex{b, n, {}, c, {}, {}})
 	_batch_append(kind, nil, first, 2)
 }
 

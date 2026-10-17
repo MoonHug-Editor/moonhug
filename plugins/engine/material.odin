@@ -102,6 +102,19 @@ Material_Lit :: struct {
 	// Read the maps clamped to their edges instead of repeating, so a decal
 	// smaller than the surface fills the rest with its edge pixels.
 	uv_clamp:               bool,
+	// Which texture coordinate set each map reads (the material's `texture`
+	// included): the first, placed by the fields above, or the mesh's second
+	// (glTF TEXCOORD_1, a baked atlas) as it is.
+	texture_uv_set:            Material_Uv_Set,
+	metallic_roughness_uv_set: Material_Uv_Set,
+	normal_uv_set:             Material_Uv_Set,
+	occlusion_uv_set:          Material_Uv_Set,
+	emission_uv_set:           Material_Uv_Set,
+}
+
+Material_Uv_Set :: enum u8 {
+	First,
+	Second,
 }
 
 // What a material without a lit block gets: a dielectric of medium
@@ -226,7 +239,13 @@ _material_pack_lit :: proc(lit: ^Material_Lit, refraction: f32 = 0) -> (data: []
 	block.emission.w = max(refraction, 0)
 	scale := lit.uv_scale == {} ? [2]f32{1, 1} : lit.uv_scale
 	block.uv = {scale.x, scale.y, lit.uv_offset.x, lit.uv_offset.y}
-	block.flags = {lit.uv_clamp ? 1 : 0, 0, 0, 0}
+	sets := 0
+	if lit.texture_uv_set == .Second do sets |= 1
+	if lit.metallic_roughness_uv_set == .Second do sets |= 2
+	if lit.normal_uv_set == .Second do sets |= 4
+	if lit.occlusion_uv_set == .Second do sets |= 8
+	if lit.emission_uv_set == .Second do sets |= 16
+	block.flags = {lit.uv_clamp ? 1 : 0, f32(sets), 0, 0}
 	data = (^[size_of(gfx.Lit_Material)]u8)(block)[:]
 	return
 }

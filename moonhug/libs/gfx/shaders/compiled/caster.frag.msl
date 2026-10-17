@@ -100,8 +100,8 @@ float3 vertex_normal(thread float3& frag_normal, thread bool& gl_FrontFacing)
 static inline __attribute__((always_inline))
 Surface surface_preset(thread float3& frag_normal, thread bool& gl_FrontFacing, thread float2& frag_uv, texture2d<float> tex, sampler texSmplr, thread float4& frag_color)
 {
-    float2 uv = frag_uv;
-    float4 param = tex.sample(texSmplr, uv);
+    float2 uv_base = frag_uv;
+    float4 param = tex.sample(texSmplr, uv_base);
     float4 base = srgb_to_linear(param) * frag_color;
     Surface s;
     s.albedo = base.xyz;

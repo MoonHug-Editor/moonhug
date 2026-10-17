@@ -79,7 +79,7 @@ kernel void main0(constant Params& _19 [[buffer(0)]], device Bind& _41 [[buffer(
     {
         return;
     }
-    uint vb = i * 13u;
+    uint vb = i * 15u;
     float3 p = float3(as_type<float>(_41.bind[vb + 0u]), as_type<float>(_41.bind[vb + 1u]), as_type<float>(_41.bind[vb + 2u]));
     float3 n = float3(as_type<float>(_41.bind[vb + 3u]), as_type<float>(_41.bind[vb + 4u]), as_type<float>(_41.bind[vb + 5u]));
     float3 t = float3(as_type<float>(_41.bind[vb + 9u]), as_type<float>(_41.bind[vb + 10u]), as_type<float>(_41.bind[vb + 11u]));
@@ -154,5 +154,7 @@ kernel void main0(constant Params& _19 [[buffer(0)]], device Bind& _41 [[buffer(
     _271.posed[vb + 10u] = as_type<uint>(t.y);
     _271.posed[vb + 11u] = as_type<uint>(t.z);
     _271.posed[vb + 12u] = _41.bind[vb + 12u];
+    _271.posed[vb + 13u] = _41.bind[vb + 13u];
+    _271.posed[vb + 14u] = _41.bind[vb + 14u];
 }
 

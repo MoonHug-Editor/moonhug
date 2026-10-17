@@ -96,7 +96,7 @@ reset_MeshSettings :: proc(p: ^MeshSettings) {
 // indices [index_count]u32 | submeshes [submesh_count]Mesh_Submesh
 // (v2 added the submesh table; stale v1 artifacts fail the magic check and
 // mesh_load reimports from source.)
-MESH_ARTIFACT_MAGIC :: "MHMESH3\x00" // 3: vertices carry tangents
+MESH_ARTIFACT_MAGIC :: "MHMESH4\x00" // 3: vertices carry tangents, 4: and a second uv set
 
 Mesh_Artifact_Header :: struct #packed {
     magic:         [8]u8,

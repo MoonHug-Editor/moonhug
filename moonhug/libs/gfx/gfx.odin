@@ -20,6 +20,9 @@ Vertex :: struct {
 	// What a normal map is decoded against. Zero where there is none (lines,
 	// meshes without uvs): shaders fall back to a frame from derivatives.
 	tangent:  [4]f32,
+	// A second texture coordinate set (glTF TEXCOORD_1): a baked occlusion
+	// or light atlas beside a tiled first set. Zero where there is none.
+	uv2:      [2]f32,
 }
 
 Texture :: struct {
@@ -166,7 +169,7 @@ Lit_Material :: struct {
 	params:   [4]f32, // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
 	emission: [4]f32, // rgb, linear, w = refraction strength
 	uv:       [4]f32, // xy the maps' uv scale, zw their offset
-	flags:    [4]f32, // x = 1 reads the maps clamped to their edges
+	flags:    [4]f32, // x = 1 reads the maps clamped to their edges, y = the maps read from the second uv set, as bits (1 base, 2 metallic roughness, 4 normal, 8 occlusion, 16 emission)
 }
 
 LIT_MATERIAL_DEFAULT :: Lit_Material{params = {0, 0.5, 0, 1}, uv = {1, 1, 0, 0}}

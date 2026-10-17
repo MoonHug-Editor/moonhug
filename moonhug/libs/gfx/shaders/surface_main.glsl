@@ -39,15 +39,24 @@ vec3 env_brdf_approx(vec3 f0, float roughness, float NoV) {
 
 // The Surface before surface() changes it: the texture times the color, and
 // the built-in Lit's maps when this is the Lit shader.
-Surface surface_preset() {
-    vec2 uv = frag_uv;
 #ifdef MOONHUG_LIT_MATERIAL
-    // The maps' own placement: scaled and offset, clamped to their edges
-    // when the material says so (a decal's edge pixels fill the rest).
-    uv = frag_uv * lit_uv.xy + lit_uv.zw;
-    if (lit_flags.x > 0.5) uv = clamp(uv, 0.0, 1.0);
+// Where a map reads: the first uv set placed by the material (scaled,
+// offset, clamped to the edges when it says so: a decal's edge pixels fill
+// the rest), or the second set as it is, for the maps the material puts
+// there (lit_flags.y, a bit per map).
+vec2 lit_map_uv(int map_bit) {
+    if ((int(lit_flags.y) & map_bit) != 0) return frag_uv2;
+    vec2 uv = frag_uv * lit_uv.xy + lit_uv.zw;
+    return lit_flags.x > 0.5 ? clamp(uv, 0.0, 1.0) : uv;
+}
 #endif
-    vec4 base = srgb_to_linear(texture(tex, uv)) * frag_color;
+
+Surface surface_preset() {
+    vec2 uv_base = frag_uv;
+#ifdef MOONHUG_LIT_MATERIAL
+    uv_base = lit_map_uv(1);
+#endif
+    vec4 base = srgb_to_linear(texture(tex, uv_base)) * frag_color;
     Surface s;
     s.albedo     = base.rgb;
     s.alpha      = base.a;
@@ -59,19 +68,20 @@ Surface surface_preset() {
     s.refraction = 0.0;
 #ifdef MOONHUG_LIT_MATERIAL
     s.refraction = lit_emission.w;
-    vec4 mr = texture(metallic_roughness_map, uv);
+    vec4 mr = texture(metallic_roughness_map, lit_map_uv(2));
     s.metallic   = lit_params.x * mr.b;
     s.smoothness = 1.0 - (1.0 - lit_params.y) * mr.g;
     if (lit_params.z > 0.0) {
-        vec3 tn = texture(normal_map, uv).xyz * 2.0 - 1.0;
+        vec2 uv_n = lit_map_uv(4);
+        vec3 tn = texture(normal_map, uv_n).xyz * 2.0 - 1.0;
         s.normal = perturb_normal(tn, lit_params.z);
         // Against the same texel at full size: a map stored a little short
         // (compression, authoring) is not a spread of directions.
-        float full = length(textureLod(normal_map, uv, 0.0).xyz * 2.0 - 1.0);
+        float full = length(textureLod(normal_map, uv_n, 0.0).xyz * 2.0 - 1.0);
         s.smoothness = toksvig_smoothness(s.smoothness, length(tn) / max(full, 1e-3));
     }
-    s.occlusion  = mix(1.0, texture(occlusion_map, uv).r, lit_params.w);
-    s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, uv).rgb);
+    s.occlusion  = mix(1.0, texture(occlusion_map, lit_map_uv(8)).r, lit_params.w);
+    s.emissive   = lit_emission.rgb * srgb_to_linear(texture(emission_map, lit_map_uv(16)).rgb);
 #endif
     return s;
 }

@@ -296,12 +296,13 @@ _world_pipeline_create :: proc(e: ^_Shader_Entry, format: Target_Format, primiti
 		{slot = 0, pitch = size_of(Vertex), input_rate = .VERTEX},
 		{slot = 1, pitch = size_of(_Instance), input_rate = .INSTANCE},
 	}
-	attributes := [10]sdl.GPUVertexAttribute{
+	attributes := [11]sdl.GPUVertexAttribute{
 		{location = 0, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, position))},
 		{location = 1, buffer_slot = 0, format = .FLOAT3, offset = u32(offset_of(Vertex, normal))},
 		{location = 2, buffer_slot = 0, format = .FLOAT2, offset = u32(offset_of(Vertex, uv))},
 		{location = 3, buffer_slot = 0, format = .UBYTE4_NORM, offset = u32(offset_of(Vertex, color))},
 		{location = 4, buffer_slot = 0, format = .FLOAT4, offset = u32(offset_of(Vertex, tangent))},
+		{location = 10, buffer_slot = 0, format = .FLOAT2, offset = u32(offset_of(Vertex, uv2))},
 		{location = 5, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model))},
 		{location = 6, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model)) + 16},
 		{location = 7, buffer_slot = 1, format = .FLOAT4, offset = u32(offset_of(_Instance, model)) + 32},

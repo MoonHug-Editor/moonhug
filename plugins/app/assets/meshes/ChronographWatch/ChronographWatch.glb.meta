@@ -1,0 +1,71 @@
+{
+  "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+  "importer": "mesh",
+  "settings": {
+    "__type_guid": "fadd5659-ad40-4e00-95c7-908efc8e8631",
+    "clips": [
+      {
+        "guid": "f29a28ca-d0a4-4152-a99d-e3bc6ed97538",
+        "id": 14,
+        "name": "Anim_0",
+        "orphan": false,
+        "settings": null
+      }
+    ],
+    "parts": [
+      {
+        "id": 1,
+        "name": "Backplate Khronos"
+      },
+      {
+        "id": 2,
+        "name": "Band Carbon Fiber"
+      },
+      {
+        "id": 3,
+        "name": "Band Plastic"
+      },
+      {
+        "id": 4,
+        "name": "Bezel Frame"
+      },
+      {
+        "id": 5,
+        "name": "Button Metal"
+      },
+      {
+        "id": 6,
+        "name": "Button Plastic"
+      },
+      {
+        "id": 7,
+        "name": "Clasp DGG"
+      },
+      {
+        "id": 8,
+        "name": "Glass Face"
+      },
+      {
+        "id": 9,
+        "name": "Hand Hours"
+      },
+      {
+        "id": 10,
+        "name": "Hand Minutes"
+      },
+      {
+        "id": 11,
+        "name": "Hand Seconds"
+      },
+      {
+        "id": 12,
+        "name": "Hand Setting"
+      },
+      {
+        "id": 13,
+        "name": "Watch Face"
+      }
+    ],
+    "scale": 1.0000000000000000
+  }
+}

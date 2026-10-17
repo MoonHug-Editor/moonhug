@@ -1,0 +1,964 @@
+{
+  "root": 462179891199590,
+  "transforms": [
+    {
+      "local_id": 462179891199590,
+      "name": "ChronographWatch",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 0,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 3995493206512669,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2276143399845103,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 295777885638093,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1529575591042355,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2770410425003641,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 3865437618293912,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 945396636469860,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1034440553269967,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2153865419139946,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 1138986251359254,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+        {
+          "local_id": 1884851459874037
+        }
+      ]
+    },
+    {
+      "local_id": 3995493206512669,
+      "name": "Backplate Khronos",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.01
+      ],
+      "rotation": [
+        -0.70710665,
+        0.0,
+        0.0,
+        0.70710689
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1471935568812202
+        },
+        {
+          "local_id": 1285920057039538
+        }
+      ]
+    },
+    {
+      "local_id": 2276143399845103,
+      "name": "Band Carbon Fiber",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 3470878688097822
+        },
+        {
+          "local_id": 169189823835207
+        }
+      ]
+    },
+    {
+      "local_id": 295777885638093,
+      "name": "Band Plastic",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4101245623708979
+        },
+        {
+          "local_id": 1527929863934160
+        }
+      ]
+    },
+    {
+      "local_id": 1529575591042355,
+      "name": "Bezel Frame",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4109694090701609
+        },
+        {
+          "local_id": 3710383778080309
+        }
+      ]
+    },
+    {
+      "local_id": 2770410425003641,
+      "name": "Button Metal",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2629772812214934
+        },
+        {
+          "local_id": 3025061982324843
+        }
+      ]
+    },
+    {
+      "local_id": 3865437618293912,
+      "name": "Button Plastic",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2215852333244248
+        },
+        {
+          "local_id": 3048621083374741
+        }
+      ]
+    },
+    {
+      "local_id": 945396636469860,
+      "name": "Clasp DGG",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2472632521628741
+        },
+        {
+          "local_id": 3801769974926643
+        }
+      ]
+    },
+    {
+      "local_id": 1034440553269967,
+      "name": "Glass Face",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 2982379451453353
+        },
+        {
+          "local_id": 1258249413771548
+        }
+      ]
+    },
+    {
+      "local_id": 2153865419139946,
+      "name": "Hands",
+      "is_active": true,
+      "position": [
+        0.11272377,
+        0.15826052,
+        0.75800937
+      ],
+      "rotation": [
+        -0.70710689,
+        0.0,
+        0.0,
+        0.70710665
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+        {
+          "pptr": {
+            "local_id": 366221712985959,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 4120130123544059,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2788862380757136,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        },
+        {
+          "pptr": {
+            "local_id": 2840338538371746,
+            "guid": "00000000-0000-0000-0000-000000000000"
+          }
+        }
+      ],
+      "components": [
+
+      ]
+    },
+    {
+      "local_id": 366221712985959,
+      "name": "Hand Hours",
+      "is_active": true,
+      "position": [
+        -0.11272377,
+        0.75241631,
+        -0.15826051
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2153865419139946,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 1825854221255753
+        },
+        {
+          "local_id": 3168677273263105
+        }
+      ]
+    },
+    {
+      "local_id": 4120130123544059,
+      "name": "Hand Minutes",
+      "is_active": true,
+      "position": [
+        -0.11272377,
+        0.75241631,
+        -0.15826051
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2153865419139946,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 4011972668150491
+        },
+        {
+          "local_id": 3437624214761213
+        }
+      ]
+    },
+    {
+      "local_id": 2788862380757136,
+      "name": "Hand Seconds",
+      "is_active": true,
+      "position": [
+        -0.11272377,
+        0.75800937,
+        -0.15826051
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2153865419139946,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 93872380681010
+        },
+        {
+          "local_id": 2737884384342096
+        }
+      ]
+    },
+    {
+      "local_id": 2840338538371746,
+      "name": "Hand Setting",
+      "is_active": true,
+      "position": [
+        -0.11272377,
+        0.75241631,
+        -0.15826051
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 2153865419139946,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 157197600368737
+        },
+        {
+          "local_id": 4488236244407900
+        }
+      ]
+    },
+    {
+      "local_id": 1138986251359254,
+      "name": "Watch Face",
+      "is_active": true,
+      "position": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation": [
+        0.0,
+        0.0,
+        0.0,
+        1.0
+      ],
+      "scale": [
+        1.0,
+        1.0,
+        1.0
+      ],
+      "render_layer": 1,
+      "parent": {
+        "pptr": {
+          "local_id": 462179891199590,
+          "guid": "00000000-0000-0000-0000-000000000000"
+        }
+      },
+      "children": [
+
+      ],
+      "components": [
+        {
+          "local_id": 146447412916677
+        },
+        {
+          "local_id": 3251404885142358
+        }
+      ]
+    }
+  ],
+  "nested_scenes": [
+
+  ],
+  "breadcrumbs": [
+
+  ],
+  "components": [
+    {
+      "__type": "5b8c2f4e-1d3a-4e6b-8f90-7a2c4d6e8b13",
+      "base": {
+        "enabled": true,
+        "local_id": 1884851459874037
+      },
+      "clip": "8954c28e-2a93-473b-a8f6-c1b887f61b41",
+      "layers": [
+
+      ],
+      "play_automatically": true,
+      "speed": 1.0
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 1471935568812202
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 1
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1285920057039538
+      },
+      "materials": [
+        "7361f09a-2571-42be-a919-1956ce088189"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 3470878688097822
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 2
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 169189823835207
+      },
+      "materials": [
+        "ac6108c6-5472-4ed9-a9d0-02ebf90984bf"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 4101245623708979
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 3
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1527929863934160
+      },
+      "materials": [
+        "8ec1cdaa-ae64-44f7-97f8-b34c65ae981e"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 4109694090701609
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 4
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3710383778080309
+      },
+      "materials": [
+        "ae04646d-426e-4125-949e-859351155af2"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2629772812214934
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 5
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3025061982324843
+      },
+      "materials": [
+        "5589688e-135b-483a-a9ca-3ee4d18c7d5d"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2215852333244248
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 6
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3048621083374741
+      },
+      "materials": [
+        "e7e7c01e-f169-4980-ac6a-72a98672a08d"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2472632521628741
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 7
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3801769974926643
+      },
+      "materials": [
+        "a7ba853b-39a4-47ce-8b67-561d9ea0eaa5"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 2982379451453353
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 8
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 1258249413771548
+      },
+      "materials": [
+        "65c159ab-5ec1-4636-b802-ddd2a6afd208"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 1825854221255753
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 9
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3168677273263105
+      },
+      "materials": [
+        "69e1828f-16a1-4fcf-9574-5b1fdc694447",
+        "7142451b-88b5-43d7-b375-af5018a391d3",
+        "50b050f9-c2c1-4026-80cc-23ae22a796e8"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 4011972668150491
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 10
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3437624214761213
+      },
+      "materials": [
+        "69e1828f-16a1-4fcf-9574-5b1fdc694447",
+        "7142451b-88b5-43d7-b375-af5018a391d3",
+        "50b050f9-c2c1-4026-80cc-23ae22a796e8"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 93872380681010
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 11
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 2737884384342096
+      },
+      "materials": [
+        "69e1828f-16a1-4fcf-9574-5b1fdc694447",
+        "7142451b-88b5-43d7-b375-af5018a391d3"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 157197600368737
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 12
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 4488236244407900
+      },
+      "materials": [
+        "69e1828f-16a1-4fcf-9574-5b1fdc694447",
+        "7142451b-88b5-43d7-b375-af5018a391d3"
+      ]
+    },
+    {
+      "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
+      "base": {
+        "enabled": true,
+        "local_id": 146447412916677
+      },
+      "mesh": {
+        "guid": "f224b4c1-395e-4a70-8bc4-fc0a5b2e23df",
+        "local_id": 13
+      }
+    },
+    {
+      "__type": "73e161a0-c599-4cfb-9826-447e05baa76c",
+      "base": {
+        "enabled": true,
+        "local_id": 3251404885142358
+      },
+      "materials": [
+        "e5a9abf7-2622-4e92-b6e8-628a926f5670"
+      ]
+    }
+  ]
+}

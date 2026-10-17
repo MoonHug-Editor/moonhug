@@ -13,6 +13,7 @@ layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec2 in_uv;
 layout(location = 3) in vec4 in_color;
 layout(location = 4) in vec4 in_tangent; // xyz direction of +u, w bitangent sign; zero = none
+layout(location = 10) in vec2 in_uv2;    // the second texture coordinate set; zero = none
 
 // Per instance: the model matrix's four columns, then the tint. Batch draws
 // bake color into vertices and read a white tint; mesh draws carry their
@@ -36,6 +37,7 @@ layout(location = 3) out vec3 frag_world_pos;
 // World-space tangent and the bitangent sign, for normal maps (surface.glsl
 // perturb_normal). Zero when the vertex has none.
 layout(location = 4) out vec4 frag_tangent;
+layout(location = 5) out vec2 frag_uv2;
 
 // The same vertex gives the same depth in every pipeline: a depth prepass
 // and the shading pass after it compare equal.
@@ -54,6 +56,7 @@ void main() {
     vec4 world = model * vec4(in_position, 1.0);
     gl_Position = view_proj * world;
     frag_uv     = in_uv;
+    frag_uv2    = in_uv2;
     frag_color  = vec4(srgb_to_linear(in_color.rgb) * srgb_to_linear(in_tint.rgb), in_color.a * in_tint.a);
     // mat3(model) is wrong under non-uniform scale (needs inverse-transpose);
     // accepted for the built-in lit shader, normals renormalize in fragment.

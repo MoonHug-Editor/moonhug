@@ -32,6 +32,7 @@ layout(location = 1) in vec4 frag_color;
 layout(location = 2) in vec3 frag_normal;
 layout(location = 3) in vec3 frag_world_pos;
 layout(location = 4) in vec4 frag_tangent; // world tangent, w bitangent sign; zero = none
+layout(location = 5) in vec2 frag_uv2;     // the second texture coordinate set (a baked atlas); zero = none
 
 layout(set = 2, binding = 0) uniform sampler2D tex;
 
@@ -256,7 +257,7 @@ layout(set = 3, binding = 1) uniform LitMaterial {
     vec4 lit_params;   // x metallic, y smoothness, z normal scale (0 = no map), w occlusion strength
     vec4 lit_emission; // rgb emission color, linear (times the emission map), w refraction
     vec4 lit_uv;       // xy the maps' uv scale, zw their offset (KHR_texture_transform)
-    vec4 lit_flags;    // x = 1 reads the maps clamped to their edges
+    vec4 lit_flags;    // x = 1 reads the maps clamped to their edges, y = the maps read from the second uv set, as bits (1 base, 2 metallic roughness, 4 normal, 8 occlusion, 16 emission)
 };
 layout(set = 2, binding = 1) uniform sampler2D metallic_roughness_map; // glTF packing: g roughness, b metallic
 layout(set = 2, binding = 2) uniform sampler2D normal_map;

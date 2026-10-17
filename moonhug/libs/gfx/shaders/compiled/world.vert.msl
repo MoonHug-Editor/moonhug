@@ -17,6 +17,7 @@ struct main0_out
     float3 frag_normal [[user(locn2)]];
     float3 frag_world_pos [[user(locn3)]];
     float4 frag_tangent [[user(locn4)]];
+    float2 frag_uv2 [[user(locn5)]];
     float4 gl_Position [[position, invariant]];
 };
 
@@ -32,6 +33,7 @@ struct main0_in
     float4 in_model2 [[attribute(7)]];
     float4 in_model3 [[attribute(8)]];
     float4 in_tint [[attribute(9)]];
+    float2 in_uv2 [[attribute(10)]];
 };
 
 static inline __attribute__((always_inline))
@@ -50,11 +52,12 @@ vertex main0_out main0(main0_in in [[stage_in]], constant UBO& _115 [[buffer(0)]
     float4 _120 = _115.view_proj * world;
     out.gl_Position = _120;
     out.frag_uv = in.in_uv;
+    out.frag_uv2 = in.in_uv2;
     float3 param = in.in_color.xyz;
-    float3 _134 = srgb_to_linear(param);
+    float3 _137 = srgb_to_linear(param);
     float3 param_1 = in.in_tint.xyz;
-    float3 _139 = srgb_to_linear(param_1);
-    out.frag_color = float4(_134 * _139, in.in_color.w * in.in_tint.w);
+    float3 _142 = srgb_to_linear(param_1);
+    out.frag_color = float4(_137 * _142, in.in_color.w * in.in_tint.w);
     out.frag_normal = float3x3(model[0].xyz, model[1].xyz, model[2].xyz) * in.in_normal;
     out.frag_world_pos = world.xyz;
     float mirror = (determinant(float3x3(model[0].xyz, model[1].xyz, model[2].xyz)) < 0.0) ? (-1.0) : 1.0;
