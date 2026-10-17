@@ -1,3 +1,35 @@
+## [0.132.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.131.0...v0.132.0) (2026-10-17)
+
+### Features
+
+* Alpha clipping, depth-only rendering, depth prepass ([a0a0556](https://github.com/MoonHug-Editor/moonhug/commit/a0a0556dfec568c4b014a09d4cfe7c50acfad36d))
+* auto exposure (centre-weighted, adaptive) and colour grading with lookup textures ([350417b](https://github.com/MoonHug-Editor/moonhug/commit/350417b3c12f8669ac062396aa0db828596f0fc9))
+* back-face culling, TAA motion vectors, SSAO ([7f5e9d4](https://github.com/MoonHug-Editor/moonhug/commit/7f5e9d48dee79e931feca528cef4194857308d2e))
+* ChronographWatch sample, lit uv transform and clamp, glTF transmission as glass ([38c036b](https://github.com/MoonHug-Editor/moonhug/commit/38c036b1422c62dd813de9499f33137f4d2100dd))
+* depth of field (postfx_dof) ([7142ccf](https://github.com/MoonHug-Editor/moonhug/commit/7142ccf272ef70574fb58d98a0c0a4a14afde94c))
+* fog (distance and height, on the Environment), transparent materials ([bf8db23](https://github.com/MoonHug-Editor/moonhug/commit/bf8db235e4bfc0381aa54774e2e042e7e29ee23e))
+* frustum culling, count: draw calls, instances, triangles, passes, CPU time and GPU wait per frame. instancing ([eff3654](https://github.com/MoonHug-Editor/moonhug/commit/eff365478e225b98e7c12f1c0ccd784f76377d20))
+* histogram metering for the auto exposure ([226a1b3](https://github.com/MoonHug-Editor/moonhug/commit/226a1b355aa1209b4df2650b46335e2cc508c575))
+* MCP view tools (window_list, window_place, window_resize, editor_size, window screenshots), smooth flythrough start ([681a475](https://github.com/MoonHug-Editor/moonhug/commit/681a475877c8e1677da51a41859e93dfeff243bb))
+* motion blur (postfx_motion_blur), motion vectors run without TAA ([e9147fb](https://github.com/MoonHug-Editor/moonhug/commit/e9147fb24f7e972e98931b1c5463e138e9d244e2))
+* optional step reads, steady pre-TAA inspection ([f962545](https://github.com/MoonHug-Editor/moonhug/commit/f962545485dd882b83019488a56c6ca0f632aed8))
+* reflection probes (component, capture step, box-projected per-draw cubes) ([678befc](https://github.com/MoonHug-Editor/moonhug/commit/678befc4b859cab905b75d89a44b60868c16be35))
+* reflections use the materials' normal maps (normals pass flag) ([6bb1358](https://github.com/MoonHug-Editor/moonhug/commit/6bb1358d947c1c1c9d82678e879cd8879360e529))
+* refraction (no flicker without TAA) ([1e010ed](https://github.com/MoonHug-Editor/moonhug/commit/1e010ed45c3ca924a598775a8735ec5bf32f12b4))
+* refraction falls back to the environment beyond the screen edge ([035480d](https://github.com/MoonHug-Editor/moonhug/commit/035480ddbdf635dc8b0b28ba813ea800a04f3478))
+* render pipeline and shader graph ([0317dc4](https://github.com/MoonHug-Editor/moonhug/commit/0317dc4aed7fa3d159b1eedf795eea52ad476742))
+* screen-space reflections (scene_ssr step), demo fog off ([b12a6a4](https://github.com/MoonHug-Editor/moonhug/commit/b12a6a4bab56fddafd88268175b834c39f901aae))
+* second uv set on meshes, per-map uv set on Lit materials, Extract reports missing images ([93175b8](https://github.com/MoonHug-Editor/moonhug/commit/93175b84a1a0f6123c2c0ca12cc363819edf8d08))
+* shadow_cascades, shadow_atlas ([d1d72a5](https://github.com/MoonHug-Editor/moonhug/commit/d1d72a5a9ff7ef81c0424dab6b0fada8bf21302f))
+* sky ([196dfbe](https://github.com/MoonHug-Editor/moonhug/commit/196dfbed7d293cfc8eec108de1ffe0081aeb9d13))
+* tangents and normal maps, physically based lit ([7aff7c6](https://github.com/MoonHug-Editor/moonhug/commit/7aff7c615b5aa632d6b19274df37270d4bcce999))
+* volumes (per-place render step settings, blended by camera position) ([08abe2d](https://github.com/MoonHug-Editor/moonhug/commit/08abe2d7f828edd6268787cf332f2d92c552f118))
+
+### Bug Fixes
+
+* don't redraw preview each frame ([3c25c47](https://github.com/MoonHug-Editor/moonhug/commit/3c25c47044ad60978d4d9672ceb55d5cea6c4456))
+* highlights, mip levels, specular anti-aliasing ([4b3db15](https://github.com/MoonHug-Editor/moonhug/commit/4b3db15da7e9bc62fef485caef7efc9b0ff235ee))
+
 ## [0.131.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.130.0...v0.131.0) (2026-10-12)
 
 ### Features
