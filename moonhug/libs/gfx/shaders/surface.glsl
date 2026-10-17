@@ -194,15 +194,21 @@ vec3 box_projected(vec3 r, vec3 p, vec3 centre, vec3 box_min, vec3 box_max) {
     return p + r * t - centre;
 }
 
-// The environment's reflection for the surface at `p` with the reflected
-// ray `r`: the draw's probe when one is bound, box projected when it says
-// so, else the scene's environment.
-vec3 env_reflection(vec3 r, vec3 p, float roughness) {
+// What the environment shows along the ray `r` from `p`, at mip `lod`: the
+// draw's probe when one is bound, box projected when it says so, else the
+// scene's environment, each at its intensity.
+vec3 env_along(vec3 r, vec3 p, float lod) {
     if (probe_max.w > 0.5) {
         vec3 dir = probe_pos.w > 0.5 ? box_projected(r, p, probe_pos.xyz, probe_min.xyz, probe_max.xyz) : r;
-        return textureLod(env_specular, dir, roughness * env_params.z).rgb * probe_min.w;
+        return textureLod(env_specular, dir, lod).rgb * probe_min.w;
     }
-    return textureLod(env_specular, r, roughness * env_params.z).rgb * env_params.y;
+    return textureLod(env_specular, r, lod).rgb * env_params.y;
+}
+
+// The environment's reflection for the surface at `p` with the reflected
+// ray `r`, blurrier the rougher the surface.
+vec3 env_reflection(vec3 r, vec3 p, float roughness) {
+    return env_along(r, p, roughness * env_params.z);
 }
 
 // What a refracting surface shows (Material.refraction, surface_main):
@@ -211,7 +217,9 @@ vec3 env_reflection(vec3 r, vec3 p, float roughness) {
 // beyond the copy's edge a stand-in takes over, blended in over the last
 // fiftieth of the screen before it: on a curved surface (the bend changes
 // from pixel to pixel: a ball) the environment along the bent ray, which
-// reads as sky and ground seen through glass, and on a flat face (one bend
+// reads as sky and ground seen through glass (the draw's probe box projected
+// from where the ray leaves the surface, as reflections read it, so a
+// room's walls stand where they are), and on a flat face (one bend
 // across it: a slab) what sits straight behind the pixel, since one
 // environment colour over a whole face looks like paint. Without an
 // environment every surface falls back to what is behind it.
@@ -232,7 +240,7 @@ vec3 refracted(vec3 n, float t) {
     if (beyond <= 0.0) return screen;
     vec3 behind = texture(scene_color, uv, 1.0).rgb;
     vec3 stand_in = behind;
-    if (env_params.z > 0.0) stand_in = mix(behind, textureLod(env_specular, inside, 1.0).rgb, curved);
+    if (env_params.z > 0.0 || probe_max.w > 0.5) stand_in = mix(behind, env_along(inside, frag_world_pos + inside * t, 1.0), curved);
     return mix(screen, stand_in, beyond);
 }
 

@@ -129,8 +129,6 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
   - if no menu path specified, type name is used
 
 ## TODO
-- mesh tangents + linear color pipeline (pbr.glsl works around both in-shader)
-
 - sprite atlas (batching): a .spriteatlas asset packs slices from many textures into one atlas artifact, sprite_quad redirects texture + uvs through the atlas mapping — renderers and scenes untouched. PPtr sprite references are the mapping key
 
 - reflection probe blending: a mesh between two probes' boxes crossfades their cubes by its distance to the box edge, instead of switching from one to the other when its centre crosses
@@ -157,7 +155,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - physics3d follow-ups:
   - PhysicsLayerCollision settings asset
   - PhysicsMaterial asset
-  - mesh/compound colliders
+  - mesh colliders
   - explicit mass
 
 - bulk entity tier for mass simulation (100k-scale sprite battles): SoA arrays + fixed-tick sim + GPU instancing, see [Components](plugins/engine/docs/Components.md) "Two data regimes"
@@ -174,8 +172,7 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 
 - lightweight App: the generated glue of a runnable package imports `serialization` and `gizmos` (so `gfx`) even when the package declares no component and installs no engine. Emit both only when needed, so a package importing `moonhug:libs/core` alone builds as a small headless App
 
-- undo follow-ups: import settings onto the asset doc model
-- multiselection follow-ups: multi-path drag-drop, multiedit for prefab-instance selections
+- multiselection follow-ups: multi-path drag-drop
 
 ### Considered Features
 
