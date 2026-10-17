@@ -146,7 +146,7 @@ float fog_amount(vec3 world_pos) {
 }
 
 // The opaque image so far (the scene_copy step), what a refracting surface
-// shows: black when no step copied it. `refracted(n, t)` reads it where the
+// shows: black when no step copied it. `refracted(n, t, a)` reads it where the
 // view ray lands after bending into the surface (Snell's law, glass's index
 // of 1.5) and travelling `t` world units through it: straight on it barely
 // moves, at a grazing edge it bends hard, and a solid ball of its own
@@ -222,8 +222,10 @@ vec3 env_reflection(vec3 r, vec3 p, float roughness) {
 // room's walls stand where they are), and on a flat face (one bend
 // across it: a slab) what sits straight behind the pixel, since one
 // environment colour over a whole face looks like paint. Without an
-// environment every surface falls back to what is behind it.
-vec3 refracted(vec3 n, float t) {
+// environment every surface falls back to what is behind it. A curved
+// surface reads the copy one mip blurrier, a rough one (`a`, roughness
+// squared) blurrier still, a flat smooth face sharp.
+vec3 refracted(vec3 n, float t, float a) {
     vec3 inside = refract(-normalize(view_pos.xyz - frag_world_pos), n, 1.0 / 1.5);
     vec4 here = view_proj * vec4(frag_world_pos, 1.0);
     vec4 there = view_proj * vec4(frag_world_pos + inside * t, 1.0);
@@ -231,14 +233,16 @@ vec3 refracted(vec3 n, float t) {
     vec2 offset = (there.xy / there.w - here.xy / here.w) * vec2(0.5, -0.5);
     float curved = smoothstep(0.0, 0.002, length(fwidth(offset)));
     vec2 look = uv + offset;
-    // One mip level blurrier than the lens's minification asks: glass is
-    // never a perfect lens, and under TAA's sub-pixel camera moves a sharp
-    // minified image flickers where fine detail lands.
-    vec3 screen = texture(scene_color, clamp(look, vec2(0.001), vec2(0.999)), 1.0).rgb;
+    // Up to one mip level blurrier than the lens's minification asks where
+    // the surface curves: a ball is never a perfect lens, and under TAA's
+    // sub-pixel camera moves a sharp minified image flickers where fine
+    // detail lands. Roughness spreads the light over more of the copy.
+    float blur = curved + a * float(textureQueryLevels(scene_color));
+    vec3 screen = texture(scene_color, clamp(look, vec2(0.001), vec2(0.999)), blur).rgb;
     float outside = max(max(-look.x, look.x - 1.0), max(-look.y, look.y - 1.0));
     float beyond = smoothstep(-0.02, 0.0, outside);
     if (beyond <= 0.0) return screen;
-    vec3 behind = texture(scene_color, uv, 1.0).rgb;
+    vec3 behind = texture(scene_color, uv, blur).rgb;
     vec3 stand_in = behind;
     if (env_params.z > 0.0 || probe_max.w > 0.5) stand_in = mix(behind, env_along(inside, frag_world_pos + inside * t, 1.0), curved);
     return mix(screen, stand_in, beyond);

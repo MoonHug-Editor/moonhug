@@ -176,11 +176,13 @@ extract_gltf_assets :: proc(model_path: string) {
 			}
 		}
 		// KHR_materials_transmission: glass. Transparent and refracting a
-		// little (a pane's thickness), keeping a tenth of its own lighting
-		// for its highlights.
+		// little (a pane's thickness), the transmitted light in place of
+		// the diffuse by the factor, as glTF has it: the alpha of a
+		// refracting material is how much of its diffuse body remains, its
+		// highlights and reflections stay whole.
 		if m.has_transmission && m.transmission.transmission_factor > 0 {
 			mat.surface = .Transparent
-			mat.color.a = max(1 - m.transmission.transmission_factor, 0.1)
+			mat.color.a = 1 - min(m.transmission.transmission_factor, 1)
 			mat.refraction = 0.02
 		}
 

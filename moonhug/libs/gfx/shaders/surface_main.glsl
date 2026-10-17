@@ -118,8 +118,10 @@ void main() {
     vec3 diffuse_color = s.albedo * (1.0 - metallic);
 
     // The lights that reach this fragment's screen tile: its bits, lowest
-    // first, one word of 32 lights at a time.
-    vec3 color = vec3(0.0);
+    // first, one word of 32 lights at a time. Diffuse and specular apart: a
+    // refracting surface replaces the first, not the second.
+    vec3 diffuse = vec3(0.0);
+    vec3 specular = vec3(0.0);
     int count = int(ambient_count.y + 0.5);
     int tile = light_tile();
     vec3 geometric_n = vertex_normal();
@@ -157,14 +159,17 @@ void main() {
             // brighter than that only makes fireflies.
             vec3 spec = min(D_GGX(NoH, a) * V_SmithGGXCorrelated(NoV, NoL, a) * F * PI, vec3(100.0));
             vec3 kd = (1.0 - F) * diffuse_color;
-            color += (kd + spec) * l.color_outer.rgb * (NoL * atten);
+            vec3 light = l.color_outer.rgb * (NoL * atten);
+            diffuse += kd * light;
+            specular += spec * light;
         }
     }
 
     // The screen's ambient occlusion shades the environment's light and a
     // part of the lights' (scene_ssao's `direct`).
     vec2 screen_ao = screen_occlusion();
-    color *= screen_ao.y;
+    diffuse *= screen_ao.y;
+    specular *= screen_ao.y;
 
     // What no light reaches: the environment, shaded by occlusion.
     vec3 r = reflect(-v, n);
@@ -173,18 +178,25 @@ void main() {
     // The screen's reflection where the scene_ssr step found one.
     vec4 screen = screen_reflection(roughness);
     reflected = reflected * (1.0 - screen.a) + screen.rgb;
-    color += (diffuse_color * irradiance + reflected * env_brdf_approx(f0, roughness, NoV)) * min(s.occlusion, screen_ao.x);
+    float occlusion = min(s.occlusion, screen_ao.x);
+    vec3 env_f = env_brdf_approx(f0, roughness, NoV);
+    diffuse += diffuse_color * irradiance * occlusion;
+    specular += reflected * env_f * occlusion;
 
-    // Capped well inside half-float range (65504): an overflow is infinite and
-    // spreads through bloom as a white block.
-    color = min(color + s.emissive, vec3(4096.0));
     float alpha = s.alpha;
-    // A refracting surface shows the scene behind it, bent, tinted by its
-    // albedo, under its own lighting by its alpha, and covers its pixel.
+    // A refracting surface: the scene behind it, bent, tinted by its albedo,
+    // and less of it the more the surface reflects (Fresnel), in place of
+    // its diffuse light by its alpha (0: clear glass, 1: an opaque body).
+    // The highlights and reflections stay whole over it, and it covers its
+    // pixel.
     if (s.refraction > 0.0) {
-        color = mix(refracted(n, s.refraction) * s.albedo, color, alpha);
+        vec3 through = refracted(n, s.refraction, a) * s.albedo * (1.0 - env_f);
+        diffuse = mix(through, diffuse, alpha);
         alpha = 1.0;
     }
+    // Capped well inside half-float range (65504): an overflow is infinite and
+    // spreads through bloom as a white block.
+    vec3 color = min(diffuse + specular + s.emissive, vec3(4096.0));
     color = mix(color, fog_color.rgb, fog_amount(frag_world_pos));
     out_color = vec4(color, alpha);
 }
