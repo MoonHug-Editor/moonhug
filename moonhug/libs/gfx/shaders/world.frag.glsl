@@ -27,6 +27,10 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe_pos;  // the draw's reflection probe: xyz its centre, w = 1 when box projected
     vec4 probe_min;  // xyz the box, w = the probe's intensity
     vec4 probe_max;  // xyz the box, w = 1 when a probe is bound, 2 when its irradiance is bound too
+    vec4 probe2_pos; // what the probe blends with (another probe or the environment): xyz its centre, w = 1 when box projected
+    vec4 probe2_min; // xyz the box, w = its specular intensity
+    vec4 probe2_max; // xyz the box, w = its diffuse intensity
+    vec4 probe_blend; // x = the probe's weight, 1 = no blend
 };
 
 // Fog (gfx.set_fog, the DrawUBO): how much of the fog colour covers a point.

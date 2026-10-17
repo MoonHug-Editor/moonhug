@@ -99,13 +99,14 @@ The frame lane's `environment_pass` renders it into cubes, only when a setting, 
 A Reflection Probe component captures its surroundings into a cube, so the smooth surfaces near it reflect the room, the objects behind the camera included, instead of the sky alone. The frame lane's `reflection_probes_pass` step does the capture (RenderPipeline.md).
 
 - `size` is a box in world units around the transform's position, aligned to the world (the transform's rotation and scale do not apply). A mesh whose centre lies inside takes the probe for its reflections, the smallest box when several hold it. Outside every box the Environment reflects
+- `blend_distance` (1 for a new probe) is how far inside the box's edge a mesh starts fading out of the probe, in world units: toward the next smaller box that holds its centre, or the Environment when none does, so a mesh crossing the edge crossfades instead of switching. 0 switches at the edge. The fade lies inside the box, so two neighbouring rooms crossfade where their boxes overlap by the blend distance, and boxes that only touch fade to the Environment at the seam. Two probes blend at most, the smallest box holding the mesh and the next one
 - the capture renders the scene six times from the probe's position through the engine's own scene steps (the sun's cascades, the opaque meshes, the sky, the transparents), at `resolution` pixels a face, with no anti-aliasing, no post effects and no reflections of other probes, then prefilters the cube for roughness as the Environment's
 - `refresh` Once captures when the probe is first seen and again when it moves or its resolution changes, so objects that move afterwards do not show in it. Every Frame captures each frame, six scene renders a frame
 - `box_projection` reflects the box's walls where they are: a floor inside a room shows the room at its place rather than at infinity. Off for open ground, where there are no walls
 - `diffuse` (on for a new probe) lights the meshes inside with the room's diffuse light as captured, its walls, floor and lit surfaces, instead of the Environment's sky: an irradiance cube made from the capture as the Environment makes its own. Off, the diffuse light stays the Environment's
 - `intensity` scales the reflection and the diffuse light. The Environment's `reflection_intensity` and `ambient_intensity` do not apply to a probe
 - a probe replaces the environment's light only: the lights still light as they do, screen-space reflections still take precedence where they hit, and a refracting material's stand-in beyond the screen edge reads the probe too, box projected the same way
-- probes do not blend: at a box's edge a mesh switches from one to the other, or to the Environment, which shows more with `diffuse` on, since it changes the whole surface rather than its reflection
+- the probe is picked by the mesh's centre, so a large mesh spanning two rooms takes one probe whole. Per-pixel selection is not done
 
 A panorama is any color texture for now. HDR images (`.hdr`, float) need a float texture import, not done yet.
 

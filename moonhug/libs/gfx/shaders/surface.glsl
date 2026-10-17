@@ -91,6 +91,10 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe_pos;  // the draw's reflection probe: xyz its centre, w = 1 when box projected
     vec4 probe_min;  // xyz the box, w = the probe's intensity
     vec4 probe_max;  // xyz the box, w = 1 when a probe is bound, 2 when its irradiance is bound too
+    vec4 probe2_pos; // what the probe blends with (another probe or the environment): xyz its centre, w = 1 when box projected
+    vec4 probe2_min; // xyz the box, w = its specular intensity
+    vec4 probe2_max; // xyz the box, w = its diffuse intensity
+    vec4 probe_blend; // x = the probe's weight, 1 = no blend
 };
 
 // Every light of the pass (gfx.set_lights), and for each tile of the screen's
@@ -181,6 +185,10 @@ vec4 screen_reflection(float roughness) {
 // when the pass has none, so the ambient level lights uniformly.
 layout(set = 2, binding = 8) uniform samplerCube env_specular; // the draw's reflection probe's cube when one is bound (probe_max.w)
 layout(set = 2, binding = 9) uniform samplerCube env_irradiance; // the draw's probe's when one is bound with it (probe_max.w 2)
+// What the draw's probe blends with near its box's edge (probe_blend.x
+// below 1): another probe's cubes, or the environment's.
+layout(set = 2, binding = 14) uniform samplerCube env_specular2;
+layout(set = 2, binding = 15) uniform samplerCube env_irradiance2;
 
 // The direction to read a box-projected probe in: where the reflected ray
 // from `p` leaves the probe's box, seen from the probe's centre, so a flat
@@ -196,13 +204,24 @@ vec3 box_projected(vec3 r, vec3 p, vec3 centre, vec3 box_min, vec3 box_max) {
 
 // What the environment shows along the ray `r` from `p`, at mip `lod`: the
 // draw's probe when one is bound, box projected when it says so, else the
-// scene's environment, each at its intensity.
+// scene's environment, each at its intensity. Near the probe's box edge it
+// fades into what it blends with by its weight.
 vec3 env_along(vec3 r, vec3 p, float lod) {
-    if (probe_max.w > 0.5) {
-        vec3 dir = probe_pos.w > 0.5 ? box_projected(r, p, probe_pos.xyz, probe_min.xyz, probe_max.xyz) : r;
-        return textureLod(env_specular, dir, lod).rgb * probe_min.w;
-    }
-    return textureLod(env_specular, r, lod).rgb * env_params.y;
+    if (probe_max.w < 0.5) return textureLod(env_specular, r, lod).rgb * env_params.y;
+    vec3 dir = probe_pos.w > 0.5 ? box_projected(r, p, probe_pos.xyz, probe_min.xyz, probe_max.xyz) : r;
+    vec3 c = textureLod(env_specular, dir, lod).rgb * probe_min.w;
+    if (probe_blend.x >= 1.0) return c;
+    vec3 dir2 = probe2_pos.w > 0.5 ? box_projected(r, p, probe2_pos.xyz, probe2_min.xyz, probe2_max.xyz) : r;
+    return mix(textureLod(env_specular2, dir2, lod).rgb * probe2_min.w, c, probe_blend.x);
+}
+
+// The environment's diffuse light on a surface facing `n`: the draw's
+// probe's when it lights diffusely, else the scene's environment, faded
+// into what the probe blends with near its box's edge.
+vec3 env_irradiance_at(vec3 n) {
+    vec3 c = texture(env_irradiance, n).rgb * (probe_max.w > 1.5 ? probe_min.w : env_params.x);
+    if (probe_max.w < 0.5 || probe_blend.x >= 1.0) return c;
+    return mix(texture(env_irradiance2, n).rgb * probe2_max.w, c, probe_blend.x);
 }
 
 // The environment's reflection for the surface at `p` with the reflected

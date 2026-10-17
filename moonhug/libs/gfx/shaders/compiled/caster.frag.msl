@@ -28,6 +28,10 @@ struct DrawUBO
     float4 probe_pos;
     float4 probe_min;
     float4 probe_max;
+    float4 probe2_pos;
+    float4 probe2_min;
+    float4 probe2_max;
+    float4 probe_blend;
 };
 
 struct GpuLight

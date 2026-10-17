@@ -7,7 +7,8 @@ package engine
 // meshes use it: a mesh whose centre lies inside takes the smallest such
 // box's cube in place of the scene's Environment for its reflections, and
 // with `diffuse` on, the captured room's diffuse light in place of the
-// Environment's too. The
+// Environment's too. Within `blend_distance` of the box's edge a mesh
+// fades into the next smaller box holding it, or the Environment. The
 // frame lane's reflection_probes_pass step captures it (render_probes.odin).
 
 // When the cube is captured again.
@@ -30,6 +31,10 @@ Reflection_Probe :: struct {
 	// The box, in world units around the transform's position, aligned to
 	// the world: the meshes inside reflect this probe.
 	size:           [3]f32 `decor:min(0)`,
+	// How far inside the box's edge a mesh starts fading into the next
+	// smaller box holding it, or the Environment, in world units: 0 switches
+	// at the edge. Neighbouring rooms' boxes overlap by it to crossfade.
+	blend_distance: f32 `decor:min(0)`,
 	// Reflect the box's walls where they are (a floor shows the room at
 	// its place) instead of at infinity, as fits a room. Off for open
 	// ground, where there are no walls to project onto.
@@ -46,6 +51,7 @@ Reflection_Probe :: struct {
 
 reset_Reflection_Probe :: proc(p: ^Reflection_Probe) {
 	p.size = {10, 10, 10}
+	p.blend_distance = 1
 	p.box_projection = true
 	p.diffuse = true
 	p.intensity = 1

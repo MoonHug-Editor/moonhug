@@ -43,7 +43,7 @@ _Draw :: struct {
 	shader:         string, // "" = DEFAULT_SHADER (meshes and batched quads)
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
-	probe:        Probe,  // mesh draws: the probe's cubes in place of the pass's environment, cube nil = none
+	probe:        Probe_Blend, // mesh draws: the probes' cubes in place of the pass's environment, probe.cube nil = none
 }
 
 // A reflection probe for a draw (draw_mesh `probe`): its prefiltered cube
@@ -62,9 +62,21 @@ Probe :: struct {
 	intensity: f32,
 }
 
+// The probes of one draw: `probe` by `weight` (0..1), the rest `other`, or
+// the environment when other's cube is nil, so a mesh near a probe box's
+// edge crossfades instead of switching. A weight of 1 reads `probe` alone.
+// The other's cubes ride ENV_SPECULAR2_SLOT and ENV_IRRADIANCE2_SLOT.
+Probe_Blend :: struct {
+	probe:  Probe,
+	other:  Probe,
+	weight: f32,
+}
+
 // Fragment sampler slots a single draw can bind (mirrors the importer's
-// SHADER_MAX_SAMPLERS — pipelines are created with at most this many).
-MAX_FRAGMENT_SAMPLERS :: 14
+// SHADER_MAX_SAMPLERS — pipelines are created with at most this many). SDL
+// binds at most 16 per stage (MAX_TEXTURE_SAMPLERS_PER_STAGE), Metal holds
+// 16 sampler states: every slot is taken.
+MAX_FRAGMENT_SAMPLERS :: 16
 
 // Must match the world vertex shader's UBO (std140: mat4).
 _Uniform :: struct {
@@ -98,6 +110,10 @@ _Draw_Uniform :: struct {
 	probe_pos:  [4]f32, // the draw's reflection probe: xyz its centre, w = 1 when box projected
 	probe_min:  [4]f32, // xyz the box, w = the probe's intensity
 	probe_max:  [4]f32, // xyz the box, w = 1 when a probe is bound, 2 when its irradiance is bound too
+	probe2_pos: [4]f32, // what the probe blends with (the other probe or the environment): xyz its centre, w = 1 when box projected
+	probe2_min: [4]f32, // xyz the box, w = its specular intensity
+	probe2_max: [4]f32, // xyz the box, w = its diffuse intensity
+	probe_blend: [4]f32, // x = the probe's weight, 1 = no blend
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -235,6 +251,11 @@ SCENE_COLOR_SLOT    :: 12
 // sees times the confidence, alpha the confidence. Clear (no confidence)
 // when none is set.
 REFLECTIONS_SLOT    :: 13
+
+// What a draw's probe blends with (Probe_Blend.other): its prefiltered cube
+// and its irradiance, the environment's when it has no probe.
+ENV_SPECULAR2_SLOT   :: 14
+ENV_IRRADIANCE2_SLOT :: 15
 
 _Env :: struct {
 	has:        bool,
@@ -967,7 +988,7 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // clockwise triangles are the front faces, so culling and the shader's
 // gl_FrontFacing still see the outside as the front. Wire and overlay draws
 // show both faces and ignore both.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false, probe := Probe{}) {
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false, probe := Probe_Blend{}) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
@@ -1332,7 +1353,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_vp := i32(-1)
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
-	pushed_probe := Probe{intensity = -1}
+	pushed_probe := Probe_Blend{weight = -1}
 	pushed_draw_vp := i32(-1) // the draw block holds the view's camera, for the fog
 	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
@@ -1389,8 +1410,9 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			num_bindings = SHADOW_SAMPLER_SLOT + 1
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > ENV_IRRADIANCE_SLOT && env_specular != nil && env_irradiance != nil {
-			bindings[ENV_SPECULAR_SLOT] = {texture = d.probe.cube != nil ? d.probe.cube.tex : env_specular.tex, sampler = _gfx.sampler_linear}
-			bindings[ENV_IRRADIANCE_SLOT] = {texture = d.probe.cube != nil && d.probe.irradiance != nil ? d.probe.irradiance.tex : env_irradiance.tex, sampler = _gfx.sampler_linear}
+			pr := d.probe.probe
+			bindings[ENV_SPECULAR_SLOT] = {texture = pr.cube != nil ? pr.cube.tex : env_specular.tex, sampler = _gfx.sampler_linear}
+			bindings[ENV_IRRADIANCE_SLOT] = {texture = pr.cube != nil && pr.irradiance != nil ? pr.irradiance.tex : env_irradiance.tex, sampler = _gfx.sampler_linear}
 			num_bindings = ENV_IRRADIANCE_SLOT + 1
 		}
 		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > SHADOW_ATLAS_SLOT {
@@ -1410,15 +1432,32 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			bindings[REFLECTIONS_SLOT] = {texture = reflections_gpu, sampler = _gfx.sampler_linear}
 			num_bindings = REFLECTIONS_SLOT + 1
 		}
+		if !d.fullscreen && _shader_samplers(d.shader, _pass.format) > ENV_IRRADIANCE2_SLOT {
+			o := d.probe.other
+			bindings[ENV_SPECULAR2_SLOT] = {texture = o.cube != nil ? o.cube.tex : env_specular.tex, sampler = _gfx.sampler_linear}
+			bindings[ENV_IRRADIANCE2_SLOT] = {texture = o.cube != nil && o.irradiance != nil ? o.irradiance.tex : env_irradiance.tex, sampler = _gfx.sampler_linear}
+			num_bindings = ENV_IRRADIANCE2_SLOT + 1
+		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
 		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe) {
 			cam := _pass.vps[d.vp_index].cam_pos
 			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
-			if pr := d.probe; pr.cube != nil {
+			if pr := d.probe.probe; pr.cube != nil {
 				u.probe_pos = {pr.pos.x, pr.pos.y, pr.pos.z, pr.box ? 1 : 0}
 				u.probe_min = {pr.min.x, pr.min.y, pr.min.z, pr.intensity}
 				u.probe_max = {pr.max.x, pr.max.y, pr.max.z, pr.irradiance != nil ? 2 : 1}
+				u.probe_blend = {clamp(d.probe.weight, 0, 1), 0, 0, 0}
+				// What it blends with: the other probe, or the environment
+				// at its own intensities.
+				if o := d.probe.other; o.cube != nil {
+					u.probe2_pos = {o.pos.x, o.pos.y, o.pos.z, o.box ? 1 : 0}
+					u.probe2_min = {o.min.x, o.min.y, o.min.z, o.intensity}
+					u.probe2_max = {o.max.x, o.max.y, o.max.z, o.irradiance != nil ? o.intensity : light.env_params.x}
+				} else {
+					u.probe2_min.w = light.env_params.y
+					u.probe2_max.w = light.env_params.x
+				}
 			}
 			sdl.PushGPUFragmentUniformData(_gfx.cmd, DRAW_UNIFORM_SLOT, &u, size_of(_Draw_Uniform))
 			pushed_cutoff = d.alpha_cutoff

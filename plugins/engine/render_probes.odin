@@ -11,7 +11,9 @@ package engine
 // cube. The mesh draws take the probe whose box holds their centre
 // (probe_for_point), the smallest when several do, and gfx binds its cubes
 // in place of the environment's for that draw (gfx.Probe), the reflection
-// box projected when the probe says so. A capture draws without probes, so
+// box projected when the probe says so. Within the probe's blend distance
+// of its box's edge the draw fades into the next smaller box holding it, or
+// the environment (gfx.Probe_Blend). A capture draws without probes, so
 // one probe's capture never depends on another's.
 
 import "base:runtime"
@@ -40,6 +42,7 @@ Probe_Candidate :: struct {
 	owner:     Transform_Handle,
 	min, max:  [3]f32,
 	volume:    f32,
+	blend:     f32, // the blend distance
 	probe:     gfx.Probe,
 }
 
@@ -89,6 +92,7 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 			min    = tw.position - half,
 			max    = tw.position + half,
 			volume = p.size.x * p.size.y * p.size.z,
+			blend  = max(p.blend_distance, 0),
 			probe  = {cube = st.specular, irradiance = p.diffuse ? st.irradiance : nil, pos = tw.position, min = tw.position - half, max = tw.position + half, box = p.box_projection, intensity = max(p.intensity, 0)},
 		})
 	}
@@ -102,22 +106,36 @@ reflection_probes_pass :: proc(ctx: ^Render_Ctx) {
 	}
 }
 
-// The probe a mesh centred at `point` takes this frame: the smallest box
-// holding the point. None (cube nil) when no probe's box does, the frame's
-// probes are another world's, or a probe is being captured.
-probe_for_point :: proc(point: [3]f32) -> gfx.Probe {
+// The probes a mesh centred at `point` takes this frame (probe_pick). None
+// (probe.cube nil) when no probe's box holds it, the frame's probes are
+// another world's, or a probe is being captured.
+probe_for_point :: proc(point: [3]f32) -> gfx.Probe_Blend {
 	if ctx_get() == nil || _probes.capturing || _probes.world != ctx_world() do return {}
 	return probe_pick(_probes.candidates[:], point)
 }
 
-// The smallest of `candidates` whose box holds `point`, or none.
-probe_pick :: proc(candidates: []Probe_Candidate, point: [3]f32) -> gfx.Probe {
-	best: ^Probe_Candidate
+// The smallest of `candidates` whose box holds `point`, weighted by how far
+// inside its edge the point lies over its blend distance, blending with the
+// next smallest box holding the point, or the environment (other's cube
+// nil). None when no box holds it.
+probe_pick :: proc(candidates: []Probe_Candidate, point: [3]f32) -> gfx.Probe_Blend {
+	best, next: ^Probe_Candidate
 	for &c in candidates {
 		if point.x < c.min.x || point.x > c.max.x || point.y < c.min.y || point.y > c.max.y || point.z < c.min.z || point.z > c.max.z do continue
-		if best == nil || c.volume < best.volume do best = &c
+		if best == nil || c.volume < best.volume {
+			next = best
+			best = &c
+		} else if next == nil || c.volume < next.volume {
+			next = &c
+		}
 	}
-	return best != nil ? best.probe : {}
+	if best == nil do return {}
+	lo, hi := point - best.min, best.max - point
+	inside := min(lo.x, lo.y, lo.z, hi.x, hi.y, hi.z)
+	weight := best.blend > 0 ? clamp(inside / best.blend, 0, 1) : 1
+	out := gfx.Probe_Blend{probe = best.probe, weight = weight}
+	if weight < 1 && next != nil do out.other = next.probe
+	return out
 }
 
 // The six faces: a camera at the probe looking along each axis. Rendered
