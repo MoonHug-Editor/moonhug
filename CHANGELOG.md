@@ -1,3 +1,9 @@
+## [0.134.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.133.0...v0.134.0) (2026-10-18)
+
+### Features
+
+* views float in their own OS windows when dragged outside the editor (imgui multi-viewports) ([5463667](https://github.com/MoonHug-Editor/moonhug/commit/54636677c3b8b3eca98910f7e8c592485f248d42))
+
 ## [0.133.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.132.0...v0.133.0) (2026-10-18)
 
 ### Features
