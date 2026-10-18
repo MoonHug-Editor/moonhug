@@ -1,3 +1,9 @@
+## [0.135.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.2...v0.135.0) (2026-10-18)
+
+### Features
+
+* physics2d and physics3d own their collision layers (names and collision matrix in one asset, layer overrides on colliders and rigidbodies), engine keeps render layers, object inspector shows render layers in the header under the name ([c628341](https://github.com/MoonHug-Editor/moonhug/commit/c628341f116f5b926b72a2272c982782d59f8624))
+
 ## [0.134.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.1...v0.134.2) (2026-10-18)
 
 ### Bug Fixes
