@@ -75,8 +75,13 @@ poll_events :: proc(event_cb: proc(e: ^sdl.Event) = nil, wait_ms: u32 = 0, wake_
 	handle :: proc(e: ^sdl.Event, event_cb: proc(e: ^sdl.Event)) {
 		if event_cb != nil do event_cb(e)
 		#partial switch e.type {
-		case .QUIT, .WINDOW_CLOSE_REQUESTED:
+		case .QUIT:
 			_platform.quit_requested = true
+		case .WINDOW_CLOSE_REQUESTED:
+			// Only the main window quits. Other windows (the editor's
+			// floating views) close through their owner, which got the event
+			// from event_cb.
+			if e.window.windowID == sdl.GetWindowID(_platform.window) do _platform.quit_requested = true
 		case:
 			input.apply_event(e)
 		}

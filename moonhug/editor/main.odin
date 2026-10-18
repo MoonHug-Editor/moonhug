@@ -97,9 +97,11 @@ main :: proc() {
     migrate_imgui_ini()
     defer im.DestroyContext(ctx)
 
-    // Enable docking (drag window title bars to dock/undock)
+    // Docking (drag window title bars to dock/undock), and floating views in
+    // their own OS windows when dragged outside the main window
+    // (imgui_viewports.odin).
     io := im.GetIO()
-    io.ConfigFlags += {.DockingEnable}
+    io.ConfigFlags += {.DockingEnable, .ViewportsEnable}
 
     // Load UI fonts (default text font + merged Material Symbols icons). Must run
     // before the backend builds the font atlas texture.
@@ -335,6 +337,7 @@ main :: proc() {
             mcp_bridge_capture_frame()
         }
         gfx.frame_end()
+        imgui_platform_windows()
         progress_overlay_frame_scope(false)
         frames_presented += 1
 

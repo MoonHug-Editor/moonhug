@@ -79,4 +79,5 @@ _progress_pump :: proc(title, info: string, fraction: f32) {
 		})
 	}
 	gfx.frame_end()
+	imgui_platform_windows()
 }

@@ -189,6 +189,20 @@ _mouse_pos :: proc() -> [2]f32 {
 	return _input.unfocused_mouse if _hidden() else _input.mouse_pos
 }
 
+// A mouse position SDL reports in the coordinates of window `window_id`, in
+// the attached window's coordinates. The two differ for the editor's floating
+// views, which are windows of their own: a game view floating beside the main
+// window gets its mouse in the same coordinates as when docked.
+@(private)
+_in_main_window :: proc(window_id: sdl.WindowID, x, y: f32) -> [2]f32 {
+	if _window == nil || window_id == 0 || window_id == sdl.GetWindowID(_window) do return {x, y}
+	other := sdl.GetWindowFromID(window_id)
+	if other == nil do return {x, y}
+	ox, oy, mx, my: i32
+	if !sdl.GetWindowPosition(other, &ox, &oy) || !sdl.GetWindowPosition(_window, &mx, &my) do return {x, y}
+	return {x + f32(ox - mx), y + f32(oy - my)}
+}
+
 // sync_global_mouse keeps mouse_pos following the cursor outside the window
 // while the window has focus (SDL stops sending motion at the edge), as a
 // windowed game expects when aiming. Called by the platform after the
@@ -238,7 +252,7 @@ apply_event :: proc(e: ^sdl.Event) {
 			_input.key_down[sc] = false
 		}
 	case .MOUSE_MOTION:
-		_input.mouse_pos = {e.motion.x, e.motion.y}
+		_input.mouse_pos = _in_main_window(e.motion.windowID, e.motion.x, e.motion.y)
 		_input.mouse_delta += {e.motion.xrel, e.motion.yrel}
 	case .MOUSE_BUTTON_DOWN, .MOUSE_BUTTON_UP:
 		btn: Mouse_Button
@@ -248,7 +262,7 @@ apply_event :: proc(e: ^sdl.Event) {
 		case 3: btn = .Right
 		case:   return
 		}
-		_input.mouse_pos = {e.button.x, e.button.y}
+		_input.mouse_pos = _in_main_window(e.button.windowID, e.button.x, e.button.y)
 		if e.button.down {
 			_input.mouse_down[btn] = true
 			_input.mouse_pressed[btn] = true
@@ -271,6 +285,9 @@ apply_event :: proc(e: ^sdl.Event) {
 		_platform_app_focus(true)
 	case .WINDOW_FOCUS_LOST:
 		_input.dbg_focus_lost += 1
+		// Focus moving to another window of this app (an editor floating
+		// view) keeps the app focused: SDL already names the new window.
+		if sdl.GetKeyboardFocus() != nil do return
 		_input.is_focused = false
 		_platform_app_focus(false)
 	}

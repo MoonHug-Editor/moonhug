@@ -151,6 +151,7 @@ _Window_Info :: struct {
 	height:  f32,
 	docked:  bool,
 	visible: bool, // drawn this frame: a docked window's tab is in front
+	floating: bool, // in its own OS window outside the main window (imgui_viewports.odin)
 }
 
 @(private = "file")
@@ -162,10 +163,11 @@ _window_info :: proc(w: ^im.Window) -> _Window_Info {
 		title = title, id = id,
 		x = w.Pos.x - vp.Pos.x, y = w.Pos.y - vp.Pos.y, width = w.Size.x, height = w.Size.y,
 		docked = w in _dock_nodes(), visible = (w.Active || w.WasActive) && !w.Hidden,
+		floating = w.Viewport != nil && w.Viewport.ID_ != vp.ID_,
 	}
 }
 
-@(mcp_tool={description="The editor's open windows (Scene, Game, Inspector, Render Pipeline, ...): each one's title and id, its rectangle in points from the editor's top-left, whether it is docked, and whether it is drawn (a docked window behind another tab is not). Plus the editor's own size and its pixels per point. window_place, window_resize and screenshot view=window take a title or id from here."})
+@(mcp_tool={description="The editor's open windows (Scene, Game, Inspector, Render Pipeline, ...): each one's title and id, its rectangle in points from the editor's top-left, whether it is docked, whether it is drawn (a docked window behind another tab is not), and whether it floats in its own OS window outside the editor. Plus the editor's own size and its pixels per point. window_place, window_resize and screenshot view=window take a title or id from here."})
 mcp_tool_window_list :: proc(id: i64, params: json.Object) -> (string, Mcp_Error) {
 	views := _view_windows()
 	infos := make([]_Window_Info, len(views), context.temp_allocator)
