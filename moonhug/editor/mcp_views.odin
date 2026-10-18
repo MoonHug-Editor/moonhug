@@ -103,9 +103,10 @@ _view_windows :: proc() -> []^im.Window {
 	for w in ([^]^im.Window)(ctx.Windows.Data)[:ctx.Windows.Size] {
 		if w == nil || w.IsFallbackWindow do continue
 		if w.Flags & {.Tooltip, .Popup, .Modal, .DockNodeHost} != {} do continue
-		// imgui marks a docked window as a child of its dock host: only a
-		// child outside a dock node is part of another window.
-		if .ChildWindow in w.Flags && w not_in docked do continue
+		// imgui marks a docked window as a child of its dock host, in the
+		// dockspace or floating on its own. A child that is part of another
+		// window carries its parent's name ("Parent/Child_ID").
+		if .ChildWindow in w.Flags && w not_in docked && strings.contains(string(w.Name), "/") do continue
 		// Begun last frame (the tick runs before NewFrame clears Active).
 		if !w.Active && !w.WasActive do continue
 		if strings.has_prefix(string(w.Name), "##") do continue

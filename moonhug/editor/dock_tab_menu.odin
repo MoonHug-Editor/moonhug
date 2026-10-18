@@ -17,10 +17,11 @@ import wnd "moonhug:editor/window"
 import "moonhug:editor/icons"
 import "moonhug:editor/widgets"
 import "core:fmt"
+import "core:slice"
 import "core:strings"
 
-// Walk the dockspace tree and give every leaf node a menu button. Call from
-// the dockspace host window, after im.DockSpace.
+// Walk a dock tree and give every leaf node a menu button. For the
+// dockspace, call from its host window after im.DockSpace.
 tab_menu_draw_all :: proc(root: ^im.DockNode) {
 	if root == nil do return
 	if root.ChildNodes[0] == nil && root.ChildNodes[1] == nil {
@@ -29,6 +30,40 @@ tab_menu_draw_all :: proc(root: ^im.DockNode) {
 	}
 	tab_menu_draw_all(root.ChildNodes[0])
 	tab_menu_draw_all(root.ChildNodes[1])
+}
+
+// Views floating outside the dockspace: each sits in a dock tree of its own
+// (io.ConfigDockingAlwaysTabBar gives even a lone view one), which the
+// dockspace walk above never reaches. Gives every leaf of those trees the same
+// button. Call after the views have drawn this frame, so the floating hosts
+// have begun.
+tab_menu_draw_floating :: proc() {
+	ctx := im.GetCurrentContext()
+	if ctx == nil || ctx.Windows.Size == 0 do return
+	// A window's dock node is read through imgui's own call on the current
+	// window, never from im.Window's fields: the binding's Window struct is
+	// misaligned past imgui's bitfields, so its later fields are garbage.
+	// Begin on a window already begun this frame appends to it.
+	names := make([dynamic]cstring, context.temp_allocator)
+	for w in ([^]^im.Window)(ctx.Windows.Data)[:ctx.Windows.Size] {
+		if w == nil || !w.Active || w.IsFallbackWindow do continue
+		if w.Flags & {.Tooltip, .Popup, .Modal, .DockNodeHost} != {} do continue
+		// A docked view is a child window of its dock host. A child that is
+		// part of another window carries its parent's name ("Parent/Child_ID").
+		if .ChildWindow in w.Flags && strings.contains(string(w.Name), "/") do continue
+		append(&names, w.Name)
+	}
+	roots := make([dynamic]^im.DockNode, context.temp_allocator)
+	for name in names {
+		im.Begin(name)
+		node := im.GetWindowDockNode()
+		im.End()
+		if node == nil do continue
+		root := im.DockNodeGetRootNode(node)
+		if root == nil || root.ID_ == dock_space_id || slice.contains(roots[:], root) do continue
+		append(&roots, root)
+	}
+	for root in roots do tab_menu_draw_all(root)
 }
 
 // The popup id must be unique per node, or every node's button opens the same

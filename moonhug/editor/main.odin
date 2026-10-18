@@ -102,6 +102,9 @@ main :: proc() {
     // (imgui_viewports.odin).
     io := im.GetIO()
     io.ConfigFlags += {.DockingEnable, .ViewportsEnable}
+    // A view dragged out alone keeps a tab bar instead of a title bar, so it
+    // carries the tab menu button (dock_tab_menu.odin) like a docked view.
+    io.ConfigDockingAlwaysTabBar = true
 
     // Load UI fonts (default text font + merged Material Symbols icons). Must run
     // before the backend builds the font atlas texture.
@@ -319,6 +322,10 @@ main :: proc() {
         // Selection undo steps (Unity model): diff selection against the
         // frame's baseline after all views handled input.
         selection_undo_track()
+
+        // The tab menu button on views floating outside the dockspace, now
+        // that their hosts have begun this frame.
+        tab_menu_draw_floating()
 
         // Render. Scene/game views already encoded their offscreen passes
         // into this frame's command buffer during the UI calls above; imgui's
