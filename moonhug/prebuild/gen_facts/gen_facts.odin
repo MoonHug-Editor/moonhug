@@ -211,7 +211,7 @@ Component_GenComp :: struct {
 	pkg:             string,
 	pkg_path:        string,
 	max:             int,
-	has_on_destroy:  bool,
+	on_destroy_procs: []string, // the type's @(comp_on_destroy) procs, in declaration order
 	field_types:     []string,
 	ref_tags:        []string,
 	origin:          string,

@@ -123,31 +123,49 @@ fixed_reset :: proc() {
 // Runs a proc every frame, with the frame's delta time in seconds.
 //
 // `order` sorts procs across all packages. For view-side work: tweens, camera,
-// UI. Simulation belongs in @(fixed_update).
-//
-// Two shapes. Without `component` the proc is a system, `proc(dt: f32)`, and
-// loops over what it updates itself. With `component = T`, a @(component) or
-// @(poolable) type, the proc is `proc(dt: f32, c: ^T)`, by convention named
-// `update_<T>`, and runs once per enabled instance of T (every alive instance of a poolable). The
-// generated loop lives in update_generated.odin next to the dispatcher.
-@(extension_point={attribute="update", target="proc", fields="order component"})
+// UI. Simulation belongs in @(fixed_update). The proc is a system,
+// `proc(dt: f32)`, and loops over what it updates itself. The per-component
+// shape is @(comp_update).
+@(extension_point={attribute="update", target="proc", fields="order"})
 Update_Proc :: proc(dt: f32)
+
+// Runs a proc every frame for every enabled instance of one component type,
+// with the frame's delta time in seconds.
+//
+// `component = T` names a @(component) or @(poolable) type (every alive
+// instance of a poolable runs), and the proc is `proc(dt: f32, c: ^T)`, by
+// convention named `comp_update_<T>`. `order` sorts it among every @(update)
+// and @(comp_update) proc. The generated loop lives in update_generated.odin
+// next to the dispatcher.
+@(extension_point={attribute="comp_update", target="proc", fields="order component"})
+Comp_Update_Proc :: proc(dt: f32, c: rawptr)
 
 // Runs a proc every frame after every @(update) proc, the last stage before
 // the frame renders, with the frame's delta time in seconds.
 //
 // For work that reads what the frame tick produced: a camera following its
-// target, UI laid out from final transforms. `order` and `component` work as
-// for @(update).
-@(extension_point={attribute="late_update", target="proc", fields="order component"})
+// target, UI laid out from final transforms. `order` works as for @(update).
+// The per-component shape is @(comp_late_update).
+@(extension_point={attribute="late_update", target="proc", fields="order"})
 Late_Update_Proc :: proc(dt: f32)
+
+// @(late_update) for every enabled instance of one component type:
+// `component = T`, `proc(dt: f32, c: ^T)` named `comp_late_update_<T>` by
+// convention, as for @(comp_update).
+@(extension_point={attribute="comp_late_update", target="proc", fields="order component"})
+Comp_Late_Update_Proc :: proc(dt: f32, c: rawptr)
 
 // Runs a proc on the fixed simulation tick, with the fixed step in seconds.
 //
 // `order` sorts procs across all packages, and `divisor = N` runs it on every
 // Nth tick only, for coarse systems. The tick rate is one project setting,
-// Project Settings > Time. `component = T` gives the per-item shape,
-// `proc(fixed_dt: f32, c: ^T)` named `fixed_update_<T>` by convention, as for
-// @(update).
-@(extension_point={attribute="fixed_update", target="proc", fields="order divisor component"})
+// Project Settings > Time. The per-component shape is @(comp_fixed_update).
+@(extension_point={attribute="fixed_update", target="proc", fields="order divisor"})
 Fixed_Update_Proc :: proc(fixed_dt: f32)
+
+// @(fixed_update) for every enabled instance of one component type:
+// `component = T`, `proc(fixed_dt: f32, c: ^T)` named
+// `comp_fixed_update_<T>` by convention. `order` and `divisor` work as for
+// @(fixed_update).
+@(extension_point={attribute="comp_fixed_update", target="proc", fields="order divisor component"})
+Comp_Fixed_Update_Proc :: proc(fixed_dt: f32, c: rawptr)

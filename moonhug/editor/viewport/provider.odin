@@ -29,7 +29,7 @@ Viewport_Provider :: struct {
 	tools_dragging:      proc() -> bool,
 	tools_shutdown:      proc(),
 	marks_rebuild:       proc(),
-	// Every @(on_draw_gizmos) proc for the current gizmo view and channel.
+	// Every @(comp_on_draw_gizmos) proc for the current gizmo view and channel.
 	draw_gizmos:         proc(),
 	// The game camera's view at this size, for the Game view's gizmos.
 	game_view:           proc(width, height: f32) -> (core.Render_View, bool),

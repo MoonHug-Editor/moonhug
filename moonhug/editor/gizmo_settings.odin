@@ -1,7 +1,7 @@
 package editor
 
 // The Gizmo Settings menu (docs/core/Gizmos.md) in the scene and game views:
-// the icon size, and per component type with an @(on_draw_gizmos) hook
+// the icon size, and per component type with an @(comp_on_draw_gizmos) hook
 // whether its icon and its gizmo show. The state lives in libs/gizmos
 // (settings.odin), the editor persists it.
 

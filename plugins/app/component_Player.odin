@@ -1,6 +1,6 @@
 package app
 
-// The demo's player pawn (WASD movement in fixed_update_Player, number-key tween
+// The demo's player pawn (WASD movement in comp_fixed_update_Player, number-key tween
 // animations wired by setup_player_animations). App-level: scene records live
 // in ext_components keyed by the type guid below — never change it.
 
@@ -42,8 +42,8 @@ cleanup_Player :: proc(p: ^Player) {
 	engine.comp_zero(p)
 }
 
-@(fixed_update={component=Player})
-fixed_update_Player :: proc(dt: f32, p: ^Player) {
+@(comp_fixed_update={component=Player})
+comp_fixed_update_Player :: proc(dt: f32, p: ^Player) {
     w := engine.ctx_world()
 
     t := engine.pool_get(&w.transforms, engine.Handle(p.owner))

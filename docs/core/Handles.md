@@ -13,7 +13,7 @@ path: editor/scene-view
 Interactive handles go in one hook per component:
 
 ```odin
-@(on_scene_handles={component=RectTransform})
+@(comp_on_scene_handles={component=RectTransform})
 rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
 	anchors(rt)                                     // every tool
 	if ctx.tool != .Handles do return
@@ -25,7 +25,7 @@ rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Con
 - What it records goes to the scene-only `.Tools` channel, drawn over every gizmo, so handles are never covered by another component's drawing and never show in the game view.
 - `ctx.tool` says which tool is active. The Handles tool (T, after Q W E R) hides the transform gizmo, so the parts that only make sense without it go behind `ctx.tool == .Handles`.
 - All of the selection's handles are live together: handle ids must be unique per handle, and priorities decide who gets the pointer where handles overlap. The transform gizmo's parts use `PRIO_TOOL`, below every other handle, so a component's own handle wins the click over it.
-- Drawing that is not interactive (an outline) belongs in `@(on_draw_gizmos)` (docs/core/Gizmos.md).
+- Drawing that is not interactive (an outline) belongs in `@(comp_on_draw_gizmos)` (docs/core/Gizmos.md).
 
 The mhgui rect tool: its anchors work in every tool, T adds resizing, moving and the pivot, and its outline is a gizmo. The physics colliders show bounds handles in T only.
 
@@ -148,10 +148,10 @@ The transform tool (`plugins/engine/editor/scene_tools/gizmo.odin`) keeps only w
 - a texture asset: its guid, usually a component field picked in the inspector. `color` multiplies it, white by default.
 - a symbol: a proc that draws with libs/gizmos shapes where -1..1 spans the badge. The built-in icons for lights, cameras and audio sources are symbols.
 
-`color` tints a glyph or a symbol. Call it from an `@(on_draw_gizmos)` hook, before the selection check, so every instance shows one:
+`color` tints a glyph or a symbol. Call it from an `@(comp_on_draw_gizmos)` hook, before the selection check, so every instance shows one:
 
 ```odin
-@(on_draw_gizmos={component=AudioSource})
+@(comp_on_draw_gizmos={component=AudioSource})
 audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	handles.icon(engine.transform_world_position(a.owner), a.owner, _icon_speaker)
 	if .In_Selection not_in ctx.state do return

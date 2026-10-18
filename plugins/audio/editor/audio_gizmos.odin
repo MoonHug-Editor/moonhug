@@ -38,7 +38,7 @@ _icon_speaker :: proc() {
 @(private = "file")
 _WAVE :: f32(0.7) // half the sound waves' angle, radians
 
-@(on_draw_gizmos={component=AudioSource})
+@(comp_on_draw_gizmos={component=AudioSource})
 audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	pos := engine.transform_world_position(a.owner)
 	handles.icon(pos, a.owner, _icon_speaker)
@@ -48,7 +48,7 @@ audio_source_gizmos :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	gizmos.wire_sphere(pos, a.max_distance)
 }
 
-@(on_scene_handles={component=AudioSource})
+@(comp_on_scene_handles={component=AudioSource})
 audio_source_handles :: proc(a: ^audio.AudioSource, ctx: handles.Gizmo_Context) {
 	h, ok := engine.comp_handle_of(&a.base)
 	if !ok do return

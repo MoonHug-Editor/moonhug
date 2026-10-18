@@ -164,7 +164,7 @@ _image_inspector :: proc(ctx: ^inspector.Component_Ctx) {
 
 // Every canvas shows its rect in the scene view, selected or not, so the UI
 // space is visible next to the world.
-@(on_draw_gizmos={component=Canvas})
+@(comp_on_draw_gizmos={component=Canvas})
 canvas_gizmos :: proc(c: ^engine.Canvas, ctx: handles.Gizmo_Context) {
 	if !engine.transform_active_in_hierarchy(c.owner) do return
 	root, xform, _ := engine.canvas_placement(c.owner, engine.canvas_game_viewport())
@@ -403,7 +403,7 @@ _placed :: proc(tH: engine.Transform_Handle) -> (p: _Placed, ok: bool) {
 // tool. A rect a LayoutGroup lays out gets its own color: moving or resizing it
 // would be undone by the layout on the next frame, so the rect tool offers no
 // handles for it.
-@(on_draw_gizmos={component=RectTransform})
+@(comp_on_draw_gizmos={component=RectTransform})
 rect_transform_gizmos :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	p, ok := _placed(rt.owner)
@@ -422,7 +422,7 @@ rect_transform_gizmos :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Cont
 // in every tool. With the Handles tool (T) the rest joins them: corner and edge
 // handles that resize, the body that moves, and the pivot ring. The outline
 // comes from rect_transform_gizmos.
-@(on_scene_handles={component=RectTransform})
+@(comp_on_scene_handles={component=RectTransform})
 rect_transform_handles :: proc(rt: ^engine.RectTransform, ctx: handles.Gizmo_Context) {
 	tH := rt.owner
 	p, ok := _placed(tH)

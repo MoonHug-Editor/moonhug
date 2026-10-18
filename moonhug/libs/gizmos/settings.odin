@@ -6,7 +6,7 @@ package gizmos
 // - The scene view's Gizmos toggle shows or hides every gizmo and icon in it.
 //   Handles and the transform gizmo stay in the scene view either way, and so
 //   do gameplay shapes (.Game).
-// - Per component type with an @(on_draw_gizmos) hook, whether its icon and
+// - Per component type with an @(comp_on_draw_gizmos) hook, whether its icon and
 //   its gizmo show. The gizmo dispatcher applies them around each hook
 //   (with_icons, with_shapes), so hook code never checks them.
 // - The editor draws the Gizmo Settings menu over this state and persists it
@@ -25,7 +25,7 @@ Gizmo_Part :: enum {
 @(view_menu={view="Scene", label="Gizmos"})
 scene_gizmos := true
 
-// The component types with an @(on_draw_gizmos) hook, for the Gizmo Settings
+// The component types with an @(comp_on_draw_gizmos) hook, for the Gizmo Settings
 // rows. The scene tools set it from their generated dispatcher at start.
 gizmo_types: []string
 

@@ -46,7 +46,7 @@ _icon_light :: proc() {
 	gizmos.line({-0.16, -0.52, 0}, {0.16, -0.52, 0})
 }
 
-@(on_draw_gizmos={component=Light})
+@(comp_on_draw_gizmos={component=Light})
 light_gizmos :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
 	tH := engine.Transform_Handle(l.owner)
 	handles.icon(engine.transform_world_position(tH), tH, _icon_light, {l.color.r, l.color.g, l.color.b, 1})
@@ -82,7 +82,7 @@ light_gizmos :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
 	}
 }
 
-@(on_scene_handles={component=Light})
+@(comp_on_scene_handles={component=Light})
 light_handles :: proc(l: ^engine.Light, ctx: handles.Gizmo_Context) {
 	if l.type == .Directional do return
 	h, ok := engine.comp_handle_of(&l.base)

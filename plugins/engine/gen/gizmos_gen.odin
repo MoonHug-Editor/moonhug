@@ -3,8 +3,8 @@ package engine_gen
 // gizmos_gen: the scene-view gizmo and handles hooks (docs/core/Gizmos.md,
 // docs/core/Handles.md).
 //
-//   @(on_draw_gizmos={component=BoxCollider2D})   // drawing, every enabled instance
-//   @(on_scene_handles={component=RectTransform}) // interaction, selected objects
+//   @(comp_on_draw_gizmos={component=BoxCollider2D})   // drawing, every enabled instance
+//   @(comp_on_scene_handles={component=RectTransform}) // interaction, selected objects
 //   box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D, ctx: handles.Gizmo_Context) {
 //       if .In_Selection not_in ctx.state do return
 //       ...
@@ -38,8 +38,8 @@ _OUT_PKG  :: "scene_tools"
 _OUT_FILE :: _ENGINE_EDITOR_PKG_PATH + "/scene_tools/draw_gizmos_generated.odin"
 
 Gizmo_Hook_Kind :: enum {
-	Draw,    // on_draw_gizmos
-	Handles, // on_scene_handles
+	Draw,    // comp_on_draw_gizmos
+	Handles, // comp_on_scene_handles
 }
 
 Gizmos_GenComp :: struct {
@@ -64,15 +64,17 @@ gizmos_provide :: proc(w: ^db.World) -> bool {
 		decl := db.get(decls, entity)
 		if decl.name == "" do continue
 		attr_set := db.get(attrs, entity)
-		if _, sfound := gen_facts.attr_find(attr_set, "on_draw_gizmos_selected"); sfound {
-			// Not an attribute: the ignore-unknown-attributes build would drop
-			// the hook without a word.
-			fmt.eprintf("gizmos_gen: %s.%s: use @(on_draw_gizmos) and check ctx.state (.In_Selection) instead of on_draw_gizmos_selected\n", decl.pkg.name, decl.name)
-			return false
+		// Not attributes (any more): the ignore-unknown-attributes build would
+		// drop the proc without a word.
+		for old in ([3][2]string{{"on_draw_gizmos_selected", "comp_on_draw_gizmos and check ctx.state (.In_Selection)"}, {"on_draw_gizmos", "comp_on_draw_gizmos"}, {"on_scene_handles", "comp_on_scene_handles"}}) {
+			if _, found := gen_facts.attr_find(attr_set, old[0]); found {
+				fmt.eprintf("gizmos_gen: %s.%s: @(%s) is now @(%s)\n", decl.pkg.name, decl.name, old[0], old[1])
+				return false
+			}
 		}
-		if args, found := gen_facts.attr_find(attr_set, "on_draw_gizmos"); found {
+		if args, found := gen_facts.attr_find(attr_set, "comp_on_draw_gizmos"); found {
 			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Draw})
-		} else if args, hfound := gen_facts.attr_find(attr_set, "on_scene_handles"); hfound {
+		} else if args, hfound := gen_facts.attr_find(attr_set, "comp_on_scene_handles"); hfound {
 			db.set(_gizmos, entity, Gizmos_GenComp{component = _component_arg(args), kind = .Handles})
 		}
 	}
@@ -200,7 +202,7 @@ gizmos_generate :: proc(w: ^db.World) -> bool {
 	_write_dispatcher(&b, "__scene_handles", rows[:], .Handles)
 
 	// The component types with a gizmo hook, for the gizmo settings rows.
-	strings.write_string(&b, "\n// The component types with an @(on_draw_gizmos) hook, for the gizmo settings (gizmos.gizmo_types, set in scene_tools.odin).\n")
+	strings.write_string(&b, "\n// The component types with an @(comp_on_draw_gizmos) hook, for the gizmo settings (gizmos.gizmo_types, set in scene_tools.odin).\n")
 	strings.write_string(&b, "__gizmo_types := [?]string{\n")
 	last := ""
 	for r in rows {

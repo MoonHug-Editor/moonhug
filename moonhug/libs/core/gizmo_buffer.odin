@@ -64,12 +64,12 @@ Gizmo_Label :: struct {
 }
 
 // Who a shape is for, drawn in this order. The scene view draws .Game, .Editor
-// and .Tools, the game view .Game and .Editor_Game. The @(on_draw_gizmos)
+// and .Tools, the game view .Game and .Editor_Game. The @(comp_on_draw_gizmos)
 // procs record once per view, with that view's camera, so pixel sizes and
 // camera-facing parts fit the view that shows them.
 Gizmo_Channel :: enum u8 {
 	Game,        // gameplay and @(debug_draw) code
-	Editor,      // @(on_draw_gizmos) procs, recorded with the scene camera
+	Editor,      // @(comp_on_draw_gizmos) procs, recorded with the scene camera
 	Editor_Game, // the same procs recorded with the game camera
 	Tools,       // handles, the transform gizmo, the selection outline: scene view only
 }

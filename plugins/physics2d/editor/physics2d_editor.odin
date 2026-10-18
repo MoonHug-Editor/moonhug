@@ -1,13 +1,13 @@
 package physics2d_editor
 
-// Collider outlines in the scene view via the @(on_draw_gizmos) hook — drawn
+// Collider outlines in the scene view via the @(comp_on_draw_gizmos) hook — drawn
 // only for objects in the selection (a parent selected counts). The outline
 // geometry lives in the runtime package (packages/physics2d/gizmos.odin),
 // shared with the in-app @(debug_draw) view — here only the selected-only
 // policy and the color choice remain.
 //
 // In the Handles tool (T), bounds handles on the selected colliders resize
-// them in their plane (@(on_scene_handles)), one undo step per drag.
+// them in their plane (@(comp_on_scene_handles)), one undo step per drag.
 
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
@@ -15,19 +15,19 @@ import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import physics2d "moonhug:packages/physics2d"
 
-@(on_draw_gizmos={component=BoxCollider2D})
+@(comp_on_draw_gizmos={component=BoxCollider2D})
 box_collider_gizmos :: proc(c: ^physics2d.BoxCollider2D, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics2d.draw_box_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
 }
 
-@(on_draw_gizmos={component=CircleCollider2D})
+@(comp_on_draw_gizmos={component=CircleCollider2D})
 circle_collider_gizmos :: proc(c: ^physics2d.CircleCollider2D, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics2d.draw_circle_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
 }
 
-@(on_draw_gizmos={component=CapsuleCollider2D})
+@(comp_on_draw_gizmos={component=CapsuleCollider2D})
 capsule_collider_gizmos :: proc(c: ^physics2d.CapsuleCollider2D, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics2d.draw_capsule_collider_wires(c, physics2d.COLLIDER_GIZMO_COLOR)
@@ -85,7 +85,7 @@ _box_handles :: proc(c: ^engine.CompData, size_field, offset_field: ^[2]f32, siz
 	if d.released do undo.edit_session_end(&_edit)
 }
 
-@(on_scene_handles={component=BoxCollider2D})
+@(comp_on_scene_handles={component=BoxCollider2D})
 box_collider_handles :: proc(c: ^physics2d.BoxCollider2D, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	s := physics2d.collider_scale(c.owner)
@@ -94,7 +94,7 @@ box_collider_handles :: proc(c: ^physics2d.BoxCollider2D, ctx: handles.Gizmo_Con
 }
 
 // The capsule's size is its bounding box, so box bounds edit it.
-@(on_scene_handles={component=CapsuleCollider2D})
+@(comp_on_scene_handles={component=CapsuleCollider2D})
 capsule_collider_handles :: proc(c: ^physics2d.CapsuleCollider2D, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	s := physics2d.collider_scale(c.owner)
@@ -102,7 +102,7 @@ capsule_collider_handles :: proc(c: ^physics2d.CapsuleCollider2D, ctx: handles.G
 	_box_handles(&c.base, &c.size, &c.offset, size, offset, s, "Edit Capsule Collider 2D")
 }
 
-@(on_scene_handles={component=CircleCollider2D})
+@(comp_on_scene_handles={component=CircleCollider2D})
 circle_collider_handles :: proc(c: ^physics2d.CircleCollider2D, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)

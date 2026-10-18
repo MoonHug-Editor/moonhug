@@ -40,6 +40,7 @@ cleanup_Rigidbody :: proc(comp: ^Rigidbody) {
 
 // Live destroy (transform_destroy_components) — the body must die with the
 // component or it keeps colliding as a ghost.
-on_destroy_Rigidbody :: proc(comp: ^Rigidbody) {
+@(comp_on_destroy={component=Rigidbody})
+comp_on_destroy_Rigidbody :: proc(comp: ^Rigidbody) {
 	_destroy_body(&comp.body)
 }

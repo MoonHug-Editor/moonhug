@@ -3,7 +3,7 @@ package scene_tools
 // Camera frustum gizmo (Unity's): the selected camera draws its view frustum
 // as a wire frustum (near rect, far rect, connecting edges). Aspect comes from
 // the game view's render target so the wires show exactly what the game view
-// sees. Runs through the @(on_draw_gizmos) hook for cameras in the selection, drawn with
+// sees. Runs through the @(comp_on_draw_gizmos) hook for cameras in the selection, drawn with
 // libs/gizmos. Every camera also gets a scene icon.
 
 import "core:math"
@@ -21,7 +21,7 @@ _icon_camera :: proc() {
 	gizmos.wire_triangle({0.25, 0, 0}, {0.7, 0.3, 0}, {0.7, -0.3, 0})
 }
 
-@(on_draw_gizmos={component=Camera})
+@(comp_on_draw_gizmos={component=Camera})
 camera_gizmos :: proc(cam: ^engine.Camera, ctx: handles.Gizmo_Context) {
 	handles.icon(engine.transform_world_position(engine.Transform_Handle(cam.owner)), engine.Transform_Handle(cam.owner), _icon_camera)
 	if .In_Selection not_in ctx.state do return

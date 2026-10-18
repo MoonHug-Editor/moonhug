@@ -1,6 +1,6 @@
 package scene_tools
 
-// The context @(on_draw_gizmos) and @(on_scene_handles) procs get for each
+// The context @(comp_on_draw_gizmos) and @(comp_on_scene_handles) procs get for each
 // instance (the generated dispatchers call gizmo_context): its selection state
 // and the scene view's tool.
 //

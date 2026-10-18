@@ -25,7 +25,7 @@ ComponentEntry :: struct {
 	pkg:             string, // package name ("engine", "app", ...)
 	pkg_path:        string, // scan path ("moonhug/app", "moonhug/packages/x")
 	max:             int,
-	has_on_destroy:  bool,
+	on_destroy_procs: []string, // @(comp_on_destroy) procs, in declaration order
 	field_types:     []string, // rendered type of every field, for pointer-type registration
 	ref_tags:        []string, // `ref_tags="A,B"` on the attribute: capability tags for `ref:"@A"` fields
 	// Where the @(component) was declared, rendered by gen_facts.attr_origin.
@@ -50,18 +50,6 @@ _register_components :: proc "contextless" () {
 	db.generator("components/menus", generate_component_menus)
 	db.generator("components/ext", generate_ext_components)
 	context = runtime.default_context()
-	gen_facts.register_naming({
-		key     = "component_destroy",
-		title   = "Component destroy procs",
-		subject = "a type with @(component)",
-		layer   = "engine",
-		owner   = "components_gen",
-		scope   = .Subject_File,
-		procs   = {
-			{prefix = "on_destroy_", signature = "proc(c: ^T)", summary = "Runs when an instance is removed from its pool: the component is removed, its object destroyed, or its scene unloaded."},
-		},
-		doc     = "The component registry calls it before the instance's cleanup. Defaults, cleanup and validation are the type lifecycle procs every `@(typ_guid)` type has.",
-	})
 }
 
 
@@ -129,6 +117,45 @@ components_provide :: proc(w: ^db.World) -> bool {
 	}
 	defer for k in struct_by_name do delete(k)
 
+	// @(comp_on_destroy={component=T}) procs, by "<package path>/<T>". They
+	// sit in T's own package: the generated registration calls them from
+	// there. A proc still named by the old on_destroy_<T> convention would
+	// never be called, so it stops the build.
+	on_destroy := make(map[string][dynamic]string, context.temp_allocator)
+	{
+		procs := db.get_comps(w, gen_facts.Proc_GenComp)
+		pm := db.all_of(db.r(decls), db.r(procs), db.r(attrs)); defer db.matcher_destroy(&pm)
+		for entity in db.matched(w, &pm) {
+			decl := db.get(decls, entity)
+			if decl.name == "" do continue
+			args, found := gen_facts.attr_find(db.get(attrs, entity), "comp_on_destroy")
+			if !found do continue
+			comp := args.fields["component"]
+			if comp == "" do comp = gen_facts.attr_keyname(args, "component")
+			if comp == "" || strings.contains(comp, ".") {
+				fmt.eprintf("components_gen: %s.%s: @(comp_on_destroy) names its component with component=T, a type of the same package\n", decl.pkg.name, decl.name)
+				return false
+			}
+			key := fmt.tprintf("%s/%s", decl.pkg_path, comp)
+			if key not_in on_destroy do on_destroy[key] = make([dynamic]string, context.temp_allocator)
+			append(&on_destroy[key], decl.name)
+		}
+	}
+	{
+		procs := db.get_comps(w, gen_facts.Proc_GenComp)
+		pm := db.all_of(db.r(decls), db.r(procs)); defer db.matcher_destroy(&pm)
+		for entity in db.matched(w, &pm) {
+			decl := db.get(decls, entity)
+			if !strings.has_prefix(decl.name, "on_destroy_") do continue
+			if db.has(attrs, entity) {
+				if _, tagged := gen_facts.attr_find(db.get(attrs, entity), "comp_on_destroy"); tagged do continue
+			}
+			t := decl.name[len("on_destroy_"):]
+			fmt.eprintf("components_gen: %s.%s: on_destroy_<T> procs are no longer called by name, mark it @(comp_on_destroy={{component=%s}}) (and name it comp_on_destroy_%s)\n", decl.pkg.name, decl.name, t, t)
+			return false
+		}
+	}
+
 	m := db.all_of(db.r(decls), db.r(structs), db.r(attrs)); defer db.matcher_destroy(&m)
 	for entity in db.matched(w, &m) {
 		decl := db.get(decls, entity)
@@ -153,9 +180,6 @@ components_provide :: proc(w: ^db.World) -> bool {
 			if menu_path == "" do menu_path = type_name
 			// reset_T, cleanup_T and on_validate_T are type_guid_gen's: one
 			// source for every @(typ_guid) type, component or not.
-			on_destroy_name := strings.concatenate({"on_destroy_", type_name})
-			gen_facts.naming_subject("component_destroy", type_name, decl.file_path, fmt.tprintf("%s:%d", gen_facts.decl_rel_path(decl), decl.decl.pos.line))
-			defer delete(on_destroy_name)
 			field_types := _collect_field_types(entity, decl.pkg_path, fields, struct_by_name)
 			// The guid is written into the Component_Desc as a literal, so the
 			// registration needs no guid global from another package.
@@ -173,7 +197,7 @@ components_provide :: proc(w: ^db.World) -> bool {
 				pkg             = decl.pkg.name,
 				pkg_path        = decl.pkg_path,
 				max             = gen_facts.attr_int(args, "max"),
-				has_on_destroy  = gen_core.FileHasProc(decl.file, on_destroy_name),
+				on_destroy_procs = on_destroy[fmt.tprintf("%s/%s", decl.pkg_path, type_name)][:],
 				field_types     = field_types[:],
 				ref_tags        = _split_tags(args.fields["ref_tags"]),
 				origin          = gen_facts.attr_origin(args, gen_facts.decl_rel_path(decl), decl.decl.pos.line, type_name),
@@ -245,7 +269,7 @@ _collect_data :: proc(w: ^db.World) -> _ComponentData {
 				pkg             = component.pkg,
 				pkg_path        = component.pkg_path,
 				max             = component.max,
-				has_on_destroy  = component.has_on_destroy,
+				on_destroy_procs = component.on_destroy_procs,
 				field_types     = component.field_types,
 				ref_tags        = component.ref_tags,
 				origin          = component.origin,
@@ -349,8 +373,10 @@ _write_desc_registrations :: proc(b: ^strings.Builder, entries: []ComponentEntry
 		fmt.sbprintf(b, "\t\t\tpool_destroy = proc(pool: rawptr) {{ free(cast(^%s)pool) }},\n", pool_t)
 		fmt.sbprintf(b, "\t\t\tmake_entry = proc(pool: rawptr) -> %sPool_Entry {{ return %spool_make_entry(cast(^%s)pool) }},\n", qual, qual, pool_t)
 		fmt.sbprintf(b, "\t\t\teach_alive = proc(pool: rawptr, fn: proc(key: %sTypeKey, comp: rawptr)) {{\n\t\t\t\tit := %spool_iterator(cast(^%s)pool)\n\t\t\t\tfor data, _ in %spool_next(&it) do fn(.%s, data)\n\t\t\t}},\n", qual, qual, pool_t, qual, e.type_name)
-		if e.has_on_destroy {
-			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{ on_destroy_%s(cast(^%s)ptr) }},\n", e.type_name, e.type_name)
+		if len(e.on_destroy_procs) > 0 {
+			fmt.sbprintf(b, "\t\t\ton_destroy = proc(ptr: rawptr) {{")
+			for p in e.on_destroy_procs do fmt.sbprintf(b, " %s(cast(^%s)ptr);", p, e.type_name)
+			strings.write_string(b, " },\n")
 		}
 		if len(e.ref_tags) > 0 {
 			strings.write_string(b, "\t\t\tref_tags = {")
@@ -579,7 +605,7 @@ components_generate :: proc(w: ^db.World) -> bool {
 		strings.write_string(&b, "}\n\n")
 	}
 
-	strings.write_string(&b, "// Every component still alive leaves the world (on_destroy_T, then\n")
+	strings.write_string(&b, "// Every component still alive leaves the world (its @(comp_on_destroy) procs, then\n")
 	strings.write_string(&b, "// cleanup_T) with its pool, then the transforms' own heap goes.\n")
 	strings.write_string(&b, "world_destroy_all :: proc(w: ^World) {\n")
 	strings.write_string(&b, "\t_world_destroy_ext(w)\n")

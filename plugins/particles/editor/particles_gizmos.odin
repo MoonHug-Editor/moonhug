@@ -3,7 +3,7 @@ package particles_editor
 // Emission shape gizmo: the selected ParticleSystem draws its shape as
 // wireframe lines in the emitter's world frame — emission is along local +Z,
 // scale is ignored exactly like the sim's shape sampling. Drawn with
-// libs/gizmos from the @(on_draw_gizmos) hook, for systems in the selection.
+// libs/gizmos from the @(comp_on_draw_gizmos) hook, for systems in the selection.
 // Every system also gets a scene icon, the "snowing" glyph.
 //
 // In the Handles tool (T), shape handles edit it (docs/core/Handles.md), one undo
@@ -25,7 +25,7 @@ _SHAPE_GIZMO_LENGTH :: f32(1)
 @(private = "file")
 _ICON_GLYPH :: '\ue80f'
 
-@(on_draw_gizmos={component=ParticleSystem})
+@(comp_on_draw_gizmos={component=ParticleSystem})
 particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
 	owner := engine.Transform_Handle(ps.owner)
 	handles.icon(engine.transform_world_position(owner), owner, _ICON_GLYPH)
@@ -75,7 +75,7 @@ particle_shape_gizmos :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_
 @(private = "file")
 _edit: undo.Edit_Session
 
-@(on_scene_handles={component=ParticleSystem})
+@(comp_on_scene_handles={component=ParticleSystem})
 particle_shape_handles :: proc(ps: ^particles.ParticleSystem, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&ps.base)

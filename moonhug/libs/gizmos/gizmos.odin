@@ -1,6 +1,6 @@
 package gizmos
 
-// Debug and editor shape drawing (docs/core/Gizmos.md): one API for @(on_draw_gizmos)
+// Debug and editor shape drawing (docs/core/Gizmos.md): one API for @(comp_on_draw_gizmos)
 // hooks, handles, the transform gizmo and in-game @(debug_draw) code.
 //
 // - Calls record world-space shapes into the context's buffer
@@ -122,7 +122,7 @@ _restore_depth_test :: proc(prev: bool) {
 }
 
 // Who the shapes are for: .Game (default) shows in the game view and the scene
-// view. The editor records its @(on_draw_gizmos) procs into .Editor for the
+// view. The editor records its @(comp_on_draw_gizmos) procs into .Editor for the
 // scene view and into .Editor_Game for the game view, so their code never
 // calls this.
 @(deferred_out = _restore_channel)

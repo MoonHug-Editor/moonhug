@@ -1,7 +1,7 @@
 package handles
 
 // Scene icons (docs/core/Handles.md): a clickable marker for components with
-// nothing else to click, drawn from an @(on_draw_gizmos) hook for every
+// nothing else to click, drawn from an @(comp_on_draw_gizmos) hook for every
 // instance, selected or not. An icon is a dark round badge icon_px wide
 // facing the camera, showing one of:
 //

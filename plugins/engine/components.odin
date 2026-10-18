@@ -105,11 +105,21 @@ transform_remove_comp :: proc(tH: Transform_Handle, comp_handle: Handle) {
 // The lifecycle tables (reset, cleanup, on_validate) are core's
 // (core/type_lifecycle.odin): any @(typ_guid) type has them.
 
+// Runs a proc when an instance of one component type leaves its pool: the
+// component is removed, its object destroyed, or its scene unloaded, in the
+// editor and in a game alike.
+//
+// `component = T` names a @(component) type of the same package, and the proc
+// is `proc(c: ^T)`, by convention named `comp_on_destroy_<T>`. It releases
+// what the instance holds outside itself: a physics body, a playing voice.
+// The instance's cleanup_T runs right after and frees its memory. Several
+// procs for one type run in declaration order.
+@(extension_point={attribute="comp_on_destroy", target="proc", fields="component"})
 component_on_destroy_procs: [TypeKey]proc(rawptr)
 
-// A component instance leaves the world: its on_destroy_T (a physics body
-// released, a voice stopped), then its cleanup_T frees what it owns. Runs on
-// destroy and on removal, before the pool slot goes.
+// A component instance leaves the world: its @(comp_on_destroy) procs (a
+// physics body released, a voice stopped), then its cleanup_T frees what it
+// owns. Runs on destroy and on removal, before the pool slot goes.
 component_on_destroy :: proc(key: TypeKey, ptr: rawptr) {
 	if fn := component_on_destroy_procs[key]; fn != nil do fn(ptr)
 	type_cleanup(key, ptr)

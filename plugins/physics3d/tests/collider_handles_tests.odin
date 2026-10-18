@@ -1,7 +1,7 @@
 package physics3d_tests
 
 // Collider bounds handles (physics3d_editor): a drag replayed through the real
-// @(on_scene_handles) proc resizes the collider in its scaled space, writes
+// @(comp_on_scene_handles) proc resizes the collider in its scaled space, writes
 // the unscaled fields, and records one undo step.
 
 import "core:math/linalg"

@@ -12,7 +12,7 @@ import "moonhug:packages/engine"
 
 PROBE_GIZMO_COLOR :: [4]f32{0.85, 0.75, 0.4, 0.7}
 
-@(on_draw_gizmos={component=Reflection_Probe})
+@(comp_on_draw_gizmos={component=Reflection_Probe})
 reflection_probe_gizmos :: proc(p: ^engine.Reflection_Probe, ctx: handles.Gizmo_Context) {
 	pos := engine.transform_world_position(p.owner)
 	gizmos.with_color(PROBE_GIZMO_COLOR)

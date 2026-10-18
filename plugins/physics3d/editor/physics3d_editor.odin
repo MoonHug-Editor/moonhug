@@ -1,13 +1,13 @@
 package physics3d_editor
 
-// Collider wireframes in the scene view via the @(on_draw_gizmos) hook — drawn
+// Collider wireframes in the scene view via the @(comp_on_draw_gizmos) hook — drawn
 // only for objects in the selection (a parent selected counts). The wire geometry
 // lives in the runtime package (packages/physics3d/gizmos.odin), shared with
 // the in-app @(debug_draw) view — here only the selected-only policy and the
 // color choice remain.
 //
 // In the Handles tool (T), bounds handles on the selected colliders resize
-// them (@(on_scene_handles)), one undo step per drag.
+// them (@(comp_on_scene_handles)), one undo step per drag.
 
 import "moonhug:packages/engine"
 import "moonhug:libs/gizmos"
@@ -15,19 +15,19 @@ import "moonhug:editor/handles"
 import "moonhug:editor/undo"
 import physics3d "moonhug:packages/physics3d"
 
-@(on_draw_gizmos={component=BoxCollider})
+@(comp_on_draw_gizmos={component=BoxCollider})
 box_collider_gizmos :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_box_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
 
-@(on_draw_gizmos={component=SphereCollider})
+@(comp_on_draw_gizmos={component=SphereCollider})
 sphere_collider_gizmos :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_sphere_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
 }
 
-@(on_draw_gizmos={component=CapsuleCollider})
+@(comp_on_draw_gizmos={component=CapsuleCollider})
 capsule_collider_gizmos :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	physics3d.draw_capsule_collider_wires(c, physics3d.COLLIDER_GIZMO_COLOR)
@@ -67,7 +67,7 @@ _axis :: proc(d: physics3d.Capsule_Direction) -> handles.Axis {
 	return .Y
 }
 
-@(on_scene_handles={component=BoxCollider})
+@(comp_on_scene_handles={component=BoxCollider})
 box_collider_handles :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)
@@ -91,7 +91,7 @@ box_collider_handles :: proc(c: ^physics3d.BoxCollider, ctx: handles.Gizmo_Conte
 	if d.released do undo.edit_session_end(&_edit)
 }
 
-@(on_scene_handles={component=SphereCollider})
+@(comp_on_scene_handles={component=SphereCollider})
 sphere_collider_handles :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)
@@ -115,7 +115,7 @@ sphere_collider_handles :: proc(c: ^physics3d.SphereCollider, ctx: handles.Gizmo
 	if d.released do undo.edit_session_end(&_edit)
 }
 
-@(on_scene_handles={component=CapsuleCollider})
+@(comp_on_scene_handles={component=CapsuleCollider})
 capsule_collider_handles :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if ctx.tool != .Handles do return
 	h, ok := engine.comp_handle_of(&c.base)

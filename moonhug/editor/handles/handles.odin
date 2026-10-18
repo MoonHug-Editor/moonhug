@@ -47,11 +47,11 @@ Gizmo_State :: enum {
 //
 // `component` is the type. The proc takes the component and this context and
 // calls the handles API (docs/core/Handles.md). Drawing that does not react to
-// input belongs in @(on_draw_gizmos).
+// input belongs in @(comp_on_draw_gizmos).
 //
-// What an @(on_draw_gizmos) or @(on_scene_handles) proc is told about the
+// What an @(comp_on_draw_gizmos) or @(comp_on_scene_handles) proc is told about the
 // instance it draws (docs/core/Gizmos.md, docs/core/Handles.md).
-@(extension_point={attribute="on_scene_handles", target="proc", fields="component"})
+@(extension_point={attribute="comp_on_scene_handles", target="proc", fields="component"})
 Gizmo_Context :: struct {
 	state: bit_set[Gizmo_State],
 	tool:  Tool,

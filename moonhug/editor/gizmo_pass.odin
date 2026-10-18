@@ -4,12 +4,12 @@ package editor
 // and the preview pose, before any view renders. It records what the scene
 // and game views then draw:
 //
-// - The selection outline, the selection's @(on_scene_handles) procs and the
+// - The selection outline, the selection's @(comp_on_scene_handles) procs and the
 //   transform gizmo, into .Tools, while the scene view is on screen. They run
 //   before the gizmo hooks, so an edit shows in this frame's gizmos and
 //   render. The draw order does not depend on it:
 //   .Tools always draws over .Editor.
-// - Every @(on_draw_gizmos) proc, once per view that shows gizmos (its
+// - Every @(comp_on_draw_gizmos) proc, once per view that shows gizmos (its
 //   Gizmos toggle, gizmos.scene_gizmos and game_gizmos): into .Editor with the scene camera,
 //   into .Editor_Game with the game camera. Pixel sizes and camera-facing
 //   parts fit each view, and the game view has gizmos with the scene view
@@ -37,8 +37,8 @@ _scene_view_size: [2]f32
 // `component` is the type. The proc takes the component and a
 // handles.Gizmo_Context and draws through the gizmos API. The scene view's
 // Gizmos menu shows or hides them per type. Anything that reacts to the mouse
-// belongs in @(on_scene_handles).
-@(extension_point={attribute="on_draw_gizmos", target="proc", fields="component"})
+// belongs in @(comp_on_scene_handles).
+@(extension_point={attribute="comp_on_draw_gizmos", target="proc", fields="component"})
 gizmo_pass :: proc() {
 	sel_scene_prune()
 	scene_live := menu.show_scene && _scene_rendered_frame + 1 == gfx.frame_index && _scene_view_size.x > 0 && _scene_view_size.y > 0

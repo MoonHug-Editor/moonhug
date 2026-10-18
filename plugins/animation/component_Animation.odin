@@ -211,12 +211,13 @@ reset_Animation :: proc(comp: ^Animation) {
 	comp.speed = 1
 }
 
-on_destroy_Animation :: proc(a: ^Animation) {
+@(comp_on_destroy={component=Animation})
+comp_on_destroy_Animation :: proc(a: ^Animation) {
 	cleanup_Animation(a)
 }
 
 // Releases everything the component owns. Reached two ways, and BOTH matter:
-// component destruction (on_destroy_Animation), and a value being replaced
+// component destruction (comp_on_destroy_Animation), and a value being replaced
 // under it — undo calls type_cleanup before unmarshalling a restored value, and
 // type_cleanup dispatches on the `cleanup_<Type>` name. Without this proc the
 // undo path silently orphaned `layers` and every nested `clips` on each restore.

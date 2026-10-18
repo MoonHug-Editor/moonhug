@@ -3,8 +3,8 @@ package engine_gen
 // update_gen: ECS prebuild module.
 //
 //   provide  - iterate the decls, recognise proc decls in package "app" (or an
-//              installed package's runtime package) carrying an `@update` or
-//              `@fixed_update` attribute, add Update_GenComp.
+//              installed package's runtime package) carrying an update
+//              attribute (below), add Update_GenComp.
 //   generate - iterate the {decls, updates} join view, sort by order, build
 //              update_generated.odin with BOTH dispatchers, `__ticks` (the
 //              dispatchers as engine.Tick_Hooks) and `__frame_tick`, which runs
@@ -16,19 +16,20 @@ package engine_gen
 // subscriber's divisor=N runs it every Nth tick at fixed_dt * N. __late_update
 // runs after __update, the last stage before rendering.
 //
-// Both attributes take two shapes, interleaved by order in one dispatcher:
+// Each stage has two attributes, interleaved by order in one dispatcher:
 //
-//   @(update={order=1})                     // a system: loops itself
+//   @(update={order=1})                       // a system: loops itself
 //   tween_tick :: proc(dt: f32)
 //
-//   @(fixed_update={component=Spinner})     // per item: the loop is generated
-//   fixed_update_Spinner :: proc(dt: f32, s: ^Spinner)
+//   @(comp_fixed_update={component=Spinner})  // per component: the loop is generated
+//   comp_fixed_update_Spinner :: proc(dt: f32, s: ^Spinner)
 //
-// The per-item shape names a @(component) or @(poolable) type. By convention
-// the proc is named `update_<T>` or `fixed_update_<T>` after its attribute.
-// The generated wrapper `__<proc>` iterates its pool, skips disabled
-// components (a poolable has no `enabled`, every alive item runs) and calls
-// the proc.
+// The comp_ attributes (comp_update, comp_late_update, comp_fixed_update) name
+// a @(component) or @(poolable) type and are the only per-component shape: a
+// plain attribute with component= stops the build. By convention the proc is
+// named `<attribute>_<T>`. The generated wrapper `__<proc>` iterates its pool,
+// skips disabled components (a poolable has no `enabled`, every alive item
+// runs) and calls the proc.
 
 import "core:fmt"
 import "core:strings"
@@ -76,14 +77,25 @@ update_provide :: proc(w: ^db.World) -> bool {
 		is_package := strings.has_prefix(decl.pkg_path, _PACKAGES_PREFIX) && !strings.has_suffix(decl.pkg_path, "/editor") && !strings.contains(decl.pkg_path, "/editor/")
 		if !is_package do continue
 		attr_set := db.get(attrs, entity)
-		if args, found := gen_facts.attr_find(attr_set, "update"); found {
-			db.set(_updates, entity, Update_GenComp{kind = .Frame, order = gen_facts.attr_int(args, "order"), component = _component_arg(args)})
-		} else if args, lfound := gen_facts.attr_find(attr_set, "late_update"); lfound {
-			db.set(_updates, entity, Update_GenComp{kind = .Late, order = gen_facts.attr_int(args, "order"), component = _component_arg(args)})
-		} else if args, ffound := gen_facts.attr_find(attr_set, "fixed_update"); ffound {
-			divisor := gen_facts.attr_int(args, "divisor")
-			if divisor < 1 do divisor = 1
-			db.set(_updates, entity, Update_GenComp{kind = .Fixed, order = gen_facts.attr_int(args, "order"), divisor = divisor, component = _component_arg(args)})
+		// Two attributes per stage: the plain one for a system, the comp_ one
+		// for the per-component shape, which names its type.
+		for k in Update_Kind {
+			for per_item in ([2]bool{false, true}) {
+				key := _attr_name(k, per_item)
+				args, found := gen_facts.attr_find(attr_set, key)
+				if !found do continue
+				component := _component_arg(args)
+				if per_item && component == "" {
+					fmt.eprintf("update_gen: %s.%s: @(%s) runs once per component and needs component=T\n", decl.pkg.name, decl.name, key)
+					return false
+				}
+				if !per_item && component != "" {
+					fmt.eprintf("update_gen: %s.%s: @(%s) is a system, the per-component shape is @(%s={component=%s})\n", decl.pkg.name, decl.name, key, _attr_name(k, true), component)
+					return false
+				}
+				divisor := k == .Fixed ? max(gen_facts.attr_int(args, "divisor"), 1) : 0
+				db.set(_updates, entity, Update_GenComp{kind = k, order = gen_facts.attr_int(args, "order"), divisor = divisor, component = component})
+			}
 		}
 	}
 	return true
@@ -309,17 +321,19 @@ _generate_host :: proc(w: ^db.World, host: gen_facts.Runnable_Pkg, frame_rows, l
 	db.emit(w, fmt.tprintf("%s/update_generated.odin", host.path), strings.to_string(b))
 }
 
-// `__fixed_update_Spinner` for `fixed_update_Spinner`: a profile or a
+// `__fixed_update_Spinner` for `comp_fixed_update_Spinner`: a profile or a
 // breakpoint reads as the proc it wraps.
 _wrapper_name :: proc(e: _UpdateRow, kind: Update_Kind) -> string {
 	return fmt.tprintf("__%s", e.name)
 }
 
-_attr_name :: proc(kind: Update_Kind) -> string {
+// The attribute of a stage: `update`, or `comp_update` for the per-component
+// shape.
+_attr_name :: proc(kind: Update_Kind, per_item := false) -> string {
 	switch kind {
-	case .Frame: return "update"
-	case .Late:  return "late_update"
-	case .Fixed: return "fixed_update"
+	case .Frame: return per_item ? "comp_update" : "update"
+	case .Late:  return per_item ? "comp_late_update" : "late_update"
+	case .Fixed: return per_item ? "comp_fixed_update" : "fixed_update"
 	}
 	return ""
 }
@@ -336,7 +350,7 @@ _write_wrapper :: proc(b: ^strings.Builder, e: _UpdateRow, host: string, kind: U
 	} else {
 		pool = fmt.tprintf("%s.%s(w)", e.comp_pkg, e.comp_plural)
 	}
-	fmt.sbprintf(b, "// @(%s={{component=%s}}) %s\n", _attr_name(kind), e.component, call)
+	fmt.sbprintf(b, "// @(%s={{component=%s}}) %s\n", _attr_name(kind, true), e.component, call)
 	fmt.sbprintf(b, "%s :: proc(dt: f32) {{\n", _wrapper_name(e, kind))
 	strings.write_string(b, "\tw := engine.ctx_world()\n")
 	fmt.sbprintf(b, "\tit := engine.pool_iterator(%s)\n", pool)

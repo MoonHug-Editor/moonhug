@@ -43,7 +43,8 @@ render_pass_includes :: proc(pass: View_Pass, cast_shadows: Shadow_Casting, refl
     return false, false
 }
 
-on_destroy_MeshRenderer :: proc(mr: ^MeshRenderer) {
+@(comp_on_destroy={component=MeshRenderer})
+comp_on_destroy_MeshRenderer :: proc(mr: ^MeshRenderer) {
     cleanup_MeshRenderer(mr)
 }
 

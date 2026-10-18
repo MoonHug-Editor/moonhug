@@ -112,7 +112,8 @@ reset_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 	a.speed = 1
 }
 
-on_destroy_TimelineAnimator :: proc(a: ^TimelineAnimator) {
+@(comp_on_destroy={component=TimelineAnimator})
+comp_on_destroy_TimelineAnimator :: proc(a: ^TimelineAnimator) {
 	cleanup_TimelineAnimator(a)
 }
 

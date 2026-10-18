@@ -16,8 +16,8 @@ package core
 //                  data, to keep the value consistent (a zero that means
 //                  "default" becomes the default here).
 //
-// on_destroy_T stays a component's (plugins/engine/components.odin): it is about
-// leaving a world, not about the value.
+// @(comp_on_destroy) stays a component's (plugins/engine/components.odin): it
+// is about leaving a world, not about the value.
 
 import "base:runtime"
 import "core:encoding/json"

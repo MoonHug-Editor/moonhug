@@ -751,7 +751,7 @@ test_game_view_label_position :: proc(t: ^testing.T) {
 	testing.expect(t, !ok, "off the image")
 }
 
-// With both views showing gizmos, the @(on_draw_gizmos) procs record once per
+// With both views showing gizmos, the @(comp_on_draw_gizmos) procs record once per
 // camera: a pixel-sized gizmo (a directional light's rays) is built for each
 // view's own camera, three times bigger for a game camera three times farther.
 @(test)

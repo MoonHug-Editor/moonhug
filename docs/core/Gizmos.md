@@ -10,13 +10,13 @@ path: editor/scene-view
 
 ## Where to draw from
 
-- `@(on_draw_gizmos={component=T})` runs for every enabled `T` each frame, from the editor's gizmo pass (see Recording). It draws only. The proc takes `(c: ^T, ctx: handles.Gizmo_Context)` and decides from `ctx.state` what to draw: `.Selected` (this object), `.Active` (the active object of the selection), `.In_Selection` (it or an ancestor is selected). A gizmo that shows only for the selection starts with `if .In_Selection not_in ctx.state do return`.
-- `@(on_scene_handles={component=T})` takes the same parameters and runs for selected objects, in every tool: interactive handles go there (docs/core/Handles.md).
+- `@(comp_on_draw_gizmos={component=T})` runs for every enabled `T` each frame, from the editor's gizmo pass (see Recording). It draws only. The proc takes `(c: ^T, ctx: handles.Gizmo_Context)` and decides from `ctx.state` what to draw: `.Selected` (this object), `.Active` (the active object of the selection), `.In_Selection` (it or an ancestor is selected). A gizmo that shows only for the selection starts with `if .In_Selection not_in ctx.state do return`.
+- `@(comp_on_scene_handles={component=T})` takes the same parameters and runs for selected objects, in every tool: interactive handles go there (docs/core/Handles.md).
 - A `@(phase={key=DebugDraw, mode=App})` subscriber runs in the standalone app while debug drawing is on (F3). `libs/gizmos` subscribes too, at order 1000, and draws the gameplay shapes after the others recorded theirs.
 - Any other code (`update`, `fixed_update`, an editor tool) can draw too. Nothing needs an open render pass.
 
 ```odin
-@(on_draw_gizmos={component=CapsuleCollider})
+@(comp_on_draw_gizmos={component=CapsuleCollider})
 capsule_collider_gizmos :: proc(c: ^physics3d.CapsuleCollider, ctx: handles.Gizmo_Context) {
 	if .In_Selection not_in ctx.state do return
 	gizmos.with_color(physics3d.COLLIDER_GIZMO_COLOR)
@@ -37,7 +37,7 @@ A gizmo call records world-space lines, triangles and labels into the current co
 Channels say who a shape is for, and draw in this order:
 
 - `.Game` — gameplay and `@(debug_draw)` code. The scene view shows it, the game view with Gizmos on in its ⋮ menu or with debug drawing on, the standalone app with debug drawing on (F3).
-- `.Editor` — the `@(on_draw_gizmos)` procs, recorded with the scene camera. The scene view shows it.
+- `.Editor` — the `@(comp_on_draw_gizmos)` procs, recorded with the scene camera. The scene view shows it.
 - `.Editor_Game` — the same procs recorded with the game camera. The game view shows it with Gizmos on in its ⋮ menu.
 - `.Tools` — handles, the transform gizmo, the selection outline. Scene view only.
 
@@ -45,8 +45,8 @@ A view draws depth-tested shapes first, then the ones drawn over everything, eac
 
 The editor's gizmo pass (editor/gizmo_pass.odin) records once per frame, after the sim tick and before any view renders:
 
-- The selection outline, the `@(on_scene_handles)` procs and then the transform gizmo record first, into `.Tools`, while the scene view is on screen. An edit from a handle or the gizmo then shows in the same frame's gizmos and render.
-- The `@(on_draw_gizmos)` procs record once per view that shows gizmos, with that view's camera: into `.Editor` for the scene view, into `.Editor_Game` for the game view. Pixel sizes and camera-facing parts fit the view that shows them, and the scene view never affects what the game view shows. With both views showing gizmos the procs run twice a frame, so code with side effects (a log) sees both runs. The game view has gizmos with the scene view closed, and none without a camera.
+- The selection outline, the `@(comp_on_scene_handles)` procs and then the transform gizmo record first, into `.Tools`, while the scene view is on screen. An edit from a handle or the gizmo then shows in the same frame's gizmos and render.
+- The `@(comp_on_draw_gizmos)` procs record once per view that shows gizmos, with that view's camera: into `.Editor` for the scene view, into `.Editor_Game` for the game view. Pixel sizes and camera-facing parts fit the view that shows them, and the scene view never affects what the game view shows. With both views showing gizmos the procs run twice a frame, so code with side effects (a log) sees both runs. The game view has gizmos with the scene view closed, and none without a camera.
 - Gameplay code (update, fixed ticks) records once, measured against the game camera: the editor sets its view before the sim tick, the standalone app before its update. The scene view shows those shapes too.
 
 ## Scopes
@@ -60,7 +60,7 @@ State comes from scopes that undo themselves at the end of the enclosing block (
 - `with_view(v)` — `v` is the current view until the end of the block, then the previous one comes back. The game view draws with its camera's view this way.
 - `with_shapes(enabled)` and `with_icons(enabled)` — off, lines, triangles and labels (or icons) record nothing. The gizmo settings hide a component type this way around its hook.
 - `with_depth_test(enabled)` — on by default. Handles and the transform gizmo turn it off to draw over everything. A depth-tested line's depth moves toward the camera by a small fraction of its distance (gfx `LINE_DEPTH_PULL`, 2 mm per metre), so a line lying on a surface, a collider's box on its mesh or a selection outline, always wins against it instead of flickering, while a line behind a surface stays hidden. Circles, spheres and capsules draw as the polygon around their curve, each side touching it from outside, because a mesh's flat faces lie inside its true surface: a polygon drawn inside the curve could dip behind the mesh by more than the pull covers up close
-- `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets the channel around its `@(on_draw_gizmos)` procs, handles and the transform gizmo, so their code never calls it.
+- `with_channel(channel)` — `.Game` by default, shown in the game view and the scene view. The editor sets the channel around its `@(comp_on_draw_gizmos)` procs, handles and the transform gizmo, so their code never calls it.
 
 ```odin
 {
@@ -90,14 +90,14 @@ Names group by family:
 - Labels show in the editor's scene and game views, drawn over the view's image and never depth-tested. Each view shows the labels of the channels it draws, projected with its own camera. The standalone app draws no text yet.
 - An icon records as data (position, pixel size, image, colors, owner). Each view builds it when it draws, facing that view's camera at that view's pixel size, so icons face the game camera in the game view. The scene view picks the owner on a click inside it (`icons()` returns this frame's). `handles.icon` draws the editor's (docs/core/Handles.md).
 - An icon's image is a symbol (a proc drawing with shapes), a glyph (a codepoint of the editor's icon font) or a texture asset. A glyph or texture draws as a quad over the backdrop. Glyphs come from the glyph source the editor installs (`set_glyph_source`): without one, a glyph icon fails loudly, so the standalone app cannot draw them.
-- `helper_pixel` and `helper_project` measure against the current view: the view the `@(on_draw_gizmos)` procs record for, or the game camera for gameplay code.
+- `helper_pixel` and `helper_project` measure against the current view: the view the `@(comp_on_draw_gizmos)` procs record for, or the game camera for gameplay code.
 
 ## Gizmo settings
 
 Both the scene and the game view menus (the ⋮ button on the tab bar) have:
 
 - `Gizmos` — the view's toggle for every gizmo and icon in it. Off in the scene view, handles, the transform gizmo and gameplay shapes (`.Game`) still show, and icons no longer take clicks.
-- `Gizmo Settings` — shared by both views: the icon size, and one row per component type with an `@(on_draw_gizmos)` hook, with an Icon and a Gizmo checkbox.
+- `Gizmo Settings` — shared by both views: the icon size, and one row per component type with an `@(comp_on_draw_gizmos)` hook, with an Icon and a Gizmo checkbox.
 
 The gizmo dispatcher applies the checkboxes around each hook (`with_icons`, `with_shapes`), so hook code never checks them, and a type with both off does not run its hook. gizmos_gen lists the types, so a package's own gizmo hooks get rows too. Everything persists in the editor settings, per type by name.
 

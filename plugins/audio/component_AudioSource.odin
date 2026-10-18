@@ -43,7 +43,8 @@ cleanup_AudioSource :: proc(comp: ^AudioSource) {
 }
 
 // Live destroy — the track must die with the component or it keeps playing.
-on_destroy_AudioSource :: proc(comp: ^AudioSource) {
+@(comp_on_destroy={component=AudioSource})
+comp_on_destroy_AudioSource :: proc(comp: ^AudioSource) {
 	_destroy_track(comp)
 }
 

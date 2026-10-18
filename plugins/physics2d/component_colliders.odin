@@ -117,14 +117,17 @@ cleanup_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 
 // Live destroys (transform_destroy_components) — shapes and implicit static
 // bodies must die with their components or they keep colliding as ghosts.
-on_destroy_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
+@(comp_on_destroy={component=BoxCollider2D})
+comp_on_destroy_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 }
 
-on_destroy_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
+@(comp_on_destroy={component=CircleCollider2D})
+comp_on_destroy_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 }
 
-on_destroy_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
+@(comp_on_destroy={component=CapsuleCollider2D})
+comp_on_destroy_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	_destroy_shape(&comp.shape, &comp.static_body)
 }

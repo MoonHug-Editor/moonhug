@@ -11,7 +11,7 @@ import "moonhug:libs/gizmos"
 
 // The scene view's tool layer for this frame, into the gizmo channel the
 // caller set (.Tools): the selection outline, the selection's
-// @(on_scene_handles) procs, then the transform tool. The handles frame
+// @(comp_on_scene_handles) procs, then the transform tool. The handles frame
 // (handles.frame_begin) must already be open with `view`.
 scene_tools_frame :: proc(view: engine.Render_View) {
 	if sel := session.selection(); len(sel) > 0 {
@@ -22,7 +22,7 @@ scene_tools_frame :: proc(view: engine.Render_View) {
 	gizmo_tool_frame()
 }
 
-// Every @(on_draw_gizmos) proc once, into the gizmo channel and view the
+// Every @(comp_on_draw_gizmos) proc once, into the gizmo channel and view the
 // caller set. Call gizmo_marks_rebuild first in the frame.
 draw_gizmos :: proc() {
 	__draw_gizmos()

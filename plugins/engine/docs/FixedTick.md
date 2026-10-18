@@ -21,8 +21,8 @@ tween_tick :: proc(dt: f32) {}
 @(late_update)                        // after every @(update), before rendering
 camera_follow :: proc(dt: f32) {}
 
-@(fixed_update={component=Spinner})   // per item: once per enabled Spinner
-fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {}
+@(comp_fixed_update={component=Spinner})   // per item: once per enabled Spinner
+comp_fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {}
 ```
 
 - Works in any package's runtime code, the app included (docs/core/Plugins.md) — prebuild bakes every subscriber into `__fixed_update` in `update_generated.odin`, interleaved by order.

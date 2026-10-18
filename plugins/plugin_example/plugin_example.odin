@@ -23,8 +23,8 @@ reset_Spinner :: proc(comp: ^Spinner) {
 }
 
 // Per-item shape: the generated loop calls this for every enabled Spinner.
-@(fixed_update={component=Spinner})
-fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {
+@(comp_fixed_update={component=Spinner})
+comp_fixed_update_Spinner :: proc(dt: f32, s: ^Spinner) {
 	if s.speed == {} do return
 	t := engine.pool_get(&engine.ctx_world().transforms, engine.Handle(s.owner))
 	if t == nil do return
