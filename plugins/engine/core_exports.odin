@@ -56,6 +56,9 @@ type_cleanup                 :: core.type_cleanup
 type_cleanup_by_typeid       :: core.type_cleanup_by_typeid
 type_on_validate             :: core.type_on_validate
 type_on_validate_by_typeid   :: core.type_on_validate_by_typeid
+unmarshal_over_reset         :: core.unmarshal_over_reset
+unmarshal_over_reset_object  :: core.unmarshal_over_reset_object
+unmarshal_value_over_reset   :: core.unmarshal_value_over_reset
 generate_type_info           :: core.generate_type_info
 typeid_to_u16                :: core.typeid_to_u16
 

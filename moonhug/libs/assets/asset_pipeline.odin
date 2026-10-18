@@ -50,8 +50,8 @@ _settings_overlay :: proc(settings: any, v: json.Value) -> bool {
 }
 
 // A typed settings instance from a guid-tagged settings JSON object: zeroed,
-// then the object on top. Empty `any` when the object carries no known
-// __type_guid.
+// then the object over the type's reset defaults. Empty `any` when the object
+// carries no known __type_guid.
 _settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> any {
     obj, is_obj := v.(json.Object)
     if !is_obj do return {}
@@ -63,7 +63,7 @@ _settings_from_value :: proc(v: json.Value, allocator := context.allocator) -> a
     if _, known := core.get_typeid_by_guid_ok(guid); !known do return {}
     context.allocator = allocator
     settings := core.create_zero_instance_by_guid(guid)
-    _settings_overlay(settings, v)
+    core.unmarshal_value_over_reset(v, settings.data, settings.id)
     core.type_on_validate_by_typeid(settings.id, settings.data)
     return settings
 }

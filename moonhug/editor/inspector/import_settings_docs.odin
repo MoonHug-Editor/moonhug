@@ -165,13 +165,12 @@ _import_settings_apply_json :: proc(guid: core.Asset_GUID, json_bytes: []byte) -
 	}
 	tid := doc.data.id
 	fresh := core.create_zero_instance_by_guid(core.get_guid_by_typeid(tid))
-	ptr_tid, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
+	_, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
 	if fresh.data == nil || !ptr_ok {
 		log.error(fmt.tprintf("import settings: cannot rebuild %v", tid))
 		return false
 	}
-	pp := fresh.data
-	if err := json.unmarshal_any(json_bytes, any{&pp, ptr_tid}); err != nil {
+	if err := core.unmarshal_over_reset(json_bytes, fresh.data, tid); err != nil {
 		log.error(fmt.tprintf("import settings: unmarshal failed for %s: %v", doc.path, err))
 		return false
 	}

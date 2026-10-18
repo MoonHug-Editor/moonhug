@@ -172,9 +172,9 @@ get_type_key_by_typeid :: proc(T: typeid) -> (TypeKey, bool) {
     return key, ok
 }
 
-// A zeroed instance on context.allocator, for hydration: JSON goes on top
-// and absent fields stay zero. Never reset_T first, it may allocate and the
-// unmarshal would allocate over it.
+// A zeroed instance on context.allocator, for hydration: unmarshal_over_reset
+// puts the JSON on top of the type's reset defaults. Never reset_T it first,
+// a reset may allocate and the unmarshal would allocate over it.
 create_zero_instance_by_type_key :: proc(key: TypeKey) -> any {
     tid := type_key_to_typeid_arr[key]
     ti := type_info_of(tid)
@@ -192,7 +192,7 @@ create_zero_instance_by_guid :: proc(guid: uuid.Identifier) -> any {
 
 // A new instance on context.allocator: zeroed, then the type's reset_T
 // (type_lifecycle.odin) for its defaults. For a value that is new, not one
-// loaded from data (create_zero_instance_*).
+// loaded from data (create_zero_instance_* and unmarshal_over_reset).
 create_instance_by_type_key :: proc(key: TypeKey) -> any {
     inst := create_zero_instance_by_type_key(key)
     type_reset(key, inst.data)

@@ -102,9 +102,6 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     tid, known := core.get_typeid_by_guid_ok(guid)
     if !known do return json.Unmarshal_Data_Error.Invalid_Data
 
-    data_bytes, marshal_err := json.marshal(root, allocator = context.temp_allocator)
-    if marshal_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
-
     ti := type_info_of(tid)
     // The variant's OWNED allocations (strings, arrays) go to
     // context.allocator — the same owner every other component field gets
@@ -116,18 +113,18 @@ union_unmarshal :: proc(p: ^json.Parser, v: any) -> json.Unmarshal_Error {
     if alloc_err != nil do return json.Unmarshal_Data_Error.Invalid_Data
     mem.zero(variant_ptr, ti.size)
 
-    ptr_tid, ptr_tid_ok := core.get_pointer_typeid_by_typeid(tid)
+    _, ptr_tid_ok := core.get_pointer_typeid_by_typeid(tid)
     if !ptr_tid_ok {
         mem.free(variant_ptr, context.allocator)
         return json.Unmarshal_Data_Error.Invalid_Data
     }
 
-    if uerr := json.unmarshal_any(data_bytes, any{&variant_ptr, ptr_tid}, allocator = context.allocator); uerr != nil {
+    if uerr := core.unmarshal_value_over_reset(root, variant_ptr, tid, allocator = context.allocator); uerr != nil {
         mem.free(variant_ptr, context.allocator)
         return uerr
     }
 
-    // Zero → JSON → on_validate, the same as every other load.
+    // Zero → reset → JSON → on_validate, the same as every other load.
     core.type_on_validate_by_typeid(tid, variant_ptr)
     mem.copy(v.data, variant_ptr, ti.size)
     reflect.set_union_variant_typeid(v, tid)

@@ -165,14 +165,13 @@ _ext_desc_for_value :: proc(v: json.Value) -> (Component_Desc, bool) {
 	return component_registry[key], true
 }
 
-// json.Value -> typed component memory (ptr must point at a T of desc.tid).
-// Zero → JSON → on_validate_T: absent keys stay what the memory holds, and
-// the type's on_validate makes the result consistent (plugins/engine/docs/Components.md).
+// json.Value -> typed component memory (ptr must point at a zeroed T of
+// desc.tid). Zero → reset_T → JSON → on_validate_T: absent keys keep the
+// type's reset default while the Serialization setting is on, and on_validate
+// makes the result consistent (plugins/engine/docs/Components.md, "Missing
+// fields and reset defaults").
 _ext_value_into :: proc(desc: Component_Desc, v: json.Value, ptr: rawptr) -> bool {
-	bytes, merr := json.marshal(v, {spec = .JSON}, context.temp_allocator)
-	if merr != nil do return false
-	pp := ptr
-	if json.unmarshal_any(bytes, any{&pp, desc.ptr_tid}) != nil do return false
+	if unmarshal_value_over_reset(v, ptr, desc.tid) != nil do return false
 	type_on_validate(desc.type_key, ptr)
 	return true
 }
@@ -336,7 +335,7 @@ _scene_file_destroy_ext :: proc(sf: ^SceneFile) {
 }
 
 // Rewrite each component record through its registered type: parse into the
-// typed struct (missing keys default to zero), then re-marshal. The result has
+// typed struct (missing keys take the type's reset default), then re-marshal. The result has
 // the SAME field set the LIVE struct produces on save, so an override diff of
 // (normalized prefab base) vs (live content) never fires on fields the prefab
 // file simply omitted (a field added to a component after the prefab was
@@ -372,8 +371,8 @@ _normalize_component_records :: proc(raw: []byte, allocator := context.temp_allo
 		ptr, aerr := mem.alloc(ti.size, ti.align) // zero, temp-allocated
 		if aerr != nil do continue
 		// Match the LOAD path exactly (world_pool_create yields a zeroed slot,
-		// then _ext_value_into overwrites only present keys) — no reset, so a
-		// field absent from BOTH file and live struct compares equal (zero).
+		// then _ext_value_into fills absent keys with reset defaults), so a
+		// field absent from the file compares equal to the live struct's.
 		if !_ext_value_into(desc, rec, ptr) do continue // corrupt: leave verbatim
 		nv, nok := _ext_value_from(desc, ptr)
 		if !nok do continue

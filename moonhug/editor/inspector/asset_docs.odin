@@ -139,7 +139,7 @@ asset_docs_save_dirty :: proc() -> (saved, failed: int) {
 }
 
 // Undo hook: replace the document's payload with the given JSON (a full
-// capture_json of the document struct). Zero → JSON → on_validate into a
+// capture_json of the document struct). Zero → reset → JSON → on_validate into a
 // fresh instance, so dynamic arrays never merge with stale contents. The old
 // instance is retired (doc_data_retire): a wrapper may still draw it this frame.
 asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_bytes: []byte) -> bool {
@@ -156,13 +156,12 @@ asset_doc_apply_json :: proc(guid: core.Asset_GUID, kind: undo.Doc_Kind, json_by
     tid := doc.data.id
     type_guid := core.get_guid_by_typeid(tid)
     fresh := core.create_zero_instance_by_guid(type_guid)
-    ptr_tid, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
+    _, ptr_ok := core.get_pointer_typeid_by_typeid(tid)
     if !ptr_ok {
         log.error(fmt.tprintf("asset_docs: no pointer typeid for %v", tid))
         return false
     }
-    tmp := fresh.data
-    if err := json.unmarshal_any(json_bytes, any{&tmp, ptr_tid}, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
+    if err := core.unmarshal_over_reset(json_bytes, fresh.data, tid, json.DEFAULT_SPECIFICATION, context.allocator); err != nil {
         log.error(fmt.tprintf("asset_docs: unmarshal failed for %s: %v", doc.path, err))
         return false
     }

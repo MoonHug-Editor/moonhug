@@ -107,12 +107,10 @@ load_from_file :: proc(filepath: string) -> (file_data: any, ok: bool) {
         log.error(fmt.tprintf("Unknown __typ_guid %s: no installed plugin declares this asset type", guid_str))
         return any{}, false
     }
-    // Zeroed, then the file: a field the file lacks is zero.
+    // Zeroed, then the file over the type's reset defaults: a field the file
+    // lacks keeps its default.
     instance := core.create_zero_instance_by_guid(guid)
-    pointer_typeid, _ := core.get_pointer_typeid_by_typeid(instance.id)
-    temp_ptr := instance.data
-    target := any{ &temp_ptr, pointer_typeid }
-    unmarshal_err:=json.unmarshal_any(data, target, json.DEFAULT_SPECIFICATION, context.allocator)
+    unmarshal_err := core.unmarshal_over_reset_object(data, root, instance.data, instance.id, json.DEFAULT_SPECIFICATION, context.allocator)
     if unmarshal_err != nil {
         log.error(fmt.tprintf("Failed to unmarshal JSON: %v", unmarshal_err))
         return any{}, false

@@ -195,7 +195,7 @@ _import_audio :: proc(source_path, artifact_path: string, settings: rawptr) -> b
 
 - `name` is stored in .meta files and seeds artifact keys — keep it stable.
 - Bump `version` when the importer's output changes.
-- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults.
+- Settings defaults come from the type's `reset_<Type>` (plugins/engine/docs/Components.md, "Lifecycle procs"). The pipeline creates a defaulted instance and overlays the meta's settings object, so fields absent from old metas keep their defaults, as described in [Missing fields and reset defaults](../../plugins/engine/docs/Components.md#missing-fields-and-reset-defaults).
 
 ## Asset types
 
