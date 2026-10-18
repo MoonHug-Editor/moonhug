@@ -12,6 +12,16 @@ View_Kind :: enum u8 {
 	Preview,   // thumbnails and inspector previews
 }
 
+// What a view's commands feed. A renderer's pass flags pick the passes it
+// is in (MeshRenderer.cast_shadows, reflections): a Shadow view collects the
+// shadow casters, a Probe view a reflection probe's capture, a Color view
+// everything else (the colour passes, the depth prepass, the normals).
+View_Pass :: enum u8 {
+	Color,
+	Shadow,
+	Probe,
+}
+
 // How a view shades what it draws. Shaded is the game's look, the rest are
 // the scene view's debug modes, applied by the engine's render execute.
 View_Mode :: enum u8 {
@@ -30,6 +40,7 @@ Render_View :: struct {
 	width, height: f32, // viewport pixels (screen->ray, gizmo sizing)
 	layer_mask:    u32,
 	kind:          View_Kind,
+	pass:          View_Pass,
 	mode:          View_Mode,
 	camera:        Transform_Handle, // the Camera node a Game view renders for; {} for editor views
 	// The view's clip planes in world space (render_view_make). With `cull`

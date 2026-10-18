@@ -21,7 +21,9 @@ Transform :: struct {
     position: [3]f32,
     rotation: [4]f32,
     scale:    [3]f32,
-    render_layer: u32,
+    // The render layers this object is on, one bit per layer (several
+    // allowed). Children do not inherit it.
+    render_layer: u32 `decor:layers(domain="render")`,
     scene: ^Scene `json:"-"`,
     parent:   Ref `inspect:"-"`,
     children: [dynamic]Ref `inspect:"-"`,
@@ -50,7 +52,7 @@ transform_new :: proc(name: string, parentH: Transform_Handle = {}) -> Transform
     t.is_active = true
     t.rotation = QUAT_IDENTITY
     t.scale = {1, 1, 1}
-    t.render_layer = 1
+    t.render_layer = 1 << RENDER_LAYER_DEFAULT
 
     if s != nil {
         t.local_id = scene_new_lid(s)

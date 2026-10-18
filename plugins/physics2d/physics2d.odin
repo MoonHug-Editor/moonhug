@@ -13,12 +13,14 @@ package physics2d
 //   contact + sensor events; read them from a @(fixed_update) subscriber
 //   ordered AFTER this step (order > 1000), or next tick at any order.
 // - Escape hatch: body_of(tH) returns the live b2.BodyId — use vendor:box2d
-//   directly for forces, joints, filters, raycasts and runtime mutation.
+//   directly for forces, joints, filter groups, raycasts and runtime mutation.
 //
 // Transform scale affects shapes (Unity semantics — see collider_scale). The
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
+// The exception is a collider's `layers` and `mask`: each step writes them
+// into the live shape's filter when they differ.
 
 import "base:runtime"
 import "core:math"
@@ -246,8 +248,10 @@ _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, offset: 
 	return {body = static_body^, center = offset, angle = 0}, true
 }
 
-_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool) -> b2.ShapeDef {
+_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, mask: u32) -> b2.ShapeDef {
 	def := b2.DefaultShapeDef()
+	def.filter.categoryBits = u64(layer)
+	def.filter.maskBits = u64(mask)
 	def.density = density
 	def.material.friction = friction
 	def.material.restitution = bounciness
@@ -255,6 +259,17 @@ _shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool) -> b2.S
 	def.enableContactEvents = true
 	def.enableSensorEvents = true
 	return def
+}
+
+// Writes a collider's layer and mask into its live shape. A filter change
+// costs box2d about as much as a new shape, so the call happens only when the
+// bits differ. The group index stays as the shape has it.
+_sync_filter :: proc(shape: b2.ShapeId, layer, mask: u32) {
+	f := b2.Shape_GetFilter(shape)
+	if f.categoryBits == u64(layer) && f.maskBits == u64(mask) do return
+	f.categoryBits = u64(layer)
+	f.maskBits = u64(mask)
+	b2.Shape_SetFilter(shape, f)
 }
 
 _shape_key :: proc(s: b2.ShapeId) -> u64 {
@@ -269,12 +284,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(box_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
+			if b2.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			size, offset := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			box := b2.MakeOffsetBox(size.x * 0.5, size.y * 0.5, target.center, b2.MakeRot(target.angle))
 			c.shape = b2.CreatePolygonShape(target.body, def, &box)
 			_register_shape(c.shape, c.owner)
@@ -283,12 +302,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(circle_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
+			if b2.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			radius, offset := circle_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			circle := b2.Circle{center = target.center, radius = radius}
 			c.shape = b2.CreateCircleShape(target.body, def, &circle)
 			_register_shape(c.shape, c.owner)
@@ -297,12 +320,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(capsule_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b2.Shape_IsValid(c.shape) do continue
+			if b2.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			size, offset := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			radius, half: f32
 			axis: [2]f32
 			if c.direction == .Vertical {

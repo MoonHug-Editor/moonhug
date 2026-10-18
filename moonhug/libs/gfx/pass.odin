@@ -44,6 +44,7 @@ _Draw :: struct {
 	material:     []u8,   // fragment UBO slot 1 bytes (shader property block); nil = none
 	extra_tex:    []^Texture, // fragment sampler bindings 1..N (multi-texture shaders); nil entries = white
 	probe:        Probe_Blend, // mesh draws: the probes' cubes in place of the pass's environment, probe.cube nil = none
+	layers:       u32, // mesh draws: the render layers (draw_mesh `layers`). Batch draws push every bit
 }
 
 // A reflection probe for a draw (draw_mesh `probe`): its prefiltered cube
@@ -99,7 +100,9 @@ _INSTANCE_IDENTITY :: _Instance{model = _MAT4_IDENTITY, tint = {1, 1, 1, 1}}
 DRAW_UNIFORM_SLOT :: 2
 
 // Must match DrawUBO: x = the alpha cutoff (a fragment with less alpha is
-// discarded, 0 = no clipping), y = 1 on a normals pass, zw reserved.
+// discarded, 0 = no clipping), y = 1 on a normals pass, zw reserved. The
+// draw's render layers come last: a light whose culling mask shares no bit
+// with them leaves the draw dark.
 _Draw_Uniform :: struct {
 	params:     [4]f32, // x = the alpha cutoff, y = normals pass
 	fog_color:  [4]f32, // rgb linear, w = Fog_Mode
@@ -114,6 +117,7 @@ _Draw_Uniform :: struct {
 	probe2_min: [4]f32, // xyz the box, w = its specular intensity
 	probe2_max: [4]f32, // xyz the box, w = its diffuse intensity
 	probe_blend: [4]f32, // x = the probe's weight, 1 = no blend
+	layers:      [4]u32, // x = the draw's render layers, yzw reserved
 }
 
 // Fog for a pass's world draws (set_fog): every material shader fades its
@@ -177,6 +181,10 @@ Light :: struct {
 	range:     f32,    // point/spot falloff end
 	inner_cos: f32,    // spot: full brightness inside
 	outer_cos: f32,    // spot: zero outside
+	// The render layers it lights: a draw whose layers (draw_mesh `layers`)
+	// share no bit with it gets no light from it. 0 lights nothing, ~u32(0)
+	// every layer.
+	culling_mask: u32,
 }
 
 // Must match the lit shader's GpuLight (fragment set=3 binding=0), std140:
@@ -185,7 +193,7 @@ _Gpu_Light :: struct {
 	pos_type:    [4]f32, // xyz = position, w = kind (0 dir, 1 point, 2 spot)
 	dir_range:   [4]f32, // xyz = normalized travel direction, w = range
 	color_outer: [4]f32, // rgb premultiplied by intensity, w = cos outer half-angle
-	params:      [4]f32, // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w reserved
+	params:      [4]f32, // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w = the culling mask's bits (floatBitsToUint)
 }
 
 // The directional light's cascades: at most this many tiles of one atlas.
@@ -313,7 +321,7 @@ _LIGHT_DEFAULT_SUN :: _Gpu_Light{
 	pos_type    = {0, 0, 0, 0},
 	dir_range   = {-0.42107597, -0.84215194, -0.33686078, 0}, // normalize({-0.5,-1,-0.4})
 	color_outer = {1, 1, 1, 0},
-	params      = {0, 0, 0, 0},
+	params      = {0, 0, 0, 0hFFFFFFFF}, // w: the bits of a culling mask that lights every layer
 }
 
 // Must match surface.glsl ClusterUBO (std140): the pass's lights, then two
@@ -770,7 +778,7 @@ set_lights :: proc(ls: []Light, ambient: f32) {
 			pos_type    = {l.position.x, l.position.y, l.position.z, f32(l.kind)},
 			dir_range   = {d.x, d.y, d.z, max(l.range, 0)},
 			color_outer = {srgb_to_linear1(l.color.r) * l.intensity, srgb_to_linear1(l.color.g) * l.intensity, srgb_to_linear1(l.color.b) * l.intensity, l.outer_cos},
-			params      = {l.inner_cos, 0, 0, 0},
+			params      = {l.inner_cos, 0, 0, transmute(f32)l.culling_mask},
 		}
 	}
 	_pass.light = u
@@ -988,7 +996,11 @@ draw_line :: proc(a, b: [3]f32, color: [4]f32, depth_test := true, depth_write :
 // clockwise triangles are the front faces, so culling and the shader's
 // gl_FrontFacing still see the outside as the front. Wire and overlay draws
 // show both faces and ignore both.
-draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false, probe := Probe_Blend{}) {
+//
+// layers are the draw's render layers: a light lights it when the light's
+// culling mask (Light.culling_mask) shares a bit with them. Draws whose
+// layers differ never merge.
+draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f32, shader := "", first_index: u32 = 0, index_count: u32 = 0, material: []u8 = nil, extra_tex: []^Texture = nil, wire := false, overlay := false, alpha_cutoff: f32 = 0, cull := Cull.None, mirrored := false, blend := false, probe := Probe_Blend{}, layers := ~u32(0)) {
 	if mesh.index_count == 0 do return
 	count := index_count == 0 ? mesh.index_count : index_count
 	if first_index >= mesh.index_count do return
@@ -1005,7 +1017,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		last := &_pass.draws[n - 1]
 		if last.is_mesh && last.kind == kind && last.mesh == mesh &&
 		   last.mesh_first == first_index && last.mesh_count == count &&
-		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff && last.cull == cull && last.mirrored == mirrored && last.probe == probe &&
+		   last.texture == tex && last.vp_index == vp && last.shader == shader && last.alpha_cutoff == alpha_cutoff && last.cull == cull && last.mirrored == mirrored && last.probe == probe && last.layers == layers &&
 		   slice.equal(last.material, material) && slice.equal(last.extra_tex, extra_tex) &&
 		   last.instance_first + last.instance_count == inst {
 			last.instance_count += 1
@@ -1024,6 +1036,7 @@ draw_mesh :: proc(mesh: Mesh, tex: ^Texture, model: matrix[4, 4]f32, color: [4]f
 		instance_count = 1,
 		alpha_cutoff   = alpha_cutoff,
 		probe          = probe,
+		layers         = layers,
 		cull           = cull,
 		mirrored       = mirrored,
 		shader         = shader,
@@ -1354,6 +1367,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 	pushed_light_vp := i32(-1)
 	pushed_cutoff := f32(-1)
 	pushed_probe := Probe_Blend{weight = -1}
+	pushed_layers := u32(0)
 	pushed_draw_vp := i32(-1) // the draw block holds the view's camera, for the fog
 	viewport := [4]f32{} // the render pass starts on the whole target
 	for &d in _pass.draws {
@@ -1439,9 +1453,10 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			num_bindings = ENV_IRRADIANCE2_SLOT + 1
 		}
 		sdl.BindGPUFragmentSamplers(rp, 0, &bindings[0], num_bindings)
-		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe) {
+		draw_layers := d.is_mesh ? d.layers : ~u32(0) // batch draws are on every layer
+		if !d.fullscreen && (pushed_cutoff != d.alpha_cutoff || pushed_draw_vp != d.vp_index || pushed_probe != d.probe || pushed_layers != draw_layers) {
 			cam := _pass.vps[d.vp_index].cam_pos
-			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp}
+			u := _Draw_Uniform{params = {d.alpha_cutoff, _pass.normals_out ? 1 : 0, 0, 0}, cam_pos = {cam.x, cam.y, cam.z, 0}, view_proj = _pass.vps[d.vp_index].vp, layers = {draw_layers, 0, 0, 0}}
 			u.fog_color, u.fog_params, u.fog_more = draw_uniform_fog(_pass.fog, cam)
 			if pr := d.probe.probe; pr.cube != nil {
 				u.probe_pos = {pr.pos.x, pr.pos.y, pr.pos.z, pr.box ? 1 : 0}
@@ -1463,6 +1478,7 @@ _pass_flush :: proc(before_end: proc(cmd: ^sdl.GPUCommandBuffer, rp: ^sdl.GPURen
 			pushed_cutoff = d.alpha_cutoff
 			pushed_draw_vp = d.vp_index
 			pushed_probe = d.probe
+			pushed_layers = draw_layers
 		}
 
 		if d.fullscreen {

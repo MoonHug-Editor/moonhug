@@ -1123,7 +1123,7 @@
         1.39999998,
         1.39999998
       ],
-      "render_layer": 2,
+      "render_layer": 1,
       "parent": {
         "pptr": {
           "local_id": 1,
@@ -1349,7 +1349,7 @@
       },
       "blend_distance": 1.0,
       "box_projection": true,
-      "culling_mask": 4294967293,
+      "culling_mask": 4294967295,
       "diffuse": true,
       "intensity": 1.0,
       "refresh": 0,
@@ -1774,9 +1774,11 @@
         "enabled": true,
         "local_id": 165
       },
+      "cast_shadows": 0,
       "materials": [
         "497c16fe-ea79-40af-97ee-9d82e491e54e"
-      ]
+      ],
+      "reflections": 1
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",

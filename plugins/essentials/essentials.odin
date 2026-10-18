@@ -25,6 +25,16 @@ PBR_SHADER_GUID :: "d85e072d-e69c-421f-ace2-83b602c98eb0"
 // engine's scene nodes, the postfx chain, the final blit.
 DEFAULT_PIPELINE_GUID :: "2f6a9c41-8b3d-4a7e-9d15-c0e4b7a2d938"
 
+// assets/rendering/DefaultRenderLayers.asset — the names of the render
+// layers until the project's Layers setting names a Render Layers asset of its
+// own: layer 0 "Default", layer 31 "Editor".
+DEFAULT_RENDER_LAYERS_GUID :: "df291cbd-037a-46f5-bad4-f27e885029c0"
+
+// assets/physics/DefaultPhysicsLayers.asset — the names of the collision
+// layers until the project's Layers setting names a Physics Layers asset of
+// its own: layer 0 "Default".
+DEFAULT_PHYSICS_LAYERS_GUID :: "5911ae6f-d210-4ee5-b7d6-c50a91ead1a0"
+
 import "core:encoding/uuid"
 import "moonhug:packages/engine"
 
@@ -32,4 +42,12 @@ import "moonhug:packages/engine"
 essentials_default_pipeline :: proc() {
 	id := uuid.read(DEFAULT_PIPELINE_GUID) or_else uuid.Identifier{}
 	engine.render_pipeline_default = engine.Asset_GUID(id)
+}
+
+@(phase={key=EngineInit, order=-1})
+essentials_default_layers :: proc() {
+	render := uuid.read(DEFAULT_RENDER_LAYERS_GUID) or_else uuid.Identifier{}
+	physics := uuid.read(DEFAULT_PHYSICS_LAYERS_GUID) or_else uuid.Identifier{}
+	engine.render_layers_default = engine.Asset_GUID(render)
+	engine.physics_layers_default = engine.Asset_GUID(physics)
 }

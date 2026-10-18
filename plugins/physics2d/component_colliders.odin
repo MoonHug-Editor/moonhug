@@ -6,8 +6,15 @@ package physics2d
 // body. Sizes are in world units (1 unit = 1 m = 100 px, plugins/engine/docs/FixedTick.md).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
-// edits don't live-sync (the editor doesn't simulate); runtime code mutates
-// physics through body_of(tH) + vendor:box2d.
+// edits don't live-sync (the editor doesn't simulate), except `layers` and
+// `mask`: the fixed step pushes those into the live shape's filter. Runtime
+// code mutates the rest through body_of(tH) + vendor:box2d.
+//
+// `layers` is the layers the collider is on and `mask` the layers it collides
+// with, bits of the engine's "physics" domain: one list of collision layer
+// names for the 2D and the 3D colliders, from the project's Physics Layers asset
+// (plugins/engine/docs/Layers.md). Two shapes collide when
+// (a.layers & b.mask) != 0 && (b.layers & a.mask) != 0.
 
 import b2 "vendor:box2d"
 import "moonhug:packages/engine"
@@ -22,6 +29,8 @@ BoxCollider2D :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b2.ShapeId `json:"-" inspect:"-"`,
 	static_body: b2.BodyId `json:"-" inspect:"-"`, // only when no ancestor RB
@@ -29,6 +38,8 @@ BoxCollider2D :: struct {
 
 reset_BoxCollider2D :: proc(comp: ^BoxCollider2D) {
 	cleanup_BoxCollider2D(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.size = {1, 1}
 	comp.density = 1
 	comp.friction = 0.6
@@ -49,6 +60,8 @@ CircleCollider2D :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b2.ShapeId `json:"-" inspect:"-"`,
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
@@ -56,6 +69,8 @@ CircleCollider2D :: struct {
 
 reset_CircleCollider2D :: proc(comp: ^CircleCollider2D) {
 	cleanup_CircleCollider2D(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.radius = 0.5
 	comp.density = 1
 	comp.friction = 0.6
@@ -82,6 +97,8 @@ CapsuleCollider2D :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b2.ShapeId `json:"-" inspect:"-"`,
 	static_body: b2.BodyId `json:"-" inspect:"-"`,
@@ -89,6 +106,8 @@ CapsuleCollider2D :: struct {
 
 reset_CapsuleCollider2D :: proc(comp: ^CapsuleCollider2D) {
 	cleanup_CapsuleCollider2D(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.size = {1, 2}
 	comp.density = 1
 	comp.friction = 0.6

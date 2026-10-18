@@ -19,6 +19,8 @@ package physics3d
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
+// The exception is a collider's `layers` and `mask`: each step writes them
+// into the live shape's filter when they differ.
 
 import "base:runtime"
 import "core:math"
@@ -250,8 +252,10 @@ _shape_target :: proc(w: ^engine.World, owner: engine.Transform_Handle, center: 
 	return {body = static_body^, center = center, rot = 1}, true
 }
 
-_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool) -> b3.ShapeDef {
+_shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, mask: u32) -> b3.ShapeDef {
 	def := b3.DefaultShapeDef()
+	def.filter.categoryBits = u64(layer)
+	def.filter.maskBits = u64(mask)
 	def.density = density
 	def.baseMaterial.friction = friction
 	def.baseMaterial.restitution = bounciness
@@ -259,6 +263,18 @@ _shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool) -> b3.S
 	def.enableContactEvents = true
 	def.enableSensorEvents = true
 	return def
+}
+
+// Writes a collider's layer and mask into its live shape. The call happens
+// only when the bits differ, since box3d then rebuilds the shape's broadphase
+// proxy so pairs are found or dropped on the next step. The group index stays
+// as the shape has it.
+_sync_filter :: proc(shape: b3.ShapeId, layer, mask: u32) {
+	f := b3.Shape_GetFilter(shape)
+	if f.categoryBits == u64(layer) && f.maskBits == u64(mask) do return
+	f.categoryBits = u64(layer)
+	f.maskBits = u64(mask)
+	b3.Shape_SetFilter(shape, f, invokeContacts = true)
 }
 
 _shape_key :: proc(s: b3.ShapeId) -> u64 {
@@ -282,12 +298,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(box_colliders(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
+			if b3.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			size, center := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			h := size * 0.5
 			bh := b3.MakeTransformedBoxHull(h.x, h.y, h.z, b3.Transform{p = target.center, q = target.rot})
 			c.shape = b3.CreateHullShape(target.body, def, &bh.base)
@@ -297,12 +317,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(sphere_colliders(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
+			if b3.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			radius, center := sphere_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			sphere := b3.Sphere{center = target.center, radius = radius}
 			c.shape = b3.CreateSphereShape(target.body, def, &sphere)
 			_register_shape(c.shape, c.owner)
@@ -311,12 +335,16 @@ _sync_colliders :: proc(w: ^engine.World) {
 	{
 		it := engine.pool_iterator(capsule_colliders(w))
 		for c, _ in engine.pool_next(&it) {
-			if !c.enabled || b3.Shape_IsValid(c.shape) do continue
+			if b3.Shape_IsValid(c.shape) {
+				_sync_filter(c.shape, c.layers, c.mask)
+				continue
+			}
+			if !c.enabled do continue
 			if !engine.pool_valid(&w.transforms, engine.Handle(c.owner)) do continue
 			radius, height, center := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
 			half := max(height * 0.5 - radius, 0)
 			axis := linalg.quaternion128_mul_vector3(target.rot, _capsule_axis(c.direction))
 			capsule := b3.Capsule{

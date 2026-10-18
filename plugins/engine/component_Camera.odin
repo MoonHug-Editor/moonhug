@@ -9,7 +9,8 @@ Camera :: struct {
     near_clip:         f32,
     far_clip:          f32,
     clear_color:       [4]f32 `decor:color()`,
-    render_layer_mask: u32, // TODO: use bit_set[RenderLayer]
+    // The render layers this camera draws (Transform.render_layer bits).
+    render_layer_mask: u32 `decor:layers(domain="render")`,
     // The render pipeline slot this camera renders through
     // (render_pipeline.odin). Empty is Main. A slot the pipeline does not
     // declare falls back to Main with one warning.

@@ -18,6 +18,7 @@ struct DrawUBO
     float4 probe2_min;
     float4 probe2_max;
     float4 probe_blend;
+    uint4 draw_layers;
 };
 
 struct main0_out
@@ -31,10 +32,10 @@ struct main0_in
     float3 frag_normal [[user(locn2)]];
 };
 
-fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _24 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
+fragment main0_out main0(main0_in in [[stage_in]], constant DrawUBO& _25 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]])
 {
     main0_out out = {};
-    if (tex.sample(texSmplr, in.frag_uv).w < _24.draw_params.x)
+    if (tex.sample(texSmplr, in.frag_uv).w < _25.draw_params.x)
     {
         discard_fragment();
     }

@@ -6,8 +6,15 @@ package physics3d
 // body. Sizes are in world units (1 unit = 1 m).
 //
 // Runtime ids are created by the fixed step and never serialized. Inspector
-// edits don't live-sync (the editor doesn't simulate); runtime code mutates
-// physics through body_of(tH) + vendor:box3d.
+// edits don't live-sync (the editor doesn't simulate), except `layers` and
+// `mask`: the fixed step pushes those into the live shape's filter. Runtime
+// code mutates the rest through body_of(tH) + vendor:box3d.
+//
+// `layers` is the layers the collider is on and `mask` the layers it collides
+// with, bits of the engine's "physics" domain: one list of collision layer
+// names for the 2D and the 3D colliders, from the project's Physics Layers asset
+// (plugins/engine/docs/Layers.md). Two shapes collide when
+// (a.layers & b.mask) != 0 && (b.layers & a.mask) != 0.
 
 import b3 "vendor:box3d"
 import "moonhug:packages/engine"
@@ -22,6 +29,8 @@ BoxCollider :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b3.ShapeId `json:"-" inspect:"-"`,
 	static_body: b3.BodyId `json:"-" inspect:"-"`, // only when no ancestor RB
@@ -29,6 +38,8 @@ BoxCollider :: struct {
 
 reset_BoxCollider :: proc(comp: ^BoxCollider) {
 	cleanup_BoxCollider(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.size = {1, 1, 1}
 	comp.density = 1
 	comp.friction = 0.6
@@ -49,6 +60,8 @@ SphereCollider :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b3.ShapeId `json:"-" inspect:"-"`,
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
@@ -56,6 +69,8 @@ SphereCollider :: struct {
 
 reset_SphereCollider :: proc(comp: ^SphereCollider) {
 	cleanup_SphereCollider(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.radius = 0.5
 	comp.density = 1
 	comp.friction = 0.6
@@ -85,6 +100,8 @@ CapsuleCollider :: struct {
 	friction:    f32,
 	bounciness:  f32,
 	is_trigger:  bool,
+	layers:       u32 `decor:layers(domain="physics")`,
+	mask:        u32 `decor:layers(domain="physics")`,
 
 	shape:       b3.ShapeId `json:"-" inspect:"-"`,
 	static_body: b3.BodyId `json:"-" inspect:"-"`,
@@ -92,6 +109,8 @@ CapsuleCollider :: struct {
 
 reset_CapsuleCollider :: proc(comp: ^CapsuleCollider) {
 	cleanup_CapsuleCollider(comp)
+	comp.layers = 1
+	comp.mask = ~u32(0)
 	comp.radius = 0.5
 	comp.height = 2
 	comp.direction = .Y_Axis

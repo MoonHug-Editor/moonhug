@@ -47,7 +47,7 @@ struct GpuLight {
     vec4 pos_type;    // xyz = position, w = kind (0 dir, 1 point, 2 spot)
     vec4 dir_range;   // xyz = normalized travel direction, w = range
     vec4 color_outer; // rgb premultiplied by intensity, w = cos outer half-angle
-    vec4 params;      // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w reserved
+    vec4 params;      // x = cos inner half-angle, y = first shadow tile, z = shadow tiles (0 none, 1 spot, 6 point), w = the culling mask's bits (light_lights_draw)
 };
 
 layout(set = 3, binding = 0) uniform LightUBO {
@@ -95,6 +95,7 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe2_min; // xyz the box, w = its specular intensity
     vec4 probe2_max; // xyz the box, w = its diffuse intensity
     vec4 probe_blend; // x = the probe's weight, 1 = no blend
+    uvec4 draw_layers; // x = the draw's render layers (gfx.draw_mesh layers), every bit for batch draws
 };
 
 // Every light of the pass (gfx.set_lights), and for each tile of the screen's
@@ -106,6 +107,12 @@ layout(set = 3, binding = 3) uniform ClusterUBO {
     GpuLight lights[MAX_LIGHTS];
     uvec4 tile_bits[CLUSTER_COLS * CLUSTER_ROWS * 2];
 };
+
+// Whether light `l` lights this draw: its culling mask (gfx.Light
+// culling_mask, the bits of params.w) shares a bit with the draw's layers.
+bool light_lights_draw(GpuLight l) {
+    return (floatBitsToUint(l.params.w) & draw_layers.x) != 0u;
+}
 
 // The light tile the fragment is in.
 int light_tile() {

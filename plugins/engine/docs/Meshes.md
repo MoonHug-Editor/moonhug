@@ -21,6 +21,7 @@ history live there.
   glb/gltf via the field's `ext:` tag) and **MeshRenderer** (a `materials`
   list of [Material](Materials.md) assets, one per submesh; missing/empty
   entries render white, lit) to a transform.
+- MeshRenderer's `cast_shadows` (On, Off, Double_Sided, Shadows_Only) and `reflections` (Visible, Hidden) pick the passes it draws in ([Layers](Layers.md#pass-flags)).
 
 Unity parity: MeshFilter references the mesh DATA, MeshRenderer decides how
 it draws (via its Materials — submesh i uses `materials[i]`).

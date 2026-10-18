@@ -32,6 +32,7 @@ struct DrawUBO
     float4 probe2_min;
     float4 probe2_max;
     float4 probe_blend;
+    uint4 draw_layers;
 };
 
 struct GpuLight
@@ -124,13 +125,13 @@ void surface(thread const Surface& s)
 {
 }
 
-fragment void main0(main0_in in [[stage_in]], constant DrawUBO& _150 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], bool gl_FrontFacing [[front_facing]])
+fragment void main0(main0_in in [[stage_in]], constant DrawUBO& _151 [[buffer(2)]], texture2d<float> tex [[texture(0)]], sampler texSmplr [[sampler(0)]], bool gl_FrontFacing [[front_facing]])
 {
     Surface s = surface_preset(in.frag_normal, gl_FrontFacing, in.frag_uv, tex, texSmplr, in.frag_color);
     Surface param = s;
     surface(param);
     s = param;
-    if (s.alpha < _150.draw_params.x)
+    if (s.alpha < _151.draw_params.x)
     {
         discard_fragment();
     }

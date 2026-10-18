@@ -233,3 +233,112 @@ physics2d_bodies_released_on_scene_restore :: proc(t: ^testing.T) {
 		testing.expect(t, reborn, "restored Ball gets a fresh live body")
 	}
 }
+
+// Collision layers: two shapes collide when each one's layer shares a bit
+// with the other's mask. Ball A's mask leaves out the floor's layer, so it
+// falls through with no contact. Ball B is on another layer, but the floor's
+// mask takes every layer and B's mask takes the floor's, so B lands.
+@(test)
+physics2d_layer_mask_filters_contacts :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	floor := engine.transform_new("Floor")
+	engine.pool_get(&tc.world.transforms, engine.Handle(floor)).position = {0, -2, 0}
+	_, box_ptr := engine.transform_add_comp(floor, .BoxCollider2D)
+	box := cast(^physics2d.BoxCollider2D)box_ptr
+	box.enabled = true
+	box.size = {20, 1}
+	testing.expect_value(t, box.layers, u32(1))
+	testing.expect_value(t, box.mask, ~u32(0))
+	// The picker reads the names from the engine's shared physics domain.
+	testing.expect_value(t, engine.layer_name(engine.LAYER_DOMAIN_PHYSICS, 0), "Default")
+
+	a := _layer_ball(tc, "A", -3, layer = 1 << 3, mask = 1 << 3)
+	b := _layer_ball(tc, "B", 3, layer = 1 << 3, mask = ~u32(0))
+
+	a_hit, b_hit: bool
+	for _ in 0 ..< 200 {
+		physics2d.physics_step(1.0 / 60.0)
+		for c in physics2d.contact_begin_events() {
+			if _pair_is(c, a, floor) do a_hit = true
+			if _pair_is(c, b, floor) do b_hit = true
+		}
+	}
+
+	testing.expect(t, !a_hit, "A's mask leaves out the floor's layer: no contact")
+	testing.expect(t, b_hit, "B and the floor accept each other's layers: contact")
+	ay := engine.pool_get(&tc.world.transforms, engine.Handle(a)).position.y
+	by := engine.pool_get(&tc.world.transforms, engine.Handle(b)).position.y
+	testing.expect(t, ay < -3, "A falls through the floor")
+	testing.expect(t, by > -1.6, "B rests on the floor")
+
+	// The fields reach box2d as the shape filter's category and mask bits.
+	circle := _layer_circle(tc, a)
+	f := b2.Shape_GetFilter(circle.shape)
+	testing.expect_value(t, f.categoryBits, u64(1 << 3))
+	testing.expect_value(t, f.maskBits, u64(1 << 3))
+}
+
+// An edit of `mask` on a live collider reaches its shape on the next step.
+@(test)
+physics2d_layer_mask_edit_applies_live :: proc(t: ^testing.T) {
+	tc := new(common.TestCtx)
+	defer free(tc)
+	common.setup(tc)
+	context.user_ptr = &tc.uc
+	defer common.teardown(tc)
+
+	floor := engine.transform_new("Floor")
+	engine.pool_get(&tc.world.transforms, engine.Handle(floor)).position = {0, -2, 0}
+	_, box_ptr := engine.transform_add_comp(floor, .BoxCollider2D)
+	box := cast(^physics2d.BoxCollider2D)box_ptr
+	box.enabled = true
+	box.size = {20, 1}
+
+	ball := _layer_ball(tc, "Ball", 0, layer = 1, mask = 0)
+	physics2d.physics_step(1.0 / 60.0)
+	circle := _layer_circle(tc, ball)
+	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(0))
+
+	circle.mask = ~u32(0)
+	for _ in 0 ..< 200 {
+		physics2d.physics_step(1.0 / 60.0)
+	}
+	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(~u32(0)))
+	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
+	testing.expect(t, y > -1.6, "the ball lands once its mask takes the floor's layer")
+}
+
+@(private = "file")
+_layer_ball :: proc(tc: ^common.TestCtx, name: string, x: f32, layer, mask: u32) -> engine.Transform_Handle {
+	ball := engine.transform_new(name)
+	engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position = {x, 3, 0}
+	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody2D)
+	rb := cast(^physics2d.Rigidbody2D)rb_ptr
+	rb.enabled = true
+	rb.body_type = .Dynamic
+	rb.gravity_scale = 1
+	_, circle_ptr := engine.transform_add_comp(ball, .CircleCollider2D)
+	circle := cast(^physics2d.CircleCollider2D)circle_ptr
+	circle.enabled = true
+	circle.layers = layer
+	circle.mask = mask
+	return ball
+}
+
+@(private = "file")
+_layer_circle :: proc(tc: ^common.TestCtx, tH: engine.Transform_Handle) -> ^physics2d.CircleCollider2D {
+	t := engine.pool_get(&tc.world.transforms, engine.Handle(tH))
+	owned, idx := engine.transform_find_comp(t, .CircleCollider2D)
+	assert(idx >= 0, "the ball has a CircleCollider2D")
+	return engine.pool_get(physics2d.circle_collider2_ds(&tc.world), owned.handle)
+}
+
+@(private = "file")
+_pair_is :: proc(c: physics2d.Contact, x, y: engine.Transform_Handle) -> bool {
+	return (c.a == x && c.b == y) || (c.a == y && c.b == x)
+}

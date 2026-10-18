@@ -27,6 +27,7 @@ layout(set = 3, binding = 2) uniform DrawUBO {
     vec4 probe2_min; // xyz the box, w = its specular intensity
     vec4 probe2_max; // xyz the box, w = its diffuse intensity
     vec4 probe_blend; // x = the probe's weight, 1 = no blend
+    uvec4 draw_layers; // x = the draw's render layers (gfx.draw_mesh layers), every bit for batch draws
 };
 
 void main() {

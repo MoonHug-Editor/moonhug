@@ -78,6 +78,13 @@ Draw_Mesh :: struct {
 	// own buffers. The asset is still loaded, for its submesh ranges and
 	// materials. nil for a static draw.
 	skinned:   ^gfx.Mesh,
+	// The owner's render layers (Transform.render_layer): a light lights the
+	// draw when its culling mask shares a bit, a shadow map takes it when the
+	// light's shadow caster mask does.
+	layers:    u32,
+	// Drawn with no face culling whatever its materials say: a Double_Sided
+	// caster, set in a Shadow view only (render_pass_includes).
+	double_sided: bool,
 }
 
 Render_Command :: struct {
@@ -177,6 +184,8 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 		t := pool_get(&world.transforms, Handle(mr.owner))
 		if t == nil || !transform_active_in_hierarchy(mr.owner) do continue
 		if t.render_layer & view.layer_mask == 0 do continue
+		draws, double_sided := render_pass_includes(view.pass, mr.cast_shadows, mr.reflections)
+		if !draws do continue
 
 		_, mf := transform_get_comp(Transform_Handle(mr.owner), MeshFilter)
 		if mf == nil || asset_guid_is_empty(mf.mesh.guid) do continue
@@ -198,6 +207,8 @@ _collect_mesh_renderers :: proc(view: Render_View, out: ^[dynamic]Render_Command
 				part      = part,
 				materials = mr.materials[:],
 				model     = model,
+				layers    = t.render_layer,
+				double_sided = double_sided,
 			},
 		})
 	}
@@ -295,7 +306,7 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 			cull := m.cull
 			index := len(items)
 			assert(index <= int(max(u32)), "render_execute: more mesh draws than a sort key indexes")
-			group := u128(render_fold_guid(mat)) << 64 | u128(_fold_mesh_faces(d, i32(i), cull, mirrored)) << 32
+			group := u128(render_fold_guid(mat)) << 64 | u128(_fold_mesh_faces(d, i32(i), cull, mirrored, d.layers)) << 32
 			append(&keys, group | u128(index))
 			append(&items, Item{material = mat, sub = i32(i), cull = cull, mirrored = mirrored, cmd = &cmd, loaded = mesh})
 		}
@@ -311,7 +322,7 @@ _execute_meshes :: proc(view: Render_View, commands: []Render_Command) {
 		switch view.mode {
 		case .Shaded:
 			probe := probe_for_point({d.model[0, 3], d.model[1, 3], d.model[2, 3]}) // render_probes.odin
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored, probe = probe)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = it.cull, mirrored = it.mirrored, probe = probe, layers = d.layers)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:
@@ -363,7 +374,7 @@ _execute_transparent_meshes :: proc(view: Render_View, commands: []Render_Comman
 		switch view.mode {
 		case .Shaded:
 			probe := probe_for_point({d.model[0, 3], d.model[1, 3], d.model[2, 3]})
-			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true, probe = probe)
+			gfx.draw_mesh(gpu, m.tex, d.model, m.color, m.shader, sub.first_index, sub.index_count, m.data, m.extra, alpha_cutoff = m.cutoff, cull = m.cull, mirrored = mirrored, blend = true, probe = probe, layers = d.layers)
 		case .Wireframe:
 			gfx.draw_mesh(gpu, nil, d.model, WIREFRAME_COLOR, gfx.DEFAULT_SHADER, sub.first_index, sub.index_count, wire = true)
 		case .Unlit:
@@ -403,12 +414,13 @@ _mesh_mat :: proc(mats: ^map[Asset_GUID]_Mesh_Mat, guid: Asset_GUID) -> _Mesh_Ma
 
 // Draws the meshes of `commands` into the CURRENT depth-only pass (gfx
 // Target_Format.Depth: the shadow map, the depth prepass), each face culled
-// as its material says. A mesh none of whose materials clip, and whose
-// materials all cull alike, draws whole with gfx.DEPTH_SHADER, so every copy
-// of it merges into one instanced draw whatever its materials are. Otherwise
-// each submesh draws on its own, and one whose material clips draws with
-// that material's shader, which gfx runs as its caster (alpha clipping, no
-// lighting), with its texture, color and cutoff.
+// as its material says, or not at all for a double-sided draw. A mesh none
+// of whose materials clip, and whose faces all cull alike, draws whole with
+// gfx.DEPTH_SHADER, so every copy of it merges into one instanced draw
+// whatever its materials are. Otherwise each submesh draws on its own, and
+// one whose material clips draws with that material's shader, which gfx runs
+// as its caster (alpha clipping, no lighting), with its texture, color and
+// cutoff.
 render_execute_depth :: proc(commands: []Render_Command) {
 	Item :: struct {
 		cmd:      ^Render_Command,
@@ -445,8 +457,9 @@ render_execute_depth :: proc(commands: []Render_Command) {
 			m := _mesh_mat(&mats, mat)
 			if m.cutoff > 0 do clips = true
 			if m.transparent do transparent = true
-			if i == 0 do first_cull = m.cull
-			else if m.cull != first_cull do mixed = true
+			cull := d.double_sided ? gfx.Cull.None : m.cull
+			if i == 0 do first_cull = cull
+			else if cull != first_cull do mixed = true
 		}
 		if !clips && !mixed && !transparent {
 			add(&items, &keys, Item{cmd = &cmd, loaded = mesh, sub = -1, cull = first_cull, mirrored = mirrored}, 0, d)
@@ -458,7 +471,7 @@ render_execute_depth :: proc(commands: []Render_Command) {
 			m := _mesh_mat(&mats, mat)
 			if m.transparent do continue // no depth: it blends over what has
 			clip := m.cutoff > 0
-			it := Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}, cull = m.cull, mirrored = mirrored}
+			it := Item{cmd = &cmd, loaded = mesh, sub = i32(i), material = clip ? mat : {}, cull = d.double_sided ? .None : m.cull, mirrored = mirrored}
 			add(&items, &keys, it, clip ? render_fold_guid(mat) | 1 : 0, d)
 		}
 	}
@@ -490,9 +503,11 @@ render_mirrored :: proc(model: matrix[4, 4]f32) -> bool {
 
 // The mesh fold with the cull mode in its top 2 bits and mirroring in the
 // next: draws that differ in either never merge, so they sort apart.
+// `layers` folds into the rest, so lit draws on the same layers sort
+// together (gfx merges no draws whose layers differ).
 @(private = "file")
-_fold_mesh_faces :: proc(d: Draw_Mesh, sub: i32, cull: gfx.Cull, mirrored: bool) -> u32 {
-	return render_fold_mesh(d.mesh, d.part, sub) & 0x1FFF_FFFF | u32(cull) << 30 | u32(mirrored) << 29
+_fold_mesh_faces :: proc(d: Draw_Mesh, sub: i32, cull: gfx.Cull, mirrored: bool, layers: u32 = 0) -> u32 {
+	return (render_fold_mesh(d.mesh, d.part, sub) ~ layers * 0x9E37_79B1) & 0x1FFF_FFFF | u32(cull) << 30 | u32(mirrored) << 29
 }
 
 // Sort-key folds for grouping draws (render_execute, the shadow pass): a guid

@@ -44,7 +44,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
     // clip's own guid is what the field stores.
     if dropped_pptr_ok && dropped_pptr.local_id != 0 {
         if sub_guid, sok := assets.asset_db_sub_guid(dropped_pptr.guid, dropped_pptr.local_id); sok {
-            if ref, rok := assets.asset_db_get_sub(sub_guid); rok && _ext_allowed(ref.kind) {
+            if ref, rok := assets.asset_db_get_sub(sub_guid); rok && _ext_allowed(ref.kind) && _ref_admits(sub_guid) {
                 guid_ptr^ = sub_guid
                 mark_inspector_changed()
             }
@@ -62,7 +62,7 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
         mark_inspector_changed()
     }
     if dropped != "" && _ext_filter_matches(dropped) {
-        if new_guid, ok := assets.asset_db_get_guid(dropped); ok {
+        if new_guid, ok := assets.asset_db_get_guid(dropped); ok && _ref_admits(core.Asset_GUID(new_guid)) {
             guid_ptr^ = core.Asset_GUID(new_guid)
             mark_inspector_changed()
         }
@@ -80,9 +80,10 @@ draw_asset_guid_property :: proc(ptr: rawptr, tid: typeid, label: cstring) {
                 }
                 im.Separator()
 
-                // With a `ref:` tag: only scene assets whose ROOT carries one of
-                // the admitted components (AssetDB inverted index). Untagged:
-                // every asset.
+                // With a `ref:` tag: only the assets the AssetDB type index
+                // lists under one of the admitted types, scene assets whose
+                // root carries the component or typed asset files of the
+                // asset type. Untagged: every asset.
                 keys := ref_target_keys(current_field_ref_target)
                 picked: core.PPtr
                 if _picker_asset_rows_of_types(keys, search, &picked) {
@@ -110,8 +111,9 @@ _picker_asset_rows_of_types :: proc(keys: []core.TypeKey, search: []string, pick
     return clicked
 }
 
-// Rows of scene assets whose root carries `key` (INVALID_TYPE_KEY: every
-// asset, pptr local_id 0), name-filtered by `search`. Returns true and writes
+// Rows of the assets the type index lists under `key`: scene assets whose
+// root carries the component, typed asset files of the asset type
+// (INVALID_TYPE_KEY: every asset, pptr local_id 0), name-filtered by `search`. Returns true and writes
 // `picked` when a row is clicked (picked may be nil for display-only lists).
 _picker_asset_rows :: proc(key: core.TypeKey, search: []string, picked: ^core.PPtr) -> bool {
     Candidate :: struct {
@@ -164,9 +166,23 @@ _picker_asset_rows :: proc(key: core.TypeKey, search: []string, picked: ^core.PP
         }
     }
     if shown == 0 {
-        im.TextDisabled("(no assets with this root component)" if key != core.INVALID_TYPE_KEY else "(no matches)")
+        im.TextDisabled("(no assets of this type)" if key != core.INVALID_TYPE_KEY else "(no matches)")
     }
     return result
+}
+
+// Whether the field's `ref:` tag admits the asset: the type index lists it
+// under one of the tag's types. No tag, or a tag naming no type, admits every
+// asset, as the picker lists every asset then.
+_ref_admits :: proc(guid: core.Asset_GUID) -> bool {
+    keys := ref_target_keys(current_field_ref_target)
+    if len(keys) == 0 do return true
+    for k in keys {
+        for entry in assets.asset_db_assets_with_root_type(k) {
+            if entry.guid == guid do return true
+        }
+    }
+    return false
 }
 
 // True when `path`'s extension is in the field's `ext:"glb,gltf"` tag (comma

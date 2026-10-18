@@ -58,8 +58,10 @@ TAG_JSON :: Field_Tag{key = "json", form = .Value}
 // `ref:"Animation"`, `ref:"Animation,AudioSource"`, `ref:"@Output"` (every
 // component declaring `ref_tags="Output"`). The picker offers only what the
 // list admits, and a property write is checked against it. On an Asset_GUID
-// field it lists the scene assets whose root carries one of the components.
-// docs/core/ObjectPicker.md explains the pickers.
+// field an item names a component or an asset type: the picker lists the
+// scene assets whose root carries one of the components and the typed asset
+// files of the asset types (`ref:"Render_Pipeline"`), and drag and drop
+// refuses the others. docs/core/ObjectPicker.md explains the pickers.
 TAG_REF :: Field_Tag{key = "ref", form = .Value}
 
 // Names components an object must carry for a reference field to offer it.

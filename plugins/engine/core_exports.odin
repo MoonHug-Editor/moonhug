@@ -23,6 +23,14 @@ Phase :: core.Phase
 // on UserContext).
 application_is_focused       :: core.application_is_focused
 
+// Named layers per domain (core/layers.odin).
+LAYER_COUNT                  :: core.LAYER_COUNT
+layer_domain_register        :: core.layer_domain_register
+layer_names                  :: core.layer_names
+layer_hidden_mask            :: core.layer_hidden_mask
+layer_name                   :: core.layer_name
+layer_index                  :: core.layer_index
+
 // Type keys and the type registry.
 TypeKey                      :: core.TypeKey
 INVALID_TYPE_KEY             :: core.INVALID_TYPE_KEY
@@ -167,6 +175,7 @@ Scene_Ref                    :: core.Scene_Ref
 
 // Camera math (core/view_math.odin, core/raycast.odin).
 View_Kind                    :: core.View_Kind
+View_Pass                    :: core.View_Pass
 Render_View                  :: core.Render_View
 Ray                          :: core.Ray
 render_view_make             :: core.render_view_make
@@ -250,6 +259,7 @@ asset_db_set_subs                 :: assets.asset_db_set_subs
 asset_db_assets_with_root_type    :: assets.asset_db_assets_with_root_type
 asset_db_add_indexer              :: assets.asset_db_add_indexer
 asset_db_index_set                :: assets.asset_db_index_set
+asset_db_index_typed_asset        :: assets.asset_db_index_typed_asset
 asset_db_reindex                  :: assets.asset_db_reindex
 asset_db_add_evict_hook           :: assets.asset_db_add_evict_hook
 asset_db_run_evict_hooks          :: assets.asset_db_run_evict_hooks

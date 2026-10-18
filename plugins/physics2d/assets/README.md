@@ -38,6 +38,17 @@ after the physics step (order > 1000):
 Each event pairs the two transforms involved (for sensors: the sensor first,
 the visitor second).
 
+## Collision layers
+
+Every collider has two layer fields, bits of the engine's `"physics"` layer domain ([Layers](../../engine/docs/Layers.md)):
+
+- `layers` is the layers the collider is on. Several bits are allowed. A new collider is on layer 0
+- `mask` is the layers the collider collides with. A new collider collides with every layer
+
+Two colliders collide when `(a.layers & b.mask) != 0 && (b.layers & a.mask) != 0`, box2d's own rule. The same test decides whether a trigger reports an overlap. The fields become the shape filter's `categoryBits` and `maskBits` when the shape is created, and each physics step writes a changed `layers` or `mask` into the live shape, so an edit during play or from a script applies on the next step.
+
+The 32 layer names are the names of the project's Physics Layers asset, the one the `physics_layers` field of Edit ▸ Project Settings… ▸ Layers names (the essentials plugin's `assets/physics/DefaultPhysicsLayers.asset` until a project picks its own). To name the layers, create an asset with Assets ▸ Create ▸ Physics Layers, name its layers in the inspector, save it and pick it in that field. The 2D and the 3D colliders share that list. Layer 0 is "Default", an empty name is an unused layer, and the inspector's layer picker lists the named ones. The domain is separate from the render layers: an object's render layer says nothing about what it collides with.
+
 ## Going beyond the components
 
 `body_of(handle)` returns the live box2d body, so forces, joints, raycasts
@@ -45,7 +56,5 @@ and anything else box2d offers can be used directly from game code.
 
 ## Current limitations
 
-- Moving or rescaling a child collider after creation doesn't re-bake its
-  shape, and runtime component field edits don't re-sync (use `body_of`).
-- No layer collision matrix, effectors, polygon/edge colliders, or physics
-  material assets yet.
+- Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `mask` don't re-sync (use `body_of`).
+- No effectors, polygon/edge colliders, or physics material assets yet.

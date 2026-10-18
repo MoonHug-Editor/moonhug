@@ -14,8 +14,10 @@ package engine
 // surface template samples them (libs/gfx/shaders/surface.glsl
 // cascade_shadow, punctual_shadow).
 //
-// Casters are every mesh in the world, whichever view draws it, collected
-// once per frame and culled per tile against the tile's view. A cascade's view
+// Casters are every mesh in the world whose cast_shadows is not Off,
+// whichever view draws it, collected once per frame through a Shadow view
+// and culled per tile against the tile's view and the light's
+// shadow_caster_mask. A cascade's view
 // is a sphere around its slice of the frustum, so its size does not change as
 // the camera turns, and its centre snaps to whole texels, so shadow edges do
 // not shimmer as the camera moves. Each pass is depth-only
@@ -65,7 +67,7 @@ shadow_atlas_defaults := Shadow_Atlas_Settings{bias = 0.05, normal_bias = 1.5}
 shadow_cascades :: proc(ctx: ^Render_Ctx) {
 	ctx.shadow_cascades = {}
 	settings := (^Shadow_Settings)(ctx.settings)
-	light_index, dir, found := _shadow_directional()
+	light_index, dir, caster_mask, found := _shadow_directional()
 	if !found do return
 	casters := _shadow_casters()
 	if len(casters.list) == 0 do return
@@ -144,7 +146,7 @@ shadow_cascades :: proc(ctx: ^Render_Ctx) {
 		x, y := count == 1 ? 0 : c % 2, count == 1 ? 0 : c / 2
 		rect := [4]f32{f32(x * tile), f32(y * tile), f32(tile), f32(tile)}
 		gfx.set_view_proj(vp, eye, rect)
-		render_execute_depth(_shadow_tile_casters(&casters, vp))
+		render_execute_depth(_shadow_tile_casters(&casters, vp, caster_mask))
 
 		result.vp[c] = vp
 		result.rects[c] = rect / SHADOW_CASCADE_ATLAS_SIZE
@@ -164,9 +166,10 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 	// The shadowing spot and point lights, at their index in the light list
 	// (scene_collect_lights order), which is how the shader finds its tiles.
 	Shadowed :: struct {
-		index: int,
-		light: gfx.Light,
-		faces: int,
+		index:       int,
+		light:       gfx.Light,
+		faces:       int,
+		caster_mask: u32,
 	}
 	// The tiles travel in the light uniform, so gfx.MAX_SHADOW_TILES is the
 	// budget: lights past it in that order render unshadowed, said once.
@@ -179,7 +182,7 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 		if l.shadows && l.type != .Directional {
 			faces := l.type == .Point ? 6 : 1
 			if tiles + faces <= gfx.MAX_SHADOW_TILES {
-				append(&shadowed, Shadowed{n, light_to_gfx(l, transform_world(Transform_Handle(l.owner))), faces})
+				append(&shadowed, Shadowed{n, light_to_gfx(l, transform_world(Transform_Handle(l.owner))), faces, l.shadow_caster_mask})
 				tiles += faces
 			} else {
 				skipped += 1
@@ -232,7 +235,7 @@ shadow_atlas :: proc(ctx: ^Render_Ctx) {
 			vp := proj * view
 			rect := [4]f32{f32((t % grid) * tile), f32((t / grid) * tile), f32(tile), f32(tile)}
 			gfx.set_view_proj(vp, s.light.position, rect)
-			render_execute_depth(_shadow_tile_casters(&casters, vp))
+			render_execute_depth(_shadow_tile_casters(&casters, vp, s.caster_mask))
 			data.tiles[t] = {
 				vp                 = vp,
 				rect               = rect / SHADOW_ATLAS_SIZE,
@@ -289,9 +292,10 @@ _atlas: struct {
 }
 
 // The first enabled directional Light with shadows on, at its index in the
-// light list (scene_collect_lights order), and the way it travels.
+// light list (scene_collect_lights order), the way it travels and the
+// layers that cast into its shadow map.
 @(private = "file")
-_shadow_directional :: proc() -> (index: int, dir: [3]f32, found: bool) {
+_shadow_directional :: proc() -> (index: int, dir: [3]f32, caster_mask: u32, found: bool) {
 	n := 0
 	it := pool_iterator(lights(ctx_world()))
 	for l, _ in pool_next(&it) {
@@ -300,7 +304,7 @@ _shadow_directional :: proc() -> (index: int, dir: [3]f32, found: bool) {
 		if l.type == .Directional && l.shadows {
 			gl := light_to_gfx(l, transform_world(Transform_Handle(l.owner)))
 			dir = linalg.normalize0(gl.direction)
-			return n, dir, dir != {}
+			return n, dir, l.shadow_caster_mask, dir != {}
 		}
 		n += 1
 	}
@@ -329,6 +333,7 @@ _shadow_casters :: proc() -> _Casters {
 	if cache.frame == gfx.frame_index + 1 && cache.world == world do return cache.c
 
 	probe := render_view_make(linalg.MATRIX4F32_IDENTITY, linalg.MATRIX4F32_IDENTITY, 1, 1, ~u32(0), .Game)
+	probe.pass = .Shadow
 	commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
 	render_collect_commands(probe, &commands)
 	list := make([dynamic]Render_Command, 0, len(commands), context.temp_allocator)
@@ -349,12 +354,14 @@ _shadow_casters :: proc() -> _Casters {
 	return c
 }
 
-// The casters inside one tile's view (temp-allocated).
+// The casters inside one tile's view on a layer of `caster_mask`, the
+// light's shadow_caster_mask (temp-allocated).
 @(private = "file")
-_shadow_tile_casters :: proc(c: ^_Casters, vp: matrix[4, 4]f32) -> []Render_Command {
+_shadow_tile_casters :: proc(c: ^_Casters, vp: matrix[4, 4]f32, caster_mask: u32) -> []Render_Command {
 	f := frustum_from_view_proj(vp)
 	out := make([dynamic]Render_Command, 0, len(c.list), context.temp_allocator)
 	for cmd, i in c.list {
+		if cmd.variant.(Draw_Mesh).layers & caster_mask == 0 do continue
 		if frustum_intersects_aabb(f, c.bounds[i][0], c.bounds[i][1]) do append(&out, cmd)
 	}
 	return out[:]

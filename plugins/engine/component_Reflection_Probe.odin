@@ -48,7 +48,7 @@ Reflection_Probe :: struct {
 	// The render layers the capture draws (Transform.render_layer bits).
 	// A mirror-like object inside the box shows itself in its reflection
 	// unless its layer is left out.
-	culling_mask:   u32,
+	culling_mask:   u32 `decor:layers(domain="render")`,
 	resolution:     Probe_Resolution,
 	refresh:        Probe_Refresh,
 }

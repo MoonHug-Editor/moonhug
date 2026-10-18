@@ -224,6 +224,7 @@ _preview_model :: proc(path: string) {
 			direction = forward,
 			color     = {1, 1, 1},
 			intensity = 1,
+			culling_mask = ~u32(0),
 		}}, 0.35)
 		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
 		gfx.set_view_proj(rv.view_proj, rv.cam_pos)
@@ -429,7 +430,7 @@ _preview_clip :: proc(path: string, owner: engine.Asset_GUID, clip_id: engine.Lo
 		engine.render_collect_commands(rv, &cmds)
 		// A headlight from the camera, the same one the model preview uses: the
 		// preview world has no lights of its own, and unlit reads as flat white.
-		gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
+		gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1, culling_mask = ~u32(0)}}, 0.35)
 		gfx.pass_begin_target(_mesh_pv_rt, [4]f32{0.16, 0.16, 0.18, 1})
 		engine.render_execute(rv, cmds[:])
 		gfx.pass_end()

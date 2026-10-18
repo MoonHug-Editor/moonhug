@@ -36,6 +36,10 @@ SkinnedMeshRenderer :: struct {
     // which is where an extracted glTF puts the armature next to the mesh.
     root_bone: Ref_Local `ref:"Transform"`,
 
+    // The passes it draws in, like MeshRenderer.
+    cast_shadows: Shadow_Casting,
+    reflections:  Reflection_Visibility,
+
     // Runtime. `joints` is parallel to the mesh's joint_names, `gpu` the
     // palette and the posed vertex buffer the compute pass writes.
     joints:      [dynamic]Transform_Handle `json:"-" inspect:"-"`,
@@ -245,6 +249,8 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
         t := pool_get(&w.transforms, Handle(smr.owner))
         if t == nil || !transform_active_in_hierarchy(smr.owner) do continue
         if t.render_layer & view.layer_mask == 0 do continue
+        draws, double_sided := render_pass_includes(view.pass, smr.cast_shadows, smr.reflections)
+        if !draws do continue
 
         _, mf := transform_get_comp(Transform_Handle(smr.owner), MeshFilter)
         if mf == nil || asset_guid_is_empty(mf.mesh.guid) do continue
@@ -278,6 +284,8 @@ skinned_mesh_collect :: proc(out: ^[dynamic]Render_Command, view: Render_View) {
                 materials = smr.materials[:],
                 model     = linalg.MATRIX4F32_IDENTITY,
                 skinned   = &smr.gpu.mesh,
+                layers    = t.render_layer,
+                double_sided = double_sided,
             },
         })
     }

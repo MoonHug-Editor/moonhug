@@ -31,6 +31,11 @@ Light :: struct {
     inner_spot_angle: f32 `decor:min(0)`, // spot: full-brightness cone, degrees
     ambient:          f32 `decor:min(0)`, // unlit floor 0..1, first enabled light wins
     shadows:          bool, // casts shadows (render_shadow.odin): the first enabled directional light's cascades, every spot and point light's atlas tiles
+    // The render layers the light lights: a mesh on none of them gets no
+    // light from it (plugins/engine/docs/Layers.md).
+    culling_mask:       u32 `decor:layers(domain="render")`,
+    // The render layers that cast into this light's shadow map.
+    shadow_caster_mask: u32 `decor:layers(domain="render")`,
 }
 
 reset_Light :: proc(l: ^Light) {
@@ -41,6 +46,8 @@ reset_Light :: proc(l: ^Light) {
     l.spot_angle = 30
     l.inner_spot_angle = 21.8
     l.ambient = 0.35
+    l.culling_mask = ~u32(0)
+    l.shadow_caster_mask = ~u32(0)
 }
 
 // The gfx-facing description of one live Light: world transform applied,
@@ -63,5 +70,6 @@ light_to_gfx :: proc(l: ^Light, tw: Transform_World) -> gfx.Light {
         range     = l.range,
         inner_cos = math.cos(math.to_radians(l.inner_spot_angle) * 0.5),
         outer_cos = math.cos(math.to_radians(max(l.spot_angle, l.inner_spot_angle)) * 0.5),
+        culling_mask = l.culling_mask,
     }
 }

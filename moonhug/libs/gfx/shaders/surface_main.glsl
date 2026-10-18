@@ -131,6 +131,7 @@ void main() {
             int i = w * 32 + findLSB(bits);
             bits &= bits - 1u;
             GpuLight l = lights[i];
+            if (!light_lights_draw(l)) continue;
             vec3 L; // direction the light travels at this fragment
             float dist = 0.0;
             if (l.pos_type.w < 0.5) {

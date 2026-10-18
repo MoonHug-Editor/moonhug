@@ -56,7 +56,7 @@ Each drawer shows only the tabs its type can assign (hidden, not disabled):
 | Field type   | Scene tab    | Project tab                                        |
 |--------------|--------------|----------------------------------------------------|
 | `Ref_Local`  | live objects, narrowed by `has:` | hidden (a local_id cannot reference another file)  |
-| `Asset_GUID` | hidden       | assets; `ref:"Type"` tag filters to scene assets whose root has that component; `ext:"glb,gltf"` tag filters by file extension (also gates drag-drop) |
+| `Asset_GUID` | hidden       | assets; `ref:"Type"` tag filters to scene assets whose root has that component, or to typed asset files of that asset type; `ext:"glb,gltf"` tag filters by file extension; both also gate drag-drop |
 
 An `expand` tag on an `Asset_GUID` field (or an array of them) adds a foldout under the row that opens the referenced asset's document in place, edited with the same undo and live preview the Project Inspector gives it. File/Save writes every dirty asset document, so an edit made in a foldout is saved with Ctrl+S. Material slots on renderers carry it. Not `inline`, which flattens a nested struct's rows.
 | `Ref` (PPtr) | live objects | scene-asset roots; assigns the PPtr `{guid, root local_id}`; `pick:` tag can limit to one tab |
@@ -110,6 +110,8 @@ tag the Project tab still filters by root component — e.g.
 `projectile_prefab: Asset_GUID ref:"Projectile"` lists only prefabs that are
 actually projectiles. The guid is what game code wants for instantiation, so
 no new reference machinery is needed for this to be useful.
+
+On an `Asset_GUID` field an item can also name an asset type, a `@(typ_guid)` struct by its type name: `pipeline: Asset_GUID ref:"Render_Pipeline"` lists only render pipeline assets, `render_layers: Asset_GUID ref:"Render_Layers"` only Render Layers assets. The AssetDB type index (`moonhug/libs/assets/typed_asset_index.odin`) lists every typed asset file under the type its `__type_guid` names: every `.asset` file, and the files of the extensions a package registers with `asset_db_add_indexer(".ext", asset_db_index_typed_asset)` (the engine registers `.renderpipeline`). The scene indexer adds the scene assets under their root components to the same index, so one lookup serves both kinds of item. A dropped asset the index does not list under one of the field's types is refused.
 
 ### Field row layout (Unity-like)
 

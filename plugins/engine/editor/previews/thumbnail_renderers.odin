@@ -12,10 +12,10 @@ import gfx "moonhug:libs/gfx"
 import "moonhug:editor/thumbnails"
 import "moonhug:packages/engine/editor/scene_tools"
 
-// Reserved render layer for preview content (thumbnails AND the inspector's
-// live previews), so preview views draw ONLY it. The open scene's content
-// (layer 1) never bleeds in.
-_THUMB_LAYER :: u32(1) << 31
+// The Editor render layer, reserved for preview content (thumbnails AND the
+// inspector's live previews), so preview views draw ONLY it. The open scene's
+// content never bleeds in.
+_THUMB_LAYER :: u32(1) << engine.RENDER_LAYER_EDITOR
 
 register_thumbnail_renderers :: proc() {
 	for ext in ([]string{".png", ".jpg", ".jpeg", ".bmp", ".tga", ".gif"}) {
@@ -108,7 +108,7 @@ _thumb_render_mesh_part :: proc(guid: engine.Asset_GUID, sub: engine.Local_ID, t
 	proj := gfx.matrix4_perspective_z01(fov, 1, max(dist - radius * 2, 0.01), dist + radius * 2)
 	rv := engine.render_view_make(view, proj, thumbnails.SIZE, thumbnails.SIZE, _THUMB_LAYER, .Preview)
 
-	gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1}}, 0.35)
+	gfx.set_lights([]gfx.Light{{kind = .Directional, direction = forward, color = {1, 1, 1}, intensity = 1, culling_mask = ~u32(0)}}, 0.35)
 	gfx.pass_begin_target(target, [4]f32{0.16, 0.16, 0.18, 1})
 	gfx.set_view_proj(rv.view_proj, rv.cam_pos)
 	for s in mesh.submeshes {

@@ -14,7 +14,9 @@ package engine
 // box projected when the probe says so. Within the probe's blend distance
 // of its box's edge the draw fades into the next smaller box holding it, or
 // the environment (gfx.Probe_Blend). A capture draws without probes, so
-// one probe's capture never depends on another's.
+// one probe's capture never depends on another's. A capture collects
+// through a Probe view, which leaves out the meshes whose reflections are
+// Hidden.
 
 import "base:runtime"
 import "core:math"
@@ -193,6 +195,7 @@ _probe_capture :: proc(p: ^Reflection_Probe, st: ^_Probe_State, key: _Probe_Key)
 	for f, face in _FACES {
 		view := linalg.matrix4_look_at_f32(key.position, key.position + f.forward, f.up)
 		rv := render_view_make(view, proj, f32(size), f32(size), key.culling_mask)
+		rv.pass = .Probe // leaves out the meshes whose reflections are Hidden
 		rv.cull = true
 		commands := make([dynamic]Render_Command, 0, 64, context.temp_allocator)
 		render_collect_commands(rv, &commands)

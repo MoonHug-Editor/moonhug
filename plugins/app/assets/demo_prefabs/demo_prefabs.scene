@@ -223,7 +223,9 @@
         }
       ],
       "components": [
-
+        {
+          "local_id": 751200037429281
+        }
       ]
     },
     {
@@ -1247,7 +1249,8 @@
       "fov": 60.0,
       "near_clip": 0.30000001,
       "order": 0,
-      "render_layer_mask": 4294967295
+      "render_layer_mask": 4294967295,
+      "slot": ""
     },
     {
       "__type": "14a605d8-3796-467b-8f9f-76dadf3baa73",
@@ -1269,11 +1272,62 @@
         1.0,
         1.0
       ],
+      "culling_mask": 4294967295,
       "inner_spot_angle": 0.0,
       "intensity": 1.0,
       "range": 0.0,
+      "shadow_caster_mask": 4294967295,
+      "shadows": true,
       "spot_angle": 0.0,
       "type": 0
+    },
+    {
+      "__type": "9d79f55a-e5ac-4e37-a2bf-12c807ec781e",
+      "ambient_intensity": 1.0,
+      "base": {
+        "enabled": true,
+        "local_id": 751200037429281
+      },
+      "draw_sky": true,
+      "exposure": 1.0,
+      "fog": {
+        "color": [
+          0.69999999,
+          0.75,
+          0.80000001,
+          1.0
+        ],
+        "density": 0.02,
+        "end": 100.0,
+        "height": 0.0,
+        "height_falloff": 0.0,
+        "mode": 0,
+        "sky": 0.5,
+        "start": 10.0
+      },
+      "ground": [
+        0.34999999,
+        0.31999999,
+        0.30000001,
+        1.0
+      ],
+      "panorama": "00000000-0000-0000-0000-000000000000",
+      "panorama_rotation": 0.0,
+      "reflection_intensity": 1.0,
+      "sky": 0,
+      "sky_horizon": [
+        0.75,
+        0.81999999,
+        0.89999998,
+        1.0
+      ],
+      "sky_top": [
+        0.34999999,
+        0.55000001,
+        0.85000002,
+        1.0
+      ],
+      "sun_size": 1.0
     },
     {
       "__type": "b7e2a1c3-5d4f-4e8a-9f1b-3c6d8e0a2b4f",
@@ -1570,9 +1624,11 @@
         "enabled": true,
         "local_id": 186
       },
+      "cast_shadows": 0,
       "materials": [
         "0884a4d9-3048-4b0b-9a2b-5aba8d7236d7"
-      ]
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
@@ -1591,10 +1647,12 @@
         "enabled": true,
         "local_id": 190
       },
+      "cast_shadows": 0,
       "materials": [
         "ac10cafc-8354-4abb-9485-2a3a21076578",
         "f98dbc29-ba06-4408-bc9f-e84831eccce9"
-      ]
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
@@ -1613,9 +1671,11 @@
         "enabled": true,
         "local_id": 198
       },
+      "cast_shadows": 0,
       "materials": [
         "916a80cf-95d1-4ac3-8bab-0f0a90c7f26a"
-      ]
+      ],
+      "reflections": 0
     },
     {
       "__type": "32f52908-51a9-4f3b-819b-fc9d8cbc5972",
@@ -1634,9 +1694,11 @@
         "enabled": true,
         "local_id": 206
       },
+      "cast_shadows": 0,
       "materials": [
         "32583acf-be2f-4fb3-bef6-1993e9c5a137"
-      ]
+      ],
+      "reflections": 0
     }
   ]
 }

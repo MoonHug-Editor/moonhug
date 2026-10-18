@@ -274,14 +274,28 @@ _json_clone :: proc(v: json.Value) -> json.Value {
 // The active pipeline, as the frame runs it.
 
 // The Rendering project setting: which pipeline asset the project renders
-// through. Unset = the essentials plugin's Default.renderpipeline, or the
+// through. Unset is the essentials plugin's Default.renderpipeline, or the
 // built-in frame when that is not installed either.
 Rendering_Settings :: struct {
-	pipeline: Asset_GUID `ref:"renderpipeline"`,
+	pipeline: Asset_GUID `ref:"Render_Pipeline"`,
 }
 
 @(project_settings={name="Rendering"})
 rendering_settings: Rendering_Settings
+
+// Loads ProjectSettings/rendering.json into rendering_settings, once per
+// engine run.
+rendering_settings_ensure_loaded :: proc() {
+	if _settings_loaded do return
+	_settings_loaded = true
+	project_settings_load("Rendering", &rendering_settings)
+}
+
+// The render layer a new object is on.
+RENDER_LAYER_DEFAULT :: 0
+// The render layer the editor's thumbnail renderer draws on. The layer picker
+// does not list it.
+RENDER_LAYER_EDITOR :: 31
 
 // The pipeline asset a project renders through when its Rendering setting
 // names none: the essentials plugin sets it to its Default.renderpipeline
@@ -326,10 +340,10 @@ _Frame_Run_Key :: struct {
 // when the Rendering setting names another asset.
 render_pipeline_active :: proc() -> ^Pipeline_Runtime {
 	context.allocator = runtime.default_allocator()
-	if !_settings_loaded {
-		_settings_loaded = true
-		project_settings_load("Rendering", &rendering_settings)
-	}
+	rendering_settings_ensure_loaded()
+	// The frame is where a change of the Layers setting or of its assets is
+	// picked up.
+	layers_sync()
 	want := rendering_settings.pipeline
 	if want == {} && render_pipeline_default != {} {
 		if _, installed := asset_db_get_path(uuid.Identifier(render_pipeline_default)); installed do want = render_pipeline_default
@@ -364,6 +378,8 @@ render_pipeline_preview :: proc(guid: Asset_GUID, p: Render_Pipeline) {
 _pipeline_evict_hook_register :: proc "contextless" () {
 	context = runtime.default_context()
 	asset_db_add_evict_hook(_pipeline_path_changed)
+	// A `ref:"Render_Pipeline"` field's picker lists the pipeline assets.
+	asset_db_add_indexer(".renderpipeline", asset_db_index_typed_asset)
 	_frame_ran = make(map[_Frame_Run_Key]u64, runtime.default_allocator())
 	_warned_slots = make(map[string]bool, runtime.default_allocator())
 }
@@ -381,6 +397,7 @@ _render_pipeline_shutdown :: proc() {
 	_pipeline_runtime_destroy(&_active)
 	_active_built = false
 	_settings_loaded = false
+	_layers_shutdown()
 	delete(_frame_ran)
 	_frame_ran = nil
 	for k in _warned_slots do delete(k)

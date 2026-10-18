@@ -597,6 +597,7 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		}
 		_wrap_transform_rotation_override(tH, t, drawer)
 		_wrap_transform_field_override(tH, t, &t.scale, "scale", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
+		_draw_transform_layer_row(tH, t)
 	} else {
 		_inspector_transform_open = false
 	}
@@ -720,6 +721,46 @@ _wrap_transform_field_override :: proc(tH: engine.Transform_Handle, t: ^engine.T
 	if is_in_nested_ctx {
 		engine.inspector_set_nested_local_id(prev_nested_lid)
 	}
+}
+
+// The object's render layers, drawn with the render domain's layer picker. The
+// row runs through field_edit_row, so a change is one undo step across the
+// selection, and in a prefab instance it records an override.
+@(private)
+_draw_transform_layer_row :: proc(tH: engine.Transform_Handle, t: ^engine.Transform) {
+	host_tH := engine.inspector_get_nested_host()
+	is_in_nested_ctx := host_tH != {} && (t.nested_owned || engine.scene_find_nested_scene_for_host(t.scene, tH) != nil)
+	target_id: engine.Local_ID
+	is_overridden := false
+	if is_in_nested_ctx {
+		target_id = _resolve_override_target_id(tH, t, host_tH)
+		is_overridden = engine.nested_scene_has_root_override(t.scene, host_tH, target_id, "render_layer")
+	}
+
+	field_ptr := rawptr(&t.render_layer)
+	multi_offset := uintptr(field_ptr) - uintptr(t)
+	inspector.multi_probe_field(field_ptr, typeid_of(u32), multi_offset)
+
+	pushed := _push_override_style(is_overridden)
+	prev_path := inspector.field_edit_set_path("render_layer")
+	finished := inspector.field_edit_row(field_ptr, typeid_of(u32), multi_offset, "render_layer", _render_layer_drawer, "Render Layers")
+	inspector.field_edit_set_path(prev_path)
+	_pop_override_style(pushed)
+
+	prev_nested_lid := engine.inspector_get_nested_local_id()
+	if is_in_nested_ctx {
+		engine.inspector_set_nested_local_id(target_id)
+		inspector.record_nested_override(field_ptr, typeid_of(u32), "render_layer", finished)
+	}
+	inspector.draw_field_context_menu(field_ptr, typeid_of(u32), "render_layer")
+	if is_in_nested_ctx {
+		engine.inspector_set_nested_local_id(prev_nested_lid)
+	}
+}
+
+@(private)
+_render_layer_drawer :: proc(ptr: rawptr, tid: typeid, label: cstring) {
+	inspector.layer_mask_field(label, cast(^u32)ptr, "render")
 }
 
 @(private)
