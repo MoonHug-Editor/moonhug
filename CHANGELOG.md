@@ -1,3 +1,20 @@
+## [0.133.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.132.0...v0.133.0) (2026-10-18)
+
+### Features
+
+* layers per domain (Render Layers and Physics Layers assets, picker, renderer pass flags, light masks, collider layer and mask), typed asset refs ([fe2367c](https://github.com/MoonHug-Editor/moonhug/commit/fe2367c1ac6116c927afa51a3fc86f5dc15645bd))
+* missing fields load as the type's reset defaults (Serialization project setting, on by default) ([7684b58](https://github.com/MoonHug-Editor/moonhug/commit/7684b58d6ac305154e428b0bf42a0a88a779592c))
+* reflection probe blending (blend_distance, second probe per draw), gizmo shows the fade box ([b12f88a](https://github.com/MoonHug-Editor/moonhug/commit/b12f88a39d51d4338665e8bd466f00f9a85bff03))
+* reflection probes light diffusely (irradiance from the capture), captures skip other probes ([3ef30dd](https://github.com/MoonHug-Editor/moonhug/commit/3ef30dd0ae770f6525626c20cb97525ef60d0e6d))
+* refraction fallback reads the probe box projected ([c4698c9](https://github.com/MoonHug-Editor/moonhug/commit/c4698c9619f44274b7810acb6cd04eec0cac749c))
+* SSR back-face depth so rays inside closed meshes hit them (back_faces setting) ([9e02ebf](https://github.com/MoonHug-Editor/moonhug/commit/9e02ebf09745507fbd45da5695042c2498ec4545))
+
+### Bug Fixes
+
+* clear clipboard completely on each copy call ([c64362e](https://github.com/MoonHug-Editor/moonhug/commit/c64362eb9076ecede9efe3e12b7d832a761fb15f))
+* reflection probe culling mask, demo chrome ball no longer reflects itself ([405e8fc](https://github.com/MoonHug-Editor/moonhug/commit/405e8fcc16b232ee800bf7505c5a52ae80e9ebe8))
+* refracting materials keep full highlights and reflections, transmission replaces diffuse only (clear watch glass) ([b58a51a](https://github.com/MoonHug-Editor/moonhug/commit/b58a51a873f5ee3797e0fe3d237b328681608bca))
+
 ## [0.132.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.131.0...v0.132.0) (2026-10-17)
 
 ### Features
