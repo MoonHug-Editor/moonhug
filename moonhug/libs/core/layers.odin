@@ -3,11 +3,12 @@ package core
 // Named layers per domain (plugins/engine/docs/Layers.md).
 //
 // A domain is one system that sorts objects into 32 layers: "render" for the
-// engine's views, "physics" for the 2D and 3D colliders. Each domain has a
-// list of 32 names. The owner registers a pointer to its list once and
-// rewrites the list in place when the names change, so every reader sees the
-// change with no copy to keep in sync. The engine owns both lists and fills
-// them from the project's Layers asset (plugins/engine/layers_asset.odin).
+// engine's views, "physics2d" and "physics3d" for the physics plugins'
+// colliders. Each domain has a list of 32 names. The owner registers a pointer
+// to its list once and rewrites the list in place when the names change, so
+// every reader sees the change with no copy to keep in sync. An owner whose
+// names come from an asset passes a refresh proc, which layer_names calls
+// first, so a reader never sees names older than the asset.
 //
 // Readers are the layer picker (decor:layers) and anything that turns a name
 // into a bit. The registry knows no domain by name.
@@ -23,6 +24,9 @@ _Layer_Domain :: struct {
 	names:  ^[LAYER_COUNT]string,
 	// Layers the picker never lists (the render domain's Editor layer).
 	hidden: u32,
+	// Brings `names` up to date, called before every read. A cheap check when
+	// nothing changed.
+	refresh: proc(),
 }
 
 @(private = "file")
@@ -31,16 +35,17 @@ _layer_domains: map[string]_Layer_Domain
 // Registers `domain` with the list of names it owns. `names` must outlive the
 // program (a package-level var). `hidden` is a mask of layers the picker does
 // not list. Registering a domain again with the same list is allowed, with
-// another list is a bug and panics.
-layer_domain_register :: proc(domain: string, names: ^[LAYER_COUNT]string, hidden: u32 = 0) {
+// another list is a bug and panics. `refresh`, when set, runs before every
+// read of the names.
+layer_domain_register :: proc(domain: string, names: ^[LAYER_COUNT]string, hidden: u32 = 0, refresh: proc() = nil) {
 	fmt.assertf(names != nil, "layer domain %q registered with no names", domain)
 	if _layer_domains == nil do _layer_domains = make(map[string]_Layer_Domain, runtime.default_allocator())
 	if prev, has := _layer_domains[domain]; has {
 		fmt.assertf(prev.names == names, "layer domain %q is already registered with another name list", domain)
-		_layer_domains[domain] = _Layer_Domain{names = names, hidden = hidden}
+		_layer_domains[domain] = _Layer_Domain{names = names, hidden = hidden, refresh = refresh}
 		return
 	}
-	_layer_domains[strings.clone(domain, runtime.default_allocator())] = _Layer_Domain{names = names, hidden = hidden}
+	_layer_domains[strings.clone(domain, runtime.default_allocator())] = _Layer_Domain{names = names, hidden = hidden, refresh = refresh}
 }
 
 // The 32 names of `domain`, nil when no owner registered it. An empty name is
@@ -48,6 +53,7 @@ layer_domain_register :: proc(domain: string, names: ^[LAYER_COUNT]string, hidde
 layer_names :: proc(domain: string) -> ^[LAYER_COUNT]string {
 	d, has := _layer_domains[domain]
 	if !has do return nil
+	if d.refresh != nil do d.refresh()
 	return d.names
 }
 

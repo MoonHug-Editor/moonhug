@@ -19,7 +19,7 @@ package physics2d
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
-// The exception is a collider's `layers` and `mask`: each step writes them
+// The exception is a collider's `layers` and `layer_overrides`, its body's `layer_overrides` and the project's collision matrix: each step writes them
 // into the live shape's filter when they differ.
 
 import "base:runtime"
@@ -190,6 +190,30 @@ _ancestor_body :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> (body: 
 	return {}, {}, false
 }
 
+// The filter mask of the collider on `owner`: the collision matrix's rows for
+// its `layers`, plus its own and its body's includes, minus both excludes.
+_collider_mask :: proc(w: ^engine.World, owner: engine.Transform_Handle, layers: u32, own: Physics2D_Layer_Overrides) -> u32 {
+	return collision_mask(layers, own, _body_overrides(w, owner))
+}
+
+// The layer overrides of the nearest Rigidbody2D on tH or an ancestor, the
+// body the collider attaches to. None without one.
+_body_overrides :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> Physics2D_Layer_Overrides {
+	cur := tH
+	for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
+		owned, idx := engine.transform_find_comp(t, .Rigidbody2D)
+		if idx >= 0 {
+			pool := rigidbody2_ds(w)
+			if pool == nil do return {}
+			rb := engine.pool_get(pool, owned.handle)
+			return rb != nil ? rb.layer_overrides : {}
+		}
+		cur = engine.Transform_Handle(t.parent.handle)
+	}
+	return {}
+}
+
 _Shape_Target :: struct {
 	body:   b2.BodyId,
 	center: [2]f32, // shape center in body-local space
@@ -261,7 +285,7 @@ _shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, 
 	return def
 }
 
-// Writes a collider's layer and mask into its live shape. A filter change
+// Writes a collider's layers and computed mask into its live shape. A filter change
 // costs box2d about as much as a new shape, so the call happens only when the
 // bits differ. The group index stays as the shape has it.
 _sync_filter :: proc(shape: b2.ShapeId, layer, mask: u32) {
@@ -281,11 +305,13 @@ _register_shape :: proc(shape: b2.ShapeId, owner: engine.Transform_Handle) {
 }
 
 _sync_colliders :: proc(w: ^engine.World) {
+	// The collision matrix the masks read, once per step.
+	layers_sync()
 	{
 		it := engine.pool_iterator(box_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
 			if b2.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -293,7 +319,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, offset := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			box := b2.MakeOffsetBox(size.x * 0.5, size.y * 0.5, target.center, b2.MakeRot(target.angle))
 			c.shape = b2.CreatePolygonShape(target.body, def, &box)
 			_register_shape(c.shape, c.owner)
@@ -303,7 +329,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 		it := engine.pool_iterator(circle_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
 			if b2.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -311,7 +337,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, offset := circle_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			circle := b2.Circle{center = target.center, radius = radius}
 			c.shape = b2.CreateCircleShape(target.body, def, &circle)
 			_register_shape(c.shape, c.owner)
@@ -321,7 +347,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 		it := engine.pool_iterator(capsule_collider2_ds(w))
 		for c, _ in engine.pool_next(&it) {
 			if b2.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -329,7 +355,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, offset := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, offset, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			radius, half: f32
 			axis: [2]f32
 			if c.direction == .Vertical {

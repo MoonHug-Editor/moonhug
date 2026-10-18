@@ -21,6 +21,10 @@ Rigidbody :: struct {
 	freeze_position: [3]bool,
 	freeze_rotation: [3]bool,
 
+	// Collides with these layers besides the collision matrix, or never,
+	// for every collider attached to this body.
+	using layer_overrides: Physics3D_Layer_Overrides `inline:""`,
+
 	body: b3.BodyId `json:"-" inspect:"-"`,
 }
 

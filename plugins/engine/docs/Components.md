@@ -44,7 +44,7 @@ The load paths that apply it:
 - Scene load: every component record (`_ext_value_into` in `component_registry.odin`).
 - Prefab and nested-scene instancing, and the id remap of a paste or a nested instance.
 - Prefab-base normalisation (`_normalize_component_records`) and the override baselines of nested instances.
-- Asset files (`serialization.odin`), including the Render Layers and Physics Layers assets.
+- Asset files (`serialization.odin`), and assets an owner reads by type (`engine.asset_parse_as`, `asset_load_as`): layer names, collision matrices.
 - Union variants inside any value (`union_serialization.odin`).
 - Import settings from a `.meta` file (`_settings_from_value` in `asset_pipeline.odin`).
 - Undo and redo of an asset document or import settings (`asset_docs.odin`, `import_settings_docs.odin`).

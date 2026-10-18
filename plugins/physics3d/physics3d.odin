@@ -19,7 +19,7 @@ package physics3d
 // whole relative transform, scale included, is BAKED at shape creation:
 // moving or rescaling a child collider afterwards doesn't re-bake, and
 // component field edits at runtime don't re-sync (use the escape hatch).
-// The exception is a collider's `layers` and `mask`: each step writes them
+// The exception is a collider's `layers` and `layer_overrides`, its body's `layer_overrides` and the project's collision matrix: each step writes them
 // into the live shape's filter when they differ.
 
 import "base:runtime"
@@ -190,6 +190,30 @@ _ancestor_body :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> (body: 
 	return {}, {}, false
 }
 
+// The filter mask of the collider on `owner`: the collision matrix's rows for
+// its `layers`, plus its own and its body's includes, minus both excludes.
+_collider_mask :: proc(w: ^engine.World, owner: engine.Transform_Handle, layers: u32, own: Physics3D_Layer_Overrides) -> u32 {
+	return collision_mask(layers, own, _body_overrides(w, owner))
+}
+
+// The layer overrides of the nearest Rigidbody on tH or an ancestor, the
+// body the collider attaches to. None without one.
+_body_overrides :: proc(w: ^engine.World, tH: engine.Transform_Handle) -> Physics3D_Layer_Overrides {
+	cur := tH
+	for engine.pool_valid(&w.transforms, engine.Handle(cur)) {
+		t := engine.pool_get(&w.transforms, engine.Handle(cur))
+		owned, idx := engine.transform_find_comp(t, .Rigidbody)
+		if idx >= 0 {
+			pool := rigidbodies(w)
+			if pool == nil do return {}
+			rb := engine.pool_get(pool, owned.handle)
+			return rb != nil ? rb.layer_overrides : {}
+		}
+		cur = engine.Transform_Handle(t.parent.handle)
+	}
+	return {}
+}
+
 _Shape_Target :: struct {
 	body:   b3.BodyId,
 	center: [3]f32, // shape center in body-local space
@@ -265,7 +289,7 @@ _shape_def :: proc(density, friction, bounciness: f32, is_trigger: bool, layer, 
 	return def
 }
 
-// Writes a collider's layer and mask into its live shape. The call happens
+// Writes a collider's layers and computed mask into its live shape. The call happens
 // only when the bits differ, since box3d then rebuilds the shape's broadphase
 // proxy so pairs are found or dropped on the next step. The group index stays
 // as the shape has it.
@@ -295,11 +319,13 @@ _capsule_axis :: proc(dir: Capsule_Direction) -> [3]f32 {
 }
 
 _sync_colliders :: proc(w: ^engine.World) {
+	// The collision matrix the masks read, once per step.
+	layers_sync()
 	{
 		it := engine.pool_iterator(box_colliders(w))
 		for c, _ in engine.pool_next(&it) {
 			if b3.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -307,7 +333,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			size, center := box_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			h := size * 0.5
 			bh := b3.MakeTransformedBoxHull(h.x, h.y, h.z, b3.Transform{p = target.center, q = target.rot})
 			c.shape = b3.CreateHullShape(target.body, def, &bh.base)
@@ -318,7 +344,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 		it := engine.pool_iterator(sphere_colliders(w))
 		for c, _ in engine.pool_next(&it) {
 			if b3.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -326,7 +352,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, center := sphere_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			sphere := b3.Sphere{center = target.center, radius = radius}
 			c.shape = b3.CreateSphereShape(target.body, def, &sphere)
 			_register_shape(c.shape, c.owner)
@@ -336,7 +362,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 		it := engine.pool_iterator(capsule_colliders(w))
 		for c, _ in engine.pool_next(&it) {
 			if b3.Shape_IsValid(c.shape) {
-				_sync_filter(c.shape, c.layers, c.mask)
+				_sync_filter(c.shape, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 				continue
 			}
 			if !c.enabled do continue
@@ -344,7 +370,7 @@ _sync_colliders :: proc(w: ^engine.World) {
 			radius, height, center := capsule_scaled(c, collider_scale(c.owner))
 			target, ok := _shape_target(w, c.owner, center, &c.static_body)
 			if !ok do continue
-			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, c.mask)
+			def := _shape_def(c.density, c.friction, c.bounciness, c.is_trigger, c.layers, _collider_mask(w, c.owner, c.layers, c.layer_overrides))
 			half := max(height * 0.5 - radius, 0)
 			axis := linalg.quaternion128_mul_vector3(target.rot, _capsule_axis(c.direction))
 			capsule := b3.Capsule{

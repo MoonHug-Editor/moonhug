@@ -146,12 +146,10 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - project file ops: Windows trash/reveal (darwin-only today, see project_os_stub.odin)
 
 - physics2d follow-ups:
-  - PhysicsLayerCollision2D settings asset
   - PhysicsMaterial2D asset
   - effectors/polygon colliders
 
 - physics3d follow-ups:
-  - PhysicsLayerCollision settings asset
   - PhysicsMaterial asset
   - mesh colliders
   - explicit mass
@@ -169,6 +167,10 @@ Full list and what needs them: [Install, Build and Run](docs/general/InstallBuil
 - lightweight App: the generated glue of a runnable package imports `serialization` and `gizmos` (so `gfx`) even when the package declares no component and installs no engine. Emit both only when needed, so a package importing `moonhug:libs/core` alone builds as a small headless App
 
 - multiselection follow-ups: multi-path drag-drop
+
+- decorator generator names its procs by the bare type name (`__decorator__<Type>__<field>`), so two packages declaring a type of the same name with decor tags fail to build (physics2d and physics3d prefix their layer override types to dodge it)
+
+- experiment: `using _:` blank embeds for fields shared by serialized structs. Odin's JSON flattens them into the parent object, so saved keys stay as they are. Check the inspector field walk, the prebuild generators and the prefab override paths before using it in a feature
 
 ### Considered Features
 

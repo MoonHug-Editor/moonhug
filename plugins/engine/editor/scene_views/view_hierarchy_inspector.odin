@@ -95,8 +95,6 @@ draw_hierarchy_inspector :: proc() {
 		undo.push_transform_owner(tH)
 		defer undo.pop_owner()
 
-		_draw_header(t, tH)
-
 		// Prefab-instance content multi-edits like anything else. Each peer
 		// carries its own instance identity (Multi_Peer.nested_host/lid), so an
 		// edit records an override against the instance it belongs to rather
@@ -108,6 +106,7 @@ draw_hierarchy_inspector :: proc() {
 			nested_transform_peers = multi_transform_peers(tH, sel)
 			nested_common = multi_common_components(tH, sel)
 		}
+		_draw_header(t, tH, nested_transform_peers)
 		_draw_transform_section(t, tH, nested_transform_peers)
 		_draw_components_section_nested(t, tH, host_tH, nested_common, multi)
 		return
@@ -115,8 +114,6 @@ draw_hierarchy_inspector :: proc() {
 
 	undo.push_transform_owner(tH)
 	defer undo.pop_owner()
-
-	_draw_header(t, tH)
 
 	// Peers for the rest of the selection, in scope for the whole draw below.
 	// Empty when this is a single selection, which makes every multi-edit path a
@@ -127,6 +124,8 @@ draw_hierarchy_inspector :: proc() {
 		transform_peers = multi_transform_peers(tH, sel)
 		common_comps = multi_common_components(tH, sel)
 	}
+
+	_draw_header(t, tH, transform_peers)
 
 	_draw_transform_section(t, tH, transform_peers)
 	_draw_components_section(t, tH, common_comps, multi)
@@ -533,7 +532,11 @@ _overrides_anchor_valid: bool
 _overrides_popup_host: engine.Transform_Handle
 
 @(private)
-_draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
+// The object's own rows above its components: the active toggle and the name
+// on one line, then the render layers, as the GameObject header has them.
+// `peers` are the rest of the selection's transforms, so the layers row edits
+// the whole selection.
+_draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle, peers: []inspector.Multi_Peer) {
 	active := t.is_active
 	if im.Checkbox("##active", &active) {
 		e := undo.edit_begin(tH, &t.is_active, typeid_of(bool), "Toggle Active")
@@ -559,6 +562,10 @@ _draw_header :: proc(t: ^engine.Transform, tH: engine.Transform_Handle) {
 			undo.edit_end(&e)
 		}
 	}
+
+	prev_peers := inspector.multi_set_peers(peers)
+	defer inspector.multi_set_peers(prev_peers)
+	_draw_transform_layer_row(tH, t)
 }
 
 @(private)
@@ -597,7 +604,6 @@ _draw_transform_section :: proc(t: ^engine.Transform, tH: engine.Transform_Handl
 		}
 		_wrap_transform_rotation_override(tH, t, drawer)
 		_wrap_transform_field_override(tH, t, &t.scale, "scale", typeid_of([3]f32), drawer, typeid_of(^[3]f32), "Scale")
-		_draw_transform_layer_row(tH, t)
 	} else {
 		_inspector_transform_open = false
 	}

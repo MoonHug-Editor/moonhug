@@ -36,14 +36,19 @@ the visitor second).
 
 ## Collision layers
 
-Every collider has two layer fields, bits of the engine's `"physics"` layer domain ([Layers](../../engine/docs/Layers.md)):
+The 3D colliders have collision layers of their own, separate from the render layers and from the other physics plugin's (`layers.odin`, layer domain `"physics3d"`). One asset of this plugin holds them: a Physics 3D Layers asset (`Physics3D_Layers`, Assets ▸ Create ▸ Physics 3D Layers), picked in the `layers` field of the Physics 3D project settings (Edit ▸ Project Settings… ▸ Physics 3D). It has two fields:
 
-- `layers` is the layers the collider is on. Several bits are allowed. A new collider is on layer 0
-- `mask` is the layers the collider collides with. A new collider collides with every layer
+- `names`: the names of the 32 layers. An empty name is an unused layer
+- `rows`: which pairs of layers collide. Bit j of row i set means a collider on layer i and a collider on layer j collide
 
-Two colliders collide when `(a.layers & b.mask) != 0 && (b.layers & a.mask) != 0`, box3d's own rule. The same test decides whether a trigger reports an overlap. The fields become the shape filter's `categoryBits` and `maskBits` when the shape is created, and each physics step writes a changed `layers` or `mask` into the live shape, so an edit during play or from a script applies on the next step.
+A new asset, and a project whose setting is unset, name layer 0 "Default" and let every pair collide. The inspector draws `rows` as a triangle of checkboxes labelled with the asset's own `names` ([Layers](../../engine/docs/Layers.md) "Collision matrix inspector"). An edit of the asset the settings name reaches the layer picker and the physics step before it is saved, and so does a change of its file on disk or a switch to another asset.
 
-The 32 layer names are the names of the project's Physics Layers asset, the one the `physics_layers` field of Edit ▸ Project Settings… ▸ Layers names (the essentials plugin's `assets/physics/DefaultPhysicsLayers.asset` until a project picks its own). To name the layers, create an asset with Assets ▸ Create ▸ Physics Layers, name its layers in the inspector, save it and pick it in that field. The 2D and the 3D colliders share that list. Layer 0 is "Default", an empty name is an unused layer, and the inspector's layer picker lists the named ones. The domain is separate from the render layers: an object's render layer says nothing about what it collides with.
+Every collider has `layers`, the layers it is on. Several bits are allowed, and a new collider is on layer 0. Colliders and rigidbodies change their own share with `layer_overrides` (`Physics3D_Layer_Overrides`, drawn inline):
+
+- `include` adds layers the matrix leaves out
+- `exclude` removes layers whatever the matrix says
+
+A collider's own overrides add to those of the rigidbody it attaches to, so an override on the body applies to every collider attached to it. The filter mask is the matrix's rows for the collider's `layers`, plus both includes, minus both excludes (`collision_mask`). Two colliders collide when `(a.layers & b.mask) != 0 && (b.layers & a.mask) != 0`, box3d's own rule, so an exclude on either side wins. The same test decides whether a trigger reports an overlap. The layers and the mask become the shape filter's `categoryBits` and `maskBits` when the shape is created, and each physics step writes a changed value into the live shape, so an edit of the matrix, the layers or the overrides applies on the next step.
 
 ## Going beyond the components
 
@@ -52,5 +57,5 @@ and anything else box3d offers can be used directly from game code.
 
 ## Current limitations
 
-- Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `mask` don't re-sync (use `body_of`).
+- Moving or rescaling a child collider after creation doesn't re-bake its shape, and runtime component field edits other than `layers` and `layer_overrides` don't re-sync (use `body_of`).
 - No mesh colliders or physics material assets yet.

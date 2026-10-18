@@ -80,4 +80,8 @@ register_component_serializers :: proc() {
     core.register_pointer_type(core.Ref)
     core.register_pointer_type(core.PPtr)
     core.register_pointer_type(core.Local_ID)
+    // Layer assets (plugins/engine/layers_asset.odin): undo, revert and paste
+    // of a whole field write the 32 names or the collision matrix's 32 rows.
+    core.register_pointer_type([core.LAYER_COUNT]string)
+    core.register_pointer_type([core.LAYER_COUNT]u32)
 }

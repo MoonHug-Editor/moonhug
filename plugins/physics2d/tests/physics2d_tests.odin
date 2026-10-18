@@ -5,6 +5,9 @@ package physics2d_tests
 // Ships WITH the package (docs/core/Plugins.md) — `mh test` runs every
 // packages/*/tests suite after the central one.
 
+import "core:encoding/uuid"
+import "core:fmt"
+import "core:strings"
 import "core:testing"
 import "moonhug:packages/engine"
 import common "moonhug:tests/common"
@@ -234,12 +237,13 @@ physics2d_bodies_released_on_scene_restore :: proc(t: ^testing.T) {
 	}
 }
 
-// Collision layers: two shapes collide when each one's layer shares a bit
-// with the other's mask. Ball A's mask leaves out the floor's layer, so it
-// falls through with no contact. Ball B is on another layer, but the floor's
-// mask takes every layer and B's mask takes the floor's, so B lands.
+// Collision layers: two shapes collide when each one's layers meet the other's
+// mask, which is the collision matrix's rows for its layers plus the includes
+// and minus the excludes of the collider and its body. The default matrix lets
+// every pair collide: ball B lands. Ball A excludes the floor's layer on its
+// collider and ball C on its body: both fall through with no contact.
 @(test)
-physics2d_layer_mask_filters_contacts :: proc(t: ^testing.T) {
+physics2d_layer_overrides_filter_contacts :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -253,39 +257,45 @@ physics2d_layer_mask_filters_contacts :: proc(t: ^testing.T) {
 	box.enabled = true
 	box.size = {20, 1}
 	testing.expect_value(t, box.layers, u32(1))
-	testing.expect_value(t, box.mask, ~u32(0))
-	// The picker reads the names from the engine's shared physics domain.
-	testing.expect_value(t, engine.layer_name(engine.LAYER_DOMAIN_PHYSICS, 0), "Default")
+	testing.expect_value(t, box.layer_overrides, physics2d.Physics2D_Layer_Overrides{})
+	// The picker reads the names from the plugin's own layer domain.
+	testing.expect_value(t, engine.layer_name(physics2d.LAYER_DOMAIN, 0), "Default")
 
-	a := _layer_ball(tc, "A", -3, layer = 1 << 3, mask = 1 << 3)
-	b := _layer_ball(tc, "B", 3, layer = 1 << 3, mask = ~u32(0))
+	// A excludes the floor's layer on its collider, C on its body, B has no
+	// override: the default matrix lets every pair collide.
+	a := _layer_ball(tc, "A", -4, layer = 1 << 3, exclude = 1)
+	b := _layer_ball(tc, "B", 0, layer = 1 << 3)
+	c := _layer_ball(tc, "C", 4, layer = 1 << 3, body_exclude = 1)
 
-	a_hit, b_hit: bool
+	a_hit, b_hit, c_hit: bool
 	for _ in 0 ..< 200 {
 		physics2d.physics_step(1.0 / 60.0)
-		for c in physics2d.contact_begin_events() {
-			if _pair_is(c, a, floor) do a_hit = true
-			if _pair_is(c, b, floor) do b_hit = true
+		for e in physics2d.contact_begin_events() {
+			if _pair_is(e, a, floor) do a_hit = true
+			if _pair_is(e, b, floor) do b_hit = true
+			if _pair_is(e, c, floor) do c_hit = true
 		}
 	}
 
-	testing.expect(t, !a_hit, "A's mask leaves out the floor's layer: no contact")
-	testing.expect(t, b_hit, "B and the floor accept each other's layers: contact")
+	testing.expect(t, !a_hit, "A's collider excludes the floor's layer: no contact")
+	testing.expect(t, b_hit, "B and the floor collide by the matrix: contact")
+	testing.expect(t, !c_hit, "C's body excludes the floor's layer: no contact")
 	ay := engine.pool_get(&tc.world.transforms, engine.Handle(a)).position.y
 	by := engine.pool_get(&tc.world.transforms, engine.Handle(b)).position.y
 	testing.expect(t, ay < -3, "A falls through the floor")
 	testing.expect(t, by > -1.6, "B rests on the floor")
 
-	// The fields reach box2d as the shape filter's category and mask bits.
+	// The layers and the computed mask reach box2d as the shape filter.
 	circle := _layer_circle(tc, a)
 	f := b2.Shape_GetFilter(circle.shape)
 	testing.expect_value(t, f.categoryBits, u64(1 << 3))
-	testing.expect_value(t, f.maskBits, u64(1 << 3))
+	testing.expect_value(t, f.maskBits, u64(~u32(0) &~ 1))
 }
 
-// An edit of `mask` on a live collider reaches its shape on the next step.
+// An edit of the layer overrides on a live collider reaches its shape on the
+// next step.
 @(test)
-physics2d_layer_mask_edit_applies_live :: proc(t: ^testing.T) {
+physics2d_layer_overrides_edit_applies_live :: proc(t: ^testing.T) {
 	tc := new(common.TestCtx)
 	defer free(tc)
 	common.setup(tc)
@@ -299,22 +309,22 @@ physics2d_layer_mask_edit_applies_live :: proc(t: ^testing.T) {
 	box.enabled = true
 	box.size = {20, 1}
 
-	ball := _layer_ball(tc, "Ball", 0, layer = 1, mask = 0)
+	ball := _layer_ball(tc, "Ball", 0, layer = 1, exclude = ~u32(0))
 	physics2d.physics_step(1.0 / 60.0)
 	circle := _layer_circle(tc, ball)
 	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(0))
 
-	circle.mask = ~u32(0)
+	circle.exclude = 0
 	for _ in 0 ..< 200 {
 		physics2d.physics_step(1.0 / 60.0)
 	}
 	testing.expect_value(t, b2.Shape_GetFilter(circle.shape).maskBits, u64(~u32(0)))
 	y := engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position.y
-	testing.expect(t, y > -1.6, "the ball lands once its mask takes the floor's layer")
+	testing.expect(t, y > -1.6, "the ball lands once it stops excluding the floor's layer")
 }
 
 @(private = "file")
-_layer_ball :: proc(tc: ^common.TestCtx, name: string, x: f32, layer, mask: u32) -> engine.Transform_Handle {
+_layer_ball :: proc(tc: ^common.TestCtx, name: string, x: f32, layer: u32, exclude: u32 = 0, body_exclude: u32 = 0) -> engine.Transform_Handle {
 	ball := engine.transform_new(name)
 	engine.pool_get(&tc.world.transforms, engine.Handle(ball)).position = {x, 3, 0}
 	_, rb_ptr := engine.transform_add_comp(ball, .Rigidbody2D)
@@ -322,11 +332,12 @@ _layer_ball :: proc(tc: ^common.TestCtx, name: string, x: f32, layer, mask: u32)
 	rb.enabled = true
 	rb.body_type = .Dynamic
 	rb.gravity_scale = 1
+	rb.exclude = body_exclude
 	_, circle_ptr := engine.transform_add_comp(ball, .CircleCollider2D)
 	circle := cast(^physics2d.CircleCollider2D)circle_ptr
 	circle.enabled = true
 	circle.layers = layer
-	circle.mask = mask
+	circle.exclude = exclude
 	return ball
 }
 
@@ -341,4 +352,83 @@ _layer_circle :: proc(tc: ^common.TestCtx, tH: engine.Transform_Handle) -> ^phys
 @(private = "file")
 _pair_is :: proc(c: physics2d.Contact, x, y: engine.Transform_Handle) -> bool {
 	return (c.a == x && c.b == y) || (c.a == y && c.b == x)
+}
+
+// The plugin's layers asset: a new one names layer 0 "Default" and lets every
+// pair collide, a file loads its names and rows, and a file of another type
+// does not load.
+@(test)
+physics2d_layers_asset :: proc(t: ^testing.T) {
+	l: physics2d.Physics2D_Layers
+	physics2d.reset_Physics2D_Layers(&l)
+	defer physics2d.cleanup_Physics2D_Layers(&l)
+	testing.expect_value(t, l.names[0], "Default")
+	testing.expect_value(t, l.names[1], "")
+	for row in l.rows do testing.expect_value(t, row, ~u32(0))
+
+	tg := engine.get_guid_by_typeid(physics2d.Physics2D_Layers)
+	data := fmt.tprintf(`{{"__type_guid": "%s", "names": ["Default", "Player"], "rows": [4294967291, 4294967295, 4294967294]}}`, uuid.to_string(tg, context.temp_allocator))
+	got, ok := engine.asset_parse_as(transmute([]u8)data, physics2d.Physics2D_Layers)
+	defer physics2d.cleanup_Physics2D_Layers(&got)
+	testing.expect(t, ok, "a Physics 2D Layers file loads")
+	testing.expect_value(t, got.names[1], "Player")
+	testing.expect_value(t, got.rows[0], u32(4294967291))
+	testing.expect_value(t, got.rows[2], u32(4294967294))
+
+	sparse, sok := engine.asset_parse_as(transmute([]u8)fmt.tprintf(`{{"__type_guid": "%s"}}`, uuid.to_string(tg, context.temp_allocator)), physics2d.Physics2D_Layers)
+	defer physics2d.cleanup_Physics2D_Layers(&sparse)
+	testing.expect(t, sok, "a file without fields loads")
+	testing.expect_value(t, sparse.names[0], "Default")
+	testing.expect_value(t, sparse.rows[5], ~u32(0))
+
+	_, other_ok := engine.asset_parse_as(transmute([]u8)string(`{"__type_guid": "6a0f6f86-3a55-4a8e-a2a1-0d6c43f4e2ff"}`), physics2d.Physics2D_Layers)
+	testing.expect(t, !other_ok, "a file of another type does not load")
+}
+
+// A collider's mask: the active matrix's rows for its layers, plus the
+// collider's and the body's includes, minus both excludes. An inspector edit
+// of the asset the settings name reaches the names and the mask before it is
+// saved, an edit of another asset does not. Without a setting layer 0 is
+// "Default" and every pair collides.
+@(test)
+physics2d_collision_mask :: proc(t: ^testing.T) {
+	physics2d.layers_sync()
+	prev := physics2d.physics2d_settings
+	defer {
+		physics2d.physics2d_settings = prev
+		physics2d.layers_sync()
+	}
+	testing.expect_value(t, engine.layer_name(physics2d.LAYER_DOMAIN, 0), "Default")
+
+	// An asset the settings name but the asset db lacks: the sync falls back
+	// to the built-in layers and remembers the guid, so its document's preview
+	// applies.
+	layers_guid := engine.Asset_GUID(uuid.read("6a0f6f86-3a55-4a8e-a2a1-0d6c43f4e226") or_else {})
+	physics2d.physics2d_settings.layers = layers_guid
+	physics2d.layers_sync()
+
+	everything := ~u32(0)
+	testing.expect_value(t, physics2d.matrix_collides_with(1 << 3), everything)
+	testing.expect_value(t, physics2d.collision_mask(1 << 3, {exclude = 1}, {exclude = 4}), everything &~ 5)
+
+	// Layers 1 and 2 do not collide, every other pair does.
+	l: physics2d.Physics2D_Layers
+	physics2d.reset_Physics2D_Layers(&l)
+	defer physics2d.cleanup_Physics2D_Layers(&l)
+	l.names[1] = strings.clone("Player")
+	l.rows[1] &~= 1 << 2
+	l.rows[2] &~= 1 << 1
+	physics2d.layers_preview(layers_guid, l)
+	testing.expect_value(t, engine.layer_name(physics2d.LAYER_DOMAIN, 1), "Player")
+	testing.expect_value(t, physics2d.matrix_collides_with(1 << 1), everything &~ (1 << 2))
+	testing.expect_value(t, physics2d.matrix_collides_with(1 << 1 | 1 << 3), everything) // layer 3's row takes 2 back
+	testing.expect_value(t, physics2d.collision_mask(1 << 1, {}, {}), everything &~ (1 << 2))
+	testing.expect_value(t, physics2d.collision_mask(1 << 1, {include = 1 << 2}, {}), everything)
+	testing.expect_value(t, physics2d.collision_mask(1 << 1, {}, {include = 1 << 2}), everything)
+	testing.expect_value(t, physics2d.collision_mask(1 << 1, {include = 1 << 2}, {exclude = 1 << 2}), everything &~ (1 << 2))
+
+	other: physics2d.Physics2D_Layers
+	physics2d.layers_preview(engine.Asset_GUID(uuid.read("6a0f6f86-3a55-4a8e-a2a1-0d6c43f4e227") or_else {}), other)
+	testing.expect_value(t, physics2d.matrix_collides_with(1 << 1), everything &~ (1 << 2))
+	testing.expect_value(t, engine.layer_name(physics2d.LAYER_DOMAIN, 1), "Player")
 }

@@ -26,6 +26,10 @@ Rigidbody2D :: struct {
 	fixed_rotation:  bool,
 	continuous:      bool, // continuous collision detection (box2d bullet)
 
+	// Collides with these layers besides the collision matrix, or never,
+	// for every collider attached to this body.
+	using layer_overrides: Physics2D_Layer_Overrides `inline:""`,
+
 	body: b2.BodyId `json:"-" inspect:"-"`,
 }
 

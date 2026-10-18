@@ -1,19 +1,20 @@
 ---
 title: "Layers"
-description: "Named layers per domain: objects hold layer bits, consumers hold masks, the 32 render and 32 physics names live in a Render Layers and a Physics Layers asset chosen in the Layers project setting"
+description: "Named layers per domain: objects hold layer bits, consumers hold masks, the render layer names live in a Render Layers asset chosen in the Layers project setting, plugins own domains of their own"
 order: 95
 tags: ["layers", "rendering", "physics", "engine", "editor"]
 path: engine/rendering
 ---
 
-A layer sorts objects for one system. An object holds layer bits, a consumer holds a mask, and the consumer handles an object when the two share a bit. Layers are per domain: the render domain sorts objects for views and the physics domain sorts colliders for collisions, so an object's render layer says nothing about what it collides with.
+A layer sorts objects for one system. An object holds layer bits, a consumer holds a mask, and the consumer handles an object when the two share a bit. Layers are per domain: the engine's render domain sorts objects for views, and a plugin can own a domain of its own, as the physics plugins do for their colliders. An object's render layer says nothing about what it collides with.
 
 ## Domains and names
 
-Each domain has 32 layers, bit N for layer N, and a list of 32 names. An empty name is an unused layer. The engine has two domains:
+Each domain has 32 layers, bit N for layer N, and a list of 32 names. An empty name is an unused layer. The engine owns one domain:
 
 - `"render"` (`LAYER_DOMAIN_RENDER`): `Transform.render_layer` and the camera, light and probe masks
-- `"physics"` (`LAYER_DOMAIN_PHYSICS`): the `layers` and `mask` of the 2D and the 3D colliders, one list for both ([physics2d](../../physics2d/assets/README.md) and [physics3d](../../physics3d/assets/README.md) "Collision layers")
+
+The physics plugins own one each, with their own layers asset (names and collision matrix) and settings: `"physics2d"` and `"physics3d"` ([physics2d](../../physics2d/assets/README.md) and [physics3d](../../physics3d/assets/README.md) "Collision layers").
 
 The registry (`moonhug/libs/core/layers.odin`) hands out each domain's names:
 
@@ -22,36 +23,36 @@ The registry (`moonhug/libs/core/layers.odin`) hands out each domain's names:
 - `layer_index(domain, name)` is the layer with that name, -1 when none has it
 - `layer_hidden_mask(domain)` is the layers the picker does not list
 
-An owner registers a list once with `layer_domain_register(domain, &names, hidden)` and rewrites it in place when the names change. Registering a domain again with the same list is allowed, with another list panics.
+An owner registers a list once with `layer_domain_register(domain, &names, hidden, refresh)` and rewrites it in place when the names change. Registering a domain again with the same list is allowed, with another list panics. An owner whose names come from an asset passes a `refresh` proc: `layer_names` calls it before every read, so a reader never sees names older than the asset, and the owner needs no per-frame hook.
 
-## The layer names assets
+## The Render Layers asset
 
-The names of each domain live in an asset of its own, a plain `.asset` file with one list of 32 names, `names`:
-
-- a Render Layers asset (`engine.Render_Layers`) names the render layers
-- a Physics Layers asset (`engine.Physics_Layers`) names the collision layers
-
-The Layers project setting (Edit ▸ Project Settings… ▸ Layers, saved to `ProjectSettings/layers.json`) names the two assets the project uses: `render_layers` and `physics_layers`. Each field's picker lists only assets of its type (`ref:"Render_Layers"`, `ref:"Physics_Layers"`). An unset field is the essentials plugin's default asset of that type, `assets/rendering/DefaultRenderLayers.asset` and `assets/physics/DefaultPhysicsLayers.asset`, and the built-in names when the essentials plugin is not installed either. A new asset, the default asset and the built-in names are the same:
+The render layer names live in a Render Layers asset (`engine.Render_Layers`), a plain `.asset` file with one list of 32 names, `names`. The Layers project setting (Edit ▸ Project Settings… ▸ Layers, saved to `ProjectSettings/layers.json`) names the asset the project uses in `render_layers`, whose picker lists only Render Layers assets (`ref:"Render_Layers"`). An unset field is the essentials plugin's default asset, `assets/rendering/DefaultRenderLayers.asset`, and the built-in names when the essentials plugin is not installed either. A new asset, the default asset and the built-in names are the same:
 
 - render layer 0, `RENDER_LAYER_DEFAULT`, is "Default". A new object is on it
 - render layer 31, `RENDER_LAYER_EDITOR`, is "Editor". It is reserved for the editor: thumbnails and the inspector's live previews draw their content on it and their views draw nothing else, so the open scene never shows in them. The picker does not list it
-- physics layer 0 is "Default". A new collider is on it
 
-The engine keeps one copy of each active asset's names and registers the copies as the two domains (`plugins/engine/layers_asset.odin`). `layers_sync` brings the copies up to date: each frame calls it, and code that reads names before the first frame can call it too. Each copy follows:
+The inspector draws the asset as 32 fixed rows, one per layer: layers 0 and 31 read "Builtin Layer N" with their names fixed and greyed out, the others read "User Layer N" with a text field (`decor:layer_names(builtin="0,31")`, `moonhug/editor/inspector/layer_names.odin`). Each finished name edit is one undo step.
 
-- a change of its field in the Layers setting, from the Project Settings window, an undo or a load
+The engine keeps one copy of the active asset's names and registers it as the render domain (`plugins/engine/layers_asset.odin`). `layers_sync` brings the copy up to date: each frame and every read of the names call it. The copy follows:
+
+- a change of `render_layers` in the Layers setting, from the Project Settings window, an undo or a load
 - a change of the asset file on disk
-- an edit of the active asset in the inspector, saved or not (`render_layers_preview`, `physics_layers_preview`). Save writes the file, unsaved edits revert on the next editor run
+- an edit of the active asset in the inspector, saved or not (`render_layers_preview`). Save writes the file, unsaved edits revert on the next editor run
 
-A field that names a missing asset, or an asset of the other type, logs a warning and gives the domain the built-in names.
+A field that names a missing asset, or an asset of another type, logs a warning and gives the domain the built-in names.
 
 To give a project its own names:
 
-1. Create an asset with Assets ▸ Create ▸ Render Layers or Assets ▸ Create ▸ Physics Layers
+1. Create an asset with Assets ▸ Create ▸ Render Layers
 2. Name its layers in the inspector and save it
-3. Pick it in the `render_layers` or `physics_layers` field of Project Settings ▸ Layers
+3. Pick it in the `render_layers` field of Project Settings ▸ Layers
 
-Picking another asset there switches every picker of that domain to the new asset's names. The layer bits in scenes do not change, so an object on layer 3 stays on layer 3 under whatever name the new asset gives it.
+Picking another asset there switches every render layer picker to the new asset's names. The layer bits in scenes do not change, so an object on layer 3 stays on layer 3 under whatever name the new asset gives it.
+
+## Collision matrix inspector
+
+`decor:collision_matrix(names="names")` on a `[32]u32` field draws it as a triangle of checkboxes, one per pair of named layers, with the layer names over the columns (`moonhug/editor/inspector/collision_matrix.odin`). The names come from the named `[32]string` field of the same struct, so an asset's matrix is labelled with that asset's own names, saved or not. Bit j of row i set means layers i and j collide. A checkbox sets both bits of the pair, so the matrix stays symmetric, and each click is one undo step. The physics plugins' layers assets use it.
 
 ## The render domain
 
@@ -86,4 +87,4 @@ A view's `pass` (`core.View_Pass`: Color, Shadow, Probe) tells the mesh collecto
 
 ## The picker
 
-A `u32` field tagged `decor:layers(domain="render")` or `decor:layers(domain="physics")` draws as a dropdown with "Nothing", "Everything" and a checkbox per named layer of the domain. The closed dropdown reads "Nothing", "Everything", the names of the layers that are on (up to three), or "Mixed". The hidden layers do not count: a mask with every listed layer on reads "Everything". "Nothing" sets the mask to 0 and "Everything" to every bit. Each change in the dropdown is one undo step, across the whole selection. The Transform inspector draws its Render Layers row with the same picker (`inspector.layer_mask_field`).
+A `u32` field tagged `decor:layers(domain="render")`, or with a plugin's domain such as `decor:layers(domain="physics2d")`, draws as a dropdown with "Nothing", "Everything" and a checkbox per named layer of the domain. The closed dropdown reads "Nothing", "Everything", the names of the layers that are on (up to three), or "Mixed". The hidden layers do not count: a mask with every listed layer on reads "Everything". "Nothing" sets the mask to 0 and "Everything" to every bit. Each change in the dropdown is one undo step, across the whole selection. The object inspector draws a Render Layers row with the same picker in its header, under the name, for the whole selection (`inspector.layer_mask_field`).
