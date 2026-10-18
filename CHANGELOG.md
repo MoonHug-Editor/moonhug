@@ -1,3 +1,9 @@
+## [0.134.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.0...v0.134.1) (2026-10-18)
+
+### Bug Fixes
+
+* floating views keep the tab bar and its menu button, window_list includes them ([6a0c699](https://github.com/MoonHug-Editor/moonhug/commit/6a0c6997a22ccb8f73e81ee0dd46a34a953bac1e))
+
 ## [0.134.0](https://github.com/MoonHug-Editor/moonhug/compare/v0.133.0...v0.134.0) (2026-10-18)
 
 ### Features
