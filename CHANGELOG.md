@@ -1,3 +1,9 @@
+## [0.134.2](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.1...v0.134.2) (2026-10-18)
+
+### Bug Fixes
+
+* floating windows draw every frame (wait for the swapchain image, SDL 3.4.14 Metal fence query is inverted) ([11dbc85](https://github.com/MoonHug-Editor/moonhug/commit/11dbc85f86aefe706ef85678bcee53531edab92d))
+
 ## [0.134.1](https://github.com/MoonHug-Editor/moonhug/compare/v0.134.0...v0.134.1) (2026-10-18)
 
 ### Bug Fixes
