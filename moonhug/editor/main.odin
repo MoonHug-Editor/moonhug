@@ -121,6 +121,7 @@ main :: proc() {
     }
     im_sdlgpu.Init(&imgui_gpu_info)
     defer im_sdlgpu.Shutdown()
+    imgui_viewports_init()
 
     apply_editor_theme()
     // From here reports draw pumped frames — startup shows progress instead
